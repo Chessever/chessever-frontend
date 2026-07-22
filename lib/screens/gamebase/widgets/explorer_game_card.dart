@@ -1,3 +1,4 @@
+import 'package:chessever2/providers/board_settings_provider_new.dart';
 import 'package:chessever2/repository/gamebase/gamebase_repository.dart';
 import 'package:chessever2/revenue_cat_service/subscribe_state.dart';
 import 'package:chessever2/screens/chessboard/widgets/chess_board_from_fen_new.dart';
@@ -10,6 +11,7 @@ import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_mode
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
+import 'package:chessever2/utils/audio_player_service.dart';
 import 'package:chessever2/utils/broadcast_custom_scoring.dart';
 import 'package:chessever2/utils/chess_title_utils.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
@@ -159,22 +161,12 @@ class _ExplorerGamesSectionState extends ConsumerState<ExplorerGamesSection> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Padding(
-          padding: EdgeInsets.fromLTRB(12.sp, 10.sp, 12.sp, 6.sp),
-          child: Text(
-            'Games',
-            style: TextStyle(
-              color: context.colors.textSecondary,
-              fontSize: 11.f,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-        ),
         gamesAsync.when(
           loading: () => const _ExplorerGamesStatusRow.loading(),
-          error: (_, __) => const _ExplorerGamesStatusRow(
-            message: 'Couldn’t load games for this position',
-          ),
+          error:
+              (_, __) => const _ExplorerGamesStatusRow(
+                message: 'Couldn’t load games for this position',
+              ),
           data: (response) {
             final rows = response.data.take(_maxGames).toList(growable: false);
             if (rows.isEmpty) {
@@ -314,6 +306,28 @@ String resolveExplorerCardOpenInitialFen({
   return anchorFen;
 }
 
+/// SAN to sonify when a focused explorer card changes its displayed ply.
+/// Forward/jump plays the reached move; backward plays the move being undone.
+@visibleForTesting
+String? resolveExplorerFocusSoundSan(
+  ExplorerGameFocus? previous,
+  ExplorerGameFocus? next,
+) {
+  if (next == null) return null;
+  final sameGame = previous?.gameId == next.gameId;
+  if (sameGame && previous!.ply == next.ply) return null;
+
+  final soundPly =
+      sameGame && next.ply < previous!.ply ? previous.ply : next.ply;
+  if (soundPly < 0 || soundPly >= next.sans.length) return null;
+  return next.sans[soundPly];
+}
+
+/// Human-readable event for the center slot. `tourId` may be an opaque UUID.
+@visibleForTesting
+String explorerGameEventLabel(GamesTourModel game) =>
+    sanitizeGamebaseEventLabel(game.tourSlug);
+
 /// One game remaining in the explored position: mini board on the left, player
 /// metadata on the right, and the game's continuation from this position as a
 /// horizontally scrollable SAN chip strip at the bottom.
@@ -334,6 +348,7 @@ class ExplorerGameCard extends ConsumerStatefulWidget {
     required this.line,
     required this.allGames,
     required this.index,
+    this.playMoveSound,
   });
 
   final GamesTourModel game;
@@ -341,6 +356,9 @@ class ExplorerGameCard extends ConsumerStatefulWidget {
   final ContinuationLine line;
   final List<GamesTourModel> allGames;
   final int index;
+
+  /// Test seam for the native audio plugin. Production uses AudioPlayerService.
+  final ValueChanged<String>? playMoveSound;
 
   @override
   ConsumerState<ExplorerGameCard> createState() => _ExplorerGameCardState();
@@ -366,13 +384,15 @@ class _ExplorerGameCardState extends ConsumerState<ExplorerGameCard> {
     final focus = ref.read(explorerFocusedGameProvider);
     if (!_isThisCardFocused(focus)) return;
     final ply = focus!.ply;
-    ref.read(explorerFocusedGameProvider.notifier).focus(
-      gameId: widget.game.gameId,
-      anchorFen: widget.anchorFen,
-      sans: widget.line.sans,
-      fens: widget.line.fens,
-      ply: ply.clamp(-1, widget.line.sans.length - 1),
-    );
+    ref
+        .read(explorerFocusedGameProvider.notifier)
+        .focus(
+          gameId: widget.game.gameId,
+          anchorFen: widget.anchorFen,
+          sans: widget.line.sans,
+          fens: widget.line.fens,
+          ply: ply.clamp(-1, widget.line.sans.length - 1),
+        );
   }
 
   bool _isThisCardFocused(ExplorerGameFocus? focus) =>
@@ -459,21 +479,7 @@ class _ExplorerGameCardState extends ConsumerState<ExplorerGameCard> {
     });
   }
 
-  String _formatDate(DateTime? date) {
-    if (date == null) return '';
-    return '${date.day.toString().padLeft(2, '0')}/'
-        '${date.month.toString().padLeft(2, '0')}/${date.year}';
-  }
-
-  /// Concise meta only: ECO code · date (no event / opening name).
-  String get _metaLine {
-    final parts = <String>[
-      if ((widget.game.eco ?? '').trim().isNotEmpty) widget.game.eco!.trim(),
-      if (_formatDate(widget.game.lastMoveTime).isNotEmpty)
-        _formatDate(widget.game.lastMoveTime),
-    ];
-    return parts.join(' · ');
-  }
+  String get _eventLine => explorerGameEventLabel(widget.game);
 
   Move? _uciToMove(String? uci) {
     final raw = (uci ?? '').trim().toLowerCase();
@@ -489,6 +495,24 @@ class _ExplorerGameCardState extends ConsumerState<ExplorerGameCard> {
 
   @override
   Widget build(BuildContext context) {
+    ref.listen<ExplorerGameFocus?>(explorerFocusedGameProvider, (
+      previous,
+      next,
+    ) {
+      if (next?.gameId != widget.game.gameId) return;
+      final san = resolveExplorerFocusSoundSan(previous, next);
+      if (san == null) return;
+      final soundEnabled =
+          ref.read(boardSettingsProviderNew).valueOrNull?.soundEnabled == true;
+      if (!soundEnabled) return;
+      final playMoveSound = widget.playMoveSound;
+      if (playMoveSound != null) {
+        playMoveSound(san);
+      } else {
+        AudioPlayerService.instance.playSfxForSan(san);
+      }
+    });
+
     final focus = ref.watch(
       explorerFocusedGameProvider.select(
         (f) => (f != null && f.gameId == widget.game.gameId) ? f : null,
@@ -547,7 +571,9 @@ class _ExplorerGameCardState extends ConsumerState<ExplorerGameCard> {
     final topSurface =
         isLight ? context.colors.surface : context.colors.surface;
     final bottomSurface =
-        isLight ? context.colors.surfaceRecessed : context.colors.surfaceRecessed;
+        isLight
+            ? context.colors.surfaceRecessed
+            : context.colors.surfaceRecessed;
     final metaColor = context.colors.textSecondary;
     final closeIconColor = context.colors.textSecondary;
 
@@ -642,14 +668,15 @@ class _ExplorerGameCardState extends ConsumerState<ExplorerGameCard> {
                                     padding: EdgeInsets.symmetric(
                                       horizontal: 2.w,
                                     ),
-                                    child: _metaLine.isEmpty
-                                        ? const SizedBox.shrink()
-                                        : _FadingOverflowText(
-                                          text: _metaLine,
-                                          textAlign: TextAlign.center,
-                                          style: AppTypography.textXsRegular
-                                              .copyWith(color: metaColor),
-                                        ),
+                                    child:
+                                        _eventLine.isEmpty
+                                            ? const SizedBox.shrink()
+                                            : _FadingOverflowText(
+                                              text: _eventLine,
+                                              textAlign: TextAlign.center,
+                                              style: AppTypography.textXsRegular
+                                                  .copyWith(color: metaColor),
+                                            ),
                                   ),
                                 ),
                               ),
@@ -761,10 +788,7 @@ class _ExplorerGameCardState extends ConsumerState<ExplorerGameCard> {
                 ]
                 : null,
       ),
-      child: ClipRRect(
-        borderRadius: radius,
-        child: card,
-      ),
+      child: ClipRRect(borderRadius: radius, child: card),
     );
 
     // Free users may *see* the teaser cards, but any interaction hits paywall.
@@ -845,8 +869,7 @@ class _ExplorerCardPlayerRow extends StatelessWidget {
     final player = isWhite ? game.whitePlayer : game.blackPlayer;
     final title = ChessTitleUtils.normalize(player.title);
     final status = game.gameStatus;
-    final scoreLabel =
-        boardResultLabelForSide(game, isWhite: isWhite) ?? '';
+    final scoreLabel = boardResultLabelForSide(game, isWhite: isWhite) ?? '';
     final isDraw = status == GameStatus.draw;
     final isWin =
         (status == GameStatus.whiteWins && isWhite) ||
@@ -957,13 +980,11 @@ class _FadingOverflowText extends StatelessWidget {
         // Full-width box so TextAlign.center actually centers in the meta slot.
         Widget sized = SizedBox(width: maxW, child: child);
 
-        final painter =
-            TextPainter(
-                text: TextSpan(text: text, style: style),
-                maxLines: 1,
-                textDirection: textDir,
-              )
-              ..layout(maxWidth: maxW);
+        final painter = TextPainter(
+          text: TextSpan(text: text, style: style),
+          maxLines: 1,
+          textDirection: textDir,
+        )..layout(maxWidth: maxW);
 
         final overflows =
             painter.didExceedMaxLines || painter.width > maxW + 0.5;
@@ -975,11 +996,7 @@ class _FadingOverflowText extends StatelessWidget {
             return const LinearGradient(
               begin: Alignment.centerLeft,
               end: Alignment.centerRight,
-              colors: [
-                Color(0xFFFFFFFF),
-                Color(0xFFFFFFFF),
-                Color(0x00FFFFFF),
-              ],
+              colors: [Color(0xFFFFFFFF), Color(0xFFFFFFFF), Color(0x00FFFFFF)],
               // Soft dissolve over the last ~28% of the line.
               stops: [0.0, 0.72, 1.0],
             ).createShader(bounds);
@@ -1011,9 +1028,11 @@ class _FadingOverflowRichText extends StatelessWidget {
         );
         if (!maxW.isFinite || maxW <= 0) return child;
 
-        final painter =
-            TextPainter(text: span, maxLines: 1, textDirection: textDir)
-              ..layout(maxWidth: maxW);
+        final painter = TextPainter(
+          text: span,
+          maxLines: 1,
+          textDirection: textDir,
+        )..layout(maxWidth: maxW);
 
         final overflows =
             painter.didExceedMaxLines || painter.width > maxW + 0.5;
@@ -1025,11 +1044,7 @@ class _FadingOverflowRichText extends StatelessWidget {
             return const LinearGradient(
               begin: Alignment.centerLeft,
               end: Alignment.centerRight,
-              colors: [
-                Color(0xFFFFFFFF),
-                Color(0xFFFFFFFF),
-                Color(0x00FFFFFF),
-              ],
+              colors: [Color(0xFFFFFFFF), Color(0xFFFFFFFF), Color(0x00FFFFFF)],
               stops: [0.0, 0.72, 1.0],
             ).createShader(bounds);
           },

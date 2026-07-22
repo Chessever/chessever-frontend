@@ -13,9 +13,11 @@ import 'package:chessever2/screens/gamebase/models/models.dart';
 import 'package:chessever2/screens/gamebase/providers/explorer_game_focus_provider.dart';
 import 'package:chessever2/screens/gamebase/providers/gamebase_explorer_state.dart';
 import 'package:chessever2/screens/gamebase/utils/continuation_line.dart';
+import 'package:chessever2/screens/chessboard/chess_board_screen_new.dart';
 import 'package:chessever2/screens/chessboard/widgets/chess_board_bottom_nav_bar.dart';
 import 'package:chessever2/screens/chessboard/widgets/chess_board_from_fen_new.dart';
 import 'package:chessever2/screens/gamebase/widgets/explorer_game_card.dart';
+import 'package:chessever2/screens/gamebase/widgets/position_games_sheet.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
@@ -42,6 +44,7 @@ GamesTourModel _game({
   String id = 'g1',
   String white = 'Magnus Carlsen',
   String black = 'Hikaru Nakamura',
+  String? eventName,
 }) {
   return GamesTourModel(
     gameId: id,
@@ -55,6 +58,7 @@ GamesTourModel _game({
     gameStatus: GameStatus.whiteWins,
     roundId: 'opening_explorer',
     tourId: 'Gamebase',
+    tourSlug: eventName,
     eco: 'C45',
     lastMoveTime: DateTime(2024, 5, 12),
   );
@@ -158,6 +162,7 @@ Future<void> _pumpCard(
                       line: line,
                       allGames: [game],
                       index: 0,
+                      playMoveSound: (_) {},
                     ),
                   ),
                 ),
@@ -204,7 +209,142 @@ Future<void> _pumpSection(
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
+  testWidgets(
+    'compact pull-up keeps the board fixed while reclaiming PV space',
+    (tester) async {
+      Future<void> pump({required bool expanded}) async {
+        await tester.pumpWidget(
+          MaterialApp(
+            home: Builder(
+              builder: (context) {
+                ResponsiveHelper.init(context);
+                return Scaffold(
+                  body: SizedBox(
+                    width: 400,
+                    height: 700,
+                    child: CompactBoardPinnedAnalysisLayout(
+                      boardChildren: const [
+                        SizedBox(key: ValueKey('board_probe'), height: 420),
+                      ],
+                      collapsingChrome:
+                          expanded
+                              ? const SizedBox.shrink()
+                              : const SizedBox(height: 80),
+                      expandedOverChrome: expanded,
+                      analysis: const ColoredBox(
+                        key: ValueKey('analysis_probe'),
+                        color: Colors.blue,
+                      ),
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+      }
+
+      await pump(expanded: false);
+      final boardBefore = tester.getRect(
+        find.byKey(const ValueKey('board_probe')),
+      );
+      final analysisBefore = tester.getTopLeft(
+        find.byKey(const ValueKey('analysis_probe')),
+      );
+
+      await pump(expanded: true);
+      final boardAfter = tester.getRect(
+        find.byKey(const ValueKey('board_probe')),
+      );
+      final analysisAfter = tester.getTopLeft(
+        find.byKey(const ValueKey('analysis_probe')),
+      );
+
+      expect(boardAfter, boardBefore);
+      expect(analysisAfter.dy, lessThan(analysisBefore.dy));
+      expect(analysisAfter.dy, boardAfter.bottom);
+    },
+  );
+
+  test('focused-card sound follows forward, jump, and backward SAN', () {
+    ExplorerGameFocus focus(int ply) => ExplorerGameFocus(
+      gameId: 'g1',
+      anchorFen: _anchorFen,
+      sans: const ['e4', 'e5', 'Nf3'],
+      fens: const ['a', 'b', 'c', 'd'],
+      ply: ply,
+    );
+
+    expect(resolveExplorerFocusSoundSan(null, focus(0)), 'e4');
+    expect(resolveExplorerFocusSoundSan(focus(0), focus(2)), 'Nf3');
+    expect(resolveExplorerFocusSoundSan(focus(2), focus(1)), 'Nf3');
+    expect(resolveExplorerFocusSoundSan(focus(1), focus(1)), isNull);
+    expect(resolveExplorerFocusSoundSan(focus(0), null), isNull);
+  });
+
   group('ExplorerGameCard (original card)', () {
+    testWidgets('uses the center gap for the event instead of ECO and date', (
+      tester,
+    ) async {
+      final game = _game(eventName: 'Biel International Chess Festival');
+      await _pumpCard(tester, game: game, line: _lineFromUcis(const []));
+
+      expect(find.text('Biel International Chess Festival'), findsOneWidget);
+      expect(find.textContaining('C45'), findsNothing);
+      expect(find.textContaining('12/05/2024'), findsNothing);
+    });
+
+    test('never exposes UUID-like or URL event identifiers', () {
+      expect(
+        explorerGameEventLabel(
+          _game(eventName: '123e4567-e89b-12d3-a456-426614174000'),
+        ),
+        isEmpty,
+      );
+      expect(
+        explorerGameEventLabel(
+          _game(eventName: 'https://internal.example/events/private'),
+        ),
+        isEmpty,
+      );
+      expect(
+        explorerGameEventLabel(
+          _game(eventName: 'internal.example/events/private'),
+        ),
+        isEmpty,
+      );
+      expect(
+        explorerGameEventLabel(
+          _game(eventName: 'internal.example?token=private'),
+        ),
+        isEmpty,
+      );
+      expect(
+        explorerGameEventLabel(_game(eventName: 'U.S. Open')),
+        'U.S. Open',
+      );
+    });
+
+    test('preview mapping prefers a human event name and rejects raw IDs', () {
+      final human = mapGamebasePreviewToTourModel({
+        'id': 'g1',
+        'white': 'A',
+        'black': 'B',
+        'event_name': 'Brazilian Championship 2026',
+        'event': '123e4567-e89b-12d3-a456-426614174000',
+      });
+      expect(human.tourSlug, 'Brazilian Championship 2026');
+
+      final opaqueOnly = mapGamebasePreviewToTourModel({
+        'id': 'g2',
+        'white': 'A',
+        'black': 'B',
+        'event': '123e4567-e89b-12d3-a456-426614174000',
+      });
+      expect(opaqueOnly.tourSlug, isNull);
+    });
+
     testWidgets('shows mini board, players, scores, and SAN chips', (
       tester,
     ) async {
@@ -303,25 +443,26 @@ void main() {
       );
     });
 
-    test('shipped body handler wires openGamebaseGame, no early clear return', () {
-      final source =
-          io.File(
-            'lib/screens/gamebase/widgets/explorer_game_card.dart',
-          ).readAsStringSync();
-      expect(source, contains('resolveExplorerCardBodyAction('));
-      expect(source, contains('resolveExplorerCardOpenInitialFen('));
-      expect(source, contains('await openGamebaseGame('));
-      // Must not short-circuit body tap to clear-only when focused.
-      expect(
-        source,
-        isNot(
-          contains(
-            '// Tapping the focused card\'s body toggles focus off',
+    test(
+      'shipped body handler wires openGamebaseGame, no early clear return',
+      () {
+        final source =
+            io.File(
+              'lib/screens/gamebase/widgets/explorer_game_card.dart',
+            ).readAsStringSync();
+        expect(source, contains('resolveExplorerCardBodyAction('));
+        expect(source, contains('resolveExplorerCardOpenInitialFen('));
+        expect(source, contains('await openGamebaseGame('));
+        // Must not short-circuit body tap to clear-only when focused.
+        expect(
+          source,
+          isNot(
+            contains('// Tapping the focused card\'s body toggles focus off'),
           ),
-        ),
-      );
-      expect(source, isNot(contains('toggles focus off (always allowed)')));
-    });
+        );
+        expect(source, isNot(contains('toggles focus off (always allowed)')));
+      },
+    );
   });
 
   group('resolveExplorerCardOpenInitialFen (continue from focused ply)', () {
@@ -408,9 +549,36 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.byType(ExplorerGameCard), findsOneWidget);
-      expect(find.text('Games'), findsOneWidget);
+      expect(find.text('Games'), findsNothing);
       expect(find.textContaining('Magnus Carlsen'), findsOneWidget);
       expect(find.byType(GameCardChessboard), findsOneWidget);
+    });
+
+    testWidgets('does not show a redundant Games section title', (
+      tester,
+    ) async {
+      final container = ProviderContainer(
+        overrides: _baseOverrides(
+          repo: _FakeGamebaseRepository([
+            {
+              'id': 'g1',
+              'white': 'Magnus Carlsen',
+              'black': 'Hikaru Nakamura',
+              'result': '1-0',
+              'event': 'Biel International Chess Festival',
+              'eco': 'C45',
+              'date': '2024-05-12',
+              'continuation': const ['e2e4'],
+            },
+          ]),
+        ),
+      );
+      addTearDown(container.dispose);
+
+      await _pumpSection(tester, container: container);
+
+      expect(find.text('Games'), findsNothing);
+      expect(find.textContaining('Magnus Carlsen'), findsOneWidget);
     });
   });
 
@@ -437,6 +605,48 @@ void main() {
       );
       // Mini-board enlarged for readability when games fill the panel.
       expect(source, contains('final boardSize = 124.sp'));
+    });
+
+    test('games pin removes sticky label chrome and keeps the board fixed', () {
+      final explorerSource =
+          io.File(
+            'lib/screens/gamebase/widgets/move_statistics_panel.dart',
+          ).readAsStringSync();
+      expect(explorerSource, isNot(contains('explorer_header_games')));
+      expect(explorerSource, isNot(contains("label: 'Games'")));
+      expect(explorerSource, contains('headerInGames.value'));
+      expect(explorerSource, contains('SizedBox.shrink'));
+      expect(explorerSource, contains("label: 'Sort by games'"));
+
+      final boardSource =
+          io.File(
+            'lib/screens/chessboard/chess_board_screen_new.dart',
+          ).readAsStringSync();
+      expect(boardSource, contains('CompactBoardPinnedAnalysisLayout('));
+      expect(
+        boardSource,
+        contains("key: const ValueKey('compact_board_fixed')"),
+      );
+      // Board must not sit inside a scroll that moves it with games expand.
+      expect(
+        boardSource,
+        isNot(
+          contains('''if (useCompactLayout) {
+          // When games expand over PV, give the panel most of the viewport'''),
+        ),
+      );
+    });
+
+    test('focused-card navigation is wired to SAN-aware move sounds', () {
+      final source =
+          io.File(
+            'lib/screens/gamebase/widgets/explorer_game_card.dart',
+          ).readAsStringSync();
+      expect(source, contains('resolveExplorerFocusSoundSan('));
+      expect(
+        source,
+        contains('AudioPlayerService.instance.playSfxForSan(san)'),
+      );
     });
 
     test('board chrome wires shipped expand + arrow helpers', () {

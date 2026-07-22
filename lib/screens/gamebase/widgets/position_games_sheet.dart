@@ -493,122 +493,154 @@ class _PositionGamesSheetState extends ConsumerState<PositionGamesSheet> {
   ) => openGamebaseGame(context, ref, game, allGames, currentIndex, initialFen);
 }
 
+/// Strips internal/opaque event identifiers so compact explorer cards never
+/// show UUIDs, hash-like IDs, long numeric IDs, or private URLs as event names.
+String sanitizeGamebaseEventLabel(Object? raw) {
+  final normalized = (raw?.toString() ?? '').trim().replaceAll(
+    RegExp(r'\s+'),
+    ' ',
+  );
+  if (normalized.isEmpty) return '';
+  final isOpaqueId =
+      RegExp(
+        r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$',
+      ).hasMatch(normalized) ||
+      RegExp(r'^[0-9a-fA-F]{24}$|^[0-9a-fA-F]{32}$').hasMatch(normalized) ||
+      RegExp(r'^\d{8,}$').hasMatch(normalized);
+  final lower = normalized.toLowerCase();
+  final isUrlLike =
+      lower.contains('://') ||
+      lower.startsWith('urn:') ||
+      lower.startsWith('www.') ||
+      RegExp(r'^[a-z0-9.-]+\.[a-z]{2,}(?::\d+)?(?:[/?#]|$)').hasMatch(lower);
+  return isOpaqueId || isUrlLike ? '' : normalized;
+}
+
 /// Maps a gamebase `GameSearchPreview` row into the app's [GamesTourModel].
 /// Shared by [PositionGamesSheet] and the explorer's inline games section.
 GamesTourModel mapGamebasePreviewToTourModel(Map<String, dynamic> row) {
   int parseInt(dynamic value) {
-      if (value is int) return value;
-      if (value is num) return value.toInt();
-      return int.tryParse(value?.toString() ?? '') ?? 0;
-    }
-
-    int? parsePositiveInt(dynamic value) {
-      final parsed = parseInt(value);
-      return parsed > 0 ? parsed : null;
-    }
-
-    String readString(String key) => (row[key]?.toString() ?? '').trim();
-
-    final id = (row['id']?.toString() ?? '').trim();
-    final safeId = id.isNotEmpty ? id : 'unknown';
-
-    DateTime? date;
-    final rawDate = row['date'];
-    if (rawDate != null) {
-      date = DateTime.tryParse(rawDate.toString());
-    }
-
-    final resultStr = row['result']?.toString() ?? '*';
-    final timeControl = row['timeControl']?.toString();
-    final eco = row['eco']?.toString() ?? '';
-    final opening = row['opening']?.toString() ?? '';
-    final variation = row['variation']?.toString() ?? '';
-    final event = (row['event']?.toString() ?? '').trim();
-    final tourId =
-        (row['tour_id']?.toString() ??
-                row['tournament_id']?.toString() ??
-                event)
-            .trim();
-
-    final whiteName =
-        (readString('white').isNotEmpty
-                ? readString('white')
-                : readString('whiteName'))
-            .trim();
-    final blackName =
-        (readString('black').isNotEmpty
-                ? readString('black')
-                : readString('blackName'))
-            .trim();
-    final whiteElo = parseInt(row['whiteElo']);
-    final blackElo = parseInt(row['blackElo']);
-    final whiteFed = readString('whiteFed');
-    final blackFed = readString('blackFed');
-    final whiteTitle = readString('whiteTitle');
-    final blackTitle = readString('blackTitle');
-    final whitePlayerId = readString('whitePlayerId');
-    final blackPlayerId = readString('blackPlayerId');
-
-    final formatCode =
-        (eco.trim().isNotEmpty) ? eco.trim() : (timeControl ?? '');
-    final openingName =
-        (variation.trim().isNotEmpty)
-            ? '$opening: $variation'
-            : (opening.trim().isNotEmpty ? opening : null);
-
-    final fen =
-        (readString('fen').isNotEmpty
-                ? readString('fen')
-                : (readString('lastFen').isNotEmpty
-                    ? readString('lastFen')
-                    : readString('finalFen')))
-            .trim();
-    final lastMove =
-        (readString('lastMove').isNotEmpty
-                ? readString('lastMove')
-                : readString('last_move'))
-            .trim();
-
-    return GamesTourModel(
-      gameId: safeId,
-      source: GameSource.gamebase,
-      whitePlayer: PlayerCard(
-        name: whiteName.isNotEmpty ? whiteName : 'White',
-        federation: whiteFed,
-        title: whiteTitle,
-        rating: whiteElo,
-        countryCode: whiteFed,
-        team: null,
-        fideId: parsePositiveInt(row['whiteFideId']),
-        gamebasePlayerId: whitePlayerId.isNotEmpty ? whitePlayerId : null,
-      ),
-      blackPlayer: PlayerCard(
-        name: blackName.isNotEmpty ? blackName : 'Black',
-        federation: blackFed,
-        title: blackTitle,
-        rating: blackElo,
-        countryCode: blackFed,
-        team: null,
-        fideId: parsePositiveInt(row['blackFideId']),
-        gamebasePlayerId: blackPlayerId.isNotEmpty ? blackPlayerId : null,
-      ),
-      whiteTimeDisplay: '--:--',
-      blackTimeDisplay: '--:--',
-      whiteClockCentiseconds: 0,
-      blackClockCentiseconds: 0,
-      gameStatus: GameStatus.fromString(resultStr),
-      roundId: 'opening_explorer',
-      roundSlug: formatCode.isNotEmpty ? formatCode : null,
-      tourId: tourId.isNotEmpty ? tourId : 'Gamebase',
-      tourSlug: null,
-      fen: fen.isNotEmpty ? fen : null,
-      lastMove: lastMove.isNotEmpty ? lastMove : null,
-      lastMoveTime: date,
-      eco: eco.trim().isNotEmpty ? eco.trim() : null,
-      openingName: openingName,
-      timeControl: timeControl,
-    );
+    if (value is int) return value;
+    if (value is num) return value.toInt();
+    return int.tryParse(value?.toString() ?? '') ?? 0;
   }
+
+  int? parsePositiveInt(dynamic value) {
+    final parsed = parseInt(value);
+    return parsed > 0 ? parsed : null;
+  }
+
+  String readString(String key) => (row[key]?.toString() ?? '').trim();
+
+  final id = (row['id']?.toString() ?? '').trim();
+  final safeId = id.isNotEmpty ? id : 'unknown';
+
+  DateTime? date;
+  final rawDate = row['date'];
+  if (rawDate != null) {
+    date = DateTime.tryParse(rawDate.toString());
+  }
+
+  final resultStr = row['result']?.toString() ?? '*';
+  final timeControl = row['timeControl']?.toString();
+  final eco = row['eco']?.toString() ?? '';
+  final opening = row['opening']?.toString() ?? '';
+  final variation = row['variation']?.toString() ?? '';
+  final event = [
+        row['event_name'],
+        row['eventName'],
+        row['tournament_name'],
+        row['tournamentName'],
+        row['tour_name'],
+        row['tourName'],
+        row['event'],
+      ]
+      .map(sanitizeGamebaseEventLabel)
+      .firstWhere((value) => value.isNotEmpty, orElse: () => '');
+  final tourId =
+      (row['tour_id']?.toString() ?? row['tournament_id']?.toString() ?? event)
+          .trim();
+
+  final whiteName =
+      (readString('white').isNotEmpty
+              ? readString('white')
+              : readString('whiteName'))
+          .trim();
+  final blackName =
+      (readString('black').isNotEmpty
+              ? readString('black')
+              : readString('blackName'))
+          .trim();
+  final whiteElo = parseInt(row['whiteElo']);
+  final blackElo = parseInt(row['blackElo']);
+  final whiteFed = readString('whiteFed');
+  final blackFed = readString('blackFed');
+  final whiteTitle = readString('whiteTitle');
+  final blackTitle = readString('blackTitle');
+  final whitePlayerId = readString('whitePlayerId');
+  final blackPlayerId = readString('blackPlayerId');
+
+  final formatCode = (eco.trim().isNotEmpty) ? eco.trim() : (timeControl ?? '');
+  final openingName =
+      (variation.trim().isNotEmpty)
+          ? '$opening: $variation'
+          : (opening.trim().isNotEmpty ? opening : null);
+
+  final fen =
+      (readString('fen').isNotEmpty
+              ? readString('fen')
+              : (readString('lastFen').isNotEmpty
+                  ? readString('lastFen')
+                  : readString('finalFen')))
+          .trim();
+  final lastMove =
+      (readString('lastMove').isNotEmpty
+              ? readString('lastMove')
+              : readString('last_move'))
+          .trim();
+
+  return GamesTourModel(
+    gameId: safeId,
+    source: GameSource.gamebase,
+    whitePlayer: PlayerCard(
+      name: whiteName.isNotEmpty ? whiteName : 'White',
+      federation: whiteFed,
+      title: whiteTitle,
+      rating: whiteElo,
+      countryCode: whiteFed,
+      team: null,
+      fideId: parsePositiveInt(row['whiteFideId']),
+      gamebasePlayerId: whitePlayerId.isNotEmpty ? whitePlayerId : null,
+    ),
+    blackPlayer: PlayerCard(
+      name: blackName.isNotEmpty ? blackName : 'Black',
+      federation: blackFed,
+      title: blackTitle,
+      rating: blackElo,
+      countryCode: blackFed,
+      team: null,
+      fideId: parsePositiveInt(row['blackFideId']),
+      gamebasePlayerId: blackPlayerId.isNotEmpty ? blackPlayerId : null,
+    ),
+    whiteTimeDisplay: '--:--',
+    blackTimeDisplay: '--:--',
+    whiteClockCentiseconds: 0,
+    blackClockCentiseconds: 0,
+    gameStatus: GameStatus.fromString(resultStr),
+    roundId: 'opening_explorer',
+    roundSlug: formatCode.isNotEmpty ? formatCode : null,
+    tourId: tourId.isNotEmpty ? tourId : 'Gamebase',
+    // Keep the display event separate from tourId, which is commonly an
+    // opaque Gamebase tournament UUID.
+    tourSlug: event.isNotEmpty ? event : null,
+    fen: fen.isNotEmpty ? fen : null,
+    lastMove: lastMove.isNotEmpty ? lastMove : null,
+    lastMoveTime: date,
+    eco: eco.trim().isNotEmpty ? eco.trim() : null,
+    openingName: openingName,
+    timeControl: timeControl,
+  );
+}
 
 /// Opens a gamebase game into the full board screen: premium guard → loading
 /// modal → PGN fetch → [ChessBoardScreenNew]. Shared by [PositionGamesSheet]
@@ -621,91 +653,90 @@ Future<void> openGamebaseGame(
   int currentIndex,
   String? initialFen,
 ) async {
-    // Premium guard - show paywall if not subscribed
-    final hasPremium = await requirePremiumGuard(context, ref);
-    if (!hasPremium) return;
-    if (!context.mounted) return;
+  // Premium guard - show paywall if not subscribed
+  final hasPremium = await requirePremiumGuard(context, ref);
+  if (!hasPremium) return;
+  if (!context.mounted) return;
 
-    // Any lingering explorer-card focus must not hijack the pushed board
-    // screen's arrows (Trello #984).
-    ref.read(explorerFocusedGameProvider.notifier).clear();
+  // Any lingering explorer-card focus must not hijack the pushed board
+  // screen's arrows (Trello #984).
+  ref.read(explorerFocusedGameProvider.notifier).clear();
 
-    // Ensure the chessboard screen renders as a "tour game" view.
-    ref.read(chessboardViewFromProviderNew.notifier).state =
-        ChessboardView.tour;
+  // Ensure the chessboard screen renders as a "tour game" view.
+  ref.read(chessboardViewFromProviderNew.notifier).state = ChessboardView.tour;
 
-    if (!context.mounted) return;
-    showAlertModal<void>(
-      context: context,
-      barrierDismissible: false,
-      child: Container(
-        padding: EdgeInsets.all(20.sp),
-        decoration: BoxDecoration(
-          color: context.colors.surface,
-          borderRadius: BorderRadius.circular(16.br),
-          border: Border.all(
-            color: context.colors.textPrimary.withValues(alpha: 0.1),
-            width: 1,
-          ),
+  if (!context.mounted) return;
+  showAlertModal<void>(
+    context: context,
+    barrierDismissible: false,
+    child: Container(
+      padding: EdgeInsets.all(20.sp),
+      decoration: BoxDecoration(
+        color: context.colors.surface,
+        borderRadius: BorderRadius.circular(16.br),
+        border: Border.all(
+          color: context.colors.textPrimary.withValues(alpha: 0.1),
+          width: 1,
         ),
-        child: CircularProgressIndicator(color: context.colors.textPrimary),
       ),
-    );
+      child: CircularProgressIndicator(color: context.colors.textPrimary),
+    ),
+  );
 
-    try {
-      final repo = ref.read(gamebaseRepositoryProvider);
-      final gameWithPgn = await repo.getGameWithPgn(game.gameId);
+  try {
+    final repo = ref.read(gamebaseRepositoryProvider);
+    final gameWithPgn = await repo.getGameWithPgn(game.gameId);
 
-      String? pgn;
-      if (gameWithPgn != null) {
-        if (gameWithPgn.pgn != null && gameWithPgn.pgn!.trim().isNotEmpty) {
-          if (pgnHasMoves(gameWithPgn.pgn)) {
-            pgn = gameWithPgn.pgn;
-          }
-        }
-        if (pgn == null && gameWithPgn.data != null) {
-          final built = buildPgnFromGamebaseData(gameWithPgn.data);
-          if (built != null && pgnHasMoves(built)) pgn = built;
+    String? pgn;
+    if (gameWithPgn != null) {
+      if (gameWithPgn.pgn != null && gameWithPgn.pgn!.trim().isNotEmpty) {
+        if (pgnHasMoves(gameWithPgn.pgn)) {
+          pgn = gameWithPgn.pgn;
         }
       }
-
-      // Header-only fallback (still lets users open the viewer without hard failing).
-      pgn ??= buildHeaderOnlyPgn(
-        whiteName: game.whitePlayer.name,
-        blackName: game.blackPlayer.name,
-        result: game.gameStatus.displayText,
-        event: game.tourId,
-        eco: game.roundSlug,
-        date: game.lastMoveTime,
-      );
-
-      if (!context.mounted) return;
-      Navigator.of(context).pop(); // loading
-
-      final boardGames = allGames
-          .map((g) => g.gameId == game.gameId ? g.copyWith(pgn: pgn) : g)
-          .toList(growable: false);
-      final safeIndex = currentIndex.clamp(0, boardGames.length - 1);
-
-      Navigator.of(context).push(
-        MaterialPageRoute(
-          builder:
-              (_) => ChessBoardScreenNew(
-                games: boardGames,
-                currentIndex: safeIndex,
-                disableGamebaseOverlayByDefault: true,
-                initialFen: initialFen,
-              ),
-        ),
-      );
-    } catch (_) {
-      if (!context.mounted) return;
-      Navigator.of(context).pop(); // loading
-      // Keep errors non-fatal; user can continue exploring.
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('Failed to open game')));
+      if (pgn == null && gameWithPgn.data != null) {
+        final built = buildPgnFromGamebaseData(gameWithPgn.data);
+        if (built != null && pgnHasMoves(built)) pgn = built;
+      }
     }
+
+    // Header-only fallback (still lets users open the viewer without hard failing).
+    pgn ??= buildHeaderOnlyPgn(
+      whiteName: game.whitePlayer.name,
+      blackName: game.blackPlayer.name,
+      result: game.gameStatus.displayText,
+      event: game.tourId,
+      eco: game.roundSlug,
+      date: game.lastMoveTime,
+    );
+
+    if (!context.mounted) return;
+    Navigator.of(context).pop(); // loading
+
+    final boardGames = allGames
+        .map((g) => g.gameId == game.gameId ? g.copyWith(pgn: pgn) : g)
+        .toList(growable: false);
+    final safeIndex = currentIndex.clamp(0, boardGames.length - 1);
+
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder:
+            (_) => ChessBoardScreenNew(
+              games: boardGames,
+              currentIndex: safeIndex,
+              disableGamebaseOverlayByDefault: true,
+              initialFen: initialFen,
+            ),
+      ),
+    );
+  } catch (_) {
+    if (!context.mounted) return;
+    Navigator.of(context).pop(); // loading
+    // Keep errors non-fatal; user can continue exploring.
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('Failed to open game')));
+  }
 }
 
 class _PositionGamesFooter extends StatelessWidget {

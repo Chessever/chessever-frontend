@@ -269,7 +269,6 @@ class _SortHeader extends StatelessWidget {
   }
 }
 
-
 /// Sync sticky header mode from the games section's position in the list.
 ///
 /// Uses light hysteresis so the Move ↔ Games crossfade does not flicker, but
@@ -349,11 +348,7 @@ void _syncExplorerHeaderMode({
 /// Panel displaying move statistics for the current position.
 /// Shows each possible move with game count and win/draw/loss bar.
 class MoveStatisticsPanel extends HookConsumerWidget {
-  const MoveStatisticsPanel({
-    super.key,
-    this.onMove,
-    this.listBottomPadding,
-  });
+  const MoveStatisticsPanel({super.key, this.onMove, this.listBottomPadding});
 
   /// Optional handler for move taps. When supplied, taps invoke this callback
   /// instead of advancing the gamebase explorer's internal state — used when
@@ -378,8 +373,9 @@ class MoveStatisticsPanel extends HookConsumerWidget {
       sort.value = ExplorerMoveSort.cycle(sort.value, field);
     }
 
-    // Sticky header crossfade: Move columns ↔ Games columns when the inline
-    // games section scrolls up under the header.
+    // Collapse the move-column header once inline game cards reach the top.
+    // The cards are self-explanatory; keeping another "Games" row wastes the
+    // exact vertical space this quick-check mode is meant to recover.
     final scrollController = useScrollController();
     final gamesSectionKey = useMemoized(
       () => GlobalKey(debugLabel: 'explorer_inline_games_section'),
@@ -571,13 +567,17 @@ class MoveStatisticsPanel extends HookConsumerWidget {
         SizedBox(width: _kColumnGap.sp),
         SizedBox(
           width: _kGamesColumnWidth.w,
-          child: _SortHeader(
-            label: 'Games',
-            field: ExplorerMoveSortField.games,
-            align: TextAlign.right,
-            sort: sort.value,
-            onSort: cycleSort,
-            color: kPrimaryColor,
+          child: Semantics(
+            label: 'Sort by games',
+            button: true,
+            child: _SortHeader(
+              label: '',
+              field: ExplorerMoveSortField.games,
+              align: TextAlign.right,
+              sort: sort.value,
+              onSort: cycleSort,
+              color: kPrimaryColor,
+            ),
           ),
         ),
         SizedBox(width: _kColumnGap.sp),
@@ -594,20 +594,6 @@ class MoveStatisticsPanel extends HookConsumerWidget {
       ],
     );
 
-    // Sticky label when the inline game cards section is under the header.
-    final gamesHeader = Align(
-      key: const ValueKey<String>('explorer_header_games'),
-      alignment: Alignment.centerLeft,
-      child: Text(
-        'Games',
-        style: TextStyle(
-          color: context.colors.textSecondary,
-          fontSize: 11.f,
-          fontWeight: FontWeight.w600,
-        ),
-      ),
-    );
-
     final Widget mainContent = Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -617,31 +603,26 @@ class MoveStatisticsPanel extends HookConsumerWidget {
             color: context.colors.textPrimary,
             backgroundColor: Colors.transparent,
           ),
-        Padding(
-          padding: EdgeInsets.symmetric(horizontal: 12.sp, vertical: 6.sp),
-          child: AnimatedSwitcher(
-            duration: const Duration(milliseconds: 180),
-            switchInCurve: Curves.easeOut,
-            switchOutCurve: Curves.easeIn,
-            layoutBuilder: (currentChild, previousChildren) {
-              return Stack(
-                alignment: Alignment.centerLeft,
-                children: <Widget>[
-                  ...previousChildren,
-                  if (currentChild != null) currentChild,
-                ],
-              );
-            },
-            transitionBuilder: (child, animation) {
-              return FadeTransition(
-                opacity: animation,
-                child: child,
-              );
-            },
-            child: headerInGames.value ? gamesHeader : movesHeader,
-          ),
+        AnimatedSize(
+          duration: const Duration(milliseconds: 180),
+          curve: Curves.easeOut,
+          alignment: Alignment.topCenter,
+          child:
+              headerInGames.value
+                  ? const SizedBox.shrink()
+                  : Column(
+                    children: [
+                      Padding(
+                        padding: EdgeInsets.symmetric(
+                          horizontal: 12.sp,
+                          vertical: 6.sp,
+                        ),
+                        child: movesHeader,
+                      ),
+                      Divider(color: context.colors.divider, height: 1),
+                    ],
+                  ),
         ),
-        Divider(color: context.colors.divider, height: 1),
         // Move list
         Expanded(
           child: Builder(

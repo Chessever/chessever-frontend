@@ -49,10 +49,7 @@ import 'package:chessever2/screens/tour_detail/games_tour/providers/event_no_spo
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_screen_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrapper/live_game_card_provider.dart'
-    show
-        baseGameProvider,
-        watchLiveGamePosition,
-        liveBatchKeysForGames;
+    show baseGameProvider, watchLiveGamePosition, liveBatchKeysForGames;
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/screens/chessboard/widgets/player_first_row_detail_widget.dart';
 import 'package:chessever2/screens/player_profile/utils/twic_event_identity.dart';
@@ -1439,8 +1436,7 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
       if (candidate.gameId == currentId) {
         nextGameForId = candidate;
         final params = _createParams(candidate, desiredIndex);
-        final notifier =
-            ref.read(chessBoardScreenProviderNew(params).notifier);
+        final notifier = ref.read(chessBoardScreenProviderNew(params).notifier);
         if (indexChanged) {
           notifier.syncPageIndex(desiredIndex);
         }
@@ -5716,7 +5712,8 @@ class _GameDropdownContentState extends ConsumerState<_GameDropdownContent> {
 
   bool _startsNewRound(int index) {
     if (index <= 0) return true;
-    final prev = widget.games[index - 1].roundSlug ?? widget.games[index - 1].roundId;
+    final prev =
+        widget.games[index - 1].roundSlug ?? widget.games[index - 1].roundId;
     final curr = widget.games[index].roundSlug ?? widget.games[index].roundId;
     return prev != curr;
   }
@@ -5747,9 +5744,7 @@ class _GameDropdownContentState extends ConsumerState<_GameDropdownContent> {
   @override
   Widget build(BuildContext context) {
     if (widget.games.isEmpty) {
-      return SizedBox(
-        height: (_verticalPadding * 2).h + _cardRowHeight,
-      );
+      return SizedBox(height: (_verticalPadding * 2).h + _cardRowHeight);
     }
 
     final roundGroups = _buildRoundGroups(widget.games);
@@ -5785,10 +5780,7 @@ class _GameDropdownContentState extends ConsumerState<_GameDropdownContent> {
     // Fit the panel to content when it fits; otherwise clamp to available
     // height and shrink the board strip so nothing overflows the board-aligned
     // box.
-    final boxHeight = math.min(
-      preferredContentHeight,
-      widget.availableHeight,
-    );
+    final boxHeight = math.min(preferredContentHeight, widget.availableHeight);
     final stripHeight = math.max(
       120.0,
       boxHeight - verticalPad - timelineSpace,
@@ -5888,11 +5880,15 @@ class _GameDropdownContentState extends ConsumerState<_GameDropdownContent> {
                       focusedIndex =
                           stride <= 0
                               ? 0
-                              : ((centerX - leadingPad) / stride)
-                                  .floor()
-                                  .clamp(0, lastIndex);
+                              : ((centerX - leadingPad) / stride).floor().clamp(
+                                0,
+                                lastIndex,
+                              );
                     } else {
-                      focusedIndex = widget.currentGameIndex.clamp(0, lastIndex);
+                      focusedIndex = widget.currentGameIndex.clamp(
+                        0,
+                        lastIndex,
+                      );
                     }
                     final activeIndex = _activeRoundIndex(
                       roundGroups,
@@ -6874,11 +6870,54 @@ class _CollapsingExplorerPvSlot extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          child,
-          if (bottomGap > 0) SizedBox(height: bottomGap),
-        ],
+        children: [child, if (bottomGap > 0) SizedBox(height: bottomGap)],
       ),
+    );
+  }
+}
+
+/// Pins the complete phone board while the lower analysis surface scrolls and
+/// expands. Pulling inline games up can cover engine chrome, never the board.
+class CompactBoardPinnedAnalysisLayout extends StatelessWidget {
+  const CompactBoardPinnedAnalysisLayout({
+    super.key,
+    required this.boardChildren,
+    required this.analysis,
+    required this.expandedOverChrome,
+    this.collapsingChrome,
+  });
+
+  final List<Widget> boardChildren;
+  final Widget? collapsingChrome;
+  final Widget analysis;
+  final bool expandedOverChrome;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        KeyedSubtree(
+          key: const ValueKey('compact_board_fixed'),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: boardChildren,
+          ),
+        ),
+        if (collapsingChrome != null) collapsingChrome!,
+        AnimatedContainer(
+          duration: _kExplorerGamesExpandDuration,
+          curve: _kExplorerGamesExpandCurve,
+          height: expandedOverChrome ? 0 : 12.h,
+        ),
+        Expanded(
+          child: KeyedSubtree(
+            key: const ValueKey('compact_analysis_panel'),
+            child: analysis,
+          ),
+        ),
+      ],
     );
   }
 }
@@ -6984,7 +7023,10 @@ class _AnalysisGameBody extends ConsumerWidget {
           };
         }
 
-        final headerChildren = <Widget>[
+        // Board + player rows stay fixed on compact phones; PV is separate so
+        // pinned explorer games can reclaim engine chrome without scrolling
+        // or clipping the board.
+        final boardHeaderChildren = <Widget>[
           _PlayerWidget(
             game: game,
             isFlipped: state.isBoardFlipped,
@@ -7017,8 +7059,8 @@ class _AnalysisGameBody extends ConsumerWidget {
                     ? editNameCallback(!state.isBoardFlipped)
                     : null,
           ),
-          ...pvSection,
         ];
+        final headerChildren = <Widget>[...boardHeaderChildren, ...pvSection];
 
         Widget buildAnalysisView() {
           final movesDisplay = _MovesDisplay(
@@ -7045,9 +7087,16 @@ class _AnalysisGameBody extends ConsumerWidget {
           final startingFen = state.analysisState.startingPosition?.fen;
           final isPositionSearchFlow = () {
             if (startingFen == null) return false;
-            final a = startingFen.trim().split(RegExp(r'\s+')).take(4).join(' ');
-            final b =
-                Chess.initial.fen.trim().split(RegExp(r'\s+')).take(4).join(' ');
+            final a = startingFen
+                .trim()
+                .split(RegExp(r'\s+'))
+                .take(4)
+                .join(' ');
+            final b = Chess.initial.fen
+                .trim()
+                .split(RegExp(r'\s+'))
+                .take(4)
+                .join(' ');
             return a != b;
           }();
 
@@ -7119,29 +7168,13 @@ class _AnalysisGameBody extends ConsumerWidget {
         }
 
         if (useCompactLayout) {
-          // When games expand over PV, give the panel most of the viewport
-          // so cards stay readable under a still-visible bottom nav.
-          // Height eases with the PV collapse so the panel doesn't jump.
-          final movesPanelHeight =
-              expandGamesOverPv
-                  ? math.max(320.h, availableHeight * 0.72)
-                  : math.max(220.h, availableHeight * 0.55);
-          return SingleChildScrollView(
-            padding: EdgeInsets.only(bottom: 12.h),
-            physics: const ClampingScrollPhysics(),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                ...headerChildren,
-                SizedBox(height: 12.h),
-                AnimatedContainer(
-                  duration: _kExplorerGamesExpandDuration,
-                  curve: _kExplorerGamesExpandCurve,
-                  height: movesPanelHeight,
-                  child: buildAnalysisView(),
-                ),
-              ],
-            ),
+          // Keep the full board fixed. Explorer/notation owns vertical scroll;
+          // pinned games expand into PV and stop below the lower player row.
+          return CompactBoardPinnedAnalysisLayout(
+            boardChildren: boardHeaderChildren,
+            collapsingChrome: collapsingPv,
+            expandedOverChrome: expandGamesOverPv,
+            analysis: buildAnalysisView(),
           );
         }
 
