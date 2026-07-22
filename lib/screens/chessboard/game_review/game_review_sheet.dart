@@ -2,6 +2,7 @@ import 'dart:math' as math;
 
 import 'package:chessever2/screens/chessboard/game_review/game_analysis_report.dart';
 import 'package:chessever2/screens/chessboard/game_review/game_review_provider.dart';
+import 'package:chessever2/screens/player_profile/player_profile_screen.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/services/fide_photo_service.dart';
 import 'package:chessever2/theme/app_theme.dart';
@@ -234,9 +235,10 @@ class _GameReviewSheet extends StatelessWidget {
           ),
           clipBehavior: Clip.antiAlias,
           child: AnimatedBuilder(
-            animation: controller,
+            // Controller is a StateNotifier; sheet listens via [listenable].
+            animation: controller.listenable,
             builder: (context, _) {
-              final state = controller.state;
+              final state = controller.reviewState;
               return CustomScrollView(
                 controller: scrollController,
                 physics: const ClampingScrollPhysics(),
@@ -665,38 +667,67 @@ class _PlayerColumnState extends State<_PlayerColumn> {
   @override
   Widget build(BuildContext context) {
     final player = widget.player;
-    return Column(
-      children: [
-        FutureBuilder<String?>(
-          future: _photoFuture,
-          builder:
-              (context, snapshot) => PlayerInitialsAvatar(
-                photoUrl: snapshot.data,
-                initials: _playerInitials(player.name),
-                size: 52,
-                borderRadius: 26,
-              ),
-        ),
-        const SizedBox(height: 10),
-        SizedBox(
-          height: 24,
-          child: Center(
-            child: Text(
-              _playerTitleAndLastName(player),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              textAlign: TextAlign.center,
-              style: const TextStyle(
-                color: kWhiteColor,
-                fontSize: 16,
-                fontWeight: FontWeight.w700,
+    final canOpenProfile = player.name.trim().isNotEmpty;
+    return InkWell(
+      onTap: canOpenProfile ? () => _openPlayerProfile(context, player) : null,
+      borderRadius: BorderRadius.circular(12),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
+        child: Column(
+          children: [
+            FutureBuilder<String?>(
+              future: _photoFuture,
+              builder:
+                  (context, snapshot) => PlayerInitialsAvatar(
+                    photoUrl: snapshot.data,
+                    initials: _playerInitials(player.name),
+                    size: 52,
+                    borderRadius: 26,
+                  ),
+            ),
+            const SizedBox(height: 10),
+            SizedBox(
+              height: 24,
+              child: Center(
+                child: Text(
+                  _playerTitleAndLastName(player),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    color: kWhiteColor,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
               ),
             ),
-          ),
+          ],
         ),
-      ],
+      ),
     );
   }
+}
+
+/// Open the tapped player's profile without dismissing the review sheet.
+/// Profile is pushed on top of the modal route so system/app back returns to
+/// the still-open Game Analysis report (not a bare board).
+void _openPlayerProfile(BuildContext context, PlayerCard player) {
+  final title = player.title.trim();
+  final federation = player.countryCode.trim();
+  Navigator.of(context).push(
+    MaterialPageRoute<void>(
+      builder:
+          (_) => PlayerProfileScreen(
+            fideId: player.fideId,
+            playerName: player.name,
+            title: title.isEmpty ? null : title,
+            federation: federation.isEmpty ? null : federation,
+            rating: player.rating > 0 ? player.rating : null,
+            gamebasePlayerId: player.gamebasePlayerId,
+          ),
+    ),
+  );
 }
 
 String _playerTitleAndLastName(PlayerCard player) {

@@ -4,7 +4,6 @@ import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:upgrader/upgrader.dart';
 
@@ -89,9 +88,8 @@ class CustomUpgradeAlert extends StatelessWidget {
         navigatorKey: navigatorKey,
         showIgnore: false,
         showLater: true,
-        shouldPopScope:
-            () => kDebugMode, // Block back button in release, allow in debug
-        barrierDismissible: kDebugMode, // Allow tap outside in debug only
+        shouldPopScope: () => true,
+        barrierDismissible: true,
         dialogStyle:
             Platform.isIOS
                 ? UpgradeDialogStyle.cupertino

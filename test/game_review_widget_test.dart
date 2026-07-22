@@ -3,6 +3,7 @@ import 'package:chessever2/screens/chessboard/analysis/chess_game.dart';
 import 'package:chessever2/screens/chessboard/game_review/game_analysis_report.dart';
 import 'package:chessever2/screens/chessboard/game_review/game_review_provider.dart';
 import 'package:chessever2/screens/chessboard/game_review/game_review_sheet.dart';
+import 'package:chessever2/screens/chessboard/notation/notation_tree.dart';
 import 'package:chessever2/screens/chessboard/provider/stockfish_singleton.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/widgets/player_initials_avatar.dart';
@@ -26,8 +27,8 @@ void main() {
       whiteRating: 0,
       blackRating: 0,
     );
-    expect(controller.state.isEligible, isFalse);
-    expect(controller.state.unavailableMessage, contains('when the game ends'));
+    expect(controller.reviewState.isEligible, isFalse);
+    expect(controller.reviewState.unavailableMessage, contains('when the game ends'));
 
     controller.configure(
       game: game,
@@ -36,11 +37,11 @@ void main() {
       whiteRating: 0,
       blackRating: 0,
     );
-    expect(controller.state.isEligible, isTrue);
-    expect(controller.state.reportState.status, GameReportStatus.idle);
-    expect(controller.state.classificationsRevealed, isFalse);
+    expect(controller.reviewState.isEligible, isTrue);
+    expect(controller.reviewState.reportState.status, GameReportStatus.idle);
+    expect(controller.reviewState.classificationsRevealed, isFalse);
     controller.reveal();
-    expect(controller.state.classificationsRevealed, isTrue);
+    expect(controller.reviewState.classificationsRevealed, isTrue);
   });
 
   test(
@@ -69,21 +70,21 @@ void main() {
       for (
         var i = 0;
         i < 40 &&
-            controller.state.reportState.status != GameReportStatus.completed;
+            controller.reviewState.reportState.status != GameReportStatus.completed;
         i++
       ) {
         await Future<void>.delayed(const Duration(milliseconds: 20));
       }
 
-      expect(controller.state.reportState.status, GameReportStatus.completed);
+      expect(controller.reviewState.reportState.status, GameReportStatus.completed);
       // Icons must light up when the report finishes — no sheet open required.
-      expect(controller.state.classificationsRevealed, isTrue);
+      expect(controller.reviewState.classificationsRevealed, isTrue);
 
-      final report = controller.state.reportState.report!;
+      final report = controller.reviewState.reportState.report!;
       final boardFp = gameReportFingerprint(chessGame);
       expect(
         shouldShowReportClassificationsOnBoard(
-          reviewState: controller.state,
+          reviewState: controller.reviewState,
           boardGameFingerprint: boardFp,
         ),
         isTrue,
@@ -92,6 +93,147 @@ void main() {
       expect(byIndex, isNotEmpty);
       // Zero-based indexes for notation tokens.
       expect(byIndex.containsKey(0), isTrue);
+
+      // Same map `_MovesDisplay` attaches — without calling reveal() via sheet.
+      final attachMap = reportClassificationsForNotationAttach(
+        reviewState: controller.reviewState,
+        boardGameFingerprint: boardFp,
+      );
+      expect(attachMap, isNotEmpty);
+      expect(attachMap.containsKey(0), isTrue);
+      expect(attachMap, equals(byIndex));
+    },
+  );
+
+  test(
+    'notation attach map is non-empty for completed report without reveal()',
+    () {
+      final chessGame = ChessGame.fromPgn(
+        'attach-no-reveal',
+        '[White "A"]\n[Black "B"]\n[Result "1-0"]\n\n1. e4 e5 1-0',
+      );
+      final boardFp = gameReportFingerprint(chessGame);
+      // Simulate a completed report that landed in state without ever calling
+      // reveal() (sheet never opened). Gate must still allow notation attach.
+      final report = GameAnalysisReport(
+        fingerprint: boardFp,
+        positions: const [],
+        moves: [
+          GameReportMove(
+            ply: 1,
+            san: 'e4',
+            uci: 'e2e4',
+            isWhite: true,
+            classification: GameMoveClassification.bestMove,
+            evaluation: const GameReportLine(
+              moves: ['e7e5'],
+              depth: 12,
+              centipawns: 20,
+            ),
+          ),
+          GameReportMove(
+            ply: 2,
+            san: 'e5',
+            uci: 'e7e5',
+            isWhite: false,
+            classification: GameMoveClassification.blunder,
+            evaluation: const GameReportLine(
+              moves: ['g1f3'],
+              depth: 12,
+              centipawns: -90,
+            ),
+          ),
+        ],
+        whiteAccuracy: 90,
+        blackAccuracy: 40,
+        generatedAt: DateTime.utc(2026, 1, 1),
+      );
+      final reviewState = MobileGameReviewState(
+        fingerprint: boardFp,
+        // revealedFingerprint deliberately null — sheet never opened.
+        isEligible: true,
+        reportState: GameReportState(
+          status: GameReportStatus.completed,
+          progress: 1,
+          report: report,
+        ),
+      );
+
+      expect(reviewState.revealedFingerprint, isNull);
+      expect(
+        shouldShowReportClassificationsOnBoard(
+          reviewState: reviewState,
+          boardGameFingerprint: boardFp,
+        ),
+        isTrue,
+      );
+      final attachMap = reportClassificationsForNotationAttach(
+        reviewState: reviewState,
+        boardGameFingerprint: boardFp,
+      );
+      expect(attachMap, isNotEmpty);
+      expect(attachMap[0], GameMoveClassification.bestMove);
+      expect(attachMap[1], GameMoveClassification.blunder);
+      // Mainline order indices (0, 1) — same keys notation tokens use.
+      expect(gameReportClassificationByMoveIndex(report).keys, [0, 1]);
+    },
+  );
+
+  test(
+    'notation tree moveIndex keys align with report attach map indices',
+    () {
+      final chessGame = ChessGame.fromPgn(
+        'index-align',
+        '[White "A"]\n[Black "B"]\n[Result "1-0"]\n\n1. e4 e5 2. Nf3 Nc6 1-0',
+      );
+      final tree = NotationTreeBuilder.build(chessGame);
+      final boardFp = gameReportFingerprint(chessGame);
+      final report = GameAnalysisReport(
+        fingerprint: boardFp,
+        positions: const [],
+        moves: [
+          for (var i = 0; i < chessGame.mainline.length; i++)
+            GameReportMove(
+              ply: i + 1,
+              san: chessGame.mainline[i].san,
+              uci: chessGame.mainline[i].uci,
+              isWhite: chessGame.mainline[i].turn == ChessColor.white,
+              classification:
+                  i.isEven
+                      ? GameMoveClassification.bestMove
+                      : GameMoveClassification.inaccuracy,
+              evaluation: const GameReportLine(
+                moves: ['a2a3'],
+                depth: 8,
+                centipawns: 10,
+              ),
+            ),
+        ],
+        whiteAccuracy: 80,
+        blackAccuracy: 70,
+        generatedAt: DateTime.utc(2026, 1, 1),
+      );
+      final reviewState = MobileGameReviewState(
+        fingerprint: boardFp,
+        isEligible: true,
+        reportState: GameReportState(
+          status: GameReportStatus.completed,
+          progress: 1,
+          report: report,
+        ),
+      );
+      final attachMap = reportClassificationsForNotationAttach(
+        reviewState: reviewState,
+        boardGameFingerprint: boardFp,
+      );
+      expect(attachMap.length, chessGame.mainline.length);
+      for (var i = 0; i < tree.mainline.length; i++) {
+        final node = tree.mainline[i];
+        final moveIndex = node.ply - tree.startingPly;
+        expect(moveIndex, i, reason: 'token moveIndex must be mainline index');
+        expect(attachMap.containsKey(moveIndex), isTrue);
+        expect(node.pointer.single, i);
+      }
     },
   );
 
@@ -175,13 +317,13 @@ void main() {
       for (
         var i = 0;
         i < 30 &&
-            controller.state.reportState.status != GameReportStatus.completed;
+            controller.reviewState.reportState.status != GameReportStatus.completed;
         i++
       ) {
         await Future<void>.delayed(const Duration(milliseconds: 20));
       }
     });
-    expect(controller.state.reportState.status, GameReportStatus.completed);
+    expect(controller.reviewState.reportState.status, GameReportStatus.completed);
 
     await tester.pumpWidget(
       MaterialApp(
@@ -212,7 +354,7 @@ void main() {
     expect(find.byType(PlayerInitialsAvatar), findsNWidgets(2));
     expect(find.text('Accuracy'), findsOneWidget);
     expect(find.text('Game Rating'), findsOneWidget);
-    final completedReport = controller.state.reportState.report!;
+    final completedReport = controller.reviewState.reportState.report!;
     expect(
       find.text('${completedReport.whiteEstimatedRating}'),
       findsAtLeastNWidgets(1),

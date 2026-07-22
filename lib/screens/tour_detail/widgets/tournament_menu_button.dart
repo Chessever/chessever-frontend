@@ -191,7 +191,7 @@ class TournamentMenuButton extends ConsumerWidget {
     final isFocusingLiveGames =
         gamesScreenState?.gameDisplayMode == GameDisplayMode.hideFinishedGames;
 
-    // 1. Focus on live games / Show all games
+    // 1. Live games first / Show all games
     items.add(
       PopupMenuItem<TournamentMenuAction>(
         value:
@@ -212,7 +212,7 @@ class TournamentMenuButton extends ConsumerWidget {
           }
         },
         child: _MenuDropDownItem(
-          text: isFocusingLiveGames ? "Show all games" : "Focus on live games",
+          text: isFocusingLiveGames ? "Show all games" : kLiveGamesFirstMenuLabel,
           fontFamily: 'InterDisplay',
           icon: Icon(
             isFocusingLiveGames
@@ -433,40 +433,46 @@ class TournamentMenuButton extends ConsumerWidget {
           ),
         ),
       );
-      items.add(
-        PopupMenuItem<TournamentMenuAction>(
-          value: TournamentMenuAction.shareStandings,
-          padding: EdgeInsets.zero,
-          height: 36.h,
-          onTap: () {
-            // Standings share = the event link + the standings tab marker, so
-            // the same URL renders standings on the web and opens the Standings
-            // tab in-app.
-            final url = buildEventShareUrl(
-              id: fallbackId,
-              title: aboutModel.name,
-              tourId: aboutModel.id,
-              tourSlug: aboutModel.slug,
-              tab: kEventStandingsTab,
-            );
-            unawaited(_shareStandings(ref, context, aboutModel.name, url));
-          },
-          child: _MenuDropDownItem(
-            text: "Share standings",
-            icon: Icon(
-              Icons.leaderboard_outlined,
-              color: context.colors.textPrimary,
-              size: 16,
+      // Standings share actions are tab-scoped (same idea as Share brackets).
+      // Individual table: Standings on non-team events, Players on team events.
+      // Team table: Standings tab on team events only.
+      final isTeamEvent = ref.read(isTeamEventProvider(aboutModel.id));
+      final mode = ref.read(selectedTourModeProvider);
+      final standingsShares = standingsShareActionsFor(
+        mode: mode,
+        isTeamEvent: isTeamEvent,
+      );
+      if (standingsShares.contains(TournamentMenuAction.shareStandings)) {
+        items.add(
+          PopupMenuItem<TournamentMenuAction>(
+            value: TournamentMenuAction.shareStandings,
+            padding: EdgeInsets.zero,
+            height: 36.h,
+            onTap: () {
+              // Standings share = the event link + the standings tab marker, so
+              // the same URL renders standings on the web and opens the Standings
+              // tab in-app.
+              final url = buildEventShareUrl(
+                id: fallbackId,
+                title: aboutModel.name,
+                tourId: aboutModel.id,
+                tourSlug: aboutModel.slug,
+                tab: kEventStandingsTab,
+              );
+              unawaited(_shareStandings(ref, context, aboutModel.name, url));
+            },
+            child: _MenuDropDownItem(
+              text: "Share standings",
+              icon: Icon(
+                Icons.leaderboard_outlined,
+                color: context.colors.textPrimary,
+                size: 16,
+              ),
             ),
           ),
-        ),
-      );
-
-      // Team events: also offer the team standings leaderboard (teams, not
-      // individuals). The same `?tab=standings` link opens the Standings tab
-      // in-app, which for a team event shows the team table.
-      final isTeamEvent = ref.read(isTeamEventProvider(aboutModel.id));
-      if (isTeamEvent) {
+        );
+      }
+      if (standingsShares.contains(TournamentMenuAction.shareTeamStandings)) {
         items.add(
           PopupMenuItem<TournamentMenuAction>(
             value: TournamentMenuAction.shareTeamStandings,
@@ -806,7 +812,34 @@ class TournamentMenuButton extends ConsumerWidget {
       .toLowerCase();
 }
 
-@visibleForTesting
+/// Off-state label for the games-tab live-focus toggle in the ⋮ menu.
+const String kLiveGamesFirstMenuLabel = 'Live games first';
+
+/// Which standings-related share actions belong on the tournament detail ⋮ menu
+/// for the current tab and event type.
+///
+/// - Individual standings ("Share standings"): non-team [standings] tab, or
+///   team-event [players] tab (individual table).
+/// - Team standings ("Share team standings"): team-event [standings] tab only.
+///
+/// Games / About / Bracket never include either action.
+List<TournamentMenuAction> standingsShareActionsFor({
+  required TournamentDetailScreenMode mode,
+  required bool isTeamEvent,
+}) {
+  final showIndividualStandingsShare =
+      isTeamEvent
+          ? mode == TournamentDetailScreenMode.players
+          : mode == TournamentDetailScreenMode.standings;
+  final showTeamStandingsShare =
+      isTeamEvent && mode == TournamentDetailScreenMode.standings;
+
+  return [
+    if (showIndividualStandingsShare) TournamentMenuAction.shareStandings,
+    if (showTeamStandingsShare) TournamentMenuAction.shareTeamStandings,
+  ];
+}
+
 bool areAllVisibleSectionsCollapsed({
   required Iterable<String> visibleRoundIds,
   required Iterable<String> visibleMatchKeys,

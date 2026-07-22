@@ -1983,7 +1983,7 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
         chessBoardScreenProviderNew(prevParams).notifier,
       );
       unawaited(prevNotifier.onBecameInvisible());
-      ref.read(mobileGameReviewProvider(prevParams)).setActive(false);
+      ref.read(mobileGameReviewProvider(prevParams).notifier).setActive(false);
     } catch (e) {
       debugPrint('Error cancelling previous game evaluation: $e');
     }
@@ -2041,7 +2041,7 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
     final currentGame = _resolveGameForIndex(safeIndex);
     final params = _createParams(currentGame, safeIndex);
     _ensureAudioListener(params);
-    ref.read(mobileGameReviewProvider(params)).setActive(true);
+    ref.read(mobileGameReviewProvider(params).notifier).setActive(true);
     final boardSettings = ref.read(boardSettingsProviderNew).valueOrNull;
     if (boardSettings?.soundEnabled == true) {
       unawaited(AudioPlayerService.instance.prepareForForegroundPlayback());
@@ -2077,7 +2077,7 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
       // so keep the whole-game report active while that specific route covers
       // the board. Real app backgrounding and other routes still pause it.
       if (!preserveVisibleGameReview || !notifier.isGameReviewVisible) {
-        ref.read(mobileGameReviewProvider(params)).setActive(false);
+        ref.read(mobileGameReviewProvider(params).notifier).setActive(false);
       }
       unawaited(notifier.onBecameInvisible());
     } catch (e) {
@@ -8966,22 +8966,21 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard>
           final lichessAnnotations =
               lichessAnnotationsAsync.valueOrNull ??
               const <int, LichessMoveAnnotation>{};
-          final reviewState = ref.watch(mobileGameReviewProvider(params)).state;
-          final report = reviewState.reportState.report;
+          // Watch immutable [MobileGameReviewState] so report completion rebuilds
+          // board badges (StateNotifierProvider — not ChangeNotifier).
+          final reviewState = ref.watch(mobileGameReviewProvider(params));
           final boardFingerprint = gameReportFingerprint(analysisGame);
+          final reportClassifications = reportClassificationsForNotationAttach(
+            reviewState: reviewState,
+            boardGameFingerprint: boardFingerprint,
+          );
           final reportAnnotations = <int, LichessMoveAnnotation>{
-            if (report != null &&
-                shouldShowReportClassificationsOnBoard(
-                  reviewState: reviewState,
-                  boardGameFingerprint: boardFingerprint,
-                ))
-              for (final entry
-                  in gameReportClassificationByMoveIndex(report).entries)
-                entry.key: LichessMoveAnnotation(
-                  type: _annotationTypeForGameReport(entry.value),
-                  comment: '',
-                  useClassificationIcon: true,
-                ),
+            for (final entry in reportClassifications.entries)
+              entry.key: LichessMoveAnnotation(
+                type: _annotationTypeForGameReport(entry.value),
+                comment: '',
+                useClassificationIcon: true,
+              ),
           };
           final moveAnnotations = <int, LichessMoveAnnotation>{
             ...lichessAnnotations,
@@ -11229,7 +11228,12 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
     );
     final notifier = ref.read(chessBoardScreenProviderNew(params).notifier);
     final navigatorState = ref.watch(chessGameNavigatorProvider(analysisGame));
-    final reviewController = ref.watch(mobileGameReviewProvider(params));
+    // Watch state (not .notifier) so report completion rebuilds notation and
+    // attaches classification icons without opening the sheet.
+    final reviewState = ref.watch(mobileGameReviewProvider(params));
+    final reviewController = ref.read(
+      mobileGameReviewProvider(params).notifier,
+    );
     final isActivePage = widget.index == widget.currentPageIndex;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
@@ -11241,7 +11245,6 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
         blackRating: widget.game.blackPlayer.rating,
       );
     });
-    final reviewState = reviewController.state;
     final signature = notationGameSignature(navigatorState.game);
     final mainlineSans =
         navigatorState.game.mainline.map((move) => move.san).toList();
@@ -11265,21 +11268,19 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
     final lichessAnnotations =
         lichessAnnotationsAsync.valueOrNull ??
         const <int, LichessMoveAnnotation>{};
-    final report = reviewState.reportState.report;
+    // Completed report → classification icons on notation chips without sheet.
     final boardFingerprint = gameReportFingerprint(navigatorState.game);
+    final reportClassifications = reportClassificationsForNotationAttach(
+      reviewState: reviewState,
+      boardGameFingerprint: boardFingerprint,
+    );
     final reportAnnotations = <int, LichessMoveAnnotation>{
-      if (report != null &&
-          shouldShowReportClassificationsOnBoard(
-            reviewState: reviewState,
-            boardGameFingerprint: boardFingerprint,
-          ))
-        for (final entry
-            in gameReportClassificationByMoveIndex(report).entries)
-          entry.key: LichessMoveAnnotation(
-            type: _annotationTypeForGameReport(entry.value),
-            comment: '',
-            useClassificationIcon: true,
-          ),
+      for (final entry in reportClassifications.entries)
+        entry.key: LichessMoveAnnotation(
+          type: _annotationTypeForGameReport(entry.value),
+          comment: '',
+          useClassificationIcon: true,
+        ),
     };
     final moveAnnotations = <int, LichessMoveAnnotation>{
       ...lichessAnnotations,
@@ -12725,15 +12726,17 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
     final node = token.node;
     if (node == null || !node.isMainline) return null;
     final moveIndex = token.moveIndex;
-    if (moveIndex == null) return null;
-    final result = annotations[moveIndex];
-    // Debug: Only log when we should find an annotation but don't
-    if (result == null && annotations.containsKey(moveIndex)) {
-      debugPrint(
-        '⚠️ [Annotation] MISMATCH: moveIndex=$moveIndex exists in annotations but lookup returned null',
-      );
+    if (moveIndex != null) {
+      final byMoveIndex = annotations[moveIndex];
+      if (byMoveIndex != null) return byMoveIndex;
     }
-    return result;
+    // Fallback: mainline pointer head is the zero-based mainline index used by
+    // report attach maps (gameReportClassificationByMoveIndex).
+    final pointer = token.pointer;
+    if (pointer != null && pointer.length == 1) {
+      return annotations[pointer[0].toInt()];
+    }
+    return null;
   }
 
   void _schedulePointerScroll(ChessMovePointer pointer, String? pointerId) {
