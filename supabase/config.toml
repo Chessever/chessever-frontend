@@ -1,0 +1,7 @@
+project_id = "chessever-frontend"
+
+# The database trigger and one-minute fallback heartbeat authenticate with the
+# private x-stream-token header, not a Supabase user JWT. Keep gateway JWT
+# verification disabled and enforce the stream token inside the function.
+[functions.onesignal-dispatch]
+verify_jwt = false
