@@ -88,7 +88,7 @@ Deno.serve(async (req) => {
   }
   const requiredToken = await resolveDispatchToken();
   const providedToken = req.headers.get("x-stream-token");
-  if (requiredToken && providedToken !== requiredToken) {
+  if (providedToken !== requiredToken) {
     return new Response("Unauthorized", { status: 401 });
   }
 
@@ -124,23 +124,24 @@ Deno.serve(async (req) => {
   );
 });
 
-async function resolveDispatchToken(): Promise<string | null> {
+async function resolveDispatchToken(): Promise<string> {
   const now = Date.now();
-  if (dispatchTokenCache.expiresAtMs > now) return dispatchTokenCache.token;
+  if (dispatchTokenCache.expiresAtMs > now && dispatchTokenCache.token) {
+    return dispatchTokenCache.token;
+  }
 
   const { data, error } = await supabase.rpc("get_vault_secret", {
     secret_name: "live_dispatch_token",
   });
 
   if (error) {
-    // Fail-open on vault lookup errors so pg_net trigger dispatch does not
-    // break when DB-side token forwarding is not configured.
-    dispatchTokenCache.token = null;
-    dispatchTokenCache.expiresAtMs = now + 15_000;
-    return null;
+    throw new Error(`Dispatch token lookup failed: ${error.message}`);
   }
 
   const vaultToken = typeof data === "string" && data.length > 0 ? data : null;
+  if (!vaultToken) {
+    throw new Error("Dispatch token is not configured");
+  }
   dispatchTokenCache.token = vaultToken;
   dispatchTokenCache.expiresAtMs = now + 60_000;
   return vaultToken;

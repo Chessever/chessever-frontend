@@ -15,8 +15,17 @@ def _source() -> str:
 def test_dispatch_requires_the_configured_stream_token() -> None:
     source = _source()
 
-    assert "if (requiredToken && providedToken !== requiredToken)" in source
+    assert "if (providedToken !== requiredToken)" in source
     assert "if (providedToken && requiredToken" not in source
+    assert "if (requiredToken && providedToken" not in source
+
+
+def test_dispatch_fails_closed_when_vault_token_is_unavailable() -> None:
+    source = _source()
+
+    assert 'throw new Error(`Dispatch token lookup failed: ${error.message}`)' in source
+    assert 'throw new Error("Dispatch token is not configured")' in source
+    assert "Fail-open on vault lookup errors" not in source
 
 
 def test_dispatch_function_keeps_gateway_jwt_verification_disabled() -> None:
