@@ -2,7 +2,6 @@ import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:chessever2/screens/chessboard/analysis/chess_game.dart';
-import 'package:chessever2/screens/chessboard/provider/engine_report_coordinator.dart';
 import 'package:chessever2/screens/chessboard/provider/stockfish_singleton.dart';
 import 'package:dartchess/dartchess.dart';
 import 'package:flutter/foundation.dart';
@@ -141,7 +140,10 @@ class GameAnalysisReportController extends ChangeNotifier {
   static const double reportKnodeReference = 500;
   static const Duration primarySearchBudget = Duration(milliseconds: 500);
   static const Duration refinementSearchBudget = Duration(milliseconds: 500);
-  static const int unavailableRetryLimit = 4;
+  // An empty result during heavy board contention (rapid navigation preempting
+  // the report) is transient, not a dead position — retry patiently (each loop
+  // waits for board handoff first) instead of failing the whole report.
+  static const int unavailableRetryLimit = 8;
   static const Duration unavailableRetryDelay = Duration(milliseconds: 200);
   static const Duration _progressThrottle = Duration(milliseconds: 120);
   static const Duration _mobileSearchYield = Duration(milliseconds: 12);
@@ -188,7 +190,6 @@ class GameAnalysisReportController extends ChangeNotifier {
     final cached = _reportCache[fingerprint];
     if (cached == null || cached.fingerprint != fingerprint) return false;
     _generation++;
-    EngineReportCoordinator.instance.setReportPending(false, ownerId: _ownerId);
     _setState(
       GameReportState(
         status: GameReportStatus.completed,
@@ -206,7 +207,6 @@ class GameAnalysisReportController extends ChangeNotifier {
     if (_state.isRunning) {
       unawaited(_stockfish.cancelEvaluationsForOwner(_ownerId));
     }
-    EngineReportCoordinator.instance.setReportPending(false, ownerId: _ownerId);
     _setState(const GameReportState());
   }
 
@@ -214,7 +214,6 @@ class GameAnalysisReportController extends ChangeNotifier {
     if (!_state.isRunning) return;
     _generation++;
     await _stockfish.cancelEvaluationsForOwner(_ownerId);
-    EngineReportCoordinator.instance.setReportPending(false, ownerId: _ownerId);
     _setState(
       const GameReportState(
         status: GameReportStatus.cancelled,
@@ -242,20 +241,35 @@ class GameAnalysisReportController extends ChangeNotifier {
       GameReportState(
         status: GameReportStatus.running,
         totalPositions: totalWorkUnits,
-        message: 'Preparing Stockfish…',
+        message: 'Waiting for board analysis…',
       ),
     );
-    // The board keeps precedence: while the report is pending it caps its own
-    // search at the handoff depth so the eval bar / lines stay responsive.
-    EngineReportCoordinator.instance.setReportPending(true, ownerId: _ownerId);
 
+    // Board-first / report-second. The board eval bar / lines are #1: the
+    // report waits for the board to be idle before touching the engine, and
+    // every report job is submitted isCurrentPosition:false so any board search
+    // preempts it at the scheduler. The board eval path is pristine — it knows
+    // nothing about the report.
+    var claimedEngine = false;
     final positions = <GameReportPosition>[];
     final evaluatedPositions = <String, GameReportPosition>{};
     try {
       if (_evaluator == null) {
+        await _stockfish.waitForBoardIdle();
+        if (_disposed || generation != _generation) return;
         await _stockfish.warmUp(allowInDebug: true);
         if (_disposed || generation != _generation) return;
       }
+      claimedEngine = true;
+      _reportProgress(
+        generation: generation,
+        progress: 0,
+        completedPositions: 0,
+        totalPositions: totalWorkUnits,
+        message: 'Preparing Stockfish…',
+        force: true,
+      );
+
       // First pass: one principal variation is sufficient for the evaluation
       // graph, accuracy, rating estimate, and loss-based classifications. This
       // is substantially cheaper than asking Stockfish for three lines at
@@ -365,10 +379,10 @@ class GameAnalysisReportController extends ChangeNotifier {
     } catch (error) {
       if (generation == _generation) _fail('Game analysis failed: $error');
     } finally {
-      // Only the latest generation releases the engine back to the board —
-      // a superseded run's teardown must not clear a newer run's hold.
-      if (generation == _generation) {
-        EngineReportCoordinator.instance.setReportPending(false, ownerId: _ownerId);
+      // Drop any leftover report jobs so they cannot linger on the engine after
+      // settle. Owner-scoped cancel never touches the board's Stockfish owner.
+      if (claimedEngine && _evaluator == null) {
+        unawaited(_stockfish.cancelEvaluationsForOwner(_ownerId));
       }
     }
   }
@@ -397,10 +411,12 @@ class GameAnalysisReportController extends ChangeNotifier {
       if (_disposed || generation != _generation) {
         throw const _ReportPositionPreempted();
       }
-      // Give the board precedence: hold until the viewed position has reached
-      // the handoff depth (or the board went idle) before touching the engine.
+      // Board eval bar / lines are #1: hold until no board search is running or
+      // queued before touching the engine for this position. Any board search
+      // that starts while the report is mid-position still preempts it at the
+      // scheduler (report jobs are isCurrentPosition:false).
       if (_evaluator == null) {
-        await EngineReportCoordinator.instance.waitForBoardHandoff();
+        await _stockfish.waitForBoardIdle();
         if (_disposed || generation != _generation) {
           throw const _ReportPositionPreempted();
         }
@@ -564,7 +580,6 @@ class GameAnalysisReportController extends ChangeNotifier {
     _disposed = true;
     _generation++;
     unawaited(_stockfish.cancelEvaluationsForOwner(_ownerId));
-    EngineReportCoordinator.instance.setReportPending(false, ownerId: _ownerId);
     super.dispose();
   }
 }

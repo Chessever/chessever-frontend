@@ -1,3 +1,4 @@
+import 'package:chessever2/repository/local_storage/tournament/games/games_local_storage.dart';
 import 'package:chessever2/repository/supabase/game/game_repository.dart';
 import 'package:chessever2/repository/supabase/game/games.dart';
 import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
@@ -59,7 +60,12 @@ void main() {
       );
 
       final container = ProviderContainer(
-        overrides: [gameRepositoryProvider.overrideWithValue(repository)],
+        overrides: [
+          gameRepositoryProvider.overrideWithValue(repository),
+          // Empty event cache so expansion is a no-op; this test is about
+          // per-game PGN hydration, not full-event expand.
+          gamesLocalStorage.overrideWith((ref) => _EmptyGamesLocalStorage(ref)),
+        ],
       );
       addTearDown(container.dispose);
 
@@ -121,7 +127,10 @@ void main() {
       );
 
       final container = ProviderContainer(
-        overrides: [gameRepositoryProvider.overrideWithValue(repository)],
+        overrides: [
+          gameRepositoryProvider.overrideWithValue(repository),
+          gamesLocalStorage.overrideWith((ref) => _EmptyGamesLocalStorage(ref)),
+        ],
       );
       addTearDown(container.dispose);
 
@@ -186,7 +195,10 @@ void main() {
         ),
       );
       final container = ProviderContainer(
-        overrides: [gameRepositoryProvider.overrideWithValue(repository)],
+        overrides: [
+          gameRepositoryProvider.overrideWithValue(repository),
+          gamesLocalStorage.overrideWith((ref) => _EmptyGamesLocalStorage(ref)),
+        ],
       );
       addTearDown(container.dispose);
 
@@ -208,6 +220,21 @@ void main() {
       expect(games.single.fen, finalFen);
     }
   });
+}
+
+/// No event cache / no network — expansion leaves the ordered list alone so
+/// per-game PGN hydration can be asserted in isolation.
+class _EmptyGamesLocalStorage extends GamesLocalStorage {
+  _EmptyGamesLocalStorage(super.ref);
+
+  @override
+  Future<List<Games>> getCachedGames(String tourId) async => const [];
+
+  @override
+  Future<List<Games>> fetchAndSaveGames(
+    String tourId, {
+    bool forceRefresh = false,
+  }) async => const [];
 }
 
 class _HydratingGameRepository extends GameRepository {

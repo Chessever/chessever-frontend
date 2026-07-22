@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:chessever2/providers/for_you_games_logic.dart';
 import 'package:chessever2/repository/local_storage/tournament/games/games_local_storage.dart';
 import 'package:chessever2/repository/supabase/game/game_repository.dart';
@@ -37,17 +39,47 @@ class _ResolvedNavigation {
   const _ResolvedNavigation({required this.games, required this.index});
 }
 
+/// Immediate open payload + background full-event expand future.
+///
+/// The board route is pushed with [immediate]; [expanded] completes later with
+/// the full event list (and freshest selected-game PGN) so the switcher can be
+/// updated without blocking the first open frame.
+class BoardNavigationLaunch {
+  final List<GamesTourModel> immediateGames;
+  final int immediateIndex;
+  final Future<({List<GamesTourModel> games, int index})> expanded;
+
+  const BoardNavigationLaunch({
+    required this.immediateGames,
+    required this.immediateIndex,
+    required this.expanded,
+  });
+}
+
 class _GameCardWrapperProvider {
   _GameCardWrapperProvider(this._ref);
 
   final Ref _ref;
 
+  /// Sync open payload: the card/list model already in hand. Never awaits
+  /// network, cache decode, or isolate sort.
+  _ResolvedNavigation _immediateOpenNavigation({
+    required List<GamesTourModel> orderedGames,
+    required int gameIndex,
+  }) {
+    if (orderedGames.isEmpty) {
+      return _ResolvedNavigation(games: orderedGames, index: gameIndex);
+    }
+    final safeIndex = gameIndex.clamp(0, orderedGames.length - 1);
+    return _ResolvedNavigation(games: orderedGames, index: safeIndex);
+  }
+
   Future<_ResolvedNavigation> _resolveNavigationGames({
     required List<GamesTourModel> orderedGames,
     required int gameIndex,
-    // Kept for call-site clarity; expansion is now decided from the game list's
-    // shape (single-event vs cross-event) rather than the view, so EVERY route
-    // that funnels through here hydrates the switcher identically.
+    // Kept for call-site clarity; expansion keys off the *tapped* game's event
+    // so For You, favorites Games, countrymen Games, and the tournament Games
+    // tab all hydrate the switcher the same way.
     required ChessboardView viewSource,
   }) async {
     if (orderedGames.isEmpty) {
@@ -58,34 +90,37 @@ class _GameCardWrapperProvider {
     final tappedGame = orderedGames[safeIndex];
 
     // The board's game-switcher dropdown (and its round timeline) must list the
-    // FULL event — every round — no matter which screen opened the board. Most
-    // entry points (For You, smart events, brackets, single-round pins, …) hand
-    // us only a subset of one event's games, so the switcher would otherwise
-    // show just the tapped game's round. This resolver is the single chokepoint
-    // every game-card tap funnels through, so expand any single-event subset to
-    // the whole event right here.
+    // FULL event of the game being opened — every prior round and board — no
+    // matter which screen opened the board (For You, favorites Games,
+    // countrymen Games, smart events, single-round pins, …). Source lists often
+    // hand only a subset (top-N preview) or a multi-event feed; expand by the
+    // *tapped* game's tourId rather than requiring the whole ordered list to be
+    // single-tour.
     //
-    // Guards — leave the list EXACTLY as passed when expanding is wrong/unneeded:
-    //  - games span multiple tours → an intentionally cross-event list (player
-    //    profile, favorites, countrymen); there is no single event to expand.
+    // Leave the list EXACTLY as passed when expanding is wrong/unneeded:
     //  - virtual gamebase / empty tourId → no broadcast tour to fetch.
-    //  - the list already covers 2+ rounds → it is already the full multi-round
-    //    event list (e.g. the Games tab), so never refetch or reorder it.
-    final tourIds = orderedGames.map((g) => g.tourId).toSet();
-    if (tourIds.length != 1) {
-      return _ResolvedNavigation(games: orderedGames, index: safeIndex);
-    }
-    final tourId = tourIds.first;
+    //  - single-tour list that already covers 2+ rounds and is not For You →
+    //    already the full multi-round Games-tab list (or equivalent); never
+    //    refetch or reorder it.
+    // Multi-tour lists (favorites / countrymen) always expand the tapped tour
+    // so the dropdown is that event alone, not the mixed feed.
+    final tourId = tappedGame.tourId;
     if (tourId.isEmpty || isVirtualGamebaseId(tourId)) {
       return _ResolvedNavigation(games: orderedGames, index: safeIndex);
     }
+
+    final isSingleTourList = orderedGames.every((g) => g.tourId == tourId);
+    final sameTourGames =
+        isSingleTourList
+            ? orderedGames
+            : orderedGames.where((g) => g.tourId == tourId).toList();
+    final coveredRounds = sameTourGames.map((g) => g.roundId).toSet();
     // For You always carries a re-ranked top-N preview (never the full event),
-    // so it always expands. Every other single-event source only expands when
-    // it covers a SINGLE round — a strong signal it is a partial subset — so a
-    // deliberately multi-round list (Games tab, a filtered view already showing
-    // several rounds) is left untouched, never refetched or reordered.
-    final coveredRounds = orderedGames.map((g) => g.roundId).toSet();
-    if (viewSource != ChessboardView.forYou && coveredRounds.length >= 2) {
+    // so it always expands. Multi-tour feeds always expand the tapped tour.
+    // A single-event multi-round list is left alone (Games tab).
+    if (viewSource != ChessboardView.forYou &&
+        isSingleTourList &&
+        coveredRounds.length >= 2) {
       return _ResolvedNavigation(games: orderedGames, index: safeIndex);
     }
 
@@ -96,11 +131,13 @@ class _GameCardWrapperProvider {
       // top-N preview per event via a pure RPC (`getForYouTopGamesByEventIds`)
       // that never writes the games cache — so an event reached ONLY through
       // For You (never opened via its event card / Games tab) has NO cached
-      // games. In that cold case the old code fell back to the 4-game preview
-      // subset, and the board's game-switcher showed only the tapped game's
-      // round. Fetch the full event once so the dropdown lists every round,
+      // games. Same for a cold favorites/countrymen open of a never-visited
+      // tour. Fetch the full event once so the dropdown lists every round,
       // exactly like entering through the Games tab. `fetchAndSaveGames` also
       // persists it, so every re-open of this event stays network-free.
+      //
+      // IMPORTANT: this work runs *after* the board route is pushed (see
+      // [navigateToChessBoard]); it must not sit on the pre-push critical path.
       var rawGames = await storage.getCachedGames(tourId);
       if (rawGames.isEmpty) {
         rawGames = await storage.fetchAndSaveGames(tourId);
@@ -176,6 +213,30 @@ class _GameCardWrapperProvider {
     }
   }
 
+  /// Starts the post-open expand/hydrate work and returns the immediate open
+  /// payload used for the first board frame. Does **not** await network or
+  /// isolate materialization.
+  BoardNavigationLaunch beginBoardNavigation({
+    required List<GamesTourModel> orderedGames,
+    required int gameIndex,
+    required ChessboardView viewSource,
+  }) {
+    final immediate = _immediateOpenNavigation(
+      orderedGames: orderedGames,
+      gameIndex: gameIndex,
+    );
+    final expanded = _resolveHydratedNavigationGames(
+      orderedGames: orderedGames,
+      gameIndex: gameIndex,
+      viewSource: viewSource,
+    ).then((resolved) => (games: resolved.games, index: resolved.index));
+    return BoardNavigationLaunch(
+      immediateGames: immediate.games,
+      immediateIndex: immediate.index,
+      expanded: expanded,
+    );
+  }
+
   /// Test seam for the For You navigation resolution above. Returns the
   /// `(games, index)` that would be handed to `ChessBoardScreenNew` so tests can
   /// assert the board (and therefore its game-switcher dropdown) receives the
@@ -207,6 +268,21 @@ class _GameCardWrapperProvider {
     return (resolved.games, resolved.index);
   }
 
+  /// Test seam for the non-blocking open contract: returns the immediate push
+  /// payload plus the background expand future without awaiting expand.
+  @visibleForTesting
+  BoardNavigationLaunch debugBeginBoardNavigation({
+    required List<GamesTourModel> orderedGames,
+    required int gameIndex,
+    ChessboardView viewSource = ChessboardView.forYou,
+  }) {
+    return beginBoardNavigation(
+      orderedGames: orderedGames,
+      gameIndex: gameIndex,
+      viewSource: viewSource,
+    );
+  }
+
   void navigateToChessBoard({
     required BuildContext context,
     required List<GamesTourModel> orderedGames,
@@ -223,7 +299,10 @@ class _GameCardWrapperProvider {
   }) async {
     _ref.read(chessboardViewFromProviderNew.notifier).state = viewSource;
 
-    final resolvedNavigation = await _resolveHydratedNavigationGames(
+    // Critical path: open with the already-available card/list model. Full-event
+    // expand + selected-game PGN freshen run in the background and install into
+    // the live board switcher when ready — never gate Navigator.push on them.
+    final launch = beginBoardNavigation(
       orderedGames: orderedGames,
       gameIndex: gameIndex,
       viewSource: viewSource,
@@ -234,17 +313,17 @@ class _GameCardWrapperProvider {
     }
 
     // Disable tournament streaming while inside the chessboard to avoid
-    // periodic refreshes and repeated fetch logs. Hydration happens first so a
-    // tap does not freeze a stale card model before the board opens.
+    // periodic refreshes and repeated fetch logs.
     _ref.read(shouldStreamProvider.notifier).state = false;
 
     final returnedIndex = await Navigator.push<int>(
       context,
       MaterialPageRoute(
         builder:
-            (_) => ChessBoardScreenNew(
-              games: resolvedNavigation.games,
-              currentIndex: resolvedNavigation.index,
+            (_) => _ExpandingChessBoardScreen(
+              initialGames: launch.immediateGames,
+              initialIndex: launch.immediateIndex,
+              expandedNavigation: launch.expanded,
               hideEventInfo: hideEventInfo,
               playerProfileDataSource: playerProfileDataSource,
               showGamebaseButton: showGamebaseButton,
@@ -267,5 +346,119 @@ class _GameCardWrapperProvider {
         onReturnFromChessboard != null) {
       onReturnFromChessboard(returnedIndex);
     }
+  }
+}
+
+/// Host that opens the board on the immediate list, then swaps in the full
+/// event (and freshest selected game) when background expand completes —
+/// preserving the opened [gameId] as current.
+class _ExpandingChessBoardScreen extends StatefulWidget {
+  const _ExpandingChessBoardScreen({
+    required this.initialGames,
+    required this.initialIndex,
+    required this.expandedNavigation,
+    required this.hideEventInfo,
+    required this.playerProfileDataSource,
+    required this.showGamebaseButton,
+    required this.disableGamebaseOverlayByDefault,
+    required this.showClock,
+    this.savedAnalysisData,
+  });
+
+  final List<GamesTourModel> initialGames;
+  final int initialIndex;
+  final Future<({List<GamesTourModel> games, int index})> expandedNavigation;
+  final bool hideEventInfo;
+  final PlayerProfileDataSource playerProfileDataSource;
+  final bool showGamebaseButton;
+  final bool disableGamebaseOverlayByDefault;
+  final bool showClock;
+  final SavedAnalysisData? savedAnalysisData;
+
+  @override
+  State<_ExpandingChessBoardScreen> createState() =>
+      _ExpandingChessBoardScreenState();
+}
+
+class _ExpandingChessBoardScreenState extends State<_ExpandingChessBoardScreen> {
+  late List<GamesTourModel> _games;
+  late int _index;
+  String? _openedGameId;
+
+  @override
+  void initState() {
+    super.initState();
+    _games = widget.initialGames;
+    _index =
+        widget.initialGames.isEmpty
+            ? widget.initialIndex
+            : widget.initialIndex.clamp(0, widget.initialGames.length - 1);
+    if (_games.isNotEmpty) {
+      _openedGameId = _games[_index].gameId;
+    }
+    unawaited(_applyExpandedNavigation());
+  }
+
+  Future<void> _applyExpandedNavigation() async {
+    try {
+      final resolved = await widget.expandedNavigation;
+      if (!mounted || resolved.games.isEmpty) return;
+
+      var nextIndex = resolved.index.clamp(0, resolved.games.length - 1);
+      if (_openedGameId != null) {
+        final byId = resolved.games.indexWhere((g) => g.gameId == _openedGameId);
+        if (byId >= 0) {
+          nextIndex = byId;
+        }
+      }
+
+      if (!_navigationChanged(_games, _index, resolved.games, nextIndex)) {
+        return;
+      }
+
+      setState(() {
+        _games = resolved.games;
+        _index = nextIndex;
+      });
+    } catch (_) {
+      // Keep the immediate open list; switcher stays on the entry subset.
+    }
+  }
+
+  bool _navigationChanged(
+    List<GamesTourModel> currentGames,
+    int currentIndex,
+    List<GamesTourModel> nextGames,
+    int nextIndex,
+  ) {
+    if (currentIndex != nextIndex || currentGames.length != nextGames.length) {
+      return true;
+    }
+    for (var i = 0; i < currentGames.length; i++) {
+      final a = currentGames[i];
+      final b = nextGames[i];
+      if (a.gameId != b.gameId ||
+          a.pgn != b.pgn ||
+          a.fen != b.fen ||
+          a.lastMove != b.lastMove ||
+          a.gameStatus != b.gameStatus) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return ChessBoardScreenNew(
+      games: _games,
+      currentIndex: _index,
+      hideEventInfo: widget.hideEventInfo,
+      playerProfileDataSource: widget.playerProfileDataSource,
+      showGamebaseButton: widget.showGamebaseButton,
+      disableGamebaseOverlayByDefault: widget.disableGamebaseOverlayByDefault,
+      showClock: widget.showClock,
+      savedAnalysisData: widget.savedAnalysisData,
+    );
   }
 }

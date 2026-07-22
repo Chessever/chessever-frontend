@@ -136,6 +136,11 @@ class StockfishSingleton {
       false; // Lock to prevent concurrent engine initialization
   bool _previousJobCompleted =
       true; // Track if last job ended via bestmove (engine idle)
+  // One-shot fence for the stale `bestmove` a stopped search still emits after
+  // a preemption. Set when we `stop` a running search; the NEXT job swallows
+  // exactly one depth-0/empty bestmove so it can't be mistaken for that job's
+  // own result (the desync that made board lines vanish and reports fail).
+  bool _staleBestmovePending = false;
   bool _appIsForeground = true;
   Completer<void>? _initCompleter; // Completer for waiting on initialization
   static const int _maxQueueSize = 60; // Soft cap to avoid backlog
@@ -516,6 +521,28 @@ class StockfishSingleton {
 
   bool get appIsForeground => _appIsForeground;
 
+  /// True while an on-board (high-priority, `isCurrentPosition:true`) evaluation
+  /// is running or queued. The whole-game report reads this to stay out of the
+  /// eval bar / engine lines' way — they are always #1.
+  bool get hasActiveBoardWork =>
+      (_currentJob?.isCurrentPosition ?? false) ||
+      _jobQueue.any((job) => job.isCurrentPosition);
+
+  /// Await until the board (high-priority) engine work clears, so the whole-game
+  /// report only ever borrows the engine in the gaps between board searches.
+  /// Polled + bounded so it can never wedge if a board search is torn down
+  /// without a completion signal.
+  Future<void> waitForBoardIdle({
+    Duration timeout = const Duration(seconds: 20),
+  }) async {
+    if (!hasActiveBoardWork) return;
+    final start = DateTime.now();
+    while (hasActiveBoardWork) {
+      if (DateTime.now().difference(start) > timeout) return;
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+    }
+  }
+
   Future<void> _cancelCurrentEvaluation() async {
     // Capture to a local so a concurrent caller racing through the await below
     // can't null _currentJob out from under us.
@@ -541,19 +568,43 @@ class StockfishSingleton {
 
     _pendingJobs.remove(job.key);
 
-    // Fire-and-forget stop — don't block waiting for readyok.
-    // The next job's _softResetEngine() will synchronize via isready/readyok
-    // before sending the next 'go' command.
-    if (_engine != null && _engine!.state.value == StockfishState.ready) {
-      try {
-        _engine!.stdin = 'stop';
-      } catch (e) {
-        debugPrint('Error sending stop command to Stockfish: $e');
-      }
-    }
+    // Stop the in-flight search and WAIT for the engine to actually terminate
+    // it (emit `bestmove`) before returning. The old fire-and-forget `stop`
+    // let the next job send setoption/position/go while the native search was
+    // still running — racing NNUE::evaluate on changing data (the EXC_BAD_ACCESS
+    // crash), dropping the MultiPV setoption (only 1 engine line arrives), or
+    // desyncing the UCI parser (lines stuck at "…"). Waiting here guarantees
+    // the engine is idle before the next search touches it.
+    _staleBestmovePending = true;
+    await _stopAndWaitForSearchStopped();
 
-    // Mark engine as not yet confirmed idle — _softResetEngine handles sync.
-    _previousJobCompleted = false;
+    // Engine is confirmed idle now — the next job can skip its own stop/resync.
+    _previousJobCompleted = true;
+  }
+
+  /// Send `stop` and wait until the engine reports the search actually
+  /// terminated (`bestmove`) so no following `position`/`go` can race a live
+  /// NNUE search. Bounded so a wedged engine can never hang the queue.
+  Future<void> _stopAndWaitForSearchStopped() async {
+    final engine = _engine;
+    if (engine == null || engine.state.value != StockfishState.ready) return;
+    final completer = Completer<void>();
+    late StreamSubscription<String> sub;
+    sub = engine.stdout.listen((line) {
+      if (line.trim().startsWith('bestmove') && !completer.isCompleted) {
+        _staleBestmovePending = false; // drained the stopped search's bestmove
+        completer.complete();
+      }
+    });
+    try {
+      engine.stdin = 'stop';
+      await completer.future.timeout(const Duration(milliseconds: 1200));
+    } catch (_) {
+      // Timed out or stdin threw — the next job's _softResetEngine still
+      // resyncs via isready/readyok and the stale-bestmove fence backstops.
+    } finally {
+      await sub.cancel();
+    }
   }
 
   Future<void> cancelAllEvaluations() async {
@@ -725,6 +776,8 @@ class StockfishSingleton {
                     : 0;
 
             finalDepth = currentDepth;
+            // Real output for THIS job — any stale bestmove is now behind us.
+            _staleBestmovePending = false;
 
             if (onDepthUpdate != null) {
               onDepthUpdate(currentDepth, currentKnodes);
@@ -812,6 +865,20 @@ class StockfishSingleton {
 
         // When analysis is complete
         if (line.startsWith('bestmove') && !evaluationComplete) {
+          // Stale-bestmove fence: a search we stopped during preemption still
+          // emits one bestmove. If it reaches this (next) job before any info
+          // line, it arrives at depth 0 with no PVs and would otherwise
+          // complete the job with an empty result — the board eval bar / lines
+          // never arrive and the whole-game report fails on the empty result.
+          // Swallow exactly one such stale line; this job's real search keeps
+          // running and emits its own info + bestmove.
+          if (_staleBestmovePending &&
+              finalDepth == 0 &&
+              pvs.every((pv) => pv.moves.trim().isEmpty)) {
+            _staleBestmovePending = false;
+            return;
+          }
+          _staleBestmovePending = false;
           evaluationComplete = true;
           final filteredPvs = pvs
               .where((pv) => pv.moves.isNotEmpty)
@@ -983,6 +1050,8 @@ class StockfishSingleton {
 
               // Try to reset the engine
               try {
+                // This stop yields a bestmove for the next job to fence.
+                _staleBestmovePending = true;
                 _engine?.stdin = 'stop';
               } catch (_) {}
             }
@@ -1022,6 +1091,8 @@ class StockfishSingleton {
 
             // Try to stop the engine
             try {
+              // This stop yields a bestmove for the next job to fence.
+              _staleBestmovePending = true;
               _engine?.stdin = 'stop';
             } catch (_) {}
 
@@ -1466,7 +1537,14 @@ class StockfishSingleton {
     final completer = Completer<void>();
     late StreamSubscription<String> sub;
     sub = _engine!.stdout.listen((line) {
-      if (line.trim() == 'readyok' && !completer.isCompleted) {
+      final trimmed = line.trim();
+      // The stop→isready→readyok handshake drains the stopped search's stale
+      // bestmove (it comes before readyok); clear the fence when we see it so
+      // the next job's listener doesn't need to.
+      if (trimmed.startsWith('bestmove')) {
+        _staleBestmovePending = false;
+      }
+      if (trimmed == 'readyok' && !completer.isCompleted) {
         completer.complete();
       }
     });

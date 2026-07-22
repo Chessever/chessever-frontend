@@ -9,6 +9,25 @@ import 'package:chessever2/widgets/player_initials_avatar.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
+/// Single open-height Game Analysis review sheet.
+///
+/// Opens already at [height] with rounded top corners, sitting under the safe
+/// area so it never collides with the notch. Drag-down dismiss is coordinated
+/// through [DraggableScrollableSheet] (see [minHeight]) rather than multi-step
+/// snap points.
+class GameReviewSheetExtents {
+  /// Open / max sheet height (fraction of the modal host after safe area).
+  static const double height = 0.90;
+
+  /// How far the sheet may shrink while dragging before it closes.
+  /// Must be below [height] so a downward drag from the handle (or from the
+  /// top of the scroll view) can collapse and dismiss instead of only
+  /// scrolling content.
+  static const double minHeight = 0.45;
+
+  static const double topRadius = 28;
+}
+
 Future<void> showMobileGameReviewSheet({
   required BuildContext context,
   required MobileGameReviewController controller,
@@ -18,11 +37,6 @@ Future<void> showMobileGameReviewSheet({
   Future<void> Function(bool visible)? onVisibilityChanged,
 }) async {
   controller.reveal();
-  // useSafeArea:false lets the fully-open sheet cover the board, but Flutter then
-  // strips the top padding inside the sheet subtree. Capture the real status-bar
-  // inset here (the outer context still has it) so the full-open content can
-  // clear the notch itself.
-  final topInset = MediaQuery.paddingOf(context).top;
   await onVisibilityChanged?.call(true);
   if (!context.mounted) {
     await onVisibilityChanged?.call(false);
@@ -32,18 +46,18 @@ Future<void> showMobileGameReviewSheet({
     await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
-      useSafeArea: false,
+      useSafeArea: true,
+      enableDrag: true,
+      isDismissible: true,
       backgroundColor: Colors.transparent,
-      // Keep the live board fully lit behind the half-open sheet (no dim scrim);
-      // dragging the sheet to full height is what hides the board instead.
-      barrierColor: Colors.transparent,
+      // Soft dim so the sheet reads as an overlay over the live board.
+      barrierColor: Colors.black.withValues(alpha: 0.28),
       builder:
           (context) => _GameReviewSheet(
             controller: controller,
             game: game,
             activePly: activePly,
             onJumpToPly: onJumpToPly,
-            topInset: topInset,
           ),
     );
   } finally {
@@ -182,13 +196,12 @@ class GameAnalysisButton extends StatelessWidget {
   }
 }
 
-class _GameReviewSheet extends StatefulWidget {
+class _GameReviewSheet extends StatelessWidget {
   const _GameReviewSheet({
     required this.controller,
     required this.game,
     required this.activePly,
     required this.onJumpToPly,
-    required this.topInset,
   });
 
   final MobileGameReviewController controller;
@@ -196,69 +209,55 @@ class _GameReviewSheet extends StatefulWidget {
   final int activePly;
   final ValueChanged<int> onJumpToPly;
 
-  /// Real status-bar inset captured before the modal route stripped it, so the
-  /// full-open sheet can clear the notch (see [showMobileGameReviewSheet]).
-  final double topInset;
-
-  @override
-  State<_GameReviewSheet> createState() => _GameReviewSheetState();
-}
-
-class _GameReviewSheetState extends State<_GameReviewSheet> {
-  bool _isFullyOpen = false;
-
   @override
   Widget build(BuildContext context) {
-    final topInset = widget.topInset;
+    // DraggableScrollableSheet owns the primary scroll controller. Without it,
+    // the CustomScrollView eats every vertical drag (including on the handle)
+    // and the modal never dismisses. At scroll offset 0 a downward drag
+    // shrinks the sheet and closes it at [minHeight].
     return DraggableScrollableSheet(
-      key: const ValueKey('game-review-full-sheet'),
       expand: false,
-      initialChildSize: 0.45,
-      // Below the half snap the sheet flings closed, so a downward swipe
-      // dismisses it instead of sticking half-open.
-      minChildSize: 0.28,
-      maxChildSize: 1,
-      snap: true,
-      snapSizes: const [0.45, 1],
+      initialChildSize: GameReviewSheetExtents.height,
+      minChildSize: GameReviewSheetExtents.minHeight,
+      maxChildSize: GameReviewSheetExtents.height,
       shouldCloseOnMinExtent: true,
       builder: (context, scrollController) {
-        return NotificationListener<DraggableScrollableNotification>(
-          onNotification: (notification) {
-            final atFull = notification.extent >= 0.995;
-            if (atFull != _isFullyOpen) {
-              setState(() => _isFullyOpen = atFull);
-            }
-            return false;
-          },
-          // Fully open the sheet covers the whole screen (useSafeArea is off),
-          // hiding the board/notation behind it and squaring the top corners.
-          child: Container(
-            decoration: BoxDecoration(
-              color: kBackgroundColor,
-              borderRadius: BorderRadius.vertical(
-                top: Radius.circular(_isFullyOpen ? 0 : 28),
-              ),
+        return Material(
+          key: const ValueKey('game-review-full-sheet'),
+          color: kBackgroundColor,
+          elevation: 12,
+          shadowColor: Colors.black.withValues(alpha: 0.45),
+          shape: const RoundedRectangleBorder(
+            borderRadius: BorderRadius.vertical(
+              top: Radius.circular(GameReviewSheetExtents.topRadius),
             ),
-            clipBehavior: Clip.antiAlias,
-            padding: EdgeInsets.only(top: _isFullyOpen ? topInset : 0),
-            child: AnimatedBuilder(
-              animation: widget.controller,
-              builder: (context, _) {
-                final state = widget.controller.state;
-                return CustomScrollView(
-                  controller: scrollController,
-                  slivers: [
-                    const SliverToBoxAdapter(child: _SheetDragHandle()),
-                    SliverPadding(
-                      padding: const EdgeInsets.fromLTRB(20, 4, 20, 28),
-                      sliver: SliverToBoxAdapter(
-                        child: _body(state.reportState),
-                      ),
+          ),
+          clipBehavior: Clip.antiAlias,
+          child: AnimatedBuilder(
+            animation: controller,
+            builder: (context, _) {
+              final state = controller.state;
+              return CustomScrollView(
+                controller: scrollController,
+                physics: const ClampingScrollPhysics(),
+                slivers: [
+                  // First scroll child so drag-from-top dismiss works.
+                  const SliverToBoxAdapter(child: _SheetDragHandle()),
+                  SliverPadding(
+                    // useSafeArea keeps the top/sides clear but leaves the
+                    // bottom flush to the screen edge, so pad the scrollable
+                    // content past the home indicator itself.
+                    padding: EdgeInsets.fromLTRB(
+                      20,
+                      4,
+                      20,
+                      28 + MediaQuery.paddingOf(context).bottom,
                     ),
-                  ],
-                );
-              },
-            ),
+                    sliver: SliverToBoxAdapter(child: _body(state.reportState)),
+                  ),
+                ],
+              );
+            },
           ),
         );
       },
@@ -274,9 +273,9 @@ class _GameReviewSheetState extends State<_GameReviewSheet> {
         if (report != null) {
           return _CompletedReview(
             report: report,
-            game: widget.game,
-            activePly: widget.activePly,
-            onJumpToPly: widget.onJumpToPly,
+            game: game,
+            activePly: activePly,
+            onJumpToPly: onJumpToPly,
           );
         }
         return const _ReviewMessage(
@@ -290,7 +289,7 @@ class _GameReviewSheetState extends State<_GameReviewSheet> {
           title: 'Analysis could not finish',
           body: state.message ?? 'Stockfish could not analyze this game.',
           actionLabel: 'Retry',
-          onAction: widget.controller.retry,
+          onAction: controller.retry,
         );
       case GameReportStatus.cancelled:
       case GameReportStatus.idle:
@@ -299,7 +298,7 @@ class _GameReviewSheetState extends State<_GameReviewSheet> {
           title: 'Game analysis',
           body: state.message ?? 'Stockfish is preparing this game review.',
           actionLabel: 'Analyze Game',
-          onAction: widget.controller.retry,
+          onAction: controller.retry,
         );
     }
   }
@@ -310,16 +309,18 @@ class _SheetDragHandle extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(top: 10, bottom: 12),
+    // Full-width opaque hit target so grabs near the pill still drive the
+    // sheet scroll controller (and dismiss) instead of missing the handle.
+    return const SizedBox(
+      width: double.infinity,
+      height: 36,
       child: Center(
-        child: Container(
-          width: 44,
-          height: 5,
+        child: DecoratedBox(
           decoration: BoxDecoration(
             color: kLightGreyColor,
-            borderRadius: BorderRadius.circular(999),
+            borderRadius: BorderRadius.all(Radius.circular(999)),
           ),
+          child: SizedBox(width: 44, height: 5),
         ),
       ),
     );

@@ -10,16 +10,15 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 /// Verifies the fix for the game card → chess board dropdown showing a
 /// wrong/incomplete game list.
 ///
-/// Many entry points (For You, smart events, brackets, single-round pins, …)
-/// hand the board only a subset of one event's games, so the game-switcher /
-/// round timeline would render just the tapped game's round. The resolver
-/// expands any single-event subset to the FULL event at navigation time —
-/// cache-first, then a one-off network fetch when the event was never cached
-/// (e.g. reached only through For You, whose feed never warms the games cache).
-/// These tests assert the resolved `(games, index)` handed to
-/// `ChessBoardScreenNew` — exactly what the dropdown renders — is the full event
+/// Many entry points (For You, favorites Games, countrymen Games, smart events,
+/// single-round pins, …) hand the board only a subset of one event's games or a
+/// multi-event feed, so the game-switcher / round timeline would render just
+/// the tapped game's card or round. The resolver expands by the *tapped* game's
+/// tourId to the FULL event at navigation time — cache-first, then a one-off
+/// network fetch when the event was never cached. These tests assert the
+/// resolved `(games, index)` handed to `ChessBoardScreenNew` is the full event
 /// list in Games-tab order with the tapped game's index re-derived, and that
-/// the safe guards (cross-event, multi-round, fetch failure) leave it alone.
+/// already multi-round Games-tab lists stay untouched.
 void main() {
   // Five games across three rounds. Games-tab order is round DESC, then board
   // ASC, so the canonical full order is:
@@ -189,41 +188,161 @@ void main() {
     expect(index, 1);
   });
 
-  test('cross-event list (multiple tours) is left untouched', () async {
-    final container = containerWithCache(const []);
-    addTearDown(container.dispose);
-
-    // Player-profile / favorites style: games from two different events.
-    final crossEvent = [
-      GamesTourModel.fromGame(
+  test(
+    'multi-tour favorites/countrymen list expands the tapped event only',
+    () async {
+      // Favorites / countrymen Games tabs mix events. The board switcher must
+      // still receive the FULL tapped tour (prior rounds + boards), not the
+      // mixed feed and not only the single tapped card.
+      final tourAFull = fullEventRawGames(); // tour-1 by default
+      final tourBOnly = [
         _makeGame(
-          id: 'a1',
-          roundSlug: 'round-1',
-          boardNr: 1,
-          tourId: 'tour-A',
-        ),
-      ),
-      GamesTourModel.fromGame(
-        _makeGame(
-          id: 'b1',
+          id: 'b-r1-b1',
           roundSlug: 'round-1',
           boardNr: 1,
           tourId: 'tour-B',
         ),
-      ),
-    ];
+      ];
+      final container = ProviderContainer(
+        overrides: [
+          gamesLocalStorage.overrideWith(
+            (ref) => _FakeGamesLocalStorage(
+              ref,
+              const [],
+              byTour: {
+                'tour-1': tourAFull,
+                'tour-B': tourBOnly,
+              },
+            ),
+          ),
+        ],
+      );
+      addTearDown(container.dispose);
 
-    final (games, index) = await container
-        .read(gameCardWrapperProvider)
-        .debugResolveNavigation(
-          orderedGames: crossEvent,
-          gameIndex: 0,
-          viewSource: ChessboardView.playerProfile,
+      final mixedFeed = [
+        modelFor('r2-b1'), // tour-1, mid-event
+        GamesTourModel.fromGame(tourBOnly.first),
+      ];
+
+      for (final viewSource in [
+        ChessboardView.favScorecard,
+        ChessboardView.countryman,
+      ]) {
+        final (games, index) = await container
+            .read(gameCardWrapperProvider)
+            .debugResolveNavigation(
+              orderedGames: mixedFeed,
+              gameIndex: 0,
+              viewSource: viewSource,
+            );
+
+        expect(
+          games.map((g) => g.gameId).toList(),
+          expectedFullOrder,
+          reason: '$viewSource must expand tour-1, not keep mixed feed',
         );
+        expect(games.every((g) => g.tourId == 'tour-1'), isTrue);
+        expect(index, 1);
+        expect(games[index].gameId, 'r2-b1');
+      }
+    },
+  );
 
-    expect(games.map((g) => g.gameId).toList(), ['a1', 'b1']);
-    expect(index, 0);
-  });
+  test(
+    'multi-tour list expands tour-B when the other event is tapped',
+    () async {
+      final tourAFull = fullEventRawGames();
+      final tourBFull = [
+        _makeGame(
+          id: 'b-r2-b1',
+          roundSlug: 'round-2',
+          boardNr: 1,
+          tourId: 'tour-B',
+        ),
+        _makeGame(
+          id: 'b-r1-b1',
+          roundSlug: 'round-1',
+          boardNr: 1,
+          tourId: 'tour-B',
+        ),
+      ];
+      final container = ProviderContainer(
+        overrides: [
+          gamesLocalStorage.overrideWith(
+            (ref) => _FakeGamesLocalStorage(
+              ref,
+              const [],
+              byTour: {
+                'tour-1': tourAFull,
+                'tour-B': tourBFull,
+              },
+            ),
+          ),
+        ],
+      );
+      addTearDown(container.dispose);
+
+      final mixedFeed = [
+        modelFor('r3-b1'),
+        GamesTourModel.fromGame(tourBFull.last), // tap b-r1-b1
+      ];
+
+      final (games, index) = await container
+          .read(gameCardWrapperProvider)
+          .debugResolveNavigation(
+            orderedGames: mixedFeed,
+            gameIndex: 1,
+            viewSource: ChessboardView.countryman,
+          );
+
+      expect(games.map((g) => g.gameId).toList(), ['b-r2-b1', 'b-r1-b1']);
+      expect(games.every((g) => g.tourId == 'tour-B'), isTrue);
+      expect(index, 1);
+      expect(games[index].gameId, 'b-r1-b1');
+    },
+  );
+
+  test(
+    'cold multi-tour favorites fetch expands tapped tour when cache empty',
+    () async {
+      final container = ProviderContainer(
+        overrides: [
+          gamesLocalStorage.overrideWith(
+            (ref) => _FakeGamesLocalStorage(
+              ref,
+              const [],
+              networkByTour: {'tour-1': fullEventRawGames()},
+            ),
+          ),
+        ],
+      );
+      addTearDown(container.dispose);
+
+      final mixedFeed = [
+        modelFor('r1-b2'),
+        GamesTourModel.fromGame(
+          _makeGame(
+            id: 'other',
+            roundSlug: 'round-1',
+            boardNr: 1,
+            tourId: 'tour-X',
+          ),
+        ),
+      ];
+
+      final (games, index) = await container
+          .read(gameCardWrapperProvider)
+          .debugResolveNavigation(
+            orderedGames: mixedFeed,
+            gameIndex: 0,
+            viewSource: ChessboardView.favScorecard,
+          );
+
+      expect(games.map((g) => g.gameId).toList(), expectedFullOrder);
+      expect(index, 4);
+      expect(games[index].gameId, 'r1-b2');
+    },
+  );
 }
 
 class _FakeGamesLocalStorage extends GamesLocalStorage {
@@ -232,14 +351,30 @@ class _FakeGamesLocalStorage extends GamesLocalStorage {
     this._cached, {
     this.network = const [],
     this.failFetch = false,
-  });
+    Map<String, List<Games>> byTour = const {},
+    Map<String, List<Games>> networkByTour = const {},
+  }) : _byTour = byTour,
+       _networkByTour = networkByTour;
 
   final List<Games> _cached;
   final List<Games> network;
   final bool failFetch;
+  final Map<String, List<Games>> _byTour;
+  final Map<String, List<Games>> _networkByTour;
+
+  List<Games> _forTour(String tourId, List<Games> fallback) {
+    if (_byTour.containsKey(tourId)) return _byTour[tourId]!;
+    if (fallback.isEmpty) return const [];
+    // Legacy single-list fakes: filter by tour when present.
+    final filtered = fallback.where((g) => g.tourId == tourId).toList();
+    return filtered.isNotEmpty ? filtered : fallback;
+  }
 
   @override
-  Future<List<Games>> getCachedGames(String tourId) async => _cached;
+  Future<List<Games>> getCachedGames(String tourId) async {
+    if (_byTour.isNotEmpty) return _byTour[tourId] ?? const [];
+    return _forTour(tourId, _cached);
+  }
 
   @override
   Future<List<Games>> fetchAndSaveGames(
@@ -247,7 +382,10 @@ class _FakeGamesLocalStorage extends GamesLocalStorage {
     bool forceRefresh = false,
   }) async {
     if (failFetch) throw Exception('network down');
-    return network;
+    if (_networkByTour.isNotEmpty) return _networkByTour[tourId] ?? const [];
+    if (network.isNotEmpty) return _forTour(tourId, network);
+    // Cache-backed fakes may only populate getCachedGames.
+    return _forTour(tourId, _cached);
   }
 }
 

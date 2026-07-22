@@ -22,8 +22,20 @@ class MobileGameReviewState {
   final bool isEligible;
   final String? unavailableMessage;
 
-  bool get classificationsRevealed =>
-      fingerprint != null && fingerprint == revealedFingerprint;
+  /// Whether notation may show per-move classification icons for this game.
+  ///
+  /// True when the user opened the review sheet ([revealedFingerprint]) **or**
+  /// the whole-game report for this fingerprint has completed. Relying only on
+  /// the explicit reveal side-effect missed iOS cases where the report finished
+  /// but notation never saw a separate reveal; completed report is enough.
+  bool get classificationsRevealed {
+    if (fingerprint == null) return false;
+    if (fingerprint == revealedFingerprint) return true;
+    final report = reportState.report;
+    return reportState.status == GameReportStatus.completed &&
+        report != null &&
+        report.fingerprint == fingerprint;
+  }
 
   /// Whether the Game Analysis entry point should be shown at all. A live or
   /// move-less game offers nothing to analyze yet, so the button (and its
@@ -209,8 +221,9 @@ class MobileGameReviewController extends ChangeNotifier {
   void _onReportChanged() {
     if (_disposed) return;
     _state = _state.copyWith(reportState: _reportController.state);
-    // Reveal the per-move classification badges in the notation as soon as the
-    // report is ready — the user no longer has to open the review sheet first.
+    // Persist reveal when the report is ready so notation and sheet share the
+    // same fingerprint latch (classificationsRevealed also treats completed
+    // reports as revealed even if this side-effect races).
     if (_reportController.state.status == GameReportStatus.completed &&
         _state.fingerprint != null &&
         _state.fingerprint != _state.revealedFingerprint) {
@@ -233,3 +246,36 @@ final mobileGameReviewProvider = ChangeNotifierProvider.autoDispose
     .family<MobileGameReviewController, ChessBoardProviderParams>(
       (ref, params) => MobileGameReviewController(),
     );
+
+/// Whether notation should attach classification icons from the review report
+/// for the board game identified by [boardGameFingerprint].
+///
+/// Pure helper so unit tests can drive the same gate the board screen uses.
+bool shouldShowReportClassificationsOnBoard({
+  required MobileGameReviewState reviewState,
+  required String boardGameFingerprint,
+}) {
+  if (!reviewState.classificationsRevealed) return false;
+  final report = reviewState.reportState.report;
+  if (report == null) return false;
+  // Accept a match on the live board game or the review controller's
+  // configured fingerprint so a navigator rebuild cannot drop icons.
+  if (report.fingerprint == boardGameFingerprint) return true;
+  final stateFp = reviewState.fingerprint;
+  return stateFp != null && report.fingerprint == stateFp;
+}
+
+/// Zero-based mainline move index → classification for notation chips.
+///
+/// [GameReportMove.ply] is 1-based; notation tokens index from 0.
+Map<int, GameMoveClassification> gameReportClassificationByMoveIndex(
+  GameAnalysisReport report,
+) {
+  final out = <int, GameMoveClassification>{};
+  for (final move in report.moves) {
+    final classification = move.classification;
+    if (classification == null) continue;
+    out[move.ply - 1] = classification;
+  }
+  return out;
+}

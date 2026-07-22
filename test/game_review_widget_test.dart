@@ -43,6 +43,69 @@ void main() {
     expect(controller.state.classificationsRevealed, isTrue);
   });
 
+  test(
+    'completed report auto-reveals classifications without opening the sheet',
+    () async {
+      final chessGame = ChessGame.fromPgn(
+        'auto-reveal',
+        '[White "A"]\n[Black "B"]\n[Result "1-0"]\n\n1. e4 e5 1-0',
+      );
+      final reportController = GameAnalysisReportController(
+        evaluator: _evaluator,
+      );
+      final controller = MobileGameReviewController(
+        reportController: reportController,
+        autoStartDelay: Duration.zero,
+      );
+      addTearDown(controller.dispose);
+
+      controller.configure(
+        game: chessGame,
+        active: true,
+        finished: true,
+        whiteRating: 2100,
+        blackRating: 2050,
+      );
+      for (
+        var i = 0;
+        i < 40 &&
+            controller.state.reportState.status != GameReportStatus.completed;
+        i++
+      ) {
+        await Future<void>.delayed(const Duration(milliseconds: 20));
+      }
+
+      expect(controller.state.reportState.status, GameReportStatus.completed);
+      // Icons must light up when the report finishes — no sheet open required.
+      expect(controller.state.classificationsRevealed, isTrue);
+
+      final report = controller.state.reportState.report!;
+      final boardFp = gameReportFingerprint(chessGame);
+      expect(
+        shouldShowReportClassificationsOnBoard(
+          reviewState: controller.state,
+          boardGameFingerprint: boardFp,
+        ),
+        isTrue,
+      );
+      final byIndex = gameReportClassificationByMoveIndex(report);
+      expect(byIndex, isNotEmpty);
+      // Zero-based indexes for notation tokens.
+      expect(byIndex.containsKey(0), isTrue);
+    },
+  );
+
+  test('sheet uses a single open height with drag-to-dismiss floor', () {
+    expect(GameReviewSheetExtents.height, lessThan(1.0));
+    expect(GameReviewSheetExtents.height, greaterThan(0.5));
+    expect(
+      GameReviewSheetExtents.minHeight,
+      lessThan(GameReviewSheetExtents.height),
+    );
+    expect(GameReviewSheetExtents.minHeight, greaterThan(0.0));
+    expect(GameReviewSheetExtents.topRadius, greaterThan(0));
+  });
+
   testWidgets('Game Analysis button exposes progress and unavailable states', (
     tester,
   ) async {
@@ -178,31 +241,27 @@ void main() {
       find.byKey(const ValueKey('game-review-graph-info')),
       findsOneWidget,
     );
+    // Opens at a single height; DraggableScrollableSheet wires dismiss to the
+    // primary scroll controller so handle / top-of-content drag closes it.
     expect(find.byType(DraggableScrollableSheet), findsOneWidget);
-    final sheet = tester.widget<DraggableScrollableSheet>(
-      find.byType(DraggableScrollableSheet),
-    );
-    expect(sheet.initialChildSize, 0.45);
-    // Drags below the half snap to fling-dismiss, and expands full-screen to
-    // hide the board behind it.
-    expect(sheet.minChildSize, 0.28);
-    expect(sheet.maxChildSize, 1);
-    expect(sheet.shouldCloseOnMinExtent, isTrue);
     expect(
       find.byKey(const ValueKey('game-review-full-sheet')),
       findsOneWidget,
     );
+    final sheet = tester.widget<Material>(
+      find.byKey(const ValueKey('game-review-full-sheet')),
+    );
+    final shape = sheet.shape! as RoundedRectangleBorder;
+    expect(shape.borderRadius, isA<BorderRadius>());
+    final radius = shape.borderRadius as BorderRadius;
+    expect(radius.topLeft.x, GameReviewSheetExtents.topRadius);
+    expect(radius.topRight.x, GameReviewSheetExtents.topRadius);
 
     expect(find.text('OPENING'), findsNothing);
     expect(find.text('MIDDLEGAME'), findsNothing);
     expect(find.text('ENDGAME'), findsNothing);
     expect(find.textContaining('1/3'), findsOneWidget);
 
-    await tester.drag(
-      find.byType(DraggableScrollableSheet),
-      const Offset(0, -400),
-    );
-    await tester.pumpAndSettle();
     await tester.tap(
       find.byKey(const ValueKey('game-review-bestMove-white-score')),
     );

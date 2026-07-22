@@ -1394,6 +1394,88 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
   @override
   void didUpdateWidget(covariant ChessBoardScreenNew oldWidget) {
     super.didUpdateWidget(oldWidget);
+    // Background full-event expand (For You / favorites / countrymen open path)
+    // can replace the constructor games list after the first frame. Keep the
+    // user on the same gameId and jump the page controller when its index moves
+    // in the expanded Games-tab order. Provider identity is gameId-only, so we
+    // sync the page index onto the existing notifier — never remount analysis.
+    if (identical(oldWidget.games, widget.games) &&
+        oldWidget.currentIndex == widget.currentIndex) {
+      return;
+    }
+
+    final oldLen = oldWidget.games.length;
+    final currentId =
+        oldLen == 0
+            ? null
+            : oldWidget.games[_currentPageIndex.clamp(0, oldLen - 1)].gameId;
+
+    if (widget.games.isEmpty) {
+      return;
+    }
+
+    var desiredIndex = widget.currentIndex.clamp(0, widget.games.length - 1);
+    if (currentId != null) {
+      final byId = widget.games.indexWhere((g) => g.gameId == currentId);
+      if (byId >= 0) {
+        desiredIndex = byId;
+      }
+    }
+
+    final indexChanged = desiredIndex != _currentPageIndex;
+    final previousIndex = _currentPageIndex;
+    if (indexChanged) {
+      _currentPageIndex = desiredIndex;
+      // Jump immediately so this rebuild's PageView ±1 window matches the
+      // controller page — a post-frame jump would paint a blank frame first.
+      if (_pageController.hasClients) {
+        _pageController.jumpToPage(desiredIndex);
+      }
+    }
+
+    GamesTourModel? nextGameForId;
+    if (currentId != null) {
+      final candidate = widget.games[desiredIndex];
+      if (candidate.gameId == currentId) {
+        nextGameForId = candidate;
+        final params = _createParams(candidate, desiredIndex);
+        final notifier =
+            ref.read(chessBoardScreenProviderNew(params).notifier);
+        if (indexChanged) {
+          notifier.syncPageIndex(desiredIndex);
+        }
+      }
+    }
+
+    ref.read(chessBoardAllGamesProvider.notifier).state = widget.games;
+    if (indexChanged) {
+      ref.read(currentlyVisiblePageIndexProvider.notifier).state = desiredIndex;
+      _keepBoardProviderAlive(desiredIndex);
+    }
+
+    // Apply fresher navigation hydrate after this frame so parse/stream state
+    // updates don't re-enter during the element update phase.
+    if (nextGameForId != null) {
+      final snapshot = nextGameForId;
+      final oldSafe = oldLen == 0 ? 0 : previousIndex.clamp(0, oldLen - 1);
+      final oldGame = oldLen == 0 ? null : oldWidget.games[oldSafe];
+      final needsHydrateApply =
+          oldGame == null ||
+          oldGame.gameId != snapshot.gameId ||
+          oldGame.pgn != snapshot.pgn ||
+          oldGame.fen != snapshot.fen ||
+          oldGame.lastMove != snapshot.lastMove ||
+          oldGame.gameStatus != snapshot.gameStatus;
+      if (needsHydrateApply) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted) return;
+          final params = _createParams(snapshot, desiredIndex);
+          ref
+              .read(chessBoardScreenProviderNew(params).notifier)
+              .applyNavigationGameSnapshot(snapshot);
+        });
+      }
+    }
   }
 
   @override
@@ -8886,17 +8968,20 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard>
               const <int, LichessMoveAnnotation>{};
           final reviewState = ref.watch(mobileGameReviewProvider(params)).state;
           final report = reviewState.reportState.report;
+          final boardFingerprint = gameReportFingerprint(analysisGame);
           final reportAnnotations = <int, LichessMoveAnnotation>{
-            if (reviewState.classificationsRevealed &&
-                report != null &&
-                report.fingerprint == gameReportFingerprint(analysisGame))
-              for (final move in report.moves)
-                if (move.classification != null)
-                  move.ply - 1: LichessMoveAnnotation(
-                    type: _annotationTypeForGameReport(move.classification!),
-                    comment: '',
-                    useClassificationIcon: true,
-                  ),
+            if (report != null &&
+                shouldShowReportClassificationsOnBoard(
+                  reviewState: reviewState,
+                  boardGameFingerprint: boardFingerprint,
+                ))
+              for (final entry
+                  in gameReportClassificationByMoveIndex(report).entries)
+                entry.key: LichessMoveAnnotation(
+                  type: _annotationTypeForGameReport(entry.value),
+                  comment: '',
+                  useClassificationIcon: true,
+                ),
           };
           final moveAnnotations = <int, LichessMoveAnnotation>{
             ...lichessAnnotations,
@@ -11181,17 +11266,20 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
         lichessAnnotationsAsync.valueOrNull ??
         const <int, LichessMoveAnnotation>{};
     final report = reviewState.reportState.report;
+    final boardFingerprint = gameReportFingerprint(navigatorState.game);
     final reportAnnotations = <int, LichessMoveAnnotation>{
-      if (reviewState.classificationsRevealed &&
-          report != null &&
-          report.fingerprint == gameReportFingerprint(navigatorState.game))
-        for (final move in report.moves)
-          if (move.classification != null)
-            move.ply - 1: LichessMoveAnnotation(
-              type: _annotationTypeForGameReport(move.classification!),
-              comment: '',
-              useClassificationIcon: true,
-            ),
+      if (report != null &&
+          shouldShowReportClassificationsOnBoard(
+            reviewState: reviewState,
+            boardGameFingerprint: boardFingerprint,
+          ))
+        for (final entry
+            in gameReportClassificationByMoveIndex(report).entries)
+          entry.key: LichessMoveAnnotation(
+            type: _annotationTypeForGameReport(entry.value),
+            comment: '',
+            useClassificationIcon: true,
+          ),
     };
     final moveAnnotations = <int, LichessMoveAnnotation>{
       ...lichessAnnotations,
@@ -11725,6 +11813,15 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
 
     final annotation = displayNags.isEmpty ? rawAnnotation : null;
 
+    // The generated report verdict (classification icon) is the engine's own
+    // assessment of the move and must ALWAYS show — even on moves that already
+    // carry author/Lichess NAGs. Finished broadcast PGNs bake NAGs into the
+    // analysed moves, and gating the badge on the NAG-suppressed `annotation`
+    // hid every classification icon on exactly those games. Resolve it from the
+    // un-suppressed annotation instead, keyed only on useClassificationIcon.
+    final classificationAnnotation =
+        rawAnnotation?.useClassificationIcon == true ? rawAnnotation : null;
+
     final depth = token.depth;
     final isMainline = token.node?.isMainline ?? (depth <= 0);
     final ladder = _moveLadderForDepth(depth, isMainline: isMainline);
@@ -11857,19 +11954,19 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
             )
             : null;
     final Widget? classificationBadge =
-        annotation?.useClassificationIcon == true
+        classificationAnnotation != null
             ? Container(
               width: 17.sp,
               height: 17.sp,
               margin: EdgeInsets.only(left: 4.sp),
               padding: EdgeInsets.all(4.sp),
               decoration: BoxDecoration(
-                color: annotation!.type.color,
+                color: classificationAnnotation.type.color,
                 shape: BoxShape.circle,
               ),
               child: RepaintBoundary(
                 child: SvgPicture.asset(
-                  annotation.type.iconAssetPath,
+                  classificationAnnotation.type.iconAssetPath,
                   fit: BoxFit.contain,
                 ),
               ),
