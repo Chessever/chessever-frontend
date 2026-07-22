@@ -135,8 +135,7 @@ class MiniatureGamesFilter {
   bool get hasActiveFilters => activeFilterCount > 0;
 
   /// Whether a non-default sort is applied. Sort shapes presentation, not the
-  /// result set, so it is kept out of [activeFilterCount] but still folds
-  /// into the filter-dialog badge alongside it (desktop parity).
+  /// result set, and the phone Miniatures filter does not expose sort controls.
   bool get hasActiveSort => sort != MiniatureGamesSort.recent;
 
   /// Count of everything that narrows the backend query (desktop parity).
@@ -164,10 +163,8 @@ class MiniatureGamesFilter {
     return activeFilterCount - windowActive;
   }
 
-  /// [dialogFilterCount] plus sort, since the filter dialog now surfaces both
-  /// behind a single icon (search field + one filter/sort button, mirroring
-  /// the Favorites and Countrymen games tabs — no separate sort dropdown).
-  int get dialogActiveCount => dialogFilterCount + (hasActiveSort ? 1 : 0);
+  /// Count shown on the phone Miniatures filter button.
+  int get dialogActiveCount => dialogFilterCount;
 
   MiniatureGamesFilter copyWith({
     MiniatureGamesWindow? window,

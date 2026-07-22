@@ -5,13 +5,38 @@ import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/alert_dialog/alert_modal.dart';
-import 'package:chessever2/widgets/game_filter/eco_filter_dropdown.dart';
 import 'package:chessever2/widgets/game_filter/game_filter_model.dart';
 import 'package:chessever2/widgets/game_filter/rating_tier_filter.dart';
 import 'package:chessever2/widgets/game_filter/wheel_range_filter.dart';
 import 'package:flutter/material.dart';
 
-/// Shows the miniatures filter (and sort) dialog behind the single tune icon
+class MiniatureOpeningFilterInput {
+  const MiniatureOpeningFilterInput({
+    this.eco,
+    this.ecoCategories = const <String>{},
+    this.opening,
+  });
+
+  final String? eco;
+  final Set<String> ecoCategories;
+  final String? opening;
+
+  factory MiniatureOpeningFilterInput.parse(String value) {
+    final input = value.trim();
+    if (input.isEmpty) return const MiniatureOpeningFilterInput();
+
+    final upper = input.toUpperCase();
+    if (RegExp(r'^[A-E]\d{2}$').hasMatch(upper)) {
+      return MiniatureOpeningFilterInput(eco: upper);
+    }
+    if (RegExp(r'^[A-E]$').hasMatch(upper)) {
+      return MiniatureOpeningFilterInput(ecoCategories: <String>{upper});
+    }
+    return MiniatureOpeningFilterInput(opening: input);
+  }
+}
+
+/// Shows the miniatures filter dialog behind the single tune icon
 /// next to search — the same shape as the Favorites and Countrymen games tabs.
 /// Returns the new filter or null if cancelled. Window / search are owned by
 /// the screen's own controls and pass through unchanged.
@@ -40,8 +65,6 @@ class _MiniaturesFilterDialogState extends State<MiniaturesFilterDialog> {
   static final int _maxYear = DateTime.now().year;
   static const int _minYear = GameFilter.absoluteMinYear;
 
-  late MiniatureGamesSort _sort;
-
   /// null = any result.
   MiniatureGameResult? _result;
 
@@ -51,9 +74,7 @@ class _MiniaturesFilterDialogState extends State<MiniaturesFilterDialog> {
   /// null = default finish (by move 25, the index's outer bound).
   int? _maxMoves;
 
-  late GameEcoFilter _eco;
   late final TextEditingController _openingController;
-  late final TextEditingController _variationController;
   late RangeValues _yearRange;
   late int? _selectedMinRating;
 
@@ -63,7 +84,6 @@ class _MiniaturesFilterDialogState extends State<MiniaturesFilterDialog> {
   void initState() {
     super.initState();
     final filter = widget.initialFilter;
-    _sort = filter.sort;
     _result = filter.results.length == 1 ? filter.results.first : null;
     _timeControl =
         filter.timeControls.length == 1 ? filter.timeControls.first : null;
@@ -71,9 +91,9 @@ class _MiniaturesFilterDialogState extends State<MiniaturesFilterDialog> {
         (filter.maxMoves == null || filter.maxMoves == _defaultMaxMoves)
             ? null
             : filter.maxMoves;
-    _eco = _ecoFromFilter(filter);
-    _openingController = TextEditingController(text: filter.opening ?? '');
-    _variationController = TextEditingController(text: filter.variation ?? '');
+    _openingController = TextEditingController(
+      text: _openingInputFromFilter(filter),
+    );
     _yearRange = RangeValues(
       (_yearFromDate(filter.dateFrom) ?? _minYear).toDouble(),
       (_yearFromDate(filter.dateTo) ?? _maxYear).toDouble(),
@@ -84,18 +104,19 @@ class _MiniaturesFilterDialogState extends State<MiniaturesFilterDialog> {
   @override
   void dispose() {
     _openingController.dispose();
-    _variationController.dispose();
     _scrollController.dispose();
     super.dispose();
   }
 
-  static GameEcoFilter _ecoFromFilter(MiniatureGamesFilter filter) {
-    final eco = filter.eco?.trim().toUpperCase();
-    if (eco != null && eco.isNotEmpty) return GameEcoFilter.forCode(eco);
+  static String _openingInputFromFilter(MiniatureGamesFilter filter) {
+    final eco = filter.eco?.trim();
+    if (eco != null && eco.isNotEmpty) return eco.toUpperCase();
     if (filter.ecoCategories.length == 1) {
-      return GameEcoFilter.forCode(filter.ecoCategories.first);
+      return filter.ecoCategories.first.toUpperCase();
     }
-    return GameEcoFilter.all;
+    final opening = filter.opening?.trim();
+    if (opening != null && opening.isNotEmpty) return opening;
+    return filter.variation?.trim() ?? '';
   }
 
   static int? _yearFromDate(String? value) {
@@ -133,31 +154,15 @@ class _MiniaturesFilterDialogState extends State<MiniaturesFilterDialog> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    _sectionLabel('Sort'),
+                    _sectionLabel('Ended by move'),
                     SizedBox(height: 8.h),
-                    _chipGrid<MiniatureGamesSort>(
-                      values: MiniatureGamesSort.values,
-                      selected: _sort,
-                      label: (v) => v.label,
+                    _chipGrid<int?>(
+                      values: const <int?>[null, 20, 15],
+                      selected: _maxMoves,
+                      label: (v) => '≤ ${v ?? _defaultMaxMoves}',
                       onTap: (v) {
                         HapticFeedbackService.selection();
-                        setState(() => _sort = v);
-                      },
-                    ),
-                    SizedBox(height: 20.h),
-
-                    _sectionLabel('Result'),
-                    SizedBox(height: 8.h),
-                    _chipGrid<MiniatureGameResult?>(
-                      values: <MiniatureGameResult?>[
-                        null,
-                        ...MiniatureGameResult.values,
-                      ],
-                      selected: _result,
-                      label: (v) => v == null ? 'All' : v.label,
-                      onTap: (v) {
-                        HapticFeedbackService.selection();
-                        setState(() => _result = v);
+                        setState(() => _maxMoves = v);
                       },
                     ),
                     SizedBox(height: 20.h),
@@ -178,56 +183,38 @@ class _MiniaturesFilterDialogState extends State<MiniaturesFilterDialog> {
                     ),
                     SizedBox(height: 20.h),
 
-                    _sectionLabel('Finish'),
+                    _sectionLabel('Level'),
                     SizedBox(height: 8.h),
-                    _chipGrid<int?>(
-                      values: const <int?>[null, 20, 15],
-                      selected: _maxMoves,
-                      label: (v) => v == null ? 'By move 25' : 'By move $v',
-                      onTap: (v) {
+                    RatingTierFilter(
+                      selectedMinRating: _selectedMinRating,
+                      onChanged: (value) {
                         HapticFeedbackService.selection();
-                        setState(() => _maxMoves = v);
+                        setState(() => _selectedMinRating = value);
                       },
                     ),
                     SizedBox(height: 20.h),
 
                     _sectionLabel('Opening'),
                     SizedBox(height: 8.h),
-                    // ECO category shortcut (desktop parity): a bare letter
-                    // maps to the `ecoCategory` API param; a full code picked
-                    // in the dropdown below maps to `eco`.
-                    _chipGrid<String?>(
-                      values: const <String?>[null, 'A', 'B', 'C', 'D', 'E'],
-                      selected:
-                          (_eco.code != null && _eco.code!.length == 1)
-                              ? _eco.code
-                              : (_eco.isAll ? null : '__code__'),
-                      label: (v) => v ?? 'All',
-                      onTap: (v) {
-                        HapticFeedbackService.selection();
-                        setState(
-                          () =>
-                              _eco =
-                                  v == null
-                                      ? GameEcoFilter.all
-                                      : GameEcoFilter.forCode(v),
-                        );
-                      },
-                    ),
-                    SizedBox(height: 8.h),
-                    EcoFilterDropdown(
-                      value: _eco,
-                      onChanged: (v) => setState(() => _eco = v),
-                    ),
-                    SizedBox(height: 8.h),
                     _textField(
                       controller: _openingController,
-                      hint: 'Opening name, e.g. Sicilian Defense',
+                      hint: 'Example: B90 or Sicilian Defense',
                     ),
+                    SizedBox(height: 20.h),
+
+                    _sectionLabel('Result'),
                     SizedBox(height: 8.h),
-                    _textField(
-                      controller: _variationController,
-                      hint: 'Variation, e.g. Najdorf',
+                    _chipGrid<MiniatureGameResult?>(
+                      values: <MiniatureGameResult?>[
+                        null,
+                        ...MiniatureGameResult.values,
+                      ],
+                      selected: _result,
+                      label: (v) => v == null ? 'All' : v.label,
+                      onTap: (v) {
+                        HapticFeedbackService.selection();
+                        setState(() => _result = v);
+                      },
                     ),
                     SizedBox(height: 20.h),
 
@@ -240,17 +227,6 @@ class _MiniaturesFilterDialogState extends State<MiniaturesFilterDialog> {
                       currentEnd: _yearRange.end,
                       divisions: _maxYear - _minYear,
                       onChanged: (v) => setState(() => _yearRange = v),
-                    ),
-                    SizedBox(height: 20.h),
-
-                    _sectionLabel('Level'),
-                    SizedBox(height: 8.h),
-                    RatingTierFilter(
-                      selectedMinRating: _selectedMinRating,
-                      onChanged: (value) {
-                        HapticFeedbackService.selection();
-                        setState(() => _selectedMinRating = value);
-                      },
                     ),
                     SizedBox(height: 12.h),
                   ],
@@ -297,13 +273,6 @@ class _MiniaturesFilterDialogState extends State<MiniaturesFilterDialog> {
       );
     }
 
-    if (_sort != MiniatureGamesSort.recent) {
-      activeChipWidgets.add(
-        buildChip('Sort: ${_sort.label}', () {
-          setState(() => _sort = MiniatureGamesSort.recent);
-        }),
-      );
-    }
     if (_result != null) {
       activeChipWidgets.add(
         buildChip('Result: ${_result!.label}', () {
@@ -320,15 +289,8 @@ class _MiniaturesFilterDialogState extends State<MiniaturesFilterDialog> {
     }
     if (_maxMoves != null) {
       activeChipWidgets.add(
-        buildChip('Finish: move $_maxMoves', () {
+        buildChip('Ended by move: ≤ $_maxMoves', () {
           setState(() => _maxMoves = null);
-        }),
-      );
-    }
-    if (!_eco.isAll) {
-      activeChipWidgets.add(
-        buildChip('ECO: ${_eco.code}', () {
-          setState(() => _eco = GameEcoFilter.all);
         }),
       );
     }
@@ -339,13 +301,7 @@ class _MiniaturesFilterDialogState extends State<MiniaturesFilterDialog> {
         }),
       );
     }
-    if (_variationController.text.trim().isNotEmpty) {
-      activeChipWidgets.add(
-        buildChip('Variation: ${_variationController.text.trim()}', () {
-          setState(() => _variationController.clear());
-        }),
-      );
-    }
+
     if (_yearRange.start.round() > _minYear ||
         _yearRange.end.round() < _maxYear) {
       activeChipWidgets.add(
@@ -457,8 +413,8 @@ class _MiniaturesFilterDialogState extends State<MiniaturesFilterDialog> {
 
   void _resetFilters() {
     HapticFeedbackService.buttonPress();
-    // Preserve everything owned by the screen's own controls; sort resets to
-    // its default since this dialog now owns it.
+    // Preserve everything owned by the screen's own controls. Hidden legacy
+    // sort/opening variants reset to the phone defaults.
     final initial = widget.initialFilter;
     Navigator.of(context).pop(
       MiniatureGamesFilter(
@@ -473,9 +429,9 @@ class _MiniaturesFilterDialogState extends State<MiniaturesFilterDialog> {
     FocusScope.of(context).unfocus();
     HapticFeedbackService.buttonPress();
     final initial = widget.initialFilter;
-
-    final ecoCode = _eco.code?.trim().toUpperCase();
-    final isCategory = ecoCode != null && ecoCode.length == 1;
+    final openingInput = MiniatureOpeningFilterInput.parse(
+      _openingController.text,
+    );
 
     final yearFrom = _yearRange.start.round();
     final yearTo = _yearRange.end.round();
@@ -483,27 +439,17 @@ class _MiniaturesFilterDialogState extends State<MiniaturesFilterDialog> {
     Navigator.of(context).pop(
       MiniatureGamesFilter(
         window: initial.window,
-        sort: _sort,
-        // "Fewest moves" reads ascending; the rest read best/newest first.
-        order:
-            _sort == MiniatureGamesSort.moves
-                ? MiniatureGamesSortOrder.asc
-                : MiniatureGamesSortOrder.desc,
+        sort: MiniatureGamesSort.recent,
+        order: MiniatureGamesSortOrder.desc,
         search: initial.search,
         playerId: initial.playerId,
         results: _result == null ? const {} : {_result!},
         timeControls: _timeControl == null ? const {} : {_timeControl!},
         maxMoves: _maxMoves,
-        eco: (ecoCode == null || isCategory) ? null : ecoCode,
-        ecoCategories: isCategory ? {ecoCode} : const <String>{},
-        opening:
-            _openingController.text.trim().isEmpty
-                ? null
-                : _openingController.text.trim(),
-        variation:
-            _variationController.text.trim().isEmpty
-                ? null
-                : _variationController.text.trim(),
+        eco: openingInput.eco,
+        ecoCategories: openingInput.ecoCategories,
+        opening: openingInput.opening,
+        variation: null,
         minRating: _selectedMinRating,
         dateFrom: yearFrom > _minYear ? '$yearFrom-01-01' : null,
         dateTo: yearTo < _maxYear ? '$yearTo-12-31' : null,
