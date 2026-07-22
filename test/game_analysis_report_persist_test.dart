@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:io';
 
 import 'package:chessever2/repository/lichess/cloud_eval/cloud_eval.dart';
 import 'package:chessever2/screens/chessboard/analysis/chess_game.dart';
@@ -10,18 +9,12 @@ import 'package:chessever2/screens/chessboard/provider/stockfish_singleton.dart'
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  late Directory tempRoot;
-
-  setUp(() async {
-    tempRoot = await Directory.systemTemp.createTemp('game_report_store_');
+  setUp(() {
     GameAnalysisReportController.clearSessionCacheForTest();
   });
 
-  tearDown(() async {
+  tearDown(() {
     GameAnalysisReportController.clearSessionCacheForTest();
-    if (await tempRoot.exists()) {
-      await tempRoot.delete(recursive: true);
-    }
   });
 
   group('gameAnalysisReport JSON round-trip', () {
@@ -46,11 +39,12 @@ void main() {
     });
   });
 
-  group('GameAnalysisReportStore', () {
+  group('GameAnalysisReportStore (sqlite-shaped memory backend)', () {
     test('save then load returns matching report for fingerprint', () async {
-      final store = GameAnalysisReportStore(rootDirectory: tempRoot);
+      final store = GameAnalysisReportStore.memory();
       final report = _sampleReport();
       await store.save(report);
+      await store.flush();
 
       final loaded = await store.load(report.fingerprint);
       expect(loaded, isNotNull);
@@ -63,8 +57,19 @@ void main() {
     });
 
     test('load misses for unknown fingerprint', () async {
-      final store = GameAnalysisReportStore(rootDirectory: tempRoot);
+      final store = GameAnalysisReportStore.memory();
       expect(await store.load('no-such-fingerprint'), isNull);
+    });
+
+    test('cache key is stable and prefixed for AppDatabase cache_store', () {
+      final fp = _sampleReport().fingerprint;
+      final key = GameAnalysisReportStore.cacheKeyForFingerprint(fp);
+      expect(key.startsWith(GameAnalysisReportStore.keyPrefix), isTrue);
+      expect(
+        GameAnalysisReportStore.cacheKeyForFingerprint(fp),
+        key,
+        reason: 'same fingerprint must map to same SQLite key',
+      );
     });
   });
 
@@ -72,9 +77,10 @@ void main() {
     test(
       'analyze adopts durable report and does not call the evaluator',
       () async {
-        final store = GameAnalysisReportStore(rootDirectory: tempRoot);
+        final store = GameAnalysisReportStore.memory();
         final report = _sampleReport();
         await store.save(report);
+        await store.flush();
         GameAnalysisReportController.clearSessionCacheForTest();
 
         var evaluatorCalls = 0;
@@ -99,7 +105,6 @@ void main() {
           'persist-hit',
           '[White "A"]\n[Black "B"]\n[Result "1-0"]\n\n1. e4 e5 1-0',
         );
-        // Fingerprint must match the stored report.
         expect(gameReportFingerprint(chessGame), report.fingerprint);
 
         await controller.analyze(chessGame);
@@ -107,7 +112,6 @@ void main() {
         expect(controller.state.status, GameReportStatus.completed);
         expect(controller.state.report?.fingerprint, report.fingerprint);
         expect(evaluatorCalls, 0);
-        // Classifications usable by notation attach map.
         final byIndex = gameReportClassificationByMoveIndex(
           controller.state.report!,
         );
@@ -119,7 +123,7 @@ void main() {
     test(
       'after analyze with store, memory clear + loadPersistedReport restores',
       () async {
-        final store = GameAnalysisReportStore(rootDirectory: tempRoot);
+        final store = GameAnalysisReportStore.memory();
         var evaluatorCalls = 0;
         Future<EnhancedCloudEval> evaluator(
           String fen, {
@@ -164,10 +168,8 @@ void main() {
         expect(evaluatorCalls, greaterThan(0));
         final fingerprint = gameReportFingerprint(chessGame);
         expect(controller.state.report?.fingerprint, fingerprint);
-        // Ensure durable write finished before tearDown deletes the temp root.
         await store.flush();
 
-        // Simulate process death: drop session memory only.
         GameAnalysisReportController.clearSessionCacheForTest();
         final cold = GameAnalysisReportController(
           evaluator: evaluator,
@@ -179,7 +181,6 @@ void main() {
         expect(cold.state.status, GameReportStatus.completed);
         expect(cold.state.report?.fingerprint, fingerprint);
 
-        // Second analyze must not hit the engine again.
         final callsBefore = evaluatorCalls;
         await cold.analyze(chessGame);
         expect(evaluatorCalls, callsBefore);
@@ -201,7 +202,7 @@ void main() {
         );
         expect(reportA.fingerprint, isNot(reportB.fingerprint));
 
-        final store = _LatchingReportStore(rootDirectory: tempRoot);
+        final store = _LatchingReportStore();
         await store.save(reportA);
         await store.save(reportB);
         await store.flush();
@@ -217,7 +218,6 @@ void main() {
         final staleLoad = controller.loadPersistedReport(reportA.fingerprint);
         await store.loadEntered.future;
 
-        // Game switch: bump generation and adopt B while A is still on disk IO.
         controller.invalidate();
         store.delayFingerprint = null;
         final adoptedB = await controller.loadPersistedReport(
@@ -242,7 +242,7 @@ void main() {
 
 /// Blocks [load] for one fingerprint so tests can interleave invalidate/adopt.
 class _LatchingReportStore extends GameAnalysisReportStore {
-  _LatchingReportStore({required super.rootDirectory});
+  _LatchingReportStore() : super.memory();
 
   String? delayFingerprint;
   final Completer<void> loadEntered = Completer<void>();
@@ -289,16 +289,16 @@ GameAnalysisReport _sampleReport({
     moves: [
       GameReportMove(
         ply: 1,
-        san: 'e4',
-        uci: 'e2e4',
+        san: chessGame.mainline[0].san,
+        uci: chessGame.mainline[0].uci,
         isWhite: true,
         classification: GameMoveClassification.bestMove,
         evaluation: line,
       ),
       GameReportMove(
         ply: 2,
-        san: 'e5',
-        uci: 'e7e5',
+        san: chessGame.mainline[1].san,
+        uci: chessGame.mainline[1].uci,
         isWhite: false,
         classification: GameMoveClassification.blunder,
         evaluation: const GameReportLine(

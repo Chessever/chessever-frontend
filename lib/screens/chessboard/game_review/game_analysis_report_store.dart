@@ -14,20 +14,16 @@ import 'package:flutter/foundation.dart';
 ///
 /// Tests inject [GameAnalysisReportStore.memory] so they never open the real DB.
 class GameAnalysisReportStore {
-  GameAnalysisReportStore._({
-    AppDatabase? database,
-    Map<String, _MemoryEntry>? memory,
-    this.maxEntries = 48,
-  }) : _database = database,
-       _memory = memory;
+  /// Production store on the shared app SQLite database ([AppDatabase]).
+  GameAnalysisReportStore.sqlite([AppDatabase? database])
+    : _database = database ?? AppDatabase.instance,
+      _memory = null,
+      maxEntries = 48;
 
-  /// Production store on the shared app SQLite database.
-  factory GameAnalysisReportStore.sqlite([AppDatabase? database]) =>
-      GameAnalysisReportStore._(database: database ?? AppDatabase.instance);
-
-  /// In-process map for unit tests (no path_provider / sqflite).
-  factory GameAnalysisReportStore.memory({int maxEntries = 48}) =>
-      GameAnalysisReportStore._(memory: <String, _MemoryEntry>{}, maxEntries: maxEntries);
+  /// In-process map for unit tests (no path_provider / sqflite init).
+  GameAnalysisReportStore.memory({this.maxEntries = 48})
+    : _database = null,
+      _memory = <String, _MemoryEntry>{};
 
   /// Shared production instance (lazy).
   static GameAnalysisReportStore instance = GameAnalysisReportStore.sqlite();
