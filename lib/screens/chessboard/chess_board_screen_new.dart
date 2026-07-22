@@ -5244,9 +5244,35 @@ class _GameDropdownOverlay extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final dropdownWidth = (screenWidth - 32.w).clamp(280.w, 340.w);
-    final leftOffset = (screenWidth - dropdownWidth) / 2;
+    // Match the main board column exactly: same 16.sp side gutters used by
+    // `_BoardWithSidebar` (`margin: EdgeInsets.symmetric(horizontal: 16.sp)`).
+    // On tablet portrait the board is also constrained to min(85% width, 720)
+    // and centered — mirror that so the popdown sits flush over the board.
     final isTablet = ResponsiveHelper.isTablet;
+    final isTabletLandscape = isTablet && ResponsiveHelper.isLandscape;
+    final isTabletPortrait = isTablet && !ResponsiveHelper.isLandscape;
+    final double boardColumnWidth;
+    if (isTabletPortrait) {
+      boardColumnWidth = math.min(screenWidth * 0.85, 720.0);
+    } else if (isTabletLandscape) {
+      // Landscape board section is ~58% of width (see loading/tablet layout).
+      boardColumnWidth = screenWidth * 0.58;
+    } else {
+      boardColumnWidth = screenWidth;
+    }
+    // Board content sits inset by 16.sp inside the column (eval bar + board).
+    final horizontalMargin = 16.sp;
+    final dropdownWidth = math.max(
+      280.0,
+      boardColumnWidth - horizontalMargin * 2,
+    );
+    final leftOffset = (screenWidth - boardColumnWidth) / 2 + horizontalMargin;
+    // Gap under the app-bar chip — tight so the panel visually continues
+    // into the board area rather than floating mid-air.
+    final topOffset = triggerOffset.dy + triggerSize.height + 6.sp;
+    // Cap height so the panel does not swallow the whole board; keep enough
+    // room for one full selector card + timeline.
+    final maxPanelHeight = availableHeight.clamp(200.0, 420.0);
 
     // On tablets, we need to be more careful about gesture handling.
     // The PageView underneath can compete for gestures, causing the dropdown
@@ -5288,7 +5314,7 @@ class _GameDropdownOverlay extends StatelessWidget {
         Positioned.fill(child: buildBarrier()),
         Positioned(
           left: leftOffset,
-          top: triggerOffset.dy + triggerSize.height + 8.sp,
+          top: topOffset,
           child: Material(
             type: MaterialType.transparency,
             child: AnimatedBuilder(
@@ -5296,7 +5322,7 @@ class _GameDropdownOverlay extends StatelessWidget {
               builder: (context, child) {
                 final progress = animation.value.clamp(0.0, 1.0);
                 return Transform.scale(
-                  scale: 0.92 + (progress * 0.08),
+                  scale: 0.95 + (progress * 0.05),
                   alignment: Alignment.topCenter,
                   child: Opacity(opacity: progress, child: child),
                 );
@@ -5312,9 +5338,7 @@ class _GameDropdownOverlay extends StatelessWidget {
                 behavior: HitTestBehavior.opaque,
                 child: Container(
                   width: dropdownWidth,
-                  constraints: BoxConstraints(
-                    maxHeight: availableHeight.clamp(180.0, 520.0),
-                  ),
+                  constraints: BoxConstraints(maxHeight: maxPanelHeight),
                   decoration: BoxDecoration(
                     // Slightly see-through so a move played on the board
                     // underneath is still noticeable while the dropdown is
@@ -5323,17 +5347,17 @@ class _GameDropdownOverlay extends StatelessWidget {
                     // this popup is open for — a solid translucent color is
                     // free by comparison and just as readable here.
                     color: context.colors.surface.withValues(alpha: 0.96),
-                    borderRadius: BorderRadius.circular(16.br),
+                    borderRadius: BorderRadius.circular(12.br),
                     border: Border.all(
                       color: context.colors.textPrimary.withValues(alpha: 0.08),
                       width: 1.0,
                     ),
                   ),
                   child: ClipRRect(
-                    borderRadius: BorderRadius.circular(16.br),
+                    borderRadius: BorderRadius.circular(12.br),
                     child: _GameDropdownContent(
                       dropdownWidth: dropdownWidth,
-                      availableHeight: availableHeight,
+                      availableHeight: maxPanelHeight,
                       animation: animation,
                       games: games,
                       currentGameIndex: currentGameIndex,
@@ -5353,8 +5377,13 @@ class _GameDropdownOverlay extends StatelessWidget {
 
 /// Fixed logical width shared by every [_GameSelectorCard], so the
 /// scroll-to-current math in [_GameDropdownContentState] stays in sync with
-/// what's actually laid out.
-const double _gameSelectorCardWidth = 178;
+/// what's actually laid out. Sized so two mini boards + spacing read
+/// comfortably inside the board-aligned dropdown on a phone.
+const double _gameSelectorCardWidth = 168;
+
+/// Horizontal padding of the game-strip ListView — must stay in lockstep with
+/// scroll-to-current / focused-index math.
+const double _gameStripLeadingPad = 10.0;
 
 /// One contiguous run of games sharing the same round, in the order they
 /// appear in [GamesTourModel] list handed to the dropdown.
@@ -5485,11 +5514,28 @@ class _GameDropdownContent extends ConsumerStatefulWidget {
 
 class _GameDropdownContentState extends ConsumerState<_GameDropdownContent> {
   final ScrollController _scrollController = ScrollController();
-  static const double _cardSpacing = 26.0;
-  static const double _cardRowHeight = 270.0;
+  // Tighter inter-board gap + a narrower card so two boards read at once in the
+  // strip; row height is derived from board size + player rows so the strip
+  // never clips or leaves a tall empty gutter.
+  static const double _cardSpacing = 12.0;
+  // gridView player row is fixed at 20.h; board sits between two rows with
+  // 4.h gaps. Board frame fills card width (pad 2.w each side); the square
+  // board is the remaining width (eval bar shortens height further — use the
+  // taller no-eval case so the strip never clips).
+  static double get _cardRowHeight {
+    const borderWidth = 2.0;
+    final frameInset = 2.w;
+    final boardInner = _gameSelectorCardWidth.w - frameInset * 2;
+    // Container height = square board + vertical padding + the 2px selection
+    // border (strokeAlignInside still contributes to layout on every side), so
+    // account for it or the strip clips a few px and RenderFlex-overflows.
+    final boardFrameHeight = boardInner + frameInset * 2 + borderWidth * 2;
+    return 20.h + 4.h + boardFrameHeight + 4.h + 20.h;
+  }
+
   static const double _timelineHeight = 46.0;
-  static const double _sectionGap = 12.0;
-  static const double _verticalPadding = 12.0;
+  static const double _sectionGap = 6.0;
+  static const double _verticalPadding = 10.0;
 
   // Live streaming for the mini-boards is gated by `shouldStreamProvider`, which
   // `navigateToChessBoard` flips OFF while the board screen is open (to pause the
@@ -5552,9 +5598,12 @@ class _GameDropdownContentState extends ConsumerState<_GameDropdownContent> {
     final viewport = _scrollController.position.viewportDimension;
     final maxScroll = _scrollController.position.maxScrollExtent;
 
-    // Leading pad must match the ListView's horizontal padding (14.w) so the
+    // Leading pad must match the ListView's horizontal padding so the
     // card's true center lands under the viewport center.
-    final itemCenter = 14.w + index * stride + (_gameSelectorCardWidth.w / 2);
+    final itemCenter =
+        _gameStripLeadingPad.w +
+        index * stride +
+        (_gameSelectorCardWidth.w / 2);
     final target = (itemCenter - viewport / 2).clamp(0.0, maxScroll);
 
     if (animate) {
@@ -5603,7 +5652,7 @@ class _GameDropdownContentState extends ConsumerState<_GameDropdownContent> {
       width: _cardSpacing.w,
       child: Center(
         child: _DashedVerticalLine(
-          height: _cardRowHeight.h,
+          height: _cardRowHeight,
           color: kPrimaryColor.withValues(alpha: 0.5),
           dashLength: 5,
           gapLength: 4,
@@ -5616,7 +5665,9 @@ class _GameDropdownContentState extends ConsumerState<_GameDropdownContent> {
   @override
   Widget build(BuildContext context) {
     if (widget.games.isEmpty) {
-      return SizedBox(height: (_verticalPadding * 2 + _cardRowHeight).h);
+      return SizedBox(
+        height: (_verticalPadding * 2).h + _cardRowHeight,
+      );
     }
 
     final roundGroups = _buildRoundGroups(widget.games);
@@ -5643,27 +5694,35 @@ class _GameDropdownContentState extends ConsumerState<_GameDropdownContent> {
       );
     });
 
-    final contentHeight =
-        (_verticalPadding * 2).h +
-        _cardRowHeight.h +
-        (showTimeline ? (_sectionGap + _timelineHeight).h : 0);
+    final preferredCardRowHeight = _cardRowHeight;
+    final verticalPad = (_verticalPadding * 2).h;
+    final timelineSpace =
+        showTimeline ? (_sectionGap + _timelineHeight).h : 0.0;
+    final preferredContentHeight =
+        verticalPad + preferredCardRowHeight + timelineSpace;
+    // Fit the panel to content when it fits; otherwise clamp to available
+    // height and shrink the board strip so nothing overflows the board-aligned
+    // box.
     final boxHeight = math.min(
-      contentHeight,
-      widget.availableHeight.clamp(150.h, 500.h),
+      preferredContentHeight,
+      widget.availableHeight,
+    );
+    final stripHeight = math.max(
+      120.0,
+      boxHeight - verticalPad - timelineSpace,
     );
 
     return SizedBox(
       width: widget.dropdownWidth,
       height: boxHeight,
-      child: SingleChildScrollView(
-        physics: const ClampingScrollPhysics(),
+      child: Padding(
         padding: EdgeInsets.symmetric(vertical: _verticalPadding.h),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             SizedBox(
-              height: _cardRowHeight.h,
+              height: stripHeight,
               child: ScrollConfiguration(
                 behavior: ScrollConfiguration.of(
                   context,
@@ -5671,7 +5730,9 @@ class _GameDropdownContentState extends ConsumerState<_GameDropdownContent> {
                 child: ListView.separated(
                   controller: _scrollController,
                   scrollDirection: Axis.horizontal,
-                  padding: EdgeInsets.symmetric(horizontal: 14.w),
+                  padding: EdgeInsets.symmetric(
+                    horizontal: _gameStripLeadingPad.w,
+                  ),
                   itemCount: widget.games.length,
                   separatorBuilder: (_, index) => _buildSeparator(index),
                   itemBuilder: (context, index) {
@@ -5700,15 +5761,6 @@ class _GameDropdownContentState extends ConsumerState<_GameDropdownContent> {
                         game: game,
                         isSelected: isSelected,
                         liveBatchKey: liveBatchKeys[game.gameId],
-                        // Label only the first board of each round group; every
-                        // card still reserves the header slot so boards stay
-                        // vertically aligned across the strip.
-                        roundLabel:
-                            _startsNewRound(index)
-                                ? _formatRoundLabel(
-                                  game.roundSlug ?? game.roundId,
-                                )
-                                : null,
                         onTap: () {
                           HapticFeedback.selectionClick();
                           widget.onSelect(index);
@@ -5739,7 +5791,7 @@ class _GameDropdownContentState extends ConsumerState<_GameDropdownContent> {
                         position.hasPixels &&
                         position.hasContentDimensions;
                     final stride = _gameSelectorCardWidth.w + _cardSpacing.w;
-                    final leadingPad = 14.w; // == ListView horizontal padding
+                    final leadingPad = _gameStripLeadingPad.w;
                     final lastIndex = widget.games.length - 1;
 
                     // Focused game = the card whose stride-wide region contains
@@ -6019,7 +6071,6 @@ class _GameSelectorCard extends ConsumerWidget {
     required this.isSelected,
     required this.onTap,
     this.liveBatchKey,
-    this.roundLabel,
   });
 
   final GamesTourModel game;
@@ -6029,11 +6080,6 @@ class _GameSelectorCard extends ConsumerWidget {
   /// Shared batched realtime channel for this game's round chunk. Null for
   /// finished/non-live games (no subscription).
   final LiveGamesBatchKey? liveBatchKey;
-
-  /// Non-null only for the first board of a round group; renders as a small
-  /// "Round N" header above the card. The header slot is always reserved (see
-  /// [build]) so labelled and unlabelled cards stay vertically aligned.
-  final String? roundLabel;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -6071,9 +6117,6 @@ class _GameSelectorCard extends ConsumerWidget {
     }
     final showEvalBar =
         showEngineGauge && liveGame.hasStarted && !hideFinishedSpoilers;
-    final innerBoardWidth = _gameSelectorCardWidth.w - 8.w;
-    final evalBarWidth = showEvalBar ? 10.w : 0.0;
-    final boardSize = innerBoardWidth - evalBarWidth;
 
     // Player rows are the exact game grid-card rows
     // (PlayerFirstRowDetailWidget in gridView): federation flag, title, full
@@ -6089,48 +6132,36 @@ class _GameSelectorCard extends ConsumerWidget {
       playerView: PlayerView.gridView,
       showClock: liveGame.hasStarted,
       liveBatchKey: liveBatchKey,
+      compactName: true,
     );
+
+    // Keep the board frame the same width as the card so the mini board
+    // lines up with the player rows above/below — same left/right edges.
+    final frameInset = 2.w;
+    final boardOuter = _gameSelectorCardWidth.w;
+    final boardInner = boardOuter - frameInset * 2;
+    final resolvedEvalWidth = showEvalBar ? 10.w : 0.0;
+    final resolvedBoardSize = math.max(1.0, boardInner - resolvedEvalWidth);
 
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: onTap,
       child: SizedBox(
-        width: _gameSelectorCardWidth.w,
+        width: boardOuter,
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            // Reserved round-label header — always the same height so every
-            // board's top edge lines up across the strip; only the first board
-            // of a round group actually shows the "Round N" text.
-            SizedBox(
-              height: 16.h,
-              child:
-                  roundLabel == null
-                      ? null
-                      : Row(
-                        children: [
-                          Text(
-                            roundLabel!,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: AppTypography.textXxsMedium.copyWith(
-                              color: kPrimaryColor,
-                              fontWeight: FontWeight.w700,
-                              letterSpacing: 0.3,
-                            ),
-                          ),
-                        ],
-                      ),
-            ),
-            SizedBox(height: 4.h),
+            // The round is shown once by the sticky timeline below the strip, so
+            // no redundant per-board "Round N" header here.
             playerRow(false),
             SizedBox(height: 4.h),
             // Border always occupies space (transparent when unselected) so
             // the board never resizes when selection changes. The eval gauge
             // sits to the LEFT of the board, exactly like the grid card.
             Container(
-              padding: EdgeInsets.all(2.w),
+              width: boardOuter,
+              padding: EdgeInsets.all(frameInset),
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(8.br),
                 border: Border.all(
@@ -6141,15 +6172,14 @@ class _GameSelectorCard extends ConsumerWidget {
               child: ClipRRect(
                 borderRadius: BorderRadius.circular(5.br),
                 child: SizedBox(
-                  width: innerBoardWidth,
-                  height: boardSize,
+                  width: boardInner,
+                  height: resolvedBoardSize,
                   child: Row(
-                    mainAxisSize: MainAxisSize.min,
                     children: [
                       if (showEvalBar)
                         EvaluationBarWidgetForGames(
-                          width: evalBarWidth,
-                          height: boardSize,
+                          width: resolvedEvalWidth,
+                          height: resolvedBoardSize,
                           fen: boardFen,
                           playerView: PlayerView.gridView,
                           isFlipped: false, // board is white-at-bottom
@@ -6161,7 +6191,7 @@ class _GameSelectorCard extends ConsumerWidget {
                       GameCardChessboard(
                         fen: boardFen,
                         lastMove: _dropdownLastMove(liveGame.lastMove),
-                        boardSize: boardSize,
+                        boardSize: resolvedBoardSize,
                         orientation: Side.white,
                         showCoordinates: false,
                         gameStatus: liveGame.gameStatus,
@@ -11368,11 +11398,12 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
           mainAxisSize: MainAxisSize.min,
           children: [
             emptyMessage,
-            GameAnalysisButton(
-              key: const ValueKey('game-analysis-button'),
-              state: reviewState,
-              onPressed: openGameReview,
-            ),
+            if (reviewState.shouldOfferAnalysis)
+              GameAnalysisButton(
+                key: const ValueKey('game-analysis-button'),
+                state: reviewState,
+                onPressed: openGameReview,
+              ),
           ],
         ),
       );
@@ -11407,11 +11438,12 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
               ),
             ),
           ),
-          GameAnalysisButton(
-            key: const ValueKey('game-analysis-button'),
-            state: reviewState,
-            onPressed: openGameReview,
-          ),
+          if (reviewState.shouldOfferAnalysis)
+            GameAnalysisButton(
+              key: const ValueKey('game-analysis-button'),
+              state: reviewState,
+              onPressed: openGameReview,
+            ),
         ],
       ),
     );

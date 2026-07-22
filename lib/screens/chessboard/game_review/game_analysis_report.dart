@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:chessever2/screens/chessboard/analysis/chess_game.dart';
+import 'package:chessever2/screens/chessboard/provider/engine_report_coordinator.dart';
 import 'package:chessever2/screens/chessboard/provider/stockfish_singleton.dart';
 import 'package:dartchess/dartchess.dart';
 import 'package:flutter/foundation.dart';
@@ -156,13 +157,56 @@ class GameAnalysisReportController extends ChangeNotifier {
   bool _disposed = false;
   DateTime? _lastProgressNotification;
 
+  /// Completed reports keyed by game fingerprint. A finished game's moves never
+  /// change, so a report is regenerated at most once per app session instead of
+  /// every time the game is reopened — cheaper and far kinder to the battery.
+  static final Map<String, GameAnalysisReport> _reportCache =
+      <String, GameAnalysisReport>{};
+  static const int _reportCacheLimit = 32;
+
+  /// The cached report for [fingerprint], if this game was already analyzed.
+  static GameAnalysisReport? cachedReportFor(String fingerprint) =>
+      _reportCache[fingerprint];
+
+  static void _cacheReport(String fingerprint, GameAnalysisReport report) {
+    _reportCache.remove(fingerprint);
+    _reportCache[fingerprint] = report;
+    while (_reportCache.length > _reportCacheLimit) {
+      _reportCache.remove(_reportCache.keys.first);
+    }
+  }
+
   GameReportState get state => _state;
+
+  /// Adopts a previously computed report for [fingerprint] without touching
+  /// Stockfish. Returns true when a cached report was applied.
+  bool loadCachedReport(String fingerprint) {
+    if (_disposed) return false;
+    // The session cache only mirrors real Stockfish runs; controllers driven by
+    // an injected evaluator (tests) never share it.
+    if (_evaluator != null) return false;
+    final cached = _reportCache[fingerprint];
+    if (cached == null || cached.fingerprint != fingerprint) return false;
+    _generation++;
+    EngineReportCoordinator.instance.setReportPending(false, ownerId: _ownerId);
+    _setState(
+      GameReportState(
+        status: GameReportStatus.completed,
+        progress: 1,
+        completedPositions: cached.positions.length,
+        totalPositions: cached.positions.length,
+        report: cached,
+      ),
+    );
+    return true;
+  }
 
   void invalidate() {
     _generation++;
     if (_state.isRunning) {
       unawaited(_stockfish.cancelEvaluationsForOwner(_ownerId));
     }
+    EngineReportCoordinator.instance.setReportPending(false, ownerId: _ownerId);
     _setState(const GameReportState());
   }
 
@@ -170,6 +214,7 @@ class GameAnalysisReportController extends ChangeNotifier {
     if (!_state.isRunning) return;
     _generation++;
     await _stockfish.cancelEvaluationsForOwner(_ownerId);
+    EngineReportCoordinator.instance.setReportPending(false, ownerId: _ownerId);
     _setState(
       const GameReportState(
         status: GameReportStatus.cancelled,
@@ -184,8 +229,11 @@ class GameAnalysisReportController extends ChangeNotifier {
     int? blackRating,
   }) async {
     if (_state.isRunning || game.mainline.isEmpty) return;
-    final generation = ++_generation;
     final fingerprint = gameReportFingerprint(game);
+    // Reuse a report computed earlier this session instead of burning the
+    // engine (and battery) on the same finished game again.
+    if (loadCachedReport(fingerprint)) return;
+    final generation = ++_generation;
     final fens = gameReportFens(game);
     final totalMoves = (game.mainline.length + 1) ~/ 2;
     final totalWorkUnits = fens.length + game.mainline.length;
@@ -197,6 +245,9 @@ class GameAnalysisReportController extends ChangeNotifier {
         message: 'Preparing Stockfish…',
       ),
     );
+    // The board keeps precedence: while the report is pending it caps its own
+    // search at the handoff depth so the eval bar / lines stay responsive.
+    EngineReportCoordinator.instance.setReportPending(true, ownerId: _ownerId);
 
     final positions = <GameReportPosition>[];
     final evaluatedPositions = <String, GameReportPosition>{};
@@ -301,6 +352,7 @@ class GameAnalysisReportController extends ChangeNotifier {
         blackRating: blackRating,
       );
       if (_disposed || generation != _generation) return;
+      if (_evaluator == null) _cacheReport(fingerprint, report);
       _setState(
         GameReportState(
           status: GameReportStatus.completed,
@@ -312,6 +364,12 @@ class GameAnalysisReportController extends ChangeNotifier {
       );
     } catch (error) {
       if (generation == _generation) _fail('Game analysis failed: $error');
+    } finally {
+      // Only the latest generation releases the engine back to the board —
+      // a superseded run's teardown must not clear a newer run's hold.
+      if (generation == _generation) {
+        EngineReportCoordinator.instance.setReportPending(false, ownerId: _ownerId);
+      }
     }
   }
 
@@ -338,6 +396,14 @@ class GameAnalysisReportController extends ChangeNotifier {
     while (true) {
       if (_disposed || generation != _generation) {
         throw const _ReportPositionPreempted();
+      }
+      // Give the board precedence: hold until the viewed position has reached
+      // the handoff depth (or the board went idle) before touching the engine.
+      if (_evaluator == null) {
+        await EngineReportCoordinator.instance.waitForBoardHandoff();
+        if (_disposed || generation != _generation) {
+          throw const _ReportPositionPreempted();
+        }
       }
       try {
         attempt++;
@@ -498,6 +564,7 @@ class GameAnalysisReportController extends ChangeNotifier {
     _disposed = true;
     _generation++;
     unawaited(_stockfish.cancelEvaluationsForOwner(_ownerId));
+    EngineReportCoordinator.instance.setReportPending(false, ownerId: _ownerId);
     super.dispose();
   }
 }

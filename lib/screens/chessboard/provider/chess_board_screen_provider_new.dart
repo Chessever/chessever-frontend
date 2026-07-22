@@ -16,6 +16,7 @@ import 'package:chessever2/screens/chessboard/analysis/chess_game_navigator_stat
 import 'package:chessever2/screens/chessboard/provider/board_eval_restart_policy.dart';
 import 'package:chessever2/screens/chessboard/provider/current_eval_provider.dart';
 import 'package:chessever2/screens/chessboard/provider/game_pgn_stream_provider.dart';
+import 'package:chessever2/screens/chessboard/provider/engine_report_coordinator.dart';
 import 'package:chessever2/screens/chessboard/provider/stockfish_singleton.dart';
 import 'package:chessever2/screens/chessboard/view_model/chess_board_state_new.dart';
 import 'package:chessever2/screens/chessboard/notation/notation_tree.dart';
@@ -129,9 +130,30 @@ class ChessBoardScreenNotifierNew
     this.initialFen,
   }) : super(const AsyncValue.loading()) {
     _stockfishOwnerId = StockfishSingleton.generateOwnerId(game.gameId, index);
+    // Resume full-depth board analysis once the whole-game report settles.
+    EngineReportCoordinator.instance.registerResume(
+      _stockfishOwnerId,
+      _resumeAfterReport,
+    );
     _persistenceEnabled = ref.read(chessBoardPersistenceEnabledProvider);
     _initializeState();
     _setupPgnStreamListener();
+  }
+
+  /// Called by [EngineReportCoordinator] when the whole-game report finishes so
+  /// the eval bar / engine lines deepen past the handoff cap to the user's
+  /// configured depth again.
+  void _resumeAfterReport() {
+    if (!mounted) return;
+    if (index != ref.read(currentlyVisiblePageIndexProvider)) return;
+    // Clear any handoff-yield latch so the full-depth restart is allowed.
+    _yieldingEngineForReport = false;
+    // The report's heavy native search can leave the SFX engine idle on iOS;
+    // re-assert it so the next move on the board still plays a sound.
+    unawaited(AudioPlayerService.instance.prepareForForegroundPlayback());
+    // Must forceRestart: a depth-18 capped search leaves "complete" PVs on the
+    // same FEN, and plain force would skipAlreadyComplete and never deepen.
+    _updateEvaluation(force: true, forceRestart: true);
   }
 
   final Ref ref;
@@ -180,6 +202,12 @@ class ChessBoardScreenNotifierNew
   ProviderSubscription<ChessGameNavigatorState>? _navigatorSubscription;
   bool _isInitialLoad = true;
   bool _gameReviewVisible = false;
+
+  /// True while we intentionally stop a board Stockfish job at the report
+  /// handoff depth so the whole-game report can borrow the engine. Suppresses
+  /// the usual post-cancellation re-eval retry (resume fires when the report
+  /// settles instead).
+  bool _yieldingEngineForReport = false;
 
   bool get isGameReviewVisible => _gameReviewVisible;
 
@@ -1845,22 +1873,16 @@ class ChessBoardScreenNotifierNew
     _updateEvaluation();
   }
 
-  /// Lets the whole-game report borrow this board page's Stockfish slot while
-  /// its progress UI is visible. Cancellation stays owner-scoped, so the
-  /// report and other engine consumers are never stopped with the board job.
+  /// Tracks whether the whole-game review sheet is open. The board keeps its
+  /// engine precedence the whole time — the report yields to it through
+  /// [EngineReportCoordinator] rather than the board surrendering its slot.
   Future<void> setGameReviewVisible(bool visible) async {
     if (_gameReviewVisible == visible) return;
     _gameReviewVisible = visible;
-    if (visible) {
-      EasyDebounce.cancel('evaluation-$index');
-      _cancelEvaluation = true;
-      _cancelEvalWatchdog(resetPending: true);
-      _clearActiveEvalState();
-      await StockfishSingleton().cancelEvaluationsForOwner(_stockfishOwnerId);
-      return;
+    // Closing the sheet: make sure the board reflects the latest position.
+    if (!visible) {
+      _updateEvaluation(force: true);
     }
-    _cancelEvaluation = false;
-    _updateEvaluation(force: true);
   }
 
   void goToMovePointer(ChessMovePointer pointer) {
@@ -5589,7 +5611,6 @@ class ChessBoardScreenNotifierNew
     bool preserveDepthProgress = false,
     bool skipPvUpdates = false,
   }) async {
-    if (_gameReviewVisible) return;
     int? requestId;
     String? lastEvaluatedFen;
     try {
@@ -5709,6 +5730,15 @@ class ChessBoardScreenNotifierNew
       } else if (combinedMaxDepth > 60) {
         combinedMaxDepth = 60;
       }
+
+      // While a whole-game report is pending, the board reaches the shared
+      // handoff depth quickly and then hands the engine to the report; it
+      // deepens back to the user's full depth once the report settles (via the
+      // resume callback registered with EngineReportCoordinator).
+      combinedMaxDepth = EngineReportCoordinator.boardSearchMaxDepth(
+        configuredMaxDepth: combinedMaxDepth,
+        reportPending: EngineReportCoordinator.instance.shouldCapBoardDepth,
+      );
 
       // Generate cache key with multiPV count to avoid wrong PV count collisions
       final cacheKey = _fenCacheKey(fenToAnalyze, multiPV: configuredMultiPV);
@@ -6117,6 +6147,10 @@ class ChessBoardScreenNotifierNew
               ? const Duration(milliseconds: 800)
               : combinedSearchDuration;
       _isFirstEvalAfterToggle = false;
+      // Tell the coordinator the board just took the engine for a fresh
+      // position so a pending report waits until we reach the handoff depth.
+      _yieldingEngineForReport = false;
+      EngineReportCoordinator.instance.boardSearchStarted();
       // Silenced — per-eval spam.
       // debugPrint(
       //   '⏱️ [EVAL] searchDuration=${effectiveSearchDuration?.inMilliseconds}ms '
@@ -6137,6 +6171,26 @@ class ChessBoardScreenNotifierNew
               _activeEvalRequestId != currentRequestId ||
               _activeEvalKey != cacheKey) {
             return;
+          }
+
+          // Report the reached depth so a pending whole-game report can start
+          // once the viewed position clears the handoff threshold.
+          EngineReportCoordinator.instance.boardDepth(depth);
+
+          // If this search started above the handoff cap (report became pending
+          // mid-flight) stop at the threshold so the report can run quickly.
+          // The resume callback restarts at the user's full configured depth.
+          if (EngineReportCoordinator.shouldYieldBoardSearchForReport(
+            depth: depth,
+            reportPending:
+                EngineReportCoordinator.instance.shouldCapBoardDepth,
+            searchMaxDepth: combinedMaxDepth,
+            alreadyYielding: _yieldingEngineForReport,
+          )) {
+            _yieldingEngineForReport = true;
+            unawaited(
+              StockfishSingleton().cancelEvaluationsForOwner(_stockfishOwnerId),
+            );
           }
 
           // If we already showed a cached evaluation, don't let Stockfish
@@ -6319,6 +6373,14 @@ class ChessBoardScreenNotifierNew
             }
           }
 
+          // Handoff yield: we stopped at depth 18 so the report can run. Do not
+          // immediately re-eval — that would thrash against the report. The
+          // coordinator resume callback deepens past the cap when it settles.
+          if (_yieldingEngineForReport) {
+            _yieldingEngineForReport = false;
+            return;
+          }
+
           // Only retry if NOT caused by watchdog — watchdog has its own retry path.
           // Also skip if a newer request already owns evaluation (superseded) —
           // otherwise cancelled stockfish jobs re-fire force evals forever.
@@ -6454,6 +6516,10 @@ class ChessBoardScreenNotifierNew
           '🎯 EVAL ERROR: Stockfish progressive run failed for $fen: $e',
         );
         _releaseLog('Stack: $stack');
+      } finally {
+        // The board finished (or gave up on) this position — release the engine
+        // to any pending whole-game report.
+        EngineReportCoordinator.instance.boardSearchIdle();
       }
 
       if (stockfishFailed &&
@@ -7313,7 +7379,7 @@ class ChessBoardScreenNotifierNew
     bool preserveCurrentPvs = false,
     bool preserveDepthProgress = false,
   }) {
-    if (_isLongPressing || _gameReviewVisible) return;
+    if (_isLongPressing) return;
 
     if (force || forceRestart) {
       // Force requests should interrupt any pending scheduled evaluations
@@ -7556,6 +7622,7 @@ class ChessBoardScreenNotifierNew
     _navigatorSubscription?.close();
     _navigatorSubscription = null;
     _cancelEvalWatchdog(resetPending: true);
+    EngineReportCoordinator.instance.unregisterResume(_stockfishOwnerId);
     // Cancel this provider's Stockfish jobs on dispose to prevent orphaned jobs
     unawaited(
       StockfishSingleton().cancelEvaluationsForOwner(_stockfishOwnerId),

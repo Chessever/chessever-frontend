@@ -18,6 +18,11 @@ Future<void> showMobileGameReviewSheet({
   Future<void> Function(bool visible)? onVisibilityChanged,
 }) async {
   controller.reveal();
+  // useSafeArea:false lets the fully-open sheet cover the board, but Flutter then
+  // strips the top padding inside the sheet subtree. Capture the real status-bar
+  // inset here (the outer context still has it) so the full-open content can
+  // clear the notch itself.
+  final topInset = MediaQuery.paddingOf(context).top;
   await onVisibilityChanged?.call(true);
   if (!context.mounted) {
     await onVisibilityChanged?.call(false);
@@ -27,15 +32,18 @@ Future<void> showMobileGameReviewSheet({
     await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
-      useSafeArea: true,
+      useSafeArea: false,
       backgroundColor: Colors.transparent,
-      barrierColor: Colors.black.withValues(alpha: 0.3),
+      // Keep the live board fully lit behind the half-open sheet (no dim scrim);
+      // dragging the sheet to full height is what hides the board instead.
+      barrierColor: Colors.transparent,
       builder:
           (context) => _GameReviewSheet(
             controller: controller,
             game: game,
             activePly: activePly,
             onJumpToPly: onJumpToPly,
+            topInset: topInset,
           ),
     );
   } finally {
@@ -180,6 +188,7 @@ class _GameReviewSheet extends StatefulWidget {
     required this.game,
     required this.activePly,
     required this.onJumpToPly,
+    required this.topInset,
   });
 
   final MobileGameReviewController controller;
@@ -187,28 +196,51 @@ class _GameReviewSheet extends StatefulWidget {
   final int activePly;
   final ValueChanged<int> onJumpToPly;
 
+  /// Real status-bar inset captured before the modal route stripped it, so the
+  /// full-open sheet can clear the notch (see [showMobileGameReviewSheet]).
+  final double topInset;
+
   @override
   State<_GameReviewSheet> createState() => _GameReviewSheetState();
 }
 
 class _GameReviewSheetState extends State<_GameReviewSheet> {
+  bool _isFullyOpen = false;
+
   @override
   Widget build(BuildContext context) {
+    final topInset = widget.topInset;
     return DraggableScrollableSheet(
       key: const ValueKey('game-review-full-sheet'),
       expand: false,
       initialChildSize: 0.45,
-      minChildSize: 0.45,
-      maxChildSize: 0.94,
+      // Below the half snap the sheet flings closed, so a downward swipe
+      // dismisses it instead of sticking half-open.
+      minChildSize: 0.28,
+      maxChildSize: 1,
       snap: true,
-      snapSizes: const [0.45, 0.94],
-      builder:
-          (context, scrollController) => Container(
-            decoration: const BoxDecoration(
+      snapSizes: const [0.45, 1],
+      shouldCloseOnMinExtent: true,
+      builder: (context, scrollController) {
+        return NotificationListener<DraggableScrollableNotification>(
+          onNotification: (notification) {
+            final atFull = notification.extent >= 0.995;
+            if (atFull != _isFullyOpen) {
+              setState(() => _isFullyOpen = atFull);
+            }
+            return false;
+          },
+          // Fully open the sheet covers the whole screen (useSafeArea is off),
+          // hiding the board/notation behind it and squaring the top corners.
+          child: Container(
+            decoration: BoxDecoration(
               color: kBackgroundColor,
-              borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+              borderRadius: BorderRadius.vertical(
+                top: Radius.circular(_isFullyOpen ? 0 : 28),
+              ),
             ),
             clipBehavior: Clip.antiAlias,
+            padding: EdgeInsets.only(top: _isFullyOpen ? topInset : 0),
             child: AnimatedBuilder(
               animation: widget.controller,
               builder: (context, _) {
@@ -228,6 +260,8 @@ class _GameReviewSheetState extends State<_GameReviewSheet> {
               },
             ),
           ),
+        );
+      },
     );
   }
 

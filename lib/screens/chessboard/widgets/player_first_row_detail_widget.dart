@@ -47,6 +47,11 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
   final ChessboardView? scoreCardViewSource;
   final List<GamesTourModel> scoreCardGamesContext;
 
+  /// When true, the name is always rendered as "Surname I." (last name + first
+  /// initial) instead of the full "Surname, Given" form. Used where space is
+  /// tight, e.g. the game-switcher dropdown boards.
+  final bool compactName;
+
   const PlayerFirstRowDetailWidget({
     super.key,
     required this.playerView,
@@ -61,6 +66,7 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
     this.onEditName,
     this.scoreCardViewSource,
     this.scoreCardGamesContext = const [],
+    this.compactName = false,
   });
 
   @override
@@ -818,7 +824,27 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
                 String displayFirstName =
                     firstName.isNotEmpty ? ', $firstName' : '';
 
-                if (surname.isNotEmpty) {
+                if (compactName && surname.isNotEmpty) {
+                  // Compact form: "Surname I." — last name + first initial.
+                  final trimmedFirst = firstName.trim();
+                  if (trimmedFirst.isNotEmpty) {
+                    displayFirstName = ' ${trimmedFirst[0].toUpperCase()}.';
+                  } else {
+                    // No "Surname, Given" comma: treat "Given ... Surname" by
+                    // taking the last token as the surname and the first token's
+                    // initial (e.g. "Magnus Carlsen" -> "Carlsen M.").
+                    final tokens = surname
+                        .split(RegExp(r'\s+'))
+                        .where((token) => token.isNotEmpty)
+                        .toList();
+                    if (tokens.length > 1) {
+                      displaySurname = tokens.last;
+                      displayFirstName = ' ${tokens.first[0].toUpperCase()}.';
+                    } else {
+                      displayFirstName = '';
+                    }
+                  }
+                } else if (surname.isNotEmpty) {
                   // Strategy 1: Try full surname + full first name
                   textPainter.text = TextSpan(
                     children: [
@@ -862,45 +888,38 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
                     if (textPainter.width > availableWidth) {
                       displayFirstName = '';
 
-                      textPainter.text = TextSpan(
-                        children: [
-                          TextSpan(
-                            text: '${effectivePlayerCard.title} ',
-                            style: rankStyle,
-                          ),
-                          TextSpan(text: surname, style: nameStyle),
-                          TextSpan(text: rating, style: ratingStyle),
-                        ],
-                      );
-                      textPainter.layout();
-
-                      // Strategy 4: If STILL doesn't fit, let ellipsis truncate surname
-                      // This is the last resort - RichText will handle the truncation
-                      // We keep displaySurname as the full surname, RichText will add "..."
+                      // Strategy 4: If STILL doesn't fit, let ellipsis truncate
+                      // surname. RichText handles "..." — keep full surname.
                     }
                   }
                 }
+
+                // Always layout the FINAL display text before reading width.
+                // compactName / empty-surname paths never entered the measure
+                // loop above, and would crash on textPainter.width otherwise.
+                final finalNameSpan = TextSpan(
+                  style: nameStyle,
+                  children: [
+                    TextSpan(
+                      text: '${effectivePlayerCard.title} ',
+                      style: rankStyle,
+                    ),
+                    if (displaySurname.isNotEmpty)
+                      TextSpan(text: displaySurname, style: nameStyle),
+                    if (displayFirstName.isNotEmpty)
+                      TextSpan(text: displayFirstName, style: nameStyle),
+                    TextSpan(text: rating, style: ratingStyle),
+                  ],
+                );
+                textPainter.text = finalNameSpan;
+                textPainter.layout();
 
                 final nameWidget = RichText(
                   overflow: TextOverflow.ellipsis,
                   maxLines: 1,
                   softWrap: false,
                   textAlign: TextAlign.left,
-                  text: TextSpan(
-                    style: nameStyle, // Add base style for inheritance
-                    children: [
-                      // Always render title (with trailing space) like old code
-                      TextSpan(
-                        text: '${effectivePlayerCard.title} ',
-                        style: rankStyle,
-                      ),
-                      if (displaySurname.isNotEmpty)
-                        TextSpan(text: displaySurname, style: nameStyle),
-                      if (displayFirstName.isNotEmpty)
-                        TextSpan(text: displayFirstName, style: nameStyle),
-                      TextSpan(text: rating, style: ratingStyle),
-                    ],
-                  ),
+                  text: finalNameSpan,
                 );
 
                 final maxNameTapWidth =

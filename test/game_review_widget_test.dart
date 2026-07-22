@@ -183,8 +183,11 @@ void main() {
       find.byType(DraggableScrollableSheet),
     );
     expect(sheet.initialChildSize, 0.45);
-    expect(sheet.minChildSize, 0.45);
-    expect(sheet.maxChildSize, 0.94);
+    // Drags below the half snap to fling-dismiss, and expands full-screen to
+    // hide the board behind it.
+    expect(sheet.minChildSize, 0.28);
+    expect(sheet.maxChildSize, 1);
+    expect(sheet.shouldCloseOnMinExtent, isTrue);
     expect(
       find.byKey(const ValueKey('game-review-full-sheet')),
       findsOneWidget,

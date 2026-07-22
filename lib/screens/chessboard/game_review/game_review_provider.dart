@@ -25,6 +25,13 @@ class MobileGameReviewState {
   bool get classificationsRevealed =>
       fingerprint != null && fingerprint == revealedFingerprint;
 
+  /// Whether the Game Analysis entry point should be shown at all. A live or
+  /// move-less game offers nothing to analyze yet, so the button (and its
+  /// "starts when the game ends" copy) is hidden until there is a real report
+  /// to run or show.
+  bool get shouldOfferAnalysis =>
+      isEligible || reportState.status != GameReportStatus.idle;
+
   MobileGameReviewState copyWith({
     GameReportState? reportState,
     String? fingerprint,
@@ -100,6 +107,11 @@ class MobileGameReviewController extends ChangeNotifier {
         ),
       );
       notifyListeners();
+      // A finished game already analyzed this session is restored instantly
+      // (and its classifications revealed) instead of being recomputed.
+      if (_state.isEligible) {
+        _reportController.loadCachedReport(fingerprint);
+      }
     } else {
       final eligible = finished && game.mainline.isNotEmpty;
       final message = _unavailableMessage(
@@ -197,6 +209,13 @@ class MobileGameReviewController extends ChangeNotifier {
   void _onReportChanged() {
     if (_disposed) return;
     _state = _state.copyWith(reportState: _reportController.state);
+    // Reveal the per-move classification badges in the notation as soon as the
+    // report is ready — the user no longer has to open the review sheet first.
+    if (_reportController.state.status == GameReportStatus.completed &&
+        _state.fingerprint != null &&
+        _state.fingerprint != _state.revealedFingerprint) {
+      _state = _state.copyWith(revealedFingerprint: _state.fingerprint);
+    }
     notifyListeners();
   }
 
