@@ -710,22 +710,27 @@ GameAnalysisReport buildGameAnalysisReport({
       .map((position) => gameReportWinPercentage(position.bestLine))
       .toList(growable: false);
   final moves = <GameReportMove>[];
+  // Sequential: some tags depend on the previous half-move's classification.
+  GameMoveClassification? previousClassification;
   for (var i = 0; i < game.mainline.length; i++) {
     final move = game.mainline[i];
     final before = positions[i];
     final after = positions[i + 1];
+    final classification = classifyGameReportMove(
+      index: i,
+      game: game,
+      positions: positions,
+      winPercentages: winPercentages,
+      previousMoveClassification: previousClassification,
+    );
+    previousClassification = classification;
     moves.add(
       GameReportMove(
         ply: i + 1,
         san: move.san,
         uci: move.uci,
         isWhite: move.turn == ChessColor.white,
-        classification: classifyGameReportMove(
-          index: i,
-          game: game,
-          positions: positions,
-          winPercentages: winPercentages,
-        ),
+        classification: classification,
         evaluation: after.bestLine,
         bestAlternative: _bestAlternative(before, move.uci),
       ),
@@ -758,11 +763,7 @@ String? _bestAlternative(GameReportPosition position, String playedMove) {
   return null;
 }
 
-/// Whether a move needs alternative Stockfish lines in the refinement pass.
-///
-/// Loss-based classifications and accuracy only need the primary depth-12
-/// evaluation. Near-best moves need alternatives for Great/Brilliant detection,
-/// while a played engine-best move needs one for the report's best alternative.
+/// Whether a move needs MultiPV refinement (PV1 vs PV2 for specials / Best).
 bool gameReportMoveNeedsMultiPv({
   required int index,
   required ChessGame game,
@@ -777,93 +778,222 @@ bool gameReportMoveNeedsMultiPv({
   final playedIsBest =
       before.bestLine.moves.isNotEmpty &&
       before.bestLine.moves.first == move.uci;
-  // Match the near-best window used by classifyGameReportMove.
-  return playedIsBest || moverChange >= -1.5;
+  return playedIsBest || moverChange >= -2;
 }
 
+/// Classifies a mainline move into our [GameMoveClassification] set.
+///
+/// Primary metric: mover win-probability change from
+/// [gameReportWinPercentage] (percentage points). Specials run first, then
+/// loss tiers. Ordinary accurate play returns null.
 GameMoveClassification? classifyGameReportMove({
   required int index,
   required ChessGame game,
   required List<GameReportPosition> positions,
   required List<double> winPercentages,
+  GameMoveClassification? previousMoveClassification,
 }) {
   final move = game.mainline[index];
   final before = positions[index];
+  final after = positions[index + 1];
   final isWhite = move.turn == ChessColor.white;
   final beforeWin = winPercentages[index];
   final afterWin = winPercentages[index + 1];
-  final moverChange = (afterWin - beforeWin) * (isWhite ? 1 : -1);
+
+  // Mover ΔWin% (pp). Negative = lost winning chances.
+  var moverChange = (afterWin - beforeWin) * (isWhite ? 1 : -1);
+
+  // Prefer MultiPV estimate of the played candidate when present (stable under
+  // shallow mobile search).
+  for (final line in before.lines) {
+    if (line.moves.isEmpty || line.moves.first != move.uci) continue;
+    final lineWin = gameReportWinPercentage(line);
+    final lineChange = (lineWin - beforeWin) * (isWhite ? 1 : -1);
+    moverChange = math.max(moverChange, lineChange);
+    break;
+  }
+
   final playedIsBest =
       before.bestLine.moves.isNotEmpty &&
       before.bestLine.moves.first == move.uci;
+
+  // Only one engine line → forced if it was the only choice; else loss tiers.
+  if (before.lines.length <= 1) {
+    if (playedIsBest) return null;
+    return _missedOrLoss(
+      moverChange: moverChange,
+      beforeWin: beforeWin,
+      afterWin: afterWin,
+      isWhite: isWhite,
+      playedIsBest: playedIsBest,
+      previousMoveClassification: previousMoveClassification,
+    );
+  }
+
   final alternatives = before.lines
       .where((line) => line.moves.isNotEmpty && line.moves.first != move.uci)
       .toList(growable: false);
-
-  // Near-best window is tight so ordinary book/quiet moves stay untagged or
-  // plain Best, and only rare specials get Great/Brilliant.
   final alternativeWin =
       alternatives.isEmpty ? null : gameReportWinPercentage(alternatives.first);
-  if (moverChange >= -1.5 && alternativeWin != null) {
-    final alternativeChange = (afterWin - alternativeWin) * (isWhite ? 1 : -1);
-    final losing = isWhite ? afterWin < 50 : afterWin > 50;
-    // Already-winning filter: do not award flashy labels when the second line
-    // is already a near-forced win (Chess.com / WintrCat-style).
-    final alternativeAlreadyWinning =
-        isWhite ? alternativeWin > 88 : alternativeWin < 12;
-    final alreadyComfortablyWinning =
-        isWhite ? beforeWin > 88 : beforeWin < 12;
-    if (playedIsBest &&
-        !losing &&
-        !alternativeAlreadyWinning &&
-        !alreadyComfortablyWinning &&
-        isReportPieceSacrifice(
-          before.fen,
-          move.uci,
-          positions[index + 1].bestLine.moves,
-        )) {
-      return GameMoveClassification.brilliant;
-    }
-    // Great: only-move or decisive swing — not every engine top move.
-    final crossedOutcome =
-        moverChange > 15 &&
-        ((beforeWin < 48 && afterWin > 52) ||
-            (beforeWin > 52 && afterWin < 48));
-    final onlyGoodMove = alternativeChange > 18;
-    final simpleRecapture =
-        index > 0 &&
-        isSimpleReportRecapture(
-          positions[index - 1].fen,
-          game.mainline[index - 1].uci,
-          move.uci,
-        );
-    if (!losing &&
-        !alternativeAlreadyWinning &&
-        !simpleRecapture &&
-        (crossedOutcome || onlyGoodMove)) {
-      return GameMoveClassification.bestMove; // label: Great
+
+  // Gap: played result vs next-best path (pp, mover's favour).
+  final alternativeGap =
+      alternativeWin == null
+          ? 0.0
+          : (afterWin - alternativeWin) * (isWhite ? 1 : -1);
+
+  final simpleRecapture =
+      index > 0 &&
+      isSimpleReportRecapture(
+        positions[index - 1].fen,
+        game.mainline[index - 1].uci,
+        move.uci,
+      );
+
+  // ── Brilliant ──────────────────────────────────────────────────────────
+  // Near-best (≤2pp loss), real material sacrifice, still not losing, and the
+  // alternative was not already a forced win.
+  if (moverChange >= -2 &&
+      alternativeWin != null &&
+      !_isLosingOrAlternateCrushing(
+        afterWin: afterWin,
+        alternativeWin: alternativeWin,
+        isWhite: isWhite,
+      ) &&
+      !move.san.contains('=') &&
+      isReportPieceSacrifice(
+        before.fen,
+        move.uci,
+        after.bestLine.moves,
+      )) {
+    return GameMoveClassification.brilliant;
+  }
+
+  // ── Great ──────────────────────────────────────────────────────────────
+  // Near-best, not a free recapture, not already crushing: either the only
+  // good move (gap > 10pp) or a decisive outcome swing (cross equality with
+  // ≥10pp gain). Also: engine-top conversion after the opponent's blunder.
+  if (moverChange >= -2 &&
+      alternativeWin != null &&
+      !simpleRecapture &&
+      !_isLosingOrAlternateCrushing(
+        afterWin: afterWin,
+        alternativeWin: alternativeWin,
+        isWhite: isWhite,
+      )) {
+    final onlyGoodMove = alternativeGap > 10;
+    final outcomeSwing = _hasChangedGameOutcome(
+      beforeWin: beforeWin,
+      afterWin: afterWin,
+      isWhite: isWhite,
+      moverChange: moverChange,
+    );
+    final punishError =
+        playedIsBest &&
+        (previousMoveClassification == GameMoveClassification.blunder ||
+            previousMoveClassification == GameMoveClassification.mistake);
+    if (onlyGoodMove || outcomeSwing || punishError) {
+      return GameMoveClassification.bestMove;
     }
   }
 
-  // Best: ordinary engine-top move (no longer auto-Great).
-  if (playedIsBest) return GameMoveClassification.goodMove; // label: Best
-  final hadWinningPosition = isWhite ? beforeWin >= 78 : beforeWin <= 22;
-  final lostWinningPosition = isWhite ? afterWin <= 52 : afterWin >= 48;
-  if (hadWinningPosition && lostWinningPosition && moverChange < -15) {
-    return GameMoveClassification.missedWin;
-  }
-  // Lichess-style Win% loss bands (less aggressive than the old -5/-10/-20).
-  // Soften when the game was already decided either way.
-  final alreadyLost = isWhite ? beforeWin <= 8 : beforeWin >= 92;
-  final stillWinning = isWhite ? afterWin >= 92 : afterWin <= 8;
-  if (alreadyLost || stillWinning) {
-    if (moverChange < -35) return GameMoveClassification.mistake;
-    if (moverChange < -20) return GameMoveClassification.inaccuracy;
+  // ── Best ───────────────────────────────────────────────────────────────
+  // Engine top in a live position with a meaningful PV split — not every
+  // equal opening choice. Without multipv gap data, require true PV1 only
+  // when the game is still contested.
+  if (playedIsBest && moverChange >= -2) {
+    final moverBefore = isWhite ? beforeWin : (100 - beforeWin);
+    final live = moverBefore > 12 && moverBefore < 88;
+    final hasMoat = alternativeWin == null || alternativeGap >= 5;
+    if (live && hasMoat && !simpleRecapture) {
+      return GameMoveClassification.goodMove;
+    }
+    // Quiet equals / decided → no positive tag.
     return null;
   }
-  if (moverChange < -30) return GameMoveClassification.blunder;
-  if (moverChange < -20) return GameMoveClassification.mistake;
-  if (moverChange < -10) return GameMoveClassification.inaccuracy;
+
+  return _missedOrLoss(
+    moverChange: moverChange,
+    beforeWin: beforeWin,
+    afterWin: afterWin,
+    isWhite: isWhite,
+    playedIsBest: playedIsBest,
+    previousMoveClassification: previousMoveClassification,
+  );
+}
+
+GameMoveClassification? _missedOrLoss({
+  required double moverChange,
+  required double beforeWin,
+  required double afterWin,
+  required bool isWhite,
+  required bool playedIsBest,
+  required GameMoveClassification? previousMoveClassification,
+}) {
+  final moverBefore = isWhite ? beforeWin : (100 - beforeWin);
+  final moverAfter = isWhite ? afterWin : (100 - afterWin);
+
+  // Missed conversion after opponent's blunder.
+  if (previousMoveClassification == GameMoveClassification.blunder &&
+      !playedIsBest &&
+      moverChange < -5 &&
+      moverBefore >= 60) {
+    return GameMoveClassification.missedWin;
+  }
+  // Threw a clear win.
+  if (moverBefore >= 75 && moverAfter <= 55 && moverChange <= -15) {
+    return GameMoveClassification.missedWin;
+  }
+
+  return _lossTier(moverChange, beforeWin, afterWin, isWhite);
+}
+
+/// Losing after the move, or the unplayed line was already a forced win.
+bool _isLosingOrAlternateCrushing({
+  required double afterWin,
+  required double alternativeWin,
+  required bool isWhite,
+}) {
+  final losing = isWhite ? afterWin < 50 : afterWin > 50;
+  final altCrushing = isWhite ? alternativeWin > 97 : alternativeWin < 3;
+  return losing || altCrushing;
+}
+
+/// Crossed the 50% line with a ≥10pp gain for the mover.
+bool _hasChangedGameOutcome({
+  required double beforeWin,
+  required double afterWin,
+  required bool isWhite,
+  required double moverChange,
+}) {
+  if (moverChange <= 10) return false;
+  return (beforeWin < 50 && afterWin > 50) ||
+      (beforeWin > 50 && afterWin < 50);
+}
+
+/// Loss tiers from mover win% drop (pp). Softened in decided games.
+GameMoveClassification? _lossTier(
+  double moverChange,
+  double beforeWin,
+  double afterWin,
+  bool isWhite,
+) {
+  final moverBefore = isWhite ? beforeWin : (100 - beforeWin);
+  final moverAfter = isWhite ? afterWin : (100 - afterWin);
+  final drop = -moverChange;
+
+  // Heavy-score "garbage time": demote severity, never spam blunders.
+  if (moverBefore <= 8 || moverAfter >= 92 || moverBefore >= 95) {
+    if (drop >= 25) return GameMoveClassification.mistake;
+    if (drop >= 12) return GameMoveClassification.inaccuracy;
+    return null;
+  }
+
+  // Live-game bands (win-probability points).
+  if (drop >= 20) return GameMoveClassification.blunder;
+  if (drop >= 10) return GameMoveClassification.mistake;
+  if (drop >= 5) return GameMoveClassification.inaccuracy;
+  // drop < 5: quiet / excellent residual — no chip.
   return null;
 }
 

@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:chessever2/repository/lichess/cloud_eval/cloud_eval.dart';
 import 'package:chessever2/screens/chessboard/analysis/chess_game.dart';
 import 'package:chessever2/screens/chessboard/game_review/game_analysis_report.dart';
@@ -246,63 +248,82 @@ void main() {
   group('move classification', () {
     final game = ChessGame.fromPgn('classify', '1. e4 *');
 
-    test('covers lichess-style loss thresholds', () {
-      expect(_classify(game, 50, 49), isNull);
-      // 7% drop — below the 10% inaccuracy band
-      expect(_classify(game, 50, 43), isNull);
-      // 12% drop — inaccuracy
-      expect(_classify(game, 50, 38), GameMoveClassification.inaccuracy);
-      // 22% drop — mistake
-      expect(_classify(game, 50, 28), GameMoveClassification.mistake);
-      // 35% drop — blunder
-      expect(_classify(game, 50, 15), GameMoveClassification.blunder);
+    test('engine top among near-equals stays untagged', () {
+      expect(
+        _classifyWin(
+          game,
+          beforeWin: 55,
+          afterWin: 55,
+          bestMove: 'e2e4',
+          alternativeWin: 53, // 2pp gap < 5
+        ),
+        isNull,
+      );
     });
 
-    test('engine best is Best, not auto-Great', () {
+    test('engine top with a PV moat is Best', () {
       expect(
-        _classify(game, 50, 49, bestMove: 'e2e4'),
+        _classifyWin(
+          game,
+          beforeWin: 52,
+          afterWin: 54,
+          bestMove: 'e2e4',
+          alternativeWin: 44, // 10pp gap ≥ 5
+        ),
         GameMoveClassification.goodMove,
       );
     });
 
-    test('only-move with a large second-line gap is Great', () {
-      final positions = [
-        GameReportPosition(
-          fen: game.startingFen,
-          lines: [
-            _line(cp: 50, moves: const ['e2e4']),
-            // ~ +0 vs ~ +2.5 pawns ⇒ large Win% gap for the only-good rule
-            _line(cp: -200, moves: const ['h2h3']),
-          ],
-        ),
-        GameReportPosition(
-          fen: game.mainline.first.fen,
-          lines: [_line(cp: 50)],
-        ),
-      ];
-      // before/after both ~ mid-high Win% for white after e4
-      final beforeWin = gameReportWinPercentage(_line(cp: 50));
-      final afterWin = gameReportWinPercentage(_line(cp: 50));
+    test('win% loss tiers', () {
+      // Non-best (engine wanted a2a3).
+      expect(_classifyWin(game, beforeWin: 50, afterWin: 46), isNull); // 4
       expect(
-        classifyGameReportMove(
-          index: 0,
-          game: game,
-          positions: positions,
-          winPercentages: [beforeWin, afterWin],
+        _classifyWin(game, beforeWin: 50, afterWin: 44),
+        GameMoveClassification.inaccuracy,
+      ); // 6
+      expect(
+        _classifyWin(game, beforeWin: 50, afterWin: 35),
+        GameMoveClassification.mistake,
+      ); // 15
+      expect(
+        _classifyWin(game, beforeWin: 50, afterWin: 25),
+        GameMoveClassification.blunder,
+      ); // 25
+    });
+
+    test('only-good-move or outcome swing is Great', () {
+      expect(
+        _classifyWin(
+          game,
+          beforeWin: 52,
+          afterWin: 55,
+          bestMove: 'e2e4',
+          alternativeWin: 40, // gap 15 > 10
+        ),
+        GameMoveClassification.bestMove,
+      );
+      expect(
+        _classifyWin(
+          game,
+          beforeWin: 48,
+          afterWin: 72,
+          bestMove: 'e2e4',
+          alternativeWin: 45,
         ),
         GameMoveClassification.bestMove,
       );
     });
 
-    test('losing a winning position is a missed win', () {
-      expect(_classify(game, 80, 50), GameMoveClassification.missedWin);
+    test('decided games soften tags', () {
+      expect(_classifyWin(game, beforeWin: 5, afterWin: 0), isNull);
+      expect(_classifyWin(game, beforeWin: 99, afterWin: 93), isNull);
     });
 
-    test('small dips in a decided game are not blunders', () {
-      // Already lost for white (≤8%): further loss is softened / ignored.
-      expect(_classify(game, 5, 0), isNull);
-      // Still completely winning after the move: no blunder tag.
-      expect(_classify(game, 99, 93), isNull);
+    test('missed win when throwing a winning position', () {
+      expect(
+        _classifyWin(game, beforeWin: 85, afterWin: 45),
+        GameMoveClassification.missedWin,
+      );
     });
 
     test('sacrifice and recapture guards inspect the board', () {
@@ -344,33 +365,72 @@ void main() {
         positions: positions,
       );
       expect(report.moves.single.bestAlternative, 'd2d4');
+      // Tiny multipv gap → not Best
+      expect(report.moves.single.classification, isNull);
     });
   });
 }
 
-GameMoveClassification? _classify(
-  ChessGame game,
-  double before,
-  double after, {
+GameMoveClassification? _classifyWin(
+  ChessGame game, {
+  required double beforeWin,
+  required double afterWin,
   String bestMove = 'a2a3',
-  bool alternatives = true,
-  String? beforeFen,
+  double? alternativeWin,
+  GameMoveClassification? previousMoveClassification,
 }) {
+  final alt = alternativeWin;
   final positions = [
     GameReportPosition(
-      fen: beforeFen ?? game.startingFen,
+      fen: game.startingFen,
       lines: [
         _line(cp: 0, moves: [bestMove]),
-        if (alternatives) _line(cp: 0, moves: const ['h2h3']),
+        if (alt != null) _line(cp: 0, moves: const ['h2h3']),
       ],
     ),
-    GameReportPosition(fen: game.mainline.first.fen, lines: [_line(cp: 0)]),
+    GameReportPosition(
+      fen: game.mainline.first.fen,
+      lines: [_line(cp: 0)],
+    ),
   ];
+  if (alt != null) {
+    int cpForWin(double w) {
+      if (w >= 99) return 1000;
+      if (w <= 1) return -1000;
+      final wc = (w - 50) / 50;
+      final ratio = (1 + wc) / (1 - wc).clamp(1e-6, 1e6);
+      final cp = math.log(ratio) / 0.00368208;
+      return cp.round().clamp(-1000, 1000);
+    }
+
+    final positions2 = [
+      GameReportPosition(
+        fen: game.startingFen,
+        lines: [
+          _line(cp: cpForWin(afterWin), moves: [bestMove]),
+          _line(cp: cpForWin(alt), moves: const ['h2h3']),
+        ],
+      ),
+      GameReportPosition(
+        fen: game.mainline.first.fen,
+        lines: [_line(cp: cpForWin(afterWin))],
+      ),
+    ];
+    return classifyGameReportMove(
+      index: 0,
+      game: game,
+      positions: positions2,
+      winPercentages: [beforeWin, afterWin],
+      previousMoveClassification: previousMoveClassification,
+    );
+  }
+
   return classifyGameReportMove(
     index: 0,
     game: game,
     positions: positions,
-    winPercentages: [before, after],
+    winPercentages: [beforeWin, afterWin],
+    previousMoveClassification: previousMoveClassification,
   );
 }
 
