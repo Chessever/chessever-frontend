@@ -495,6 +495,30 @@ class _PositionGamesSheetState extends ConsumerState<PositionGamesSheet> {
 
 /// Maps a gamebase `GameSearchPreview` row into the app's [GamesTourModel].
 /// Shared by [PositionGamesSheet] and the explorer's inline games section.
+String sanitizeGamebaseEventLabel(Object? raw) {
+  final normalized =
+      (raw?.toString() ?? '').trim().replaceAll(RegExp(r'\s+'), ' ');
+  if (normalized.isEmpty) return '';
+
+  // Event APIs can return internal IDs in the same fields as display names.
+  // Never surface UUIDs, hash-like IDs, long numeric IDs, or private URLs.
+  final isOpaqueId =
+      RegExp(
+        r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$',
+      ).hasMatch(normalized) ||
+      RegExp(r'^[0-9a-fA-F]{24}$|^[0-9a-fA-F]{32}$').hasMatch(normalized) ||
+      RegExp(r'^\d{8,}$').hasMatch(normalized);
+  final lower = normalized.toLowerCase();
+  final isUrlLike =
+      lower.contains('://') ||
+      lower.startsWith('urn:') ||
+      lower.startsWith('www.') ||
+      RegExp(
+        r'^[a-z0-9.-]+\.[a-z]{2,}(?::\d+)?(?:[/?#]|$)',
+      ).hasMatch(lower);
+  return isOpaqueId || isUrlLike ? '' : normalized;
+}
+
 GamesTourModel mapGamebasePreviewToTourModel(Map<String, dynamic> row) {
   int parseInt(dynamic value) {
       if (value is int) return value;
@@ -523,7 +547,17 @@ GamesTourModel mapGamebasePreviewToTourModel(Map<String, dynamic> row) {
     final eco = row['eco']?.toString() ?? '';
     final opening = row['opening']?.toString() ?? '';
     final variation = row['variation']?.toString() ?? '';
-    final event = (row['event']?.toString() ?? '').trim();
+    final event = [
+      row['event_name'],
+      row['eventName'],
+      row['tournament_name'],
+      row['tournamentName'],
+      row['tour_name'],
+      row['tourName'],
+      row['event'],
+    ]
+        .map(sanitizeGamebaseEventLabel)
+        .firstWhere((value) => value.isNotEmpty, orElse: () => '');
     final tourId =
         (row['tour_id']?.toString() ??
                 row['tournament_id']?.toString() ??
@@ -600,7 +634,9 @@ GamesTourModel mapGamebasePreviewToTourModel(Map<String, dynamic> row) {
       roundId: 'opening_explorer',
       roundSlug: formatCode.isNotEmpty ? formatCode : null,
       tourId: tourId.isNotEmpty ? tourId : 'Gamebase',
-      tourSlug: null,
+      // Keep the display event separate from tourId, which is commonly an
+      // opaque Gamebase tournament UUID.
+      tourSlug: event.isNotEmpty ? event : null,
       fen: fen.isNotEmpty ? fen : null,
       lastMove: lastMove.isNotEmpty ? lastMove : null,
       lastMoveTime: date,

@@ -6771,6 +6771,52 @@ class _CollapsingExplorerPvSlot extends StatelessWidget {
   }
 }
 
+/// Pins the complete phone board while the lower analysis surface scrolls and
+/// expands. Pulling inline games up can cover engine chrome, never the board.
+class CompactBoardPinnedAnalysisLayout extends StatelessWidget {
+  const CompactBoardPinnedAnalysisLayout({
+    super.key,
+    required this.boardChildren,
+    required this.analysis,
+    required this.expandedOverChrome,
+    this.collapsingChrome,
+  });
+
+  final List<Widget> boardChildren;
+  final Widget? collapsingChrome;
+  final Widget analysis;
+  final bool expandedOverChrome;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        KeyedSubtree(
+          key: const ValueKey('compact_board_fixed'),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: boardChildren,
+          ),
+        ),
+        if (collapsingChrome != null) collapsingChrome!,
+        AnimatedContainer(
+          duration: _kExplorerGamesExpandDuration,
+          curve: _kExplorerGamesExpandCurve,
+          height: expandedOverChrome ? 0 : 12.h,
+        ),
+        Expanded(
+          child: KeyedSubtree(
+            key: const ValueKey('compact_analysis_panel'),
+            child: analysis,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
 class _AnalysisGameBody extends ConsumerWidget {
   final int index;
   final int currentPageIndex;
@@ -6872,7 +6918,7 @@ class _AnalysisGameBody extends ConsumerWidget {
           };
         }
 
-        final headerChildren = <Widget>[
+        final boardHeaderChildren = <Widget>[
           _PlayerWidget(
             game: game,
             isFlipped: state.isBoardFlipped,
@@ -6905,6 +6951,9 @@ class _AnalysisGameBody extends ConsumerWidget {
                     ? editNameCallback(!state.isBoardFlipped)
                     : null,
           ),
+        ];
+        final headerChildren = <Widget>[
+          ...boardHeaderChildren,
           ...pvSection,
         ];
 
@@ -7007,29 +7056,13 @@ class _AnalysisGameBody extends ConsumerWidget {
         }
 
         if (useCompactLayout) {
-          // When games expand over PV, give the panel most of the viewport
-          // so cards stay readable under a still-visible bottom nav.
-          // Height eases with the PV collapse so the panel doesn't jump.
-          final movesPanelHeight =
-              expandGamesOverPv
-                  ? math.max(320.h, availableHeight * 0.72)
-                  : math.max(220.h, availableHeight * 0.55);
-          return SingleChildScrollView(
-            padding: EdgeInsets.only(bottom: 12.h),
-            physics: const ClampingScrollPhysics(),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                ...headerChildren,
-                SizedBox(height: 12.h),
-                AnimatedContainer(
-                  duration: _kExplorerGamesExpandDuration,
-                  curve: _kExplorerGamesExpandCurve,
-                  height: movesPanelHeight,
-                  child: buildAnalysisView(),
-                ),
-              ],
-            ),
+          // Keep the full board fixed. Explorer/notation owns vertical scroll;
+          // pinned games expand into PV and stop below the lower player row.
+          return CompactBoardPinnedAnalysisLayout(
+            boardChildren: boardHeaderChildren,
+            collapsingChrome: collapsingPv,
+            expandedOverChrome: expandGamesOverPv,
+            analysis: buildAnalysisView(),
           );
         }
 
