@@ -1,6 +1,36 @@
 import 'package:chessever2/screens/library/utils/gamebase_pgn_builder.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 
+const int miniatureMissingRatingFallback = 1800;
+
+List<GamebaseMiniature> orderMiniaturesByDayAndAverageRating(
+  Iterable<GamebaseMiniature> games,
+) {
+  final ordered = games.toList(growable: false);
+  ordered.sort((left, right) {
+    final leftDay = _miniatureUtcDayKey(left.date);
+    final rightDay = _miniatureUtcDayKey(right.date);
+    if (leftDay != rightDay) {
+      if (leftDay == null) return 1;
+      if (rightDay == null) return -1;
+      return rightDay.compareTo(leftDay);
+    }
+
+    final ratingOrder = right.effectiveAverageRating.compareTo(
+      left.effectiveAverageRating,
+    );
+    if (ratingOrder != 0) return ratingOrder;
+    return left.gameId.compareTo(right.gameId);
+  });
+  return ordered;
+}
+
+int? _miniatureUtcDayKey(DateTime? date) {
+  if (date == null) return null;
+  final utc = date.toUtc();
+  return utc.year * 10000 + utc.month * 100 + utc.day;
+}
+
 /// Models for the community Miniatures database (`GET /api/miniatures`).
 ///
 /// Ported from the desktop app's miniatures implementation so mobile mirrors
@@ -437,6 +467,18 @@ class GamebaseMiniature {
   final String? whiteFed;
   final String? blackFed;
 
+  int get effectiveAverageRating {
+    final effectiveWhite =
+        whiteElo != null && whiteElo! > 0
+            ? whiteElo!
+            : miniatureMissingRatingFallback;
+    final effectiveBlack =
+        blackElo != null && blackElo! > 0
+            ? blackElo!
+            : miniatureMissingRatingFallback;
+    return ((effectiveWhite + effectiveBlack) / 2).round();
+  }
+
   factory GamebaseMiniature.fromJson(Map<String, dynamic> json) {
     return GamebaseMiniature(
       gameId: _readString(json['gameId']),
@@ -534,7 +576,7 @@ class GamebaseMiniature {
       eco: ecoClean.isNotEmpty ? ecoClean : null,
       openingName: openingDisplayName,
       timeControl: timeControl.trim().isNotEmpty ? timeControl.trim() : null,
-      avgElo: avgRating,
+      avgElo: effectiveAverageRating,
       isOnline: isOnline,
     );
   }

@@ -24,7 +24,9 @@ final miniaturesTotalCountProvider = FutureProvider<int>((ref) async {
 final miniatureGamesProvider = Provider.autoDispose<List<GamesTourModel>>((
   ref,
 ) {
-  final items = ref.watch(miniaturesPaginatedProvider).items;
+  final items = orderMiniaturesByDayAndAverageRating(
+    ref.watch(miniaturesPaginatedProvider).items,
+  );
   return items.map((item) => item.toGamesTourModel()).toList(growable: false);
 });
 
@@ -340,8 +342,9 @@ final miniaturePlayerGamesPaginatedProvider = StateNotifierProvider.autoDispose
 /// [miniatureGamesProvider] for the `.family`-scoped scorecard screen.
 final miniaturePlayerGamesProvider = Provider.autoDispose
     .family<List<GamesTourModel>, String>((ref, playerId) {
-      final items =
-          ref.watch(miniaturePlayerGamesPaginatedProvider(playerId)).items;
+      final items = orderMiniaturesByDayAndAverageRating(
+        ref.watch(miniaturePlayerGamesPaginatedProvider(playerId)).items,
+      );
       return items
           .map((item) => item.toGamesTourModel())
           .toList(growable: false);
