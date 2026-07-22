@@ -88,7 +88,7 @@ Deno.serve(async (req) => {
   }
   const requiredToken = await resolveDispatchToken();
   const providedToken = req.headers.get("x-stream-token");
-  if (providedToken && requiredToken && providedToken !== requiredToken) {
+  if (requiredToken && providedToken !== requiredToken) {
     return new Response("Unauthorized", { status: 401 });
   }
 

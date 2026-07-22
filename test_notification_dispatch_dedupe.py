@@ -2,6 +2,7 @@ from pathlib import Path
 
 
 EDGE_FUNCTION = Path("supabase/functions/onesignal-dispatch/index.ts")
+SUPABASE_CONFIG = Path("supabase/config.toml")
 ROUND_START_DEDUPE_MIGRATION = Path(
     "supabase/migrations/20260527232342_grouped_round_start_exact_time_dedupe.sql"
 )
@@ -9,6 +10,20 @@ ROUND_START_DEDUPE_MIGRATION = Path(
 
 def _source() -> str:
     return EDGE_FUNCTION.read_text(encoding="utf-8")
+
+
+def test_dispatch_requires_the_configured_stream_token() -> None:
+    source = _source()
+
+    assert "if (requiredToken && providedToken !== requiredToken)" in source
+    assert "if (providedToken && requiredToken" not in source
+
+
+def test_dispatch_function_keeps_gateway_jwt_verification_disabled() -> None:
+    config = SUPABASE_CONFIG.read_text(encoding="utf-8")
+
+    assert "[functions.onesignal-dispatch]" in config
+    assert "verify_jwt = false" in config
 
 
 def test_onesignal_targets_are_deduped_before_send() -> None:
