@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:chessever2/screens/chessboard/analysis/chess_game.dart';
+import 'package:chessever2/screens/chessboard/game_review/game_analysis_report_store.dart';
 import 'package:chessever2/screens/chessboard/provider/stockfish_singleton.dart';
 import 'package:dartchess/dartchess.dart';
 import 'package:flutter/foundation.dart';
@@ -132,8 +133,10 @@ class GameAnalysisReportController extends ChangeNotifier {
   GameAnalysisReportController({
     StockfishSingleton? stockfish,
     GameReportEvaluator? evaluator,
+    GameAnalysisReportStore? store,
   }) : _stockfish = stockfish ?? StockfishSingleton(),
-       _evaluator = evaluator;
+       _evaluator = evaluator,
+       _store = store;
 
   static const int reportDepth = 12;
   static const int reportMultiPv = 3;
@@ -150,6 +153,9 @@ class GameAnalysisReportController extends ChangeNotifier {
 
   final StockfishSingleton _stockfish;
   final GameReportEvaluator? _evaluator;
+  /// When null, production uses [GameAnalysisReportStore.instance]. Tests may
+  /// inject a temp-dir store, or pass a no-op via a dedicated root.
+  final GameAnalysisReportStore? _store;
   late final String _ownerId = StockfishSingleton.generateOwnerId(
     'gameReport',
     identityHashCode(this),
@@ -159,9 +165,8 @@ class GameAnalysisReportController extends ChangeNotifier {
   bool _disposed = false;
   DateTime? _lastProgressNotification;
 
-  /// Completed reports keyed by game fingerprint. A finished game's moves never
-  /// change, so a report is regenerated at most once per app session instead of
-  /// every time the game is reopened — cheaper and far kinder to the battery.
+  /// Completed reports keyed by game fingerprint. Session-hot path; durable
+  /// store backs cold starts (see [loadPersistedReport]).
   static final Map<String, GameAnalysisReport> _reportCache =
       <String, GameAnalysisReport>{};
   static const int _reportCacheLimit = 32;
@@ -169,6 +174,13 @@ class GameAnalysisReportController extends ChangeNotifier {
   /// The cached report for [fingerprint], if this game was already analyzed.
   static GameAnalysisReport? cachedReportFor(String fingerprint) =>
       _reportCache[fingerprint];
+
+  /// Test hook: drop the in-memory session map (does not touch disk).
+  @visibleForTesting
+  static void clearSessionCacheForTest() => _reportCache.clear();
+
+  GameAnalysisReportStore get _effectiveStore =>
+      _store ?? GameAnalysisReportStore.instance;
 
   static void _cacheReport(String fingerprint, GameAnalysisReport report) {
     _reportCache.remove(fingerprint);
@@ -178,28 +190,72 @@ class GameAnalysisReportController extends ChangeNotifier {
     }
   }
 
+  void _persistReport(GameAnalysisReport report) {
+    // Unit-test harnesses inject an evaluator without a store — skip disk IO
+    // so path_provider is never touched outside a real app / injected root.
+    if (_evaluator != null && _store == null) return;
+    // Disk write is fire-and-forget so completion never blocks the UI thread
+    // beyond the memory cache update.
+    unawaited(
+      _effectiveStore.save(report).catchError((Object e, StackTrace st) {
+        debugPrint('Game report durable save failed: $e\n$st');
+      }),
+    );
+  }
+
   GameReportState get state => _state;
 
-  /// Adopts a previously computed report for [fingerprint] without touching
-  /// Stockfish. Returns true when a cached report was applied.
+  /// Adopts a previously computed report for [fingerprint] from the **session**
+  /// memory cache without touching Stockfish. Returns true when applied.
   bool loadCachedReport(String fingerprint) {
     if (_disposed) return false;
-    // The session cache only mirrors real Stockfish runs; controllers driven by
-    // an injected evaluator (tests) never share it.
-    if (_evaluator != null) return false;
     final cached = _reportCache[fingerprint];
     if (cached == null || cached.fingerprint != fingerprint) return false;
+    _adoptCompletedReport(cached);
+    return true;
+  }
+
+  /// Memory first, then durable local store. Call before scheduling analysis so
+  /// a prior generation is restored without Stockfish.
+  ///
+  /// Captures [_generation] before the async disk read so a stale load for
+  /// fingerprint A cannot clobber state after [invalidate] / a newer adopt for
+  /// fingerprint B (game switch mid-flight).
+  Future<bool> loadPersistedReport(String fingerprint) async {
+    if (_disposed) return false;
+    if (loadCachedReport(fingerprint)) return true;
+    // Controllers with an injected evaluator are unit-test harnesses that
+    // should not pull shared disk unless an explicit store was injected.
+    if (_evaluator != null && _store == null) return false;
+    final generation = _generation;
+    final cached = await _effectiveStore.load(fingerprint);
+    if (_disposed || generation != _generation) return false;
+    if (cached == null || cached.fingerprint != fingerprint) return false;
+    // Do not clobber an analysis that already started.
+    if (_state.isRunning) return false;
+    // Do not replace a completed report for a different game.
+    final existing = _state.report;
+    if (_state.status == GameReportStatus.completed &&
+        existing != null &&
+        existing.fingerprint != fingerprint) {
+      return false;
+    }
+    _cacheReport(fingerprint, cached);
+    _adoptCompletedReport(cached);
+    return true;
+  }
+
+  void _adoptCompletedReport(GameAnalysisReport report) {
     _generation++;
     _setState(
       GameReportState(
         status: GameReportStatus.completed,
         progress: 1,
-        completedPositions: cached.positions.length,
-        totalPositions: cached.positions.length,
-        report: cached,
+        completedPositions: report.positions.length,
+        totalPositions: report.positions.length,
+        report: report,
       ),
     );
-    return true;
   }
 
   void invalidate() {
@@ -229,9 +285,10 @@ class GameAnalysisReportController extends ChangeNotifier {
   }) async {
     if (_state.isRunning || game.mainline.isEmpty) return;
     final fingerprint = gameReportFingerprint(game);
-    // Reuse a report computed earlier this session instead of burning the
-    // engine (and battery) on the same finished game again.
+    // Always check previous generations first: session memory, then durable
+    // local store. Skip Stockfish when either hits.
     if (loadCachedReport(fingerprint)) return;
+    if (await loadPersistedReport(fingerprint)) return;
     final generation = ++_generation;
     final fens = gameReportFens(game);
     final totalMoves = (game.mainline.length + 1) ~/ 2;
@@ -366,7 +423,13 @@ class GameAnalysisReportController extends ChangeNotifier {
         blackRating: blackRating,
       );
       if (_disposed || generation != _generation) return;
-      if (_evaluator == null) _cacheReport(fingerprint, report);
+      // Production (no injected evaluator) and store-injected harnesses keep
+      // session + durable copies so the next board visit is free. Pure unit
+      // evaluators skip the static session map so tests stay isolated.
+      if (_evaluator == null || _store != null) {
+        _cacheReport(fingerprint, report);
+        _persistReport(report);
+      }
       _setState(
         GameReportState(
           status: GameReportStatus.completed,
@@ -698,7 +761,7 @@ String? _bestAlternative(GameReportPosition position, String playedMove) {
 /// Whether a move needs alternative Stockfish lines in the refinement pass.
 ///
 /// Loss-based classifications and accuracy only need the primary depth-12
-/// evaluation. Near-best moves need alternatives for Good/Brilliant detection,
+/// evaluation. Near-best moves need alternatives for Great/Brilliant detection,
 /// while a played engine-best move needs one for the report's best alternative.
 bool gameReportMoveNeedsMultiPv({
   required int index,
@@ -714,7 +777,8 @@ bool gameReportMoveNeedsMultiPv({
   final playedIsBest =
       before.bestLine.moves.isNotEmpty &&
       before.bestLine.moves.first == move.uci;
-  return playedIsBest || moverChange >= -2;
+  // Match the near-best window used by classifyGameReportMove.
+  return playedIsBest || moverChange >= -1.5;
 }
 
 GameMoveClassification? classifyGameReportMove({
@@ -736,15 +800,23 @@ GameMoveClassification? classifyGameReportMove({
       .where((line) => line.moves.isNotEmpty && line.moves.first != move.uci)
       .toList(growable: false);
 
+  // Near-best window is tight so ordinary book/quiet moves stay untagged or
+  // plain Best, and only rare specials get Great/Brilliant.
   final alternativeWin =
       alternatives.isEmpty ? null : gameReportWinPercentage(alternatives.first);
-  if (moverChange >= -2 && alternativeWin != null) {
+  if (moverChange >= -1.5 && alternativeWin != null) {
     final alternativeChange = (afterWin - alternativeWin) * (isWhite ? 1 : -1);
     final losing = isWhite ? afterWin < 50 : afterWin > 50;
-    final alternativeCompletelyWinning =
-        isWhite ? alternativeWin > 97 : alternativeWin < 3;
-    if (!losing &&
-        !alternativeCompletelyWinning &&
+    // Already-winning filter: do not award flashy labels when the second line
+    // is already a near-forced win (Chess.com / WintrCat-style).
+    final alternativeAlreadyWinning =
+        isWhite ? alternativeWin > 88 : alternativeWin < 12;
+    final alreadyComfortablyWinning =
+        isWhite ? beforeWin > 88 : beforeWin < 12;
+    if (playedIsBest &&
+        !losing &&
+        !alternativeAlreadyWinning &&
+        !alreadyComfortablyWinning &&
         isReportPieceSacrifice(
           before.fen,
           move.uci,
@@ -752,11 +824,12 @@ GameMoveClassification? classifyGameReportMove({
         )) {
       return GameMoveClassification.brilliant;
     }
+    // Great: only-move or decisive swing — not every engine top move.
     final crossedOutcome =
-        moverChange > 10 &&
-        ((beforeWin < 50 && afterWin > 50) ||
-            (beforeWin > 50 && afterWin < 50));
-    final onlyGoodMove = alternativeChange > 10;
+        moverChange > 15 &&
+        ((beforeWin < 48 && afterWin > 52) ||
+            (beforeWin > 52 && afterWin < 48));
+    final onlyGoodMove = alternativeChange > 18;
     final simpleRecapture =
         index > 0 &&
         isSimpleReportRecapture(
@@ -765,22 +838,32 @@ GameMoveClassification? classifyGameReportMove({
           move.uci,
         );
     if (!losing &&
-        !alternativeCompletelyWinning &&
+        !alternativeAlreadyWinning &&
         !simpleRecapture &&
         (crossedOutcome || onlyGoodMove)) {
-      return GameMoveClassification.goodMove;
+      return GameMoveClassification.bestMove; // label: Great
     }
   }
 
-  if (playedIsBest) return GameMoveClassification.bestMove;
-  final hadWinningPosition = isWhite ? beforeWin >= 75 : beforeWin <= 25;
-  final lostWinningPosition = isWhite ? afterWin <= 55 : afterWin >= 45;
-  if (hadWinningPosition && lostWinningPosition) {
+  // Best: ordinary engine-top move (no longer auto-Great).
+  if (playedIsBest) return GameMoveClassification.goodMove; // label: Best
+  final hadWinningPosition = isWhite ? beforeWin >= 78 : beforeWin <= 22;
+  final lostWinningPosition = isWhite ? afterWin <= 52 : afterWin >= 48;
+  if (hadWinningPosition && lostWinningPosition && moverChange < -15) {
     return GameMoveClassification.missedWin;
   }
-  if (moverChange < -20) return GameMoveClassification.blunder;
-  if (moverChange < -10) return GameMoveClassification.mistake;
-  if (moverChange < -5) return GameMoveClassification.inaccuracy;
+  // Lichess-style Win% loss bands (less aggressive than the old -5/-10/-20).
+  // Soften when the game was already decided either way.
+  final alreadyLost = isWhite ? beforeWin <= 8 : beforeWin >= 92;
+  final stillWinning = isWhite ? afterWin >= 92 : afterWin <= 8;
+  if (alreadyLost || stillWinning) {
+    if (moverChange < -35) return GameMoveClassification.mistake;
+    if (moverChange < -20) return GameMoveClassification.inaccuracy;
+    return null;
+  }
+  if (moverChange < -30) return GameMoveClassification.blunder;
+  if (moverChange < -20) return GameMoveClassification.mistake;
+  if (moverChange < -10) return GameMoveClassification.inaccuracy;
   return null;
 }
 

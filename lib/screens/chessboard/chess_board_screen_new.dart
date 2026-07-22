@@ -11315,21 +11315,40 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
           useClassificationIcon: true,
         ),
     };
+    // Raw PGN mode strips Lichess/fetched decorative glyphs and PGN NAGs, but
+    // must NOT hide the whole-game report verdict chips — those are the result
+    // of an explicit analysis the user waited for.
     final moveAnnotations = <int, LichessMoveAnnotation>{
       ...lichessAnnotations,
       ...reportAnnotations,
     };
 
     // Debug: Log annotation state
-    if (lichessAnnotations.isNotEmpty) {
-      debugPrint(
-        '🎯 [Annotations] Got ${lichessAnnotations.length} annotations for game $lichessGameId',
-      );
-      debugPrint('🎯 [Annotations] Keys: ${lichessAnnotations.keys.toList()}');
-    } else if (lichessAnnotationsAsync.isLoading) {
-      debugPrint('🎯 [Annotations] Loading for game $lichessGameId...');
-    } else if (lichessAnnotationsAsync.hasError) {
-      debugPrint('🎯 [Annotations] Error: ${lichessAnnotationsAsync.error}');
+    if (kDebugMode) {
+      if (reportAnnotations.isNotEmpty) {
+        debugPrint(
+          '🎯 [ReportClassifications] attached ${reportAnnotations.length} '
+          'icons (fp match board=$boardFingerprint status=${reviewState.reportState.status})',
+        );
+      } else if (reviewState.reportState.status == GameReportStatus.completed) {
+        debugPrint(
+          '⚠️ [ReportClassifications] report completed but attach map empty '
+          '(boardFp=$boardFingerprint reviewFp=${reviewState.fingerprint} '
+          'reportFp=${reviewState.reportState.report?.fingerprint})',
+        );
+      }
+      if (lichessAnnotations.isNotEmpty) {
+        debugPrint(
+          '🎯 [Annotations] Got ${lichessAnnotations.length} annotations for game $lichessGameId',
+        );
+        debugPrint(
+          '🎯 [Annotations] Keys: ${lichessAnnotations.keys.toList()}',
+        );
+      } else if (lichessAnnotationsAsync.isLoading) {
+        debugPrint('🎯 [Annotations] Loading for game $lichessGameId...');
+      } else if (lichessAnnotationsAsync.hasError) {
+        debugPrint('🎯 [Annotations] Error: ${lichessAnnotationsAsync.error}');
+      }
     }
 
     // Get figurine notation setting and piece assets for rendering
@@ -11418,8 +11437,9 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
       forcedOpenIds,
     );
 
+    // Raw PGN: drop Lichess/auto glyphs, keep report classification icons.
     final effectiveLichessAnnotations =
-        rawPgnMode ? const <int, LichessMoveAnnotation>{} : moveAnnotations;
+        rawPgnMode ? reportAnnotations : moveAnnotations;
 
     final pointerMap = <String, NotationMoveNode>{};
     final tokens = buildNotationTokens(
@@ -11814,13 +11834,20 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
         tailPointerId != null &&
         pointerId == tailPointerId;
 
-    // Author/user NAGs win — Lichess fetched analysis is only used as a
-    // fallback when no NAGs are present on the move.
-    // Raw PGN mode hides all auto symbols (NAGs + Lichess annotations).
+    // Author/user NAGs win for inline glyphs — Lichess fetched analysis is only
+    // used as a fallback when no NAGs are present on the move.
+    // Raw PGN mode hides PGN NAGs and non-report Lichess glyphs, but keeps the
+    // whole-game report classification icons (engine verdict after analysis).
+    final resolvedAnnotation = _resolveLichessAnnotation(
+      token,
+      lichessAnnotations,
+    );
     final rawAnnotation =
         rawPgnMode
-            ? null
-            : _resolveLichessAnnotation(token, lichessAnnotations);
+            ? (resolvedAnnotation?.useClassificationIcon == true
+                ? resolvedAnnotation
+                : null)
+            : resolvedAnnotation;
     final nags =
         rawPgnMode
             ? const <int>[]
@@ -11862,7 +11889,11 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
     final baseColor = _resolveMoveColor(token, currentPly);
     final qualityColor = firstQualityNag?.color;
     final annotationColor = annotation?.type.color;
-    final color = qualityColor ?? annotationColor ?? baseColor;
+    // Report classification color must tint the SAN even when author NAGs
+    // suppressed the inline-annotation path above.
+    final classificationColor = classificationAnnotation?.type.color;
+    final color =
+        qualityColor ?? annotationColor ?? classificationColor ?? baseColor;
 
     final textStyle = AppTypography.textXsMedium.copyWith(
       color: color,

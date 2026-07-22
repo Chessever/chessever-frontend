@@ -246,22 +246,63 @@ void main() {
   group('move classification', () {
     final game = ChessGame.fromPgn('classify', '1. e4 *');
 
-    test('covers desktop loss thresholds', () {
+    test('covers lichess-style loss thresholds', () {
       expect(_classify(game, 50, 49), isNull);
-      expect(_classify(game, 50, 43), GameMoveClassification.inaccuracy);
-      expect(_classify(game, 50, 38), GameMoveClassification.mistake);
-      expect(_classify(game, 50, 25), GameMoveClassification.blunder);
+      // 7% drop — below the 10% inaccuracy band
+      expect(_classify(game, 50, 43), isNull);
+      // 12% drop — inaccuracy
+      expect(_classify(game, 50, 38), GameMoveClassification.inaccuracy);
+      // 22% drop — mistake
+      expect(_classify(game, 50, 28), GameMoveClassification.mistake);
+      // 35% drop — blunder
+      expect(_classify(game, 50, 15), GameMoveClassification.blunder);
     });
 
-    test('engine best precedes score thresholds', () {
+    test('engine best is Best, not auto-Great', () {
       expect(
-        _classify(game, 50, 20, bestMove: 'e2e4'),
+        _classify(game, 50, 49, bestMove: 'e2e4'),
+        GameMoveClassification.goodMove,
+      );
+    });
+
+    test('only-move with a large second-line gap is Great', () {
+      final positions = [
+        GameReportPosition(
+          fen: game.startingFen,
+          lines: [
+            _line(cp: 50, moves: const ['e2e4']),
+            // ~ +0 vs ~ +2.5 pawns ⇒ large Win% gap for the only-good rule
+            _line(cp: -200, moves: const ['h2h3']),
+          ],
+        ),
+        GameReportPosition(
+          fen: game.mainline.first.fen,
+          lines: [_line(cp: 50)],
+        ),
+      ];
+      // before/after both ~ mid-high Win% for white after e4
+      final beforeWin = gameReportWinPercentage(_line(cp: 50));
+      final afterWin = gameReportWinPercentage(_line(cp: 50));
+      expect(
+        classifyGameReportMove(
+          index: 0,
+          game: game,
+          positions: positions,
+          winPercentages: [beforeWin, afterWin],
+        ),
         GameMoveClassification.bestMove,
       );
     });
 
     test('losing a winning position is a missed win', () {
       expect(_classify(game, 80, 50), GameMoveClassification.missedWin);
+    });
+
+    test('small dips in a decided game are not blunders', () {
+      // Already lost for white (≤8%): further loss is softened / ignored.
+      expect(_classify(game, 5, 0), isNull);
+      // Still completely winning after the move: no blunder tag.
+      expect(_classify(game, 99, 93), isNull);
     });
 
     test('sacrifice and recapture guards inspect the board', () {

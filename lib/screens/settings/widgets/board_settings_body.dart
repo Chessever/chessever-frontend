@@ -293,7 +293,7 @@ class BoardSettingsBody extends ConsumerWidget {
                     ),
                     SizedBox(height: 4.h),
                     Text(
-                      'Hide auto symbols (!, ?, ±) and comments in the notation. Renders moves as clean PGN.',
+                      'Hide PGN symbols (!, ?, ±) and comments. Game Analysis classification icons still show after a report finishes.',
                       style: AppTypography.textSmRegular.copyWith(
                         color: context.colors.textSecondary,
                         fontSize: 11.f,

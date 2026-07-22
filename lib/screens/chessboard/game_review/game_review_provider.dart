@@ -170,10 +170,13 @@ class MobileGameReviewController
           ),
         ),
       );
-      // A finished game already analyzed this session is restored instantly
-      // (and its classifications revealed) instead of being recomputed.
+      // Previous generations first: session memory, then durable local store.
+      // Disk load is async so it must not block configure; analyze() also
+      // awaits the same path before touching Stockfish.
       if (state.isEligible) {
-        _reportController.loadCachedReport(fingerprint);
+        if (!_reportController.loadCachedReport(fingerprint)) {
+          unawaited(_reportController.loadPersistedReport(fingerprint));
+        }
       }
     } else {
       final eligible = finished && game.mainline.isNotEmpty;
