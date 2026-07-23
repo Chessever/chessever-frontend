@@ -3,8 +3,8 @@
  * Run: deno test --allow-read supabase/functions/onesignal-dispatch/player_game_recipients_test.ts
  */
 import {
-  assertEquals,
   assert,
+  assertEquals,
 } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import {
   filterGameStartedPlayerRecipients,
@@ -14,7 +14,7 @@ import {
 
 Deno.test("single-favorite user is kept for game_started (Scenario A)", () => {
   assertEquals(
-    shouldReceiveGameStartedForPlayerFavorite(1, false),
+    shouldReceiveGameStartedForPlayerFavorite(false),
     true,
   );
 });
@@ -24,53 +24,53 @@ Deno.test(
   () => {
     // Regression: old code used favCount !== 1 and deleted these users.
     assertEquals(
-      shouldReceiveGameStartedForPlayerFavorite(0, false),
+      shouldReceiveGameStartedForPlayerFavorite(false),
       true,
     );
   },
 );
 
-Deno.test("multi-favorite in round is suppressed (Scenarios B/C)", () => {
+Deno.test(
+  "uncovered user receives game_started fallback when combined round start was not sent",
+  () => {
+    assertEquals(
+      shouldReceiveGameStartedForPlayerFavorite(false),
+      true,
+    );
+  },
+);
+
+Deno.test("confirmed round-start window suppresses multi-favorite fallback", () => {
   assertEquals(
-    shouldReceiveGameStartedForPlayerFavorite(2, false),
-    false,
-  );
-  assertEquals(
-    shouldReceiveGameStartedForPlayerFavorite(5, false),
+    shouldReceiveGameStartedForPlayerFavorite(true),
     false,
   );
 });
 
 Deno.test("active game-start window suppresses even single-favorite", () => {
   assertEquals(
-    shouldReceiveGameStartedForPlayerFavorite(1, true),
+    shouldReceiveGameStartedForPlayerFavorite(true),
     false,
   );
   assertEquals(
-    shouldReceiveGameStartedForPlayerFavorite(0, true),
+    shouldReceiveGameStartedForPlayerFavorite(true),
     false,
   );
 });
 
-Deno.test("filterGameStartedPlayerRecipients keeps allow-set, tags skips", () => {
-  const map = new Map<string, string[]>([
-    ["u-single", ["Carlsen, Magnus"]],
-    ["u-multi", ["Carlsen, Magnus", "Nakamura, Hikaru"]],
-    // u-miss intentionally absent from map → count 0
-  ]);
+Deno.test("filterGameStartedPlayerRecipients keeps uncovered users", () => {
   const covered = new Set(["u-window"]);
-  const { keep, skippedMultiFavorite, skippedWindow } =
-    filterGameStartedPlayerRecipients(
-      ["u-single", "u-multi", "u-miss", "u-window"],
-      map,
-      covered,
-    );
+  const { keep, skippedWindow } = filterGameStartedPlayerRecipients(
+    ["u-first-fallback", "u-map-miss", "u-window"],
+    covered,
+  );
 
-  assert(keep.has("u-single"), "single favorite must receive");
-  assert(keep.has("u-miss"), "map-miss player-fav must still receive");
-  assert(!keep.has("u-multi"), "multi-fav must not get per-game push");
+  assert(
+    keep.has("u-first-fallback"),
+    "uncovered favorite-player user must receive one fallback",
+  );
+  assert(keep.has("u-map-miss"), "map-miss player-fav must still receive");
   assert(!keep.has("u-window"), "window-covered must not receive");
-  assertEquals(skippedMultiFavorite, ["u-multi"]);
   assertEquals(skippedWindow, ["u-window"]);
   assertEquals(keep.size, 2);
 });

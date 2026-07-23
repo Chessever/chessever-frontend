@@ -181,6 +181,7 @@ async function claimPending(limit: number): Promise<OutboxItem[]> {
 }
 
 const STALE_THRESHOLD_MS = 60 * 60 * 1000; // 1 hour
+const ROUND_START_RETRY_DELAY_MS = 30 * 1000;
 
 async function processItem(item: OutboxItem) {
   // Skip stale items to prevent sending outdated notifications
@@ -193,11 +194,19 @@ async function processItem(item: OutboxItem) {
   try {
     const context = await buildContext(item);
     if (item.event_type === "round_started") {
-      if (!item.round_id || !(await hasRoundWithMoves(item.round_id))) {
-        await markSkipped(item.id, "round_not_live_yet");
+      if (!item.round_id) {
+        await markSkipped(item.id, "missing_round_id");
         return {
           id: item.id,
           status: "skipped",
+          reason: "missing_round_id",
+        };
+      }
+      if (!(await hasRoundWithMoves(item.round_id))) {
+        await reschedulePending(item.id, "round_not_live_yet");
+        return {
+          id: item.id,
+          status: "pending",
           reason: "round_not_live_yet",
         };
       }
@@ -754,11 +763,10 @@ async function processItem(item: OutboxItem) {
       return { id: item.id, status: "skipped", reason: "no_recipients" };
     }
 
-    // For game_started: multi-fav (2+ favorites in the round) users get the
-    // combined round_started push (Scenarios B/C), not per-game spam.
-    // Single-favorite users (Scenario A) and map-miss (count 0 but still in
-    // playerUserIds for THIS game) keep game_started — see
-    // filterGameStartedPlayerRecipients / shouldReceiveGameStartedForPlayerFavorite.
+    // For game_started, suppress only users already covered by a confirmed
+    // combined round_started or an earlier per-game fallback. Favorite count
+    // alone is not proof of delivery: if round_started was waiting for moves,
+    // the first matching game_started becomes the safe one-per-round fallback.
     if (item.event_type === "game_started" && item.round_id) {
       const alreadyCovered = await fetchUsersWithActiveGameStartWindow(
         item.round_id,
@@ -766,7 +774,6 @@ async function processItem(item: OutboxItem) {
       );
       const { keep } = filterGameStartedPlayerRecipients(
         filteredUserIds,
-        context.playerFavoriteMap,
         alreadyCovered,
       );
       filteredUserIds.clear();
@@ -817,7 +824,7 @@ async function processItem(item: OutboxItem) {
 async function markSent(id: string) {
   await supabase
     .from("notification_outbox")
-    .update({ status: "sent" })
+    .update({ status: "sent", last_error: null })
     .eq("id", id);
 }
 
@@ -825,6 +832,18 @@ async function markSkipped(id: string, reason: string) {
   await supabase
     .from("notification_outbox")
     .update({ status: "skipped", last_error: reason })
+    .eq("id", id);
+}
+
+async function reschedulePending(id: string, reason: string) {
+  await supabase
+    .from("notification_outbox")
+    .update({
+      status: "pending",
+      last_error: reason,
+      not_before: new Date(Date.now() + ROUND_START_RETRY_DELAY_MS)
+        .toISOString(),
+    })
     .eq("id", id);
 }
 

@@ -66,7 +66,8 @@ void main() {
             'supabase/functions/onesignal-dispatch/player_game_recipients.ts',
           ).readAsStringSync();
       expect(pure, contains('shouldReceiveGameStartedForPlayerFavorite'));
-      expect(pure, contains('favoriteCountInRound >= 2'));
+      expect(pure, contains('return !alreadyCoveredByGameStartWindow'));
+      expect(pure, isNot(contains('favoriteCountInRound >= 2')));
     });
   });
 }

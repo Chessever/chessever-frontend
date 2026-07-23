@@ -48,7 +48,7 @@ def test_game_started_notifications_do_not_reinclude_event_only_recipients() -> 
     game_block_start = source.index(
         'if (eventType === "game_started" || eventType === "game_finished")'
     )
-    game_block_end = source.index('if (eventType === "live_game_update")', game_block_start)
+    game_block_end = source.index('if (eventType === "call_to_action")', game_block_start)
     game_block = source[game_block_start:game_block_end]
 
     assert "favorite_player_alerts" in game_block
@@ -93,6 +93,27 @@ def test_round_started_requires_actual_move_before_dispatch() -> None:
     assert "round_not_live_yet" in source
     assert '.select("id")' in source
     assert '.not("last_move_time", "is", null)' in source
+
+
+def test_round_started_waits_for_moves_instead_of_terminally_skipping() -> None:
+    source = _source()
+    guard_start = source.index('if (item.event_type === "round_started")')
+    guard_end = source.index("hasSentGroupedRoundStart", guard_start)
+    guard = source[guard_start:guard_end]
+
+    assert 'await reschedulePending(item.id, "round_not_live_yet")' in guard
+    assert 'await markSkipped(item.id, "round_not_live_yet")' not in guard
+    assert 'status: "pending"' in guard
+    assert "function reschedulePending" in source
+
+
+def test_successful_retry_clears_the_waiting_reason() -> None:
+    source = _source()
+    mark_sent_start = source.index("async function markSent")
+    mark_sent_end = source.index("async function markSkipped", mark_sent_start)
+    mark_sent = source[mark_sent_start:mark_sent_end]
+
+    assert 'update({ status: "sent", last_error: null })' in mark_sent
 
 
 def test_round_event_display_name_omits_redundant_single_open_section() -> None:

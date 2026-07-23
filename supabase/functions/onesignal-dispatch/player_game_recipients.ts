@@ -24,55 +24,38 @@ export type PreferenceRow = {
  * Whether a user who already passed applyPreferences should receive a
  * per-game `game_started` push for a favorite-player board.
  *
- * Product rules (Scenarios A/B/C):
- * - Round window: already got a game_started for this round → suppress.
- * - Multi-favorite in the same round (count >= 2) → covered by round_started.
- * - Count === 1 → single-favorite Scenario A → deliver.
- * - Count === 0 → favorite map failed to resolve names but the user is still
- *   in playerUserIds (fide/name match for THIS game) → deliver, do NOT treat
- *   as multi-fav. (Old bug: `count !== 1` deleted these users.)
+ * A confirmed game-start window means either the combined `round_started`
+ * notification or an earlier per-game fallback already covered this user.
+ * Without that confirmation, keep the first per-game notification even when
+ * several favorites play in the round; otherwise an early skipped
+ * `round_started` row can suppress every start alert.
  */
 export function shouldReceiveGameStartedForPlayerFavorite(
-  favoriteCountInRound: number,
   alreadyCoveredByGameStartWindow: boolean,
 ): boolean {
-  if (alreadyCoveredByGameStartWindow) return false;
-  if (favoriteCountInRound >= 2) return false;
-  return true;
+  return !alreadyCoveredByGameStartWindow;
 }
 
-/**
- * Apply the game_started multi-fav + window filters to a recipient set.
- * Returns kept user ids and skip reason tags for honesty / logging.
- */
+/** Apply the confirmed-delivery window filter to game_started recipients. */
 export function filterGameStartedPlayerRecipients(
   candidateUserIds: Iterable<string>,
-  playerFavoriteMap: Map<string, string[]>,
   alreadyCoveredByWindow: Set<string>,
 ): {
   keep: Set<string>;
-  skippedMultiFavorite: string[];
   skippedWindow: string[];
 } {
   const keep = new Set<string>();
-  const skippedMultiFavorite: string[] = [];
   const skippedWindow: string[] = [];
 
   for (const uid of candidateUserIds) {
-    const favCount = (playerFavoriteMap.get(uid) ?? []).length;
-    const covered = alreadyCoveredByWindow.has(uid);
-    if (covered) {
+    if (alreadyCoveredByWindow.has(uid)) {
       skippedWindow.push(uid);
-      continue;
-    }
-    if (favCount >= 2) {
-      skippedMultiFavorite.push(uid);
       continue;
     }
     keep.add(uid);
   }
 
-  return { keep, skippedMultiFavorite, skippedWindow };
+  return { keep, skippedWindow };
 }
 
 /**
