@@ -1,9 +1,13 @@
 import 'dart:async';
 
+import 'package:chessever2/repository/supabase/game_analysis_quota_repository.dart';
+import 'package:chessever2/revenue_cat_service/subscribe_state.dart';
 import 'package:chessever2/screens/chessboard/analysis/chess_game.dart';
 import 'package:chessever2/screens/chessboard/game_review/game_analysis_report.dart';
 import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
-import 'package:flutter/foundation.dart';
+import 'package:chessever2/widgets/auth/auth_upgrade_sheet.dart';
+import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
+import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 @immutable
@@ -102,9 +106,8 @@ class MobileGameReviewState {
 
 /// Coordinates whole-game analysis for one board page.
 ///
-/// Implemented as a [StateNotifier] (not [ChangeNotifier]) so Riverpod rebuilds
-/// consumers when [state] is assigned — including after report completion when
-/// notation must attach classification icons without opening the sheet.
+/// Free users: on-demand only, 1 new report per UTC day (server RPC).
+/// Premium users: unlimited and auto-start when the board is active.
 class MobileGameReviewController
     extends StateNotifier<MobileGameReviewState> {
   static const Duration defaultAutoStartDelay = Duration(seconds: 2);
@@ -112,13 +115,26 @@ class MobileGameReviewController
   MobileGameReviewController({
     GameAnalysisReportController? reportController,
     Duration autoStartDelay = defaultAutoStartDelay,
+    bool Function()? isPremium,
+    Future<GameAnalysisClaimResult> Function(String fingerprint)? claimQuota,
   }) : _reportController = reportController ?? GameAnalysisReportController(),
        _autoStartDelay = autoStartDelay,
+       _isPremium = isPremium ?? (() => false),
+       _claimQuota =
+           claimQuota ??
+           ((_) async => const GameAnalysisClaimResult(
+             allowed: false,
+             reason: 'unconfigured',
+             isPremium: false,
+           )),
        super(const MobileGameReviewState()) {
     _reportController.addListener(_onReportChanged);
   }
 
   final GameAnalysisReportController _reportController;
+  final bool Function() _isPremium;
+  final Future<GameAnalysisClaimResult> Function(String fingerprint) _claimQuota;
+
   /// Extra listenable for modal sheet [AnimatedBuilder] (sheet is not a
   /// Riverpod consumer). Riverpod UI still watches [state] via the provider.
   final _ReviewSheetListenable _sheetListenable = _ReviewSheetListenable();
@@ -170,9 +186,8 @@ class MobileGameReviewController
           ),
         ),
       );
-      // Previous generations first: session memory, then durable local store.
-      // Disk load is async so it must not block configure; analyze() also
-      // awaits the same path before touching Stockfish.
+      // Previous generations: session memory, then durable local store.
+      // Cached reports do not consume the free daily quota.
       if (state.isEligible) {
         if (!_reportController.loadCachedReport(fingerprint)) {
           unawaited(_reportController.loadPersistedReport(fingerprint));
@@ -202,11 +217,7 @@ class MobileGameReviewController
       }
       return;
     }
-    if (state.isEligible &&
-        (_reportController.state.status == GameReportStatus.idle ||
-            _reportController.state.status == GameReportStatus.cancelled)) {
-      _scheduleAnalyze();
-    }
+    _maybeAutoStart();
   }
 
   void setActive(bool active) {
@@ -219,11 +230,18 @@ class MobileGameReviewController
       }
       return;
     }
-    if (state.isEligible &&
-        (_reportController.state.status == GameReportStatus.idle ||
-            _reportController.state.status == GameReportStatus.cancelled)) {
-      _scheduleAnalyze();
+    _maybeAutoStart();
+  }
+
+  void _maybeAutoStart() {
+    // Free users are on-demand only. Premium may auto-start when idle.
+    if (!_isPremium()) return;
+    if (!state.isEligible) return;
+    if (_reportController.state.status != GameReportStatus.idle &&
+        _reportController.state.status != GameReportStatus.cancelled) {
+      return;
     }
+    _scheduleAnalyze();
   }
 
   String? _unavailableMessage({
@@ -244,27 +262,116 @@ class MobileGameReviewController
     _emit(state.copyWith(revealedFingerprint: fingerprint));
   }
 
-  Future<void> retry() async {
+  /// Explicit user-started analysis. Handles auth + daily quota + paywall.
+  Future<void> requestAnalysis(BuildContext context) async {
+    if (!mounted || !state.isEligible) return;
+    _autoStartTimer?.cancel();
+    final game = _game;
+    if (game == null) return;
+    final fingerprint = gameReportFingerprint(game);
+    // Capture navigator context before any await so lints stay clean.
+    final hostContext = context;
+
+    // Cached / already-completed reports never spend a free slot.
+    if (_reportController.loadCachedReport(fingerprint)) return;
+    if (await _reportController.loadPersistedReport(fingerprint)) return;
+    if (!mounted || !hostContext.mounted) return;
+
+    final claim = await _claimWithUi(hostContext, fingerprint);
+    if (!mounted || !claim) return;
+
+    await _reportController.analyze(
+      game,
+      whiteRating: _whiteRating,
+      blackRating: _blackRating,
+    );
+  }
+
+  /// Sheet "Retry" / "Analyze Game" — same gated path as the notation button.
+  Future<void> retry([BuildContext? context]) async {
     if (!mounted || !_active || !state.isEligible) return;
     _autoStartTimer?.cancel();
-    _reportController.invalidate();
-    await _analyze();
+    if (context != null) {
+      await requestAnalysis(context);
+      return;
+    }
+    // No context (tests / auto path): only run when premium or cache exists.
+    final game = _game;
+    if (game == null) return;
+    final fingerprint = gameReportFingerprint(game);
+    if (_reportController.loadCachedReport(fingerprint)) return;
+    if (await _reportController.loadPersistedReport(fingerprint)) return;
+    if (!_isPremium()) return;
+    final claim = await _claimQuota(fingerprint);
+    if (!claim.allowed || !mounted) return;
+    await _reportController.analyze(
+      game,
+      whiteRating: _whiteRating,
+      blackRating: _blackRating,
+    );
+  }
+
+  Future<bool> _claimWithUi(BuildContext hostContext, String fingerprint) async {
+    try {
+      final result = await _claimQuota(fingerprint);
+      if (result.allowed) return true;
+      if (!hostContext.mounted) return false;
+
+      if (result.needsAuth) {
+        final authenticated = await requireFullAuthGuard(hostContext);
+        if (!authenticated || !hostContext.mounted) return false;
+        final retry = await _claimQuota(fingerprint);
+        if (retry.allowed) return true;
+        if (!hostContext.mounted) return false;
+        if (retry.dailyLimitReached) {
+          final subscribed = await showPremiumPaywallSheet(
+            context: hostContext,
+          );
+          if (subscribed && hostContext.mounted) {
+            final afterPay = await _claimQuota(fingerprint);
+            return afterPay.allowed;
+          }
+        }
+        return false;
+      }
+
+      if (result.dailyLimitReached) {
+        final subscribed = await showPremiumPaywallSheet(context: hostContext);
+        if (subscribed && hostContext.mounted) {
+          final afterPay = await _claimQuota(fingerprint);
+          return afterPay.allowed;
+        }
+        return false;
+      }
+
+      return false;
+    } catch (e, st) {
+      debugPrint('Game analysis quota claim failed: $e\n$st');
+      if (!hostContext.mounted) return false;
+      return showPremiumPaywallSheet(context: hostContext);
+    }
   }
 
   void _scheduleAnalyze() {
-    // configure() is invoked from the notation build lifecycle. Keep the first
-    // scheduled start so unrelated rebuilds cannot postpone analysis forever.
     if (_autoStartTimer?.isActive ?? false) return;
     _autoStartTimer = Timer(_autoStartDelay, () {
       _autoStartTimer = null;
       if (!mounted || !_active || !state.isEligible) return;
-      unawaited(_analyze());
+      if (!_isPremium()) return;
+      unawaited(_analyzePremiumAuto());
     });
   }
 
-  Future<void> _analyze() async {
+  Future<void> _analyzePremiumAuto() async {
     final game = _game;
     if (!mounted || game == null || !_active || !state.isEligible) return;
+    final fingerprint = gameReportFingerprint(game);
+    if (_reportController.loadCachedReport(fingerprint)) return;
+    if (await _reportController.loadPersistedReport(fingerprint)) return;
+    if (!mounted) return;
+    // Server still authorizes; premium returns allowed without spending a slot.
+    final claim = await _claimQuota(fingerprint);
+    if (!claim.allowed || !mounted) return;
     await _reportController.analyze(
       game,
       whiteRating: _whiteRating,
@@ -275,9 +382,6 @@ class MobileGameReviewController
   void _onReportChanged() {
     if (!mounted) return;
     var next = state.copyWith(reportState: _reportController.state);
-    // Persist reveal when the report is ready so notation and sheet share the
-    // same fingerprint latch (classificationsRevealed also treats completed
-    // reports as revealed even if this side-effect races).
     if (_reportController.state.status == GameReportStatus.completed &&
         next.fingerprint != null &&
         next.fingerprint != next.revealedFingerprint) {
@@ -304,7 +408,14 @@ final mobileGameReviewProvider = StateNotifierProvider.autoDispose
       MobileGameReviewController,
       MobileGameReviewState,
       ChessBoardProviderParams
-    >((ref, params) => MobileGameReviewController());
+    >((ref, params) {
+      return MobileGameReviewController(
+        isPremium: () => ref.read(subscriptionProvider).isSubscribed,
+        claimQuota:
+            (fingerprint) =>
+                ref.read(gameAnalysisQuotaRepositoryProvider).claim(fingerprint),
+      );
+    });
 
 /// Private listenable so the modal sheet can rebuild without being a Riverpod
 /// consumer, while board/notation use [mobileGameReviewProvider] properly.

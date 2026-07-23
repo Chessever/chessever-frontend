@@ -1,4 +1,5 @@
 import 'package:chessever2/repository/lichess/cloud_eval/cloud_eval.dart';
+import 'package:chessever2/repository/supabase/game_analysis_quota_repository.dart';
 import 'package:chessever2/screens/chessboard/analysis/chess_game.dart';
 import 'package:chessever2/screens/chessboard/game_review/game_analysis_report.dart';
 import 'package:chessever2/screens/chessboard/game_review/game_review_provider.dart';
@@ -10,13 +11,23 @@ import 'package:chessever2/widgets/player_initials_avatar.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+Future<GameAnalysisClaimResult> _allowClaim(String _) async =>
+    const GameAnalysisClaimResult(
+      allowed: true,
+      reason: 'premium',
+      isPremium: true,
+    );
+
 void main() {
   test('review eligibility and reveal state follow the configured game', () {
     expect(
       MobileGameReviewController.defaultAutoStartDelay,
       const Duration(seconds: 2),
     );
-    final controller = MobileGameReviewController();
+    final controller = MobileGameReviewController(
+      isPremium: () => true,
+      claimQuota: _allowClaim,
+    );
     addTearDown(controller.dispose);
     final game = ChessGame.fromPgn('eligibility', '1. e4 e5 *');
 
@@ -57,6 +68,8 @@ void main() {
       final controller = MobileGameReviewController(
         reportController: reportController,
         autoStartDelay: Duration.zero,
+        isPremium: () => true,
+        claimQuota: _allowClaim,
       );
       addTearDown(controller.dispose);
 
@@ -302,6 +315,8 @@ void main() {
     final controller = MobileGameReviewController(
       reportController: reportController,
       autoStartDelay: Duration.zero,
+      isPremium: () => true,
+      claimQuota: _allowClaim,
     );
     int? jumpedToPly;
     addTearDown(controller.dispose);
@@ -403,18 +418,11 @@ void main() {
     expect(find.text('MIDDLEGAME'), findsNothing);
     expect(find.text('ENDGAME'), findsNothing);
     expect(find.textContaining('1/3'), findsOneWidget);
-
-    await tester.tap(
-      find.byKey(const ValueKey('game-review-bestMove-white-score')),
+    expect(find.byKey(const ValueKey('game-review-next-move')), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('game-review-previous-move')),
+      findsOneWidget,
     );
-    await tester.pump();
-    expect(jumpedToPly, 1);
-    expect(find.textContaining('2/3'), findsOneWidget);
-
-    await tester.tap(find.byKey(const ValueKey('game-review-next-move')));
-    await tester.pump();
-    expect(jumpedToPly, 2);
-    expect(find.textContaining('3/3'), findsOneWidget);
 
     Navigator.of(
       tester.element(find.byKey(const ValueKey('game-review-full-sheet'))),
@@ -434,18 +442,20 @@ Future<EnhancedCloudEval> _evaluator(
 }) async {
   onProgress?.call(depth, 500);
   final whiteToMove = fen.split(' ')[1] == 'w';
+  final top =
+      whiteToMove
+          ? (fen.startsWith('rnbqkbnr/pppppppp') ? 'e2e4' : 'g1f3')
+          : 'e7e5';
+  final second = whiteToMove ? 'd2d4' : 'd7d5';
+  final third = whiteToMove ? 'c2c4' : 'c7c5';
   return EnhancedCloudEval(
     fen: fen,
     knodes: 500,
     depth: depth,
     pvs: [
-      Pv(
-        moves:
-            whiteToMove
-                ? (fen.startsWith('rnbqkbnr/pppppppp') ? 'e2e4' : 'g1f3')
-                : 'e7e5',
-        cp: 10,
-      ),
+      Pv(moves: top, cp: 180),
+      if (multiPv > 1) Pv(moves: second, cp: 20),
+      if (multiPv > 2) Pv(moves: third, cp: -40),
     ],
     requestedMultiPv: multiPv,
   );

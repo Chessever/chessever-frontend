@@ -38,6 +38,10 @@ Future<void> showMobileGameReviewSheet({
   Future<void> Function(bool visible)? onVisibilityChanged,
 }) async {
   controller.reveal();
+  // On-demand generation (free daily slot / premium unlimited). Cached
+  // reports return immediately without consuming quota.
+  await controller.requestAnalysis(context);
+  if (!context.mounted) return;
   await onVisibilityChanged?.call(true);
   if (!context.mounted) {
     await onVisibilityChanged?.call(false);
@@ -54,7 +58,7 @@ Future<void> showMobileGameReviewSheet({
       // Soft dim so the sheet reads as an overlay over the live board.
       barrierColor: Colors.black.withValues(alpha: 0.28),
       builder:
-          (context) => _GameReviewSheet(
+          (sheetContext) => _GameReviewSheet(
             controller: controller,
             game: game,
             activePly: activePly,
@@ -286,21 +290,29 @@ class _GameReviewSheet extends StatelessWidget {
           body: 'The completed report could not be loaded.',
         );
       case GameReportStatus.failed:
-        return _ReviewMessage(
-          icon: Icons.error_outline_rounded,
-          title: 'Analysis could not finish',
-          body: state.message ?? 'Stockfish could not analyze this game.',
-          actionLabel: 'Retry',
-          onAction: controller.retry,
+        return Builder(
+          builder:
+              (context) => _ReviewMessage(
+                icon: Icons.error_outline_rounded,
+                title: 'Analysis could not finish',
+                body: state.message ?? 'Stockfish could not analyze this game.',
+                actionLabel: 'Retry',
+                onAction: () => controller.retry(context),
+              ),
         );
       case GameReportStatus.cancelled:
       case GameReportStatus.idle:
-        return _ReviewMessage(
-          icon: Icons.analytics_outlined,
-          title: 'Game analysis',
-          body: state.message ?? 'Stockfish is preparing this game review.',
-          actionLabel: 'Analyze Game',
-          onAction: controller.retry,
+        return Builder(
+          builder:
+              (context) => _ReviewMessage(
+                icon: Icons.analytics_outlined,
+                title: 'Game analysis',
+                body:
+                    state.message ??
+                    'Tap Analyze to generate this game review.',
+                actionLabel: 'Analyze Game',
+                onAction: () => controller.retry(context),
+              ),
         );
     }
   }
