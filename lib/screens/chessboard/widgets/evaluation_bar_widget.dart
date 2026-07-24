@@ -296,6 +296,17 @@ class _EvaluationBarWidgetForGamesState
   _EvalBarDisplay? _lastDisplay;
 
   @override
+  void didUpdateWidget(covariant EvaluationBarWidgetForGames oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // Keep scroll/rebuild stability only for the same position. Archive cards
+    // can hydrate from a temporary starting FEN to the real final FEN, where
+    // retaining the old display would show the starting-position evaluation.
+    if (oldWidget.fen != widget.fen) {
+      _lastDisplay = null;
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
     // First, check if position is checkmate - handle immediately without external eval
     // Uses the cached provider for better scroll performance
