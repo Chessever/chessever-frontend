@@ -8,6 +8,7 @@ import 'package:chessever2/repository/library/models/saved_analysis.dart';
 import 'package:chessever2/repository/supabase/game/game_repository.dart';
 import 'package:chessever2/screens/chessboard/analysis/chess_game.dart';
 import 'package:chessever2/screens/chessboard/models/like_tag.dart';
+import 'package:chessever2/screens/chessboard/utils/like_learning_prompt_tracker.dart';
 import 'package:chessever2/screens/library/utils/gamebase_pgn_builder.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:flutter/foundation.dart';
@@ -155,6 +156,15 @@ class LikedGamesNotifier extends AsyncNotifier<List<SavedAnalysis>> {
             ..removeWhere((a) => a.id.isEmpty && a.sourceGameId == likeId)
             ..insert(0, displayCreated);
       state = AsyncValue.data(reconciled);
+      try {
+        await ref
+            .read(likeLearningPromptTrackerProvider)
+            .recordLike(userId: userId);
+      } catch (error) {
+        // Liking is the primary action. A local teaching-cadence write must
+        // never roll back or report failure for a successfully saved like.
+        debugPrint('[LikedGames] prompt cadence reset failed: $error');
+      }
       return true;
     } catch (e) {
       debugPrint('[LikedGames] toggle failed: $e');

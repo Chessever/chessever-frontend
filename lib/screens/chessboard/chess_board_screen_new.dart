@@ -4,6 +4,7 @@ import 'dart:developer' as developer;
 import 'dart:math' as math;
 import 'dart:ui';
 import 'package:chessever2/e2e/e2e_ids.dart';
+import 'package:chessever2/providers/auth_state_provider.dart';
 import 'package:chessever2/providers/for_you_games_provider.dart';
 import 'package:chessever2/screens/standings/score_card_screen.dart';
 import 'package:skeletonizer/skeletonizer.dart';
@@ -97,6 +98,8 @@ import 'package:chessever2/screens/chessboard/widgets/heart_burst.dart';
 import 'package:chessever2/screens/chessboard/widgets/like_flight.dart';
 import 'package:chessever2/screens/chessboard/widgets/like_tag_chip.dart';
 import 'package:chessever2/screens/chessboard/widgets/like_tag_offer.dart';
+import 'package:chessever2/screens/chessboard/widgets/like_learning_prompt_sheet.dart';
+import 'package:chessever2/screens/chessboard/utils/like_learning_prompt_tracker.dart';
 import 'package:chessever2/screens/gamebase/widgets/board_opening_explorer_panel.dart';
 import 'package:chessever2/screens/gamebase/widgets/position_games_sheet.dart';
 import 'package:chessever2/screens/gamebase/providers/gamebase_explorer_state.dart';
@@ -7100,6 +7103,7 @@ class _TabletBoardWithSidebar extends ConsumerWidget {
           size: boardSize,
           chessBoardState: state,
           isFlipped: state.isBoardFlipped,
+          isActivePage: index == currentPageIndex,
           index: index,
           game: state.game,
         ),
@@ -7227,6 +7231,7 @@ class _BoardWithSidebar extends ConsumerWidget {
                     size: boardSize,
                     chessBoardState: state,
                     isFlipped: state.isBoardFlipped,
+                    isActivePage: index == currentPageIndex,
                     index: index,
                     game: state.game,
                   ),
@@ -7257,6 +7262,7 @@ class _AnalysisBoard extends ConsumerStatefulWidget {
   final double size;
   final ChessBoardStateNew chessBoardState;
   final bool isFlipped;
+  final bool isActivePage;
   final int index;
   final GamesTourModel game;
 
@@ -7264,6 +7270,7 @@ class _AnalysisBoard extends ConsumerStatefulWidget {
     required this.size,
     required this.chessBoardState,
     this.isFlipped = false,
+    required this.isActivePage,
     required this.index,
     required this.game,
   });
@@ -7349,6 +7356,8 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard>
   OverlayEntry? _flyingHeartEntry;
   bool _likeInteractionInProgress = false;
   int _likeInteractionToken = 0;
+  bool _likePromptCheckInProgress = false;
+  bool _likePromptVisible = false;
   // Same-square double-tap-to-like tracking. We detect the "like" double-tap
   // with a passive Listener (raw pointer events) instead of a
   // DoubleTapGestureRecognizer. A DoubleTapGestureRecognizer lives in the
@@ -7396,6 +7405,110 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard>
       analysisState: s,
       game: widget.game,
     );
+  }
+
+  bool get _isFinishedGame {
+    final status = widget.game.gameStatus;
+    return status == GameStatus.whiteWins ||
+        status == GameStatus.blackWins ||
+        status == GameStatus.draw;
+  }
+
+  void _scheduleLikeLearningPromptCheck() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      unawaited(_maybeShowLikeLearningPrompt());
+    });
+  }
+
+  Future<void> _maybeShowLikeLearningPrompt() async {
+    if (!mounted ||
+        !widget.isActivePage ||
+        !_isFinishedGame ||
+        !_isAtGameEnd(widget.chessBoardState.analysisState) ||
+        !_isLikeableSource(widget.game.source) ||
+        _isOwnDatabaseGame(widget.game) ||
+        _likePromptCheckInProgress ||
+        _likePromptVisible) {
+      return;
+    }
+
+    final userId = ref.read(currentUserProvider)?.id;
+    if (userId == null || userId.isEmpty) return;
+
+    _likePromptCheckInProgress = true;
+    try {
+      final likedGames = await ref.read(likedGamesProvider.future);
+      final tracker = ref.read(likeLearningPromptTrackerProvider);
+      await tracker.initialize(
+        userId: userId,
+        hasExistingLikes: likedGames.isNotEmpty,
+      );
+
+      if (!mounted ||
+          !widget.isActivePage ||
+          !_isAtGameEnd(widget.chessBoardState.analysisState)) {
+        return;
+      }
+
+      // An already-liked game is not an inactivity completion. The like itself
+      // reset the cadence when it was confirmed.
+      if (likedGames.any((game) => game.sourceGameId == widget.game.likeId)) {
+        return;
+      }
+
+      final shouldPrompt = await tracker.recordCompletedGame(
+        userId: userId,
+        gameId: widget.game.likeId,
+      );
+      if (!shouldPrompt || !mounted || !widget.isActivePage) return;
+
+      _likePromptVisible = true;
+      final shouldLike = await showModalBottomSheet<bool>(
+        context: context,
+        isScrollControlled: true,
+        backgroundColor: Colors.transparent,
+        constraints: ResponsiveHelper.bottomSheetConstraints,
+        builder:
+            (sheetContext) => LikeLearningPromptSheet(
+              onResult:
+                  (liked) => Navigator.of(sheetContext).pop<bool>(liked),
+            ),
+      );
+      _likePromptVisible = false;
+
+      if (shouldLike == true && mounted && widget.isActivePage) {
+        _setPromptLikeAnimationOrigin();
+        _handleDoubleTapLike(onLiked: _showLikeLearningConfirmation);
+      }
+    } catch (error) {
+      debugPrint('[LikeLearningPrompt] check failed: $error');
+    } finally {
+      _likePromptCheckInProgress = false;
+      _likePromptVisible = false;
+    }
+  }
+
+  void _setPromptLikeAnimationOrigin() {
+    final center = Offset(widget.size / 2, widget.size / 2);
+    _lastTapPosition = center;
+    final renderBox = context.findRenderObject();
+    _lastTapGlobalPosition =
+        renderBox is RenderBox ? renderBox.localToGlobal(center) : center;
+  }
+
+  void _showLikeLearningConfirmation() {
+    if (!mounted) return;
+    final messenger = ScaffoldMessenger.of(context);
+    messenger
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          duration: const Duration(seconds: 3),
+          content: const Text(
+            'Liked. Double-tap the board anytime to like a game.',
+          ),
+        ),
+      );
   }
 
   // Map an author-supplied PGN NAG to a Lichess SVG annotation type — but
@@ -7670,6 +7783,12 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard>
       _showDelayedGameEndingEffect = false;
     }
 
+    if (shouldShowEffect &&
+        widget.isActivePage &&
+        (!_wasAtEnd || !oldWidget.isActivePage)) {
+      _scheduleLikeLearningPromptCheck();
+    }
+
     _wasAtEnd = isAtGameEnd;
 
     // External flip (e.g., bottom-nav button): if orientation changed
@@ -7744,6 +7863,9 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard>
         gameStatus != GameStatus.ongoing && gameStatus != GameStatus.unknown;
     if (isGameOver && _wasAtEnd) {
       _showDelayedGameEndingEffect = true;
+      if (widget.isActivePage && _isFinishedGame) {
+        _scheduleLikeLearningPromptCheck();
+      }
     }
 
     _flipProgress = ValueNotifier<double>(0.0);
@@ -8157,7 +8279,7 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard>
   ///      from the burst's screen position to the save-button slot.
   ///   4. On landing, the save/edit icon remains visible with a small red heart
   ///      badge under it (game is now liked).
-  void _handleDoubleTapLike() {
+  void _handleDoubleTapLike({VoidCallback? onLiked}) {
     final game = widget.game;
     debugPrint('[HeartFlight] like-trigger fired source=${game.source.name}');
     if (!_isLikeableSource(game.source)) return;
@@ -8225,7 +8347,9 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard>
     final toggleFuture = ref
         .read(likedGamesProvider.notifier)
         .toggle(game)
-        .then<void>((_) {});
+        .then<void>((isLiked) {
+          if (!wasLiked && isLiked) onLiked?.call();
+        });
     final visualFloor = Future<void>.delayed(
       wasLiked ? _likeInteractionUnlikeDuration : _likeInteractionLikeDuration,
     );
