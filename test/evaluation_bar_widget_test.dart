@@ -12,10 +12,12 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 const _fen = 'rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1';
+const _finalFen =
+    'r1bqkbnr/pppp1ppp/2n5/4p3/4P3/5N2/PPPP1PPP/RNBQKB1R w KQkq - 2 3';
 
-CloudEval _cloudEval(int cp) {
+CloudEval _cloudEval(int cp, {String fen = _fen}) {
   return CloudEval(
-    fen: _fen,
+    fen: fen,
     knodes: 0,
     depth: 12,
     pvs: [Pv(moves: 'e7e5', cp: cp)],
@@ -55,12 +57,16 @@ Future<void> _pumpEvalBar(
   WidgetTester tester, {
   required bool allowStockfishFallback,
   required Future<CloudEval> Function() cacheOnlyEval,
+  String fen = _fen,
+  Future<CloudEval> Function(String fen)? stockfishEval,
 }) async {
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
         gameCardEvalWithStockfishFallbackProvider.overrideWith(
-          (ref, fen) async => _cloudEval(120),
+          (ref, fen) =>
+              stockfishEval?.call(fen) ??
+              Future.value(_cloudEval(120, fen: fen)),
         ),
         gameCardEvalCacheOnlyProvider.overrideWith(
           (ref, fen) => cacheOnlyEval(),
@@ -74,7 +80,7 @@ Future<void> _pumpEvalBar(
               body: EvaluationBarWidgetForGames(
                 width: 24,
                 height: 240,
-                fen: _fen,
+                fen: fen,
                 playerView: PlayerView.listView,
                 allowStockfishFallback: allowStockfishFallback,
               ),
@@ -120,6 +126,41 @@ Future<void> _pumpChessProgressBar(
 }
 
 void main() {
+  testWidgets(
+    'does not retain a previous-position eval after the FEN changes',
+    (tester) async {
+      final pendingFinalEval = Completer<CloudEval>();
+
+      await _pumpEvalBar(
+        tester,
+        allowStockfishFallback: true,
+        cacheOnlyEval: () async => _cloudEval(120),
+        stockfishEval: (fen) async => _cloudEval(20, fen: fen),
+      );
+      await tester.pump();
+
+      expect(find.text('+0.2'), findsOneWidget);
+
+      await _pumpEvalBar(
+        tester,
+        fen: _finalFen,
+        allowStockfishFallback: true,
+        cacheOnlyEval: () => pendingFinalEval.future,
+        stockfishEval: (_) => pendingFinalEval.future,
+      );
+      await tester.pump();
+
+      expect(find.text('+0.2'), findsNothing);
+      expect(find.text('...'), findsOneWidget);
+
+      pendingFinalEval.complete(_cloudEval(450, fen: _finalFen));
+      await tester.pumpAndSettle();
+
+      expect(find.text('+4.5'), findsOneWidget);
+      expect(find.text('...'), findsNothing);
+    },
+  );
+
   testWidgets('retains previous eval while scroll cache-only eval is loading', (
     tester,
   ) async {
