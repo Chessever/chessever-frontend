@@ -51,6 +51,10 @@ enum TournamentMenuAction {
   shareBrackets,
 }
 
+String gameDisplayModeMenuLabel({required bool isFocusingLiveGames}) {
+  return isFocusingLiveGames ? 'Board order' : 'Live games first';
+}
+
 class TournamentMenuButton extends ConsumerWidget {
   const TournamentMenuButton({super.key, required this.tourData});
 
@@ -191,7 +195,7 @@ class TournamentMenuButton extends ConsumerWidget {
     final isFocusingLiveGames =
         gamesScreenState?.gameDisplayMode == GameDisplayMode.hideFinishedGames;
 
-    // 1. Focus on live games / Show all games
+    // 1. Live games first / Board order
     items.add(
       PopupMenuItem<TournamentMenuAction>(
         value:
@@ -212,7 +216,9 @@ class TournamentMenuButton extends ConsumerWidget {
           }
         },
         child: _MenuDropDownItem(
-          text: isFocusingLiveGames ? "Show all games" : "Focus on live games",
+          text: gameDisplayModeMenuLabel(
+            isFocusingLiveGames: isFocusingLiveGames,
+          ),
           fontFamily: 'InterDisplay',
           icon: Icon(
             isFocusingLiveGames

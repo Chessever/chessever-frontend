@@ -2,6 +2,22 @@ import 'package:chessever2/screens/tour_detail/widgets/tournament_menu_button.da
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  group('gameDisplayModeMenuLabel', () {
+    test('offers board order while live games are focused', () {
+      expect(
+        gameDisplayModeMenuLabel(isFocusingLiveGames: true),
+        'Board order',
+      );
+    });
+
+    test('offers live games first while using board order', () {
+      expect(
+        gameDisplayModeMenuLabel(isFocusingLiveGames: false),
+        'Live games first',
+      );
+    });
+  });
+
   group('areAllVisibleSectionsCollapsed', () {
     test('treats missing round state as expanded by default', () {
       expect(
