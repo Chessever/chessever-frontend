@@ -41,6 +41,9 @@ const int _minPersistDepth = 20;
 const int _minPersistFullMoves = 8;
 const Duration _evalWatchdogInterval = Duration(milliseconds: 1000);
 const Duration _evalWatchdogMinActiveRuntime = Duration(seconds: 4);
+// Board analysis is an explicit foreground engine workflow. Enabling it in
+// debug makes uncached positions testable; background/card jobs remain disabled.
+const bool _allowBoardStockfishInDebug = true;
 
 bool _shouldPersistCloudEval(CloudEval eval) {
   return eval.meetsPersistenceThreshold(
@@ -63,6 +66,12 @@ final chessboardViewFromProviderNew = StateProvider<ChessboardView>((ref) {
 /// (especially for TWIC where no broadcast model is available).
 final chessBoardAllGamesProvider = StateProvider<List<GamesTourModel>>(
   (ref) => const [],
+);
+
+/// Allows provider tests to exercise board navigation without starting engine
+/// or platform-backed evaluation work. Production always leaves this enabled.
+final chessBoardEvaluationSchedulingEnabledProvider = Provider<bool>(
+  (ref) => true,
 );
 
 // Global provider to track the currently visible page index
@@ -155,25 +164,23 @@ class ChessBoardScreenNotifierNew
       return;
     }
 
-    _handleGameStreamUpdate(
-      {
-        'pgn': incoming.pgn,
-        'fen': incoming.fen,
-        'last_move': incoming.lastMove,
-        'last_move_time': incoming.lastMoveTime?.toIso8601String(),
-        'last_clock_white': incoming.whiteClockSeconds,
-        'last_clock_black': incoming.blackClockSeconds,
-        'status':
-            incoming.gameStatus.displayText.isEmpty
-                ? null
-                : incoming.gameStatus.displayText,
-      },
-      source: 'navigation',
-    );
+    _handleGameStreamUpdate({
+      'pgn': incoming.pgn,
+      'fen': incoming.fen,
+      'last_move': incoming.lastMove,
+      'last_move_time': incoming.lastMoveTime?.toIso8601String(),
+      'last_clock_white': incoming.whiteClockSeconds,
+      'last_clock_black': incoming.blackClockSeconds,
+      'status':
+          incoming.gameStatus.displayText.isEmpty
+              ? null
+              : incoming.gameStatus.displayText,
+    }, source: 'navigation');
   }
 
   final Ref ref;
   GamesTourModel game;
+
   /// Page index in the board session list. Mutable so deferred full-event
   /// expand can remap the same gameId to its Games-tab position without
   /// recreating this provider (identity is gameId-only).
@@ -221,6 +228,7 @@ class ChessBoardScreenNotifierNew
   ProviderSubscription<ChessGameNavigatorState>? _navigatorSubscription;
   bool _isInitialLoad = true;
   bool _gameReviewVisible = false;
+  String? _deferredReviewEvaluationFen;
 
   bool get isGameReviewVisible => _gameReviewVisible;
 
@@ -231,6 +239,7 @@ class ChessBoardScreenNotifierNew
   /// early move during live games.
   bool _isFollowingLive = true;
   ChessBoardStateNew? _pvPreviewSnapshot;
+  int _pvPreviewEvaluationGeneration = 0;
   Timer? _autoSaveTimer;
 
   /// Snapshot of the game tree at last auto-save for diff detection
@@ -672,6 +681,17 @@ class ChessBoardScreenNotifierNew
     }
   }
 
+  /// Stop watchdog tracking for an evaluation that ended without a usable
+  /// result. Unlike [_resolvePendingEvaluation], this deliberately preserves
+  /// the retry counter so repeated cancellations can reach the circuit breaker.
+  void _abandonPendingEvaluation(String fen) {
+    final normalizedFen = _normalizeFen(fen);
+    if (_pendingEvalFen == normalizedFen) {
+      _pendingEvalFen = null;
+      _cancelEvalWatchdog();
+    }
+  }
+
   /// Re-run the evaluation for [fen] after a cancellation/failure, but cap the
   /// number of consecutive same-position retries. The retry sites use
   /// `_evaluatePosition(force: true)`, which previously bypassed coalescing;
@@ -697,6 +717,7 @@ class ChessBoardScreenNotifierNew
       if (snapshot != null && snapshot.isEvaluating) {
         state = AsyncValue.data(snapshot.copyWith(isEvaluating: false));
       }
+      _abandonPendingEvaluation(fen);
       return;
     }
     // Do not forceRestart: if a newer same-FEN eval is already in flight or
@@ -1886,13 +1907,22 @@ class ChessBoardScreenNotifierNew
     _updateEvaluation();
   }
 
-  /// Tracks whether the review sheet is open. Never cancels board Stockfish —
-  /// report generation must not own or interrupt the eval bar / engine lines.
+  /// Tracks whether the review sheet is open. Position jumps still update the
+  /// board, but evaluation is deferred until the sheet's route is dismissed.
   Future<void> setGameReviewVisible(bool visible) async {
     if (_gameReviewVisible == visible) return;
     _gameReviewVisible = visible;
-    if (!visible) {
-      _updateEvaluation(force: true);
+    if (visible) {
+      _releaseLog(
+        '🎯 REVIEW: Deferring board evaluation while sheet is visible',
+      );
+    } else {
+      // The modal route's didPopNext callback owns the single resume/restart.
+      // Starting here as well races onBecameVisible, which cancels this job and
+      // immediately starts another one.
+      _releaseLog(
+        '🎯 REVIEW: Sheet hidden; waiting for board lifecycle resume',
+      );
     }
   }
 
@@ -1915,6 +1945,16 @@ class ChessBoardScreenNotifierNew
     // Manually sync state after navigation to ensure board updates immediately.
     // The ref.listen callback may not fire synchronously.
     final updatedState = ref.read(chessGameNavigatorProvider(_analysisGame!));
+    final stateAfterListener = state.value;
+    if (stateAfterListener != null &&
+        listEquals(
+          stateAfterListener.analysisState.movePointer,
+          updatedState.movePointer,
+        ) &&
+        _normalizeFen(stateAfterListener.analysisState.position.fen) ==
+            _normalizeFen(updatedState.currentFen)) {
+      return;
+    }
     _syncAnalysisFromNavigator(updatedState);
   }
 
@@ -2279,12 +2319,17 @@ class ChessBoardScreenNotifierNew
     }
 
     final cappedIndex = targetMoveIndex.clamp(0, line.moves.length - 1);
+    final isNestedPreview =
+        currentState.isPvPreviewActive &&
+        currentState.lockedPvMergedMoves != null &&
+        currentState.lockedPvMergedMoveObjects != null &&
+        currentState.lockedPvMergedPositions != null &&
+        currentState.lockedPvMergedPositions!.isNotEmpty;
 
     // If already in preview mode, use current preview state as base for nested preview
     // Otherwise, save current state as snapshot for first preview
     final ChessBoardStateNew baseState;
-    if (currentState.isPvPreviewActive &&
-        currentState.lockedPvMergedMoves != null) {
+    if (isNestedPreview) {
       // Nested preview: use current preview position as base
       baseState = currentState;
       _releaseLog(
@@ -2327,17 +2372,36 @@ class ChessBoardScreenNotifierNew
     final List<String> pgnHistory;
     final List<Move?> baseMoveObjects;
     List<Position> basePositions = const <Position>[];
-    if (currentState.isPvPreviewActive &&
-        currentState.lockedPvMergedMoves != null) {
-      // Nested preview: Use preview card's merged history as base
-      pgnHistory = currentState.lockedPvMergedMoves!;
-      baseMoveObjects =
-          currentState.lockedPvMergedMoveObjects ??
-          List<Move?>.of(baseAnalysis.combinedMoves);
-      basePositions =
-          currentState.lockedPvMergedPositions != null
-              ? List<Position>.of(currentState.lockedPvMergedPositions!)
-              : <Position>[];
+    if (isNestedPreview) {
+      // Keep only the previous preview prefix that reaches the position
+      // currently shown on the board. The locked line also contains moves
+      // beyond that point, and extending from its tail can have the wrong side
+      // to move for the newly evaluated PV.
+      final lockedSans = currentState.lockedPvMergedMoves!;
+      final lockedMoves = currentState.lockedPvMergedMoveObjects!;
+      final lockedPositions = currentState.lockedPvMergedPositions!;
+      final availableMoveCount = math.min(
+        math.min(lockedSans.length, lockedMoves.length),
+        lockedPositions.length - 1,
+      );
+      final currentPreviewMoveCount = math.min(
+        availableMoveCount,
+        math.max(
+          0,
+          (currentState.lockedPvBaseMoveCount ?? 0) +
+              (currentState.lockedPvNavigationIndex ?? -1) +
+              1,
+        ),
+      );
+      pgnHistory = lockedSans
+          .take(currentPreviewMoveCount)
+          .toList(growable: false);
+      baseMoveObjects = lockedMoves
+          .take(currentPreviewMoveCount)
+          .toList(growable: false);
+      basePositions = lockedPositions
+          .take(currentPreviewMoveCount + 1)
+          .toList(growable: false);
       _releaseLog(
         '🎯 PV PREVIEW: Using preview card history as base (${pgnHistory.length} moves)',
       );
@@ -2405,63 +2469,52 @@ class ChessBoardScreenNotifierNew
     final mergedMoves = [...pgnHistory, ...line.sanMoves];
     final combinedMoveObjects = [...baseMoveObjects, ...pvMoves];
 
-    // Build merged position history (start + every move)
-    // CRITICAL: When in nested preview, reuse existing positions to avoid recalculation
-    final List<Position> mergedPositions;
-    if (currentState.isPvPreviewActive &&
-        currentState.lockedPvMergedPositions != null) {
-      // Nested preview: Extend the existing preview positions with new PV moves
-      final existingPositions = currentState.lockedPvMergedPositions!;
-      var positionCursor = existingPositions.last;
-      final newPositions = <Position>[];
-      for (final move in pvMoves) {
-        positionCursor = positionCursor.play(move);
-        newPositions.add(positionCursor);
-      }
-      mergedPositions = [...existingPositions, ...newPositions];
-      _releaseLog(
-        '🎯 PV PREVIEW: Extended existing positions (${existingPositions.length} + ${newPositions.length} = ${mergedPositions.length})',
-      );
+    // Build merged position history (start + every move).
+    List<Position> basePositionHistory;
+    if (basePositions.isNotEmpty) {
+      basePositionHistory = List<Position>.of(basePositions);
     } else {
-      List<Position> basePositionHistory;
-      if (basePositions.isNotEmpty) {
-        basePositionHistory = List<Position>.of(basePositions);
+      Position startingPos;
+      if (baseAnalysis.startingPosition != null) {
+        startingPos = baseAnalysis.startingPosition!;
+      } else if (baseState.startingPosition != null) {
+        startingPos = baseState.startingPosition!;
+      } else if (baseState.position != null) {
+        startingPos = baseState.position!;
       } else {
-        Position startingPos;
-        if (baseAnalysis.startingPosition != null) {
-          startingPos = baseAnalysis.startingPosition!;
-        } else if (baseState.startingPosition != null) {
-          startingPos = baseState.startingPosition!;
-        } else if (baseState.position != null) {
-          startingPos = baseState.position!;
-        } else {
-          startingPos = baseAnalysis.position;
-        }
-        basePositionHistory = <Position>[startingPos];
-        var cursor = startingPos;
-        for (final move in baseMoveObjects) {
-          if (move == null) {
-            continue;
-          }
-          cursor = cursor.play(move);
-          basePositionHistory.add(cursor);
-        }
+        startingPos = baseAnalysis.position;
       }
-
-      var positionCursor =
-          basePositionHistory.isNotEmpty
-              ? basePositionHistory.last
-              : baseAnalysis.position;
-      final newPositions = <Position>[];
-      for (final move in pvMoves) {
-        positionCursor = positionCursor.play(move);
-        newPositions.add(positionCursor);
+      basePositionHistory = <Position>[startingPos];
+      var cursor = startingPos;
+      for (final move in baseMoveObjects) {
+        if (move == null) {
+          continue;
+        }
+        cursor = cursor.play(move);
+        basePositionHistory.add(cursor);
       }
-      mergedPositions = [...basePositionHistory, ...newPositions];
-      _releaseLog(
-        '🎯 PV PREVIEW: Built base positions (${basePositionHistory.length}) + PV moves (${newPositions.length}) = ${mergedPositions.length}',
-      );
     }
+
+    var positionCursor =
+        basePositionHistory.isNotEmpty
+            ? basePositionHistory.last
+            : baseAnalysis.position;
+    final newPositions = <Position>[];
+    for (var i = 0; i < pvMoves.length; i++) {
+      final move = pvMoves[i];
+      if (!positionCursor.isLegal(move)) {
+        _releaseLog(
+          '🎯 PV PREVIEW: illegal cached move ${move.uci} at index $i',
+        );
+        return;
+      }
+      positionCursor = positionCursor.play(move);
+      newPositions.add(positionCursor);
+    }
+    final mergedPositions = [...basePositionHistory, ...newPositions];
+    _releaseLog(
+      '🎯 PV PREVIEW: Built base positions (${basePositionHistory.length}) + PV moves (${newPositions.length}) = ${mergedPositions.length}',
+    );
 
     final baseMoveCount = baseMoveObjects.length;
     final navigationIndex = cappedIndex;
@@ -2470,13 +2523,15 @@ class ChessBoardScreenNotifierNew
       '🎯 PV PREVIEW: Locking PV line (PGN history: ${pgnHistory.length}, PV moves: ${line.sanMoves.length}, merged: ${mergedMoves.length})',
     );
 
-    // Freeze the engine while the user traverses this line (lichess-style).
-    // The stop is sticky for the whole preview (see _navigateToLockedPvIndex),
-    // so the PV lines and board can't shift under the user while stepping.
+    // Stop the evaluation for the previous position before publishing this
+    // preview. Once cancellation finishes, evaluate the displayed position
+    // for a fresh full MultiPV set; generation guards prevent an older preview
+    // cancellation from restarting work after a newer tap.
     _cancelEvaluation = true;
-    unawaited(
-      StockfishSingleton().cancelEvaluationsForOwner(_stockfishOwnerId),
+    final cancellation = StockfishSingleton().cancelEvaluationsForOwner(
+      _stockfishOwnerId,
     );
+    final previewEvaluationGeneration = ++_pvPreviewEvaluationGeneration;
     _clearActiveEvalState();
 
     state = AsyncValue.data(
@@ -2497,6 +2552,36 @@ class ChessBoardScreenNotifierNew
     );
 
     _navigateToLockedPvIndex(navigationIndex, force: true);
+    unawaited(
+      _refreshPreviewPvsAfterCancellation(
+        cancellation: cancellation,
+        generation: previewEvaluationGeneration,
+        previewFen: previewPosition.fen,
+      ),
+    );
+  }
+
+  Future<void> _refreshPreviewPvsAfterCancellation({
+    required Future<void> cancellation,
+    required int generation,
+    required String previewFen,
+  }) async {
+    try {
+      await cancellation;
+    } catch (error) {
+      _releaseLog('🎯 PV PREVIEW: cancellation failed: $error');
+    }
+
+    if (!mounted || generation != _pvPreviewEvaluationGeneration) return;
+    final currentState = state.value;
+    if (currentState == null ||
+        !currentState.isPvPreviewActive ||
+        _normalizeFen(currentState.analysisState.position.fen) !=
+            _normalizeFen(previewFen)) {
+      return;
+    }
+
+    _updateEvaluation(force: true, forceRestart: true, refreshPreviewPvs: true);
   }
 
   void clearPvPreview() {
@@ -2873,9 +2958,9 @@ class ChessBoardScreenNotifierNew
       ),
     );
 
-    // While previewing, the engine stays stopped: stepping only moves the board
-    // using pre-computed positions, so nothing re-evaluates and the lines/board
-    // never shift. The engine resumes on preview exit (_exitPvPreviewIfActive).
+    // Stepping within the locked line uses pre-computed positions. A fresh
+    // MultiPV evaluation is started only when a new preview branch is created,
+    // not for every forward/backward navigation step.
     if (!currentState.isPvPreviewActive) {
       _updateEvaluation(
         force: true,
@@ -4792,7 +4877,6 @@ class ChessBoardScreenNotifierNew
         activeCacheKey != null &&
         _activeEvalRequestId != null &&
         _activeEvalKey == activeCacheKey;
-
     // If an evaluation is already active for the currently visible FEN,
     // avoid cancelling and restarting it. This prevents depth jitter/resets
     // from duplicate visibility callbacks.
@@ -4916,7 +5000,6 @@ class ChessBoardScreenNotifierNew
               .toList(),
     };
 
-    // Run analysis on main thread - the calculation is lightweight
     final workerResult = _analysisLinesWorker(payload);
     if (workerResult.isEmpty) {
       _releaseLog('❌ BUILD PV: Analysis returned empty result');
@@ -5069,6 +5152,7 @@ class ChessBoardScreenNotifierNew
     if (_pvPreviewSnapshot == null && state.value?.isPvPreviewActive != true) {
       return;
     }
+    _pvPreviewEvaluationGeneration++;
     final currentState = state.value;
     if (currentState == null) {
       _pvPreviewSnapshot = null;
@@ -5092,14 +5176,13 @@ class ChessBoardScreenNotifierNew
         lockedPvMergedPositions: null,
         lockedPvBaseMoveCount: null,
         lockedPvNavigationIndex: null,
-        // Engine was stopped on preview entry — resume with progress.
+        // Resume evaluation for the restored non-preview position.
         isEvaluating: true,
       ),
     );
 
-    // The engine is stopped while previewing, so always resume on exit to
-    // re-evaluate the restored position (the "position unchanged, keep the
-    // background eval running" assumption no longer holds).
+    // Re-evaluate the restored position; any preview-position result is
+    // rejected by the request/FEN guards.
     _cancelEvaluation = false;
     _updateEvaluation(
       force: true,
@@ -5292,6 +5375,11 @@ class ChessBoardScreenNotifierNew
       principalVariations: rebasedLines,
       principalVariationsBaseFen: positionAfterMove.fen,
       analysisState: updatedAnalysis,
+      // This single trimmed continuation is only a bridge until the new
+      // position's configured MultiPV search completes. Keeping evaluation
+      // active prevents the same-FEN restart policy from treating it as a
+      // finished one-line result.
+      isEvaluating: true,
       selectedVariantIndex: 0,
       variantMovePointer: const [],
       variantBaseFen: positionAfterMove.fen,
@@ -5621,7 +5709,9 @@ class ChessBoardScreenNotifierNew
     bool preserveCurrentPvs = false,
     bool preserveDepthProgress = false,
     bool skipPvUpdates = false,
+    bool allowPvUpdatesDuringPreview = false,
   }) async {
+    var evaluationResolved = false;
     int? requestId;
     String? lastEvaluatedFen;
     try {
@@ -5635,7 +5725,8 @@ class ChessBoardScreenNotifierNew
       }
 
       final previewActive = initialState.isPvPreviewActive;
-      final effectiveSkipPv = skipPvUpdates || previewActive;
+      final effectiveSkipPv =
+          skipPvUpdates || (previewActive && !allowPvUpdatesDuringPreview);
       final currentFenForState =
           initialState.isAnalysisMode
               ? initialState.analysisState.position.fen
@@ -5823,6 +5914,7 @@ class ChessBoardScreenNotifierNew
       final hasCompleteUsable = hasCompleteUsableBoardEval(
         principalVariationsBaseFen: initialState.principalVariationsBaseFen,
         principalVariationCount: initialState.principalVariations.length,
+        requiredPrincipalVariationCount: configuredMultiPV,
         currentBoardFen: fen,
         isEvaluating: initialState.isEvaluating,
         normalizeFen: _normalizeFen,
@@ -5837,18 +5929,12 @@ class ChessBoardScreenNotifierNew
       );
       if (!startDecision.shouldStart) {
         if (startDecision.action == BoardEvalStartAction.coalesceInFlight) {
-          _releaseLog(
-            '⏭️ EVAL: Coalescing (already evaluating same position)',
-          );
+          _releaseLog('⏭️ EVAL: Coalescing (already evaluating same position)');
         } else {
-          _releaseLog(
-            '⏭️ EVAL: Skipping restart — ${startDecision.reason}',
-          );
+          _releaseLog('⏭️ EVAL: Skipping restart — ${startDecision.reason}');
           // Ensure we never leave a stuck loading spinner after a complete apply.
           if (initialState.isEvaluating && hasCompleteUsable) {
-            state = AsyncValue.data(
-              initialState.copyWith(isEvaluating: false),
-            );
+            state = AsyncValue.data(initialState.copyWith(isEvaluating: false));
           }
         }
         return;
@@ -5934,6 +6020,7 @@ class ChessBoardScreenNotifierNew
           primaryEval = cascadeEval;
           final shouldSkipLocalStockfish = cloudEvalSkipsBoardStockfish(
             cascadeEval,
+            requiredMultiPv: configuredMultiPV,
           );
           final firstCascadePv = cascadeEval.pvs.first;
           final rawCp = firstCascadePv.cp;
@@ -6131,6 +6218,7 @@ class ChessBoardScreenNotifierNew
             }
             // Resolve pending/watchdog before return so a complete cascade does
             // not look "stuck" and re-arm a force restart.
+            evaluationResolved = true;
             _resolvePendingEvaluation(fen);
             _releaseLog(
               '🎯 EVAL: Skipping local Stockfish - cached/backend eval is sufficient (depth=${cascadeEval.depth}, mate=${firstCascadePv.mate})',
@@ -6166,6 +6254,7 @@ class ChessBoardScreenNotifierNew
         searchDuration: effectiveSearchDuration,
         maxDepth: combinedMaxDepth,
         allowCache: false,
+        allowInDebug: _allowBoardStockfishInDebug,
         ownerId: _stockfishOwnerId, // Tag job with this provider's owner ID
         onDepthUpdate: (depth, knodes) {
           if (!mounted ||
@@ -6355,6 +6444,22 @@ class ChessBoardScreenNotifierNew
             }
           }
 
+          // In debug builds the singleton intentionally returns a cancelled
+          // result without queueing Stockfish. Retrying that sentinel can never
+          // succeed and previously caused an unbounded cascade/retry loop.
+          final localEngineDisabled =
+              kDebugMode &&
+              !kEnableStockfishInDebug &&
+              !_allowBoardStockfishInDebug;
+          if (localEngineDisabled) {
+            _releaseLog(
+              '🛑 EVAL: Local Stockfish is disabled in debug; '
+              'not retrying cancelled evaluation',
+            );
+            _abandonPendingEvaluation(fen);
+            return;
+          }
+
           // Only retry if NOT caused by watchdog — watchdog has its own retry path.
           // Also skip if a newer request already owns evaluation (superseded) —
           // otherwise cancelled stockfish jobs re-fire force evals forever.
@@ -6363,7 +6468,7 @@ class ChessBoardScreenNotifierNew
               _consecutiveWatchdogTimeouts == 0 &&
               (_activeEvalRequestId == null ||
                   _activeEvalRequestId == currentRequestId)) {
-            Future.microtask(() {
+            Future.delayed(const Duration(milliseconds: 250), () {
               if (!mounted ||
                   _cancelEvaluation ||
                   _consecutiveWatchdogTimeouts > 0) {
@@ -6872,6 +6977,7 @@ class ChessBoardScreenNotifierNew
       }
 
       // Note: Removed supplemental eval since Stockfish is now primary with MultiPV=3
+      evaluationResolved = true;
     } catch (e) {
       if (!_cancelEvaluation) {
         _releaseLog('Evaluation error: $e');
@@ -6894,7 +7000,7 @@ class ChessBoardScreenNotifierNew
           state = AsyncValue.data(finalState.copyWith(isEvaluating: false));
         }
       }
-      if (lastEvaluatedFen != null) {
+      if (evaluationResolved && lastEvaluatedFen != null) {
         _resolvePendingEvaluation(lastEvaluatedFen);
       }
     }
@@ -7348,11 +7454,34 @@ class ChessBoardScreenNotifierNew
     bool forceRestart = false,
     bool preserveCurrentPvs = false,
     bool preserveDepthProgress = false,
+    bool refreshPreviewPvs = false,
   }) {
     if (_isLongPressing) return;
 
+    if (_gameReviewVisible) {
+      final reviewState = state.value;
+      final reviewPosition =
+          reviewState?.isAnalysisMode == true
+              ? reviewState!.analysisState.position
+              : reviewState?.position;
+      final reviewFen = reviewPosition?.fen;
+      if (_deferredReviewEvaluationFen != reviewFen) {
+        _deferredReviewEvaluationFen = reviewFen;
+        _releaseLog(
+          '🎯 REVIEW: Deferred board evaluation for '
+          '${reviewFen ?? "unknown position"}',
+        );
+      }
+      if (reviewState != null && reviewState.isEvaluating) {
+        state = AsyncValue.data(reviewState.copyWith(isEvaluating: false));
+      }
+      return;
+    }
+    _deferredReviewEvaluationFen = null;
+    if (!ref.read(chessBoardEvaluationSchedulingEnabledProvider)) return;
+
     if (force || forceRestart) {
-      // Force requests should interrupt any pending scheduled evaluations
+      // Force requests should interrupt any pending scheduled evaluations.
       EasyDebounce.cancel('evaluation-$index');
     }
 
@@ -7382,6 +7511,7 @@ class ChessBoardScreenNotifierNew
     final hasCompleteUsable = hasCompleteUsableBoardEval(
       principalVariationsBaseFen: currentState.principalVariationsBaseFen,
       principalVariationCount: currentState.principalVariations.length,
+      requiredPrincipalVariationCount: multiPv,
       currentBoardFen: currentFen,
       isEvaluating: currentState.isEvaluating,
       normalizeFen: _normalizeFen,
@@ -7413,9 +7543,11 @@ class ChessBoardScreenNotifierNew
     }
 
     final previewActive = currentState.isPvPreviewActive;
-    final effectivePreservePvs = previewActive ? true : preserveCurrentPvs;
-    final effectivePreserveDepth = previewActive ? true : preserveDepthProgress;
-    final skipPvUpdates = previewActive;
+    final freezePreviewPvs = previewActive && !refreshPreviewPvs;
+    final effectivePreservePvs = freezePreviewPvs ? true : preserveCurrentPvs;
+    final effectivePreserveDepth =
+        freezePreviewPvs ? true : preserveDepthProgress;
+    final skipPvUpdates = freezePreviewPvs;
 
     // CRITICAL: Clear stale PVs immediately when position changes
     if (currentState.principalVariations.isNotEmpty) {
@@ -7478,13 +7610,14 @@ class ChessBoardScreenNotifierNew
         preserveCurrentPvs: effectivePreservePvs,
         preserveDepthProgress: effectivePreserveDepth,
         skipPvUpdates: skipPvUpdates,
+        allowPvUpdatesDuringPreview: refreshPreviewPvs,
       );
     }
 
     if (force || forceRestart) {
       scheduleEvaluation();
     } else {
-      // Debounce rapid navigation so we only evaluate after the user settles on a move
+      // Debounce rapid navigation so we only evaluate after the user settles.
       EasyDebounce.debounce(
         'evaluation-$index',
         const Duration(milliseconds: 120),

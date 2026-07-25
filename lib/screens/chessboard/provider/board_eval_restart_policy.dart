@@ -35,12 +35,15 @@ class BoardEvalStartDecision {
 bool hasCompleteUsableBoardEval({
   required String? principalVariationsBaseFen,
   required int principalVariationCount,
+  required int requiredPrincipalVariationCount,
   required String currentBoardFen,
   required bool isEvaluating,
   required String Function(String fen) normalizeFen,
 }) {
   if (isEvaluating) return false;
-  if (principalVariationCount <= 0) return false;
+  if (principalVariationCount < requiredPrincipalVariationCount.clamp(1, 5)) {
+    return false;
+  }
   final base = principalVariationsBaseFen;
   if (base == null || base.trim().isEmpty) return false;
   return normalizeFen(base) == normalizeFen(currentBoardFen);
