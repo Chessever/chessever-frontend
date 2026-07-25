@@ -432,6 +432,9 @@ class MoveStatisticsPanel extends HookConsumerWidget {
       () => GlobalKey(debugLabel: 'explorer_inline_games_section'),
     );
     final headerInGames = useState(false);
+    /// Held true while a pin/unpin is reshaping the panel, so the decision
+    /// cannot be re-taken from geometry its own transition is still moving.
+    final headerModeLocked = useRef(false);
     // Coalesce geometry reads onto the next frame — scroll metrics can change
     // mid-layout (PV expand / line upgrade) and localToGlobal is illegal then.
     final headerSyncScheduled = useRef(false);
@@ -484,6 +487,10 @@ class MoveStatisticsPanel extends HookConsumerWidget {
     /// table, the strip growing a card, the panel changing height.
     void alignToNearestPage() {
       if (!snapConfig.isActive || !scrollController.hasClients) return;
+      // Mid pin/unpin the offset is still being moved by the layout, so
+      // "nearest" would round off a number that has not settled. The captured
+      // card is restored at the end of that transition instead.
+      if (headerModeLocked.value) return;
       final position = scrollController.position;
       if (position.isScrollingNotifier.value) return;
       // Same grid the physics use, asked at a standstill: whichever card (or
@@ -524,7 +531,12 @@ class MoveStatisticsPanel extends HookConsumerWidget {
     }
 
     /// Puts [index] against the top of the panel, whatever the offset says.
-    void alignToPage(int index) {
+    ///
+    /// Instant on purpose: this runs at the end of a layout transition to undo
+    /// a shift the reader never asked for, so there is nothing to animate — and
+    /// an animation here would emit a stream of scroll notifications into the
+    /// decision that just settled.
+    void jumpToPage(int index) {
       if (!snapConfig.isActive || !scrollController.hasClients) return;
       final position = scrollController.position;
       final target = (snapConfig.anchor! + index * snapConfig.pageExtent).clamp(
@@ -532,11 +544,7 @@ class MoveStatisticsPanel extends HookConsumerWidget {
         position.maxScrollExtent,
       );
       if ((target - position.pixels).abs() < 0.5) return;
-      scrollController.animateTo(
-        target,
-        duration: _kExplorerSmoothMotion.duration,
-        curve: _kExplorerSmoothCurve,
-      );
+      position.jumpTo(target);
     }
 
     /// Republishes the on-screen window from the live scroll offset.
@@ -604,40 +612,62 @@ class MoveStatisticsPanel extends HookConsumerWidget {
     }
 
     void runHeaderModeSync() {
+      // Header mode is latched across its own transition.
+      //
+      // `_syncExplorerHeaderMode` decides from `gamesTop - listTop`, which
+      // reduces exactly to `anchor - pixels` — the scroll offset. Pinning
+      // collapses the engine PV *and* the move-column header, growing this
+      // list's viewport by a couple of hundred pixels; that shrinks
+      // `maxScrollExtent`, which can clamp `pixels`, which changes the very
+      // measurement the decision was made from. Re-deciding mid-transition
+      // pins and unpins forever, and any correction scrolled in during the
+      // window feeds the loop rather than settling it.
+      //
+      // So while the layout is in flight, keep the grid and the eval window
+      // fresh but leave the mode alone.
+      if (headerModeLocked.value) {
+        syncGamesGrid();
+        return;
+      }
       _syncExplorerHeaderMode(
         gamesSectionKey: gamesSectionKey,
         scrollController: scrollController,
         currentlyInGames: headerInGames.value,
         setInGames: (v) {
           if (headerInGames.value == v) return;
-          // Entering games mode collapses the move-column header, which lives
-          // *above* the list rather than inside it — so the viewport grows
-          // upward while the content stays put. The page anchor is a
-          // content-space offset and does not move, so nothing compensates for
-          // it, and re-deriving the page from the offset once the viewport has
-          // grown rounds onto the next card. That is why the strip used to
-          // settle on the second game instead of the one the reader stopped on.
-          //
-          // Capture the card that is on top *before* the collapse and put it
-          // back once the header has finished animating away.
+          // The card on top has to be captured *before* the collapse: the page
+          // anchor is a content-space offset that a viewport change does not
+          // move, so afterwards the offset alone can no longer say which card
+          // the reader stopped on — it rounds onto the next one.
           final restoreIndex = v ? pageIndexAtTop() : null;
+          headerModeLocked.value = true;
           headerInGames.value = v;
           // Drive games expanded-overlay mode (covers engine lines + table).
           final pinned = ref.read(explorerInlineGamesPinnedProvider);
           if (pinned != v) {
             ref.read(explorerInlineGamesPinnedProvider.notifier).state = v;
           }
-          if (restoreIndex == null) return;
-          // The header collapse and the PV collapse above it are both animated,
-          // so the viewport keeps changing for their duration. Restore once it
-          // has settled, and only if the reader has not scrolled away or left
-          // games mode in the meantime.
           Future.delayed(_kExplorerGamesSettleDelay, () {
-            if (!context.mounted || !headerInGames.value) return;
-            if (!scrollController.hasClients) return;
-            if (scrollController.position.isScrollingNotifier.value) return;
+            if (!context.mounted) {
+              headerModeLocked.value = false;
+              return;
+            }
             syncGamesGrid();
-            alignToPage(restoreIndex);
+            // Put the captured card back with a jump, not an animation. An
+            // animation would emit scroll notifications for its whole duration,
+            // and the first one to land after the latch lifts would re-open the
+            // decision this transition just made.
+            if (restoreIndex != null &&
+                headerInGames.value &&
+                scrollController.hasClients &&
+                !scrollController.position.isScrollingNotifier.value) {
+              jumpToPage(restoreIndex);
+            }
+            // Released a frame later so the jump's own notification is consumed
+            // while the mode is still latched.
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              headerModeLocked.value = false;
+            });
           });
         },
       );
