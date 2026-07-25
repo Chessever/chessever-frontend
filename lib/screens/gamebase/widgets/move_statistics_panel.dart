@@ -418,6 +418,40 @@ double? _measureExplorerGamesAnchor(GlobalKey gamesSectionKey) {
   return offset.isFinite ? offset : null;
 }
 
+/// How far the games section top sits below the list viewport top, in pixels.
+///
+/// Positive → section is below the panel edge (need to scroll down to flush).
+/// Negative → section has scrolled past the edge (a later card may be on top).
+/// Null when geometry is unavailable mid-layout.
+double? _measureExplorerGamesVisualDelta({
+  required GlobalKey gamesSectionKey,
+  required ScrollPosition position,
+}) {
+  final gamesContext = gamesSectionKey.currentContext;
+  if (gamesContext == null) return null;
+  final gamesBox = gamesContext.findRenderObject();
+  if (gamesBox is! RenderBox || !gamesBox.hasSize) return null;
+  final scrollContext = position.context.notificationContext;
+  if (scrollContext == null) return null;
+  final listBox = scrollContext.findRenderObject();
+  if (listBox is! RenderBox || !listBox.hasSize) return null;
+
+  final phase = SchedulerBinding.instance.schedulerPhase;
+  if (phase == SchedulerPhase.persistentCallbacks ||
+      phase == SchedulerPhase.midFrameMicrotasks) {
+    return null;
+  }
+
+  try {
+    final listTop = listBox.localToGlobal(Offset.zero).dy;
+    final gamesTop = gamesBox.localToGlobal(Offset.zero).dy;
+    final delta = gamesTop - listTop;
+    return delta.isFinite ? delta : null;
+  } catch (_) {
+    return null;
+  }
+}
+
 /// Panel displaying move statistics for the current position.
 /// Shows each possible move with game count and win/draw/loss bar.
 class MoveStatisticsPanel extends HookConsumerWidget {
@@ -517,20 +551,48 @@ class MoveStatisticsPanel extends HookConsumerWidget {
       MediaQuery.textScalerOf(context),
     );
 
-    /// Pulls the resting offset back onto the page grid.
+    /// Puts the nearest game card flush under the panel top (player row when
+    /// pinned). Instant [jumpTo] only — never [animateTo] — so a correction
+    /// cannot fight the ballistic land and reintroduce post-land flicker.
     ///
-    /// The physics already quantise a normal settle. This is only for layout
-    /// shifts (new cards, fen change, panel height) that leave the list mid-
-    /// page without a gesture. Instant [jumpTo] — never [animateTo] — so a
-    /// correction cannot fight the ballistic land and read as post-land flicker.
+    /// Prefers a **visual** measure (`gamesTop - listTop`) over pure content-
+    /// space math: after pin/expand the grid can be a few points off while the
+    /// eye still sees a card sitting at ~¾ height under the player name.
     void alignToNearestPage() {
       if (!snapConfig.isActive || !scrollController.hasClients) return;
-      // Mid pin/unpin the offset is still being moved by the layout, so
-      // "nearest" would round off a number that has not settled. The captured
-      // card is restored at the end of that transition instead.
       if (headerModeLocked.value) return;
       final position = scrollController.position;
       if (position.isScrollingNotifier.value) return;
+
+      // Ground-truth flush while the strip is the focus (pinned / in-games).
+      // Uses the painted positions so residual chrome or a stale anchor cannot
+      // leave the card parked part-way under the player row.
+      if (headerInGames.value) {
+        final visualDelta = _measureExplorerGamesVisualDelta(
+          gamesSectionKey: gamesSectionKey,
+          position: position,
+        );
+        if (visualDelta != null) {
+          final adjust = explorerGamesVisualFlushAdjustment(
+            visualDelta: visualDelta,
+            pageExtent: snapConfig.pageExtent,
+            pageCount: snapConfig.pageCount,
+          );
+          if (adjust.abs() > 0.5) {
+            final target = (position.pixels + adjust).clamp(
+              position.minScrollExtent,
+              position.maxScrollExtent,
+            );
+            if ((target - position.pixels).abs() > 0.5) {
+              position.jumpTo(target);
+            }
+            return;
+          }
+          // Already visually flush — do not run a second content-space pass.
+          return;
+        }
+      }
+
       if (!explorerGamesNeedsPostSettleAlign(
         pixels: position.pixels,
         anchor: snapConfig.anchor!,
@@ -704,17 +766,21 @@ class MoveStatisticsPanel extends HookConsumerWidget {
             }
             // Measure only — no compensation jump that could fight restore.
             syncGamesGrid(allowAnchorCompensation: false);
-            // Re-assert the captured card once layout has settled (viewport and
-            // maxScrollExtent are final). jumpTo is a no-op when already there.
+            // Re-assert the captured card once layout has settled, then a
+            // visual flush so the painted card top meets the panel top (the
+            // player row) even if content-space math drifted during expand.
             if (restoreIndex != null &&
                 headerInGames.value &&
                 scrollController.hasClients) {
               jumpToPage(restoreIndex);
             }
-            // Released a frame later so the jump's own notification is consumed
-            // while the mode is still latched.
+            // Unlock first so the visual flush is allowed, then flush on the
+            // next frame so any jump notification is consumed at rest.
+            headerModeLocked.value = false;
             WidgetsBinding.instance.addPostFrameCallback((_) {
-              headerModeLocked.value = false;
+              if (context.mounted && headerInGames.value) {
+                alignToNearestPage();
+              }
             });
           });
         },
@@ -1027,11 +1093,13 @@ class MoveStatisticsPanel extends HookConsumerWidget {
                         notification is OverscrollNotification) {
                       syncHeaderMode();
                     }
-                    // Do NOT re-align after every ScrollEnd while paging.
-                    // ExplorerGamesSnapPhysics already lands on the grid; a
-                    // second animateTo/jump after land is the card-to-card
-                    // flicker. Layout-driven scheduleAlign (fen / card count /
-                    // page metrics) still covers real mid-page rests.
+                    // After a gesture ends, silently jump the nearest card
+                    // flush under the panel top. jumpTo (not animateTo) — a
+                    // one-frame correction has no bounce; leaving a ¼-card
+                    // residual is the "lands at 75% height" bug.
+                    if (notification is ScrollEndNotification) {
+                      scheduleAlign();
+                    }
                     return false;
                   },
                   child: child,

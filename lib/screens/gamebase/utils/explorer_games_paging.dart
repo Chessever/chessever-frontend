@@ -476,6 +476,21 @@ bool explorerGamesNeedsPostSettleAlign({
 /// rebuilds) used to `jumpTo` by noise and look like post-land flicker.
 const double kExplorerGamesAnchorCompensateMin = 8.0;
 
+/// How much to add to scroll [pixels] so the nearest card top meets the panel
+/// top, given a measured [visualDelta] (`gamesTop - listTop`).
+///
+/// Pure counterpart of the panel's post-settle visual flush. Zero when already
+/// flush; positive when the card sits below the panel edge (scroll down).
+double explorerGamesVisualFlushAdjustment({
+  required double visualDelta,
+  required double pageExtent,
+  required int pageCount,
+}) {
+  if (pageExtent <= 0 || pageCount <= 0) return 0;
+  final index = (-visualDelta / pageExtent).round().clamp(0, pageCount - 1);
+  return visualDelta + index * pageExtent;
+}
+
 /// Spring the page settle rides in on.
 ///
 /// Bounce-free on purpose: a snappy overshoot past a page boundary both

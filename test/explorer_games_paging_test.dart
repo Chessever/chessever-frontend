@@ -587,6 +587,46 @@ void main() {
       expect(3.0 < kExplorerGamesAnchorCompensateMin, isTrue);
       expect(kExplorerGamesAnchorCompensateMin, greaterThanOrEqualTo(8.0));
     });
+
+    test('visual flush corrects a card parked part-way under the panel top', () {
+      const extent = 200.0;
+      // Card 0 sitting 50px below the panel top (¼ of a 200px card → "75%").
+      expect(
+        explorerGamesVisualFlushAdjustment(
+          visualDelta: 50,
+          pageExtent: extent,
+          pageCount: 5,
+        ),
+        50,
+      );
+      // Card 1 should be flush (section top is one page above the panel).
+      expect(
+        explorerGamesVisualFlushAdjustment(
+          visualDelta: -extent,
+          pageExtent: extent,
+          pageCount: 5,
+        ),
+        0,
+      );
+      // Card 1 is 40px short of flush.
+      expect(
+        explorerGamesVisualFlushAdjustment(
+          visualDelta: -extent + 40,
+          pageExtent: extent,
+          pageCount: 5,
+        ),
+        40,
+      );
+      // Already flush on card 0.
+      expect(
+        explorerGamesVisualFlushAdjustment(
+          visualDelta: 0,
+          pageExtent: extent,
+          pageCount: 5,
+        ),
+        0,
+      );
+    });
   });
 
   testWidgets('ballistic settle lands on one page with no second correction', (
