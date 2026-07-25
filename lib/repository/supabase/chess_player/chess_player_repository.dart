@@ -42,16 +42,32 @@ class ChessPlayerRepository extends BaseRepository {
   static const int _inFilterChunkSize = 150;
   static final Map<int, ChessPlayer?> _playerByFideIdCache = {};
 
-  /// Get top players (by rating)
+  /// Get top players (by rating).
+  ///
+  /// Same ranking rules as Favorites → Players: rating > 0, rating < 3300,
+  /// ordered rating descending, offset/limit range pagination.
+  /// Optional [titles] filters to FIDE title codes (e.g. GM, IM, FM).
   Future<List<ChessPlayer>> getTopPlayers({
     int limit = 30,
     int offset = 0,
+    Iterable<String>? titles,
   }) async {
-    final data = await supabase
+    var builder = supabase
         .from('chess_players')
         .select('fideid, name, title, rating, country')
         .gt('rating', 0)
-        .lt('rating', 3300)
+        .lt('rating', 3300);
+
+    final titleList =
+        titles
+            ?.map((t) => t.trim().toUpperCase())
+            .where((t) => t.isNotEmpty)
+            .toList();
+    if (titleList != null && titleList.isNotEmpty) {
+      builder = builder.inFilter('title', titleList);
+    }
+
+    final data = await builder
         .order('rating', ascending: false)
         .range(offset, offset + limit - 1);
 
@@ -63,9 +79,10 @@ class ChessPlayerRepository extends BaseRepository {
     required String query,
     int limit = 30,
     int offset = 0,
+    Iterable<String>? titles,
   }) async {
     if (query.trim().isEmpty) {
-      return getTopPlayers(limit: limit, offset: offset);
+      return getTopPlayers(limit: limit, offset: offset, titles: titles);
     }
 
     final term = '%${query.trim()}%';
@@ -76,12 +93,23 @@ class ChessPlayerRepository extends BaseRepository {
       orFilters.write(',country.eq.$fedCode');
     }
 
-    final data = await supabase
+    var builder = supabase
         .from('chess_players')
         .select('fideid, name, title, rating, country')
         .or(orFilters.toString())
         .gt('rating', 0)
-        .lt('rating', 3300)
+        .lt('rating', 3300);
+
+    final titleList =
+        titles
+            ?.map((t) => t.trim().toUpperCase())
+            .where((t) => t.isNotEmpty)
+            .toList();
+    if (titleList != null && titleList.isNotEmpty) {
+      builder = builder.inFilter('title', titleList);
+    }
+
+    final data = await builder
         .order('rating', ascending: false)
         .range(offset, offset + limit - 1);
 

@@ -1,7 +1,11 @@
 import 'package:chessever2/repository/gamebase/gamebase_repository.dart';
 import 'package:chessever2/repository/gamebase/miniatures/miniatures_models.dart';
+import 'package:chessever2/repository/supabase/chess_player/chess_player_repository.dart';
+import 'package:chessever2/screens/standings/player_standing_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
+import 'package:chessever2/utils/country_utils.dart';
 import 'package:chessever2/utils/logger/logger.dart';
+import 'package:chessever2/utils/transient_request_retry.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 /// Active query for the Miniatures screen (window + sort + search + filters).
@@ -56,6 +60,10 @@ final miniatureStatsProvider = FutureProvider.autoDispose
     });
 
 /// Query state for the Players tab: title chips + sort + name search.
+///
+/// Ranking is always high player ELO from Supabase `chess_players` (same rules
+/// as For You → Favorites → Players). [sort] is kept for filter-dialog chrome
+/// compatibility but does not change the data source.
 class MiniaturePlayersQuery {
   const MiniaturePlayersQuery({
     this.titles = const <MiniaturePlayerTitle>{},
@@ -113,21 +121,21 @@ final miniaturePlayersQueryProvider =
 
 class MiniaturePlayersState {
   const MiniaturePlayersState({
-    this.items = const <MiniaturePlayer>[],
+    this.items = const <PlayerStandingModel>[],
     this.totalCount = 0,
     this.isLoading = false,
     this.hasMore = true,
     this.error,
   });
 
-  final List<MiniaturePlayer> items;
+  final List<PlayerStandingModel> items;
   final int totalCount;
   final bool isLoading;
   final bool hasMore;
   final String? error;
 
   MiniaturePlayersState copyWith({
-    List<MiniaturePlayer>? items,
+    List<PlayerStandingModel>? items,
     int? totalCount,
     bool? isLoading,
     bool? hasMore,
@@ -143,8 +151,168 @@ class MiniaturePlayersState {
   }
 }
 
-/// Offset-paginated player leaderboard. Recreated whenever the query changes,
-/// mirroring [miniaturesPaginatedProvider].
+/// Maps a Supabase [ChessPlayer] into the card model used by Miniatures Players
+/// (same standing model as Favorites → Players).
+PlayerStandingModel chessPlayerToStandingModel(ChessPlayer player) {
+  return PlayerStandingModel(
+    name: player.name,
+    countryCode: CountryUtils.toIso2Code(player.country ?? ''),
+    score: player.rating ?? 0,
+    scoreChange: 0,
+    matchScore: null,
+    title: player.title,
+    fideId: player.fideid,
+  );
+}
+
+/// Resolved rows survive scrolling: the row provider is autoDispose, so
+/// without this a scroll back up would refire every lookup. Null values are
+/// cached too — a player with no gamebase match must not be retried per frame.
+final _miniaturePlayerRecordCache = <int, MiniaturePlayer?>{};
+
+/// Test hook: drops the in-memory W-L lookup cache between cases.
+void clearMiniaturePlayerRecordCacheForTest() {
+  _miniaturePlayerRecordCache.clear();
+}
+
+/// Picks the gamebase leaderboard row that is provably the same person.
+///
+/// FIDE id is the only trustworthy key (names collide, and gamebase names come
+/// from PGN headers). A row without a FIDE id is accepted only on an exact
+/// name match, which is how the leaderboard was already keyed before the tab
+/// moved to ELO ranking.
+MiniaturePlayer? matchMiniaturePlayerRecord({
+  required List<MiniaturePlayer> candidates,
+  required int fideId,
+  required String name,
+}) {
+  MiniaturePlayer? byName;
+  final wanted = name.trim().toLowerCase();
+  for (final candidate in candidates) {
+    if (candidate.fideId == fideId) return candidate;
+    if (candidate.fideId == null &&
+        byName == null &&
+        candidate.name.trim().toLowerCase() == wanted) {
+      byName = candidate;
+    }
+  }
+  return byName;
+}
+
+/// Resolves the gamebase miniature row for one high-ELO card (W-L + playerId).
+///
+/// Full name first, then surname as a fallback for accent/format drift between
+/// Supabase and gamebase name sources. Results (including null misses) are
+/// cached by FIDE id so the list and scorecard share one lookup.
+Future<MiniaturePlayer?> resolveMiniaturePlayerRecord({
+  required GamebaseRepository repo,
+  required int fideId,
+  required String name,
+}) async {
+  if (_miniaturePlayerRecordCache.containsKey(fideId)) {
+    return _miniaturePlayerRecordCache[fideId];
+  }
+
+  final trimmed = name.trim();
+  if (trimmed.isEmpty) {
+    _miniaturePlayerRecordCache[fideId] = null;
+    return null;
+  }
+
+  Future<MiniaturePlayer?> lookup(String search, int limit) async {
+    final page = await repo.getMiniaturePlayers(search: search, limit: limit);
+    return matchMiniaturePlayerRecord(
+      candidates: page.items,
+      fideId: fideId,
+      name: trimmed,
+    );
+  }
+
+  try {
+    var record = await lookup(trimmed, 10);
+    final surname = trimmed.split(',').first.trim();
+    if (record == null && surname.isNotEmpty && surname != trimmed) {
+      record = await lookup(surname, 30);
+    }
+    // Cache hits and confirmed misses only. Network errors stay uncached so
+    // pull-to-refresh can retry rather than freeze empty W-L forever.
+    _miniaturePlayerRecordCache[fideId] = record;
+    return record;
+  } catch (e, st) {
+    // Decoration only — a failed lookup leaves the score slot empty instead
+    // of surfacing an error over an otherwise good list.
+    talker.handle(e, st);
+    return null;
+  }
+}
+
+/// Attaches miniature W-L (and gamebase player id) onto each standing model.
+///
+/// Runs the page's lookups in parallel so the Players tab can keep shimmer up
+/// until both the ELO list and the W-L records for that page are ready.
+Future<List<PlayerStandingModel>> enrichPlayersWithMiniatureRecords({
+  required GamebaseRepository repo,
+  required List<PlayerStandingModel> players,
+}) async {
+  if (players.isEmpty) return players;
+
+  return Future.wait(
+    players.map((player) async {
+      final fideId = player.fideId;
+      if (fideId == null) return player;
+
+      final record = await resolveMiniaturePlayerRecord(
+        repo: repo,
+        fideId: fideId,
+        name: player.name,
+      );
+      if (record == null) return player;
+
+      return player.copyWith(
+        matchScore: record.winLossLabel,
+        gamebasePlayerId: record.playerId,
+      );
+    }),
+  );
+}
+
+/// The gamebase leaderboard row behind one ELO-ranked card. Prefetched for the
+/// visible page before cards paint (see [enrichPlayersWithMiniatureRecords]);
+/// this provider is the shared cache/scorecard source for taps and rebuilds.
+final miniaturePlayerRecordProvider = FutureProvider.autoDispose
+    .family<MiniaturePlayer?, ({int fideId, String name})>((ref, key) async {
+      return resolveMiniaturePlayerRecord(
+        repo: ref.read(gamebaseRepositoryProvider),
+        fideId: key.fideId,
+        name: key.name,
+      );
+    });
+
+/// Pure merge of a paginated high-ELO page into list state (append + hasMore).
+///
+/// Exposed for unit tests so pagination can be verified without Supabase/UI.
+MiniaturePlayersState mergeMiniaturePlayersPage({
+  required MiniaturePlayersState previous,
+  required List<PlayerStandingModel> page,
+  required bool reset,
+  required int pageSize,
+  int? totalCount,
+}) {
+  final items =
+      reset
+          ? List<PlayerStandingModel>.from(page)
+          : <PlayerStandingModel>[...previous.items, ...page];
+  return previous.copyWith(
+    items: items,
+    totalCount: totalCount ?? items.length,
+    isLoading: false,
+    hasMore: page.length >= pageSize,
+    error: null,
+  );
+}
+
+/// Offset-paginated high-ELO player leaderboard (Supabase `chess_players`).
+/// Recreated whenever the query changes, mirroring [miniaturesPaginatedProvider].
 final miniaturePlayersPaginatedProvider = StateNotifierProvider.autoDispose<
   MiniaturePlayersNotifier,
   MiniaturePlayersState
@@ -161,7 +329,7 @@ class MiniaturePlayersNotifier extends StateNotifier<MiniaturePlayersState> {
 
   /// Keep the first paint light: each row also triggers a photo lookup, so
   /// a smaller page avoids a stampede of concurrent image requests.
-  static const int _pageSize = 20;
+  static const int pageSize = 20;
 
   final Ref _ref;
   final MiniaturePlayersQuery _query;
@@ -182,26 +350,45 @@ class MiniaturePlayersNotifier extends StateNotifier<MiniaturePlayersState> {
     state = state.copyWith(isLoading: true, error: null);
 
     try {
-      final repo = _ref.read(gamebaseRepositoryProvider);
-      final page = await repo.getMiniaturePlayers(
-        sort: _query.sort,
-        titles: _query.titles,
-        search: _query.search,
-        limit: _pageSize,
-        offset: offset,
+      final repo = _ref.read(chessPlayerRepositoryProvider);
+      final titles =
+          _query.titles.isEmpty
+              ? null
+              : _query.titles.map((t) => t.apiValue);
+      final search = (_query.search ?? '').trim();
+
+      final players = await retryTransientRead(
+        () =>
+            search.isEmpty
+                ? repo.getTopPlayers(
+                  limit: pageSize,
+                  offset: offset,
+                  titles: titles,
+                )
+                : repo.searchAllPlayers(
+                  query: search,
+                  limit: pageSize,
+                  offset: offset,
+                  titles: titles,
+                ),
       );
       if (!mounted || seq != _requestSeq) return;
 
-      final items =
-          reset ? page.items : <MiniaturePlayer>[...state.items, ...page.items];
-      // Prefer page-length for hasMore: backend may return an approximate total
-      // (avoids a second full aggregate). A short page always means the end.
-      final hasMore = page.items.length >= _pageSize;
-      state = state.copyWith(
-        items: items,
-        totalCount: page.total,
-        isLoading: false,
-        hasMore: hasMore,
+      // Hold the list on shimmer (or the "Loading more…" footer) until W-L is
+      // resolved for this page. Ranking still comes from Supabase ELO; gamebase
+      // only supplies the decorative score slot + scorecard playerId.
+      final standings = players.map(chessPlayerToStandingModel).toList();
+      final page = await enrichPlayersWithMiniatureRecords(
+        repo: _ref.read(gamebaseRepositoryProvider),
+        players: standings,
+      );
+      if (!mounted || seq != _requestSeq) return;
+
+      state = mergeMiniaturePlayersPage(
+        previous: state,
+        page: page,
+        reset: reset,
+        pageSize: pageSize,
       );
     } catch (e, st) {
       talker.handle(e, st);

@@ -140,9 +140,13 @@ class GameAnalysisReportController extends ChangeNotifier {
 
   static const int reportDepth = 12;
   static const int reportMultiPv = 3;
+  /// Deeper search reserved for high-precision !! verification only.
+  static const int brilliantDepth = 16;
+  static const int brilliantMultiPv = 3;
   static const double reportKnodeReference = 500;
   static const Duration primarySearchBudget = Duration(milliseconds: 500);
   static const Duration refinementSearchBudget = Duration(milliseconds: 500);
+  static const Duration brilliantSearchBudget = Duration(milliseconds: 900);
   // An empty result during heavy board contention (rapid navigation preempting
   // the report) is transient, not a dead position — retry patiently (each loop
   // waits for board handoff first) instead of failing the whole report.
@@ -415,6 +419,56 @@ class GameAnalysisReportController extends ChangeNotifier {
         await _yieldForMobile();
       }
 
+      // Third pass: high-precision !! only. Reanalyze candidate positions more
+      // deeply with MultiPV so ordinary gambits never receive Brilliant from
+      // shallow one-reply sacrifice heuristics alone.
+      final refinedWinPct = positions
+          .map((position) => gameReportWinPercentage(position.bestLine))
+          .toList(growable: false);
+      for (var moveIndex = 0; moveIndex < game.mainline.length; moveIndex++) {
+        if (_disposed || generation != _generation) return;
+        if (!isBrilliantCandidate(
+          index: moveIndex,
+          game: game,
+          positions: positions,
+          winPercentages: refinedWinPct,
+        )) {
+          continue;
+        }
+        final fen = fens[moveIndex];
+        final deep = await _evaluateWithRetry(
+          fen,
+          generation: generation,
+          multiPv: brilliantMultiPv,
+          depth: brilliantDepth,
+          searchDuration: brilliantSearchBudget,
+          completedWorkUnits: totalWorkUnits,
+          totalWorkUnits: totalWorkUnits,
+          message: _brilliantPassMessage(moveIndex, totalMoves),
+        );
+        if (_disposed || generation != _generation) return;
+        positions[moveIndex] = deep;
+        // Deeper after-position line for multi-ply persistence. Keep MultiPV so
+        // we do not clobber the next half-move's refined alternatives (a multiPv:1
+        // overwrite made classifyGameReportMove see a single line and drop tags).
+        final afterFen = fens[moveIndex + 1];
+        if (terminalGameReportPosition(afterFen) == null) {
+          final deepAfter = await _evaluateWithRetry(
+            afterFen,
+            generation: generation,
+            multiPv: brilliantMultiPv,
+            depth: brilliantDepth,
+            searchDuration: brilliantSearchBudget,
+            completedWorkUnits: totalWorkUnits,
+            totalWorkUnits: totalWorkUnits,
+            message: _brilliantPassMessage(moveIndex, totalMoves),
+          );
+          if (_disposed || generation != _generation) return;
+          positions[moveIndex + 1] = deepAfter;
+        }
+        await _yieldForMobile();
+      }
+
       final report = buildGameAnalysisReport(
         game: game,
         fingerprint: fingerprint,
@@ -461,6 +515,11 @@ class GameAnalysisReportController extends ChangeNotifier {
     return 'Refining move $moveNumber of $totalMoves';
   }
 
+  String _brilliantPassMessage(int moveIndex, int totalMoves) {
+    final moveNumber = moveIndex ~/ 2 + 1;
+    return 'Verifying brilliant candidate $moveNumber of $totalMoves';
+  }
+
   Future<GameReportPosition> _evaluateWithRetry(
     String fen, {
     required int generation,
@@ -468,6 +527,8 @@ class GameAnalysisReportController extends ChangeNotifier {
     required int completedWorkUnits,
     required int totalWorkUnits,
     required String message,
+    int? depth,
+    Duration? searchDuration,
   }) async {
     var attempt = 0;
     while (true) {
@@ -486,11 +547,13 @@ class GameAnalysisReportController extends ChangeNotifier {
       }
       try {
         attempt++;
+        final resolvedDepth = depth ?? reportDepth;
         final searchBudget =
-            multiPv == 1 ? primarySearchBudget : refinementSearchBudget;
+            searchDuration ??
+            (multiPv == 1 ? primarySearchBudget : refinementSearchBudget);
         final position = await _evaluate(
           fen,
-          depth: reportDepth,
+          depth: resolvedDepth,
           multiPv: multiPv,
           searchDuration: searchBudget,
           ownerId: _ownerId,
@@ -795,7 +858,6 @@ GameMoveClassification? classifyGameReportMove({
 }) {
   final move = game.mainline[index];
   final before = positions[index];
-  final after = positions[index + 1];
   final isWhite = move.turn == ChessColor.white;
   final beforeWin = winPercentages[index];
   final afterWin = winPercentages[index + 1];
@@ -850,22 +912,21 @@ GameMoveClassification? classifyGameReportMove({
         move.uci,
       );
 
-  // ── Brilliant ──────────────────────────────────────────────────────────
-  // Near-best (≤2pp loss), real material sacrifice, still not losing, and the
-  // alternative was not already a forced win.
-  if (moverChange >= -2 &&
-      alternativeWin != null &&
-      !_isLosingOrAlternateCrushing(
-        afterWin: afterWin,
-        alternativeWin: alternativeWin,
-        isWhite: isWhite,
-      ) &&
-      !move.san.contains('=') &&
-      isReportPieceSacrifice(
-        before.fen,
-        move.uci,
-        after.bestLine.moves,
-      )) {
+  // ── Brilliant (!!) ─────────────────────────────────────────────────────
+  // High precision, low frequency: engine-best/tied + meaningful investment +
+  // multi-ply persistence + exclusions. Immediate one-reply sacrifice alone
+  // is not enough (ordinary gambits / accepted pawn offers stay untagged).
+  if (verifyBrilliantMove(
+    index: index,
+    game: game,
+    positions: positions,
+    winPercentages: winPercentages,
+    moverChange: moverChange,
+    playedIsBest: playedIsBest,
+    alternativeWin: alternativeWin,
+    alternativeGap: alternativeGap,
+    simpleRecapture: simpleRecapture,
+  )) {
     return GameMoveClassification.brilliant;
   }
 
@@ -995,6 +1056,421 @@ GameMoveClassification? _lossTier(
   if (drop >= 5) return GameMoveClassification.inaccuracy;
   // drop < 5: quiet / excellent residual — no chip.
   return null;
+}
+
+// ── Brilliant (!!) high-precision path ─────────────────────────────────────
+
+/// Max mover win% loss (pp) for a !! candidate / verified brilliant.
+const double kBrilliantMaxLossPp = 1.5;
+
+/// Minimum MultiPV gap (played vs next-best, mover pp) for non-unique best.
+const double kBrilliantMinAlternativeGapPp = 8;
+
+/// Early plies treated as opening/book for !! exclusion (half-moves).
+const int kBrilliantOpeningPlyLimit = 10;
+
+/// Minimum engine continuation length for multi-ply persistence.
+const int kBrilliantMinContinuationPlies = 3;
+
+/// Cheap prefilter: worth spending a deeper MultiPV pass on this move.
+bool isBrilliantCandidate({
+  required int index,
+  required ChessGame game,
+  required List<GameReportPosition> positions,
+  required List<double> winPercentages,
+}) {
+  if (index < 0 || index >= game.mainline.length) return false;
+  if (index + 1 >= positions.length || index + 1 >= winPercentages.length) {
+    return false;
+  }
+  final move = game.mainline[index];
+  if (move.san.contains('=')) return false;
+  if (isReportLikelyOpeningBookForBrilliant(index, game)) return false;
+
+  final before = positions[index];
+  final after = positions[index + 1];
+  final isWhite = move.turn == ChessColor.white;
+  final beforeWin = winPercentages[index];
+  final afterWin = winPercentages[index + 1];
+  if (isReportCompletelyDecidedForBrilliant(
+    beforeWin: beforeWin,
+    afterWin: afterWin,
+    isWhite: isWhite,
+  )) {
+    return false;
+  }
+
+  final moverChange = (afterWin - beforeWin) * (isWhite ? 1 : -1);
+  if (moverChange < -2) return false;
+
+  final playedIsBest =
+      before.bestLine.moves.isNotEmpty &&
+      before.bestLine.moves.first == move.uci;
+  if (!playedIsBest && moverChange < -kBrilliantMaxLossPp) return false;
+
+  if (index > 0 &&
+      isSimpleReportRecapture(
+        positions[index - 1].fen,
+        game.mainline[index - 1].uci,
+        move.uci,
+      )) {
+    return false;
+  }
+
+  return isMeaningfulBrilliantInvestment(
+    before.fen,
+    move.uci,
+    after.bestLine.moves,
+  );
+}
+
+/// Full high-confidence !! gate used by [classifyGameReportMove].
+///
+/// Prefer fail-closed (false) over awarding !! on ordinary gambits.
+bool verifyBrilliantMove({
+  required int index,
+  required ChessGame game,
+  required List<GameReportPosition> positions,
+  required List<double> winPercentages,
+  required double moverChange,
+  required bool playedIsBest,
+  required double? alternativeWin,
+  required double alternativeGap,
+  required bool simpleRecapture,
+}) {
+  if (index < 0 || index >= game.mainline.length) return false;
+  if (index + 1 >= positions.length || index + 1 >= winPercentages.length) {
+    return false;
+  }
+  final move = game.mainline[index];
+  final before = positions[index];
+  final after = positions[index + 1];
+  final isWhite = move.turn == ChessColor.white;
+  final beforeWin = winPercentages[index];
+  final afterWin = winPercentages[index + 1];
+
+  // ── Hard exclusions ────────────────────────────────────────────────────
+  if (move.san.contains('=')) return false;
+  if (simpleRecapture) return false;
+  if (isReportLikelyOpeningBookForBrilliant(index, game)) return false;
+  if (isReportCompletelyDecidedForBrilliant(
+    beforeWin: beforeWin,
+    afterWin: afterWin,
+    isWhite: isWhite,
+  )) {
+    return false;
+  }
+  if (alternativeWin != null &&
+      _isLosingOrAlternateCrushing(
+        afterWin: afterWin,
+        alternativeWin: alternativeWin,
+        isWhite: isWhite,
+      )) {
+    return false;
+  }
+  final losing = isWhite ? afterWin < 48 : afterWin > 52;
+  if (losing) return false;
+
+  // ── Engine-best or effectively tied ────────────────────────────────────
+  final tiedForBest = moverChange >= -kBrilliantMaxLossPp;
+  if (!playedIsBest && !tiedForBest) return false;
+  if (moverChange < -kBrilliantMaxLossPp) return false;
+
+  // Need MultiPV alternatives for prestige; single-line "only move" is not !!.
+  if (before.lines.length < 2 || alternativeWin == null) return false;
+
+  // Clear edge over ordinary alternatives, or a uniquely strong only-move.
+  final onlyMoveResource = alternativeGap >= 12;
+  final meaningfulGap = alternativeGap >= kBrilliantMinAlternativeGapPp;
+  if (!onlyMoveResource && !meaningfulGap) return false;
+
+  // ── Material / tactical investment ─────────────────────────────────────
+  if (!isMeaningfulBrilliantInvestment(
+    before.fen,
+    move.uci,
+    after.bestLine.moves,
+  )) {
+    return false;
+  }
+
+  // ── Multi-ply persistence (not only the immediate reply) ───────────────
+  if (!brilliantContinuationPersists(
+    beforeFen: before.fen,
+    playedUci: move.uci,
+    continuationAfterMove: after.bestLine.moves,
+    afterWin: afterWin,
+    isWhite: isWhite,
+  )) {
+    return false;
+  }
+
+  return true;
+}
+
+/// Opening / book exclusion for !!: early quiet development and gambit territory.
+///
+/// Sparse FENs (endgame studies / crafted boards) are not treated as opening
+/// just because the half-move index is low.
+bool isReportLikelyOpeningBookForBrilliant(int index, ChessGame game) {
+  if (index >= kBrilliantOpeningPlyLimit) return false;
+  if (_sidePieceCount(game.startingFen) <= 12) return false;
+  final move = game.mainline[index];
+  final san = move.san;
+  // Quiet early moves in a full opening are book-like.
+  final tactical = san.contains('x') || san.contains('+') || san.contains('#');
+  if (!tactical) return true;
+  // Early pawn gambits (even with captures) are not prestigious !! material.
+  try {
+    final beforeFen =
+        index == 0 ? game.startingFen : game.mainline[index - 1].fen;
+    final pos = Chess.fromSetup(Setup.parseFen(beforeFen));
+    final played = NormalMove.fromUci(move.uci);
+    if (!pos.isLegal(played)) return true;
+    final piece = pos.board.pieceAt(played.from);
+    if (piece?.role == Role.pawn) return true;
+  } catch (_) {
+    return true;
+  }
+  return false;
+}
+
+int _sidePieceCount(String fen) {
+  try {
+    final pos = Chess.fromSetup(Setup.parseFen(fen));
+    var n = 0;
+    for (final sq in Square.values) {
+      if (pos.board.pieceAt(sq) != null) n++;
+    }
+    return n;
+  } catch (_) {
+    return 32;
+  }
+}
+
+/// Completely decided positions: !! has no prestige value.
+bool isReportCompletelyDecidedForBrilliant({
+  required double beforeWin,
+  required double afterWin,
+  required bool isWhite,
+}) {
+  final moverBefore = isWhite ? beforeWin : (100 - beforeWin);
+  final moverAfter = isWhite ? afterWin : (100 - afterWin);
+  return moverBefore >= 92 ||
+      moverBefore <= 8 ||
+      moverAfter >= 95 ||
+      moverAfter <= 5;
+}
+
+/// Meaningful material investment for !! (not routine development / exchanges).
+///
+/// Accepts only real sacs:
+/// - classic immediate piece sacrifice (opponent takes on destination),
+///   with invested piece value ≥ 3 (no pawn-only offers);
+/// - declined/delayed sac: after the move, the opponent can capture our
+///   just-moved piece and a one-exchange SEE is net-negative for us
+///   (truly hanging / underprotected — not a protected piece on an attacked
+///   square where the trade is equal or better for us).
+///
+/// Quiet piece moves (e.g. Nc3) are never investments — fail closed.
+bool isMeaningfulBrilliantInvestment(
+  String fen,
+  String playedUci,
+  List<String> bestContinuation,
+) {
+  try {
+    final position = Chess.fromSetup(Setup.parseFen(fen));
+    final move = NormalMove.fromUci(playedUci);
+    if (!position.isLegal(move)) return false;
+    final moving = position.board.pieceAt(move.from);
+    if (moving == null || moving.role == Role.king) return false;
+    final captured = position.board.pieceAt(move.to);
+    final invested = _pieceValue(moving.role);
+    final immediateGain = captured == null ? 0 : _pieceValue(captured.role);
+    // Equal or winning capture is not a sacrifice.
+    if (immediateGain >= invested) return false;
+    // Pawn-only offers are not !! investment (opening gambits, etc.).
+    if (invested < 3) return false;
+
+    final after = position.play(move);
+    // Accepted in PV *or* declined: require one-exchange SEE net-negative for
+    // us on the destination (true hang / underprotection). Protected pieces
+    // taken into a fair recapture (e.g. N on c3 hit by pawn, defended by pawn)
+    // do not count as !! material investment.
+    return _isNetHangingPiece(
+      after,
+      square: move.to,
+      owner: moving.color,
+    );
+  } catch (_) {
+    return false;
+  }
+}
+
+/// One-exchange SEE: opponent takes our piece on [square]; we recapture with
+/// the cheapest defender if any. Net < 0 for [owner] ⇒ truly hanging /
+/// underprotected (protected equal trades return false).
+bool _isNetHangingPiece(
+  Position position, {
+  required Square square,
+  required Side owner,
+}) {
+  final ourPiece = position.board.pieceAt(square);
+  if (ourPiece == null || ourPiece.color != owner) return false;
+  final ourVal = _pieceValue(ourPiece.role);
+  if (ourVal < 3) return false;
+
+  final opponent = owner == Side.white ? Side.black : Side.white;
+  ({Square from, int value})? cheapestAttacker;
+  for (final sq in Square.values) {
+    final piece = position.board.pieceAt(sq);
+    if (piece == null || piece.color != opponent) continue;
+    final candidate = NormalMove(from: sq, to: square);
+    if (!position.isLegal(candidate)) continue;
+    final v = _pieceValue(piece.role);
+    if (cheapestAttacker == null || v < cheapestAttacker.value) {
+      cheapestAttacker = (from: sq, value: v);
+    }
+  }
+  if (cheapestAttacker == null) return false;
+
+  final afterCapture = position.play(
+    NormalMove(from: cheapestAttacker.from, to: square),
+  );
+  var canRecapture = false;
+  var cheapestRecapture = 100;
+  for (final sq in Square.values) {
+    final piece = afterCapture.board.pieceAt(sq);
+    if (piece == null || piece.color != owner) continue;
+    final candidate = NormalMove(from: sq, to: square);
+    if (!afterCapture.isLegal(candidate)) continue;
+    canRecapture = true;
+    final v = _pieceValue(piece.role);
+    if (v < cheapestRecapture) cheapestRecapture = v;
+  }
+
+  // Material for owner if opponent takes (and we recapture once optimally).
+  final netForUs =
+      canRecapture
+          ? (-ourVal + cheapestAttacker.value)
+          : -ourVal;
+  // Require a real material hole (at least a full minor net, or free take).
+  if (!canRecapture) return true;
+  return netForUs <= -3;
+}
+
+/// Multi-ply persistence: the idea survives several continuation plies.
+///
+/// Immediate-reply capture alone is not enough — require either:
+/// - a long enough PV (≥ [kBrilliantMinContinuationPlies]),
+/// - material recovery / continued pressure along that PV, or
+/// - a short mate sequence.
+bool brilliantContinuationPersists({
+  required String beforeFen,
+  required String playedUci,
+  required List<String> continuationAfterMove,
+  required double afterWin,
+  required bool isWhite,
+  int minPlies = kBrilliantMinContinuationPlies,
+}) {
+  final moverAfter = isWhite ? afterWin : (100 - afterWin);
+  // Position must not collapse for the sacrificer after the move.
+  if (moverAfter < 48) return false;
+
+  try {
+    Position position = Chess.fromSetup(Setup.parseFen(beforeFen));
+    final move = NormalMove.fromUci(playedUci);
+    if (!position.isLegal(move)) return false;
+    position = position.play(move);
+
+    // Immediate mate after the sac is rare but valid multi-ply "persistence".
+    if (position.isCheckmate) return true;
+
+    if (continuationAfterMove.length < minPlies) {
+      // Short PV only acceptable if it ends in mate for the sacrificer.
+      return _continuationEndsInMateFor(
+        position,
+        continuationAfterMove,
+        side: isWhite ? Side.white : Side.black,
+      );
+    }
+
+    final materialAfterMove = _materialBalanceWhite(position);
+    final sacrificer = isWhite ? Side.white : Side.black;
+    // Do NOT count the check from the played move itself as multi-ply
+    // persistence — that would mark any checking best-move with a long PV.
+    var sawContinuationCheck = false;
+    var sacAcceptedInPv = false;
+    var materialAfterAcceptance = materialAfterMove;
+    var pos = position;
+    final dest = move.to;
+    final plies = math.min(minPlies, continuationAfterMove.length);
+    for (var i = 0; i < plies; i++) {
+      final step = NormalMove.fromUci(continuationAfterMove[i]);
+      if (!pos.isLegal(step)) return false;
+      // First reply captures our sacrificed unit on its destination.
+      if (i == 0 && step.to == dest) {
+        final victim = pos.board.pieceAt(dest);
+        if (victim != null && victim.color == sacrificer) {
+          sacAcceptedInPv = true;
+        }
+      }
+      pos = pos.play(step);
+      if (i == 0 && sacAcceptedInPv) {
+        materialAfterAcceptance = _materialBalanceWhite(pos);
+      }
+      // Checks only count after the opponent has answered (ply index >= 1).
+      if (i >= 1 && pos.isCheck) sawContinuationCheck = true;
+      if (pos.isCheckmate) {
+        final matingSide = pos.turn == Side.white ? Side.black : Side.white;
+        return matingSide == sacrificer;
+      }
+    }
+
+    final materialLater = _materialBalanceWhite(pos);
+    final recoveryDelta =
+        isWhite
+            ? (materialLater - materialAfterAcceptance)
+            : (materialAfterAcceptance - materialLater);
+    // Persistence: continued attack after the reply, or material recovery
+    // *after the sac was accepted in the PV* — not a quiet PV that never
+    // touches the offered piece (materialDelta == 0 for free).
+    if (sawContinuationCheck) return true;
+    if (sacAcceptedInPv && recoveryDelta >= 0) return true;
+    return false;
+  } catch (_) {
+    return false;
+  }
+}
+
+bool _continuationEndsInMateFor(
+  Position start,
+  List<String> ucis, {
+  required Side side,
+}) {
+  try {
+    var pos = start;
+    for (final uci in ucis) {
+      final step = NormalMove.fromUci(uci);
+      if (!pos.isLegal(step)) return false;
+      pos = pos.play(step);
+    }
+    if (!pos.isCheckmate) return false;
+    final matingSide = pos.turn == Side.white ? Side.black : Side.white;
+    return matingSide == side;
+  } catch (_) {
+    return false;
+  }
+}
+
+int _materialBalanceWhite(Position position) {
+  var score = 0;
+  for (final sq in Square.values) {
+    final piece = position.board.pieceAt(sq);
+    if (piece == null || piece.role == Role.king) continue;
+    final v = _pieceValue(piece.role);
+    score += piece.color == Side.white ? v : -v;
+  }
+  return score;
 }
 
 bool isReportPieceSacrifice(

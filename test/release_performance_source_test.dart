@@ -3,23 +3,34 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  test('release app does not install an app-wide render-tree capture loop', () {
+  test('Clarity session recorder stays release-only and startup-deferred', () {
     final mainSource = File('lib/main.dart').readAsStringSync();
-    final pubspecSource = File('pubspec.yaml').readAsStringSync();
 
-    expect(
-      mainSource,
-      isNot(contains('Clarity.initialize(')),
-      reason:
-          'clarity_flutter 1.4.2 captures every changed RenderView once per '
-          'second by repainting the full render tree on Flutter\'s UI isolate.',
+    // Clarity was once removed outright because its render-tree capture loop
+    // caused periodic foreground stalls (9094c373). It is reactivated on
+    // purpose, but only in the shape that keeps startup unaffected: gated out
+    // of debug builds and deferred through ForegroundTaskScheduler instead of
+    // running inside the first-frame callback.
+    final clarityBlock = mainSource.substring(
+      mainSource.indexOf("key: 'startup_clarity'") - 200,
+      mainSource.indexOf("key: 'startup_clarity'"),
     );
     expect(
-      pubspecSource,
-      isNot(contains('clarity_flutter:')),
+      clarityBlock,
+      contains('if (!kDebugMode)'),
+      reason: 'Clarity must never record debug/dev sessions.',
+    );
+    expect(
+      clarityBlock,
+      contains('ForegroundTaskScheduler.schedule'),
       reason:
-          'Keep the full-tree session recorder out of release artifacts so it '
-          'cannot be re-enabled accidentally by startup initialization.',
+          'Clarity.initialize must stay behind the startup warmup scheduler '
+          'so its capture loop cannot contribute to first-frame stalls.',
+    );
+    expect(
+      mainSource,
+      contains("delay: kStartupWarmupDelay"),
+      reason: 'Clarity init keeps the warmup delay it shipped with.',
     );
   });
 

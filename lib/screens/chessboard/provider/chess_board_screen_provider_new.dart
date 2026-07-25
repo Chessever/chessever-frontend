@@ -27,6 +27,7 @@ import 'package:chessever2/screens/tour_detail/games_tour/utils/live_game_positi
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/audio_player_service.dart';
 import 'package:chessever2/utils/pgn_clock_utils.dart';
+import 'package:chessever2/utils/time_control_bonus.dart';
 import 'package:chessground/chessground.dart';
 import 'package:collection/collection.dart';
 import 'package:dartchess/dartchess.dart';
@@ -1391,7 +1392,14 @@ class ChessBoardScreenNotifierNew
       }
 
       var lastMoveIndex = allMoves.length - 1;
-      final moveTimes = _parseMoveTimesFromPgn(resolvedPgn);
+      // Trello #1005: PGN clock tags are missing the move-40 block of time
+      // until the relay credits it, so correct the whole series up front. Any
+      // move appended below comes from the game snapshot, which the model has
+      // already corrected — keeping the list consistently adjusted.
+      final moveTimes = applySecondaryBonusToMoveClocks(
+        _parseMoveTimesFromPgn(resolvedPgn),
+        game.secondaryTimePeriod,
+      ).toList();
 
       final liveFen = game.fen?.trim();
       final liveUci = game.lastMove?.trim();

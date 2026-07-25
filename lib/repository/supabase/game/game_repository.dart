@@ -2,6 +2,7 @@
 import 'dart:convert';
 
 import 'package:chessever2/repository/supabase/game/games.dart';
+import 'package:chessever2/utils/time_control_bonus.dart';
 import 'package:chessever2/repository/supabase/base_repository.dart';
 import 'package:chessever2/widgets/game_filter/game_filter_model.dart';
 import 'package:flutter/foundation.dart';
@@ -96,6 +97,7 @@ const String _gameListSelectColumns = '''
           opening_name,
           tours!games_tour_id_fkey(
             avg_elo,
+            tc:info->>tc,
             group_broadcasts!tours_group_broadcast_id_fkey(time_control)
           )
         ''';
@@ -131,6 +133,7 @@ const String _gameListSelectColumnsInnerTc = '''
           opening_name,
           tours!games_tour_id_fkey!inner(
             avg_elo,
+            tc:info->>tc,
             group_broadcasts!tours_group_broadcast_id_fkey!inner(time_control)
           )
         ''';
@@ -164,6 +167,7 @@ const String _gameListPreviewSelectColumns = '''
           opening_name,
           tours!games_tour_id_fkey(
             avg_elo,
+            tc:info->>tc,
             group_broadcasts!tours_group_broadcast_id_fkey(time_control)
           )
         ''';
@@ -196,6 +200,7 @@ const String _gameListPreviewSelectColumnsInnerTc = '''
           opening_name,
           tours!games_tour_id_fkey!inner(
             avg_elo,
+            tc:info->>tc,
             group_broadcasts!tours_group_broadcast_id_fkey!inner(time_control)
           )
         ''';
@@ -1220,7 +1225,7 @@ class GameRepository extends BaseRepository {
       final jsonList = response.map((item) => json.encode(item)).toList();
       final games = await compute(_decodeGamesInIsolate, jsonList);
 
-      return games;
+      return _hydratePgnForSecondaryPeriodGames(games);
     });
   }
 
@@ -1285,7 +1290,7 @@ class GameRepository extends BaseRepository {
           (response as List).map((item) => json.encode(item)).toList();
       final games = await compute(_decodeGamesInIsolate, jsonList);
 
-      return games;
+      return _hydratePgnForSecondaryPeriodGames(games);
     });
   }
 
@@ -1885,7 +1890,7 @@ class GameRepository extends BaseRepository {
       debugPrint(
         '[GameRepository] getGamesByFideIdsAndDate: found ${games.length} games for $dateStr',
       );
-      return games;
+      return _hydratePgnForSecondaryPeriodGames(games);
     });
   }
 
@@ -2028,8 +2033,51 @@ class GameRepository extends BaseRepository {
       debugPrint(
         '[GameRepository] getGamesByCountryAndDate: found ${games.length} games',
       );
-      return games;
+      return _hydratePgnForSecondaryPeriodGames(games);
     });
+  }
+
+  /// Backfills PGN onto the few rows that need it for the FIDE 40-move time
+  /// bonus (Trello #1005).
+  ///
+  /// The preview projection drops PGN on purpose — finished games average
+  /// ~3.6 KB of movetext, so a full page would grow by well over 100 KB. But
+  /// the bonus correction has to read a side's clock history to tell whether
+  /// the relay already credited the extra time, and guessing without it would
+  /// either under-report (the reported bug) or double-count (a worse one).
+  ///
+  /// Only *ongoing* games from events that actually declare a secondary period
+  /// qualify, and their movetext is small (~1.6 KB), so this costs one narrow
+  /// round trip on the rare page that contains any.
+  Future<List<Games>> _hydratePgnForSecondaryPeriodGames(
+    List<Games> games,
+  ) async {
+    final pending = gameIdsNeedingSecondaryPeriodPgn(games);
+    if (pending.isEmpty) return games;
+
+    try {
+      final rows =
+          await supabase.from('games').select('id,pgn').inFilter('id', pending);
+      final pgnById = <String, String>{};
+      for (final row in rows as List) {
+        final id = row['id'] as String?;
+        final pgn = row['pgn'] as String?;
+        if (id != null && pgn != null && pgn.isNotEmpty) pgnById[id] = pgn;
+      }
+      if (pgnById.isEmpty) return games;
+
+      return games
+          .map((game) {
+            final pgn = pgnById[game.id];
+            return pgn == null ? game : game.copyWith(pgn: pgn);
+          })
+          .toList();
+    } catch (e) {
+      // A clock that is 30 minutes low beats an empty list — fall back to the
+      // uncorrected rows rather than failing the whole page.
+      debugPrint('[GameRepository] 40-move PGN hydration failed: $e');
+      return games;
+    }
   }
 
   /// Adds the server-side filter chain for the favorites-games path.
@@ -2237,6 +2285,25 @@ List<Games> _decodeGamesInIsolate(List<String> gameJsonList) {
         return Games.fromJson(decoded);
       }).toList();
   return _deduplicateGames(games);
+}
+
+/// Ids of the rows a preview page must fetch PGN for so the FIDE 40-move time
+/// bonus can be applied without double-counting (Trello #1005).
+///
+/// Deliberately narrow: only games that are still running, already missing
+/// their movetext, and belong to an event whose time control declares a
+/// secondary period. Everything else is either already correct or would be a
+/// pointless payload.
+@visibleForTesting
+List<String> gameIdsNeedingSecondaryPeriodPgn(List<Games> games) {
+  final ids = <String>[];
+  for (final game in games) {
+    if (game.pgn != null && game.pgn!.isNotEmpty) continue;
+    if (game.status != '*') continue;
+    if (parseSecondaryTimePeriod(game.timeControlText) == null) continue;
+    ids.add(game.id);
+  }
+  return ids;
 }
 
 /// Removes duplicate games by ID, keeping the first occurrence.

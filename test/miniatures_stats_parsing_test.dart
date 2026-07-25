@@ -198,8 +198,22 @@ void main() {
       expect(carlsen.title, 'GM');
       expect(carlsen.fideId, 1503014);
       expect(carlsen.games, 121);
+      expect(carlsen.wins, 97);
+      expect(carlsen.losses, 24);
       expect(carlsen.fastestWin, 16);
       expect(carlsen.winRate, closeTo(80.2, 0.1));
+    });
+
+    test('uses API games as-is without client-side reduction', () {
+      // Players tab / scorecard render MiniaturePlayer.games directly from the
+      // JSON field. wins + losses must equal games (decisive-only corpus).
+      for (final player in page.items) {
+        expect(player.wins + player.losses, player.games);
+        expect(player.games, greaterThan(0));
+      }
+      // Fixture values match the production API fields, not a recomputed total.
+      expect(page.items.first.games, 121);
+      expect(page.items.last.games, 206);
     });
 
     test('tolerates unlinked players with no title, FIDE id or rating', () {

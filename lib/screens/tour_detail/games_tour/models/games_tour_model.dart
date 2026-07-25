@@ -2,6 +2,7 @@ import 'package:chessever2/repository/supabase/game/games.dart';
 import 'package:chessever2/screens/gamebase/event_view/gamebase_virtual_event_id.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/utils/live_game_position_resolver.dart';
 import 'package:chessever2/utils/pgn_clock_utils.dart';
+import 'package:chessever2/utils/time_control_bonus.dart';
 import 'package:dartchess/dartchess.dart';
 
 enum GameDisplayMode { all, hideFinishedGames, showfinishedGame }
@@ -86,6 +87,10 @@ class GamesTourModel {
   final String? openingName;
   final String?
   timeControl; // From group_broadcasts: 'standard', 'rapid', 'blitz'
+  /// Raw tournament time control text (`tours.info->>'tc'`), e.g.
+  /// `90 min / 40 moves + 30 min + 30 sec / move`. Drives the FIDE 40-move
+  /// bonus correction; see [secondaryTimePeriod].
+  final String? timeControlText;
   final int? avgElo; // New: average ELO of the tournament
   final bool isOnline;
 
@@ -122,6 +127,7 @@ class GamesTourModel {
     this.eco,
     this.openingName,
     this.timeControl,
+    this.timeControlText,
     this.avgElo,
     this.isOnline = false,
     this.sourceGameId,
@@ -170,6 +176,7 @@ class GamesTourModel {
     String? eco,
     String? openingName,
     String? timeControl,
+    String? timeControlText,
     int? avgElo,
     bool? isOnline,
     String? sourceGameId,
@@ -202,11 +209,21 @@ class GamesTourModel {
       eco: eco ?? this.eco,
       openingName: openingName ?? this.openingName,
       timeControl: timeControl ?? this.timeControl,
+      timeControlText: timeControlText ?? this.timeControlText,
       avgElo: avgElo ?? this.avgElo,
       isOnline: isOnline ?? this.isOnline,
       sourceGameId: sourceGameId ?? this.sourceGameId,
     );
   }
+
+  /// Parsed FIDE-style secondary period for this game's event, or `null` when
+  /// the event has none (or its time control text cannot be read confidently).
+  ///
+  /// Trello #1005: broadcast relays credit the move-40 block of time a move or
+  /// more late, so every clock surface tops the reading up until the source
+  /// catches up.
+  TimeControlSecondaryPeriod? get secondaryTimePeriod =>
+      parseSecondaryTimePeriod(timeControlText);
 
   int get cardElo {
     final whiteElo = whitePlayer.rating;
@@ -247,35 +264,39 @@ class GamesTourModel {
         // Game has started - prefer last_clock values, then player clock, then PGN clocks
         final pgnClocks = _extractClockSecondsFromPgn(game.pgn);
 
-        whiteClockSecondsToUse =
+        final rawWhiteSeconds =
             normalizeClockSeconds(
               clockSeconds: game.lastClockWhite,
               clockCentiseconds: white.clock,
             ) ??
             pgnClocks.whiteSeconds;
-        blackClockSecondsToUse =
+        final rawBlackSeconds =
             normalizeClockSeconds(
               clockSeconds: game.lastClockBlack,
               clockCentiseconds: black.clock,
             ) ??
             pgnClocks.blackSeconds;
 
+        // Trello #1005: classical events credit an extra block of time on move
+        // 40, but relays publish it a move (sometimes three) late. Top the
+        // reading up until the source catches up.
+        final corrected = applySecondaryBonusToLiveClocks(
+          pgn: game.pgn,
+          whiteSeconds: rawWhiteSeconds,
+          blackSeconds: rawBlackSeconds,
+          period: parseSecondaryTimePeriod(game.timeControlText),
+        );
+        whiteClockSecondsToUse = corrected.white;
+        blackClockSecondsToUse = corrected.black;
+
         whiteTimeDisplay =
-            (game.lastClockWhite != null && game.lastClockWhite! > 0)
-                ? _formatTimeFromSeconds(game.lastClockWhite!)
-                : (white.clock > 0
-                    ? _formatTime(white.clock)
-                    : (pgnClocks.whiteSeconds != null
-                        ? _formatTimeFromSeconds(pgnClocks.whiteSeconds!)
-                        : '--:--'));
+            whiteClockSecondsToUse != null && whiteClockSecondsToUse > 0
+                ? _formatTimeFromSeconds(whiteClockSecondsToUse)
+                : '--:--';
         blackTimeDisplay =
-            (game.lastClockBlack != null && game.lastClockBlack! > 0)
-                ? _formatTimeFromSeconds(game.lastClockBlack!)
-                : (black.clock > 0
-                    ? _formatTime(black.clock)
-                    : (pgnClocks.blackSeconds != null
-                        ? _formatTimeFromSeconds(pgnClocks.blackSeconds!)
-                        : '--:--'));
+            blackClockSecondsToUse != null && blackClockSecondsToUse > 0
+                ? _formatTimeFromSeconds(blackClockSecondsToUse)
+                : '--:--';
       } else {
         final hasInitialClock = white.clock > 0 || black.clock > 0;
 
@@ -348,6 +369,7 @@ class GamesTourModel {
         eco: resolvedEco,
         openingName: resolvedOpening,
         timeControl: game.timeControl,
+        timeControlText: game.timeControlText,
         avgElo: game.avgElo,
         isOnline: game.lichessId?.isNotEmpty == true,
       );

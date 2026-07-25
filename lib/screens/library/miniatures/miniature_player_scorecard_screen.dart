@@ -787,12 +787,18 @@ class _PlayerHeader extends ConsumerWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Text(
-                    player.name,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: AppTypography.textMdBold.copyWith(
-                      color: context.colors.textPrimary,
+                  // The name is a second, larger tap target for the same
+                  // destination as the "Open player profile" row below it —
+                  // reaching for the player's own name is the instinct.
+                  GestureDetector(
+                    onTap: onOpenProfile,
+                    child: Text(
+                      player.name,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: AppTypography.textMdBold.copyWith(
+                        color: context.colors.textPrimary,
+                      ),
                     ),
                   ),
                   SizedBox(height: 6.h),

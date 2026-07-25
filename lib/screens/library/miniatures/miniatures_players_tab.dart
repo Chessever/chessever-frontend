@@ -1,14 +1,13 @@
 import 'dart:async';
 
-import 'package:chessever2/repository/gamebase/miniatures/miniatures_models.dart';
 import 'package:chessever2/screens/library/miniatures/miniature_player_scorecard_screen.dart';
 import 'package:chessever2/screens/library/miniatures/miniatures_mode_provider.dart';
 import 'package:chessever2/screens/library/miniatures/widgets/miniature_players_filter_dialog.dart';
 import 'package:chessever2/screens/library/providers/miniatures_provider.dart';
+import 'package:chessever2/screens/player_profile/player_profile_screen.dart';
 import 'package:chessever2/screens/standings/player_standing_model.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/utils/app_typography.dart';
-import 'package:chessever2/utils/country_utils.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/scroll_cache.dart';
@@ -20,12 +19,11 @@ import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:skeletonizer/skeletonizer.dart';
 
-/// Leaderboard of the players who appear in the most miniatures, on either
-/// colour, rendered with the same [FigmaPlayerCard] used by the tournament
-/// Standings tab (real avatar photo, W-L in the score slot). Title (GM / IM /
-/// FM) and sort live behind the filter icon next to search, matching the
-/// Favorites and Countrymen games tabs. Tapping a player opens their own
-/// miniature scorecard.
+/// High-ELO player leaderboard for Miniatures → Players, ranked the same way as
+/// For You → Favorites → Players (Supabase `chess_players`, rating desc).
+/// Same [FigmaPlayerCard] shell (rank + avatar + name/rating, miniature W-L in
+/// the score slot). Title filters live behind the filter icon next to search.
+/// Tapping opens the player profile.
 class MiniaturesPlayersTab extends ConsumerStatefulWidget {
   const MiniaturesPlayersTab({super.key});
 
@@ -103,34 +101,6 @@ class _MiniaturesPlayersTabState extends ConsumerState<MiniaturesPlayersTab>
     if (result != null && mounted) {
       ref.read(miniaturePlayersQueryProvider.notifier).state = result;
     }
-  }
-
-  void _openPlayer(MiniaturePlayer player) {
-    HapticFeedbackService.cardTap();
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder:
-            (_) => MiniaturePlayerScorecardScreen(
-              player: player,
-              avatarHeroTag: player.avatarHeroTag,
-            ),
-      ),
-    );
-  }
-
-  /// Maps the leaderboard row onto [PlayerStandingModel] so the card can
-  /// reuse [FigmaPlayerCard] verbatim — same avatar, same layout as Standings.
-  PlayerStandingModel _toStandingModel(MiniaturePlayer player) {
-    return PlayerStandingModel(
-      countryCode: CountryUtils.toIso2Code(player.fed ?? ''),
-      title: player.title,
-      name: player.name,
-      score: player.rating ?? 0,
-      scoreChange: 0,
-      matchScore: '${player.wins}W-${player.losses}L',
-      fideId: player.fideId,
-      gamebasePlayerId: player.playerId,
-    );
   }
 
   @override
@@ -456,16 +426,102 @@ class _MiniaturesPlayersTabState extends ConsumerState<MiniaturesPlayersTab>
           }
 
           final player = state.items[index];
-          return FigmaPlayerCard(
-            key: ValueKey('mini_player_${player.playerId}'),
-            player: _toStandingModel(player),
+          final keyId = player.fideId?.toString() ?? player.name;
+          return _MiniaturePlayerRow(
+            key: ValueKey('mini_player_$keyId'),
+            player: player,
             rank: index + 1,
-            showFavoriteButton: false,
-            avatarHeroTag: player.avatarHeroTag,
-            onTap: () => _openPlayer(player),
           );
         }, childCount: state.items.length + (showFooter ? 1 : 0)),
       ),
+    );
+  }
+}
+
+/// One leaderboard row. The page notifier already prefetches miniature W-L
+/// onto [player.matchScore] before cards leave the shimmer, so the score slot
+/// does not pop in after first paint. The record provider still supplies the
+/// scorecard payload (and is a cache hit after that prefetch).
+class _MiniaturePlayerRow extends ConsumerWidget {
+  const _MiniaturePlayerRow({
+    super.key,
+    required this.player,
+    required this.rank,
+  });
+
+  final PlayerStandingModel player;
+  final int rank;
+
+  ({int fideId, String name})? get _recordKey {
+    final fideId = player.fideId;
+    return fideId == null ? null : (fideId: fideId, name: player.name);
+  }
+
+  /// Miniature scorecard when this player exists in gamebase, full profile
+  /// otherwise. A tap before the lookup lands waits briefly for it rather than
+  /// silently sending the player to the other screen.
+  Future<void> _open(BuildContext context, WidgetRef ref) async {
+    HapticFeedbackService.cardTap();
+
+    final key = _recordKey;
+    var miniature =
+        key == null
+            ? null
+            : ref.read(miniaturePlayerRecordProvider(key)).valueOrNull;
+    if (miniature == null && key != null) {
+      try {
+        miniature = await ref
+            .read(miniaturePlayerRecordProvider(key).future)
+            .timeout(const Duration(seconds: 2), onTimeout: () => null);
+      } catch (_) {
+        miniature = null;
+      }
+    }
+    if (!context.mounted) return;
+
+    final resolved = miniature;
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder:
+            (_) =>
+                resolved != null
+                    ? MiniaturePlayerScorecardScreen(
+                      player: resolved,
+                      avatarHeroTag: resolved.avatarHeroTag,
+                    )
+                    : PlayerProfileScreen(
+                      fideId: player.fideId,
+                      playerName: player.name,
+                      title: player.title,
+                      federation: player.countryCode,
+                      rating: player.score,
+                    ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final key = _recordKey;
+    final miniature =
+        key == null
+            ? null
+            : ref.watch(miniaturePlayerRecordProvider(key)).valueOrNull;
+
+    // Prefer the prefetched label so the first frame already has W-L; fall
+    // back to a live record only if enrichment missed this row.
+    final matchScore = player.matchScore ?? miniature?.winLossLabel;
+    final cardPlayer =
+        matchScore == null || matchScore == player.matchScore
+            ? player
+            : player.copyWith(matchScore: matchScore);
+
+    return FigmaPlayerCard(
+      player: cardPlayer,
+      rank: rank,
+      showFavoriteButton: false,
+      avatarHeroTag: miniature?.avatarHeroTag,
+      onTap: () => _open(context, ref),
     );
   }
 }

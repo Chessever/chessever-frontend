@@ -640,6 +640,10 @@ class MiniaturePlayer {
 
   double get winRate => games == 0 ? 0 : (wins / games) * 100;
 
+  /// `12W-4L` — the exact shape the leaderboard card splits into a brand-green
+  /// `W` and a red `L`. Any other format renders as plain text.
+  String get winLossLabel => '${wins}W-${losses}L';
+
   /// Shared [Heroine] tag for list card → scorecard → fullscreen photo.
   String get avatarHeroTag => 'player_avatar_mini_$playerId';
 

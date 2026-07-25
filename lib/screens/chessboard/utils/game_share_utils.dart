@@ -6,6 +6,7 @@ import 'package:chessever2/screens/chessboard/view_model/chess_board_state_new.d
 import 'package:chessever2/screens/library/utils/gamebase_pgn_builder.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/utils/pgn_link_rebrand.dart';
+import 'package:chessever2/utils/time_control_bonus.dart';
 import 'package:dartchess/dartchess.dart';
 
 typedef SharePgnFetcher = Future<String?> Function(String gameId);
@@ -293,7 +294,12 @@ GameShareSnapshot buildGameShareSnapshot({
               ? parsed.lastMove
               : (Move.parse(gameLastMove) ?? parsed.lastMove),
       moveSans: List<String>.from(parsed.moveSans),
-      moveTimes: List<String>.from(parsed.moveTimes),
+      // Trello #1005: raw PGN clocks lack the move-40 block of time until the
+      // relay credits it. The board-state branch above is already corrected.
+      moveTimes: applySecondaryBonusToMoveClocks(
+        List<String>.from(parsed.moveTimes),
+        game.secondaryTimePeriod,
+      ),
       currentMoveIndex:
           parsed.moveSans.isEmpty ? -1 : parsed.moveSans.length - 1,
       startingFen: _normalizedStartingFen(parsed.startingPos.fen),

@@ -7,6 +7,7 @@ import 'package:chessever2/screens/library/utils/gamebase_pgn_builder.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/utils/live_game_position_resolver.dart';
+import 'package:chessever2/utils/time_control_bonus.dart';
 import 'package:flutter/foundation.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
@@ -422,20 +423,38 @@ GamesTourModel _mergeLiveUpdate({
           )
           : baseGame.fen;
 
-  final normalizedWhiteClock =
+  var normalizedWhiteClock =
       includeClock
           ? GamesTourModel.normalizeClockSeconds(
             clockSeconds: update.lastClockWhite?.round(),
             clockCentiseconds: baseGame.whiteClockCentiseconds,
           )
           : baseGame.whiteClockSeconds;
-  final normalizedBlackClock =
+  var normalizedBlackClock =
       includeClock
           ? GamesTourModel.normalizeClockSeconds(
             clockSeconds: update.lastClockBlack?.round(),
             clockCentiseconds: baseGame.blackClockCentiseconds,
           )
           : baseGame.blackClockSeconds;
+
+  // Trello #1005: a streamed clock snapshot is the raw relay reading, so it is
+  // still missing the move-40 block of time until the source credits it. Apply
+  // the same correction the initial model build does, against the merged PGN so
+  // the "already credited" check sees the freshest movetext.
+  if (includeClock) {
+    final period = baseGame.secondaryTimePeriod;
+    if (period != null) {
+      final corrected = applySecondaryBonusToLiveClocks(
+        pgn: mergedPgn,
+        whiteSeconds: normalizedWhiteClock,
+        blackSeconds: normalizedBlackClock,
+        period: period,
+      );
+      normalizedWhiteClock = corrected.white;
+      normalizedBlackClock = corrected.black;
+    }
+  }
 
   return baseGame.copyWith(
     pgn: mergedPgn,
