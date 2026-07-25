@@ -148,8 +148,6 @@ double explorerGamesListBottomPadding({
 /// [delta] is `gamesTop - listTop` (or the equivalent `anchor - pixels`): ≤0
 /// means the section top is at or above the panel top. Enter/exit use a small
 /// hysteresis band so a 1px jitter cannot flip the mode.
-///
-/// Pure so the pin threshold is unit-testable without a widget tree.
 bool explorerGamesPinDecision({
   required double delta,
   required bool currentlyInGames,
@@ -159,8 +157,8 @@ bool explorerGamesPinDecision({
   return currentlyInGames ? delta <= exitPx : delta <= enterPx;
 }
 
-/// Content-space delta matching what `_syncExplorerHeaderMode` measures via
-/// `localToGlobal`: positive while the section sits below the panel top.
+/// Content-space delta matching what the panel measures via `localToGlobal`:
+/// positive while the section sits below the panel top.
 double explorerGamesPinDelta({
   required double pixels,
   required double anchor,
@@ -169,11 +167,6 @@ double explorerGamesPinDelta({
 
 /// Which inline game cards are on screen, plus whether the list is standing
 /// still — together, everything a card needs to decide if it may evaluate.
-///
-/// The strip is a plain `Column` inside the move list, so it has none of a
-/// lazy list's "only build what is visible" behaviour. Without this window all
-/// ten cards would start an engine job the moment the section mounts, and the
-/// card the reader is actually walking would queue behind nine it cannot see.
 @immutable
 class ExplorerGamesEvalWindow {
   const ExplorerGamesEvalWindow({
@@ -182,18 +175,10 @@ class ExplorerGamesEvalWindow {
     required this.settled,
   });
 
-  /// Nothing on screen: no strip, or not laid out yet.
   const ExplorerGamesEvalWindow.none() : first = 0, last = -1, settled = true;
 
-  /// First card index inside the viewport.
   final int first;
-
-  /// Last card index inside the viewport, inclusive. Below [first] when the
-  /// window is empty.
   final int last;
-
-  /// True while the list rests. Mid-scroll the cards stay on cached and server
-  /// evals only — the same trade the game feeds make during a fling.
   final bool settled;
 
   bool get isEmpty => last < first;
@@ -216,14 +201,6 @@ class ExplorerGamesEvalWindow {
 }
 
 /// Resolves which cards are on screen enough to be worth an evaluation.
-///
-/// A card counts once [minVisibleFraction] of it is inside the viewport, so the
-/// sliver of the next card that peeks in under the paged one does not buy
-/// itself an engine job. Cards are uniform, so only the two edge cards of the
-/// range can ever be partial.
-///
-/// [anchor] is the scroll offset at which the first card's top meets the top of
-/// the panel — the same measurement the page grid rests on.
 ExplorerGamesEvalWindow resolveExplorerGamesEvalWindow({
   required double? anchor,
   required double pixels,
@@ -252,15 +229,12 @@ ExplorerGamesEvalWindow resolveExplorerGamesEvalWindow({
     return visible > 0 ? visible : 0;
   }
 
-  // Strict intersection: cardBottom > top and cardTop < bottom.
   var first = ((top - anchor - cardHeight) / pageExtent).floor() + 1;
   var last = ((bottom - anchor) / pageExtent).ceil() - 1;
   if (first < 0) first = 0;
   if (last > cardCount - 1) last = cardCount - 1;
   if (first > last) return empty;
 
-  // Capped by the viewport so a panel shorter than half a card still counts
-  // the card filling it — otherwise nothing would ever qualify there.
   final wanted = cardHeight * minVisibleFraction;
   final threshold = wanted < viewportHeight ? wanted : viewportHeight;
   while (first <= last && visibleHeight(first) < threshold) {
@@ -274,12 +248,27 @@ ExplorerGamesEvalWindow resolveExplorerGamesEvalWindow({
   return ExplorerGamesEvalWindow(first: first, last: last, settled: settled);
 }
 
+/// Paint-vs-content mismatch: `visualDelta - (anchor - pixels)`.
+///
+/// Zero when content-space math matches the painted section top. Non-zero when
+/// layout chrome leaves a residual — that residual must ride *inside* the snap
+/// target so the motor spring lands flush in one take (never a post-land jump).
+double explorerGamesVisualBias({
+  required double visualDelta,
+  required double pixels,
+  required double anchor,
+}) =>
+    visualDelta - (anchor - pixels);
+
 /// Scroll offset the settle should land on, or `null` to leave the gesture to
 /// ordinary list physics.
 ///
 /// Page selection mirrors `PageScrollPhysics`: a flick moves exactly one card
 /// from wherever the drag started, a slow release falls back to the nearest.
 /// Offsets above the strip belong to the move table, which scrolls normally.
+///
+/// [visualBias] shifts every page target so the painted card top meets the
+/// panel top (see [explorerGamesVisualBias]).
 double? explorerGamesSnapTarget({
   required double pixels,
   required double velocity,
@@ -289,10 +278,13 @@ double? explorerGamesSnapTarget({
   required int pageCount,
   required double minScrollExtent,
   required double maxScrollExtent,
+  double visualBias = 0,
 }) {
   if (pageExtent <= 0 || pageCount <= 0) return null;
   if (!pixels.isFinite || !anchor.isFinite) return null;
 
+  // Choose the page in content-space (bias does not change which card a flick
+  // selects — only where that card's top paints under the panel).
   var page = (pixels - anchor) / pageExtent;
   if (velocity < -velocityTolerance) {
     page -= 0.5;
@@ -304,7 +296,7 @@ double? explorerGamesSnapTarget({
   if (page < -0.5) return null;
 
   final index = page.round().clamp(0, pageCount - 1);
-  final target = anchor + index * pageExtent;
+  final target = anchor + index * pageExtent + visualBias;
 
   // The top of the list is a rest position too. Without it, a move table
   // shorter than one card would be pulled back down onto the first card every
@@ -317,8 +309,13 @@ double? explorerGamesSnapTarget({
             : velocity < -velocityTolerance
             ? -pageExtent / 2
             : 0);
-    if ((biased - minScrollExtent).abs() < (biased - anchor).abs()) {
-      return minScrollExtent;
+    final topRest = minScrollExtent;
+    final firstRest = (anchor + visualBias).clamp(
+      minScrollExtent,
+      maxScrollExtent,
+    );
+    if ((biased - topRest).abs() < (biased - firstRest).abs()) {
+      return topRest;
     }
   }
   return target.clamp(minScrollExtent, maxScrollExtent);
@@ -337,15 +334,18 @@ class ExplorerGamesSnapConfig {
   /// Number of cards currently rendered in the strip.
   int pageCount = 0;
 
+  /// Paint residual folded into every snap target (see [explorerGamesVisualBias]).
+  double visualBias = 0;
+
   bool get isActive =>
       anchor != null && anchor!.isFinite && pageExtent > 0 && pageCount > 0;
 
-  /// Returns true when anything actually moved, so callers can re-align only
-  /// when the grid really changed.
+  /// Returns true when the page grid itself moved (not mere bias noise).
   bool update({
     required double? anchor,
     required double pageExtent,
     required int pageCount,
+    double? visualBias,
   }) {
     final anchorMoved =
         (this.anchor == null) != (anchor == null) ||
@@ -355,23 +355,17 @@ class ExplorerGamesSnapConfig {
     this.anchor = anchor;
     this.pageExtent = pageExtent;
     this.pageCount = pageCount;
+    if (visualBias != null && visualBias.isFinite) {
+      // Keep bias on-scale so a bad mid-layout measure cannot fling the strip.
+      final cap = pageExtent > 0 ? pageExtent : 64.0;
+      this.visualBias = visualBias.clamp(-cap, cap);
+    }
     return anchorMoved || extentMoved || countMoved;
   }
 }
 
 /// Which card is resting against the top of the panel at [pixels], or null when
 /// the offset is still up in the move table.
-///
-/// Used to remember the reader's card across a layout change that moves the
-/// viewport out from under them — collapsing the move-column header grows the
-/// viewport without touching [anchor], so re-deriving the page afterwards can
-/// round onto the next card. Capturing the index first and restoring it keeps
-/// the strip on the card the reader actually stopped on.
-///
-/// [preferEarlier] is for pin capture: a spring can overshoot past the halfway
-/// mark of the next page for a frame before settling, and ordinary rounding
-/// would promote that next card. Preferring the earlier page by a quarter of a
-/// page of headroom keeps the capture on the card that actually owns the top.
 int? explorerGamesPageAtTop({
   required double pixels,
   required double anchor,
@@ -381,34 +375,32 @@ int? explorerGamesPageAtTop({
 }) {
   if (pageExtent <= 0 || pageCount <= 0) return null;
   if (!pixels.isFinite || !anchor.isFinite) return null;
-  // Half a page above the first card still belongs to the move table.
   if (pixels < anchor - pageExtent / 2) return null;
   final raw = (pixels - anchor) / pageExtent;
   if (preferEarlier) {
-    // Promote only once 75% into the next page (not 50%).
     return (raw + 0.25).floor().clamp(0, pageCount - 1);
   }
   return raw.round().clamp(0, pageCount - 1);
 }
 
 /// Scroll offset that places [pageIndex] flush under the panel top, clamped to
-/// the scrollable range. Pure counterpart of the panel's page jump.
+/// the scrollable range.
 double explorerGamesOffsetForPage({
   required int pageIndex,
   required double anchor,
   required double pageExtent,
   required double minScrollExtent,
   required double maxScrollExtent,
+  double visualBias = 0,
 }) {
-  final raw = anchor + pageIndex * pageExtent;
+  final raw = anchor + pageIndex * pageExtent + visualBias;
   if (raw < minScrollExtent) return minScrollExtent;
   if (raw > maxScrollExtent) return maxScrollExtent;
   return raw;
 }
 
 /// True when a standstill snap from [pixels] would land on a different page
-/// than [settledPage]. Used to prove a post-land correction would not re-target
-/// after a ballistic settle already chose [settledPage].
+/// than [settledPage].
 bool explorerGamesSettleWouldRetarget({
   required double pixels,
   required double anchor,
@@ -417,6 +409,7 @@ bool explorerGamesSettleWouldRetarget({
   required int settledPage,
   required double minScrollExtent,
   required double maxScrollExtent,
+  double visualBias = 0,
 }) {
   final target = explorerGamesSnapTarget(
     pixels: pixels,
@@ -427,6 +420,7 @@ bool explorerGamesSettleWouldRetarget({
     pageCount: pageCount,
     minScrollExtent: minScrollExtent,
     maxScrollExtent: maxScrollExtent,
+    visualBias: visualBias,
   );
   if (target == null) return false;
   final settled = explorerGamesOffsetForPage(
@@ -435,17 +429,12 @@ bool explorerGamesSettleWouldRetarget({
     pageExtent: pageExtent,
     minScrollExtent: minScrollExtent,
     maxScrollExtent: maxScrollExtent,
+    visualBias: visualBias,
   );
   return (target - settled).abs() > 0.5;
 }
 
-/// Whether a post-gesture align pass should run at all.
-///
-/// The snap physics already quantise a normal release onto the grid. A second
-/// `animateTo` after land is what reads as card-to-card flicker. Only a real
-/// mid-card rest (coast from the free-scroll move table, layout shift) needs a
-/// corrective pass — i.e. we are past the strip's free zone and more than
-/// [tolerance] off the nearest page.
+/// Whether a post-gesture spring pass should run (mid-card rest only).
 bool explorerGamesNeedsPostSettleAlign({
   required double pixels,
   required double anchor,
@@ -453,6 +442,7 @@ bool explorerGamesNeedsPostSettleAlign({
   required int pageCount,
   required double minScrollExtent,
   required double maxScrollExtent,
+  double visualBias = 0,
   double tolerance = 2.0,
 }) {
   final target = explorerGamesSnapTarget(
@@ -464,23 +454,17 @@ bool explorerGamesNeedsPostSettleAlign({
     pageCount: pageCount,
     minScrollExtent: minScrollExtent,
     maxScrollExtent: maxScrollExtent,
+    visualBias: visualBias,
   );
-  // Still in the free-scrolling move table — leave it alone.
   if (target == null) return false;
   return (target - pixels).abs() > tolerance;
 }
 
 /// Minimum anchor shift (px) worth absorbing into the scroll offset.
-///
-/// Sub-pixel / few-pixel remeasures after every land (eval window settle, card
-/// rebuilds) used to `jumpTo` by noise and look like post-land flicker.
 const double kExplorerGamesAnchorCompensateMin = 8.0;
 
-/// How much to add to scroll [pixels] so the nearest card top meets the panel
-/// top, given a measured [visualDelta] (`gamesTop - listTop`).
-///
-/// Pure counterpart of the panel's post-settle visual flush. Zero when already
-/// flush; positive when the card sits below the panel edge (scroll down).
+/// How much to add to scroll pixels so the nearest card top meets the panel
+/// top, given measured [visualDelta] (`gamesTop - listTop`).
 double explorerGamesVisualFlushAdjustment({
   required double visualDelta,
   required double pageExtent,
@@ -491,14 +475,12 @@ double explorerGamesVisualFlushAdjustment({
   return visualDelta + index * pageExtent;
 }
 
-/// Spring the page settle rides in on.
-///
-/// Bounce-free on purpose: a snappy overshoot past a page boundary both
-/// *looks* like a post-land flicker and can make pin-capture round onto the
-/// next card for a frame. Duration stays short so a flick still reads as a
-/// decisive page turn; `snapToEnd` on the simulation keeps the grid exact.
+/// Motor spring for the page settle — bounce-free so one take lands on the
+/// page without overshoot. Duration stays short so a flick still reads as a
+/// decisive page turn. Used by [ExplorerGamesSnapPhysics] via [description]
+/// + scroll-pixel [Tolerance] (motor's own tolerance is too tight for px).
 const CupertinoMotion kExplorerPageMotion = CupertinoMotion.smooth(
-  duration: Duration(milliseconds: 380),
+  duration: Duration(milliseconds: 320),
 );
 
 /// Quantises the settle of the explorer list onto the games page grid.
@@ -516,7 +498,6 @@ class ExplorerGamesSnapPhysics extends ScrollPhysics {
     ScrollMetrics position,
     double velocity,
   ) {
-    // Overscroll belongs to the platform physics (bounce / glow), never to us.
     if (!config.isActive || position.outOfRange) {
       return super.createBallisticSimulation(position, velocity);
     }
@@ -531,6 +512,7 @@ class ExplorerGamesSnapPhysics extends ScrollPhysics {
       pageCount: config.pageCount,
       minScrollExtent: position.minScrollExtent,
       maxScrollExtent: position.maxScrollExtent,
+      visualBias: config.visualBias,
     );
     if (target == null) {
       return super.createBallisticSimulation(position, velocity);
@@ -540,15 +522,7 @@ class ExplorerGamesSnapPhysics extends ScrollPhysics {
         velocity.abs() < tolerance.velocity) {
       return null;
     }
-    // Motor's spring *description* driven at the scroll tolerance, rather than
-    // `motion.createSimulation`: motor defaults to `Tolerance.defaultTolerance`
-    // (1e-3), which in pixel space is orders of magnitude tighter than a scroll
-    // needs. The simulation would keep reporting "not done" long after the list
-    // looked still, holding `isScrollingNotifier` high and starving the cards'
-    // settled-only evaluation.
-    //
-    // `snapToEnd` keeps the grid deterministic; the motion itself is bounce-free
-    // so the card does not overshoot and bounce back after landing.
+    // Motor spring at scroll tolerance with snapToEnd — one take, exact land.
     return SpringSimulation(
       kExplorerPageMotion.description,
       position.pixels,
@@ -559,8 +533,6 @@ class ExplorerGamesSnapPhysics extends ScrollPhysics {
     );
   }
 
-  // A page grid and implicit (accessibility) scrolling by arbitrary amounts
-  // fight each other; keep the grid authoritative.
   @override
   bool get allowImplicitScrolling => false;
 }

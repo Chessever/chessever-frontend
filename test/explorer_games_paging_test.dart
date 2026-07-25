@@ -627,6 +627,51 @@ void main() {
         0,
       );
     });
+
+    test('snap target folds visual bias so one spring lands flush', () {
+      const anchor = 200.0;
+      const extent = 180.0;
+      const bias = 50.0; // paint residual: card sits 50px low at content rest
+      double? target(double pixels, double velocity, {double visualBias = 0}) =>
+          explorerGamesSnapTarget(
+            pixels: pixels,
+            velocity: velocity,
+            velocityTolerance: 50,
+            anchor: anchor,
+            pageExtent: extent,
+            pageCount: 5,
+            minScrollExtent: 0,
+            maxScrollExtent: anchor + 4 * extent + 100,
+            visualBias: visualBias,
+          );
+
+      // Without bias: content-space page 0.
+      expect(target(anchor + 10, 0), anchor);
+      // With bias: same page choice, target shifted so paint lands flush.
+      expect(target(anchor + 10, 0, visualBias: bias), anchor + bias);
+      // Flick still moves exactly one card, bias applied to that page.
+      expect(
+        target(anchor + 10, 3000, visualBias: bias),
+        anchor + extent + bias,
+      );
+      // Bias math: visualDelta - (anchor - pixels).
+      expect(
+        explorerGamesVisualBias(
+          visualDelta: 50,
+          pixels: anchor,
+          anchor: anchor,
+        ),
+        50,
+      );
+      expect(
+        explorerGamesVisualBias(
+          visualDelta: 0,
+          pixels: anchor,
+          anchor: anchor,
+        ),
+        0,
+      );
+    });
   });
 
   testWidgets('ballistic settle lands on one page with no second correction', (

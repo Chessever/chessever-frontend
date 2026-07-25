@@ -551,48 +551,16 @@ class MoveStatisticsPanel extends HookConsumerWidget {
       MediaQuery.textScalerOf(context),
     );
 
-    /// Puts the nearest game card flush under the panel top (player row when
-    /// pinned). Instant [jumpTo] only — never [animateTo] — so a correction
-    /// cannot fight the ballistic land and reintroduce post-land flicker.
+    /// One motor spring onto the nearest page (same path as a finger release).
     ///
-    /// Prefers a **visual** measure (`gamesTop - listTop`) over pure content-
-    /// space math: after pin/expand the grid can be a few points off while the
-    /// eye still sees a card sitting at ~¾ height under the player name.
-    void alignToNearestPage() {
+    /// Never [jumpTo] here — a hard correction after the gesture spring is the
+    /// "lands wrong then snaps" feel. Layout changes (pin expand, fen) call
+    /// this once so the *only* motion is motor.
+    void springToNearestPage() {
       if (!snapConfig.isActive || !scrollController.hasClients) return;
       if (headerModeLocked.value) return;
       final position = scrollController.position;
       if (position.isScrollingNotifier.value) return;
-
-      // Ground-truth flush while the strip is the focus (pinned / in-games).
-      // Uses the painted positions so residual chrome or a stale anchor cannot
-      // leave the card parked part-way under the player row.
-      if (headerInGames.value) {
-        final visualDelta = _measureExplorerGamesVisualDelta(
-          gamesSectionKey: gamesSectionKey,
-          position: position,
-        );
-        if (visualDelta != null) {
-          final adjust = explorerGamesVisualFlushAdjustment(
-            visualDelta: visualDelta,
-            pageExtent: snapConfig.pageExtent,
-            pageCount: snapConfig.pageCount,
-          );
-          if (adjust.abs() > 0.5) {
-            final target = (position.pixels + adjust).clamp(
-              position.minScrollExtent,
-              position.maxScrollExtent,
-            );
-            if ((target - position.pixels).abs() > 0.5) {
-              position.jumpTo(target);
-            }
-            return;
-          }
-          // Already visually flush — do not run a second content-space pass.
-          return;
-        }
-      }
-
       if (!explorerGamesNeedsPostSettleAlign(
         pixels: position.pixels,
         anchor: snapConfig.anchor!,
@@ -600,57 +568,33 @@ class MoveStatisticsPanel extends HookConsumerWidget {
         pageCount: snapConfig.pageCount,
         minScrollExtent: position.minScrollExtent,
         maxScrollExtent: position.maxScrollExtent,
+        visualBias: snapConfig.visualBias,
       )) {
         return;
       }
-      final target = explorerGamesSnapTarget(
-        pixels: position.pixels,
-        velocity: 0,
-        velocityTolerance: 1,
-        anchor: snapConfig.anchor!,
-        pageExtent: snapConfig.pageExtent,
-        pageCount: snapConfig.pageCount,
-        minScrollExtent: position.minScrollExtent,
-        maxScrollExtent: position.maxScrollExtent,
-      );
-      if (target == null) return;
-      position.jumpTo(target);
-    }
-
-    /// Which card is sitting against the top of the panel right now, or null
-    /// when the reader is still up in the move table.
-    ///
-    /// [forPinCapture] biases toward the earlier page so a ballistic overshoot
-    /// past the halfway mark cannot promote the next card at pin time.
-    int? pageIndexAtTop({bool forPinCapture = false}) {
-      if (!snapConfig.isActive || !scrollController.hasClients) return null;
-      return explorerGamesPageAtTop(
-        pixels: scrollController.position.pixels,
-        anchor: snapConfig.anchor!,
-        pageExtent: snapConfig.pageExtent,
-        pageCount: snapConfig.pageCount,
-        preferEarlier: forPinCapture,
-      );
-    }
-
-    /// Puts [index] against the top of the panel, whatever the offset says.
-    ///
-    /// Instant on purpose: this runs at the end of a layout transition to undo
-    /// a shift the reader never asked for, so there is nothing to animate — and
-    /// an animation here would emit a stream of scroll notifications into the
-    /// decision that just settled.
-    void jumpToPage(int index) {
-      if (!snapConfig.isActive || !scrollController.hasClients) return;
-      final position = scrollController.position;
-      final target = explorerGamesOffsetForPage(
-        pageIndex: index,
-        anchor: snapConfig.anchor!,
-        pageExtent: snapConfig.pageExtent,
-        minScrollExtent: position.minScrollExtent,
-        maxScrollExtent: position.maxScrollExtent,
-      );
-      if ((target - position.pixels).abs() < 0.5) return;
-      position.jumpTo(target);
+      // Velocity 0 → ExplorerGamesSnapPhysics builds a motor SpringSimulation
+      // to the biased page target. goBallistic lives on the concrete position.
+      if (position is ScrollPositionWithSingleContext) {
+        position.goBallistic(0);
+      } else {
+        final target = explorerGamesSnapTarget(
+          pixels: position.pixels,
+          velocity: 0,
+          velocityTolerance: 1,
+          anchor: snapConfig.anchor!,
+          pageExtent: snapConfig.pageExtent,
+          pageCount: snapConfig.pageCount,
+          minScrollExtent: position.minScrollExtent,
+          maxScrollExtent: position.maxScrollExtent,
+          visualBias: snapConfig.visualBias,
+        );
+        if (target == null) return;
+        scrollController.animateTo(
+          target,
+          duration: kExplorerPageMotion.duration,
+          curve: kExplorerPageMotion.toCurve,
+        );
+      }
     }
 
     /// Republishes the on-screen window from the live scroll offset.
@@ -677,62 +621,55 @@ class MoveStatisticsPanel extends HookConsumerWidget {
 
     void syncGamesGrid({bool allowAnchorCompensation = true}) {
       final metrics = pageMetrics;
-      // Measured for both jobs at once: the grid needs it only while paging,
-      // the eval window needs it in every host.
       final previousAnchor = snapConfig.anchor;
       final anchor = _measureExplorerGamesAnchor(gamesSectionKey);
+
+      // Paint residual for the snap target: must be live *before* a ballistic
+      // starts so the motor spring aims at the flush position in one take.
+      double? bias;
+      if (anchor != null &&
+          scrollController.hasClients &&
+          metrics != null) {
+        final position = scrollController.position;
+        final visualDelta = _measureExplorerGamesVisualDelta(
+          gamesSectionKey: gamesSectionKey,
+          position: position,
+        );
+        if (visualDelta != null) {
+          bias = explorerGamesVisualBias(
+            visualDelta: visualDelta,
+            pixels: position.pixels,
+            anchor: anchor,
+          );
+        }
+      }
+
       final changed = snapConfig.update(
         anchor: metrics == null ? null : anchor,
         pageExtent: metrics?.pageExtent ?? 0,
         pageCount: metrics == null ? 0 : gamesCardCount.value,
+        visualBias: bias,
       );
       publishEvalWindow(anchor);
 
-      // Mid pin/unpin the layout is still moving (PV + header collapse). A
-      // mis-measured anchor during that window, if absorbed into the offset,
-      // jumps the strip onto the next card — exactly the land-on-second bug.
-      // The delayed restore puts the captured index back once geometry is
-      // stable; do not compensate while locked.
+      // No jumpTo compensation. A content shift that leaves us off-grid is
+      // corrected with one motor spring (springToNearestPage), never a hard
+      // jump that fights the page settle.
       if (!allowAnchorCompensation || headerModeLocked.value) return;
-
-      // Absorb only a *real* content-space shift (rows above the strip changing
-      // height). The pin itself does not move the anchor (header/PV sit outside
-      // the scrollable). Sub-threshold remeasures after every card land — eval
-      // window settle, card rebuilds — used to jump by a few pixels and look
-      // like post-land flicker on every page turn.
       if (!changed || previousAnchor == null || anchor == null) return;
       if (metrics == null || !scrollController.hasClients) return;
       final position = scrollController.position;
       if (position.isScrollingNotifier.value) return;
       final delta = anchor - previousAnchor;
       if (delta.abs() < kExplorerGamesAnchorCompensateMin) return;
-      // Only while the reader is actually in the strip — above it the move
-      // table scrolls freely and must not be yanked.
       if (position.pixels <= previousAnchor - metrics.pageExtent) return;
-      final compensated = (position.pixels + delta).clamp(
-        position.minScrollExtent,
-        position.maxScrollExtent,
-      );
-      if ((compensated - position.pixels).abs() > 0.5) {
-        position.jumpTo(compensated);
-      }
+      // Off-grid after a real content shift → one motor spring, not jumpTo.
+      springToNearestPage();
     }
 
     void runHeaderModeSync() {
-      // Header mode is latched across its own transition.
-      //
-      // `_syncExplorerHeaderMode` decides from `gamesTop - listTop`, which
-      // reduces exactly to `anchor - pixels` — the scroll offset. Pinning
-      // collapses the engine PV *and* the move-column header, growing this
-      // list's viewport by a couple of hundred pixels; that shrinks
-      // `maxScrollExtent`, which can clamp `pixels`, which changes the very
-      // measurement the decision was made from. Re-deciding mid-transition
-      // pins and unpins forever, and any correction scrolled in during the
-      // window feeds the loop rather than settling it.
-      //
-      // So while the layout is in flight, keep the grid and the eval window
-      // fresh but leave the mode alone — and never absorb anchor jitter into
-      // the offset until the captured card is restored.
+      // Latch mode across pin/unpin so geometry its own transition moves
+      // cannot re-decide. Unpin still requires user scroll (see sync helper).
       if (headerModeLocked.value) {
         syncGamesGrid(allowAnchorCompensation: false);
         return;
@@ -741,46 +678,28 @@ class MoveStatisticsPanel extends HookConsumerWidget {
         gamesSectionKey: gamesSectionKey,
         scrollController: scrollController,
         currentlyInGames: headerInGames.value,
-        // Content-space pin decision — immune to the pin's own viewport growth.
         pageAnchor: snapConfig.anchor,
         setInGames: (v) {
           if (headerInGames.value == v) return;
-          // Captured at rest (enter is gated on !isScrolling). preferEarlier is
-          // belt-and-braces if a frame of residual motion remains.
-          final restoreIndex = v ? pageIndexAtTop(forPinCapture: true) : null;
           headerModeLocked.value = true;
           headerInGames.value = v;
-          // Drive games expanded-overlay mode (covers engine lines + table).
           final pinned = ref.read(explorerInlineGamesPinnedProvider);
           if (pinned != v) {
             ref.read(explorerInlineGamesPinnedProvider.notifier).state = v;
           }
-          // Put the card under the top edge *now*, before the chrome collapse
-          // finishes reshaping maxScrollExtent. Waiting only for the delayed
-          // pass let a clamp land the strip on the next page first.
-          if (restoreIndex != null) jumpToPage(restoreIndex);
+          // After PV + header collapse finishes, remeasure bias and run one
+          // motor spring to the flush page. No jumpTo — that was the
+          // "lands wrong then snaps" experience.
           Future.delayed(_kExplorerGamesSettleDelay, () {
             if (!context.mounted) {
               headerModeLocked.value = false;
               return;
             }
-            // Measure only — no compensation jump that could fight restore.
             syncGamesGrid(allowAnchorCompensation: false);
-            // Re-assert the captured card once layout has settled, then a
-            // visual flush so the painted card top meets the panel top (the
-            // player row) even if content-space math drifted during expand.
-            if (restoreIndex != null &&
-                headerInGames.value &&
-                scrollController.hasClients) {
-              jumpToPage(restoreIndex);
-            }
-            // Unlock first so the visual flush is allowed, then flush on the
-            // next frame so any jump notification is consumed at rest.
             headerModeLocked.value = false;
             WidgetsBinding.instance.addPostFrameCallback((_) {
-              if (context.mounted && headerInGames.value) {
-                alignToNearestPage();
-              }
+              if (!context.mounted) return;
+              if (headerInGames.value) springToNearestPage();
             });
           });
         },
@@ -803,10 +722,11 @@ class MoveStatisticsPanel extends HookConsumerWidget {
       alignScheduled.value = true;
       WidgetsBinding.instance.addPostFrameCallback((_) {
         alignScheduled.value = false;
-        // Measure before correcting: the strip may have grown a card, or the
-        // panel may have changed height, since the gesture started.
+        // Layout change (fen / card count / page height): refresh bias, then
+        // one motor spring if we are mid-card. Gesture settles never come
+        // through here — physics already landed them.
         syncGamesGrid();
-        alignToNearestPage();
+        springToNearestPage();
       });
     }
 
@@ -1091,15 +1011,12 @@ class MoveStatisticsPanel extends HookConsumerWidget {
                     if (notification is ScrollUpdateNotification ||
                         notification is ScrollEndNotification ||
                         notification is OverscrollNotification) {
+                      // Keep visualBias live so the next ballistic aims true.
                       syncHeaderMode();
                     }
-                    // After a gesture ends, silently jump the nearest card
-                    // flush under the panel top. jumpTo (not animateTo) — a
-                    // one-frame correction has no bounce; leaving a ¼-card
-                    // residual is the "lands at 75% height" bug.
-                    if (notification is ScrollEndNotification) {
-                      scheduleAlign();
-                    }
+                    // No post-ScrollEnd jump/spring: ExplorerGamesSnapPhysics
+                    // already lands with motor on the biased page target. A
+                    // second pass here was the wrong-then-fix snap.
                     return false;
                   },
                   child: child,
