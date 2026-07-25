@@ -1,6 +1,7 @@
 import 'package:chessever2/repository/library/models/saved_analysis.dart';
 import 'package:chessever2/repository/library/library_game_event.dart';
 import 'package:chessever2/screens/library/widgets/library_game_card.dart';
+import 'package:chessever2/screens/library/widgets/saved_game_actions.dart';
 import 'package:chessever2/screens/library/widgets/swipe_action_card.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/theme/app_theme.dart';
@@ -55,18 +56,34 @@ class MyLikesGameCard extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final card = LibraryGameCard(
-      game: game,
-      eventName: _eventName(analysis),
-      eco: game.eco,
-      date: game.lastMoveTime,
-      tags: analysis.tags,
-      reserveTagSlot: true,
-      tagCounts: tagCounts,
-      onTap: isLocked ? () => _handleLockedTap(context, ref) : onOpen,
-    );
+    Widget buildCard({VoidCallback? onLongPress}) {
+      final card = LibraryGameCard(
+        game: game,
+        eventName: _eventName(analysis),
+        eco: game.eco,
+        date: game.lastMoveTime,
+        tags: analysis.tags,
+        reserveTagSlot: true,
+        tagCounts: tagCounts,
+        onTap: isLocked ? () => _handleLockedTap(context, ref) : onOpen,
+        onLongPress: onLongPress,
+      );
+      return isLocked ? _lockedOverlay(card) : card;
+    }
 
-    final content = isLocked ? _lockedOverlay(card) : card;
+    final content = buildCard(
+      onLongPress:
+          () => showSavedGameActions(
+            context: context,
+            analysis: analysis,
+            onOpen: isLocked ? () => _handleLockedTap(context, ref) : onOpen,
+            previewBuilder: (_) => buildCard(),
+            onDelete: onRemove,
+            deleteLabel: 'Remove from likes',
+            deleteIcon: Icons.heart_broken_rounded,
+            locked: isLocked,
+          ),
+    );
 
     return SwipeActionCard(
       dismissKey: ValueKey('mylikes_remove_${analysis.id}'),

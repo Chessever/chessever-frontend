@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:chessever2/repository/gamebase/gamebase_repository.dart';
 import 'package:chessever2/repository/supabase/game_analysis_quota_repository.dart';
 import 'package:chessever2/revenue_cat_service/subscribe_state.dart';
 import 'package:chessever2/screens/chessboard/analysis/chess_game.dart';
@@ -117,7 +118,10 @@ class MobileGameReviewController
     Duration autoStartDelay = defaultAutoStartDelay,
     bool Function()? isPremium,
     Future<GameAnalysisClaimResult> Function(String fingerprint)? claimQuota,
-  }) : _reportController = reportController ?? GameAnalysisReportController(),
+    GameReportBookLookup? bookLookup,
+  }) : _reportController =
+           reportController ??
+           GameAnalysisReportController(bookLookup: bookLookup),
        _autoStartDelay = autoStartDelay,
        _isPremium = isPremium ?? (() => false),
        _claimQuota =
@@ -414,8 +418,27 @@ final mobileGameReviewProvider = StateNotifierProvider.autoDispose
         claimQuota:
             (fingerprint) =>
                 ref.read(gameAnalysisQuotaRepositoryProvider).claim(fingerprint),
+        bookLookup: _gamebaseBookLookup(ref),
       );
     });
+
+/// Opening-tree lookup backed by the game database.
+///
+/// Returns null without a key so book detection stays off rather than throwing
+/// once per opening move on every report.
+GameReportBookLookup? _gamebaseBookLookup(Ref ref) {
+  final repository = ref.read(gamebaseRepositoryProvider);
+  if (!repository.hasApiKey) return null;
+  return (fen, uci) async {
+    final response = await repository.getMoveAggregates(fen: fen);
+    for (final aggregate in response.data.moves) {
+      if (aggregate.uci == uci) return aggregate.total;
+    }
+    // The position is known but this continuation is not in it — a real answer
+    // of "no games", distinct from a failed lookup.
+    return 0;
+  };
+}
 
 /// Private listenable so the modal sheet can rebuild without being a Riverpod
 /// consumer, while board/notation use [mobileGameReviewProvider] properly.

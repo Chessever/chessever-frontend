@@ -2,9 +2,12 @@ import 'package:chessever2/repository/gamebase/gamebase_repository.dart';
 import 'package:chessever2/repository/library/library_repository.dart';
 import 'package:chessever2/repository/supabase/game/game_repository.dart';
 import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
+import 'package:chessever2/screens/chessboard/utils/game_share_utils.dart';
 import 'package:chessever2/screens/player_profile/player_profile_data_source.dart';
 import 'package:chessever2/screens/library/utils/gamebase_pgn_builder.dart';
 import 'package:chessever2/screens/library/utils/load_saved_analysis.dart';
+import 'package:chessever2/screens/library/widgets/archive_game_actions.dart';
+import 'package:chessever2/screens/library/widgets/library_context_menu.dart';
 import 'package:chessever2/screens/library/widgets/library_game_card.dart';
 import 'package:chessever2/screens/library/widgets/swipe_action_card.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
@@ -65,7 +68,7 @@ class GamebaseSearchGameCard extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final card = LibraryGameCard(
+    Widget buildCard({VoidCallback? onLongPress}) => LibraryGameCard(
       game: game,
       eventName: game.tourSlug ?? game.tourId,
       eco: game.eco, // Only ECO code, never round info
@@ -74,7 +77,11 @@ class GamebaseSearchGameCard extends ConsumerWidget {
       onTap:
           onTap ??
           () => _handleGamebaseTap(context, ref, game, allGames, gameIndex),
-      onLongPress: onAdd,
+      onLongPress: onLongPress,
+    );
+
+    final card = buildCard(
+      onLongPress: () => _showActions(context, ref, buildCard),
     );
 
     final swipeCard = SwipeActionCard(
@@ -98,6 +105,87 @@ class GamebaseSearchGameCard extends ConsumerWidget {
     );
 
     return swipeCard;
+  }
+
+  /// Long-press menu for an archive game. Swipe stays the one-gesture "add"
+  /// shortcut; this is the fuller set — the same actions the board offers once
+  /// the game is open, without having to open it.
+  Future<void> _showActions(
+    BuildContext context,
+    WidgetRef ref,
+    Widget Function({VoidCallback? onLongPress}) buildCard,
+  ) {
+    // Saving into the library is the metered action, so it keeps the same
+    // paywall the swipe-to-add gesture uses.
+    Future<bool> gateSave() async {
+      if (!requirePremiumToAdd) return true;
+      return requirePremiumGuard(context, ref);
+    }
+
+    // Share / copy match the board, which never gates them — except for the
+    // paid gamebase archive, whose moves are premium content in the first
+    // place (opening one of those games already raises the paywall).
+    Future<bool> gateContent() async {
+      if (!requirePremiumToAdd || !isGamebaseBackedSource(game.source)) {
+        return true;
+      }
+      return requirePremiumGuard(context, ref);
+    }
+
+    return showLibraryContextMenu(
+      context: context,
+      previewBuilder: (_) => buildCard(),
+      onPreviewTap: () => _open(context, ref),
+      actions: [
+        LibraryMenuAction(
+          icon: Icons.open_in_new_rounded,
+          label: 'Open game',
+          onSelected: () => _open(context, ref),
+        ),
+        LibraryMenuAction(
+          icon: Icons.library_add_outlined,
+          label: 'Save to library',
+          onSelected: () async {
+            if (!await gateSave()) return;
+            HapticFeedbackService.medium();
+            onAdd();
+          },
+        ),
+        LibraryMenuAction(
+          icon: Icons.ios_share_rounded,
+          label: 'Share game',
+          onSelected: () async {
+            if (!await gateContent() || !context.mounted) return;
+            await shareArchiveGame(context: context, ref: ref, game: game);
+          },
+        ),
+        LibraryMenuAction(
+          icon: Icons.copy_rounded,
+          label: 'Copy PGN',
+          onSelected: () async {
+            if (!await gateContent() || !context.mounted) return;
+            await copyArchiveGamePgn(context: context, ref: ref, game: game);
+          },
+        ),
+        LibraryMenuAction(
+          icon: Icons.content_paste_go_rounded,
+          label: 'Copy FEN',
+          onSelected: () async {
+            if (!await gateContent() || !context.mounted) return;
+            await copyArchiveGameFen(context: context, ref: ref, game: game);
+          },
+        ),
+      ],
+    );
+  }
+
+  void _open(BuildContext context, WidgetRef ref) {
+    final handler = onTap;
+    if (handler != null) {
+      handler();
+      return;
+    }
+    _handleGamebaseTap(context, ref, game, allGames, gameIndex);
   }
 
   Future<void> _handleGamebaseTap(

@@ -20,8 +20,9 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 /// - isBoardFlipped preference (from analysisState)
 Future<void> loadSavedAnalysis(
   BuildContext context,
-  SavedAnalysis analysis,
-) async {
+  SavedAnalysis analysis, {
+  bool showSaveAnalysisOnLoad = false,
+}) async {
   var resolvedAnalysis = analysis;
 
   // Update last opened timestamp but don't block navigation on errors
@@ -54,6 +55,7 @@ Future<void> loadSavedAnalysis(
             games: [game],
             savedAnalysisData: savedAnalysisData,
             showGamebaseButton: false,
+            showSaveAnalysisOnLoad: showSaveAnalysisOnLoad,
           ),
     ),
   );

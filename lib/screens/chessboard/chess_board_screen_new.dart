@@ -15,6 +15,7 @@ import 'package:chessever2/screens/chessboard/analysis/chess_game.dart';
 // import 'package:chessever2/screens/chessboard/analysis/move_impact_analyzer.dart';
 // import 'package:chessever2/screens/chessboard/analysis/simple_move_impact.dart';
 import 'package:chessever2/screens/chessboard/analysis/chess_game_navigator.dart';
+import 'package:chessever2/screens/chessboard/game_review/classification_style.dart';
 import 'package:chessever2/screens/chessboard/game_review/game_analysis_report.dart';
 import 'package:chessever2/screens/chessboard/game_review/game_review_provider.dart';
 import 'package:chessever2/screens/chessboard/game_review/game_review_sheet.dart';
@@ -37,7 +38,7 @@ import 'package:chessever2/screens/chessboard/widgets/engine_pv_layouts.dart';
 import 'package:chessever2/screens/chessboard/widgets/evaluation_bar_widget.dart';
 // DISABLED: Move annotation overlay (requires move impact analysis)
 // import 'package:chessever2/screens/chessboard/widgets/move_annotation_overlay.dart';
-import 'package:chessever2/screens/chessboard/widgets/share_game_card_overlay.dart';
+import 'package:chessever2/screens/chessboard/widgets/share_game_screen.dart';
 import 'package:chessever2/screens/chessboard/widgets/switch_views_tutorial_overlay.dart';
 import 'package:chessever2/screens/chessboard/widgets/like_tutorial_overlay.dart';
 import 'package:chessever2/screens/settings/settings_page.dart';
@@ -59,7 +60,6 @@ import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/repository/supabase/game/game_repository.dart';
 import 'package:chessever2/utils/audio_player_service.dart';
-import 'package:chessever2/utils/pgn_clock_utils.dart';
 import 'package:chessever2/utils/foreground_task_scheduler.dart';
 import 'package:chessever2/services/pip_service.dart';
 import 'package:chessever2/providers/pip_mode_provider.dart';
@@ -270,64 +270,16 @@ extension LichessMoveAnnotationTypeX on LichessMoveAnnotationType {
     }
   }
 
-  String get iconAssetPath {
-    switch (this) {
-      case LichessMoveAnnotationType.brilliant:
-        return 'assets/svgs/brilliant.svg';
-      case LichessMoveAnnotationType.missedWin:
-        return 'assets/svgs/missed_win.svg';
-      case LichessMoveAnnotationType.mistake:
-        return 'assets/svgs/mistake.svg';
-      case LichessMoveAnnotationType.blunder:
-        return 'assets/svgs/blunder.svg';
-      case LichessMoveAnnotationType.inaccuracy:
-        return 'assets/svgs/inaccuracy.svg';
-      case LichessMoveAnnotationType.goodMove:
-        return 'assets/svgs/good_move.svg';
-      case LichessMoveAnnotationType.bestMove:
-        return 'assets/svgs/best_move.svg';
-      case LichessMoveAnnotationType.forced:
-        return 'assets/svgs/forced_move.svg';
-      case LichessMoveAnnotationType.bookMove:
-        return 'assets/svgs/book_move.svg';
-    }
-  }
+  /// Both resolve through the shared palette in `classification_style.dart` so
+  /// the board, the notation list and the Game Review recap stay in step.
+  String get iconAssetPath => moveAnnotationIconAsset(this);
 
-  Color get color {
-    switch (this) {
-      case LichessMoveAnnotationType.brilliant:
-        return const Color(0xFF177A68);
-      case LichessMoveAnnotationType.missedWin:
-        return const Color(0xFFF70400);
-      case LichessMoveAnnotationType.goodMove:
-        return const Color(0xFF177A68);
-      case LichessMoveAnnotationType.bestMove:
-        return const Color(0xFF28833A);
-      case LichessMoveAnnotationType.forced:
-        return const Color(0xFF6B7A8A);
-      case LichessMoveAnnotationType.bookMove:
-        return const Color(0xFF4E5B4F);
-      case LichessMoveAnnotationType.inaccuracy:
-        return const Color(0xFFFABE46);
-      case LichessMoveAnnotationType.mistake:
-        return const Color(0xFFEB9518);
-      case LichessMoveAnnotationType.blunder:
-        return const Color(0xFFC9342E);
-    }
-  }
+  Color get color => moveAnnotationColor(this);
 }
 
 LichessMoveAnnotationType _annotationTypeForGameReport(
   GameMoveClassification classification,
-) => switch (classification) {
-  GameMoveClassification.brilliant => LichessMoveAnnotationType.brilliant,
-  GameMoveClassification.goodMove => LichessMoveAnnotationType.goodMove,
-  GameMoveClassification.bestMove => LichessMoveAnnotationType.bestMove,
-  GameMoveClassification.missedWin => LichessMoveAnnotationType.missedWin,
-  GameMoveClassification.inaccuracy => LichessMoveAnnotationType.inaccuracy,
-  GameMoveClassification.mistake => LichessMoveAnnotationType.mistake,
-  GameMoveClassification.blunder => LichessMoveAnnotationType.blunder,
-};
+) => annotationTypeForClassification(classification);
 
 /// Merge NAGs baked into the PGN with NAGs the user has applied locally.
 /// PGN NAGs come first (preserving authoring order), user NAGs append after —
@@ -3703,32 +3655,6 @@ class _AppBar extends ConsumerStatefulWidget implements PreferredSizeWidget {
   Size get preferredSize => const Size.fromHeight(kToolbarHeight);
 }
 
-class _ResolvedAppBarShareData {
-  final String pgn;
-  final String? shareUrl;
-  final GameShareSnapshot snapshot;
-  final double? evaluation;
-  final int mate;
-  final bool isFlipped;
-  final bool isAtGameEnd;
-
-  /// Whether the *full game* (not the focused ply) ends in a finished result.
-  /// Drives the GIF's final-frame king effect, which must fire on the whole-game
-  /// replay regardless of where the board is currently focused.
-  final bool gifIsAtGameEnd;
-
-  const _ResolvedAppBarShareData({
-    required this.pgn,
-    required this.shareUrl,
-    required this.snapshot,
-    required this.evaluation,
-    required this.mate,
-    required this.isFlipped,
-    required this.isAtGameEnd,
-    required this.gifIsAtGameEnd,
-  });
-}
-
 bool _shareGameNeedsTerminalPosition(GameSource source) {
   return source == GameSource.gamebase || source == GameSource.openingExplorer;
 }
@@ -3862,7 +3788,7 @@ class _AppBarState extends ConsumerState<_AppBar> {
     return null;
   }
 
-  Future<_ResolvedAppBarShareData> _resolveAppBarShareData() async {
+  Future<ResolvedGameShareData> _resolveAppBarShareData() async {
     final params = ChessBoardProviderParams(
       game: widget.game,
       index: widget.currentGameIndex,
@@ -3912,7 +3838,7 @@ class _AppBarState extends ConsumerState<_AppBar> {
             )
             : isAtGameEnd;
 
-    return _ResolvedAppBarShareData(
+    return ResolvedGameShareData(
       pgn: pgn,
       shareUrl: buildGameShareUrl(
         game: widget.game,
@@ -3953,18 +3879,10 @@ class _AppBarState extends ConsumerState<_AppBar> {
     try {
       final resolved = await _resolveAppBarShareData();
       if (!mounted) return;
-      await Navigator.of(context).push(
-        PageRouteBuilder(
-          opaque: false,
-          barrierDismissible: true,
-          barrierColor: Colors.transparent,
-          pageBuilder:
-              (context, animation, secondaryAnimation) =>
-                  _ShareGameScreen(game: widget.game, shareData: resolved),
-          transitionsBuilder: (context, animation, secondaryAnimation, child) {
-            return FadeTransition(opacity: animation, child: child);
-          },
-        ),
+      await pushGameShareScreen(
+        context: context,
+        game: widget.game,
+        shareData: resolved,
       );
     } catch (_) {
       if (!mounted) return;
@@ -8181,11 +8099,17 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard>
     return shapes;
   }
 
+  /// [selfContainedChild] is true when [child] already paints its own filled
+  /// disc edge-to-edge (the classification badge SVGs do). Those must not get a
+  /// second coloured circle behind them, nor inset padding — the glyph is
+  /// already positioned against its own disc by the designer. Text NAG badges
+  /// pass false and rely on this container for the fill.
   Positioned _buildBoardBadge({
     required Square square,
     required Color color,
     required Widget child,
     double sizeFactor = 0.42,
+    bool selfContainedChild = false,
   }) {
     final squareSize = widget.size / 8;
     final effectiveFile = widget.isFlipped ? 7 - square.file : square.file;
@@ -8212,7 +8136,10 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard>
             width: badgeSize,
             height: badgeSize,
             decoration: BoxDecoration(
-              color: color,
+              // Shadow and rim still key off the circle shape when the fill is
+              // transparent, so a self-contained badge keeps its separation
+              // from the board underneath.
+              color: selfContainedChild ? Colors.transparent : color,
               shape: BoxShape.circle,
               boxShadow: [
                 BoxShadow(
@@ -8226,7 +8153,10 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard>
                 width: 0.5,
               ),
             ),
-            padding: EdgeInsets.all(badgeSize * 0.16),
+            padding:
+                selfContainedChild
+                    ? EdgeInsets.zero
+                    : EdgeInsets.all(badgeSize * 0.16),
             child: RepaintBoundary(child: child),
           ),
         ),
@@ -8242,6 +8172,7 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard>
       square: square,
       color: annotation.type.color,
       sizeFactor: 0.40,
+      selfContainedChild: true,
       child: SvgPicture.asset(
         annotation.type.iconAssetPath,
         fit: BoxFit.contain,
@@ -12149,19 +12080,17 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
     }
 
     // bookMove: keep the floating badge (no inline symbol available)
+    // The annotation SVGs paint their own coloured disc, so these render the
+    // asset at badge size with no container fill or padding — wrapping them in
+    // a tinted circle again would nest a second disc inside the first.
     final Widget? annotationBadge =
         annotationPres == AnnotationPresentation.badgeOnly
-            ? Container(
+            ? SizedBox(
               width: 14.sp,
               height: 14.sp,
-              decoration: BoxDecoration(
-                color: annotation!.type.color,
-                borderRadius: BorderRadius.circular(999),
-              ),
-              padding: EdgeInsets.all(2.sp),
               child: RepaintBoundary(
                 child: SvgPicture.asset(
-                  annotation.type.iconAssetPath,
+                  annotation!.type.iconAssetPath,
                   fit: BoxFit.contain,
                 ),
               ),
@@ -12173,11 +12102,6 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
               width: 17.sp,
               height: 17.sp,
               margin: EdgeInsets.only(left: 4.sp),
-              padding: EdgeInsets.all(4.sp),
-              decoration: BoxDecoration(
-                color: classificationAnnotation.type.color,
-                shape: BoxShape.circle,
-              ),
               child: RepaintBoundary(
                 child: SvgPicture.asset(
                   classificationAnnotation.type.iconAssetPath,
@@ -15203,142 +15127,6 @@ class _BlinkingRedDotState extends State<_BlinkingRedDot>
           ),
         );
       },
-    );
-  }
-}
-
-class _ShareGameScreen extends ConsumerWidget {
-  final GamesTourModel game;
-  final _ResolvedAppBarShareData shareData;
-
-  const _ShareGameScreen({required this.game, required this.shareData});
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    // Get board settings for creating the board widget
-    final boardSettingsAsync = ref.watch(boardSettingsProviderNew);
-    final boardSettingsNew =
-        boardSettingsAsync.valueOrNull ?? const BoardSettingsNew();
-
-    // Get the base color scheme from settings
-    final baseColorScheme = boardSettingsNew.colorScheme;
-
-    // Build board settings for the share overlay board (sized responsively inside the overlay)
-    // We use the theme colors but hide all highlights for clean screenshots
-    // IMPORTANT: Disable animations for instant static frame capture in GIF generation
-    final chessboardSettings = ChessboardSettings(
-      enableCoordinates: false,
-      animationDuration: Duration.zero, // Disable animations for screenshot/GIF
-      colorScheme: ChessboardColorScheme(
-        lightSquare: baseColorScheme.lightSquare,
-        darkSquare: baseColorScheme.darkSquare,
-        background: baseColorScheme.background,
-        whiteCoordBackground: baseColorScheme.whiteCoordBackground,
-        blackCoordBackground: baseColorScheme.blackCoordBackground,
-        // Hide most highlights for clean screenshots, but show last move
-        lastMove: baseColorScheme.lastMove,
-        selected: HighlightDetails(
-          solidColor: baseColorScheme.lightSquare.withValues(alpha: 0),
-        ),
-        validMoves: baseColorScheme.lightSquare.withValues(alpha: 0),
-        validPremoves: baseColorScheme.lightSquare.withValues(alpha: 0),
-      ),
-      // Use piece set from settings
-      pieceAssets: boardSettingsNew.pieceAssets,
-      borderRadius: const BorderRadius.all(Radius.circular(0)),
-      boxShadow: const [],
-    );
-
-    // Calculate clock times at current position (same logic as PlayerFirstRowDetailWidget)
-    final effectiveMoveIndex = shareData.snapshot.currentMoveIndex;
-
-    String? whiteTime;
-    String? blackTime;
-
-    if (shareData.snapshot.moveTimes.isNotEmpty) {
-      // Find white player's most recent move up to current position
-      for (int i = effectiveMoveIndex; i >= 0; i--) {
-        final isWhiteMove = i % 2 == 0;
-        if (isWhiteMove && i < shareData.snapshot.moveTimes.length) {
-          whiteTime = shareData.snapshot.moveTimes[i];
-          break;
-        }
-      }
-
-      // Find black player's most recent move up to current position
-      for (int i = effectiveMoveIndex; i >= 0; i--) {
-        final isBlackMove = i % 2 == 1;
-        if (isBlackMove && i < shareData.snapshot.moveTimes.length) {
-          blackTime = shareData.snapshot.moveTimes[i];
-          break;
-        }
-      }
-    }
-
-    // Fallback to game model's time display
-    whiteTime ??= game.whiteTimeDisplay;
-    blackTime ??= game.blackTimeDisplay;
-
-    // Games without real clocks store placeholders like "--:--" / "-:--:--".
-    // Hide those on the share card instead of painting ugly dashes.
-    if (!hasUsableClockDisplay(whiteTime)) whiteTime = null;
-    if (!hasUsableClockDisplay(blackTime)) blackTime = null;
-
-    // Format tournament and round names for better display
-    final tournamentName =
-        game.tourSlug != null ? StringUtils.slugToTitle(game.tourSlug!) : null;
-    final roundInfo =
-        game.roundSlug != null
-            ? StringUtils.formatRoundLabel(game.roundSlug)
-            : null;
-
-    return ShareGameCardOverlay(
-      boardSettings: chessboardSettings,
-      positionFen: shareData.snapshot.positionFen,
-      lastMove: shareData.snapshot.lastMove,
-      pgn: shareData.pgn,
-      moveSans: shareData.snapshot.moveSans,
-      moveTimes: shareData.snapshot.moveTimes,
-      whitePlayerName: game.whitePlayer.name,
-      blackPlayerName: game.blackPlayer.name,
-      // Use countryCode first (inactive profile games often only populate this),
-      // then fall back to federation for older payloads.
-      whitePlayerCountry:
-          game.whitePlayer.countryCode.isNotEmpty
-              ? game.whitePlayer.countryCode
-              : game.whitePlayer.federation,
-      blackPlayerCountry:
-          game.blackPlayer.countryCode.isNotEmpty
-              ? game.blackPlayer.countryCode
-              : game.blackPlayer.federation,
-      whitePlayerElo:
-          game.whitePlayer.rating > 0
-              ? game.whitePlayer.rating.toString()
-              : null,
-      blackPlayerElo:
-          game.blackPlayer.rating > 0
-              ? game.blackPlayer.rating.toString()
-              : null,
-      whitePlayerTitle: game.whitePlayer.title,
-      blackPlayerTitle: game.blackPlayer.title,
-      whitePlayerClock: whiteTime,
-      blackPlayerClock: blackTime,
-      tournamentName: tournamentName,
-      roundInfo: roundInfo,
-      currentMoveIndex: shareData.snapshot.currentMoveIndex,
-      evaluation: shareData.evaluation,
-      mate: shareData.mate,
-      isFlipped: shareData.isFlipped,
-      gameStatus: game.gameStatus,
-      isAtGameEnd: shareData.isAtGameEnd,
-      shareUrl: shareData.shareUrl,
-      gameId: game.gameId, // Pass game ID for correct eval display
-      startingFen: shareData.snapshot.startingFen,
-      // Share GIF replays the complete game, independent of the focused move.
-      gifMoveSans: shareData.snapshot.gifMoveSans,
-      gifStartingFen: shareData.snapshot.gifStartingFen,
-      gifIsAtGameEnd: shareData.gifIsAtGameEnd,
-      onClose: () => Navigator.of(context).pop(),
     );
   }
 }

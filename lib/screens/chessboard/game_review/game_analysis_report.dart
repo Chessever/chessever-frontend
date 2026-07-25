@@ -3,6 +3,7 @@ import 'dart:math' as math;
 
 import 'package:chessever2/screens/chessboard/analysis/chess_game.dart';
 import 'package:chessever2/screens/chessboard/game_review/game_analysis_report_store.dart';
+import 'package:chessever2/screens/chessboard/game_review/move_position_facts.dart';
 import 'package:chessever2/screens/chessboard/provider/stockfish_singleton.dart';
 import 'package:dartchess/dartchess.dart';
 import 'package:flutter/foundation.dart';
@@ -16,10 +17,20 @@ enum GameMoveClassification {
   missedWin('Missed Win'),
   inaccuracy('Inaccuracy'),
   mistake('Mistake'),
-  blunder('Blunder');
+  blunder('Blunder'),
+  bookMove('Book');
 
   const GameMoveClassification(this.label);
   final String label;
+
+  /// Labels that mean the move did measurable damage. Book never displaces
+  /// these — a line being popular is no defence, since a whole crowd can walk
+  /// into the same trap.
+  bool get isNegative =>
+      this == GameMoveClassification.inaccuracy ||
+      this == GameMoveClassification.mistake ||
+      this == GameMoveClassification.blunder ||
+      this == GameMoveClassification.missedWin;
 }
 
 @immutable
@@ -129,14 +140,23 @@ typedef GameReportEvaluator =
       void Function(int reachedDepth, int knodes)? onProgress,
     });
 
+/// Asks the game database how many games reached [uci] from [fen].
+///
+/// Returns null when the answer is unknown — no database, no key, or a failed
+/// request. Null and zero mean different things: null is "we did not find out",
+/// which must never be read as "not theory".
+typedef GameReportBookLookup = Future<int?> Function(String fen, String uci);
+
 class GameAnalysisReportController extends ChangeNotifier {
   GameAnalysisReportController({
     StockfishSingleton? stockfish,
     GameReportEvaluator? evaluator,
     GameAnalysisReportStore? store,
+    GameReportBookLookup? bookLookup,
   }) : _stockfish = stockfish ?? StockfishSingleton(),
        _evaluator = evaluator,
-       _store = store;
+       _store = store,
+       _bookLookup = bookLookup;
 
   static const int reportDepth = 12;
   static const int reportMultiPv = 3;
@@ -160,6 +180,10 @@ class GameAnalysisReportController extends ChangeNotifier {
   /// When null, production uses [GameAnalysisReportStore.instance]. Tests may
   /// inject a temp-dir store, or pass a no-op via a dedicated root.
   final GameAnalysisReportStore? _store;
+
+  /// Opening-tree access. Null disables book detection entirely, which is the
+  /// correct behaviour offline — every move simply keeps its engine label.
+  final GameReportBookLookup? _bookLookup;
   late final String _ownerId = StockfishSingleton.generateOwnerId(
     'gameReport',
     identityHashCode(this),
@@ -314,6 +338,17 @@ class GameAnalysisReportController extends ChangeNotifier {
     var claimedEngine = false;
     final positions = <GameReportPosition>[];
     final evaluatedPositions = <String, GameReportPosition>{};
+
+    // Network-bound and independent of the engine, so it runs alongside the
+    // Stockfish passes and is collected just before the report is assembled —
+    // the opening lookups cost no extra wall-clock. [_probeBookMoves] swallows
+    // its own failures, so this future never needs a catch of its own.
+    final bookGameCountsFuture = _probeBookMoves(
+      game,
+      fens,
+      generation: generation,
+    );
+
     try {
       if (_evaluator == null) {
         await _stockfish.waitForBoardIdle();
@@ -478,6 +513,7 @@ class GameAnalysisReportController extends ChangeNotifier {
         positions: positions,
         whiteRating: whiteRating,
         blackRating: blackRating,
+        bookGameCounts: await bookGameCountsFuture,
       );
       if (_disposed || generation != _generation) return;
       // Production (no injected evaluator) and store-injected harnesses keep
@@ -505,6 +541,55 @@ class GameAnalysisReportController extends ChangeNotifier {
         unawaited(_stockfish.cancelEvaluationsForOwner(_ownerId));
       }
     }
+  }
+
+  /// Walks the game from move one asking how many database games played each
+  /// move, and stops at the first move that leaves theory.
+  ///
+  /// Theory is contiguous from the start — once a game leaves book it does not
+  /// re-enter — so the early exit is not just an optimisation, it is what keeps
+  /// a late middlegame move from being called "book" because the same position
+  /// happens to be reachable by transposition in a popular line.
+  ///
+  /// The tree is an enhancement, never a dependency: any failure abandons the
+  /// walk and leaves the remaining moves unknown rather than failing the report.
+  Future<List<int?>> _probeBookMoves(
+    ChessGame game,
+    List<String> fens, {
+    required int generation,
+  }) async {
+    final counts = List<int?>.filled(game.mainline.length, null);
+    final lookup = _bookLookup;
+    if (lookup == null) return counts;
+
+    // The gamebase infers a position's ply from the FEN's side-to-move and
+    // fullmove number. A game set up from a custom position carries counters
+    // that describe that position, not a real opening, so every lookup would be
+    // answering a question about the wrong ply. Such a game has no book by
+    // definition — skip the walk rather than spend requests misaddressing it.
+    if (game.startingFen != kInitialFEN) return counts;
+
+    final limit = math.min(game.mainline.length, kBookProbeMaxPlies);
+    // The engine passes normally outlast this walk, but a stalled database must
+    // not be what holds a finished report open. Whatever theory was resolved
+    // before the budget ran out is kept.
+    final elapsed = Stopwatch()..start();
+    for (var i = 0; i < limit; i++) {
+      if (_disposed || generation != _generation) return counts;
+      if (elapsed.elapsed > kBookProbeBudget) return counts;
+      final int? total;
+      try {
+        total = await lookup(
+          fens[i],
+          game.mainline[i].uci,
+        ).timeout(kBookLookupTimeout);
+      } catch (_) {
+        return counts;
+      }
+      if (total == null || total < kBookMoveMinGames) return counts;
+      counts[i] = total;
+    }
+    return counts;
   }
 
   String _primaryPassMessage(int positionIndex, int totalMoves) {
@@ -770,6 +855,8 @@ GameAnalysisReport buildGameAnalysisReport({
   required List<GameReportPosition> positions,
   int? whiteRating,
   int? blackRating,
+  /// Database game count per move index, or null where it was not looked up.
+  List<int?>? bookGameCounts,
 }) {
   if (positions.length != game.mainline.length + 1) {
     throw ArgumentError('A report needs one evaluation per game position');
@@ -790,6 +877,10 @@ GameAnalysisReport buildGameAnalysisReport({
       positions: positions,
       winPercentages: winPercentages,
       previousMoveClassification: previousClassification,
+      bookGameCount:
+          bookGameCounts != null && i < bookGameCounts.length
+              ? bookGameCounts[i]
+              : null,
     );
     previousClassification = classification;
     moves.add(
@@ -860,6 +951,42 @@ GameMoveClassification? classifyGameReportMove({
   required List<GameReportPosition> positions,
   required List<double> winPercentages,
   GameMoveClassification? previousMoveClassification,
+  int? bookGameCount,
+}) => applyBookMoveOverride(
+  _classifyGameReportMoveCore(
+    index: index,
+    game: game,
+    positions: positions,
+    winPercentages: winPercentages,
+    previousMoveClassification: previousMoveClassification,
+  ),
+  bookGameCount,
+);
+
+/// Replaces a non-damaging label with Book when the database has seen the move
+/// often enough for it to be theory.
+///
+/// Theory is not a decision the player found at the board, so it earns no
+/// praise — Brilliant, Great and Best all give way. Errors do not: a popular
+/// move can still be a trap a hundred players have fallen into, so Inaccuracy,
+/// Mistake, Blunder and Missed Win always outrank Book.
+GameMoveClassification? applyBookMoveOverride(
+  GameMoveClassification? classification,
+  int? bookGameCount,
+) {
+  if (bookGameCount == null || bookGameCount < kBookMoveMinGames) {
+    return classification;
+  }
+  if (classification != null && classification.isNegative) return classification;
+  return GameMoveClassification.bookMove;
+}
+
+GameMoveClassification? _classifyGameReportMoveCore({
+  required int index,
+  required ChessGame game,
+  required List<GameReportPosition> positions,
+  required List<double> winPercentages,
+  GameMoveClassification? previousMoveClassification,
 }) {
   final move = game.mainline[index];
   final before = positions[index];
@@ -894,6 +1021,13 @@ GameMoveClassification? classifyGameReportMove({
       isWhite: isWhite,
       playedIsBest: playedIsBest,
       previousMoveClassification: previousMoveClassification,
+      before: before,
+      after: positions[index + 1],
+      facts: describeMove(
+        beforeFen: before.fen,
+        playedUci: move.uci,
+        previousUci: index > 0 ? game.mainline[index - 1].uci : null,
+      ),
     );
   }
 
@@ -917,67 +1051,129 @@ GameMoveClassification? classifyGameReportMove({
         move.uci,
       );
 
-  // ── Brilliant (!!) ─────────────────────────────────────────────────────
-  // High precision, low frequency: engine-best/tied + meaningful investment +
-  // multi-ply persistence + exclusions. Immediate one-reply sacrifice alone
-  // is not enough (ordinary gambits / accepted pawn offers stay untagged).
-  if (verifyBrilliantMove(
-    index: index,
-    game: game,
-    positions: positions,
-    winPercentages: winPercentages,
-    moverChange: moverChange,
-    playedIsBest: playedIsBest,
-    alternativeWin: alternativeWin,
-    alternativeGap: alternativeGap,
-    simpleRecapture: simpleRecapture,
-  )) {
-    return GameMoveClassification.brilliant;
+  // ── Steps 2–3: board facts and outcome-band context ────────────────────
+  // Derived from the FENs alone, so re-tuning the rules below never needs a
+  // fresh engine run.
+  final facts = describeMove(
+    beforeFen: before.fen,
+    playedUci: move.uci,
+    previousUci: index > 0 ? game.mainline[index - 1].uci : null,
+  );
+  final moverBefore = isWhite ? beforeWin : (100 - beforeWin);
+  final moverAfter = isWhite ? afterWin : (100 - afterWin);
+
+  // Routine and forced moves veto *positive* labels only. They must still fall
+  // through to Missed Win and the loss tiers — an obvious-looking move can be
+  // an inaccuracy or worse, and returning "no symbol" here would hide it.
+  var positiveLabelsEligible = !facts.isForcedOrRoutine && !simpleRecapture;
+
+  // Routine material recovery: taking a loose or already-committed unit while
+  // conceding nothing, in a position the capture does not actually change.
+  // Material balance alone is never the test — a deficit can be real
+  // compensation — so board evidence is combined with band and win% movement.
+  final routineMaterialRecovery =
+      facts.isBoardLevelMaterialRecovery &&
+      !escapesClearlyLosingBand(
+        moverBefore: moverBefore,
+        moverAfter: moverAfter,
+      ) &&
+      outcomeBandFor(moverAfter).index <= outcomeBandFor(moverBefore).index &&
+      moverChange < kRoutinePraiseMinWinGainPp;
+  if (routineMaterialRecovery) positiveLabelsEligible = false;
+
+  // Praise floor: below it, an ordinary capture, recapture or retreat has to
+  // earn its symbol with a real winning-chance gain or by escaping the
+  // clearly-losing band.
+  //
+  // Scoped to Great and Best only, matching the rule as written. It does not
+  // currently change Brilliant either way: [verifyBrilliantMove] independently
+  // requires the mover to sit near or above equality after the move, so a !!
+  // can never reach this band. That also means a genuine *defensive* brilliancy
+  // in a losing position is unreachable today — a known gap, tracked separately
+  // rather than papered over here.
+  var greatAndBestEligible = positiveLabelsEligible;
+  if (moverAfter <= kPositivePraiseWinFloorPp &&
+      (facts.isCapture || facts.isRoutineRetreat || facts.isForcedRecapture)) {
+    final earnsException =
+        moverChange >= kRoutinePraiseMinWinGainPp ||
+        escapesClearlyLosingBand(
+          moverBefore: moverBefore,
+          moverAfter: moverAfter,
+        );
+    if (!earnsException) greatAndBestEligible = false;
   }
 
-  // ── Great ──────────────────────────────────────────────────────────────
-  // Near-best, not a free recapture, not already crushing: either the only
-  // good move (gap > 10pp) or a decisive outcome swing (cross equality with
-  // ≥10pp gain). Also: engine-top conversion after the opponent's blunder.
-  if (moverChange >= -2 &&
-      alternativeWin != null &&
-      !simpleRecapture &&
-      !_isLosingOrAlternateCrushing(
-        afterWin: afterWin,
-        alternativeWin: alternativeWin,
-        isWhite: isWhite,
-      )) {
-    final onlyGoodMove = alternativeGap > 10;
-    final outcomeSwing = _hasChangedGameOutcome(
-      beforeWin: beforeWin,
-      afterWin: afterWin,
-      isWhite: isWhite,
+  // ── Steps 4–7: positive labels ─────────────────────────────────────────
+  if (positiveLabelsEligible) {
+    // Brilliant (!!): engine-best/tied + genuine material investment +
+    // multi-ply persistence + exclusions. An immediate one-reply sacrifice
+    // alone is not enough — ordinary gambits and accepted pawn offers stay
+    // untagged.
+    if (verifyBrilliantMove(
+      index: index,
+      game: game,
+      positions: positions,
+      winPercentages: winPercentages,
       moverChange: moverChange,
-    );
-    final punishError =
-        playedIsBest &&
-        (previousMoveClassification == GameMoveClassification.blunder ||
-            previousMoveClassification == GameMoveClassification.mistake);
-    if (onlyGoodMove || outcomeSwing || punishError) {
-      return GameMoveClassification.bestMove;
+      playedIsBest: playedIsBest,
+      alternativeWin: alternativeWin,
+      alternativeGap: alternativeGap,
+      simpleRecapture: simpleRecapture,
+      facts: facts,
+    )) {
+      return GameMoveClassification.brilliant;
+    }
+
+    // Great: near-best and not already crushing — either the only good move
+    // (gap > 10pp) or a decisive outcome swing. Also engine-top conversion
+    // right after the opponent's error.
+    if (greatAndBestEligible &&
+        moverChange >= -2 &&
+        alternativeWin != null &&
+        !_isLosingOrAlternateCrushing(
+          afterWin: afterWin,
+          alternativeWin: alternativeWin,
+          isWhite: isWhite,
+        )) {
+      final onlyGoodMove = alternativeGap > 10;
+      final outcomeSwing = _hasChangedGameOutcome(
+        beforeWin: beforeWin,
+        afterWin: afterWin,
+        isWhite: isWhite,
+        moverChange: moverChange,
+      );
+      final punishError =
+          playedIsBest &&
+          (previousMoveClassification == GameMoveClassification.blunder ||
+              previousMoveClassification == GameMoveClassification.mistake);
+      if (onlyGoodMove || outcomeSwing || punishError) {
+        return GameMoveClassification.bestMove;
+      }
+    }
+
+    // Best: being PV1 is not sufficient on its own. The next playable
+    // alternative has to be meaningfully worse, and the position has to still
+    // be contested — unless the move is itself a substantial defensive
+    // recovery.
+    if (greatAndBestEligible && playedIsBest && moverChange >= -2) {
+      final band = outcomeBandFor(moverBefore);
+      final contested =
+          band == OutcomeBand.competitive ||
+          band == OutcomeBand.worse ||
+          band == OutcomeBand.better;
+      final recovers = escapesClearlyLosingBand(
+        moverBefore: moverBefore,
+        moverAfter: moverAfter,
+      );
+      final hasMoat =
+          alternativeWin == null || alternativeGap >= kBestRequiredPvMoatPp;
+      if ((contested || recovers) && hasMoat) {
+        return GameMoveClassification.goodMove;
+      }
     }
   }
 
-  // ── Best ───────────────────────────────────────────────────────────────
-  // Engine top in a live position with a meaningful PV split — not every
-  // equal opening choice. Without multipv gap data, require true PV1 only
-  // when the game is still contested.
-  if (playedIsBest && moverChange >= -2) {
-    final moverBefore = isWhite ? beforeWin : (100 - beforeWin);
-    final live = moverBefore > 12 && moverBefore < 88;
-    final hasMoat = alternativeWin == null || alternativeGap >= 5;
-    if (live && hasMoat && !simpleRecapture) {
-      return GameMoveClassification.goodMove;
-    }
-    // Quiet equals / decided → no positive tag.
-    return null;
-  }
-
+  // ── Steps 8–11 ─────────────────────────────────────────────────────────
   return _missedOrLoss(
     moverChange: moverChange,
     beforeWin: beforeWin,
@@ -985,6 +1181,9 @@ GameMoveClassification? classifyGameReportMove({
     isWhite: isWhite,
     playedIsBest: playedIsBest,
     previousMoveClassification: previousMoveClassification,
+    before: before,
+    after: positions[index + 1],
+    facts: facts,
   );
 }
 
@@ -995,10 +1194,14 @@ GameMoveClassification? _missedOrLoss({
   required bool isWhite,
   required bool playedIsBest,
   required GameMoveClassification? previousMoveClassification,
+  required GameReportPosition before,
+  required GameReportPosition after,
+  required MovePositionFacts facts,
 }) {
   final moverBefore = isWhite ? beforeWin : (100 - beforeWin);
   final moverAfter = isWhite ? afterWin : (100 - afterWin);
 
+  // ── Step 8: Missed Win ─────────────────────────────────────────────────
   // Missed conversion after opponent's blunder.
   if (previousMoveClassification == GameMoveClassification.blunder &&
       !playedIsBest &&
@@ -1011,7 +1214,114 @@ GameMoveClassification? _missedOrLoss({
     return GameMoveClassification.missedWin;
   }
 
-  return _lossTier(moverChange, beforeWin, afterWin, isWhite);
+  // ── Steps 9–10: tactical override, then the normal loss tiers ──────────
+  final tier = _lossTier(moverChange, beforeWin, afterWin, isWhite);
+  if (playedIsBest) return tier;
+  final override = _tacticalLossOverride(
+    before: before,
+    after: after,
+    isWhite: isWhite,
+    moverBefore: moverBefore,
+    moverAfter: moverAfter,
+    facts: facts,
+  );
+  if (override == null) return tier;
+  // "At least a Mistake": never downgrade a Blunder the tiers already found.
+  return _moreSevere(tier, override);
+}
+
+/// Severity order for the negative labels, so an override can raise a tier
+/// without ever softening one.
+int _lossSeverity(GameMoveClassification? classification) =>
+    switch (classification) {
+      GameMoveClassification.blunder => 3,
+      GameMoveClassification.mistake => 2,
+      GameMoveClassification.inaccuracy => 1,
+      _ => 0,
+    };
+
+GameMoveClassification? _moreSevere(
+  GameMoveClassification? a,
+  GameMoveClassification? b,
+) => _lossSeverity(a) >= _lossSeverity(b) ? a : b;
+
+/// Winning chances compress near 0% and 100%, so a player who is already much
+/// worse cannot shed many percentage points even when they blunder outright.
+/// This recovers those moves from centipawn and board evidence instead.
+///
+/// Deliberately conjunctive: a large centipawn swing on its own is noisy in a
+/// decided position, so it must be corroborated by concrete damage. Everything
+/// is measured from the mover's point of view.
+GameMoveClassification? _tacticalLossOverride({
+  required GameReportPosition before,
+  required GameReportPosition after,
+  required bool isWhite,
+  required double moverBefore,
+  required double moverAfter,
+  required MovePositionFacts facts,
+}) {
+  final cpBefore = _moverCentipawns(before.bestLine, isWhite: isWhite);
+  final cpAfter = _moverCentipawns(after.bestLine, isWhite: isWhite);
+  final mateBefore = _moverMate(before.bestLine, isWhite: isWhite);
+  final mateAfter = _moverMate(after.bestLine, isWhite: isWhite);
+
+  // Walking into a forced mate is damage however the centipawn maths lands.
+  final mateStateWorsened =
+      (mateAfter != null && mateAfter < 0 && (mateBefore == null || mateBefore > 0)) ||
+      (mateBefore != null && mateBefore > 0 && (mateAfter == null || mateAfter < 0));
+
+  if (!mateStateWorsened) {
+    if (cpBefore == null || cpAfter == null) return null;
+    if ((cpBefore - cpAfter) < kTacticalOverrideMinCpLoss) return null;
+  }
+
+  final uncompensatedMaterialLoss =
+      facts.givesMaterialBack && !facts.givesCheck && !facts.isPromotion;
+  final bandCollapse = outcomeBandCollapsed(
+    moverBefore: moverBefore,
+    moverAfter: moverAfter,
+  );
+  final forcedSequence = _opponentReplyIsForcing(after);
+
+  final corroborated =
+      uncompensatedMaterialLoss ||
+      forcedSequence ||
+      bandCollapse ||
+      mateStateWorsened;
+  if (!corroborated) return null;
+
+  return GameMoveClassification.mistake;
+}
+
+/// Mover-relative centipawns. Engine scores reach the report already
+/// normalised to White, so only the mover's sign is applied here.
+int? _moverCentipawns(GameReportLine line, {required bool isWhite}) {
+  final cp = line.centipawns;
+  if (cp == null) return null;
+  return isWhite ? cp : -cp;
+}
+
+int? _moverMate(GameReportLine line, {required bool isWhite}) {
+  final mate = line.mate;
+  if (mate == null) return null;
+  return isWhite ? mate : -mate;
+}
+
+/// Whether the opponent's best reply opens with a forcing move — a capture or
+/// a check. Used as corroboration that a swing is tactical rather than a slow
+/// positional drift.
+bool _opponentReplyIsForcing(GameReportPosition after) {
+  final pv = after.bestLine.moves;
+  if (pv.isEmpty) return false;
+  try {
+    final position = Chess.fromSetup(Setup.parseFen(after.fen));
+    final reply = NormalMove.fromUci(pv.first);
+    if (!position.isLegal(reply)) return false;
+    final isCapture = position.board.pieceAt(reply.to) != null;
+    return isCapture || position.play(reply).isCheck;
+  } catch (_) {
+    return false;
+  }
 }
 
 /// Losing after the move, or the unplayed line was already a forced win.
@@ -1066,7 +1376,46 @@ GameMoveClassification? _lossTier(
 // ── Brilliant (!!) high-precision path ─────────────────────────────────────
 
 /// Max mover win% loss (pp) for a !! candidate / verified brilliant.
-const double kBrilliantMaxLossPp = 1.5;
+///
+/// A Brilliant has to be the engine's move: within one percentage point of PV1.
+const double kBrilliantMaxLossPp = 1;
+
+/// Database games a move needs before it counts as theory rather than a choice
+/// the player made over the board.
+const int kBookMoveMinGames = 10;
+
+/// How far into a game the opening tree is consulted at all. A hard stop on top
+/// of the contiguity rule, so a pathological line cannot spend a lookup per move
+/// across a 120-move game.
+///
+/// Twenty plies is deliberate on both counts: it is exactly the first ten full
+/// moves the product cares about, and it is the depth the gamebase serves from
+/// its materialised view (`MV_MAX_PLY`), which is the Redis-cached fast path.
+/// Past it, queries fall through to the shallow table at ply 21 and then to the
+/// much slower deep-position table — cost we would be paying for positions that
+/// are far too rare to clear [kBookMoveMinGames] anyway.
+const int kBookProbeMaxPlies = 20;
+
+/// Ceiling on one opening lookup, and on the walk as a whole.
+const Duration kBookLookupTimeout = Duration(seconds: 4);
+const Duration kBookProbeBudget = Duration(seconds: 15);
+
+/// PV moat (pp) the played move needs over the first unplayed alternative
+/// before being called Best. Being PV1 is not on its own a distinction.
+const double kBestRequiredPvMoatPp = 8;
+
+/// Mover winning chance (pp) below which ordinary captures, recaptures and
+/// retreats no longer earn a positive symbol by default.
+const double kPositivePraiseWinFloorPp = 25;
+
+/// The winning-chance gain (pp) that buys a routine-looking move its symbol
+/// back, at any point on the scale.
+const double kRoutinePraiseMinWinGainPp = 10;
+
+/// Mover-relative centipawn loss that opens the tactical override. It is a
+/// necessary condition only — see [_tacticalLossOverride] for the corroboration
+/// each candidate still has to clear.
+const int kTacticalOverrideMinCpLoss = 150;
 
 /// Minimum MultiPV gap (played vs next-best, mover pp) for non-unique best.
 const double kBrilliantMinAlternativeGapPp = 8;
@@ -1142,6 +1491,7 @@ bool verifyBrilliantMove({
   required double? alternativeWin,
   required double alternativeGap,
   required bool simpleRecapture,
+  MovePositionFacts? facts,
 }) {
   if (index < 0 || index >= game.mainline.length) return false;
   if (index + 1 >= positions.length || index + 1 >= winPercentages.length) {
@@ -1157,6 +1507,16 @@ bool verifyBrilliantMove({
   // ── Hard exclusions ────────────────────────────────────────────────────
   if (move.san.contains('=')) return false;
   if (simpleRecapture) return false;
+  // A forced reply, a recapture or an attacked piece stepping aside is never
+  // Brilliant, however well the engine scores it.
+  final moveFacts =
+      facts ??
+      describeMove(
+        beforeFen: before.fen,
+        playedUci: move.uci,
+        previousUci: index > 0 ? game.mainline[index - 1].uci : null,
+      );
+  if (moveFacts.isForcedOrRoutine) return false;
   if (isReportLikelyOpeningBookForBrilliant(index, game)) return false;
   if (isReportCompletelyDecidedForBrilliant(
     beforeWin: beforeWin,
@@ -1301,6 +1661,12 @@ bool isMeaningfulBrilliantInvestment(
     // us on the destination (true hang / underprotection). Protected pieces
     // taken into a fair recapture (e.g. N on c3 hit by pawn, defended by pawn)
     // do not count as !! material investment.
+    //
+    // This SEE gate is what enforces "acceptance creates a real material
+    // deficit": it requires the mover to end at least a full minor down. That
+    // is one step stricter than counting a bare exchange sacrifice, chosen
+    // deliberately to favour precision — a missed !! costs less than a wrong
+    // one.
     return _isNetHangingPiece(
       after,
       square: move.to,
@@ -1318,50 +1684,7 @@ bool _isNetHangingPiece(
   Position position, {
   required Square square,
   required Side owner,
-}) {
-  final ourPiece = position.board.pieceAt(square);
-  if (ourPiece == null || ourPiece.color != owner) return false;
-  final ourVal = _pieceValue(ourPiece.role);
-  if (ourVal < 3) return false;
-
-  final opponent = owner == Side.white ? Side.black : Side.white;
-  ({Square from, int value})? cheapestAttacker;
-  for (final sq in Square.values) {
-    final piece = position.board.pieceAt(sq);
-    if (piece == null || piece.color != opponent) continue;
-    final candidate = NormalMove(from: sq, to: square);
-    if (!position.isLegal(candidate)) continue;
-    final v = _pieceValue(piece.role);
-    if (cheapestAttacker == null || v < cheapestAttacker.value) {
-      cheapestAttacker = (from: sq, value: v);
-    }
-  }
-  if (cheapestAttacker == null) return false;
-
-  final afterCapture = position.play(
-    NormalMove(from: cheapestAttacker.from, to: square),
-  );
-  var canRecapture = false;
-  var cheapestRecapture = 100;
-  for (final sq in Square.values) {
-    final piece = afterCapture.board.pieceAt(sq);
-    if (piece == null || piece.color != owner) continue;
-    final candidate = NormalMove(from: sq, to: square);
-    if (!afterCapture.isLegal(candidate)) continue;
-    canRecapture = true;
-    final v = _pieceValue(piece.role);
-    if (v < cheapestRecapture) cheapestRecapture = v;
-  }
-
-  // Material for owner if opponent takes (and we recapture once optimally).
-  final netForUs =
-      canRecapture
-          ? (-ourVal + cheapestAttacker.value)
-          : -ourVal;
-  // Require a real material hole (at least a full minor net, or free take).
-  if (!canRecapture) return true;
-  return netForUs <= -3;
-}
+}) => isNetHangingPiece(position, square: square, owner: owner);
 
 /// Multi-ply persistence: the idea survives several continuation plies.
 ///
@@ -1467,16 +1790,8 @@ bool _continuationEndsInMateFor(
   }
 }
 
-int _materialBalanceWhite(Position position) {
-  var score = 0;
-  for (final sq in Square.values) {
-    final piece = position.board.pieceAt(sq);
-    if (piece == null || piece.role == Role.king) continue;
-    final v = _pieceValue(piece.role);
-    score += piece.color == Side.white ? v : -v;
-  }
-  return score;
-}
+int _materialBalanceWhite(Position position) =>
+    reportMaterialBalanceWhite(position);
 
 bool isReportPieceSacrifice(
   String fen,
@@ -1525,13 +1840,7 @@ bool isSimpleReportRecapture(
   }
 }
 
-int _pieceValue(Role role) => switch (role) {
-  Role.pawn => 1,
-  Role.knight || Role.bishop => 3,
-  Role.rook => 5,
-  Role.queen => 9,
-  Role.king => 100,
-};
+int _pieceValue(Role role) => reportPieceValue(role);
 
 ({double white, double black}) computeGameReportAccuracy(
   List<double> winPercentages,

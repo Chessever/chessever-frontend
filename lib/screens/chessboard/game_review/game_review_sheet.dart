@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:math' as math;
 
+import 'package:chessever2/screens/chessboard/game_review/classification_style.dart';
 import 'package:chessever2/screens/chessboard/game_review/game_analysis_report.dart';
 import 'package:chessever2/screens/chessboard/game_review/game_review_provider.dart';
 import 'package:chessever2/screens/player_profile/player_profile_screen.dart';
@@ -1146,40 +1147,18 @@ class _ClassificationIcon extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
+    // The badge SVG already carries its own coloured disc — render it at size
+    // with no container fill or padding.
+    return SizedBox(
       width: size,
       height: size,
-      padding: EdgeInsets.all(size * 7 / 30),
-      decoration: BoxDecoration(
-        color: classificationColor(classification),
-        shape: BoxShape.circle,
+      child: SvgPicture.asset(
+        classificationIconAsset(classification),
+        fit: BoxFit.contain,
       ),
-      child: SvgPicture.asset(classificationIconAsset(classification)),
     );
   }
 }
-
-String classificationIconAsset(GameMoveClassification classification) =>
-    switch (classification) {
-      GameMoveClassification.brilliant => 'assets/svgs/brilliant.svg',
-      GameMoveClassification.goodMove => 'assets/svgs/good_move.svg',
-      GameMoveClassification.bestMove => 'assets/svgs/best_move.svg',
-      GameMoveClassification.missedWin => 'assets/svgs/missed_win.svg',
-      GameMoveClassification.inaccuracy => 'assets/svgs/inaccuracy.svg',
-      GameMoveClassification.mistake => 'assets/svgs/mistake.svg',
-      GameMoveClassification.blunder => 'assets/svgs/blunder.svg',
-    };
-
-Color classificationColor(GameMoveClassification classification) =>
-    switch (classification) {
-      GameMoveClassification.brilliant => const Color(0xFF177A68),
-      GameMoveClassification.goodMove => const Color(0xFF177A68),
-      GameMoveClassification.bestMove => const Color(0xFF28833A),
-      GameMoveClassification.missedWin => const Color(0xFF8F1E1E),
-      GameMoveClassification.inaccuracy => const Color(0xFFFABE46),
-      GameMoveClassification.mistake => const Color(0xFFC55A1E),
-      GameMoveClassification.blunder => const Color(0xFFC9342E),
-    };
 
 class _EvaluationGraph extends StatelessWidget {
   const _EvaluationGraph({

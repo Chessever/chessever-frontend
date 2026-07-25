@@ -912,6 +912,7 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
                     child: BookSavedGameCard(
                       analysis: analysis,
                       tagCounts: folderTagCounts,
+                      readOnly: true,
                       onTap: () async {
                         await loadSavedAnalysisWithSwiping(
                           context,
@@ -936,6 +937,10 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
                     child: BookSavedGameCard(
                       analysis: analysis,
                       tagCounts: folderTagCounts,
+                      onDelete: () => _removeAnalysis(analysis),
+                      onChanged: () {
+                        if (mounted) unawaited(_refreshCurrentBook());
+                      },
                       onTap: () async {
                         await loadSavedAnalysisWithSwiping(
                           context,

@@ -2,6 +2,7 @@ import 'package:chessever2/repository/library/models/saved_analysis.dart';
 import 'package:chessever2/repository/library/library_game_event.dart';
 import 'package:chessever2/screens/library/utils/load_saved_analysis.dart';
 import 'package:chessever2/screens/library/widgets/library_game_card.dart';
+import 'package:chessever2/screens/library/widgets/saved_game_actions.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/screens/chessboard/analysis/chess_game.dart';
 import 'package:flutter/material.dart';
@@ -12,6 +13,9 @@ class BookSavedGameCard extends StatelessWidget {
     required this.analysis,
     this.onTap,
     this.tagCounts,
+    this.onDelete,
+    this.onChanged,
+    this.readOnly = false,
   });
 
   final SavedAnalysis analysis;
@@ -22,8 +26,45 @@ class BookSavedGameCard extends StatelessWidget {
   /// surfaces leftmost.
   final Map<String, int>? tagCounts;
 
+  /// Host's remove handler (it owns the undo snack and the list refresh).
+  /// When null the long-press menu hides its destructive row.
+  final Future<void> Function()? onDelete;
+
+  /// Called after an action that can change this game (edit, move) so the
+  /// enclosing list can reload.
+  final VoidCallback? onChanged;
+
+  /// Games inside a subscribed database are not owned by this user, so the
+  /// menu drops everything that would write.
+  final bool readOnly;
+
   @override
   Widget build(BuildContext context) {
+    void open() {
+      final handler = onTap;
+      if (handler != null) {
+        handler();
+      } else {
+        loadSavedAnalysis(context, analysis);
+      }
+    }
+
+    return _card(
+      context,
+      onLongPress:
+          () => showSavedGameActions(
+            context: context,
+            analysis: analysis,
+            onOpen: open,
+            previewBuilder: (previewContext) => _card(previewContext),
+            onDelete: onDelete,
+            onChanged: onChanged,
+            readOnly: readOnly,
+          ),
+    );
+  }
+
+  Widget _card(BuildContext context, {VoidCallback? onLongPress}) {
     final game = _bookAnalysisToGamesTourModel(analysis);
     final eventName = _eventNameFromMetadata(
       analysis.chessGame.metadata,
@@ -38,6 +79,7 @@ class BookSavedGameCard extends StatelessWidget {
       reserveTagSlot: true,
       tagCounts: tagCounts,
       onTap: onTap ?? () => loadSavedAnalysis(context, analysis),
+      onLongPress: onLongPress,
     );
   }
 

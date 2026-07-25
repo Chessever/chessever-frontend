@@ -1,4 +1,7 @@
-<svg width="28" height="28" viewBox="0 0 28 28" fill="none" xmlns="http://www.w3.org/2000/svg">
-  <path d="M14 2.5L18.25 6.75L15.85 9.15L13.7 7L10.5 10.2L17.8 17.5L21 14.3L18.85 12.15L21.25 9.75L25.5 14L17.8 21.7L14 17.9L10.2 21.7L2.5 14L6.75 9.75L9.15 12.15L7 14.3L10.2 17.5L17.5 10.2L14.3 7L12.15 9.15L9.75 6.75L14 2.5Z" fill="white"/>
-  <circle cx="14" cy="14" r="2.25" fill="white"/>
+<svg width="58" height="58" viewBox="0 0 57.6 57.6" fill="none" xmlns="http://www.w3.org/2000/svg">
+<rect width="57.6" height="57.6" rx="28.8" fill="#4E5B4F"/>
+<g transform="translate(12.14 14.4) scale(1.19)">
+<path d="M14 2.5L18.25 6.75L15.85 9.15L13.7 7L10.5 10.2L17.8 17.5L21 14.3L18.85 12.15L21.25 9.75L25.5 14L17.8 21.7L14 17.9L10.2 21.7L2.5 14L6.75 9.75L9.15 12.15L7 14.3L10.2 17.5L17.5 10.2L14.3 7L12.15 9.15L9.75 6.75L14 2.5Z" fill="white"/>
+<circle cx="14" cy="14" r="2.25" fill="white"/>
+</g>
 </svg>
