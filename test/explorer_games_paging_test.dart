@@ -206,4 +206,80 @@ void main() {
     await tester.pumpAndSettle();
     expect(controller.offset, closeTo(anchor, 0.5));
   });
+
+  // The strip is a plain Column, so nothing unmounts the cards the reader
+  // cannot see. This window is what stops ten cards rating ten positions.
+  group('eval window', () {
+    const anchor = 200.0;
+    const cardHeight = 200.0;
+    const pageExtent = 208.0; // card + 8pt gap
+    // Card tops: 0 → 200, 1 → 408, 2 → 616, 3 → 824.
+
+    ExplorerGamesEvalWindow windowAt(
+      double pixels, {
+      double viewportHeight = 260,
+      int cardCount = 4,
+      bool settled = true,
+      double? anchorOverride = anchor,
+    }) => resolveExplorerGamesEvalWindow(
+      anchor: anchorOverride,
+      pixels: pixels,
+      viewportHeight: viewportHeight,
+      pageExtent: pageExtent,
+      cardHeight: cardHeight,
+      cardCount: cardCount,
+      settled: settled,
+    );
+
+    test('a resting page evaluates that card alone', () {
+      expect(
+        windowAt(anchor),
+        const ExplorerGamesEvalWindow(first: 0, last: 0, settled: true),
+      );
+      expect(
+        windowAt(anchor + pageExtent),
+        const ExplorerGamesEvalWindow(first: 1, last: 1, settled: true),
+      );
+    });
+
+    test('the sliver of the next card peeking in does not evaluate', () {
+      // Card 1 shows 52 of its 200pt under the resting card 0.
+      expect(windowAt(anchor).contains(1), isFalse);
+    });
+
+    test('a taller panel evaluates every card it really shows', () {
+      // 500pt of viewport: cards 0 and 1 whole, 84pt of card 2.
+      expect(
+        windowAt(anchor, viewportHeight: 500),
+        const ExplorerGamesEvalWindow(first: 0, last: 1, settled: true),
+      );
+    });
+
+    test('nothing evaluates while the reader is up in the move table', () {
+      // The first card peeks 60pt above the bottom edge — not worth an engine.
+      expect(windowAt(0).isEmpty, isTrue);
+      expect(windowAt(0), const ExplorerGamesEvalWindow.none());
+    });
+
+    test('a panel shorter than half a card still rates the card it shows', () {
+      final window = windowAt(anchor + 20, viewportHeight: 80);
+      expect(window.contains(0), isTrue);
+    });
+
+    test('the window never runs past the cards that exist', () {
+      final window = windowAt(anchor, viewportHeight: 5000, cardCount: 3);
+      expect(window.last, 2);
+    });
+
+    test('no strip, no window', () {
+      expect(windowAt(anchor, anchorOverride: null).isEmpty, isTrue);
+      expect(windowAt(anchor, cardCount: 0).isEmpty, isTrue);
+    });
+
+    test('mid-scroll the window still resolves, but unsettled', () {
+      final window = windowAt(anchor, settled: false);
+      expect(window.contains(0), isTrue);
+      expect(window.settled, isFalse);
+    });
+  });
 }

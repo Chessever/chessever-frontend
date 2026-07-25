@@ -23,6 +23,7 @@ import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrap
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrapper/grid_game_card_wrapper_widget.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
+import 'package:chessever2/widgets/app_snack.dart';
 import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/scroll_cache.dart';
@@ -434,35 +435,17 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
           ..clear()
           ..addAll(allFilteredIds);
       });
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            'Selected ${allFilteredIds.length} filtered games',
-            style: AppTypography.textSmMedium.copyWith(
-              color: context.colors.textPrimary,
-            ),
-          ),
-          backgroundColor: context.colors.surface.withValues(alpha: 0.95),
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
+      showAppSnack(context, 'Selected ${allFilteredIds.length} filtered games');
     } catch (e, st) {
       talker.handle(e, st);
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            userFacingError(
-              e,
-              fallback: 'Could not select all games. Please try again.',
-            ),
-            style: AppTypography.textSmMedium.copyWith(
-              color: context.colors.textPrimary,
-            ),
+      showAppSnack(
+        context,
+        userFacingError(
+          e,
+          fallback: 'Could not select all games. Please try again.',
           ),
-          backgroundColor: kRedColor,
-          behavior: SnackBarBehavior.floating,
-        ),
+        tone: AppSnackTone.danger,
       );
     } finally {
       if (mounted) {
@@ -488,18 +471,7 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
         .toList(growable: false);
 
     if (selectedGames.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            'Select at least one game',
-            style: AppTypography.textSmMedium.copyWith(
-              color: context.colors.textPrimary,
-            ),
-          ),
-          backgroundColor: context.colors.surface.withValues(alpha: 0.95),
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
+      showAppSnack(context, 'Select at least one game');
       return;
     }
 

@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:chessever2/e2e/e2e_ids.dart';
+import 'package:chessever2/widgets/app_snack.dart';
 import 'package:in_app_review/in_app_review.dart';
 import 'package:chessever2/providers/app_version_provider.dart';
 import 'package:chessever2/providers/auth_state_provider.dart';
@@ -101,18 +102,10 @@ class HamburgerMenu extends HookConsumerWidget {
               logarteTapCount.value = 0;
               if (logarte.isOverlayAttached) {
                 logarte.detachOverlay();
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('Logarte Debug Console Disabled'),
-                  ),
-                );
+                showAppSnack(context, 'Logarte Debug Console Disabled');
               } else {
                 logarte.attach(context: context, visible: true);
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('Logarte Debug Console Enabled'),
-                  ),
-                );
+                showAppSnack(context, 'Logarte Debug Console Enabled');
               }
             }
           },
@@ -585,18 +578,12 @@ class _RestorePurchasesRow extends ConsumerWidget {
             await ref.read(subscriptionProvider.notifier).restorePurchases();
 
         if (context.mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(
-                success
-                    ? 'Purchases restored successfully!'
-                    : 'No purchases found to restore',
-              ),
-              backgroundColor:
-                  success
-                      ? context.colors.successStrong
-                      : context.colors.surfaceRecessed,
-            ),
+          showAppSnack(
+            context,
+            success
+                ? 'Purchases restored'
+                : 'No purchases found to restore',
+            tone: success ? AppSnackTone.success : AppSnackTone.neutral,
           );
         }
       },

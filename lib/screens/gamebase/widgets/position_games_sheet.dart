@@ -1,4 +1,5 @@
 import 'package:chessever2/repository/gamebase/gamebase_repository.dart';
+import 'package:chessever2/widgets/app_snack.dart';
 import 'package:dartchess/dartchess.dart';
 import 'package:chessever2/screens/chessboard/chess_board_screen_new.dart';
 import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
@@ -733,9 +734,11 @@ Future<void> openGamebaseGame(
     if (!context.mounted) return;
     Navigator.of(context).pop(); // loading
     // Keep errors non-fatal; user can continue exploring.
-    ScaffoldMessenger.of(
+    showAppSnack(
       context,
-    ).showSnackBar(const SnackBar(content: Text('Failed to open game')));
+      'Failed to open game',
+      tone: AppSnackTone.danger,
+    );
   }
 }
 

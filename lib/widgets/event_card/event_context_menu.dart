@@ -3,11 +3,11 @@ import 'package:chessever2/repository/supabase/group_broadcast/group_tour_reposi
 import 'package:chessever2/screens/group_event/model/tour_event_card_model.dart';
 import 'package:chessever2/services/analytics/analytics_service.dart';
 import 'package:chessever2/theme/app_colors.dart';
-import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/pgn_link_rebrand.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/tablet_safe_menu.dart';
+import 'package:chessever2/widgets/app_snack.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -202,8 +202,6 @@ Future<void> _copyEventPgn({
   required GroupEventCardModel model,
 }) async {
   final messenger = ScaffoldMessenger.of(context);
-  final textColor = context.colors.textPrimary;
-  final bgColor = context.colors.surface.withValues(alpha: 0.95);
 
   try {
     final tourIds = await ref
@@ -211,7 +209,7 @@ Future<void> _copyEventPgn({
         .getTourIdsForGroupBroadcast(model.id);
 
     if (tourIds.isEmpty) {
-      _showPgnSnackBar(messenger, 'No games to copy', textColor, bgColor);
+      showAppSnackOn(messenger, 'No games to copy');
       return;
     }
 
@@ -242,7 +240,7 @@ Future<void> _copyEventPgn({
     }
 
     if (copied == 0) {
-      _showPgnSnackBar(messenger, 'No games to copy', textColor, bgColor);
+      showAppSnackOn(messenger, 'No games to copy');
       return;
     }
 
@@ -258,33 +256,17 @@ Future<void> _copyEventPgn({
       },
     );
 
-    _showPgnSnackBar(
+    showAppSnackOn(
       messenger,
       copied == 1 ? 'PGN copied' : '$copied PGNs copied',
-      textColor,
-      bgColor,
     );
   } catch (_) {
-    _showPgnSnackBar(messenger, 'Failed to copy PGN', textColor, bgColor);
+    showAppSnackOn(
+      messenger,
+      'Failed to copy PGN',
+      tone: AppSnackTone.danger,
+    );
   }
-}
-
-void _showPgnSnackBar(
-  ScaffoldMessengerState messenger,
-  String message,
-  Color textColor,
-  Color bgColor,
-) {
-  messenger.showSnackBar(
-    SnackBar(
-      content: Text(
-        message,
-        style: AppTypography.textSmMedium.copyWith(color: textColor),
-      ),
-      backgroundColor: bgColor,
-      behavior: SnackBarBehavior.floating,
-    ),
-  );
 }
 
 class _EventMenuRow extends StatelessWidget {

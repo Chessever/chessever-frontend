@@ -11,6 +11,7 @@ import 'package:chessever2/utils/logger/logger.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/user_error_message.dart';
 import 'package:chessever2/widgets/alert_dialog/alert_modal.dart';
+import 'package:chessever2/widgets/app_snack.dart';
 import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -111,12 +112,10 @@ Future<void> openMiniatureGame({
     talker.handle(e, st);
     if (!context.mounted) return;
     navigator.pop(); // loading
-    messenger.showSnackBar(
-      SnackBar(
-        content: Text(
-          userFacingError(e, fallback: 'Could not open this game.'),
-        ),
-      ),
+    showAppSnackOn(
+      messenger,
+      userFacingError(e, fallback: 'Could not open this game.'),
+      tone: AppSnackTone.danger,
     );
   }
 }

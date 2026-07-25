@@ -6,6 +6,7 @@ import 'dart:ui';
 import 'package:chessever2/e2e/e2e_ids.dart';
 import 'package:chessever2/providers/for_you_games_provider.dart';
 import 'package:chessever2/screens/standings/score_card_screen.dart';
+import 'package:chessever2/widgets/app_snack.dart';
 import 'package:skeletonizer/skeletonizer.dart';
 import 'package:chessever2/providers/board_settings_provider_new.dart';
 import 'package:chessever2/screens/chessboard/analysis/chess_game.dart';
@@ -3826,12 +3827,9 @@ class _AppBarState extends ConsumerState<_AppBar> {
     final boardState = ref.read(chessBoardScreenProviderNew(params));
 
     if (!boardState.hasValue || boardState.value == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Please wait for the game to load'),
-          backgroundColor: Colors.orange,
-          behavior: SnackBarBehavior.floating,
-        ),
+      showAppSnack(
+        context,
+        'Please wait for the game to load',
       );
       return;
     }
@@ -3934,51 +3932,19 @@ class _AppBarState extends ConsumerState<_AppBar> {
       final resolved = await _resolveAppBarShareData();
       if (resolved.pgn.trim().isEmpty) {
         if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              'No PGN available for this game',
-              style: AppTypography.textSmMedium.copyWith(
-                color: context.colors.textPrimary,
-              ),
-            ),
-            backgroundColor: context.colors.surface.withValues(alpha: 0.95),
-            behavior: SnackBarBehavior.floating,
-            duration: const Duration(seconds: 2),
-          ),
-        );
+        showAppSnack(context, 'No PGN available for this game');
         return;
       }
       await Clipboard.setData(ClipboardData(text: resolved.pgn));
       HapticFeedback.lightImpact();
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            'PGN copied to clipboard',
-            style: AppTypography.textSmMedium.copyWith(
-              color: context.colors.textPrimary,
-            ),
-          ),
-          backgroundColor: context.colors.surface.withValues(alpha: 0.95),
-          behavior: SnackBarBehavior.floating,
-          duration: const Duration(seconds: 2),
-        ),
-      );
+      showAppSnack(context, 'PGN copied to clipboard');
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            'Failed to copy PGN',
-            style: AppTypography.textSmMedium.copyWith(
-              color: context.colors.textPrimary,
-            ),
-          ),
-          backgroundColor: context.colors.surface.withValues(alpha: 0.95),
-          behavior: SnackBarBehavior.floating,
-          duration: const Duration(seconds: 2),
-        ),
+      showAppSnack(
+        context,
+        'Failed to copy PGN',
+        tone: AppSnackTone.danger,
       );
     }
   }
@@ -4002,18 +3968,10 @@ class _AppBarState extends ConsumerState<_AppBar> {
       );
     } catch (_) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            'Failed to prepare game share',
-            style: AppTypography.textSmMedium.copyWith(
-              color: context.colors.textPrimary,
-            ),
-          ),
-          backgroundColor: context.colors.surface.withValues(alpha: 0.95),
-          behavior: SnackBarBehavior.floating,
-          duration: const Duration(seconds: 2),
-        ),
+      showAppSnack(
+        context,
+        'Failed to prepare game share',
+        tone: AppSnackTone.danger,
       );
     }
   }
@@ -4338,12 +4296,9 @@ class _AppBarState extends ConsumerState<_AppBar> {
                       );
 
                       if (!hasCustomAnalysis) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            content: Text('No custom analysis to clear'),
-                            backgroundColor: Colors.orange,
-                            behavior: SnackBarBehavior.floating,
-                          ),
+                        showAppSnack(
+                          context,
+                          'No custom analysis to clear',
                         );
                         return;
                       }
@@ -4465,12 +4420,9 @@ class _AppBarState extends ConsumerState<_AppBar> {
                       );
 
                       if (!hasCustomAnalysis) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            content: Text('No custom analysis to clear'),
-                            backgroundColor: Colors.orange,
-                            behavior: SnackBarBehavior.floating,
-                          ),
+                        showAppSnack(
+                          context,
+                          'No custom analysis to clear',
                         );
                         return;
                       }
@@ -10386,9 +10338,11 @@ class _FenPositionGamesTableState
     } catch (_) {
       if (!mounted) return;
       Navigator.of(context).pop();
-      ScaffoldMessenger.of(
+      showAppSnack(
         context,
-      ).showSnackBar(const SnackBar(content: Text('Failed to open game')));
+        'Failed to open game',
+        tone: AppSnackTone.danger,
+      );
     }
   }
 
@@ -13614,108 +13568,21 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
     ChessGameNavigatorState snapshot,
     String message,
   ) {
-    final messenger = ScaffoldMessenger.of(context);
-    messenger.hideCurrentSnackBar();
-    messenger.showSnackBar(
-      SnackBar(
-        duration: const Duration(seconds: 4),
-        behavior: SnackBarBehavior.floating,
-        backgroundColor: context.colors.surface.withValues(alpha: 0.95),
-        elevation: 2,
-        margin: EdgeInsets.symmetric(horizontal: 16.w, vertical: 20.h),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(12.sp),
-          side: BorderSide(
-            color: context.colors.textPrimary.withValues(alpha: 0.1),
-            width: 1,
-          ),
-        ),
-        content: Row(
-          children: [
-            Container(
-              padding: EdgeInsets.all(8.sp),
-              decoration: BoxDecoration(
-                color: kRedColor.withValues(alpha: 0.15),
-                borderRadius: BorderRadius.circular(8.sp),
-              ),
-              child: Icon(Icons.delete_outline, color: kRedColor, size: 18.ic),
-            ),
-            SizedBox(width: 12.w),
-            Expanded(
-              child: Text(
-                message,
-                style: AppTypography.textSmMedium.copyWith(
-                  color: context.colors.textPrimary,
-                ),
-              ),
-            ),
-            TextButton(
-              onPressed: () {
-                ref
-                    .read(chessBoardScreenProviderNew(params).notifier)
-                    .restoreNavigatorState(snapshot);
-                messenger.hideCurrentSnackBar();
-              },
-              style: TextButton.styleFrom(
-                foregroundColor: kPrimaryColor,
-                padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 8.h),
-                minimumSize: Size.zero,
-                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-              ),
-              child: Text(
-                'UNDO',
-                style: AppTypography.textSmBold.copyWith(color: kPrimaryColor),
-              ),
-            ),
-          ],
-        ),
-      ),
+    showAppSnack(
+      context,
+      message,
+      tone: AppSnackTone.danger,
+      actionLabel: 'Undo',
+      onAction: () {
+        ref
+            .read(chessBoardScreenProviderNew(params).notifier)
+            .restoreNavigatorState(snapshot);
+      },
     );
   }
 
   void _showInfoSnack(BuildContext context, String message) {
-    final messenger = ScaffoldMessenger.of(context);
-    messenger.hideCurrentSnackBar();
-    messenger.showSnackBar(
-      SnackBar(
-        behavior: SnackBarBehavior.floating,
-        backgroundColor: context.colors.surface.withValues(alpha: 0.95),
-        elevation: 0,
-        duration: const Duration(seconds: 2),
-        margin: EdgeInsets.symmetric(horizontal: 20.w, vertical: 16.h),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(18.sp),
-          side: BorderSide(
-            color: context.colors.textPrimary.withValues(alpha: 0.08),
-          ),
-        ),
-        content: Row(
-          children: [
-            Container(
-              padding: EdgeInsets.all(6.sp),
-              decoration: BoxDecoration(
-                color: kPrimaryColor.withValues(alpha: 0.2),
-                borderRadius: BorderRadius.circular(10.sp),
-              ),
-              child: Icon(
-                Icons.info_outline,
-                size: 16.ic,
-                color: kPrimaryColor,
-              ),
-            ),
-            SizedBox(width: 12.w),
-            Expanded(
-              child: Text(
-                message,
-                style: AppTypography.textSmMedium.copyWith(
-                  color: context.colors.textPrimary,
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
+    showAppSnack(context, message);
   }
 }
 

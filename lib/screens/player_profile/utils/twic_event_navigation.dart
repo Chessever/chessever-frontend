@@ -4,6 +4,7 @@ import 'package:chessever2/screens/player_profile/player_profile_data_source.dar
 import 'package:chessever2/screens/player_profile/utils/twic_event_identity.dart';
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_mode_provider.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
+import 'package:chessever2/widgets/app_snack.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
@@ -58,9 +59,11 @@ Future<void> openProfileEvent({
   if (dataSource != PlayerProfileDataSource.twic) {
     if (!await openBroadcastById(tourId)) {
       if (!context.mounted) return;
-      ScaffoldMessenger.of(
+      showAppSnack(
         context,
-      ).showSnackBar(const SnackBar(content: Text('Unable to open event')));
+        'Unable to open event',
+        tone: AppSnackTone.danger,
+      );
     }
     return;
   }

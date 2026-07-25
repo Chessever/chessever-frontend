@@ -3,6 +3,7 @@ import 'package:chessever2/screens/standings/widget/player_dropdown.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/utils/favorite_constants.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/widgets/app_snack.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:chessever2/utils/svg_asset.dart';
@@ -95,11 +96,10 @@ class _ScoreboardAppbarState extends ConsumerState<ScoreboardAppbar>
       } catch (e) {
         debugPrint('Error toggling favorite: $e');
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Failed to update favorite. Please try again.'),
-              duration: Duration(seconds: 2),
-            ),
+          showAppSnack(
+            context,
+            'Failed to update favorite. Please try again.',
+            tone: AppSnackTone.danger,
           );
         }
       }

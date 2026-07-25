@@ -3,9 +3,7 @@ import 'dart:io';
 
 import 'package:chessever2/repository/sqlite/app_database.dart';
 import 'package:chessever2/services/telegram_notification_service.dart';
-import 'package:chessever2/theme/app_colors.dart';
-import 'package:chessever2/theme/app_theme.dart';
-import 'package:chessever2/utils/app_typography.dart';
+import 'package:chessever2/widgets/app_snack.dart';
 import 'package:chessever2/widgets/review_prompt/review_prompt_dialogs.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -297,16 +295,9 @@ class ReviewPromptService {
 
   void _showThanksSnackBar(BuildContext context) {
     if (!context.mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          'ChessEver grows and improves with your feedback. Thank you!',
-          style: AppTypography.textSmMedium.copyWith(color: context.colors.textPrimary),
-        ),
-        backgroundColor: context.colors.surface.withValues(alpha: 0.95),
-        behavior: SnackBarBehavior.floating,
-        duration: const Duration(seconds: 3),
-      ),
+    showAppSnack(
+      context,
+      'ChessEver grows and improves with your feedback. Thank you!',
     );
   }
 }

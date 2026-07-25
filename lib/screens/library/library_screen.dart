@@ -25,6 +25,7 @@ import 'package:chessever2/utils/logger/logger.dart';
 import 'package:chessever2/utils/pgn_multi_parser.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/user_error_message.dart';
+import 'package:chessever2/widgets/app_snack.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:chessever2/utils/svg_asset.dart';
 import 'package:chessever2/widgets/svg_widget.dart';
@@ -136,15 +137,10 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
       } catch (e2, st2) {
         talker.handle(e2, st2);
         if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              userFacingError(e2, fallback: 'Could not open the file picker. Please try again.'),
-              style: TextStyle(color: context.colors.textPrimary),
-            ),
-            backgroundColor: kRedColor.withValues(alpha: 0.9),
-            behavior: SnackBarBehavior.floating,
-          ),
+        showAppSnack(
+          context,
+          userFacingError(e2, fallback: 'Could not open the file picker. Please try again.'),
+          tone: AppSnackTone.danger,
         );
         return;
       }
@@ -165,31 +161,17 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
     final text = clipboard?.text?.trim();
     if (text == null || text.isEmpty) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            'Clipboard is empty. Copy a PGN first.',
-            style: TextStyle(color: context.colors.textPrimary),
-          ),
-          backgroundColor: context.colors.surface.withValues(alpha: 0.95),
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
+      showAppSnack(context, 'Clipboard is empty. Copy a PGN first.');
       return;
     }
 
     final parsed = parsePgnsToChessGames(text);
     if (parsed.isEmpty) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            'Clipboard does not contain a valid PGN',
-            style: TextStyle(color: context.colors.textPrimary),
-          ),
-          backgroundColor: kRedColor.withValues(alpha: 0.9),
-          behavior: SnackBarBehavior.floating,
-        ),
+      showAppSnack(
+        context,
+        'Clipboard does not contain a valid PGN',
+        tone: AppSnackTone.danger,
       );
       return;
     }
@@ -242,15 +224,9 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
 
       if (mounted) {
         HapticFeedback.mediumImpact();
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              '${data.nodeType == LibraryFolder.nodeTypeFolder ? 'Folder' : 'Database'} "${data.name}" created',
-              style: TextStyle(color: context.colors.textPrimary),
-            ),
-            backgroundColor: context.colors.surface.withValues(alpha: 0.95),
-            behavior: SnackBarBehavior.floating,
-          ),
+        showAppSnack(
+          context,
+          '${data.nodeType == LibraryFolder.nodeTypeFolder ? 'Folder' : 'Database'} "${data.name}" created',
         );
 
         // Redirect to the book games list view after creation.
@@ -267,15 +243,10 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
       talker.handle(e, st);
       if (mounted) {
         HapticFeedback.lightImpact();
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              userFacingError(e, fallback: 'Could not create this item. Please try again.'),
-              style: TextStyle(color: context.colors.textPrimary),
-            ),
-            backgroundColor: kRedColor,
-            behavior: SnackBarBehavior.floating,
-          ),
+        showAppSnack(
+          context,
+          userFacingError(e, fallback: 'Could not create this item. Please try again.'),
+          tone: AppSnackTone.danger,
         );
       }
     }

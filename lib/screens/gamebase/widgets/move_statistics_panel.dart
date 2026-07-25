@@ -441,6 +441,24 @@ class MoveStatisticsPanel extends HookConsumerWidget {
     );
     final gamesCardCount = useRef(0);
 
+    // ── Which game cards may evaluate ──────────────────────────────────────
+    // The strip is a plain Column, so nothing disposes the cards the reader
+    // cannot see. This window does that job: the panel measures it, each card
+    // listens, and only the ones on screen rate their position. A notifier
+    // rather than state — a scroll must not rebuild the whole move list.
+    final evalWindow = useMemoized(
+      () => ValueNotifier(const ExplorerGamesEvalWindow.none()),
+    );
+    useEffect(() => evalWindow.dispose, [evalWindow]);
+    final listSettled = useRef(true);
+    // Card height when the strip is not paging (standalone explorer, tablet
+    // landscape): the cards fall back to the preferred board edge, so their
+    // geometry is still constant and the window still resolvable.
+    final fallbackCardHeight = ExplorerGameCardGeometry.cardHeight(
+      ExplorerGameCardGeometry.preferredBoardSize,
+      MediaQuery.textScalerOf(context),
+    );
+
     /// Pulls the resting offset back onto the page grid.
     ///
     /// The physics already quantise a normal settle; this covers everything
@@ -472,16 +490,39 @@ class MoveStatisticsPanel extends HookConsumerWidget {
       );
     }
 
+    /// Republishes the on-screen window from the live scroll offset.
+    ///
+    /// Uses the same anchor the page grid rests on, so "which card is under the
+    /// player row" and "which card evaluates" can never disagree.
+    void publishEvalWindow(double? anchor) {
+      final metrics = pageMetrics;
+      final cardHeight = metrics?.cardHeight ?? fallbackCardHeight;
+      final pageExtent =
+          metrics?.pageExtent ?? cardHeight + ExplorerGameCardGeometry.gap;
+      final position =
+          scrollController.hasClients ? scrollController.position : null;
+      evalWindow.value = resolveExplorerGamesEvalWindow(
+        anchor: anchor,
+        pixels: position?.pixels ?? 0,
+        viewportHeight: position?.viewportDimension ?? 0,
+        pageExtent: pageExtent,
+        cardHeight: cardHeight,
+        cardCount: gamesCardCount.value,
+        settled: listSettled.value,
+      );
+    }
+
     void syncGamesGrid() {
       final metrics = pageMetrics;
+      // Measured for both jobs at once: the grid needs it only while paging,
+      // the eval window needs it in every host.
+      final anchor = _measureExplorerGamesAnchor(gamesSectionKey);
       final changed = snapConfig.update(
-        anchor:
-            metrics == null
-                ? null
-                : _measureExplorerGamesAnchor(gamesSectionKey),
+        anchor: metrics == null ? null : anchor,
         pageExtent: metrics?.pageExtent ?? 0,
         pageCount: metrics == null ? 0 : gamesCardCount.value,
       );
+      publishEvalWindow(anchor);
       if (changed) alignToNearestPage();
     }
 
@@ -791,6 +832,15 @@ class MoveStatisticsPanel extends HookConsumerWidget {
                     if (notification.metrics.axis != Axis.vertical) {
                       return false;
                     }
+                    // Engine jobs wait for a standstill: a card crossing the
+                    // viewport mid-fling would only take the next one's turn.
+                    final wasSettled = listSettled.value;
+                    if (notification is ScrollStartNotification) {
+                      listSettled.value = false;
+                    } else if (notification is ScrollEndNotification) {
+                      listSettled.value = true;
+                    }
+                    if (listSettled.value != wasSettled) syncHeaderMode();
                     if (notification is ScrollUpdateNotification ||
                         notification is ScrollEndNotification ||
                         notification is OverscrollNotification) {
@@ -852,6 +902,7 @@ class MoveStatisticsPanel extends HookConsumerWidget {
                         showInlineGames: showInlineGames,
                         gamesBoardSize: pageMetrics?.boardSize,
                         onGamesCardCountChanged: onGamesCardCountChanged,
+                        gamesEvalWindow: evalWindow,
                       ),
                     ),
                   );
@@ -898,6 +949,7 @@ class MoveStatisticsPanel extends HookConsumerWidget {
     GlobalKey? gamesSectionKey,
     double? gamesBoardSize,
     ValueChanged<int>? onGamesCardCountChanged,
+    ValueListenable<ExplorerGamesEvalWindow>? gamesEvalWindow,
   }) {
     Widget divider() =>
         Divider(color: context.colors.divider, height: 1, indent: 12.sp);
@@ -972,6 +1024,7 @@ class MoveStatisticsPanel extends HookConsumerWidget {
             filters: state.filters,
             boardSize: gamesBoardSize,
             onCardCountChanged: onGamesCardCountChanged,
+            evalWindow: gamesEvalWindow,
           ),
         ),
       );

@@ -20,6 +20,7 @@ import 'package:chessever2/utils/logger/logger.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/save_to_library_guard.dart';
 import 'package:chessever2/utils/user_error_message.dart';
+import 'package:chessever2/widgets/app_snack.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
@@ -812,46 +813,14 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
         });
 
         // Show success feedback
-        ScaffoldMessenger.of(widget.config.hostContext).showSnackBar(
-          SnackBar(
-            duration: const Duration(seconds: 2),
-            behavior: SnackBarBehavior.floating,
-            backgroundColor: context.colors.surface.withValues(alpha: 0.95),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12.br),
-            ),
-            content: Row(
-              children: [
-                Container(
-                  padding: EdgeInsets.all(6.sp),
-                  decoration: BoxDecoration(
-                    color: kPrimaryColor.withValues(alpha: 0.2),
-                    borderRadius: BorderRadius.circular(8.br),
-                  ),
-                  child: Icon(
-                    Icons.check_rounded,
-                    color: kPrimaryColor,
-                    size: 16.sp,
-                  ),
-                ),
-                SizedBox(width: 12.w),
-                Expanded(
-                  child: Text(
-                    _isDuplicateMode
-                        ? 'Saved a copy'
-                        : (saveSeparateFromLiked
-                            ? 'Saved to database'
-                            : (_isEditMode
-                                ? 'Game updated'
-                                : 'Analysis saved successfully')),
-                    style: AppTypography.textSmMedium.copyWith(
-                      color: context.colors.textPrimary,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
+        showAppSnack(
+          widget.config.hostContext,
+          _isDuplicateMode
+          ? 'Saved a copy'
+          : (saveSeparateFromLiked
+            ? 'Saved to database'
+            : (_isEditMode ? 'Game updated' : 'Analysis saved')),
+          tone: AppSnackTone.success,
         );
 
         // Close the sheet. Prefer the host navigator (which owns the route
@@ -1096,22 +1065,7 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
         _isSaving = false;
       });
 
-      messenger.showSnackBar(
-        SnackBar(
-          duration: const Duration(seconds: 2),
-          behavior: SnackBarBehavior.floating,
-          backgroundColor: context.colors.surface.withValues(alpha: 0.95),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12.br),
-          ),
-          content: Text(
-            'Removed from ${folder.displayName}',
-            style: AppTypography.textSmMedium.copyWith(
-              color: context.colors.textPrimary,
-            ),
-          ),
-        ),
-      );
+      showAppSnackOn(messenger, 'Removed from ${folder.displayName}');
     } catch (e) {
       if (!mounted) return;
       setState(() {

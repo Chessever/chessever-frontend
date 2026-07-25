@@ -1,7 +1,12 @@
+import 'dart:async';
+
 import 'package:chessever2/providers/board_settings_provider_new.dart';
+import 'package:chessever2/providers/engine_settings_provider.dart';
 import 'package:chessever2/repository/gamebase/gamebase_repository.dart';
 import 'package:chessever2/revenue_cat_service/subscribe_state.dart';
 import 'package:chessever2/screens/chessboard/widgets/chess_board_from_fen_new.dart';
+import 'package:chessever2/screens/chessboard/widgets/evaluation_bar_widget.dart';
+import 'package:chessever2/screens/chessboard/widgets/player_first_row_detail_widget.dart';
 import 'package:chessever2/screens/gamebase/providers/explorer_game_focus_provider.dart';
 import 'package:chessever2/screens/gamebase/providers/gamebase_explorer_state.dart';
 import 'package:chessever2/screens/gamebase/providers/gamebase_providers.dart';
@@ -36,6 +41,7 @@ class ExplorerGamesSection extends ConsumerStatefulWidget {
     required this.filters,
     this.boardSize,
     this.onCardCountChanged,
+    this.evalWindow,
   });
 
   /// Current explored position (the continuation anchor).
@@ -54,6 +60,12 @@ class ExplorerGamesSection extends ConsumerStatefulWidget {
   /// Reports how many cards are actually rendered, so the hosting panel can
   /// size its page grid to the strip rather than to the requested count.
   final ValueChanged<int>? onCardCountChanged;
+
+  /// Which cards the reader can see, kept measured by the hosting panel. Only
+  /// those cards evaluate their position; the rest reserve the bar's width and
+  /// draw nothing. Null means no host is tracking visibility, so no card
+  /// evaluates — the bar slot is reserved and left empty.
+  final ValueListenable<ExplorerGamesEvalWindow>? evalWindow;
 
   @override
   ConsumerState<ExplorerGamesSection> createState() =>
@@ -254,6 +266,7 @@ class _ExplorerGamesSectionState extends ConsumerState<ExplorerGamesSection> {
                       allGames: games,
                       index: i,
                       boardSize: widget.boardSize,
+                      evalWindow: widget.evalWindow,
                     ),
                   ),
               ],
@@ -393,6 +406,7 @@ class ExplorerGameCard extends ConsumerStatefulWidget {
     required this.allGames,
     required this.index,
     this.boardSize,
+    this.evalWindow,
     this.playMoveSound,
   });
 
@@ -405,6 +419,10 @@ class ExplorerGameCard extends ConsumerStatefulWidget {
   /// Mini-board edge. Every card in a strip shares one value so the strip can
   /// page card by card; null falls back to the natural size.
   final double? boardSize;
+
+  /// On-screen window kept measured by the hosting panel — see
+  /// [ExplorerGamesSection.evalWindow].
+  final ValueListenable<ExplorerGamesEvalWindow>? evalWindow;
 
   /// Test seam for the native audio plugin. Production uses AudioPlayerService.
   final ValueChanged<String>? playMoveSound;
@@ -587,6 +605,12 @@ class _ExplorerGameCardState extends ConsumerState<ExplorerGameCard> {
     // in one strip shares it, which is what keeps the paging grid uniform.
     final boardSize =
         widget.boardSize ?? ExplorerGameCardGeometry.preferredBoardSize;
+    // Same engine-gauge setting the grid game cards honour. The bar's width is
+    // reserved whenever the gauge is on, so a card entering or leaving the
+    // viewport swaps only the bar's contents — the board never resizes.
+    final showEvalBar =
+        ref.watch(engineSettingsProviderNew).valueOrNull?.showEngineGauge ??
+        true;
     final status = widget.game.gameStatus;
     final finished = status.isFinished;
 
@@ -703,13 +727,32 @@ class _ExplorerGameCardState extends ConsumerState<ExplorerGameCard> {
                           top: 10.sp,
                           bottom: 10.sp,
                         ),
-                        child: GameCardChessboard(
-                          fen: boardFen,
-                          lastMove: lastMove,
-                          boardSize: boardSize,
-                          orientation: Side.white,
-                          showCoordinates: false,
-                          gameStatus: boardStatus,
+                        // Eval bar flush against the board's left edge, exactly
+                        // as the grid game cards draw it. Its width is taken
+                        // from the metadata column on the right (which has room
+                        // to spare), so the board keeps its size and the card
+                        // its height.
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.center,
+                          children: [
+                            if (showEvalBar)
+                              _ExplorerCardEvalBar(
+                                width: ExplorerGameCardGeometry.evalBarWidth,
+                                height: boardSize,
+                                fen: boardFen,
+                                index: widget.index,
+                                isFocused: isFocused,
+                                window: widget.evalWindow,
+                              ),
+                            GameCardChessboard(
+                              fen: boardFen,
+                              lastMove: lastMove,
+                              boardSize: boardSize,
+                              orientation: Side.white,
+                              showCoordinates: false,
+                              gameStatus: boardStatus,
+                            ),
+                          ],
                         ),
                       ),
                       // White top · meta middle (centered) · black bottom —
@@ -991,6 +1034,114 @@ class _ContinuationStrip extends StatelessWidget {
       child: band,
     );
   }
+}
+
+/// Shortest gap between two evaluations of the same card.
+///
+/// The first ply of a walk is rated at once; plies the reader steps through
+/// inside this window collapse into one request. Without it, walking a
+/// continuation would spend a Gamebase lookup and an engine job on every ply
+/// the reader passes over on the way to the one they stop at.
+const Duration _kExplorerCardEvalInterval = Duration(milliseconds: 250);
+
+/// Evaluation bar for one inline explorer card.
+///
+/// Mounts the shared game-card eval widget — the same one the For You feed and
+/// every other game card uses, so a position rated here lands in the same cache
+/// and comes back from it instantly — but only while this card is on screen.
+/// Off screen the slot stays reserved and empty: a strip of ten cards must
+/// never queue ten engine jobs behind the one the reader is actually walking.
+class _ExplorerCardEvalBar extends StatefulWidget {
+  const _ExplorerCardEvalBar({
+    required this.width,
+    required this.height,
+    required this.fen,
+    required this.index,
+    required this.isFocused,
+    required this.window,
+  });
+
+  final double width;
+  final double height;
+  final String fen;
+  final int index;
+  final bool isFocused;
+  final ValueListenable<ExplorerGamesEvalWindow>? window;
+
+  @override
+  State<_ExplorerCardEvalBar> createState() => _ExplorerCardEvalBarState();
+}
+
+class _ExplorerCardEvalBarState extends State<_ExplorerCardEvalBar> {
+  /// Position currently handed to the eval widget. Trails [widget.fen] only
+  /// while the reader is stepping faster than [_kExplorerCardEvalInterval], and
+  /// always catches up on the ply they stop at.
+  late String _ratedFen = widget.fen;
+  DateTime? _lastRequest;
+  Timer? _pending;
+
+  @override
+  void didUpdateWidget(covariant _ExplorerCardEvalBar oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.fen == oldWidget.fen || widget.fen == _ratedFen) return;
+    final last = _lastRequest;
+    final waited =
+        last == null
+            ? _kExplorerCardEvalInterval
+            : DateTime.now().difference(last);
+    if (waited >= _kExplorerCardEvalInterval) {
+      _request(widget.fen);
+      return;
+    }
+    // Inside the window: hold, and rate wherever the walk has reached by the
+    // time it closes.
+    _pending?.cancel();
+    _pending = Timer(_kExplorerCardEvalInterval - waited, () {
+      if (mounted) _request(widget.fen);
+    });
+  }
+
+  void _request(String fen) {
+    _pending?.cancel();
+    _pending = null;
+    _lastRequest = DateTime.now();
+    setState(() => _ratedFen = fen);
+  }
+
+  @override
+  void dispose() {
+    _pending?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final window = widget.window;
+    // No host tracking visibility ⇒ nobody can say this card is on screen, so
+    // it does not evaluate. Reserving the slot keeps the card's geometry
+    // identical either way.
+    if (window == null) return _slot();
+    return ValueListenableBuilder<ExplorerGamesEvalWindow>(
+      valueListenable: window,
+      builder: (context, value, _) {
+        // The focused card always evaluates: it is the one being traversed, and
+        // waiting on a measurement to catch up would strand it on '...'.
+        if (!value.contains(widget.index) && !widget.isFocused) return _slot();
+        // Mid-scroll stay on cache and server evals. Starting the engine for a
+        // card that is about to leave the viewport only costs the next one time.
+        return EvaluationBarWidgetForGames(
+          width: widget.width,
+          height: widget.height,
+          fen: _ratedFen,
+          // Cards this small use the grid game card's compact bar treatment.
+          playerView: PlayerView.gridView,
+          allowStockfishFallback: value.settled,
+        );
+      },
+    );
+  }
+
+  Widget _slot() => SizedBox(width: widget.width, height: widget.height);
 }
 
 class _ExplorerCardPlayerRow extends StatelessWidget {

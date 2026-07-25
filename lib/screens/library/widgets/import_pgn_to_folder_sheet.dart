@@ -17,6 +17,7 @@ import 'package:chessever2/utils/logger/logger.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/save_to_library_guard.dart';
 import 'package:chessever2/utils/user_error_message.dart';
+import 'package:chessever2/widgets/app_snack.dart';
 import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -206,32 +207,17 @@ class _ImportPgnToFolderPageState
       if (created.isDatabase) {
         setState(() => _selectedFolderIds.add(created.id));
       }
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            '${data.nodeType == LibraryFolder.nodeTypeFolder ? 'Folder' : 'Database'} "${data.name}" created',
-            style: AppTypography.textSmMedium.copyWith(
-              color: context.colors.textPrimary,
-            ),
-          ),
-          backgroundColor: context.colors.surface.withValues(alpha: 0.95),
-          behavior: SnackBarBehavior.floating,
-        ),
+      showAppSnack(
+        context,
+        '${data.nodeType == LibraryFolder.nodeTypeFolder ? 'Folder' : 'Database'} "${data.name}" created',
       );
     } catch (e, st) {
       talker.handle(e, st);
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            userFacingError(e, fallback: 'Could not create this item. Please try again.'),
-            style: AppTypography.textSmMedium.copyWith(
-              color: context.colors.textPrimary,
-            ),
-          ),
-          backgroundColor: kRedColor,
-          behavior: SnackBarBehavior.floating,
-        ),
+      showAppSnack(
+        context,
+        userFacingError(e, fallback: 'Could not create this item. Please try again.'),
+        tone: AppSnackTone.danger,
       );
     }
   }
@@ -247,18 +233,7 @@ class _ImportPgnToFolderPageState
   Future<void> _handleAddToSelected(List<LibraryFolder> selected) async {
     if (_isSaving) return;
     if (selected.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            'Select at least one folder',
-            style: AppTypography.textSmMedium.copyWith(
-              color: context.colors.textPrimary,
-            ),
-          ),
-          backgroundColor: context.colors.surface.withValues(alpha: 0.95),
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
+      showAppSnack(context, 'Select at least one folder');
       return;
     }
 
@@ -320,35 +295,20 @@ class _ImportPgnToFolderPageState
 
       if (!mounted) return;
       Navigator.of(context, rootNavigator: true).pop();
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            _savedEntries > 0
-                ? 'Imported $_savedEntries entries into your folders'
-                : 'No games were imported',
-            style: AppTypography.textSmMedium.copyWith(
-              color: context.colors.textPrimary,
-            ),
-          ),
-          backgroundColor: context.colors.surface.withValues(alpha: 0.95),
-          behavior: SnackBarBehavior.floating,
-        ),
+      showAppSnack(
+        context,
+        _savedEntries > 0
+        ? 'Imported $_savedEntries entries into your folders'
+        : 'No games were imported',
       );
       HapticFeedbackService.success();
     } catch (e, st) {
       talker.handle(e, st);
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            userFacingError(e, fallback: 'Could not import this PGN. Please try again.'),
-            style: AppTypography.textSmMedium.copyWith(
-              color: context.colors.textPrimary,
-            ),
-          ),
-          backgroundColor: kRedColor,
-          behavior: SnackBarBehavior.floating,
-        ),
+      showAppSnack(
+        context,
+        userFacingError(e, fallback: 'Could not import this PGN. Please try again.'),
+        tone: AppSnackTone.danger,
       );
     } finally {
       if (mounted) {

@@ -13,6 +13,7 @@ import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/pgn_multi_parser.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/widgets/app_snack.dart';
 import 'package:chessground/chessground.dart';
 import 'package:dartchess/dartchess.dart' hide Board;
 import 'package:flutter/material.dart';
@@ -67,14 +68,7 @@ class _BoardEditorScreenState extends ConsumerState<BoardEditorScreen> {
 
   void _showSnack(String message, {Color? backgroundColor}) {
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message, style: TextStyle(color: context.colors.textPrimary)),
-        backgroundColor:
-            backgroundColor ?? context.colors.surface.withValues(alpha: 0.95),
-        behavior: SnackBarBehavior.floating,
-      ),
-    );
+    showAppSnack(context, message);
   }
 
   void _onDone() {
@@ -334,14 +328,7 @@ class _BoardEditorScreenState extends ConsumerState<BoardEditorScreen> {
     final fen = ref.read(boardEditorProvider).fullFen;
     Clipboard.setData(ClipboardData(text: fen));
     HapticFeedback.lightImpact();
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('FEN copied', style: TextStyle(color: context.colors.textPrimary)),
-        backgroundColor: context.colors.surface.withValues(alpha: 0.95),
-        behavior: SnackBarBehavior.floating,
-        duration: const Duration(seconds: 1),
-      ),
-    );
+    showAppSnack(context, 'FEN copied');
   }
 
   Widget _buildTopControls() {

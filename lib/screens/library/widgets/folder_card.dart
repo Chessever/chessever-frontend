@@ -19,6 +19,7 @@ import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/svg_asset.dart';
 import 'package:chessever2/utils/user_error_message.dart';
 import 'package:chessever2/widgets/alert_dialog/alert_modal.dart';
+import 'package:chessever2/widgets/app_snack.dart';
 import 'package:chessever2/widgets/svg_widget.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -460,18 +461,7 @@ class FolderCard extends ConsumerWidget {
     if (uri == null) {
       if (!context.mounted) return;
       HapticFeedbackService.error();
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            'Could not open link',
-            style: AppTypography.textSmMedium.copyWith(
-              color: context.colors.textPrimary,
-            ),
-          ),
-          backgroundColor: kRedColor,
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
+      showAppSnack(context, 'Could not open link', tone: AppSnackTone.danger);
       return;
     }
 
@@ -479,18 +469,7 @@ class FolderCard extends ConsumerWidget {
     if (!canOpen) {
       if (!context.mounted) return;
       HapticFeedbackService.error();
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            'Could not open $url',
-            style: AppTypography.textSmMedium.copyWith(
-              color: context.colors.textPrimary,
-            ),
-          ),
-          backgroundColor: kRedColor,
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
+      showAppSnack(context, 'Could not open $url', tone: AppSnackTone.danger);
       return;
     }
 
@@ -583,17 +562,10 @@ class FolderCard extends ConsumerWidget {
       talker.handle(e, st);
       if (!context.mounted) return;
       HapticFeedbackService.error();
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            userFacingError(e, fallback: 'Could not share this. Please try again.'),
-            style: AppTypography.textSmMedium.copyWith(
-              color: context.colors.textPrimary,
-            ),
-          ),
-          backgroundColor: kRedColor,
-          behavior: SnackBarBehavior.floating,
-        ),
+      showAppSnack(
+        context,
+        userFacingError(e, fallback: 'Could not share this. Please try again.'),
+        tone: AppSnackTone.danger,
       );
     }
   }
@@ -602,18 +574,7 @@ class FolderCard extends ConsumerWidget {
     final url = 'https://chessever.com/books/$shareToken';
     Clipboard.setData(ClipboardData(text: url));
     HapticFeedbackService.success();
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          'Link copied',
-          style: AppTypography.textSmMedium.copyWith(
-            color: context.colors.textPrimary,
-          ),
-        ),
-        backgroundColor: context.colors.surface.withValues(alpha: 0.95),
-        behavior: SnackBarBehavior.floating,
-      ),
-    );
+    showAppSnack(context, 'Link copied');
   }
 
   Future<void> _stopSharing(BuildContext context, WidgetRef ref) async {
@@ -624,33 +585,15 @@ class FolderCard extends ConsumerWidget {
 
       if (!context.mounted) return;
       HapticFeedbackService.success();
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            'Sharing stopped',
-            style: AppTypography.textSmMedium.copyWith(
-              color: context.colors.textPrimary,
-            ),
-          ),
-          backgroundColor: context.colors.surface.withValues(alpha: 0.95),
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
+      showAppSnack(context, 'Sharing stopped');
     } catch (e, st) {
       talker.handle(e, st);
       if (!context.mounted) return;
       HapticFeedbackService.error();
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            userFacingError(e, fallback: 'Could not stop sharing. Please try again.'),
-            style: AppTypography.textSmMedium.copyWith(
-              color: context.colors.textPrimary,
-            ),
-          ),
-          backgroundColor: kRedColor,
-          behavior: SnackBarBehavior.floating,
-        ),
+      showAppSnack(
+        context,
+        userFacingError(e, fallback: 'Could not stop sharing. Please try again.'),
+        tone: AppSnackTone.danger,
       );
     }
   }
@@ -664,33 +607,15 @@ class FolderCard extends ConsumerWidget {
 
       if (!context.mounted) return;
       HapticFeedbackService.success();
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            'Unsubscribed from "${folder.name}"',
-            style: AppTypography.textSmMedium.copyWith(
-              color: context.colors.textPrimary,
-            ),
-          ),
-          backgroundColor: context.colors.surface.withValues(alpha: 0.95),
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
+      showAppSnack(context, 'Unsubscribed from "${folder.name}"');
     } catch (e, st) {
       talker.handle(e, st);
       if (!context.mounted) return;
       HapticFeedbackService.error();
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            userFacingError(e, fallback: 'Could not unsubscribe. Please try again.'),
-            style: AppTypography.textSmMedium.copyWith(
-              color: context.colors.textPrimary,
-            ),
-          ),
-          backgroundColor: kRedColor,
-          behavior: SnackBarBehavior.floating,
-        ),
+      showAppSnack(
+        context,
+        userFacingError(e, fallback: 'Could not unsubscribe. Please try again.'),
+        tone: AppSnackTone.danger,
       );
     }
   }
@@ -711,33 +636,15 @@ class FolderCard extends ConsumerWidget {
       ref.invalidate(libraryFoldersStreamProvider);
       if (!context.mounted) return;
       HapticFeedbackService.success();
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            'Renamed to "$name"',
-            style: AppTypography.textSmMedium.copyWith(
-              color: context.colors.textPrimary,
-            ),
-          ),
-          backgroundColor: context.colors.surface.withValues(alpha: 0.95),
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
+      showAppSnack(context, 'Renamed to "$name"');
     } catch (e, st) {
       talker.handle(e, st);
       if (!context.mounted) return;
       HapticFeedbackService.error();
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            userFacingError(e, fallback: 'Could not rename this item. Please try again.'),
-            style: AppTypography.textSmMedium.copyWith(
-              color: context.colors.textPrimary,
-            ),
-          ),
-          backgroundColor: kRedColor,
-          behavior: SnackBarBehavior.floating,
-        ),
+      showAppSnack(
+        context,
+        userFacingError(e, fallback: 'Could not rename this item. Please try again.'),
+        tone: AppSnackTone.danger,
       );
     }
   }
@@ -765,33 +672,18 @@ class FolderCard extends ConsumerWidget {
       ref.invalidate(folderAnalysisCountProvider);
       if (!context.mounted) return;
       HapticFeedbackService.success();
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            '${folder.isFolder ? 'Folder' : 'Database'} deleted',
-            style: AppTypography.textSmMedium.copyWith(
-              color: context.colors.textPrimary,
-            ),
-          ),
-          backgroundColor: context.colors.surface.withValues(alpha: 0.95),
-          behavior: SnackBarBehavior.floating,
-        ),
+      showAppSnack(
+        context,
+        '${folder.isFolder ? 'Folder' : 'Database'} deleted',
       );
     } catch (e, st) {
       talker.handle(e, st);
       if (!context.mounted) return;
       HapticFeedbackService.error();
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            userFacingError(e, fallback: 'Could not delete this item. Please try again.'),
-            style: AppTypography.textSmMedium.copyWith(
-              color: context.colors.textPrimary,
-            ),
-          ),
-          backgroundColor: kRedColor,
-          behavior: SnackBarBehavior.floating,
-        ),
+      showAppSnack(
+        context,
+        userFacingError(e, fallback: 'Could not delete this item. Please try again.'),
+        tone: AppSnackTone.danger,
       );
     }
   }
@@ -885,13 +777,9 @@ void showFolderOverlayMenu({
         isSubFolder
             ? () {
               HapticFeedbackService.error();
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text(
-                    'only root-level folder can be shared with others',
-                  ),
-                  behavior: SnackBarBehavior.floating,
-                ),
+              showAppSnack(
+                context,
+                'only root-level folder can be shared with others',
               );
             }
             : onShare,
@@ -932,13 +820,9 @@ void showSharedFolderOverlayMenu({
         isSubFolder
             ? () {
               HapticFeedbackService.error();
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text(
-                    'only root-level folder can be shared with others',
-                  ),
-                  behavior: SnackBarBehavior.floating,
-                ),
+              showAppSnack(
+                context,
+                'only root-level folder can be shared with others',
               );
             }
             : onCopyLink,

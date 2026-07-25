@@ -12,6 +12,7 @@ import 'package:chessever2/screens/group_event/providers/sorting_all_event_provi
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_mode_provider.dart';
 import 'package:chessever2/services/analytics/analytics_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/widgets/app_snack.dart';
 import 'package:chessever2/widgets/skeleton_widget.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -660,8 +661,10 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
           if (!mounted) return;
 
           if (match == null) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('Event details not found')),
+            showAppSnack(
+              context,
+              'Event details not found',
+              tone: AppSnackTone.danger,
             );
             return;
           }
@@ -695,9 +698,11 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
       }
     } catch (_) {
       if (!mounted) return;
-      ScaffoldMessenger.of(
+      showAppSnack(
         context,
-      ).showSnackBar(const SnackBar(content: Text('Unable to open event')));
+        'Unable to open event',
+        tone: AppSnackTone.danger,
+      );
     }
   }
 

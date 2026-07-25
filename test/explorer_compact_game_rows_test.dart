@@ -9,6 +9,9 @@ import 'package:chessever2/providers/board_settings_provider_new.dart';
 import 'package:chessever2/providers/engine_settings_provider.dart';
 import 'package:chessever2/repository/gamebase/gamebase_repository.dart';
 import 'package:chessever2/repository/gamebase/search/gamebase_search_models.dart';
+import 'package:chessever2/repository/lichess/cloud_eval/cloud_eval.dart';
+import 'package:chessever2/screens/chessboard/provider/current_eval_provider.dart';
+import 'package:chessever2/screens/chessboard/widgets/evaluation_bar_widget.dart';
 import 'package:chessever2/screens/gamebase/models/models.dart';
 import 'package:chessever2/screens/gamebase/providers/explorer_game_focus_provider.dart';
 import 'package:chessever2/screens/gamebase/providers/gamebase_explorer_state.dart';
@@ -64,6 +67,14 @@ GamesTourModel _game({
     lastMoveTime: DateTime(2024, 5, 12),
   );
 }
+
+CloudEval _stubEval(String fen) => CloudEval(
+  fen: fen,
+  knodes: 0,
+  depth: 12,
+  pvs: [Pv(moves: 'e2e4', cp: 30)],
+  requestedMultiPv: 1,
+);
 
 ContinuationLine _lineFromUcis(List<String> ucis) =>
     buildContinuationLine(_anchorFen, ucis);
@@ -128,6 +139,9 @@ class _FakeGamebaseRepository extends GamebaseRepository {
 List<Override> _baseOverrides({GamebaseRepository? repo}) {
   return [
     boardSettingsProviderNew.overrideWith(_BoardSettingsNotifier.new),
+    // Cards read the engine-gauge setting to decide whether to reserve the
+    // eval bar; the real notifier would reach for an uninitialised Supabase.
+    engineSettingsProviderNew.overrideWith(_TestEngineSettingsNotifier.new),
     if (repo != null) gamebaseRepositoryProvider.overrideWithValue(repo),
   ];
 }
@@ -651,6 +665,216 @@ void main() {
 
       expect(find.text('Games'), findsNothing);
       expect(find.textContaining('Magnus Carlsen'), findsOneWidget);
+    });
+  });
+
+  // The card's eval bar takes its width from the metadata column on the right,
+  // never from the board, and only the cards on screen are rated.
+  group('card eval bar', () {
+    const boardSize = 120.0;
+
+    // The shared eval widget keeps a short-lived checkmate cache; let its
+    // timer run out on an empty tree so the binding sees no pending work.
+    Future<void> disposeCards(WidgetTester tester) async {
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump(const Duration(seconds: 4));
+    }
+
+    Future<ValueNotifier<ExplorerGamesEvalWindow>> pumpTwoCards(
+      WidgetTester tester, {
+      ProviderContainer? container,
+      ContinuationLine? line,
+    }) async {
+      final window = ValueNotifier(
+        const ExplorerGamesEvalWindow(first: 0, last: 0, settled: true),
+      );
+      addTearDown(window.dispose);
+      final c =
+          container ??
+          ProviderContainer(
+            overrides: [
+              ..._baseOverrides(),
+              gameCardEvalWithStockfishFallbackProvider.overrideWith(
+                (ref, fen) async => _stubEval(fen),
+              ),
+              gameCardEvalCacheOnlyProvider.overrideWith(
+                (ref, fen) async => _stubEval(fen),
+              ),
+            ],
+          );
+      if (container == null) addTearDown(c.dispose);
+
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: c,
+          child: MaterialApp(
+            theme: ThemeData.dark().copyWith(
+              extensions: const [AppColors.dark],
+            ),
+            home: Builder(
+              builder: (context) {
+                ResponsiveHelper.init(context);
+                final games = [_game(id: 'g1'), _game(id: 'g2')];
+                return Scaffold(
+                  body: SizedBox(
+                    width: 400,
+                    child: Column(
+                      children: [
+                        for (var i = 0; i < games.length; i++)
+                          ExplorerGameCard(
+                            game: games[i],
+                            anchorFen: _anchorFen,
+                            line: line ?? _lineFromUcis(const ['e2e4']),
+                            allGames: games,
+                            index: i,
+                            boardSize: boardSize,
+                            evalWindow: window,
+                            playMoveSound: (_) {},
+                          ),
+                      ],
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+      return window;
+    }
+
+    testWidgets('only the cards on screen mount a bar', (tester) async {
+      final window = await pumpTwoCards(tester);
+
+      expect(find.byType(EvaluationBarWidgetForGames), findsOneWidget);
+      expect(
+        tester
+            .widget<EvaluationBarWidgetForGames>(
+              find.byType(EvaluationBarWidgetForGames),
+            )
+            .allowStockfishFallback,
+        isTrue,
+      );
+
+      // Paging on: the second card is the one being read now.
+      window.value = const ExplorerGamesEvalWindow(
+        first: 1,
+        last: 1,
+        settled: true,
+      );
+      await tester.pump();
+      expect(find.byType(EvaluationBarWidgetForGames), findsOneWidget);
+
+      // Nothing on screen ⇒ nothing rated.
+      window.value = const ExplorerGamesEvalWindow.none();
+      await tester.pump();
+      expect(find.byType(EvaluationBarWidgetForGames), findsNothing);
+
+      await disposeCards(tester);
+    });
+
+    testWidgets('mid-scroll the bar stays off the engine', (tester) async {
+      final window = await pumpTwoCards(tester);
+      window.value = const ExplorerGamesEvalWindow(
+        first: 0,
+        last: 0,
+        settled: false,
+      );
+      await tester.pump();
+
+      expect(
+        tester
+            .widget<EvaluationBarWidgetForGames>(
+              find.byType(EvaluationBarWidgetForGames),
+            )
+            .allowStockfishFallback,
+        isFalse,
+      );
+
+      await disposeCards(tester);
+    });
+
+    testWidgets('the bar sits left of a board that never shrinks', (
+      tester,
+    ) async {
+      await pumpTwoCards(tester);
+
+      final board = find.byType(GameCardChessboard).first;
+      // The board keeps the edge the page grid sized it to.
+      expect(tester.getSize(board).width, closeTo(boardSize, 0.01));
+      expect(tester.getSize(board).height, closeTo(boardSize, 0.01));
+
+      final bar = find.byType(EvaluationBarWidgetForGames).first;
+      final barRect = tester.getRect(bar);
+      final boardRect = tester.getRect(board);
+      expect(barRect.right, lessThanOrEqualTo(boardRect.left));
+      expect(barRect.height, closeTo(boardSize, 0.01));
+      expect(
+        barRect.width,
+        closeTo(ExplorerGameCardGeometry.evalBarWidth, 0.01),
+      );
+
+      // The width came out of the metadata column, not the card.
+      expect(tester.getSize(find.byType(ExplorerGameCard).first).width, 400);
+
+      await disposeCards(tester);
+    });
+
+    testWidgets('a card never mounts a bar without a window to check', (
+      tester,
+    ) async {
+      await _pumpCard(tester, game: _game(), line: _lineFromUcis(const []));
+      expect(find.byType(EvaluationBarWidgetForGames), findsNothing);
+    });
+
+    testWidgets('walking plies collapses into one evaluation', (tester) async {
+      final line = _lineFromUcis(const ['e2e4', 'e7e5', 'g1f3']);
+      final container = ProviderContainer(
+        overrides: [
+          ..._baseOverrides(),
+          gameCardEvalWithStockfishFallbackProvider.overrideWith(
+            (ref, fen) async => _stubEval(fen),
+          ),
+          gameCardEvalCacheOnlyProvider.overrideWith(
+            (ref, fen) async => _stubEval(fen),
+          ),
+        ],
+      );
+      addTearDown(container.dispose);
+
+      await pumpTwoCards(tester, container: container, line: line);
+      String ratedFen() =>
+          tester
+              .widget<EvaluationBarWidgetForGames>(
+                find.byType(EvaluationBarWidgetForGames).first,
+              )
+              .fen;
+
+      final focus = container.read(explorerFocusedGameProvider.notifier);
+      focus.focus(
+        gameId: 'g1',
+        anchorFen: _anchorFen,
+        sans: line.sans,
+        fens: line.fens,
+        ply: 0,
+      );
+      await tester.pump();
+      // The ply the reader steps onto first is rated straight away.
+      expect(ratedFen(), line.fens[1]);
+
+      // Two more steps in quick succession do not each buy an evaluation.
+      focus.jumpTo(1);
+      await tester.pump();
+      focus.jumpTo(2);
+      await tester.pump();
+      expect(ratedFen(), line.fens[1]);
+
+      // Once the walk pauses, the bar rates where it actually stopped.
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(ratedFen(), line.fens[3]);
+
+      await disposeCards(tester);
     });
   });
 

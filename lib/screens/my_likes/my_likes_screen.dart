@@ -16,6 +16,7 @@ import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/logger/logger.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/user_error_message.dart';
+import 'package:chessever2/widgets/app_snack.dart';
 import 'package:chessever2/widgets/game_filter/game_filter.dart';
 import 'package:chessever2/widgets/game_filter/game_search_filter_bar.dart';
 import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
@@ -175,17 +176,10 @@ class _MyLikesScreenState extends ConsumerState<MyLikesScreen>
       ref.invalidate(myLikesViewProvider);
       ref.invalidate(myLikesTagCountsProvider);
     } else if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            "Couldn't remove this like. Please try again.",
-            style: AppTypography.textSmMedium.copyWith(
-              color: context.colors.textPrimary,
-            ),
-          ),
-          backgroundColor: context.colors.surface.withValues(alpha: 0.95),
-          behavior: SnackBarBehavior.floating,
-        ),
+      showAppSnack(
+        context,
+        "Couldn't remove this like. Please try again.",
+        tone: AppSnackTone.danger,
       );
     }
   }
@@ -275,32 +269,21 @@ class _MyLikesScreenState extends ConsumerState<MyLikesScreen>
   Future<bool> _promptExportUpgrade(int lockedCount) async {
     if (!mounted) return false;
     final completer = Completer<bool>();
-    final messenger = ScaffoldMessenger.of(context);
-    messenger.hideCurrentSnackBar();
-    final controller = messenger.showSnackBar(
-      SnackBar(
-        duration: const Duration(seconds: 6),
-        behavior: SnackBarBehavior.floating,
-        backgroundColor: context.colors.surface.withValues(alpha: 0.95),
-        content: Text(
-          'Upgrade to export $lockedCount more game${lockedCount == 1 ? '' : 's'}',
-          style: AppTypography.textSmMedium.copyWith(
-            color: context.colors.textPrimary,
-          ),
-        ),
-        action: SnackBarAction(
-          label: 'Upgrade',
-          textColor: const Color(0xFFFFB300),
-          onPressed: () async {
-            if (completer.isCompleted) return;
-            final unlocked = await requirePremiumGuard(context, ref);
-            if (!completer.isCompleted) completer.complete(unlocked);
-          },
-        ),
-      ),
+    final controller = showAppSnack(
+      context,
+      'Upgrade to export $lockedCount more game${lockedCount == 1 ? '' : 's'}',
+      actionLabel: 'Upgrade',
+      duration: const Duration(seconds: 6),
+      onAction: () async {
+        if (completer.isCompleted) return;
+        final unlocked = await requirePremiumGuard(context, ref);
+        if (!completer.isCompleted) completer.complete(unlocked);
+      },
     );
-    // Resolve to false when the snackbar dismisses without the Upgrade
-    // action being tapped — caller proceeds with the unlocked slice.
+    if (controller == null) return false;
+    // Resolve to false when the snack dismisses without the Upgrade action
+    // being tapped — caller proceeds with the unlocked slice. This is exactly
+    // why the snack must never be persistent: `closed` is the gate.
     unawaited(
       controller.closed.then((_) {
         if (!completer.isCompleted) completer.complete(false);
@@ -315,18 +298,7 @@ class _MyLikesScreenState extends ConsumerState<MyLikesScreen>
     final allAnalyses =
         ref.read(likedGamesProvider).valueOrNull ?? const <SavedAnalysis>[];
     if (allAnalyses.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            'Nothing to export yet',
-            style: AppTypography.textSmMedium.copyWith(
-              color: context.colors.textPrimary,
-            ),
-          ),
-          backgroundColor: context.colors.surface.withValues(alpha: 0.95),
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
+      showAppSnack(context, 'Nothing to export yet');
       return;
     }
 
@@ -373,35 +345,17 @@ class _MyLikesScreenState extends ConsumerState<MyLikesScreen>
     } catch (e, st) {
       talker.handle(e, st);
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            userFacingError(e, fallback: 'Export failed. Please try again.'),
-            style: AppTypography.textSmMedium.copyWith(
-              color: context.colors.textPrimary,
-            ),
-          ),
-          backgroundColor: const Color(0xFFEF4444),
-          behavior: SnackBarBehavior.floating,
-        ),
+      showAppSnack(
+        context,
+        userFacingError(e, fallback: 'Export failed. Please try again.'),
+        tone: AppSnackTone.danger,
       );
       return;
     }
 
     if (!mounted) return;
     if (files.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            'Nothing to export yet',
-            style: AppTypography.textSmMedium.copyWith(
-              color: context.colors.textPrimary,
-            ),
-          ),
-          backgroundColor: context.colors.surface.withValues(alpha: 0.95),
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
+      showAppSnack(context, 'Nothing to export yet');
       return;
     }
 
@@ -430,17 +384,10 @@ class _MyLikesScreenState extends ConsumerState<MyLikesScreen>
     } catch (e, st) {
       talker.handle(e, st);
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            userFacingError(e, fallback: 'Could not share this. Please try again.'),
-            style: AppTypography.textSmMedium.copyWith(
-              color: context.colors.textPrimary,
-            ),
-          ),
-          backgroundColor: const Color(0xFFEF4444),
-          behavior: SnackBarBehavior.floating,
-        ),
+      showAppSnack(
+        context,
+        userFacingError(e, fallback: 'Could not share this. Please try again.'),
+        tone: AppSnackTone.danger,
       );
     }
   }

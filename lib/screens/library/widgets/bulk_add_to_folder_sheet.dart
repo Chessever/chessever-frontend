@@ -22,6 +22,7 @@ import 'package:chessever2/utils/logger/logger.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/save_to_library_guard.dart';
 import 'package:chessever2/utils/user_error_message.dart';
+import 'package:chessever2/widgets/app_snack.dart';
 import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -259,35 +260,20 @@ class _BulkAddToFolderPageState extends ConsumerState<_BulkAddToFolderPage> {
       if (created.isDatabase) {
         setState(() => _selectedFolderIds.add(created.id));
       }
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            '${data.nodeType == LibraryFolder.nodeTypeFolder ? 'Folder' : 'Database'} "${data.name}" created',
-            style: AppTypography.textSmMedium.copyWith(
-              color: context.colors.textPrimary,
-            ),
-          ),
-          backgroundColor: context.colors.surface.withValues(alpha: 0.95),
-          behavior: SnackBarBehavior.floating,
-        ),
+      showAppSnack(
+        context,
+        '${data.nodeType == LibraryFolder.nodeTypeFolder ? 'Folder' : 'Database'} "${data.name}" created',
       );
     } catch (e, st) {
       talker.handle(e, st);
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            userFacingError(
-              e,
-              fallback: 'Could not create this item. Please try again.',
-            ),
-            style: AppTypography.textSmMedium.copyWith(
-              color: context.colors.textPrimary,
-            ),
+      showAppSnack(
+        context,
+        userFacingError(
+          e,
+          fallback: 'Could not create this item. Please try again.',
           ),
-          backgroundColor: kRedColor,
-          behavior: SnackBarBehavior.floating,
-        ),
+        tone: AppSnackTone.danger,
       );
     }
   }
@@ -295,18 +281,7 @@ class _BulkAddToFolderPageState extends ConsumerState<_BulkAddToFolderPage> {
   Future<void> _handleAddToSelected(List<LibraryFolder> selected) async {
     if (_isSaving) return;
     if (selected.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            'Select at least one folder',
-            style: AppTypography.textSmMedium.copyWith(
-              color: context.colors.textPrimary,
-            ),
-          ),
-          backgroundColor: context.colors.surface.withValues(alpha: 0.95),
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
+      showAppSnack(context, 'Select at least one folder');
       return;
     }
 
@@ -448,38 +423,23 @@ class _BulkAddToFolderPageState extends ConsumerState<_BulkAddToFolderPage> {
 
       if (!mounted) return;
       Navigator.of(context, rootNavigator: true).pop();
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            _savedEntries > 0
-                ? 'Added $_savedEntries entries to your folders'
-                : 'No new games were added',
-            style: AppTypography.textSmMedium.copyWith(
-              color: context.colors.textPrimary,
-            ),
-          ),
-          backgroundColor: context.colors.surface.withValues(alpha: 0.95),
-          behavior: SnackBarBehavior.floating,
-        ),
+      showAppSnack(
+        context,
+        _savedEntries > 0
+        ? 'Added $_savedEntries entries to your folders'
+        : 'No new games were added',
       );
       HapticFeedbackService.success();
     } catch (e, st) {
       talker.handle(e, st);
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            userFacingError(
-              e,
-              fallback: 'Could not add these games. Please try again.',
-            ),
-            style: AppTypography.textSmMedium.copyWith(
-              color: context.colors.textPrimary,
-            ),
+      showAppSnack(
+        context,
+        userFacingError(
+          e,
+          fallback: 'Could not add these games. Please try again.',
           ),
-          backgroundColor: kRedColor,
-          behavior: SnackBarBehavior.floating,
-        ),
+        tone: AppSnackTone.danger,
       );
     } finally {
       if (mounted) {

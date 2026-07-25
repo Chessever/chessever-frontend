@@ -19,6 +19,7 @@ import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/time_utils.dart';
+import 'package:chessever2/widgets/app_snack.dart';
 import 'package:chessever2/widgets/screen_wrapper.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -892,12 +893,9 @@ class _TwicContentsScreenState extends ConsumerState<TwicContentsScreen> {
                       sourceLabel: item.event,
                     );
                   } else {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text(
-                          'Load games first to add them to library.',
-                        ),
-                      ),
+                    showAppSnack(
+                      context,
+                      'Load games first to add them to library.',
                     );
                   }
                 },

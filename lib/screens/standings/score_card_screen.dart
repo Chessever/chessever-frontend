@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:chessever2/e2e/e2e_ids.dart';
 import 'package:chessever2/providers/player_backfill_provider.dart';
 import 'package:chessever2/screens/standings/player_standing_model.dart';
+import 'package:chessever2/widgets/app_snack.dart';
 import 'package:chessever2/widgets/player_initials_avatar.dart';
 import 'package:chessever2/widgets/fullscreen_image_viewer.dart';
 import 'package:chessever2/screens/standings/providers/player_ratings_provider.dart'
@@ -1350,8 +1351,10 @@ class _ScoreCardPage extends ConsumerWidget {
     } catch (error) {
       debugPrint('Failed to share player profile: $error');
       if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Failed to share player profile')),
+      showAppSnack(
+        context,
+        'Failed to share player profile',
+        tone: AppSnackTone.danger,
       );
     }
   }
@@ -1733,11 +1736,10 @@ class _SliverScoreboardAppBarState
       } catch (e) {
         debugPrint('Error toggling favorite: $e');
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Failed to update favorite. Please try again.'),
-              duration: Duration(seconds: 2),
-            ),
+          showAppSnack(
+            context,
+            'Failed to update favorite. Please try again.',
+            tone: AppSnackTone.danger,
           );
         }
       }

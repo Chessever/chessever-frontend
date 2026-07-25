@@ -16,6 +16,7 @@ import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/services/push_notifications_service.dart';
 import 'package:chessever2/utils/png_asset.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/widgets/app_snack.dart';
 import 'package:chessever2/widgets/country_dropdown.dart';
 import 'package:chessever2/widgets/screen_wrapper.dart';
 import 'package:country_picker/country_picker.dart';
@@ -267,15 +268,10 @@ Future<void> continueAsGuest(BuildContext context, WidgetRef ref) async {
       debugPrint('[Onboarding] Guest session failed: $e');
     }
     if (context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            userFacingError(
-              e,
-              fallback: 'Could not continue as guest. Please sign in.',
-            ),
-          ),
-        ),
+      showAppSnack(
+        context,
+        userFacingError( e, fallback: 'Could not continue as guest. Please sign in.', ),
+        tone: AppSnackTone.danger,
       );
     }
     // No session means no user id to hang data off — markOnboardingComplete

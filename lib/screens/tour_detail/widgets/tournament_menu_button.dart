@@ -22,6 +22,7 @@ import 'package:chessever2/screens/tour_detail/player_tour/player_tour_screen_pr
     show playerTourScreenProvider;
 import 'package:chessever2/screens/tour_detail/widgets/standings_share_image_card.dart';
 import 'package:chessever2/screens/tour_detail/widgets/team_standings_share_image_card.dart';
+import 'package:chessever2/widgets/app_snack.dart';
 import 'package:flutter/rendering.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
@@ -357,26 +358,17 @@ class TournamentMenuButton extends ConsumerWidget {
           onTap: () {
             final isAuthenticated = ref.read(isAuthenticatedProvider);
             if (!isAuthenticated) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('Please sign in to manage notifications'),
-                ),
-              );
+              showAppSnack(context, 'Please sign in to manage notifications');
               return;
             }
             ref.read(eventMuteProvider(groupBroadcastId).notifier).toggleMute();
 
             ScaffoldMessenger.of(context).hideCurrentSnackBar();
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text(
-                  isMuted
-                      ? 'Notifications enabled for this event'
-                      : 'Notifications disabled for this event',
-                ),
-                duration: const Duration(seconds: 2),
-                behavior: SnackBarBehavior.floating,
-              ),
+            showAppSnack(
+              context,
+              isMuted
+              ? 'Notifications enabled for this event'
+              : 'Notifications disabled for this event',
             );
           },
           child: _MenuDropDownItem(
@@ -553,12 +545,9 @@ class TournamentMenuButton extends ConsumerWidget {
       final standings = await ref.read(playerTourScreenProvider.future);
       if (!context.mounted) return;
       if (standings.isEmpty) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text(
-              'Standings are still loading. Try again in a moment.',
-            ),
-          ),
+        showAppSnack(
+          context,
+          'Standings are still loading. Try again in a moment.',
         );
         return;
       }
@@ -617,10 +606,10 @@ class TournamentMenuButton extends ConsumerWidget {
     } catch (e) {
       debugPrint('Failed to share standings: $e');
       if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Could not share standings. Please try again.'),
-        ),
+      showAppSnack(
+        context,
+        'Could not share standings. Please try again.',
+        tone: AppSnackTone.danger,
       );
     }
   }
@@ -640,12 +629,9 @@ class TournamentMenuButton extends ConsumerWidget {
       if (!context.mounted) return;
       final teams = ref.read(teamStandingsProvider).valueOrNull ?? const [];
       if (teams.isEmpty) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text(
-              'Team standings are still loading. Try again in a moment.',
-            ),
-          ),
+        showAppSnack(
+          context,
+          'Team standings are still loading. Try again in a moment.',
         );
         return;
       }
@@ -700,10 +686,9 @@ class TournamentMenuButton extends ConsumerWidget {
     } catch (e) {
       debugPrint('Failed to share team standings: $e');
       if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Could not share team standings. Please try again.'),
-        ),
+      showAppSnack(
+        context,
+        'Could not share team standings. Please try again.',
       );
     }
   }
@@ -723,11 +708,7 @@ class TournamentMenuButton extends ConsumerWidget {
       final boundary =
           key.currentContext?.findRenderObject() as RenderRepaintBoundary?;
       if (boundary == null || !boundary.hasSize) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Open the Bracket tab, then try sharing.'),
-          ),
-        );
+        showAppSnack(context, 'Open the Bracket tab, then try sharing.');
         return;
       }
       final size = boundary.size;
@@ -798,10 +779,10 @@ class TournamentMenuButton extends ConsumerWidget {
     } catch (e) {
       debugPrint('Failed to share bracket: $e');
       if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Could not share the bracket. Please try again.'),
-        ),
+      showAppSnack(
+        context,
+        'Could not share the bracket. Please try again.',
+        tone: AppSnackTone.danger,
       );
     }
   }

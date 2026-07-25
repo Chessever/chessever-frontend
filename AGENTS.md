@@ -20,3 +20,12 @@ We **purposefully deactivate local Stockfish in debug mode** because its native 
 - Only explicit workflows like **Game Review** may opt in with `allowInDebug: true`.
 - **Never** add a bypass such as `_allowBoardStockfishInDebug = true`, flip `kEnableStockfishInDebug` to "make engine lines work while coding", or rewire restart policy to start the real engine in debug. That has already broken hot restart for the team.
 - To test real board Stockfish: use profile/release, or flip the kill switch yourself knowing hot restart will hang until a full stop+relaunch — do not change the default for everyone.
+
+## Snacks: use `showAppSnack`, never a raw `SnackBar`
+
+`lib/widgets/app_snack.dart` is the only sanctioned way to raise a transient message. `showAppSnack(context, message, tone:, actionLabel:, onAction:)`, or `showAppSnackOn(messenger, …)` when the messenger was captured before an `await`.
+
+- **Never construct a `SnackBar` by hand.** Flutter ≥3.38 (PR #173084) defaults `SnackBar.persist` to `action != null`, so any hand-rolled snack with an action never times out — it survives route pushes and stays pinned over whatever screen the user walks to next. That shipped as a bug. The helper always passes `persist: false`.
+- The gotcha is worst where logic awaits `ScaffoldFeatureController.closed` (the My Likes export gate): with `persist: true` that future never completes and the flow hangs silently.
+- Tone carries the meaning: `neutral` for confirmations, `danger` for genuine failures, `success` for completed work. The capsule is black in both themes — do not recolour the surface per message.
+- Regression cover lives in `test/app_snack_test.dart` (auto-dismiss, action close, 44dp tap target).

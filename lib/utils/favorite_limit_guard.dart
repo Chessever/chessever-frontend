@@ -1,7 +1,6 @@
 import 'package:chessever2/revenue_cat_service/subscribe_state.dart';
-import 'package:chessever2/theme/app_colors.dart';
-import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/favorite_constants.dart';
+import 'package:chessever2/widgets/app_snack.dart';
 import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -27,16 +26,7 @@ Future<bool> canAddMoreFavorites(
     if (currentCount < kFreeFavoriteLimit) return true;
 
     if (context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            'You can follow more players after signing in',
-            style: AppTypography.textSmRegular.copyWith(color: context.colors.textPrimary),
-          ),
-          backgroundColor: context.colors.surface.withValues(alpha: 0.95),
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
+      showAppSnack(context, 'You can follow more players after signing in');
     }
     return false;
   }

@@ -10,6 +10,7 @@ import 'package:chessever2/utils/number_format_utils.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/save_to_library_guard.dart';
 import 'package:chessever2/utils/user_error_message.dart';
+import 'package:chessever2/widgets/app_snack.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:smooth_sheets/smooth_sheets.dart';
@@ -105,26 +106,18 @@ class _SaveToLibrarySheetState extends ConsumerState<_SaveToLibrarySheet> {
           sourceLabel: widget.playerKey.playerName,
         );
       } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('No games found to save.'),
-            backgroundColor: context.colors.surface.withValues(alpha: 0.95),
-          ),
-        );
+        showAppSnack(context, 'No games found to save.');
       }
     } catch (e, st) {
       talker.handle(e, st);
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            userFacingError(
-              e,
-              fallback: 'Could not load all games. Please try again.',
-            ),
+      showAppSnack(
+        context,
+        userFacingError(
+          e,
+          fallback: 'Could not load all games. Please try again.',
           ),
-          backgroundColor: kRedColor,
-        ),
+        tone: AppSnackTone.danger,
       );
     } finally {
       if (mounted) setState(() => _isLoadingAll = false);

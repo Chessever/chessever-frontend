@@ -29,6 +29,7 @@ import 'package:chessever2/utils/svg_asset.dart';
 import 'package:chessever2/revenue_cat_service/subscribe_state.dart';
 import 'package:chessever2/utils/favorite_constants.dart';
 import 'package:chessever2/utils/favorite_limit_guard.dart';
+import 'package:chessever2/widgets/app_snack.dart';
 import 'package:chessever2/widgets/auth/auth_upgrade_sheet.dart';
 import 'package:chessever2/widgets/game_filter/game_filter_model.dart';
 import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
@@ -440,11 +441,10 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
     } catch (e) {
       debugPrint('Error toggling favorite: $e');
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Failed to update favorite. Please try again.'),
-            duration: Duration(seconds: 2),
-          ),
+        showAppSnack(
+          context,
+          'Failed to update favorite. Please try again.',
+          tone: AppSnackTone.danger,
         );
       }
     }
@@ -574,8 +574,10 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
     } catch (error) {
       debugPrint('Failed to share player profile: $error');
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Failed to share player profile')),
+      showAppSnack(
+        context,
+        'Failed to share player profile',
+        tone: AppSnackTone.danger,
       );
     }
   }

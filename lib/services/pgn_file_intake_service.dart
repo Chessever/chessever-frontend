@@ -9,9 +9,8 @@ import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provid
 import 'package:chessever2/screens/library/pgn_import_preview_screen.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/services/deep_link_service.dart';
-import 'package:chessever2/theme/app_colors.dart';
-import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/pgn_multi_parser.dart';
+import 'package:chessever2/widgets/app_snack.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:receive_sharing_intent/receive_sharing_intent.dart';
@@ -191,15 +190,10 @@ class PgnFileIntakeService {
     final parsed = parsePgnsToChessGames(text);
     if (parsed.isEmpty) {
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content:  Text(
-              'That file does not contain a valid PGN',
-              style: TextStyle(color: context.colors.textPrimary),
-            ),
-            backgroundColor: kRedColor.withValues(alpha: 0.9),
-            behavior: SnackBarBehavior.floating,
-          ),
+        showAppSnack(
+          context,
+          'That file does not contain a valid PGN',
+          tone: AppSnackTone.danger,
         );
       }
       return false;
@@ -229,15 +223,10 @@ class PgnFileIntakeService {
     final text = await _readPgnFile(path);
     if (text == null) {
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content:  Text(
-              'Could not read that file.',
-              style: TextStyle(color: context.colors.textPrimary),
-            ),
-            backgroundColor: kRedColor.withValues(alpha: 0.9),
-            behavior: SnackBarBehavior.floating,
-          ),
+        showAppSnack(
+          context,
+          'Could not read that file.',
+          tone: AppSnackTone.danger,
         );
       }
       return false;

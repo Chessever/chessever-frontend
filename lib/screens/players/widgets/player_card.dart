@@ -1,5 +1,6 @@
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/theme/app_colors.dart';
+import 'package:chessever2/widgets/app_snack.dart';
 import 'package:flutter/material.dart';
 import '../../../utils/app_typography.dart';
 import '../../../utils/svg_asset.dart';
@@ -203,13 +204,9 @@ class _PlayerCardState extends State<PlayerCard>
                 // Since this is just a UI task and we might not have the full routing logic,
                 // we'll show a snackbar for now to guide the user to the profile games tab,
                 // or ideally push to the player profile games tab.
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text(
-                      'Open ${widget.playerName}\'s profile to select and add games.',
-                    ),
-                    duration: const Duration(seconds: 2),
-                  ),
+                showAppSnack(
+                  context,
+                  'Open ${widget.playerName}\'s profile to select and add games.',
                 );
               },
               behavior: HitTestBehavior.opaque,

@@ -8,6 +8,7 @@ import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/widgets/app_snack.dart';
 import 'package:chessever2/widgets/country_dropdown.dart';
 import 'package:chessever2/widgets/scroll_to_top_bus.dart';
 import 'package:chessever2/widgets/segmented_switcher.dart';
@@ -100,17 +101,7 @@ class _CountrymenTabScreenState extends ConsumerState<CountrymenTabScreen> {
           .selectCountry(currentCountry.countryCode);
       // Clear temporary selection since it's now the default
       ref.read(temporaryCountryProvider.notifier).state = null;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('${currentCountry.name} pinned as default'),
-          backgroundColor: context.colors.surface,
-          behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(8.br),
-          ),
-          duration: const Duration(seconds: 2),
-        ),
-      );
+      showAppSnack(context, '${currentCountry.name} pinned as default');
     }
   }
 

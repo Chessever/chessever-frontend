@@ -5,6 +5,7 @@ import 'package:chessever2/screens/tour_detail/player_tour/player_tour_screen_pr
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_screen_provider.dart';
 import 'package:chessever2/screens/tour_detail/widgets/standings_share_image_card.dart';
 import 'package:chessever2/utils/share_card.dart';
+import 'package:chessever2/widgets/app_snack.dart';
 import 'package:chessever2/widgets/event_card/event_context_menu.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -25,9 +26,7 @@ Future<void> shareTournamentStandings(
     final about =
         ref.read(tourDetailScreenProvider).valueOrNull?.aboutTourModel;
     if (about == null || about.name.isEmpty) {
-      messenger.showSnackBar(
-        const SnackBar(content: Text('Open an event to share its standings.')),
-      );
+      showAppSnackOn(messenger, 'Open an event to share its standings.');
       return;
     }
 
@@ -46,10 +45,9 @@ Future<void> shareTournamentStandings(
     final standings = await ref.read(playerTourScreenProvider.future);
     if (!context.mounted) return;
     if (standings.isEmpty) {
-      messenger.showSnackBar(
-        const SnackBar(
-          content: Text('Standings are still loading. Try again in a moment.'),
-        ),
+      showAppSnackOn(
+        messenger,
+        'Standings are still loading. Try again in a moment.',
       );
       return;
     }
@@ -108,10 +106,10 @@ Future<void> shareTournamentStandings(
   } catch (e) {
     debugPrint('Failed to share standings: $e');
     if (!context.mounted) return;
-    messenger.showSnackBar(
-      const SnackBar(
-        content: Text('Could not share standings. Please try again.'),
-      ),
+    showAppSnackOn(
+      messenger,
+      'Could not share standings. Please try again.',
+      tone: AppSnackTone.danger,
     );
   }
 }

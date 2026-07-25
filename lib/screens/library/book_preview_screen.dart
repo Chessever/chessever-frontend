@@ -10,6 +10,7 @@ import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/logger/logger.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/user_error_message.dart';
+import 'package:chessever2/widgets/app_snack.dart';
 import 'package:chessever2/widgets/screen_wrapper.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -267,17 +268,12 @@ class _BookPreviewScreenState extends ConsumerState<BookPreviewScreen> {
       talker.handle(e, st);
       if (!mounted) return;
       HapticFeedbackService.error();
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            e.toString().contains('Duplicate')
-                ? 'Already in your library'
-                : userFacingError(e, fallback: 'Could not add this. Please try again.'),
-            style: AppTypography.textSmMedium.copyWith(color: context.colors.textPrimary),
-          ),
-          backgroundColor: kRedColor,
-          behavior: SnackBarBehavior.floating,
-        ),
+      showAppSnack(
+        context,
+        e.toString().contains('Duplicate')
+        ? 'Already in your library'
+        : userFacingError(e, fallback: 'Could not add this. Please try again.'),
+        tone: AppSnackTone.danger,
       );
     } finally {
       if (mounted) setState(() => _isLoading = false);

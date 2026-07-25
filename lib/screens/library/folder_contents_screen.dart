@@ -28,6 +28,7 @@ import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/user_error_message.dart';
 import 'package:chessever2/revenue_cat_service/subscribe_state.dart';
 import 'package:chessever2/widgets/alert_dialog/alert_modal.dart';
+import 'package:chessever2/widgets/app_snack.dart';
 import 'package:chessever2/widgets/game_filter/game_filter.dart';
 import 'package:chessever2/widgets/game_filter/game_search_filter_bar.dart';
 import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
@@ -226,70 +227,52 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
       final snapshot = analysis;
       final targetFolderId = widget.folder.id;
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            'Removed from "${widget.folder.name}"',
-            style: AppTypography.textSmMedium.copyWith(
-              color: context.colors.textPrimary,
-            ),
-          ),
-          backgroundColor: context.colors.surface.withValues(alpha: 0.95),
-          behavior: SnackBarBehavior.floating,
-          action: SnackBarAction(
-            label: 'Undo',
-            textColor: kPrimaryColor,
-            onPressed: () async {
-              try {
-                final now = DateTime.now();
-                final restored = SavedAnalysis(
-                  id: '',
-                  userId: snapshot.userId,
-                  folderId: targetFolderId,
-                  title: snapshot.title,
-                  sourceGameId: snapshot.sourceGameId,
-                  sourceTournamentId: snapshot.sourceTournamentId,
-                  chessGame: snapshot.chessGame,
-                  analysisState: snapshot.analysisState,
-                  variationComments: snapshot.variationComments,
-                  moveNags: snapshot.moveNags,
-                  lastViewedPosition: snapshot.lastViewedPosition,
-                  tags: snapshot.tags,
-                  notes: snapshot.notes,
-                  isFavorite: snapshot.isFavorite,
-                  createdAt: snapshot.createdAt,
-                  updatedAt: now,
-                );
-                await repository.createSavedAnalysis(restored);
-                if (!mounted) return;
-                unawaited(_refreshCurrentBook());
-                ref.invalidate(folderAnalysisCountProvider);
-                ref.invalidate(libraryFoldersStreamProvider);
-              } catch (_) {
-                // Best-effort undo; show nothing if it fails.
-              }
-            },
-          ),
-        ),
+      showAppSnack(
+        context,
+        'Removed from "${widget.folder.name}"',
+        actionLabel: 'Undo',
+        onAction: () async {
+          try {
+            final now = DateTime.now();
+            final restored = SavedAnalysis(
+              id: '',
+              userId: snapshot.userId,
+              folderId: targetFolderId,
+              title: snapshot.title,
+              sourceGameId: snapshot.sourceGameId,
+              sourceTournamentId: snapshot.sourceTournamentId,
+              chessGame: snapshot.chessGame,
+              analysisState: snapshot.analysisState,
+              variationComments: snapshot.variationComments,
+              moveNags: snapshot.moveNags,
+              lastViewedPosition: snapshot.lastViewedPosition,
+              tags: snapshot.tags,
+              notes: snapshot.notes,
+              isFavorite: snapshot.isFavorite,
+              createdAt: snapshot.createdAt,
+              updatedAt: now,
+            );
+            await repository.createSavedAnalysis(restored);
+            if (!mounted) return;
+            unawaited(_refreshCurrentBook());
+            ref.invalidate(folderAnalysisCountProvider);
+            ref.invalidate(libraryFoldersStreamProvider);
+          } catch (_) {
+            // Best-effort undo; show nothing if it fails.
+          }
+        },
       );
     } catch (e, st) {
       talker.handle(e, st);
       if (!mounted) return;
       _removingIds.remove(analysis.id);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            userFacingError(
-              e,
-              fallback: 'Could not remove this item. Please try again.',
-            ),
-            style: AppTypography.textSmMedium.copyWith(
-              color: context.colors.textPrimary,
-            ),
+      showAppSnack(
+        context,
+        userFacingError(
+          e,
+          fallback: 'Could not remove this item. Please try again.',
           ),
-          backgroundColor: kRedColor,
-          behavior: SnackBarBehavior.floating,
-        ),
+        tone: AppSnackTone.danger,
       );
     }
   }
@@ -330,20 +313,13 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
       } catch (e, st) {
         talker.handle(e, st);
         if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              userFacingError(
-                e,
-                fallback: 'Could not open the file picker. Please try again.',
-              ),
-              style: AppTypography.textSmMedium.copyWith(
-                color: context.colors.textPrimary,
-              ),
+        showAppSnack(
+          context,
+          userFacingError(
+            e,
+            fallback: 'Could not open the file picker. Please try again.',
             ),
-            backgroundColor: kRedColor.withValues(alpha: 0.9),
-            behavior: SnackBarBehavior.floating,
-          ),
+          tone: AppSnackTone.danger,
         );
         return;
       }
@@ -369,35 +345,17 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
     final text = clipboard?.text?.trim();
     if (text == null || text.isEmpty) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            'Clipboard is empty. Copy a PGN first.',
-            style: AppTypography.textSmMedium.copyWith(
-              color: context.colors.textPrimary,
-            ),
-          ),
-          backgroundColor: context.colors.surface.withValues(alpha: 0.95),
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
+      showAppSnack(context, 'Clipboard is empty. Copy a PGN first.');
       return;
     }
 
     final parsed = parsePgnsToChessGames(text);
     if (parsed.isEmpty) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            'Clipboard does not contain a valid PGN',
-            style: AppTypography.textSmMedium.copyWith(
-              color: context.colors.textPrimary,
-            ),
-          ),
-          backgroundColor: kRedColor.withValues(alpha: 0.9),
-          behavior: SnackBarBehavior.floating,
-        ),
+      showAppSnack(
+        context,
+        'Clipboard does not contain a valid PGN',
+        tone: AppSnackTone.danger,
       );
       return;
     }
@@ -440,35 +398,20 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
       ref.invalidate(libraryFoldersStreamProvider);
 
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            '${data.nodeType == LibraryFolder.nodeTypeFolder ? 'Folder' : 'Database'} "${data.name}" created',
-            style: AppTypography.textSmMedium.copyWith(
-              color: context.colors.textPrimary,
-            ),
-          ),
-          backgroundColor: context.colors.surface.withValues(alpha: 0.95),
-          behavior: SnackBarBehavior.floating,
-        ),
+      showAppSnack(
+        context,
+        '${data.nodeType == LibraryFolder.nodeTypeFolder ? 'Folder' : 'Database'} "${data.name}" created',
       );
     } catch (e, st) {
       talker.handle(e, st);
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            userFacingError(
-              e,
-              fallback: 'Could not create this item. Please try again.',
-            ),
-            style: AppTypography.textSmMedium.copyWith(
-              color: context.colors.textPrimary,
-            ),
+      showAppSnack(
+        context,
+        userFacingError(
+          e,
+          fallback: 'Could not create this item. Please try again.',
           ),
-          backgroundColor: kRedColor,
-          behavior: SnackBarBehavior.floating,
-        ),
+        tone: AppSnackTone.danger,
       );
     }
   }
@@ -493,36 +436,18 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
       setState(() {
         _overrideFolderName = name;
       });
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            'Renamed to "$name"',
-            style: AppTypography.textSmMedium.copyWith(
-              color: context.colors.textPrimary,
-            ),
-          ),
-          backgroundColor: context.colors.surface.withValues(alpha: 0.95),
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
+      showAppSnack(context, 'Renamed to "$name"');
     } catch (e, st) {
       talker.handle(e, st);
       if (!mounted) return;
       HapticFeedbackService.error();
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            userFacingError(
-              e,
-              fallback: 'Could not rename this item. Please try again.',
-            ),
-            style: AppTypography.textSmMedium.copyWith(
-              color: context.colors.textPrimary,
-            ),
+      showAppSnack(
+        context,
+        userFacingError(
+          e,
+          fallback: 'Could not rename this item. Please try again.',
           ),
-          backgroundColor: kRedColor,
-          behavior: SnackBarBehavior.floating,
-        ),
+        tone: AppSnackTone.danger,
       );
     }
   }
@@ -570,22 +495,15 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
     if (!mounted) return;
 
     if (error != null || files == null || files.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            error != null
-                ? userFacingError(
-                  error,
-                  fallback: 'Export failed. Please try again.',
-                )
-                : 'Nothing to export here',
-            style: AppTypography.textSmMedium.copyWith(
-              color: context.colors.textPrimary,
-            ),
-          ),
-          backgroundColor: kRedColor,
-          behavior: SnackBarBehavior.floating,
-        ),
+      showAppSnack(
+        context,
+        error != null
+        ? userFacingError(
+          error,
+          fallback: 'Export failed. Please try again.',
+          )
+        : 'Nothing to export here',
+        tone: AppSnackTone.danger,
       );
       return;
     }
@@ -620,20 +538,13 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
     } catch (e, st) {
       talker.handle(e, st);
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            userFacingError(
-              e,
-              fallback: 'Could not share this. Please try again.',
-            ),
-            style: AppTypography.textSmMedium.copyWith(
-              color: context.colors.textPrimary,
-            ),
+      showAppSnack(
+        context,
+        userFacingError(
+          e,
+          fallback: 'Could not share this. Please try again.',
           ),
-          backgroundColor: kRedColor,
-          behavior: SnackBarBehavior.floating,
-        ),
+        tone: AppSnackTone.danger,
       );
     }
   }

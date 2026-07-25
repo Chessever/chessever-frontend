@@ -53,6 +53,15 @@ class ExplorerGameCardGeometry {
   /// under the last one.
   static double get gap => 8.sp;
 
+  /// Width of the evaluation bar drawn flush against the mini-board's left
+  /// edge, the same treatment grid game cards use.
+  ///
+  /// Horizontal only: the bar is exactly as tall as the board, so nothing in
+  /// the page grid ([cardHeight] / [pageExtent]) moves. The width comes out of
+  /// the player-metadata column on the right, which has room to spare — never
+  /// out of the board.
+  static double get evalBarWidth => 10.w;
+
   static double cardHeight(
     double boardSize, [
     TextScaler scaler = TextScaler.noScaling,
@@ -130,6 +139,113 @@ double explorerGamesListBottomPadding({
 }) {
   final aligned = pageHeight - pageExtent;
   return aligned > navClearance ? aligned : navClearance;
+}
+
+/// Which inline game cards are on screen, plus whether the list is standing
+/// still — together, everything a card needs to decide if it may evaluate.
+///
+/// The strip is a plain `Column` inside the move list, so it has none of a
+/// lazy list's "only build what is visible" behaviour. Without this window all
+/// ten cards would start an engine job the moment the section mounts, and the
+/// card the reader is actually walking would queue behind nine it cannot see.
+@immutable
+class ExplorerGamesEvalWindow {
+  const ExplorerGamesEvalWindow({
+    required this.first,
+    required this.last,
+    required this.settled,
+  });
+
+  /// Nothing on screen: no strip, or not laid out yet.
+  const ExplorerGamesEvalWindow.none() : first = 0, last = -1, settled = true;
+
+  /// First card index inside the viewport.
+  final int first;
+
+  /// Last card index inside the viewport, inclusive. Below [first] when the
+  /// window is empty.
+  final int last;
+
+  /// True while the list rests. Mid-scroll the cards stay on cached and server
+  /// evals only — the same trade the game feeds make during a fling.
+  final bool settled;
+
+  bool get isEmpty => last < first;
+
+  bool contains(int index) => index >= first && index <= last;
+
+  @override
+  bool operator ==(Object other) =>
+      other is ExplorerGamesEvalWindow &&
+      other.first == first &&
+      other.last == last &&
+      other.settled == settled;
+
+  @override
+  int get hashCode => Object.hash(first, last, settled);
+
+  @override
+  String toString() =>
+      'ExplorerGamesEvalWindow($first..$last, settled: $settled)';
+}
+
+/// Resolves which cards are on screen enough to be worth an evaluation.
+///
+/// A card counts once [minVisibleFraction] of it is inside the viewport, so the
+/// sliver of the next card that peeks in under the paged one does not buy
+/// itself an engine job. Cards are uniform, so only the two edge cards of the
+/// range can ever be partial.
+///
+/// [anchor] is the scroll offset at which the first card's top meets the top of
+/// the panel — the same measurement the page grid rests on.
+ExplorerGamesEvalWindow resolveExplorerGamesEvalWindow({
+  required double? anchor,
+  required double pixels,
+  required double viewportHeight,
+  required double pageExtent,
+  required double cardHeight,
+  required int cardCount,
+  bool settled = true,
+  double minVisibleFraction = 0.5,
+}) {
+  const empty = ExplorerGamesEvalWindow.none();
+  if (anchor == null || cardCount <= 0) return empty;
+  if (!anchor.isFinite || !pixels.isFinite || !viewportHeight.isFinite) {
+    return empty;
+  }
+  if (pageExtent <= 0 || cardHeight <= 0 || viewportHeight <= 0) return empty;
+
+  final top = pixels;
+  final bottom = pixels + viewportHeight;
+
+  double cardTop(int index) => anchor + index * pageExtent;
+  double visibleHeight(int index) {
+    final start = cardTop(index);
+    final end = start + cardHeight;
+    final visible = (end < bottom ? end : bottom) - (start > top ? start : top);
+    return visible > 0 ? visible : 0;
+  }
+
+  // Strict intersection: cardBottom > top and cardTop < bottom.
+  var first = ((top - anchor - cardHeight) / pageExtent).floor() + 1;
+  var last = ((bottom - anchor) / pageExtent).ceil() - 1;
+  if (first < 0) first = 0;
+  if (last > cardCount - 1) last = cardCount - 1;
+  if (first > last) return empty;
+
+  // Capped by the viewport so a panel shorter than half a card still counts
+  // the card filling it — otherwise nothing would ever qualify there.
+  final wanted = cardHeight * minVisibleFraction;
+  final threshold = wanted < viewportHeight ? wanted : viewportHeight;
+  while (first <= last && visibleHeight(first) < threshold) {
+    first++;
+  }
+  while (last >= first && visibleHeight(last) < threshold) {
+    last--;
+  }
+  if (first > last) return empty;
+
+  return ExplorerGamesEvalWindow(first: first, last: last, settled: settled);
 }
 
 /// Scroll offset the settle should land on, or `null` to leave the gesture to

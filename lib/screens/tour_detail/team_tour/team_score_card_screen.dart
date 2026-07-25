@@ -14,6 +14,7 @@ import 'package:chessever2/theme/app_theme.dart' show kRedColor;
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/share_card.dart';
+import 'package:chessever2/widgets/app_snack.dart';
 import 'package:chessever2/widgets/event_card/event_context_menu.dart';
 import 'package:chessever2/widgets/team_crest_avatar.dart';
 import 'package:flutter/material.dart';
@@ -485,8 +486,10 @@ Future<void> _shareTeamScorecard({
   } catch (e) {
     debugPrint('Failed to share team scorecard: $e');
     if (!context.mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Could not share team scorecard')),
+    showAppSnack(
+      context,
+      'Could not share team scorecard',
+      tone: AppSnackTone.danger,
     );
   }
 }
