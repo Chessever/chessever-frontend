@@ -1443,11 +1443,11 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
       }
     }
 
-    _syncExpandedGameProvidersAfterFrame(
-      games: widget.games,
-      indexChanged: indexChanged,
-      desiredIndex: desiredIndex,
-    );
+    ref.read(chessBoardAllGamesProvider.notifier).state = widget.games;
+    if (indexChanged) {
+      ref.read(currentlyVisiblePageIndexProvider.notifier).state = desiredIndex;
+      _keepBoardProviderAlive(desiredIndex);
+    }
 
     // Apply fresher navigation hydrate after this frame so parse/stream state
     // updates don't re-enter during the element update phase.
@@ -1472,23 +1472,6 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
         });
       }
     }
-  }
-
-  void _syncExpandedGameProvidersAfterFrame({
-    required List<GamesTourModel> games,
-    required bool indexChanged,
-    required int desiredIndex,
-  }) {
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted || !identical(widget.games, games)) return;
-
-      ref.read(chessBoardAllGamesProvider.notifier).state = games;
-      if (indexChanged) {
-        ref.read(currentlyVisiblePageIndexProvider.notifier).state =
-            desiredIndex;
-        _keepBoardProviderAlive(desiredIndex);
-      }
-    });
   }
 
   @override
@@ -11342,8 +11325,12 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
 
     // Debug: Log annotation state
     if (kDebugMode) {
-      if (reportAnnotations.isEmpty &&
-          reviewState.reportState.status == GameReportStatus.completed) {
+      if (reportAnnotations.isNotEmpty) {
+        debugPrint(
+          '🎯 [ReportClassifications] attached ${reportAnnotations.length} '
+          'icons (fp match board=$boardFingerprint status=${reviewState.reportState.status})',
+        );
+      } else if (reviewState.reportState.status == GameReportStatus.completed) {
         debugPrint(
           '⚠️ [ReportClassifications] report completed but attach map empty '
           '(boardFp=$boardFingerprint reviewFp=${reviewState.fingerprint} '
@@ -14982,9 +14969,7 @@ class _PrincipalVariationListState
       padding: EdgeInsets.fromLTRB(16.sp, 8.sp, 16.sp, 4.h),
       child: EnginePvListView(
         items: items,
-        // Reserve configured slots only while results are streaming. Once the
-        // search settles, render real lines only instead of empty rows.
-        slotCount: isEvaluating ? multiPV : math.max(1, items.length),
+        slotCount: multiPV,
         isEvaluating: isEvaluating,
         trailingDivider: false,
       ),

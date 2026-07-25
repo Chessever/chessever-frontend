@@ -103,18 +103,11 @@ bool _isMatePv(Pv pv) {
   return pv.isMate || pv.mate != null || pv.cp.abs() >= 100000;
 }
 
-bool cloudEvalSkipsBoardStockfish(
-  CloudEval eval, {
-  required int requiredMultiPv,
-}) {
+bool cloudEvalSkipsBoardStockfish(CloudEval eval) {
   if (eval.pvs.isEmpty) return false;
-  final usablePvs = eval.pvs.where((pv) => pv.moves.trim().isNotEmpty).length;
-  if (usablePvs == 0) return false;
-  // A forced mate can legitimately have fewer continuations. Otherwise a
-  // deep one-line cache entry must not suppress the configured MultiPV search.
-  return _isMatePv(eval.pvs.first) ||
-      (eval.depth >= boardEvalSufficientDepth &&
-          usablePvs >= requiredMultiPv.clamp(1, 5));
+  // We must have actual moves to show in the UI; evaluation alone is not enough.
+  if (eval.pvs.first.moves.trim().isEmpty) return false;
+  return _isMatePv(eval.pvs.first) || eval.depth >= boardEvalSufficientDepth;
 }
 
 Future<CloudEval?> _readGamebaseEvalFast({

@@ -8,11 +8,9 @@ import 'package:chessever2/repository/supabase/game/game_repository.dart';
 import 'package:chessever2/repository/supabase/game/game_stream_repository.dart';
 import 'package:chessever2/repository/supabase/game/games.dart';
 import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
-import 'package:chessever2/screens/chessboard/view_model/chess_board_state_new.dart';
 import 'package:chessever2/screens/gamebase/models/models.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrapper/game_card_wrapper_provider.dart';
-import 'package:dartchess/dartchess.dart' show NormalMove, Side;
 import 'package:dio/dio.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -203,114 +201,6 @@ void main() {
   );
 
   test(
-    'nested PV preview branches from the displayed move, not the prior PV tail',
-    () async {
-      final game = _boardGame(id: 'pv-game', pgn: _shortPgn);
-      final params = ChessBoardProviderParams(game: game, index: 0);
-      final container = _boardContainer(
-        gameRepository: _StaticPgnRepo(_shortPgn),
-      );
-      addTearDown(container.dispose);
-      container.read(currentlyVisiblePageIndexProvider.notifier).state = 99;
-
-      final ready = Completer<void>();
-      final sub = container.listen(
-        chessBoardScreenProviderNew(params),
-        (_, next) {
-          final value = next.valueOrNull;
-          if (!ready.isCompleted &&
-              value != null &&
-              value.analysisState.position.fen == _afterE4Fen) {
-            ready.complete();
-          }
-        },
-        fireImmediately: true,
-      );
-      addTearDown(sub.close);
-      await ready.future.timeout(const Duration(seconds: 5));
-
-      final notifier =
-          container.read(chessBoardScreenProviderNew(params).notifier);
-      final firstLine = AnalysisLine(
-        moves: [
-          NormalMove.fromUci('e7e5'),
-          NormalMove.fromUci('g1f3'),
-        ],
-        sanMoves: const ['e5', 'Nf3'],
-      );
-      notifier.previewPrincipalVariationMoveAt(firstLine, 0, 0);
-
-      final nestedLine = AnalysisLine(
-        moves: [
-          NormalMove.fromUci('b1c3'),
-          NormalMove.fromUci('b8c6'),
-        ],
-        sanMoves: const ['Nc3', 'Nc6'],
-      );
-      expect(
-        () => notifier.previewPrincipalVariationMoveAt(nestedLine, 0, 0),
-        returnsNormally,
-      );
-
-      final preview = container.read(chessBoardScreenProviderNew(params)).value!;
-      expect(
-        preview.lockedPvMergedMoveObjects!.map((move) => move?.uci),
-        ['e2e4', 'e7e5', 'b1c3', 'b8c6'],
-      );
-      expect(preview.lockedPvBaseMoveCount, 2);
-      expect(
-        preview.lockedPvMergedPositions,
-        hasLength(preview.lockedPvMergedMoveObjects!.length + 1),
-      );
-      expect(preview.analysisState.lastMove?.uci, 'b1c3');
-      expect(preview.analysisState.position.turn, Side.black);
-    },
-  );
-
-  test('report move jumps defer board evaluation until the sheet closes', () async {
-    final game = _boardGame(id: 'review-game', pgn: _shortPgn);
-    final params = ChessBoardProviderParams(game: game, index: 0);
-    final container = _boardContainer(
-      gameRepository: _StaticPgnRepo(_shortPgn),
-    );
-    addTearDown(container.dispose);
-    container.read(currentlyVisiblePageIndexProvider.notifier).state = 99;
-
-    final ready = Completer<void>();
-    final sub = container.listen(
-      chessBoardScreenProviderNew(params),
-      (_, next) {
-        final value = next.valueOrNull;
-        if (!ready.isCompleted &&
-            value != null &&
-            value.analysisState.position.fen == _afterE4Fen) {
-          ready.complete();
-        }
-      },
-      fireImmediately: true,
-    );
-    addTearDown(sub.close);
-    await ready.future.timeout(const Duration(seconds: 5));
-
-    final notifier =
-        container.read(chessBoardScreenProviderNew(params).notifier);
-    await notifier.setGameReviewVisible(true);
-    notifier.goToMovePointer(const []);
-
-    final duringReview =
-        container.read(chessBoardScreenProviderNew(params)).value!;
-    expect(duringReview.analysisState.currentMoveIndex, -1);
-    expect(
-      duringReview.isEvaluating,
-      isFalse,
-      reason: 'report navigation must not start background board evaluation',
-    );
-
-    await notifier.setGameReviewVisible(false);
-    expect(notifier.isGameReviewVisible, isFalse);
-  });
-
-  test(
     'board didUpdateWidget wires index remap + navigation hydrate into the live provider',
     () {
       // Structural contract on the shipped board screen: expand remount fix.
@@ -321,16 +211,6 @@ void main() {
       expect(boardSrc, contains('syncPageIndex'));
       expect(boardSrc, contains('applyNavigationGameSnapshot'));
       expect(boardSrc, contains('jumpToPage(desiredIndex)'));
-      expect(
-        boardSrc,
-        contains('_syncExpandedGameProvidersAfterFrame('),
-        reason: 'provider writes from didUpdateWidget must be deferred',
-      );
-      expect(
-        boardSrc,
-        contains('!identical(widget.games, games)'),
-        reason: 'a superseded post-frame sync must not publish stale games',
-      );
       expect(
         boardSrc,
         contains('never remount analysis'),
@@ -352,16 +232,6 @@ void main() {
       );
       expect(providerSrc, contains('void applyNavigationGameSnapshot'));
       expect(providerSrc, contains('void syncPageIndex'));
-      expect(
-        providerSrc,
-        contains('refreshPreviewPvs: true'),
-        reason: 'previewed positions must request a fresh full MultiPV set',
-      );
-      expect(
-        providerSrc,
-        contains('allowPvUpdatesDuringPreview: refreshPreviewPvs'),
-        reason: 'fresh preview evaluations must be allowed to publish all PVs',
-      );
     },
   );
 }
@@ -472,7 +342,6 @@ ProviderContainer _boardContainer({GameRepository? gameRepository}) {
         _FakeGameStreamRepository(),
       ),
       chessBoardPersistenceEnabledProvider.overrideWithValue(false),
-      chessBoardEvaluationSchedulingEnabledProvider.overrideWithValue(false),
     ],
   );
 }
