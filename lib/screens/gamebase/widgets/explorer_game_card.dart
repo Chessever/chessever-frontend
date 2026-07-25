@@ -6,6 +6,7 @@ import 'package:chessever2/screens/gamebase/providers/explorer_game_focus_provid
 import 'package:chessever2/screens/gamebase/providers/gamebase_explorer_state.dart';
 import 'package:chessever2/screens/gamebase/providers/gamebase_providers.dart';
 import 'package:chessever2/screens/gamebase/utils/continuation_line.dart';
+import 'package:chessever2/screens/gamebase/utils/explorer_games_paging.dart';
 import 'package:chessever2/screens/gamebase/widgets/position_games_sheet.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/theme/app_colors.dart';
@@ -33,6 +34,8 @@ class ExplorerGamesSection extends ConsumerStatefulWidget {
     required this.fen,
     required this.moves,
     required this.filters,
+    this.boardSize,
+    this.onCardCountChanged,
   });
 
   /// Current explored position (the continuation anchor).
@@ -42,6 +45,15 @@ class ExplorerGamesSection extends ConsumerStatefulWidget {
   final List<String> moves;
 
   final GamebaseFilters filters;
+
+  /// Mini-board edge for every card. Supplied by the panel when it pages the
+  /// strip one card at a time, so a whole card fits the space under the
+  /// board's bottom player row. Null keeps the natural size.
+  final double? boardSize;
+
+  /// Reports how many cards are actually rendered, so the hosting panel can
+  /// size its page grid to the strip rather than to the requested count.
+  final ValueChanged<int>? onCardCountChanged;
 
   @override
   ConsumerState<ExplorerGamesSection> createState() =>
@@ -64,6 +76,9 @@ class _ExplorerGamesSectionState extends ConsumerState<ExplorerGamesSection> {
 
   /// Last fen we upgraded for — drop cache when the explorer position moves.
   String? _upgradeFenKey;
+
+  /// Last card count handed to [ExplorerGamesSection.onCardCountChanged].
+  int? _reportedCardCount;
 
   @override
   void dispose() {
@@ -100,6 +115,20 @@ class _ExplorerGamesSectionState extends ConsumerState<ExplorerGamesSection> {
     pageSize: _maxGames,
     notationPlies: _notationPlies,
   );
+
+  /// Publishes the rendered card count after the frame that rendered it —
+  /// the panel turns this into its page grid, and a grid built mid-build would
+  /// describe a layout that does not exist yet.
+  void _reportCardCount(int count) {
+    if (_reportedCardCount == count) return;
+    _reportedCardCount = count;
+    final callback = widget.onCardCountChanged;
+    if (callback == null) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      callback(count);
+    });
+  }
 
   void _resetUpgradeCacheIfNeeded() {
     final key = continuationFenKey(widget.fen);
@@ -162,14 +191,20 @@ class _ExplorerGamesSectionState extends ConsumerState<ExplorerGamesSection> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         gamesAsync.when(
-          loading: () => const _ExplorerGamesStatusRow.loading(),
-          error:
-              (_, __) => const _ExplorerGamesStatusRow(
-                message: 'Couldn’t load games for this position',
-              ),
+          loading: () {
+            _reportCardCount(0);
+            return const _ExplorerGamesStatusRow.loading();
+          },
+          error: (_, __) {
+            _reportCardCount(0);
+            return const _ExplorerGamesStatusRow(
+              message: 'Couldn’t load games for this position',
+            );
+          },
           data: (response) {
             final rows = response.data.take(_maxGames).toList(growable: false);
             if (rows.isEmpty) {
+              _reportCardCount(0);
               return const _ExplorerGamesStatusRow(message: 'No games found');
             }
 
@@ -198,18 +233,27 @@ class _ExplorerGamesSectionState extends ConsumerState<ExplorerGamesSection> {
               if (!mounted) return;
               _scheduleFullLineUpgrade(games);
             });
+            _reportCardCount(games.length);
 
             return Column(
               children: [
                 for (var i = 0; i < games.length; i++)
                   Padding(
-                    padding: EdgeInsets.fromLTRB(12.sp, 0, 12.sp, 8.sp),
+                    // Bottom gap is part of the page pitch — keep it equal to
+                    // `ExplorerGameCardGeometry.gap` or the grid drifts.
+                    padding: EdgeInsets.fromLTRB(
+                      12.sp,
+                      0,
+                      12.sp,
+                      ExplorerGameCardGeometry.gap,
+                    ),
                     child: ExplorerGameCard(
                       game: games[i],
                       anchorFen: widget.fen,
                       line: lines[i],
                       allGames: games,
                       index: i,
+                      boardSize: widget.boardSize,
                     ),
                   ),
               ],
@@ -348,6 +392,7 @@ class ExplorerGameCard extends ConsumerStatefulWidget {
     required this.line,
     required this.allGames,
     required this.index,
+    this.boardSize,
     this.playMoveSound,
   });
 
@@ -356,6 +401,10 @@ class ExplorerGameCard extends ConsumerStatefulWidget {
   final ContinuationLine line;
   final List<GamesTourModel> allGames;
   final int index;
+
+  /// Mini-board edge. Every card in a strip shares one value so the strip can
+  /// page card by card; null falls back to the natural size.
+  final double? boardSize;
 
   /// Test seam for the native audio plugin. Production uses AudioPlayerService.
   final ValueChanged<String>? playMoveSound;
@@ -470,8 +519,14 @@ class _ExplorerGameCardState extends ConsumerState<ExplorerGameCard> {
       if (!mounted) return;
       final chipContext = _currentChipKey.currentContext;
       if (chipContext == null) return;
-      Scrollable.ensureVisible(
-        chipContext,
+      final chipBox = chipContext.findRenderObject();
+      if (chipBox == null) return;
+      if (!_chipScrollController.hasClients) return;
+      // Only the chip strip may move. `Scrollable.ensureVisible` walks up
+      // *every* enclosing scrollable, so it would also re-centre the card
+      // inside the explorer list and undo its card-by-card alignment.
+      _chipScrollController.position.ensureVisible(
+        chipBox,
         alignment: 0.5,
         duration: const Duration(milliseconds: 160),
         curve: Curves.easeOutCubic,
@@ -527,8 +582,11 @@ class _ExplorerGameCardState extends ConsumerState<ExplorerGameCard> {
       _lastEnsuredPly = null;
     }
 
-    // Larger mini-board so cards stay readable when games fill the panel.
-    final boardSize = 124.sp;
+    // Larger mini-board so cards stay readable when games fill the panel. The
+    // strip may hand down a smaller edge when the panel is short — every card
+    // in one strip shares it, which is what keeps the paging grid uniform.
+    final boardSize =
+        widget.boardSize ?? ExplorerGameCardGeometry.preferredBoardSize;
     final status = widget.game.gameStatus;
     final finished = status.isFinished;
 
@@ -577,6 +635,15 @@ class _ExplorerGameCardState extends ConsumerState<ExplorerGameCard> {
     final metaColor = context.colors.textSecondary;
     final closeIconColor = context.colors.textSecondary;
 
+    // Reader's text size is part of the card's height, so the continuation
+    // band can never crop a chip.
+    final textScaler = MediaQuery.textScalerOf(context);
+    final stripHeight = ExplorerGameCardGeometry.stripHeight(textScaler);
+    final cardHeight = ExplorerGameCardGeometry.cardHeight(
+      boardSize,
+      textScaler,
+    );
+
     final radius = BorderRadius.circular(12.br);
     final outerBorder =
         isFocused
@@ -591,185 +658,206 @@ class _ExplorerGameCardState extends ConsumerState<ExplorerGameCard> {
     final card = Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        GestureDetector(
-          behavior: HitTestBehavior.opaque,
-          onTap: _handleBodyTap,
-          child: Container(
-            decoration: BoxDecoration(
-              color:
-                  isFocused
-                      ? Color.alphaBlend(
-                        kPrimaryColor.withValues(alpha: isLight ? 0.06 : 0.10),
-                        topSurface,
-                      )
-                      : topSurface,
-              borderRadius:
-                  widget.line.isNotEmpty
-                      ? BorderRadius.only(
-                        topLeft: Radius.circular(12.br),
-                        topRight: Radius.circular(12.br),
-                      )
-                      : radius,
-              border: Border(
-                bottom: BorderSide(
-                  color: context.colors.divider.withValues(
-                    alpha: isLight ? 0.6 : 1.0,
+        // Expanded, not sized: the card's total height is pinned below, and
+        // this row absorbs any sub-pixel drift so the board's own padding
+        // never overflows.
+        Expanded(
+          child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: _handleBodyTap,
+            child: Container(
+              decoration: BoxDecoration(
+                color:
+                    isFocused
+                        ? Color.alphaBlend(
+                          kPrimaryColor.withValues(
+                            alpha: isLight ? 0.06 : 0.10,
+                          ),
+                          topSurface,
+                        )
+                        : topSurface,
+                borderRadius: BorderRadius.only(
+                  topLeft: Radius.circular(12.br),
+                  topRight: Radius.circular(12.br),
+                ),
+                border: Border(
+                  bottom: BorderSide(
+                    color: context.colors.divider.withValues(
+                      alpha: isLight ? 0.6 : 1.0,
+                    ),
                   ),
                 ),
               ),
-            ),
-            // Stack so the unfocus "x" floats top-right without taking row
-            // width (no layout shift when focus begins).
-            child: Stack(
-              clipBehavior: Clip.none,
-              children: [
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.center,
-                  children: [
-                    // No ClipRRect — fallen-king / dove overlays must not be cut.
-                    Padding(
-                      padding: EdgeInsets.only(
-                        left: 10.sp,
-                        top: 10.sp,
-                        bottom: 10.sp,
-                      ),
-                      child: GameCardChessboard(
-                        fen: boardFen,
-                        lastMove: lastMove,
-                        boardSize: boardSize,
-                        orientation: Side.white,
-                        showCoordinates: false,
-                        gameStatus: boardStatus,
-                      ),
-                    ),
-                    // White top · meta middle (centered) · black bottom —
-                    // height matches the mini-board so scores/names track
-                    // the board edge.
-                    Expanded(
-                      child: Padding(
-                        padding: EdgeInsets.fromLTRB(
-                          10.sp,
-                          10.sp,
-                          10.sp,
-                          10.sp,
+              // Stack so the unfocus "x" floats top-right without taking row
+              // width (no layout shift when focus begins).
+              child: Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      // No ClipRRect — fallen-king / dove overlays must not be cut.
+                      Padding(
+                        padding: EdgeInsets.only(
+                          left: 10.sp,
+                          top: 10.sp,
+                          bottom: 10.sp,
                         ),
-                        child: SizedBox(
-                          height: boardSize,
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.stretch,
-                            children: [
-                              _ExplorerCardPlayerRow(
-                                game: widget.game,
-                                isWhite: true,
-                              ),
-                              Expanded(
-                                child: Center(
-                                  child: Padding(
-                                    padding: EdgeInsets.symmetric(
-                                      horizontal: 2.w,
+                        child: GameCardChessboard(
+                          fen: boardFen,
+                          lastMove: lastMove,
+                          boardSize: boardSize,
+                          orientation: Side.white,
+                          showCoordinates: false,
+                          gameStatus: boardStatus,
+                        ),
+                      ),
+                      // White top · meta middle (centered) · black bottom —
+                      // height matches the mini-board so scores/names track
+                      // the board edge.
+                      Expanded(
+                        child: Padding(
+                          padding: EdgeInsets.fromLTRB(
+                            10.sp,
+                            10.sp,
+                            10.sp,
+                            10.sp,
+                          ),
+                          child: SizedBox(
+                            height: boardSize,
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                _ExplorerCardPlayerRow(
+                                  game: widget.game,
+                                  isWhite: true,
+                                ),
+                                Expanded(
+                                  child: Center(
+                                    child: Padding(
+                                      padding: EdgeInsets.symmetric(
+                                        horizontal: 2.w,
+                                      ),
+                                      child:
+                                          _eventLine.isEmpty
+                                              ? const SizedBox.shrink()
+                                              : _FadingOverflowText(
+                                                text: _eventLine,
+                                                textAlign: TextAlign.center,
+                                                style: AppTypography
+                                                    .textXsRegular
+                                                    .copyWith(color: metaColor),
+                                              ),
                                     ),
-                                    child:
-                                        _eventLine.isEmpty
-                                            ? const SizedBox.shrink()
-                                            : _FadingOverflowText(
-                                              text: _eventLine,
-                                              textAlign: TextAlign.center,
-                                              style: AppTypography.textXsRegular
-                                                  .copyWith(color: metaColor),
-                                            ),
                                   ),
                                 ),
-                              ),
-                              _ExplorerCardPlayerRow(
-                                game: widget.game,
-                                isWhite: false,
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-                if (isFocused)
-                  Positioned(
-                    top: 4.sp,
-                    right: 4.sp,
-                    child: Material(
-                      color: Colors.transparent,
-                      child: InkWell(
-                        onTap:
-                            () =>
-                                ref
-                                    .read(explorerFocusedGameProvider.notifier)
-                                    .clear(),
-                        customBorder: const CircleBorder(),
-                        child: Container(
-                          width: 28.sp,
-                          height: 28.sp,
-                          alignment: Alignment.center,
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            color: topSurface.withValues(alpha: 0.92),
-                            border: Border.all(
-                              color: context.colors.divider.withValues(
-                                alpha: isLight ? 0.6 : 1.0,
-                              ),
+                                _ExplorerCardPlayerRow(
+                                  game: widget.game,
+                                  isWhite: false,
+                                ),
+                              ],
                             ),
                           ),
-                          child: Icon(
-                            Icons.close_rounded,
-                            color: closeIconColor,
-                            size: 16.ic,
+                        ),
+                      ),
+                    ],
+                  ),
+                  if (isFocused)
+                    Positioned(
+                      top: 4.sp,
+                      right: 4.sp,
+                      child: Material(
+                        color: Colors.transparent,
+                        child: InkWell(
+                          onTap:
+                              () =>
+                                  ref
+                                      .read(
+                                        explorerFocusedGameProvider.notifier,
+                                      )
+                                      .clear(),
+                          customBorder: const CircleBorder(),
+                          child: Container(
+                            width: 28.sp,
+                            height: 28.sp,
+                            alignment: Alignment.center,
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              color: topSurface.withValues(alpha: 0.92),
+                              border: Border.all(
+                                color: context.colors.divider.withValues(
+                                  alpha: isLight ? 0.6 : 1.0,
+                                ),
+                              ),
+                            ),
+                            child: Icon(
+                              Icons.close_rounded,
+                              color: closeIconColor,
+                              size: 16.ic,
+                            ),
                           ),
                         ),
                       ),
                     ),
-                  ),
-              ],
+                ],
+              ),
             ),
           ),
         ),
-        if (widget.line.isNotEmpty)
-          GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onTap: () {
-              if (isFocused) {
-                ref.read(explorerFocusedGameProvider.notifier).clear();
-              } else {
-                _handleFocusRequest(0);
-              }
-            },
-            child: Container(
-              decoration: BoxDecoration(
-                color: bottomSurface,
-                borderRadius: BorderRadius.only(
-                  bottomLeft: Radius.circular(12.br),
-                  bottomRight: Radius.circular(12.br),
-                ),
-              ),
-              // Horizontal inset lives INSIDE the scroll view so chips are
-              // not clipped at the left/right edges of the card.
-              child: SingleChildScrollView(
-                controller: _chipScrollController,
-                scrollDirection: Axis.horizontal,
-                padding: EdgeInsets.fromLTRB(10.sp, 8.sp, 10.sp, 10.sp),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    for (var i = 0; i < widget.line.sans.length; i++) ...[
-                      if (i > 0) SizedBox(width: 4.w),
-                      _buildChip(
-                        context,
-                        index: i,
-                        currentPly: isFocused ? focus.ply : null,
+        // The continuation band is always drawn, at one constant height: cards
+        // that page one at a time may not be taller or shorter than each other
+        // because of the line they happen to carry.
+        _ContinuationStrip(
+          height: stripHeight,
+          surface: bottomSurface,
+          onTap:
+              widget.line.isEmpty
+                  ? null
+                  : () {
+                    if (isFocused) {
+                      ref.read(explorerFocusedGameProvider.notifier).clear();
+                    } else {
+                      _handleFocusRequest(0);
+                    }
+                  },
+          child:
+              widget.line.isEmpty
+                  ? Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 10.sp),
+                    child: Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        'Game ends at this position',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: AppTypography.textXsRegular.copyWith(
+                          color: context.colors.textSecondary,
+                        ),
                       ),
-                    ],
-                  ],
-                ),
-              ),
-            ),
-          ),
+                    ),
+                  )
+                  : SingleChildScrollView(
+                    controller: _chipScrollController,
+                    scrollDirection: Axis.horizontal,
+                    // Horizontal inset lives INSIDE the scroll view so chips
+                    // are not clipped at the left/right edges of the card.
+                    padding: EdgeInsets.symmetric(horizontal: 10.sp),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      children: [
+                        for (var i = 0; i < widget.line.sans.length; i++) ...[
+                          if (i > 0) SizedBox(width: 4.w),
+                          _buildChip(
+                            context,
+                            index: i,
+                            currentPly: isFocused ? focus.ply : null,
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+        ),
       ],
     );
 
@@ -793,9 +881,7 @@ class _ExplorerGameCardState extends ConsumerState<ExplorerGameCard> {
 
     // Free users may *see* the teaser cards, but any interaction hits paywall.
     // Full-card barrier so chip scrolls / nested gestures can't slip through.
-    if (!_freeUserLocked) return shell;
-
-    if (isFocused) {
+    if (_freeUserLocked && isFocused) {
       // Drop stale focus if subscription lapsed while a card was focused.
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
@@ -803,17 +889,24 @@ class _ExplorerGameCardState extends ConsumerState<ExplorerGameCard> {
       });
     }
 
-    return Stack(
-      children: [
-        IgnorePointer(child: shell),
-        Positioned.fill(
-          child: GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onTap: () => requirePremiumGuard(context, ref),
-          ),
-        ),
-      ],
-    );
+    final Widget body =
+        _freeUserLocked
+            ? Stack(
+              children: [
+                IgnorePointer(child: shell),
+                Positioned.fill(
+                  child: GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: () => requirePremiumGuard(context, ref),
+                  ),
+                ),
+              ],
+            )
+            : shell;
+
+    // One exact height for every card — the contract the inline strip's
+    // card-by-card paging rests on.
+    return SizedBox(height: cardHeight, child: body);
   }
 
   Widget _buildChip(
@@ -854,6 +947,48 @@ class _ExplorerGameCardState extends ConsumerState<ExplorerGameCard> {
           ),
         ),
       ),
+    );
+  }
+}
+
+/// Constant-height band under the mini-board holding the continuation chips.
+///
+/// Height never follows its contents: a long line, a short line and a game
+/// that ends on the explored position all occupy the same band, which is what
+/// lets the strip above page one card at a time.
+class _ContinuationStrip extends StatelessWidget {
+  const _ContinuationStrip({
+    required this.height,
+    required this.surface,
+    required this.child,
+    this.onTap,
+  });
+
+  final double height;
+  final Color surface;
+  final Widget child;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final band = SizedBox(
+      height: height,
+      child: Container(
+        decoration: BoxDecoration(
+          color: surface,
+          borderRadius: BorderRadius.only(
+            bottomLeft: Radius.circular(12.br),
+            bottomRight: Radius.circular(12.br),
+          ),
+        ),
+        child: child,
+      ),
+    );
+    if (onTap == null) return band;
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap,
+      child: band,
     );
   }
 }

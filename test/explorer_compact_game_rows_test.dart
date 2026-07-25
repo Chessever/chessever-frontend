@@ -13,6 +13,7 @@ import 'package:chessever2/screens/gamebase/models/models.dart';
 import 'package:chessever2/screens/gamebase/providers/explorer_game_focus_provider.dart';
 import 'package:chessever2/screens/gamebase/providers/gamebase_explorer_state.dart';
 import 'package:chessever2/screens/gamebase/utils/continuation_line.dart';
+import 'package:chessever2/screens/gamebase/utils/explorer_games_paging.dart';
 import 'package:chessever2/screens/chessboard/chess_board_screen_new.dart';
 import 'package:chessever2/screens/chessboard/widgets/chess_board_bottom_nav_bar.dart';
 import 'package:chessever2/screens/chessboard/widgets/chess_board_from_fen_new.dart';
@@ -281,6 +282,77 @@ void main() {
     expect(resolveExplorerFocusSoundSan(focus(2), focus(1)), 'Nf3');
     expect(resolveExplorerFocusSoundSan(focus(1), focus(1)), isNull);
     expect(resolveExplorerFocusSoundSan(focus(0), null), isNull);
+  });
+
+  // The inline strip pages one card at a time; a card that grew with the
+  // continuation it happens to carry would knock the grid out of step.
+  testWidgets('every card is exactly one page tall, whatever line it carries', (
+    tester,
+  ) async {
+    final lines = [
+      _lineFromUcis(const []),
+      _lineFromUcis(const ['e2e4']),
+      _lineFromUcis(const [
+        'e2e4',
+        'e7e5',
+        'g1f3',
+        'b8c6',
+        'f1b5',
+        'a7a6',
+        'b5a4',
+        'g8f6',
+      ]),
+    ];
+    final container = ProviderContainer(overrides: _baseOverrides());
+    addTearDown(container.dispose);
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: MaterialApp(
+          theme: ThemeData.dark().copyWith(extensions: const [AppColors.dark]),
+          home: Builder(
+            builder: (context) {
+              ResponsiveHelper.init(context);
+              return Scaffold(
+                body: Align(
+                  alignment: Alignment.topCenter,
+                  child: SizedBox(
+                    width: 400,
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        for (final line in lines)
+                          ExplorerGameCard(
+                            game: _game(),
+                            anchorFen: _anchorFen,
+                            line: line,
+                            allGames: [_game()],
+                            index: 0,
+                            playMoveSound: (_) {},
+                          ),
+                      ],
+                    ),
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    final expected = ExplorerGameCardGeometry.cardHeight(
+      ExplorerGameCardGeometry.preferredBoardSize,
+    );
+    for (var i = 0; i < lines.length; i++) {
+      expect(
+        tester.getSize(find.byType(ExplorerGameCard).at(i)).height,
+        closeTo(expected, 0.01),
+        reason: 'card $i must be exactly one page tall',
+      );
+    }
   });
 
   group('ExplorerGameCard (original card)', () {
@@ -597,14 +669,28 @@ void main() {
       expect(source, contains('focusNotifier.focus('));
       expect(source, contains('openGamebaseGame('));
       expect(source, contains('_buildChip'));
-      expect(source, contains('Scrollable.ensureVisible'));
+      // Focusing a chip may move the chip strip and NOTHING else:
+      // `Scrollable.ensureVisible` walks up every enclosing scrollable and
+      // would re-centre the card inside the explorer list, undoing its
+      // card-by-card alignment.
+      expect(source, contains('_chipScrollController.position.ensureVisible'));
+      expect(source, isNot(contains('Scrollable.ensureVisible(')));
       // Chip inset lives inside the horizontal scroll view.
+      expect(source, contains('padding: EdgeInsets.symmetric(horizontal: 10.sp)'));
+      // Mini-board enlarged for readability when games fill the panel; the
+      // strip may hand down a smaller edge on short panels.
       expect(
         source,
-        contains('padding: EdgeInsets.fromLTRB(10.sp, 8.sp, 10.sp, 10.sp)'),
+        contains('ExplorerGameCardGeometry.preferredBoardSize'),
       );
-      // Mini-board enlarged for readability when games fill the panel.
-      expect(source, contains('final boardSize = 124.sp'));
+      final geometrySource =
+          io.File(
+            'lib/screens/gamebase/utils/explorer_games_paging.dart',
+          ).readAsStringSync();
+      expect(
+        geometrySource,
+        contains('static double get preferredBoardSize => 124.sp'),
+      );
     });
 
     test('games pin removes sticky label chrome and keeps the board fixed', () {

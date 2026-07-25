@@ -1,3 +1,5 @@
+import 'package:chessever2/screens/chessboard/game_review/game_review_sheet.dart';
+import 'package:chessever2/screens/chessboard/game_review/game_review_sheet_host.dart';
 import 'package:chessever2/screens/chessboard/view_model/chess_board_state_new.dart';
 import 'package:chessever2/screens/gamebase/providers/gamebase_providers.dart';
 import 'package:chessever2/screens/gamebase/utils/explorer_move_line.dart';
@@ -50,11 +52,10 @@ class BoardOpeningExplorerPanel extends HookConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     // Desktop `_OpeningExplorerPage._syncProvider` sanitise — exact same regex.
-    final sanitised =
-        lineUcis
-            .map((m) => m.trim().toLowerCase())
-            .where((m) => RegExp(r'^[a-h][1-8][a-h][1-8][qrbn]?$').hasMatch(m))
-            .toList(growable: false);
+    final sanitised = lineUcis
+        .map((m) => m.trim().toLowerCase())
+        .where((m) => RegExp(r'^[a-h][1-8][a-h][1-8][qrbn]?$').hasMatch(m))
+        .toList(growable: false);
     final lineKey = sanitised.join(' ');
 
     useEffect(() {
@@ -89,9 +90,34 @@ class BoardOpeningExplorerPanel extends HookConsumerWidget {
         kBottomNavigationBarHeight + (ResponsiveHelper.isTablet ? 14.0 : 0.0);
     final listBottomPadding = safeBottom + navHeight + 20;
 
-    return MoveStatisticsPanel(
-      onMove: onMoveSelected,
-      listBottomPadding: listBottomPadding,
+    // Inline game cards page one at a time, each landing whole against this
+    // panel's top edge — the edge right under the board's bottom player row.
+    // That page height is the row's already-measured distance to the bottom of
+    // the window (the same anchor the Game Analysis sheet stops at), because
+    // once the games strip pins, the engine lines and the move-table header
+    // above it have collapsed away. Tablet landscape puts the panel beside the
+    // board instead of under it, so the anchor means nothing there.
+    final pagesGames =
+        !(ResponsiveHelper.isTablet && ResponsiveHelper.isLandscape);
+    final anchorPixels = GameReviewSheetScope.maybeOf(context)?.anchorPixels;
+
+    if (!pagesGames || anchorPixels == null) {
+      return MoveStatisticsPanel(
+        onMove: onMoveSelected,
+        listBottomPadding: listBottomPadding,
+      );
+    }
+
+    return ValueListenableBuilder<double?>(
+      valueListenable: anchorPixels,
+      builder: (context, anchor, _) {
+        return MoveStatisticsPanel(
+          onMove: onMoveSelected,
+          listBottomPadding: listBottomPadding,
+          gamesPageHeight:
+              anchor == null ? null : anchor + GameReviewSheetExtents.anchorGap,
+        );
+      },
     );
   }
 }

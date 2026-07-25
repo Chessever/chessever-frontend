@@ -8,6 +8,7 @@ import 'package:dartchess/dartchess.dart';
 import 'package:flutter/foundation.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter_animate/flutter_animate.dart' hide ShimmerEffect;
 import 'package:flutter_hooks/flutter_hooks.dart';
@@ -21,6 +22,7 @@ import '../models/models.dart';
 import '../providers/explorer_game_focus_provider.dart';
 import '../providers/gamebase_explorer_state.dart';
 import '../providers/gamebase_providers.dart';
+import '../utils/explorer_games_paging.dart';
 import '../utils/explorer_move_sort.dart';
 import 'explorer_game_card.dart';
 import 'position_games_sheet.dart';
@@ -345,10 +347,31 @@ void _syncExplorerHeaderMode({
   if (next != currentlyInGames) setInGames(next);
 }
 
+/// Scroll offset at which [gamesSectionKey]'s first card meets the top edge of
+/// the panel. Null while the section is absent or not laid out yet.
+///
+/// Read from the viewport rather than accumulated from row heights, so the
+/// move table above can be any shape without the games grid drifting.
+double? _measureExplorerGamesAnchor(GlobalKey gamesSectionKey) {
+  final sectionContext = gamesSectionKey.currentContext;
+  if (sectionContext == null) return null;
+  final box = sectionContext.findRenderObject();
+  if (box is! RenderBox || !box.hasSize) return null;
+  final viewport = RenderAbstractViewport.maybeOf(box);
+  if (viewport == null) return null;
+  final offset = viewport.getOffsetToReveal(box, 0).offset;
+  return offset.isFinite ? offset : null;
+}
+
 /// Panel displaying move statistics for the current position.
 /// Shows each possible move with game count and win/draw/loss bar.
 class MoveStatisticsPanel extends HookConsumerWidget {
-  const MoveStatisticsPanel({super.key, this.onMove, this.listBottomPadding});
+  const MoveStatisticsPanel({
+    super.key,
+    this.onMove,
+    this.listBottomPadding,
+    this.gamesPageHeight,
+  });
 
   /// Optional handler for move taps. When supplied, taps invoke this callback
   /// instead of advancing the gamebase explorer's internal state — used when
@@ -360,6 +383,16 @@ class MoveStatisticsPanel extends HookConsumerWidget {
   /// floating bottom nav (board `extendBody` / translucent bar). When null,
   /// a small default gap is used.
   final double? listBottomPadding;
+
+  /// Height of this panel once the inline games strip has pulled itself up
+  /// over the engine lines — i.e. the space between the board's bottom player
+  /// row and the bottom of the window.
+  ///
+  /// Supplying it turns the games strip into a deterministic page strip: each
+  /// rest position puts exactly one whole card against the panel's top edge,
+  /// right under that player row. Null keeps ordinary list scrolling (the
+  /// standalone Gamebase explorer, tablet landscape).
+  final double? gamesPageHeight;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -385,6 +418,73 @@ class MoveStatisticsPanel extends HookConsumerWidget {
     // mid-layout (PV expand / line upgrade) and localToGlobal is illegal then.
     final headerSyncScheduled = useRef(false);
 
+    // ── Deterministic games paging ─────────────────────────────────────────
+    // One card per page, each landing flush against the panel's top edge.
+    final navClearance = listBottomPadding ?? 8.sp;
+    final pageMetrics =
+        gamesPageHeight == null
+            ? null
+            : resolveExplorerGamesPageMetrics(
+              pageHeight: gamesPageHeight!,
+              navClearance: navClearance,
+              // Same card geometry the cards themselves resolve, reader's
+              // text size included, so the grid matches what is drawn.
+              chromeHeight: ExplorerGameCardGeometry.chromeHeight(
+                MediaQuery.textScalerOf(context),
+              ),
+            );
+    // Grid the physics reads mid-gesture; the panel keeps it measured.
+    final snapConfig = useMemoized(() => ExplorerGamesSnapConfig());
+    final snapPhysics = useMemoized(
+      () => ExplorerGamesSnapPhysics(config: snapConfig),
+      [snapConfig],
+    );
+    final gamesCardCount = useRef(0);
+
+    /// Pulls the resting offset back onto the page grid.
+    ///
+    /// The physics already quantise a normal settle; this covers everything
+    /// that moves the list without one — a fling that started in the move
+    /// table, the strip growing a card, the panel changing height.
+    void alignToNearestPage() {
+      if (!snapConfig.isActive || !scrollController.hasClients) return;
+      final position = scrollController.position;
+      if (position.isScrollingNotifier.value) return;
+      // Same grid the physics use, asked at a standstill: whichever card (or
+      // the top of the list) this offset belongs to.
+      final target = explorerGamesSnapTarget(
+        pixels: position.pixels,
+        velocity: 0,
+        velocityTolerance: 1,
+        anchor: snapConfig.anchor!,
+        pageExtent: snapConfig.pageExtent,
+        pageCount: snapConfig.pageCount,
+        minScrollExtent: position.minScrollExtent,
+        maxScrollExtent: position.maxScrollExtent,
+      );
+      // Above the strip the move table scrolls freely — nothing to align to.
+      if (target == null) return;
+      if ((target - position.pixels).abs() < 0.5) return;
+      scrollController.animateTo(
+        target,
+        duration: const Duration(milliseconds: 180),
+        curve: Curves.easeOutCubic,
+      );
+    }
+
+    void syncGamesGrid() {
+      final metrics = pageMetrics;
+      final changed = snapConfig.update(
+        anchor:
+            metrics == null
+                ? null
+                : _measureExplorerGamesAnchor(gamesSectionKey),
+        pageExtent: metrics?.pageExtent ?? 0,
+        pageCount: metrics == null ? 0 : gamesCardCount.value,
+      );
+      if (changed) alignToNearestPage();
+    }
+
     void runHeaderModeSync() {
       _syncExplorerHeaderMode(
         gamesSectionKey: gamesSectionKey,
@@ -400,6 +500,7 @@ class MoveStatisticsPanel extends HookConsumerWidget {
           }
         },
       );
+      syncGamesGrid();
     }
 
     void syncHeaderMode() {
@@ -409,6 +510,25 @@ class MoveStatisticsPanel extends HookConsumerWidget {
         headerSyncScheduled.value = false;
         runHeaderModeSync();
       });
+    }
+
+    final alignScheduled = useRef(false);
+    void scheduleAlign() {
+      if (alignScheduled.value) return;
+      alignScheduled.value = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        alignScheduled.value = false;
+        // Measure before correcting: the strip may have grown a card, or the
+        // panel may have changed height, since the gesture started.
+        syncGamesGrid();
+        alignToNearestPage();
+      });
+    }
+
+    void onGamesCardCountChanged(int count) {
+      if (gamesCardCount.value == count) return;
+      gamesCardCount.value = count;
+      syncGamesGrid();
     }
 
     useEffect(() {
@@ -431,6 +551,13 @@ class MoveStatisticsPanel extends HookConsumerWidget {
       syncHeaderMode();
       return null;
     }, [state.totalGames, state.isLoading, state.currentFen]);
+
+    // Grid follows the strip: a new position (or a different card count) is a
+    // different set of pages.
+    useEffect(() {
+      scheduleAlign();
+      return null;
+    }, [state.currentFen, gamesPageHeight, pageMetrics?.pageExtent]);
 
     final sortedAggregates = applyExplorerMoveSort(
       state.moveAggregates,
@@ -459,6 +586,17 @@ class MoveStatisticsPanel extends HookConsumerWidget {
     // header+rows scaffold with shimmering skeleton rows instead of a centered
     // spinner — keeps the layout stable and matches the app's shimmer style.
     final showSkeleton = state.isLoading && !hasStaleData && !showGate;
+
+    // Mirrors the inline-games condition in `_buildListChildren` — the page
+    // grid, the bottom reserve and the physics all hinge on the strip really
+    // being there.
+    final showInlineGames =
+        !showGate &&
+        !state.isLoading &&
+        sortedAggregates.isNotEmpty &&
+        state.totalGames > 0 &&
+        state.totalGames <= kExplorerInlineGamesLimit;
+    final pagesGames = showInlineGames && pageMetrics != null;
 
     if (state.error != null && !showGate) {
       return Center(
@@ -628,9 +766,19 @@ class MoveStatisticsPanel extends HookConsumerWidget {
           child: Builder(
             builder: (context) {
               // Clear the bottom nav / home indicator so last move rows and
-              // inline game cards are fully scrollable into view.
+              // inline game cards are fully scrollable into view. While the
+              // strip pages, the reserve is instead whatever puts the *last*
+              // card's aligned offset exactly on `maxScrollExtent`, so the
+              // final page tops out under the player row like every other one.
               final listPadding = EdgeInsets.only(
-                bottom: listBottomPadding ?? 8.sp,
+                bottom:
+                    pagesGames
+                        ? explorerGamesListBottomPadding(
+                          pageHeight: gamesPageHeight!,
+                          pageExtent: pageMetrics.pageExtent,
+                          navClearance: navClearance,
+                        )
+                        : navClearance,
               );
               // Catch every scroll update (including ballistic / edge bounce)
               // so bottom-nav restore isn't missed when flinging up to the
@@ -638,11 +786,19 @@ class MoveStatisticsPanel extends HookConsumerWidget {
               Widget wrapScroll(Widget child) {
                 return NotificationListener<ScrollNotification>(
                   onNotification: (notification) {
+                    // Cards carry a horizontal chip strip; its scrolling says
+                    // nothing about where this list is resting.
+                    if (notification.metrics.axis != Axis.vertical) {
+                      return false;
+                    }
                     if (notification is ScrollUpdateNotification ||
                         notification is ScrollEndNotification ||
                         notification is OverscrollNotification) {
                       syncHeaderMode();
                     }
+                    // A gesture that began in the move table can coast to a
+                    // stop mid-card; put it back on the grid.
+                    if (notification is ScrollEndNotification) scheduleAlign();
                     return false;
                   },
                   child: child,
@@ -684,6 +840,7 @@ class MoveStatisticsPanel extends HookConsumerWidget {
                     ListView(
                       controller: scrollController,
                       padding: listPadding,
+                      physics: pagesGames ? snapPhysics : null,
                       children: _buildListChildren(
                         context,
                         ref,
@@ -692,6 +849,9 @@ class MoveStatisticsPanel extends HookConsumerWidget {
                         showGate: showGate,
                         nextStepCrossesLimit: nextStepCrossesLimit,
                         gamesSectionKey: gamesSectionKey,
+                        showInlineGames: showInlineGames,
+                        gamesBoardSize: pageMetrics?.boardSize,
+                        onGamesCardCountChanged: onGamesCardCountChanged,
                       ),
                     ),
                   );
@@ -734,7 +894,10 @@ class MoveStatisticsPanel extends HookConsumerWidget {
     required List<MoveAggregate> aggregates,
     required bool showGate,
     required bool nextStepCrossesLimit,
+    required bool showInlineGames,
     GlobalKey? gamesSectionKey,
+    double? gamesBoardSize,
+    ValueChanged<int>? onGamesCardCountChanged,
   }) {
     Widget divider() =>
         Divider(color: context.colors.divider, height: 1, indent: 12.sp);
@@ -798,12 +961,7 @@ class MoveStatisticsPanel extends HookConsumerWidget {
     // Inline games section once few enough games remain in this position.
     // The blur gate already covers the whole panel past the free limit, so
     // no extra gating is needed here.
-    final totalGames = state.totalGames;
-    if (!showGate &&
-        !state.isLoading &&
-        aggregates.isNotEmpty &&
-        totalGames > 0 &&
-        totalGames <= kExplorerInlineGamesLimit) {
+    if (showInlineGames) {
       children.add(divider());
       children.add(
         KeyedSubtree(
@@ -812,6 +970,8 @@ class MoveStatisticsPanel extends HookConsumerWidget {
             fen: state.currentFen,
             moves: state.exploredMoves,
             filters: state.filters,
+            boardSize: gamesBoardSize,
+            onCardCountChanged: onGamesCardCountChanged,
           ),
         ),
       );
