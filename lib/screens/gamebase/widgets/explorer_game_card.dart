@@ -755,9 +755,12 @@ class _ExplorerGameCardState extends ConsumerState<ExplorerGameCard> {
                           ],
                         ),
                       ),
-                      // White top · meta middle (centered) · black bottom —
-                      // height matches the mini-board so scores/names track
-                      // the board edge.
+                      // Black top · meta middle (centered) · white bottom, so
+                      // the names read in the same order as the mini-board
+                      // beside them (drawn `orientation: Side.white`, black
+                      // back rank at the top) and as the main board's own
+                      // player rows. Height matches the mini-board so scores
+                      // and names track its edges.
                       Expanded(
                         child: Padding(
                           padding: EdgeInsets.fromLTRB(
@@ -773,7 +776,7 @@ class _ExplorerGameCardState extends ConsumerState<ExplorerGameCard> {
                               children: [
                                 _ExplorerCardPlayerRow(
                                   game: widget.game,
-                                  isWhite: true,
+                                  isWhite: false,
                                 ),
                                 Expanded(
                                   child: Center(
@@ -796,7 +799,7 @@ class _ExplorerGameCardState extends ConsumerState<ExplorerGameCard> {
                                 ),
                                 _ExplorerCardPlayerRow(
                                   game: widget.game,
-                                  isWhite: false,
+                                  isWhite: true,
                                 ),
                               ],
                             ),

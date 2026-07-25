@@ -294,9 +294,19 @@ void _syncExplorerHeaderMode({
   required bool currentlyInGames,
   required ValueChanged<bool> setInGames,
   double? pageAnchor,
+  bool settleRunningToCard = false,
 }) {
   if (!scrollController.hasClients) {
     if (currentlyInGames) setInGames(false);
+    return;
+  }
+
+  // A settle already springing toward a card has committed to the strip, so
+  // the chrome above it starts clearing now rather than once the offset
+  // arrives. The engine lines collapse while the card rises into that space,
+  // which is one movement; waiting for the land makes it two.
+  if (settleRunningToCard) {
+    if (!currentlyInGames) setInGames(true);
     return;
   }
 
@@ -455,13 +465,21 @@ class MoveStatisticsPanel extends HookConsumerWidget {
     /// second settle — [ExplorerGamesSnapPhysics] is the only land path.
     void syncGamesGrid() {
       final metrics = pageMetrics;
-      final anchor = _measureExplorerGamesAnchor(gamesSectionKey);
+      // Prefer live measure; keep previous anchor if measure fails mid-layout
+      // (null anchor disables snap physics and free-fling skips card 0).
+      final measured = _measureExplorerGamesAnchor(gamesSectionKey);
+      final anchor = measured ?? snapConfig.anchor;
       snapConfig.update(
         anchor: metrics == null ? null : anchor,
-        pageExtent: metrics?.pageExtent ?? 0,
-        pageCount: metrics == null ? 0 : gamesCardCount.value,
+        pageExtent: metrics?.pageExtent ?? snapConfig.pageExtent,
+        pageCount:
+            metrics == null
+                ? snapConfig.pageCount
+                : (gamesCardCount.value > 0
+                    ? gamesCardCount.value
+                    : snapConfig.pageCount),
       );
-      publishEvalWindow(anchor);
+      publishEvalWindow(snapConfig.anchor);
     }
 
     void syncHeaderMode() {
@@ -471,6 +489,7 @@ class MoveStatisticsPanel extends HookConsumerWidget {
         scrollController: scrollController,
         currentlyInGames: headerInGames.value,
         pageAnchor: snapConfig.anchor,
+        settleRunningToCard: snapConfig.settleRunningToCard,
         setInGames: (v) {
           if (headerInGames.value == v) return;
           // Chrome only: collapse header + expand over PV. Does not touch
@@ -513,6 +532,13 @@ class MoveStatisticsPanel extends HookConsumerWidget {
       syncGamesGrid();
       return null;
     }, [state.currentFen, gamesPageHeight, pageMetrics?.pageExtent]);
+
+    // A new position is a new strip: the reader is entering it again, so the
+    // next settle owes them the first card however the last one ended.
+    useEffect(() {
+      snapConfig.resetPaging();
+      return null;
+    }, [state.currentFen]);
 
     final sortedAggregates = applyExplorerMoveSort(
       state.moveAggregates,
@@ -751,22 +777,24 @@ class MoveStatisticsPanel extends HookConsumerWidget {
                     final wasSettled = listSettled.value;
                     if (notification is ScrollStartNotification) {
                       listSettled.value = false;
-                      // Always record origin (not only dragDetails) so flings
-                      // from a short move table still page from finger-down.
-                      snapConfig.noteGestureStart(notification.metrics.pixels);
+                      // One gesture, one settle decision — taken when this
+                      // gesture ends, from the card the list is resting on now.
+                      snapConfig.beginGesture();
                     } else if (notification is ScrollEndNotification) {
                       listSettled.value = true;
-                      // Re-arm gate if back above the first card. Do NOT mark
-                      // rested here — only a ballistic aimed at card 0 does
-                      // (avoids opening the gate just because a short table
-                      // already paints near page 0).
-                      snapConfig.noteLivePixels(notification.metrics.pixels);
+                      // The only place a rest is recorded. Everything the
+                      // physics decide hangs off it, so it must mean a real
+                      // standstill on a real card.
+                      snapConfig.endGesture(
+                        pixels: notification.metrics.pixels,
+                        minScrollExtent: notification.metrics.minScrollExtent,
+                        maxScrollExtent: notification.metrics.maxScrollExtent,
+                      );
                     }
                     if (listSettled.value != wasSettled) syncHeaderMode();
                     if (notification is ScrollUpdateNotification ||
                         notification is ScrollEndNotification ||
                         notification is OverscrollNotification) {
-                      snapConfig.noteLivePixels(notification.metrics.pixels);
                       // Pin chrome + page-grid measure only — never re-scroll.
                       syncHeaderMode();
                     }

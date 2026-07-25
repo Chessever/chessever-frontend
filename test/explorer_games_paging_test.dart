@@ -55,6 +55,8 @@ void main() {
       );
 
       // Content above the strip, then the strip itself, then the reserve.
+      // Every card carries its own trailing gap, so the strip is exactly
+      // `cardCount * pageExtent` tall.
       const above = 260.0;
       final content = above + cardCount * metrics.pageExtent + padding;
       final maxScrollExtent = content - pageHeight;
@@ -64,257 +66,692 @@ void main() {
         closeTo(above + (cardCount - 1) * metrics.pageExtent, 0.001),
       );
     });
+
+    test('a single card still tops out flush under the player row', () {
+      const pageHeight = 400.0;
+      final metrics = metricsFor(pageHeight)!;
+      final padding = explorerGamesListBottomPadding(
+        pageHeight: pageHeight,
+        pageExtent: metrics.pageExtent,
+        navClearance: 110,
+      );
+      const above = 90.0;
+      final maxScrollExtent =
+          above + metrics.pageExtent + padding - pageHeight;
+      expect(maxScrollExtent, closeTo(above, 0.001));
+    });
   });
 
-  group('snap target', () {
+  group('settle page — the card a release lands on', () {
     const anchor = 200.0;
     const extent = 180.0;
+    const pageCount = 5;
 
-    double? target(double pixels, double velocity) => explorerGamesSnapTarget(
+    int? pageFor({
+      required double pixels,
+      required double velocity,
+      required int? restingPage,
+    }) => explorerGamesSnapPage(
       pixels: pixels,
       velocity: velocity,
       velocityTolerance: 50,
       anchor: anchor,
       pageExtent: extent,
-      pageCount: 5,
-      minScrollExtent: 0,
-      maxScrollExtent: anchor + 4 * extent,
+      pageCount: pageCount,
+      restingPage: restingPage,
     );
 
-    test('a slow release falls back to the nearest card', () {
-      expect(target(anchor + 40, 0), anchor);
-      expect(target(anchor + 150, 0), anchor + extent);
+    group('coming out of the move table', () {
+      test('a flick down lands on the first card, whatever the speed', () {
+        for (final velocity in [80.0, 400.0, 1500.0, 4000.0]) {
+          expect(
+            pageFor(pixels: anchor - 40, velocity: velocity, restingPage: null),
+            0,
+            reason: 'velocity $velocity',
+          );
+        }
+      });
+
+      test('a release already inside card 1 still lands on the first', () {
+        // The repro: 2–3 move rows, so card 0 is painted high and a
+        // normal-pace finger lets go well past it.
+        expect(
+          pageFor(
+            pixels: anchor + extent * 0.7,
+            velocity: 120,
+            restingPage: null,
+          ),
+          0,
+        );
+        expect(
+          pageFor(
+            pixels: anchor + extent * 1.2,
+            velocity: 3500,
+            restingPage: null,
+          ),
+          0,
+        );
+      });
+
+      test('a dead release past card 0 still falls back onto it', () {
+        expect(
+          pageFor(pixels: anchor + extent * 0.9, velocity: 0, restingPage: null),
+          0,
+        );
+      });
+
+      test('the last move rows stay readable just above the strip', () {
+        // Released dead with card 0 still most of a card down: this is a rest
+        // in the move table, not a half-hearted entry.
+        expect(
+          pageFor(pixels: anchor - extent * 0.6, velocity: 0, restingPage: null),
+          isNull,
+        );
+        // Nearly there — the magnet takes it.
+        expect(
+          pageFor(pixels: anchor - extent * 0.1, velocity: 0, restingPage: null),
+          0,
+        );
+      });
+
+      test('flicking up goes back to ordinary list physics', () {
+        expect(
+          pageFor(pixels: anchor - 20, velocity: -2000, restingPage: null),
+          isNull,
+        );
+      });
     });
 
-    test('a flick moves exactly one card, never several', () {
-      expect(target(anchor + 10, 3000), anchor + extent);
-      expect(target(anchor + extent - 10, -3000), anchor);
+    group('inside the strip', () {
+      test('a flick is exactly one card, never several', () {
+        expect(pageFor(pixels: anchor + 10, velocity: 3000, restingPage: 0), 1);
+        expect(
+          pageFor(pixels: anchor + extent * 2.4, velocity: 4000, restingPage: 1),
+          2,
+        );
+        expect(
+          pageFor(pixels: anchor + extent * 1.6, velocity: -3000, restingPage: 2),
+          1,
+        );
+      });
+
+      test('never past the last card', () {
+        expect(
+          pageFor(
+            pixels: anchor + 4 * extent - 5,
+            velocity: 3000,
+            restingPage: 4,
+          ),
+          4,
+        );
+      });
+
+      test('flicking up off the first card returns to the move table', () {
+        expect(pageFor(pixels: anchor, velocity: -3000, restingPage: 0), isNull);
+      });
+
+      test('a dead release takes the card the finger left on top', () {
+        expect(
+          pageFor(pixels: anchor + extent * 1.1, velocity: 0, restingPage: 1),
+          1,
+        );
+        expect(
+          pageFor(pixels: anchor + extent * 1.6, velocity: 0, restingPage: 1),
+          2,
+        );
+      });
+
+      test('dragged clear above the first card, the move table takes over', () {
+        expect(
+          pageFor(pixels: anchor - extent * 0.7, velocity: 0, restingPage: 0),
+          isNull,
+        );
+      });
     });
 
-    test('leaves the move table to ordinary list physics', () {
-      expect(target(0, 0), isNull);
-      expect(target(anchor - extent, -2000), isNull);
-    });
-
-    test('catches a fling that came out of the move table', () {
-      // Just under the strip and moving into it — this one is ours.
-      expect(target(anchor - 40, 2000), anchor);
-    });
-
-    test('never targets past the last card', () {
-      expect(target(anchor + 4 * extent - 5, 3000), anchor + 4 * extent);
-    });
-
-    test('hard fling from a short move table does not skip the first card', () {
-      // Few move rows: first card already high. Finger starts at list top and
-      // flings hard past card 0; release is already mid card 1. Still land on 0.
-      const shortAnchor = 80.0;
+    test('no grid, no opinion', () {
       expect(
-        explorerGamesSnapTarget(
-          pixels: shortAnchor + extent * 1.2,
-          velocity: 3500,
-          velocityTolerance: 50,
-          anchor: shortAnchor,
-          pageExtent: extent,
-          pageCount: 5,
-          minScrollExtent: 0,
-          maxScrollExtent: shortAnchor + 4 * extent,
-          gestureStartPixels: 0,
-          allowPastFirstCard: false,
-        ),
-        shortAnchor,
-      );
-    });
-
-    test('first visit forces card 0 even if gesture started on card 0 territory', () {
-      // 2–3 move rows: card 0 is already under the finger; a fast fling would
-      // pick card 1 without the gate.
-      expect(
-        explorerGamesSnapTarget(
-          pixels: anchor + extent * 0.8,
-          velocity: 4000,
+        explorerGamesSnapPage(
+          pixels: 0,
+          velocity: 0,
           velocityTolerance: 50,
           anchor: anchor,
-          pageExtent: extent,
-          pageCount: 5,
-          minScrollExtent: 0,
-          maxScrollExtent: anchor + 4 * extent,
-          gestureStartPixels: anchor + 10,
-          allowPastFirstCard: false,
+          pageExtent: 0,
+          pageCount: pageCount,
+          restingPage: null,
         ),
-        anchor,
+        isNull,
       );
-    });
-
-    test('normal-pace release mid card 1 still targets card 0 while gated', () {
-      // Slow/normal velocity → nearest-page path; release already on card 1.
       expect(
-        explorerGamesSnapTarget(
-          pixels: anchor + extent * 0.7,
+        explorerGamesSnapPage(
+          pixels: 0,
           velocity: 0,
           velocityTolerance: 50,
           anchor: anchor,
           pageExtent: extent,
-          pageCount: 5,
-          minScrollExtent: 0,
-          maxScrollExtent: anchor + 4 * extent,
-          gestureStartPixels: anchor - 20,
-          allowPastFirstCard: false,
+          pageCount: 0,
+          restingPage: null,
         ),
-        anchor,
+        isNull,
       );
-      // Slightly above normal pace.
-      expect(
-        explorerGamesSnapTarget(
-          pixels: anchor + extent * 0.9,
-          velocity: 120,
-          velocityTolerance: 50,
-          anchor: anchor,
-          pageExtent: extent,
-          pageCount: 5,
-          minScrollExtent: 0,
-          maxScrollExtent: anchor + 4 * extent,
-          gestureStartPixels: 0,
-          allowPastFirstCard: false,
-        ),
-        anchor,
-      );
-    });
-
-    test('after resting on first card, a fling advances to the second', () {
-      expect(
-        explorerGamesSnapTarget(
-          pixels: anchor + 20,
-          velocity: 3000,
-          velocityTolerance: 50,
-          anchor: anchor,
-          pageExtent: extent,
-          pageCount: 5,
-          minScrollExtent: 0,
-          maxScrollExtent: anchor + 4 * extent,
-          gestureStartPixels: anchor,
-          allowPastFirstCard: true,
-        ),
-        anchor + extent,
-      );
-    });
-
-    test('rested flag only opens when target is first card, not list top', () {
-      final config =
-          ExplorerGamesSnapConfig()..update(
-            anchor: 80,
-            pageExtent: 180,
-            pageCount: 4,
-          );
-      expect(config.hasRestedOnFirstCard, isFalse);
-      config.markRestedOnFirstCardIfTarget(0); // list top, not card 0
-      expect(config.hasRestedOnFirstCard, isFalse);
-      config.markRestedOnFirstCardIfTarget(80);
-      expect(config.hasRestedOnFirstCard, isTrue);
-      config.noteLivePixels(10); // back above first card
-      expect(config.hasRestedOnFirstCard, isFalse);
     });
   });
 
-  group('the top of the list stays reachable', () {
-    // A position with only a couple of moves puts the strip barely below the
-    // top of the list. Snapping must not drag those rows out of reach.
-    double? target(double pixels, double velocity) => explorerGamesSnapTarget(
-      pixels: pixels,
-      velocity: velocity,
-      velocityTolerance: 50,
-      anchor: 80,
-      pageExtent: 180,
-      pageCount: 3,
-      minScrollExtent: 0,
-      maxScrollExtent: 80 + 2 * 180,
-    );
-
-    test('a release near the top settles at the top, not on the first card', () {
-      expect(target(0, 0), 0);
-      expect(target(20, 0), 0);
-    });
-
-    test('past the halfway point the first card wins', () {
-      expect(target(60, 0), 80);
-    });
-
-    test('a flick down still takes the first card', () {
-      expect(target(10, 2000), 80);
-    });
-  });
-
-  testWidgets('the list settles on a card boundary, never between two', (
-    tester,
-  ) async {
+  group('resting page — only a real standstill on a real card counts', () {
     const anchor = 200.0;
     const extent = 180.0;
-    const cardCount = 5;
-    const viewport = 300.0;
+    const pageCount = 5;
+    final maxExtent = anchor + (pageCount - 1) * extent;
 
-    final config =
-        ExplorerGamesSnapConfig()..update(
+    int? restAt(double pixels, {double? maxScrollExtent}) =>
+        explorerGamesRestingPage(
+          pixels: pixels,
           anchor: anchor,
           pageExtent: extent,
-          pageCount: cardCount,
+          pageCount: pageCount,
+          minScrollExtent: 0,
+          maxScrollExtent: maxScrollExtent ?? maxExtent,
         );
-    final controller = ScrollController();
-    addTearDown(controller.dispose);
 
-    await tester.pumpWidget(
-      MaterialApp(
-        home: Scaffold(
-          body: Align(
-            alignment: Alignment.topCenter,
-            child: SizedBox(
-              height: viewport,
-              child: ListView(
-                controller: controller,
-                physics: ExplorerGamesSnapPhysics(config: config),
-                padding: const EdgeInsets.only(bottom: viewport - extent),
-                children: [
-                  // Stands in for the move table above the strip.
-                  const SizedBox(height: anchor),
-                  for (var i = 0; i < cardCount; i++)
-                    const SizedBox(height: extent),
-                ],
+    test('flush on a card is that card', () {
+      expect(restAt(anchor), 0);
+      expect(restAt(anchor + extent), 1);
+      expect(restAt(anchor + 3 * extent), 3);
+    });
+
+    test('nearly card 0 is not card 0', () {
+      // This is the one that used to open the gate: a settle that stopped
+      // short of the anchor was called a rest, so the next flick stepped to
+      // card 1 while card 0 had never been flush under the player row.
+      expect(restAt(anchor - 30), isNull);
+      expect(restAt(anchor + extent * 0.4), isNull);
+    });
+
+    test('a rest in the move table belongs to no card', () {
+      expect(restAt(0), isNull);
+    });
+
+    test('the last card counts even when the pin pulls maxScrollExtent in', () {
+      // Collapsing the engine PV grows this list's viewport, which shrinks
+      // maxScrollExtent — the last card tops out short of its aligned offset
+      // and is still a rest on the last card.
+      final clamped = maxExtent - 40;
+      expect(restAt(clamped, maxScrollExtent: clamped), pageCount - 1);
+    });
+  });
+
+  group('config lifecycle', () {
+    ExplorerGamesSnapConfig configFor() =>
+        ExplorerGamesSnapConfig()
+          ..update(anchor: 80, pageExtent: 180, pageCount: 4);
+
+    test('a fresh strip owes the reader the first card', () {
+      final config = configFor();
+      expect(config.restingPage, isNull);
+      expect(
+        config.resolveSettlePage(
+          pixels: 80 + 180 * 1.2,
+          velocity: 3500,
+          velocityTolerance: 50,
+        ),
+        0,
+      );
+    });
+
+    test('the settle target is latched for the life of one settle', () {
+      // A relayout restarts the in-flight ballistic; every restart must be
+      // handed the same answer, not a fresh one derived from pixels that the
+      // spring has already moved on.
+      final config = configFor();
+      final first = config.resolveSettlePage(
+        pixels: 80 + 180 * 0.2,
+        velocity: 3000,
+        velocityTolerance: 50,
+      );
+      expect(first, 0);
+      for (final pixels in [80 + 180 * 0.6, 80 + 180 * 1.1, 80 + 180 * 1.4]) {
+        expect(
+          config.resolveSettlePage(
+            pixels: pixels,
+            velocity: 1200,
+            velocityTolerance: 50,
+          ),
+          0,
+          reason: 'restart at $pixels must reuse the latched card',
+        );
+      }
+    });
+
+    test('a new gesture decides afresh, from the card actually rested on', () {
+      final config = configFor();
+      config.resolveSettlePage(
+        pixels: 100,
+        velocity: 3000,
+        velocityTolerance: 50,
+      );
+      config.endGesture(pixels: 80, minScrollExtent: 0, maxScrollExtent: 800);
+      expect(config.restingPage, 0);
+
+      config.beginGesture();
+      expect(
+        config.resolveSettlePage(
+          pixels: 90,
+          velocity: 3000,
+          velocityTolerance: 50,
+        ),
+        1,
+      );
+    });
+
+    test('catching a flying list does not promote where it was caught', () {
+      // Only endGesture records a rest, so grabbing mid-flight leaves the
+      // reader "in the move table" and the next flick still owes them card 0.
+      final config = configFor();
+      config.beginGesture();
+      expect(
+        config.resolveSettlePage(
+          pixels: 80 + 180 * 0.8,
+          velocity: 2500,
+          velocityTolerance: 50,
+        ),
+        0,
+      );
+    });
+
+    test('a settle that stops short of card 0 is not a rest on it', () {
+      final config = configFor();
+      config.endGesture(
+        pixels: 80 + 60,
+        minScrollExtent: 0,
+        maxScrollExtent: 800,
+      );
+      expect(config.restingPage, isNull);
+    });
+
+    test('scrolling back into the move table re-arms the entry rule', () {
+      final config = configFor();
+      config.endGesture(pixels: 80, minScrollExtent: 0, maxScrollExtent: 800);
+      expect(config.restingPage, 0);
+      config.endGesture(pixels: 0, minScrollExtent: 0, maxScrollExtent: 800);
+      expect(config.restingPage, isNull);
+    });
+
+    test('a different strip resets paging, a re-measure does not', () {
+      final config = configFor();
+      config.endGesture(
+        pixels: 80 + 180,
+        minScrollExtent: 0,
+        maxScrollExtent: 800,
+      );
+      expect(config.restingPage, 1);
+
+      // Sub-pixel churn from re-measuring the same layout: if this reset the
+      // paging state the strip could never leave card 0.
+      config.update(anchor: 80.4, pageExtent: 180, pageCount: 4);
+      expect(config.restingPage, 1);
+
+      // A new position brings a new card count — that really is a new strip.
+      config.update(anchor: 80.4, pageExtent: 180, pageCount: 6);
+      expect(config.restingPage, isNull);
+    });
+
+    test('resetPaging puts the reader back at the entrance', () {
+      final config = configFor();
+      config.endGesture(
+        pixels: 80 + 2 * 180,
+        minScrollExtent: 0,
+        maxScrollExtent: 800,
+      );
+      expect(config.restingPage, 2);
+      config.resetPaging();
+      expect(config.restingPage, isNull);
+    });
+
+    test('the strip is claimed as soon as a settle springs at a card', () {
+      // The pin reads this to start collapsing the engine lines while the card
+      // is still on its way, so the space opens as the card rises into it.
+      const anchor = 80.0;
+      const extent = 180.0;
+      final config =
+          ExplorerGamesSnapConfig()..update(
+            anchor: anchor,
+            pageExtent: extent,
+            pageCount: 4,
+          );
+      expect(config.settleRunningToCard, isFalse);
+
+      final physics = ExplorerGamesSnapPhysics(config: config);
+      final metrics = FixedScrollMetrics(
+        minScrollExtent: 0,
+        maxScrollExtent: anchor + 3 * extent,
+        pixels: anchor - 60,
+        viewportDimension: 300,
+        axisDirection: AxisDirection.down,
+        devicePixelRatio: 1,
+      );
+      expect(physics.createBallisticSimulation(metrics, 3000), isNotNull);
+      expect(config.settleRunningToCard, isTrue);
+
+      config.endGesture(
+        pixels: anchor,
+        minScrollExtent: 0,
+        maxScrollExtent: anchor + 3 * extent,
+      );
+      expect(config.settleRunningToCard, isFalse);
+    });
+
+    test('a settle handed back to the move table claims nothing', () {
+      const anchor = 400.0;
+      const extent = 180.0;
+      final config =
+          ExplorerGamesSnapConfig()..update(
+            anchor: anchor,
+            pageExtent: extent,
+            pageCount: 4,
+          );
+      final physics = ExplorerGamesSnapPhysics(config: config);
+      final metrics = FixedScrollMetrics(
+        minScrollExtent: 0,
+        maxScrollExtent: anchor + 3 * extent,
+        pixels: 100,
+        viewportDimension: 300,
+        axisDirection: AxisDirection.down,
+        devicePixelRatio: 1,
+      );
+      physics.createBallisticSimulation(metrics, -3000);
+      expect(config.settleRunningToCard, isFalse);
+    });
+
+    test('the settle spring ends on the first card, not the second', () {
+      const anchor = 200.0;
+      const extent = 180.0;
+      final config =
+          ExplorerGamesSnapConfig()..update(
+            anchor: anchor,
+            pageExtent: extent,
+            pageCount: 5,
+          );
+      final physics = ExplorerGamesSnapPhysics(config: config);
+      final metrics = FixedScrollMetrics(
+        minScrollExtent: 0,
+        maxScrollExtent: anchor + 4 * extent,
+        pixels: anchor + extent * 0.9,
+        viewportDimension: 300,
+        axisDirection: AxisDirection.down,
+        devicePixelRatio: 1,
+      );
+      final sim = physics.createBallisticSimulation(metrics, 3000);
+      expect(sim, isNotNull);
+      // Sampled far in the future — snapToEnd holds the end.
+      expect(sim!.x(10), closeTo(anchor, 1.0));
+    });
+
+    test('a failed mid-layout measure keeps the last good geometry', () {
+      final config = configFor();
+      config.update(anchor: null, pageExtent: 0, pageCount: 0);
+      expect(config.isActive, isTrue);
+      expect(config.anchor, 80);
+      expect(config.pageExtent, 180);
+      expect(config.pageCount, 4);
+    });
+  });
+
+  group('page offsets', () {
+    const anchor = 400.0;
+    const extent = 200.0;
+
+    test('page offsets are pure content-space', () {
+      expect(
+        explorerGamesOffsetForPage(
+          pageIndex: 2,
+          anchor: anchor,
+          pageExtent: extent,
+          minScrollExtent: 0,
+          maxScrollExtent: anchor + 4 * extent,
+        ),
+        anchor + 2 * extent,
+      );
+    });
+
+    test('offsets stay inside the scrollable range', () {
+      expect(
+        explorerGamesOffsetForPage(
+          pageIndex: 9,
+          anchor: anchor,
+          pageExtent: extent,
+          minScrollExtent: 0,
+          maxScrollExtent: anchor + 4 * extent,
+        ),
+        anchor + 4 * extent,
+      );
+    });
+
+    test('page motion is a bounce-free motor spring', () {
+      expect(kExplorerPageMotion.description.bounce, 0);
+    });
+  });
+
+  group('live physics', () {
+    const anchor = 80.0;
+    const extent = 180.0;
+    const cardCount = 4;
+    const viewport = 300.0;
+
+    Future<ScrollController> pumpStrip(
+      WidgetTester tester,
+      ExplorerGamesSnapConfig config, {
+      double listAnchor = anchor,
+    }) async {
+      final controller = ScrollController();
+      addTearDown(controller.dispose);
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: Align(
+              alignment: Alignment.topCenter,
+              child: SizedBox(
+                height: viewport,
+                child: NotificationListener<ScrollNotification>(
+                  // Same wiring as the panel: begin/end the gesture from the
+                  // scroll notifications, nothing else.
+                  onNotification: (notification) {
+                    if (notification is ScrollStartNotification) {
+                      config.beginGesture();
+                    } else if (notification is ScrollEndNotification) {
+                      config.endGesture(
+                        pixels: notification.metrics.pixels,
+                        minScrollExtent: notification.metrics.minScrollExtent,
+                        maxScrollExtent: notification.metrics.maxScrollExtent,
+                      );
+                    }
+                    return false;
+                  },
+                  child: ListView(
+                    controller: controller,
+                    physics: ExplorerGamesSnapPhysics(config: config),
+                    padding: const EdgeInsets.only(bottom: viewport - extent),
+                    children: [
+                      SizedBox(height: listAnchor),
+                      for (var i = 0; i < cardCount; i++)
+                        const SizedBox(height: extent),
+                    ],
+                  ),
+                ),
               ),
             ),
           ),
         ),
-      ),
-    );
-
-    final grid = [for (var i = 0; i < cardCount; i++) anchor + i * extent];
-
-    // A lazy list only *estimates* its extent from the children it has built,
-    // so walk to the bottom before checking that the reserve lands the end of
-    // the list exactly on the last card's aligned offset.
-    for (var i = 0; i < cardCount; i++) {
-      final before = controller.position.maxScrollExtent;
-      controller.jumpTo(before);
-      await tester.pumpAndSettle();
-      if ((controller.position.maxScrollExtent - before).abs() < 0.5) break;
+      );
+      return controller;
     }
-    expect(controller.position.maxScrollExtent, closeTo(grid.last, 0.5));
 
-    // A flick from a resting card lands on the next one.
-    controller.jumpTo(anchor);
-    await tester.pumpAndSettle();
-    await tester.fling(find.byType(ListView), const Offset(0, -120), 900);
-    await tester.pumpAndSettle();
-    expect(controller.offset, closeTo(anchor + extent, 0.5));
+    testWidgets('a hard fling out of a short move table lands on card 0', (
+      tester,
+    ) async {
+      final config =
+          ExplorerGamesSnapConfig()..update(
+            anchor: anchor,
+            pageExtent: extent,
+            pageCount: cardCount,
+          );
+      final controller = await pumpStrip(tester, config);
 
-    // A short drag that is released without speed falls back to the card it
-    // came from rather than resting part-way.
-    await tester.drag(find.byType(ListView), const Offset(0, -35));
-    await tester.pumpAndSettle();
-    expect(controller.offset, closeTo(anchor + extent, 0.5));
+      await tester.fling(find.byType(ListView), const Offset(0, -400), 3000);
+      await tester.pumpAndSettle();
+      expect(controller.offset, closeTo(anchor, 2.0));
+      expect(config.restingPage, 0);
+    });
 
-    // Backwards behaves the same.
-    await tester.fling(find.byType(ListView), const Offset(0, 120), 900);
-    await tester.pumpAndSettle();
-    expect(controller.offset, closeTo(anchor, 0.5));
+    testWidgets('a normal-pace drag out of the move table lands on card 0', (
+      tester,
+    ) async {
+      final config =
+          ExplorerGamesSnapConfig()..update(
+            anchor: anchor,
+            pageExtent: extent,
+            pageCount: cardCount,
+          );
+      final controller = await pumpStrip(tester, config);
+
+      // Slow enough that the release velocity is nothing like a fling, far
+      // enough that the finger ends well inside card 1.
+      await tester.timedDrag(
+        find.byType(ListView),
+        const Offset(0, -240),
+        const Duration(milliseconds: 600),
+      );
+      await tester.pumpAndSettle();
+      expect(controller.offset, closeTo(anchor, 2.0));
+      expect(config.restingPage, 0);
+    });
+
+    testWidgets('a relayout mid-settle cannot move the landing card', (
+      tester,
+    ) async {
+      // Landing on card 0 pins the strip, which collapses the engine PV and
+      // the move-column header. Both animate, so the viewport changes every
+      // frame and restarts the in-flight ballistic — this is exactly the case
+      // that used to skip to card 1.
+      final config =
+          ExplorerGamesSnapConfig()..update(
+            anchor: anchor,
+            pageExtent: extent,
+            pageCount: cardCount,
+          );
+      final controller = await pumpStrip(tester, config);
+
+      await tester.fling(find.byType(ListView), const Offset(0, -400), 3000);
+      // Restart the ballistic repeatedly while it is in flight, the way a
+      // shrinking viewport does.
+      final position =
+          controller.position as ScrollPositionWithSingleContext;
+      for (var i = 0; i < 6; i++) {
+        await tester.pump(const Duration(milliseconds: 16));
+        position.goBallistic(position.activity?.velocity ?? 0);
+      }
+      await tester.pumpAndSettle();
+      expect(controller.offset, closeTo(anchor, 2.0));
+    });
+
+    testWidgets('after resting on card 0 the strip pages one card at a time', (
+      tester,
+    ) async {
+      final config =
+          ExplorerGamesSnapConfig()..update(
+            anchor: anchor,
+            pageExtent: extent,
+            pageCount: cardCount,
+          );
+      final controller = await pumpStrip(tester, config);
+
+      await tester.fling(find.byType(ListView), const Offset(0, -400), 3000);
+      await tester.pumpAndSettle();
+      expect(controller.offset, closeTo(anchor, 2.0));
+
+      await tester.fling(find.byType(ListView), const Offset(0, -400), 3000);
+      await tester.pumpAndSettle();
+      expect(controller.offset, closeTo(anchor + extent, 2.0));
+      expect(config.restingPage, 1);
+
+      await tester.fling(find.byType(ListView), const Offset(0, 400), 3000);
+      await tester.pumpAndSettle();
+      expect(controller.offset, closeTo(anchor, 2.0));
+      expect(config.restingPage, 0);
+    });
+
+    testWidgets('leaving the strip re-arms the first card for the next entry', (
+      tester,
+    ) async {
+      const tallAnchor = 400.0;
+      final config =
+          ExplorerGamesSnapConfig()..update(
+            anchor: tallAnchor,
+            pageExtent: extent,
+            pageCount: cardCount,
+          );
+      final controller = await pumpStrip(
+        tester,
+        config,
+        listAnchor: tallAnchor,
+      );
+
+      controller.jumpTo(tallAnchor);
+      await tester.pumpAndSettle();
+      expect(config.restingPage, 0);
+
+      // Back up into the move table.
+      controller.jumpTo(0);
+      await tester.pumpAndSettle();
+      expect(config.restingPage, isNull);
+
+      // Entering again owes the reader card 0, not card 1.
+      await tester.fling(find.byType(ListView), const Offset(0, -600), 4000);
+      await tester.pumpAndSettle();
+      expect(controller.offset, closeTo(tallAnchor, 2.0));
+    });
+
+    testWidgets('the top of a short move table stays reachable', (
+      tester,
+    ) async {
+      final config =
+          ExplorerGamesSnapConfig()..update(
+            anchor: anchor,
+            pageExtent: extent,
+            pageCount: cardCount,
+          );
+      final controller = await pumpStrip(tester, config);
+
+      controller.jumpTo(anchor);
+      await tester.pumpAndSettle();
+      await tester.fling(find.byType(ListView), const Offset(0, 400), 3000);
+      await tester.pumpAndSettle();
+      expect(controller.offset, closeTo(0, 2.0));
+    });
+
+    testWidgets('the reserve lands the end of the list on the last card', (
+      tester,
+    ) async {
+      final config =
+          ExplorerGamesSnapConfig()..update(
+            anchor: anchor,
+            pageExtent: extent,
+            pageCount: cardCount,
+          );
+      final controller = await pumpStrip(tester, config);
+
+      // A lazy list only estimates its extent from the children it has built,
+      // so walk to the bottom before asking where the bottom is.
+      for (var i = 0; i < cardCount; i++) {
+        final before = controller.position.maxScrollExtent;
+        controller.jumpTo(before);
+        await tester.pumpAndSettle();
+        if ((controller.position.maxScrollExtent - before).abs() < 0.5) break;
+      }
+      expect(
+        controller.position.maxScrollExtent,
+        closeTo(anchor + (cardCount - 1) * extent, 8.0),
+      );
+    });
   });
 
   // The strip is a plain Column, so nothing unmounts the cards the reader
@@ -433,222 +870,17 @@ void main() {
       expect(explorerGamesPinDelta(pixels: 600, anchor: 400), -200);
     });
 
-    test('a near-first-card offset pins as page 0, not page 1', () {
+    test('the card landing flush is what pins it over the engine lines', () {
+      // Pin drives `explorerInlineGamesPinnedProvider`, which collapses the
+      // engine PV so the strip's top edge is the player row itself.
       const anchor = 400.0;
-      const extent = 200.0;
-      final pixels = anchor - 8;
       expect(
         explorerGamesPinDecision(
-          delta: explorerGamesPinDelta(pixels: pixels, anchor: anchor),
+          delta: explorerGamesPinDelta(pixels: anchor, anchor: anchor),
           currentlyInGames: false,
         ),
         isTrue,
       );
-      expect(
-        explorerGamesPageAtTop(
-          pixels: pixels,
-          anchor: anchor,
-          pageExtent: extent,
-          pageCount: 5,
-        ),
-        0,
-      );
-      expect(
-        explorerGamesOffsetForPage(
-          pageIndex: 0,
-          anchor: anchor,
-          pageExtent: extent,
-          minScrollExtent: 0,
-          maxScrollExtent: anchor + 4 * extent,
-        ),
-        anchor,
-      );
     });
-  });
-
-  group('page resting at the top', () {
-    const anchor = 400.0;
-    const extent = 200.0;
-
-    int? pageAt(double pixels, {int pageCount = 5}) => explorerGamesPageAtTop(
-      pixels: pixels,
-      anchor: anchor,
-      pageExtent: extent,
-      pageCount: pageCount,
-    );
-
-    test('reports the card the panel top is showing', () {
-      expect(pageAt(anchor), 0);
-      expect(pageAt(anchor + extent), 1);
-      expect(pageAt(anchor + extent * 3), 3);
-    });
-
-    test('a card only just short of its page still counts as that card', () {
-      expect(pageAt(anchor - 8), 0);
-      expect(pageAt(anchor + extent - 8), 1);
-    });
-
-    test('just past the pin enter threshold is still page 0, not 1', () {
-      expect(pageAt(anchor - 8), 0);
-      expect(pageAt(anchor + 8), 0);
-      expect(pageAt(anchor + extent * 0.4), 0);
-    });
-
-    test('offsets up in the move table belong to nobody', () {
-      expect(pageAt(anchor - extent), isNull);
-      expect(pageAt(anchor - extent / 2 - 1), isNull);
-    });
-
-    test('never names a card that does not exist', () {
-      expect(pageAt(anchor + extent * 99, pageCount: 3), 2);
-      expect(pageAt(anchor, pageCount: 0), isNull);
-    });
-  });
-
-  group('one ballistic target — no second correction', () {
-    const anchor = 200.0;
-    const extent = 180.0;
-    const pageCount = 5;
-    const minExtent = 0.0;
-    final maxExtent = anchor + (pageCount - 1) * extent;
-
-    test('a rest exactly on a page needs no second correction', () {
-      for (var page = 0; page < pageCount; page++) {
-        final pixels = anchor + page * extent;
-        expect(
-          explorerGamesSettleWouldRetarget(
-            pixels: pixels,
-            anchor: anchor,
-            pageExtent: extent,
-            pageCount: pageCount,
-            settledPage: page,
-            minScrollExtent: minExtent,
-            maxScrollExtent: maxExtent,
-          ),
-          isFalse,
-        );
-        expect(
-          explorerGamesNeedsPostSettleAlign(
-            pixels: pixels,
-            anchor: anchor,
-            pageExtent: extent,
-            pageCount: pageCount,
-            minScrollExtent: minExtent,
-            maxScrollExtent: maxExtent,
-          ),
-          isFalse,
-        );
-      }
-    });
-
-    test('moves table and games share one grid: fling into strip hits page 0', () {
-      // Coming out of the move table with downward velocity → first card.
-      expect(
-        explorerGamesSnapTarget(
-          pixels: anchor - 40,
-          velocity: 2000,
-          velocityTolerance: 50,
-          anchor: anchor,
-          pageExtent: extent,
-          pageCount: pageCount,
-          minScrollExtent: minExtent,
-          maxScrollExtent: maxExtent,
-        ),
-        anchor,
-      );
-    });
-
-    test('page motion is bounce-free motor spring', () {
-      expect(kExplorerPageMotion.description.bounce, 0);
-    });
-
-    test('page offsets are pure content-space', () {
-      expect(
-        explorerGamesOffsetForPage(
-          pageIndex: 2,
-          anchor: anchor,
-          pageExtent: extent,
-          minScrollExtent: minExtent,
-          maxScrollExtent: maxExtent,
-        ),
-        anchor + 2 * extent,
-      );
-    });
-  });
-
-  testWidgets('ballistic settle lands on one page with no second correction', (
-    tester,
-  ) async {
-    const anchor = 200.0;
-    const extent = 180.0;
-    const cardCount = 5;
-    const viewport = 300.0;
-
-    final config =
-        ExplorerGamesSnapConfig()..update(
-          anchor: anchor,
-          pageExtent: extent,
-          pageCount: cardCount,
-        );
-    final controller = ScrollController();
-    addTearDown(controller.dispose);
-
-    await tester.pumpWidget(
-      MaterialApp(
-        home: Scaffold(
-          body: Align(
-            alignment: Alignment.topCenter,
-            child: SizedBox(
-              height: viewport,
-              child: ListView(
-                controller: controller,
-                physics: ExplorerGamesSnapPhysics(config: config),
-                padding: const EdgeInsets.only(bottom: viewport - extent),
-                children: [
-                  const SizedBox(height: anchor),
-                  for (var i = 0; i < cardCount; i++)
-                    const SizedBox(height: extent),
-                ],
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-
-    controller.jumpTo(anchor);
-    await tester.pumpAndSettle();
-
-    await tester.fling(find.byType(ListView), const Offset(0, -120), 900);
-    // Drive frames without a second align pass — physics alone must land.
-    await tester.pumpAndSettle();
-    final landed = controller.offset;
-    expect(landed, closeTo(anchor + extent, 0.5));
-
-    // A standstill snap from the landed offset must name the same page — no
-    // second correction target that would re-animate after land.
-    expect(
-      explorerGamesSettleWouldRetarget(
-        pixels: landed,
-        anchor: anchor,
-        pageExtent: extent,
-        pageCount: cardCount,
-        settledPage: 1,
-        minScrollExtent: controller.position.minScrollExtent,
-        maxScrollExtent: controller.position.maxScrollExtent,
-      ),
-      isFalse,
-    );
-    final secondTarget = explorerGamesSnapTarget(
-      pixels: landed,
-      velocity: 0,
-      velocityTolerance: 1,
-      anchor: anchor,
-      pageExtent: extent,
-      pageCount: cardCount,
-      minScrollExtent: controller.position.minScrollExtent,
-      maxScrollExtent: controller.position.maxScrollExtent,
-    );
-    expect(secondTarget, closeTo(landed, 0.5));
   });
 }

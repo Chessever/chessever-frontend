@@ -189,135 +189,189 @@ ExplorerGamesEvalWindow resolveExplorerGamesEvalWindow({
   return ExplorerGamesEvalWindow(first: first, last: last, settled: settled);
 }
 
-/// Scroll offset the settle should land on, or `null` for free list physics
-/// (still up in the move table).
+/// Card a settle should land on, or `null` to hand the settle back to ordinary
+/// list physics (the reader is still up in the move table).
 ///
-/// One list: moves + games. A flick moves **at most one card from where the
-/// gesture began** ([gestureStartPixels]).
+/// The decision comes from the card the list was **resting** on when the
+/// gesture began — never from the offset the finger released at, and never
+/// from the offset a mid-flight relayout left behind.
 ///
-/// [allowPastFirstCard]: until the user has rested on card 0 once, every settle
-/// into the strip is forced to card 0. Short move tables put card 0 already
-/// high; a fast fling would otherwise overshoot to card 1. The motor spring
-/// still decelerates smoothly to that target in one take.
-double? explorerGamesSnapTarget({
+/// That is the whole fix for the skipped first card. Landing on card 0 pins the
+/// strip, which collapses the engine PV and the move-column header; both are
+/// animated, so this list's viewport changes on every frame for a few hundred
+/// milliseconds. Each of those frames re-enters
+/// `BallisticScrollActivity.applyNewDimensions` → `goBallistic`, so the settle
+/// is re-decided from pixels that are by then already inside card 1 — and the
+/// strip steps to it. A resting-card decision is the same answer every time it
+/// is asked, however many times the ballistic restarts.
+///
+/// [restingPage] is `null` while the reader is in the move table, so the first
+/// settle that enters the strip is card 0 at any finger speed.
+int? explorerGamesSnapPage({
   required double pixels,
   required double velocity,
   required double velocityTolerance,
   required double anchor,
   required double pageExtent,
   required int pageCount,
-  required double minScrollExtent,
-  required double maxScrollExtent,
-  double? gestureStartPixels,
-  bool allowPastFirstCard = true,
+  required int? restingPage,
+  double entryMagnet = 0.25,
 }) {
   if (pageExtent <= 0 || pageCount <= 0) return null;
   if (!pixels.isFinite || !anchor.isFinite) return null;
 
-  final origin =
-      (gestureStartPixels != null && gestureStartPixels.isFinite)
-          ? gestureStartPixels
-          : pixels;
-  final originPage = (origin - anchor) / pageExtent;
-  final currentPage = (pixels - anchor) / pageExtent;
+  final page = (pixels - anchor) / pageExtent;
+  final movingDown = velocity > velocityTolerance;
+  final movingUp = velocity < -velocityTolerance;
+  final lastPage = pageCount - 1;
 
-  int index;
-  if (velocity > velocityTolerance) {
-    // One step down from gesture origin.
-    index = originPage.floor() + 1;
-  } else if (velocity < -velocityTolerance) {
-    index = originPage.ceil() - 1;
-  } else {
-    // Slow release: nearest to where the finger let go.
-    if (currentPage < -0.5) return null;
-    index = currentPage.round();
+  if (restingPage == null) {
+    // Coming out of the move table. Entering the strip is *always* card 0: a
+    // short move table paints card 0 high on screen, so a normal-pace finger
+    // releases well inside card 1 and every offset-derived rule picks it.
+    if (movingDown) return 0;
+    if (movingUp) return null;
+    // Released dead: magnet into card 0 only once it is nearly at the top,
+    // so the last move rows stay readable just above it.
+    return page >= -entryMagnet ? 0 : null;
   }
 
-  if (index < 0) {
-    if (velocity > velocityTolerance) {
-      index = 0;
-    } else {
-      return null;
-    }
+  // In the strip: a flick is exactly one card, in the direction thrown.
+  if (movingDown) return (restingPage + 1).clamp(0, lastPage);
+  if (movingUp) {
+    return restingPage == 0 ? null : (restingPage - 1).clamp(0, lastPage);
   }
 
-  var clamped = index.clamp(0, pageCount - 1);
-
-  // First visit into the strip: *every* settle (slow or fast) is card 0.
-  // Short move tables put card 0 already high; a normal/fast finger release
-  // mid card 1 would otherwise nearest-round or step to page 1.
-  if (!allowPastFirstCard) {
-    final enteringOrInStrip =
-        currentPage >= -0.5 ||
-        velocity > velocityTolerance ||
-        (originPage >= -0.5 && velocity.abs() > velocityTolerance);
-    if (enteringOrInStrip) {
-      clamped = 0;
-    }
-  }
-
-  final target = anchor + clamped * pageExtent;
-
-  // Top of the list is also a rest (short move table must stay reachable).
-  // Only when the free-scroll "top" is clearly preferred — never steal a
-  // first-card land while the user is entering the strip.
-  if (clamped == 0 &&
-      anchor > minScrollExtent &&
-      allowPastFirstCard &&
-      currentPage < 0) {
-    final biased =
-        pixels +
-        (velocity > velocityTolerance
-            ? pageExtent / 2
-            : velocity < -velocityTolerance
-            ? -pageExtent / 2
-            : 0);
-    if ((biased - minScrollExtent).abs() < (biased - target).abs()) {
-      return minScrollExtent;
-    }
-  }
-  return target.clamp(minScrollExtent, maxScrollExtent);
+  // Released dead: the card the finger actually left on top.
+  final nearest = page.round();
+  if (nearest < 0) return null;
+  return nearest.clamp(0, lastPage);
 }
 
-/// Live page grid the physics reads mid-gesture.
+/// Card the list is genuinely parked on, or `null` when it is resting anywhere
+/// else (in the move table, or part-way between two cards).
+///
+/// Strict on purpose: "nearly card 0" is not card 0. Calling a settle that
+/// stopped short of the anchor a rest on card 0 is what would let the next
+/// flick step to card 1 while card 0 had never actually been flush under the
+/// player row.
+int? explorerGamesRestingPage({
+  required double pixels,
+  required double anchor,
+  required double pageExtent,
+  required int pageCount,
+  required double minScrollExtent,
+  required double maxScrollExtent,
+  double tolerance = 4.0,
+}) {
+  if (pageExtent <= 0 || pageCount <= 0) return null;
+  if (!pixels.isFinite || !anchor.isFinite) return null;
+  final page = ((pixels - anchor) / pageExtent).round();
+  if (page < 0 || page > pageCount - 1) return null;
+  // Compare against the *clamped* offset: the last card tops out on
+  // `maxScrollExtent`, which the pin's viewport growth can pull in short of
+  // its aligned offset. That is still a rest on the last card.
+  final offset = explorerGamesOffsetForPage(
+    pageIndex: page,
+    anchor: anchor,
+    pageExtent: pageExtent,
+    minScrollExtent: minScrollExtent,
+    maxScrollExtent: maxScrollExtent,
+  );
+  return (offset - pixels).abs() <= tolerance ? page : null;
+}
+
+/// Live page grid plus the paging state the physics decides from.
 class ExplorerGamesSnapConfig {
   double? anchor;
   double pageExtent = 0;
   int pageCount = 0;
 
-  /// Scroll offset when the current drag/fling began.
-  double? gestureStartPixels;
+  /// Card the list is parked on, or null while the reader is in the move
+  /// table. Written only at a standstill ([endGesture]).
+  int? restingPage;
 
-  /// False until a settle has landed on card 0. Blocks skipping the first card
-  /// when a short move table already shows it high on screen.
-  bool hasRestedOnFirstCard = false;
+  /// The settle target, held for as long as one settle lasts. A relayout
+  /// restarts the in-flight ballistic; every restart must reuse this answer
+  /// rather than re-derive one from pixels that have already moved on.
+  bool _settleLatched = false;
+  int? _latchedPage;
+
+  /// True while a settle spring is actually running toward a card.
+  ///
+  /// This is the strip's commitment, and the chrome above it reads it: the
+  /// engine lines start collapsing the moment the card is chosen, so the space
+  /// opens as the card rises into it. Waiting for the offset to arrive instead
+  /// plays the two as separate movements — the card lands, and only then does
+  /// the room above it appear.
+  bool settleRunningToCard = false;
 
   bool get isActive =>
       anchor != null && anchor!.isFinite && pageExtent > 0 && pageCount > 0;
 
-  void noteGestureStart(double pixels) {
-    if (pixels.isFinite) gestureStartPixels = pixels;
+  /// Finger down: the settle this gesture ends in is decided fresh.
+  ///
+  /// [restingPage] is deliberately *not* re-read from pixels here. Catching a
+  /// list that is still flying must not promote wherever it was caught into a
+  /// rest, or the next flick would step off that and skip the card the
+  /// interrupted settle was on its way to.
+  void beginGesture() {
+    _settleLatched = false;
+    _latchedPage = null;
+    settleRunningToCard = false;
   }
 
-  void clearGestureStart() {
-    gestureStartPixels = null;
-  }
-
-  /// Call with live pixels so returning to the move table re-arms the gate.
-  void noteLivePixels(double pixels) {
-    if (!isActive || !pixels.isFinite) return;
-    // Above the first-card rest → must land on card 0 again next entry.
-    if (pixels < anchor! - 1.0) {
-      hasRestedOnFirstCard = false;
+  /// Standstill: this is the only place a rest is recorded.
+  void endGesture({
+    required double pixels,
+    required double minScrollExtent,
+    required double maxScrollExtent,
+  }) {
+    _settleLatched = false;
+    _latchedPage = null;
+    settleRunningToCard = false;
+    if (!isActive || !pixels.isFinite) {
+      restingPage = null;
+      return;
     }
+    restingPage = explorerGamesRestingPage(
+      pixels: pixels,
+      anchor: anchor!,
+      pageExtent: pageExtent,
+      pageCount: pageCount,
+      minScrollExtent: minScrollExtent,
+      maxScrollExtent: maxScrollExtent,
+    );
   }
 
-  /// Only after a ballistic aimed at the first *card* (not list top / min).
-  void markRestedOnFirstCardIfTarget(double target) {
-    if (!isActive || !target.isFinite) return;
-    if ((target - anchor!).abs() <= 2.0) {
-      hasRestedOnFirstCard = true;
-    }
+  /// A new position / a new set of cards: the reader enters the strip again,
+  /// so the next settle owes them the first card.
+  void resetPaging() {
+    restingPage = null;
+    _settleLatched = false;
+    _latchedPage = null;
+    settleRunningToCard = false;
+  }
+
+  /// Target card for the settle now starting, latched for its whole life.
+  int? resolveSettlePage({
+    required double pixels,
+    required double velocity,
+    required double velocityTolerance,
+  }) {
+    if (_settleLatched) return _latchedPage;
+    final page = explorerGamesSnapPage(
+      pixels: pixels,
+      velocity: velocity,
+      velocityTolerance: velocityTolerance,
+      anchor: anchor!,
+      pageExtent: pageExtent,
+      pageCount: pageCount,
+      restingPage: restingPage,
+    );
+    _settleLatched = true;
+    _latchedPage = page;
+    return page;
   }
 
   bool update({
@@ -330,23 +384,23 @@ class ExplorerGamesSnapConfig {
         (anchor != null && (this.anchor! - anchor).abs() > 0.5);
     final extentMoved = (this.pageExtent - pageExtent).abs() > 0.5;
     final countMoved = this.pageCount != pageCount;
-    this.anchor = anchor;
-    this.pageExtent = pageExtent;
-    this.pageCount = pageCount;
+    // A different strip (or a different move table above it) is a different
+    // grid, so the card the reader was on no longer means anything. Sub-pixel
+    // re-measures must NOT reset it — that would re-arm the entry rule on
+    // every scroll notification and the strip could never leave card 0.
+    final gridReplaced =
+        countMoved ||
+        (anchor != null &&
+            this.anchor != null &&
+            (this.anchor! - anchor).abs() > 8.0);
+    // Keep last good geometry if a mid-layout measure fails: an inactive
+    // config falls through to free physics, which skips the card entirely.
+    if (anchor != null) this.anchor = anchor;
+    if (pageExtent > 0) this.pageExtent = pageExtent;
+    if (pageCount > 0) this.pageCount = pageCount;
+    if (gridReplaced) resetPaging();
     return anchorMoved || extentMoved || countMoved;
   }
-}
-
-int? explorerGamesPageAtTop({
-  required double pixels,
-  required double anchor,
-  required double pageExtent,
-  required int pageCount,
-}) {
-  if (pageExtent <= 0 || pageCount <= 0) return null;
-  if (!pixels.isFinite || !anchor.isFinite) return null;
-  if (pixels < anchor - pageExtent / 2) return null;
-  return ((pixels - anchor) / pageExtent).round().clamp(0, pageCount - 1);
 }
 
 double explorerGamesOffsetForPage({
@@ -360,59 +414,6 @@ double explorerGamesOffsetForPage({
   if (raw < minScrollExtent) return minScrollExtent;
   if (raw > maxScrollExtent) return maxScrollExtent;
   return raw;
-}
-
-bool explorerGamesSettleWouldRetarget({
-  required double pixels,
-  required double anchor,
-  required double pageExtent,
-  required int pageCount,
-  required int settledPage,
-  required double minScrollExtent,
-  required double maxScrollExtent,
-}) {
-  final target = explorerGamesSnapTarget(
-    pixels: pixels,
-    velocity: 0,
-    velocityTolerance: 1,
-    anchor: anchor,
-    pageExtent: pageExtent,
-    pageCount: pageCount,
-    minScrollExtent: minScrollExtent,
-    maxScrollExtent: maxScrollExtent,
-  );
-  if (target == null) return false;
-  final settled = explorerGamesOffsetForPage(
-    pageIndex: settledPage,
-    anchor: anchor,
-    pageExtent: pageExtent,
-    minScrollExtent: minScrollExtent,
-    maxScrollExtent: maxScrollExtent,
-  );
-  return (target - settled).abs() > 0.5;
-}
-
-bool explorerGamesNeedsPostSettleAlign({
-  required double pixels,
-  required double anchor,
-  required double pageExtent,
-  required int pageCount,
-  required double minScrollExtent,
-  required double maxScrollExtent,
-  double tolerance = 2.0,
-}) {
-  final target = explorerGamesSnapTarget(
-    pixels: pixels,
-    velocity: 0,
-    velocityTolerance: 1,
-    anchor: anchor,
-    pageExtent: pageExtent,
-    pageCount: pageCount,
-    minScrollExtent: minScrollExtent,
-    maxScrollExtent: maxScrollExtent,
-  );
-  if (target == null) return false;
-  return (target - pixels).abs() > tolerance;
 }
 
 /// Bounce-free motor spring for the **only** settle path (ballistic on release).
@@ -430,24 +431,27 @@ class ExplorerGamesSnapPhysics extends ScrollPhysics {
   ExplorerGamesSnapPhysics applyTo(ScrollPhysics? ancestor) =>
       ExplorerGamesSnapPhysics(config: config, parent: buildParent(ancestor));
 
+  /// Bleeds off drag that would push past the first card while the reader is
+  /// still coming out of the move table, so the finger decelerates into card 0
+  /// and the settle spring has a short way home.
+  ///
+  /// A progressive damp, never a hard ceiling: a ceiling has to report
+  /// overscroll, and overscroll makes `BallisticScrollActivity.applyMoveTo`
+  /// fail, which calls `goIdle()` — killing the very spring that was landing
+  /// the card and parking the list part-way onto it.
   @override
   double applyPhysicsToUserOffset(ScrollMetrics position, double offset) {
-    if (!config.isActive || config.hasRestedOnFirstCard) {
+    if (!config.isActive || config.restingPage != null) {
       return super.applyPhysicsToUserOffset(position, offset);
     }
-    // Until the user has rested on card 0, progressively damp drag that would
-    // push past the first card — faster fingers feel the list slow into card 0
-    // instead of freely coasting onto card 1 mid-drag.
     final first = config.anchor!;
     final extent = config.pageExtent;
-    if (extent <= 0) return super.applyPhysicsToUserOffset(position, offset);
-    // offset > 0 ⇒ content moves up (user scrolling down the list).
-    if (offset > 0 && position.pixels > first) {
-      final over = ((position.pixels - first) / extent).clamp(0.0, 1.5);
-      final damp = (1.0 - 0.72 * over.clamp(0.0, 1.0)).clamp(0.18, 1.0);
-      return offset * damp;
+    // offset > 0 ⇒ content moves up (user dragging down the list).
+    if (extent <= 0 || offset <= 0 || position.pixels <= first) {
+      return super.applyPhysicsToUserOffset(position, offset);
     }
-    return super.applyPhysicsToUserOffset(position, offset);
+    final over = ((position.pixels - first) / extent).clamp(0.0, 1.0);
+    return offset * (1.0 - 0.6 * over);
   }
 
   @override
@@ -460,50 +464,39 @@ class ExplorerGamesSnapPhysics extends ScrollPhysics {
     }
 
     final tolerance = toleranceFor(position);
-    final target = explorerGamesSnapTarget(
+    final page = config.resolveSettlePage(
       pixels: position.pixels,
       velocity: velocity,
       velocityTolerance: tolerance.velocity,
-      anchor: config.anchor!,
-      pageExtent: config.pageExtent,
-      pageCount: config.pageCount,
-      minScrollExtent: position.minScrollExtent,
-      maxScrollExtent: position.maxScrollExtent,
-      gestureStartPixels: config.gestureStartPixels,
-      allowPastFirstCard: config.hasRestedOnFirstCard,
     );
-    // Gesture origin is only for this settle.
-    config.clearGestureStart();
-
-    if (target == null) {
-      // Free-scrolling the move table — re-arm first-card gate.
-      config.noteLivePixels(position.pixels);
+    // Still in the move table: ordinary list physics own this one.
+    if (page == null) {
+      config.settleRunningToCard = false;
       return super.createBallisticSimulation(position, velocity);
     }
 
+    final target = explorerGamesOffsetForPage(
+      pageIndex: page,
+      anchor: config.anchor!,
+      pageExtent: config.pageExtent,
+      minScrollExtent: position.minScrollExtent,
+      maxScrollExtent: position.maxScrollExtent,
+    );
+
     if ((target - position.pixels).abs() < tolerance.distance &&
         velocity.abs() < tolerance.velocity) {
-      // Still count a no-op settle on card 0 as a real rest.
-      config.markRestedOnFirstCardIfTarget(target);
       return null;
     }
 
-    // Cap approach speed while still gated so a fast finger eases into card 0
-    // via the motor spring instead of whipping through the strip.
+    // Entering the strip, cap the approach so a hard fling eases onto card 0
+    // instead of shooting past it and being hauled back.
     var springVelocity = velocity;
-    final onFirstCard = (target - config.anchor!).abs() <= 2.0;
-    final stillGated = !config.hasRestedOnFirstCard;
-    if (onFirstCard && stillGated) {
-      final cap = config.pageExtent * 2.5;
-      if (springVelocity > cap) springVelocity = cap;
-      if (springVelocity < -cap) springVelocity = -cap;
+    if (config.restingPage == null) {
+      final cap = config.pageExtent * 2.0;
+      springVelocity = springVelocity.clamp(-cap, cap);
     }
 
-    // Unlock card 1+ only after a settle *aimed at the first card offset*,
-    // never list-top / minScrollExtent (that was opening the gate too early).
-    config.markRestedOnFirstCardIfTarget(target);
-
-    // Motor spring: one take from release → target (card 0 while gated).
+    config.settleRunningToCard = true;
     return SpringSimulation(
       kExplorerPageMotion.description,
       position.pixels,
