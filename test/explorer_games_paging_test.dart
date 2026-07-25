@@ -104,6 +104,43 @@ void main() {
     test('never targets past the last card', () {
       expect(target(anchor + 4 * extent - 5, 3000), anchor + 4 * extent);
     });
+
+    test('hard fling from a short move table does not skip the first card', () {
+      // Few move rows: first card already high. Finger starts at list top and
+      // flings hard past card 0; release is already mid card 1. Still land on 0.
+      const shortAnchor = 80.0;
+      expect(
+        explorerGamesSnapTarget(
+          pixels: shortAnchor + extent * 1.2,
+          velocity: 3500,
+          velocityTolerance: 50,
+          anchor: shortAnchor,
+          pageExtent: extent,
+          pageCount: 5,
+          minScrollExtent: 0,
+          maxScrollExtent: shortAnchor + 4 * extent,
+          gestureStartPixels: 0,
+        ),
+        shortAnchor,
+      );
+    });
+
+    test('a second fling from the first card advances to the second', () {
+      expect(
+        explorerGamesSnapTarget(
+          pixels: anchor + 20,
+          velocity: 3000,
+          velocityTolerance: 50,
+          anchor: anchor,
+          pageExtent: extent,
+          pageCount: 5,
+          minScrollExtent: 0,
+          maxScrollExtent: anchor + 4 * extent,
+          gestureStartPixels: anchor,
+        ),
+        anchor + extent,
+      );
+    });
   });
 
   group('the top of the list stays reachable', () {

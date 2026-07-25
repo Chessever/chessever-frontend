@@ -192,7 +192,10 @@ ExplorerGamesEvalWindow resolveExplorerGamesEvalWindow({
 /// Scroll offset the settle should land on, or `null` for free list physics
 /// (still up in the move table).
 ///
-/// One list: moves + games. Flicks move one card; slow release → nearest page.
+/// One list: moves + games. A flick moves **at most one card from where the
+/// gesture began** ([gestureStartPixels]), so a hard fling from a short move
+/// table cannot skip the first card when it was already high on screen.
+/// Slow release → nearest page to the release position.
 double? explorerGamesSnapTarget({
   required double pixels,
   required double velocity,
@@ -202,25 +205,45 @@ double? explorerGamesSnapTarget({
   required int pageCount,
   required double minScrollExtent,
   required double maxScrollExtent,
+  double? gestureStartPixels,
 }) {
   if (pageExtent <= 0 || pageCount <= 0) return null;
   if (!pixels.isFinite || !anchor.isFinite) return null;
 
-  var page = (pixels - anchor) / pageExtent;
-  if (velocity < -velocityTolerance) {
-    page -= 0.5;
-  } else if (velocity > velocityTolerance) {
-    page += 0.5;
+  final origin =
+      (gestureStartPixels != null && gestureStartPixels.isFinite)
+          ? gestureStartPixels
+          : pixels;
+  final originPage = (origin - anchor) / pageExtent;
+  final currentPage = (pixels - anchor) / pageExtent;
+
+  int index;
+  if (velocity > velocityTolerance) {
+    // One step down from gesture origin. From the move table (originPage < 0)
+    // this is always ≤ 0 before clamp — the first card, never a skip to card 1.
+    index = originPage.floor() + 1;
+  } else if (velocity < -velocityTolerance) {
+    index = originPage.ceil() - 1;
+  } else {
+    // Slow release: nearest to where the finger let go.
+    if (currentPage < -0.5) return null;
+    index = currentPage.round();
   }
 
-  // Still in (or heading back into) the move table — free scroll.
-  if (page < -0.5) return null;
+  if (index < 0) {
+    // Still in / leaving into the move table.
+    if (velocity > velocityTolerance) {
+      index = 0;
+    } else {
+      return null;
+    }
+  }
 
-  final index = page.round().clamp(0, pageCount - 1);
-  final target = anchor + index * pageExtent;
+  final clamped = index.clamp(0, pageCount - 1);
+  final target = anchor + clamped * pageExtent;
 
   // Top of the list is also a rest (short move table must stay reachable).
-  if (index == 0 && anchor > minScrollExtent) {
+  if (clamped == 0 && anchor > minScrollExtent) {
     final biased =
         pixels +
         (velocity > velocityTolerance
@@ -241,8 +264,20 @@ class ExplorerGamesSnapConfig {
   double pageExtent = 0;
   int pageCount = 0;
 
+  /// Scroll offset when the current drag/fling began. Paging is relative to
+  /// this so each gesture advances at most one card.
+  double? gestureStartPixels;
+
   bool get isActive =>
       anchor != null && anchor!.isFinite && pageExtent > 0 && pageCount > 0;
+
+  void noteGestureStart(double pixels) {
+    if (pixels.isFinite) gestureStartPixels = pixels;
+  }
+
+  void clearGestureStart() {
+    gestureStartPixels = null;
+  }
 
   bool update({
     required double? anchor,
@@ -373,7 +408,12 @@ class ExplorerGamesSnapPhysics extends ScrollPhysics {
       pageCount: config.pageCount,
       minScrollExtent: position.minScrollExtent,
       maxScrollExtent: position.maxScrollExtent,
+      gestureStartPixels: config.gestureStartPixels,
     );
+    // Gesture origin is only for this settle; clear so a later goBallistic(0)
+    // uses the release position.
+    config.clearGestureStart();
+
     if (target == null) {
       return super.createBallisticSimulation(position, velocity);
     }

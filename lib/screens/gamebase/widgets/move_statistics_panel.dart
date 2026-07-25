@@ -751,6 +751,14 @@ class MoveStatisticsPanel extends HookConsumerWidget {
                     final wasSettled = listSettled.value;
                     if (notification is ScrollStartNotification) {
                       listSettled.value = false;
+                      // One card per gesture, from where the finger went down —
+                      // so a hard fling past a short move table cannot skip
+                      // the first game card.
+                      if (notification.dragDetails != null) {
+                        snapConfig.noteGestureStart(
+                          notification.metrics.pixels,
+                        );
+                      }
                     } else if (notification is ScrollEndNotification) {
                       listSettled.value = true;
                     }
