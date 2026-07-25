@@ -3,8 +3,11 @@ import 'dart:math' as math;
 import 'package:chessever2/e2e/e2e_config.dart';
 import 'package:chessever2/e2e/e2e_ids.dart';
 import 'package:chessever2/providers/country_dropdown_provider.dart';
+import 'package:chessever2/providers/guest_session_provider.dart';
+import 'package:chessever2/repository/authentication/auth_repository.dart';
 import 'package:chessever2/repository/local_storage/onboarding/onboarding_repository.dart';
 import 'package:chessever2/screens/onboarding/player_selection_screen.dart';
+import 'package:chessever2/utils/user_error_message.dart';
 import 'package:chessever2/services/analytics/analytics_service.dart';
 import 'package:chessever2/services/att_prompt_service.dart';
 import 'package:chessever2/theme/app_colors.dart';
@@ -230,6 +233,7 @@ class OnboardingFlowScreen extends HookConsumerWidget {
                           );
                         }
                       },
+                      onNotNow: () => continueAsGuest(context, ref),
                     ),
                 ],
               ),
@@ -238,6 +242,53 @@ class OnboardingFlowScreen extends HookConsumerWidget {
         ),
       ),
     );
+  }
+}
+
+/// Enters the app without signing in.
+///
+/// Creates a guest (anonymous) session so everything that needs a user id —
+/// favorites, settings, saved analyses, the paywall — keeps working exactly as
+/// it does for a signed-in free account. The guest clock started here drives
+/// the day-7 prompt and the day-28 requirement in `GuestSessionGateListener`.
+Future<void> continueAsGuest(BuildContext context, WidgetRef ref) async {
+  // Mirror the sign-in path: guests must still be attributable and reachable.
+  await AttPromptService.instance.ensurePrompted(context);
+  if (!E2eConfig.suppressInterruptivePrompts) {
+    unawaited(
+      PushNotificationsService.instance.requestPermissionIfNotGranted(),
+    );
+  }
+
+  try {
+    await ref.read(authStateProvider.notifier).signInAnonymously();
+  } catch (e) {
+    if (kDebugMode) {
+      debugPrint('[Onboarding] Guest session failed: $e');
+    }
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            userFacingError(
+              e,
+              fallback: 'Could not continue as guest. Please sign in.',
+            ),
+          ),
+        ),
+      );
+    }
+    // No session means no user id to hang data off — markOnboardingComplete
+    // routes to the auth screen, which is the only honest fallback here.
+  }
+
+  // Idempotent: a returning guest keeps their original start date.
+  await ref.read(guestSessionProvider.notifier).startGuestSession();
+
+  AnalyticsService.instance.trackEventDetached('Onboarding Continued As Guest');
+
+  if (context.mounted) {
+    await markOnboardingComplete(context, ref);
   }
 }
 
@@ -250,11 +301,16 @@ class _AuthStep extends HookWidget {
     required this.topPadding,
     required this.bottomPadding,
     required this.onSignIn,
+    required this.onNotNow,
   });
 
   final double topPadding;
   final double bottomPadding;
   final VoidCallback onSignIn;
+
+  /// Enters the app as a guest. Guests get the same free account as everyone
+  /// else; we ask again on day 7 and require an account on day 28.
+  final VoidCallback onNotNow;
 
   @override
   Widget build(BuildContext context) {
@@ -325,15 +381,21 @@ class _AuthStep extends HookWidget {
 
                     SizedBox(height: 16.h),
 
-                    // FOMO feature list
-                    Expanded(
-                      child: _FeaturesList()
-                          .animate(delay: 400.ms)
-                          .fadeIn(duration: 500.ms, curve: _smoothSpring)
-                          .move(
-                            begin: const Offset(0, 20),
-                            curve: _smoothSpring,
-                          ),
+                    // FOMO feature list. Flexible + scrollable so the card
+                    // hugs its content and can never overflow on short
+                    // screens — the bottom of this page carries three
+                    // actions now, which eats into the available height.
+                    Flexible(
+                      child: SingleChildScrollView(
+                        physics: const ClampingScrollPhysics(),
+                        child: _FeaturesList()
+                            .animate(delay: 400.ms)
+                            .fadeIn(duration: 500.ms, curve: _smoothSpring)
+                            .move(
+                              begin: const Offset(0, 20),
+                              curve: _smoothSpring,
+                            ),
+                      ),
                     ),
                   ],
                 ),
@@ -356,14 +418,43 @@ class _AuthStep extends HookWidget {
                   // "I have an account" link
                   GestureDetector(
                         onTap: onSignIn,
-                        child: Text(
-                          'I already have an account',
-                          style: AppTypography.textSmMedium.copyWith(
-                            color: kPrimaryColor,
+                        behavior: HitTestBehavior.opaque,
+                        child: Padding(
+                          padding: EdgeInsets.symmetric(vertical: 6.h),
+                          child: Text(
+                            'I already have an account',
+                            style: AppTypography.textSmMedium.copyWith(
+                              color: kPrimaryColor,
+                            ),
                           ),
                         ),
                       )
                       .animate(delay: 900.ms)
+                      .fadeIn(duration: 400.ms, curve: _smoothSpring),
+
+                  // Guest path. Quietest of the three so it never competes
+                  // with signing up, but always reachable — dropping people
+                  // who refuse to sign in is what this exists to stop.
+                  GestureDetector(
+                        key: e2eKey(E2eIds.onboardingNotNowButton),
+                        onTap: onNotNow,
+                        behavior: HitTestBehavior.opaque,
+                        child: Padding(
+                          padding: EdgeInsets.symmetric(
+                            vertical: 10.h,
+                            horizontal: 16.w,
+                          ),
+                          child: Text(
+                            'Not now',
+                            style: AppTypography.textSmRegular.copyWith(
+                              color: context.colors.textPrimary.withValues(
+                                alpha: 0.55,
+                              ),
+                            ),
+                          ),
+                        ),
+                      )
+                      .animate(delay: 1000.ms)
                       .fadeIn(duration: 400.ms, curve: _smoothSpring),
                 ],
               ),

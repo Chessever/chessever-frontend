@@ -35,6 +35,7 @@ import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/auth_state_listener.dart';
 import 'package:chessever2/widgets/board_color_dialog.dart';
 import 'package:chessever2/widgets/custom_upgrade_alert.dart';
+import 'package:chessever2/widgets/guest_session_gate_listener.dart';
 import 'package:chessground/chessground.dart';
 import 'package:onesignal_flutter/onesignal_flutter.dart';
 import 'package:flutter/foundation.dart';
@@ -1240,52 +1241,59 @@ class MyApp extends HookConsumerWidget {
 
     return AuthStateListener(
       navigatorKey: navigatorKey,
-      child: MaterialApp(
-        locale: locale,
-        // supportedLocales: AppLocalizations.supportedLocales,
-        // localizationsDelegates: AppLocalizations.localizationsDelegates,
-        // builder: DevicePreview.appBuilder,
-        debugShowCheckedModeBanner: false,
-        title: 'ChessEver',
-        theme: AppTheme.lightTheme,
-        darkTheme: AppTheme.darkTheme,
-        themeMode: themeMode,
+      child: GuestSessionGateListener(
         navigatorKey: navigatorKey,
-        navigatorObservers: [
-          routeObserver,
-          pageRouteObserver,
-          HeroineController(),
-          AnalyticsService.instance.routeObserver,
-        ],
-        initialRoute: '/',
-        builder:
-            (context, child) => CustomUpgradeAlert(
-              upgrader: upgrader,
-              navigatorKey: navigatorKey,
-              child: child ?? const SizedBox.shrink(),
-            ),
-        routes: {
-          '/': (context) => const SplashScreen(),
-          '/auth_screen': (context) => const AuthScreen(),
-          '/home_screen': (context) => const HomeScreen(),
-          '/group_event_screen': (context) => const GroupEventScreen(),
-          '/tournament_detail_screen':
-              (context) => const TournamentDetailScreen(),
-          '/calendar_screen': (context) => const CalendarScreen(),
-          '/library_screen': (context) => const LibraryScreen(),
-          '/favorites_screen': (context) => const FavoritesTabScreen(),
-          '/scorecard_screen': (context) => const ScoreCardScreen(),
-          '/team_scorecard_screen': (context) => const TeamScoreCardScreen(),
-          '/player_list_screen': (context) => const PlayerListScreen(),
-          '/countryman_games_screen':
-              (context) => const CountrymanGamesScreen(),
-          '/standings': (context) => const PlayerTourScreen(),
-          '/calendar_detail_screen': (context) => CalendarDetailsScreen(),
-          '/Board_sheet': (context) => BoardColorDialog(),
-          '/onboarding': (context) => const OnboardingFlowScreen(),
-          '/player_selection_screen':
-              (context) => const PlayerSelectionScreen(),
-        },
+        child: MaterialApp(
+          locale: locale,
+          // supportedLocales: AppLocalizations.supportedLocales,
+          // localizationsDelegates: AppLocalizations.localizationsDelegates,
+          // builder: DevicePreview.appBuilder,
+          debugShowCheckedModeBanner: false,
+          title: 'ChessEver',
+          theme: AppTheme.lightTheme,
+          darkTheme: AppTheme.darkTheme,
+          themeMode: themeMode,
+          navigatorKey: navigatorKey,
+          navigatorObservers: [
+            routeObserver,
+            pageRouteObserver,
+            HeroineController(),
+            AnalyticsService.instance.routeObserver,
+            // Tells the guest gate which screen is visible, so an upgrade
+            // prompt never interrupts splash/onboarding/auth or stacks on top
+            // of an open sheet.
+            GuestGateRouteObserver.instance,
+          ],
+          initialRoute: '/',
+          builder:
+              (context, child) => CustomUpgradeAlert(
+                upgrader: upgrader,
+                navigatorKey: navigatorKey,
+                child: child ?? const SizedBox.shrink(),
+              ),
+          routes: {
+            '/': (context) => const SplashScreen(),
+            '/auth_screen': (context) => const AuthScreen(),
+            '/home_screen': (context) => const HomeScreen(),
+            '/group_event_screen': (context) => const GroupEventScreen(),
+            '/tournament_detail_screen':
+                (context) => const TournamentDetailScreen(),
+            '/calendar_screen': (context) => const CalendarScreen(),
+            '/library_screen': (context) => const LibraryScreen(),
+            '/favorites_screen': (context) => const FavoritesTabScreen(),
+            '/scorecard_screen': (context) => const ScoreCardScreen(),
+            '/team_scorecard_screen': (context) => const TeamScoreCardScreen(),
+            '/player_list_screen': (context) => const PlayerListScreen(),
+            '/countryman_games_screen':
+                (context) => const CountrymanGamesScreen(),
+            '/standings': (context) => const PlayerTourScreen(),
+            '/calendar_detail_screen': (context) => CalendarDetailsScreen(),
+            '/Board_sheet': (context) => BoardColorDialog(),
+            '/onboarding': (context) => const OnboardingFlowScreen(),
+            '/player_selection_screen':
+                (context) => const PlayerSelectionScreen(),
+          },
+        ),
       ),
     );
   }

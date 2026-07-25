@@ -17,6 +17,7 @@ import 'package:chessever2/screens/chessboard/analysis/chess_game_navigator.dart
 import 'package:chessever2/screens/chessboard/game_review/game_analysis_report.dart';
 import 'package:chessever2/screens/chessboard/game_review/game_review_provider.dart';
 import 'package:chessever2/screens/chessboard/game_review/game_review_sheet.dart';
+import 'package:chessever2/screens/chessboard/game_review/game_review_sheet_host.dart';
 import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
 import 'package:chessever2/screens/chessboard/provider/game_pgn_stream_provider.dart';
 import 'package:chessever2/screens/chessboard/provider/lichess_move_annotations_provider.dart';
@@ -790,9 +791,150 @@ class _ChessBoardPopupState {
   }
 }
 
+/// Screen-level owner of the app-bar game-switcher panel (the "popdown").
+///
+/// The panel used to be an [OverlayEntry] owned by the *per-page* app bar, so
+/// picking a game tore it down twice over: the select handler closed it, and
+/// the PageView then disposed the app bar that owned the entry (a
+/// `jumpToPage` beyond the ±1 window unmounts the old page outright). Both the
+/// open state and the panel itself now live above the PageView, so selecting a
+/// game only re-targets the pages underneath: the panel stays mounted, keeps
+/// its strip scroll offset, and animates its selection across instead of
+/// replaying the open animation.
+class _GameSwitcherController extends ChangeNotifier {
+  _GameSwitcherController({required TickerProvider vsync})
+    : _animationController = AnimationController(
+        vsync: vsync,
+        duration: const Duration(milliseconds: 250),
+      ) {
+    _animation = CurvedAnimation(
+      parent: _animationController,
+      curve: Curves.easeOutCubic,
+      reverseCurve: Curves.easeInCubic,
+    );
+    _animationController.addStatusListener(_onAnimationStatus);
+  }
+
+  /// Minimum time the panel must stay open before an unforced dismiss is
+  /// honoured. Tablets rebuild the app bar aggressively enough that a stray
+  /// tap/rebuild right after opening used to close it instantly.
+  static const _minOpenDuration = Duration(milliseconds: 500);
+
+  final AnimationController _animationController;
+  late final CurvedAnimation _animation;
+
+  Animation<double> get animation => _animation;
+
+  bool _isOpen = false;
+  bool get isOpen => _isOpen;
+
+  /// The panel stays in the tree through the closing animation so it fades out
+  /// instead of vanishing on the frame the user dismisses it.
+  bool get isPanelMounted =>
+      _isOpen || _animationController.status != AnimationStatus.dismissed;
+
+  /// The coordinate space the panel is positioned in — the screen-level Stack
+  /// that hosts it. Anchor rects are measured relative to this box rather than
+  /// to the raw screen, so the panel lands under the chip no matter what
+  /// padding or insets sit above the Stack.
+  final GlobalKey panelSpaceKey = GlobalKey(
+    debugLabel: 'gameSwitcherPanelSpace',
+  );
+
+  /// Rect of the app-bar chip that opened the panel, in [panelSpaceKey]'s
+  /// coordinates. Captured once on open: every page's chip sits at the same
+  /// place, so the panel holds its position while pages swap underneath it.
+  Rect _anchor = Rect.zero;
+  Rect get anchor => _anchor;
+
+  DateTime? _openedAt;
+
+  void _onAnimationStatus(AnimationStatus status) {
+    // Drop the panel from the tree only once it has finished fading out.
+    if (status == AnimationStatus.dismissed) notifyListeners();
+  }
+
+  bool _canDismiss() {
+    if (!ResponsiveHelper.isTablet) return true;
+    final openedAt = _openedAt;
+    if (openedAt == null) return true;
+    return DateTime.now().difference(openedAt) >= _minOpenDuration;
+  }
+
+  void open(Rect anchor) {
+    if (_isOpen) return;
+    HapticFeedback.selectionClick();
+    _anchor = anchor;
+    _isOpen = true;
+    _openedAt = DateTime.now();
+    _ChessBoardPopupState.markOpen();
+    _animationController.forward();
+    notifyListeners();
+  }
+
+  void close({bool force = false}) {
+    if (!_isOpen) return;
+    if (!force && !_canDismiss()) return;
+    _isOpen = false;
+    _openedAt = null;
+    _ChessBoardPopupState.markClosed();
+    _animationController.reverse();
+    notifyListeners();
+  }
+
+  void toggle(Rect anchor) => _isOpen ? close(force: true) : open(anchor);
+
+  @override
+  void dispose() {
+    if (_isOpen) _ChessBoardPopupState.markClosed();
+    _animationController.removeStatusListener(_onAnimationStatus);
+    _animation.dispose();
+    _animationController.dispose();
+    super.dispose();
+  }
+}
+
+/// Hands the screen-level [_GameSwitcherController] down to the per-page app
+/// bar chips without threading it through
+/// [_GamePage]/[_LoadingScreen]/[_AppBar].
+class _GameSwitcherScope extends InheritedWidget {
+  const _GameSwitcherScope({required this.controller, required super.child});
+
+  final _GameSwitcherController controller;
+
+  static _GameSwitcherController? maybeOf(BuildContext context) {
+    return context
+        .dependOnInheritedWidgetOfExactType<_GameSwitcherScope>()
+        ?.controller;
+  }
+
+  @override
+  bool updateShouldNotify(_GameSwitcherScope oldWidget) =>
+      controller != oldWidget.controller;
+}
+
 class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
     with WidgetsBindingObserver, TickerProviderStateMixin, RouteAware {
   late PageController _pageController;
+
+  /// Owns the app-bar game-switcher panel. Screen-level (above the PageView)
+  /// so switching games never unmounts the panel — see
+  /// [_GameSwitcherController].
+  late final _GameSwitcherController _gameSwitcher;
+
+  /// Which board page (if any) currently has the Game Analysis sheet open.
+  /// Screen-level for the same reason as the switcher: the sheet is a sibling
+  /// of the PageView, so a swipe between games never drags it sideways.
+  final ValueNotifier<ChessBoardProviderParams?> _gameReviewTarget =
+      ValueNotifier<ChessBoardProviderParams?>(null);
+
+  /// Measured height that stops the sheet's first snap step right under the
+  /// board's bottom player row. Published by [GameReviewBoardAnchor].
+  final ValueNotifier<double?> _gameReviewAnchor = ValueNotifier<double?>(null);
+
+  /// Last surface size seen by [didChangeMetrics], to tell a real rotation or
+  /// resize apart from inset-only metric churn.
+  Size? _lastMetricsSize;
   // REMOVED: bool analysisMode - was causing useless full rebuilds
   int? _lastViewedIndex;
   int _currentPageIndex = 0;
@@ -843,6 +985,7 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
     // Defensive: Ensure currentIndex is within bounds of games list
     final safeIndex = widget.currentIndex.clamp(0, widget.games.length - 1);
     _pageController = PageController(initialPage: safeIndex);
+    _gameSwitcher = _GameSwitcherController(vsync: this);
     _currentPageIndex = safeIndex;
     _keepBoardProviderAlive(_currentPageIndex);
 
@@ -1443,11 +1586,11 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
       }
     }
 
-    ref.read(chessBoardAllGamesProvider.notifier).state = widget.games;
-    if (indexChanged) {
-      ref.read(currentlyVisiblePageIndexProvider.notifier).state = desiredIndex;
-      _keepBoardProviderAlive(desiredIndex);
-    }
+    _syncExpandedGameProvidersAfterFrame(
+      games: widget.games,
+      indexChanged: indexChanged,
+      desiredIndex: desiredIndex,
+    );
 
     // Apply fresher navigation hydrate after this frame so parse/stream state
     // updates don't re-enter during the element update phase.
@@ -1474,10 +1617,47 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
     }
   }
 
+  /// Publishes the expanded games list / visible page index to global providers
+  /// **after** the current frame.
+  ///
+  /// DO NOT inline these writes back into [didUpdateWidget]. That method runs
+  /// inside `BuildOwner.buildScope`'s element-update phase, where Riverpod
+  /// asserts `_debugCanModifyProviders` and throws:
+  ///
+  ///   "Tried to modify a provider while the widget tree was building."
+  ///
+  /// It reproduces every time `_ExpandingChessBoardScreen` swaps its entry
+  /// subset for the full-event list (For You / favorites / countrymen open
+  /// path). [initState] and [didChangeDependencies] already defer the same
+  /// writes for the same reason — keep all three consistent.
+  ///
+  /// Guards: bail if the widget was disposed, if a newer games list already
+  /// landed (identity check), or if the page moved on after this frame — a
+  /// concurrent `_handlePageChange` owns the index in that case and must not
+  /// be clobbered with a stale one.
+  void _syncExpandedGameProvidersAfterFrame({
+    required List<GamesTourModel> games,
+    required bool indexChanged,
+    required int desiredIndex,
+  }) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !identical(widget.games, games)) return;
+
+      ref.read(chessBoardAllGamesProvider.notifier).state = games;
+      if (indexChanged && _currentPageIndex == desiredIndex) {
+        ref.read(currentlyVisiblePageIndexProvider.notifier).state =
+            desiredIndex;
+        _keepBoardProviderAlive(desiredIndex);
+      }
+    });
+  }
+
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
     routeObserver.subscribe(this, ModalRoute.of(context)!);
+    // Baseline for the rotation/resize check in [didChangeMetrics].
+    _lastMetricsSize = View.of(context).physicalSize;
     if (_didInitialBoardBootstrap) return;
     _didInitialBoardBootstrap = true;
 
@@ -1944,6 +2124,23 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
     return '${minutes.toString().padLeft(2, '0')}:${secs.toString().padLeft(2, '0')}';
   }
 
+  /// Closes the Game Analysis sheet (if open) and hands board evaluation back
+  /// to the page that owned it.
+  void _closeGameReviewSheet() {
+    final params = _gameReviewTarget.value;
+    if (params == null) return;
+    _gameReviewTarget.value = null;
+    try {
+      unawaited(
+        ref
+            .read(chessBoardScreenProviderNew(params).notifier)
+            .setGameReviewVisible(false),
+      );
+    } catch (e) {
+      debugPrint('Game review visibility reset skipped: $e');
+    }
+  }
+
   Future<void> _handlePageChange(int newIndex) async {
     if (_isRevertingPage) {
       _isRevertingPage = false;
@@ -1959,6 +2156,10 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
     final previousIndex = _currentPageIndex;
 
     _lastViewedIndex = newIndex;
+    // A report belongs to one game. Swiping to another closes it here, where
+    // the outgoing page's notifier is still reachable, so its board eval is
+    // released the same way an explicit close would.
+    _closeGameReviewSheet();
 
     // Update current page index immediately
     setState(() {
@@ -2138,6 +2339,22 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
   }
 
   @override
+  void didChangeMetrics() {
+    super.didChangeMetrics();
+    if (!mounted) return;
+    // The switcher's anchor is measured once, when the chip is tapped. A
+    // rotation or window resize moves the app bar out from under it, so
+    // dismiss rather than leave the panel hanging at a stale offset. Compare
+    // the actual surface size: inset-only churn (system bars, a keyboard
+    // somewhere behind) also lands here and must NOT dismiss the panel.
+    final size = View.of(context).physicalSize;
+    final previous = _lastMetricsSize;
+    _lastMetricsSize = size;
+    if (previous == null || previous == size) return;
+    if (_gameSwitcher.isOpen) _gameSwitcher.close(force: true);
+  }
+
+  @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     super.didChangeAppLifecycleState(state);
     if (!mounted) return;
@@ -2179,6 +2396,9 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
     _removeLikeTutorialOverlay();
     _swipeController.dispose();
     _pageController.dispose();
+    _gameSwitcher.dispose();
+    _gameReviewTarget.dispose();
+    _gameReviewAnchor.dispose();
     _likeFlightAnchor.dispose();
     super.dispose();
   }
@@ -2251,7 +2471,16 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
         overrides: [
           likeFlightAnchorProvider.overrideWithValue(_likeFlightAnchor),
         ],
-        child: child,
+        // Every app-bar chip — real page or loading skeleton — reads the one
+        // screen-level switcher from here instead of owning its own overlay.
+        child: _GameSwitcherScope(
+          controller: _gameSwitcher,
+          child: GameReviewSheetScope(
+            target: _gameReviewTarget,
+            anchorPixels: _gameReviewAnchor,
+            child: child,
+          ),
+        ),
       );
     }
 
@@ -2324,7 +2553,20 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
       }
     }
 
+    // The switcher panel hangs off the games Stack below. If the list ever
+    // empties out mid-session we return a loading scaffold instead, which
+    // would rip the panel out of the tree without its controller hearing
+    // about it — leaving the global "a popup is open" flag stuck on. Close it
+    // after the frame (a notify during build would be an illegal rebuild).
+    void closeSwitcherAfterFrame() {
+      if (!_gameSwitcher.isOpen) return;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _gameSwitcher.close(force: true);
+      });
+    }
+
     Widget buildEmptyGamesLoading() {
+      closeSwitcherAfterFrame();
       return Scaffold(
         backgroundColor: context.colors.background,
         body: Center(
@@ -2338,11 +2580,11 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
         return withLikeFlightScope(buildEmptyGamesLoading());
       }
 
+      closeSwitcherAfterFrame();
       return withLikeFlightScope(
         _LoadingScreen(
           games: widget.games,
           currentGameIndex: _currentPageIndex.clamp(0, widget.games.length - 1),
-          onGameChanged: (index) {},
           lastViewedIndex: _lastViewedIndex,
           isActivePage: true,
         ),
@@ -2380,11 +2622,11 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
         return withLikeFlightScope(buildEmptyGamesLoading());
       }
 
+      closeSwitcherAfterFrame();
       return withLikeFlightScope(
         _LoadingScreen(
           games: widget.games,
           currentGameIndex: _currentPageIndex.clamp(0, widget.games.length - 1),
-          onGameChanged: (index) {},
           lastViewedIndex: _lastViewedIndex,
           isActivePage: true,
         ),
@@ -2429,9 +2671,20 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
       PopScope(
         canPop: false,
         onPopInvokedWithResult: (didPop, result) {
-          if (!didPop) {
-            Navigator.of(context).pop(_lastViewedIndex);
+          if (didPop) return;
+          // Back dismisses the game switcher before it leaves the board —
+          // the panel now outlives game changes, so it owns the first back.
+          if (_gameSwitcher.isOpen) {
+            _gameSwitcher.close(force: true);
+            return;
           }
+          // An open Game Analysis report owns the next back, so the board is
+          // never yanked out from under it.
+          if (_gameReviewTarget.value != null) {
+            _closeGameReviewSheet();
+            return;
+          }
+          Navigator.of(context).pop(_lastViewedIndex);
         },
         child: AnnotatedRegion<SystemUiOverlayStyle>(
           value: (context.isLightTheme
@@ -2464,6 +2717,9 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
                     resizeToAvoidBottomInset: false,
                     // REMOVED: RawGestureDetector was blocking PageView swipes
                     body: Stack(
+                      // Coordinate space the game-switcher panel is positioned
+                      // in; app-bar chips measure their anchor against it.
+                      key: _gameSwitcher.panelSpaceKey,
                       children: [
                         PageView.builder(
                           padEnds: true,
@@ -2520,7 +2776,6 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
                                           games: syncedGames,
                                           currentGameIndex: index,
                                           currentPageIndex: _currentPageIndex,
-                                          onGameChanged: _navigateToGame,
                                           lastViewedIndex: _lastViewedIndex,
                                           hideEventInfo: widget.hideEventInfo,
                                           playerProfileDataSource:
@@ -2539,7 +2794,6 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
                                           () => _LoadingScreen(
                                             games: liveGames,
                                             currentGameIndex: index,
-                                            onGameChanged: _navigateToGame,
                                             lastViewedIndex: _lastViewedIndex,
                                             hideEventInfo: widget.hideEventInfo,
                                             isActivePage:
@@ -2552,7 +2806,6 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
                                     return _LoadingScreen(
                                       games: liveGames,
                                       currentGameIndex: index,
-                                      onGameChanged: _navigateToGame,
                                       lastViewedIndex: _lastViewedIndex,
                                       hideEventInfo: widget.hideEventInfo,
                                       isActivePage: index == _currentPageIndex,
@@ -2563,6 +2816,67 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
                             } else {
                               return SizedBox.shrink();
                             }
+                          },
+                        ),
+                        // Game Analysis report. A sibling of the PageView, not
+                        // a modal route: there is no barrier, so the board
+                        // above the sheet keeps every touch, and a horizontal
+                        // swipe between games never drags the report with it.
+                        GameReviewSheetHost(
+                          target: _gameReviewTarget,
+                          anchorPixels: _gameReviewAnchor,
+                          currentGameId:
+                              syncedGames.isEmpty
+                                  ? null
+                                  : syncedGames[_currentPageIndex.clamp(
+                                    0,
+                                    syncedGames.length - 1,
+                                  )].gameId,
+                        ),
+                        // Game-switcher popdown. Lives here — a sibling of the
+                        // PageView, not inside a page's app bar — so tapping a
+                        // card re-targets the pages underneath while the panel
+                        // itself is never rebuilt from scratch: its strip keeps
+                        // the scroll offset, and the new selection animates in.
+                        // The enclosing build re-runs on every page change, so
+                        // `currentGameIndex` below stays live without the panel
+                        // having to listen to anything.
+                        ListenableBuilder(
+                          listenable: _gameSwitcher,
+                          builder: (context, _) {
+                            // Closed: contribute an unpositioned zero-size
+                            // child, so a shut switcher costs no layout and
+                            // swallows no taps.
+                            if (!_gameSwitcher.isPanelMounted) {
+                              return const SizedBox.shrink();
+                            }
+                            final anchor = _gameSwitcher.anchor;
+                            return Positioned.fill(
+                              child: LayoutBuilder(
+                                builder: (context, constraints) {
+                                  return _GameDropdownOverlay(
+                                    triggerRect: anchor,
+                                    screenWidth: constraints.maxWidth,
+                                    availableHeight:
+                                        constraints.maxHeight -
+                                        anchor.bottom -
+                                        32.sp,
+                                    animation: _gameSwitcher.animation,
+                                    games: syncedGames,
+                                    currentGameIndex: _currentPageIndex.clamp(
+                                      0,
+                                      syncedGames.length - 1,
+                                    ),
+                                    isLoading: false,
+                                    // Deliberately does NOT close the panel:
+                                    // the user is browsing games from inside
+                                    // it, so the selection just moves.
+                                    onSelect: _navigateToGame,
+                                    onDismiss: _gameSwitcher.close,
+                                  );
+                                },
+                              ),
+                            );
                           },
                         ),
                         // Removed redundant IgnorePointer/AnimatedBuilder that was here
@@ -3048,7 +3362,6 @@ class _GamePage extends ConsumerWidget {
   final List<GamesTourModel> games;
   final int currentGameIndex;
   final int currentPageIndex;
-  final void Function(int) onGameChanged;
   final int? lastViewedIndex;
   final bool hideEventInfo;
   final PlayerProfileDataSource playerProfileDataSource;
@@ -3063,7 +3376,6 @@ class _GamePage extends ConsumerWidget {
     required this.games,
     required this.currentGameIndex,
     required this.currentPageIndex,
-    required this.onGameChanged,
     required this.onToggleGamebase,
     this.lastViewedIndex,
     this.hideEventInfo = false,
@@ -3093,7 +3405,6 @@ class _GamePage extends ConsumerWidget {
         game: game,
         games: games,
         currentGameIndex: currentGameIndex,
-        onGameChanged: onGameChanged,
         lastViewedIndex: lastViewedIndex,
         hideEventInfo: hideEventInfo,
         savedAnalysisData: savedAnalysisData,
@@ -3120,7 +3431,6 @@ class _GamePage extends ConsumerWidget {
 class _LoadingScreen extends StatelessWidget {
   final List<GamesTourModel> games;
   final int currentGameIndex;
-  final void Function(int) onGameChanged;
   final int? lastViewedIndex;
   final bool hideEventInfo;
   final bool isActivePage;
@@ -3128,7 +3438,6 @@ class _LoadingScreen extends StatelessWidget {
   const _LoadingScreen({
     required this.games,
     required this.currentGameIndex,
-    required this.onGameChanged,
     this.lastViewedIndex,
     this.hideEventInfo = false,
     this.isActivePage = false,
@@ -3164,7 +3473,6 @@ class _LoadingScreen extends StatelessWidget {
         game: games[currentGameIndex],
         games: games,
         currentGameIndex: currentGameIndex,
-        onGameChanged: onGameChanged,
         isLoading: true,
         lastViewedIndex: lastViewedIndex,
         hideEventInfo: hideEventInfo,
@@ -3364,7 +3672,6 @@ class _AppBar extends ConsumerStatefulWidget implements PreferredSizeWidget {
   final GamesTourModel game;
   final List<GamesTourModel> games;
   final int currentGameIndex;
-  final void Function(int) onGameChanged;
   final bool isLoading;
   final int? lastViewedIndex;
   final bool hideEventInfo;
@@ -3381,7 +3688,6 @@ class _AppBar extends ConsumerStatefulWidget implements PreferredSizeWidget {
     required this.game,
     required this.games,
     required this.currentGameIndex,
-    required this.onGameChanged,
     this.isLoading = false,
     this.lastViewedIndex,
     this.hideEventInfo = false,
@@ -3967,7 +4273,6 @@ class _AppBarState extends ConsumerState<_AppBar> {
                   key: e2eKey(E2eIds.boardGameSelector),
                   games: widget.games,
                   currentGameIndex: widget.currentGameIndex,
-                  onGameChanged: widget.onGameChanged,
                   isLoading: widget.isLoading,
                 ),
         actions: [
@@ -4797,139 +5102,23 @@ class _TabletPopupMenuWrapperState extends State<_TabletPopupMenuWrapper>
   }
 }
 
-/// Beautiful stadium-chip style game selection dropdown with glass morphism
-/// and smooth spring animations - matching CategoryDropdown design language
-class _GameSelectionDropdown extends StatefulWidget {
+/// Stadium-chip trigger for the game-switcher popdown in the app bar.
+///
+/// Purely a trigger + label: the panel itself is owned by
+/// [_GameSwitcherController] at screen level (see [_GameSwitcherScope]), which
+/// is what lets a selection switch pages without the panel — or its scroll
+/// position — being torn down along with this app bar.
+class _GameSelectionDropdown extends StatelessWidget {
   final List<GamesTourModel> games;
   final int currentGameIndex;
-  final void Function(int) onGameChanged;
   final bool isLoading;
 
   const _GameSelectionDropdown({
     super.key,
     required this.games,
     required this.currentGameIndex,
-    required this.onGameChanged,
     this.isLoading = false,
   });
-
-  @override
-  State<_GameSelectionDropdown> createState() => _GameSelectionDropdownState();
-}
-
-class _GameSelectionDropdownState extends State<_GameSelectionDropdown>
-    with SingleTickerProviderStateMixin {
-  final LayerLink _layerLink = LayerLink();
-  late AnimationController _animationController;
-  late Animation<double> _animation;
-  bool _isOpen = false;
-  OverlayEntry? _overlayEntry;
-
-  // Timestamp when dropdown was opened - used to prevent immediate dismissal
-  // on tablets where gesture/rebuild timing can cause unwanted closes
-  DateTime? _openedAt;
-
-  // Minimum time dropdown must stay open before allowing dismissal (tablet only)
-  static const _minOpenDuration = Duration(milliseconds: 500);
-
-  // Track unique open ID to detect stale close attempts
-  int _openId = 0;
-
-  @override
-  void initState() {
-    super.initState();
-    _animationController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 250),
-    );
-    _animation = CurvedAnimation(
-      parent: _animationController,
-      curve: Curves.easeOutCubic,
-      reverseCurve: Curves.easeInCubic,
-    );
-  }
-
-  @override
-  void deactivate() {
-    // Called when widget is removed from tree (before dispose)
-    if (_isOpen && ResponsiveHelper.isTablet) {
-      debugPrint(
-        '🚨 TABLET DROPDOWN: deactivate() called while open! Stack trace:',
-      );
-      debugPrint(StackTrace.current.toString().split('\n').take(10).join('\n'));
-    }
-    super.deactivate();
-  }
-
-  @override
-  void dispose() {
-    // Log when dispose is called while dropdown is open - this is the likely culprit
-    if (_isOpen && ResponsiveHelper.isTablet) {
-      debugPrint(
-        '🚨 TABLET DROPDOWN: dispose() called while open! This is likely the bug.',
-      );
-      debugPrint('🚨 Stack trace:');
-      debugPrint(StackTrace.current.toString().split('\n').take(15).join('\n'));
-    }
-    _removeOverlay();
-    _animationController.dispose();
-    super.dispose();
-  }
-
-  void _removeOverlay() {
-    if (_isOpen && ResponsiveHelper.isTablet) {
-      debugPrint('🔴 TABLET: _removeOverlay() called while _isOpen=true');
-    }
-    try {
-      _overlayEntry?.remove();
-    } catch (_) {}
-    _overlayEntry = null;
-  }
-
-  /// Check if enough time has passed since opening to allow dismissal.
-  /// On tablets, we need this guard to prevent rebuilds from causing
-  /// immediate unwanted dismissals.
-  bool _canDismiss() {
-    if (!ResponsiveHelper.isTablet) return true;
-    if (_openedAt == null) return true;
-    final elapsed = DateTime.now().difference(_openedAt!);
-    final canDismiss = elapsed >= _minOpenDuration;
-    if (!canDismiss) {
-      debugPrint(
-        '🛡️ TABLET: _canDismiss() returning false, elapsed=${elapsed.inMilliseconds}ms',
-      );
-    }
-    return canDismiss;
-  }
-
-  // ignore: unused_element
-  String _formatName(String fullName, {double? maxWidth}) {
-    List<String> nameParts =
-        fullName.trim().split(' ').where((part) => part.isNotEmpty).toList();
-    if (nameParts.length <= 1) return fullName;
-
-    String familyName = nameParts.last;
-    List<String> otherNames = nameParts.sublist(0, nameParts.length - 1);
-    String fullVersion = '${otherNames.join(' ')} $familyName';
-
-    if (maxWidth == null) return fullVersion;
-
-    double estimatedWidth = fullVersion.length * 6.0;
-    if (estimatedWidth <= maxWidth) return fullVersion;
-
-    List<String> displayNames = List.from(otherNames);
-    for (int i = 0; i < displayNames.length; i++) {
-      if (displayNames[i].length > 1) {
-        displayNames[i] = '${displayNames[i][0]}.';
-        String newVersion = '${displayNames.join(' ')} $familyName';
-        double newEstimatedWidth = newVersion.length * 6.0;
-        if (newEstimatedWidth <= maxWidth) {
-          return newVersion;
-        }
-      }
-    }
-    return '${displayNames.join(' ')} $familyName';
-  }
 
   String _extractLastName(String fullName) {
     final name = fullName.trim();
@@ -4971,145 +5160,52 @@ class _GameSelectionDropdownState extends State<_GameSelectionDropdown>
     return parts.last;
   }
 
-  void _openDropdown() {
-    if (widget.games.length <= 1 || widget.isLoading || _isOpen) return;
-
-    HapticFeedback.selectionClick();
-    _openId++; // Increment to invalidate any pending close attempts
-    final currentOpenId = _openId;
-    _openedAt = DateTime.now(); // Track when opened for dismiss protection
-    _ChessBoardPopupState.markOpen(); // Mark globally that a popup is open
-
-    if (ResponsiveHelper.isTablet) {
-      debugPrint(
-        '📂 TABLET DROPDOWN OPENED: openId=$currentOpenId, time=$_openedAt',
-      );
-    }
-
-    setState(() => _isOpen = true);
-    _showOverlay();
-    _animationController.forward();
-  }
-
-  void _closeDropdown({bool force = false}) {
-    if (!_isOpen) return;
-
-    final elapsed =
-        _openedAt != null
-            ? DateTime.now().difference(_openedAt!)
-            : Duration.zero;
-
-    if (ResponsiveHelper.isTablet) {
-      debugPrint(
-        '📕 TABLET DROPDOWN _closeDropdown called: force=$force, elapsed=${elapsed.inMilliseconds}ms, openId=$_openId',
-      );
-      debugPrint('📕 Stack trace (first 8 lines):');
-      debugPrint(StackTrace.current.toString().split('\n').take(8).join('\n'));
-    }
-
-    // On tablets, prevent immediate dismissal to guard against
-    // gesture/rebuild timing issues causing unwanted closes
-    if (!force && !_canDismiss()) {
-      debugPrint(
-        '🛡️ Dropdown dismiss blocked - opened too recently (${elapsed.inMilliseconds}ms < ${_minOpenDuration.inMilliseconds}ms)',
-      );
-      return;
-    }
-
-    if (ResponsiveHelper.isTablet) {
-      debugPrint('📕 TABLET DROPDOWN CLOSING: proceeding with close');
-    }
-
-    _openedAt = null;
-    _ChessBoardPopupState.markClosed(); // Mark globally that popup is closed
-    _animationController.reverse().then((_) {
-      if (mounted) {
-        setState(() => _isOpen = false);
-        _removeOverlay();
-      }
-    });
-  }
-
-  void _showOverlay() {
-    final overlay = Overlay.of(context);
+  /// Rect of this chip in the panel host's coordinate space, used to hang the
+  /// panel under it. Every page's app bar puts the chip in the same place, so
+  /// the rect captured on open stays correct for the panel's whole lifetime.
+  Rect? _anchorRect(BuildContext context, _GameSwitcherController switcher) {
     final renderBox = context.findRenderObject() as RenderBox?;
-    if (renderBox == null) return;
-
-    final size = renderBox.size;
-    final offset = renderBox.localToGlobal(Offset.zero);
-    final screenHeight = MediaQuery.of(context).size.height;
-    final screenWidth = MediaQuery.of(context).size.width;
-    final availableHeight = screenHeight - offset.dy - size.height - 32.sp;
-
-    _overlayEntry = OverlayEntry(
-      builder:
-          (context) => _GameDropdownOverlay(
-            layerLink: _layerLink,
-            triggerSize: size,
-            triggerOffset: offset,
-            screenWidth: screenWidth,
-            availableHeight: availableHeight,
-            animation: _animation,
-            games: widget.games,
-            currentGameIndex: widget.currentGameIndex,
-            isLoading: widget.isLoading,
-            onSelect: (selectedIndex) {
-              debugPrint(
-                '🎯 Dropdown onSelect: selectedIndex=$selectedIndex, currentGameIndex=${widget.currentGameIndex}',
-              );
-              HapticFeedback.selectionClick();
-              if (selectedIndex >= 0 &&
-                  selectedIndex < widget.games.length &&
-                  selectedIndex != widget.currentGameIndex) {
-                debugPrint(
-                  '🎯 Calling onGameChanged with index: $selectedIndex',
-                );
-                widget.onGameChanged(selectedIndex);
-              } else {
-                debugPrint(
-                  '🎯 Skipping navigation - same game or invalid index',
-                );
-              }
-              _closeDropdown(force: true); // User intentionally selected
-            },
-            onDismiss: _closeDropdown, // Guarded by _canDismiss()
-          ),
-    );
-
-    overlay.insert(_overlayEntry!);
+    if (renderBox == null || !renderBox.hasSize) return null;
+    final space =
+        switcher.panelSpaceKey.currentContext?.findRenderObject() as RenderBox?;
+    return renderBox.localToGlobal(Offset.zero, ancestor: space) &
+        renderBox.size;
   }
 
   @override
   Widget build(BuildContext context) {
-    if (widget.games.isEmpty) return const SizedBox.shrink();
+    if (games.isEmpty) return const SizedBox.shrink();
 
-    // Debug: Log when dropdown widget rebuilds while open
-    if (ResponsiveHelper.isTablet && _isOpen) {
-      debugPrint(
-        '🔄 TABLET DROPDOWN REBUILD while open: _isOpen=$_isOpen, openId=$_openId',
+    final switcher = _GameSwitcherScope.maybeOf(context);
+    final currentGame = games[currentGameIndex.clamp(0, games.length - 1)];
+    final displayText =
+        '${_extractLastName(currentGame.whitePlayer.displayName)} vs '
+        '${_extractLastName(currentGame.blackPlayer.displayName)}';
+    final canOpen = switcher != null && games.length > 1 && !isLoading;
+
+    Widget chip(bool isOpen) {
+      return _GameChipButton(
+        label: displayText,
+        gameStatus: currentGame.gameStatus,
+        isOpen: isOpen,
+        isLoading: isLoading,
+        showChevron: games.length > 1,
+        onTap:
+            !canOpen
+                ? null
+                : () {
+                  final rect = _anchorRect(context, switcher);
+                  if (rect == null) return;
+                  switcher.toggle(rect);
+                },
       );
     }
 
-    final currentGame = widget.games[widget.currentGameIndex];
-    final displayText =
-        '${_extractLastName(currentGame.whitePlayer.displayName)} vs ${_extractLastName(currentGame.blackPlayer.displayName)}';
+    if (switcher == null) return chip(false);
 
-    return CompositedTransformTarget(
-      link: _layerLink,
-      child: _GameChipButton(
-        label: displayText,
-        gameStatus: currentGame.gameStatus,
-        isOpen: _isOpen,
-        isLoading: widget.isLoading,
-        showChevron: widget.games.length > 1,
-        onTap: () {
-          if (_isOpen) {
-            _closeDropdown(force: true); // User intentionally tapped to close
-          } else {
-            _openDropdown();
-          }
-        },
-      ),
+    return ListenableBuilder(
+      listenable: switcher,
+      builder: (context, _) => chip(switcher.isOpen),
     );
   }
 }
@@ -5294,9 +5390,9 @@ class _LivePulsingDotState extends State<_LivePulsingDot>
 
 /// The floating dropdown overlay with glass morphism
 class _GameDropdownOverlay extends StatelessWidget {
-  final LayerLink layerLink;
-  final Size triggerSize;
-  final Offset triggerOffset;
+  /// Rect of the app-bar chip the panel hangs from, in this widget's own
+  /// coordinate space (see [_GameSwitcherController.panelSpaceKey]).
+  final Rect triggerRect;
   final double screenWidth;
   final double availableHeight;
   final Animation<double> animation;
@@ -5307,9 +5403,7 @@ class _GameDropdownOverlay extends StatelessWidget {
   final VoidCallback onDismiss;
 
   const _GameDropdownOverlay({
-    required this.layerLink,
-    required this.triggerSize,
-    required this.triggerOffset,
+    required this.triggerRect,
     required this.screenWidth,
     required this.availableHeight,
     required this.animation,
@@ -5347,7 +5441,7 @@ class _GameDropdownOverlay extends StatelessWidget {
     final leftOffset = (screenWidth - boardColumnWidth) / 2 + horizontalMargin;
     // Gap under the app-bar chip — tight so the panel visually continues
     // into the board area rather than floating mid-air.
-    final topOffset = triggerOffset.dy + triggerSize.height + 6.sp;
+    final topOffset = triggerRect.bottom + 6.sp;
     // Cap height so the panel does not swallow the whole board; keep enough
     // room for one full selector card + timeline.
     final maxPanelHeight = availableHeight.clamp(200.0, 420.0);
@@ -5458,6 +5552,50 @@ class _GameDropdownOverlay extends StatelessWidget {
 /// what's actually laid out. Sized so two mini boards + spacing read
 /// comfortably inside the board-aligned dropdown on a phone.
 const double _gameSelectorCardWidth = 168;
+
+/// Selection ring stroke on the dropdown mini-board frame. [BoxDecoration]
+/// border contributes to layout padding (same on every side), so width math
+/// must subtract `2 * this` or the eval+board [Row] overflows by that amount.
+const double _gameSelectorBoardBorderWidth = 2.0;
+
+/// Sizes the dropdown card's board frame so eval bar + square board fit the
+/// content area after frame inset and selection border.
+///
+/// [Container] merges [BoxDecoration] border dimensions into padding, so the
+/// child width is `boardOuter - 2*frameInset - 2*borderWidth`. Forgetting the
+/// border produced a consistent ~4px horizontal RenderFlex overflow.
+///
+/// [boardSize] is always the 1:1 chessboard side: remaining width after the
+/// eval gauge (or the full content width when the gauge is off). The live
+/// widget also re-resolves this from [LayoutBuilder] constraints so the board
+/// flexes into whatever space the frame actually offers.
+@visibleForTesting
+({double innerWidth, double evalWidth, double boardSize, double frameHeight})
+gameSelectorBoardFrameLayout({
+  required double boardOuter,
+  required double frameInset,
+  required double borderWidth,
+  required double evalBarWidth,
+  required bool showEvalBar,
+}) {
+  final innerWidth = math.max(
+    1.0,
+    boardOuter - frameInset * 2 - borderWidth * 2,
+  );
+  // Never let the gauge eat the whole row — leave at least 1px for the board.
+  final evalWidth =
+      showEvalBar ? math.min(evalBarWidth, math.max(0.0, innerWidth - 1.0)) : 0.0;
+  // Chessboard is square: side length = width left after the eval bar.
+  final boardSize = math.max(1.0, innerWidth - evalWidth);
+  // Outer frame height tracks the square board + pad + border.
+  final frameHeight = boardSize + frameInset * 2 + borderWidth * 2;
+  return (
+    innerWidth: innerWidth,
+    evalWidth: evalWidth,
+    boardSize: boardSize,
+    frameHeight: frameHeight,
+  );
+}
 
 /// Horizontal padding of the game-strip ListView — must stay in lockstep with
 /// scroll-to-current / focused-index math.
@@ -5601,14 +5739,17 @@ class _GameDropdownContentState extends ConsumerState<_GameDropdownContent> {
   // board is the remaining width (eval bar shortens height further — use the
   // taller no-eval case so the strip never clips).
   static double get _cardRowHeight {
-    const borderWidth = 2.0;
     final frameInset = 2.w;
-    final boardInner = _gameSelectorCardWidth.w - frameInset * 2;
-    // Container height = square board + vertical padding + the 2px selection
-    // border (strokeAlignInside still contributes to layout on every side), so
-    // account for it or the strip clips a few px and RenderFlex-overflows.
-    final boardFrameHeight = boardInner + frameInset * 2 + borderWidth * 2;
-    return 20.h + 4.h + boardFrameHeight + 4.h + 20.h;
+    // No-eval case is taller (board fills full inner width); use it so the
+    // strip never clips when the gauge is off.
+    final layout = gameSelectorBoardFrameLayout(
+      boardOuter: _gameSelectorCardWidth.w,
+      frameInset: frameInset,
+      borderWidth: _gameSelectorBoardBorderWidth,
+      evalBarWidth: 10.w,
+      showEvalBar: false,
+    );
+    return 20.h + 4.h + layout.frameHeight + 4.h + 20.h;
   }
 
   static const double _timelineHeight = 46.0;
@@ -5837,6 +5978,15 @@ class _GameDropdownContentState extends ConsumerState<_GameDropdownContent> {
                         liveBatchKey: liveBatchKeys[game.gameId],
                         onTap: () {
                           HapticFeedback.selectionClick();
+                          // Selecting keeps the panel open — the board behind
+                          // switches under it. Re-tapping the game already on
+                          // screen has nothing to switch to, so answer the tap
+                          // by re-centring the strip on it instead of sitting
+                          // dead.
+                          if (isSelected) {
+                            _scrollToCurrent();
+                            return;
+                          }
                           widget.onSelect(index);
                         },
                       ),
@@ -6215,11 +6365,11 @@ class _GameSelectorCard extends ConsumerWidget {
 
     // Keep the board frame the same width as the card so the mini board
     // lines up with the player rows above/below — same left/right edges.
+    // Subtract selection border as well as inset: BoxDecoration border is
+    // layout-affecting padding, and omitting it overflowed the Row by ~4px.
     final frameInset = 2.w;
     final boardOuter = _gameSelectorCardWidth.w;
-    final boardInner = boardOuter - frameInset * 2;
-    final resolvedEvalWidth = showEvalBar ? 10.w : 0.0;
-    final resolvedBoardSize = math.max(1.0, boardInner - resolvedEvalWidth);
+    final evalBarWidth = 10.w;
 
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
@@ -6235,47 +6385,86 @@ class _GameSelectorCard extends ConsumerWidget {
             playerRow(false),
             SizedBox(height: 4.h),
             // Border always occupies space (transparent when unselected) so
-            // the board never resizes when selection changes. The eval gauge
-            // sits to the LEFT of the board, exactly like the grid card.
-            Container(
+            // the board never resizes when selection changes. Picking a game
+            // leaves the panel open, so the ring has to *move* between boards
+            // rather than blink — animated, since both states are on screen
+            // together. The eval gauge sits to the LEFT of the board, exactly
+            // like the grid card. LayoutBuilder sizes from the *actual*
+            // content box (padding + border already applied) so the 1:1 board
+            // flexes into whatever width remains after the eval bar.
+            AnimatedContainer(
+              duration: const Duration(milliseconds: 220),
+              curve: Curves.easeOutCubic,
               width: boardOuter,
               padding: EdgeInsets.all(frameInset),
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(8.br),
                 border: Border.all(
                   color: isSelected ? kPrimaryColor : Colors.transparent,
-                  width: 2,
+                  width: _gameSelectorBoardBorderWidth,
                 ),
               ),
               child: ClipRRect(
                 borderRadius: BorderRadius.circular(5.br),
-                child: SizedBox(
-                  width: boardInner,
-                  height: resolvedBoardSize,
-                  child: Row(
-                    children: [
-                      if (showEvalBar)
-                        EvaluationBarWidgetForGames(
-                          width: resolvedEvalWidth,
-                          height: resolvedBoardSize,
-                          fen: boardFen,
-                          playerView: PlayerView.gridView,
-                          isFlipped: false, // board is white-at-bottom
-                          allowStockfishFallback: streamEnabled,
-                        ),
-                      // Same mini board the grid game cards use: last-move
-                      // from/to highlight, decisive red fallen-king, draw dove
-                      // markers — all driven by the live fen + status.
-                      GameCardChessboard(
-                        fen: boardFen,
-                        lastMove: _dropdownLastMove(liveGame.lastMove),
-                        boardSize: resolvedBoardSize,
-                        orientation: Side.white,
-                        showCoordinates: false,
-                        gameStatus: liveGame.gameStatus,
+                child: LayoutBuilder(
+                  builder: (context, constraints) {
+                    final available = constraints.maxWidth;
+                    final evalW =
+                        showEvalBar
+                            ? math.min(
+                              evalBarWidth,
+                              math.max(0.0, available - 1.0),
+                            )
+                            : 0.0;
+                    // Chessboard is always square; side = leftover width.
+                    final boardSide = math.max(1.0, available - evalW);
+                    return SizedBox(
+                      height: boardSide,
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.center,
+                        children: [
+                          if (showEvalBar)
+                            EvaluationBarWidgetForGames(
+                              width: evalW,
+                              height: boardSide,
+                              fen: boardFen,
+                              playerView: PlayerView.gridView,
+                              isFlipped: false, // board is white-at-bottom
+                              allowStockfishFallback: streamEnabled,
+                            ),
+                          // Expanded absorbs leftover / float rounding so the
+                          // Row never overflows; board paints 1:1 inside it.
+                          Expanded(
+                            child: LayoutBuilder(
+                              builder: (context, boardConstraints) {
+                                final maxH =
+                                    boardConstraints.maxHeight.isFinite
+                                        ? boardConstraints.maxHeight
+                                        : boardConstraints.maxWidth;
+                                final side = math.max(
+                                  1.0,
+                                  math.min(boardConstraints.maxWidth, maxH),
+                                );
+                                return Align(
+                                  alignment: Alignment.center,
+                                  child: GameCardChessboard(
+                                    fen: boardFen,
+                                    lastMove: _dropdownLastMove(
+                                      liveGame.lastMove,
+                                    ),
+                                    boardSize: side,
+                                    orientation: Side.white,
+                                    showCoordinates: false,
+                                    gameStatus: liveGame.gameStatus,
+                                  ),
+                                );
+                              },
+                            ),
+                          ),
+                        ],
                       ),
-                    ],
-                  ),
+                    );
+                  },
                 ),
               ),
             ),
@@ -7047,17 +7236,25 @@ class _AnalysisGameBody extends ConsumerWidget {
             game: game,
           ),
           SizedBox(height: 1.h),
-          _PlayerWidget(
-            game: game,
-            isFlipped: state.isBoardFlipped,
-            blackPlayer: true,
-            state: state,
-            playerProfileDataSource: playerProfileDataSource,
-            showClock: showClock,
-            onEditName:
-                showGamebaseButton
-                    ? editNameCallback(!state.isBoardFlipped)
-                    : null,
+          // The Game Analysis sheet's first snap step stops right under this
+          // row — the one below the board, white's row in the default
+          // orientation — so the board and both names stay readable with the
+          // report open. Measured here rather than derived from board size so
+          // it lands exactly on every device.
+          GameReviewBoardAnchor(
+            enabled: isVisiblePage,
+            child: _PlayerWidget(
+              game: game,
+              isFlipped: state.isBoardFlipped,
+              blackPlayer: true,
+              state: state,
+              playerProfileDataSource: playerProfileDataSource,
+              showClock: showClock,
+              onEditName:
+                  showGamebaseButton
+                      ? editNameCallback(!state.isBoardFlipped)
+                      : null,
+            ),
           ),
         ];
         final headerChildren = <Widget>[...boardHeaderChildren, ...pvSection];
@@ -11461,24 +11658,22 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
             ? pointerMap[pointerForHighlightId]
             : null;
     final currentPly = currentNode?.ply ?? -1;
-    final activeReportPly =
-        currentNode == null ? 0 : currentNode.ply - tree.startingPly + 1;
 
+    // The sheet reads the live ply straight off the board, so it never needs
+    // this frame's value handed to it — it stays in step as the board moves.
     void openGameReview() {
-      unawaited(
-        showMobileGameReviewSheet(
-          context: context,
-          controller: reviewController,
-          game: widget.game,
-          activePly: activeReportPly,
-          onJumpToPly: (ply) {
-            notifier.goToMovePointer(
-              ply <= 0 ? const <Number>[] : <Number>[ply - 1],
-            );
-          },
-          onVisibilityChanged: notifier.setGameReviewVisible,
-        ),
-      );
+      final sheet = GameReviewSheetScope.maybeOf(context);
+      if (sheet == null) return;
+      unawaited(() async {
+        reviewController.reveal();
+        // On-demand generation (free daily slot / premium unlimited). Cached
+        // reports return immediately without consuming quota.
+        await reviewController.requestAnalysis(context);
+        if (!mounted || !context.mounted) return;
+        await notifier.setGameReviewVisible(true);
+        if (!mounted) return;
+        sheet.target.value = params;
+      }());
     }
 
     final rows = _buildNotationRows(

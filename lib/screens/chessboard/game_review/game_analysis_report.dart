@@ -318,6 +318,9 @@ class GameAnalysisReportController extends ChangeNotifier {
       if (_evaluator == null) {
         await _stockfish.waitForBoardIdle();
         if (_disposed || generation != _generation) return;
+        // Intentional exception: Game Review may start Stockfish in debug.
+        // Board analysis must NOT copy allowInDebug: true — see
+        // kEnableStockfishInDebug (LLM/agent guardrail; hangs hot restart).
         await _stockfish.warmUp(allowInDebug: true);
         if (_disposed || generation != _generation) return;
       }
@@ -625,6 +628,8 @@ class GameAnalysisReportController extends ChangeNotifier {
               ownerId: ownerId,
               onProgress: onProgress,
             )
+            // allowInDebug: true is Game Review only. Do not mirror this on the
+            // board eval bar path (kEnableStockfishInDebug / hot-restart guard).
             : await _stockfish.evaluatePosition(
               fen,
               depth: depth,

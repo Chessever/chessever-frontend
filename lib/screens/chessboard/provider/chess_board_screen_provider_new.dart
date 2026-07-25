@@ -6166,6 +6166,10 @@ class ChessBoardScreenNotifierNew
       //   '⏱️ [EVAL] searchDuration=${effectiveSearchDuration?.inMilliseconds}ms '
       //   'at ${DateTime.now().millisecondsSinceEpoch}',
       // );
+      // DO NOT pass allowInDebug: true here (LLM/agent guardrail). Board eval
+      // must keep default false so debug hot restart is not hung by native
+      // Stockfish FFI isolates. See kEnableStockfishInDebug in
+      // stockfish_singleton.dart. Empty board PVs in debug are expected.
       final stockfishFuture = StockfishSingleton().evaluatePosition(
         fenToAnalyze,
         depth: combinedMaxDepth,

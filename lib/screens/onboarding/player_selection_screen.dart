@@ -439,7 +439,10 @@ Future<void> markOnboardingComplete(BuildContext context, WidgetRef ref) async {
       'Onboarding Completed',
       properties: {
         'favorite_player_count': favoriteCount,
-        'is_authenticated': true,
+        // Guests complete onboarding too — report which kind finished, so the
+        // funnel can show whether the guest path is actually retaining people.
+        'is_authenticated': user.isAnonymous != true,
+        'is_guest': user.isAnonymous == true,
       },
     );
   } catch (e) {
@@ -595,8 +598,9 @@ void _toggleFavorite(
   if (fideId == null || fideId.isEmpty) return;
 
   final supabaseUser = Supabase.instance.client.auth.currentUser;
-  final isFullyAuthenticated =
-      supabaseUser != null && supabaseUser.isAnonymous != true;
+  // Guests persist favorites like anyone else — any session can write its own
+  // Supabase rows. Only a sessionless user defers to pending selections.
+  final canPersist = supabaseUser != null;
 
   final currentSelected = ref.read(onboardingSelectedFideIdsProvider);
   final isAdding = !currentSelected.contains(fideId);
@@ -622,7 +626,7 @@ void _toggleFavorite(
         player,
         fideId,
         supabaseUser,
-        isFullyAuthenticated,
+        canPersist,
         isOnboarding: false,
       );
     });
@@ -643,7 +647,7 @@ void _toggleFavorite(
         player,
         fideId,
         supabaseUser,
-        isFullyAuthenticated,
+        canPersist,
         isOnboarding: true,
       );
     });
@@ -656,7 +660,7 @@ void _toggleFavorite(
     player,
     fideId,
     supabaseUser,
-    isFullyAuthenticated,
+    canPersist,
     isOnboarding: true,
   );
 }
@@ -667,7 +671,7 @@ void _performToggle(
   Map<String, dynamic> player,
   String fideId,
   User? supabaseUser,
-  bool isFullyAuthenticated, {
+  bool canPersist, {
   required bool isOnboarding,
 }) {
   // INSTANT UI UPDATE - this is sync, happens immediately
@@ -727,7 +731,7 @@ void _performToggle(
     // will be flushed in markOnboardingComplete() - don't double-sync here
   } else {
     // NON-ONBOARDING FLOW: Sync directly to Supabase for authenticated users
-    if (isFullyAuthenticated) {
+    if (canPersist) {
       unawaited(
         Future(() async {
           try {

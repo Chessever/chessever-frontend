@@ -147,10 +147,12 @@ class PlayerPaginationNotifier
     unawaited(_viewModel.updateFavoriteFlag(fideId, toggled));
 
     final supabaseUser = Supabase.instance.client.auth.currentUser;
-    final isAuthenticated =
-        supabaseUser != null && supabaseUser.isAnonymous != true;
+    // A guest session owns Supabase rows exactly like a signed-in account, so
+    // it writes straight through. Only a user with no session at all parks the
+    // toggle in pending selections (pre-auth onboarding).
+    final canPersist = supabaseUser != null;
 
-    if (!isAuthenticated) {
+    if (!canPersist) {
       _ref
           .read(pendingFavoriteSelectionsProvider.notifier)
           .setSelection(

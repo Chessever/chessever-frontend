@@ -14,6 +14,7 @@ import 'package:chessever2/widgets/app_button.dart';
 import 'package:chessever2/widgets/auth_button.dart';
 import 'package:chessever2/widgets/blur_background.dart';
 import 'package:chessever2/widgets/country_dropdown.dart';
+import 'package:chessever2/widgets/guest_session_gate_listener.dart';
 import 'package:chessever2/widgets/screen_wrapper.dart';
 import 'package:chessever2/widgets/skeleton_widget.dart';
 import 'package:country_picker/country_picker.dart';
@@ -23,7 +24,13 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'auth_screen_provider.dart';
 
 class AuthScreen extends ConsumerStatefulWidget {
-  const AuthScreen({super.key});
+  const AuthScreen({super.key, this.forcedGuestUpgrade});
+
+  /// Overrides the route-argument lookup for the "guest window is over" copy.
+  /// Only set by tests; the app passes it as a route argument instead (see
+  /// [kForcedGuestUpgradeArg]). Exists so that branch is reachable without
+  /// fabricating a [ModalRoute].
+  final bool? forcedGuestUpgrade;
 
   @override
   ConsumerState<AuthScreen> createState() => _AuthScreenState();
@@ -46,11 +53,20 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
     super.initState();
   }
 
+  /// True when the guest window ran out and the gate routed the user here.
+  bool get _isForcedGuestUpgrade {
+    final override = widget.forcedGuestUpgrade;
+    if (override != null) return override;
+    final args = ModalRoute.of(context)?.settings.arguments;
+    return args is Map && args[kForcedGuestUpgradeArg] == true;
+  }
+
   @override
   Widget build(BuildContext context) {
     final state = ref.watch(authScreenProvider);
     final isTablet = ResponsiveHelper.isTablet;
     final isLandscape = ResponsiveHelper.isLandscape;
+    final isForcedGuestUpgrade = _isForcedGuestUpgrade;
 
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       if (!mounted) return;
@@ -110,11 +126,13 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
                                 child: _AuthButtonWidget(
                                   state: state,
                                   isTabletLandscape: true,
+                                  isForcedGuestUpgrade: isForcedGuestUpgrade,
                                 ),
                               )
                               : _AuthButtonWidget(
                                 state: state,
                                 isTabletLandscape: true,
+                                isForcedGuestUpgrade: isForcedGuestUpgrade,
                               ),
                     ),
                   ),
@@ -158,11 +176,13 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
                           child: _AuthButtonWidget(
                             state: state,
                             isTabletPortrait: true,
+                            isForcedGuestUpgrade: isForcedGuestUpgrade,
                           ),
                         )
                         : _AuthButtonWidget(
                           state: state,
                           isTabletPortrait: true,
+                          isForcedGuestUpgrade: isForcedGuestUpgrade,
                         ),
               ),
             ],
@@ -204,9 +224,15 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
                   state.isLoading
                       ? SkeletonWidget(
                         ignoreContainers: true,
-                        child: _AuthButtonWidget(state: state),
+                        child: _AuthButtonWidget(
+                          state: state,
+                          isForcedGuestUpgrade: isForcedGuestUpgrade,
+                        ),
                       )
-                      : _AuthButtonWidget(state: state),
+                      : _AuthButtonWidget(
+                        state: state,
+                        isForcedGuestUpgrade: isForcedGuestUpgrade,
+                      ),
             ),
           ],
         ),
@@ -220,11 +246,15 @@ class _AuthButtonWidget extends ConsumerWidget {
     required this.state,
     this.isTabletLandscape = false,
     this.isTabletPortrait = false,
+    this.isForcedGuestUpgrade = false,
   });
 
   final AuthScreenState state;
   final bool isTabletLandscape;
   final bool isTabletPortrait;
+
+  /// Guest window is over — say so instead of showing bare sign-in buttons.
+  final bool isForcedGuestUpgrade;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -247,6 +277,25 @@ class _AuthButtonWidget extends ConsumerWidget {
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
+        if (isForcedGuestUpgrade) ...[
+          Text(
+            'Time to make it yours',
+            textAlign: TextAlign.center,
+            style: AppTypography.textLgBold.copyWith(
+              color: context.colors.textPrimary,
+            ),
+          ),
+          SizedBox(height: 6.h),
+          Text(
+            'You have been playing as a guest for four weeks. '
+            'Sign in to keep your players, events and analysis.',
+            textAlign: TextAlign.center,
+            style: AppTypography.textSmRegular.copyWith(
+              color: context.colors.textPrimary.withValues(alpha: 0.6),
+            ),
+          ),
+          SizedBox(height: 20.h),
+        ],
         // Show both buttons on iOS, only Google on Android
         if (isIos) ...[
           AuthButton(

@@ -10,6 +10,28 @@ import 'package:chessever2/providers/engine_settings_provider.dart';
 
 /// Debug-only kill switch for the local Stockfish engine.
 ///
+/// ═══════════════════════════════════════════════════════════════════════════
+/// DO NOT TOUCH — LLM / AGENT / VIBECODE GUARDRAIL
+/// ═══════════════════════════════════════════════════════════════════════════
+/// This flag and the `allowInDebug` / `kDebugMode` paths below are intentional
+/// product infrastructure, not temporary hacks. Careless "enable Stockfish in
+/// debug so board eval works while developing" changes have already broken hot
+/// restart and left the team stuck on "Performing hot restart…".
+///
+/// NEVER:
+/// - Set [kEnableStockfishInDebug] to `true` as a "fix" for missing board lines
+/// - Pass `allowInDebug: true` from ordinary board analysis / eval bar / MultiPV
+/// - Add a parallel `_allowBoardStockfishInDebug = true` (or similar) bypass
+/// - "Stabilize" engine restart by starting the real engine in debug
+///
+/// ONLY Game Review (and similar explicit foreground report workflows) may pass
+/// `allowInDebug: true`. Board eval in debug is supposed to be inert.
+///
+/// If board PVs look empty in a debug session: that is expected. Use a
+/// profile/release run, or flip this flag yourself knowing hot restart will
+/// hang until a full stop+relaunch — do not "fix" it for everyone.
+/// ═══════════════════════════════════════════════════════════════════════════
+///
 /// `package:stockfish` runs the engine's UCI loop (`nativeMain`) and its stdout
 /// pump (`nativeStdoutRead`) in isolates that block inside native FFI calls. A
 /// Dart isolate parked in a blocking native call cannot be killed by the VM, so
@@ -194,9 +216,10 @@ class StockfishSingleton {
     bool isCurrentPosition =
         false, // Priority flag for user's currently viewed position
     bool allowCache = true,
-    // Explicit opt-in for workflows such as Game Review that must be testable
-    // with the real engine in debug. Ordinary board analysis keeps the debug
-    // hot-restart protection below.
+    // DO NOT TOUCH (LLM/agent guardrail): default MUST stay false. Only Game
+    // Review-style workflows may opt in. Passing true from board analysis
+    // re-enables native Stockfish in debug and hangs hot restart again.
+    // See [kEnableStockfishInDebug] doc for the full policy.
     bool allowInDebug = false,
     String? ownerId, // Owner ID for per-provider job isolation
   }) async {
@@ -210,10 +233,9 @@ class StockfishSingleton {
       throw ArgumentError('Invalid FEN string: $fen');
     }
 
-    // Debug-only: the local engine is disabled in debug builds (see
-    // [kEnableStockfishInDebug]) because its native FFI isolates hang hot
-    // restart. Resolve to an empty/cancelled eval unless this caller explicitly
-    // opts in. Release builds are unaffected.
+    // DO NOT TOUCH (LLM/agent guardrail): intentional hot-restart protection.
+    // Empty/cancelled result in debug is expected for board analysis. Do not
+    // "fix" empty PVs by enabling the engine here — see kEnableStockfishInDebug.
     if (kDebugMode && !kEnableStockfishInDebug && !allowInDebug) {
       return EnhancedCloudEval(
         fen: fen,
@@ -490,9 +512,10 @@ class StockfishSingleton {
   /// before the user first enables analysis. Call this on screen load.
   /// Safe to call multiple times — no-ops if already initializing or ready.
   Future<void> warmUp({bool allowInDebug = false}) async {
-    // Debug-only: never start the engine in debug (see [kEnableStockfishInDebug])
-    // — its blocking native FFI isolates make hot restart hang. Release builds
-    // are unaffected (guard is tree-shaken out).
+    // DO NOT TOUCH (LLM/agent guardrail): same policy as evaluatePosition —
+    // never warm the real engine in debug unless a workflow explicitly opts in
+    // (Game Review). Default false keeps hot restart working. See
+    // [kEnableStockfishInDebug].
     if (kDebugMode && !kEnableStockfishInDebug && !allowInDebug) return;
     if (!_appIsForeground) return;
     if (_engine != null && _engine!.state.value == StockfishState.ready) return;

@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:chessever2/e2e/e2e_config.dart';
 import 'package:chessever2/providers/country_dropdown_provider.dart';
 import 'package:chessever2/providers/favorite_players_provider.dart';
+import 'package:chessever2/providers/guest_session_provider.dart';
 import 'package:chessever2/repository/local_storage/group_broadcast/group_broadcast_local_storage.dart';
 import 'package:chessever2/repository/local_storage/onboarding/onboarding_repository.dart';
 import 'package:chessever2/repository/local_storage/sesions_manager/session_manager.dart';
@@ -155,13 +156,18 @@ class _SplashScreenProvider {
       isLoggedIn = false;
     }
 
-    // Anonymous sessions are no longer treated as logged in — legacy anon
-    // users are routed to the auth screen so they can sign in (favorites get
-    // migrated by the OAuth link flow once they pick a provider).
-    final isAnonymous =
-        Supabase.instance.client.auth.currentUser?.isAnonymous == true;
-    if (isAnonymous) {
-      isLoggedIn = false;
+    // A guest (anonymous) session counts as logged in: they use the app exactly
+    // like a free signed-in account. Their clock is stamped here so legacy anon
+    // installs — created before guest mode shipped — get a full window rather
+    // than being asked to sign up on their very next launch.
+    bool isGuest = false;
+    try {
+      isGuest = Supabase.instance.client.auth.currentUser?.isAnonymous == true;
+    } catch (_) {
+      // Supabase unavailable — routing below already handles "not logged in".
+    }
+    if (isGuest) {
+      unawaited(ref.read(guestSessionProvider.notifier).startGuestSession());
     }
 
     if (E2eConfig.isEnabled) {

@@ -4,12 +4,17 @@ import 'package:chessever2/screens/chessboard/analysis/chess_game.dart';
 import 'package:chessever2/screens/chessboard/game_review/game_analysis_report.dart';
 import 'package:chessever2/screens/chessboard/game_review/game_review_provider.dart';
 import 'package:chessever2/screens/chessboard/game_review/game_review_sheet.dart';
+import 'package:chessever2/screens/chessboard/game_review/game_review_sheet_host.dart';
 import 'package:chessever2/screens/chessboard/notation/notation_tree.dart';
+import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
 import 'package:chessever2/screens/chessboard/provider/stockfish_singleton.dart';
+import 'package:chessever2/screens/chessboard/view_model/chess_board_state_new.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/widgets/player_initials_avatar.dart';
+import 'package:dartchess/dartchess.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 Future<GameAnalysisClaimResult> _allowClaim(String _) async =>
     const GameAnalysisClaimResult(
@@ -39,7 +44,10 @@ void main() {
       blackRating: 0,
     );
     expect(controller.reviewState.isEligible, isFalse);
-    expect(controller.reviewState.unavailableMessage, contains('when the game ends'));
+    expect(
+      controller.reviewState.unavailableMessage,
+      contains('when the game ends'),
+    );
 
     controller.configure(
       game: game,
@@ -83,13 +91,17 @@ void main() {
       for (
         var i = 0;
         i < 40 &&
-            controller.reviewState.reportState.status != GameReportStatus.completed;
+            controller.reviewState.reportState.status !=
+                GameReportStatus.completed;
         i++
       ) {
         await Future<void>.delayed(const Duration(milliseconds: 20));
       }
 
-      expect(controller.reviewState.reportState.status, GameReportStatus.completed);
+      expect(
+        controller.reviewState.reportState.status,
+        GameReportStatus.completed,
+      );
       // Icons must light up when the report finishes — no sheet open required.
       expect(controller.reviewState.classificationsRevealed, isTrue);
 
@@ -192,73 +204,108 @@ void main() {
     },
   );
 
-  test(
-    'notation tree moveIndex keys align with report attach map indices',
-    () {
-      final chessGame = ChessGame.fromPgn(
-        'index-align',
-        '[White "A"]\n[Black "B"]\n[Result "1-0"]\n\n1. e4 e5 2. Nf3 Nc6 1-0',
-      );
-      final tree = NotationTreeBuilder.build(chessGame);
-      final boardFp = gameReportFingerprint(chessGame);
-      final report = GameAnalysisReport(
-        fingerprint: boardFp,
-        positions: const [],
-        moves: [
-          for (var i = 0; i < chessGame.mainline.length; i++)
-            GameReportMove(
-              ply: i + 1,
-              san: chessGame.mainline[i].san,
-              uci: chessGame.mainline[i].uci,
-              isWhite: chessGame.mainline[i].turn == ChessColor.white,
-              classification:
-                  i.isEven
-                      ? GameMoveClassification.bestMove
-                      : GameMoveClassification.inaccuracy,
-              evaluation: const GameReportLine(
-                moves: ['a2a3'],
-                depth: 8,
-                centipawns: 10,
-              ),
-            ),
-        ],
-        whiteAccuracy: 80,
-        blackAccuracy: 70,
-        generatedAt: DateTime.utc(2026, 1, 1),
-      );
-      final reviewState = MobileGameReviewState(
-        fingerprint: boardFp,
-        isEligible: true,
-        reportState: GameReportState(
-          status: GameReportStatus.completed,
-          progress: 1,
-          report: report,
-        ),
-      );
-      final attachMap = reportClassificationsForNotationAttach(
-        reviewState: reviewState,
-        boardGameFingerprint: boardFp,
-      );
-      expect(attachMap.length, chessGame.mainline.length);
-      for (var i = 0; i < tree.mainline.length; i++) {
-        final node = tree.mainline[i];
-        final moveIndex = node.ply - tree.startingPly;
-        expect(moveIndex, i, reason: 'token moveIndex must be mainline index');
-        expect(attachMap.containsKey(moveIndex), isTrue);
-        expect(node.pointer.single, i);
-      }
-    },
-  );
-
-  test('sheet uses a single open height with drag-to-dismiss floor', () {
-    expect(GameReviewSheetExtents.height, lessThan(1.0));
-    expect(GameReviewSheetExtents.height, greaterThan(0.5));
-    expect(
-      GameReviewSheetExtents.minHeight,
-      lessThan(GameReviewSheetExtents.height),
+  test('notation tree moveIndex keys align with report attach map indices', () {
+    final chessGame = ChessGame.fromPgn(
+      'index-align',
+      '[White "A"]\n[Black "B"]\n[Result "1-0"]\n\n1. e4 e5 2. Nf3 Nc6 1-0',
     );
-    expect(GameReviewSheetExtents.minHeight, greaterThan(0.0));
+    final tree = NotationTreeBuilder.build(chessGame);
+    final boardFp = gameReportFingerprint(chessGame);
+    final report = GameAnalysisReport(
+      fingerprint: boardFp,
+      positions: const [],
+      moves: [
+        for (var i = 0; i < chessGame.mainline.length; i++)
+          GameReportMove(
+            ply: i + 1,
+            san: chessGame.mainline[i].san,
+            uci: chessGame.mainline[i].uci,
+            isWhite: chessGame.mainline[i].turn == ChessColor.white,
+            classification:
+                i.isEven
+                    ? GameMoveClassification.bestMove
+                    : GameMoveClassification.inaccuracy,
+            evaluation: const GameReportLine(
+              moves: ['a2a3'],
+              depth: 8,
+              centipawns: 10,
+            ),
+          ),
+      ],
+      whiteAccuracy: 80,
+      blackAccuracy: 70,
+      generatedAt: DateTime.utc(2026, 1, 1),
+    );
+    final reviewState = MobileGameReviewState(
+      fingerprint: boardFp,
+      isEligible: true,
+      reportState: GameReportState(
+        status: GameReportStatus.completed,
+        progress: 1,
+        report: report,
+      ),
+    );
+    final attachMap = reportClassificationsForNotationAttach(
+      reviewState: reviewState,
+      boardGameFingerprint: boardFp,
+    );
+    expect(attachMap.length, chessGame.mainline.length);
+    for (var i = 0; i < tree.mainline.length; i++) {
+      final node = tree.mainline[i];
+      final moveIndex = node.ply - tree.startingPly;
+      expect(moveIndex, i, reason: 'token moveIndex must be mainline index');
+      expect(attachMap.containsKey(moveIndex), isTrue);
+      expect(node.pointer.single, i);
+    }
+  });
+
+  test('sheet exposes two snap steps above a dismiss floor', () {
+    expect(GameReviewSheetExtents.full, lessThan(1.0));
+    expect(GameReviewSheetExtents.full, greaterThan(0.5));
+    // Step 1 must leave the board and both player rows on screen.
+    expect(
+      GameReviewSheetExtents.maxPeek,
+      lessThan(GameReviewSheetExtents.full),
+    );
+    expect(
+      GameReviewSheetExtents.minPeek,
+      lessThan(GameReviewSheetExtents.maxPeek),
+    );
+    expect(GameReviewSheetExtents.minPeek, greaterThan(0.0));
+    expect(
+      GameReviewSheetExtents.peekFallback,
+      inInclusiveRange(
+        GameReviewSheetExtents.minPeek,
+        GameReviewSheetExtents.maxPeek,
+      ),
+    );
+    expect(
+      GameReviewSheetExtents.dismissFloor,
+      lessThan(GameReviewSheetExtents.minPeek),
+    );
+    expect(GameReviewSheetExtents.anchorGap, greaterThanOrEqualTo(0));
     expect(GameReviewSheetExtents.topRadius, greaterThan(0));
+  });
+
+  test('active ply maps board position to report position', () {
+    // Start position → report position 0; mainline move n → position n.
+    expect(gameReviewActivePly(const AsyncValue.loading()), -1);
+    expect(
+      gameReviewActivePly(AsyncValue.data(_boardState(currentMoveIndex: -1))),
+      0,
+    );
+    expect(
+      gameReviewActivePly(AsyncValue.data(_boardState(currentMoveIndex: 3))),
+      4,
+    );
+    // Inside an analysis variation the report has no position to point at, so
+    // the marker must hold rather than jump somewhere misleading.
+    expect(
+      gameReviewActivePly(
+        AsyncValue.data(_boardState(currentMoveIndex: 3, inVariation: true)),
+      ),
+      -1,
+    );
   });
 
   testWidgets('Game Analysis button exposes progress and unavailable states', (
@@ -332,35 +379,47 @@ void main() {
       for (
         var i = 0;
         i < 30 &&
-            controller.reviewState.reportState.status != GameReportStatus.completed;
+            controller.reviewState.reportState.status !=
+                GameReportStatus.completed;
         i++
       ) {
         await Future<void>.delayed(const Duration(milliseconds: 20));
       }
     });
-    expect(controller.reviewState.reportState.status, GameReportStatus.completed);
+    expect(
+      controller.reviewState.reportState.status,
+      GameReportStatus.completed,
+    );
 
+    var closed = false;
+    var boardTaps = 0;
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
-          body: Builder(
-            builder:
-                (context) => FilledButton(
-                  onPressed:
-                      () => showMobileGameReviewSheet(
-                        context: context,
-                        controller: controller,
-                        game: game,
-                        activePly: 0,
-                        onJumpToPly: (ply) => jumpedToPly = ply,
-                      ),
-                  child: const Text('Open'),
+          body: Stack(
+            children: [
+              // Stands in for the live board underneath the sheet.
+              Positioned.fill(
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: () => boardTaps++,
+                  child: const SizedBox.expand(),
                 ),
+              ),
+              Positioned.fill(
+                child: GameReviewSheet(
+                  controller: controller,
+                  game: game,
+                  activePly: 0,
+                  onJumpToPly: (ply) => jumpedToPly = ply,
+                  onClose: () => closed = true,
+                ),
+              ),
+            ],
           ),
         ),
       ),
     );
-    await tester.tap(find.text('Open'));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 500));
     expect(find.text('Game Review'), findsNothing);
@@ -398,21 +457,44 @@ void main() {
       find.byKey(const ValueKey('game-review-graph-info')),
       findsOneWidget,
     );
-    // Opens at a single height; DraggableScrollableSheet wires dismiss to the
-    // primary scroll controller so handle / top-of-content drag closes it.
+    // Two snap steps: opens at the measured peek, drags up to `full`, and the
+    // floor below the peek dismisses.
     expect(find.byType(DraggableScrollableSheet), findsOneWidget);
+    final draggable = tester.widget<DraggableScrollableSheet>(
+      find.byType(DraggableScrollableSheet),
+    );
+    expect(draggable.snap, isTrue);
+    expect(draggable.snapSizes, hasLength(1));
+    expect(draggable.snapSizes!.single, draggable.initialChildSize);
+    expect(draggable.maxChildSize, GameReviewSheetExtents.full);
+    expect(draggable.minChildSize, GameReviewSheetExtents.dismissFloor);
+    expect(
+      draggable.initialChildSize,
+      lessThan(GameReviewSheetExtents.full),
+      reason: 'step 1 must sit below the fully-open height',
+    );
+
     expect(
       find.byKey(const ValueKey('game-review-full-sheet')),
       findsOneWidget,
     );
-    final sheet = tester.widget<Material>(
+    final surface = tester.widget<DecoratedBox>(
       find.byKey(const ValueKey('game-review-full-sheet')),
     );
-    final shape = sheet.shape! as RoundedRectangleBorder;
-    expect(shape.borderRadius, isA<BorderRadius>());
-    final radius = shape.borderRadius as BorderRadius;
+    final decoration = surface.decoration as BoxDecoration;
+    final radius = decoration.borderRadius! as BorderRadius;
     expect(radius.topLeft.x, GameReviewSheetExtents.topRadius);
     expect(radius.topRight.x, GameReviewSheetExtents.topRadius);
+    // No scrim and no modal barrier: a tap above the sheet has to reach the
+    // board underneath instead of being swallowed (or dismissing the sheet).
+    final sheetTop =
+        tester
+            .getTopLeft(find.byKey(const ValueKey('game-review-full-sheet')))
+            .dy;
+    await tester.tapAt(Offset(200, sheetTop - 40));
+    await tester.pump();
+    expect(boardTaps, 1);
+    expect(closed, isFalse);
 
     expect(find.text('OPENING'), findsNothing);
     expect(find.text('MIDDLEGAME'), findsNothing);
@@ -424,11 +506,204 @@ void main() {
       findsOneWidget,
     );
 
-    Navigator.of(
-      tester.element(find.byKey(const ValueKey('game-review-full-sheet'))),
-    ).pop();
-    await tester.pump(const Duration(milliseconds: 500));
+    // Stepping forward drives the board, not a private cursor in the sheet.
+    await tester.tap(find.byKey(const ValueKey('game-review-next-move')));
+    await tester.pump();
+    expect(jumpedToPly, 1);
+
+    expect(closed, isFalse);
+    await tester.tap(find.byKey(const ValueKey('game-review-close')));
+    await tester.pumpAndSettle();
+    expect(closed, isTrue);
   });
+
+  testWidgets('graph marker follows the board, not a cursor inside the sheet', (
+    tester,
+  ) async {
+    final chessGame = ChessGame.fromPgn(
+      'sheet-sync',
+      '[White "Ada"]\n[Black "Grace"]\n[Result "1-0"]\n\n1. e4 e5 1-0',
+    );
+    final controller = MobileGameReviewController(
+      reportController: GameAnalysisReportController(evaluator: _evaluator),
+      autoStartDelay: Duration.zero,
+      isPremium: () => true,
+      claimQuota: _allowClaim,
+    );
+    addTearDown(controller.dispose);
+    final game = _game();
+    await tester.runAsync(() async {
+      controller.configure(
+        game: chessGame,
+        active: true,
+        finished: true,
+        whiteRating: game.whitePlayer.rating,
+        blackRating: game.blackPlayer.rating,
+      );
+      for (
+        var i = 0;
+        i < 30 &&
+            controller.reviewState.reportState.status !=
+                GameReportStatus.completed;
+        i++
+      ) {
+        await Future<void>.delayed(const Duration(milliseconds: 20));
+      }
+    });
+
+    Widget sheetAt(int ply) => MaterialApp(
+      home: Scaffold(
+        body: GameReviewSheet(
+          controller: controller,
+          game: game,
+          activePly: ply,
+          onJumpToPly: (_) {},
+          onClose: () {},
+        ),
+      ),
+    );
+
+    await tester.pumpWidget(sheetAt(0));
+    await tester.pump(const Duration(milliseconds: 500));
+    expect(find.textContaining('1/3'), findsOneWidget);
+
+    // Board moved on its own (arrows, notation, a piece drag) — the marker
+    // must follow without any tap inside the sheet.
+    await tester.pumpWidget(sheetAt(2));
+    await tester.pump();
+    expect(find.textContaining('3/3'), findsOneWidget);
+
+    // Board wandered into an analysis variation the report cannot describe:
+    // hold the last mainline position instead of snapping to the start.
+    await tester.pumpWidget(sheetAt(-1));
+    await tester.pump();
+    expect(find.textContaining('3/3'), findsOneWidget);
+  });
+
+  testWidgets('step 1 stops at the measured board anchor', (tester) async {
+    final controller = MobileGameReviewController(
+      isPremium: () => true,
+      claimQuota: _allowClaim,
+    );
+    addTearDown(controller.dispose);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: Center(
+            child: SizedBox(
+              width: 400,
+              height: 500,
+              child: GameReviewSheet(
+                controller: controller,
+                game: _game(),
+                activePly: 0,
+                peekPixels: 200,
+                onJumpToPly: (_) {},
+                onClose: () {},
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pump(const Duration(milliseconds: 500));
+
+    final draggable = tester.widget<DraggableScrollableSheet>(
+      find.byType(DraggableScrollableSheet),
+    );
+    expect(draggable.initialChildSize, closeTo(200 / 500, 0.001));
+
+    // The whole point of the measured anchor: the sheet's top edge lands
+    // exactly the requested distance up from the bottom of its host, so it
+    // finishes right under the board's player row on any device.
+    final hostBottom =
+        tester.getBottomLeft(find.byType(DraggableScrollableSheet)).dy;
+    final sheetTop =
+        tester
+            .getTopLeft(find.byKey(const ValueKey('game-review-full-sheet')))
+            .dy;
+    expect(hostBottom - sheetTop, closeTo(200, 0.5));
+  });
+
+  testWidgets('board anchor publishes the height that clears the player row', (
+    tester,
+  ) async {
+    final anchor = ValueNotifier<double?>(null);
+    addTearDown(anchor.dispose);
+    final target = ValueNotifier<ChessBoardProviderParams?>(null);
+    addTearDown(target.dispose);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: GameReviewSheetScope(
+          target: target,
+          anchorPixels: anchor,
+          child: const Scaffold(
+            body: Column(
+              children: [
+                SizedBox(height: 120),
+                GameReviewBoardAnchor(
+                  enabled: true,
+                  child: SizedBox(height: 40, width: 200),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    // Default test window is 600 tall; the row's bottom edge sits at 160.
+    expect(
+      anchor.value,
+      closeTo(600 - 160 - GameReviewSheetExtents.anchorGap, 0.5),
+    );
+  });
+
+  testWidgets('off-screen pages do not publish an anchor', (tester) async {
+    final anchor = ValueNotifier<double?>(null);
+    addTearDown(anchor.dispose);
+    final target = ValueNotifier<ChessBoardProviderParams?>(null);
+    addTearDown(target.dispose);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: GameReviewSheetScope(
+          target: target,
+          anchorPixels: anchor,
+          child: const Scaffold(
+            body: GameReviewBoardAnchor(
+              enabled: false,
+              child: SizedBox(height: 40, width: 200),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    expect(anchor.value, isNull);
+  });
+}
+
+ChessBoardStateNew _boardState({
+  required int currentMoveIndex,
+  bool inVariation = false,
+}) {
+  return ChessBoardStateNew(
+    game: _game(),
+    isAnalysisMode: true,
+    analysisState: AnalysisBoardState(
+      currentMoveIndex: currentMoveIndex,
+      branchPointMoveIndex: inVariation ? 0 : null,
+      analysisMoves:
+          inVariation
+              ? const <Move>[NormalMove(from: Square.e2, to: Square.e4)]
+              : const <Move>[],
+    ),
+  );
 }
 
 void _noop() {}

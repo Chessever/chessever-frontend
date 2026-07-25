@@ -216,6 +216,15 @@ void main() {
         contains('never remount analysis'),
         reason: 'comment documents the no-remount contract',
       );
+      // didUpdateWidget runs inside BuildOwner.buildScope, so the expanded
+      // games / page-index provider writes MUST stay deferred past the frame.
+      // Inlining them throws "Tried to modify a provider while the widget tree
+      // was building" the moment the background expand swaps the games list.
+      expect(
+        boardSrc,
+        contains('_syncExpandedGameProvidersAfterFrame'),
+        reason: 'expand provider writes must be post-frame, not inline',
+      );
 
       final providerSrc = File(
         'lib/screens/chessboard/provider/chess_board_screen_provider_new.dart',
@@ -232,6 +241,25 @@ void main() {
       );
       expect(providerSrc, contains('void applyNavigationGameSnapshot'));
       expect(providerSrc, contains('void syncPageIndex'));
+
+      // Notification / deep-link opens hydrate a 1-game list into the full
+      // round list. That MUST update the board in place so didUpdateWidget
+      // runs syncPageIndex — a key that varies with the list length remounts
+      // the screen instead, stranding the gameId-keyed notifier on index 0
+      // while the visible-page provider moves, which silently gates off every
+      // evaluation ("engine dead when opened from a notification").
+      final deepLinkSrc = File(
+        'lib/services/deep_link_service.dart',
+      ).readAsStringSync();
+      expect(
+        deepLinkSrc.contains("'deep-link-\${widget.initialGameId}-"),
+        isFalse,
+        reason: 'deep-link board key must not vary with the games list',
+      );
+      expect(
+        deepLinkSrc,
+        contains("ValueKey('deep-link-\${widget.initialGameId}')"),
+      );
     },
   );
 }

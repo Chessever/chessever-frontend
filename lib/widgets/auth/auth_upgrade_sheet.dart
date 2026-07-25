@@ -1,10 +1,12 @@
 import 'dart:math' as math;
 
+import 'package:chessever2/previews/preview_support.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/widget_previews.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:motor/motor.dart';
@@ -12,49 +14,62 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 /// Show the auth upgrade sheet.
 /// Returns `true` if the user ends up authenticated (non-anonymous) after closing.
-Future<bool> showAuthUpgradeSheet({required BuildContext context}) async {
+Future<bool> showAuthUpgradeSheet({
+  required BuildContext context,
+  String? title,
+  String? message,
+  String? dismissLabel,
+}) async {
   await showModalBottomSheet<void>(
     context: context,
     isScrollControlled: true,
     backgroundColor: Colors.transparent,
     constraints: ResponsiveHelper.bottomSheetConstraints,
-    builder: (_) => _AuthUpgradeSheet(hostContext: context),
+    builder:
+        (_) => _AuthUpgradeSheet(
+          hostContext: context,
+          title: title,
+          message: message,
+          dismissLabel: dismissLabel,
+        ),
   );
 
   final user = Supabase.instance.client.auth.currentUser;
   return user != null && user.isAnonymous != true;
 }
 
-/// Thin guard used by protected actions to block guests.
+/// Kept as the single decision point for "does this action need an account?".
+///
+/// A guest (anonymous session) is a normal free account: same favorites, same
+/// boards, same settings, same paywall. Nothing in the app is withheld from
+/// them, so this always allows the action through. Account creation is asked
+/// for on a schedule instead — see `GuestSessionGateListener` (day 7 soft
+/// prompt, day 28 required). Do not re-add per-feature guest blocks here.
 Future<bool> requireFullAuthGuard(BuildContext context) async {
-  // Never block onboarding/auth flows - those screens already present the choice.
-  final routeName = ModalRoute.of(context)?.settings.name ?? '';
-  const onboardingRoutes = {
-    '/onboarding',
-    '/player_selection_screen',
-    '/auth_screen',
-  };
-  if (onboardingRoutes.contains(routeName)) {
-    return true;
-  }
-
-  final user = Supabase.instance.client.auth.currentUser;
-  final isAuthenticated = user != null && user.isAnonymous != true;
-  if (isAuthenticated) return true;
-
-  return await showAuthUpgradeSheet(context: context);
+  return true;
 }
 
 class _AuthUpgradeSheet extends HookWidget {
-  const _AuthUpgradeSheet({required this.hostContext});
+  const _AuthUpgradeSheet({
+    required this.hostContext,
+    this.title,
+    this.message,
+    this.dismissLabel,
+  });
 
   final BuildContext hostContext;
+  final String? title;
+  final String? message;
+  final String? dismissLabel;
 
   @override
   Widget build(BuildContext context) {
     return DraggableScrollableSheet(
+      // Sized so the list and both actions fit without scrolling — a list
+      // sliced through the middle of a row reads as broken, and an escape
+      // hatch below the fold is not an escape hatch.
       initialChildSize: 0.9,
-      minChildSize: 0.7,
+      minChildSize: 0.6,
       maxChildSize: 0.95,
       builder: (BuildContext context, ScrollController scrollController) {
         return Container(
@@ -65,6 +80,9 @@ class _AuthUpgradeSheet extends HookWidget {
           child: _AuthUpgradePage(
             hostContext: hostContext,
             scrollController: scrollController,
+            title: title,
+            message: message,
+            dismissLabel: dismissLabel,
           ),
         );
       },
@@ -73,10 +91,19 @@ class _AuthUpgradeSheet extends HookWidget {
 }
 
 class _AuthUpgradePage extends HookWidget {
-  const _AuthUpgradePage({required this.hostContext, this.scrollController});
+  const _AuthUpgradePage({
+    required this.hostContext,
+    this.scrollController,
+    this.title,
+    this.message,
+    this.dismissLabel,
+  });
 
   final BuildContext hostContext;
   final ScrollController? scrollController;
+  final String? title;
+  final String? message;
+  final String? dismissLabel;
 
   @override
   Widget build(BuildContext context) {
@@ -92,76 +119,96 @@ class _AuthUpgradePage extends HookWidget {
         const Positioned.fill(child: _FloatingParticles()),
         Padding(
           padding: EdgeInsets.fromLTRB(20.w, 12.h, 20.w, 20.h),
-          child: SingleChildScrollView(
-            controller: scrollController,
-            physics: const BouncingScrollPhysics(),
-            child: Column(
-              children: [
-                // Handle bar + close button row
-                Stack(
-                  alignment: Alignment.center,
-                  children: [
-                    Container(
-                      width: 36.w,
-                      height: 4.h,
-                      decoration: BoxDecoration(
-                        color: context.colors.textPrimary.withValues(alpha: 0.2),
-                        borderRadius: BorderRadius.circular(2.br),
-                      ),
+          // Actions are pinned below the scroll area: with longer copy (or a
+          // large text scale) the content outgrows the sheet, and an escape
+          // hatch you can only reach by scrolling is not an escape hatch.
+          child: Column(
+            children: [
+              // Handle bar + close button row
+              Stack(
+                alignment: Alignment.center,
+                children: [
+                  Container(
+                    width: 36.w,
+                    height: 4.h,
+                    decoration: BoxDecoration(
+                      color: context.colors.textPrimary.withValues(alpha: 0.2),
+                      borderRadius: BorderRadius.circular(2.br),
                     ),
-                    Align(
-                      alignment: Alignment.centerRight,
-                      child: IconButton(
-                        icon: Icon(
-                          Icons.close_rounded,
-                          color: context.colors.textPrimary.withValues(alpha: 0.7),
-                          size: 22.ic,
+                  ),
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: IconButton(
+                      icon: Icon(
+                        Icons.close_rounded,
+                        color: context.colors.textPrimary.withValues(
+                          alpha: 0.7,
                         ),
-                        onPressed: () => Navigator.of(hostContext).pop(),
-                        padding: EdgeInsets.zero,
-                        constraints: const BoxConstraints(),
+                        size: 22.ic,
                       ),
+                      onPressed: () => Navigator.of(hostContext).pop(),
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(),
                     ),
-                  ],
-                ),
-                SizedBox(height: 8.h),
-                _UnlockVisual()
-                    .animate()
-                    .fadeIn(
-                      duration: 600.ms,
-                      curve: Motion.smoothSpring().toCurve,
-                    )
-                    .scale(
-                      begin: const Offset(0.85, 0.85),
-                      end: const Offset(1, 1),
-                    ),
-                SizedBox(height: 16.h),
-                Text(
-                  'Unlock the full\nexperience',
-                  textAlign: TextAlign.center,
-                  style: AppTypography.displayXsBold.copyWith(
-                    color: context.colors.textPrimary,
-                    height: 1.2,
+                  ),
+                ],
+              ),
+              Expanded(
+                child: SingleChildScrollView(
+                  controller: scrollController,
+                  physics: const BouncingScrollPhysics(),
+                  child: Column(
+                    children: [
+                      SizedBox(height: 8.h),
+                      _UnlockVisual()
+                          .animate()
+                          .fadeIn(
+                            duration: 600.ms,
+                            curve: Motion.smoothSpring().toCurve,
+                          )
+                          .scale(
+                            begin: const Offset(0.85, 0.85),
+                            end: const Offset(1, 1),
+                          ),
+                      SizedBox(height: 16.h),
+                      Text(
+                        title ?? 'Unlock the full\nexperience',
+                        textAlign: TextAlign.center,
+                        style: AppTypography.displayXsBold.copyWith(
+                          color: context.colors.textPrimary,
+                          height: 1.2,
+                        ),
+                      ),
+                      SizedBox(height: 8.h),
+                      Text(
+                        message ?? 'Create an account to access all features',
+                        textAlign: TextAlign.center,
+                        style: AppTypography.textSmRegular.copyWith(
+                          color: context.colors.textPrimary.withValues(
+                            alpha: 0.6,
+                          ),
+                        ),
+                      ),
+                      SizedBox(height: 16.h),
+                      _FeaturesList(),
+                    ],
                   ),
                 ),
-                SizedBox(height: 8.h),
-                Text(
-                  'Create an account to access all features',
-                  textAlign: TextAlign.center,
-                  style: AppTypography.textSmRegular.copyWith(
-                    color: context.colors.textPrimary.withValues(alpha: 0.6),
-                  ),
+              ),
+              SizedBox(height: 20.h),
+              _PrimaryButton(
+                label: 'Create free account',
+                onTap: startAuthFlow,
+              ),
+              if (dismissLabel != null) ...[
+                SizedBox(height: 4.h),
+                _DismissButton(
+                  label: dismissLabel!,
+                  onTap: () => Navigator.of(hostContext).pop(),
                 ),
-                SizedBox(height: 24.h),
-                _FeaturesList(),
-                SizedBox(height: 28.h),
-                _PrimaryButton(
-                  label: 'Create free account',
-                  onTap: startAuthFlow,
-                ),
-                SizedBox(height: 8.h),
               ],
-            ),
+              SizedBox(height: 8.h),
+            ],
           ),
         ),
       ],
@@ -222,7 +269,7 @@ class _UnlockVisual extends HookWidget {
             ),
             child: Center(
               child: Icon(
-                Icons.lock_open_rounded,
+                Icons.cloud_done_outlined,
                 size: 40.ic,
                 color: kPrimaryColor,
               ),
@@ -237,30 +284,27 @@ class _UnlockVisual extends HookWidget {
 class _FeaturesList extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
+    // Guests already have every feature — favorites, analyses, board themes.
+    // What an account actually adds is durability, so sell that and nothing
+    // else. Promising features they already use reads as a lie.
     final features = [
       _FeatureItem(
-        icon: Icons.favorite_rounded,
-        title: 'Save favorites',
-        subtitle: 'Players, games & events',
-        color: const Color(0xFFFF6B6B),
+        icon: Icons.backup_outlined,
+        title: 'Backed up',
+        subtitle: 'Your players and analyses survive a lost phone',
+        color: const Color(0xFF95E1D3),
       ),
       _FeatureItem(
-        icon: Icons.psychology_rounded,
-        title: 'Analysis vault',
-        subtitle: 'Store unlimited analyses',
-        color: const Color(0xFF4ECDC4),
-      ),
-      _FeatureItem(
-        icon: Icons.palette_rounded,
-        title: 'Customization',
-        subtitle: 'Board themes & pieces',
+        icon: Icons.devices_rounded,
+        title: 'On every device',
+        subtitle: 'Same favorites on your phone and tablet',
         color: const Color(0xFF7DD3FC),
       ),
       _FeatureItem(
-        icon: Icons.cloud_sync_rounded,
-        title: 'Sync everywhere',
-        subtitle: 'Access on any device',
-        color: const Color(0xFF95E1D3),
+        icon: Icons.workspace_premium_outlined,
+        title: 'Purchases follow you',
+        subtitle: 'Restore Premium after a reinstall',
+        color: const Color(0xFF4ECDC4),
       ),
     ];
 
@@ -269,12 +313,14 @@ class _FeaturesList extends StatelessWidget {
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(20.br),
         color: context.colors.surface.withValues(alpha: 0.5),
-        border: Border.all(color: context.colors.textPrimary.withValues(alpha: 0.06)),
+        border: Border.all(
+          color: context.colors.textPrimary.withValues(alpha: 0.06),
+        ),
       ),
       child: Column(
         children: [
           Text(
-            'What you\'ll get with an account:',
+            'What an account adds:',
             style: AppTypography.textXsMedium.copyWith(
               color: context.colors.textPrimary.withValues(alpha: 0.5),
               letterSpacing: 0.5,
@@ -330,7 +376,9 @@ class _FeatureItem extends StatelessWidget {
             children: [
               Text(
                 title,
-                style: AppTypography.textSmMedium.copyWith(color: context.colors.textPrimary),
+                style: AppTypography.textSmMedium.copyWith(
+                  color: context.colors.textPrimary,
+                ),
               ),
               Text(
                 subtitle,
@@ -340,11 +388,6 @@ class _FeatureItem extends StatelessWidget {
               ),
             ],
           ),
-        ),
-        Icon(
-          Icons.lock_outline_rounded,
-          size: 16.ic,
-          color: context.colors.textPrimary.withValues(alpha: 0.25),
         ),
       ],
     );
@@ -412,6 +455,37 @@ class _PrimaryButton extends HookWidget {
                       ),
                     ),
           ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Quiet decline. Deliberately plain text (no fill, no outline) so it reads as
+/// the lower-weight option next to the primary action without becoming the
+/// stock filled/outlined button pair.
+class _DismissButton extends StatelessWidget {
+  const _DismissButton({required this.label, required this.onTap});
+
+  final String label;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return TextButton(
+      onPressed: onTap,
+      style: TextButton.styleFrom(
+        minimumSize: Size(double.infinity, 48.h),
+        foregroundColor: context.colors.textPrimary,
+        overlayColor: context.colors.textPrimary,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(14.br),
+        ),
+      ),
+      child: Text(
+        label,
+        style: AppTypography.textMdMedium.copyWith(
+          color: context.colors.textPrimary.withValues(alpha: 0.6),
         ),
       ),
     );
@@ -521,10 +595,11 @@ class _ParticlePainter extends CustomPainter {
           particle.x +
           math.sin(animation * 2 * math.pi + particle.x * 10) * 0.02;
 
-      final paint = Paint()
-        ..color = Colors.white.withValues(
-          alpha: particle.opacity * (1 - y.abs() * 0.5),
-        );
+      final paint =
+          Paint()
+            ..color = Colors.white.withValues(
+              alpha: particle.opacity * (1 - y.abs() * 0.5),
+            );
 
       canvas.drawCircle(
         Offset(x * size.width, y * size.height),
@@ -549,4 +624,71 @@ class _Particle {
   });
 
   final double x, y, size, speed, opacity;
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// PREVIEWS — `flutter widget-preview start`
+// ════════════════════════════════════════════════════════════════════════════
+
+/// The day-7 guest prompt, with the exact copy the gate passes.
+///
+/// Keep this in sync with `GuestSessionGateListener._showSoftPrompt`.
+@Preview(
+  name: 'Guest day 7 prompt',
+  group: 'Guest upgrade',
+  size: kPhonePreviewSize,
+  brightness: Brightness.dark,
+  theme: appPreviewTheme,
+  wrapper: responsivePreviewHost,
+)
+Widget guestDay7PromptPreview() {
+  const days = 7;
+  return const _SheetPreviewHost(
+    title: 'Keep your chess,\nwherever you play',
+    message:
+        '$days days as a guest. '
+        'A free account keeps it all safe, on every device.',
+    dismissLabel: 'Not now',
+  );
+}
+
+/// The same sheet as reached from anywhere else (no scheduled-prompt copy, no
+/// "Not now" — the close button is the only way out).
+@Preview(
+  name: 'Upgrade sheet (default copy)',
+  group: 'Guest upgrade',
+  size: kPhonePreviewSize,
+  brightness: Brightness.dark,
+  theme: appPreviewTheme,
+  wrapper: responsivePreviewHost,
+)
+Widget authUpgradeSheetDefaultPreview() => const _SheetPreviewHost();
+
+/// Renders the sheet body over a dark page, the way it looks on top of the app.
+/// The sheet is normally inside a modal route; this supplies the surrounding
+/// scaffold so it can be previewed on its own.
+class _SheetPreviewHost extends StatelessWidget {
+  const _SheetPreviewHost({this.title, this.message, this.dismissLabel});
+
+  final String? title;
+  final String? message;
+  final String? dismissLabel;
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: const Color(0xFF0B0B0D),
+      body: Builder(
+        // The sheet takes a host context for its pops; in the previewer that is
+        // simply this subtree.
+        builder:
+            (hostContext) => _AuthUpgradeSheet(
+              hostContext: hostContext,
+              title: title,
+              message: message,
+              dismissLabel: dismissLabel,
+            ),
+      ),
+    );
+  }
 }

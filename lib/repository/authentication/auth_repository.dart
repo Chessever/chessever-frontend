@@ -561,6 +561,59 @@ class AuthController extends AutoDisposeAsyncNotifier<AppAuthState> {
     }
   }
 
+  /// Creates a guest session so the user can enter the app without signing in.
+  ///
+  /// A guest is a normal free account as far as the app is concerned — the only
+  /// difference is that the identity lives on this device until they upgrade.
+  /// Upgrading later goes through [signInWithGoogle] / [signInWithApple],
+  /// which snapshot and merge the guest's favorites into the new account.
+  ///
+  /// Reuses any existing session instead of minting a second one, so replaying
+  /// onboarding can never orphan a guest's data.
+  Future<AppUser> signInAnonymously() async {
+    final existing = _supabase.auth.currentUser;
+    if (existing != null) {
+      final appUser = AppUser.fromSupabaseUser(existing);
+      state = AsyncValue.data(AppAuthState.authenticated(appUser));
+      return appUser;
+    }
+
+    state = const AsyncValue.data(AppAuthState.loading());
+    try {
+      final response = await _supabase.auth.signInAnonymously();
+      final supabaseUser = response.user;
+      if (supabaseUser == null) {
+        throw Exception('Guest sign-in returned no user');
+      }
+
+      final appUser = AppUser.fromSupabaseUser(supabaseUser);
+      state = AsyncValue.data(AppAuthState.authenticated(appUser));
+
+      unawaited(
+        AnalyticsService.instance.trackAuthEvent(
+          action: 'guest_session_started',
+          method: 'anonymous',
+          success: true,
+          user: appUser,
+        ),
+      );
+
+      return appUser;
+    } catch (e, st) {
+      await ref.read(errorLoggerProvider).logError(e, st);
+      unawaited(
+        AnalyticsService.instance.trackAuthEvent(
+          action: 'guest_session_started',
+          method: 'anonymous',
+          success: false,
+          reason: e.toString(),
+        ),
+      );
+      state = AsyncValue.data(AppAuthState.error(_exceptionMessage(e)));
+      rethrow;
+    }
+  }
+
   Future<void> signOut() async {
     state = const AsyncValue.data(AppAuthState.loading());
 

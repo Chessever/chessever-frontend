@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:chessever2/screens/chessboard/game_review/game_analysis_report.dart';
@@ -8,65 +9,233 @@ import 'package:chessever2/services/fide_photo_service.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/widgets/player_initials_avatar.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
-/// Single open-height Game Analysis review sheet.
+/// Heights for the two-step Game Analysis sheet.
 ///
-/// Opens already at [height] with rounded top corners, sitting under the safe
-/// area so it never collides with the notch. Drag-down dismiss is coordinated
-/// through [DraggableScrollableSheet] (see [minHeight]) rather than multi-step
-/// snap points.
+/// Step 1 ("peek") is measured, not guessed: the host passes the pixel height
+/// that puts the sheet's top edge just under the board's bottom player row, so
+/// the board and both name rows stay on screen with the report. Step 2 opens to
+/// [full]. Dragging below the peek snaps to [dismissFloor] and closes.
 class GameReviewSheetExtents {
-  /// Open / max sheet height (fraction of the modal host after safe area).
-  static const double height = 0.90;
+  /// Fully-open height, as a fraction of the sheet host.
+  static const double full = 0.92;
 
-  /// How far the sheet may shrink while dragging before it closes.
-  /// Must be below [height] so a downward drag from the handle (or from the
-  /// top of the scroll view) can collapse and dismiss instead of only
-  /// scrolling content.
-  static const double minHeight = 0.45;
+  /// Peek height used until the board anchor has been measured.
+  static const double peekFallback = 0.42;
+
+  /// Clamp for the measured peek. Guards against a layout that would otherwise
+  /// leave the sheet unusably short, or tall enough to cover the board it is
+  /// supposed to sit under.
+  static const double minPeek = 0.22;
+  static const double maxPeek = 0.62;
+
+  /// Collapsed floor. Reaching it dismisses the sheet.
+  static const double dismissFloor = 0.0;
+
+  /// Breathing room between the bottom player row and the sheet's top edge.
+  static const double anchorGap = 6;
 
   static const double topRadius = 28;
+
+  /// Snap / dismiss animation timing, shared so the handle tap, the close
+  /// button and the drag settle all feel like one control.
+  static const Duration snapDuration = Duration(milliseconds: 240);
+  static const Curve snapCurve = Curves.easeOutCubic;
 }
 
-Future<void> showMobileGameReviewSheet({
-  required BuildContext context,
-  required MobileGameReviewController controller,
-  required GamesTourModel game,
-  required int activePly,
-  required ValueChanged<int> onJumpToPly,
-  Future<void> Function(bool visible)? onVisibilityChanged,
-}) async {
-  controller.reveal();
-  // On-demand generation (free daily slot / premium unlimited). Cached
-  // reports return immediately without consuming quota.
-  await controller.requestAnalysis(context);
-  if (!context.mounted) return;
-  await onVisibilityChanged?.call(true);
-  if (!context.mounted) {
-    await onVisibilityChanged?.call(false);
-    return;
+/// Two-step, non-modal Game Analysis sheet.
+///
+/// Deliberately **not** a `showModalBottomSheet`: a modal route installs a
+/// barrier that swallows every touch outside the sheet, which would make the
+/// board a picture. Rendered in-tree instead, the area above the sheet has no
+/// widget at all, so taps fall straight through to the live board — no scrim,
+/// no tint, no dead zone.
+///
+/// The sheet and the board are two views of one cursor: [activePly] comes from
+/// the board, and [onJumpToPly] drives it. Stepping through the graph moves the
+/// pieces; moving the pieces slides the graph marker.
+class GameReviewSheet extends StatefulWidget {
+  const GameReviewSheet({
+    super.key,
+    required this.controller,
+    required this.game,
+    required this.activePly,
+    required this.onJumpToPly,
+    required this.onClose,
+    this.peekPixels,
+  });
+
+  final MobileGameReviewController controller;
+  final GamesTourModel game;
+
+  /// Live board ply (0 = starting position). Pass `-1` while the board sits in
+  /// an analysis variation the report does not cover; the marker then holds its
+  /// last mainline position instead of jumping.
+  final int activePly;
+
+  final ValueChanged<int> onJumpToPly;
+  final VoidCallback onClose;
+
+  /// Height in logical pixels that lands the sheet's top edge under the board's
+  /// bottom player row. Null falls back to [GameReviewSheetExtents.peekFallback].
+  final double? peekPixels;
+
+  @override
+  State<GameReviewSheet> createState() => _GameReviewSheetState();
+}
+
+class _GameReviewSheetState extends State<GameReviewSheet> {
+  final DraggableScrollableController _sheet = DraggableScrollableController();
+
+  bool _dismissed = false;
+  bool _revealing = false;
+  double _peek = GameReviewSheetExtents.peekFallback;
+  double _full = GameReviewSheetExtents.full;
+
+  /// Stable list identity: `DraggableScrollableSheet` compares `snapSizes` by
+  /// reference and force-snaps the sheet whenever it changes, so a fresh list
+  /// per build would fight the user mid-drag.
+  List<double>? _snapSizes;
+  double? _snapSizesPeek;
+
+  /// Last mainline ply the board reported. Keeps the graph marker parked when
+  /// the board wanders into a variation the report has no positions for.
+  int _lastMainlinePly = 0;
+
+  @override
+  void dispose() {
+    _sheet.dispose();
+    super.dispose();
   }
-  try {
-    await showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      useSafeArea: true,
-      enableDrag: true,
-      isDismissible: true,
-      backgroundColor: Colors.transparent,
-      // Soft dim so the sheet reads as an overlay over the live board.
-      barrierColor: Colors.black.withValues(alpha: 0.28),
-      builder:
-          (sheetContext) => _GameReviewSheet(
-            controller: controller,
-            game: game,
-            activePly: activePly,
-            onJumpToPly: onJumpToPly,
-          ),
+
+  double _resolvePeek(double hostHeight) {
+    final pixels = widget.peekPixels;
+    if (pixels == null || hostHeight <= 0) {
+      return GameReviewSheetExtents.peekFallback;
+    }
+    return (pixels / hostHeight).clamp(
+      GameReviewSheetExtents.minPeek,
+      GameReviewSheetExtents.maxPeek,
     );
-  } finally {
-    await onVisibilityChanged?.call(false);
+  }
+
+  List<double> _snapSizesFor(double peek) {
+    if (_snapSizesPeek != peek || _snapSizes == null) {
+      _snapSizesPeek = peek;
+      _snapSizes = <double>[peek];
+    }
+    return _snapSizes!;
+  }
+
+  void _dismiss() {
+    if (_dismissed) return;
+    _dismissed = true;
+    widget.onClose();
+  }
+
+  Future<void> _closeFromButton() async {
+    if (_dismissed) return;
+    HapticFeedback.selectionClick();
+    if (_sheet.isAttached) {
+      await _sheet.animateTo(
+        GameReviewSheetExtents.dismissFloor,
+        duration: const Duration(milliseconds: 200),
+        curve: Curves.easeInCubic,
+      );
+    }
+    if (!mounted) return;
+    _dismiss();
+  }
+
+  /// Drops back to step 1 so the move that was just selected is actually
+  /// visible on the board. No-op when the sheet is already there.
+  void _revealBoard() {
+    // Scrubbing the graph fires per drag update; without the in-flight guard
+    // each one would restart the collapse and the sheet would judder.
+    if (_revealing || !_sheet.isAttached) return;
+    if (_sheet.size <= _peek + 0.01) return;
+    _revealing = true;
+    unawaited(
+      _sheet
+          .animateTo(
+            _peek,
+            duration: GameReviewSheetExtents.snapDuration,
+            curve: GameReviewSheetExtents.snapCurve,
+          )
+          .whenComplete(() => _revealing = false),
+    );
+  }
+
+  /// Handle tap toggles the two steps, so reaching the full report never
+  /// requires a drag.
+  void _toggleStep() {
+    if (!_sheet.isAttached) return;
+    final midpoint = (_full + _peek) / 2;
+    final target = _sheet.size >= midpoint ? _peek : _full;
+    HapticFeedback.selectionClick();
+    unawaited(
+      _sheet.animateTo(
+        target,
+        duration: GameReviewSheetExtents.snapDuration,
+        curve: GameReviewSheetExtents.snapCurve,
+      ),
+    );
+  }
+
+  /// Fully-open height, held clear of the status bar / notch so the rounded
+  /// top edge never gets shaved by system chrome.
+  double _resolveFull(BuildContext context, double hostHeight) {
+    if (hostHeight <= 0) return GameReviewSheetExtents.full;
+    final topInset = MediaQuery.paddingOf(context).top + 8;
+    final clearOfChrome = (hostHeight - topInset) / hostHeight;
+    return math.min(GameReviewSheetExtents.full, clearOfChrome);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (widget.activePly >= 0) _lastMainlinePly = widget.activePly;
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        _full = _resolveFull(context, constraints.maxHeight);
+        _peek = math.min(_resolvePeek(constraints.maxHeight), _full);
+        // Back is handled by the board screen's own PopScope (it already owns
+        // the route's back button for the game switcher); a second PopScope
+        // here would let both handlers fire and pop the screen out from under
+        // the sheet.
+        return NotificationListener<DraggableScrollableNotification>(
+          onNotification: (notification) {
+            // Settled on the floor — the user dragged the sheet away.
+            if (notification.extent <= notification.minExtent + 0.004) {
+              _dismiss();
+            }
+            return false;
+          },
+          child: DraggableScrollableSheet(
+            controller: _sheet,
+            expand: false,
+            snap: true,
+            snapSizes: _snapSizesFor(_peek),
+            initialChildSize: _peek,
+            minChildSize: GameReviewSheetExtents.dismissFloor,
+            maxChildSize: _full,
+            builder: (context, scrollController) {
+              return _GameReviewSurface(
+                controller: widget.controller,
+                game: widget.game,
+                activePly: _lastMainlinePly,
+                onJumpToPly: widget.onJumpToPly,
+                onRevealBoard: _revealBoard,
+                onToggleStep: _toggleStep,
+                onClose: _closeFromButton,
+                scrollController: scrollController,
+              );
+            },
+          ),
+        );
+      },
+    );
   }
 }
 
@@ -201,72 +370,113 @@ class GameAnalysisButton extends StatelessWidget {
   }
 }
 
-class _GameReviewSheet extends StatelessWidget {
-  const _GameReviewSheet({
+class _GameReviewSurface extends StatelessWidget {
+  const _GameReviewSurface({
     required this.controller,
     required this.game,
     required this.activePly,
     required this.onJumpToPly,
+    required this.onRevealBoard,
+    required this.onToggleStep,
+    required this.onClose,
+    required this.scrollController,
   });
 
   final MobileGameReviewController controller;
   final GamesTourModel game;
   final int activePly;
   final ValueChanged<int> onJumpToPly;
+  final VoidCallback onRevealBoard;
+  final VoidCallback onToggleStep;
+  final VoidCallback onClose;
+  final ScrollController scrollController;
 
   @override
   Widget build(BuildContext context) {
-    // DraggableScrollableSheet owns the primary scroll controller. Without it,
-    // the CustomScrollView eats every vertical drag (including on the handle)
-    // and the modal never dismisses. At scroll offset 0 a downward drag
-    // shrinks the sheet and closes it at [minHeight].
-    return DraggableScrollableSheet(
-      expand: false,
-      initialChildSize: GameReviewSheetExtents.height,
-      minChildSize: GameReviewSheetExtents.minHeight,
-      maxChildSize: GameReviewSheetExtents.height,
-      shouldCloseOnMinExtent: true,
-      builder: (context, scrollController) {
-        return Material(
-          key: const ValueKey('game-review-full-sheet'),
-          color: kBackgroundColor,
-          elevation: 12,
-          shadowColor: Colors.black.withValues(alpha: 0.45),
-          shape: const RoundedRectangleBorder(
-            borderRadius: BorderRadius.vertical(
-              top: Radius.circular(GameReviewSheetExtents.topRadius),
+    // The sheet floats over a live board, so its lift has to come from one
+    // direction (the edge that meets the board) rather than a halo bloomed on
+    // every side. Tight offset, small blur, negative spread: a lip of shade
+    // under the player row, nothing pooling out at the sides.
+    //
+    // Surface is one step above the board's own background rather than the
+    // same ink — on a page this dark an identical fill would leave the sheet's
+    // top edge invisible and the whole panel reading as part of the board.
+    const radius = BorderRadius.vertical(
+      top: Radius.circular(GameReviewSheetExtents.topRadius),
+    );
+    return DecoratedBox(
+      key: const ValueKey('game-review-full-sheet'),
+      decoration: BoxDecoration(
+        color: kBlack2Color,
+        borderRadius: radius,
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.34),
+            blurRadius: 16,
+            spreadRadius: -6,
+            offset: const Offset(0, -4),
+          ),
+        ],
+      ),
+      child: ClipRRect(
+        clipBehavior: Clip.antiAlias,
+        borderRadius: radius,
+        child: Stack(
+          children: [
+            _surfaceContent(context),
+            // A lip of light along the one edge that meets the board, in the
+            // sheet's own colour rather than a contrasting outline: the top
+            // edge reads as a raised surface catching light, not as a drawn
+            // border boxing the panel in.
+            Positioned(
+              top: 0,
+              left: 0,
+              right: 0,
+              height: 1,
+              child: IgnorePointer(
+                child: ColoredBox(color: kWhiteColor.withValues(alpha: 0.07)),
+              ),
             ),
-          ),
-          clipBehavior: Clip.antiAlias,
-          child: AnimatedBuilder(
-            // Controller is a StateNotifier; sheet listens via [listenable].
-            animation: controller.listenable,
-            builder: (context, _) {
-              final state = controller.reviewState;
-              return CustomScrollView(
-                controller: scrollController,
-                physics: const ClampingScrollPhysics(),
-                slivers: [
-                  // First scroll child so drag-from-top dismiss works.
-                  const SliverToBoxAdapter(child: _SheetDragHandle()),
-                  SliverPadding(
-                    // useSafeArea keeps the top/sides clear but leaves the
-                    // bottom flush to the screen edge, so pad the scrollable
-                    // content past the home indicator itself.
-                    padding: EdgeInsets.fromLTRB(
-                      20,
-                      4,
-                      20,
-                      28 + MediaQuery.paddingOf(context).bottom,
-                    ),
-                    sliver: SliverToBoxAdapter(child: _body(state.reportState)),
-                  ),
-                ],
-              );
-            },
-          ),
-        );
-      },
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _surfaceContent(BuildContext context) {
+    return Material(
+      type: MaterialType.transparency,
+      child: AnimatedBuilder(
+        // Controller is a StateNotifier; sheet listens via [listenable].
+        animation: controller.listenable,
+        builder: (context, _) {
+          final state = controller.reviewState;
+          return CustomScrollView(
+            controller: scrollController,
+            physics: const ClampingScrollPhysics(),
+            slivers: [
+              // First scroll child so drag-from-top dismiss works.
+              SliverToBoxAdapter(
+                child: _SheetHeader(
+                  onToggleStep: onToggleStep,
+                  onClose: onClose,
+                ),
+              ),
+              SliverPadding(
+                // The sheet is bottom-flush to the screen, so pad the
+                // scrollable content past the home indicator itself.
+                padding: EdgeInsets.fromLTRB(
+                  20,
+                  4,
+                  20,
+                  28 + MediaQuery.paddingOf(context).bottom,
+                ),
+                sliver: SliverToBoxAdapter(child: _body(state.reportState)),
+              ),
+            ],
+          );
+        },
+      ),
     );
   }
 
@@ -282,6 +492,7 @@ class _GameReviewSheet extends StatelessWidget {
             game: game,
             activePly: activePly,
             onJumpToPly: onJumpToPly,
+            onRevealBoard: onRevealBoard,
           );
         }
         return const _ReviewMessage(
@@ -318,23 +529,56 @@ class _GameReviewSheet extends StatelessWidget {
   }
 }
 
-class _SheetDragHandle extends StatelessWidget {
-  const _SheetDragHandle();
+class _SheetHeader extends StatelessWidget {
+  const _SheetHeader({required this.onToggleStep, required this.onClose});
+
+  final VoidCallback onToggleStep;
+  final VoidCallback onClose;
 
   @override
   Widget build(BuildContext context) {
     // Full-width opaque hit target so grabs near the pill still drive the
-    // sheet scroll controller (and dismiss) instead of missing the handle.
-    return const SizedBox(
-      width: double.infinity,
-      height: 36,
-      child: Center(
-        child: DecoratedBox(
-          decoration: BoxDecoration(
-            color: kLightGreyColor,
-            borderRadius: BorderRadius.all(Radius.circular(999)),
-          ),
-          child: SizedBox(width: 44, height: 5),
+    // sheet scroll controller (and the drag-to-dismiss) instead of missing the
+    // handle. A tap on the same target steps between peek and full.
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onToggleStep,
+      child: SizedBox(
+        width: double.infinity,
+        height: 38,
+        child: Stack(
+          children: [
+            const Center(
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  color: kLightGreyColor,
+                  borderRadius: BorderRadius.all(Radius.circular(999)),
+                ),
+                child: SizedBox(width: 44, height: 5),
+              ),
+            ),
+            Positioned(
+              right: 6,
+              top: 0,
+              bottom: 0,
+              child: Center(
+                child: IconButton(
+                  key: const ValueKey('game-review-close'),
+                  onPressed: onClose,
+                  padding: EdgeInsets.zero,
+                  visualDensity: VisualDensity.compact,
+                  constraints: const BoxConstraints.tightFor(
+                    width: 38,
+                    height: 38,
+                  ),
+                  iconSize: 20,
+                  tooltip: 'Close game analysis',
+                  color: kWhiteColor70,
+                  icon: const Icon(Icons.close_rounded),
+                ),
+              ),
+            ),
+          ],
         ),
       ),
     );
@@ -455,34 +699,41 @@ class _CompletedReview extends StatefulWidget {
     required this.game,
     required this.activePly,
     required this.onJumpToPly,
+    required this.onRevealBoard,
   });
 
   final GameAnalysisReport report;
   final GamesTourModel game;
   final int activePly;
   final ValueChanged<int> onJumpToPly;
+  final VoidCallback onRevealBoard;
 
   @override
   State<_CompletedReview> createState() => _CompletedReviewState();
 }
 
 class _CompletedReviewState extends State<_CompletedReview> {
-  late int _selectedPly;
   final Map<String, int> _recapCycle = <String, int>{};
 
-  @override
-  void initState() {
-    super.initState();
-    _selectedPly = widget.activePly.clamp(
-      0,
-      widget.report.positions.length - 1,
-    );
+  /// The board owns the cursor. The graph marker is derived from it rather
+  /// than held locally, so a move played on the board (arrows, notation, a
+  /// piece drag) slides the marker, and a tap on the graph moves the board —
+  /// one position, two views of it.
+  int get _selectedPly {
+    final lastPly = widget.report.positions.length - 1;
+    if (lastPly < 0) return 0;
+    return widget.activePly.clamp(0, lastPly);
   }
 
   void _jump(int ply) {
-    final next = ply.clamp(0, widget.report.positions.length - 1);
+    final lastPly = widget.report.positions.length - 1;
+    if (lastPly < 0) return;
+    // Every navigation from the report — the graph, the step arrows, a
+    // classification count buried down in the recap — drops the sheet back to
+    // step 1. Picking a move you then can't see would be a dead end.
+    widget.onRevealBoard();
+    final next = ply.clamp(0, lastPly);
     if (next == _selectedPly) return;
-    setState(() => _selectedPly = next);
     widget.onJumpToPly(next);
   }
 
@@ -505,14 +756,17 @@ class _CompletedReviewState extends State<_CompletedReview> {
 
   @override
   Widget build(BuildContext context) {
+    final hasPositions = widget.report.positions.isNotEmpty;
     return Column(
       children: [
-        _EvaluationGraph(
-          report: widget.report,
-          activePly: _selectedPly,
-          onJumpToPly: _jump,
-        ),
-        const SizedBox(height: 20),
+        if (hasPositions) ...[
+          _EvaluationGraph(
+            report: widget.report,
+            activePly: _selectedPly,
+            onJumpToPly: _jump,
+          ),
+          const SizedBox(height: 20),
+        ],
         _PlayerSummary(report: widget.report, game: widget.game),
         const SizedBox(height: 24),
         _ClassificationRecap(
@@ -561,6 +815,14 @@ class _PlayerSummary extends StatelessWidget {
   }
 }
 
+/// Shared width of the centre label column in every white-vs-black row.
+///
+/// One value for the accuracy/rating rows and the classification recap so all
+/// the white numbers sit on one axis and all the black numbers on another —
+/// and wide enough that the longest label ("Missed Win") is never shaved to an
+/// ellipsis.
+const double _kMetricLabelColumnWidth = 132;
+
 class _SummaryMetricRow extends StatelessWidget {
   const _SummaryMetricRow({
     required this.label,
@@ -582,7 +844,7 @@ class _SummaryMetricRow extends StatelessWidget {
       children: [
         Expanded(child: _metricValue(left, lightBackground: cardValues)),
         SizedBox(
-          width: 88,
+          width: _kMetricLabelColumnWidth,
           child: Text(
             label,
             textAlign: TextAlign.center,
@@ -795,7 +1057,8 @@ class _ClassificationRecap extends StatelessWidget {
                       onTap: () => onScoreTap(classification, true),
                     ),
                   ),
-                  Expanded(
+                  SizedBox(
+                    width: _kMetricLabelColumnWidth,
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.start,
                       children: [
@@ -806,7 +1069,6 @@ class _ClassificationRecap extends StatelessWidget {
                             classification.label,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
-                            textAlign: TextAlign.center,
                             style: TextStyle(
                               color: classificationColor(classification),
                               fontSize: 14,
@@ -877,16 +1139,17 @@ class _ClassificationScore extends StatelessWidget {
 }
 
 class _ClassificationIcon extends StatelessWidget {
-  const _ClassificationIcon({required this.classification});
+  const _ClassificationIcon({required this.classification, this.size = 30});
 
   final GameMoveClassification classification;
+  final double size;
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      width: 30,
-      height: 30,
-      padding: const EdgeInsets.all(7),
+      width: size,
+      height: size,
+      padding: EdgeInsets.all(size * 7 / 30),
       decoration: BoxDecoration(
         color: classificationColor(classification),
         shape: BoxShape.circle,
@@ -935,6 +1198,13 @@ class _EvaluationGraph extends StatelessWidget {
     return ((dx / width).clamp(0.0, 1.0) * maxPly).round();
   }
 
+  /// Classification of the move that produced the position now on the board,
+  /// or null at the start position.
+  GameMoveClassification? get _activeClassification =>
+      activePly > 0 && activePly - 1 < report.moves.length
+          ? report.moves[activePly - 1].classification
+          : null;
+
   String _description() {
     final line = report.positions[activePly].bestLine;
     final evaluation =
@@ -955,10 +1225,8 @@ class _EvaluationGraph extends StatelessWidget {
       ..add(
         '${gameReportWinPercentage(report.positions[activePly].bestLine).round()}% White',
       );
-    if (activePly > 0) {
-      final classification = report.moves[activePly - 1].classification;
-      if (classification != null) parts.add(classification.label);
-    }
+    final classification = _activeClassification;
+    if (classification != null) parts.add(classification.label);
     return parts.join('  ');
   }
 
@@ -1023,16 +1291,30 @@ class _EvaluationGraph extends StatelessWidget {
                                 ),
                               ],
                             ),
-                            child: Text(
-                              _description(),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              textAlign: TextAlign.center,
-                              style: const TextStyle(
-                                color: kWhiteColor,
-                                fontSize: 10,
-                                fontWeight: FontWeight.w600,
-                              ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                if (_activeClassification != null) ...[
+                                  _ClassificationIcon(
+                                    classification: _activeClassification!,
+                                    size: 13,
+                                  ),
+                                  const SizedBox(width: 5),
+                                ],
+                                Flexible(
+                                  child: Text(
+                                    _description(),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    textAlign: TextAlign.center,
+                                    style: const TextStyle(
+                                      color: kWhiteColor,
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
                         ),

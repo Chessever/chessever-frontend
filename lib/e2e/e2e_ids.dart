@@ -51,6 +51,7 @@ class E2eIds {
       'e2e_player_selection_continue_button';
   static const onboardingAuthenticatedContinueButton =
       'e2e_onboarding_authenticated_continue_button';
+  static const onboardingNotNowButton = 'e2e_onboarding_not_now_button';
   static const librarySearchField = 'e2e_library_search_field';
   static const libraryFilterButton = 'e2e_library_filter_button';
   static const libraryOpeningExplorerButton =

@@ -886,10 +886,7 @@ class DeepLinkService {
 
       final session = Supabase.instance.client.auth.currentSession;
       final user = Supabase.instance.client.auth.currentUser;
-      if (session != null &&
-          user != null &&
-          !session.isExpired &&
-          user.isAnonymous != true) {
+      if (session != null && user != null && !session.isExpired) {
         return true;
       }
 
@@ -902,16 +899,15 @@ class DeepLinkService {
 
     final session = Supabase.instance.client.auth.currentSession;
     final user = Supabase.instance.client.auth.currentUser;
-    return session != null &&
-        user != null &&
-        !session.isExpired &&
-        user.isAnonymous != true;
+    return session != null && user != null && !session.isExpired;
   }
 
-  /// Anonymous sessions are no longer treated as authenticated.
+  /// Any session — including a guest (anonymous) one — can open shared links.
+  /// A guest is a normal free account, and shared links are how most of them
+  /// arrive, so gating deep links on a provider login would drop exactly the
+  /// users this flow exists to keep.
   bool _isFullyAuthenticated(AppAuthState? state) {
-    if (state?.status != AppAuthStatus.authenticated) return false;
-    return state?.user?.isAnonymous != true;
+    return state?.status == AppAuthStatus.authenticated;
   }
 
   /// Route based on OneSignal notification data payload.
@@ -1914,8 +1910,17 @@ class _DeepLinkedChessBoardRouteState
 
   @override
   Widget build(BuildContext context) {
+    // Key MUST stay stable across the round-games hydrate above. It used to
+    // carry `_games.length`, which changed 1 -> N when the round list landed
+    // and remounted ChessBoardScreenNew wholesale. That skipped its
+    // didUpdateWidget, and with it `syncPageIndex` — so the surviving
+    // gameId-keyed notifier kept its stale index 0 while
+    // currentlyVisiblePageIndexProvider moved to the game's real round index.
+    // Every eval then failed the `index == currentVisiblePage` gate and the
+    // engine looked dead on notification/deep-link opens while a normal open
+    // (in-place update via _ExpandingChessBoardScreen) worked fine.
     return ChessBoardScreenNew(
-      key: ValueKey('deep-link-${widget.initialGameId}-${_games.length}'),
+      key: ValueKey('deep-link-${widget.initialGameId}'),
       games: _games,
       currentIndex: _currentIndex,
       initialFen: widget.initialFen,

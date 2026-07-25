@@ -27,7 +27,7 @@ class AppUser {
           user.userMetadata?['full_name'] ??
           user.userMetadata?['name'] ??
           user.email?.split('@').first ??
-          (isAnonymous ? 'Anonymous User' : null),
+          (isAnonymous ? 'Guest' : null),
       avatarUrl:
           user.userMetadata?['avatar_url'] ?? user.userMetadata?['picture'],
       createdAt: DateTime.parse(user.createdAt),

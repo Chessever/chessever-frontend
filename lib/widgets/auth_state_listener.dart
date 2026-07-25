@@ -7,6 +7,7 @@ import 'package:chessever2/screens/favorites/favorite_players_provider.dart';
 import 'package:chessever2/providers/country_dropdown_provider.dart';
 import 'package:chessever2/providers/favorite_events_provider.dart';
 import 'package:chessever2/providers/favorite_players_provider.dart';
+import 'package:chessever2/providers/guest_session_provider.dart';
 import 'package:chessever2/providers/pending_favorite_players_provider.dart';
 import 'package:chessever2/screens/onboarding/player_selection_screen.dart';
 import 'package:chessever2/repository/local_storage/country_man/country_man_repository.dart';
@@ -68,9 +69,10 @@ class AuthStateListener extends ConsumerWidget {
           // to run so OneSignal does not keep a stale external_id on cold start.
           if (authState.status == AppAuthStatus.authenticated) {
             final currentUserId = authState.user?.id;
-            final isAnonymous = authState.user?.isAnonymous == true;
             unawaited(AnalyticsService.instance.syncUser(authState.user));
-            if (currentUserId != null && !isAnonymous) {
+            // Guests get a push identity too — they are a normal free account,
+            // so event notifications must work for them as well.
+            if (currentUserId != null) {
               unawaited(
                 PushNotificationsService.instance.loginUser(currentUserId),
               );
@@ -87,19 +89,15 @@ class AuthStateListener extends ConsumerWidget {
           final previousUserId = previousState?.user?.id;
           final isAnonymous = authState.user?.isAnonymous == true;
 
-          // Anonymous accounts are no longer allowed in the app. Redirect any
-          // lingering anon session (e.g. legacy installs) to the auth screen so
-          // they can sign in. Onboarding and auth screens themselves stay open
-          // so existing anon favorites can be migrated by the OAuth link flow.
-          if (isAnonymous) {
-            const protectedRoutes = {'/', '/auth_screen', '/onboarding'};
-            if (!protectedRoutes.contains(currentRoute)) {
-              navigator.pushNamedAndRemoveUntil(
-                '/auth_screen',
-                (route) => false,
-              );
-            }
-            return;
+          // Guests (anonymous sessions) are first-class users: same favorites,
+          // same settings, same sync. They are never bounced to the auth screen
+          // from here — account creation is asked for on a schedule instead,
+          // owned by GuestSessionGateListener (day 7 prompt, day 28 required).
+          if (!isAnonymous) {
+            // Upgrading out of guest mode stops the guest clock for good.
+            unawaited(
+              ref.read(guestSessionProvider.notifier).clearGuestSession(),
+            );
           }
 
           // Only run sync when:

@@ -400,7 +400,7 @@ class _UserProfileHeader extends ConsumerWidget {
     final subscriptionState = ref.watch(subscriptionProvider);
     final isPremium = subscriptionState.isSubscribed;
     final name = user?.displayName?.trim();
-    final displayName = (name?.isNotEmpty ?? false) ? name! : 'Anonymous';
+    final displayName = (name?.isNotEmpty ?? false) ? name! : 'Guest';
 
     return GestureDetector(
       onTap:
