@@ -751,21 +751,29 @@ class MoveStatisticsPanel extends HookConsumerWidget {
                     final wasSettled = listSettled.value;
                     if (notification is ScrollStartNotification) {
                       listSettled.value = false;
-                      // One card per gesture, from where the finger went down —
-                      // so a hard fling past a short move table cannot skip
-                      // the first game card.
-                      if (notification.dragDetails != null) {
-                        snapConfig.noteGestureStart(
-                          notification.metrics.pixels,
-                        );
-                      }
+                      // Always record origin (not only dragDetails) so flings
+                      // from a short move table still page from finger-down.
+                      snapConfig.noteGestureStart(notification.metrics.pixels);
                     } else if (notification is ScrollEndNotification) {
                       listSettled.value = true;
+                      // Settled on card 0 → later gestures may open card 1+.
+                      // Back in the move table → re-arm the first-card gate.
+                      snapConfig.noteLivePixels(notification.metrics.pixels);
+                      if (snapConfig.isActive) {
+                        final page =
+                            (notification.metrics.pixels -
+                                snapConfig.anchor!) /
+                            snapConfig.pageExtent;
+                        if (page >= -0.25 && page < 0.5) {
+                          snapConfig.markRestedOnFirstCard();
+                        }
+                      }
                     }
                     if (listSettled.value != wasSettled) syncHeaderMode();
                     if (notification is ScrollUpdateNotification ||
                         notification is ScrollEndNotification ||
                         notification is OverscrollNotification) {
+                      snapConfig.noteLivePixels(notification.metrics.pixels);
                       // Pin chrome + page-grid measure only — never re-scroll.
                       syncHeaderMode();
                     }

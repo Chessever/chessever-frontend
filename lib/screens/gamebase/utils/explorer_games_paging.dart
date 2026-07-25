@@ -193,9 +193,12 @@ ExplorerGamesEvalWindow resolveExplorerGamesEvalWindow({
 /// (still up in the move table).
 ///
 /// One list: moves + games. A flick moves **at most one card from where the
-/// gesture began** ([gestureStartPixels]), so a hard fling from a short move
-/// table cannot skip the first card when it was already high on screen.
-/// Slow release → nearest page to the release position.
+/// gesture began** ([gestureStartPixels]).
+///
+/// [allowPastFirstCard]: until the user has rested on card 0 once, every settle
+/// into the strip is forced to card 0. Short move tables put card 0 already
+/// high; a fast fling would otherwise overshoot to card 1. The motor spring
+/// still decelerates smoothly to that target in one take.
 double? explorerGamesSnapTarget({
   required double pixels,
   required double velocity,
@@ -206,6 +209,7 @@ double? explorerGamesSnapTarget({
   required double minScrollExtent,
   required double maxScrollExtent,
   double? gestureStartPixels,
+  bool allowPastFirstCard = true,
 }) {
   if (pageExtent <= 0 || pageCount <= 0) return null;
   if (!pixels.isFinite || !anchor.isFinite) return null;
@@ -219,8 +223,7 @@ double? explorerGamesSnapTarget({
 
   int index;
   if (velocity > velocityTolerance) {
-    // One step down from gesture origin. From the move table (originPage < 0)
-    // this is always ≤ 0 before clamp — the first card, never a skip to card 1.
+    // One step down from gesture origin.
     index = originPage.floor() + 1;
   } else if (velocity < -velocityTolerance) {
     index = originPage.ceil() - 1;
@@ -231,7 +234,6 @@ double? explorerGamesSnapTarget({
   }
 
   if (index < 0) {
-    // Still in / leaving into the move table.
     if (velocity > velocityTolerance) {
       index = 0;
     } else {
@@ -239,7 +241,12 @@ double? explorerGamesSnapTarget({
     }
   }
 
-  final clamped = index.clamp(0, pageCount - 1);
+  var clamped = index.clamp(0, pageCount - 1);
+  // First visit: always land on card 0 (smooth motor decelerate), never skip.
+  if (!allowPastFirstCard && clamped > 0) {
+    clamped = 0;
+  }
+
   final target = anchor + clamped * pageExtent;
 
   // Top of the list is also a rest (short move table must stay reachable).
@@ -264,9 +271,12 @@ class ExplorerGamesSnapConfig {
   double pageExtent = 0;
   int pageCount = 0;
 
-  /// Scroll offset when the current drag/fling began. Paging is relative to
-  /// this so each gesture advances at most one card.
+  /// Scroll offset when the current drag/fling began.
   double? gestureStartPixels;
+
+  /// False until a settle has landed on card 0. Blocks skipping the first card
+  /// when a short move table already shows it high on screen.
+  bool hasRestedOnFirstCard = false;
 
   bool get isActive =>
       anchor != null && anchor!.isFinite && pageExtent > 0 && pageCount > 0;
@@ -277,6 +287,19 @@ class ExplorerGamesSnapConfig {
 
   void clearGestureStart() {
     gestureStartPixels = null;
+  }
+
+  /// Call with live pixels so returning to the move table re-arms the gate.
+  void noteLivePixels(double pixels) {
+    if (!isActive || !pixels.isFinite) return;
+    final page = (pixels - anchor!) / pageExtent;
+    if (page < -0.5) {
+      hasRestedOnFirstCard = false;
+    }
+  }
+
+  void markRestedOnFirstCard() {
+    hasRestedOnFirstCard = true;
   }
 
   bool update({
@@ -409,13 +432,22 @@ class ExplorerGamesSnapPhysics extends ScrollPhysics {
       minScrollExtent: position.minScrollExtent,
       maxScrollExtent: position.maxScrollExtent,
       gestureStartPixels: config.gestureStartPixels,
+      allowPastFirstCard: config.hasRestedOnFirstCard,
     );
-    // Gesture origin is only for this settle; clear so a later goBallistic(0)
-    // uses the release position.
+    // Gesture origin is only for this settle.
     config.clearGestureStart();
 
     if (target == null) {
+      // Free-scrolling the move table — re-arm first-card gate.
+      config.noteLivePixels(position.pixels);
       return super.createBallisticSimulation(position, velocity);
+    }
+
+    // Landing on card 0 unlocks paging to later cards on the next gesture.
+    final pageAtTarget =
+        ((target - config.anchor!) / config.pageExtent).round();
+    if (pageAtTarget <= 0) {
+      config.markRestedOnFirstCard();
     }
 
     if ((target - position.pixels).abs() < tolerance.distance &&
@@ -423,6 +455,8 @@ class ExplorerGamesSnapPhysics extends ScrollPhysics {
       return null;
     }
 
+    // Motor spring decelerates from the (possibly fast) release into the
+    // forced first-card target in one smooth take.
     return SpringSimulation(
       kExplorerPageMotion.description,
       position.pixels,

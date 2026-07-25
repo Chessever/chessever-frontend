@@ -120,12 +120,33 @@ void main() {
           minScrollExtent: 0,
           maxScrollExtent: shortAnchor + 4 * extent,
           gestureStartPixels: 0,
+          allowPastFirstCard: false,
         ),
         shortAnchor,
       );
     });
 
-    test('a second fling from the first card advances to the second', () {
+    test('first visit forces card 0 even if gesture started on card 0 territory', () {
+      // 2–3 move rows: card 0 is already under the finger; a fast fling would
+      // pick card 1 without the gate.
+      expect(
+        explorerGamesSnapTarget(
+          pixels: anchor + extent * 0.8,
+          velocity: 4000,
+          velocityTolerance: 50,
+          anchor: anchor,
+          pageExtent: extent,
+          pageCount: 5,
+          minScrollExtent: 0,
+          maxScrollExtent: anchor + 4 * extent,
+          gestureStartPixels: anchor + 10,
+          allowPastFirstCard: false,
+        ),
+        anchor,
+      );
+    });
+
+    test('after resting on first card, a fling advances to the second', () {
       expect(
         explorerGamesSnapTarget(
           pixels: anchor + 20,
@@ -137,6 +158,7 @@ void main() {
           minScrollExtent: 0,
           maxScrollExtent: anchor + 4 * extent,
           gestureStartPixels: anchor,
+          allowPastFirstCard: true,
         ),
         anchor + extent,
       );
