@@ -756,18 +756,11 @@ class MoveStatisticsPanel extends HookConsumerWidget {
                       snapConfig.noteGestureStart(notification.metrics.pixels);
                     } else if (notification is ScrollEndNotification) {
                       listSettled.value = true;
-                      // Settled on card 0 → later gestures may open card 1+.
-                      // Back in the move table → re-arm the first-card gate.
+                      // Re-arm gate if back above the first card. Do NOT mark
+                      // rested here — only a ballistic aimed at card 0 does
+                      // (avoids opening the gate just because a short table
+                      // already paints near page 0).
                       snapConfig.noteLivePixels(notification.metrics.pixels);
-                      if (snapConfig.isActive) {
-                        final page =
-                            (notification.metrics.pixels -
-                                snapConfig.anchor!) /
-                            snapConfig.pageExtent;
-                        if (page >= -0.25 && page < 0.5) {
-                          snapConfig.markRestedOnFirstCard();
-                        }
-                      }
                     }
                     if (listSettled.value != wasSettled) syncHeaderMode();
                     if (notification is ScrollUpdateNotification ||

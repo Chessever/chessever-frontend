@@ -146,6 +146,41 @@ void main() {
       );
     });
 
+    test('normal-pace release mid card 1 still targets card 0 while gated', () {
+      // Slow/normal velocity → nearest-page path; release already on card 1.
+      expect(
+        explorerGamesSnapTarget(
+          pixels: anchor + extent * 0.7,
+          velocity: 0,
+          velocityTolerance: 50,
+          anchor: anchor,
+          pageExtent: extent,
+          pageCount: 5,
+          minScrollExtent: 0,
+          maxScrollExtent: anchor + 4 * extent,
+          gestureStartPixels: anchor - 20,
+          allowPastFirstCard: false,
+        ),
+        anchor,
+      );
+      // Slightly above normal pace.
+      expect(
+        explorerGamesSnapTarget(
+          pixels: anchor + extent * 0.9,
+          velocity: 120,
+          velocityTolerance: 50,
+          anchor: anchor,
+          pageExtent: extent,
+          pageCount: 5,
+          minScrollExtent: 0,
+          maxScrollExtent: anchor + 4 * extent,
+          gestureStartPixels: 0,
+          allowPastFirstCard: false,
+        ),
+        anchor,
+      );
+    });
+
     test('after resting on first card, a fling advances to the second', () {
       expect(
         explorerGamesSnapTarget(
@@ -162,6 +197,22 @@ void main() {
         ),
         anchor + extent,
       );
+    });
+
+    test('rested flag only opens when target is first card, not list top', () {
+      final config =
+          ExplorerGamesSnapConfig()..update(
+            anchor: 80,
+            pageExtent: 180,
+            pageCount: 4,
+          );
+      expect(config.hasRestedOnFirstCard, isFalse);
+      config.markRestedOnFirstCardIfTarget(0); // list top, not card 0
+      expect(config.hasRestedOnFirstCard, isFalse);
+      config.markRestedOnFirstCardIfTarget(80);
+      expect(config.hasRestedOnFirstCard, isTrue);
+      config.noteLivePixels(10); // back above first card
+      expect(config.hasRestedOnFirstCard, isFalse);
     });
   });
 

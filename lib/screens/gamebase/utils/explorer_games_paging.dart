@@ -242,15 +242,29 @@ double? explorerGamesSnapTarget({
   }
 
   var clamped = index.clamp(0, pageCount - 1);
-  // First visit: always land on card 0 (smooth motor decelerate), never skip.
-  if (!allowPastFirstCard && clamped > 0) {
-    clamped = 0;
+
+  // First visit into the strip: *every* settle (slow or fast) is card 0.
+  // Short move tables put card 0 already high; a normal/fast finger release
+  // mid card 1 would otherwise nearest-round or step to page 1.
+  if (!allowPastFirstCard) {
+    final enteringOrInStrip =
+        currentPage >= -0.5 ||
+        velocity > velocityTolerance ||
+        (originPage >= -0.5 && velocity.abs() > velocityTolerance);
+    if (enteringOrInStrip) {
+      clamped = 0;
+    }
   }
 
   final target = anchor + clamped * pageExtent;
 
   // Top of the list is also a rest (short move table must stay reachable).
-  if (clamped == 0 && anchor > minScrollExtent) {
+  // Only when the free-scroll "top" is clearly preferred — never steal a
+  // first-card land while the user is entering the strip.
+  if (clamped == 0 &&
+      anchor > minScrollExtent &&
+      allowPastFirstCard &&
+      currentPage < 0) {
     final biased =
         pixels +
         (velocity > velocityTolerance
@@ -292,14 +306,18 @@ class ExplorerGamesSnapConfig {
   /// Call with live pixels so returning to the move table re-arms the gate.
   void noteLivePixels(double pixels) {
     if (!isActive || !pixels.isFinite) return;
-    final page = (pixels - anchor!) / pageExtent;
-    if (page < -0.5) {
+    // Above the first-card rest → must land on card 0 again next entry.
+    if (pixels < anchor! - 1.0) {
       hasRestedOnFirstCard = false;
     }
   }
 
-  void markRestedOnFirstCard() {
-    hasRestedOnFirstCard = true;
+  /// Only after a ballistic aimed at the first *card* (not list top / min).
+  void markRestedOnFirstCardIfTarget(double target) {
+    if (!isActive || !target.isFinite) return;
+    if ((target - anchor!).abs() <= 2.0) {
+      hasRestedOnFirstCard = true;
+    }
   }
 
   bool update({
@@ -413,6 +431,26 @@ class ExplorerGamesSnapPhysics extends ScrollPhysics {
       ExplorerGamesSnapPhysics(config: config, parent: buildParent(ancestor));
 
   @override
+  double applyPhysicsToUserOffset(ScrollMetrics position, double offset) {
+    if (!config.isActive || config.hasRestedOnFirstCard) {
+      return super.applyPhysicsToUserOffset(position, offset);
+    }
+    // Until the user has rested on card 0, progressively damp drag that would
+    // push past the first card — faster fingers feel the list slow into card 0
+    // instead of freely coasting onto card 1 mid-drag.
+    final first = config.anchor!;
+    final extent = config.pageExtent;
+    if (extent <= 0) return super.applyPhysicsToUserOffset(position, offset);
+    // offset > 0 ⇒ content moves up (user scrolling down the list).
+    if (offset > 0 && position.pixels > first) {
+      final over = ((position.pixels - first) / extent).clamp(0.0, 1.5);
+      final damp = (1.0 - 0.72 * over.clamp(0.0, 1.0)).clamp(0.18, 1.0);
+      return offset * damp;
+    }
+    return super.applyPhysicsToUserOffset(position, offset);
+  }
+
+  @override
   Simulation? createBallisticSimulation(
     ScrollMetrics position,
     double velocity,
@@ -443,25 +481,34 @@ class ExplorerGamesSnapPhysics extends ScrollPhysics {
       return super.createBallisticSimulation(position, velocity);
     }
 
-    // Landing on card 0 unlocks paging to later cards on the next gesture.
-    final pageAtTarget =
-        ((target - config.anchor!) / config.pageExtent).round();
-    if (pageAtTarget <= 0) {
-      config.markRestedOnFirstCard();
-    }
-
     if ((target - position.pixels).abs() < tolerance.distance &&
         velocity.abs() < tolerance.velocity) {
+      // Still count a no-op settle on card 0 as a real rest.
+      config.markRestedOnFirstCardIfTarget(target);
       return null;
     }
 
-    // Motor spring decelerates from the (possibly fast) release into the
-    // forced first-card target in one smooth take.
+    // Cap approach speed while still gated so a fast finger eases into card 0
+    // via the motor spring instead of whipping through the strip.
+    var springVelocity = velocity;
+    final onFirstCard = (target - config.anchor!).abs() <= 2.0;
+    final stillGated = !config.hasRestedOnFirstCard;
+    if (onFirstCard && stillGated) {
+      final cap = config.pageExtent * 2.5;
+      if (springVelocity > cap) springVelocity = cap;
+      if (springVelocity < -cap) springVelocity = -cap;
+    }
+
+    // Unlock card 1+ only after a settle *aimed at the first card offset*,
+    // never list-top / minScrollExtent (that was opening the gate too early).
+    config.markRestedOnFirstCardIfTarget(target);
+
+    // Motor spring: one take from release → target (card 0 while gated).
     return SpringSimulation(
       kExplorerPageMotion.description,
       position.pixels,
       target,
-      velocity,
+      springVelocity,
       tolerance: tolerance,
       snapToEnd: true,
     );
