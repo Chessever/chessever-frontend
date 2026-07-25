@@ -3,6 +3,12 @@ import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_mode
 
 const int miniatureMissingRatingFallback = 1800;
 
+/// Round-id marker stamped on every miniature row.
+///
+/// Card surfaces key their Gamebase preview fetch off this value (miniatures
+/// arrive without moves), so the two must stay in sync.
+const String kGamebaseMiniaturesRoundId = 'gamebase-miniatures';
+
 List<GamebaseMiniature> orderMiniaturesByDayAndAverageRating(
   Iterable<GamebaseMiniature> games,
 ) {
@@ -562,7 +568,7 @@ class GamebaseMiniature {
       whiteClockCentiseconds: 0,
       blackClockCentiseconds: 0,
       gameStatus: status,
-      roundId: 'gamebase-miniatures',
+      roundId: kGamebaseMiniaturesRoundId,
       roundSlug: ecoClean.isNotEmpty ? ecoClean : null,
       tourId: eventClean.isNotEmpty ? eventClean : 'Miniatures',
       tourSlug: null,

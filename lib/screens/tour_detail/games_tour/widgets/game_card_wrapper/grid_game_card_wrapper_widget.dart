@@ -60,11 +60,14 @@ class GridGameCardWrapperWidget extends ConsumerWidget {
       batchKey: effectiveLiveBatchKey,
       streamEnabled: streamEnabled,
     );
+    // `streamEnabled: false` means "no realtime subscription" (archive feeds
+    // such as Miniatures), not "no evaluation". Only live cards answer to the
+    // global streaming switch; archive cards still need the engine to fill in
+    // positions the Gamebase eval cache does not have.
     final effectiveAllowStockfishFallback =
-        streamEnabled &&
         allowStockfishFallback &&
         !ref.watch(liveGameCardsPausedProvider) &&
-        ref.watch(shouldStreamProvider);
+        (!streamEnabled || ref.watch(shouldStreamProvider));
 
     // Build updated games list with the live game data
     List<GamesTourModel> getUpdatedGamesList() {

@@ -7,6 +7,7 @@ import 'package:chessever2/repository/supabase/game/game_repository.dart';
 import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
 import 'package:chessever2/screens/chessboard/provider/game_pgn_stream_provider.dart';
 import 'package:chessever2/screens/chessboard/utils/game_share_utils.dart';
+import 'package:chessever2/screens/chessboard/utils/gamebase_preview_game.dart';
 import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new_worker.dart';
 import 'package:chessever2/screens/library/utils/gamebase_pgn_builder.dart';
 import 'package:chessever2/screens/chessboard/widgets/evaluation_bar_widget.dart';
@@ -47,13 +48,6 @@ String _resolveFen(String? fen) {
 
 String? _finalFenFromPgn(String? pgn) {
   return resolveFinalPositionFromPgn(pgn)?.fen;
-}
-
-bool _isGamebasePreviewGame(GamesTourModel game) {
-  final marker = game.roundId.trim().toLowerCase();
-  return marker == 'gamebase_search' ||
-      marker == 'twic_profile' ||
-      marker == 'twic_event';
 }
 
 final _gamebaseFinalFenProvider = FutureProvider.autoDispose
@@ -124,7 +118,7 @@ class _ResolvedFenKey {
       fen: game.fen,
       pgn: game.pgn,
       lastMove: game.lastMove,
-      allowGamebaseFallback: _isGamebasePreviewGame(game),
+      allowGamebaseFallback: isGamebasePreviewGame(game),
     );
   }
 
@@ -245,7 +239,7 @@ Future<void> showGameShareOverlay(
 
   // Tier 3: Gamebase getGameWithPgn — only for Gamebase-sourced games
   // Non-Gamebase IDs (e.g. broadcast IDs like mrqvQ9VS) produce HTTP 400.
-  if (_isGamebasePreviewGame(game)) {
+  if (isGamebasePreviewGame(game)) {
     debugPrint('GIF share [${game.gameId}]: Tier 3 Gamebase attempted');
     try {
       final gameWithPgn = await ref
