@@ -9,7 +9,6 @@ import 'package:flutter/foundation.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
-import 'package:flutter/scheduler.dart';
 import 'package:flutter_animate/flutter_animate.dart' hide ShimmerEffect;
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -29,21 +28,11 @@ import '../utils/explorer_move_sort.dart';
 import 'explorer_game_card.dart';
 import 'position_games_sheet.dart';
 
-/// Panel transitions that are not gesture-driven: the corrective page settle
-/// and the table's height changes.
-///
-/// Bounce-free by design — a correction must not overshoot a page, and a
-/// growing table must not push the rows below it past their resting place. The
-/// gesture settle itself is springier; see [kExplorerPageMotion].
+/// Header collapse / table height changes (not the games page settle).
 const CupertinoMotion _kExplorerSmoothMotion = CupertinoMotion.smooth(
   duration: Duration(milliseconds: 220),
 );
 final Curve _kExplorerSmoothCurve = _kExplorerSmoothMotion.toCurve;
-
-/// How long the panel takes to stop moving after the games strip pins: the
-/// move-column header collapsing here plus the engine PV collapsing above it
-/// (`_kExplorerGamesExpandMotion`, 320ms), with a frame of slack.
-const Duration _kExplorerGamesSettleDelay = Duration(milliseconds: 360);
 
 const double _kMoveColumnWidth = 74;
 const double _kGamesColumnWidth = 84;
@@ -297,11 +286,8 @@ class _SortHeader extends StatelessWidget {
 ///
 /// Must not run during layout/paint: `localToGlobal` reads [RenderBox.size],
 /// which asserts when content size changes mid-frame (PV expand, full-line
-/// upgrade, ballistic fling). Callers schedule this via post-frame callback.
-///
-/// [pageAnchor] when non-null is the content-space offset of the games section
-/// (same as the page grid). Prefer it over `localToGlobal` so mid-transition
-/// viewport motion cannot invent a delta that flips the mode.
+/// Pin/unpin chrome only — never scrolls the list. Content-space [pageAnchor]
+/// keeps the decision stable while PV/header collapse grows the viewport.
 void _syncExplorerHeaderMode({
   required GlobalKey gamesSectionKey,
   required ScrollController scrollController,
@@ -314,7 +300,6 @@ void _syncExplorerHeaderMode({
     return;
   }
 
-  // Absolute top of the scrollable: never keep games mode / expand-over-PV.
   final position = scrollController.position;
   if (position.pixels <= position.minScrollExtent + 1.0) {
     if (currentlyInGames) setInGames(false);
@@ -332,46 +317,15 @@ void _syncExplorerHeaderMode({
     return;
   }
 
-  late final double delta;
+  // Prefer content-space (no layout read). Same list as the page grid.
+  final double delta;
   if (pageAnchor != null && pageAnchor.isFinite) {
-    // Content-space: stable across the pin's own viewport growth. Equivalent to
-    // gamesTop - listTop when both are measured cleanly, but does not jitter
-    // while the PV / header collapse is moving the panel on screen.
     delta = explorerGamesPinDelta(
       pixels: position.pixels,
       anchor: pageAnchor,
     );
   } else {
-    final scrollContext = position.context.notificationContext;
-    if (scrollContext == null) {
-      if (currentlyInGames) setInGames(false);
-      return;
-    }
-    final listBox = scrollContext.findRenderObject();
-    if (listBox is! RenderBox || !listBox.hasSize) {
-      if (currentlyInGames) setInGames(false);
-      return;
-    }
-
-    // Defensive: never read geometry while the pipeline is still laying out.
-    final phase = SchedulerBinding.instance.schedulerPhase;
-    if (phase == SchedulerPhase.persistentCallbacks ||
-        phase == SchedulerPhase.midFrameMicrotasks) {
-      return;
-    }
-
-    late final double listTop;
-    late final double gamesTop;
-    try {
-      listTop = listBox.localToGlobal(Offset.zero).dy;
-      gamesTop = gamesBox.localToGlobal(Offset.zero).dy;
-    } catch (_) {
-      // Size access not permitted mid-layout — retry is scheduled by the caller.
-      return;
-    }
-    // delta <= 0  → games section top is at/above the sticky edge (deep in games)
-    // delta > 0   → games section top has dropped below the edge (leaving games)
-    delta = gamesTop - listTop;
+    return;
   }
 
   final next = explorerGamesPinDecision(
@@ -380,33 +334,13 @@ void _syncExplorerHeaderMode({
   );
   if (next == currentlyInGames) return;
 
-  // Enter only at rest. Pinning collapses ~200–300px of chrome above the list;
-  // doing that mid-ballistic both captures the wrong card (spring overshoot)
-  // and feeds the pin/unpin loop. Wait for the page settle, then pin once.
-  if (next && position.isScrollingNotifier.value) return;
-
-  // Leaving games mode is gated on the reader actually scrolling back up.
-  //
-  // Every oscillation needs both halves: pinning collapses the engine PV and
-  // the move-column header, which grows this list's viewport; if that shifts
-  // the offset enough to push `delta` past `exitPx`, the strip unpins, the
-  // chrome comes back, and it pins again — forever. Pinning is driven by the
-  // reader's scroll, but *unpinning* was driven by geometry alone, so the loop
-  // could close without anyone touching the screen.
-  //
-  // `userScrollDirection` is idle unless a drag or its fling is in progress, so
-  // requiring it here means a layout change can never unpin on its own. The
-  // reader scrolling back toward the move table still does, immediately.
+  // Unpin only on real user scroll — layout growth must never close the loop.
   if (!next && position.userScrollDirection == ScrollDirection.idle) return;
 
   setInGames(next);
 }
 
-/// Scroll offset at which [gamesSectionKey]'s first card meets the top edge of
-/// the panel. Null while the section is absent or not laid out yet.
-///
-/// Read from the viewport rather than accumulated from row heights, so the
-/// move table above can be any shape without the games grid drifting.
+/// Content-space offset where the first game card meets the list top.
 double? _measureExplorerGamesAnchor(GlobalKey gamesSectionKey) {
   final sectionContext = gamesSectionKey.currentContext;
   if (sectionContext == null) return null;
@@ -416,40 +350,6 @@ double? _measureExplorerGamesAnchor(GlobalKey gamesSectionKey) {
   if (viewport == null) return null;
   final offset = viewport.getOffsetToReveal(box, 0).offset;
   return offset.isFinite ? offset : null;
-}
-
-/// How far the games section top sits below the list viewport top, in pixels.
-///
-/// Positive → section is below the panel edge (need to scroll down to flush).
-/// Negative → section has scrolled past the edge (a later card may be on top).
-/// Null when geometry is unavailable mid-layout.
-double? _measureExplorerGamesVisualDelta({
-  required GlobalKey gamesSectionKey,
-  required ScrollPosition position,
-}) {
-  final gamesContext = gamesSectionKey.currentContext;
-  if (gamesContext == null) return null;
-  final gamesBox = gamesContext.findRenderObject();
-  if (gamesBox is! RenderBox || !gamesBox.hasSize) return null;
-  final scrollContext = position.context.notificationContext;
-  if (scrollContext == null) return null;
-  final listBox = scrollContext.findRenderObject();
-  if (listBox is! RenderBox || !listBox.hasSize) return null;
-
-  final phase = SchedulerBinding.instance.schedulerPhase;
-  if (phase == SchedulerPhase.persistentCallbacks ||
-      phase == SchedulerPhase.midFrameMicrotasks) {
-    return null;
-  }
-
-  try {
-    final listTop = listBox.localToGlobal(Offset.zero).dy;
-    final gamesTop = gamesBox.localToGlobal(Offset.zero).dy;
-    final delta = gamesTop - listTop;
-    return delta.isFinite ? delta : null;
-  } catch (_) {
-    return null;
-  }
 }
 
 /// Panel displaying move statistics for the current position.
@@ -503,15 +403,8 @@ class MoveStatisticsPanel extends HookConsumerWidget {
       () => GlobalKey(debugLabel: 'explorer_inline_games_section'),
     );
     final headerInGames = useState(false);
-    /// Held true while a pin/unpin is reshaping the panel, so the decision
-    /// cannot be re-taken from geometry its own transition is still moving.
-    final headerModeLocked = useRef(false);
-    // Coalesce geometry reads onto the next frame — scroll metrics can change
-    // mid-layout (PV expand / line upgrade) and localToGlobal is illegal then.
-    final headerSyncScheduled = useRef(false);
 
-    // ── Deterministic games paging ─────────────────────────────────────────
-    // One card per page, each landing flush against the panel's top edge.
+    // ── One ListView: moves + games. Settle = motor physics only ───────────
     final navClearance = listBottomPadding ?? 8.sp;
     final pageMetrics =
         gamesPageHeight == null
@@ -519,13 +412,10 @@ class MoveStatisticsPanel extends HookConsumerWidget {
             : resolveExplorerGamesPageMetrics(
               pageHeight: gamesPageHeight!,
               navClearance: navClearance,
-              // Same card geometry the cards themselves resolve, reader's
-              // text size included, so the grid matches what is drawn.
               chromeHeight: ExplorerGameCardGeometry.chromeHeight(
                 MediaQuery.textScalerOf(context),
               ),
             );
-    // Grid the physics reads mid-gesture; the panel keeps it measured.
     final snapConfig = useMemoized(() => ExplorerGamesSnapConfig());
     final snapPhysics = useMemoized(
       () => ExplorerGamesSnapPhysics(config: snapConfig),
@@ -533,74 +423,16 @@ class MoveStatisticsPanel extends HookConsumerWidget {
     );
     final gamesCardCount = useRef(0);
 
-    // ── Which game cards may evaluate ──────────────────────────────────────
-    // The strip is a plain Column, so nothing disposes the cards the reader
-    // cannot see. This window does that job: the panel measures it, each card
-    // listens, and only the ones on screen rate their position. A notifier
-    // rather than state — a scroll must not rebuild the whole move list.
     final evalWindow = useMemoized(
       () => ValueNotifier(const ExplorerGamesEvalWindow.none()),
     );
     useEffect(() => evalWindow.dispose, [evalWindow]);
     final listSettled = useRef(true);
-    // Card height when the strip is not paging (standalone explorer, tablet
-    // landscape): the cards fall back to the preferred board edge, so their
-    // geometry is still constant and the window still resolvable.
     final fallbackCardHeight = ExplorerGameCardGeometry.cardHeight(
       ExplorerGameCardGeometry.preferredBoardSize,
       MediaQuery.textScalerOf(context),
     );
 
-    /// One motor spring onto the nearest page (same path as a finger release).
-    ///
-    /// Never [jumpTo] here — a hard correction after the gesture spring is the
-    /// "lands wrong then snaps" feel. Layout changes (pin expand, fen) call
-    /// this once so the *only* motion is motor.
-    void springToNearestPage() {
-      if (!snapConfig.isActive || !scrollController.hasClients) return;
-      if (headerModeLocked.value) return;
-      final position = scrollController.position;
-      if (position.isScrollingNotifier.value) return;
-      if (!explorerGamesNeedsPostSettleAlign(
-        pixels: position.pixels,
-        anchor: snapConfig.anchor!,
-        pageExtent: snapConfig.pageExtent,
-        pageCount: snapConfig.pageCount,
-        minScrollExtent: position.minScrollExtent,
-        maxScrollExtent: position.maxScrollExtent,
-        visualBias: snapConfig.visualBias,
-      )) {
-        return;
-      }
-      // Velocity 0 → ExplorerGamesSnapPhysics builds a motor SpringSimulation
-      // to the biased page target. goBallistic lives on the concrete position.
-      if (position is ScrollPositionWithSingleContext) {
-        position.goBallistic(0);
-      } else {
-        final target = explorerGamesSnapTarget(
-          pixels: position.pixels,
-          velocity: 0,
-          velocityTolerance: 1,
-          anchor: snapConfig.anchor!,
-          pageExtent: snapConfig.pageExtent,
-          pageCount: snapConfig.pageCount,
-          minScrollExtent: position.minScrollExtent,
-          maxScrollExtent: position.maxScrollExtent,
-          visualBias: snapConfig.visualBias,
-        );
-        if (target == null) return;
-        scrollController.animateTo(
-          target,
-          duration: kExplorerPageMotion.duration,
-          curve: kExplorerPageMotion.toCurve,
-        );
-      }
-    }
-
-    /// Republishes the on-screen window from the live scroll offset.
-    ///
-    /// Uses the same anchor the page grid rests on, so "which card is under the
-    /// player row" and "which card evaluates" can never disagree.
     void publishEvalWindow(double? anchor) {
       final metrics = pageMetrics;
       final cardHeight = metrics?.cardHeight ?? fallbackCardHeight;
@@ -619,61 +451,21 @@ class MoveStatisticsPanel extends HookConsumerWidget {
       );
     }
 
-    void syncGamesGrid({bool allowAnchorCompensation = true}) {
+    /// Measure page grid + pin chrome. Never scrolls. Never schedules a
+    /// second settle — [ExplorerGamesSnapPhysics] is the only land path.
+    void syncGamesGrid() {
       final metrics = pageMetrics;
-      final previousAnchor = snapConfig.anchor;
       final anchor = _measureExplorerGamesAnchor(gamesSectionKey);
-
-      // Paint residual for the snap target: must be live *before* a ballistic
-      // starts so the motor spring aims at the flush position in one take.
-      double? bias;
-      if (anchor != null &&
-          scrollController.hasClients &&
-          metrics != null) {
-        final position = scrollController.position;
-        final visualDelta = _measureExplorerGamesVisualDelta(
-          gamesSectionKey: gamesSectionKey,
-          position: position,
-        );
-        if (visualDelta != null) {
-          bias = explorerGamesVisualBias(
-            visualDelta: visualDelta,
-            pixels: position.pixels,
-            anchor: anchor,
-          );
-        }
-      }
-
-      final changed = snapConfig.update(
+      snapConfig.update(
         anchor: metrics == null ? null : anchor,
         pageExtent: metrics?.pageExtent ?? 0,
         pageCount: metrics == null ? 0 : gamesCardCount.value,
-        visualBias: bias,
       );
       publishEvalWindow(anchor);
-
-      // No jumpTo compensation. A content shift that leaves us off-grid is
-      // corrected with one motor spring (springToNearestPage), never a hard
-      // jump that fights the page settle.
-      if (!allowAnchorCompensation || headerModeLocked.value) return;
-      if (!changed || previousAnchor == null || anchor == null) return;
-      if (metrics == null || !scrollController.hasClients) return;
-      final position = scrollController.position;
-      if (position.isScrollingNotifier.value) return;
-      final delta = anchor - previousAnchor;
-      if (delta.abs() < kExplorerGamesAnchorCompensateMin) return;
-      if (position.pixels <= previousAnchor - metrics.pageExtent) return;
-      // Off-grid after a real content shift → one motor spring, not jumpTo.
-      springToNearestPage();
     }
 
-    void runHeaderModeSync() {
-      // Latch mode across pin/unpin so geometry its own transition moves
-      // cannot re-decide. Unpin still requires user scroll (see sync helper).
-      if (headerModeLocked.value) {
-        syncGamesGrid(allowAnchorCompensation: false);
-        return;
-      }
+    void syncHeaderMode() {
+      syncGamesGrid();
       _syncExplorerHeaderMode(
         gamesSectionKey: gamesSectionKey,
         scrollController: scrollController,
@@ -681,62 +473,21 @@ class MoveStatisticsPanel extends HookConsumerWidget {
         pageAnchor: snapConfig.anchor,
         setInGames: (v) {
           if (headerInGames.value == v) return;
-          headerModeLocked.value = true;
+          // Chrome only: collapse header + expand over PV. Does not touch
+          // scroll offset — the in-flight ballistic keeps its one target.
           headerInGames.value = v;
           final pinned = ref.read(explorerInlineGamesPinnedProvider);
           if (pinned != v) {
             ref.read(explorerInlineGamesPinnedProvider.notifier).state = v;
           }
-          // After PV + header collapse finishes, remeasure bias and run one
-          // motor spring to the flush page. No jumpTo — that was the
-          // "lands wrong then snaps" experience.
-          Future.delayed(_kExplorerGamesSettleDelay, () {
-            if (!context.mounted) {
-              headerModeLocked.value = false;
-              return;
-            }
-            syncGamesGrid(allowAnchorCompensation: false);
-            headerModeLocked.value = false;
-            WidgetsBinding.instance.addPostFrameCallback((_) {
-              if (!context.mounted) return;
-              if (headerInGames.value) springToNearestPage();
-            });
-          });
         },
       );
-      syncGamesGrid();
-    }
-
-    void syncHeaderMode() {
-      if (headerSyncScheduled.value) return;
-      headerSyncScheduled.value = true;
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        headerSyncScheduled.value = false;
-        runHeaderModeSync();
-      });
-    }
-
-    final alignScheduled = useRef(false);
-    void scheduleAlign() {
-      if (alignScheduled.value) return;
-      alignScheduled.value = true;
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        alignScheduled.value = false;
-        // Layout change (fen / card count / page height): refresh bias, then
-        // one motor spring if we are mid-card. Gesture settles never come
-        // through here — physics already landed them.
-        syncGamesGrid();
-        springToNearestPage();
-      });
     }
 
     void onGamesCardCountChanged(int count) {
       if (gamesCardCount.value == count) return;
       gamesCardCount.value = count;
-      // A different number of cards is a different set of pages, so this is one
-      // of the deliberate moments that may re-align. Alignment is never driven
-      // by scrolling itself — see [syncGamesGrid].
-      scheduleAlign();
+      syncGamesGrid();
     }
 
     useEffect(() {
@@ -745,7 +496,6 @@ class MoveStatisticsPanel extends HookConsumerWidget {
       syncHeaderMode();
       return () {
         scrollController.removeListener(onScroll);
-        // Leave chrome unpinned when this panel unmounts.
         Future.microtask(() {
           try {
             ref.read(explorerInlineGamesPinnedProvider.notifier).state = false;
@@ -754,16 +504,13 @@ class MoveStatisticsPanel extends HookConsumerWidget {
       };
     }, [scrollController]);
 
-    // Re-measure when the games section mounts/unmounts with data changes.
     useEffect(() {
       syncHeaderMode();
       return null;
     }, [state.totalGames, state.isLoading, state.currentFen]);
 
-    // Grid follows the strip: a new position (or a different card count) is a
-    // different set of pages.
     useEffect(() {
-      scheduleAlign();
+      syncGamesGrid();
       return null;
     }, [state.currentFen, gamesPageHeight, pageMetrics?.pageExtent]);
 
@@ -1011,12 +758,9 @@ class MoveStatisticsPanel extends HookConsumerWidget {
                     if (notification is ScrollUpdateNotification ||
                         notification is ScrollEndNotification ||
                         notification is OverscrollNotification) {
-                      // Keep visualBias live so the next ballistic aims true.
+                      // Pin chrome + page-grid measure only — never re-scroll.
                       syncHeaderMode();
                     }
-                    // No post-ScrollEnd jump/spring: ExplorerGamesSnapPhysics
-                    // already lands with motor on the biased page target. A
-                    // second pass here was the wrong-then-fix snap.
                     return false;
                   },
                   child: child,

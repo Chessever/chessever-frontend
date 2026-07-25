@@ -326,7 +326,6 @@ void main() {
     test('a near-first-card offset pins as page 0, not page 1', () {
       const anchor = 400.0;
       const extent = 200.0;
-      // Just past enter threshold (pixels a few shy of flush).
       final pixels = anchor - 8;
       expect(
         explorerGamesPinDecision(
@@ -341,20 +340,19 @@ void main() {
           anchor: anchor,
           pageExtent: extent,
           pageCount: 5,
-          preferEarlier: true,
         ),
         0,
       );
-      // After a layout-driven drift toward the next page, restore offset is
-      // still card 0's aligned position.
-      final restore = explorerGamesOffsetForPage(
-        pageIndex: 0,
-        anchor: anchor,
-        pageExtent: extent,
-        minScrollExtent: 0,
-        maxScrollExtent: anchor + 4 * extent,
+      expect(
+        explorerGamesOffsetForPage(
+          pageIndex: 0,
+          anchor: anchor,
+          pageExtent: extent,
+          minScrollExtent: 0,
+          maxScrollExtent: anchor + 4 * extent,
+        ),
+        anchor,
       );
-      expect(restore, anchor);
     });
   });
 
@@ -362,16 +360,11 @@ void main() {
     const anchor = 400.0;
     const extent = 200.0;
 
-    int? pageAt(
-      double pixels, {
-      int pageCount = 5,
-      bool preferEarlier = false,
-    }) => explorerGamesPageAtTop(
+    int? pageAt(double pixels, {int pageCount = 5}) => explorerGamesPageAtTop(
       pixels: pixels,
       anchor: anchor,
       pageExtent: extent,
       pageCount: pageCount,
-      preferEarlier: preferEarlier,
     );
 
     test('reports the card the panel top is showing', () {
@@ -381,28 +374,14 @@ void main() {
     });
 
     test('a card only just short of its page still counts as that card', () {
-      // The pin fires while the card is a few points shy of flush; rounding up
-      // to the next one here is exactly the bug this guards.
       expect(pageAt(anchor - 8), 0);
       expect(pageAt(anchor + extent - 8), 1);
     });
 
     test('just past the pin enter threshold is still page 0, not 1', () {
-      // enterPx is 8: the section is a few px shy of flush, or a few px past
-      // after a settle overshoot. Never promote the second card here.
       expect(pageAt(anchor - 8), 0);
       expect(pageAt(anchor + 8), 0);
       expect(pageAt(anchor + extent * 0.4), 0);
-    });
-
-    test('pin capture prefers earlier page through spring overshoot', () {
-      // Ordinary round at 0.6 of a page → 1; pin capture must stay on 0 so a
-      // mid-ballistic overshoot cannot land the strip on the second card.
-      expect(pageAt(anchor + extent * 0.6), 1);
-      expect(pageAt(anchor + extent * 0.6, preferEarlier: true), 0);
-      expect(pageAt(anchor + extent * 0.8, preferEarlier: true), 1);
-      // A few px past the first card's page still restores to card 0.
-      expect(pageAt(anchor + 12, preferEarlier: true), 0);
     });
 
     test('offsets up in the move table belong to nobody', () {
@@ -416,61 +395,7 @@ void main() {
     });
   });
 
-  group('pin restore offset', () {
-    const anchor = 400.0;
-    const extent = 200.0;
-    const minExtent = 0.0;
-    const maxExtent = anchor + 4 * extent;
-
-    test('maps a captured top card to the same page after a layout shift', () {
-      // Viewport grew (PV + header collapsed): maxScrollExtent shrank and the
-      // live offset may no longer sit on a page. Restore must put the captured
-      // index back under the panel top — not the next card.
-      const captured = 0;
-      const driftedPixels = anchor + extent * 0.55; // would round to page 1
-      expect(
-        explorerGamesPageAtTop(
-          pixels: driftedPixels,
-          anchor: anchor,
-          pageExtent: extent,
-          pageCount: 5,
-        ),
-        1,
-      );
-      final restored = explorerGamesOffsetForPage(
-        pageIndex: captured,
-        anchor: anchor,
-        pageExtent: extent,
-        minScrollExtent: minExtent,
-        maxScrollExtent: maxExtent - 120, // post-expand range
-      );
-      expect(restored, anchor);
-      expect(
-        explorerGamesPageAtTop(
-          pixels: restored,
-          anchor: anchor,
-          pageExtent: extent,
-          pageCount: 5,
-        ),
-        0,
-      );
-    });
-
-    test('restores a mid-strip card to its own aligned offset', () {
-      expect(
-        explorerGamesOffsetForPage(
-          pageIndex: 2,
-          anchor: anchor,
-          pageExtent: extent,
-          minScrollExtent: minExtent,
-          maxScrollExtent: maxExtent,
-        ),
-        anchor + 2 * extent,
-      );
-    });
-  });
-
-  group('post-land settle does not re-target', () {
+  group('one ballistic target — no second correction', () {
     const anchor = 200.0;
     const extent = 180.0;
     const pageCount = 5;
@@ -492,8 +417,6 @@ void main() {
           ),
           isFalse,
         );
-        // Card-to-card land: physics already put us on the grid — no second
-        // align pass (that was the post-land flicker on every page turn).
         expect(
           explorerGamesNeedsPostSettleAlign(
             pixels: pixels,
@@ -508,168 +431,37 @@ void main() {
       }
     });
 
-    test('a few px shy of flush still settles on the same page, not the next', () {
-      // Ballistic snapToEnd should leave us on the page; a secondary standstill
-      // snap from a near-flush offset must not re-animate to the next card.
+    test('moves table and games share one grid: fling into strip hits page 0', () {
+      // Coming out of the move table with downward velocity → first card.
       expect(
-        explorerGamesSettleWouldRetarget(
-          pixels: anchor + 3,
-          anchor: anchor,
-          pageExtent: extent,
-          pageCount: pageCount,
-          settledPage: 0,
-          minScrollExtent: minExtent,
-          maxScrollExtent: maxExtent,
-        ),
-        isFalse,
-      );
-      expect(
-        explorerGamesNeedsPostSettleAlign(
-          pixels: anchor + 1.5,
+        explorerGamesSnapTarget(
+          pixels: anchor - 40,
+          velocity: 2000,
+          velocityTolerance: 50,
           anchor: anchor,
           pageExtent: extent,
           pageCount: pageCount,
           minScrollExtent: minExtent,
           maxScrollExtent: maxExtent,
         ),
-        isFalse,
-      );
-      expect(
-        explorerGamesSettleWouldRetarget(
-          pixels: anchor + extent - 4,
-          anchor: anchor,
-          pageExtent: extent,
-          pageCount: pageCount,
-          settledPage: 1,
-          minScrollExtent: minExtent,
-          maxScrollExtent: maxExtent,
-        ),
-        isFalse,
+        anchor,
       );
     });
 
-    test('only a true mid-card rest needs a corrective align', () {
-      // Coast from the move table that stopped halfway through a card.
-      expect(
-        explorerGamesNeedsPostSettleAlign(
-          pixels: anchor + extent * 0.4,
-          anchor: anchor,
-          pageExtent: extent,
-          pageCount: pageCount,
-          minScrollExtent: minExtent,
-          maxScrollExtent: maxExtent,
-        ),
-        isTrue,
-      );
-      // Free-scrolling move table — not our grid.
-      expect(
-        explorerGamesNeedsPostSettleAlign(
-          pixels: 0,
-          anchor: anchor,
-          pageExtent: extent,
-          pageCount: pageCount,
-          minScrollExtent: minExtent,
-          maxScrollExtent: maxExtent,
-        ),
-        isFalse,
-      );
-    });
-
-    test('page motion is bounce-free so settle cannot overshoot', () {
-      // Structural: snappy bounce was the post-land up/down flicker. The
-      // shipped spring must have zero bounce.
+    test('page motion is bounce-free motor spring', () {
       expect(kExplorerPageMotion.description.bounce, 0);
     });
 
-    test('anchor noise below compensate floor is ignored', () {
-      // 1–3px remeasures after land must not jump the list.
-      expect(1.0 < kExplorerGamesAnchorCompensateMin, isTrue);
-      expect(3.0 < kExplorerGamesAnchorCompensateMin, isTrue);
-      expect(kExplorerGamesAnchorCompensateMin, greaterThanOrEqualTo(8.0));
-    });
-
-    test('visual flush corrects a card parked part-way under the panel top', () {
-      const extent = 200.0;
-      // Card 0 sitting 50px below the panel top (¼ of a 200px card → "75%").
+    test('page offsets are pure content-space', () {
       expect(
-        explorerGamesVisualFlushAdjustment(
-          visualDelta: 50,
-          pageExtent: extent,
-          pageCount: 5,
-        ),
-        50,
-      );
-      // Card 1 should be flush (section top is one page above the panel).
-      expect(
-        explorerGamesVisualFlushAdjustment(
-          visualDelta: -extent,
-          pageExtent: extent,
-          pageCount: 5,
-        ),
-        0,
-      );
-      // Card 1 is 40px short of flush.
-      expect(
-        explorerGamesVisualFlushAdjustment(
-          visualDelta: -extent + 40,
-          pageExtent: extent,
-          pageCount: 5,
-        ),
-        40,
-      );
-      // Already flush on card 0.
-      expect(
-        explorerGamesVisualFlushAdjustment(
-          visualDelta: 0,
-          pageExtent: extent,
-          pageCount: 5,
-        ),
-        0,
-      );
-    });
-
-    test('snap target folds visual bias so one spring lands flush', () {
-      const anchor = 200.0;
-      const extent = 180.0;
-      const bias = 50.0; // paint residual: card sits 50px low at content rest
-      double? target(double pixels, double velocity, {double visualBias = 0}) =>
-          explorerGamesSnapTarget(
-            pixels: pixels,
-            velocity: velocity,
-            velocityTolerance: 50,
-            anchor: anchor,
-            pageExtent: extent,
-            pageCount: 5,
-            minScrollExtent: 0,
-            maxScrollExtent: anchor + 4 * extent + 100,
-            visualBias: visualBias,
-          );
-
-      // Without bias: content-space page 0.
-      expect(target(anchor + 10, 0), anchor);
-      // With bias: same page choice, target shifted so paint lands flush.
-      expect(target(anchor + 10, 0, visualBias: bias), anchor + bias);
-      // Flick still moves exactly one card, bias applied to that page.
-      expect(
-        target(anchor + 10, 3000, visualBias: bias),
-        anchor + extent + bias,
-      );
-      // Bias math: visualDelta - (anchor - pixels).
-      expect(
-        explorerGamesVisualBias(
-          visualDelta: 50,
-          pixels: anchor,
+        explorerGamesOffsetForPage(
+          pageIndex: 2,
           anchor: anchor,
+          pageExtent: extent,
+          minScrollExtent: minExtent,
+          maxScrollExtent: maxExtent,
         ),
-        50,
-      );
-      expect(
-        explorerGamesVisualBias(
-          visualDelta: 0,
-          pixels: anchor,
-          anchor: anchor,
-        ),
-        0,
+        anchor + 2 * extent,
       );
     });
   });
