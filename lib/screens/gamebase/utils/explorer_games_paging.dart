@@ -143,6 +143,30 @@ double explorerGamesListBottomPadding({
   return aligned > navClearance ? aligned : navClearance;
 }
 
+/// Whether the games strip should pin, from content-space geometry alone.
+///
+/// [delta] is `gamesTop - listTop` (or the equivalent `anchor - pixels`): ≤0
+/// means the section top is at or above the panel top. Enter/exit use a small
+/// hysteresis band so a 1px jitter cannot flip the mode.
+///
+/// Pure so the pin threshold is unit-testable without a widget tree.
+bool explorerGamesPinDecision({
+  required double delta,
+  required bool currentlyInGames,
+  double enterPx = 8,
+  double exitPx = 12,
+}) {
+  return currentlyInGames ? delta <= exitPx : delta <= enterPx;
+}
+
+/// Content-space delta matching what `_syncExplorerHeaderMode` measures via
+/// `localToGlobal`: positive while the section sits below the panel top.
+double explorerGamesPinDelta({
+  required double pixels,
+  required double anchor,
+}) =>
+    anchor - pixels;
+
 /// Which inline game cards are on screen, plus whether the list is standing
 /// still — together, everything a card needs to decide if it may evaluate.
 ///
@@ -343,25 +367,122 @@ class ExplorerGamesSnapConfig {
 /// viewport without touching [anchor], so re-deriving the page afterwards can
 /// round onto the next card. Capturing the index first and restoring it keeps
 /// the strip on the card the reader actually stopped on.
+///
+/// [preferEarlier] is for pin capture: a spring can overshoot past the halfway
+/// mark of the next page for a frame before settling, and ordinary rounding
+/// would promote that next card. Preferring the earlier page by a quarter of a
+/// page of headroom keeps the capture on the card that actually owns the top.
 int? explorerGamesPageAtTop({
   required double pixels,
   required double anchor,
   required double pageExtent,
   required int pageCount,
+  bool preferEarlier = false,
 }) {
   if (pageExtent <= 0 || pageCount <= 0) return null;
   if (!pixels.isFinite || !anchor.isFinite) return null;
   // Half a page above the first card still belongs to the move table.
   if (pixels < anchor - pageExtent / 2) return null;
-  return ((pixels - anchor) / pageExtent).round().clamp(0, pageCount - 1);
+  final raw = (pixels - anchor) / pageExtent;
+  if (preferEarlier) {
+    // Promote only once 75% into the next page (not 50%).
+    return (raw + 0.25).floor().clamp(0, pageCount - 1);
+  }
+  return raw.round().clamp(0, pageCount - 1);
 }
+
+/// Scroll offset that places [pageIndex] flush under the panel top, clamped to
+/// the scrollable range. Pure counterpart of the panel's page jump.
+double explorerGamesOffsetForPage({
+  required int pageIndex,
+  required double anchor,
+  required double pageExtent,
+  required double minScrollExtent,
+  required double maxScrollExtent,
+}) {
+  final raw = anchor + pageIndex * pageExtent;
+  if (raw < minScrollExtent) return minScrollExtent;
+  if (raw > maxScrollExtent) return maxScrollExtent;
+  return raw;
+}
+
+/// True when a standstill snap from [pixels] would land on a different page
+/// than [settledPage]. Used to prove a post-land correction would not re-target
+/// after a ballistic settle already chose [settledPage].
+bool explorerGamesSettleWouldRetarget({
+  required double pixels,
+  required double anchor,
+  required double pageExtent,
+  required int pageCount,
+  required int settledPage,
+  required double minScrollExtent,
+  required double maxScrollExtent,
+}) {
+  final target = explorerGamesSnapTarget(
+    pixels: pixels,
+    velocity: 0,
+    velocityTolerance: 1,
+    anchor: anchor,
+    pageExtent: pageExtent,
+    pageCount: pageCount,
+    minScrollExtent: minScrollExtent,
+    maxScrollExtent: maxScrollExtent,
+  );
+  if (target == null) return false;
+  final settled = explorerGamesOffsetForPage(
+    pageIndex: settledPage,
+    anchor: anchor,
+    pageExtent: pageExtent,
+    minScrollExtent: minScrollExtent,
+    maxScrollExtent: maxScrollExtent,
+  );
+  return (target - settled).abs() > 0.5;
+}
+
+/// Whether a post-gesture align pass should run at all.
+///
+/// The snap physics already quantise a normal release onto the grid. A second
+/// `animateTo` after land is what reads as card-to-card flicker. Only a real
+/// mid-card rest (coast from the free-scroll move table, layout shift) needs a
+/// corrective pass — i.e. we are past the strip's free zone and more than
+/// [tolerance] off the nearest page.
+bool explorerGamesNeedsPostSettleAlign({
+  required double pixels,
+  required double anchor,
+  required double pageExtent,
+  required int pageCount,
+  required double minScrollExtent,
+  required double maxScrollExtent,
+  double tolerance = 2.0,
+}) {
+  final target = explorerGamesSnapTarget(
+    pixels: pixels,
+    velocity: 0,
+    velocityTolerance: 1,
+    anchor: anchor,
+    pageExtent: pageExtent,
+    pageCount: pageCount,
+    minScrollExtent: minScrollExtent,
+    maxScrollExtent: maxScrollExtent,
+  );
+  // Still in the free-scrolling move table — leave it alone.
+  if (target == null) return false;
+  return (target - pixels).abs() > tolerance;
+}
+
+/// Minimum anchor shift (px) worth absorbing into the scroll offset.
+///
+/// Sub-pixel / few-pixel remeasures after every land (eval window settle, card
+/// rebuilds) used to `jumpTo` by noise and look like post-land flicker.
+const double kExplorerGamesAnchorCompensateMin = 8.0;
 
 /// Spring the page settle rides in on.
 ///
-/// Motor's Cupertino tuning rather than Flutter's default scroll spring, so
-/// paging here feels like the rest of the app. `snappy` keeps a small amount of
-/// bounce, which is what makes a flick read as physical instead of mechanical.
-const CupertinoMotion kExplorerPageMotion = CupertinoMotion.snappy(
+/// Bounce-free on purpose: a snappy overshoot past a page boundary both
+/// *looks* like a post-land flicker and can make pin-capture round onto the
+/// next card for a frame. Duration stays short so a flick still reads as a
+/// decisive page turn; `snapToEnd` on the simulation keeps the grid exact.
+const CupertinoMotion kExplorerPageMotion = CupertinoMotion.smooth(
   duration: Duration(milliseconds: 380),
 );
 
@@ -411,8 +532,8 @@ class ExplorerGamesSnapPhysics extends ScrollPhysics {
     // looked still, holding `isScrollingNotifier` high and starving the cards'
     // settled-only evaluation.
     //
-    // `snapToEnd` is what keeps the grid deterministic — however the spring
-    // wobbles on the way in, the card comes to rest exactly on its page.
+    // `snapToEnd` keeps the grid deterministic; the motion itself is bounce-free
+    // so the card does not overshoot and bounce back after landing.
     return SpringSimulation(
       kExplorerPageMotion.description,
       position.pixels,
