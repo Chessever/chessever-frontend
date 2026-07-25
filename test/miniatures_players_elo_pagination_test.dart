@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:chessever2/repository/gamebase/gamebase_repository.dart';
@@ -100,12 +101,17 @@ List<ChessPlayer> _seedPlayers({int count = 45}) {
   });
 }
 
-/// In-memory gamebase leaderboard so page enrichment never hits the network.
+/// In-memory gamebase leaderboard so W-L lookups never hit the network.
+///
+/// [searches] records every name search so a test can prove how many went out,
+/// and [gate] holds them open to prove the list paints without waiting.
 class _FakeGamebaseRepository extends GamebaseRepository {
   _FakeGamebaseRepository([this._records = const []])
     : super(Dio(), baseUrl: 'http://localhost', apiKey: 'test');
 
   final List<MiniaturePlayer> _records;
+  final List<String> searches = <String>[];
+  Completer<void>? gate;
 
   @override
   Future<MiniaturePlayersPage> getMiniaturePlayers({
@@ -116,6 +122,9 @@ class _FakeGamebaseRepository extends GamebaseRepository {
     int limit = 50,
     int offset = 0,
   }) async {
+    searches.add(search ?? '');
+    final pending = gate;
+    if (pending != null) await pending.future;
     final q = (search ?? '').trim().toLowerCase();
     final items =
         q.isEmpty
@@ -298,32 +307,90 @@ void main() {
     });
   });
 
-  group('enrichPlayersWithMiniatureRecords', () {
-    test('attaches W-L and gamebase id before cards would paint', () async {
-      final repo = _FakeGamebaseRepository([
-        const MiniaturePlayer(
-          playerId: 'gb-carlsen',
-          name: 'Carlsen, Magnus',
-          games: 16,
-          wins: 12,
-          losses: 4,
-          fideId: 1503014,
-        ),
-      ]);
-      final enriched = await enrichPlayersWithMiniatureRecords(
+  group('per-row W-L resolution', () {
+    MiniaturePlayer carlsen() => const MiniaturePlayer(
+      playerId: 'gb-carlsen',
+      name: 'Carlsen, Magnus',
+      games: 16,
+      wins: 12,
+      losses: 4,
+      fideId: 1503014,
+    );
+
+    test('resolve attaches W-L, caches the hit, and caches the miss', () async {
+      final repo = _FakeGamebaseRepository([carlsen()]);
+
+      final hit = await resolveMiniaturePlayerRecord(
         repo: repo,
-        players: [
-          chessPlayerToStandingModel(
-            _p(1503014, 'Carlsen, Magnus', 2839, title: 'GM'),
-          ),
-          chessPlayerToStandingModel(_p(99, 'Unknown, Player', 2500)),
-        ],
+        fideId: 1503014,
+        name: 'Carlsen, Magnus',
       );
-      expect(enriched[0].matchScore, '12W-4L');
-      expect(enriched[0].gamebasePlayerId, 'gb-carlsen');
-      // No gamebase row → score slot stays empty rather than inventing zeros.
-      expect(enriched[1].matchScore, isNull);
-      expect(enriched[1].gamebasePlayerId, isNull);
+      expect(hit?.winLossLabel, '12W-4L');
+      expect(hit?.playerId, 'gb-carlsen');
+      expect(cachedMiniaturePlayerRecord(1503014)?.playerId, 'gb-carlsen');
+
+      // No gamebase row → a settled miss, so the score slot can stop
+      // shimmering instead of retrying this player on every rebuild.
+      final miss = await resolveMiniaturePlayerRecord(
+        repo: repo,
+        fideId: 99,
+        name: 'Unknown, Player',
+      );
+      expect(miss, isNull);
+      expect(hasResolvedMiniaturePlayerRecord(99), isTrue);
+      expect(cachedMiniaturePlayerRecord(99), isNull);
+
+      // Repeat asks are served from cache, not the network.
+      final before = repo.searches.length;
+      await resolveMiniaturePlayerRecord(
+        repo: repo,
+        fideId: 1503014,
+        name: 'Carlsen, Magnus',
+      );
+      expect(repo.searches.length, before);
+    });
+
+    test('concurrent asks for one player share a single search', () async {
+      final repo = _FakeGamebaseRepository([carlsen()])..gate = Completer<void>();
+
+      // The row builds and a tap both want this record while it is in flight.
+      final first = resolveMiniaturePlayerRecord(
+        repo: repo,
+        fideId: 1503014,
+        name: 'Carlsen, Magnus',
+      );
+      final second = resolveMiniaturePlayerRecord(
+        repo: repo,
+        fideId: 1503014,
+        name: 'Carlsen, Magnus',
+      );
+      repo.gate!.complete();
+      final results = await Future.wait([first, second]);
+
+      expect(results[0]?.playerId, 'gb-carlsen');
+      expect(results[1]?.playerId, 'gb-carlsen');
+      expect(repo.searches, hasLength(1));
+    });
+
+    test('applyCachedMiniatureRecords seeds only what is already known', () async {
+      final repo = _FakeGamebaseRepository([carlsen()]);
+      await resolveMiniaturePlayerRecord(
+        repo: repo,
+        fideId: 1503014,
+        name: 'Carlsen, Magnus',
+      );
+
+      final seeded = applyCachedMiniatureRecords([
+        chessPlayerToStandingModel(
+          _p(1503014, 'Carlsen, Magnus', 2839, title: 'GM'),
+        ),
+        chessPlayerToStandingModel(_p(2020009, 'Caruana, Fabiano', 2804)),
+      ]);
+      expect(seeded[0].matchScore, '12W-4L');
+      expect(seeded[0].gamebasePlayerId, 'gb-carlsen');
+      // Never looked up → left blank for the row to resolve, no extra request.
+      expect(seeded[1].matchScore, isNull);
+      expect(repo.searches, hasLength(1));
     });
   });
 
@@ -422,30 +489,36 @@ void main() {
       },
     );
 
-    test('first ready page already carries prefetched W-L labels', () async {
-      final chess = _FakeChessPlayerRepository([
-        _p(1503014, 'Carlsen, Magnus', 2839, title: 'GM'),
-        _p(2020009, 'Caruana, Fabiano', 2804, title: 'GM'),
-      ]);
-      final gamebase = _FakeGamebaseRepository([
-        const MiniaturePlayer(
-          playerId: 'gb-m',
-          name: 'Carlsen, Magnus',
-          games: 16,
-          wins: 12,
-          losses: 4,
-          fideId: 1503014,
-        ),
-        const MiniaturePlayer(
-          playerId: 'gb-f',
-          name: 'Caruana, Fabiano',
-          games: 7,
-          wins: 5,
-          losses: 2,
-          fideId: 2020009,
-        ),
-      ]);
-      final container = containerWith(chess: chess, gamebase: gamebase);
+    List<MiniaturePlayer> twoRecords() => const [
+      MiniaturePlayer(
+        playerId: 'gb-m',
+        name: 'Carlsen, Magnus',
+        games: 16,
+        wins: 12,
+        losses: 4,
+        fideId: 1503014,
+      ),
+      MiniaturePlayer(
+        playerId: 'gb-f',
+        name: 'Caruana, Fabiano',
+        games: 7,
+        wins: 5,
+        losses: 2,
+        fideId: 2020009,
+      ),
+    ];
+
+    _FakeChessPlayerRepository twoPlayers() => _FakeChessPlayerRepository([
+      _p(1503014, 'Carlsen, Magnus', 2839, title: 'GM'),
+      _p(2020009, 'Caruana, Fabiano', 2804, title: 'GM'),
+    ]);
+
+    test('page paints without waiting on any gamebase W-L lookup', () async {
+      // Gate every gamebase search open: if first paint were still gated on
+      // enrichment, the list would never leave shimmer here.
+      final gamebase = _FakeGamebaseRepository(twoRecords())
+        ..gate = Completer<void>();
+      final container = containerWith(chess: twoPlayers(), gamebase: gamebase);
       addTearDown(container.dispose);
       final sub = container.listen(
         miniaturePlayersPaginatedProvider,
@@ -453,15 +526,47 @@ void main() {
       );
       addTearDown(sub.close);
 
-      // isLoading stays true until W-L enrichment finishes — the UI keeps
-      // shimmer cards for that whole window so W-L never pops in later.
-      final early = container.read(miniaturePlayersPaginatedProvider);
-      expect(early.isLoading, isTrue);
-      expect(early.items, isEmpty);
-
       final state = await waitUntil(
         container,
         done: (s) => !s.isLoading && s.items.isNotEmpty,
+      );
+      expect(state.items.map((p) => p.name).toList(), [
+        'Carlsen, Magnus',
+        'Caruana, Fabiano',
+      ]);
+      // W-L is left to the rows that are actually on screen, so the ranking
+      // page itself sends no name searches at all.
+      expect(gamebase.searches, isEmpty);
+      expect(state.items.every((p) => p.matchScore == null), isTrue);
+      gamebase.gate!.complete();
+    });
+
+    test('a revisited page paints its W-L from the session cache', () async {
+      final gamebase = _FakeGamebaseRepository(twoRecords());
+      final container = containerWith(chess: twoPlayers(), gamebase: gamebase);
+      addTearDown(container.dispose);
+      final sub = container.listen(
+        miniaturePlayersPaginatedProvider,
+        (_, __) {},
+      );
+      addTearDown(sub.close);
+
+      await waitUntil(container, done: (s) => !s.isLoading && s.items.isNotEmpty);
+
+      // Stand in for the two visible rows resolving their own records.
+      for (final row in container.read(miniaturePlayersPaginatedProvider).items) {
+        await resolveMiniaturePlayerRecord(
+          repo: gamebase,
+          fideId: row.fideId!,
+          name: row.name,
+        );
+      }
+      final searchesAfterRows = gamebase.searches.length;
+
+      await container.read(miniaturePlayersPaginatedProvider.notifier).refresh();
+      final state = await waitUntil(
+        container,
+        done: (s) => !s.isLoading && s.items.first.matchScore != null,
       );
       expect(state.items.map((p) => p.matchScore).toList(), [
         '12W-4L',
@@ -471,6 +576,8 @@ void main() {
         'gb-m',
         'gb-f',
       ]);
+      // Cached, so the refresh re-sent nothing to gamebase.
+      expect(gamebase.searches.length, searchesAfterRows);
     });
 
     test('search still ranks by rating desc with pagination', () async {
@@ -520,16 +627,25 @@ void main() {
         expect(source, contains('getTopPlayers'));
         expect(source, contains('searchAllPlayers'));
         expect(source, contains('mergeMiniaturePlayersPage'));
-        expect(source, contains('enrichPlayersWithMiniatureRecords'));
+        expect(source, contains('applyCachedMiniatureRecords'));
         expect(source, contains('miniaturePlayerRecordProvider'));
 
+        // Slice exactly the players notifier: the file also holds the games
+        // notifier, which legitimately talks to gamebase.
+        final rankingStart = source.indexOf('class MiniaturePlayersNotifier');
+        final rankingEnd = source.indexOf('\nclass ', rankingStart + 1);
         final rankingPath = source.substring(
-          source.indexOf('class MiniaturePlayersNotifier'),
+          rankingStart,
+          rankingEnd == -1 ? source.length : rankingEnd,
         );
         // Rank order still comes from chess players, not gamebase sort.
         expect(rankingPath, contains('chessPlayerRepositoryProvider'));
-        expect(rankingPath, contains('enrichPlayersWithMiniatureRecords'));
         expect(rankingPath, isNot(contains('sort: _query.sort')));
+        // First paint must never be gated on the gamebase W-L lookups: the
+        // ranking page paints, then rows resolve their own record. Awaiting a
+        // gamebase call in this path is exactly the regression to catch.
+        expect(rankingPath, isNot(contains('await enrich')));
+        expect(rankingPath, isNot(contains('gamebaseRepositoryProvider')));
 
         final tabSource = File(
           'lib/screens/library/miniatures/miniatures_players_tab.dart',

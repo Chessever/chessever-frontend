@@ -107,9 +107,11 @@ class _MiniaturesPlayersTabState extends ConsumerState<MiniaturesPlayersTab>
   Widget build(BuildContext context) {
     super.build(context);
 
-    // The leaderboard is not fetched until the tab is first opened, but once
-    // it has been the watches stay put: dropping them on a tab switch would
-    // auto-dispose the paginated provider and reset the list.
+    // No cards are built until the tab is first opened — the ranking itself is
+    // warmed by MiniaturesScreen, but each card costs a photo and a W-L lookup,
+    // so they wait for the tab to actually be on screen. Once opened the
+    // watches stay put: dropping them on a tab switch would auto-dispose the
+    // paginated provider and reset the list.
     _activated |=
         ref.watch(selectedMiniaturesModeProvider) ==
         MiniaturesScreenMode.players;
@@ -438,10 +440,12 @@ class _MiniaturesPlayersTabState extends ConsumerState<MiniaturesPlayersTab>
   }
 }
 
-/// One leaderboard row. The page notifier already prefetches miniature W-L
-/// onto [player.matchScore] before cards leave the shimmer, so the score slot
-/// does not pop in after first paint. The record provider still supplies the
-/// scorecard payload (and is a cache hit after that prefetch).
+/// One leaderboard row. W-L comes from gamebase, one name search per player, so
+/// it is resolved by the row that is actually on screen rather than up front for
+/// the whole page — the list paints as soon as the ELO ranking is in, and the
+/// score slot holds its width under a shimmer until its own lookup lands.
+/// Already-resolved players (a scroll back, a second visit) read straight off
+/// the session cache and paint their record on the first frame.
 class _MiniaturePlayerRow extends ConsumerWidget {
   const _MiniaturePlayerRow({
     super.key,
@@ -465,10 +469,10 @@ class _MiniaturePlayerRow extends ConsumerWidget {
 
     final key = _recordKey;
     var miniature =
-        key == null
-            ? null
-            : ref.read(miniaturePlayerRecordProvider(key)).valueOrNull;
-    if (miniature == null && key != null) {
+        key == null ? null : cachedMiniaturePlayerRecord(key.fideId);
+    if (miniature == null &&
+        key != null &&
+        !hasResolvedMiniaturePlayerRecord(key.fideId)) {
       try {
         miniature = await ref
             .read(miniaturePlayerRecordProvider(key).future)
@@ -503,13 +507,17 @@ class _MiniaturePlayerRow extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final key = _recordKey;
-    final miniature =
-        key == null
+    // A settled lookup (hit or miss) is read synchronously, so a row scrolled
+    // back into view never re-shimmers while its autoDispose provider replays
+    // against the same cache. Only unresolved rows subscribe and fetch.
+    final settled = key != null && hasResolvedMiniaturePlayerRecord(key.fideId);
+    final lookup =
+        key == null || settled
             ? null
-            : ref.watch(miniaturePlayerRecordProvider(key)).valueOrNull;
+            : ref.watch(miniaturePlayerRecordProvider(key));
+    final miniature =
+        settled ? cachedMiniaturePlayerRecord(key.fideId) : lookup?.valueOrNull;
 
-    // Prefer the prefetched label so the first frame already has W-L; fall
-    // back to a live record only if enrichment missed this row.
     final matchScore = player.matchScore ?? miniature?.winLossLabel;
     final cardPlayer =
         matchScore == null || matchScore == player.matchScore
@@ -521,6 +529,13 @@ class _MiniaturePlayerRow extends ConsumerWidget {
       rank: rank,
       showFavoriteButton: false,
       avatarHeroTag: miniature?.avatarHeroTag,
+      // Pending only while this row's own lookup is genuinely still out; a
+      // settled miss leaves the slot empty instead of shimmering forever.
+      matchScorePending: matchScore == null && (lookup?.isLoading ?? false),
+      // Records here run from `5W-2L` to `172W-41L` and land row by row, so the
+      // slot is held at one width: every name ends on the same x, and nothing
+      // moves when a record arrives.
+      reserveMatchScoreSlot: true,
       onTap: () => _open(context, ref),
     );
   }
@@ -586,8 +601,10 @@ class _MiniaturePlayerCardSkeleton extends StatelessWidget {
             ),
             Padding(
               padding: EdgeInsets.only(left: 8.w),
+              // Same string the card reserves its score slot with, so the list
+              // does not jump sideways when it replaces this shimmer.
               child: Text(
-                '0W-0L',
+                '000W-000L',
                 style: AppTypography.textMdMedium.copyWith(
                   color: context.colors.textPrimary,
                 ),

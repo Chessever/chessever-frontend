@@ -170,9 +170,46 @@ PlayerStandingModel chessPlayerToStandingModel(ChessPlayer player) {
 /// cached too — a player with no gamebase match must not be retried per frame.
 final _miniaturePlayerRecordCache = <int, MiniaturePlayer?>{};
 
+/// One shared future per player while a lookup is in flight. The list row and
+/// a tap on that row both ask for the same record, so without this the same
+/// name search goes out twice.
+final _miniaturePlayerRecordInFlight = <int, Future<MiniaturePlayer?>>{};
+
 /// Test hook: drops the in-memory W-L lookup cache between cases.
 void clearMiniaturePlayerRecordCacheForTest() {
   _miniaturePlayerRecordCache.clear();
+  _miniaturePlayerRecordInFlight.clear();
+}
+
+/// True once a lookup for [fideId] has settled — including a settled miss.
+/// A row uses this to tell "no gamebase record" apart from "not looked up
+/// yet", so a confirmed miss leaves the score slot empty instead of shimmering
+/// forever.
+bool hasResolvedMiniaturePlayerRecord(int fideId) =>
+    _miniaturePlayerRecordCache.containsKey(fideId);
+
+/// Synchronous read of an already-resolved record. Lets a row paint W-L on its
+/// very first frame after a scroll back, instead of flashing a placeholder
+/// while its autoDispose provider re-runs against the same cache.
+MiniaturePlayer? cachedMiniaturePlayerRecord(int fideId) =>
+    _miniaturePlayerRecordCache[fideId];
+
+/// Attaches any W-L already resolved in this session onto a freshly fetched
+/// page, synchronously. Nothing is fetched here: it is the "free" part of
+/// enrichment, so the first paint of a revisited tab is already complete.
+List<PlayerStandingModel> applyCachedMiniatureRecords(
+  List<PlayerStandingModel> players,
+) {
+  return players.map((player) {
+    final fideId = player.fideId;
+    if (fideId == null || player.matchScore != null) return player;
+    final record = _miniaturePlayerRecordCache[fideId];
+    if (record == null) return player;
+    return player.copyWith(
+      matchScore: record.winLossLabel,
+      gamebasePlayerId: record.playerId,
+    );
+  }).toList(growable: false);
 }
 
 /// Picks the gamebase leaderboard row that is provably the same person.
@@ -208,11 +245,30 @@ Future<MiniaturePlayer?> resolveMiniaturePlayerRecord({
   required GamebaseRepository repo,
   required int fideId,
   required String name,
-}) async {
+}) {
   if (_miniaturePlayerRecordCache.containsKey(fideId)) {
-    return _miniaturePlayerRecordCache[fideId];
+    return Future.value(_miniaturePlayerRecordCache[fideId]);
   }
+  // Join an in-flight lookup rather than firing a second identical search.
+  final pending = _miniaturePlayerRecordInFlight[fideId];
+  if (pending != null) return pending;
 
+  final future = _lookupMiniaturePlayerRecord(
+    repo: repo,
+    fideId: fideId,
+    name: name,
+  );
+  _miniaturePlayerRecordInFlight[fideId] = future;
+  return future.whenComplete(
+    () => _miniaturePlayerRecordInFlight.remove(fideId),
+  );
+}
+
+Future<MiniaturePlayer?> _lookupMiniaturePlayerRecord({
+  required GamebaseRepository repo,
+  required int fideId,
+  required String name,
+}) async {
   final trimmed = name.trim();
   if (trimmed.isEmpty) {
     _miniaturePlayerRecordCache[fideId] = null;
@@ -246,39 +302,13 @@ Future<MiniaturePlayer?> resolveMiniaturePlayerRecord({
   }
 }
 
-/// Attaches miniature W-L (and gamebase player id) onto each standing model.
+/// The gamebase leaderboard row behind one ELO-ranked card, resolved lazily by
+/// the row that is actually on screen (see [cachedMiniaturePlayerRecord] for
+/// the synchronous side). Also the scorecard source for a tap.
 ///
-/// Runs the page's lookups in parallel so the Players tab can keep shimmer up
-/// until both the ELO list and the W-L records for that page are ready.
-Future<List<PlayerStandingModel>> enrichPlayersWithMiniatureRecords({
-  required GamebaseRepository repo,
-  required List<PlayerStandingModel> players,
-}) async {
-  if (players.isEmpty) return players;
-
-  return Future.wait(
-    players.map((player) async {
-      final fideId = player.fideId;
-      if (fideId == null) return player;
-
-      final record = await resolveMiniaturePlayerRecord(
-        repo: repo,
-        fideId: fideId,
-        name: player.name,
-      );
-      if (record == null) return player;
-
-      return player.copyWith(
-        matchScore: record.winLossLabel,
-        gamebasePlayerId: record.playerId,
-      );
-    }),
-  );
-}
-
-/// The gamebase leaderboard row behind one ELO-ranked card. Prefetched for the
-/// visible page before cards paint (see [enrichPlayersWithMiniatureRecords]);
-/// this provider is the shared cache/scorecard source for taps and rebuilds.
+/// Deliberately per-row: the page used to block its own first paint on a
+/// `Future.wait` over every row's name search, so the whole list sat under
+/// shimmer until the slowest of ~20 gamebase lookups landed.
 final miniaturePlayerRecordProvider = FutureProvider.autoDispose
     .family<MiniaturePlayer?, ({int fideId, String name})>((ref, key) async {
       return resolveMiniaturePlayerRecord(
@@ -374,15 +404,13 @@ class MiniaturePlayersNotifier extends StateNotifier<MiniaturePlayersState> {
       );
       if (!mounted || seq != _requestSeq) return;
 
-      // Hold the list on shimmer (or the "Loading more…" footer) until W-L is
-      // resolved for this page. Ranking still comes from Supabase ELO; gamebase
-      // only supplies the decorative score slot + scorecard playerId.
+      // Paint as soon as the ranking page is in. W-L is decoration supplied by
+      // gamebase, one name search per row, so waiting for it here used to keep
+      // the whole list under shimmer for the slowest lookup of the page. Rows
+      // resolve their own record once they are on screen; anything already
+      // resolved this session rides along on this first frame.
       final standings = players.map(chessPlayerToStandingModel).toList();
-      final page = await enrichPlayersWithMiniatureRecords(
-        repo: _ref.read(gamebaseRepositoryProvider),
-        players: standings,
-      );
-      if (!mounted || seq != _requestSeq) return;
+      final page = applyCachedMiniatureRecords(standings);
 
       state = mergeMiniaturePlayersPage(
         previous: state,

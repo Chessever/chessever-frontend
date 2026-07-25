@@ -1,5 +1,7 @@
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:flutter/physics.dart';
 import 'package:flutter/widgets.dart';
+import 'package:motor/motor.dart';
 
 /// Deterministic paging for the opening explorer's inline games strip.
 ///
@@ -333,6 +335,36 @@ class ExplorerGamesSnapConfig {
   }
 }
 
+/// Which card is resting against the top of the panel at [pixels], or null when
+/// the offset is still up in the move table.
+///
+/// Used to remember the reader's card across a layout change that moves the
+/// viewport out from under them — collapsing the move-column header grows the
+/// viewport without touching [anchor], so re-deriving the page afterwards can
+/// round onto the next card. Capturing the index first and restoring it keeps
+/// the strip on the card the reader actually stopped on.
+int? explorerGamesPageAtTop({
+  required double pixels,
+  required double anchor,
+  required double pageExtent,
+  required int pageCount,
+}) {
+  if (pageExtent <= 0 || pageCount <= 0) return null;
+  if (!pixels.isFinite || !anchor.isFinite) return null;
+  // Half a page above the first card still belongs to the move table.
+  if (pixels < anchor - pageExtent / 2) return null;
+  return ((pixels - anchor) / pageExtent).round().clamp(0, pageCount - 1);
+}
+
+/// Spring the page settle rides in on.
+///
+/// Motor's Cupertino tuning rather than Flutter's default scroll spring, so
+/// paging here feels like the rest of the app. `snappy` keeps a small amount of
+/// bounce, which is what makes a flick read as physical instead of mechanical.
+const CupertinoMotion kExplorerPageMotion = CupertinoMotion.snappy(
+  duration: Duration(milliseconds: 380),
+);
+
 /// Quantises the settle of the explorer list onto the games page grid.
 class ExplorerGamesSnapPhysics extends ScrollPhysics {
   const ExplorerGamesSnapPhysics({required this.config, super.parent});
@@ -372,12 +404,22 @@ class ExplorerGamesSnapPhysics extends ScrollPhysics {
         velocity.abs() < tolerance.velocity) {
       return null;
     }
-    return ScrollSpringSimulation(
-      spring,
+    // Motor's spring *description* driven at the scroll tolerance, rather than
+    // `motion.createSimulation`: motor defaults to `Tolerance.defaultTolerance`
+    // (1e-3), which in pixel space is orders of magnitude tighter than a scroll
+    // needs. The simulation would keep reporting "not done" long after the list
+    // looked still, holding `isScrollingNotifier` high and starving the cards'
+    // settled-only evaluation.
+    //
+    // `snapToEnd` is what keeps the grid deterministic — however the spring
+    // wobbles on the way in, the card comes to rest exactly on its page.
+    return SpringSimulation(
+      kExplorerPageMotion.description,
       position.pixels,
       target,
       velocity,
       tolerance: tolerance,
+      snapToEnd: true,
     );
   }
 

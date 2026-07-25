@@ -12,6 +12,7 @@ import 'package:chessever2/widgets/player_initials_avatar.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_svg/flutter_svg.dart';
+import 'package:motor/motor.dart';
 
 /// Heights for the two-step Game Analysis sheet.
 ///
@@ -40,10 +41,22 @@ class GameReviewSheetExtents {
 
   static const double topRadius = 28;
 
-  /// Snap / dismiss animation timing, shared so the handle tap, the close
-  /// button and the drag settle all feel like one control.
-  static const Duration snapDuration = Duration(milliseconds: 240);
-  static const Curve snapCurve = Curves.easeOutCubic;
+  /// Every sheet transition runs off one physics-based motion, so the entry,
+  /// the handle tap, the close button and the drag settle all feel like the
+  /// same control rather than a set of hand-tuned easings.
+  ///
+  /// `smooth` is deliberate over `snappy`/`bouncy`: this sheet parks directly
+  /// under the board's player row, and an overshoot would ride up over the row
+  /// it is supposed to stop beneath.
+  static const CupertinoMotion motion = CupertinoMotion.smooth(
+    duration: Duration(milliseconds: 320),
+  );
+
+  /// Spring rendered as a [Curve], for the APIs that only accept
+  /// duration + curve (`DraggableScrollableController.animateTo`). Paired with
+  /// [snapDuration] so the curve is played over the motion's own timeframe.
+  static final Curve snapCurve = motion.toCurve;
+  static Duration get snapDuration => motion.duration;
 }
 
 /// Two-step, non-modal Game Analysis sheet.
@@ -95,6 +108,16 @@ class _GameReviewSheetState extends State<GameReviewSheet> {
   double _peek = GameReviewSheetExtents.peekFallback;
   double _full = GameReviewSheetExtents.full;
 
+  /// The peek is latched for the life of the open sheet.
+  ///
+  /// It is measured post-frame from the board's player row, and
+  /// `DraggableScrollableSheet` compares [snapSizes] **by reference** — so
+  /// letting a late re-measure through would rebuild the list and force-snap an
+  /// already-open sheet. Only a change in host height (rotation, resize) is a
+  /// real reason to re-derive it.
+  double? _latchedPeek;
+  double? _latchedForHeight;
+
   /// Stable list identity: `DraggableScrollableSheet` compares `snapSizes` by
   /// reference and force-snaps the sheet whenever it changes, so a fresh list
   /// per build would fight the user mid-drag.
@@ -142,8 +165,8 @@ class _GameReviewSheetState extends State<GameReviewSheet> {
     if (_sheet.isAttached) {
       await _sheet.animateTo(
         GameReviewSheetExtents.dismissFloor,
-        duration: const Duration(milliseconds: 200),
-        curve: Curves.easeInCubic,
+        duration: GameReviewSheetExtents.snapDuration,
+        curve: GameReviewSheetExtents.snapCurve,
       );
     }
     if (!mounted) return;
@@ -200,11 +223,23 @@ class _GameReviewSheetState extends State<GameReviewSheet> {
     return LayoutBuilder(
       builder: (context, constraints) {
         _full = _resolveFull(context, constraints.maxHeight);
-        _peek = math.min(_resolvePeek(constraints.maxHeight), _full);
+        final resolvedPeek = math.min(
+          _resolvePeek(constraints.maxHeight),
+          _full,
+        );
+        if (_latchedPeek == null ||
+            _latchedForHeight != constraints.maxHeight) {
+          _latchedPeek = resolvedPeek;
+          _latchedForHeight = constraints.maxHeight;
+        }
+        _peek = _latchedPeek!;
         // Back is handled by the board screen's own PopScope (it already owns
         // the route's back button for the game switcher); a second PopScope
         // here would let both handlers fire and pop the screen out from under
         // the sheet.
+        // Distance the surface must travel to sit exactly off the bottom edge:
+        // the sheet occupies `_peek` of the host, so that is its own height.
+        final entryTravel = _peek * constraints.maxHeight;
         return NotificationListener<DraggableScrollableNotification>(
           onNotification: (notification) {
             // Settled on the floor — the user dragged the sheet away.
@@ -213,26 +248,55 @@ class _GameReviewSheetState extends State<GameReviewSheet> {
             }
             return false;
           },
-          child: DraggableScrollableSheet(
-            controller: _sheet,
-            expand: false,
-            snap: true,
-            snapSizes: _snapSizesFor(_peek),
-            initialChildSize: _peek,
-            minChildSize: GameReviewSheetExtents.dismissFloor,
-            maxChildSize: _full,
-            builder: (context, scrollController) {
-              return _GameReviewSurface(
-                controller: widget.controller,
-                game: widget.game,
-                activePly: _lastMainlinePly,
-                onJumpToPly: widget.onJumpToPly,
-                onRevealBoard: _revealBoard,
-                onToggleStep: _toggleStep,
-                onClose: _closeFromButton,
-                scrollController: scrollController,
+          // Slides the sheet up on first show. `DraggableScrollableSheet` has
+          // no entry transition of its own — it renders straight at
+          // `initialChildSize` — so without this the report pops into place
+          // instead of rising. `from` runs this once, on the first build only.
+          //
+          // Translating the surface rather than animating the extent keeps the
+          // drag controller, the snap sizes and the dismiss notification
+          // completely out of the animation.
+          child: SingleMotionBuilder(
+            motion: GameReviewSheetExtents.motion,
+            from: 0,
+            value: 1,
+            // The wrappers are unconditional: swapping the tree shape when the
+            // animation ends would rebuild the sheet element underneath the
+            // controller, and `DraggableScrollableController` asserts if it is
+            // ever attached to two sheets at once.
+            builder: (context, t, child) {
+              return IgnorePointer(
+                // Nothing is tappable while it is still travelling, so a tap
+                // aimed at the board cannot be caught by a sheet sliding under
+                // the finger.
+                ignoring: t < 0.99,
+                child: Transform.translate(
+                  offset: Offset(0, (1 - t) * entryTravel),
+                  child: child,
+                ),
               );
             },
+            child: DraggableScrollableSheet(
+              controller: _sheet,
+              expand: false,
+              snap: true,
+              snapSizes: _snapSizesFor(_peek),
+              initialChildSize: _peek,
+              minChildSize: GameReviewSheetExtents.dismissFloor,
+              maxChildSize: _full,
+              builder: (context, scrollController) {
+                return _GameReviewSurface(
+                  controller: widget.controller,
+                  game: widget.game,
+                  activePly: _lastMainlinePly,
+                  onJumpToPly: widget.onJumpToPly,
+                  onRevealBoard: _revealBoard,
+                  onToggleStep: _toggleStep,
+                  onClose: _closeFromButton,
+                  scrollController: scrollController,
+                );
+              },
+            ),
           ),
         );
       },
@@ -1190,7 +1254,10 @@ class _EvaluationGraph extends StatelessWidget {
         line.mate != null
             ? 'M${line.mate}'
             : ((line.centipawns ?? 0) / 100).toStringAsFixed(2);
-    final parts = <String>['${activePly + 1}/${report.positions.length}'];
+    // Reads as a move, not as telemetry: the move itself, the engine score,
+    // and the verdict. The raw half-move index and the win-percentage restated
+    // the graph the reader is already looking at.
+    final parts = <String>[];
     if (activePly == 0) {
       parts.add('Start');
     } else {
@@ -1199,11 +1266,7 @@ class _EvaluationGraph extends StatelessWidget {
       final prefix = move.isWhite ? '$moveNumber.' : '$moveNumber...';
       parts.add('$prefix ${move.san}');
     }
-    parts
-      ..add(evaluation)
-      ..add(
-        '${gameReportWinPercentage(report.positions[activePly].bestLine).round()}% White',
-      );
+    parts.add(evaluation);
     final classification = _activeClassification;
     if (classification != null) parts.add(classification.label);
     return parts.join('  ');

@@ -21,11 +21,29 @@ import '../../../utils/responsive_helper.dart';
 import '../models/models.dart';
 import '../providers/explorer_game_focus_provider.dart';
 import '../providers/gamebase_explorer_state.dart';
+import 'package:motor/motor.dart';
+
 import '../providers/gamebase_providers.dart';
 import '../utils/explorer_games_paging.dart';
 import '../utils/explorer_move_sort.dart';
 import 'explorer_game_card.dart';
 import 'position_games_sheet.dart';
+
+/// Panel transitions that are not gesture-driven: the corrective page settle
+/// and the table's height changes.
+///
+/// Bounce-free by design — a correction must not overshoot a page, and a
+/// growing table must not push the rows below it past their resting place. The
+/// gesture settle itself is springier; see [kExplorerPageMotion].
+const CupertinoMotion _kExplorerSmoothMotion = CupertinoMotion.smooth(
+  duration: Duration(milliseconds: 220),
+);
+final Curve _kExplorerSmoothCurve = _kExplorerSmoothMotion.toCurve;
+
+/// How long the panel takes to stop moving after the games strip pins: the
+/// move-column header collapsing here plus the engine PV collapsing above it
+/// (`_kExplorerGamesExpandMotion`, 320ms), with a frame of slack.
+const Duration _kExplorerGamesSettleDelay = Duration(milliseconds: 360);
 
 const double _kMoveColumnWidth = 74;
 const double _kGamesColumnWidth = 84;
@@ -483,10 +501,41 @@ class MoveStatisticsPanel extends HookConsumerWidget {
       // Above the strip the move table scrolls freely — nothing to align to.
       if (target == null) return;
       if ((target - position.pixels).abs() < 0.5) return;
+      // Same spring family the settle itself uses, rendered as a curve because
+      // `ScrollController.animateTo` only takes duration + curve. `smooth` has
+      // no overshoot, so a correction can never bounce a card past its page.
       scrollController.animateTo(
         target,
-        duration: const Duration(milliseconds: 180),
-        curve: Curves.easeOutCubic,
+        duration: _kExplorerSmoothMotion.duration,
+        curve: _kExplorerSmoothCurve,
+      );
+    }
+
+    /// Which card is sitting against the top of the panel right now, or null
+    /// when the reader is still up in the move table.
+    int? pageIndexAtTop() {
+      if (!snapConfig.isActive || !scrollController.hasClients) return null;
+      return explorerGamesPageAtTop(
+        pixels: scrollController.position.pixels,
+        anchor: snapConfig.anchor!,
+        pageExtent: snapConfig.pageExtent,
+        pageCount: snapConfig.pageCount,
+      );
+    }
+
+    /// Puts [index] against the top of the panel, whatever the offset says.
+    void alignToPage(int index) {
+      if (!snapConfig.isActive || !scrollController.hasClients) return;
+      final position = scrollController.position;
+      final target = (snapConfig.anchor! + index * snapConfig.pageExtent).clamp(
+        position.minScrollExtent,
+        position.maxScrollExtent,
+      );
+      if ((target - position.pixels).abs() < 0.5) return;
+      scrollController.animateTo(
+        target,
+        duration: _kExplorerSmoothMotion.duration,
+        curve: _kExplorerSmoothCurve,
       );
     }
 
@@ -516,6 +565,7 @@ class MoveStatisticsPanel extends HookConsumerWidget {
       final metrics = pageMetrics;
       // Measured for both jobs at once: the grid needs it only while paging,
       // the eval window needs it in every host.
+      final previousAnchor = snapConfig.anchor;
       final anchor = _measureExplorerGamesAnchor(gamesSectionKey);
       final changed = snapConfig.update(
         anchor: metrics == null ? null : anchor,
@@ -523,7 +573,34 @@ class MoveStatisticsPanel extends HookConsumerWidget {
         pageCount: metrics == null ? 0 : gamesCardCount.value,
       );
       publishEvalWindow(anchor);
-      if (changed) alignToNearestPage();
+
+      // The anchor is a content-space offset, so it moves only when the layout
+      // above the strip does — in practice when the move-column header collapses
+      // or comes back. That happens right as a card lands, because landing puts
+      // the section top exactly on the header's enter/exit boundary.
+      //
+      // Absorb the shift into the scroll offset so the card stays visually
+      // still. Correcting it with an animation instead is what caused the
+      // settle to flicker: the animation emitted scroll notifications, which
+      // re-ran the header check, which moved the anchor back, which animated
+      // again. A jump is instant and converges, because the next measurement
+      // finds the anchor already where it belongs.
+      if (!changed || previousAnchor == null || anchor == null) return;
+      if (metrics == null || !scrollController.hasClients) return;
+      final position = scrollController.position;
+      if (position.isScrollingNotifier.value) return;
+      final delta = anchor - previousAnchor;
+      if (delta.abs() <= 0.5) return;
+      // Only while the reader is actually in the strip — above it the move
+      // table scrolls freely and must not be yanked.
+      if (position.pixels <= previousAnchor - metrics.pageExtent) return;
+      final compensated = (position.pixels + delta).clamp(
+        position.minScrollExtent,
+        position.maxScrollExtent,
+      );
+      if ((compensated - position.pixels).abs() > 0.5) {
+        position.jumpTo(compensated);
+      }
     }
 
     void runHeaderModeSync() {
@@ -533,12 +610,35 @@ class MoveStatisticsPanel extends HookConsumerWidget {
         currentlyInGames: headerInGames.value,
         setInGames: (v) {
           if (headerInGames.value == v) return;
+          // Entering games mode collapses the move-column header, which lives
+          // *above* the list rather than inside it — so the viewport grows
+          // upward while the content stays put. The page anchor is a
+          // content-space offset and does not move, so nothing compensates for
+          // it, and re-deriving the page from the offset once the viewport has
+          // grown rounds onto the next card. That is why the strip used to
+          // settle on the second game instead of the one the reader stopped on.
+          //
+          // Capture the card that is on top *before* the collapse and put it
+          // back once the header has finished animating away.
+          final restoreIndex = v ? pageIndexAtTop() : null;
           headerInGames.value = v;
           // Drive games expanded-overlay mode (covers engine lines + table).
           final pinned = ref.read(explorerInlineGamesPinnedProvider);
           if (pinned != v) {
             ref.read(explorerInlineGamesPinnedProvider.notifier).state = v;
           }
+          if (restoreIndex == null) return;
+          // The header collapse and the PV collapse above it are both animated,
+          // so the viewport keeps changing for their duration. Restore once it
+          // has settled, and only if the reader has not scrolled away or left
+          // games mode in the meantime.
+          Future.delayed(_kExplorerGamesSettleDelay, () {
+            if (!context.mounted || !headerInGames.value) return;
+            if (!scrollController.hasClients) return;
+            if (scrollController.position.isScrollingNotifier.value) return;
+            syncGamesGrid();
+            alignToPage(restoreIndex);
+          });
         },
       );
       syncGamesGrid();
@@ -569,7 +669,10 @@ class MoveStatisticsPanel extends HookConsumerWidget {
     void onGamesCardCountChanged(int count) {
       if (gamesCardCount.value == count) return;
       gamesCardCount.value = count;
-      syncGamesGrid();
+      // A different number of cards is a different set of pages, so this is one
+      // of the deliberate moments that may re-align. Alignment is never driven
+      // by scrolling itself — see [syncGamesGrid].
+      scheduleAlign();
     }
 
     useEffect(() {
@@ -783,8 +886,8 @@ class MoveStatisticsPanel extends HookConsumerWidget {
             backgroundColor: Colors.transparent,
           ),
         AnimatedSize(
-          duration: const Duration(milliseconds: 180),
-          curve: Curves.easeOut,
+          duration: _kExplorerSmoothMotion.duration,
+          curve: _kExplorerSmoothCurve,
           alignment: Alignment.topCenter,
           child:
               headerInGames.value

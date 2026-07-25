@@ -6883,10 +6883,17 @@ class _GameBody extends StatelessWidget {
   }
 }
 
-/// Duration/curve for explorer-games expand: PV collapse + analysis grow.
-/// Matched so board chrome and the panel ease together (no layout jump).
-const Duration _kExplorerGamesExpandDuration = Duration(milliseconds: 320);
-const Curve _kExplorerGamesExpandCurve = Curves.easeInOutCubic;
+/// Motion for explorer-games expand: PV collapse + analysis grow.
+/// Matched so board chrome and the panel move together (no layout jump).
+///
+/// Bounce-free on purpose — these two animate against each other, and an
+/// overshoot on either side would open a gap between them mid-transition.
+const CupertinoMotion _kExplorerGamesExpandMotion = CupertinoMotion.smooth(
+  duration: Duration(milliseconds: 320),
+);
+final Duration _kExplorerGamesExpandDuration =
+    _kExplorerGamesExpandMotion.duration;
+final Curve _kExplorerGamesExpandCurve = _kExplorerGamesExpandMotion.toCurve;
 
 /// Collapses [child] (engine PV) when explorer games pin, so the analysis
 /// panel can grow into that space with a smooth height + fade — not a snap.
@@ -11307,6 +11314,15 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
   bool _hasInitiallyScrolled = false;
   String? _lastSignature;
   ChessMovePointer? _lastPointer;
+  String? _lastPointerId;
+
+  /// How many report classification chips were attached on the previous build.
+  ///
+  /// When the report finishes, every analysed move grows a chip at once. That
+  /// reflows the notation, so the reader's scroll offset suddenly points at
+  /// different moves. Tracking the count lets us re-pin the move they are on
+  /// the moment it happens.
+  int _lastReportAnnotationCount = 0;
 
   /// Custom double-tap tracking for notation comments.
   ///
@@ -11397,6 +11413,13 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
           useClassificationIcon: true,
         ),
     };
+    // The report lands all at once, so this count goes from none to many in a
+    // single build. That is the frame the notation reflows in — hold the
+    // reader's place across it.
+    if (reportAnnotations.length != _lastReportAnnotationCount) {
+      _lastReportAnnotationCount = reportAnnotations.length;
+      _repinAfterNotationReflow();
+    }
     // Raw PGN mode strips Lichess/fetched decorative glyphs and PGN NAGs, but
     // must NOT hide the whole-game report verdict chips — those are the result
     // of an explicit analysis the user waited for.
@@ -12083,8 +12106,13 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
     // The annotation SVGs paint their own coloured disc, so these render the
     // asset at badge size with no container fill or padding — wrapping them in
     // a tinted circle again would nest a second disc inside the first.
+    // The floating badge and the classification badge are two presentations of
+    // the SAME annotation, so a report verdict that presents as a badge (Book)
+    // must not be drawn twice — once floating and once inline. Mirrors the
+    // guard the inline-symbol branch above already applies.
     final Widget? annotationBadge =
-        annotationPres == AnnotationPresentation.badgeOnly
+        annotationPres == AnnotationPresentation.badgeOnly &&
+                annotation?.useClassificationIcon != true
             ? SizedBox(
               width: 14.sp,
               height: 14.sp,
@@ -12884,6 +12912,7 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
       return;
     }
     _lastPointer = List.of(pointer);
+    _lastPointerId = pointerId;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       _scrollToPointer(
@@ -12894,10 +12923,27 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
     });
   }
 
+  /// Holds the reader's place when the notation reflows underneath them.
+  ///
+  /// Attaching the report's classification chips widens every analysed move in
+  /// one frame, so line breaks and total height change and the scroll offset
+  /// ends up somewhere else entirely. Re-pinning the current move immediately
+  /// (no animation) means the reflow reads as "nothing moved" rather than as a
+  /// scroll the reader did not ask for.
+  void _repinAfterNotationReflow() {
+    final pointerId = _lastPointerId;
+    if (pointerId == null || !_hasInitiallyScrolled) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _scrollToPointer(pointerId, instant: true);
+    });
+  }
+
   void _scrollToPointer(
     String pointerId, {
     bool isInitialScroll = false,
     double alignment = 0.5,
+    bool instant = false,
   }) {
     if (!_scrollController.hasClients) {
       if (isInitialScroll) {
@@ -12916,6 +12962,9 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
     final key = _moveKeys[pointerId];
     final context = key?.currentContext;
     if (context == null) {
+      // A re-pin chases a layout that already happened; if the move is gone
+      // there is nothing to hold on to and retrying would fight the reader.
+      if (instant) return;
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
         _scrollToPointer(
@@ -12941,14 +12990,14 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
         _scrollToTargetOnTablet(
           targetContext,
           alignment: alignment,
-          animate: !isInitialScroll,
+          animate: !isInitialScroll && !instant,
         );
       } else {
         // On mobile, Scrollable.ensureVisible works fine
         Scrollable.ensureVisible(
           targetContext,
           duration:
-              isInitialScroll
+              isInitialScroll || instant
                   ? const Duration(milliseconds: 1)
                   : const Duration(milliseconds: 250),
           curve: Curves.easeInOut,

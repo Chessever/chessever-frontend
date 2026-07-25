@@ -282,4 +282,39 @@ void main() {
       expect(window.settled, isFalse);
     });
   });
+
+  group('page resting at the top', () {
+    const anchor = 400.0;
+    const extent = 200.0;
+
+    int? pageAt(double pixels, {int pageCount = 5}) => explorerGamesPageAtTop(
+      pixels: pixels,
+      anchor: anchor,
+      pageExtent: extent,
+      pageCount: pageCount,
+    );
+
+    test('reports the card the panel top is showing', () {
+      expect(pageAt(anchor), 0);
+      expect(pageAt(anchor + extent), 1);
+      expect(pageAt(anchor + extent * 3), 3);
+    });
+
+    test('a card only just short of its page still counts as that card', () {
+      // The pin fires while the card is a few points shy of flush; rounding up
+      // to the next one here is exactly the bug this guards.
+      expect(pageAt(anchor - 8), 0);
+      expect(pageAt(anchor + extent - 8), 1);
+    });
+
+    test('offsets up in the move table belong to nobody', () {
+      expect(pageAt(anchor - extent), isNull);
+      expect(pageAt(anchor - extent / 2 - 1), isNull);
+    });
+
+    test('never names a card that does not exist', () {
+      expect(pageAt(anchor + extent * 99, pageCount: 3), 2);
+      expect(pageAt(anchor, pageCount: 0), isNull);
+    });
+  });
 }

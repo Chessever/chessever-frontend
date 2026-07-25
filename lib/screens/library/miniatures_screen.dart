@@ -2,6 +2,7 @@ import 'package:chessever2/screens/library/miniatures/miniatures_about_tab.dart'
 import 'package:chessever2/screens/library/miniatures/miniatures_games_tab.dart';
 import 'package:chessever2/screens/library/miniatures/miniatures_mode_provider.dart';
 import 'package:chessever2/screens/library/miniatures/miniatures_players_tab.dart';
+import 'package:chessever2/screens/library/providers/miniatures_provider.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
@@ -29,6 +30,7 @@ class MiniaturesScreen extends ConsumerStatefulWidget {
 class _MiniaturesScreenState extends ConsumerState<MiniaturesScreen> {
   late final PageController _pageController;
   final ScrollToTopBus _scrollToTopBus = ScrollToTopBus();
+  ProviderSubscription<MiniaturePlayersState>? _playersWarmup;
 
   @override
   void initState() {
@@ -38,10 +40,21 @@ class _MiniaturesScreenState extends ConsumerState<MiniaturesScreen> {
         ref.read(selectedMiniaturesModeProvider),
       ),
     );
+    // Warm the Players ranking while the user is reading Games or About: one
+    // small Supabase page, held alive for as long as this screen is, so opening
+    // that tab finds its rows already there instead of a shimmer. The per-row
+    // gamebase W-L lookups stay lazy — no card is built while the tab is
+    // off-screen, so this costs exactly one query even if Players is never
+    // opened.
+    _playersWarmup = ref.listenManual(
+      miniaturePlayersPaginatedProvider,
+      (_, __) {},
+    );
   }
 
   @override
   void dispose() {
+    _playersWarmup?.close();
     _pageController.dispose();
     _scrollToTopBus.dispose();
     super.dispose();

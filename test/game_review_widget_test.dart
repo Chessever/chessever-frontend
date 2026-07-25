@@ -499,7 +499,10 @@ void main() {
     expect(find.text('OPENING'), findsNothing);
     expect(find.text('MIDDLEGAME'), findsNothing);
     expect(find.text('ENDGAME'), findsNothing);
-    expect(find.textContaining('1/3'), findsOneWidget);
+    // Tooltip reads as a move, not telemetry: no half-move counter, no win%.
+    expect(find.textContaining('Start'), findsOneWidget);
+    expect(find.textContaining('1/3'), findsNothing);
+    expect(find.textContaining('% White'), findsNothing);
     expect(find.byKey(const ValueKey('game-review-next-move')), findsOneWidget);
     expect(
       find.byKey(const ValueKey('game-review-previous-move')),
@@ -565,19 +568,19 @@ void main() {
 
     await tester.pumpWidget(sheetAt(0));
     await tester.pump(const Duration(milliseconds: 500));
-    expect(find.textContaining('1/3'), findsOneWidget);
+    expect(find.textContaining('Start'), findsOneWidget);
 
     // Board moved on its own (arrows, notation, a piece drag) — the marker
     // must follow without any tap inside the sheet.
     await tester.pumpWidget(sheetAt(2));
     await tester.pump();
-    expect(find.textContaining('3/3'), findsOneWidget);
+    expect(find.textContaining('1... e5'), findsOneWidget);
 
     // Board wandered into an analysis variation the report cannot describe:
     // hold the last mainline position instead of snapping to the start.
     await tester.pumpWidget(sheetAt(-1));
     await tester.pump();
-    expect(find.textContaining('3/3'), findsOneWidget);
+    expect(find.textContaining('1... e5'), findsOneWidget);
   });
 
   testWidgets('step 1 stops at the measured board anchor', (tester) async {

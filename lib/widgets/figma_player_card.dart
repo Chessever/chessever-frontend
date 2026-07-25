@@ -34,6 +34,17 @@ class FigmaPlayerCard extends ConsumerWidget {
   /// into a detail screen that uses the same tag (e.g. miniature scorecard).
   final String? avatarHeroTag;
 
+  /// The score on the right comes from a second source in some lists (the
+  /// miniatures leaderboard resolves W-L per row from gamebase). Set this while
+  /// that lookup is still out and the slot shimmers instead of sitting empty.
+  final bool matchScorePending;
+
+  /// Holds the score slot at one width for every row of the list. Lists whose
+  /// records vary in length (`5W-2L` next to `172W-41L`) need it so the name
+  /// column ends on the same x in every row, and so a record arriving after
+  /// first paint does not shove that row's name sideways.
+  final bool reserveMatchScoreSlot;
+
   const FigmaPlayerCard({
     super.key,
     required this.player,
@@ -44,7 +55,60 @@ class FigmaPlayerCard extends ConsumerWidget {
     this.onToggleFavorite,
     this.onLongPress,
     this.avatarHeroTag,
+    this.matchScorePending = false,
+    this.reserveMatchScoreSlot = false,
   });
+
+  /// The longest record the leaderboard produces. Both the reserved width and
+  /// the pending placeholder are measured from this one string, so they cannot
+  /// drift apart.
+  static const _widestMatchScore = '000W-000L';
+
+  /// Right-hand score, held at a fixed width when the list asks for it. Measured
+  /// rather than hardcoded so a large text scale widens the slot instead of
+  /// clipping the number.
+  Widget _buildMatchScore(BuildContext context) {
+    final style = AppTypography.textMdMedium.copyWith(
+      color: context.colors.textPrimary,
+    );
+    final pending = matchScorePending && (player.matchScore ?? '').isEmpty;
+    final reserved =
+        reserveMatchScoreSlot ? _measureMatchScoreSlot(context, style) : null;
+
+    if (pending) {
+      final bone = skel.Skeletonizer(
+        enabled: true,
+        effect: const skel.ShimmerEffect(
+          baseColor: Color(0xFF2A2A2A),
+          highlightColor: Color(0xFF3A3A3A),
+        ),
+        child: Text(_widestMatchScore, style: style),
+      );
+      // Held to exactly the reserved width: a bone is a placeholder, so it may
+      // be pinned, and pinning it is what keeps the name column still when the
+      // real record replaces it.
+      return reserved == null ? bone : SizedBox(width: reserved, child: bone);
+    }
+
+    final score = _MatchScoreText(score: player.matchScore ?? '');
+    if (reserved == null) return score;
+
+    // A minimum, not a fixed width: a record longer than the reserved string
+    // widens its own row instead of being clipped by the slot.
+    return ConstrainedBox(
+      constraints: BoxConstraints(minWidth: reserved),
+      child: Align(alignment: Alignment.centerRight, child: score),
+    );
+  }
+
+  double _measureMatchScoreSlot(BuildContext context, TextStyle style) {
+    final painter = TextPainter(
+      text: TextSpan(text: _widestMatchScore, style: style),
+      textDirection: Directionality.of(context),
+      textScaler: MediaQuery.textScalerOf(context),
+    )..layout();
+    return painter.width;
+  }
 
   String _getInitials(String name) {
     final parts = name.split(',');
@@ -236,7 +300,7 @@ class FigmaPlayerCard extends ConsumerWidget {
             else if (!showFavoriteButton)
               Padding(
                 padding: EdgeInsets.only(left: 8.w),
-                child: _MatchScoreText(score: player.matchScore ?? ''),
+                child: _buildMatchScore(context),
               ),
           ],
         ),
