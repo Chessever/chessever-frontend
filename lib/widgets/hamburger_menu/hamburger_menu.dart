@@ -170,8 +170,8 @@ class HamburgerMenu extends HookConsumerWidget {
                       // recolour to `iconPrimary` only when the theme is light;
                       // dark theme renders the asset unchanged.
                       _MenuItem(
-                        icon: Icons.favorite_border,
-                        title: 'Favorites',
+                        icon: Icons.leaderboard_outlined,
+                        title: 'Rankings',
                         textStyle: AppTypography.textSmRegular.copyWith(
                           color: context.colors.iconPrimary,
                           height: 20.h / 14.h,
