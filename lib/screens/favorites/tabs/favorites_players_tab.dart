@@ -501,8 +501,13 @@ class _FavoritesPlayersTabState extends ConsumerState<FavoritesPlayersTab>
                 // must span the full width or their edge fade would sit inside
                 // a gutter instead of at the screen edge.
                 Padding(
-                  padding: EdgeInsets.fromLTRB(16.w, 12.h, 16.w, 0),
+                  padding: EdgeInsets.fromLTRB(16.w, 10.h, 16.w, 0),
+                  // Centred so the search field and the Active/All chips share
+                  // a mid-line. The chips carry invisible touch padding, so
+                  // they are taller than they look and would sit off-axis if
+                  // this stretched them instead.
                   child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.center,
                     children: [
                       Expanded(
                         child: SearchBarWidget(
@@ -526,13 +531,12 @@ class _FavoritesPlayersTabState extends ConsumerState<FavoritesPlayersTab>
                     ],
                   ),
                 ),
-                SizedBox(height: 10.h),
                 RankingFilterControls(
                   filters: state.filters,
                   showActivity: false,
                   onChanged: _onFiltersChanged,
                 ),
-                SizedBox(height: 8.h),
+                SizedBox(height: 4.h),
               ],
             ),
           ),

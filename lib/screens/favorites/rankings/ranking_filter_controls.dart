@@ -15,12 +15,18 @@ import 'package:flutter/material.dart';
 /// metrics change.
 double get _stripInset => 16.w;
 
-/// One ranking filter chip.
+/// Vertical padding wrapped *outside* the chip's painted box. It widens the
+/// touch area to a comfortable target without making the chip look bigger —
+/// the whole point of a filter chip is that it reads small.
+double get _chipTouchPadding => 9.h;
+
+/// One ranking filter chip, built to the Games tab's filter-chip spec: a
+/// compact bordered pill, not a tappable slab.
 ///
-/// Selected chips take a solid [kPrimaryColor] fill with black text — the same
-/// treatment the rating-tier and Games filter chips use. These controls sit
-/// directly under the Favorites/Games/Rankings switcher, so a chip with its own
-/// accent language would read as a second design bolted onto the screen.
+/// The geometry is deliberate. An earlier pass gave these a 44.h floor height
+/// and 14/10 padding, which made them read as action buttons and left them
+/// taller than the search field they sit beside. Chips are sized by their
+/// content here, and the touch target is bought with outside padding instead.
 class _RankingChip extends StatelessWidget {
   const _RankingChip({
     super.key,
@@ -43,39 +49,45 @@ class _RankingChip extends StatelessWidget {
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
         onTap: onTap,
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 150),
-          // The text alone sits well under a comfortable tap target, so the
-          // chip holds a floor height rather than relying on padding.
-          constraints: BoxConstraints(minHeight: 44.h),
-          padding: EdgeInsets.symmetric(horizontal: 14.w, vertical: 10.h),
-          alignment: Alignment.center,
-          decoration: BoxDecoration(
-            color: isSelected ? kPrimaryColor : context.colors.surfaceRecessed,
-            borderRadius: BorderRadius.circular(8.br),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              if (iconAsset != null) ...[
-                Image.asset(
-                  iconAsset!,
-                  width: 18.ic,
-                  height: 18.ic,
-                  fit: BoxFit.contain,
-                ),
-                SizedBox(width: 6.w),
-              ],
-              Text(
-                label,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: AppTypography.textXsMedium.copyWith(
-                  color: isSelected ? kBlackColor : context.colors.textPrimary,
-                  fontWeight: FontWeight.w600,
-                ),
+        child: Padding(
+          padding: EdgeInsets.symmetric(vertical: _chipTouchPadding),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 150),
+            padding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 8.h),
+            decoration: BoxDecoration(
+              color:
+                  isSelected ? kPrimaryColor : context.colors.surfaceRecessed,
+              borderRadius: BorderRadius.circular(16.br),
+              border: Border.all(
+                color: isSelected ? kPrimaryColor : context.colors.divider,
+                width: 1,
               ),
-            ],
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (iconAsset != null) ...[
+                  Image.asset(
+                    iconAsset!,
+                    width: 14.ic,
+                    height: 14.ic,
+                    fit: BoxFit.contain,
+                  ),
+                  SizedBox(width: 4.w),
+                ],
+                Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: AppTypography.textXsMedium.copyWith(
+                    color:
+                        isSelected ? kBlackColor : context.colors.textPrimary,
+                    fontWeight:
+                        isSelected ? FontWeight.w600 : FontWeight.w500,
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),
@@ -117,7 +129,7 @@ class _ChipStrip extends StatelessWidget {
         child: Row(
           children: [
             for (var i = 0; i < children.length; i++) ...[
-              if (i > 0) SizedBox(width: 8.w),
+              if (i > 0) SizedBox(width: 6.w),
               children[i],
             ],
           ],
@@ -183,7 +195,6 @@ class RankingFilterControls extends StatelessWidget {
                   (value) => onChanged(filters.copyWith(activity: value)),
             ),
           ),
-          SizedBox(height: 10.h),
         ],
         _ChipStrip(
           children: [
@@ -200,7 +211,6 @@ class RankingFilterControls extends StatelessWidget {
               ),
           ],
         ),
-        SizedBox(height: 8.h),
         _ChipStrip(
           children: [
             for (final category in RankingCategory.values)
