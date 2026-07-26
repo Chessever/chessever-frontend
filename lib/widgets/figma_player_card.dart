@@ -15,6 +15,8 @@ import 'package:skeletonizer/skeletonizer.dart' as skel;
 /// A player card widget matching the Figma design.
 ///
 /// Two modes:
+/// - [trailingRating] set: Shows that rating on the right (for ranking lists);
+///   wins over both options below and drops the inline rating under the name
 /// - [showFavoriteButton] = true: Shows heart icon on the right (for players/favorites lists)
 /// - [showFavoriteButton] = false: Shows score on the right (for standings)
 class FigmaPlayerCard extends ConsumerWidget {
@@ -29,6 +31,13 @@ class FigmaPlayerCard extends ConsumerWidget {
   /// results inside a ranked list do not: numbering them 1..n would assert a
   /// world rank the player does not hold.
   final bool showRank;
+
+  /// Rating to show on the right, in place of the heart or tournament score.
+  ///
+  /// A ranking list is *about* this number — the rating for whichever time
+  /// control is selected — so it takes the trailing slot and the inline rating
+  /// under the name is dropped rather than printed twice.
+  final int? trailingRating;
   final bool isFavorite;
   final bool showFavoriteButton;
   final bool isInactive;
@@ -56,6 +65,7 @@ class FigmaPlayerCard extends ConsumerWidget {
     required this.player,
     required this.rank,
     this.showRank = true,
+    this.trailingRating,
     this.isFavorite = false,
     this.showFavoriteButton = true,
     this.isInactive = false,
@@ -269,13 +279,15 @@ class FigmaPlayerCard extends ConsumerWidget {
                             ),
                           ),
                         ),
-                      // Rating
-                      Text(
-                        player.score.toString(),
-                        style: AppTypography.textSmRegular.copyWith(
-                          color: context.colors.textSecondary,
+                      // Rating. Suppressed when it already owns the trailing
+                      // slot, so the same number is not printed twice on a row.
+                      if (trailingRating == null)
+                        Text(
+                          player.score.toString(),
+                          style: AppTypography.textSmRegular.copyWith(
+                            color: context.colors.textSecondary,
+                          ),
                         ),
-                      ),
                       // Rating change (if any)
                       if (player.scoreChange != 0)
                         Text(
@@ -294,8 +306,22 @@ class FigmaPlayerCard extends ConsumerWidget {
                 ],
               ),
             ),
-            // Right side: either heart or score
-            if (showFavoriteButton && onToggleFavorite != null)
+            // Right side: the rating wins the slot when the list is a ranking,
+            // otherwise the heart, otherwise the tournament score.
+            if (trailingRating != null)
+              Padding(
+                padding: EdgeInsets.only(left: 8.w),
+                child: Text(
+                  trailingRating.toString(),
+                  style: AppTypography.textSmBold.copyWith(
+                    color: context.colors.textPrimary,
+                    // Ratings are compared down a column, so they must not
+                    // wobble on digit width.
+                    fontFeatures: const [FontFeature.tabularFigures()],
+                  ),
+                ),
+              )
+            else if (showFavoriteButton && onToggleFavorite != null)
               GestureDetector(
                 onTap: onToggleFavorite,
                 behavior: HitTestBehavior.opaque,

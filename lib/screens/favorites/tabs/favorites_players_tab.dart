@@ -4,8 +4,6 @@ import 'package:chessever2/repository/supabase/chess_player/chess_player_reposit
 import 'package:chessever2/providers/favorite_players_provider.dart';
 import 'package:chessever2/screens/favorites/rankings/ranking_filter_controls.dart';
 import 'package:chessever2/screens/favorites/rankings/ranking_filters.dart';
-import 'package:chessever2/utils/favorite_constants.dart';
-import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
 import 'package:chessever2/screens/standings/player_standing_model.dart';
 import 'package:chessever2/screens/player_profile/player_profile_screen.dart';
 import 'package:chessever2/services/fide_photo_service.dart';
@@ -13,10 +11,8 @@ import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
-import 'package:chessever2/utils/favorite_limit_guard.dart';
 import 'package:chessever2/utils/transient_request_retry.dart';
 import 'package:chessever2/utils/user_error_message.dart';
-import 'package:chessever2/widgets/auth/auth_upgrade_sheet.dart';
 import 'package:chessever2/widgets/figma_player_card.dart';
 import 'package:chessever2/widgets/scroll_to_top_bus.dart';
 import 'package:chessever2/widgets/scroll_to_top_button.dart';
@@ -660,21 +656,23 @@ class _FavoritesPlayersTabState extends ConsumerState<FavoritesPlayersTab>
           }
 
           final player = players[index];
-          final isFavorite = favoriteIds.contains(player.fideId);
 
           return FigmaPlayerCard(
             player: player,
-            isFavorite: isFavorite,
+            isFavorite: favoriteIds.contains(player.fideId),
             rank: index + 1,
             // Search results are matches, not standings — numbering them 1..n
             // would claim a world rank the player does not hold.
             showRank: !state.isSearching,
-            showFavoriteButton: true,
+            // This is a ranking list, so the row's trailing slot carries the
+            // rating for the selected time control rather than a heart.
+            // `score` is already that rating — see _fetchPlayers.
+            trailingRating: player.score,
+            showFavoriteButton: false,
             isInactive:
                 player.fideId != null &&
                 state.inactivePlayerIds.contains(player.fideId),
             onTap: () => _navigateToPlayerDetail(player),
-            onToggleFavorite: () => _toggleFavorite(player, isFavorite),
           );
         }, childCount: players.length + (showLoadingIndicator ? 1 : 0)),
       ),
@@ -695,46 +693,6 @@ class _FavoritesPlayersTabState extends ConsumerState<FavoritesPlayersTab>
             ),
       ),
     );
-  }
-
-  void _toggleFavorite(PlayerStandingModel player, bool currentlyFavorite) {
-    // Check auth first, then toggle without blocking
-    requireFullAuthGuard(context).then((allowed) async {
-      if (!allowed) return;
-      if (!mounted) return;
-
-      // Check favorite limit before adding
-      if (!currentlyFavorite) {
-        final canAdd = await canAddMoreFavorites(context, ref);
-        if (!canAdd) return;
-      }
-
-      HapticFeedback.mediumImpact();
-
-      try {
-        if (currentlyFavorite) {
-          await ref
-              .read(favoritePlayersProviderNew.notifier)
-              .removeFavorite(player.name);
-        } else {
-          await ref
-              .read(favoritePlayersProviderNew.notifier)
-              .addFavorite(
-                fideId: player.fideId?.toString(),
-                playerName: player.name,
-                countryCode: player.countryCode,
-                rating: player.score,
-                title: player.title,
-              );
-        }
-      } on FavoriteLimitExceededException {
-        if (mounted) {
-          await showPremiumPaywallSheet(context: context);
-        }
-      } catch (e) {
-        debugPrint('Error toggling favorite: $e');
-      }
-    });
   }
 
   Widget _buildLoadingState() {
