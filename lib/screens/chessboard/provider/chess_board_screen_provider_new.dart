@@ -133,6 +133,25 @@ class ChessBoardScreenNotifierNew
     _persistenceEnabled = ref.read(chessBoardPersistenceEnabledProvider);
     _initializeState();
     _setupPgnStreamListener();
+    _setupEngineReleasedListener();
+  }
+
+  /// Stockfish is one shared native engine. When a long-running borrower hands
+  /// it back, deepen the position on screen again — the board's own search is
+  /// allowed to settle at [StockfishSingleton.boardHandoffDepth] so that
+  /// borrower can run, and this is what picks the search back up. Knows nothing
+  /// about who the borrower was; it is an engine-availability signal, the same
+  /// shape as [stockfishForegroundGenerationProvider].
+  void _setupEngineReleasedListener() {
+    final released = StockfishSingleton().engineReleasedGeneration;
+    void onReleased() {
+      if (!mounted) return;
+      if (ref.read(currentlyVisiblePageIndexProvider) != index) return;
+      _updateEvaluation(force: true, forceRestart: true);
+    }
+
+    _engineReleasedListener = onReleased;
+    released.addListener(onReleased);
   }
 
   /// Keep visibility / Stockfish gating in sync when deferred expand remaps
@@ -183,6 +202,10 @@ class ChessBoardScreenNotifierNew
   /// Unique owner ID for Stockfish job isolation.
   /// Allows this provider to cancel only its own jobs without affecting others.
   late final String _stockfishOwnerId;
+
+  /// Listener on [StockfishSingleton.engineReleasedGeneration]; detached in
+  /// [dispose] so a torn-down board never re-triggers an evaluation.
+  VoidCallback? _engineReleasedListener;
   late final bool _persistenceEnabled;
 
   /// Optional saved analysis data to restore full state.
@@ -7603,6 +7626,13 @@ class ChessBoardScreenNotifierNew
     }
     _navigatorSubscription?.close();
     _navigatorSubscription = null;
+    final engineReleasedListener = _engineReleasedListener;
+    if (engineReleasedListener != null) {
+      StockfishSingleton().engineReleasedGeneration.removeListener(
+        engineReleasedListener,
+      );
+      _engineReleasedListener = null;
+    }
     _cancelEvalWatchdog(resetPending: true);
     // Cancel this provider's Stockfish jobs on dispose to prevent orphaned jobs
     unawaited(

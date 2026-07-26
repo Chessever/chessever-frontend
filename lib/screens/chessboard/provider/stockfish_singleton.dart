@@ -88,6 +88,17 @@ Future<void> _rawStockfishStdin(String command) async {
   }
 }
 
+// UCI `info` lines arrive by the thousand per second (MultiPV 5 at depth 30+),
+// and every one of them is parsed on the UI isolate — `package:stockfish` pumps
+// its stdout through a ReceivePort into the main isolate. Building six RegExp
+// objects per line was pure UI-thread garbage; compile them once.
+final RegExp _infoDepthPattern = RegExp(r'depth (\d+)');
+final RegExp _infoNodesPattern = RegExp(r'nodes (\d+)');
+final RegExp _infoPvPattern = RegExp(r'\bpv (.+)');
+final RegExp _infoMultiPvPattern = RegExp(r'multipv (\d+)');
+final RegExp _infoScoreCpPattern = RegExp(r'score cp (-?\d+)');
+final RegExp _infoScoreMatePattern = RegExp(r'score mate (-?\d+)');
+
 @visibleForTesting
 List<Pv> normalizeStockfishPvsToWhitePerspective(List<Pv> pvs, String fen) {
   if (pvs.isEmpty) return pvs;
@@ -164,6 +175,48 @@ class StockfishSingleton {
   // own result (the desync that made board lines vanish and reports fail).
   bool _staleBestmovePending = false;
   bool _appIsForeground = true;
+
+  // ── Engine idleness, tracked for real ──────────────────────────────────────
+  //
+  // Stockfish's UCI loop is a SINGLE thread: read a line, dispatch, repeat.
+  // `setoption` dispatches to `UCIEngine::setoption`, whose first statement is
+  // `engine.wait_for_search_finished()` (uci.cpp). So sending `setoption` while
+  // a search is live BLOCKS the engine's input thread — and while it is blocked
+  // it reads nothing else, so this job's `position`/`go` and every later `stop`
+  // sit unread in the stdin pipe. Symptoms: MultiPV stays at whatever the
+  // previous job set (the board asks for 5 lines and gets 1) or the job emits
+  // no `info` at all (eval bar never arrives). It then cascades, because the
+  // stranded `go` eventually runs unattended and blocks the NEXT setoption.
+  //
+  // `isready`/`readyok` does NOT prove the search stopped: uci.cpp answers it
+  // immediately, without waiting for the search. The ONLY proof is `bestmove`.
+  // [_searchInFlight] is therefore driven from a persistent stdout monitor, and
+  // no `setoption`/`position`/`go` is issued until it is false.
+  bool _searchInFlight = false;
+  Completer<void>? _searchIdleWaiter;
+  Stockfish? _monitoredEngine;
+  StreamSubscription<String>? _monitorSubscription;
+
+  /// Last `MultiPV` value actually written to the current engine. A job whose
+  /// width already matches skips `setoption` entirely, so the common cases
+  /// (board → board navigation, report position → report position) never touch
+  /// the one command that can block the engine's input thread.
+  int? _appliedMultiPv;
+
+  /// Depth reached by the board (high-priority) search that is running now.
+  /// Reset whenever a board job starts. Drives [hasBlockingBoardWork].
+  int _boardReachedDepth = 0;
+
+  /// Depth the on-board eval bar / engine lines must reach before the
+  /// whole-game report is allowed to borrow the engine. The board still owns
+  /// the engine outright below this; above it the report may interleave and the
+  /// board picks its search back up once the report releases the engine.
+  static const int boardHandoffDepth = 18;
+
+  /// Bumped whenever a long-running borrower (the whole-game report) hands the
+  /// engine back, so the board can resume deepening the position on screen.
+  final ValueNotifier<int> engineReleasedGeneration = ValueNotifier<int>(0);
+
   Completer<void>? _initCompleter; // Completer for waiting on initialization
   static const int _maxQueueSize = 60; // Soft cap to avoid backlog
   static const int _maxBackgroundBacklog =
@@ -544,26 +597,46 @@ class StockfishSingleton {
 
   bool get appIsForeground => _appIsForeground;
 
+  bool get _hasQueuedBoardWork =>
+      _jobQueue.any((job) => job.isCurrentPosition);
+
+  bool get _isRunningBoardWork => _currentJob?.isCurrentPosition ?? false;
+
   /// True while an on-board (high-priority, `isCurrentPosition:true`) evaluation
   /// is running or queued. The whole-game report reads this to stay out of the
   /// eval bar / engine lines' way — they are always #1.
-  bool get hasActiveBoardWork =>
-      (_currentJob?.isCurrentPosition ?? false) ||
-      _jobQueue.any((job) => job.isCurrentPosition);
+  bool get hasActiveBoardWork => _isRunningBoardWork || _hasQueuedBoardWork;
 
-  /// Await until the board (high-priority) engine work clears, so the whole-game
-  /// report only ever borrows the engine in the gaps between board searches.
-  /// Polled + bounded so it can never wedge if a board search is torn down
-  /// without a completion signal.
+  /// Board work the report must not run behind yet.
+  ///
+  /// Anything queued blocks outright. A board search that is already running
+  /// blocks only until it reaches [boardHandoffDepth] — past that the eval bar
+  /// and every engine line are populated at a depth worth reading, so the report
+  /// is allowed to interleave. A fresh board search resets the depth, so
+  /// navigating to a new position immediately re-blocks the report.
+  bool get hasBlockingBoardWork =>
+      _hasQueuedBoardWork ||
+      (_isRunningBoardWork && _boardReachedDepth < boardHandoffDepth);
+
+  /// Await until the board (high-priority) engine work stops blocking, so the
+  /// whole-game report only ever borrows the engine once the on-screen position
+  /// has real lines. Polled + bounded so it can never wedge if a board search is
+  /// torn down without a completion signal.
   Future<void> waitForBoardIdle({
     Duration timeout = const Duration(seconds: 20),
   }) async {
-    if (!hasActiveBoardWork) return;
+    if (!hasBlockingBoardWork) return;
     final start = DateTime.now();
-    while (hasActiveBoardWork) {
+    while (hasBlockingBoardWork) {
       if (DateTime.now().difference(start) > timeout) return;
       await Future<void>.delayed(const Duration(milliseconds: 50));
     }
+  }
+
+  /// Called by a long-running borrower (the whole-game report) when it stops
+  /// using the engine, so the board can carry its own search deeper again.
+  void notifyEngineReleased() {
+    engineReleasedGeneration.value++;
   }
 
   Future<void> _cancelCurrentEvaluation() async {
@@ -599,32 +672,163 @@ class StockfishSingleton {
     // desyncing the UCI parser (lines stuck at "…"). Waiting here guarantees
     // the engine is idle before the next search touches it.
     _staleBestmovePending = true;
-    await _stopAndWaitForSearchStopped();
+    final stopped = await _forceEngineIdle();
 
-    // Engine is confirmed idle now — the next job can skip its own stop/resync.
-    _previousJobCompleted = true;
+    // ONLY claim the engine is idle when the engine actually said so. Setting
+    // this true after a timed-out stop is what let the next job skip its own
+    // stop and fire `setoption` into a live search — the exact command that
+    // blocks Stockfish's UCI input thread and strands everything behind it.
+    _previousJobCompleted = stopped;
+  }
+
+  /// Persistent stdout monitor. `Stockfish.stdout` is a broadcast stream, so
+  /// events emitted while nobody is listening are dropped on the floor — and
+  /// the old code attached its `bestmove` listener only *after* awaiting a
+  /// subscription cancel, so a `bestmove` landing in that gap was invisible and
+  /// every wait for it timed out. One long-lived listener closes that window and
+  /// makes [_searchInFlight] the single source of truth for engine idleness.
+  void _ensureEngineMonitor() {
+    final engine = _engine;
+    if (engine == null) return;
+    if (identical(_monitoredEngine, engine) && _monitorSubscription != null) {
+      return;
+    }
+    _monitorSubscription?.cancel();
+    _monitoredEngine = engine;
+    _monitorSubscription = engine.stdout.listen(
+      _onEngineMonitorLine,
+      onDone: () {
+        _searchInFlight = false;
+        _completeSearchIdleWaiter();
+      },
+      onError: (_) {},
+    );
+  }
+
+  void _onEngineMonitorLine(String line) {
+    if (!_isBestmoveLine(line)) return;
+    _searchInFlight = false;
+    _completeSearchIdleWaiter();
+  }
+
+  /// Whitespace-tolerant `bestmove` test that allocates nothing. This runs for
+  /// every UCI line on the UI isolate — thousands per second at MultiPV 5 — so
+  /// it must not `trim()`. Missing a `bestmove` here would leave the engine
+  /// looking permanently busy and send the next job down the restart path.
+  static bool _isBestmoveLine(String line) {
+    var start = 0;
+    while (start < line.length) {
+      final unit = line.codeUnitAt(start);
+      if (unit != 0x20 && unit != 0x09 && unit != 0x0d) break;
+      start++;
+    }
+    return line.startsWith('bestmove', start);
+  }
+
+  void _completeSearchIdleWaiter() {
+    final waiter = _searchIdleWaiter;
+    if (waiter != null && !waiter.isCompleted) waiter.complete();
+  }
+
+  Future<void> _detachEngineMonitor() async {
+    final sub = _monitorSubscription;
+    _monitorSubscription = null;
+    _monitoredEngine = null;
+    _searchInFlight = false;
+    _completeSearchIdleWaiter();
+    _searchIdleWaiter = null;
+    _appliedMultiPv = null;
+    if (sub != null) {
+      try {
+        await sub.cancel();
+      } catch (_) {}
+    }
   }
 
   /// Send `stop` and wait until the engine reports the search actually
-  /// terminated (`bestmove`) so no following `position`/`go` can race a live
-  /// NNUE search. Bounded so a wedged engine can never hang the queue.
-  Future<void> _stopAndWaitForSearchStopped() async {
+  /// terminated (`bestmove`). Returns true only when the engine confirmed it.
+  ///
+  /// Retries the `stop` rather than giving up after one budget: a single missed
+  /// window on a slow device must not be enough to hand a live-searching engine
+  /// to the next job. Still bounded overall so a wedged engine can never hang
+  /// the queue — the caller recovers by restarting the engine instead.
+  Future<bool> _forceEngineIdle({int attempts = 3}) async {
     final engine = _engine;
-    if (engine == null || engine.state.value != StockfishState.ready) return;
+    if (engine == null || engine.state.value != StockfishState.ready) {
+      _searchInFlight = false;
+      return true;
+    }
+    if (!_searchInFlight) {
+      _staleBestmovePending = false;
+      return true;
+    }
+    _ensureEngineMonitor();
+
+    // Android delivers UCI output later than iOS: every line crosses a
+    // ReceivePort into the main isolate, which is exactly the isolate the
+    // report and the board are both busy rebuilding on. Give it room.
+    final budget =
+        _isAndroid
+            ? const Duration(milliseconds: 2500)
+            : const Duration(milliseconds: 1200);
+
+    for (var attempt = 0; attempt < attempts && _searchInFlight; attempt++) {
+      final waiter = Completer<void>();
+      _searchIdleWaiter = waiter;
+      try {
+        engine.stdin = 'stop';
+      } catch (_) {
+        // Engine no longer accepts commands — it cannot be searching.
+        _searchInFlight = false;
+        break;
+      }
+      try {
+        await waiter.future.timeout(budget);
+      } catch (_) {
+        // Fall through and try again.
+      } finally {
+        if (identical(_searchIdleWaiter, waiter)) _searchIdleWaiter = null;
+      }
+    }
+
+    if (!_searchInFlight) {
+      _staleBestmovePending = false;
+      return true;
+    }
+    debugPrint(
+      '⚠️ STOCKFISH: Search never confirmed stopped after $attempts stop(s)',
+    );
+    return false;
+  }
+
+  /// Probe that the engine's UCI input thread is still reading commands.
+  ///
+  /// `isready` is answered immediately by that thread (it does NOT wait for the
+  /// search), so a missing `readyok` means the thread is blocked — the state a
+  /// `setoption` issued during a live search leaves it in. Detecting it is how
+  /// we recover instead of silently issuing commands nothing will ever read.
+  Future<bool> _pingEngineInputThread() async {
+    final engine = _engine;
+    if (engine == null || engine.state.value != StockfishState.ready) {
+      return false;
+    }
     final completer = Completer<void>();
     late StreamSubscription<String> sub;
     sub = engine.stdout.listen((line) {
-      if (line.trim().startsWith('bestmove') && !completer.isCompleted) {
-        _staleBestmovePending = false; // drained the stopped search's bestmove
+      if (line.trim() == 'readyok' && !completer.isCompleted) {
         completer.complete();
       }
     });
     try {
-      engine.stdin = 'stop';
-      await completer.future.timeout(const Duration(milliseconds: 1200));
+      engine.stdin = 'isready';
+      await completer.future.timeout(
+        _isAndroid
+            ? const Duration(milliseconds: 1500)
+            : const Duration(milliseconds: 800),
+      );
+      return true;
     } catch (_) {
-      // Timed out or stdin threw — the next job's _softResetEngine still
-      // resyncs via isready/readyok and the stale-bestmove fence backstops.
+      return false;
     } finally {
       await sub.cancel();
     }
@@ -710,6 +914,11 @@ class StockfishSingleton {
         }
         final job = _jobQueue.removeAt(0);
         _currentJob = job;
+        // Reset here, not in _processCurrentJob: that runs after awaiting engine
+        // init, and until it does a stale depth would leave hasBlockingBoardWork
+        // false and let the report walk in on a board search that has not
+        // produced a single line yet.
+        if (job.isCurrentPosition) _boardReachedDepth = 0;
         debugPrint('⚙️ PROCESSING: ${job.fen} (${_jobQueue.length} remaining)');
         try {
           await _processCurrentJob();
@@ -776,6 +985,8 @@ class StockfishSingleton {
         '🔍 STOCKFISH: Analyzing $fen ${isDynamicSearch ? "(dynamic ${searchDuration.inSeconds}s)" : "(depth $depth)"}',
       );
 
+      if (job.isCurrentPosition) _boardReachedDepth = 0;
+
       _currentSubscription = _engine!.stdout.listen((line) {
         // Check if this is still the current job
         if (_currentJob != job || completer.isCompleted) return;
@@ -788,8 +999,8 @@ class StockfishSingleton {
         // debugPrint('🟢 STOCKFISH STDOUT: $line');
         // Parse info lines for analysis data
         if (line.startsWith('info depth')) {
-          final depthMatch = RegExp(r'depth (\d+)').firstMatch(line);
-          final knodesMatch = RegExp(r'nodes (\d+)').firstMatch(line);
+          final depthMatch = _infoDepthPattern.firstMatch(line);
+          final knodesMatch = _infoNodesPattern.firstMatch(line);
 
           if (depthMatch != null) {
             final currentDepth = int.parse(depthMatch.group(1)!);
@@ -799,6 +1010,7 @@ class StockfishSingleton {
                     : 0;
 
             finalDepth = currentDepth;
+            if (job.isCurrentPosition) _boardReachedDepth = currentDepth;
             // Real output for THIS job — any stale bestmove is now behind us.
             _staleBestmovePending = false;
 
@@ -812,14 +1024,66 @@ class StockfishSingleton {
           }
 
           // Parse score and moves for the principal variation
-          final pvMatch = RegExp(r'\bpv (.+)').firstMatch(line);
+          final pvMatch = _infoPvPattern.firstMatch(line);
           if (pvMatch != null) {
             final moves = pvMatch.group(1)!.trim();
 
             var multipvIndex = 1;
-            final multipvMatch = RegExp(r'multipv (\d+)').firstMatch(line);
+            final multipvMatch = _infoMultiPvPattern.firstMatch(line);
             if (multipvMatch != null) {
               multipvIndex = int.parse(multipvMatch.group(1)!);
+            }
+
+            // Handoff to a waiting low-priority borrower (the whole-game
+            // report). `multipv 1` means the PREVIOUS depth emitted its full set
+            // of lines, so completing here hands the board a complete result at
+            // >= boardHandoffDepth — never a half-filled one line. The board is
+            // still #1: this only fires once it is past the handoff depth AND
+            // something is actually queued behind it, and the search resumes
+            // deeper as soon as the borrower releases the engine.
+            if (job.isCurrentPosition &&
+                !evaluationComplete &&
+                multipvIndex == 1 &&
+                finalDepth > boardHandoffDepth &&
+                _jobQueue.any((queued) => !queued.isCurrentPosition)) {
+              final settled = pvs
+                  .where((pv) => pv.moves.isNotEmpty)
+                  .toList(growable: false);
+              // Only hand back a COMPLETE set. Handing the board a short line
+              // list is the very symptom this file exists to prevent; if the
+              // position simply has fewer legal moves than the requested width,
+              // the yield never fires and the board keeps the engine — which is
+              // the safe direction.
+              if (settled.length >= multiPV) {
+                evaluationComplete = true;
+                debugPrint(
+                  '🤝 STOCKFISH: Board reached depth $finalDepth — yielding to '
+                  'queued background work (${settled.length} lines kept)',
+                );
+                if (!completer.isCompleted) {
+                  // The search is still live; leave _searchInFlight set so the
+                  // next job proves it stopped before touching the engine. This
+                  // `stop` only shortens the wait — the persistent monitor sees
+                  // the resulting bestmove whenever it lands.
+                  _previousJobCompleted = false;
+                  try {
+                    _engine?.stdin = 'stop';
+                  } catch (_) {}
+                  completer.complete(
+                    EnhancedCloudEval(
+                      fen: fen,
+                      knodes: knodes,
+                      depth: finalDepth - 1,
+                      pvs: _normalizeToWhitePerspective(settled, fen),
+                      isCancelled: false,
+                      requestedMultiPv: job.multiPV,
+                    ),
+                  );
+                  _currentSubscription?.cancel();
+                  _currentSubscription = null;
+                }
+                return;
+              }
             }
 
             while (pvs.length < multipvIndex) {
@@ -827,8 +1091,8 @@ class StockfishSingleton {
             }
 
             // Parse score (either cp or mate)
-            final cpMatch = RegExp(r'score cp (-?\d+)').firstMatch(line);
-            final mateMatch = RegExp(r'score mate (-?\d+)').firstMatch(line);
+            final cpMatch = _infoScoreCpPattern.firstMatch(line);
+            final mateMatch = _infoScoreMatePattern.firstMatch(line);
 
             if (cpMatch != null) {
               final cp = int.parse(cpMatch.group(1)!);
@@ -979,7 +1243,14 @@ class StockfishSingleton {
         // stall detector never fires — leaving the UI stuck.
         lastInfoReceived = DateTime.now();
 
-        _engine!.stdin = 'setoption name MultiPV value $multiPV';
+        // `setoption` is the one command that can block Stockfish's UCI input
+        // thread (it calls wait_for_search_finished). _softResetEngine has
+        // already proven the engine idle, and re-sending an unchanged MultiPV
+        // buys nothing — so only write it when the width actually differs.
+        if (_appliedMultiPv != multiPV) {
+          _engine!.stdin = 'setoption name MultiPV value $multiPV';
+          _appliedMultiPv = multiPV;
+        }
         _engine!.stdin = 'position fen $fen';
 
         if (isDynamicSearch) {
@@ -996,7 +1267,9 @@ class StockfishSingleton {
           debugPrint('   → Sending: MultiPV $multiPV, depth $depth');
           _engine!.stdin = 'go depth $depth';
         }
+        _searchInFlight = true;
       } catch (e) {
+        _searchInFlight = false;
         debugPrint('❌ ERROR sending commands to Stockfish: $e');
         if (!completer.isCompleted) {
           final errorResult = EnhancedCloudEval(
@@ -1258,6 +1531,7 @@ class StockfishSingleton {
       await _currentSubscription?.cancel();
     } catch (_) {}
     _currentSubscription = null;
+    await _detachEngineMonitor();
 
     // Send stop/quit to the engine regardless of its state so the native
     // process has a chance to exit cleanly.  On Android the native library
@@ -1494,7 +1768,14 @@ class StockfishSingleton {
 
   Future<void> _configureEngineForAnalysis() async {
     if (_engine == null) return;
+    // Attach before the identity guard so the idleness monitor is live for every
+    // ready engine, not only the first time one is configured.
+    _ensureEngineMonitor();
     if (identical(_configuredEngine, _engine)) return;
+    // Fresh engine: MultiPV is back at its default, so the next job must write
+    // it rather than assume the previous engine's width carried over.
+    _appliedMultiPv = null;
+    _searchInFlight = false;
     // CRITICAL: Configure Stockfish for analysis (not tablebase lookup)
     // Disable tablebase probing to force actual search with depth progression
     try {
@@ -1529,19 +1810,38 @@ class StockfishSingleton {
 
     await _currentSubscription?.cancel();
     _currentSubscription = null;
+    _ensureEngineMonitor();
 
-    // If the previous job completed normally (bestmove received), engine is
-    // already idle — no need to send stop. This avoids unnecessary overhead.
-    if (!_previousJobCompleted) {
-      try {
-        _engine!.stdin = 'stop';
-        // Use the UCI isready/readyok handshake on ALL platforms to guarantee
-        // the engine is truly idle before the next 'go' command. A fixed delay
-        // is unreliable during rapid navigation (stop/go/stop/go).
-        await _waitForReadyOk();
-      } catch (e) {
-        debugPrint('⚠️ STOCKFISH STOP FAILED: $e');
+    // If the previous job completed normally (bestmove received), the engine is
+    // already idle — no need to send stop. Otherwise prove it, and NEVER fall
+    // through to `setoption`/`position`/`go` on an unproven engine: `setoption`
+    // blocks Stockfish's single UCI input thread inside wait_for_search_finished
+    // until the live search ends, so everything written after it — including the
+    // next `stop` — is never read. That is what leaves the board on one engine
+    // line, or on no eval at all, and it cascades into every later job.
+    if (_searchInFlight || !_previousJobCompleted) {
+      final idle = await _forceEngineIdle();
+      if (!idle) {
+        debugPrint(
+          '🔄 STOCKFISH: Engine would not stop searching — restarting rather '
+          'than issuing commands it cannot read',
+        );
+        await _resetEngineAfterFailure();
+        await _ensureEngineReady();
+        _ensureEngineMonitor();
+        _previousJobCompleted = false;
         return;
+      }
+
+      // Search idle is not the same as input thread alive. Probe it only on
+      // this recovery path — a job whose predecessor ended on `bestmove` has
+      // just been written to by the engine, so pinging it every time would only
+      // add a round trip and risk restarting a healthy engine on a slow frame.
+      if (!await _pingEngineInputThread()) {
+        debugPrint('🔄 STOCKFISH: UCI input thread unresponsive — restarting');
+        await _resetEngineAfterFailure();
+        await _ensureEngineReady();
+        _ensureEngineMonitor();
       }
     }
 
@@ -1553,36 +1853,6 @@ class StockfishSingleton {
     // different games — not between positions in the same analysis session.
     // Keeping the hash table intact lets Stockfish reuse transposition data
     // from prior searches, which significantly speeds up deepening.
-  }
-
-  Future<void> _waitForReadyOk() async {
-    if (_engine == null) return;
-    final completer = Completer<void>();
-    late StreamSubscription<String> sub;
-    sub = _engine!.stdout.listen((line) {
-      final trimmed = line.trim();
-      // The stop→isready→readyok handshake drains the stopped search's stale
-      // bestmove (it comes before readyok); clear the fence when we see it so
-      // the next job's listener doesn't need to.
-      if (trimmed.startsWith('bestmove')) {
-        _staleBestmovePending = false;
-      }
-      if (trimmed == 'readyok' && !completer.isCompleted) {
-        completer.complete();
-      }
-    });
-    try {
-      _engine!.stdin = 'isready';
-      final timeout =
-          _isAndroid
-              ? const Duration(milliseconds: 800)
-              : const Duration(milliseconds: 500);
-      await completer.future.timeout(timeout);
-    } catch (e) {
-      debugPrint('⚠️ STOCKFISH READY WAIT FAILED: $e');
-    } finally {
-      await sub.cancel();
-    }
   }
 
   /// Cleanup for hot restart. Sends `stop` + `quit` directly via FFI
@@ -1614,6 +1884,13 @@ class StockfishSingleton {
     _currentJob = null;
     _currentSubscription?.cancel();
     _currentSubscription = null;
+    _monitorSubscription?.cancel();
+    _monitorSubscription = null;
+    _monitoredEngine = null;
+    _searchInFlight = false;
+    _searchIdleWaiter = null;
+    _appliedMultiPv = null;
+    _boardReachedDepth = 0;
 
     _completeQueuedJobsAsCancelled(reason: 'hotRestart');
     _isProcessing = false;
@@ -1652,6 +1929,13 @@ class StockfishSingleton {
     // Don't await — engine is being destroyed, subscription will die with it.
     _currentSubscription?.cancel();
     _currentSubscription = null;
+    _monitorSubscription?.cancel();
+    _monitorSubscription = null;
+    _monitoredEngine = null;
+    _searchInFlight = false;
+    _searchIdleWaiter = null;
+    _appliedMultiPv = null;
+    _boardReachedDepth = 0;
 
     _completeQueuedJobsAsCancelled(reason: 'dispose');
     _isProcessing = false;
@@ -1764,15 +2048,52 @@ class StockfishSingleton {
   Future<EnhancedCloudEval> debugEnqueueQueuedEvaluationForTest({
     required String fen,
     int multiPV = 1,
+    bool isCurrentPosition = false,
   }) {
     final key =
         'test_${DateTime.now().microsecondsSinceEpoch}_${_jobQueue.length}';
     final completer = Completer<EnhancedCloudEval>();
-    final job = _EvalJob(fen, 1, key, key, completer, multiPV: multiPV);
+    final job = _EvalJob(
+      fen,
+      1,
+      key,
+      key,
+      completer,
+      multiPV: multiPV,
+      isCurrentPosition: isCurrentPosition,
+    );
     _jobQueue.add(job);
     _pendingJobs[key] = job;
     return completer.future;
   }
+
+  /// Stand in for a board search that is running and has reached [reachedDepth],
+  /// so the [boardHandoffDepth] gate can be exercised without a native engine.
+  @visibleForTesting
+  void debugSetRunningBoardSearchForTest({
+    required String fen,
+    required int reachedDepth,
+    int multiPV = 3,
+  }) {
+    _currentJob = _EvalJob(
+      fen,
+      20,
+      'test_running_$fen',
+      'test_running_$fen',
+      Completer<EnhancedCloudEval>(),
+      multiPV: multiPV,
+      isCurrentPosition: true,
+    );
+    _boardReachedDepth = reachedDepth;
+  }
+
+  @visibleForTesting
+  void debugAdvanceBoardDepthForTest(int reachedDepth) {
+    _boardReachedDepth = reachedDepth;
+  }
+
+  @visibleForTesting
+  static bool debugIsBestmoveLineForTest(String line) => _isBestmoveLine(line);
 
   Future<void> _resetEngineAfterFailure() async {
     debugPrint('🔄 STOCKFISH: Resetting engine after failure...');
@@ -1782,6 +2103,7 @@ class StockfishSingleton {
       await _currentSubscription?.cancel();
     } catch (_) {}
     _currentSubscription = null;
+    await _detachEngineMonitor();
 
     // Use safe disposal with platform-specific timing
     if (_engine != null) {

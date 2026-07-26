@@ -307,6 +307,7 @@ class GameAnalysisReportController extends ChangeNotifier {
     if (!_state.isRunning) return;
     _generation++;
     await _stockfish.cancelEvaluationsForOwner(_ownerId);
+    _stockfish.notifyEngineReleased();
     _setState(
       const GameReportState(
         status: GameReportStatus.cancelled,
@@ -548,6 +549,10 @@ class GameAnalysisReportController extends ChangeNotifier {
       // settle. Owner-scoped cancel never touches the board's Stockfish owner.
       if (claimedEngine && _evaluator == null) {
         unawaited(_stockfish.cancelEvaluationsForOwner(_ownerId));
+        // The board's search may have handed the engine over at
+        // boardHandoffDepth so this report could run. Now that the report is
+        // done with it, tell the board to carry the on-screen position deeper.
+        _stockfish.notifyEngineReleased();
       }
     }
   }

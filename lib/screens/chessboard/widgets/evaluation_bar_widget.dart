@@ -294,15 +294,23 @@ class EvaluationBarWidgetForGames extends ConsumerStatefulWidget {
 class _EvaluationBarWidgetForGamesState
     extends ConsumerState<EvaluationBarWidgetForGames> {
   _EvalBarDisplay? _lastDisplay;
+  /// White fill ratio target — retained across FEN changes so geometry eases
+  /// like the main board bar instead of snapping to neutral 0.5 while loading.
+  double _whiteRatioTarget = 0.5;
+  /// When the card FEN changes, hide the previous score label until fresh data
+  /// arrives (main-board `_awaitingNewEvaluation` semantics).
+  bool _awaitingNewPosition = false;
 
   @override
   void didUpdateWidget(covariant EvaluationBarWidgetForGames oldWidget) {
     super.didUpdateWidget(oldWidget);
     // Keep scroll/rebuild stability only for the same position. Archive cards
     // can hydrate from a temporary starting FEN to the real final FEN, where
-    // retaining the old display would show the starting-position evaluation.
+    // retaining the old *score text* would show the starting-position evaluation.
+    // Geometry keeps [_whiteRatioTarget] so the bar does not jump to 0.5.
     if (oldWidget.fen != widget.fen) {
       _lastDisplay = null;
+      _awaitingNewPosition = true;
     }
   }
 
@@ -322,11 +330,14 @@ class _EvaluationBarWidgetForGamesState
           isCheckmate: true,
           hasEvaluationData: true,
         ),
-      ).build(widget);
+      ).build(widget, whiteRatioTarget: _whiteRatioTarget);
     }
 
     if (widget.fen.isEmpty) {
-      return _EvalBarDisplay.neutral(hasEvaluationData: false).build(widget);
+      return _EvalBarDisplay.neutral(hasEvaluationData: false).build(
+        widget,
+        whiteRatioTarget: _whiteRatioTarget,
+      );
     }
 
     // Uses depth-aware cache/server reuse first, then low-priority Stockfish.
@@ -337,13 +348,17 @@ class _EvaluationBarWidgetForGamesState
             : ref.watch(gameCardEvalCacheOnlyProvider(widget.fen));
 
     final display = evalAsync.when(
-      loading:
-          () =>
-              _lastDisplay?.retainedWhileLoading() ??
-              _EvalBarDisplay.neutral(
-                isEvaluating: true,
-                hasEvaluationData: false,
-              ),
+      loading: () {
+        // Same-position scroll: keep previous settled score.
+        // New FEN: show "..." but keep prior fill ratio (main board style).
+        if (_lastDisplay != null && !_awaitingNewPosition) {
+          return _lastDisplay!.retainedWhileLoading();
+        }
+        return _EvalBarDisplay.neutral(
+          isEvaluating: true,
+          hasEvaluationData: false,
+        );
+      },
       error:
           (_, __) =>
               _lastDisplay ?? _EvalBarDisplay.neutral(hasEvaluationData: false),
@@ -366,12 +381,36 @@ class _EvaluationBarWidgetForGamesState
       },
     );
 
-    return display.build(widget);
+    // FEN just changed and we still hold no settled data for the new position:
+    // force loading text even if AsyncValue briefly reports something else.
+    final paintDisplay =
+        _awaitingNewPosition && !display.hasEvaluationData
+            ? _EvalBarDisplay.neutral(
+              isEvaluating: true,
+              hasEvaluationData: false,
+            )
+            : display;
+
+    return paintDisplay.build(widget, whiteRatioTarget: _whiteRatioTarget);
   }
 
   _EvalBarDisplay _remember(_EvalBarDisplay display) {
     _lastDisplay = display;
+    _awaitingNewPosition = false;
+    if (display.hasEvaluationData) {
+      final newRatio = _ratioFromDisplay(display);
+      if ((newRatio - _whiteRatioTarget).abs() > 0.0005) {
+        _whiteRatioTarget = newRatio.clamp(0.0, 1.0);
+      }
+    }
     return display;
+  }
+
+  double _ratioFromDisplay(_EvalBarDisplay display) {
+    if (display.isMate && display.mate != 0) {
+      return _ratioForEval(display.evaluation, display.mate);
+    }
+    return _ratioForEval(display.evaluation, 0);
   }
 }
 
@@ -414,12 +453,14 @@ class _EvalBarDisplay {
     );
   }
 
-  Widget build(EvaluationBarWidgetForGames widget) {
+  Widget build(
+    EvaluationBarWidgetForGames widget, {
+    required double whiteRatioTarget,
+  }) {
     return _Bars(
       width: widget.width,
       height: widget.height,
-      whiteHeight: _getWhiteHeight(evaluation, widget.height),
-      blackHeight: _getBlackHeight(evaluation, widget.height),
+      whiteRatioTarget: whiteRatioTarget,
       evaluation: evaluation,
       isEvaluating: isEvaluating,
       isMate: isMate,
@@ -430,22 +471,13 @@ class _EvalBarDisplay {
       isFlipped: widget.isFlipped,
     );
   }
-
-  double _getWhiteHeight(double eval, double totalHeight) {
-    final ratio = _normalizedEvalToRatio(eval);
-    return ratio * totalHeight;
-  }
-
-  double _getBlackHeight(double eval, double totalHeight) {
-    return totalHeight - _getWhiteHeight(eval, totalHeight);
-  }
 }
 
+/// Game-card eval bar paint: same smooth ratio motion as [EvaluationBarWidget].
 class _Bars extends StatelessWidget {
   final double width;
   final double height;
-  final double whiteHeight;
-  final double blackHeight;
+  final double whiteRatioTarget;
   final double evaluation;
   final PlayerView playerView;
   final bool isFlipped;
@@ -458,8 +490,7 @@ class _Bars extends StatelessWidget {
   const _Bars({
     required this.width,
     required this.height,
-    required this.whiteHeight,
-    required this.blackHeight,
+    required this.whiteRatioTarget,
     required this.evaluation,
     required this.playerView,
     required this.isFlipped,
@@ -481,70 +512,88 @@ class _Bars extends StatelessWidget {
     final blackPieceColor = context.isLightTheme
         ? kMoveStatBlackColor
         : context.colors.popup;
-    return SizedBox(
-      width: width,
-      height: height,
-      child: Stack(
-        children: [
-          Align(
-            alignment: Alignment.topCenter,
-            child: Container(
-              width: width,
-              height: isFlipped ? whiteHeight : blackHeight,
-              color: isFlipped ? whitePieceColor : blackPieceColor,
-            ),
-          ),
-          Align(
-            alignment: Alignment.bottomCenter,
-            child: Container(
-              width: width,
-              height: isFlipped ? blackHeight : whiteHeight,
-              color: isFlipped ? blackPieceColor : whitePieceColor,
-            ),
-          ),
-          // Evaluation text positioned at the meeting point of black/white
-          Positioned(
-            left: 0,
-            right: 0,
-            // Position at the edge where black and white meet, clamped to stay within bounds
-            top: ((isFlipped ? whiteHeight : blackHeight) -
-                    (playerView == PlayerView.gridView ? 6.h : 10.h))
-                .clamp(
-                  0.0,
-                  height - (playerView == PlayerView.gridView ? 12.h : 20.h),
+
+    final labelInset = playerView == PlayerView.gridView ? 6.h : 10.h;
+    final labelClampMax =
+        height - (playerView == PlayerView.gridView ? 12.h : 20.h);
+
+    final displayText =
+        isEvaluating && !hasEvaluationData
+            ? '...'
+            : !hasEvaluationData
+            ? ''
+            : isCheckmate
+            ? '#'
+            : (isMate && mate != 0)
+            ? '#$mate'
+            : _formatSignedEval(evaluation);
+
+    return SingleMotionBuilder(
+      motion: const CupertinoMotion.smooth(),
+      value: whiteRatioTarget,
+      builder: (context, animatedRatio, _) {
+        final whiteRatio = animatedRatio.clamp(0.0, 1.0).toDouble();
+        final blackRatio = 1.0 - whiteRatio;
+        final whiteHeight = whiteRatio * height;
+        final blackHeight = blackRatio * height;
+        final topHeight = isFlipped ? whiteHeight : blackHeight;
+        final bottomHeight = isFlipped ? blackHeight : whiteHeight;
+        final topColor = isFlipped ? whitePieceColor : blackPieceColor;
+        final bottomColor = isFlipped ? blackPieceColor : whitePieceColor;
+
+        return SizedBox(
+          width: width,
+          height: height,
+          child: Stack(
+            children: [
+              Align(
+                alignment: Alignment.topCenter,
+                child: Container(
+                  width: width,
+                  height: topHeight,
+                  color: topColor,
                 ),
-            child: Container(
-              width: width,
-              color: kPrimaryColor,
-              child: FittedBox(
-                fit: BoxFit.scaleDown,
-                child: Text(
-                  isEvaluating && !hasEvaluationData
-                      ? '...'
-                      : !hasEvaluationData
-                      ? ''
-                      : isCheckmate
-                      ? '#'
-                      : (isMate && mate != 0)
-                      ? '#$mate'
-                      : _formatSignedEval(evaluation),
-                  maxLines: 1,
-                  textAlign: TextAlign.center,
-                  style: AppTypography.textSmRegular.copyWith(
-                    color: Colors.white,
-                    fontSize: playerView == PlayerView.gridView ? 0.2.f : 1.5.f,
-                    fontWeight:
-                        playerView == PlayerView.gridView
-                            ? FontWeight.w300
-                            : FontWeight.w600,
-                    letterSpacing: -0.5,
+              ),
+              Align(
+                alignment: Alignment.bottomCenter,
+                child: Container(
+                  width: width,
+                  height: bottomHeight,
+                  color: bottomColor,
+                ),
+              ),
+              // Evaluation text positioned at the meeting point of black/white
+              Positioned(
+                left: 0,
+                right: 0,
+                top: (topHeight - labelInset).clamp(0.0, labelClampMax),
+                child: Container(
+                  width: width,
+                  color: kPrimaryColor,
+                  child: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: Text(
+                      displayText,
+                      maxLines: 1,
+                      textAlign: TextAlign.center,
+                      style: AppTypography.textSmRegular.copyWith(
+                        color: Colors.white,
+                        fontSize:
+                            playerView == PlayerView.gridView ? 0.2.f : 1.5.f,
+                        fontWeight:
+                            playerView == PlayerView.gridView
+                                ? FontWeight.w300
+                                : FontWeight.w600,
+                        letterSpacing: -0.5,
+                      ),
+                    ),
                   ),
                 ),
               ),
-            ),
+            ],
           ),
-        ],
-      ),
+        );
+      },
     );
   }
 }
