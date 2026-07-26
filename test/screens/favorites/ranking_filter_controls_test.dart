@@ -184,6 +184,52 @@ void main() {
     );
   });
 
+  // The selected fill and label are fixed colours, so light theme is the case
+  // that can silently lose contrast or shift geometry.
+  testWidgets('chips keep their geometry and contrast in light theme', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(393, 852));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.lightTheme,
+        home: Builder(
+          builder: (context) {
+            ResponsiveHelper.init(context);
+            return Scaffold(
+              body: RankingFilterControls(
+                filters: RankingFilters.defaults,
+                showActivity: false,
+                onChanged: (_) {},
+              ),
+            );
+          },
+        ),
+      ),
+    );
+    await tester.pump();
+
+    expect(tester.takeException(), isNull);
+
+    final selected =
+        tester.widget<AnimatedContainer>(
+              find
+                  .ancestor(
+                    of: find.text('Classical'),
+                    matching: find.byType(AnimatedContainer),
+                  )
+                  .first,
+            ).decoration!
+            as BoxDecoration;
+    expect(selected.color, kPrimaryColor);
+    expect(tester.widget<Text>(find.text('Classical')).style?.color, kBlackColor);
+
+    final strips =
+        tester.stateList<ScrollableState>(find.byType(Scrollable)).toList();
+    expect(strips[0].position.maxScrollExtent, 0);
+  });
+
   // The Active/All chips sit beside the search field. They are shorter than it,
   // so the two must share a mid-line — otherwise the row reads as misaligned.
   testWidgets('Active/All shares a centre line with the search field', (
