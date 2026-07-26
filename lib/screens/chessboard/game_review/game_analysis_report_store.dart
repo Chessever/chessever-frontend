@@ -172,9 +172,14 @@ class _MemoryEntry {
 // JSON encode / decode (pure; unit-tested without filesystem)
 // ---------------------------------------------------------------------------
 
+/// Payload version. Bump whenever a change alters what a report *says* about
+/// the same game, so stored reports from the old rules are dropped instead of
+/// being replayed forever. v2: book detection reaches real theory depth.
+const int gameAnalysisReportSchemaVersion = 2;
+
 Map<String, dynamic> gameAnalysisReportToJson(GameAnalysisReport report) {
   return <String, dynamic>{
-    'v': 1,
+    'v': gameAnalysisReportSchemaVersion,
     'fingerprint': report.fingerprint,
     'whiteAccuracy': report.whiteAccuracy,
     'blackAccuracy': report.blackAccuracy,
@@ -188,6 +193,11 @@ Map<String, dynamic> gameAnalysisReportToJson(GameAnalysisReport report) {
 
 GameAnalysisReport? gameAnalysisReportFromJson(Map<String, dynamic> json) {
   try {
+    // A report written under older classification rules is a miss, not a hit:
+    // replaying it would keep showing the labels the new rules just corrected.
+    if ((json['v'] as num?)?.toInt() != gameAnalysisReportSchemaVersion) {
+      return null;
+    }
     final fingerprint = json['fingerprint'] as String?;
     if (fingerprint == null || fingerprint.isEmpty) return null;
     final positionsRaw = json['positions'];

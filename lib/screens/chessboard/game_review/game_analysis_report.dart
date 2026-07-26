@@ -140,12 +140,20 @@ typedef GameReportEvaluator =
       void Function(int reachedDepth, int knodes)? onProgress,
     });
 
-/// Asks the game database how many games reached [uci] from [fen].
+/// Asks the game database how many games reached [uci] from [fen], where
+/// [path] is the UCI line from the initial position up to [fen].
+///
+/// [path] is what buys depth. The gamebase answers the first plies straight
+/// from its position index — transposition-inclusive, exactly what the board's
+/// opening-explorer panel shows — but past that window it can only rebuild a
+/// node by replaying the line, so a lookup with no path returns nothing at all
+/// from ply 22 on. That is why deep theory used to go unlabelled.
 ///
 /// Returns null when the answer is unknown — no database, no key, or a failed
 /// request. Null and zero mean different things: null is "we did not find out",
 /// which must never be read as "not theory".
-typedef GameReportBookLookup = Future<int?> Function(String fen, String uci);
+typedef GameReportBookLookup =
+    Future<int?> Function(String fen, String uci, List<String> path);
 
 class GameAnalysisReportController extends ChangeNotifier {
   GameAnalysisReportController({
@@ -544,15 +552,22 @@ class GameAnalysisReportController extends ChangeNotifier {
   }
 
   /// Walks the game from move one asking how many database games played each
-  /// move, and stops at the first move that leaves theory.
+  /// move, and keeps every answer it gets.
   ///
-  /// Theory is contiguous from the start — once a game leaves book it does not
-  /// re-enter — so the early exit is not just an optimisation, it is what keeps
-  /// a late middlegame move from being called "book" because the same position
-  /// happens to be reachable by transposition in a popular line.
+  /// Each ply is judged on its own count — a move with [kBookMoveMinGames] or
+  /// more games is theory, whatever the ply before it did. Move orders dip out
+  /// of the database and transpose straight back into a main line, and the
+  /// board's own opening explorer counts those transpositions, so a single
+  /// quiet ply must not close the book on everything after it. The walk stops
+  /// only once theory is properly gone: [kBookProbeDryStreak] plies in a row
+  /// below the threshold, or the [kBookProbeMaxPlies] runaway guard.
   ///
-  /// The tree is an enhancement, never a dependency: any failure abandons the
-  /// walk and leaves the remaining moves unknown rather than failing the report.
+  /// Lookups go out [kBookProbeConcurrency] at a time. The walk is collected
+  /// after the Stockfish passes, which take minutes, so this is about not
+  /// opening a burst of connections rather than about latency.
+  ///
+  /// The tree is an enhancement, never a dependency: a failed lookup leaves
+  /// that ply unknown rather than failing the report.
   Future<List<int?>> _probeBookMoves(
     ChessGame game,
     List<String> fens, {
@@ -570,26 +585,54 @@ class GameAnalysisReportController extends ChangeNotifier {
     if (game.startingFen != kInitialFEN) return counts;
 
     final limit = math.min(game.mainline.length, kBookProbeMaxPlies);
+    final line = game.mainline
+        .map((move) => move.uci)
+        .toList(growable: false);
     // The engine passes normally outlast this walk, but a stalled database must
     // not be what holds a finished report open. Whatever theory was resolved
     // before the budget ran out is kept.
     final elapsed = Stopwatch()..start();
-    for (var i = 0; i < limit; i++) {
+    var dryStreak = 0;
+
+    for (var start = 0; start < limit; start += kBookProbeConcurrency) {
       if (_disposed || generation != _generation) return counts;
       if (elapsed.elapsed > kBookProbeBudget) return counts;
-      final int? total;
-      try {
-        total = await lookup(
-          fens[i],
-          game.mainline[i].uci,
-        ).timeout(kBookLookupTimeout);
-      } catch (_) {
-        return counts;
+      final end = math.min(start + kBookProbeConcurrency, limit);
+      final wave = await Future.wait<int?>([
+        for (var i = start; i < end; i++)
+          _bookGameCount(lookup, fens[i], line[i], line.sublist(0, i)),
+      ]);
+      if (_disposed || generation != _generation) return counts;
+      for (var offset = 0; offset < wave.length; offset++) {
+        final total = wave[offset];
+        counts[start + offset] = total;
+        // An unknown answer counts as dry: it is not evidence of theory, and a
+        // database that has stopped answering should end the walk, not spend
+        // the whole budget timing out ply after ply.
+        if (total == null || total < kBookMoveMinGames) {
+          dryStreak++;
+        } else {
+          dryStreak = 0;
+        }
       }
-      if (total == null || total < kBookMoveMinGames) return counts;
-      counts[i] = total;
+      if (dryStreak >= kBookProbeDryStreak) return counts;
     }
     return counts;
+  }
+
+  /// One opening lookup, resolving to null on timeout or failure so a flaky
+  /// database costs one unknown ply instead of the whole report.
+  Future<int?> _bookGameCount(
+    GameReportBookLookup lookup,
+    String fen,
+    String uci,
+    List<String> path,
+  ) async {
+    try {
+      return await lookup(fen, uci, path).timeout(kBookLookupTimeout);
+    } catch (_) {
+      return null;
+    }
   }
 
   String _primaryPassMessage(int positionIndex, int totalMoves) {
@@ -1384,21 +1427,39 @@ const double kBrilliantMaxLossPp = 1;
 /// the player made over the board.
 const int kBookMoveMinGames = 10;
 
-/// How far into a game the opening tree is consulted at all. A hard stop on top
-/// of the contiguity rule, so a pathological line cannot spend a lookup per move
-/// across a 120-move game.
+/// How far into a game the opening tree is consulted at all — a runaway guard,
+/// not the real stopping rule (that is [kBookProbeDryStreak]), so a pathological
+/// line cannot spend a lookup per move across a 150-move game.
 ///
-/// Twenty plies is deliberate on both counts: it is exactly the first ten full
-/// moves the product cares about, and it is the depth the gamebase serves from
-/// its materialised view (`MV_MAX_PLY`), which is the Redis-cached fast path.
-/// Past it, queries fall through to the shallow table at ply 21 and then to the
-/// much slower deep-position table — cost we would be paying for positions that
-/// are far too rare to clear [kBookMoveMinGames] anyway.
-const int kBookProbeMaxPlies = 20;
+/// The old ceiling was twenty plies, tied to the gamebase materialised view.
+/// That view is only the *fast* path: handed the move line, the backend keeps
+/// answering far deeper — a Marshall main line still returns 22 games at ply 36
+/// — and real theory routinely runs past move fifteen, so the view's depth was
+/// cutting off book long before book actually ended. Sixty plies clears any
+/// real book line while still bounding the work.
+const int kBookProbeMaxPlies = 60;
+
+/// Plies in a row below [kBookMoveMinGames] that end the walk.
+///
+/// Deliberately not a contiguity rule. A move order can leave the database for
+/// a ply and transpose straight back into a main line, and that move is still
+/// theory, so one quiet ply must not close the book. Six is long enough for any
+/// real transposition and short enough that a middlegame costs six spare
+/// lookups before the walk gives up.
+const int kBookProbeDryStreak = 6;
+
+/// Lookups in flight at once.
+const int kBookProbeConcurrency = 4;
 
 /// Ceiling on one opening lookup, and on the walk as a whole.
-const Duration kBookLookupTimeout = Duration(seconds: 4);
-const Duration kBookProbeBudget = Duration(seconds: 15);
+///
+/// A cold position at the edge of the cached view is served by a table scan —
+/// measured between four and six and a half seconds — so the old four-second
+/// ceiling timed out exactly where theory gets interesting. The counts are
+/// collected after the engine passes, which take minutes, so neither number is
+/// on the report's critical path.
+const Duration kBookLookupTimeout = Duration(seconds: 12);
+const Duration kBookProbeBudget = Duration(seconds: 90);
 
 /// PV moat (pp) the played move needs over the first unplayed alternative
 /// before being called Best. Being PV1 is not on its own a distinction.

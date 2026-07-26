@@ -4,6 +4,7 @@ import 'dart:math' as math;
 import 'package:chessever2/repository/lichess/cloud_eval/cloud_eval.dart';
 import 'package:chessever2/screens/chessboard/analysis/chess_game.dart';
 import 'package:chessever2/screens/chessboard/game_review/game_analysis_report.dart';
+import 'package:chessever2/screens/chessboard/game_review/game_review_provider.dart';
 import 'package:chessever2/screens/chessboard/game_review/move_position_facts.dart';
 import 'package:chessever2/screens/chessboard/provider/stockfish_singleton.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -308,15 +309,16 @@ void main() {
   });
 
   group('opening tree probe', () {
-    test('stops at the first move out of book', () async {
+    test('a lone quiet ply does not close the book behind it', () async {
+      // A move order can leave the database for one ply and transpose straight
+      // back into a main line. The explorer counts that transposition, so the
+      // walk must carry on and label the moves that follow it.
       final probed = <String>[];
       final controller = GameAnalysisReportController(
         evaluator: _stubEvaluator,
-        // 1.e4 is theory, 1...a6 is not — the walk must stop there rather than
-        // keep paying a lookup per move for the rest of the game.
-        bookLookup: (fen, uci) async {
+        bookLookup: (fen, uci, path) async {
           probed.add(uci);
-          return uci == 'e2e4' ? 900 : 2;
+          return uci == 'a7a6' ? 2 : 900;
         },
       );
       addTearDown(controller.dispose);
@@ -326,13 +328,68 @@ void main() {
       );
 
       expect(controller.state.status, GameReportStatus.completed);
-      expect(probed, ['e2e4', 'a7a6']);
+      expect(probed, ['e2e4', 'a7a6', 'g1f3', 'b7b6', 'f1c4', 'c7c6']);
+      final classifications = controller.state.report!.moves
+          .map((move) => move.classification)
+          .toList();
+      expect(classifications[1], isNot(GameMoveClassification.bookMove));
+      expect(
+        [classifications[0], ...classifications.skip(2)],
+        everyElement(GameMoveClassification.bookMove),
+      );
+    });
+
+    test('the walk gives up after a run of moves out of book', () async {
+      var probed = 0;
+      final controller = GameAnalysisReportController(
+        evaluator: _stubEvaluator,
+        bookLookup: (fen, uci, path) async {
+          probed++;
+          return uci == 'e2e4' ? 900 : 1;
+        },
+      );
+      addTearDown(controller.dispose);
+
+      await controller.analyze(
+        ChessGame.fromPgn(
+          'dry',
+          '1. e4 a6 2. Nf3 b6 3. Bc4 c6 4. d3 d6 5. Nc3 e6 6. Bg5 f6 '
+              '7. Qd2 g6 8. h4 h6 *',
+        ),
+      );
+
+      expect(controller.state.status, GameReportStatus.completed);
+      // One theory move, then the dry streak ends it — rounded up to the last
+      // full wave of concurrent lookups.
+      expect(probed, lessThan(12));
       final moves = controller.state.report!.moves;
       expect(moves.first.classification, GameMoveClassification.bookMove);
       expect(
         moves.skip(1).map((move) => move.classification),
         everyElement(isNot(GameMoveClassification.bookMove)),
       );
+    });
+
+    test('the move line is handed to every lookup', () async {
+      // Without the line the backend cannot rebuild a node past its indexed
+      // opening window, and deep theory comes back empty.
+      final paths = <List<String>>[];
+      final controller = GameAnalysisReportController(
+        evaluator: _stubEvaluator,
+        bookLookup: (fen, uci, path) async {
+          paths.add(path);
+          return 900;
+        },
+      );
+      addTearDown(controller.dispose);
+
+      await controller.analyze(ChessGame.fromPgn('line', '1. e4 e5 2. Nf3 *'));
+
+      expect(paths, [
+        <String>[],
+        ['e2e4'],
+        ['e2e4', 'e7e5'],
+      ]);
     });
 
     test('a game set up from a custom position is never probed', () async {
@@ -342,7 +399,7 @@ void main() {
       var probed = 0;
       final controller = GameAnalysisReportController(
         evaluator: _stubEvaluator,
-        bookLookup: (fen, uci) async {
+        bookLookup: (fen, uci, path) async {
           probed++;
           return 5000;
         },
@@ -359,17 +416,29 @@ void main() {
       );
     });
 
-    test('the probe stays inside the ten-move fast path', () {
-      // Aligned with the gamebase materialised view (20 plies): past it the
-      // backend falls through to slower tables for positions too rare to be
-      // theory anyway.
-      expect(kBookProbeMaxPlies, 20);
+    test('a castle matches the database spelling of the same move', () {
+      // dartchess hands the board `e1h1`; the gamebase answers `e1g1`. Compared
+      // raw they never matched, so every castle counted as zero games and book
+      // detection died the first time either side castled.
+      expect(gamebaseAggregateMatchesMove('e1g1', 'e1h1'), isTrue);
+      expect(gamebaseAggregateMatchesMove('e1c1', 'e1a1'), isTrue);
+      expect(gamebaseAggregateMatchesMove('e8g8', 'e8h8'), isTrue);
+      expect(gamebaseAggregateMatchesMove('e8c8', 'e8a8'), isTrue);
+      expect(gamebaseAggregateMatchesMove('g1f3', 'g1f3'), isTrue);
+      expect(gamebaseAggregateMatchesMove('e1g1', 'e1c1'), isFalse);
+    });
+
+    test('the probe reaches real theory depth', () {
+      // Handed the move line the gamebase keeps answering well past its
+      // materialised view, and real theory runs past move fifteen, so the cap
+      // is a runaway guard rather than the depth of book.
+      expect(kBookProbeMaxPlies, greaterThanOrEqualTo(40));
     });
 
     test('a hanging tree never holds the report open', () async {
       final controller = GameAnalysisReportController(
         evaluator: _stubEvaluator,
-        bookLookup: (fen, uci) => Completer<int?>().future,
+        bookLookup: (fen, uci, path) => Completer<int?>().future,
       );
       addTearDown(controller.dispose);
 
@@ -385,7 +454,7 @@ void main() {
     test('a failing tree never fails the report', () async {
       final controller = GameAnalysisReportController(
         evaluator: _stubEvaluator,
-        bookLookup: (fen, uci) async => throw StateError('gamebase down'),
+        bookLookup: (fen, uci, path) async => throw StateError('gamebase down'),
       );
       addTearDown(controller.dispose);
 

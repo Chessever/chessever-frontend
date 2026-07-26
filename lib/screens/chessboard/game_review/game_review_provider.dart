@@ -429,16 +429,33 @@ final mobileGameReviewProvider = StateNotifierProvider.autoDispose
 GameReportBookLookup? _gamebaseBookLookup(Ref ref) {
   final repository = ref.read(gamebaseRepositoryProvider);
   if (!repository.hasApiKey) return null;
-  return (fen, uci) async {
-    final response = await repository.getMoveAggregates(fen: fen);
+  return (fen, uci, path) async {
+    // Same request the board's opening-explorer panel makes: handing over the
+    // move line is what lets the backend answer past its indexed opening
+    // window, where a fen-only query returns an empty tree.
+    final response = await repository.getMoveAggregates(fen: fen, moves: path);
     for (final aggregate in response.data.moves) {
-      if (aggregate.uci == uci) return aggregate.total;
+      if (gamebaseAggregateMatchesMove(aggregate.uci, uci)) {
+        return aggregate.total;
+      }
     }
     // The position is known but this continuation is not in it — a real answer
     // of "no games", distinct from a failed lookup.
     return 0;
   };
 }
+
+/// Whether a gamebase aggregate row and a board move are the same move.
+///
+/// They disagree on castling: dartchess gives the board `e1h1` while the
+/// backend answers `e1g1`. Compared raw, every castle read as a move the
+/// database had never seen — which, under the old walk, ended book detection at
+/// the first time either side castled.
+///
+/// Pure helper so a unit test can hold the two spellings together.
+bool gamebaseAggregateMatchesMove(String aggregateUci, String moveUci) =>
+    aggregateUci == moveUci ||
+    GamebaseRepository.alternateCastlingUci(moveUci) == aggregateUci;
 
 /// Private listenable so the modal sheet can rebuild without being a Riverpod
 /// consumer, while board/notation use [mobileGameReviewProvider] properly.

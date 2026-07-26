@@ -255,7 +255,7 @@ class GamebaseRepository {
         }
         if (!position.isLegal(move)) {
           // Accept the other castling spelling (e1a1 ↔ e1c1, e1h1 ↔ e1g1).
-          final altUci = _alternateCastlingUciString(uci);
+          final altUci = alternateCastlingUci(uci);
           final alt = altUci == null ? null : _normalMoveFromUci(altUci);
           if (alt == null || !position.isLegal(alt)) {
             return const [];
@@ -285,7 +285,13 @@ class GamebaseRepository {
     }
   }
 
-  static String? _alternateCastlingUciString(String uci) {
+  /// The other spelling of a castling UCI, or null when [uci] is not one.
+  ///
+  /// dartchess emits the Chess960 king-to-rook form (`e1h1`) while the backend
+  /// answers in the classical king-to-g/c form (`e1g1`), so anything comparing
+  /// a board move against a gamebase `uci` has to bridge the two — otherwise a
+  /// castle silently reads as "a move the database has never seen".
+  static String? alternateCastlingUci(String uci) {
     const pairs = <String, String>{
       'e1h1': 'e1g1',
       'e1g1': 'e1h1',

@@ -1028,8 +1028,19 @@ class _PlayerColumnState extends State<_PlayerColumn> {
             SizedBox(
               height: 24,
               child: Center(
-                child: Text(
-                  _playerTitleAndLastName(player),
+                // Federation title (GM, IM, FM…) is tinted apart from the name,
+                // matching the player profile header.
+                child: Text.rich(
+                  TextSpan(
+                    children: [
+                      if (player.title.trim().isNotEmpty)
+                        TextSpan(
+                          text: '${player.title.trim()} ',
+                          style: const TextStyle(color: kLightYellowColor),
+                        ),
+                      TextSpan(text: _playerLastName(player)),
+                    ],
+                  ),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   textAlign: TextAlign.center,
@@ -1069,17 +1080,12 @@ void _openPlayerProfile(BuildContext context, PlayerCard player) {
   );
 }
 
-String _playerTitleAndLastName(PlayerCard player) {
+String _playerLastName(PlayerCard player) {
   final name = player.name.trim();
   final comma = name.indexOf(',');
-  final lastName =
-      comma > 0
-          ? name.substring(0, comma).trim()
-          : name.split(RegExp(r'\s+')).last;
-  return [
-    if (player.title.trim().isNotEmpty) player.title.trim(),
-    lastName,
-  ].join(' ');
+  return comma > 0
+      ? name.substring(0, comma).trim()
+      : name.split(RegExp(r'\s+')).last;
 }
 
 String _playerInitials(String name) {

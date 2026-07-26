@@ -25,7 +25,7 @@ void main() {
         reason: '_openPlayerProfile must exist in game_review_sheet.dart',
       );
 
-      final nextTopLevel = source.indexOf('\nString _playerTitleAndLastName(', start);
+      final nextTopLevel = source.indexOf('\nString _playerLastName(', start);
       expect(
         nextTopLevel,
         greaterThan(start),

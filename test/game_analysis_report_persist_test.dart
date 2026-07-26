@@ -37,6 +37,14 @@ void main() {
       expect(restored.moves.first.evaluation.centipawns, 20);
       expect(restored.moves[1].classification, GameMoveClassification.blunder);
     });
+
+    test('a payload from older classification rules is a miss', () {
+      // Replaying it would keep showing the labels the new rules corrected, so
+      // the game has to be analyzed again rather than restored.
+      final json = gameAnalysisReportToJson(_sampleReport())
+        ..['v'] = gameAnalysisReportSchemaVersion - 1;
+      expect(gameAnalysisReportFromJson(json), isNull);
+    });
   });
 
   group('GameAnalysisReportStore (sqlite-shaped memory backend)', () {
