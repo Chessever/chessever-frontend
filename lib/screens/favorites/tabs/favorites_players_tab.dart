@@ -2,8 +2,6 @@ import 'dart:async';
 
 import 'package:chessever2/repository/supabase/chess_player/chess_player_repository.dart';
 import 'package:chessever2/providers/favorite_players_provider.dart';
-import 'package:chessever2/screens/favorites/rankings/ranking_filter_controls.dart';
-import 'package:chessever2/screens/favorites/rankings/ranking_filters.dart';
 import 'package:chessever2/utils/favorite_constants.dart';
 import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
 import 'package:chessever2/screens/standings/player_standing_model.dart';
@@ -35,7 +33,7 @@ final playerPhotoProvider = FutureProvider.autoDispose.family<String?, int?>((
   return FidePhotoService.getPhotoUrlOrNull(fideId.toString());
 });
 
-// Provider for world rankings search
+// Provider for world players search
 final worldPlayersSearchProvider = StateNotifierProvider.autoDispose<
   WorldPlayersSearchNotifier,
   WorldPlayersSearchState
@@ -43,8 +41,6 @@ final worldPlayersSearchProvider = StateNotifierProvider.autoDispose<
 
 class WorldPlayersSearchState {
   final List<PlayerStandingModel> players;
-  final Set<int> inactivePlayerIds;
-  final RankingFilters filters;
   final bool isLoading;
   final bool hasMore;
   final int offset;
@@ -53,8 +49,6 @@ class WorldPlayersSearchState {
 
   const WorldPlayersSearchState({
     this.players = const [],
-    this.inactivePlayerIds = const {},
-    this.filters = RankingFilters.defaults,
     this.isLoading = false,
     this.hasMore = true,
     this.offset = 0,
@@ -66,8 +60,6 @@ class WorldPlayersSearchState {
 
   WorldPlayersSearchState copyWith({
     List<PlayerStandingModel>? players,
-    Set<int>? inactivePlayerIds,
-    RankingFilters? filters,
     bool? isLoading,
     bool? hasMore,
     int? offset,
@@ -76,8 +68,6 @@ class WorldPlayersSearchState {
   }) {
     return WorldPlayersSearchState(
       players: players ?? this.players,
-      inactivePlayerIds: inactivePlayerIds ?? this.inactivePlayerIds,
-      filters: filters ?? this.filters,
       isLoading: isLoading ?? this.isLoading,
       hasMore: hasMore ?? this.hasMore,
       offset: offset ?? this.offset,
@@ -89,14 +79,13 @@ class WorldPlayersSearchState {
 
 class WorldPlayersSearchNotifier
     extends StateNotifier<WorldPlayersSearchState> {
+  final Ref _ref;
+  static const int _pageSize = 30;
+
   WorldPlayersSearchNotifier(this._ref)
     : super(const WorldPlayersSearchState(isLoading: true)) {
     _loadInitial();
   }
-
-  final Ref _ref;
-  static const int _pageSize = 30;
-  int _requestGeneration = 0;
 
   Future<void> _loadInitial() async {
     await _fetchPlayers(isInitial: true);
@@ -105,59 +94,55 @@ class WorldPlayersSearchNotifier
   Future<void> _fetchPlayers({required bool isInitial}) async {
     if (!mounted) return;
 
-    final generation = _requestGeneration;
-    final requestedFilters = state.filters;
-    final requestedSearch = state.searchQuery;
-    final offset = isInitial ? 0 : state.offset;
     state = state.copyWith(isLoading: true);
 
     try {
       final repo = _ref.read(chessPlayerRepositoryProvider);
-      final players = await retryTransientRead(
-        () => repo.getRankedPlayers(
-          filters: requestedFilters,
-          searchQuery: requestedSearch,
-          limit: _pageSize,
-          offset: offset,
-        ),
-      );
+      final offset = isInitial ? 0 : state.offset;
 
-      if (!mounted || generation != _requestGeneration) return;
+      final players = await retryTransientRead(
+        () =>
+            state.isSearching
+                ? repo.searchAllPlayers(
+                  query: state.searchQuery,
+                  limit: _pageSize,
+                  offset: offset,
+                )
+                : repo.getTopPlayers(limit: _pageSize, offset: offset),
+      );
 
       final playerModels =
           players
               .map(
-                (player) => PlayerStandingModel(
-                  name: player.name,
-                  countryCode: _fideFedToCountryCode(player.country),
-                  score: player.ratingFor(requestedFilters.timeControl) ?? 0,
+                (p) => PlayerStandingModel(
+                  name: p.name,
+                  countryCode: _fideFedToCountryCode(p.country),
+                  score: p.rating ?? 0,
                   scoreChange: 0,
                   matchScore: null,
-                  title: player.title,
-                  fideId: player.fideid,
+                  title: p.title,
+                  fideId: p.fideid,
                 ),
               )
               .toList();
+
       final allPlayers =
           isInitial ? playerModels : [...state.players, ...playerModels];
-      final inactiveIds = <int>{
-        if (!isInitial) ...state.inactivePlayerIds,
-        ...players.where((player) => player.isInactive).map((p) => p.fideid),
-      };
+
+      if (!mounted) return;
 
       state = state.copyWith(
         players: allPlayers,
-        inactivePlayerIds: inactiveIds,
         isLoading: false,
         hasMore: players.length >= _pageSize,
         offset: offset + players.length,
       );
     } catch (e) {
       debugPrint('[WorldPlayersSearch] Error: $e');
-      if (!mounted || generation != _requestGeneration) return;
+      if (!mounted) return;
       final error = userFacingError(
         e,
-        fallback: 'Could not load rankings. Please try again.',
+        fallback: 'Could not load players. Please try again.',
       );
       state = state.copyWith(
         isLoading: false,
@@ -173,47 +158,38 @@ class WorldPlayersSearchNotifier
 
   Future<void> search(String query) async {
     final trimmed = query.trim();
-    if (trimmed == state.searchQuery) return;
 
-    _requestGeneration++;
+    if (trimmed.isEmpty) {
+      await clearSearch();
+      return;
+    }
+
     state = state.copyWith(
       searchQuery: trimmed,
-      players: const [],
-      inactivePlayerIds: const {},
       offset: 0,
       hasMore: true,
-      isLoading: true,
+      error: null,
     );
+
     await _fetchPlayers(isInitial: true);
   }
 
-  Future<void> clearSearch() => search('');
+  Future<void> clearSearch() async {
+    if (!state.isSearching) return;
 
-  Future<void> updateFilters(RankingFilters filters) async {
-    if (filters == state.filters) return;
-
-    _requestGeneration++;
     state = state.copyWith(
-      filters: filters,
-      players: const [],
-      inactivePlayerIds: const {},
+      searchQuery: '',
       offset: 0,
       hasMore: true,
-      isLoading: true,
+      error: null,
     );
+
     await _fetchPlayers(isInitial: true);
   }
 
   Future<void> refresh() async {
-    _requestGeneration++;
-    state = state.copyWith(
-      players: const [],
-      inactivePlayerIds: const {},
-      offset: 0,
-      hasMore: true,
-      isLoading: true,
-    );
-    await _fetchPlayers(isInitial: true);
+    state = const WorldPlayersSearchState(isLoading: true);
+    await _loadInitial();
   }
 
   /// Convert FIDE federation code to ISO country code
@@ -452,18 +428,6 @@ class _FavoritesPlayersTabState extends ConsumerState<FavoritesPlayersTab>
     ref.read(worldPlayersSearchProvider.notifier).clearSearch();
   }
 
-  Future<void> _onFiltersChanged(RankingFilters filters) async {
-    HapticFeedback.selectionClick();
-    _searchFocusNode.unfocus();
-    await ref.read(worldPlayersSearchProvider.notifier).updateFilters(filters);
-    if (!mounted || !_scrollController.hasClients) return;
-    await _scrollController.animateTo(
-      0,
-      duration: const Duration(milliseconds: 220),
-      curve: Curves.easeOut,
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     super.build(context);
@@ -493,41 +457,18 @@ class _FavoritesPlayersTabState extends ConsumerState<FavoritesPlayersTab>
           parent: BouncingScrollPhysics(),
         ),
         slivers: [
+          // Search bar
           SliverToBoxAdapter(
             child: Padding(
               padding: EdgeInsets.fromLTRB(16.w, 12.h, 16.w, 8.h),
-              child: Column(
-                children: [
-                  Row(
-                    children: [
-                      Expanded(
-                        child: SearchBarWidget(
-                          hintText: 'Search',
-                          margin: 0.sp,
-                          autoFocus: false,
-                          controller: _searchController,
-                          focusNode: _searchFocusNode,
-                          onChanged: _onSearchChanged,
-                          onClose: _clearSearch,
-                        ),
-                      ),
-                      SizedBox(width: 8.w),
-                      RankingActivityControl(
-                        value: state.filters.activity,
-                        onChanged:
-                            (value) => _onFiltersChanged(
-                              state.filters.copyWith(activity: value),
-                            ),
-                      ),
-                    ],
-                  ),
-                  SizedBox(height: 10.h),
-                  RankingFilterControls(
-                    filters: state.filters,
-                    showActivity: false,
-                    onChanged: _onFiltersChanged,
-                  ),
-                ],
+              child: SearchBarWidget(
+                hintText: 'Search Player',
+                margin: 0.sp,
+                autoFocus: false,
+                controller: _searchController,
+                focusNode: _searchFocusNode,
+                onChanged: _onSearchChanged,
+                onClose: _clearSearch,
               ),
             ),
           ),
@@ -658,9 +599,6 @@ class _FavoritesPlayersTabState extends ConsumerState<FavoritesPlayersTab>
             isFavorite: isFavorite,
             rank: index + 1,
             showFavoriteButton: true,
-            isInactive:
-                player.fideId != null &&
-                state.inactivePlayerIds.contains(player.fideId),
             onTap: () => _navigateToPlayerDetail(player),
             onToggleFavorite: () => _toggleFavorite(player, isFavorite),
           );
