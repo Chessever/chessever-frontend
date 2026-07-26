@@ -8297,9 +8297,16 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard>
     // the user has just arrived at a finished game's final position — either by
     // playing to the end here, or by swiping onto a board that was already
     // resting there.
+    //
+    // The third clause matters because this board is recycled: when the games
+    // list hydrates, a different game can be handed to a slot that is already
+    // active and already resting at an end position, so neither of the first
+    // two clauses would fire and that game would never be counted.
     if (shouldShowEffect &&
         widget.isActivePage &&
-        (!_wasAtEnd || !oldWidget.isActivePage)) {
+        (!_wasAtEnd ||
+            !oldWidget.isActivePage ||
+            widget.game.gameId != oldWidget.game.gameId)) {
       _scheduleLikeNudgeCheck();
     }
     // ...and retire it the moment its moment passes: swiping away, stepping
@@ -9053,12 +9060,19 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard>
         status == GameStatus.draw;
   }
 
-  /// True at the final position of the real game — not at the end of a
-  /// variation the user wandered into, which is not "finishing a game".
+  /// True at the final move of the real game.
+  ///
+  /// NOTE what this does and does not mean. Finished games open at the STARTING
+  /// position (see `startAtLastMove` — only the gamebase explorer opts out), so
+  /// this is never true just because a game was opened or swiped onto. The user
+  /// has to actually reach the last mainline move. That is the intended bar:
+  /// "did you like this game?" is only a fair question of someone who watched
+  /// it to the end.
+  ///
+  /// [_isAnalysisAtFinishedSharePosition] already rejects a pointer inside a
+  /// variation, so wandering off the mainline cannot satisfy this either.
   bool _isAtMainlineGameEnd() {
-    final analysisState = widget.chessBoardState.analysisState;
-    return _isAtGameEnd(analysisState) &&
-        analysisState.movePointer.length == 1;
+    return _isAtGameEnd(widget.chessBoardState.analysisState);
   }
 
   bool get _isLikeNudgeEligible =>
