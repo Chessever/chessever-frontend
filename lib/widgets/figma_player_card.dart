@@ -25,6 +25,7 @@ class FigmaPlayerCard extends ConsumerWidget {
   final int? rank;
   final bool isFavorite;
   final bool showFavoriteButton;
+  final bool isInactive;
   final VoidCallback onTap;
   final VoidCallback? onToggleFavorite;
   final ValueChanged<LongPressStartDetails>? onLongPress;
@@ -35,6 +36,7 @@ class FigmaPlayerCard extends ConsumerWidget {
     required this.rank,
     this.isFavorite = false,
     this.showFavoriteButton = true,
+    this.isInactive = false,
     required this.onTap,
     this.onToggleFavorite,
     this.onLongPress,
@@ -116,6 +118,8 @@ class FigmaPlayerCard extends ConsumerWidget {
                     size: avatarSize,
                     borderRadius: 8.br,
                     title: player.title,
+                    titleBadgeColor:
+                        isInactive ? context.colors.dangerMuted : null,
                   ),
               loading:
                   () => skel.Skeletonizer(
@@ -139,6 +143,8 @@ class FigmaPlayerCard extends ConsumerWidget {
                     size: avatarSize,
                     borderRadius: 8.br,
                     title: player.title,
+                    titleBadgeColor:
+                        isInactive ? context.colors.dangerMuted : null,
                   ),
             ),
             SizedBox(width: 12.w),

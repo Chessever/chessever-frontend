@@ -1,5 +1,4 @@
 import 'package:cached_network_image/cached_network_image.dart';
-import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
@@ -30,6 +29,9 @@ class PlayerInitialsAvatar extends StatelessWidget {
   /// Optional title badge (e.g., "GM", "IM") shown at the bottom
   final String? title;
 
+  /// Optional ranking-specific override for the title badge background.
+  final Color? titleBadgeColor;
+
   /// Whether to use circular shape instead of rounded rectangle
   final bool isCircular;
 
@@ -40,6 +42,7 @@ class PlayerInitialsAvatar extends StatelessWidget {
     required this.size,
     this.borderRadius,
     this.title,
+    this.titleBadgeColor,
     this.isCircular = false,
   });
 
@@ -77,7 +80,7 @@ class PlayerInitialsAvatar extends StatelessWidget {
               child: Container(
                 padding: EdgeInsets.symmetric(horizontal: 3.w, vertical: 1.5.h),
                 decoration: BoxDecoration(
-                  color: getTitleBadgeColor(title!),
+                  color: titleBadgeColor ?? getTitleBadgeColor(title!),
                   borderRadius: BorderRadius.only(
                     bottomLeft: Radius.circular(effectiveBorderRadius - 2),
                     bottomRight: Radius.circular(effectiveBorderRadius - 2),

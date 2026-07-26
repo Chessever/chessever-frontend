@@ -15,5 +15,5 @@ final selectedFavoritesModeProvider =
 const favoritesModeNames = {
   FavoritesScreenMode.favorites: 'Favorites',
   FavoritesScreenMode.games: 'Games',
-  FavoritesScreenMode.players: 'Players',
+  FavoritesScreenMode.players: 'Rankings',
 };
