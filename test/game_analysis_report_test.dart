@@ -274,21 +274,23 @@ void main() {
       );
     });
 
-    test('win% loss tiers', () {
-      // Non-best (engine wanted a2a3).
-      expect(_classifyWin(game, beforeWin: 50, afterWin: 46), isNull); // 4
+    test('the loss tiers are lichess\'s', () {
+      // Engine wanted a2a3, so these are all judged. The thresholds are 0.1 /
+      // 0.2 / 0.3 winning chances, which is half as many points on the 0–100
+      // scale quoted here: 5 / 10 / 15.
+      expect(_classifyWin(game, beforeWin: 50, afterWin: 46), isNull);
       expect(
         _classifyWin(game, beforeWin: 50, afterWin: 44),
         GameMoveClassification.inaccuracy,
-      ); // 6
+      );
       expect(
         _classifyWin(game, beforeWin: 50, afterWin: 35),
         GameMoveClassification.mistake,
-      ); // 15
+      );
       expect(
         _classifyWin(game, beforeWin: 50, afterWin: 25),
         GameMoveClassification.blunder,
-      ); // 25
+      );
     });
 
     test('only-good-move or outcome swing is Great', () {
@@ -314,7 +316,11 @@ void main() {
       );
     });
 
-    test('decided games soften tags', () {
+    test('a decided game runs out of chances to lose', () {
+      // No softening rule does this. Winning chances compress so hard near the
+      // edges that a player who is already lost cannot shed another 0.1, so the
+      // same threshold that punishes a 0.55-pawn slip in a level game says
+      // nothing here.
       expect(_classifyWin(game, beforeWin: 5, afterWin: 0), isNull);
       expect(_classifyWin(game, beforeWin: 99, afterWin: 93), isNull);
     });
@@ -380,40 +386,38 @@ GameMoveClassification? _classifyWin(
   GameMoveClassification? previousMoveClassification,
 }) {
   final alt = alternativeWin;
+  // The judgment reads centipawns, exactly as lichess's does, so the scores have
+  // to say the same thing as the percentages beside them. Feeding a flat 0 here
+  // and describing the swing only in `winPercentages` would leave every loss
+  // tier looking at a position that never moved.
   final positions = [
     GameReportPosition(
       fen: game.startingFen,
       lines: [
-        _line(cp: 0, moves: [bestMove]),
-        if (alt != null) _line(cp: 0, moves: const ['h2h3']),
+        _line(cp: _cpForWin(beforeWin), moves: [bestMove]),
+        if (alt != null) _line(cp: _cpForWin(beforeWin), moves: const ['h2h3']),
       ],
     ),
     GameReportPosition(
       fen: game.mainline.first.fen,
-      lines: [_line(cp: 0)],
+      lines: [_line(cp: _cpForWin(afterWin))],
     ),
   ];
   if (alt != null) {
-    int cpForWin(double w) {
-      if (w >= 99) return 1000;
-      if (w <= 1) return -1000;
-      final wc = (w - 50) / 50;
-      final ratio = (1 + wc) / (1 - wc).clamp(1e-6, 1e6);
-      final cp = math.log(ratio) / 0.00368208;
-      return cp.round().clamp(-1000, 1000);
-    }
-
+    // The positive labels weigh the played move against the next candidate, so
+    // this shape scores the engine's first line with what the position is worth
+    // *after* the move and the runner-up with the alternative's own value.
     final positions2 = [
       GameReportPosition(
         fen: game.startingFen,
         lines: [
-          _line(cp: cpForWin(afterWin), moves: [bestMove]),
-          _line(cp: cpForWin(alt), moves: const ['h2h3']),
+          _line(cp: _cpForWin(afterWin), moves: [bestMove]),
+          _line(cp: _cpForWin(alt), moves: const ['h2h3']),
         ],
       ),
       GameReportPosition(
         fen: game.mainline.first.fen,
-        lines: [_line(cp: cpForWin(afterWin))],
+        lines: [_line(cp: _cpForWin(afterWin))],
       ),
     ];
     return classifyGameReportMove(
@@ -432,6 +436,16 @@ GameMoveClassification? _classifyWin(
     winPercentages: [beforeWin, afterWin],
     previousMoveClassification: previousMoveClassification,
   );
+}
+
+/// Inverse of [gameReportWinPercentage]: the centipawn score a fixture means
+/// when it says "the mover was 85% here".
+int _cpForWin(double whiteWin) {
+  if (whiteWin >= 99) return 1000;
+  if (whiteWin <= 1) return -1000;
+  final wc = (whiteWin - 50) / 50;
+  final ratio = (1 + wc) / (1 - wc);
+  return (math.log(ratio) / 0.00368208).round().clamp(-1000, 1000);
 }
 
 GameReportPosition _position(int cp) => GameReportPosition(

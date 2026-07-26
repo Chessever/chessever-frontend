@@ -128,51 +128,15 @@ OutcomeBand outcomeBandFor(double moverWinPercent) {
   return OutcomeBand.clearlyWinning;
 }
 
-/// True when the mover moved to a strictly worse band and cleared the
-/// hysteresis dead-zone around the boundary it crossed.
-bool outcomeBandCollapsed({
-  required double moverBefore,
-  required double moverAfter,
-}) {
-  final before = outcomeBandFor(moverBefore);
-  final after = outcomeBandFor(moverAfter);
-  if (after.index >= before.index) return false;
-  return (moverBefore - moverAfter) > kBandHysteresisPp;
-}
-
-/// True when the result was already decided before the move and stayed decided
-/// after it — the mover was clearly winning and still is, or was clearly losing
-/// and still is.
+/// Bands no longer gate the negative labels at all: `?!`, `?` and `??` come from
+/// the lichess port, which does its own softening in winning-chance space. What
+/// is left here serves the *positive* labels, which still need to know whether a
+/// position is contested and whether a move dragged the mover out of a lost one.
 ///
-/// This is the "the game is over, it is just not finished yet" test, and it is
-/// what stops a decided position from handing out errors. Two shapes show up in
-/// every crushing finish:
-///
-/// * The winner has a forced mate and takes a free rook instead of playing it.
-///   The mate announcement disappears, but they are still completely winning —
-///   they chose a slower road to the same result, which is not a mistake.
-/// * The loser is dead lost and gets mated in seven instead of eleven. No move
-///   they had could change that, so nothing they play deserves a symbol.
-///
-/// Both used to be labelled, because the *shape* of the evaluation changed even
-/// though the outcome did not. A label has to describe a change in what is going
-/// to happen; when nothing changed, the honest answer is no symbol.
-///
-/// Deliberately band-scoped, not a blanket amnesty for lopsided games: giving up
-/// a forced mate for a position that is merely *better*, or walking from a
-/// playable game into a forced mate, both leave the settled band and stay
-/// punishable.
-bool reportOutcomeAlreadySettled({
-  required double moverBefore,
-  required double moverAfter,
-}) {
-  final before = outcomeBandFor(moverBefore);
-  if (before != OutcomeBand.clearlyWinning &&
-      before != OutcomeBand.clearlyLosing) {
-    return false;
-  }
-  return outcomeBandFor(moverAfter) == before;
-}
+/// The two band helpers that used to sit here — a "collapsed into a worse band"
+/// test and a decided-game amnesty — were both scaffolding around measuring
+/// damage in win-percentage points. Reintroducing either would put a second,
+/// competing judgment back next to lichess's.
 
 /// True when the mover climbed out of [OutcomeBand.clearlyLosing].
 bool escapesClearlyLosingBand({

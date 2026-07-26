@@ -1,21 +1,94 @@
 import 'package:chessever2/screens/chessboard/analysis/chess_game.dart';
 import 'package:chessever2/screens/chessboard/game_review/game_analysis_report.dart';
-import 'package:chessever2/screens/chessboard/game_review/move_position_facts.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 /// A brutal finish used to be full of "?".
 ///
-/// Both shapes came from the same place: [reportOutcomeAlreadySettled] did not
-/// exist, so a *change in the shape of the evaluation* was read as damage even
-/// when the result never moved. `_tacticalLossOverride` trips on a mate
-/// announcement appearing or disappearing all on its own, and it runs after the
-/// loss tiers where `_moreSevere` can only raise a verdict — so the garbage-time
-/// softening the tiers already applied was silently undone.
+/// The cure is no longer a rule of our own. `?!`, `?` and `??` now come from the
+/// lichess port, which measures damage in winning chances — and those compress so
+/// hard near the edges that a decided game runs out of chances to lose all by
+/// itself. A player already lost by nine pawns cannot shed another 0.1, and a
+/// mate held in either direction is excluded by name rather than by band.
+///
+/// Two of the cases below changed verdict when the port landed, and that is
+/// deliberate: lichess *does* mark giving up a forced mate and walking into one,
+/// just far more gently than our old tiers did. The band-scoped amnesty that used
+/// to silence them (`reportOutcomeAlreadySettled`) is gone. Do not bring it back
+/// without deciding to diverge from lichess on purpose.
 void main() {
   group('a decided game hands out no errors', () {
-    test('the winner taking material instead of mating is not a mistake', () {
-      // White has a forced mate and plays a slow queen move instead. The mate
-      // announcement disappears, the position is still completely winning.
+    test('mating slower than necessary is not an error', () {
+      // White has mate in 7 and plays a move that still mates, in 11. This is
+      // lichess's `MateDelayed`, the one sequence it names and then judges
+      // nothing for.
+      expect(
+        _classify(
+          _crushingWhite,
+          playedUci: 'g2a2',
+          engineBest: 'g2g7',
+          before: _mate(7),
+          after: _mate(11),
+          beforeWin: 100,
+          afterWin: 100,
+        ),
+        isNull,
+      );
+    });
+
+    test('being mated sooner is not an error', () {
+      // Black is mated in 11 and plays into mate in 7. Scores arrive normalised
+      // to White, so these are positive while the *mover* is the one losing.
+      expect(
+        _classify(
+          _hopelessBlack,
+          playedUci: 'g7g5',
+          engineBest: 'h7h6',
+          before: _mate(11),
+          after: _mate(7),
+          beforeWin: 100,
+          afterWin: 100,
+        ),
+        isNull,
+      );
+    });
+
+    test('drifting deeper into a lost game is not an error', () {
+      // -15.00 to -30.00 for the mover: an enormous centipawn slide worth 0.008
+      // winning chances, because the game was already gone.
+      expect(
+        _classify(
+          _hopelessBlack,
+          playedUci: 'g7g5',
+          engineBest: 'h7h6',
+          before: _cp(1500),
+          after: _cp(3000),
+          beforeWin: 97.5,
+          afterWin: 97.5,
+        ),
+        isNull,
+      );
+    });
+
+    test('easing off while still crushing is not an error', () {
+      expect(
+        _classify(
+          _crushingWhite,
+          playedUci: 'g2a2',
+          engineBest: 'g2g7',
+          before: _cp(1500),
+          after: _cp(900),
+          beforeWin: 97.5,
+          afterWin: 96.5,
+        ),
+        isNull,
+      );
+    });
+  });
+
+  group('lichess still marks a mate created or thrown away, gently', () {
+    test('losing a forced mate while crushing is only an Inaccuracy', () {
+      // `MateLost` with the mover still better than +9.99: lichess's own
+      // softening, and the reason this needs no band rule of ours.
       expect(
         _classify(
           _crushingWhite,
@@ -26,17 +99,13 @@ void main() {
           beforeWin: 100,
           afterWin: 97.5,
         ),
-        isNull,
-        reason:
-            'a slower road to the same win is a choice, not damage — the mover '
-            'never left the clearly-winning band',
+        GameMoveClassification.inaccuracy,
       );
     });
 
-    test('the loser being mated sooner is not a mistake', () {
-      // Black is dead lost on centipawns; after the move the engine announces a
-      // forced mate. No move Black had led anywhere better. Scores arrive
-      // normalised to White, so these are positive while the *mover* is losing.
+    test('walking into mate from a lost game is only a Mistake', () {
+      // `MateCreated` from -9.00 for the mover: worse than -7.00, so it is a
+      // Mistake rather than a Blunder.
       expect(
         _classify(
           _hopelessBlack,
@@ -47,18 +116,29 @@ void main() {
           beforeWin: 96.5,
           afterWin: 100,
         ),
-        isNull,
-        reason:
-            'the mover was already clearly losing and still is; there was no '
-            'better move to have played',
+        GameMoveClassification.mistake,
+      );
+    });
+
+    test('walking into mate from a hopeless game is only an Inaccuracy', () {
+      // Past -9.99 there is nothing left to lose, so the mark is the softest one.
+      expect(
+        _classify(
+          _hopelessBlack,
+          playedUci: 'g7g5',
+          engineBest: 'h7h6',
+          before: _cp(1100),
+          after: _mate(6),
+          beforeWin: 97.5,
+          afterWin: 100,
+        ),
+        GameMoveClassification.inaccuracy,
       );
     });
   });
 
-  group('the guard is band-scoped, not an amnesty for lopsided games', () {
-    test('giving up a forced mate for merely better is still punished', () {
-      // Mate in 7 traded for +400: that leaves the clearly-winning band, so it
-      // is real damage and keeps its label.
+  group('a changed result is punished in full', () {
+    test('giving up a forced mate for merely better is a Blunder', () {
       expect(
         _classify(
           _crushingWhite,
@@ -69,13 +149,11 @@ void main() {
           beforeWin: 100,
           afterWin: 81.3,
         ),
-        isNotNull,
+        GameMoveClassification.blunder,
       );
     });
 
-    test('walking from a playable game into a forced mate is still punished', () {
-      // Roughly balanced before, mated after — the outcome changed, so this is
-      // exactly what the loss tiers exist for.
+    test('walking from a playable game into a forced mate is a Blunder', () {
       expect(
         _classify(
           _crushingWhite,
@@ -90,34 +168,6 @@ void main() {
       );
     });
   });
-
-  group('reportOutcomeAlreadySettled', () {
-    test('settled only when the band is decided and unchanged', () {
-      expect(
-        reportOutcomeAlreadySettled(moverBefore: 100, moverAfter: 97),
-        isTrue,
-      );
-      expect(reportOutcomeAlreadySettled(moverBefore: 3, moverAfter: 0), isTrue);
-      // Decided, then not decided any more.
-      expect(
-        reportOutcomeAlreadySettled(moverBefore: 100, moverAfter: 81),
-        isFalse,
-      );
-      expect(
-        reportOutcomeAlreadySettled(moverBefore: 3, moverAfter: 40),
-        isFalse,
-      );
-      // Contested positions are never settled, in either direction.
-      expect(
-        reportOutcomeAlreadySettled(moverBefore: 55, moverAfter: 50),
-        isFalse,
-      );
-      expect(
-        reportOutcomeAlreadySettled(moverBefore: 50, moverAfter: 100),
-        isFalse,
-      );
-    });
-  });
 }
 
 /// White queen and king against a bare king: White to move, mate is forced.
@@ -128,14 +178,14 @@ final _crushingWhite = ChessGame.fromPgn(
 
 /// Black to move against queen and rook, with pawn moves still available so the
 /// played move can differ from the engine's — a lone king with one legal move
-/// would be `playedIsBest` and never reach the override this covers.
+/// would be the engine's own choice and would never be judged at all.
 final _hopelessBlack = ChessGame.fromPgn(
   'hopeless-black',
   '[FEN "7k/5ppp/8/8/8/8/8/K5QR b - - 0 1"]\n\n1... g5 *',
 );
 
 /// Engine scores reach the report normalised to White, which is why the "loser"
-/// case above passes positive numbers for a losing Black mover — the classifier
+/// cases above pass positive numbers for a losing Black mover — the judgment
 /// applies the mover's sign itself.
 GameReportLine _cp(int centipawns, {List<String> moves = const ['a2a3']}) =>
     GameReportLine(moves: moves, depth: 16, centipawns: centipawns);
@@ -160,9 +210,8 @@ GameMoveClassification? _classify(
   return classifyGameReportMove(
     index: 0,
     game: game,
-    // A single engine line keeps this on the loss path: the positive labels all
-    // require MultiPV alternatives, so this isolates the tiers and the tactical
-    // override, which is where the bug lived.
+    // A single engine line keeps this on the judgment path: every positive label
+    // needs a MultiPV alternative to beat.
     positions: [
       GameReportPosition(
         fen: game.startingFen,

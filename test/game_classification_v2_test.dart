@@ -71,12 +71,6 @@ void main() {
       expect(outcomeBandFor(95), OutcomeBand.clearlyWinning);
     });
 
-    test('hysteresis absorbs a boundary-hugging wobble', () {
-      // 26 -> 24 crosses competitive/worse but only by engine noise.
-      expect(outcomeBandCollapsed(moverBefore: 26, moverAfter: 24), isFalse);
-      expect(outcomeBandCollapsed(moverBefore: 26, moverAfter: 18), isTrue);
-    });
-
     test('escaping the losing band needs a real gain', () {
       expect(
         escapesClearlyLosingBand(moverBefore: 9, moverAfter: 10.5),
@@ -483,20 +477,21 @@ void main() {
     });
   });
 
-  group('tactical override recovers compressed losses', () {
-    test('a band collapse with a big cp swing is at least a Mistake', () {
-      // 12% -> 6% is only 6pp because winning chances compress near zero, so
-      // the raw tiers call it an Inaccuracy. The centipawn loss is ~200 and the
-      // mover drops out of the "worse" band into "clearly losing".
+  group('the damage is judged the way lichess judges it', () {
+    // There is no longer a centipawn "tactical override" sitting behind the
+    // thresholds looking for losses the win-percentage scale had compressed
+    // away. Lichess measures in winning chances and accepts the compression as
+    // the answer, so a lopsided position simply has less left to lose.
+    test('a compressed loss in a bad position is only an Inaccuracy', () {
+      // 12% -> 6%: a real ~200cp slide, but 0.12 winning chances.
       expect(
         _classify(_openingGame, moverBefore: 12, moverAfter: 6),
-        GameMoveClassification.mistake,
+        GameMoveClassification.inaccuracy,
       );
     });
 
-    test('a big cp swing alone does not manufacture a Mistake', () {
-      // 97% -> 93% is a ~240cp swing but changes nothing: same band, no
-      // material conceded, no forcing reply. It must stay unlabelled.
+    test('a big cp swing while crushing stays unlabelled', () {
+      // 97% -> 93% is a ~240cp swing worth 0.09 winning chances: under the bar.
       expect(
         _classify(
           _openingGame,
@@ -508,7 +503,7 @@ void main() {
       );
     });
 
-    test('the override never softens a tier the thresholds already found', () {
+    test('handing over a contested game is a Blunder', () {
       expect(
         _classify(_openingGame, moverBefore: 60, moverAfter: 30),
         GameMoveClassification.blunder,

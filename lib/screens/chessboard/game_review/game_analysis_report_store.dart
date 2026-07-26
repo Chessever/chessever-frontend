@@ -175,10 +175,11 @@ class _MemoryEntry {
 /// Payload version. Bump whenever a change alters what a report *says* about
 /// the same game, so stored reports from the old rules are dropped instead of
 /// being replayed forever. v2: book detection reaches real theory depth.
-/// v3: a decided game no longer hands out errors (see
-/// `reportOutcomeAlreadySettled`) — every stored report still carries the "?"
-/// this fixed.
-const int gameAnalysisReportSchemaVersion = 3;
+/// v3: a decided game no longer hands out errors. v4: `?!`, `?` and `??` are
+/// lichess's own judgment (`lichess_judgment.dart`) — the blunder threshold, the
+/// mate handling and the rule that the engine's own move is never an error all
+/// changed, so every stored report still carries the old symbols.
+const int gameAnalysisReportSchemaVersion = 4;
 
 Map<String, dynamic> gameAnalysisReportToJson(GameAnalysisReport report) {
   return <String, dynamic>{

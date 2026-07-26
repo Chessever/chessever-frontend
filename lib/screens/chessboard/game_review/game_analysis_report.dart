@@ -3,6 +3,7 @@ import 'dart:math' as math;
 
 import 'package:chessever2/screens/chessboard/analysis/chess_game.dart';
 import 'package:chessever2/screens/chessboard/game_review/game_analysis_report_store.dart';
+import 'package:chessever2/screens/chessboard/game_review/lichess_judgment.dart';
 import 'package:chessever2/screens/chessboard/game_review/move_position_facts.dart';
 import 'package:chessever2/screens/chessboard/provider/stockfish_singleton.dart';
 import 'package:dartchess/dartchess.dart';
@@ -985,9 +986,12 @@ bool gameReportMoveNeedsMultiPv({
 
 /// Classifies a mainline move into our [GameMoveClassification] set.
 ///
-/// Primary metric: mover win-probability change from
-/// [gameReportWinPercentage] (percentage points). Specials run first, then
-/// loss tiers. Ordinary accurate play returns null.
+/// Two halves, deliberately kept apart. The praise — Brilliant, Great, Best and
+/// Book — is ours, and it reasons in win-percentage points from
+/// [gameReportWinPercentage] plus board facts. The damage — `?!`, `?`, `??` — is
+/// lichess's, judged in winning chances by [lichessJudgementForReportMove], with
+/// Missed Win as the one label layered over it. Ordinary accurate play returns
+/// null.
 GameMoveClassification? classifyGameReportMove({
   required int index,
   required ChessGame game,
@@ -1054,23 +1058,20 @@ GameMoveClassification? _classifyGameReportMoveCore({
       before.bestLine.moves.isNotEmpty &&
       before.bestLine.moves.first == move.uci;
 
-  // Only one engine line → forced if it was the only choice; else loss tiers.
+  final moverBefore = isWhite ? beforeWin : (100 - beforeWin);
+  final moverAfter = isWhite ? afterWin : (100 - afterWin);
+
+  // A single engine line can never support a positive label — they all have to
+  // beat an alternative — so the judgment is the whole verdict here.
   if (before.lines.length <= 1) {
-    if (playedIsBest) return null;
     return _missedOrLoss(
+      index: index,
+      game: game,
+      positions: positions,
       moverChange: moverChange,
-      beforeWin: beforeWin,
-      afterWin: afterWin,
-      isWhite: isWhite,
-      playedIsBest: playedIsBest,
+      moverBefore: moverBefore,
+      moverAfter: moverAfter,
       previousMoveClassification: previousMoveClassification,
-      before: before,
-      after: positions[index + 1],
-      facts: describeMove(
-        beforeFen: before.fen,
-        playedUci: move.uci,
-        previousUci: index > 0 ? game.mainline[index - 1].uci : null,
-      ),
     );
   }
 
@@ -1102,12 +1103,10 @@ GameMoveClassification? _classifyGameReportMoveCore({
     playedUci: move.uci,
     previousUci: index > 0 ? game.mainline[index - 1].uci : null,
   );
-  final moverBefore = isWhite ? beforeWin : (100 - beforeWin);
-  final moverAfter = isWhite ? afterWin : (100 - afterWin);
 
   // Routine and forced moves veto *positive* labels only. They must still fall
-  // through to Missed Win and the loss tiers — an obvious-looking move can be
-  // an inaccuracy or worse, and returning "no symbol" here would hide it.
+  // through to the judgment — an obvious-looking move can be an inaccuracy or
+  // worse, and returning "no symbol" here would hide it.
   var positiveLabelsEligible = !facts.isForcedOrRoutine && !simpleRecapture;
 
   // Routine material recovery: taking a loose or already-committed unit while
@@ -1218,174 +1217,94 @@ GameMoveClassification? _classifyGameReportMoveCore({
 
   // ── Steps 8–11 ─────────────────────────────────────────────────────────
   return _missedOrLoss(
+    index: index,
+    game: game,
+    positions: positions,
     moverChange: moverChange,
-    beforeWin: beforeWin,
-    afterWin: afterWin,
-    isWhite: isWhite,
-    playedIsBest: playedIsBest,
+    moverBefore: moverBefore,
+    moverAfter: moverAfter,
     previousMoveClassification: previousMoveClassification,
-    before: before,
-    after: positions[index + 1],
-    facts: facts,
   );
 }
 
-GameMoveClassification? _missedOrLoss({
-  required double moverChange,
-  required double beforeWin,
-  required double afterWin,
-  required bool isWhite,
-  required bool playedIsBest,
-  required GameMoveClassification? previousMoveClassification,
-  required GameReportPosition before,
-  required GameReportPosition after,
-  required MovePositionFacts facts,
+/// Lichess's verdict for mainline move [index] — the sole source of `?!`, `?`
+/// and `??`. Null means lichess would leave the move unmarked.
+///
+/// Both scores come from the engine's first line, White-relative, exactly as
+/// `AnalysisBuilder.makeInfos` feeds `Advice`. See [lichessAdvice] for the rules
+/// and for the one deviation (lichess measures move one against a fixed +0.15
+/// because fishnet never evaluates the starting position; we have that
+/// evaluation, so we use it).
+LichessJudgement? lichessJudgementForReportMove({
+  required int index,
+  required ChessGame game,
+  required List<GameReportPosition> positions,
 }) {
-  final moverBefore = isWhite ? beforeWin : (100 - beforeWin);
-  final moverAfter = isWhite ? afterWin : (100 - afterWin);
+  if (index < 0 || index >= game.mainline.length) return null;
+  if (index + 1 >= positions.length) return null;
+  final move = game.mainline[index];
+  final before = positions[index].bestLine;
+  final after = positions[index + 1].bestLine;
+  return lichessAdvice(
+    previous: EngineScore.fromLine(
+      centipawns: before.centipawns,
+      mate: before.mate,
+    ),
+    current: EngineScore.fromLine(
+      centipawns: after.centipawns,
+      mate: after.mate,
+    ),
+    moverIsWhite: move.turn == ChessColor.white,
+    engineBestUci: before.moves.isEmpty ? null : before.moves.first,
+    playedUci: move.uci,
+  );
+}
 
-  // ── Step 7b: a decided game hands out no errors ─────────────────────────
-  // Before anything else, ask whether this move could have changed the result.
-  // If the mover was already clearly winning and still is, or already clearly
-  // losing and still is, then nothing it did is describable as damage: the
-  // winner collecting material before mating has chosen a slower road to the
-  // same win, and the loser being mated in seven instead of eleven had no move
-  // that led anywhere better.
-  //
-  // This has to sit above the tiers *and* the tactical override. The tiers
-  // already soften decided positions, but [_tacticalLossOverride] runs after
-  // them and [_moreSevere] can only raise a verdict, so the override was
-  // quietly undoing that softening — a vanished or newly-appeared mate
-  // announcement is enough to trip it on its own, which is exactly what turned
-  // both of those moves into "?".
-  if (reportOutcomeAlreadySettled(
-    moverBefore: moverBefore,
-    moverAfter: moverAfter,
-  )) {
-    return null;
-  }
+/// The negative half of the verdict: lichess's judgment, with Missed Win as the
+/// only thing layered on top of it.
+///
+/// Everything that used to live here — hand-tuned percentage-point tiers,
+/// garbage-time softening, a decided-game amnesty and a centipawn "tactical
+/// override" — has been replaced by [lichessJudgementForReportMove]. Those rules
+/// existed to patch symptoms of measuring damage in win-percentage points, and
+/// lichess does not need them: winning chances compress so hard near the edges
+/// that a lost game genuinely cannot shed another 0.1, and mate-to-mate moves
+/// are excluded by name rather than by band. Do not reintroduce a tier here.
+GameMoveClassification? _missedOrLoss({
+  required int index,
+  required ChessGame game,
+  required List<GameReportPosition> positions,
+  required double moverChange,
+  required double moverBefore,
+  required double moverAfter,
+  required GameMoveClassification? previousMoveClassification,
+}) {
+  final judgement = lichessJudgementForReportMove(
+    index: index,
+    game: game,
+    positions: positions,
+  );
+  if (judgement == null) return null;
 
-  // ── Step 8: Missed Win ─────────────────────────────────────────────────
-  // Missed conversion after opponent's blunder.
+  // ── Missed Win ─────────────────────────────────────────────────────────
+  // Ours, not lichess's, and deliberately gated behind a judgment: it only ever
+  // *renames* an error lichess already found, so the set of moves carrying a
+  // negative symbol stays exactly lichess's set. A missed conversion after the
+  // opponent's blunder, then throwing a clear win outright.
   if (previousMoveClassification == GameMoveClassification.blunder &&
-      !playedIsBest &&
       moverChange < -5 &&
       moverBefore >= 60) {
     return GameMoveClassification.missedWin;
   }
-  // Threw a clear win.
   if (moverBefore >= 75 && moverAfter <= 55 && moverChange <= -15) {
     return GameMoveClassification.missedWin;
   }
 
-  // ── Steps 9–10: tactical override, then the normal loss tiers ──────────
-  final tier = _lossTier(moverChange, beforeWin, afterWin, isWhite);
-  if (playedIsBest) return tier;
-  final override = _tacticalLossOverride(
-    before: before,
-    after: after,
-    isWhite: isWhite,
-    moverBefore: moverBefore,
-    moverAfter: moverAfter,
-    facts: facts,
-  );
-  if (override == null) return tier;
-  // "At least a Mistake": never downgrade a Blunder the tiers already found.
-  return _moreSevere(tier, override);
-}
-
-/// Severity order for the negative labels, so an override can raise a tier
-/// without ever softening one.
-int _lossSeverity(GameMoveClassification? classification) =>
-    switch (classification) {
-      GameMoveClassification.blunder => 3,
-      GameMoveClassification.mistake => 2,
-      GameMoveClassification.inaccuracy => 1,
-      _ => 0,
-    };
-
-GameMoveClassification? _moreSevere(
-  GameMoveClassification? a,
-  GameMoveClassification? b,
-) => _lossSeverity(a) >= _lossSeverity(b) ? a : b;
-
-/// Winning chances compress near 0% and 100%, so a player who is already much
-/// worse cannot shed many percentage points even when they blunder outright.
-/// This recovers those moves from centipawn and board evidence instead.
-///
-/// Deliberately conjunctive: a large centipawn swing on its own is noisy in a
-/// decided position, so it must be corroborated by concrete damage. Everything
-/// is measured from the mover's point of view.
-GameMoveClassification? _tacticalLossOverride({
-  required GameReportPosition before,
-  required GameReportPosition after,
-  required bool isWhite,
-  required double moverBefore,
-  required double moverAfter,
-  required MovePositionFacts facts,
-}) {
-  final cpBefore = _moverCentipawns(before.bestLine, isWhite: isWhite);
-  final cpAfter = _moverCentipawns(after.bestLine, isWhite: isWhite);
-  final mateBefore = _moverMate(before.bestLine, isWhite: isWhite);
-  final mateAfter = _moverMate(after.bestLine, isWhite: isWhite);
-
-  // Walking into a forced mate is damage however the centipawn maths lands.
-  final mateStateWorsened =
-      (mateAfter != null && mateAfter < 0 && (mateBefore == null || mateBefore > 0)) ||
-      (mateBefore != null && mateBefore > 0 && (mateAfter == null || mateAfter < 0));
-
-  if (!mateStateWorsened) {
-    if (cpBefore == null || cpAfter == null) return null;
-    if ((cpBefore - cpAfter) < kTacticalOverrideMinCpLoss) return null;
-  }
-
-  final uncompensatedMaterialLoss =
-      facts.givesMaterialBack && !facts.givesCheck && !facts.isPromotion;
-  final bandCollapse = outcomeBandCollapsed(
-    moverBefore: moverBefore,
-    moverAfter: moverAfter,
-  );
-  final forcedSequence = _opponentReplyIsForcing(after);
-
-  final corroborated =
-      uncompensatedMaterialLoss ||
-      forcedSequence ||
-      bandCollapse ||
-      mateStateWorsened;
-  if (!corroborated) return null;
-
-  return GameMoveClassification.mistake;
-}
-
-/// Mover-relative centipawns. Engine scores reach the report already
-/// normalised to White, so only the mover's sign is applied here.
-int? _moverCentipawns(GameReportLine line, {required bool isWhite}) {
-  final cp = line.centipawns;
-  if (cp == null) return null;
-  return isWhite ? cp : -cp;
-}
-
-int? _moverMate(GameReportLine line, {required bool isWhite}) {
-  final mate = line.mate;
-  if (mate == null) return null;
-  return isWhite ? mate : -mate;
-}
-
-/// Whether the opponent's best reply opens with a forcing move — a capture or
-/// a check. Used as corroboration that a swing is tactical rather than a slow
-/// positional drift.
-bool _opponentReplyIsForcing(GameReportPosition after) {
-  final pv = after.bestLine.moves;
-  if (pv.isEmpty) return false;
-  try {
-    final position = Chess.fromSetup(Setup.parseFen(after.fen));
-    final reply = NormalMove.fromUci(pv.first);
-    if (!position.isLegal(reply)) return false;
-    final isCapture = position.board.pieceAt(reply.to) != null;
-    return isCapture || position.play(reply).isCheck;
-  } catch (_) {
-    return false;
-  }
+  return switch (judgement) {
+    LichessJudgement.inaccuracy => GameMoveClassification.inaccuracy,
+    LichessJudgement.mistake => GameMoveClassification.mistake,
+    LichessJudgement.blunder => GameMoveClassification.blunder,
+  };
 }
 
 /// Losing after the move, or the unplayed line was already a forced win.
@@ -1409,32 +1328,6 @@ bool _hasChangedGameOutcome({
   if (moverChange <= 10) return false;
   return (beforeWin < 50 && afterWin > 50) ||
       (beforeWin > 50 && afterWin < 50);
-}
-
-/// Loss tiers from mover win% drop (pp). Softened in decided games.
-GameMoveClassification? _lossTier(
-  double moverChange,
-  double beforeWin,
-  double afterWin,
-  bool isWhite,
-) {
-  final moverBefore = isWhite ? beforeWin : (100 - beforeWin);
-  final moverAfter = isWhite ? afterWin : (100 - afterWin);
-  final drop = -moverChange;
-
-  // Heavy-score "garbage time": demote severity, never spam blunders.
-  if (moverBefore <= 8 || moverAfter >= 92 || moverBefore >= 95) {
-    if (drop >= 25) return GameMoveClassification.mistake;
-    if (drop >= 12) return GameMoveClassification.inaccuracy;
-    return null;
-  }
-
-  // Live-game bands (win-probability points).
-  if (drop >= 20) return GameMoveClassification.blunder;
-  if (drop >= 10) return GameMoveClassification.mistake;
-  if (drop >= 5) return GameMoveClassification.inaccuracy;
-  // drop < 5: quiet / excellent residual — no chip.
-  return null;
 }
 
 // ── Brilliant (!!) high-precision path ─────────────────────────────────────
@@ -1493,11 +1386,6 @@ const double kPositivePraiseWinFloorPp = 25;
 /// The winning-chance gain (pp) that buys a routine-looking move its symbol
 /// back, at any point on the scale.
 const double kRoutinePraiseMinWinGainPp = 10;
-
-/// Mover-relative centipawn loss that opens the tactical override. It is a
-/// necessary condition only — see [_tacticalLossOverride] for the corroboration
-/// each candidate still has to clear.
-const int kTacticalOverrideMinCpLoss = 150;
 
 /// Minimum MultiPV gap (played vs next-best, mover pp) for non-unique best.
 const double kBrilliantMinAlternativeGapPp = 8;
