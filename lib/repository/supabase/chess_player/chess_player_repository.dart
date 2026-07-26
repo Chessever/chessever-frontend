@@ -1,5 +1,6 @@
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:chessever2/repository/supabase/base_repository.dart';
+import 'package:chessever2/screens/favorites/rankings/ranking_filters.dart';
 import 'package:chessever2/utils/country_utils.dart';
 
 // --- Model ---
@@ -9,14 +10,24 @@ class ChessPlayer {
   final String name;
   final String? title;
   final int? rating;
+  final int? rapidRating;
+  final int? blitzRating;
   final String? country;
+  final String? sex;
+  final int? birthYear;
+  final String? flag;
 
   const ChessPlayer({
     required this.fideid,
     required this.name,
     this.title,
     this.rating,
+    this.rapidRating,
+    this.blitzRating,
     this.country,
+    this.sex,
+    this.birthYear,
+    this.flag,
   });
 
   factory ChessPlayer.fromMap(Map<String, dynamic> map) {
@@ -24,10 +35,23 @@ class ChessPlayer {
       fideid: map['fideid'] as int,
       name: map['name'] as String? ?? '',
       title: map['title'] as String?,
-      rating: map['rating'] as int?,
+      rating: (map['rating'] as num?)?.toInt(),
+      rapidRating: (map['rapid_rating'] as num?)?.toInt(),
+      blitzRating: (map['blitz_rating'] as num?)?.toInt(),
       country: map['country'] as String?,
+      sex: map['sex'] as String?,
+      birthYear: (map['birthday'] as num?)?.toInt(),
+      flag: map['flag'] as String?,
     );
   }
+
+  int? ratingFor(RankingTimeControl timeControl) => switch (timeControl) {
+    RankingTimeControl.classical => rating,
+    RankingTimeControl.rapid => rapidRating,
+    RankingTimeControl.blitz => blitzRating,
+  };
+
+  bool get isInactive => isFideInactiveFlag(flag);
 }
 
 // --- Provider ---
@@ -69,6 +93,48 @@ class ChessPlayerRepository extends BaseRepository {
 
     final data = await builder
         .order('rating', ascending: false)
+        .range(offset, offset + limit - 1);
+
+    return (data as List).map((row) => ChessPlayer.fromMap(row)).toList();
+  }
+
+  /// Fetch a stable page from the canonical FIDE monthly ranking fields.
+  Future<List<ChessPlayer>> getRankedPlayers({
+    required RankingFilters filters,
+    String searchQuery = '',
+    int limit = 30,
+    int offset = 0,
+    DateTime? now,
+  }) async {
+    final ratingColumn = filters.timeControl.ratingColumn;
+    var query = supabase
+        .from('chess_players')
+        .select(
+          'fideid, name, title, rating, rapid_rating, blitz_rating, '
+          'country, sex, birthday, flag',
+        )
+        .not(ratingColumn, 'is', null)
+        .gt(ratingColumn, 0)
+        .lt(ratingColumn, 3300);
+
+    if (filters.activity == RankingActivity.active) {
+      query = query.or('flag.is.null,flag.not.ilike.*i*');
+    }
+    if (filters.category.requiresFemale) {
+      query = query.eq('sex', 'F');
+    }
+    if (filters.category.requiresJunior) {
+      query = query.gte('birthday', (now ?? DateTime.now()).year - 20);
+    }
+
+    final normalizedSearch = searchQuery.trim();
+    if (normalizedSearch.isNotEmpty) {
+      query = query.ilike('name', '%$normalizedSearch%');
+    }
+
+    final data = await query
+        .order(ratingColumn, ascending: false)
+        .order('fideid', ascending: true)
         .range(offset, offset + limit - 1);
 
     return (data as List).map((row) => ChessPlayer.fromMap(row)).toList();

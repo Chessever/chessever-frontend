@@ -167,7 +167,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         MaterialPageRoute(
           builder:
               (_) => const FavoritesTabScreen(
-                initialMode: FavoritesScreenMode.favorites,
+                initialMode: FavoritesScreenMode.players,
               ),
         ),
       );
