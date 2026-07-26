@@ -5,6 +5,7 @@ import 'package:chessever2/screens/chessboard/chess_board_screen_new.dart';
 import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
 import 'package:chessever2/screens/library/utils/gamebase_pgn_builder.dart';
 import 'package:chessever2/screens/library/widgets/library_game_card.dart';
+import 'package:chessever2/screens/player_profile/utils/twic_event_identity.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/repository/gamebase/search/gamebase_search_models.dart';
 import 'package:chessever2/theme/app_colors.dart';
@@ -547,7 +548,9 @@ GamesTourModel mapGamebasePreviewToTourModel(Map<String, dynamic> row) {
   final eco = row['eco']?.toString() ?? '';
   final opening = row['opening']?.toString() ?? '';
   final variation = row['variation']?.toString() ?? '';
-  final event = [
+  final eventCandidates = [
+        row['canonical_event_name'],
+        row['canonicalEventName'],
         row['event_name'],
         row['eventName'],
         row['tournament_name'],
@@ -557,7 +560,20 @@ GamesTourModel mapGamebasePreviewToTourModel(Map<String, dynamic> row) {
         row['event'],
       ]
       .map(sanitizeGamebaseEventLabel)
-      .firstWhere((value) => value.isNotEmpty, orElse: () => '');
+      .where((value) => value.isNotEmpty)
+      .toList(growable: false);
+  // Lichess-broadcast rows carry a per-round pairing label in their PGN Event
+  // header ("Round 9: Khripachenko, Alexander - Radovanovic, Mihajlo"), which
+  // is not the tournament and only repeats the two names the card already
+  // prints. For those rows the parent event survives solely in the `Site`
+  // broadcast URL slug — see `twic_player_games_no_tour_fields`.
+  final event = eventCandidates.firstWhere(
+    isUsefulTwicEventTitle,
+    orElse:
+        () =>
+            eventTitleFromBroadcastSite(readString('site')) ??
+            (eventCandidates.isNotEmpty ? eventCandidates.first : ''),
+  );
   final tourId =
       (row['tour_id']?.toString() ?? row['tournament_id']?.toString() ?? event)
           .trim();
@@ -734,11 +750,7 @@ Future<void> openGamebaseGame(
     if (!context.mounted) return;
     Navigator.of(context).pop(); // loading
     // Keep errors non-fatal; user can continue exploring.
-    showAppSnack(
-      context,
-      'Failed to open game',
-      tone: AppSnackTone.danger,
-    );
+    showAppSnack(context, 'Failed to open game', tone: AppSnackTone.danger);
   }
 }
 

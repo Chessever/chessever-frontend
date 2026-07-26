@@ -34,6 +34,10 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 const _anchorFen = kInitialFEN;
 
+/// Sentinel so `_game(playedOn: null)` can mean "no date at all" while the
+/// default stays a real date.
+const Object _unset = Object();
+
 PlayerCard _player(String name, {int rating = 2800, String title = 'GM'}) =>
     PlayerCard(
       name: name,
@@ -49,6 +53,7 @@ GamesTourModel _game({
   String white = 'Magnus Carlsen',
   String black = 'Hikaru Nakamura',
   String? eventName,
+  Object? playedOn = _unset,
 }) {
   return GamesTourModel(
     gameId: id,
@@ -64,7 +69,8 @@ GamesTourModel _game({
     tourId: 'Gamebase',
     tourSlug: eventName,
     eco: 'C45',
-    lastMoveTime: DateTime(2024, 5, 12),
+    lastMoveTime:
+        playedOn == _unset ? DateTime(2024, 5, 12) : playedOn as DateTime?,
   );
 }
 
@@ -410,6 +416,250 @@ void main() {
         explorerGameEventLabel(_game(eventName: 'U.S. Open')),
         'U.S. Open',
       );
+    });
+
+    // Reported 2026-07-26: broadcast rows showed "Round 5: Prishita Gupta -
+    // Priyanka, K" where the tournament belongs. Their PGN Event header IS the
+    // pairing label; the parent event lives only in the Site broadcast slug.
+    test('round/pairing Event falls back to the broadcast Site event', () {
+      final broadcast = mapGamebasePreviewToTourModel({
+        'id': 'g1',
+        'white': 'Khripachenko, Alexander',
+        'black': 'Radovanovic, Mihajlo',
+        'event': 'Round 9: Khripachenko, Alexander - Radovanovic, Mihajlo',
+        'site':
+            'https://lichess.org/broadcast/serbia-open-2026-masters/round-9/DAAVHAd2/RUGgc76P',
+      });
+      expect(broadcast.tourSlug, 'Serbia Open 2026 Masters');
+
+      // A real event name still wins over the Site slug: the slug is
+      // per-section, the Event header carries the canonical event.
+      final named = mapGamebasePreviewToTourModel({
+        'id': 'g2',
+        'white': 'A',
+        'black': 'B',
+        'event': 'Scottish Int Open 2026',
+        'site': 'https://lichess.org/broadcast/scottish-open-a/round-3/x/y',
+      });
+      expect(named.tourSlug, 'Scottish Int Open 2026');
+
+      // Venue Sites (TWIC archive rows) leave a real event name alone.
+      final twic = mapGamebasePreviewToTourModel({
+        'id': 'g3',
+        'white': 'A',
+        'black': 'B',
+        'event': '22nd Baltic Pearl Open A',
+        'site': 'Lazy POL',
+      });
+      expect(twic.tourSlug, '22nd Baltic Pearl Open A');
+    });
+
+    test('a round label never reaches the card, with or without a Site', () {
+      // Nothing to fall back on ⇒ the slot stays empty rather than print the
+      // two names a third time.
+      expect(
+        explorerGameEventLabel(
+          _game(eventName: 'Round 5: Prishita Gupta - Priyanka, K'),
+        ),
+        isEmpty,
+      );
+      expect(
+        explorerGameEventLabel(_game(eventName: 'Board 2: Carlsen - Nakamura')),
+        isEmpty,
+      );
+    });
+
+    test('year label comes from the game date; empty without one', () {
+      expect(explorerGameYearLabel(_game()), '2024');
+      expect(explorerGameYearLabel(_game(playedOn: null)), isEmpty);
+    });
+
+    test(
+      'event name drops the year it already carries, never its identity',
+      () {
+        String label(String event, DateTime? on) =>
+            explorerGameEventLabel(_game(eventName: event, playedOn: on));
+
+        final on2026 = DateTime(2026, 3, 4);
+        // Trailing, embedded, and leading — the year line carries it instead.
+        expect(label('Scottish Int Open 2026', on2026), 'Scottish Int Open');
+        expect(
+          label('Serbia Open 2026 Masters', on2026),
+          'Serbia Open Masters',
+        );
+        expect(
+          label('2026 Turkish Championship', on2026),
+          'Turkish Championship',
+        );
+        expect(
+          label('Tata Steel 2026 - Masters', on2026),
+          'Tata Steel - Masters',
+        );
+        // A different year is part of the name, not a repeat of this game's.
+        expect(label('Tata Steel 2025', on2026), 'Tata Steel 2025');
+        // Digits inside a longer number are not the year.
+        expect(label('Event 20261 Open', on2026), 'Event 20261 Open');
+        // Real gamebase names where the year is welded into a date or a range —
+        // cutting it out would leave a wreck.
+        expect(
+          label('Friday Night Quads 05.29.2026', on2026),
+          'Friday Night Quads 05.29.2026',
+        );
+        expect(
+          label('Vojvodina Open 2026/27', on2026),
+          'Vojvodina Open 2026/27',
+        );
+        // Brackets must not be left empty.
+        expect(label('Vojvodina Open (2026)', on2026), 'Vojvodina Open');
+        // An event named only for its year keeps that name.
+        expect(label('2026', on2026), '2026');
+        expect(
+          label('Biel International Chess Festival', on2026),
+          'Biel International Chess Festival',
+        );
+      },
+    );
+
+    testWidgets('the card prints the event over the year of the game', (
+      tester,
+    ) async {
+      final game = _game(
+        eventName: 'Serbia Open 2026 Masters',
+        playedOn: DateTime(2026, 7, 22),
+      );
+      await _pumpCard(tester, game: game, line: _lineFromUcis(const []));
+
+      // Name and year read as two lines, and the name is not repeating 2026.
+      expect(find.text('Serbia Open Masters'), findsOneWidget);
+      expect(find.text('2026'), findsOneWidget);
+      final eventDy = tester.getTopLeft(find.text('Serbia Open Masters')).dy;
+      final yearDy = tester.getTopLeft(find.text('2026')).dy;
+      expect(yearDy, greaterThan(eventDy));
+    });
+
+    // The strip pages one card at a time, so a card may not grow because of the
+    // metadata it happens to carry.
+    testWidgets('the year line never changes the card height', (tester) async {
+      final games = [
+        _game(
+          id: 'g1',
+          eventName: 'Serbia Open Masters',
+          playedOn: DateTime(2026, 7, 22),
+        ),
+        _game(id: 'g2', eventName: 'Serbia Open Masters', playedOn: null),
+        _game(id: 'g3', eventName: null, playedOn: null),
+      ];
+      final container = ProviderContainer(overrides: _baseOverrides());
+      addTearDown(container.dispose);
+
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: container,
+          child: MaterialApp(
+            theme: ThemeData.dark().copyWith(
+              extensions: const [AppColors.dark],
+            ),
+            home: Builder(
+              builder: (context) {
+                ResponsiveHelper.init(context);
+                return Scaffold(
+                  body: Align(
+                    alignment: Alignment.topCenter,
+                    child: SizedBox(
+                      width: 400,
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          for (final game in games)
+                            ExplorerGameCard(
+                              game: game,
+                              anchorFen: _anchorFen,
+                              line: _lineFromUcis(const ['e2e4']),
+                              allGames: games,
+                              index: 0,
+                              playMoveSound: (_) {},
+                            ),
+                        ],
+                      ),
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+
+      final expected = ExplorerGameCardGeometry.cardHeight(
+        ExplorerGameCardGeometry.preferredBoardSize,
+      );
+      for (var i = 0; i < games.length; i++) {
+        expect(
+          tester.getSize(find.byType(ExplorerGameCard).at(i)).height,
+          closeTo(expected, 0.01),
+          reason:
+              'card $i must stay one page tall whatever metadata it carries',
+        );
+      }
+      // The card that has a year actually draws it.
+      expect(find.text('2026'), findsOneWidget);
+    });
+
+    // A huge OS text size must never crop the event or burst the fixed card:
+    // the year gives up its line instead.
+    testWidgets('a large text size drops the year, never crops the event', (
+      tester,
+    ) async {
+      final game = _game(
+        eventName: 'Serbia Open Masters',
+        playedOn: DateTime(2026, 7, 22),
+      );
+      final container = ProviderContainer(overrides: _baseOverrides());
+      addTearDown(container.dispose);
+
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: container,
+          child: MaterialApp(
+            theme: ThemeData.dark().copyWith(
+              extensions: const [AppColors.dark],
+            ),
+            home: Builder(
+              builder: (context) {
+                ResponsiveHelper.init(context);
+                return MediaQuery(
+                  data: MediaQuery.of(
+                    context,
+                  ).copyWith(textScaler: const TextScaler.linear(3)),
+                  child: Scaffold(
+                    body: Align(
+                      alignment: Alignment.topCenter,
+                      child: SizedBox(
+                        width: 400,
+                        child: ExplorerGameCard(
+                          game: game,
+                          anchorFen: _anchorFen,
+                          line: _lineFromUcis(const ['e2e4']),
+                          allGames: [game],
+                          index: 0,
+                          playMoveSound: (_) {},
+                        ),
+                      ),
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+
+      // No RenderFlex overflow, and the event survives whole.
+      expect(tester.takeException(), isNull);
+      expect(find.text('Serbia Open Masters'), findsOneWidget);
+      expect(find.text('2026'), findsNothing);
     });
 
     test('preview mapping prefers a human event name and rejects raw IDs', () {
@@ -900,13 +1150,13 @@ void main() {
       expect(source, contains('_chipScrollController.position.ensureVisible'));
       expect(source, isNot(contains('Scrollable.ensureVisible(')));
       // Chip inset lives inside the horizontal scroll view.
-      expect(source, contains('padding: EdgeInsets.symmetric(horizontal: 10.sp)'));
-      // Mini-board enlarged for readability when games fill the panel; the
-      // strip may hand down a smaller edge on short panels.
       expect(
         source,
-        contains('ExplorerGameCardGeometry.preferredBoardSize'),
+        contains('padding: EdgeInsets.symmetric(horizontal: 10.sp)'),
       );
+      // Mini-board enlarged for readability when games fill the panel; the
+      // strip may hand down a smaller edge on short panels.
+      expect(source, contains('ExplorerGameCardGeometry.preferredBoardSize'));
       final geometrySource =
           io.File(
             'lib/screens/gamebase/utils/explorer_games_paging.dart',

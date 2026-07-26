@@ -2,7 +2,6 @@ import 'dart:async';
 
 import 'package:chessever2/repository/gamebase/gamebase_repository.dart';
 import 'package:chessever2/repository/supabase/game_analysis_quota_repository.dart';
-import 'package:chessever2/revenue_cat_service/subscribe_state.dart';
 import 'package:chessever2/screens/chessboard/analysis/chess_game.dart';
 import 'package:chessever2/screens/chessboard/game_review/game_analysis_report.dart';
 import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
@@ -84,7 +83,8 @@ class MobileGameReviewState {
         unavailableMessage == other.unavailableMessage &&
         reportState.status == other.reportState.status &&
         reportState.progress == other.reportState.progress &&
-        reportState.completedPositions == other.reportState.completedPositions &&
+        reportState.completedPositions ==
+            other.reportState.completedPositions &&
         reportState.totalPositions == other.reportState.totalPositions &&
         reportState.message == other.reportState.message &&
         identical(reportState.report, other.reportState.report);
@@ -107,23 +107,23 @@ class MobileGameReviewState {
 
 /// Coordinates whole-game analysis for one board page.
 ///
-/// Free users: on-demand only, 1 new report per UTC day (server RPC).
-/// Premium users: unlimited and auto-start when the board is active.
-class MobileGameReviewController
-    extends StateNotifier<MobileGameReviewState> {
-  static const Duration defaultAutoStartDelay = Duration(seconds: 2);
-
+/// **On-demand for everyone.** Nothing is generated until the reader asks for
+/// it — no tier auto-starts a report from opening a board. What the tier decides
+/// is how often they may ask: free users get 1 new report per UTC day, premium
+/// users as many as they want (both authorized by the `claim_game_analysis_report`
+/// RPC, which returns allowed for premium without spending a slot).
+///
+/// Premium used to auto-start a couple of seconds after the board went active.
+/// Do not put that back: it spent engine time and battery on reports nobody had
+/// asked to see, on every game they opened.
+class MobileGameReviewController extends StateNotifier<MobileGameReviewState> {
   MobileGameReviewController({
     GameAnalysisReportController? reportController,
-    Duration autoStartDelay = defaultAutoStartDelay,
-    bool Function()? isPremium,
     Future<GameAnalysisClaimResult> Function(String fingerprint)? claimQuota,
     GameReportBookLookup? bookLookup,
   }) : _reportController =
            reportController ??
            GameAnalysisReportController(bookLookup: bookLookup),
-       _autoStartDelay = autoStartDelay,
-       _isPremium = isPremium ?? (() => false),
        _claimQuota =
            claimQuota ??
            ((_) async => const GameAnalysisClaimResult(
@@ -136,8 +136,8 @@ class MobileGameReviewController
   }
 
   final GameAnalysisReportController _reportController;
-  final bool Function() _isPremium;
-  final Future<GameAnalysisClaimResult> Function(String fingerprint) _claimQuota;
+  final Future<GameAnalysisClaimResult> Function(String fingerprint)
+  _claimQuota;
 
   /// Extra listenable for modal sheet [AnimatedBuilder] (sheet is not a
   /// Riverpod consumer). Riverpod UI still watches [state] via the provider.
@@ -146,8 +146,6 @@ class MobileGameReviewController
   int? _whiteRating;
   int? _blackRating;
   bool _active = false;
-  Timer? _autoStartTimer;
-  final Duration _autoStartDelay;
 
   /// Listenable for the review bottom sheet only. Prefer [ref.watch] on
   /// [mobileGameReviewProvider] for board/notation.
@@ -178,7 +176,6 @@ class MobileGameReviewController
     _active = active;
 
     if (changed) {
-      _autoStartTimer?.cancel();
       _reportController.invalidate();
       _emit(
         MobileGameReviewState(
@@ -214,38 +211,19 @@ class MobileGameReviewController
       }
     }
 
-    if (!active) {
-      _autoStartTimer?.cancel();
-      if (_reportController.state.isRunning) {
-        unawaited(_reportController.cancel());
-      }
-      return;
+    // Swiping the board page away stops a report the reader started here; going
+    // active again never starts one on its own.
+    if (!active && _reportController.state.isRunning) {
+      unawaited(_reportController.cancel());
     }
-    _maybeAutoStart();
   }
 
   void setActive(bool active) {
     if (!mounted || _active == active) return;
     _active = active;
-    if (!active) {
-      _autoStartTimer?.cancel();
-      if (_reportController.state.isRunning) {
-        unawaited(_reportController.cancel());
-      }
-      return;
+    if (!active && _reportController.state.isRunning) {
+      unawaited(_reportController.cancel());
     }
-    _maybeAutoStart();
-  }
-
-  void _maybeAutoStart() {
-    // Free users are on-demand only. Premium may auto-start when idle.
-    if (!_isPremium()) return;
-    if (!state.isEligible) return;
-    if (_reportController.state.status != GameReportStatus.idle &&
-        _reportController.state.status != GameReportStatus.cancelled) {
-      return;
-    }
-    _scheduleAnalyze();
   }
 
   String? _unavailableMessage({
@@ -267,9 +245,11 @@ class MobileGameReviewController
   }
 
   /// Explicit user-started analysis. Handles auth + daily quota + paywall.
+  ///
+  /// This is the only path a report is ever generated from in the app: the
+  /// notation entry point and the sheet's Analyze / Retry action both land here.
   Future<void> requestAnalysis(BuildContext context) async {
     if (!mounted || !state.isEligible) return;
-    _autoStartTimer?.cancel();
     final game = _game;
     if (game == null) return;
     final fingerprint = gameReportFingerprint(game);
@@ -294,18 +274,18 @@ class MobileGameReviewController
   /// Sheet "Retry" / "Analyze Game" — same gated path as the notation button.
   Future<void> retry([BuildContext? context]) async {
     if (!mounted || !_active || !state.isEligible) return;
-    _autoStartTimer?.cancel();
     if (context != null) {
       await requestAnalysis(context);
       return;
     }
-    // No context (tests / auto path): only run when premium or cache exists.
+    // No context: nothing can be surfaced to the reader (no auth sheet, no
+    // paywall), so the server claim is the only gate. Tests drive this seam;
+    // every in-app entry point passes a context.
     final game = _game;
     if (game == null) return;
     final fingerprint = gameReportFingerprint(game);
     if (_reportController.loadCachedReport(fingerprint)) return;
     if (await _reportController.loadPersistedReport(fingerprint)) return;
-    if (!_isPremium()) return;
     final claim = await _claimQuota(fingerprint);
     if (!claim.allowed || !mounted) return;
     await _reportController.analyze(
@@ -315,7 +295,10 @@ class MobileGameReviewController
     );
   }
 
-  Future<bool> _claimWithUi(BuildContext hostContext, String fingerprint) async {
+  Future<bool> _claimWithUi(
+    BuildContext hostContext,
+    String fingerprint,
+  ) async {
     try {
       final result = await _claimQuota(fingerprint);
       if (result.allowed) return true;
@@ -356,33 +339,6 @@ class MobileGameReviewController
     }
   }
 
-  void _scheduleAnalyze() {
-    if (_autoStartTimer?.isActive ?? false) return;
-    _autoStartTimer = Timer(_autoStartDelay, () {
-      _autoStartTimer = null;
-      if (!mounted || !_active || !state.isEligible) return;
-      if (!_isPremium()) return;
-      unawaited(_analyzePremiumAuto());
-    });
-  }
-
-  Future<void> _analyzePremiumAuto() async {
-    final game = _game;
-    if (!mounted || game == null || !_active || !state.isEligible) return;
-    final fingerprint = gameReportFingerprint(game);
-    if (_reportController.loadCachedReport(fingerprint)) return;
-    if (await _reportController.loadPersistedReport(fingerprint)) return;
-    if (!mounted) return;
-    // Server still authorizes; premium returns allowed without spending a slot.
-    final claim = await _claimQuota(fingerprint);
-    if (!claim.allowed || !mounted) return;
-    await _reportController.analyze(
-      game,
-      whiteRating: _whiteRating,
-      blackRating: _blackRating,
-    );
-  }
-
   void _onReportChanged() {
     if (!mounted) return;
     var next = state.copyWith(reportState: _reportController.state);
@@ -396,7 +352,6 @@ class MobileGameReviewController
 
   @override
   void dispose() {
-    _autoStartTimer?.cancel();
     _reportController.removeListener(_onReportChanged);
     _reportController.dispose();
     _sheetListenable.dispose();
@@ -407,20 +362,18 @@ class MobileGameReviewController
 /// Per-board-page game review. [StateNotifierProvider] so UI watches immutable
 /// [MobileGameReviewState] and rebuilds when report status/progress changes —
 /// including when the report completes and notation should attach icons.
-final mobileGameReviewProvider = StateNotifierProvider.autoDispose
-    .family<
-      MobileGameReviewController,
-      MobileGameReviewState,
-      ChessBoardProviderParams
-    >((ref, params) {
-      return MobileGameReviewController(
-        isPremium: () => ref.read(subscriptionProvider).isSubscribed,
-        claimQuota:
-            (fingerprint) =>
-                ref.read(gameAnalysisQuotaRepositoryProvider).claim(fingerprint),
-        bookLookup: _gamebaseBookLookup(ref),
-      );
-    });
+final mobileGameReviewProvider = StateNotifierProvider.autoDispose.family<
+  MobileGameReviewController,
+  MobileGameReviewState,
+  ChessBoardProviderParams
+>((ref, params) {
+  return MobileGameReviewController(
+    claimQuota:
+        (fingerprint) =>
+            ref.read(gameAnalysisQuotaRepositoryProvider).claim(fingerprint),
+    bookLookup: _gamebaseBookLookup(ref),
+  );
+});
 
 /// Opening-tree lookup backed by the game database.
 ///

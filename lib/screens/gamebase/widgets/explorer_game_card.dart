@@ -13,6 +13,7 @@ import 'package:chessever2/screens/gamebase/providers/gamebase_providers.dart';
 import 'package:chessever2/screens/gamebase/utils/continuation_line.dart';
 import 'package:chessever2/screens/gamebase/utils/explorer_games_paging.dart';
 import 'package:chessever2/screens/gamebase/widgets/position_games_sheet.dart';
+import 'package:chessever2/screens/player_profile/utils/twic_event_identity.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
@@ -380,10 +381,59 @@ String? resolveExplorerFocusSoundSan(
   return next.sans[soundPly];
 }
 
-/// Human-readable event for the center slot. `tourId` may be an opaque UUID.
+/// Year the game was played, or empty when the row carried no usable date.
+///
+/// Gamebase preview rows put the PGN `Date` in `lastMoveTime`; a live clock
+/// never reaches these cards.
 @visibleForTesting
-String explorerGameEventLabel(GamesTourModel game) =>
-    sanitizeGamebaseEventLabel(game.tourSlug);
+String explorerGameYearLabel(GamesTourModel game) {
+  final year = game.lastMoveTime?.year;
+  if (year == null || year < 1500) return '';
+  return year.toString();
+}
+
+/// Human-readable event for the center slot. `tourId` may be an opaque UUID.
+///
+/// Two things never reach the card:
+/// - a round or pairing label ("Round 9: Carlsen - Nakamura"), which is not the
+///   tournament and only repeats the two names printed above and below it. The
+///   preview mapper resolves the parent event from the broadcast `Site` slug;
+///   when even that is unavailable the slot stays empty rather than lie.
+/// - the year, when the name already carries the game's own year. The card
+///   prints the year on its own line, so "Serbia Open 2026 Masters · 2026"
+///   would stutter — it reads "Serbia Open Masters" over "2026" instead.
+@visibleForTesting
+String explorerGameEventLabel(GamesTourModel game) {
+  final label = sanitizeGamebaseEventLabel(game.tourSlug);
+  if (label.isEmpty || isTwicRoundDisplayTitle(label)) return '';
+  return _withoutRedundantYear(label, explorerGameYearLabel(game));
+}
+
+/// Drops [year] from [label] when it stands alone as its own token, then tidies
+/// the punctuation the removal leaves behind.
+///
+/// A year welded into a longer number or a date is left alone — "Friday Night
+/// Quads 05.29.2026" and "Open 2026/27" are real gamebase event names, and
+/// cutting the year out of either leaves a wreck. Keeps [label] whenever the
+/// removal would leave nothing meaningful (an event literally named "2026").
+String _withoutRedundantYear(String label, String year) {
+  if (year.isEmpty) return label;
+  final token = RegExp('(?<![0-9./-])$year(?![0-9./-])');
+  if (!token.hasMatch(label)) return label;
+  final stripped =
+      label
+          .replaceAll(token, ' ')
+          // "Open (2026)" must not leave an empty bracket pair behind.
+          .replaceAll(RegExp(r'\(\s*\)|\[\s*\]'), ' ')
+          .replaceAllMapped(RegExp(r'\s+([,;:.])'), (m) => m.group(1)!)
+          .replaceAll(RegExp(r'\s+'), ' ')
+          .replaceAll(RegExp(r'^[\s,;:.\-–—/|]+'), '')
+          .replaceAll(RegExp(r'[\s,;:\-–—/|]+$'), '')
+          .trim();
+  return RegExp(r'[\p{L}\p{N}]', unicode: true).hasMatch(stripped)
+      ? stripped
+      : label;
+}
 
 /// One game remaining in the explored position: mini board on the left, player
 /// metadata on the right, and the game's continuation from this position as a
@@ -554,6 +604,8 @@ class _ExplorerGameCardState extends ConsumerState<ExplorerGameCard> {
 
   String get _eventLine => explorerGameEventLabel(widget.game);
 
+  String get _yearLine => explorerGameYearLabel(widget.game);
+
   Move? _uciToMove(String? uci) {
     final raw = (uci ?? '').trim().toLowerCase();
     if (raw.length < 4) return null;
@@ -656,7 +708,6 @@ class _ExplorerGameCardState extends ConsumerState<ExplorerGameCard> {
         isLight
             ? context.colors.surfaceRecessed
             : context.colors.surfaceRecessed;
-    final metaColor = context.colors.textSecondary;
     final closeIconColor = context.colors.textSecondary;
 
     // Reader's text size is part of the card's height, so the continuation
@@ -779,22 +830,9 @@ class _ExplorerGameCardState extends ConsumerState<ExplorerGameCard> {
                                   isWhite: false,
                                 ),
                                 Expanded(
-                                  child: Center(
-                                    child: Padding(
-                                      padding: EdgeInsets.symmetric(
-                                        horizontal: 2.w,
-                                      ),
-                                      child:
-                                          _eventLine.isEmpty
-                                              ? const SizedBox.shrink()
-                                              : _FadingOverflowText(
-                                                text: _eventLine,
-                                                textAlign: TextAlign.center,
-                                                style: AppTypography
-                                                    .textXsRegular
-                                                    .copyWith(color: metaColor),
-                                              ),
-                                    ),
+                                  child: _ExplorerCardMetaSlot(
+                                    event: _eventLine,
+                                    year: _yearLine,
                                   ),
                                 ),
                                 _ExplorerCardPlayerRow(
@@ -992,6 +1030,83 @@ class _ExplorerGameCardState extends ConsumerState<ExplorerGameCard> {
             fontWeight: isCurrent ? FontWeight.w700 : FontWeight.w500,
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// Event identity in the gap between the two player rows: the tournament, with
+/// the year of the game beneath it in a quieter step.
+///
+/// The year sits on its own line rather than trailing the event so a long
+/// tournament name can fade out without taking the year with it, and so every
+/// card in the strip carries it in the same place.
+///
+/// Two guards keep it inside the slot the mini-board fixes, because the card's
+/// height is a hard constant (see [ExplorerGameCardGeometry]): the reader's text
+/// size is capped for these two dense lines only, and the year is dropped
+/// outright when the slot cannot hold both. Neither line is ever cropped.
+class _ExplorerCardMetaSlot extends StatelessWidget {
+  const _ExplorerCardMetaSlot({required this.event, required this.year});
+
+  final String event;
+  final String year;
+
+  static const double _maxTextScale = 1.2;
+
+  @override
+  Widget build(BuildContext context) {
+    if (event.isEmpty && year.isEmpty) return const SizedBox.shrink();
+
+    final scaler = MediaQuery.textScalerOf(
+      context,
+    ).clamp(maxScaleFactor: _maxTextScale);
+    final eventStyle = AppTypography.textXsRegular.copyWith(
+      color: context.colors.textPrimaryMuted,
+    );
+    final yearStyle = AppTypography.textXxsRegular.copyWith(
+      color: context.colors.textSecondary,
+      letterSpacing: 0.3,
+    );
+    // Same expressions AppTypography builds these two styles from.
+    final eventHeight = scaler.scale(12.f) * (20.h / 12.h);
+    final yearHeight = scaler.scale(11.f) * (18.h / 11.h);
+
+    return MediaQuery.withClampedTextScaling(
+      maxScaleFactor: _maxTextScale,
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final room = constraints.maxHeight;
+          final showYear =
+              year.isNotEmpty &&
+              (event.isEmpty ||
+                  !room.isFinite ||
+                  room >= eventHeight + yearHeight);
+          return Center(
+            child: Padding(
+              padding: EdgeInsets.symmetric(horizontal: 2.w),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  if (event.isNotEmpty)
+                    _FadingOverflowText(
+                      text: event,
+                      textAlign: TextAlign.center,
+                      style: eventStyle,
+                    ),
+                  if (showYear)
+                    Text(
+                      year,
+                      textAlign: TextAlign.center,
+                      maxLines: 1,
+                      style: yearStyle,
+                    ),
+                ],
+              ),
+            ),
+          );
+        },
       ),
     );
   }

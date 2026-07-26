@@ -1,3 +1,5 @@
+import 'dart:io' as io;
+
 import 'package:chessever2/repository/lichess/cloud_eval/cloud_eval.dart';
 import 'package:chessever2/repository/supabase/game_analysis_quota_repository.dart';
 import 'package:chessever2/screens/chessboard/analysis/chess_game.dart';
@@ -25,14 +27,7 @@ Future<GameAnalysisClaimResult> _allowClaim(String _) async =>
 
 void main() {
   test('review eligibility and reveal state follow the configured game', () {
-    expect(
-      MobileGameReviewController.defaultAutoStartDelay,
-      const Duration(seconds: 2),
-    );
-    final controller = MobileGameReviewController(
-      isPremium: () => true,
-      claimQuota: _allowClaim,
-    );
+    final controller = MobileGameReviewController(claimQuota: _allowClaim);
     addTearDown(controller.dispose);
     final game = ChessGame.fromPgn('eligibility', '1. e4 e5 *');
 
@@ -63,6 +58,67 @@ void main() {
     expect(controller.reviewState.classificationsRevealed, isTrue);
   });
 
+  // Report generation is on-demand for EVERY tier. Premium used to auto-start
+  // a couple of seconds after the board went active; nothing may bring a report
+  // into being now except the reader asking for one.
+  test('no tier starts a report from opening or resuming a board', () async {
+    var claims = 0;
+    final controller = MobileGameReviewController(
+      reportController: GameAnalysisReportController(evaluator: _evaluator),
+      claimQuota: (fingerprint) async {
+        claims++;
+        return const GameAnalysisClaimResult(
+          allowed: true,
+          reason: 'premium',
+          isPremium: true,
+        );
+      },
+    );
+    addTearDown(controller.dispose);
+
+    controller.configure(
+      game: ChessGame.fromPgn(
+        'no-auto',
+        '[White "A"]\n[Black "B"]\n[Result "1-0"]\n\n1. e4 e5 1-0',
+      ),
+      active: true,
+      finished: true,
+      whiteRating: 2100,
+      blackRating: 2050,
+    );
+    // Board goes away and comes back — still nothing.
+    controller.setActive(false);
+    controller.setActive(true);
+    await Future<void>.delayed(const Duration(milliseconds: 60));
+
+    expect(controller.reviewState.isEligible, isTrue);
+    expect(controller.reviewState.reportState.status, GameReportStatus.idle);
+    expect(claims, 0, reason: 'a quota slot must never be spent unasked');
+
+    // Asking is what runs it, and premium may ask for as many games as it likes
+    // (the server RPC returns allowed without spending a slot).
+    await controller.retry();
+    expect(claims, 1);
+    expect(
+      controller.reviewState.reportState.status,
+      GameReportStatus.completed,
+    );
+  });
+
+  // The check above catches an auto-start that fires promptly; this one catches
+  // the timer-behind-a-delay shape the removed version used, without making a
+  // unit test sit through the delay.
+  test('the controller holds no auto-start timer at all', () {
+    final source =
+        io.File(
+          'lib/screens/chessboard/game_review/game_review_provider.dart',
+        ).readAsStringSync();
+    expect(source, isNot(contains('autoStart')));
+    expect(source, isNot(contains('_scheduleAnalyze')));
+    expect(source, isNot(contains('Timer(')));
+    expect(source, contains('requestAnalysis('));
+  });
+
   test(
     'completed report auto-reveals classifications without opening the sheet',
     () async {
@@ -75,8 +131,6 @@ void main() {
       );
       final controller = MobileGameReviewController(
         reportController: reportController,
-        autoStartDelay: Duration.zero,
-        isPremium: () => true,
         claimQuota: _allowClaim,
       );
       addTearDown(controller.dispose);
@@ -88,6 +142,9 @@ void main() {
         whiteRating: 2100,
         blackRating: 2050,
       );
+      // On-demand for every tier: configuring the board never starts a report.
+      expect(controller.reviewState.reportState.status, GameReportStatus.idle);
+      await controller.retry();
       for (
         var i = 0;
         i < 40 &&
@@ -361,8 +418,6 @@ void main() {
     );
     final controller = MobileGameReviewController(
       reportController: reportController,
-      autoStartDelay: Duration.zero,
-      isPremium: () => true,
       claimQuota: _allowClaim,
     );
     int? jumpedToPly;
@@ -376,6 +431,9 @@ void main() {
         whiteRating: game.whitePlayer.rating,
         blackRating: game.blackPlayer.rating,
       );
+      // Reports are on-demand for every tier — the sheet has something to show
+      // only because the reader asked for it.
+      await controller.retry();
       for (
         var i = 0;
         i < 30 &&
@@ -529,8 +587,6 @@ void main() {
     );
     final controller = MobileGameReviewController(
       reportController: GameAnalysisReportController(evaluator: _evaluator),
-      autoStartDelay: Duration.zero,
-      isPremium: () => true,
       claimQuota: _allowClaim,
     );
     addTearDown(controller.dispose);
@@ -543,6 +599,9 @@ void main() {
         whiteRating: game.whitePlayer.rating,
         blackRating: game.blackPlayer.rating,
       );
+      // Reports are on-demand for every tier — the sheet has something to show
+      // only because the reader asked for it.
+      await controller.retry();
       for (
         var i = 0;
         i < 30 &&
@@ -584,10 +643,7 @@ void main() {
   });
 
   testWidgets('step 1 stops at the measured board anchor', (tester) async {
-    final controller = MobileGameReviewController(
-      isPremium: () => true,
-      claimQuota: _allowClaim,
-    );
+    final controller = MobileGameReviewController(claimQuota: _allowClaim);
     addTearDown(controller.dispose);
 
     await tester.pumpWidget(
