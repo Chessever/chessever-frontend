@@ -77,6 +77,7 @@ import 'package:fast_immutable_collections/fast_immutable_collections.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/gestures.dart';
+import 'package:flutter/rendering.dart' show ScrollDirection;
 import 'package:flutter/services.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:flutter_animate/flutter_animate.dart' hide ShimmerEffect;
@@ -102,10 +103,14 @@ import 'package:chessever2/repository/supabase/group_broadcast/group_broadcast.d
 import 'package:chessever2/repository/supabase/group_broadcast/group_tour_repository.dart';
 import 'package:motor/motor.dart';
 import 'package:chessever2/repository/liked_games/liked_games_provider.dart';
+import 'package:chessever2/repository/library/models/saved_analysis.dart';
 import 'package:chessever2/screens/chessboard/widgets/heart_burst.dart';
 import 'package:chessever2/screens/chessboard/widgets/like_flight.dart';
 import 'package:chessever2/screens/chessboard/widgets/like_tag_chip.dart';
 import 'package:chessever2/screens/chessboard/widgets/like_tag_offer.dart';
+import 'package:chessever2/screens/chessboard/widgets/like_nudge.dart';
+import 'package:chessever2/screens/chessboard/utils/like_learning_prompt_tracker.dart';
+import 'package:chessever2/providers/auth_state_provider.dart';
 import 'package:chessever2/screens/gamebase/utils/explorer_move_line.dart';
 import 'package:chessever2/screens/gamebase/widgets/board_opening_explorer_panel.dart';
 import 'package:chessever2/screens/gamebase/widgets/position_games_sheet.dart';
@@ -7690,6 +7695,7 @@ class _TabletBoardWithSidebar extends ConsumerWidget {
           size: boardSize,
           chessBoardState: state,
           isFlipped: state.isBoardFlipped,
+          isActivePage: index == currentPageIndex,
           index: index,
           game: state.game,
         ),
@@ -7817,6 +7823,7 @@ class _BoardWithSidebar extends ConsumerWidget {
                     size: boardSize,
                     chessBoardState: state,
                     isFlipped: state.isBoardFlipped,
+                    isActivePage: index == currentPageIndex,
                     index: index,
                     game: state.game,
                   ),
@@ -7847,6 +7854,11 @@ class _AnalysisBoard extends ConsumerStatefulWidget {
   final double size;
   final ChessBoardStateNew chessBoardState;
   final bool isFlipped;
+
+  /// True only for the board the user is actually looking at. Off-screen
+  /// neighbours in the PageView are built too, and must never raise the
+  /// like reminder or spend a slot in its cadence.
+  final bool isActivePage;
   final int index;
   final GamesTourModel game;
 
@@ -7854,6 +7866,7 @@ class _AnalysisBoard extends ConsumerStatefulWidget {
     required this.size,
     required this.chessBoardState,
     this.isFlipped = false,
+    this.isActivePage = true,
     required this.index,
     required this.game,
   });
@@ -7939,6 +7952,13 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard>
   OverlayEntry? _flyingHeartEntry;
   bool _likeInteractionInProgress = false;
   int _likeInteractionToken = 0;
+
+  // Contextual "Did you like this game?" reminder (see LikeNudge). Raised at
+  // the end of a finished game once the persisted cadence says the user has
+  // gone a long stretch without liking anything.
+  bool _likeNudgeVisible = false;
+  bool _likeNudgeCheckInProgress = false;
+  Timer? _likeNudgeSafetyTimer;
   // Same-square double-tap-to-like tracking. We detect the "like" double-tap
   // with a passive Listener (raw pointer events) instead of a
   // DoubleTapGestureRecognizer. A DoubleTapGestureRecognizer lives in the
@@ -8273,6 +8293,24 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard>
       _showDelayedGameEndingEffect = false;
     }
 
+    // Contextual like reminder. Ask when this board is the one on screen and
+    // the user has just arrived at a finished game's final position — either by
+    // playing to the end here, or by swiping onto a board that was already
+    // resting there.
+    if (shouldShowEffect &&
+        widget.isActivePage &&
+        (!_wasAtEnd || !oldWidget.isActivePage)) {
+      _scheduleLikeNudgeCheck();
+    }
+    // ...and retire it the moment its moment passes: swiping away, stepping
+    // back off the final position, or the board being handed a different game.
+    if (_likeNudgeVisible &&
+        (!widget.isActivePage ||
+            !isAtGameEnd ||
+            widget.game.gameId != oldWidget.game.gameId)) {
+      _retireLikeNudge();
+    }
+
     _wasAtEnd = isAtGameEnd;
 
     // External flip (e.g., bottom-nav button): if orientation changed
@@ -8347,6 +8385,11 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard>
         gameStatus != GameStatus.ongoing && gameStatus != GameStatus.unknown;
     if (isGameOver && _wasAtEnd) {
       _showDelayedGameEndingEffect = true;
+      // Opening straight onto a finished game's final position (deep link, a
+      // game reopened from a list) is the same moment as playing to the end.
+      if (widget.isActivePage && _isFinishedGame) {
+        _scheduleLikeNudgeCheck();
+      }
     }
 
     _flipProgress = ValueNotifier<double>(0.0);
@@ -8421,6 +8464,7 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard>
   @override
   void dispose() {
     _cancelLikeInteraction(resetAnchor: true);
+    _retireLikeNudge();
     _detachBoardControllerPromotionListener(_boardController);
     _boardController.dispose();
     _flipCommitCtrl.dispose();
@@ -8624,7 +8668,41 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard>
   //   * GestureDetector — picks up vertical drags only (the card flip). A pure
   //     tap has no drag, so the drag recognizer loses the arena on taps and the
   //     Chessboard's own pointer-based tap-to-move stays intact.
+  /// Wraps the board in its gesture layers and reserves the slot the
+  /// contextual like reminder occupies.
+  ///
+  /// The reminder sits OUTSIDE the board's pointer [Listener] on purpose:
+  /// inside it, two quick taps on the reminder's own controls would land on the
+  /// same board square and trip the double-tap-to-like detector.
+  ///
+  /// The slot is always present — an empty box when there is nothing to ask.
+  /// Adding and removing the wrapping Stack instead would change the type of
+  /// this subtree's root as the reminder came and went, remounting the
+  /// Chessboard underneath it; chessground detaches its controller on
+  /// deactivate, so that remount can trip `ChessboardController.fadeAnimation`
+  /// on the next build.
   Widget _wrapWithFlipGesture(Widget child) {
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        _wrapWithBoardGestures(child),
+        Positioned(
+          left: 12.w,
+          right: 12.w,
+          bottom: 20.h,
+          child:
+              _likeNudgeVisible
+                  ? LikeNudge(
+                    onLike: _acceptLikeNudge,
+                    onDismiss: _dismissLikeNudge,
+                  )
+                  : const SizedBox.shrink(),
+        ),
+      ],
+    );
+  }
+
+  Widget _wrapWithBoardGestures(Widget child) {
     return Listener(
       behavior: HitTestBehavior.deferToChild,
       onPointerDown: _handleBoardPointerDownForLike,
@@ -8952,6 +9030,133 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard>
     );
     _flyingHeartEntry = entry;
     overlay.insert(entry);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Contextual like reminder
+  // ---------------------------------------------------------------------------
+  //
+  // Liking is a hidden gesture: nothing on the board advertises that a
+  // double-tap saves the game. Users who never discover it never build a
+  // library. So once someone has reached the end of a long run of finished
+  // games without liking any of them, we ask once, in place, and let "yes" run
+  // the real gesture — burst, flight and tag chip included — so the answer
+  // teaches what the gesture does.
+  //
+  // The cadence itself lives in [LikeLearningPromptTracker] and is persisted
+  // per user, so it survives restarts and cannot re-ask on every board.
+
+  bool get _isFinishedGame {
+    final status = widget.game.gameStatus;
+    return status == GameStatus.whiteWins ||
+        status == GameStatus.blackWins ||
+        status == GameStatus.draw;
+  }
+
+  /// True at the final position of the real game — not at the end of a
+  /// variation the user wandered into, which is not "finishing a game".
+  bool _isAtMainlineGameEnd() {
+    final analysisState = widget.chessBoardState.analysisState;
+    return _isAtGameEnd(analysisState) &&
+        analysisState.movePointer.length == 1;
+  }
+
+  bool get _isLikeNudgeEligible =>
+      widget.isActivePage &&
+      _isFinishedGame &&
+      _isAtMainlineGameEnd() &&
+      _isLikeableSource(widget.game.source) &&
+      !_isOwnDatabaseGame(widget.game);
+
+  void _scheduleLikeNudgeCheck() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      unawaited(_maybeRaiseLikeNudge());
+    });
+  }
+
+  Future<void> _maybeRaiseLikeNudge() async {
+    if (!mounted ||
+        _likeNudgeVisible ||
+        _likeNudgeCheckInProgress ||
+        !_isLikeNudgeEligible) {
+      return;
+    }
+
+    final userId = ref.read(currentUserProvider)?.id;
+    if (userId == null || userId.isEmpty) return;
+
+    _likeNudgeCheckInProgress = true;
+    try {
+      final cachedLikes = ref.read(likedGamesProvider).valueOrNull;
+      final List<SavedAnalysis> likedGames =
+          cachedLikes ?? await ref.read(likedGamesProvider.future);
+      final tracker = ref.read(likeLearningPromptTrackerProvider);
+      await tracker.initialize(
+        userId: userId,
+        hasExistingLikes: likedGames.isNotEmpty,
+      );
+
+      if (!mounted || !_isLikeNudgeEligible) return;
+
+      // An already-liked game is not a stretch without liking — the like that
+      // saved it already restarted the cadence.
+      if (likedGames.any((game) => game.sourceGameId == widget.game.likeId)) {
+        return;
+      }
+
+      final shouldAsk = await tracker.recordCompletedGame(
+        userId: userId,
+        gameId: widget.game.likeId,
+      );
+      if (!shouldAsk || !mounted || !_isLikeNudgeEligible) return;
+
+      setState(() => _likeNudgeVisible = true);
+      // Belt-and-braces: the reminder normally leaves when the user leaves the
+      // final position or the game, but it must never camp on the board.
+      _likeNudgeSafetyTimer?.cancel();
+      _likeNudgeSafetyTimer = Timer(
+        const Duration(seconds: 20),
+        _dismissLikeNudge,
+      );
+    } catch (error) {
+      debugPrint('[LikeNudge] cadence check failed: $error');
+    } finally {
+      _likeNudgeCheckInProgress = false;
+    }
+  }
+
+  /// Retire the reminder without scheduling a rebuild — for callers that are
+  /// already inside one (didUpdateWidget, dispose).
+  void _retireLikeNudge() {
+    _likeNudgeSafetyTimer?.cancel();
+    _likeNudgeSafetyTimer = null;
+    _likeNudgeVisible = false;
+  }
+
+  void _dismissLikeNudge() {
+    if (!mounted) {
+      _retireLikeNudge();
+      return;
+    }
+    if (!_likeNudgeVisible) {
+      _retireLikeNudge();
+      return;
+    }
+    setState(_retireLikeNudge);
+  }
+
+  /// "Yes" runs the exact double-tap path, sourced at the heart the user just
+  /// tapped so the burst grows out of that same mark rather than appearing
+  /// somewhere else on the board.
+  void _acceptLikeNudge(Offset heartGlobalCenter) {
+    _dismissLikeNudge();
+    final renderBox = context.findRenderObject();
+    _lastTapPosition =
+        renderBox is RenderBox
+            ? renderBox.globalToLocal(heartGlobalCenter)
+            : Offset(widget.size / 2, widget.size / 2);
+    _lastTapGlobalPosition = heartGlobalCenter;
+    _handleDoubleTapLike();
   }
 
   bool _isLikeableSource(GameSource source) =>
@@ -11303,6 +11508,18 @@ class _MovesDisplay extends ConsumerStatefulWidget {
   ConsumerState<_MovesDisplay> createState() => _MovesDisplayState();
 }
 
+/// How close to the end of the notation counts as "parked at the bottom".
+///
+/// The Game Analysis button sits at the very end of the list, so a reader
+/// within this much of the end is reaching for it — reflows hold the bottom
+/// edge for them instead of the move they happen to be on.
+const double _kNotationBottomAnchorSlack = 24;
+
+/// Breathing room under the last thing in the notation (the Game Analysis
+/// button, or the final move when the button is hidden), so the bottom of the
+/// list is genuinely reachable and nothing sits flush against the cut.
+const double _kNotationBottomSlack = 16;
+
 class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
   static const int _autoCollapseDepth = 3;
   final ScrollController _scrollController = ScrollController();
@@ -11638,6 +11855,7 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
       );
       final notationContent = SingleChildScrollView(
         controller: _scrollController,
+        padding: EdgeInsets.only(bottom: _kNotationBottomSlack.h),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           mainAxisSize: MainAxisSize.min,
@@ -11668,6 +11886,7 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
 
     final notationContent = SingleChildScrollView(
       controller: _scrollController,
+      padding: EdgeInsets.only(bottom: _kNotationBottomSlack.h),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         mainAxisSize: MainAxisSize.min,
@@ -12923,19 +13142,64 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
     });
   }
 
+  /// Vertical offset of [pointerId]'s chip from the top of the notation
+  /// viewport, or null when it is not laid out right now.
+  double? _viewportOffsetOf(String? pointerId) {
+    if (pointerId == null || !_scrollController.hasClients) return null;
+    final moveContext = _moveKeys[pointerId]?.currentContext;
+    if (moveContext == null) return null;
+    final moveBox = moveContext.findRenderObject();
+    if (moveBox is! RenderBox || !moveBox.hasSize) return null;
+    final scrollable = Scrollable.maybeOf(moveContext);
+    final viewportBox = scrollable?.context.findRenderObject();
+    if (viewportBox is! RenderBox || !viewportBox.hasSize) return null;
+    return moveBox.localToGlobal(Offset.zero, ancestor: viewportBox).dy;
+  }
+
   /// Holds the reader's place when the notation reflows underneath them.
   ///
   /// Attaching the report's classification chips widens every analysed move in
   /// one frame, so line breaks and total height change and the scroll offset
-  /// ends up somewhere else entirely. Re-pinning the current move immediately
-  /// (no animation) means the reflow reads as "nothing moved" rather than as a
-  /// scroll the reader did not ask for.
+  /// ends up somewhere else entirely.
+  ///
+  /// The hold is an *anchor restore*, never a re-centre: this runs from
+  /// `build`, before layout, so the pre-reflow geometry is still measurable —
+  /// note where the current move sits in the viewport, then post-frame put it
+  /// back at that exact spot. Nothing visibly moves. Centring the move instead
+  /// (what this used to do) was itself the jump: it scrolled the reader
+  /// somewhere they never asked to be the instant the report landed.
+  ///
+  /// Reading the tail is its own anchor. The Game Analysis button lives at the
+  /// very bottom, so a reader parked there is held on the bottom edge — the
+  /// taller post-report content must not push the button they are reaching for
+  /// off the screen.
   void _repinAfterNotationReflow() {
+    if (!_hasInitiallyScrolled || !_scrollController.hasClients) return;
+    final position = _scrollController.position;
+    // Never correct out from under a live gesture (or the fling it threw):
+    // jumpTo cancels the activity, which reads as the list snagging.
+    if (position.userScrollDirection != ScrollDirection.idle) return;
+    final wasAtBottom = position.extentAfter <= _kNotationBottomAnchorSlack;
     final pointerId = _lastPointerId;
-    if (pointerId == null || !_hasInitiallyScrolled) return;
+    final anchorDy = wasAtBottom ? null : _viewportOffsetOf(pointerId);
+    if (!wasAtBottom && anchorDy == null) return;
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
-      _scrollToPointer(pointerId, instant: true);
+      if (!mounted || !_scrollController.hasClients) return;
+      final after = _scrollController.position;
+      if (after.userScrollDirection != ScrollDirection.idle) return;
+      final double target;
+      if (wasAtBottom) {
+        target = after.maxScrollExtent;
+      } else {
+        final nowDy = _viewportOffsetOf(pointerId);
+        if (nowDy == null) return;
+        target = (after.pixels + (nowDy - anchorDy!)).clamp(
+          0.0,
+          after.maxScrollExtent,
+        );
+      }
+      if ((target - after.pixels).abs() < 0.5) return;
+      _scrollController.jumpTo(target);
     });
   }
 
@@ -12943,7 +13207,6 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
     String pointerId, {
     bool isInitialScroll = false,
     double alignment = 0.5,
-    bool instant = false,
   }) {
     if (!_scrollController.hasClients) {
       if (isInitialScroll) {
@@ -12962,9 +13225,6 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
     final key = _moveKeys[pointerId];
     final context = key?.currentContext;
     if (context == null) {
-      // A re-pin chases a layout that already happened; if the move is gone
-      // there is nothing to hold on to and retrying would fight the reader.
-      if (instant) return;
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
         _scrollToPointer(
@@ -12990,14 +13250,14 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
         _scrollToTargetOnTablet(
           targetContext,
           alignment: alignment,
-          animate: !isInitialScroll && !instant,
+          animate: !isInitialScroll,
         );
       } else {
         // On mobile, Scrollable.ensureVisible works fine
         Scrollable.ensureVisible(
           targetContext,
           duration:
-              isInitialScroll || instant
+              isInitialScroll
                   ? const Duration(milliseconds: 1)
                   : const Duration(milliseconds: 250),
           curve: Curves.easeInOut,

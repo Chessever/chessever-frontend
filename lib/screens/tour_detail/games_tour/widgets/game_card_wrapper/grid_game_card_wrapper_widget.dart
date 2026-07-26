@@ -28,6 +28,10 @@ class GridGameCardWrapperWidget extends ConsumerWidget {
   final LiveGamesBatchKey? liveBatchKey;
   final ChessboardView viewSource;
 
+  /// Whether the long-press menu offers Pin. Off for lists with no tour scope
+  /// to pin into (Favorites, Countrymen).
+  final bool showPin;
+
   const GridGameCardWrapperWidget({
     super.key,
     required this.game,
@@ -41,6 +45,7 @@ class GridGameCardWrapperWidget extends ConsumerWidget {
     this.streamEnabled = true,
     this.liveBatchKey,
     this.viewSource = ChessboardView.tour,
+    this.showPin = true,
   });
 
   @override
@@ -89,6 +94,7 @@ class GridGameCardWrapperWidget extends ConsumerWidget {
       liveBatchKey: effectiveLiveBatchKey,
       scoreCardViewSource: viewSource,
       scoreCardGamesContext: getUpdatedGamesList(),
+      showPin: showPin,
     );
   }
 }

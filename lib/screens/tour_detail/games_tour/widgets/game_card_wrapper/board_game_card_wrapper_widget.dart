@@ -22,6 +22,10 @@ class BoardGameCardWrapperWidget extends ConsumerWidget {
   final bool streamEnabled;
   final LiveGamesBatchKey? liveBatchKey;
 
+  /// Whether the long-press menu offers Pin. Off for lists with no tour scope
+  /// to pin into (Favorites, Countrymen).
+  final bool showPin;
+
   const BoardGameCardWrapperWidget({
     super.key,
     required this.game,
@@ -33,6 +37,7 @@ class BoardGameCardWrapperWidget extends ConsumerWidget {
     this.allowStockfishFallback = true,
     this.streamEnabled = true,
     this.liveBatchKey,
+    this.showPin = true,
   });
 
   @override
@@ -75,6 +80,7 @@ class BoardGameCardWrapperWidget extends ConsumerWidget {
       onPinToggle: onPinToggle,
       allowStockfishFallback: effectiveAllowStockfishFallback,
       liveBatchKey: effectiveLiveBatchKey,
+      showPin: showPin,
     );
   }
 }

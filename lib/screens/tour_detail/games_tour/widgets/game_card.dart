@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:ui';
 
 import 'package:chessever2/providers/engine_settings_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
@@ -18,8 +17,8 @@ import 'package:chessever2/widgets/backfilled_federation_flag.dart';
 import 'package:dartchess/dartchess.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
-import 'package:motor/motor.dart';
 import 'package:chessever2/screens/chessboard/widgets/context_pop_up_menu.dart';
+import 'package:chessever2/screens/library/widgets/library_context_menu.dart';
 
 class GameCard extends ConsumerWidget {
   const GameCard({
@@ -105,70 +104,39 @@ class GameCard extends ConsumerWidget {
       },
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
-        onLongPressStart: (details) {
-          HapticFeedbackService.contextMenu();
-          _showBlurredPopup(context, ref: ref, details: details);
-        },
+        onLongPress: () => _showContextMenu(context),
         child: wrapped,
       ),
     );
   }
 
-  void _showBlurredPopup(
-    BuildContext context, {
-    required WidgetRef ref,
-    required LongPressStartDetails details,
-  }) {
-    final RenderBox cardRenderBox = context.findRenderObject() as RenderBox;
-    final Offset cardPosition = cardRenderBox.localToGlobal(Offset.zero);
-    final Size cardSize = cardRenderBox.size;
-
-    final double screenHeight = MediaQuery.of(context).size.height;
-    final double popupHeight = 81.h;
-    final double spaceBelow =
-        screenHeight - (cardPosition.dy + cardSize.height);
-
-    bool showAbove = spaceBelow < popupHeight;
-
-    showGeneralDialog(
+  /// One menu, everywhere. This used to be a bespoke blurred overlay that
+  /// scaled the whole card up behind an 18-sigma backdrop blur — a heavier,
+  /// visually unrelated treatment to the one the Library cards use. Both now
+  /// go through [showLibraryContextMenu], so a long press feels the same
+  /// wherever the user does it.
+  void _showContextMenu(BuildContext context) {
+    final game = matchComparison.game;
+    showLibraryContextMenu(
       context: context,
-      barrierDismissible: true,
-      barrierLabel: MaterialLocalizations.of(context).modalBarrierDismissLabel,
-      barrierColor: Colors.transparent,
-      transitionDuration: Duration.zero, // Motor handles animation
-      pageBuilder: (
-        BuildContext buildContext,
-        Animation<double> animation,
-        Animation<double> secondaryAnimation,
-      ) {
-        final double menuTop =
-            showAbove
-                ? cardPosition.dy - popupHeight - 8.sp
-                : cardPosition.dy + cardSize.height + 8.sp;
-        return _MotorPopupWrapper(
-          cardPosition: cardPosition,
-          cardSize: cardSize,
-          menuPosition: Offset(details.globalPosition.dx - 60.w, menuTop),
-          matchComparison: matchComparison,
-          footerDetail: footerDetail,
-          showPin: showPin,
-          isPinned: isPinned,
-          onDismiss: () => Navigator.of(buildContext).pop(),
-          onPinToggle: () {
-            // Await the (possibly async) pin write before dismissing so the
-            // menu doesn't close on stale pinned state (Smart Event pin).
-            Future<void>(() async {
-              await onPinToggle(matchComparison.game);
-              if (!buildContext.mounted) return;
-              Navigator.pop(buildContext);
-            });
-          },
-          onShare: () {
-            Navigator.pop(buildContext);
-            onShare?.call(matchComparison.game);
-          },
-        );
-      },
+      previewBuilder:
+          (_) => GamesTourGameCardBody(
+            matchComparison: matchComparison,
+            allowStockfishFallback: false,
+          ),
+      actions: [
+        if (showPin)
+          LibraryMenuAction(
+            icon: isPinned ? Icons.push_pin : Icons.push_pin_outlined,
+            label: isPinned ? 'Unpin' : 'Pin',
+            onSelected: () => onPinToggle(game),
+          ),
+        LibraryMenuAction(
+          icon: Icons.ios_share_rounded,
+          label: 'Share',
+          onSelected: () => onShare?.call(game),
+        ),
+      ],
     );
   }
 }
@@ -941,157 +909,3 @@ String _displayTextSupporter(MatchWithComparison game) {
 }
 
 /// Motor-powered popup wrapper for smooth spring animations
-class _MotorPopupWrapper extends StatefulWidget {
-  const _MotorPopupWrapper({
-    required this.cardPosition,
-    required this.cardSize,
-    required this.menuPosition,
-    required this.matchComparison,
-    required this.isPinned,
-    required this.onDismiss,
-    required this.onPinToggle,
-    required this.onShare,
-    this.footerDetail,
-    this.showPin = true,
-  });
-
-  final Offset cardPosition;
-  final Size cardSize;
-  final Offset menuPosition;
-  final MatchWithComparison matchComparison;
-  final String? footerDetail;
-  final bool showPin;
-  final bool isPinned;
-  final VoidCallback onDismiss;
-  final VoidCallback onPinToggle;
-  final VoidCallback onShare;
-
-  @override
-  State<_MotorPopupWrapper> createState() => _MotorPopupWrapperState();
-}
-
-class _MotorPopupWrapperState extends State<_MotorPopupWrapper> {
-  double _animationProgress = 0.0;
-
-  @override
-  void initState() {
-    super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) {
-        setState(() {
-          _animationProgress = 1.0;
-        });
-      }
-    });
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return SingleMotionBuilder(
-      motion: const CupertinoMotion.bouncy(),
-      value: _animationProgress,
-      builder: (context, value, child) {
-        final menuScale = 0.9 + (0.1 * value);
-        final cardScale = 0.96 + (0.04 * value);
-        final opacity = value.clamp(0.0, 1.0);
-        final cardLift = (1.0 - value) * 10.h;
-
-        return Material(
-          color: Colors.transparent,
-          child: GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onTap: widget.onDismiss,
-            child: Stack(
-              children: [
-                // Stronger blur + dim scrim so background imagery does not
-                // visually compete with the focused card.
-                Positioned.fill(
-                  child: IgnorePointer(
-                    child: Opacity(
-                      opacity: opacity,
-                      child: ClipRect(
-                        child: BackdropFilter(
-                          filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
-                          child: Container(
-                            color: context.colors.background.withValues(
-                              alpha: 0.72,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-
-                // Focused card replica
-                Positioned(
-                  left: widget.cardPosition.dx,
-                  top: widget.cardPosition.dy - cardLift,
-                  child: Opacity(
-                    opacity: opacity,
-                    child: Transform.scale(
-                      scale: cardScale,
-                      alignment: Alignment.center,
-                      child: GestureDetector(
-                        onTap: widget.onDismiss,
-                        child: DecoratedBox(
-                          decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(12.br),
-                            boxShadow: [
-                              BoxShadow(
-                                color: Colors.black.withValues(alpha: 0.42),
-                                blurRadius: 28,
-                                spreadRadius: 2,
-                                offset: const Offset(0, 18),
-                              ),
-                              BoxShadow(
-                                color: Colors.black.withValues(alpha: 0.2),
-                                blurRadius: 10,
-                                offset: const Offset(0, 4),
-                              ),
-                            ],
-                          ),
-                          child: SizedBox(
-                            width: widget.cardSize.width,
-                            height: widget.cardSize.height,
-                            child: Stack(
-                              children: [
-                                _GameCardContent(
-                                  matchComparison: widget.matchComparison,
-                                  footerDetail: widget.footerDetail,
-                                ),
-                                if (widget.isPinned)
-                                  PinIconOverlay(right: 8.sp, top: 4.sp),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-                // Context menu with scale animation
-                Positioned(
-                  left: widget.menuPosition.dx,
-                  top: widget.menuPosition.dy,
-                  child: Opacity(
-                    opacity: opacity,
-                    child: Transform.scale(
-                      scale: menuScale,
-                      child: ContextPopupMenu(
-                        showPin: widget.showPin,
-                        isPinned: widget.isPinned,
-                        onPinToggle: widget.onPinToggle,
-                        onShare: widget.onShare,
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        );
-      },
-    );
-  }
-}

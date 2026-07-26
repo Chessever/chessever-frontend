@@ -214,4 +214,46 @@ void main() {
       isTrue,
     );
   });
+
+  testWidgets(
+    'action labels sit under a Material ancestor (no yellow underline)',
+    (tester) async {
+      await tester.pumpWidget(
+        host(
+          actions: [
+            LibraryMenuAction(
+              icon: Icons.open_in_new_rounded,
+              label: 'Open game',
+              onSelected: () {},
+            ),
+            LibraryMenuAction(
+              icon: Icons.delete_outline_rounded,
+              label: 'Delete game',
+              destructive: true,
+              onSelected: () {},
+            ),
+          ],
+        ),
+      );
+
+      await tester.longPress(find.byKey(cardKey));
+      await tester.pumpAndSettle();
+
+      // Exact failure mode of the yellow double-underline: Text without Material.
+      expect(
+        find.ancestor(
+          of: find.text('Open game'),
+          matching: find.byType(Material),
+        ),
+        findsWidgets,
+      );
+      expect(
+        find.ancestor(
+          of: find.text('Delete game'),
+          matching: find.byType(Material),
+        ),
+        findsWidgets,
+      );
+    },
+  );
 }

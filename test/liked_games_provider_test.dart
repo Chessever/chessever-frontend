@@ -8,6 +8,7 @@ import 'package:chessever2/repository/library/models/saved_analysis.dart';
 import 'package:chessever2/repository/liked_games/liked_games_provider.dart';
 import 'package:chessever2/revenue_cat_service/subscribe_state.dart';
 import 'package:chessever2/screens/chessboard/analysis/chess_game.dart';
+import 'package:chessever2/screens/chessboard/utils/like_learning_prompt_tracker.dart';
 import 'package:chessever2/screens/my_likes/provider/my_likes_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/widgets/game_filter/game_filter.dart';
@@ -212,6 +213,35 @@ void main() {
       container.read(likedGamesProvider).valueOrNull!.single.sourceGameId,
       game.gameId,
     );
+  });
+
+  test('a confirmed new like resets the reminder cadence', () async {
+    final repository = _FakeLibraryRepository();
+    final promptTracker = LikeLearningPromptTracker(_MemoryLikePromptStore());
+    await promptTracker.initialize(
+      userId: _currentUser.id,
+      hasExistingLikes: false,
+    );
+    for (var game = 1; game <= 12; game++) {
+      await promptTracker.recordCompletedGame(
+        userId: _currentUser.id,
+        gameId: 'completed-$game',
+      );
+    }
+
+    final container = _container(repository, promptTracker: promptTracker);
+    addTearDown(container.dispose);
+    await container.read(likedGamesProvider.future);
+
+    final toggle = container.read(likedGamesProvider.notifier).toggle(_game());
+    await repository.createStarted.future;
+    repository.allowCreate.complete();
+    expect(await toggle, isTrue);
+
+    final progress = await promptTracker.loadProgress(userId: _currentUser.id);
+    expect(progress.hasEverLiked, isTrue);
+    expect(progress.completedSinceLike, 0);
+    expect(progress.nextPromptAt, 40);
   });
 
   test('rapid repeated unlikes delete one liked game', () async {
@@ -421,11 +451,34 @@ void main() {
   });
 }
 
-ProviderContainer _container(_FakeLibraryRepository repository) {
+class _MemoryLikePromptStore implements LikeLearningPromptStore {
+  final Map<String, Map<String, Object?>> _values = {};
+
+  @override
+  Future<Map<String, Object?>?> read(String userId) async {
+    final value = _values[userId];
+    return value == null ? null : Map<String, Object?>.from(value);
+  }
+
+  @override
+  Future<void> write(String userId, Map<String, Object?> value) async {
+    _values[userId] = Map<String, Object?>.from(value);
+  }
+}
+
+ProviderContainer _container(
+  _FakeLibraryRepository repository, {
+  LikeLearningPromptTracker? promptTracker,
+}) {
+  final resolvedPromptTracker =
+      promptTracker ?? LikeLearningPromptTracker(_MemoryLikePromptStore());
   return ProviderContainer(
     overrides: [
       currentUserProvider.overrideWithValue(_currentUser),
       libraryRepositoryProvider.overrideWithValue(repository),
+      likeLearningPromptTrackerProvider.overrideWithValue(
+        resolvedPromptTracker,
+      ),
     ],
   );
 }

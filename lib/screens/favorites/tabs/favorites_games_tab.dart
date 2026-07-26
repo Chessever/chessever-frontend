@@ -1107,6 +1107,9 @@ class _FavoritesGamesTabState extends ConsumerState<FavoritesGamesTab>
         _navigateToChessBoard(updatedGames[gameIndex], updatedGames, gameIndex);
       },
       pinnedIds: const [],
+      // Favorites has no tour scope to pin into, so the menu drops the item
+      // rather than offering a tap that does nothing.
+      showPin: false,
       onPinToggle: (_) {},
     );
   }
@@ -1562,7 +1565,10 @@ class _FavoritesLiveBoardGameCardState
         pinnedIds: widget.gamesData.pinnedGamedIs,
         allowStockfishFallback: widget.streamEnabled,
         streamEnabled: widget.streamEnabled,
-        onPinToggle: (_) {},
+        // Favorites has no tour scope to pin into, so the menu drops the item
+      // rather than offering a tap that does nothing.
+      showPin: false,
+      onPinToggle: (_) {},
       ),
     );
 

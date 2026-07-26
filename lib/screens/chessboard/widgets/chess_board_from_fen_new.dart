@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'package:chessever2/screens/chessboard/widgets/context_pop_up_menu.dart';
 import 'package:chessever2/providers/board_settings_provider_new.dart';
 import 'package:chessever2/providers/engine_settings_provider.dart';
 import 'package:chessever2/repository/gamebase/gamebase_repository.dart';
@@ -26,6 +25,7 @@ import 'package:chessever2/utils/time_control_bonus.dart';
 import 'package:chessground/chessground.dart';
 import 'package:dartchess/dartchess.dart';
 import 'package:flutter/foundation.dart';
+import 'package:chessever2/screens/library/widgets/library_context_menu.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
@@ -438,6 +438,7 @@ class ChessBoardFromFENNew extends ConsumerWidget {
     this.liveBatchKey,
     this.scoreCardViewSource,
     this.scoreCardGamesContext = const [],
+    this.showPin = true,
   });
 
   final GamesTourModel gamesTourModel;
@@ -450,92 +451,32 @@ class ChessBoardFromFENNew extends ConsumerWidget {
   final ChessboardView? scoreCardViewSource;
   final List<GamesTourModel> scoreCardGamesContext;
 
+  /// Whether the long-press menu offers Pin. Lists with no tour scope to pin
+  /// into (Favorites, Countrymen, archive views) drop the item rather than
+  /// offering a tap that does nothing.
+  final bool showPin;
+
   bool get isPinned => pinnedIds.contains(gamesTourModel.gameId);
 
-  void _showBlurredPopup(
-    BuildContext context,
-    WidgetRef ref,
-    LongPressStartDetails details,
-  ) {
-    final RenderBox boardRenderBox = context.findRenderObject() as RenderBox;
-    final Offset boardPosition = boardRenderBox.localToGlobal(Offset.zero);
-    final Size boardSize = boardRenderBox.size;
-
-    final double screenHeight = MediaQuery.of(context).size.height;
-    const double popupHeight = 100;
-    final double spaceBelow =
-        screenHeight - (boardPosition.dy + boardSize.height);
-
-    bool showAbove = spaceBelow < popupHeight;
-
-    showGeneralDialog(
+  /// Same menu the Library and Games-tab cards raise, so a long press reads
+  /// identically wherever it happens. Replaces a bespoke selective-blur overlay
+  /// that dimmed the whole screen around a cut-out of this board.
+  void _showContextMenu(BuildContext context, WidgetRef ref) {
+    showLibraryContextMenu(
       context: context,
-      barrierDismissible: true,
-      barrierLabel: MaterialLocalizations.of(context).modalBarrierDismissLabel,
-      pageBuilder: (
-        BuildContext buildContext,
-        Animation<double> animation,
-        Animation<double> secondaryAnimation,
-      ) {
-        final double menuTop =
-            showAbove
-                ? boardPosition.dy - popupHeight - 8.sp
-                : boardPosition.dy + boardSize.height + 8.sp;
-        return Material(
-          color: Colors.transparent,
-          child: GestureDetector(
-            onTap: () => Navigator.of(buildContext).pop(),
-            child: Stack(
-              children: [
-                SelectiveBlurBackground(
-                  clearPosition: boardPosition,
-                  clearSize: boardSize,
-                ),
-                Positioned(
-                  left: boardPosition.dx,
-                  top: boardPosition.dy,
-                  child: _ChessBoardContent(
-                    gamesTourModel: gamesTourModel,
-                    lastMove: _uciToMove(gamesTourModel.lastMove ?? ''),
-                    boardSize: boardSize,
-                    isPinned: isPinned,
-                    fixedBottomSide: fixedBottomSide,
-                    allowStockfishFallback: allowStockfishFallback,
-                    liveBatchKey: liveBatchKey,
-                    scoreCardViewSource: scoreCardViewSource,
-                    scoreCardGamesContext: scoreCardGamesContext,
-                  ),
-                ),
-
-                Positioned(
-                  left: details.globalPosition.dx - 120.w,
-                  top: menuTop,
-                  child: ContextPopupMenu(
-                    isPinned: isPinned,
-                    onPinToggle: () {
-                      // Await the (possibly async) pin write before dismissing
-                      // so the menu doesn't pop on stale pinned state.
-                      Future<void>(() async {
-                        await onPinToggle(gamesTourModel);
-                        if (!buildContext.mounted) return;
-                        Navigator.pop(buildContext);
-                      });
-                    },
-                    onShare: () {
-                      Navigator.pop(buildContext);
-                      showGameShareOverlay(context, ref, gamesTourModel);
-                    },
-                  ),
-                ),
-              ],
-            ),
+      actions: [
+        if (showPin)
+          LibraryMenuAction(
+            icon: isPinned ? Icons.push_pin : Icons.push_pin_outlined,
+            label: isPinned ? 'Unpin' : 'Pin',
+            onSelected: () => onPinToggle(gamesTourModel),
           ),
-        );
-      },
-      transitionBuilder: (context, animation, secondaryAnimation, child) {
-        return FadeTransition(opacity: animation, child: child);
-      },
-      transitionDuration: const Duration(milliseconds: 300),
+        LibraryMenuAction(
+          icon: Icons.ios_share_rounded,
+          label: 'Share',
+          onSelected: () => showGameShareOverlay(context, ref, gamesTourModel),
+        ),
+      ],
     );
   }
 
@@ -558,10 +499,7 @@ class ChessBoardFromFENNew extends ConsumerWidget {
               HapticFeedbackService.cardTap();
               onChanged();
             },
-            onLongPressStart: (details) {
-              HapticFeedbackService.contextMenu();
-              _showBlurredPopup(context, ref, details);
-            },
+            onLongPress: () => _showContextMenu(context, ref),
             child: _ChessBoardLayout(
               gamesTourModel: gamesTourModel,
               lastMove: _uciToMove(gamesTourModel.lastMove ?? ''),
@@ -594,6 +532,7 @@ class GridChessBoardFromFENNew extends ConsumerWidget {
     this.liveBatchKey,
     this.scoreCardViewSource,
     this.scoreCardGamesContext = const [],
+    this.showPin = true,
   });
 
   final GamesTourModel gamesTourModel;
@@ -606,153 +545,30 @@ class GridChessBoardFromFENNew extends ConsumerWidget {
   final ChessboardView? scoreCardViewSource;
   final List<GamesTourModel> scoreCardGamesContext;
 
+  /// Whether the long-press menu offers Pin. Lists with no tour scope to pin
+  /// into (Favorites, Countrymen, archive views) drop the item rather than
+  /// offering a tap that does nothing.
+  final bool showPin;
+
   bool get isPinned => pinnedIds.contains(gamesTourModel.gameId);
 
-  void _showBlurredPopup({
-    required BuildContext context,
-    required WidgetRef ref,
-    required double size,
-    required double screenWidth,
-    required double sideBarWidth,
-    required bool showEvalBar,
-    required LongPressStartDetails details,
-  }) {
-    final boardRenderBox = context.findRenderObject() as RenderBox;
-    final boardPosition = boardRenderBox.localToGlobal(Offset.zero);
-    final bottomSide = fixedBottomSide ?? Side.white;
-    final topSide = _oppositeSide(bottomSide);
-
-    final screenHeight = MediaQuery.of(context).size.height;
-    final popupHeight = 100.h;
-    final spaceBelow = screenHeight - (boardPosition.dy + screenWidth);
-
-    bool showAbove = spaceBelow < popupHeight;
-
-    showGeneralDialog(
+  /// The one shared long-press menu — see [ChessBoardFromFENNew._showContextMenu].
+  void _showContextMenu(BuildContext context, WidgetRef ref) {
+    showLibraryContextMenu(
       context: context,
-      barrierDismissible: true,
-      barrierLabel: MaterialLocalizations.of(context).modalBarrierDismissLabel,
-      pageBuilder: (
-        BuildContext buildContext,
-        Animation<double> animation,
-        Animation<double> secondaryAnimation,
-      ) {
-        return Material(
-          color: Colors.transparent,
-          child: GestureDetector(
-            onTap: () => Navigator.of(buildContext).pop(),
-            child: Stack(
-              children: [
-                SelectiveBlurBackground(
-                  clearPosition: boardPosition,
-                  clearSize: Size(size, size),
-                ),
-                Positioned(
-                  left: boardPosition.dx,
-                  top: boardPosition.dy - (showAbove ? popupHeight : 0),
-                  width: screenWidth,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      if (showAbove)
-                        Padding(
-                          padding: EdgeInsets.only(left: sideBarWidth),
-                          child: ContextPopupMenu(
-                            isPinned: isPinned,
-                            onPinToggle: () {
-                              // Await the (possibly async) pin write before
-                              // dismissing so the menu reflects pinned state.
-                              Future<void>(() async {
-                                await onPinToggle(gamesTourModel);
-                                if (!buildContext.mounted) return;
-                                Navigator.pop(buildContext);
-                              });
-                            },
-                            onShare: () {
-                              Navigator.pop(buildContext);
-                              showGameShareOverlay(
-                                context,
-                                ref,
-                                gamesTourModel,
-                              );
-                            },
-                          ),
-                        ),
-                      _PlayerRow(
-                        gamesTourModel: gamesTourModel,
-                        isWhitePlayer: topSide == Side.white,
-                        isCurrentPlayer: gamesTourModel.activePlayer == topSide,
-                        isPinned: isPinned,
-                        playerView: PlayerView.gridView,
-                        liveBatchKey: liveBatchKey,
-                        scoreCardViewSource: scoreCardViewSource,
-                        scoreCardGamesContext: scoreCardGamesContext,
-                      ),
-                      SizedBox(height: 4.h),
-                      SizedBox(
-                        height: size,
-                        child: _ChessBoardWithEvaluation(
-                          gamesTourModel: gamesTourModel,
-                          lastMove: _uciToMove(gamesTourModel.lastMove ?? ''),
-                          sideBarWidth: sideBarWidth,
-                          boardSize: size,
-                          playerView: PlayerView.gridView,
-                          showEvalBar: showEvalBar,
-                          showCoordinates: false,
-                          orientation: bottomSide,
-                          allowStockfishFallback: allowStockfishFallback,
-                        ),
-                      ),
-                      SizedBox(height: 4.h),
-                      _PlayerRow(
-                        gamesTourModel: gamesTourModel,
-                        isWhitePlayer: bottomSide == Side.white,
-                        isCurrentPlayer:
-                            gamesTourModel.activePlayer == bottomSide,
-                        isPinned: false,
-                        playerView: PlayerView.gridView,
-                        liveBatchKey: liveBatchKey,
-                        scoreCardViewSource: scoreCardViewSource,
-                        scoreCardGamesContext: scoreCardGamesContext,
-                      ),
-
-                      if (!showAbove)
-                        Padding(
-                          padding: EdgeInsets.only(left: sideBarWidth),
-                          child: ContextPopupMenu(
-                            isPinned: isPinned,
-                            onPinToggle: () {
-                              // Await the (possibly async) pin write before
-                              // dismissing so the menu reflects pinned state.
-                              Future<void>(() async {
-                                await onPinToggle(gamesTourModel);
-                                if (!buildContext.mounted) return;
-                                Navigator.pop(buildContext);
-                              });
-                            },
-                            onShare: () {
-                              Navigator.pop(buildContext);
-                              showGameShareOverlay(
-                                context,
-                                ref,
-                                gamesTourModel,
-                              );
-                            },
-                          ),
-                        ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
+      actions: [
+        if (showPin)
+          LibraryMenuAction(
+            icon: isPinned ? Icons.push_pin : Icons.push_pin_outlined,
+            label: isPinned ? 'Unpin' : 'Pin',
+            onSelected: () => onPinToggle(gamesTourModel),
           ),
-        );
-      },
-      transitionBuilder: (context, animation, secondaryAnimation, child) {
-        return FadeTransition(opacity: animation, child: child);
-      },
-      transitionDuration: const Duration(milliseconds: 300),
+        LibraryMenuAction(
+          icon: Icons.ios_share_rounded,
+          label: 'Share',
+          onSelected: () => showGameShareOverlay(context, ref, gamesTourModel),
+        ),
+      ],
     );
   }
 
@@ -772,18 +588,7 @@ class GridChessBoardFromFENNew extends ConsumerWidget {
           HapticFeedbackService.cardTap();
           onChanged();
         },
-        onLongPressStart: (details) {
-          HapticFeedbackService.contextMenu();
-          _showBlurredPopup(
-            context: context,
-            ref: ref,
-            size: boardSize,
-            screenWidth: screenWidth,
-            sideBarWidth: sideBarWidth,
-            showEvalBar: showEvalBar,
-            details: details,
-          );
-        },
+        onLongPress: () => _showContextMenu(context, ref),
         child: SizedBox(
           width: screenWidth,
           child: Column(
@@ -839,18 +644,7 @@ class GridChessBoardFromFENNew extends ConsumerWidget {
             HapticFeedbackService.cardTap();
             onChanged();
           },
-          onLongPressStart: (details) {
-            HapticFeedbackService.contextMenu();
-            _showBlurredPopup(
-              context: context,
-              ref: ref,
-              size: boardSize,
-              screenWidth: availableWidth,
-              sideBarWidth: sideBarWidth,
-              showEvalBar: showEvalBar,
-              details: details,
-            );
-          },
+          onLongPress: () => _showContextMenu(context, ref),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -994,92 +788,6 @@ class _ChessBoardLayout extends ConsumerWidget {
           scoreCardGamesContext: scoreCardGamesContext,
         ),
       ],
-    );
-  }
-}
-
-class _ChessBoardContent extends ConsumerWidget {
-  const _ChessBoardContent({
-    required this.gamesTourModel,
-    required this.lastMove,
-    required this.boardSize,
-    required this.isPinned,
-    required this.fixedBottomSide,
-    required this.allowStockfishFallback,
-    required this.liveBatchKey,
-    required this.scoreCardViewSource,
-    required this.scoreCardGamesContext,
-  });
-
-  final GamesTourModel gamesTourModel;
-  final Move? lastMove;
-  final Size boardSize;
-  final bool isPinned;
-  final Side? fixedBottomSide;
-  final bool allowStockfishFallback;
-  final LiveGamesBatchKey? liveBatchKey;
-  final ChessboardView? scoreCardViewSource;
-  final List<GamesTourModel> scoreCardGamesContext;
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final showEvalBar = _shouldShowEvalBarForGame(ref, gamesTourModel);
-    final sideBarWidth = showEvalBar ? 20.w : 0.w;
-    final bottomSide = fixedBottomSide ?? Side.white;
-    final topSide = _oppositeSide(bottomSide);
-
-    return SizedBox(
-      width: boardSize.width,
-      height: boardSize.height,
-      child: Padding(
-        padding: EdgeInsets.only(left: 24.sp, right: 24.sp, bottom: 8.sp),
-        child: LayoutBuilder(
-          builder: (context, constraints) {
-            // Get width AFTER padding is applied
-            final availableWidth = constraints.maxWidth;
-            // Board size is available width minus the evaluation bar
-            final chessBoardSize = availableWidth - sideBarWidth;
-
-            return Column(
-              children: [
-                _PlayerRow(
-                  gamesTourModel: gamesTourModel,
-                  isWhitePlayer: topSide == Side.white,
-                  isCurrentPlayer: gamesTourModel.activePlayer == topSide,
-                  isPinned: isPinned,
-                  playerView: PlayerView.listView,
-                  liveBatchKey: liveBatchKey,
-                  scoreCardViewSource: scoreCardViewSource,
-                  scoreCardGamesContext: scoreCardGamesContext,
-                ),
-                SizedBox(height: 4.h),
-                _ChessBoardWithEvaluation(
-                  gamesTourModel: gamesTourModel,
-                  lastMove: lastMove,
-                  sideBarWidth: sideBarWidth,
-                  boardSize: chessBoardSize,
-                  playerView: PlayerView.listView,
-                  showEvalBar: showEvalBar,
-                  showCoordinates: false,
-                  orientation: bottomSide,
-                  allowStockfishFallback: allowStockfishFallback,
-                ),
-                SizedBox(height: 4.h),
-                _PlayerRow(
-                  gamesTourModel: gamesTourModel,
-                  isWhitePlayer: bottomSide == Side.white,
-                  isCurrentPlayer: gamesTourModel.activePlayer == bottomSide,
-                  isPinned: false,
-                  playerView: PlayerView.listView,
-                  liveBatchKey: liveBatchKey,
-                  scoreCardViewSource: scoreCardViewSource,
-                  scoreCardGamesContext: scoreCardGamesContext,
-                ),
-              ],
-            );
-          },
-        ),
-      ),
     );
   }
 }

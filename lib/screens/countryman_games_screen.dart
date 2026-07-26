@@ -282,6 +282,7 @@ class _CountrymanGamesListState extends ConsumerState<CountrymanGamesList>
                         },
                         gamesTourModel: game,
                         allowStockfishFallback: allowStockfishFallback,
+                        showPin: false,
                       )
                       : GameCard(
                         onTap: () async {
@@ -297,6 +298,9 @@ class _CountrymanGamesListState extends ConsumerState<CountrymanGamesList>
                           comparison: MatchComparison.sameOrder,
                         ),
                         allowStockfishFallback: allowStockfishFallback,
+                        // Countrymen spans every event, so there is no tour to
+                        // pin into — the menu drops the item.
+                        showPin: false,
                         pinnedIds: data.pinnedGamedIs,
                         onPinToggle: (gamesTourModel) async {
                           await ref
