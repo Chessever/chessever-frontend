@@ -15,6 +15,7 @@ Future<void> _pumpCard(
   WidgetTester tester,
   String countryCode, {
   bool isInactive = false,
+  bool showRank = true,
 }) async {
   await tester.binding.setSurfaceSize(const Size(393, 852));
   addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -40,6 +41,7 @@ Future<void> _pumpCard(
                   matchScore: '1/1',
                 ),
                 rank: 1,
+                showRank: showRank,
                 showFavoriteButton: false,
                 isInactive: isInactive,
                 onTap: () {},
@@ -260,5 +262,25 @@ void main() {
       find.byType(PlayerInitialsAvatar),
     );
     expect(avatar.titleBadgeColor, AppColors.dark.dangerMuted);
+  });
+
+  // A search hit inside a ranked list holds no world rank, so the slot goes
+  // empty rather than claiming one — and it must not fall back to the
+  // "still resolving" shimmer either.
+  testWidgets('an unranked row leaves the slot empty, not shimmering', (
+    tester,
+  ) async {
+    await _pumpCard(tester, 'NOR', showRank: false);
+
+    expect(find.text('1'), findsNothing);
+    expect(find.text('00'), findsNothing);
+
+    // The slot still holds its width, so the name lands where it always does.
+    final withRank = await () async {
+      await _pumpCard(tester, 'NOR');
+      return tester.getRect(find.text('Test, Player')).left;
+    }();
+    await _pumpCard(tester, 'NOR', showRank: false);
+    expect(tester.getRect(find.text('Test, Player')).left, withRank);
   });
 }

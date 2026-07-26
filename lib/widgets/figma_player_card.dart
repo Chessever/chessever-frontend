@@ -24,6 +24,11 @@ class FigmaPlayerCard extends ConsumerWidget {
   /// standing rank is still being resolved asynchronously. A shimmer
   /// placeholder is shown in the rank slot until the number arrives.
   final int? rank;
+
+  /// Whether this list has a meaningful ordinal for the row at all. Search
+  /// results inside a ranked list do not: numbering them 1..n would assert a
+  /// world rank the player does not hold.
+  final bool showRank;
   final bool isFavorite;
   final bool showFavoriteButton;
   final bool isInactive;
@@ -50,6 +55,7 @@ class FigmaPlayerCard extends ConsumerWidget {
     super.key,
     required this.player,
     required this.rank,
+    this.showRank = true,
     this.isFavorite = false,
     this.showFavoriteButton = true,
     this.isInactive = false,
@@ -187,12 +193,17 @@ class FigmaPlayerCard extends ConsumerWidget {
         ),
         child: Row(
           children: [
-            // Rank number — shows a shimmer placeholder while the overall
-            // standing rank is still resolving for remote search results.
+            // Rank number. Three distinct states: a number, a shimmer while
+            // the overall standing rank is still resolving, and — when the
+            // surrounding list has no meaningful ordinal to give — an empty
+            // slot. The slot keeps its width in every case so the name column
+            // lands on the same x.
             SizedBox(
               width: 24.w,
               child:
-                  rank != null
+                  !showRank
+                      ? const SizedBox.shrink()
+                      : rank != null
                       ? Text(
                         rank.toString(),
                         style: AppTypography.textSmMedium.copyWith(

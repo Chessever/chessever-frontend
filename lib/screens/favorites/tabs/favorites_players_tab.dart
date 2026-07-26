@@ -662,6 +662,9 @@ class _FavoritesPlayersTabState extends ConsumerState<FavoritesPlayersTab>
             player: player,
             isFavorite: isFavorite,
             rank: index + 1,
+            // Search results are matches, not standings — numbering them 1..n
+            // would claim a world rank the player does not hold.
+            showRank: !state.isSearching,
             showFavoriteButton: true,
             isInactive:
                 player.fideId != null &&
