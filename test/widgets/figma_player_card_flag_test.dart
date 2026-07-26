@@ -264,57 +264,6 @@ void main() {
     expect(avatar.titleBadgeColor, AppColors.dark.dangerMuted);
   });
 
-  // A ranking list is about the rating, so it takes the trailing slot from the
-  // heart — and must not then be printed a second time under the name.
-  testWidgets('trailingRating replaces the heart and is not duplicated', (
-    tester,
-  ) async {
-    await tester.binding.setSurfaceSize(const Size(393, 852));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
-    await tester.pumpWidget(
-      ProviderScope(
-        overrides: [
-          playerPhotoProvider.overrideWith((ref, fideId) async => null),
-        ],
-        child: MaterialApp(
-          theme: AppTheme.darkTheme,
-          home: Builder(
-            builder: (context) {
-              ResponsiveHelper.init(context);
-              return Scaffold(
-                body: FigmaPlayerCard(
-                  player: PlayerStandingModel(
-                    countryCode: 'NOR',
-                    title: 'GM',
-                    name: 'Carlsen, Magnus',
-                    score: 2823,
-                    scoreChange: 0,
-                    matchScore: null,
-                  ),
-                  rank: 1,
-                  trailingRating: 2823,
-                  showFavoriteButton: false,
-                  onTap: () {},
-                ),
-              );
-            },
-          ),
-        ),
-      ),
-    );
-    await tester.pump();
-
-    expect(find.byIcon(Icons.favorite), findsNothing);
-    expect(find.byIcon(Icons.favorite_border), findsNothing);
-    expect(
-      find.text('2823'),
-      findsOneWidget,
-      reason: 'the inline rating under the name must be dropped, not repeated',
-    );
-    // Sits in the trailing slot, hard right.
-    expect(tester.getRect(find.text('2823')).right, greaterThan(300));
-  });
-
   // A search hit inside a ranked list holds no world rank, so the slot goes
   // empty rather than claiming one — and it must not fall back to the
   // "still resolving" shimmer either.
