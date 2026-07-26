@@ -488,6 +488,26 @@ bool shouldShowReportClassificationsOnBoard({
   return stateFp != null && report.fingerprint == stateFp;
 }
 
+/// How many mainline moves a completed report has judged for this game, or 0
+/// when no report covers it.
+///
+/// This is deliberately the *analysed* move count, not the labelled one. The
+/// report walks every mainline move and chips only the ones that deserve a
+/// symbol, so a bare move is a verdict of its own — "nothing to say here" — and
+/// callers use this to stop an imported annotation from filling that silence.
+int reportClassificationCoverage({
+  required MobileGameReviewState reviewState,
+  required String boardGameFingerprint,
+}) {
+  if (!shouldShowReportClassificationsOnBoard(
+    reviewState: reviewState,
+    boardGameFingerprint: boardGameFingerprint,
+  )) {
+    return 0;
+  }
+  return reviewState.reportState.report?.moves.length ?? 0;
+}
+
 /// Zero-based mainline move index → classification for notation chips.
 ///
 /// Uses mainline order (index in [GameAnalysisReport.moves]) so notation tokens

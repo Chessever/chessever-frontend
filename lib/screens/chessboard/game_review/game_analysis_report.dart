@@ -1244,6 +1244,27 @@ GameMoveClassification? _missedOrLoss({
   final moverBefore = isWhite ? beforeWin : (100 - beforeWin);
   final moverAfter = isWhite ? afterWin : (100 - afterWin);
 
+  // ── Step 7b: a decided game hands out no errors ─────────────────────────
+  // Before anything else, ask whether this move could have changed the result.
+  // If the mover was already clearly winning and still is, or already clearly
+  // losing and still is, then nothing it did is describable as damage: the
+  // winner collecting material before mating has chosen a slower road to the
+  // same win, and the loser being mated in seven instead of eleven had no move
+  // that led anywhere better.
+  //
+  // This has to sit above the tiers *and* the tactical override. The tiers
+  // already soften decided positions, but [_tacticalLossOverride] runs after
+  // them and [_moreSevere] can only raise a verdict, so the override was
+  // quietly undoing that softening — a vanished or newly-appeared mate
+  // announcement is enough to trip it on its own, which is exactly what turned
+  // both of those moves into "?".
+  if (reportOutcomeAlreadySettled(
+    moverBefore: moverBefore,
+    moverAfter: moverAfter,
+  )) {
+    return null;
+  }
+
   // ── Step 8: Missed Win ─────────────────────────────────────────────────
   // Missed conversion after opponent's blunder.
   if (previousMoveClassification == GameMoveClassification.blunder &&

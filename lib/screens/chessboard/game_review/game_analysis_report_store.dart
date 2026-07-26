@@ -175,7 +175,10 @@ class _MemoryEntry {
 /// Payload version. Bump whenever a change alters what a report *says* about
 /// the same game, so stored reports from the old rules are dropped instead of
 /// being replayed forever. v2: book detection reaches real theory depth.
-const int gameAnalysisReportSchemaVersion = 2;
+/// v3: a decided game no longer hands out errors (see
+/// `reportOutcomeAlreadySettled`) — every stored report still carries the "?"
+/// this fixed.
+const int gameAnalysisReportSchemaVersion = 3;
 
 Map<String, dynamic> gameAnalysisReportToJson(GameAnalysisReport report) {
   return <String, dynamic>{

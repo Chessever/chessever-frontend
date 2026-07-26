@@ -140,6 +140,40 @@ bool outcomeBandCollapsed({
   return (moverBefore - moverAfter) > kBandHysteresisPp;
 }
 
+/// True when the result was already decided before the move and stayed decided
+/// after it — the mover was clearly winning and still is, or was clearly losing
+/// and still is.
+///
+/// This is the "the game is over, it is just not finished yet" test, and it is
+/// what stops a decided position from handing out errors. Two shapes show up in
+/// every crushing finish:
+///
+/// * The winner has a forced mate and takes a free rook instead of playing it.
+///   The mate announcement disappears, but they are still completely winning —
+///   they chose a slower road to the same result, which is not a mistake.
+/// * The loser is dead lost and gets mated in seven instead of eleven. No move
+///   they had could change that, so nothing they play deserves a symbol.
+///
+/// Both used to be labelled, because the *shape* of the evaluation changed even
+/// though the outcome did not. A label has to describe a change in what is going
+/// to happen; when nothing changed, the honest answer is no symbol.
+///
+/// Deliberately band-scoped, not a blanket amnesty for lopsided games: giving up
+/// a forced mate for a position that is merely *better*, or walking from a
+/// playable game into a forced mate, both leave the settled band and stay
+/// punishable.
+bool reportOutcomeAlreadySettled({
+  required double moverBefore,
+  required double moverAfter,
+}) {
+  final before = outcomeBandFor(moverBefore);
+  if (before != OutcomeBand.clearlyWinning &&
+      before != OutcomeBand.clearlyLosing) {
+    return false;
+  }
+  return outcomeBandFor(moverAfter) == before;
+}
+
 /// True when the mover climbed out of [OutcomeBand.clearlyLosing].
 bool escapesClearlyLosingBand({
   required double moverBefore,

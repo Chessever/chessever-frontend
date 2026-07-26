@@ -286,34 +286,111 @@ LichessMoveAnnotationType _annotationTypeForGameReport(
   GameMoveClassification classification,
 ) => annotationTypeForClassification(classification);
 
+/// PGN NAGs that answer the same question our own report answers: how good was
+/// this move. These are the ones our report displaces.
+///
+/// $7 (□, only move) and every evaluation ($10–$44) and observation ($32+) glyph
+/// make a *different* claim — how the position stands, or what the idea was —
+/// so they survive a report and keep rendering beside its verdict.
+const Set<int> kMoveVerdictNags = <int>{1, 2, 3, 4, 5, 6};
+
 /// Merge NAGs baked into the PGN with NAGs the user has applied locally.
 /// PGN NAGs come first (preserving authoring order), user NAGs append after —
 /// the SAN/badge resolvers dedupe and re-sort by category at render time.
+///
+/// [reportJudgedMove] drops the PGN's move-quality verdicts ([kMoveVerdictNags])
+/// from the result. Broadcast games arrive from the Lichess database with those
+/// glyphs already baked into the moves, on and off between snapshots, and they
+/// contradict our own report: the move text reads `?!` while the badge beside it
+/// reads Best. Our report is the later and deeper answer to that same question,
+/// so once it has looked at the move it owns the verdict — including when it
+/// decided the move deserved no symbol at all. The reader's own in-app NAGs are
+/// never filtered: an annotation they applied themselves is intent, not imported
+/// data.
+List<int> mergeMoveNags({
+  required List<int>? pgnNags,
+  required List<int> userNags,
+  bool reportJudgedMove = false,
+}) {
+  var pgn = pgnNags ?? const <int>[];
+  if (reportJudgedMove && pgn.isNotEmpty) {
+    pgn =
+        pgn
+            .where((nag) => !kMoveVerdictNags.contains(nag))
+            .toList(growable: false);
+  }
+  if (userNags.isEmpty) return pgn;
+  if (pgn.isEmpty) return userNags;
+  return <int>[...pgn, ...userNags];
+}
+
 List<int> _mergeUserNags(
   List<int>? pgnNags,
   String? pointerId,
+  Map<String, List<int>> userMoveNags, {
+  bool reportJudgedMove = false,
+}) {
+  return mergeMoveNags(
+    pgnNags: pgnNags,
+    userNags:
+        pointerId == null
+            ? const <int>[]
+            : (userMoveNags[pointerId] ?? const <int>[]),
+    reportJudgedMove: reportJudgedMove,
+  );
+}
+
+/// Whether a finished report has judged the mainline move at [moveIndex] —
+/// **including the moves it deliberately left unlabelled**.
+///
+/// This is the gate for displacing imported annotations, and it is coverage, not
+/// verdict presence, on purpose. Our report looks at every mainline move and
+/// labels only the ones worth a chip; a move it left bare is its answer, not a
+/// gap for the Lichess PGN's `?!` to fill. Judging that by "did we tag this
+/// move" would let the imported glyph survive on exactly the moves we decided
+/// were ordinary.
+///
+/// [reportedMoveCount] is the analysed mainline length, or 0 when no completed
+/// report covers this game. Variations are never analysed, so a non-mainline
+/// token keeps whatever its PGN gave it.
+bool reportJudgedMainlineMove({
+  required bool isMainline,
+  required int? moveIndex,
+  required int? pointerIndex,
+  required int reportedMoveCount,
+}) {
+  if (!isMainline || reportedMoveCount <= 0) return false;
+  final index = moveIndex ?? pointerIndex;
+  if (index == null) return false;
+  return index >= 0 && index < reportedMoveCount;
+}
+
+/// The NAGs the reader applied to [movePointer] themselves, with no PGN NAGs
+/// mixed in. Used where the two sources must be told apart.
+List<int> userNagsForMovePointer(
+  List<Number>? movePointer,
   Map<String, List<int>> userMoveNags,
 ) {
-  final pgn = pgnNags ?? const <int>[];
-  final user =
-      pointerId == null
-          ? const <int>[]
-          : (userMoveNags[pointerId] ?? const <int>[]);
-  if (user.isEmpty) return pgn;
-  if (pgn.isEmpty) return user;
-  return <int>[...pgn, ...user];
+  if (movePointer == null || movePointer.isEmpty) return const <int>[];
+  return userMoveNags[NotationPointer.encode(movePointer)] ?? const <int>[];
 }
 
 List<int> _mergeUserNagsForMovePointer(
   ChessMove? move,
   List<Number>? movePointer,
-  Map<String, List<int>> userMoveNags,
-) {
+  Map<String, List<int>> userMoveNags, {
+  bool reportJudgedMove = false,
+}) {
   final pointerId =
       (movePointer == null || movePointer.isEmpty)
           ? null
           : NotationPointer.encode(movePointer);
-  return _mergeUserNags(move?.nags, pointerId, userMoveNags);
+  return _mergeUserNags(
+    move?.nags,
+    pointerId,
+    userMoveNags,
+    reportJudgedMove: reportJudgedMove,
+  );
 }
 
 ChessMove? _moveForPointer(ChessGame? game, ChessMovePointer? pointer) {
@@ -9281,6 +9358,10 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard>
         _showDelayedGameEndingEffect &&
         canShowFinishedSpoilers;
 
+    // Assigned by the resolver below so the Unicode-glyph fallback (Path B) can
+    // tell whether our own report has judged this move — a move we analysed and
+    // left unlabelled included.
+    var boardMoveIsReportJudged = false;
     final boardAnnotation =
         (() {
           if (analysisGame == null ||
@@ -9321,22 +9402,54 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard>
                 useClassificationIcon: true,
               ),
           };
-          final moveAnnotations = <int, LichessMoveAnnotation>{
-            ...lichessAnnotations,
-            ...reportAnnotations,
-          };
-
           final isOnMainline =
               activeMovePointer.isEmpty || activeMovePointer.length == 1;
+          final currentMoveIndex =
+              (isOnMainline && activeMovePointer.isNotEmpty)
+                  ? activeMovePointer[0].toInt()
+                  : -1;
+          // Whether our report has looked at this move at all — a move it
+          // analysed and left unlabelled included. Within that reach the report
+          // *replaces* the imported annotations rather than layering over them:
+          // on a move we deliberately gave no symbol, Lichess's opinion of it
+          // must not show through the hole.
+          final reportJudgedThisMove = reportJudgedMainlineMove(
+            isMainline: isOnMainline,
+            moveIndex: currentMoveIndex >= 0 ? currentMoveIndex : null,
+            pointerIndex: null,
+            reportedMoveCount: reportClassificationCoverage(
+              reviewState: reviewState,
+              boardGameFingerprint: boardFingerprint,
+            ),
+          );
+          boardMoveIsReportJudged = reportJudgedThisMove;
+          final moveAnnotations =
+              reportJudgedThisMove
+                  ? reportAnnotations
+                  : <int, LichessMoveAnnotation>{
+                    ...lichessAnnotations,
+                    ...reportAnnotations,
+                  };
+          final reportVerdict =
+              currentMoveIndex >= 0 ? reportAnnotations[currentMoveIndex] : null;
+          final userNags = userNagsForMovePointer(
+            annotationMovePointer,
+            widget.chessBoardState.moveNags,
+          );
 
           // 1. Author/user NAGs win — they reflect explicit intent and must
           // override Lichess analysis classifications. Quality NAGs ($1–$4)
           // get the high-fidelity SVG badge here; non-mappable NAGs ($5–$7,
           // $10+) return null so Path B renders the Unicode glyph badge.
+          //
+          // The exception is the PGN's own move verdict once our report has
+          // judged the move: a broadcast PGN's baked-in `?!` is the Lichess
+          // database's opinion, not the reader's, and our report supersedes it.
           final mergedNags = _mergeUserNagsForMovePointer(
             activeMove,
             annotationMovePointer,
             widget.chessBoardState.moveNags,
+            reportJudgedMove: reportJudgedThisMove,
           );
           if (mergedNags.isNotEmpty) {
             final nag = primaryBoardNag(mergedNags) ?? mergedNags.first;
@@ -9344,19 +9457,19 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard>
             if (type != null) {
               return LichessMoveAnnotation(type: type, comment: '');
             }
-            // Non-mappable NAG — let Path B render the text-glyph badge.
+            // Non-mappable NAG. A glyph the reader applied themselves keeps the
+            // badge (Path B draws it); one that only came from the PGN yields to
+            // our report — to its verdict if it gave one, and to a bare square
+            // if it judged the move unremarkable.
+            if (reportJudgedThisMove && userNags.isEmpty) return reportVerdict;
             return null;
           }
 
-          // 2. No explicit NAGs → fall back to Lichess fetched analysis on
-          // mainline only.
-          if (isOnMainline) {
-            final currentMoveIndex =
-                activeMovePointer.isEmpty ? -1 : activeMovePointer[0].toInt();
-            if (currentMoveIndex >= 0 && moveAnnotations.isNotEmpty) {
-              final annotation = moveAnnotations[currentMoveIndex];
-              if (annotation != null) return annotation;
-            }
+          // 2. No explicit NAGs → our report verdict on the moves it judged,
+          // otherwise the Lichess fetched analysis, on mainline only.
+          if (currentMoveIndex >= 0 && moveAnnotations.isNotEmpty) {
+            final annotation = moveAnnotations[currentMoveIndex];
+            if (annotation != null) return annotation;
           }
 
           return null;
@@ -9378,11 +9491,15 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard>
           // $138, $140, $146) → render the literal Unicode glyph in a circular
           // badge. This is what fixes "exclamation symbols don't show on the
           // board" for NAGs that don't have a Lichess SVG mapping. Includes
-          // user-applied NAGs from widget.state.moveNags.
+          // user-applied NAGs from widget.state.moveNags. The PGN's own move
+          // verdicts are filtered out once our report has judged the move, so a
+          // broadcast `?!` cannot come back as a text badge here after Path A
+          // stepped aside for our verdict — or for our silence.
           final mergedNags = _mergeUserNagsForMovePointer(
             activeMove,
             annotationMovePointer,
             widget.chessBoardState.moveNags,
+            reportJudgedMove: boardMoveIsReportJudged,
           );
           final nag = primaryBoardNag(mergedNags);
           if (nag == null) return null;
@@ -11651,13 +11768,31 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
       _lastReportAnnotationCount = reportAnnotations.length;
       _repinAfterNotationReflow();
     }
+    // How many mainline moves our report judged (0 = none). Coverage, not chip
+    // count: a move we analysed and left bare is our answer for it, so nothing
+    // imported may speak for it either.
+    final reportedMoveCount = reportClassificationCoverage(
+      reviewState: reviewState,
+      boardGameFingerprint: boardFingerprint,
+    );
     // Raw PGN mode strips Lichess/fetched decorative glyphs and PGN NAGs, but
     // must NOT hide the whole-game report verdict chips — those are the result
     // of an explicit analysis the user waited for.
-    final moveAnnotations = <int, LichessMoveAnnotation>{
-      ...lichessAnnotations,
-      ...reportAnnotations,
-    };
+    //
+    // Within the report's reach the fetched Lichess classifications are dropped
+    // rather than layered under it: merging them would leave Lichess's verdict
+    // standing on exactly the moves our report chose not to chip.
+    final moveAnnotations =
+        reportedMoveCount > 0
+            ? <int, LichessMoveAnnotation>{
+              for (final entry in lichessAnnotations.entries)
+                if (entry.key >= reportedMoveCount) entry.key: entry.value,
+              ...reportAnnotations,
+            }
+            : <int, LichessMoveAnnotation>{
+              ...lichessAnnotations,
+              ...reportAnnotations,
+            };
 
     // Debug: Log annotation state
     if (kDebugMode) {
@@ -11826,6 +11961,7 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
       pieceAssets: pieceAssets,
       pointerMap: pointerMap,
       rawPgnMode: rawPgnMode,
+      reportedMoveCount: reportedMoveCount,
     );
 
     // Paste-FEN flow can land here with no moves yet (tokens empty). Don't
@@ -12158,6 +12294,7 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
     bool useFigurine = true,
     PieceAssets? pieceAssets,
     bool rawPgnMode = false,
+    int reportedMoveCount = 0,
   }) {
     final pointerId = token.pointerId;
     final key =
@@ -12184,6 +12321,22 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
                 ? resolvedAnnotation
                 : null)
             : resolvedAnnotation;
+    // Our finished report is the verdict on this move, so the glyph the Lichess
+    // broadcast PGN baked into it steps aside — otherwise the SAN reads `?!` in
+    // Lichess yellow while our own badge beside it reads Best. Evaluation and
+    // observation glyphs say something else and stay; so do the reader's own NAGs.
+    //
+    // Keyed on whether the report *judged* the move, not on whether it chipped
+    // it. A move we analysed and left bare is our verdict too, and letting the
+    // PGN glyph survive there would leave Lichess speaking for the exact moves we
+    // decided were unremarkable.
+    final reportJudgedThisMove = reportJudgedMainlineMove(
+      isMainline: token.node?.isMainline ?? false,
+      moveIndex: token.moveIndex,
+      pointerIndex:
+          token.pointer?.length == 1 ? token.pointer![0].toInt() : null,
+      reportedMoveCount: reportedMoveCount,
+    );
     final nags =
         rawPgnMode
             ? const <int>[]
@@ -12191,6 +12344,7 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
               token.node?.move.nags,
               token.pointerId,
               widget.state.moveNags,
+              reportJudgedMove: reportJudgedThisMove,
             );
 
     // Resolve NAGs into displays. Quality NAGs are highlighted on the move
@@ -12453,6 +12607,7 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
     required PieceAssets? pieceAssets,
     required Map<String, NotationMoveNode> pointerMap,
     bool rawPgnMode = false,
+    int reportedMoveCount = 0,
   }) {
     final widgets = <Widget>[];
     var currentRun = <NotationDisplayToken>[];
@@ -12479,6 +12634,7 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
                         useFigurine: useFigurine,
                         pieceAssets: pieceAssets,
                         rawPgnMode: rawPgnMode,
+                        reportedMoveCount: reportedMoveCount,
                       ),
                     )
                     .toList(),
@@ -12531,6 +12687,7 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
             pieceAssets: pieceAssets,
             pointerMap: pointerMap,
             rawPgnMode: rawPgnMode,
+            reportedMoveCount: reportedMoveCount,
           ),
         );
         continue;
@@ -12584,6 +12741,7 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
     required PieceAssets? pieceAssets,
     required Map<String, NotationMoveNode> pointerMap,
     bool rawPgnMode = false,
+    int reportedMoveCount = 0,
   }) {
     final variation = openParenToken.variation;
     final depth = openParenToken.depth;
@@ -12608,6 +12766,7 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
       pieceAssets: pieceAssets,
       pointerMap: pointerMap,
       rawPgnMode: rawPgnMode,
+      reportedMoveCount: reportedMoveCount,
     );
 
     return Padding(
