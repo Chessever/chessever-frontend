@@ -20,11 +20,6 @@ class ResolvedGameShareData {
   final bool isFlipped;
   final bool isAtGameEnd;
 
-  /// Whether the *full game* (not the focused ply) ends in a finished result.
-  /// Drives the GIF's final-frame king effect, which must fire on the whole-game
-  /// replay regardless of where the board is currently focused.
-  final bool gifIsAtGameEnd;
-
   const ResolvedGameShareData({
     required this.pgn,
     required this.shareUrl,
@@ -33,7 +28,6 @@ class ResolvedGameShareData {
     required this.mate,
     required this.isFlipped,
     required this.isAtGameEnd,
-    required this.gifIsAtGameEnd,
   });
 }
 
@@ -154,7 +148,6 @@ class ShareGameScreen extends ConsumerWidget {
       lastMove: shareData.snapshot.lastMove,
       pgn: shareData.pgn,
       moveSans: shareData.snapshot.moveSans,
-      moveTimes: shareData.snapshot.moveTimes,
       whitePlayerName: game.whitePlayer.name,
       blackPlayerName: game.blackPlayer.name,
       // Use countryCode first (inactive profile games often only populate this),
@@ -189,11 +182,6 @@ class ShareGameScreen extends ConsumerWidget {
       isAtGameEnd: shareData.isAtGameEnd,
       shareUrl: shareData.shareUrl,
       gameId: game.gameId, // Pass game ID for correct eval display
-      startingFen: shareData.snapshot.startingFen,
-      // Share GIF replays the complete game, independent of the focused move.
-      gifMoveSans: shareData.snapshot.gifMoveSans,
-      gifStartingFen: shareData.snapshot.gifStartingFen,
-      gifIsAtGameEnd: shareData.gifIsAtGameEnd,
       onClose: () => Navigator.of(context).pop(),
     );
   }

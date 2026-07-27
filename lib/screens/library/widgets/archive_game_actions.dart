@@ -165,8 +165,6 @@ Future<void> shareArchiveGame({
     failureMessage: 'Failed to prepare game share',
     (pgn) async {
       final snapshot = buildGameShareSnapshot(game: game, pgn: pgn);
-      // No board is open: the snapshot sits on the final position and covers the
-      // whole mainline, so the card and the GIF end on the same frame.
       final isFinished =
           game.gameStatus != GameStatus.ongoing &&
           game.gameStatus != GameStatus.unknown;
@@ -183,7 +181,6 @@ Future<void> shareArchiveGame({
           mate: 0,
           isFlipped: false,
           isAtGameEnd: isFinished,
-          gifIsAtGameEnd: isFinished,
         ),
       );
     },

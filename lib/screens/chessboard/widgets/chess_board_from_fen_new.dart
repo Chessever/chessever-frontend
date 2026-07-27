@@ -21,7 +21,6 @@ import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/pgn_clock_utils.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/string_utils.dart';
-import 'package:chessever2/utils/time_control_bonus.dart';
 import 'package:chessground/chessground.dart';
 import 'package:dartchess/dartchess.dart';
 import 'package:flutter/foundation.dart';
@@ -198,9 +197,7 @@ Future<void> showGameShareOverlay(
   // ---------------------------------------------------------------------------
   String resolvedPgn = '';
   List<String> moveSans = const [];
-  List<String> moveTimes = const [];
   int currentMoveIndex = -1;
-  String? startingFen;
 
   // Collect candidate PGNs from all tiers as (source, pgn) pairs.
   // Each tier is wrapped in try/catch so a network failure doesn't block later tiers.
@@ -283,18 +280,7 @@ Future<void> showGameShareOverlay(
       if (parseResult.moveSans.isNotEmpty) {
         resolvedPgn = pgn;
         moveSans = parseResult.moveSans;
-        // Trello #1005: top up the move-40 block of time the relay credits late.
-        moveTimes = applySecondaryBonusToMoveClocks(
-          parseResult.moveTimes,
-          game.secondaryTimePeriod,
-        );
         currentMoveIndex = moveSans.length - 1;
-        // Only set startingFen if it's a non-standard start position
-        final startFen = parseResult.startingPos.fen;
-        if (startFen !=
-            'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1') {
-          startingFen = startFen;
-        }
         debugPrint(
           'GIF share [${game.gameId}]: accepted PGN from $source '
           '(${moveSans.length} moves)',
@@ -393,7 +379,6 @@ Future<void> showGameShareOverlay(
             lastMove: lastMove,
             pgn: resolvedPgn,
             moveSans: moveSans,
-            moveTimes: moveTimes,
             whitePlayerName: game.whitePlayer.name,
             blackPlayerName: game.blackPlayer.name,
             whitePlayerCountry: game.whitePlayer.federation,
@@ -417,7 +402,6 @@ Future<void> showGameShareOverlay(
             onClose: () => Navigator.of(context).pop(),
             shareUrl: shareUrl,
             gameId: game.gameId,
-            startingFen: startingFen,
           ),
       transitionsBuilder: (context, animation, secondaryAnimation, child) {
         return FadeTransition(opacity: animation, child: child);

@@ -384,12 +384,11 @@ void main() {
     });
 
     test(
-      'gifMoveSans covers the whole game even when navigated back mid-game',
-      () {
+      'resolved PGN stays complete when the snapshot is focused mid-game',
+      () async {
         // Board is ready but the user navigated back to move 2: the analysis
         // state's moveSans is truncated to the path-to-current ply, while the
-        // game tree still holds the full mainline. Share GIF must replay the
-        // whole game (start → final), so gifMoveSans must be the full line.
+        // game tree still holds the full mainline.
         final game = _game(gameId: 'live_1', source: GameSource.supabase);
         final fullGame = ChessGame.fromPgn('analysis', _fullPgn);
         final state = ChessBoardStateNew(
@@ -403,19 +402,22 @@ void main() {
           ),
         );
 
+        final resolvedPgn = await resolveGameSharePgn(
+          game: game,
+          analysisGame: fullGame,
+          savedAnalysisData: null,
+        );
         final snapshot = buildGameShareSnapshot(
           game: game,
-          pgn: _fullPgn,
+          pgn: resolvedPgn,
           state: state,
         );
 
         // Share Image stays at the focused position.
         expect(snapshot.moveSans, const ['e4', 'e5']);
         expect(snapshot.currentMoveIndex, 1);
-        // Share GIF replays the full mainline regardless of focus.
-        expect(snapshot.gifMoveSans, const ['e4', 'e5', 'Nf3', 'Nc6']);
-        // Standard start collapses to null.
-        expect(snapshot.gifStartingFen, isNull);
+        // Cloud GIF receives all four plies from the resolved PGN.
+        expect(resolvedPgn, contains('1. e4 e5 2. Nf3 Nc6'));
       },
     );
   });
