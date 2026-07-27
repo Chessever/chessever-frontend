@@ -5068,6 +5068,13 @@ class ChessBoardScreenNotifierNew
         merged.add(newLine);
       }
     }
+    // Never shrink the panel: a degraded frame (partial MultiPV snapshot, or a
+    // line whose conversion failed) keeps the previously known lines beyond its
+    // own length. Call sites clear `previous` on position change, so these can
+    // only be same-position lines from moments earlier.
+    for (var i = incoming.length; i < previous.length; i++) {
+      merged.add(previous[i]);
+    }
     return merged;
   }
 
@@ -5961,10 +5968,19 @@ class ChessBoardScreenNotifierNew
           ).future,
         );
         if (cascadeEval.pvs.isNotEmpty) {
-          startingDepth = cascadeEval.depth;
+          // Suppress live-search updates below the cached depth only when the
+          // cache actually carries the configured line count. An incomplete
+          // (fewer-lines) cache is a preview: the live search must own the UI
+          // from depth 1 or the panel stays pinned below the user's MultiPV
+          // until the engine re-passes the cached depth.
+          startingDepth =
+              cascadeEval.pvs.length >= configuredMultiPV
+                  ? cascadeEval.depth
+                  : 0;
           primaryEval = cascadeEval;
           final shouldSkipLocalStockfish = cloudEvalSkipsBoardStockfish(
             cascadeEval,
+            requestedMultiPv: configuredMultiPV,
           );
           final firstCascadePv = cascadeEval.pvs.first;
           final rawCp = firstCascadePv.cp;
@@ -7780,21 +7796,26 @@ List<Map<String, dynamic>> _analysisLinesWorker(Map<String, dynamic> payload) {
       var position = basePosition;
       final uciMoves = <String>[];
       final sanMoves = <String>[];
-      var valid = true;
 
       for (final token in tokens) {
-        final parsedMove = Move.parse(token);
+        var parsedMove = Move.parse(token);
         if (parsedMove == null) {
           _releaseLog(
             '⚠️ UCI->SAN failed: "$token" could not be parsed as a valid move',
           );
-          valid = false;
           break;
+        }
+        // Castling arrives in two encodings depending on the source: the
+        // engine speaks king-to-rook (UCI_Chess960), cached/backend evals may
+        // carry the standard two-square form. normalizeMove maps the latter
+        // onto dartchess's native king-to-rook form so both convert.
+        if (parsedMove is NormalMove) {
+          parsedMove = position.normalizeMove(parsedMove);
         }
         try {
           final (nextPosition, san) = position.makeSan(parsedMove);
           position = nextPosition;
-          uciMoves.add(token);
+          uciMoves.add(parsedMove.uci);
           sanMoves.add(san);
         } catch (e) {
           Square? origin;
@@ -7808,12 +7829,14 @@ List<Map<String, dynamic>> _analysisLinesWorker(Map<String, dynamic> payload) {
               '   Piece at ${origin.name}: ${piece?.role.name ?? 'none'} ${piece?.color.name ?? ''}',
             );
           }
-          valid = false;
           break;
         }
       }
 
-      if (!valid || uciMoves.isEmpty) {
+      // Keep the converted prefix: a PV whose tail fails to convert is still a
+      // real engine line with a real score. Dropping it whole is what collapsed
+      // the panel below the configured line count.
+      if (uciMoves.isEmpty) {
         continue;
       }
 

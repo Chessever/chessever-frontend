@@ -103,11 +103,15 @@ bool _isMatePv(Pv pv) {
   return pv.isMate || pv.mate != null || pv.cp.abs() >= 100000;
 }
 
-bool cloudEvalSkipsBoardStockfish(CloudEval eval) {
+bool cloudEvalSkipsBoardStockfish(CloudEval eval, {int requestedMultiPv = 1}) {
   if (eval.pvs.isEmpty) return false;
   // We must have actual moves to show in the UI; evaluation alone is not enough.
   if (eval.pvs.first.moves.trim().isEmpty) return false;
-  return _isMatePv(eval.pvs.first) || eval.depth >= boardEvalSufficientDepth;
+  if (_isMatePv(eval.pvs.first)) return true;
+  // A deep eval carrying fewer lines than the board is configured to show must
+  // not silence the engine — it would pin the panel below the user's MultiPV.
+  if (eval.pvs.length < requestedMultiPv) return false;
+  return eval.depth >= boardEvalSufficientDepth;
 }
 
 Future<CloudEval?> _readGamebaseEvalFast({

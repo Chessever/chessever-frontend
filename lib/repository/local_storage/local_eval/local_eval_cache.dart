@@ -15,7 +15,8 @@ class LocalEvalCache {
 
   static const _cacheKeyPrefix = 'cloud_eval_';
   static const _versionKey = 'cloud_eval_version';
-  static const _currentVersion = 13; // v13: Depth-aware cache keys
+  static const _currentVersion =
+      14; // v14: width-honest keys — purge entries claiming more PVs than stored
   /// Prevents concurrent version check/clear operations
   static Completer<void>? _versionCheckCompleter;
   static bool _versionVerified = false;
@@ -60,8 +61,14 @@ class LocalEvalCache {
 
       final db = ref.read(appDatabaseProvider);
 
-      final effectiveMultiPv =
+      // The stored width is what fetch() filters on, so it must describe the
+      // PVs actually present — a live-search snapshot can claim the configured
+      // width while carrying fewer lines, and trusting that claim let a 1-line
+      // eval satisfy a 3-line request and silence the engine.
+      final claimedMultiPv =
           (multiPV ?? eval.requestedMultiPv ?? eval.pvs.length).clamp(0, 5);
+      final effectiveMultiPv =
+          claimedMultiPv > eval.pvs.length ? eval.pvs.length : claimedMultiPv;
       final cacheKey = _buildKey(fen, effectiveMultiPv, eval.depth);
       await db.setCacheBatch({cacheKey: jsonEncode(eval.toJson())});
     } catch (e) {
@@ -204,7 +211,9 @@ class LocalEvalCache {
   }
 
   int _effectiveMultiPv(CloudEval eval) {
-    return eval.requestedMultiPv ?? eval.pvs.length;
+    // Never trust a claimed width above the PVs actually stored — see save().
+    final claimed = eval.requestedMultiPv ?? eval.pvs.length;
+    return claimed > eval.pvs.length ? eval.pvs.length : claimed;
   }
 
   bool _isCandidateBetter(CloudEval candidate, CloudEval existing) {

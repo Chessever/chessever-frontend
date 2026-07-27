@@ -1781,6 +1781,13 @@ class StockfishSingleton {
     try {
       _engine!.stdin = 'setoption name SyzygyProbeLimit value 0';
       _engine!.stdin = 'setoption name UCI_AnalyseMode value true';
+      // Castling in PVs must use the king-to-rook (Chess960) encoding. dartchess
+      // parses that form natively for BOTH standard and Fischer-random
+      // positions, while the default two-square form is unparseable when a 960
+      // king does not sit two files from its castling square — makeSan threw,
+      // the whole engine line was dropped, and the board rendered one line
+      // while the depth display kept climbing.
+      _engine!.stdin = 'setoption name UCI_Chess960 value true';
       if (_isMobile) {
         // A single search thread avoids saturating mobile CPUs and the small
         // hash cap bounds native memory. These are set once per engine because
