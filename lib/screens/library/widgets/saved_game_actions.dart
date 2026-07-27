@@ -156,8 +156,6 @@ Future<void> _shareGame(BuildContext context, SavedAnalysis analysis) async {
     final pgn = await _resolvePgn(analysis, game);
     final snapshot = buildGameShareSnapshot(game: game, pgn: pgn);
 
-    // No board is open, so the snapshot already sits on the final position and
-    // covers the whole mainline: the card and the GIF share one end state.
     final isFinished =
         game.gameStatus != GameStatus.ongoing &&
         game.gameStatus != GameStatus.unknown;
@@ -177,7 +175,6 @@ Future<void> _shareGame(BuildContext context, SavedAnalysis analysis) async {
         mate: 0,
         isFlipped: false,
         isAtGameEnd: isFinished,
-        gifIsAtGameEnd: isFinished,
       ),
     );
   } catch (e, st) {

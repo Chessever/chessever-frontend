@@ -3792,36 +3792,6 @@ bool _isSnapshotAtFinishedSharePosition({
   }
 }
 
-/// Focus-independent variant of [_isAnalysisAtFinishedSharePosition]: does the
-/// *complete* mainline end in a finished result? Used for the Share GIF, which
-/// always replays the whole game, so its final-frame king effect must not
-/// depend on the currently focused ply.
-bool _isFullGameFinishedForShare({
-  required AnalysisBoardState analysisState,
-  required GamesTourModel game,
-}) {
-  final analysisGame = analysisState.game;
-  if (analysisGame == null || !game.gameStatus.isFinished) return false;
-
-  final mainline = analysisGame.mainline;
-  if (mainline.isEmpty) return false;
-
-  // Live games must never show finished-result effects.
-  if (analysisGame.isLiveGame) return false;
-
-  // Some remote sources can report a finished result while the line/FEN is
-  // truncated, so require a true terminal position for those sources.
-  if (_shareGameNeedsTerminalPosition(game.source)) {
-    try {
-      return Chess.fromSetup(Setup.parseFen(mainline.last.fen)).isGameOver;
-    } catch (_) {
-      return false;
-    }
-  }
-
-  return true;
-}
-
 class _AppBarState extends ConsumerState<_AppBar> {
   Future<void> _showSaveAnalysisDialog() async {
     final allowed = await requireFullAuthGuard(context);
@@ -3909,17 +3879,6 @@ class _AppBarState extends ConsumerState<_AppBar> {
               snapshot: snapshot,
               game: widget.game,
             );
-    // The GIF replays the whole game, so its final-frame effect depends on the
-    // full mainline ending, not the focused ply. When the board isn't ready the
-    // snapshot already represents the whole game at its final position.
-    final gifIsAtGameEnd =
-        boardReady
-            ? _isFullGameFinishedForShare(
-              analysisState: state.analysisState,
-              game: widget.game,
-            )
-            : isAtGameEnd;
-
     return ResolvedGameShareData(
       pgn: pgn,
       shareUrl: buildGameShareUrl(
@@ -3931,7 +3890,6 @@ class _AppBarState extends ConsumerState<_AppBar> {
       mate: boardReady ? state.mate ?? 0 : 0,
       isFlipped: boardReady ? state.isBoardFlipped : false,
       isAtGameEnd: isAtGameEnd,
-      gifIsAtGameEnd: gifIsAtGameEnd,
     );
   }
 

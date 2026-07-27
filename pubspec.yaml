@@ -139,7 +139,6 @@ dependencies:
   shorebird_code_push: ^2.0.5
   showcaseview: ^5.0.1
   in_app_review: ^2.0.11
-  image: ^4.7.2
   marionette_flutter: ^0.5.0
   logarte: ^1.4.0
   appsflyer_sdk: ^6.17.9+1-rc1

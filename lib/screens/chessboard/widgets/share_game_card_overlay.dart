@@ -1,13 +1,11 @@
 import 'dart:async';
 import 'dart:io' as io;
-import 'dart:isolate';
 import 'dart:math' as math;
-import 'dart:ui' as ui;
 
+import 'package:chessever2/services/cloudflare_gif_service.dart';
 import 'package:chessever2/widgets/app_snack.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:path_provider/path_provider.dart';
@@ -15,11 +13,10 @@ import 'package:screenshot/screenshot.dart';
 import 'package:sentry_flutter/sentry_flutter.dart';
 import 'package:share_plus/share_plus.dart';
 
-import 'gif_export_worker.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
-import 'package:chessever2/utils/pgn_clock_utils.dart';
+import 'package:chessever2/screens/library/utils/gamebase_pgn_builder.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/share_card.dart';
 import 'package:chessever2/utils/location_service_provider.dart';
@@ -33,21 +30,12 @@ import 'package:dartchess/dartchess.dart';
 import 'package:fast_immutable_collections/fast_immutable_collections.dart';
 import 'package:motor/motor.dart';
 
-/// Raw frame data for GIF encoding (avoids PNG encoding/decoding issues on iOS P3 displays)
-class _RawFrame {
-  final Uint8List rgba;
-  final int width;
-  final int height;
-  _RawFrame(this.rgba, this.width, this.height);
-}
-
 class ShareGameCardOverlay extends StatefulWidget {
   final ChessboardSettings boardSettings;
   final String positionFen;
   final Move? lastMove;
   final String pgn;
   final List<String> moveSans; // The actual move list from analysis state
-  final List<String> moveTimes; // Clock times for each move (for GIF animation)
   final String whitePlayerName;
   final String blackPlayerName;
   final String? whitePlayerCountry;
@@ -70,21 +58,6 @@ class ShareGameCardOverlay extends StatefulWidget {
   final VoidCallback onClose;
   final String? shareUrl;
   final String gameId; // CRITICAL: Include game ID for correct eval caching
-  final String? startingFen; // null = standard initial position
-
-  /// Complete-game mainline for the Share GIF (start → final move), independent
-  /// of the focused ply. When null, the GIF falls back to [moveSans] — used by
-  /// callers whose [moveSans] already covers the whole game (e.g. grid share).
-  final List<String>? gifMoveSans;
-
-  /// Starting FEN for the full-game GIF replay; null = standard start. Only
-  /// consulted when [gifMoveSans] is non-null.
-  final String? gifStartingFen;
-
-  /// Whether the full game ends in a finished result (focus-independent).
-  /// Drives the GIF's final-frame king effect. Only consulted when
-  /// [gifMoveSans] is non-null; otherwise [isAtGameEnd] is used.
-  final bool gifIsAtGameEnd;
 
   const ShareGameCardOverlay({
     super.key,
@@ -93,7 +66,6 @@ class ShareGameCardOverlay extends StatefulWidget {
     required this.lastMove,
     required this.pgn,
     required this.moveSans,
-    this.moveTimes = const [], // Default to empty for backwards compatibility
     required this.whitePlayerName,
     required this.blackPlayerName,
     this.whitePlayerCountry,
@@ -115,10 +87,6 @@ class ShareGameCardOverlay extends StatefulWidget {
     required this.onClose,
     this.shareUrl,
     required this.gameId, // REQUIRED for correct eval caching
-    this.startingFen, // null = standard initial position
-    this.gifMoveSans,
-    this.gifStartingFen,
-    this.gifIsAtGameEnd = false,
   });
 
   @override
@@ -126,45 +94,23 @@ class ShareGameCardOverlay extends StatefulWidget {
 }
 
 class _ShareGameCardOverlayState extends State<ShareGameCardOverlay> {
-  static const double _maxGifRasterWidth = 720.0;
-
   final ScreenshotController _fullScreenshotController = ScreenshotController();
-  final GlobalKey _gifFrameKey = GlobalKey(); // For raw pixel capture
   bool _isGenerating = false;
   bool _isGeneratingGif = false;
-  double _gifProgress = 0.0;
+  String _gifProgressLabel = 'Submitting cloud job…';
+  double? _gifProgress;
+  String? _generatedGifPath;
+  bool _showGifPreview = false;
   bool _showEvalBar = true;
   double _rotationX = 0.0;
   double _rotationY = 0.0;
 
-  // GIF frame state
-  String? _gifFrameFen;
-  NormalMove? _gifFrameLastMove;
-  String? _gifFrameWhiteClock;
-  String? _gifFrameBlackClock;
-  bool _gifFrameIsFinal = false; // Only show game ending effects on final frame
   bool _cancelled = false; // Set on dispose to abort in-flight GIF generation
-
-  // ---------------------------------------------------------------------------
-  // Full-game GIF source
-  //
-  // Share GIF always replays the complete game (start → final), independent of
-  // the currently focused board move. `widget.moveSans` is the focused path
-  // (truncated on back-navigation), so prefer the explicit whole-game list when
-  // the caller supplies one; otherwise fall back to `moveSans` (callers whose
-  // list already covers the full game).
-  // ---------------------------------------------------------------------------
-  List<String> get _gifMoveSans => widget.gifMoveSans ?? widget.moveSans;
-
-  String? get _gifStartingFen =>
-      widget.gifMoveSans != null ? widget.gifStartingFen : widget.startingFen;
-
-  bool get _gifIsAtGameEnd =>
-      widget.gifMoveSans != null ? widget.gifIsAtGameEnd : widget.isAtGameEnd;
 
   @override
   void dispose() {
     _cancelled = true;
+    unawaited(_deleteTemporaryGif(_generatedGifPath));
     super.dispose();
   }
 
@@ -226,97 +172,6 @@ class _ShareGameCardOverlayState extends State<ShareGameCardOverlay> {
         },
       ).timeout(const Duration(seconds: 2));
     } catch (_) {}
-  }
-
-  // Board settings with animations disabled for instant frame capture
-  ChessboardSettings get _gifBoardSettings => ChessboardSettings(
-    enableCoordinates: widget.boardSettings.enableCoordinates,
-    colorScheme: widget.boardSettings.colorScheme,
-    pieceAssets: widget.boardSettings.pieceAssets,
-    borderRadius: widget.boardSettings.borderRadius,
-    boxShadow: widget.boardSettings.boxShadow,
-    // CRITICAL: Disable animations for instant static frame capture
-    animationDuration: Duration.zero,
-  );
-
-  /// Calculate clock times at a given move index
-  /// Returns (whiteClock, blackClock) tuple
-  (String?, String?) _getClocksAtMoveIndex(int moveIndex) {
-    if (widget.moveTimes.isEmpty) {
-      return (null, null);
-    }
-
-    String? whiteClock;
-    String? blackClock;
-
-    // Find white's most recent clock (white moves are at even indices: 0, 2, 4...)
-    for (int i = moveIndex; i >= 0; i--) {
-      if (i % 2 == 0 && i < widget.moveTimes.length) {
-        final candidate = widget.moveTimes[i];
-        if (hasUsableClockDisplay(candidate)) {
-          whiteClock = candidate;
-        }
-        break;
-      }
-    }
-
-    // Find black's most recent clock (black moves are at odd indices: 1, 3, 5...)
-    for (int i = moveIndex; i >= 0; i--) {
-      if (i % 2 == 1 && i < widget.moveTimes.length) {
-        final candidate = widget.moveTimes[i];
-        if (hasUsableClockDisplay(candidate)) {
-          blackClock = candidate;
-        }
-        break;
-      }
-    }
-
-    return (whiteClock, blackClock);
-  }
-
-  /// Capture raw RGBA pixel data from the RepaintBoundary.
-  /// Disposes the ui.Image immediately after extracting bytes.
-  Future<_RawFrame?> _captureRawFrame(double pixelRatio) async {
-    try {
-      final boundary =
-          _gifFrameKey.currentContext?.findRenderObject()
-              as RenderRepaintBoundary?;
-      if (boundary == null) {
-        debugPrint('GIF: RepaintBoundary not found');
-        return null;
-      }
-
-      final logicalWidth = boundary.size.width;
-      final effectivePixelRatio =
-          logicalWidth > 0
-              ? math.max(
-                0.1,
-                math.min(pixelRatio, _maxGifRasterWidth / logicalWidth),
-              )
-              : pixelRatio;
-
-      final image = await boundary.toImage(pixelRatio: effectivePixelRatio);
-      try {
-        final byteData = await image.toByteData(
-          format: ui.ImageByteFormat.rawRgba,
-        );
-        if (byteData == null) {
-          debugPrint('GIF: toByteData returned null');
-          return null;
-        }
-
-        return _RawFrame(
-          byteData.buffer.asUint8List(),
-          image.width,
-          image.height,
-        );
-      } finally {
-        image.dispose();
-      }
-    } catch (e) {
-      debugPrint('GIF: Raw capture error: $e');
-      return null;
-    }
   }
 
   Future<Uint8List?> _captureCard() async {
@@ -387,6 +242,10 @@ class _ShareGameCardOverlayState extends State<ShareGameCardOverlay> {
   }
 
   Future<void> _shareImage() async {
+    if (_showGifPreview && mounted) {
+      setState(() => _showGifPreview = false);
+      await WidgetsBinding.instance.endOfFrame;
+    }
     unawaited(
       _captureShareMessage('share image started', stage: 'share_image_started'),
     );
@@ -426,458 +285,200 @@ class _ShareGameCardOverlayState extends State<ShareGameCardOverlay> {
     }
   }
 
-  Future<void> _shareGeneratedGif(Uint8List gifBytes) async {
-    final tempDir = await getTemporaryDirectory();
-    final file = io.File('${tempDir.path}/chessever_game.gif');
-    await file.writeAsBytes(gifBytes);
-
-    await _shareFiles([XFile(file.path)]);
-  }
-
-  void _updateGifProgress(int captured, int accepted, int total) {
-    final progress = (captured / total * 0.6 + accepted / total * 0.4).clamp(
-      0.0,
-      0.95,
-    );
-    // Only rebuild if progress moved by ≥2% to avoid rebuild storms
-    if (mounted && (progress - _gifProgress).abs() >= 0.02) {
-      setState(() => _gifProgress = progress);
-    }
-  }
-
-  /// Computes the export window for GIF generation.
-  ///
-  /// Share GIF always replays the full game (start → final), regardless of
-  /// the currently focused board move. Returns `null` if no moves are available.
-  GifExportWindow? _computeExportWindow() {
-    final gifMoveSans = _gifMoveSans;
-    return computeGifExportWindow(
-      moveSans: gifMoveSans,
-      // Whole-game replay always ends on the final move.
-      currentMoveIndex: gifMoveSans.length - 1,
-      startingFen: _gifStartingFen,
-    );
-  }
-
   Future<void> _shareGif() async {
     if (_isGeneratingGif) return;
     _cancelled = false;
 
-    final exportWindow = _computeExportWindow();
-    if (exportWindow == null) {
+    final existingPath = _generatedGifPath;
+    if (existingPath != null) {
+      if (await io.File(existingPath).exists()) {
+        if (mounted) {
+          setState(() => _showGifPreview = true);
+          await WidgetsBinding.instance.endOfFrame;
+        }
+        try {
+          await _shareFiles([XFile(existingPath)]);
+        } catch (error, stackTrace) {
+          debugPrint('Failed to share generated GIF: $error\n$stackTrace');
+          _showMessage('Failed to share GIF', isError: true);
+        }
+        return;
+      }
+      if (mounted) {
+        setState(() {
+          _generatedGifPath = null;
+          _showGifPreview = false;
+        });
+      }
+    }
+
+    if (!pgnHasMoves(widget.pgn)) {
       // No moves to animate — fall back to static image export
       await _shareImage();
       return;
     }
 
-    final movesToAnimate = exportWindow.movesToAnimate;
-    final globalMoveOffset = exportWindow.globalMoveOffset;
-    final captureStartFen = exportWindow.captureStartFen;
-
     setState(() {
       _isGeneratingGif = true;
-      _gifProgress = 0.0;
+      _gifProgressLabel = 'Submitting cloud job…';
+      _gifProgress = null;
     });
 
+    CloudflareGifService? service;
+    String? temporaryPath;
     try {
-      // Plan export profile using the full game.
-      final profile = planGifExport(
-        moveCount: movesToAnimate.length,
-        currentMoveIndex: movesToAnimate.length - 1,
+      service = CloudflareGifService.fromEnvironment();
+      final job = await service.submitJob(
+        pgn: widget.pgn,
+        flipped: widget.isFlipped,
+        metadata: _cloudGifMetadata(),
       );
-      final totalOutputFrames = 1 + profile.frameIndices.length;
+      debugPrint('Cloud GIF job submitted: ${job.id}');
+      final completed = await service.waitUntilComplete(
+        job.id,
+        isCancelled: () => _cancelled || !mounted,
+        onProgress: (progress) {
+          if (!mounted) return;
+          setState(() {
+            _gifProgressLabel = _cloudGifProgressText(progress);
+            _gifProgress =
+                progress.totalFrames > 0
+                    ? (progress.completedFrames / progress.totalFrames).clamp(
+                      0.0,
+                      1.0,
+                    )
+                    : null;
+          });
+        },
+      );
+      if (!mounted || _cancelled) return;
 
-      // Try to start a worker isolate for pipelined encoding
-      Isolate? workerIsolate;
-      SendPort? workerSendPort;
-      ReceivePort? mainPort;
-      bool useIsolate = true;
+      setState(() {
+        _gifProgressLabel = 'Downloading GIF…';
+        _gifProgress = null;
+      });
+      final tempDir = await getTemporaryDirectory();
+      temporaryPath =
+          '${tempDir.path}${io.Platform.pathSeparator}'
+          'chessever_game_${DateTime.now().microsecondsSinceEpoch}.gif';
+      await service.downloadToFile(
+        jobId: completed.id,
+        outputPath: temporaryPath,
+      );
+      if (!mounted || _cancelled) return;
 
-      Stream<dynamic>? mainStream;
-      try {
-        mainPort = ReceivePort();
-        // Convert to broadcast stream so both the handshake and the pipeline
-        // can listen sequentially. ReceivePort is single-subscription — a
-        // second .listen() after cancel throws "Stream has already been
-        // listened to".
-        mainStream = mainPort.asBroadcastStream();
-        workerIsolate = await Isolate.spawn(
-          gifEncoderWorker,
-          mainPort.sendPort,
-        );
+      final previousPath = _generatedGifPath;
+      setState(() {
+        _generatedGifPath = temporaryPath;
+        _showGifPreview = true;
+      });
+      final generatedPath = temporaryPath;
+      temporaryPath = null;
+      unawaited(_deleteTemporaryGif(previousPath));
 
-        // Wait for GifWorkerReady (single handshake with SendPort)
-        final readyCompleter = Completer<SendPort>();
-        final readySub = mainStream.listen((message) {
-          if (message is GifWorkerReady && !readyCompleter.isCompleted) {
-            readyCompleter.complete(message.workerSendPort);
-          }
-        });
-
-        workerSendPort = await readyCompleter.future.timeout(
-          const Duration(seconds: 5),
-        );
-        await readySub.cancel();
-      } catch (e) {
-        debugPrint('GIF: Isolate startup failed: $e, using fallback');
-        useIsolate = false;
-        mainPort?.close();
-        workerIsolate?.kill();
-        mainPort = null;
-        workerIsolate = null;
-        mainStream = null;
-      }
-
-      if (useIsolate) {
-        await _shareGifPipelined(
-          movesToAnimate: movesToAnimate,
-          profile: profile,
-          totalOutputFrames: totalOutputFrames,
-          workerSendPort: workerSendPort!,
-          mainStream: mainStream!,
-          mainPort: mainPort!,
-          workerIsolate: workerIsolate!,
-          captureStartFen: captureStartFen,
-          globalMoveOffset: globalMoveOffset,
-        );
-      } else {
-        await _shareGifFallback(
-          movesToAnimate: movesToAnimate,
-          profile: profile,
-          totalOutputFrames: totalOutputFrames,
-          captureStartFen: captureStartFen,
-          globalMoveOffset: globalMoveOffset,
-        );
-      }
-    } catch (e, st) {
-      debugPrint('GIF error: $e');
-      debugPrint('GIF stack: $st');
-      _showMessage('Failed to generate GIF', isError: true);
+      await WidgetsBinding.instance.endOfFrame;
+      await _shareFiles([XFile(generatedPath)]);
+    } on CloudflareGifCancelled {
+      // Closing the overlay stops polling only. A repeat submission resumes
+      // the deterministic Cloudflare job.
+    } on CloudflareGifException catch (error) {
+      debugPrint(
+        'Cloud GIF failed: code=${error.code}, '
+        'status=${error.statusCode ?? 'n/a'}, message=${error.message}',
+      );
+      _showMessage('${error.message} [${error.code}]', isError: true);
+    } catch (error, stackTrace) {
+      debugPrint('Unexpected Cloud GIF failure: $error\n$stackTrace');
+      unawaited(
+        _captureShareException(
+          error,
+          stackTrace,
+          stage: 'share_cloud_gif',
+          extras: {'errorCode': 'unexpected_client_error'},
+        ),
+      );
+      _showMessage(
+        'Cloud GIF generation failed. [unexpected_client_error]',
+        isError: true,
+      );
     } finally {
+      service?.close();
+      if (temporaryPath != null) {
+        await _deleteTemporaryGif(temporaryPath);
+      }
       if (mounted) {
         setState(() {
           _isGeneratingGif = false;
-          _gifProgress = 0.0;
-          _gifFrameFen = null;
-          _gifFrameLastMove = null;
-          _gifFrameWhiteClock = null;
-          _gifFrameBlackClock = null;
-          _gifFrameIsFinal = false;
+          _gifProgress = null;
         });
       }
     }
   }
 
-  Future<void> _shareGifPipelined({
-    required List<String> movesToAnimate,
-    required GifExportProfile profile,
-    required int totalOutputFrames,
-    required SendPort workerSendPort,
-    required Stream<dynamic> mainStream,
-    required ReceivePort mainPort,
-    required Isolate workerIsolate,
-    String? captureStartFen,
-    int globalMoveOffset = 0,
-  }) async {
-    int framesCaptured = 0;
-    int framesAccepted = 0;
-    int inFlight = 0;
-    const maxInFlight = 4;
-    bool workerFailed = false;
-    Completer<void>? backpressureCompleter;
-    final doneCompleter = Completer<Uint8List>();
-    final includedMoves = profile.frameIndices.toSet();
-
-    // Listen for worker responses on the broadcast stream
-    final subscription = mainStream.listen((message) {
-      if (message is GifWorkerFrameAccepted) {
-        framesAccepted++;
-        inFlight--;
-        _updateGifProgress(framesCaptured, framesAccepted, totalOutputFrames);
-        if (backpressureCompleter != null &&
-            !backpressureCompleter!.isCompleted) {
-          backpressureCompleter!.complete();
-        }
-      } else if (message is GifWorkerDone) {
-        if (!doneCompleter.isCompleted) {
-          doneCompleter.complete(message.gifBytes.materialize().asUint8List());
-        }
-      } else if (message is GifWorkerError) {
-        debugPrint('GIF worker error: ${message.message}');
-        workerFailed = true;
-        inFlight--;
-        // Unblock any backpressure wait so the capture loop can exit
-        if (backpressureCompleter != null &&
-            !backpressureCompleter!.isCompleted) {
-          backpressureCompleter!.complete();
-        }
-        if (!doneCompleter.isCompleted) {
-          doneCompleter.completeError(Exception(message.message));
-        }
-      }
-    });
-
+  Future<void> _deleteTemporaryGif(String? path) async {
+    if (path == null) return;
     try {
-      // Helper: send a frame to the worker with backpressure.
-      // Returns false if the worker has failed and sending should stop.
-      Future<bool> sendFrame(
-        Uint8List rgba,
-        int width,
-        int height,
-        int durationCs,
-        int outputIndex,
-      ) async {
-        while (inFlight >= maxInFlight && !workerFailed) {
-          backpressureCompleter = Completer<void>();
-          await backpressureCompleter!.future;
-        }
-        if (workerFailed) return false;
-        final transferable = TransferableTypedData.fromList([rgba]);
-        workerSendPort.send(
-          GifWorkerFrameData(
-            rgba: transferable,
-            width: width,
-            height: height,
-            durationCs: durationCs,
-            frameIndex: outputIndex,
-          ),
-        );
-        inFlight++;
-        framesCaptured++;
-        _updateGifProgress(framesCaptured, framesAccepted, totalOutputFrames);
-        return true;
-      }
-
-      // Capture initial position (output frame 0)
-      Position position;
-      if (captureStartFen != null) {
-        try {
-          position = Chess.fromSetup(Setup.parseFen(captureStartFen));
-        } catch (e) {
-          _showMessage('Invalid starting position for GIF', isError: true);
-          return;
-        }
-      } else {
-        position = Chess.initial;
-      }
-      if (!mounted) return;
-      setState(() {
-        _gifFrameFen = position.fen;
-        _gifFrameLastMove = null;
-        _gifFrameWhiteClock = null;
-        _gifFrameBlackClock = null;
-        _gifFrameIsFinal = false;
-      });
-      await WidgetsBinding.instance.endOfFrame;
-
-      final initial = await _captureRawFrame(profile.pixelRatio);
-      if (initial == null) {
-        _showMessage('Failed to capture initial frame', isError: true);
-        return;
-      }
-      final sent = await sendFrame(
-        initial.rgba,
-        initial.width,
-        initial.height,
-        profile.frameDurations[0],
-        0,
-      );
-      if (!sent) return; // Worker failed during initial frame
-
-      // Iterate ALL moves sequentially (SAN parsing is stateful).
-      // Capture only at indices in the export profile.
-      int outputIndex = 1; // next output frame index after initial
-
-      for (int i = 0; i < movesToAnimate.length; i++) {
-        if (workerFailed || _cancelled) return;
-
-        final move = position.parseSan(movesToAnimate[i]);
-        if (move == null) {
-          // Abort: broken alignment would produce a corrupted GIF
-          _showMessage('Failed to parse move ${i + 1}', isError: true);
-          return;
-        }
-        position = position.play(move);
-
-        if (!includedMoves.contains(i)) continue;
-
-        // Extract from/to squares for last-move highlight
-        NormalMove? lastMoveForDisplay;
-        if (move is NormalMove) {
-          lastMoveForDisplay = NormalMove(from: move.from, to: move.to);
-        }
-
-        final (whiteClock, blackClock) = _getClocksAtMoveIndex(
-          i + globalMoveOffset,
-        );
-        final isGameEnd =
-            _gifIsAtGameEnd &&
-            i + globalMoveOffset == _gifMoveSans.length - 1;
-
-        if (!mounted) return;
-        setState(() {
-          _gifFrameFen = position.fen;
-          _gifFrameLastMove = lastMoveForDisplay;
-          _gifFrameWhiteClock = whiteClock;
-          _gifFrameBlackClock = blackClock;
-          _gifFrameIsFinal = isGameEnd;
-        });
-        await WidgetsBinding.instance.endOfFrame;
-
-        final frame = await _captureRawFrame(profile.pixelRatio);
-        if (frame == null) {
-          // Abort: broken alignment would produce a corrupted GIF
-          _showMessage(
-            'Failed to capture frame at move ${i + 1}',
-            isError: true,
-          );
-          return;
-        }
-        final frameSent = await sendFrame(
-          frame.rgba,
-          frame.width,
-          frame.height,
-          profile.frameDurations[outputIndex],
-          outputIndex,
-        );
-        if (!frameSent) return; // Worker failed
-        outputIndex++;
-      }
-
-      // All frames sent, tell worker to finish
-      workerSendPort.send(GifWorkerFinish());
-
-      // Wait for the encoded result with timeout
-      final gifBytes = await doneCompleter.future.timeout(
-        const Duration(seconds: 30),
-      );
-
-      // Save and share
-      if (mounted) setState(() => _gifProgress = 0.95);
-      await _shareGeneratedGif(gifBytes);
-    } finally {
-      await subscription.cancel();
-      mainPort.close();
-      workerIsolate.kill(priority: Isolate.immediate);
+      final file = io.File(path);
+      if (await file.exists()) await file.delete();
+    } catch (error) {
+      debugPrint('Failed to remove temporary GIF: $error');
     }
   }
 
-  Future<void> _shareGifFallback({
-    required List<String> movesToAnimate,
-    required GifExportProfile profile,
-    required int totalOutputFrames,
-    String? captureStartFen,
-    int globalMoveOffset = 0,
-  }) async {
-    final rawFrames = <_RawFrame>[];
-    final durations = <int>[];
-    final includedMoves = profile.frameIndices.toSet();
-
-    // Capture initial position
-    Position position;
-    if (captureStartFen != null) {
-      try {
-        position = Chess.fromSetup(Setup.parseFen(captureStartFen));
-      } catch (e) {
-        _showMessage('Invalid starting position for GIF', isError: true);
-        return;
-      }
-    } else {
-      position = Chess.initial;
-    }
-    if (!mounted) return;
-    setState(() {
-      _gifFrameFen = position.fen;
-      _gifFrameLastMove = null;
-      _gifFrameWhiteClock = null;
-      _gifFrameBlackClock = null;
-      _gifFrameIsFinal = false;
-    });
-    await WidgetsBinding.instance.endOfFrame;
-
-    final initial = await _captureRawFrame(profile.pixelRatio);
-    if (initial == null) {
-      _showMessage('Failed to capture initial frame', isError: true);
-      return;
-    }
-    rawFrames.add(initial);
-    durations.add(profile.frameDurations[0]);
-
-    int durationIndex = 1;
-
-    for (int i = 0; i < movesToAnimate.length; i++) {
-      if (_cancelled) return;
-
-      final move = position.parseSan(movesToAnimate[i]);
-      if (move == null) {
-        _showMessage('Failed to parse move ${i + 1}', isError: true);
-        return;
-      }
-      position = position.play(move);
-
-      if (!includedMoves.contains(i)) continue;
-
-      NormalMove? lastMoveForDisplay;
-      if (move is NormalMove) {
-        lastMoveForDisplay = NormalMove(from: move.from, to: move.to);
-      }
-
-      final (whiteClock, blackClock) = _getClocksAtMoveIndex(
-        i + globalMoveOffset,
-      );
-      final isGameEnd =
-          _gifIsAtGameEnd &&
-          i + globalMoveOffset == _gifMoveSans.length - 1;
-
-      if (!mounted) return;
-      setState(() {
-        _gifFrameFen = position.fen;
-        _gifFrameLastMove = lastMoveForDisplay;
-        _gifFrameWhiteClock = whiteClock;
-        _gifFrameBlackClock = blackClock;
-        _gifFrameIsFinal = isGameEnd;
-      });
-      await WidgetsBinding.instance.endOfFrame;
-
-      if (mounted) {
-        _updateGifProgress(
-          rawFrames.length,
-          rawFrames.length - 1,
-          totalOutputFrames,
-        );
-      }
-
-      final frame = await _captureRawFrame(profile.pixelRatio);
-      if (frame == null) {
-        _showMessage('Failed to capture frame at move ${i + 1}', isError: true);
-        return;
-      }
-      rawFrames.add(frame);
-      durations.add(profile.frameDurations[durationIndex]);
-      durationIndex++;
+  Map<String, Object?> _cloudGifMetadata() {
+    int? rating(String? value) {
+      final parsed = int.tryParse(value?.trim() ?? '');
+      return parsed != null && parsed > 0 ? parsed : null;
     }
 
-    if (rawFrames.isEmpty) {
-      _showMessage('No frames captured', isError: true);
-      return;
-    }
+    final eventParts = <String>[
+      if (widget.tournamentName?.trim().isNotEmpty ?? false)
+        widget.tournamentName!.trim(),
+      if (widget.roundInfo?.trim().isNotEmpty ?? false)
+        widget.roundInfo!.trim(),
+    ];
+    final result = switch (widget.gameStatus) {
+      GameStatus.whiteWins => '1-0',
+      GameStatus.blackWins => '0-1',
+      GameStatus.draw => '1/2-1/2',
+      GameStatus.ongoing => '*',
+      GameStatus.unknown => '',
+    };
 
-    if (mounted) setState(() => _gifProgress = 0.8);
+    return <String, Object?>{
+      'white': widget.whitePlayerName,
+      'black': widget.blackPlayerName,
+      if (widget.whitePlayerTitle?.trim().isNotEmpty ?? false)
+        'whiteTitle': widget.whitePlayerTitle!.trim(),
+      if (widget.blackPlayerTitle?.trim().isNotEmpty ?? false)
+        'blackTitle': widget.blackPlayerTitle!.trim(),
+      if (rating(widget.whitePlayerElo) case final whiteRating?)
+        'whiteRating': whiteRating,
+      if (rating(widget.blackPlayerElo) case final blackRating?)
+        'blackRating': blackRating,
+      if (widget.whitePlayerCountry?.trim().isNotEmpty ?? false)
+        'whiteFederation': widget.whitePlayerCountry!.trim(),
+      if (widget.blackPlayerCountry?.trim().isNotEmpty ?? false)
+        'blackFederation': widget.blackPlayerCountry!.trim(),
+      if (eventParts.isNotEmpty) 'event': eventParts.join(' • '),
+      if (result.isNotEmpty) 'result': result,
+    };
+  }
 
-    final gifBytes = encodeGifFallback(
-      rgbaFrames: rawFrames.map((f) => f.rgba).toList(),
-      widths: rawFrames.map((f) => f.width).toList(),
-      heights: rawFrames.map((f) => f.height).toList(),
-      durationsCs: durations,
-    );
-
-    if (gifBytes == null || gifBytes.isEmpty) {
-      _showMessage('GIF encode returned empty data', isError: true);
-      return;
-    }
-
-    if (mounted) setState(() => _gifProgress = 0.95);
-    await _shareGeneratedGif(gifBytes);
+  String _cloudGifProgressText(CloudflareGifJob job) {
+    final frames =
+        job.totalFrames > 0
+            ? ' ${job.completedFrames.clamp(0, job.totalFrames)}/${job.totalFrames}'
+            : '';
+    return switch (job.stage) {
+      CloudflareGifJobStatus.queued => 'Queued in Cloudflare…',
+      CloudflareGifJobStatus.analyzing => 'Analyzing positions$frames…',
+      CloudflareGifJobStatus.rendering => 'Rendering frames$frames…',
+      CloudflareGifJobStatus.encoding => 'Encoding GIF…',
+      CloudflareGifJobStatus.storing => 'Finalizing GIF…',
+      CloudflareGifJobStatus.succeeded => 'GIF ready',
+      CloudflareGifJobStatus.failed => 'GIF generation failed',
+    };
   }
 
   Future<void> _copyPgn() async {
@@ -1064,13 +665,14 @@ class _ShareGameCardOverlayState extends State<ShareGameCardOverlay> {
             icon: Icons.image_outlined,
             label: 'Share Image',
             onTap: _shareImage,
-            isPrimary: true,
+            isPrimary: !_showGifPreview,
           ),
           SizedBox(width: 4.w),
           _buildActionButton(
             icon: Icons.gif_box_outlined,
             label: 'Share GIF',
             onTap: _shareGif,
+            isPrimary: _showGifPreview,
           ),
           SizedBox(width: 4.w),
           _buildActionButton(
@@ -1108,7 +710,7 @@ class _ShareGameCardOverlayState extends State<ShareGameCardOverlay> {
               ),
               SizedBox(width: 10.w),
               Text(
-                'Generating GIF... ${(_gifProgress * 100).toInt()}%',
+                _gifProgressLabel,
                 style: TextStyle(
                   color: context.colors.textPrimary,
                   fontSize: 14.sp,
@@ -1182,6 +784,40 @@ class _ShareGameCardOverlayState extends State<ShareGameCardOverlay> {
     );
   }
 
+  Widget _buildGeneratedGifPreview(String path) {
+    return Stack(
+      children: [
+        ClipRRect(
+          borderRadius: BorderRadius.circular(16.br),
+          child: Image.file(
+            io.File(path),
+            key: ValueKey<String>('share-gif-preview:$path'),
+            width: 370.w,
+            fit: BoxFit.contain,
+            gaplessPlayback: true,
+            filterQuality: FilterQuality.high,
+          ),
+        ),
+        Positioned(
+          top: 8.h,
+          right: 8.w,
+          child: Material(
+            color: Colors.black.withValues(alpha: 0.65),
+            shape: const CircleBorder(),
+            child: InkWell(
+              onTap: widget.onClose,
+              customBorder: const CircleBorder(),
+              child: Padding(
+                padding: EdgeInsets.all(8.sp),
+                child: Icon(Icons.close, size: 18.sp, color: Colors.white),
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Material(
@@ -1227,47 +863,56 @@ class _ShareGameCardOverlayState extends State<ShareGameCardOverlay> {
                                 ..rotateX(_rotationX)
                                 ..rotateY(_rotationY),
                           transformAlignment: Alignment.center,
-                          child: _ShareCard(
-                            boardSettings: widget.boardSettings,
-                            positionFen: widget.positionFen,
-                            lastMove: widget.lastMove,
-                            onClose: widget.onClose,
-                            pgn: widget.pgn,
-                            moveSans: widget.moveSans,
-                            whitePlayerName: widget.whitePlayerName,
-                            blackPlayerName: widget.blackPlayerName,
-                            whitePlayerCountry: widget.whitePlayerCountry,
-                            blackPlayerCountry: widget.blackPlayerCountry,
-                            whitePlayerElo: widget.whitePlayerElo,
-                            blackPlayerElo: widget.blackPlayerElo,
-                            whitePlayerTitle: widget.whitePlayerTitle,
-                            blackPlayerTitle: widget.blackPlayerTitle,
-                            whitePlayerClock: widget.whitePlayerClock,
-                            blackPlayerClock: widget.blackPlayerClock,
-                            tournamentName: widget.tournamentName,
-                            roundInfo: widget.roundInfo,
-                            currentMoveIndex: widget.currentMoveIndex,
-                            evaluation: widget.evaluation,
-                            mate: widget.mate,
-                            isFlipped: widget.isFlipped,
-                            gameStatus: widget.gameStatus,
-                            isAtGameEnd: widget.isAtGameEnd,
-                            isPreview: true,
-                            showEvalBar: _showEvalBar,
-                            gameId: widget.gameId,
-                          ),
+                          child:
+                              !_showGifPreview || _generatedGifPath == null
+                                  ? _ShareCard(
+                                    boardSettings: widget.boardSettings,
+                                    positionFen: widget.positionFen,
+                                    lastMove: widget.lastMove,
+                                    onClose: widget.onClose,
+                                    pgn: widget.pgn,
+                                    moveSans: widget.moveSans,
+                                    whitePlayerName: widget.whitePlayerName,
+                                    blackPlayerName: widget.blackPlayerName,
+                                    whitePlayerCountry:
+                                        widget.whitePlayerCountry,
+                                    blackPlayerCountry:
+                                        widget.blackPlayerCountry,
+                                    whitePlayerElo: widget.whitePlayerElo,
+                                    blackPlayerElo: widget.blackPlayerElo,
+                                    whitePlayerTitle: widget.whitePlayerTitle,
+                                    blackPlayerTitle: widget.blackPlayerTitle,
+                                    whitePlayerClock: widget.whitePlayerClock,
+                                    blackPlayerClock: widget.blackPlayerClock,
+                                    tournamentName: widget.tournamentName,
+                                    roundInfo: widget.roundInfo,
+                                    currentMoveIndex: widget.currentMoveIndex,
+                                    evaluation: widget.evaluation,
+                                    mate: widget.mate,
+                                    isFlipped: widget.isFlipped,
+                                    gameStatus: widget.gameStatus,
+                                    isAtGameEnd: widget.isAtGameEnd,
+                                    isPreview: true,
+                                    showEvalBar: _showEvalBar,
+                                    gameId: widget.gameId,
+                                  )
+                                  : _buildGeneratedGifPreview(
+                                    _generatedGifPath!,
+                                  ),
                         ),
                       )
                       .animate()
                       .fadeIn(duration: 300.ms)
                       .scale(begin: Offset(0.95, 0.95), duration: 300.ms),
                   SizedBox(height: 16.h),
-                  // Eval bar toggle - modern pill style
-                  _buildEvalToggle().animate().fadeIn(
-                    delay: 150.ms,
-                    duration: 300.ms,
-                  ),
-                  SizedBox(height: 16.h),
+                  if (!_showGifPreview) ...[
+                    // Eval bar affects the static share-card preview only.
+                    _buildEvalToggle().animate().fadeIn(
+                      delay: 150.ms,
+                      duration: 300.ms,
+                    ),
+                    SizedBox(height: 16.h),
+                  ],
                   _buildShareLinkBar().animate().fadeIn(
                     delay: 180.ms,
                     duration: 300.ms,
@@ -1332,51 +977,6 @@ class _ShareGameCardOverlayState extends State<ShareGameCardOverlay> {
                 ),
               ),
             ),
-            // Offscreen GIF frame widget - uses RepaintBoundary with GlobalKey for raw RGBA capture
-            // This avoids PNG encoding issues on iOS P3 displays
-            // Uses board settings with animations DISABLED for instant static frame capture
-            Positioned(
-              left: -10000,
-              top: -10000,
-              child: RepaintBoundary(
-                key: _gifFrameKey,
-                child: _ShareCard(
-                  boardSettings:
-                      _gifBoardSettings, // Animation disabled settings
-                  positionFen: _gifFrameFen ?? widget.positionFen,
-                  lastMove: _gifFrameLastMove,
-                  onClose: null,
-                  pgn: widget.pgn,
-                  moveSans: widget.moveSans,
-                  whitePlayerName: widget.whitePlayerName,
-                  blackPlayerName: widget.blackPlayerName,
-                  whitePlayerCountry: widget.whitePlayerCountry,
-                  blackPlayerCountry: widget.blackPlayerCountry,
-                  whitePlayerElo: widget.whitePlayerElo,
-                  blackPlayerElo: widget.blackPlayerElo,
-                  whitePlayerTitle: widget.whitePlayerTitle,
-                  blackPlayerTitle: widget.blackPlayerTitle,
-                  whitePlayerClock:
-                      _gifFrameWhiteClock, // Dynamic clock per frame
-                  blackPlayerClock:
-                      _gifFrameBlackClock, // Dynamic clock per frame
-                  tournamentName: widget.tournamentName,
-                  roundInfo: widget.roundInfo,
-                  currentMoveIndex: widget.currentMoveIndex,
-                  evaluation: null, // No eval in GIF
-                  mate: 0,
-                  isFlipped: widget.isFlipped,
-                  // Only show game ending effects (fallen king, peace icons) on final frame
-                  gameStatus:
-                      _gifFrameIsFinal ? widget.gameStatus : GameStatus.ongoing,
-                  isAtGameEnd: _gifFrameIsFinal,
-                  isPreview: false,
-                  showEvalBar: false, // No eval bar in GIF
-                  reserveClockSpace: true,
-                  gameId: widget.gameId,
-                ),
-              ),
-            ),
           ],
         ),
       ),
@@ -1385,8 +985,6 @@ class _ShareGameCardOverlayState extends State<ShareGameCardOverlay> {
 }
 
 class _ShareCard extends ConsumerWidget {
-  static const String _clockPlaceholder = '00:00:00';
-
   final ChessboardSettings boardSettings;
   final String positionFen;
   final Move? lastMove;
@@ -1413,7 +1011,6 @@ class _ShareCard extends ConsumerWidget {
   final bool isAtGameEnd;
   final bool isPreview;
   final bool showEvalBar;
-  final bool reserveClockSpace;
   final String gameId; // CRITICAL: Include game ID for correct eval caching
 
   const _ShareCard({
@@ -1443,7 +1040,6 @@ class _ShareCard extends ConsumerWidget {
     this.isAtGameEnd = false,
     this.isPreview = false,
     this.showEvalBar = true,
-    this.reserveClockSpace = false,
     required this.gameId, // REQUIRED for correct eval caching
   });
 
@@ -1490,7 +1086,6 @@ class _ShareCard extends ConsumerWidget {
     required String? playerClock,
     required bool isWhitePlayer,
     required double sideBarWidth,
-    required bool reserveClockSpace,
   }) {
     // Text styles matching PlayerFirstRowDetailWidget boardView
     final titleStyle = AppTypography.textXsMedium.copyWith(
@@ -1634,17 +1229,9 @@ class _ShareCard extends ConsumerWidget {
               },
             ),
           ),
-          // Clock time on far right. GIF captures reserve this slot from the
-          // initial frame so later clock updates cannot resize the card.
-          if (playerClock != null || reserveClockSpace) ...[
+          if (playerClock != null) ...[
             SizedBox(width: 8.w),
-            Visibility(
-              visible: playerClock != null,
-              maintainState: true,
-              maintainAnimation: true,
-              maintainSize: true,
-              child: Text(playerClock ?? _clockPlaceholder, style: timeStyle),
-            ),
+            Text(playerClock, style: timeStyle),
           ],
         ],
       ),
@@ -1743,7 +1330,6 @@ class _ShareCard extends ConsumerWidget {
             playerClock: topPlayerClock,
             isWhitePlayer: topIsWhitePlayer,
             sideBarWidth: sideBarWidth,
-            reserveClockSpace: reserveClockSpace,
           ),
           SizedBox(height: 12.h),
           // Board with optional evaluation bar and game ending overlays
@@ -1917,7 +1503,6 @@ class _ShareCard extends ConsumerWidget {
             playerClock: bottomPlayerClock,
             isWhitePlayer: bottomIsWhitePlayer,
             sideBarWidth: sideBarWidth,
-            reserveClockSpace: reserveClockSpace,
           ),
           SizedBox(
             height: 20.h,
