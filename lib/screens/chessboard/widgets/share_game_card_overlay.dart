@@ -1,13 +1,16 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io' as io;
 import 'dart:math' as math;
 
 import 'package:chessever2/services/cloudflare_gif_service.dart';
+import 'package:chessever2/services/fide_photo_service.dart';
 import 'package:chessever2/widgets/app_snack.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
+import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
 import 'package:screenshot/screenshot.dart';
 import 'package:sentry_flutter/sentry_flutter.dart';
@@ -44,6 +47,8 @@ class ShareGameCardOverlay extends StatefulWidget {
   final String? blackPlayerElo;
   final String? whitePlayerTitle;
   final String? blackPlayerTitle;
+  final int? whitePlayerFideId;
+  final int? blackPlayerFideId;
   final String? whitePlayerClock;
   final String? blackPlayerClock;
   final String? tournamentName;
@@ -74,6 +79,8 @@ class ShareGameCardOverlay extends StatefulWidget {
     this.blackPlayerElo,
     this.whitePlayerTitle,
     this.blackPlayerTitle,
+    this.whitePlayerFideId,
+    this.blackPlayerFideId,
     this.whitePlayerClock,
     this.blackPlayerClock,
     this.tournamentName,
@@ -328,10 +335,30 @@ class _ShareGameCardOverlayState extends State<ShareGameCardOverlay> {
     String? temporaryPath;
     try {
       service = CloudflareGifService.fromEnvironment();
+      if (mounted) {
+        setState(() => _gifProgressLabel = 'Loading player photos…');
+      }
+      final photoUrls = await Future.wait([
+        _resolvePlayerPhotoUrl(
+          widget.whitePlayerFideId ?? _pgnHeaderFideId('WhiteFideId'),
+        ),
+        _resolvePlayerPhotoUrl(
+          widget.blackPlayerFideId ?? _pgnHeaderFideId('BlackFideId'),
+        ),
+      ]);
+      final photoData = await Future.wait([
+        _cloudPhotoData(photoUrls[0], playerLabel: 'white'),
+        _cloudPhotoData(photoUrls[1], playerLabel: 'black'),
+      ]);
+      if (!mounted || _cancelled) return;
+      setState(() => _gifProgressLabel = 'Submitting cloud job…');
       final job = await service.submitJob(
         pgn: widget.pgn,
         flipped: widget.isFlipped,
-        metadata: _cloudGifMetadata(),
+        metadata: _cloudGifMetadata(
+          whitePhotoData: photoData[0],
+          blackPhotoData: photoData[1],
+        ),
       );
       debugPrint('Cloud GIF job submitted: ${job.id}');
       final completed = await service.waitUntilComplete(
@@ -425,7 +452,104 @@ class _ShareGameCardOverlayState extends State<ShareGameCardOverlay> {
     }
   }
 
-  Map<String, Object?> _cloudGifMetadata() {
+  int? _pgnHeaderFideId(String key) {
+    final pattern = RegExp(
+      '^\\[${RegExp.escape(key)}\\s+"([^"]*)"\\]\\s*\$',
+      caseSensitive: false,
+      multiLine: true,
+    );
+    final value = int.tryParse(pattern.firstMatch(widget.pgn)?.group(1) ?? '');
+    return value != null && value > 0 ? value : null;
+  }
+
+  Future<String?> _resolvePlayerPhotoUrl(int? fideId) async {
+    if (fideId == null || fideId <= 0) return null;
+    try {
+      return await FidePhotoService.getPhotoUrlOrNull(
+        '$fideId',
+      ).timeout(const Duration(seconds: 8));
+    } catch (error) {
+      debugPrint('Cloud GIF photo lookup failed for FIDE $fideId: $error');
+      return null;
+    }
+  }
+
+  Future<String?> _cloudPhotoData(
+    String? photoUrl, {
+    required String playerLabel,
+  }) async {
+    final uri = Uri.tryParse(photoUrl?.trim() ?? '');
+    if (uri == null || uri.scheme != 'https') {
+      debugPrint(
+        'Cloud GIF $playerLabel photo omitted: no valid HTTPS photo URL.',
+      );
+      return null;
+    }
+    for (var attempt = 1; attempt <= 2; attempt++) {
+      try {
+        final response = await http
+            .get(uri)
+            .timeout(const Duration(seconds: 5));
+        if (response.statusCode != 200) {
+          if (attempt == 1 && response.statusCode >= 500) {
+            debugPrint(
+              'Cloud GIF $playerLabel photo download returned '
+              'HTTP ${response.statusCode}; retrying once.',
+            );
+            continue;
+          }
+          debugPrint(
+            'Cloud GIF $playerLabel photo omitted: '
+            'download returned HTTP ${response.statusCode}.',
+          );
+          return null;
+        }
+        if (response.bodyBytes.isEmpty) {
+          debugPrint('Cloud GIF $playerLabel photo omitted: empty response.');
+          return null;
+        }
+        if (response.bodyBytes.length > 512 * 1024) {
+          debugPrint(
+            'Cloud GIF $playerLabel photo omitted: '
+            '${response.bodyBytes.length} bytes exceeds 512 KiB.',
+          );
+          return null;
+        }
+        final rawContentType =
+            response.headers['content-type']?.split(';').first.trim() ?? '';
+        final contentType = cloudGifPhotoMimeType(response.bodyBytes);
+        if (contentType == null) {
+          debugPrint(
+            'Cloud GIF $playerLabel photo omitted: '
+            'unsupported image bytes (response type: '
+            '${rawContentType.isEmpty ? 'missing' : rawContentType}).',
+          );
+          return null;
+        }
+        debugPrint(
+          'Cloud GIF $playerLabel photo attached: '
+          '${response.bodyBytes.length} bytes, $contentType.',
+        );
+        return 'data:$contentType;base64,${base64Encode(response.bodyBytes)}';
+      } catch (error) {
+        if (attempt == 1) {
+          debugPrint(
+            'Cloud GIF $playerLabel photo download failed; retrying once: '
+            '$error',
+          );
+          continue;
+        }
+        debugPrint('Cloud GIF $playerLabel photo unavailable: $error');
+        return null;
+      }
+    }
+    return null;
+  }
+
+  Map<String, Object?> _cloudGifMetadata({
+    String? whitePhotoData,
+    String? blackPhotoData,
+  }) {
     int? rating(String? value) {
       final parsed = int.tryParse(value?.trim() ?? '');
       return parsed != null && parsed > 0 ? parsed : null;
@@ -460,6 +584,8 @@ class _ShareGameCardOverlayState extends State<ShareGameCardOverlay> {
         'whiteFederation': widget.whitePlayerCountry!.trim(),
       if (widget.blackPlayerCountry?.trim().isNotEmpty ?? false)
         'blackFederation': widget.blackPlayerCountry!.trim(),
+      if (whitePhotoData != null) 'whitePhotoData': whitePhotoData,
+      if (blackPhotoData != null) 'blackPhotoData': blackPhotoData,
       if (eventParts.isNotEmpty) 'event': eventParts.join(' • '),
       if (result.isNotEmpty) 'result': result,
     };

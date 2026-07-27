@@ -170,6 +170,8 @@ class ShareGameScreen extends ConsumerWidget {
               : null,
       whitePlayerTitle: game.whitePlayer.title,
       blackPlayerTitle: game.blackPlayer.title,
+      whitePlayerFideId: game.whitePlayer.fideId,
+      blackPlayerFideId: game.blackPlayer.fideId,
       whitePlayerClock: whiteTime,
       blackPlayerClock: blackTime,
       tournamentName: tournamentName,
