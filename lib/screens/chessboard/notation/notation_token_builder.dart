@@ -142,6 +142,24 @@ bool shouldCollapseByDefault(
 }
 
 // ---------------------------------------------------------------------------
+// PGN comment cleanup
+// ---------------------------------------------------------------------------
+
+/// Strip Lichess extension tags (`[%clk ...]`, `[%eval ...]`, etc.) from a
+/// PGN/variation comment and trim. Empty result means the comment was
+/// tags-only and should not be rendered as prose.
+String cleanPgnCommentText(String comment) {
+  return comment
+      .replaceAll(RegExp(r'\[%clk\s+[^\]]+\]'), '')
+      .replaceAll(RegExp(r'\[%eval\s+[^\]]+\]'), '')
+      .replaceAll(RegExp(r'\[%cal\s+[^\]]+\]'), '')
+      .replaceAll(RegExp(r'\[%csl\s+[^\]]+\]'), '')
+      .replaceAll(RegExp(r'\[%emt\s+[^\]]+\]'), '')
+      .replaceAll(RegExp(r'\[%tag\s+[^\]]+\]'), '')
+      .trim();
+}
+
+// ---------------------------------------------------------------------------
 // Token builder
 // ---------------------------------------------------------------------------
 
@@ -195,10 +213,29 @@ List<NotationDisplayToken> buildNotationTokens(
       ),
     );
 
+    // Brighter PGN / user-override prose for this move (collected first so we
+    // can suppress a dimmer analysis twin that repeats the same text).
+    final brighterCommentTexts = <String>{};
+    if (!rawPgnMode &&
+        node.move.comments != null &&
+        !variationComments.containsKey(pointerId)) {
+      for (final comment in node.move.comments!) {
+        final cleanText = cleanPgnCommentText(comment);
+        if (cleanText.isNotEmpty) {
+          brighterCommentTexts.add(cleanText);
+        }
+      }
+    }
+    final moveComment = rawPgnMode ? null : variationComments[pointerId];
+    if (moveComment != null && moveComment.trim().isNotEmpty) {
+      brighterCommentTexts.add(moveComment.trim());
+    }
+
     // Analysis comments belong only to the original mainline. Variations can
     // reuse the same numeric ply, so indexing them into this map would attach
     // a mainline explanation to the wrong move. Book badges intentionally do
-    // not create a prose block.
+    // not create a prose block. When the same prose already appears as a
+    // brighter PGN/override comment, skip the dimmer lichessComment twin.
     final analysisAnnotation =
         !rawPgnMode && depth == 0 && moveIndex >= 0
             ? lichessAnnotations[moveIndex]
@@ -207,17 +244,20 @@ List<NotationDisplayToken> buildNotationTokens(
         analysisAnnotation.comment.trim().isNotEmpty &&
         resolveAnnotationPresentation(analysisAnnotation.type) ==
             AnnotationPresentation.inlineSymbol) {
-      tokens.add(
-        NotationDisplayToken(
-          type: NotationTokenType.lichessComment,
-          text: analysisAnnotation.comment.trim(),
-          depth: depth,
-          pointerId: pointerId,
-          moveIndex: moveIndex,
-          node: node,
-          pointer: pointerList,
-        ),
-      );
+      final analysisText = analysisAnnotation.comment.trim();
+      if (!brighterCommentTexts.contains(analysisText)) {
+        tokens.add(
+          NotationDisplayToken(
+            type: NotationTokenType.lichessComment,
+            text: analysisText,
+            depth: depth,
+            pointerId: pointerId,
+            moveIndex: moveIndex,
+            node: node,
+            pointer: pointerList,
+          ),
+        );
+      }
     }
 
     // Add PGN comments (skipped in raw PGN mode, or once the user has
@@ -227,17 +267,7 @@ List<NotationDisplayToken> buildNotationTokens(
         node.move.comments != null &&
         !variationComments.containsKey(pointerId)) {
       for (final comment in node.move.comments!) {
-        // Strip out Lichess extension tags from the comment text
-        String cleanText =
-            comment
-                .replaceAll(RegExp(r'\[%clk\s+[^\]]+\]'), '')
-                .replaceAll(RegExp(r'\[%eval\s+[^\]]+\]'), '')
-                .replaceAll(RegExp(r'\[%cal\s+[^\]]+\]'), '')
-                .replaceAll(RegExp(r'\[%csl\s+[^\]]+\]'), '')
-                .replaceAll(RegExp(r'\[%emt\s+[^\]]+\]'), '')
-                .replaceAll(RegExp(r'\[%tag\s+[^\]]+\]'), '')
-                .trim();
-
+        final cleanText = cleanPgnCommentText(comment);
         if (cleanText.isEmpty) {
           continue;
         }
@@ -256,7 +286,6 @@ List<NotationDisplayToken> buildNotationTokens(
       }
     }
 
-    final moveComment = rawPgnMode ? null : variationComments[pointerId];
     if (moveComment != null && moveComment.isNotEmpty) {
       tokens.add(
         NotationDisplayToken(

@@ -391,6 +391,66 @@ class EngineSettings {
     final safeIndex = searchTimeIndex.clamp(0, searchTimeLabels.length - 1);
     return searchTimeLabels[safeIndex];
   }
+
+  /// Single source of truth for the main board analysis Stockfish job.
+  ///
+  /// Board eval, progressive MultiPV, and depth display must all use this
+  /// profile so user engine-settings (search time, line count, depth caps)
+  /// are applied exactly — never re-derived with ad-hoc caps on the call site.
+  BoardEngineSearchProfile resolveBoardSearchProfile() {
+    final multiPv = multiPvForStockfish();
+
+    final gaugeDuration = searchDurationFor(EngineComponent.evaluationGauge);
+    final pvDuration = searchDurationFor(EngineComponent.principalVariation);
+    // Null duration on either component means the user chose ∞ (unlimited).
+    final Duration? searchDuration;
+    if (gaugeDuration == null || pvDuration == null) {
+      searchDuration = null;
+    } else {
+      searchDuration =
+          gaugeDuration >= pvDuration ? gaugeDuration : pvDuration;
+    }
+
+    final gaugeMax = maxDepthFor(EngineComponent.evaluationGauge);
+    final pvMax = maxDepthFor(EngineComponent.principalVariation);
+    // Board needs both eval bar and PV lines from one search: use the tighter
+    // of the two component caps (PV is 50, gauge is 99 → 50).
+    var maxDepth = gaugeMax <= pvMax ? gaugeMax : pvMax;
+    if (maxDepth < 1) maxDepth = 1;
+    if (maxDepth > 99) maxDepth = 99;
+
+    return BoardEngineSearchProfile(
+      multiPv: multiPv,
+      searchDuration: searchDuration,
+      maxDepth: maxDepth,
+    );
+  }
+}
+
+/// Resolved Stockfish parameters for on-board analysis (eval bar + engine lines).
+///
+/// Built only from [EngineSettings] so tests and the board provider share one
+/// mapping: search-time index → movetime, PV index → MultiPV, component maps →
+/// max depth. `searchDuration == null` means no wall-clock limit (∞); Stockfish
+/// then searches to [maxDepth] only.
+class BoardEngineSearchProfile {
+  const BoardEngineSearchProfile({
+    required this.multiPv,
+    required this.searchDuration,
+    required this.maxDepth,
+  });
+
+  /// Principal variations requested (1–5), from [EngineSettings.multiPvForStockfish].
+  final int multiPv;
+
+  /// Wall-clock search budget, or null when the user selected unlimited (∞).
+  final Duration? searchDuration;
+
+  /// Hard depth ceiling for this board job (from component max-depth maps).
+  final int maxDepth;
+
+  /// True when the user selected unlimited search time.
+  bool get isUnlimitedSearch => searchDuration == null;
 }
 
 /// Provider for managing engine settings with Supabase + SharedPreferences sync

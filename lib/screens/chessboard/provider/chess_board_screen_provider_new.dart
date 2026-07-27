@@ -519,7 +519,7 @@ class ChessBoardScreenNotifierNew
   int _currentMultiPvSetting() {
     final engineSettingsAsync = ref.read(engineSettingsProviderNew);
     final engineSettings = engineSettingsAsync.value ?? const EngineSettings();
-    return engineSettings.multiPvForStockfish();
+    return engineSettings.resolveBoardSearchProfile().multiPv;
   }
 
   void _registerPendingEvaluation(String fen) {
@@ -4738,7 +4738,6 @@ class ChessBoardScreenNotifierNew
     state = AsyncValue.data(currentState.copyWith(game: updatedGame));
   }
 
-  bool _isFirstEvalAfterToggle = false;
   void toggleEngineVisibility() {
     final currentState = state.value;
     if (currentState == null) return;
@@ -4761,9 +4760,9 @@ class ChessBoardScreenNotifierNew
           .toggleEngineAnalysis(newValue),
     );
 
-    // When turning ON, cancel stale jobs and trigger fresh eval
+    // When turning ON, cancel stale jobs and trigger fresh eval with the
+    // full user search budget (no short first-eval window).
     if (newValue) {
-      _isFirstEvalAfterToggle = true;
       StockfishSingleton().cancelEvaluationsForOwner(_stockfishOwnerId);
       _updateEvaluation(force: true);
     }
@@ -5041,50 +5040,32 @@ class ChessBoardScreenNotifierNew
     List<AnalysisLine> previous,
     List<AnalysisLine> incoming,
   ) {
-    if (incoming.isEmpty) return incoming;
-    final merged = <AnalysisLine>[];
-    for (var i = 0; i < incoming.length; i++) {
-      final newLine = incoming[i];
-      final prevLine = i < previous.length ? previous[i] : null;
-      if (prevLine == null) {
-        merged.add(newLine);
-        continue;
-      }
-      final prevMoves = prevLine.moves;
-      final newMoves = newLine.moves;
-      if (prevMoves.length > newMoves.length &&
-          _isPrefixMoves(newMoves, prevMoves)) {
-        // Keep the longer move list for UI continuity, but always take the
-        // newest normalized score so PV cards cannot disagree with the eval bar.
-        merged.add(
-          AnalysisLine(
-            moves: prevLine.moves,
-            sanMoves: prevLine.sanMoves,
-            evaluation: newLine.evaluation,
-            mate: newLine.mate,
-          ),
-        );
-      } else {
-        merged.add(newLine);
-      }
-    }
-    // Never shrink the panel: a degraded frame (partial MultiPV snapshot, or a
-    // line whose conversion failed) keeps the previously known lines beyond its
-    // own length. Call sites clear `previous` on position change, so these can
-    // only be same-position lines from moments earlier.
-    for (var i = incoming.length; i < previous.length; i++) {
-      merged.add(previous[i]);
-    }
-    return merged;
+    return mergeBoardPvProgress(previous, incoming);
   }
 
-  bool _isPrefixMoves(List<Move> shorter, List<Move> longer) {
-    if (shorter.length > longer.length) return false;
-    for (var i = 0; i < shorter.length; i++) {
-      if (shorter[i].uci != longer[i].uci) return false;
+  /// Legal-move count for MultiPV completeness (caps target width).
+  int? _maxLegalLinesForPosition(Position? position) {
+    if (position == null || position.isGameOver) return 0;
+    var count = 0;
+    final turn = position.turn;
+    for (final from in Square.values) {
+      final piece = position.board.pieceAt(from);
+      if (piece == null || piece.color != turn) continue;
+      count += position.legalMovesOf(from).size;
+      // MultiPV is at most 5; no need to census past that.
+      if (count >= 5) return count;
     }
-    return true;
+    return count;
   }
+
+  int? _maxLegalLinesForCurrentState(ChessBoardStateNew state) {
+    final position =
+        state.isAnalysisMode
+            ? state.analysisState.position
+            : state.position;
+    return _maxLegalLinesForPosition(position);
+  }
+
 
   ChessGameNavigator? get _analysisNavigator =>
       _analysisGame == null
@@ -5739,46 +5720,15 @@ class ChessBoardScreenNotifierNew
 
       lastEvaluatedFen = fen;
 
-      // Get engine settings FIRST to get configured PV count for cache key
+      // Single source of truth: user engine settings → Stockfish job profile.
+      // Never re-derive multiPV / movetime / maxDepth with local caps here.
       final engineSettingsAsync = ref.read(engineSettingsProviderNew);
       final engineSettings = engineSettingsAsync.value;
       final effectiveEngineSettings = engineSettings ?? const EngineSettings();
-      final configuredMultiPV = effectiveEngineSettings.multiPvForStockfish();
-
-      // Determine dynamic Stockfish search profile from engine settings
-      final gaugeDuration = effectiveEngineSettings.searchDurationFor(
-        EngineComponent.evaluationGauge,
-      );
-      final pvDuration = effectiveEngineSettings.searchDurationFor(
-        EngineComponent.principalVariation,
-      );
-
-      Duration? combinedSearchDuration;
-      if (gaugeDuration == null || pvDuration == null) {
-        // Any null duration indicates "infinite" search, so allow engine to run freely
-        combinedSearchDuration = null;
-      } else {
-        combinedSearchDuration =
-            gaugeDuration >= pvDuration ? gaugeDuration : pvDuration;
-        const fallbackCap = Duration(seconds: 10);
-        if (combinedSearchDuration > fallbackCap) {
-          combinedSearchDuration = fallbackCap;
-        }
-      }
-
-      var gaugeMaxDepth = effectiveEngineSettings.maxDepthFor(
-        EngineComponent.evaluationGauge,
-      );
-      var pvMaxDepth = effectiveEngineSettings.maxDepthFor(
-        EngineComponent.principalVariation,
-      );
-      var combinedMaxDepth =
-          gaugeMaxDepth <= pvMaxDepth ? gaugeMaxDepth : pvMaxDepth;
-      if (combinedMaxDepth < 1) {
-        combinedMaxDepth = 1;
-      } else if (combinedMaxDepth > 60) {
-        combinedMaxDepth = 60;
-      }
+      final boardProfile = effectiveEngineSettings.resolveBoardSearchProfile();
+      final configuredMultiPV = boardProfile.multiPv;
+      final combinedSearchDuration = boardProfile.searchDuration;
+      final combinedMaxDepth = boardProfile.maxDepth;
 
       // Board depth is NEVER capped for the report. Pre-game-analysis stability:
       // the viewed position always uses full user engine settings. The report
@@ -5864,6 +5814,14 @@ class ChessBoardScreenNotifierNew
         currentBoardFen: fen,
         isEvaluating: initialState.isEvaluating,
         normalizeFen: _normalizeFen,
+        configuredMultiPv: configuredMultiPV,
+        maxLegalLines: _maxLegalLinesForCurrentState(initialState),
+        // Mate cloud settles are full results even when MultiPV > 1.
+        waiveWidthRequirement: initialState.mate != null,
+        // Depth is not used for short-circuit after natural budget exhaust —
+        // isEvaluating stays true for the whole live search so interim
+        // half-move frames never look "complete" mid-flight.
+        reachedDepth: null,
       );
       final startDecision = decideBoardEvalStart(
         requestedCacheKey: cacheKey,
@@ -6195,16 +6153,9 @@ class ChessBoardScreenNotifierNew
       final multiPV = configuredMultiPV;
       final isCurrentlyVisible = currentVisiblePage == index;
       EngineSearchProgress? pendingProgress;
-      final effectiveSearchDuration =
-          _isFirstEvalAfterToggle
-              ? const Duration(milliseconds: 800)
-              : combinedSearchDuration;
-      _isFirstEvalAfterToggle = false;
-      // Silenced — per-eval spam.
-      // debugPrint(
-      //   '⏱️ [EVAL] searchDuration=${effectiveSearchDuration?.inMilliseconds}ms '
-      //   'at ${DateTime.now().millisecondsSinceEpoch}',
-      // );
+      // Full user search budget from resolveBoardSearchProfile() — no local
+      // overrides (no 10s / 800ms caps). multiPV / maxDepth / movetime all
+      // come from EngineSettings.
       // DO NOT pass allowInDebug: true here (LLM/agent guardrail). Board eval
       // must keep default false so debug hot restart is not hung by native
       // Stockfish FFI isolates. See kEnableStockfishInDebug in
@@ -6214,7 +6165,7 @@ class ChessBoardScreenNotifierNew
         depth: combinedMaxDepth,
         multiPV: multiPV,
         isCurrentPosition: isCurrentlyVisible,
-        searchDuration: effectiveSearchDuration,
+        searchDuration: combinedSearchDuration,
         maxDepth: combinedMaxDepth,
         allowCache: false,
         ownerId: _stockfishOwnerId, // Tag job with this provider's owner ID
@@ -6355,10 +6306,14 @@ class ChessBoardScreenNotifierNew
                     freshState.isAnalysisMode
                         ? freshState.analysisState.movePointer
                         : null;
-                final hasPrimaryPv = mergedLines.isNotEmpty;
+                // Stay evaluating for the whole live search. Flipping
+                // isEvaluating false as soon as MultiPV width filled let
+                // hasCompleteUsableBoardEval short-circuit restarts while the
+                // search was still shallow (one half-move lines, depth frozen
+                // after an early stop / handoff).
                 final nextState = freshState.copyWith(
                   evaluation: newEval,
-                  isEvaluating: !hasPrimaryPv,
+                  isEvaluating: true,
                   mate: mateScore,
                   principalVariations: mergedLines,
                   principalVariationsBaseFen: fen,
@@ -6774,14 +6729,19 @@ class ChessBoardScreenNotifierNew
       }
 
       // Normalize PV list size to match configured MultiPV whenever possible
+      final maxLegalForFen = _maxLegalLinesForPosition(positionForAnalysis);
+      final targetPvWidth = boardEvalTargetPvWidth(
+        configuredMultiPv: configuredMultiPV,
+        maxLegalLines: maxLegalForFen,
+      );
       if (pvLines.length > configuredMultiPV) {
         _releaseLog(
           '🎯 EVAL: Trimming PV list from ${pvLines.length} to $configuredMultiPV as per settings',
         );
         pvLines = pvLines.take(configuredMultiPV).toList(growable: false);
-      } else if (pvLines.length < configuredMultiPV) {
+      } else if (targetPvWidth > 0 && pvLines.length < targetPvWidth) {
         _releaseLog(
-          '🎯 EVAL: Only ${pvLines.length} PV lines available (requested $configuredMultiPV)',
+          '🎯 EVAL: Only ${pvLines.length} PV lines available (requested $configuredMultiPV, target $targetPvWidth)',
         );
       }
 
@@ -6923,6 +6883,42 @@ class ChessBoardScreenNotifierNew
       }
 
       // Note: Removed supplemental eval since Stockfish is now primary with MultiPV=3
+
+      // Incomplete MultiPV width after a finished search: bounded retry so a
+      // sticky multiPv:1 settle cannot permanently pin one thin line.
+      final settledMate = currentSnapshot.mate != null;
+      final shouldRetrySettle = boardEvalShouldRetryAfterSettle(
+        principalVariationCount: pvLines.length,
+        configuredMultiPv: configuredMultiPV,
+        maxLegalLines: maxLegalForFen,
+        isMate: settledMate,
+      );
+      if (shouldRetrySettle && mounted && !_cancelEvaluation) {
+        Future.microtask(() {
+          if (!mounted || _cancelEvaluation) return;
+          final latest = state.value;
+          if (latest == null) return;
+          final latestPos =
+              latest.isAnalysisMode
+                  ? latest.analysisState.position
+                  : latest.position;
+          if (latestPos == null) return;
+          if (_normalizeFen(latestPos.fen) != _normalizeFen(fen)) return;
+          if (!boardEvalShouldRetryAfterSettle(
+            principalVariationCount: latest.principalVariations.length,
+            configuredMultiPv: configuredMultiPV,
+            maxLegalLines: _maxLegalLinesForPosition(latestPos),
+            isMate: latest.mate != null,
+          )) {
+            return;
+          }
+          _releaseLog(
+            '🔄 EVAL: Incomplete MultiPV width '
+            '(${latest.principalVariations.length}/$targetPvWidth) — retrying',
+          );
+          _retryEvaluationForFen(fen, reason: 'incomplete-board-settle');
+        });
+      }
     } catch (e) {
       if (!_cancelEvaluation) {
         _releaseLog('Evaluation error: $e');
@@ -7436,6 +7432,10 @@ class ChessBoardScreenNotifierNew
       currentBoardFen: currentFen,
       isEvaluating: currentState.isEvaluating,
       normalizeFen: _normalizeFen,
+      configuredMultiPv: multiPv,
+      maxLegalLines: _maxLegalLinesForCurrentState(currentState),
+      waiveWidthRequirement: currentState.mate != null,
+      reachedDepth: null,
     );
     final startDecision = decideBoardEvalStart(
       requestedCacheKey: activeCacheKey,

@@ -197,10 +197,10 @@ class StockfishSingleton {
   Stockfish? _monitoredEngine;
   StreamSubscription<String>? _monitorSubscription;
 
-  /// Last `MultiPV` value actually written to the current engine. A job whose
-  /// width already matches skips `setoption` entirely, so the common cases
-  /// (board → board navigation, report position → report position) never touch
-  /// the one command that can block the engine's input thread.
+  /// Last `MultiPV` value actually written to the current engine. Cleared on
+  /// engine restart / detach so the next job re-asserts width. Jobs always
+  /// write MultiPV while idle (report multiPv:1 must not sticky-pin the board).
+  // ignore: unused_field — cleared on reset paths; written every job start
   int? _appliedMultiPv;
 
   /// Depth reached by the board (high-priority) search that is running now.
@@ -977,6 +977,11 @@ class StockfishSingleton {
       bool evaluationComplete = false;
       int lastPvUpdateDepthReported = 0;
       String lastPvSnapshotSignature = '';
+      // Track whether info lines include an explicit multipv index. Missing
+      // multipv while multiPV>1 means the native option is stuck at 1 — clear
+      // _appliedMultiPv so the next job re-asserts it. Never stop the live
+      // search for this (that froze depth mid-flight).
+      var sawExplicitMultiPvIndex = false;
       DateTime?
       lastInfoReceived; // Track when we last received info from engine
 
@@ -1032,6 +1037,14 @@ class StockfishSingleton {
             final multipvMatch = _infoMultiPvPattern.firstMatch(line);
             if (multipvMatch != null) {
               multipvIndex = int.parse(multipvMatch.group(1)!);
+              sawExplicitMultiPvIndex = true;
+            } else if (multiPV > 1 &&
+                !sawExplicitMultiPvIndex &&
+                finalDepth >= 6) {
+              // Stockfish omits multipv only when MultiPV is 1. Remember the
+              // mismatch so the *next* job re-asserts MultiPV — do NOT stop
+              // the live search here (that froze depth and left half-move PVs).
+              _appliedMultiPv = null;
             }
 
             // Handoff to a waiting low-priority borrower (the whole-game
@@ -1245,12 +1258,15 @@ class StockfishSingleton {
 
         // `setoption` is the one command that can block Stockfish's UCI input
         // thread (it calls wait_for_search_finished). _softResetEngine has
-        // already proven the engine idle, and re-sending an unchanged MultiPV
-        // buys nothing — so only write it when the width actually differs.
-        if (_appliedMultiPv != multiPV) {
-          _engine!.stdin = 'setoption name MultiPV value $multiPV';
-          _appliedMultiPv = multiPV;
-        }
+        // already proven the engine idle, so it is safe here. Always re-assert
+        // MultiPV rather than skipping when `_appliedMultiPv == multiPV`: a
+        // prior setoption can be optimistically recorded and then never apply
+        // (stranded search / restart), leaving the native engine at MultiPV 1
+        // while board jobs believe they already requested 3 — depth climbs
+        // with a single engine line forever. Report jobs use multiPv:1, so the
+        // board path must re-pin the width every time it takes the engine.
+        _engine!.stdin = 'setoption name MultiPV value $multiPV';
+        _appliedMultiPv = multiPV;
         _engine!.stdin = 'position fen $fen';
 
         if (isDynamicSearch) {

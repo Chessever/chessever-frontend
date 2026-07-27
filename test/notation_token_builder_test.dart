@@ -480,6 +480,137 @@ void main() {
       },
     );
 
+    test(
+      'identical analysis and PGN comment text emits only the brighter '
+      'PGN comment token',
+      () {
+        // Reproduce the stacked-duplicate bug: Lichess/report analysis and
+        // the imported PGN both carry the same prose for one move. Only the
+        // brighter NotationTokenType.comment block should survive.
+        const shared =
+            'This is a mistake. Black should play 7... O-O instead.';
+        final tree = _treeFromSans(['e4', 'e5', 'Nf3']);
+        final original = tree.mainline[1];
+        final commentedNode = NotationMoveNode(
+          move: _move('e5', comments: [shared]),
+          pointer: original.pointer,
+          ply: original.ply,
+          moveNumber: original.moveNumber,
+          isWhiteMove: original.isWhiteMove,
+          showMoveNumber: original.showMoveNumber,
+          showEllipsis: original.showEllipsis,
+          isMainline: original.isMainline,
+          depth: original.depth,
+          variations: original.variations,
+        );
+        final withComment = NotationTree(
+          startingPly: tree.startingPly,
+          mainline: [tree.mainline[0], commentedNode, tree.mainline[2]],
+        );
+        final annotations = <int, LichessMoveAnnotation>{
+          1: const LichessMoveAnnotation(
+            type: LichessMoveAnnotationType.mistake,
+            comment: shared,
+          ),
+        };
+
+        final tokens = _buildTokens(
+          withComment,
+          lichessAnnotations: annotations,
+        );
+
+        final proseForMove =
+            tokens
+                .where(
+                  (t) =>
+                      (t.type == NotationTokenType.lichessComment ||
+                          t.type == NotationTokenType.comment) &&
+                      t.text == shared,
+                )
+                .toList();
+        expect(
+          proseForMove,
+          hasLength(1),
+          reason: 'Duplicate analysis+PGN prose must not stack two blocks',
+        );
+        expect(proseForMove.single.type, NotationTokenType.comment);
+        expect(
+          tokens.where((t) => t.type == NotationTokenType.lichessComment),
+          isEmpty,
+        );
+      },
+    );
+
+    test(
+      'analysis-only comment still emits lichessComment when there is no '
+      'PGN twin',
+      () {
+        final tree = _treeFromSans(['e4', 'e5']);
+        final annotations = <int, LichessMoveAnnotation>{
+          1: const LichessMoveAnnotation(
+            type: LichessMoveAnnotationType.blunder,
+            comment: 'Blunder. d5 was best.',
+          ),
+        };
+        final tokens = _buildTokens(tree, lichessAnnotations: annotations);
+
+        expect(
+          tokens.where((t) => t.type == NotationTokenType.lichessComment),
+          hasLength(1),
+        );
+        expect(
+          tokens.where((t) => t.type == NotationTokenType.comment),
+          isEmpty,
+        );
+      },
+    );
+
+    test(
+      'distinct analysis and PGN comments both emit when texts differ',
+      () {
+        final tree = _treeFromSans(['e4', 'e5']);
+        final original = tree.mainline[1];
+        final commentedNode = NotationMoveNode(
+          move: _move('e5', comments: ['Opening theory note.']),
+          pointer: original.pointer,
+          ply: original.ply,
+          moveNumber: original.moveNumber,
+          isWhiteMove: original.isWhiteMove,
+          showMoveNumber: original.showMoveNumber,
+          showEllipsis: original.showEllipsis,
+          isMainline: original.isMainline,
+          depth: original.depth,
+          variations: original.variations,
+        );
+        final withComment = NotationTree(
+          startingPly: tree.startingPly,
+          mainline: [tree.mainline[0], commentedNode],
+        );
+        final annotations = <int, LichessMoveAnnotation>{
+          1: const LichessMoveAnnotation(
+            type: LichessMoveAnnotationType.mistake,
+            comment: 'Mistake. Black should castle.',
+          ),
+        };
+
+        final tokens = _buildTokens(
+          withComment,
+          lichessAnnotations: annotations,
+        );
+
+        final lichess = tokens
+            .where((t) => t.type == NotationTokenType.lichessComment)
+            .toList();
+        final pgn = tokens
+            .where((t) => t.type == NotationTokenType.comment)
+            .toList();
+        expect(lichess, hasLength(1));
+        expect(lichess.single.text, 'Mistake. Black should castle.');
+        expect(pgn, hasLength(1));
+        expect(pgn.single.text, 'Opening theory note.');
+      },
+    );
+
     test('move formatting preserves white/black number prefixes', () {
       final tree = _treeFromSans(['e4', 'e5', 'Nf3', 'Nc6', 'Bb5']);
       final tokens = _buildTokens(tree);
