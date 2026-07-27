@@ -387,6 +387,8 @@ Future<void> showGameShareOverlay(
             blackPlayerElo: game.blackPlayer.rating.toString(),
             whitePlayerTitle: game.whitePlayer.title,
             blackPlayerTitle: game.blackPlayer.title,
+            whitePlayerFideId: game.whitePlayer.fideId,
+            blackPlayerFideId: game.blackPlayer.fideId,
             whitePlayerClock: whiteClock,
             blackPlayerClock: blackClock,
             tournamentName: tournamentName,

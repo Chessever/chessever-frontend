@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:chessever2/services/cloudflare_gif_service.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -36,6 +37,7 @@ void main() {
         'white': 'Alice',
         'black': 'Bob',
         'whiteRating': 2400,
+        'whitePhotoData': 'data:image/webp;base64,UklGRg==',
         'event': 'Test Event • Round 1',
         'result': '1/2-1/2',
       },
@@ -47,6 +49,10 @@ void main() {
     expect(body['schemaVersion'], 1);
     expect(body['flipped'], isTrue);
     expect(body['metadata']['whiteRating'], 2400);
+    expect(
+      body['metadata']['whitePhotoData'],
+      'data:image/webp;base64,UklGRg==',
+    );
     expect(body['metadata']['result'], '1/2-1/2');
     expect(job.id, 'job-1');
     expect(job.totalFrames, 5);
@@ -269,6 +275,39 @@ void main() {
       CloudflareGifService.messageForErrorCode('daily_job_limit'),
       contains('Daily'),
     );
+  });
+
+  test('detects supported cloud GIF player-photo formats by signature', () {
+    expect(
+      cloudGifPhotoMimeType(
+        Uint8List.fromList([0x89, 0x50, 0x4e, 0x47, 13, 10, 26, 10]),
+      ),
+      'image/png',
+    );
+    expect(
+      cloudGifPhotoMimeType(Uint8List.fromList([0xff, 0xd8, 0xff, 0xe0])),
+      'image/jpeg',
+    );
+    expect(
+      cloudGifPhotoMimeType(
+        Uint8List.fromList([
+          0x52,
+          0x49,
+          0x46,
+          0x46,
+          0,
+          0,
+          0,
+          0,
+          0x57,
+          0x45,
+          0x42,
+          0x50,
+        ]),
+      ),
+      'image/webp',
+    );
+    expect(cloudGifPhotoMimeType(Uint8List.fromList([1, 2, 3])), isNull);
   });
 
   test('reports missing mobile Cloudflare configuration', () {
