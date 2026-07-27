@@ -13,6 +13,7 @@ import 'package:chessever2/utils/svg_asset.dart';
 import 'package:chessever2/utils/time_utils.dart';
 import 'package:chessever2/widgets/app_button.dart';
 import 'package:chessever2/widgets/auth/auth_upgrade_sheet.dart';
+import 'package:chessever2/widgets/event_card/event_card_meta_format.dart';
 import 'package:chessever2/widgets/event_card/event_context_menu.dart';
 import 'package:chessever2/widgets/event_card/event_image_provider.dart';
 import 'package:chessever2/widgets/event_card/event_next_round_provider.dart';
@@ -185,7 +186,11 @@ class EventCard extends ConsumerWidget {
                         showLocation: false,
                         location: null,
                         showElo: tourEventCardModel.maxAvgElo > 0,
-                        elo: tourEventCardModel.maxAvgElo,
+                        eloLabel: formatEventAverageRating(
+                          elo: tourEventCardModel.maxAvgElo,
+                          startDate: tourEventCardModel.startDate,
+                          endDate: tourEventCardModel.endDate,
+                        ),
                         onLight: true,
                       ),
                     ),
@@ -291,7 +296,11 @@ class EventCard extends ConsumerWidget {
                         tourEventCardModel.eventSource !=
                             EventSource.communityEvent &&
                         tourEventCardModel.maxAvgElo > 0,
-                    elo: tourEventCardModel.maxAvgElo,
+                    eloLabel: formatEventAverageRating(
+                      elo: tourEventCardModel.maxAvgElo,
+                      startDate: tourEventCardModel.startDate,
+                      endDate: tourEventCardModel.endDate,
+                    ),
                   ),
                   _NextRoundLine(
                     eventId: tourEventCardModel.id,
@@ -366,7 +375,7 @@ class _MetaLine extends StatelessWidget {
     required this.showLocation,
     required this.location,
     required this.showElo,
-    required this.elo,
+    required this.eloLabel,
     this.onLight = false,
   });
 
@@ -375,7 +384,7 @@ class _MetaLine extends StatelessWidget {
   final bool showLocation;
   final String? location;
   final bool showElo;
-  final int elo;
+  final String eloLabel;
   final bool onLight;
 
   @override
@@ -422,7 +431,7 @@ class _MetaLine extends StatelessWidget {
       spans.add(TextSpan(text: location!));
     } else if (showElo) {
       spans.add(_dotSpan(baseColor));
-      spans.add(TextSpan(text: 'Ø $elo'));
+      spans.add(TextSpan(text: eloLabel));
     }
 
     return Text.rich(
