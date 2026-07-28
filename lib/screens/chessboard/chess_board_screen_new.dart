@@ -975,6 +975,13 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
   int _currentPageIndex = 0;
   final Set<String> _syncedLatestPositions = <String>{};
   bool _isRevertingPage = false;
+  /// When true, [PageController.jumpToPage] fired [onPageChanged] from a
+  /// programmatic expand remap (not a user swipe). [_handlePageChange] must
+  /// no-op — that path writes [currentlyVisiblePageIndexProvider], which
+  /// Riverpod forbids during [didUpdateWidget] / element update (black screen
+  /// + StateNotifierListenerError). Index / provider sync is deferred via
+  /// [_syncExpandedGameProvidersAfterFrame].
+  bool _isProgrammaticPageJump = false;
   ProviderSubscription<AsyncValue<ChessBoardStateNew>>? _boardKeepAliveSub;
   ChessBoardProviderParams? _keepAliveParams;
   Timer? _pageSettleTimer;
@@ -1603,8 +1610,14 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
       _currentPageIndex = desiredIndex;
       // Jump immediately so this rebuild's PageView ±1 window matches the
       // controller page — a post-frame jump would paint a blank frame first.
+      // Suppress [_handlePageChange]: jumpToPage notifies onPageChanged
+      // synchronously while BuildOwner is still updating elements; writing
+      // currentlyVisiblePageIndexProvider there throws and blacks the frame.
+      // (Also: when itemCount is still the pre-expand length, the jump can
+      // clamp and report a different page than desiredIndex — without the
+      // suppress that would clobber _currentPageIndex mid-expand.)
       if (_pageController.hasClients) {
-        _pageController.jumpToPage(desiredIndex);
+        _jumpToPageProgrammatically(desiredIndex);
       }
     }
 
@@ -1662,9 +1675,14 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
   ///   "Tried to modify a provider while the widget tree was building."
   ///
   /// It reproduces every time `_ExpandingChessBoardScreen` swaps its entry
-  /// subset for the full-event list (For You / favorites / countrymen open
-  /// path). [initState] and [didChangeDependencies] already defer the same
-  /// writes for the same reason — keep all three consistent.
+  /// subset for the full-event list (For You / favorites / countrymen / team
+  /// Standings open path). [initState] and [didChangeDependencies] already
+  /// defer the same writes for the same reason — keep all three consistent.
+  ///
+  /// Also re-applies [PageController.jumpToPage] post-frame: the didUpdateWidget
+  /// jump can clamp when `itemCount` is still the pre-expand length; after this
+  /// frame the PageView has the expanded count so the controller can land on
+  /// [desiredIndex].
   ///
   /// Guards: bail if the widget was disposed, if a newer games list already
   /// landed (identity check), or if the page moved on after this frame — a
@@ -1678,6 +1696,15 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted || !identical(widget.games, games)) return;
 
+      if (indexChanged &&
+          _currentPageIndex == desiredIndex &&
+          _pageController.hasClients) {
+        final controllerPage = _pageController.page?.round();
+        if (controllerPage != desiredIndex) {
+          _jumpToPageProgrammatically(desiredIndex);
+        }
+      }
+
       ref.read(chessBoardAllGamesProvider.notifier).state = games;
       if (indexChanged && _currentPageIndex == desiredIndex) {
         ref.read(currentlyVisiblePageIndexProvider.notifier).state =
@@ -1685,6 +1712,18 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
         _keepBoardProviderAlive(desiredIndex);
       }
     });
+  }
+
+  /// Programmatic [PageController.jumpToPage] that must not run user swipe
+  /// side effects in [_handlePageChange] (provider writes, eval cancel, etc.).
+  void _jumpToPageProgrammatically(int page) {
+    _isProgrammaticPageJump = true;
+    try {
+      _pageController.jumpToPage(page);
+    } finally {
+      // onPageChanged is synchronous for jumpToPage; clear even if it no-ops.
+      _isProgrammaticPageJump = false;
+    }
   }
 
   @override
@@ -2177,6 +2216,13 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
   }
 
   Future<void> _handlePageChange(int newIndex) async {
+    // Expand remap / other programmatic jumps: index + provider sync is owned
+    // by didUpdateWidget + _syncExpandedGameProvidersAfterFrame. Must not write
+    // providers (or clobber _currentPageIndex) while the tree is building.
+    if (_isProgrammaticPageJump) {
+      return;
+    }
+
     if (_isRevertingPage) {
       _isRevertingPage = false;
       return;
@@ -2205,6 +2251,7 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
 
     // CRITICAL: Update the global provider to track which page is visible
     // This prevents off-screen games from playing audio
+    // (User swipe only — programmatic jumps are gated above.)
     ref.read(currentlyVisiblePageIndexProvider.notifier).state = newIndex;
 
     // Cancel active evaluations on the board that just went off-screen

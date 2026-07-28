@@ -210,7 +210,6 @@ void main() {
       expect(boardSrc, contains('void didUpdateWidget'));
       expect(boardSrc, contains('syncPageIndex'));
       expect(boardSrc, contains('applyNavigationGameSnapshot'));
-      expect(boardSrc, contains('jumpToPage(desiredIndex)'));
       expect(
         boardSrc,
         contains('never remount analysis'),
@@ -224,6 +223,66 @@ void main() {
         boardSrc,
         contains('_syncExpandedGameProvidersAfterFrame'),
         reason: 'expand provider writes must be post-frame, not inline',
+      );
+
+      // CHESSEVER-1TV / 1TW: jumpToPage from didUpdateWidget notifies
+      // onPageChanged → _handlePageChange → currentlyVisiblePageIndexProvider
+      // during element update. Programmatic jumps must be gated; the expand
+      // path must not call jumpToPage(desiredIndex) bare.
+      expect(
+        boardSrc,
+        contains('_isProgrammaticPageJump'),
+        reason: 'flag gates build-phase provider writes from jumpToPage',
+      );
+      expect(
+        boardSrc,
+        contains('_jumpToPageProgrammatically'),
+        reason: 'expand remap must use the suppress wrapper, not bare jump',
+      );
+      expect(
+        boardSrc,
+        contains('_jumpToPageProgrammatically(desiredIndex)'),
+        reason: 'didUpdateWidget expand path must jump via the wrapper',
+      );
+      // Bare expand jump is the regression that blacks the frame.
+      expect(
+        boardSrc.contains('_pageController.jumpToPage(desiredIndex)'),
+        isFalse,
+        reason:
+            'must not jumpToPage(desiredIndex) without _isProgrammaticPageJump',
+      );
+      expect(
+        boardSrc,
+        contains('if (_isProgrammaticPageJump)'),
+        reason: '_handlePageChange must early-return for programmatic jumps',
+      );
+
+      // currentlyVisiblePageIndexProvider write in _handlePageChange must sit
+      // AFTER the programmatic-jump guard (not before it).
+      final handleStart = boardSrc.indexOf('Future<void> _handlePageChange');
+      expect(handleStart, greaterThanOrEqualTo(0));
+      // Bound the slice to this method only (next top-level method after it).
+      final handleEndCandidate = boardSrc.indexOf(
+        '\n  Future<void> ',
+        handleStart + 1,
+      );
+      final handleEnd =
+          handleEndCandidate > handleStart
+              ? handleEndCandidate
+              : (handleStart + 4000).clamp(0, boardSrc.length);
+      final handleSlice = boardSrc.substring(handleStart, handleEnd);
+      final guardAt = handleSlice.indexOf('if (_isProgrammaticPageJump)');
+      final writeAt = handleSlice.indexOf(
+        'currentlyVisiblePageIndexProvider.notifier).state = newIndex',
+      );
+      expect(guardAt, greaterThanOrEqualTo(0), reason: 'guard present');
+      expect(writeAt, greaterThanOrEqualTo(0), reason: 'provider write present');
+      expect(
+        guardAt < writeAt,
+        isTrue,
+        reason:
+            'programmatic-jump guard must precede the provider write so expand '
+            'jumpToPage cannot mutate providers during build',
       );
 
       final providerSrc = File(
@@ -262,6 +321,7 @@ void main() {
       );
     },
   );
+
 }
 
 const _shortPgn = '''
