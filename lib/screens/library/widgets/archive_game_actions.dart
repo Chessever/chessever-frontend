@@ -6,6 +6,7 @@ import 'package:chessever2/screens/library/utils/gamebase_pgn_builder.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/utils/logger/logger.dart';
+import 'package:chessever2/utils/pgn_export_utils.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/alert_dialog/alert_modal.dart';
 import 'package:chessever2/widgets/app_snack.dart';
@@ -125,7 +126,9 @@ Future<void> copyArchiveGamePgn({
     game,
     failureMessage: 'No PGN available for this game',
     (pgn) async {
-      await Clipboard.setData(ClipboardData(text: pgn));
+      await Clipboard.setData(
+        ClipboardData(text: canonicalizePgnForExport(pgn)),
+      );
       HapticFeedback.lightImpact();
       if (!context.mounted) return;
       showAppSnack(context, 'PGN copied to clipboard');

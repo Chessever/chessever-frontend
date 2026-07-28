@@ -1,5 +1,6 @@
 import 'package:chessever2/screens/chessboard/analysis/chess_game.dart';
 import 'package:chessever2/screens/chessboard/analysis/chess_game_navigator.dart';
+import 'package:chessever2/utils/pgn_export_utils.dart';
 import 'package:chessever2/screens/chessboard/notation/notation_pointer.dart';
 import 'package:dartchess/dartchess.dart'
     show PgnChildNode, PgnGame, PgnNode, PgnNodeData;
@@ -192,15 +193,11 @@ const _standardStartingFen =
     'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
 
 Map<String, String> _buildPgnHeaders(ChessGame game) {
-  final sortedEntries =
-      game.metadata.entries.toList()..sort((a, b) => a.key.compareTo(b.key));
   final headers = <String, String>{};
 
-  for (final entry in sortedEntries) {
+  for (final entry in game.metadata.entries) {
     headers[entry.key] = entry.value?.toString() ?? '';
   }
-
-  headers.putIfAbsent('Result', () => '*');
 
   final hasCustomStart =
       game.startingFen.trim().isNotEmpty &&
@@ -212,7 +209,7 @@ Map<String, String> _buildPgnHeaders(ChessGame game) {
     headers.putIfAbsent('FEN', () => game.startingFen);
   }
 
-  return headers;
+  return canonicalPgnHeaders(headers);
 }
 
 void _appendLineToPgnNode(PgnNode<PgnNodeData> parent, ChessLine line) {

@@ -6,6 +6,7 @@ import 'package:chessever2/screens/library/widgets/library_context_menu.dart';
 import 'package:chessever2/screens/library/widgets/move_game_to_database_sheet.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/utils/logger/logger.dart';
+import 'package:chessever2/utils/pgn_export_utils.dart';
 import 'package:chessever2/widgets/app_snack.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -121,7 +122,7 @@ Future<void> _copyPgn(BuildContext context, SavedAnalysis analysis) async {
       showAppSnack(context, 'No PGN available for this game');
       return;
     }
-    await Clipboard.setData(ClipboardData(text: pgn));
+    await Clipboard.setData(ClipboardData(text: canonicalizePgnForExport(pgn)));
     HapticFeedback.lightImpact();
     if (!context.mounted) return;
     showAppSnack(context, 'PGN copied to clipboard');
