@@ -255,7 +255,7 @@ void main() {
           beforeWin: 55,
           afterWin: 55,
           bestMove: 'e2e4',
-          alternativeWin: 53, // 2pp gap < 5
+          alternativeWin: 53, // 2pp gap < kBestRequiredPvMoatPp (2.5)
         ),
         isNull,
       );
@@ -268,7 +268,8 @@ void main() {
           beforeWin: 52,
           afterWin: 54,
           bestMove: 'e2e4',
-          alternativeWin: 44, // 10pp gap ≥ 5
+          // Clears Best moat (2.5) without clearing Great only-reliable (7.5).
+          alternativeWin: 49, // 5pp gap
         ),
         GameMoveClassification.goodMove,
       );
@@ -300,7 +301,8 @@ void main() {
           beforeWin: 52,
           afterWin: 55,
           bestMove: 'e2e4',
-          alternativeWin: 40, // gap 15 > 10
+          // Clearly over kGreatOnlyGoodMoveGapPp after cp round-trip (~9pp).
+          alternativeWin: 46,
         ),
         GameMoveClassification.bestMove,
       );

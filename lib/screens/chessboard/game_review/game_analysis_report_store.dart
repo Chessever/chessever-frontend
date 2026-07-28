@@ -178,8 +178,10 @@ class _MemoryEntry {
 /// v3: a decided game no longer hands out errors. v4: `?!`, `?` and `??` are
 /// lichess's own judgment (`lichess_judgment.dart`) — the blunder threshold, the
 /// mate handling and the rule that the engine's own move is never an error all
-/// changed, so every stored report still carries the old symbols.
-const int gameAnalysisReportSchemaVersion = 4;
+/// changed, so every stored report still carries the old symbols. v5: Best PV
+/// moat and Great only-reliable gap relaxed (★ / ! less conservative); same
+/// games can gain positive labels they did not under v4.
+const int gameAnalysisReportSchemaVersion = 5;
 
 Map<String, dynamic> gameAnalysisReportToJson(GameAnalysisReport report) {
   return <String, dynamic>{

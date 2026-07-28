@@ -1171,30 +1171,53 @@ GameMoveClassification? _classifyGameReportMoveCore({
       return GameMoveClassification.brilliant;
     }
 
-    // Great: near-best and not already crushing — either the only good move
-    // (gap > 10pp) or a decisive outcome swing. Also engine-top conversion
-    // right after the opponent's error.
+    // Great: near-best — the only reliable move (meaningful MultiPV gap), a
+    // decisive outcome swing, engine-top punishment of the opponent's error,
+    // a defensive save, or a clean advantage conversion where natural
+    // alternatives slip. Defensive saves may still sit under 50% after the
+    // move (partial recovery); other paths keep the losing/alt-crushing veto.
     if (greatAndBestEligible &&
         moverChange >= -2 &&
-        alternativeWin != null &&
-        !_isLosingOrAlternateCrushing(
-          afterWin: afterWin,
-          alternativeWin: alternativeWin,
-          isWhite: isWhite,
-        )) {
-      final onlyGoodMove = alternativeGap > 10;
-      final outcomeSwing = _hasChangedGameOutcome(
-        beforeWin: beforeWin,
-        afterWin: afterWin,
-        isWhite: isWhite,
-        moverChange: moverChange,
+        alternativeWin != null) {
+      final defensiveSave = _isDefensiveSave(
+        playedIsBest: playedIsBest,
+        moverBefore: moverBefore,
+        moverAfter: moverAfter,
+        alternativeGap: alternativeGap,
       );
-      final punishError =
-          playedIsBest &&
-          (previousMoveClassification == GameMoveClassification.blunder ||
-              previousMoveClassification == GameMoveClassification.mistake);
-      if (onlyGoodMove || outcomeSwing || punishError) {
-        return GameMoveClassification.bestMove;
+      final notLosingOrCrushing = !_isLosingOrAlternateCrushing(
+        afterWin: afterWin,
+        alternativeWin: alternativeWin,
+        isWhite: isWhite,
+      );
+      if (defensiveSave || notLosingOrCrushing) {
+        final onlyGoodMove = alternativeGap >= kGreatOnlyGoodMoveGapPp;
+        final outcomeSwing = _hasChangedGameOutcome(
+          beforeWin: beforeWin,
+          afterWin: afterWin,
+          isWhite: isWhite,
+          moverChange: moverChange,
+        );
+        final punishError =
+            playedIsBest &&
+            (previousMoveClassification == GameMoveClassification.blunder ||
+                previousMoveClassification == GameMoveClassification.mistake);
+        final advantageConversion = _isAdvantageConversion(
+          playedIsBest: playedIsBest,
+          moverBefore: moverBefore,
+          moverAfter: moverAfter,
+          alternativeMoverWin:
+              isWhite ? alternativeWin : (100 - alternativeWin),
+          alternativeGap: alternativeGap,
+        );
+        if (defensiveSave ||
+            (notLosingOrCrushing &&
+                (onlyGoodMove ||
+                    outcomeSwing ||
+                    punishError ||
+                    advantageConversion))) {
+          return GameMoveClassification.bestMove;
+        }
       }
     }
 
@@ -1335,6 +1358,51 @@ bool _hasChangedGameOutcome({
       (beforeWin > 50 && afterWin < 50);
 }
 
+/// Near-best resource that lifts the mover out of a lost or clearly-worse
+/// position while alternatives remain meaningfully inferior.
+///
+/// Stronger than Best's "recovers" path: requires engine-top play plus a
+/// gap under the Great only-reliable bar so ordinary defensive Best moves
+/// stay ★ rather than !.
+bool _isDefensiveSave({
+  required bool playedIsBest,
+  required double moverBefore,
+  required double moverAfter,
+  required double alternativeGap,
+}) {
+  if (!playedIsBest) return false;
+  if (alternativeGap < kGreatSupportingPathMinGapPp) return false;
+  final beforeBand = outcomeBandFor(moverBefore);
+  final afterBand = outcomeBandFor(moverAfter);
+  final savedFromLosing = escapesClearlyLosingBand(
+    moverBefore: moverBefore,
+    moverAfter: moverAfter,
+  );
+  final climbedFromWorse =
+      beforeBand == OutcomeBand.worse &&
+      afterBand.index >= OutcomeBand.competitive.index &&
+      (moverAfter - moverBefore) > kBandHysteresisPp;
+  return savedFromLosing || climbedFromWorse;
+}
+
+/// Engine-top conversion that keeps a real advantage when the natural
+/// alternative would surrender it (band drop with a supporting MultiPV gap).
+bool _isAdvantageConversion({
+  required bool playedIsBest,
+  required double moverBefore,
+  required double moverAfter,
+  required double alternativeMoverWin,
+  required double alternativeGap,
+}) {
+  if (!playedIsBest) return false;
+  if (alternativeGap < kGreatSupportingPathMinGapPp) return false;
+  final beforeBand = outcomeBandFor(moverBefore);
+  final afterBand = outcomeBandFor(moverAfter);
+  if (beforeBand.index < OutcomeBand.better.index) return false;
+  if (afterBand.index < OutcomeBand.better.index) return false;
+  return outcomeBandFor(alternativeMoverWin).index < OutcomeBand.better.index;
+}
+
 // ── Brilliant (!!) high-precision path ─────────────────────────────────────
 
 /// Max mover win% loss (pp) for a !! candidate / verified brilliant.
@@ -1382,7 +1450,18 @@ const Duration kBookProbeBudget = Duration(seconds: 90);
 
 /// PV moat (pp) the played move needs over the first unplayed alternative
 /// before being called Best. Being PV1 is not on its own a distinction.
-const double kBestRequiredPvMoatPp = 8;
+///
+/// Tuned so accurate, contested PV1 choices earn ★ without requiring the
+/// near-only-move gap reserved for Great.
+const double kBestRequiredPvMoatPp = 2.5;
+
+/// MultiPV gap (pp, mover favour) for Great via the only-reliable-move path.
+/// Alternatives this far worse mean the played move is the only practical choice.
+const double kGreatOnlyGoodMoveGapPp = 7.5;
+
+/// Supporting-path floor for Great defensive-save and advantage-conversion.
+/// Below the only-reliable bar so those paths need their band evidence as well.
+const double kGreatSupportingPathMinGapPp = 5;
 
 /// Mover winning chance (pp) below which ordinary captures, recaptures and
 /// retreats no longer earn a positive symbol by default.

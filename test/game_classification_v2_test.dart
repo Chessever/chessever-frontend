@@ -81,28 +81,85 @@ void main() {
   });
 
   group('positive labels are withheld from ordinary moves', () {
-    test('being PV1 is not enough without an 8pp moat', () {
+    test('being PV1 is not enough without a meaningful moat', () {
       final game = _openingGame;
-      // A 6pp moat used to qualify as Best; it no longer does.
+      // Sub-moat gap: still no Best (kBestRequiredPvMoatPp = 2.5).
       expect(
         _classify(
           game,
           moverBefore: 52,
           moverAfter: 54,
           bestMove: 'e2e4',
-          alternativeMoverWin: 48,
+          alternativeMoverWin: 52, // 2pp < 2.5
         ),
         isNull,
       );
+      // Clears Best moat but stays under the Great only-reliable bar.
       expect(
         _classify(
           game,
           moverBefore: 52,
           moverAfter: 54,
           bestMove: 'e2e4',
-          alternativeMoverWin: 45,
+          alternativeMoverWin: 49, // 5pp ≥ 2.5 and < 7.5
         ),
         GameMoveClassification.goodMove,
+      );
+    });
+
+    test('only-reliable MultiPV gap of 7.5pp is Great', () {
+      // Win% fixtures travel through centipawns, so aim clearly above the
+      // 7.5 bar rather than landing on the float boundary.
+      expect(
+        _classify(
+          _openingGame,
+          moverBefore: 52,
+          moverAfter: 55,
+          bestMove: 'e2e4',
+          alternativeMoverWin: 46, // ~9pp ≥ kGreatOnlyGoodMoveGapPp
+        ),
+        GameMoveClassification.bestMove,
+      );
+      // Under the Great only-reliable bar, still Best when contested + moat.
+      expect(
+        _classify(
+          _openingGame,
+          moverBefore: 52,
+          moverAfter: 55,
+          bestMove: 'e2e4',
+          alternativeMoverWin: 50, // ~5pp < 7.5, ≥ 2.5
+        ),
+        GameMoveClassification.goodMove,
+      );
+    });
+
+    test('defensive save from a lost position is Great', () {
+      // Engine-top resource that escapes clearly-losing. Gap is under the
+      // only-reliable bar so this hits the defensive-save supporting path.
+      expect(
+        _classify(
+          _openingGame,
+          moverBefore: 8,
+          moverAfter: 32,
+          bestMove: 'e2e4',
+          alternativeMoverWin: 26, // 6pp ≥ kGreatSupportingPathMinGapPp, < 7.5
+        ),
+        GameMoveClassification.bestMove,
+      );
+    });
+
+    test('advantage conversion where the alternative slips is Great', () {
+      // Keeps a better-band edge; next line drops to competitive with a gap
+      // under the only-reliable bar — conversion supporting path.
+      expect(
+        _classify(
+          _openingGame,
+          moverBefore: 78,
+          moverAfter: 80,
+          bestMove: 'e2e4',
+          alternativeMoverWin: 74, // 6pp; alt competitive (< 75)
+        ),
+        GameMoveClassification.bestMove,
       );
     });
 

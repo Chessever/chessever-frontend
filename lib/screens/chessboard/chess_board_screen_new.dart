@@ -834,9 +834,8 @@ class _ChessBoardPopupState {
 /// the PageView then disposed the app bar that owned the entry (a
 /// `jumpToPage` beyond the ±1 window unmounts the old page outright). Both the
 /// open state and the panel itself now live above the PageView, so selecting a
-/// game only re-targets the pages underneath: the panel stays mounted, keeps
-/// its strip scroll offset, and animates its selection across instead of
-/// replaying the open animation.
+/// game can navigate and dismiss in one gesture: the panel fades out from
+/// screen level instead of being ripped out with a disposed page.
 class _GameSwitcherController extends ChangeNotifier {
   _GameSwitcherController({required TickerProvider vsync})
     : _animationController = AnimationController(
@@ -2870,13 +2869,12 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
                                   )].gameId,
                         ),
                         // Game-switcher popdown. Lives here — a sibling of the
-                        // PageView, not inside a page's app bar — so tapping a
-                        // card re-targets the pages underneath while the panel
-                        // itself is never rebuilt from scratch: its strip keeps
-                        // the scroll offset, and the new selection animates in.
+                        // PageView, not inside a page's app bar — so a game tap
+                        // can jump the page and fade the panel out without the
+                        // disposed page unmounting the overlay mid-gesture.
                         // The enclosing build re-runs on every page change, so
-                        // `currentGameIndex` below stays live without the panel
-                        // having to listen to anything.
+                        // `currentGameIndex` below stays live while the panel
+                        // is still mounted through its close animation.
                         ListenableBuilder(
                           listenable: _gameSwitcher,
                           builder: (context, _) {
@@ -2904,10 +2902,14 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
                                       syncedGames.length - 1,
                                     ),
                                     isLoading: false,
-                                    // Deliberately does NOT close the panel:
-                                    // the user is browsing games from inside
-                                    // it, so the selection just moves.
-                                    onSelect: _navigateToGame,
+                                    // Navigate then dismiss: product expects
+                                    // the popdown to close after a game tap
+                                    // (smooth page switch still runs underneath
+                                    // the fade-out — panel is screen-level).
+                                    onSelect: (index) {
+                                      _navigateToGame(index);
+                                      _gameSwitcher.close(force: true);
+                                    },
                                     onDismiss: _gameSwitcher.close,
                                   );
                                 },
@@ -5891,15 +5893,9 @@ class _GameDropdownContentState extends ConsumerState<_GameDropdownContent> {
                         liveBatchKey: liveBatchKeys[game.gameId],
                         onTap: () {
                           HapticFeedback.selectionClick();
-                          // Selecting keeps the panel open — the board behind
-                          // switches under it. Re-tapping the game already on
-                          // screen has nothing to switch to, so answer the tap
-                          // by re-centring the strip on it instead of sitting
-                          // dead.
-                          if (isSelected) {
-                            _scrollToCurrent();
-                            return;
-                          }
+                          // Any game tap dismisses the popdown. Re-tapping the
+                          // current game is still a selection — parent no-ops
+                          // navigation and closes the panel.
                           widget.onSelect(index);
                         },
                       ),
