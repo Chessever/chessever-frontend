@@ -270,10 +270,7 @@ Future<MiniaturePlayer?> _lookupMiniaturePlayerRecord({
   required String name,
 }) async {
   final trimmed = name.trim();
-  if (trimmed.isEmpty) {
-    _miniaturePlayerRecordCache[fideId] = null;
-    return null;
-  }
+  // Even with an empty display name we can still resolve by FIDE id.
 
   Future<MiniaturePlayer?> lookup(String search, int limit) async {
     final page = await repo.getMiniaturePlayers(search: search, limit: limit);
@@ -285,7 +282,14 @@ Future<MiniaturePlayer?> _lookupMiniaturePlayerRecord({
   }
 
   try {
-    var record = await lookup(trimmed, 10);
+    // FIDE id first. Name search is fragile: gamebase often stores PGN-style
+    // "Last,F" while Supabase has "Last, First", and a few historical rows
+    // were ingested with a blank name after a partial FIDE scrape. Pure
+    // numeric `q` matches `player.fide_id` on the gamebase players endpoint.
+    var record = await lookup(fideId.toString(), 5);
+    if (record == null && trimmed.isNotEmpty) {
+      record = await lookup(trimmed, 10);
+    }
     final surname = trimmed.split(',').first.trim();
     if (record == null && surname.isNotEmpty && surname != trimmed) {
       record = await lookup(surname, 30);

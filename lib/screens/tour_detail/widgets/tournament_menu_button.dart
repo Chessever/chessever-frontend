@@ -192,7 +192,7 @@ class TournamentMenuButton extends ConsumerWidget {
     final isFocusingLiveGames =
         gamesScreenState?.gameDisplayMode == GameDisplayMode.hideFinishedGames;
 
-    // 1. Live games first / Show all games
+    // 1. Live games first / Board order
     items.add(
       PopupMenuItem<TournamentMenuAction>(
         value:
@@ -213,7 +213,9 @@ class TournamentMenuButton extends ConsumerWidget {
           }
         },
         child: _MenuDropDownItem(
-          text: isFocusingLiveGames ? "Show all games" : kLiveGamesFirstMenuLabel,
+          text: liveFocusOrderingMenuLabel(
+            isFocusingLiveGames: isFocusingLiveGames,
+          ),
           fontFamily: 'InterDisplay',
           icon: Icon(
             isFocusingLiveGames
@@ -795,6 +797,16 @@ class TournamentMenuButton extends ConsumerWidget {
 
 /// Off-state label for the games-tab live-focus toggle in the ⋮ menu.
 const String kLiveGamesFirstMenuLabel = 'Live games first';
+
+/// On-state label for the games-tab live-focus toggle in the ⋮ menu
+/// (shown while live-focus mode is active; restores board order).
+const String kBoardOrderMenuLabel = 'Board order';
+
+/// Label for the games-tab ordering toggle. Behavior is unchanged: only
+/// the wording differs between live-focus and board-order modes.
+String liveFocusOrderingMenuLabel({required bool isFocusingLiveGames}) {
+  return isFocusingLiveGames ? kBoardOrderMenuLabel : kLiveGamesFirstMenuLabel;
+}
 
 /// Which standings-related share actions belong on the tournament detail ⋮ menu
 /// for the current tab and event type.

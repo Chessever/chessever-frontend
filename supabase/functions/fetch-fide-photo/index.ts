@@ -279,6 +279,38 @@ Deno.serve(async (req: Request) => {
 
     const result = await fetchFideProfilePhoto(fideId);
     if (!result.success) {
+      // Prefer a previously seeded storage photo over poisoning no_photo when
+      // FIDE drops the profile (deceased / removed IDs).
+      const { data: listedFilesAfterMiss } = await supabase.storage
+        .from(STORAGE_BUCKET)
+        .list(STORAGE_FOLDER, { limit: 1, search: `${fideId}.jpg` });
+      const storedAfterMiss = listedFilesAfterMiss?.find(
+        (f) => f.name === `${fideId}.jpg`,
+      );
+      if (storedAfterMiss) {
+        const fileSize = parseSize(
+          storedAfterMiss.metadata?.size ??
+            storedAfterMiss.metadata?.contentLength,
+        );
+        if (fileSize === 0 || fileSize >= MIN_VALID_PHOTO_SIZE) {
+          await upsertCacheRow(
+            supabase,
+            fideId,
+            "photo",
+            `storage_fallback_after_${result.reason}`,
+            storagePath,
+            toIsoAfter(PHOTO_REVALIDATE_TTL_MS),
+          );
+          return jsonResponse({
+            url: publicUrlData.publicUrl,
+            cached: true,
+            fide_id: fideId,
+            source: "storage_fallback",
+            fide_reason: result.reason,
+          });
+        }
+      }
+
       const status: CacheStatus = result.transient ? "fetch_failed" : "no_photo";
       const retryAfterIso = toIsoAfter(
         result.transient ? UPSTREAM_FAILURE_TTL_MS : NO_PHOTO_TTL_MS,

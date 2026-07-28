@@ -601,13 +601,11 @@ bool isEventBoardGameVisible(GamesTourModel game) {
     return false;
   }
 
-  // Virtual Gamebase event rows deliberately carry a header-only PGN. Their
-  // completed result is enough proof that the game was played; the full PGN
-  // is fetched by Gamebase UUID when the board opens. Requiring embedded
-  // moves here filters every archived game out of the tournament Games tab.
-  if (game.source == GameSource.gamebase &&
-      isVirtualGamebaseId(game.tourId) &&
-      game.gameStatus.isFinished) {
+  // A decided result is enough proof the game is real, even with no moves
+  // (no-show / forfeit / defaulted boards) and even for virtual Gamebase
+  // header-only PGN rows. Unstarted named pairings stay hidden via ongoing
+  // status + start FEN.
+  if (game.gameStatus.isFinished) {
     return true;
   }
 

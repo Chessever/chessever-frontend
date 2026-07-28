@@ -67,6 +67,35 @@ void main() {
       expect(model.fen, isNull);
       expect(isEventBoardGameVisible(model), isTrue);
     });
+
+    test(
+      'keeps finished named no-move games (no-show / forfeit result boards)',
+      () {
+        final forfeit = _game(
+          id: 'forfeit-no-moves',
+          whiteName: 'Player A',
+          blackName: 'Player B',
+          fen: _initialFen,
+          gameStatus: GameStatus.whiteWins,
+        );
+
+        expect(forfeit.lastMove, isNull);
+        expect(forfeit.pgn, isNull);
+        expect(isEventBoardGameVisible(forfeit), isTrue);
+      },
+    );
+
+    test('still hides finished games when players are unresolved', () {
+      final unfinishedPlaceholder = _game(
+        id: 'finished-placeholder',
+        whiteName: '?',
+        blackName: '?',
+        fen: _initialFen,
+        gameStatus: GameStatus.whiteWins,
+      );
+
+      expect(isEventBoardGameVisible(unfinishedPlaceholder), isFalse);
+    });
   });
 }
 
@@ -79,6 +108,7 @@ GamesTourModel _game({
   String? lastMove,
   String? fen,
   String? pgn,
+  GameStatus gameStatus = GameStatus.ongoing,
 }) {
   return GamesTourModel(
     gameId: id,
@@ -88,7 +118,7 @@ GamesTourModel _game({
     blackTimeDisplay: '--:--',
     whiteClockCentiseconds: 0,
     blackClockCentiseconds: 0,
-    gameStatus: GameStatus.ongoing,
+    gameStatus: gameStatus,
     roundId: 'round-8',
     tourId: 'tour-1',
     lastMove: lastMove,

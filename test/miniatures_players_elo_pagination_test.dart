@@ -130,7 +130,12 @@ class _FakeGamebaseRepository extends GamebaseRepository {
         q.isEmpty
             ? _records
             : _records
-                .where((r) => r.name.toLowerCase().contains(q))
+                .where((r) {
+                  if (r.name.toLowerCase().contains(q)) return true;
+                  // Mirrors gamebase: pure-numeric queries also match fide_id.
+                  final fide = r.fideId?.toString();
+                  return fide != null && fide == q;
+                })
                 .toList(growable: false);
     final page = items.skip(offset).take(limit).toList(growable: false);
     return MiniaturePlayersPage(
@@ -371,6 +376,69 @@ void main() {
       expect(results[1]?.playerId, 'gb-carlsen');
       expect(repo.searches, hasLength(1));
     });
+
+    test(
+      'blank or PGN-style gamebase name still resolves via FIDE id first',
+      () async {
+        // Production failure modes while scrolling Miniatures → Players:
+        // 1) player.name empty after partial FIDE ingest
+        // 2) gamebase "Last,F" vs Supabase "Last, First" so name ILIKE misses
+        // Resolve must hit fide_id search first, not depend on name shape.
+        const blankName = MiniaturePlayer(
+          playerId: 'gb-danya',
+          name: '',
+          games: 240,
+          wins: 211,
+          losses: 29,
+          fideId: 2026961,
+          rating: 2711,
+          title: 'GM',
+        );
+        const pgnStyle = MiniaturePlayer(
+          playerId: 'gb-hernando',
+          name: 'Hernando Rodrigo,Ju',
+          games: 107,
+          wins: 54,
+          losses: 53,
+          fideId: 2208350,
+          rating: 2471,
+        );
+        final blankRepo = _FakeGamebaseRepository([blankName]);
+        final pgnRepo = _FakeGamebaseRepository([pgnStyle]);
+
+        final blankHit = await resolveMiniaturePlayerRecord(
+          repo: blankRepo,
+          fideId: 2026961,
+          name: 'Naroditsky, Daniel',
+        );
+        expect(blankHit?.playerId, 'gb-danya');
+        expect(blankHit?.winLossLabel, '211W-29L');
+        // FIDE id is tried first.
+        expect(blankRepo.searches.first, '2026961');
+        expect(blankRepo.searches, hasLength(1));
+
+        final pgnHit = await resolveMiniaturePlayerRecord(
+          repo: pgnRepo,
+          fideId: 2208350,
+          name: 'Hernando Rodrigo, Julio',
+        );
+        expect(pgnHit?.playerId, 'gb-hernando');
+        expect(pgnHit?.winLossLabel, '54W-53L');
+        expect(pgnRepo.searches, ['2208350']);
+      },
+    );
+
+    test(
+      'chessPlayerToStandingModel keeps classical 2700s rating on the card',
+      () {
+        final standing = chessPlayerToStandingModel(
+          _p(2026961, 'Naroditsky, Daniel', 2711, title: 'GM'),
+        );
+        expect(standing.score, 2711);
+        expect(standing.fideId, 2026961);
+        expect(standing.title, 'GM');
+      },
+    );
 
     test('applyCachedMiniatureRecords seeds only what is already known', () async {
       final repo = _FakeGamebaseRepository([carlsen()]);

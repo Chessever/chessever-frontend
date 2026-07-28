@@ -3,9 +3,21 @@ import 'package:chessever2/screens/tour_detail/widgets/tournament_menu_button.da
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  group('kLiveGamesFirstMenuLabel', () {
+  group('liveFocusOrderingMenuLabel', () {
     test('off-state live-focus menu label is Live games first', () {
       expect(kLiveGamesFirstMenuLabel, 'Live games first');
+      expect(
+        liveFocusOrderingMenuLabel(isFocusingLiveGames: false),
+        'Live games first',
+      );
+    });
+
+    test('on-state live-focus menu label is Board order', () {
+      expect(kBoardOrderMenuLabel, 'Board order');
+      expect(
+        liveFocusOrderingMenuLabel(isFocusingLiveGames: true),
+        'Board order',
+      );
     });
   });
 

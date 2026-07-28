@@ -367,9 +367,10 @@ class EventCard extends ConsumerWidget {
   }
 }
 
-/// Single-line meta row (dates · time-control · location/ELO). Using
-/// [Text.rich] with inline widget spans lets the whole line ellipsize at the
-/// end instead of wrapping and breaking the 4-line card budget.
+/// Single-line meta row (dates · time-control · location/ELO). Dates (and
+/// location when present) may ellipsize under width pressure; avg Elo is kept
+/// outside that overflow so trailing digits never clip on long cross-month
+/// ranges.
 class _MetaLine extends StatelessWidget {
   const _MetaLine({
     required this.dates,
@@ -411,6 +412,39 @@ class _MetaLine extends StatelessWidget {
               : null,
     );
 
+    // When Elo is shown, pin it outside the flexible/ellipsizing prefix so
+    // long multi-month date strings cannot eat the trailing digits.
+    if (showElo) {
+      final prefix = <InlineSpan>[];
+      if (dates.isNotEmpty) {
+        prefix.add(TextSpan(text: dates));
+      }
+      return Row(
+        children: [
+          Flexible(
+            child: Text.rich(
+              TextSpan(style: style, children: prefix),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              softWrap: false,
+            ),
+          ),
+          if (dates.isNotEmpty)
+            Text.rich(TextSpan(style: style, children: [_dotSpan(baseColor)])),
+          Text.rich(TextSpan(style: style, children: [timeControlSpan])),
+          Text.rich(
+            TextSpan(
+              style: style,
+              children: [
+                _dotSpan(baseColor),
+                TextSpan(text: 'Ø $elo'),
+              ],
+            ),
+          ),
+        ],
+      );
+    }
+
     final spans = <InlineSpan>[];
     if (dates.isNotEmpty) {
       spans.add(TextSpan(text: dates));
@@ -431,9 +465,6 @@ class _MetaLine extends StatelessWidget {
       );
       spans.add(WidgetSpan(child: SizedBox(width: 2.w)));
       spans.add(TextSpan(text: location!));
-    } else if (showElo) {
-      spans.add(_dotSpan(baseColor));
-      spans.add(TextSpan(text: 'Ø $elo'));
     }
 
     return Text.rich(
