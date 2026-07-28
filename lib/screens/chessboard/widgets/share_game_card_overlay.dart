@@ -20,6 +20,7 @@ import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/screens/library/utils/gamebase_pgn_builder.dart';
+import 'package:chessever2/utils/pgn_export_utils.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/share_card.dart';
 import 'package:chessever2/utils/location_service_provider.dart';
@@ -609,7 +610,9 @@ class _ShareGameCardOverlayState extends State<ShareGameCardOverlay> {
 
   Future<void> _copyPgn() async {
     try {
-      await Clipboard.setData(ClipboardData(text: widget.pgn));
+      await Clipboard.setData(
+        ClipboardData(text: canonicalizePgnForExport(widget.pgn)),
+      );
       HapticFeedback.lightImpact();
       _showMessage('PGN copied to clipboard!', isError: false);
     } catch (e) {

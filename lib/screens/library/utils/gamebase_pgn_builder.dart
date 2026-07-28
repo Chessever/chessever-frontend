@@ -1,4 +1,5 @@
 import 'package:chessever2/utils/pgn_clock_utils.dart';
+import 'package:chessever2/utils/pgn_export_utils.dart';
 import 'package:dartchess/dartchess.dart';
 import 'package:flutter/foundation.dart';
 
@@ -156,8 +157,9 @@ String? buildPgnFromGamebaseData(Map<String, dynamic>? data) {
     debugPrint('[GamebasePgnBuilder] Successfully parsed ${sans.length} moves');
   }
 
+  final exportedHeaders = canonicalPgnHeaders(headers);
   final sb = StringBuffer();
-  for (final entry in headers.entries) {
+  for (final entry in exportedHeaders.entries) {
     sb.writeln('[${entry.key} "${entry.value}"]');
   }
   sb.writeln();
@@ -175,7 +177,7 @@ String? buildPgnFromGamebaseData(Map<String, dynamic>? data) {
     sb.write(' ');
   }
 
-  sb.write(headers['Result'] ?? '*');
+  sb.write(exportedHeaders['Result'] ?? '*');
 
   return sb.toString().trim();
 }
@@ -284,8 +286,9 @@ String buildHeaderOnlyPgn({
     headers['SetUp'] = '1';
   }
 
+  final exportedHeaders = canonicalPgnHeaders(headers);
   final sb = StringBuffer();
-  for (final entry in headers.entries) {
+  for (final entry in exportedHeaders.entries) {
     sb.writeln('[${entry.key} "${entry.value}"]');
   }
   sb.writeln();

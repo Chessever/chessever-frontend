@@ -67,6 +67,7 @@ import 'package:chessever2/providers/pip_mode_provider.dart';
 // import 'package:chessever2/providers/keyboard_total_height_provider.dart'; // UNUSED: Removed with old dialog
 import 'package:chessever2/utils/figurine_notation.dart';
 import 'package:chessever2/utils/logger/logger.dart';
+import 'package:chessever2/utils/pgn_export_utils.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/string_utils.dart';
 import 'package:chessever2/utils/user_error_message.dart';
@@ -3901,7 +3902,9 @@ class _AppBarState extends ConsumerState<_AppBar> {
         showAppSnack(context, 'No PGN available for this game');
         return;
       }
-      await Clipboard.setData(ClipboardData(text: resolved.pgn));
+      await Clipboard.setData(
+        ClipboardData(text: canonicalizePgnForExport(resolved.pgn)),
+      );
       HapticFeedback.lightImpact();
       if (!mounted) return;
       showAppSnack(context, 'PGN copied to clipboard');
