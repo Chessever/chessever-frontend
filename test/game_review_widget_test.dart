@@ -365,7 +365,7 @@ void main() {
     );
   });
 
-  testWidgets('Game Analysis button exposes progress and unavailable states', (
+  testWidgets('Game Analysis button labels follow report status', (
     tester,
   ) async {
     await tester.pumpWidget(
@@ -376,9 +376,34 @@ void main() {
               GameAnalysisButton(
                 state: MobileGameReviewState(
                   isEligible: true,
+                ),
+                onPressed: _noop,
+              ),
+              GameAnalysisButton(
+                state: MobileGameReviewState(
+                  isEligible: true,
                   reportState: GameReportState(
                     status: GameReportStatus.running,
                     progress: 0.42,
+                  ),
+                ),
+                onPressed: _noop,
+              ),
+              GameAnalysisButton(
+                state: MobileGameReviewState(
+                  isEligible: true,
+                  reportState: GameReportState(
+                    status: GameReportStatus.completed,
+                    progress: 1.0,
+                  ),
+                ),
+                onPressed: _noop,
+              ),
+              GameAnalysisButton(
+                state: MobileGameReviewState(
+                  isEligible: true,
+                  reportState: GameReportState(
+                    status: GameReportStatus.failed,
                   ),
                 ),
                 onPressed: _noop,
@@ -395,15 +420,20 @@ void main() {
       ),
     );
 
+    expect(find.text('Generate Report'), findsOneWidget);
     expect(find.text('Game Analysis · 42%'), findsOneWidget);
+    expect(find.text('Show report'), findsOneWidget);
+    expect(find.text('Retry Game Analysis'), findsOneWidget);
     expect(
       find.text('Game analysis starts when the game ends'),
       findsOneWidget,
     );
+    // Idle eligible must not still use the old entry copy.
+    expect(find.text('Game Analysis'), findsNothing);
     final buttonWidthBoxes = tester
         .widgetList<FractionallySizedBox>(find.byType(FractionallySizedBox))
         .where((box) => box.widthFactor == 0.75);
-    expect(buttonWidthBoxes, hasLength(2));
+    expect(buttonWidthBoxes, hasLength(5));
   });
 
   testWidgets('completed review shows players, accuracy, recap, and graph', (

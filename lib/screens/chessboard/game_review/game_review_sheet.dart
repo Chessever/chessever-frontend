@@ -331,7 +331,9 @@ class GameAnalysisButton extends StatelessWidget {
             ? 'Game Analysis · $percentage%'
             : retry
             ? 'Retry Game Analysis'
-            : 'Game Analysis';
+            : completed
+            ? 'Show report'
+            : 'Generate Report';
 
     return Padding(
       padding: const EdgeInsets.only(top: 8, bottom: 10),

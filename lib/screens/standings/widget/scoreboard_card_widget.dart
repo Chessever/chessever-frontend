@@ -7,6 +7,11 @@ import '../../../theme/app_theme.dart';
 import '../../../utils/app_typography.dart';
 
 class ScoreboardCardWidget extends ConsumerWidget {
+  /// Fixed width (design px) for the signed Elo-change label so empty and
+  /// non-zero rows share the same trailing column before the result badge.
+  /// Fits values like "+12" / "-10" at [AppTypography.textXsMedium].
+  static const double scoreChangeSlotWidth = 28;
+
   final String countryCode;
   final String? title; // Player title (e.g., "GM") - made nullable
   final String name; // Player name
@@ -123,17 +128,24 @@ class ScoreboardCardWidget extends ConsumerWidget {
                     color: context.colors.textPrimary,
                   ),
                 ),
-                if (scoreChange != null && scoreChange != 0.0) ...[
-                  SizedBox(width: 4.w),
-                  Text(
-                    scoreChange! > 0
-                        ? '+${scoreChange!.toStringAsFixed(0)}'
-                        : scoreChange!.toStringAsFixed(0),
-                    style: AppTypography.textXsMedium.copyWith(
-                      color: scoreChange! > 0 ? kGreenColor : kRedColor,
-                    ),
-                  ),
-                ],
+                // Always reserve the Elo-change slot so the trailing result
+                // badge stays column-aligned when a matchup had no rating swing.
+                SizedBox(width: 4.w),
+                SizedBox(
+                  width: scoreChangeSlotWidth.w,
+                  child:
+                      (scoreChange != null && scoreChange != 0.0)
+                          ? Text(
+                            scoreChange! > 0
+                                ? '+${scoreChange!.toStringAsFixed(0)}'
+                                : scoreChange!.toStringAsFixed(0),
+                            style: AppTypography.textXsMedium.copyWith(
+                              color:
+                                  scoreChange! > 0 ? kGreenColor : kRedColor,
+                            ),
+                          )
+                          : null,
+                ),
               ],
             ),
             SizedBox(width: 14.w),

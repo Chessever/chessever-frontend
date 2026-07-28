@@ -56,4 +56,61 @@ void main() {
       ]);
     },
   );
+
+  test('starring a mid-list event bubbles it above non-starred peers', () {
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+
+    final events = [
+      _event(id: 'regular-high-elo', maxAvgElo: 2900),
+      _event(id: 'regular-mid-elo', maxAvgElo: 2700),
+      _event(id: 'to-star', maxAvgElo: 2400),
+      _event(id: 'regular-low-elo', maxAvgElo: 2300),
+    ];
+
+    final before = container
+        .read(tournamentSortingServiceProvider)
+        .sortBasedOnFavorite(tours: events, favorites: const []);
+    expect(before.map((event) => event.id).first, 'regular-high-elo');
+    expect(
+      before.map((event) => event.id).toList().indexOf('to-star'),
+      greaterThan(0),
+    );
+
+    final after = container
+        .read(tournamentSortingServiceProvider)
+        .sortBasedOnFavorite(tours: events, favorites: const ['to-star']);
+
+    expect(after.map((event) => event.id), [
+      'to-star',
+      'regular-high-elo',
+      'regular-mid-elo',
+      'regular-low-elo',
+    ]);
+  });
+
+  test('unstarring drops an event out of starred priority', () {
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+
+    final events = [
+      _event(id: 'regular-high-elo', maxAvgElo: 2900),
+      _event(id: 'was-starred', maxAvgElo: 2400),
+      _event(id: 'regular-low-elo', maxAvgElo: 2300),
+    ];
+
+    final starred = container
+        .read(tournamentSortingServiceProvider)
+        .sortBasedOnFavorite(tours: events, favorites: const ['was-starred']);
+    expect(starred.map((event) => event.id).first, 'was-starred');
+
+    final unstarred = container
+        .read(tournamentSortingServiceProvider)
+        .sortBasedOnFavorite(tours: events, favorites: const []);
+    expect(unstarred.map((event) => event.id), [
+      'regular-high-elo',
+      'was-starred',
+      'regular-low-elo',
+    ]);
+  });
 }

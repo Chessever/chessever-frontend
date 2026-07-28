@@ -4,8 +4,10 @@ import 'package:chessever2/providers/app_resume_signal_provider.dart';
 import 'package:chessever2/providers/error_logger_provider.dart';
 import 'package:chessever2/providers/event_pin_refresh_provider.dart';
 import 'package:chessever2/providers/event_favorite_players_provider.dart';
+import 'package:chessever2/providers/favorite_events_provider.dart';
 import 'package:chessever2/providers/favorite_players_provider.dart';
 import 'package:chessever2/providers/for_you_games_logic.dart';
+import 'package:chessever2/repository/favorites/models/favorite_event.dart';
 import 'package:chessever2/repository/favorites/models/favorite_player.dart';
 import 'package:chessever2/repository/local_storage/tournament/games/pin_games_local_storage.dart';
 import 'package:chessever2/repository/supabase/game/game_repository.dart';
@@ -241,6 +243,18 @@ class ForYouNotifier extends StateNotifier<ForYouState> {
           finalizeOrderAfterRefresh: shouldFinalizeOrder,
         ),
       );
+    });
+
+    // Only re-rank when the starred *set* changes (not on metadata/timestamp
+    // refreshes). Session freeze stays for live-feed jitter; star is the
+    // deliberate exception so cards bubble without pull-to-refresh.
+    ref.listen(favoriteEventsProvider, (previous, next) {
+      final nextList = next.valueOrNull;
+      if (nextList == null) return;
+      final prevList = previous?.valueOrNull;
+      if (identical(prevList, nextList)) return;
+      if (_sameFavoriteEventIdSet(prevList, nextList)) return;
+      _reapplySessionOrderForFavoriteChange();
     });
   }
 
@@ -800,6 +814,33 @@ class ForYouNotifier extends StateNotifier<ForYouState> {
     }
   }
 
+  /// Re-rank only when the starred id set changes. Cheap no-op when order is
+  /// already correct (avoids rebuilds / session-map churn).
+  void _reapplySessionOrderForFavoriteChange() {
+    if (!mounted || state.events.isEmpty) return;
+
+    final sortedEvents = _sortLikeCurrentTab(state.events);
+    final previous = state.events;
+    var orderChanged = previous.length != sortedEvents.length;
+    if (!orderChanged) {
+      for (var i = 0; i < previous.length; i++) {
+        if (previous[i].id != sortedEvents[i].id) {
+          orderChanged = true;
+          break;
+        }
+      }
+    }
+    if (!orderChanged) return;
+
+    _sessionEventOrder
+      ..clear()
+      ..addEntries(
+        sortedEvents.indexed.map((entry) => MapEntry(entry.$2.id, entry.$1)),
+      );
+    _nextSessionEventOrder = sortedEvents.length;
+    state = state.copyWith(events: sortedEvents);
+  }
+
   void _maybeFinalizePendingFavoritePlayerOrder() {
     if (!_pendingFavoritePlayerOrderHydration || state.events.isEmpty) return;
 
@@ -824,6 +865,19 @@ List<int> _favoriteFideIdsFrom(Iterable<FavoritePlayer> favorites) {
     }
   }
   return fideIds.toList(growable: false);
+}
+
+/// Same starred ids (order ignored). Skips re-sort on metadata-only refreshes.
+bool _sameFavoriteEventIdSet(
+  List<FavoriteEvent>? previous,
+  List<FavoriteEvent> next,
+) {
+  if (previous == null) return next.isEmpty;
+  if (previous.length != next.length) return false;
+  return setEquals(
+    {for (final f in previous) if (f.eventId.isNotEmpty) f.eventId},
+    {for (final f in next) if (f.eventId.isNotEmpty) f.eventId},
+  );
 }
 
 bool _sameStringSet(List<String>? previous, List<String> next) {
