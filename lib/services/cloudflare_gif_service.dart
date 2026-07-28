@@ -127,14 +127,14 @@ class CloudflareGifService {
     if (value == null || value.isEmpty) {
       throw const CloudflareGifException(
         'service_not_configured',
-        'Cloud GIF service is not configured.',
+        'GIF export is unavailable right now.',
       );
     }
     final uri = Uri.tryParse(value);
     if (uri == null || !uri.hasScheme || !uri.hasAuthority) {
       throw const CloudflareGifException(
         'service_not_configured',
-        'Cloud GIF service URL is invalid.',
+        'GIF export is unavailable right now.',
       );
     }
     return CloudflareGifService(
@@ -360,7 +360,7 @@ class CloudflareGifService {
     if (decoded is! Map<String, dynamic>) {
       throw const CloudflareGifException(
         'invalid_response',
-        'Cloud GIF service returned an invalid response.',
+        'Couldn\'t create the GIF. Please try again.',
       );
     }
     return decoded;
@@ -371,32 +371,39 @@ class CloudflareGifService {
     String responseBody,
   ) {
     String code = 'request_failed';
-    String message = 'Cloud GIF request failed.';
     try {
       final decoded = jsonDecode(responseBody);
       if (decoded is Map<String, dynamic>) {
         final error = decoded['error'];
         if (error is Map<String, dynamic>) {
           code = error['code']?.toString() ?? code;
-          message = error['message']?.toString() ?? message;
         }
       }
     } catch (_) {
-      // Fall back to the stable generic error.
+      // Fall back to the stable generic code/message.
     }
-    return CloudflareGifException(code, message, statusCode: statusCode);
+    // Always map to client-side user copy — never forward raw API jargon.
+    return CloudflareGifException(
+      code,
+      messageForErrorCode(code),
+      statusCode: statusCode,
+    );
   }
 
   @visibleForTesting
   static String messageForErrorCode(String? code) {
     return switch (code) {
-      'too_many_plies' => 'GIF export supports games up to 300 plies.',
-      'pgn_too_large' => 'This PGN is too large to export as a GIF.',
-      'invalid_pgn' || 'no_moves' => 'This game could not be replayed.',
-      'renderer_failed' => 'Cloud rendering failed. Please try again.',
-      'active_job_limit' => 'Finish the active GIF job first.',
-      'daily_job_limit' => 'Daily GIF generation limit reached.',
-      _ => 'GIF generation failed. Please try again.',
+      'too_many_plies' => 'This game is too long for a GIF (max 150 moves).',
+      'pgn_too_large' => 'This game is too large to export as a GIF.',
+      'invalid_pgn' || 'no_moves' => 'This game could not be turned into a GIF.',
+      'renderer_failed' => 'Couldn\'t create the GIF. Please try again.',
+      'active_job_limit' => 'A GIF is already being created. Please wait.',
+      'daily_job_limit' => 'You\'ve reached today\'s GIF limit. Try again tomorrow.',
+      'authentication_required' => 'Sign in to generate a GIF.',
+      'service_not_configured' => 'GIF export is unavailable right now.',
+      'generation_timeout' =>
+        'GIF generation took too long. Reopen Share to resume it.',
+      _ => 'Couldn\'t create the GIF. Please try again.',
     };
   }
 

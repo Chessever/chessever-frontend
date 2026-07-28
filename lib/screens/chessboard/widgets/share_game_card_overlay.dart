@@ -105,7 +105,7 @@ class _ShareGameCardOverlayState extends State<ShareGameCardOverlay> {
   final ScreenshotController _fullScreenshotController = ScreenshotController();
   bool _isGenerating = false;
   bool _isGeneratingGif = false;
-  String _gifProgressLabel = 'Submitting cloud job…';
+  String _gifProgressLabel = 'Preparing your GIF…';
   double? _gifProgress;
   String? _generatedGifPath;
   bool _showGifPreview = false;
@@ -328,7 +328,7 @@ class _ShareGameCardOverlayState extends State<ShareGameCardOverlay> {
 
     setState(() {
       _isGeneratingGif = true;
-      _gifProgressLabel = 'Submitting cloud job…';
+      _gifProgressLabel = 'Preparing your GIF…';
       _gifProgress = null;
     });
 
@@ -337,7 +337,7 @@ class _ShareGameCardOverlayState extends State<ShareGameCardOverlay> {
     try {
       service = CloudflareGifService.fromEnvironment();
       if (mounted) {
-        setState(() => _gifProgressLabel = 'Loading player photos…');
+        setState(() => _gifProgressLabel = 'Adding player photos…');
       }
       final photoUrls = await Future.wait([
         _resolvePlayerPhotoUrl(
@@ -352,7 +352,7 @@ class _ShareGameCardOverlayState extends State<ShareGameCardOverlay> {
         _cloudPhotoData(photoUrls[1], playerLabel: 'black'),
       ]);
       if (!mounted || _cancelled) return;
-      setState(() => _gifProgressLabel = 'Submitting cloud job…');
+      setState(() => _gifProgressLabel = 'Starting your GIF…');
       final job = await service.submitJob(
         pgn: widget.pgn,
         flipped: widget.isFlipped,
@@ -382,7 +382,7 @@ class _ShareGameCardOverlayState extends State<ShareGameCardOverlay> {
       if (!mounted || _cancelled) return;
 
       setState(() {
-        _gifProgressLabel = 'Downloading GIF…';
+        _gifProgressLabel = 'Finishing up…';
         _gifProgress = null;
       });
       final tempDir = await getTemporaryDirectory();
@@ -414,7 +414,8 @@ class _ShareGameCardOverlayState extends State<ShareGameCardOverlay> {
         'Cloud GIF failed: code=${error.code}, '
         'status=${error.statusCode ?? 'n/a'}, message=${error.message}',
       );
-      _showMessage('${error.message} [${error.code}]', isError: true);
+      // User-facing only — keep error codes in debug/Sentry, not the snack.
+      _showMessage(error.message, isError: true);
     } catch (error, stackTrace) {
       debugPrint('Unexpected Cloud GIF failure: $error\n$stackTrace');
       unawaited(
@@ -426,7 +427,7 @@ class _ShareGameCardOverlayState extends State<ShareGameCardOverlay> {
         ),
       );
       _showMessage(
-        'Cloud GIF generation failed. [unexpected_client_error]',
+        'Couldn\'t create the GIF. Please try again.',
         isError: true,
       );
     } finally {
@@ -592,19 +593,17 @@ class _ShareGameCardOverlayState extends State<ShareGameCardOverlay> {
     };
   }
 
+  /// End-user copy only — never surface queue/provider/pipeline jargon.
+  /// Frame counts stay on the progress bar, not in the label.
   String _cloudGifProgressText(CloudflareGifJob job) {
-    final frames =
-        job.totalFrames > 0
-            ? ' ${job.completedFrames.clamp(0, job.totalFrames)}/${job.totalFrames}'
-            : '';
     return switch (job.stage) {
-      CloudflareGifJobStatus.queued => 'Queued in Cloudflare…',
-      CloudflareGifJobStatus.analyzing => 'Analyzing positions$frames…',
-      CloudflareGifJobStatus.rendering => 'Rendering frames$frames…',
-      CloudflareGifJobStatus.encoding => 'Encoding GIF…',
-      CloudflareGifJobStatus.storing => 'Finalizing GIF…',
-      CloudflareGifJobStatus.succeeded => 'GIF ready',
-      CloudflareGifJobStatus.failed => 'GIF generation failed',
+      CloudflareGifJobStatus.queued => 'Starting your GIF…',
+      CloudflareGifJobStatus.analyzing => 'Reviewing the moves…',
+      CloudflareGifJobStatus.rendering => 'Building the animation…',
+      CloudflareGifJobStatus.encoding => 'Putting it together…',
+      CloudflareGifJobStatus.storing => 'Almost done…',
+      CloudflareGifJobStatus.succeeded => 'Your GIF is ready',
+      CloudflareGifJobStatus.failed => 'Couldn\'t create GIF',
     };
   }
 

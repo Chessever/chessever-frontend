@@ -253,7 +253,7 @@ void main() {
   test('maps stable renderer and validation error messages', () {
     expect(
       CloudflareGifService.messageForErrorCode('too_many_plies'),
-      contains('300 plies'),
+      contains('too long'),
     );
     expect(
       CloudflareGifService.messageForErrorCode('pgn_too_large'),
@@ -261,19 +261,23 @@ void main() {
     );
     expect(
       CloudflareGifService.messageForErrorCode('invalid_pgn'),
-      contains('could not be replayed'),
+      contains('could not be turned into a GIF'),
     );
     expect(
       CloudflareGifService.messageForErrorCode('no_moves'),
-      contains('could not be replayed'),
+      contains('could not be turned into a GIF'),
     );
     expect(
       CloudflareGifService.messageForErrorCode('renderer_failed'),
-      contains('Cloud rendering failed'),
+      contains('Couldn\'t create the GIF'),
     );
     expect(
       CloudflareGifService.messageForErrorCode('daily_job_limit'),
-      contains('Daily'),
+      contains('today\'s GIF limit'),
+    );
+    expect(
+      CloudflareGifService.messageForErrorCode('active_job_limit'),
+      contains('already being created'),
     );
   });
 
