@@ -95,6 +95,86 @@ AnnotationPresentation resolveAnnotationPresentation(
 }
 
 // ---------------------------------------------------------------------------
+// Mainline annotation attach (pure — data present ⇒ marker present)
+// ---------------------------------------------------------------------------
+
+/// Mainline move index used for Lichess annotation maps.
+///
+/// Matches the board badge key (`activeMovePointer[0]`) so notation and board
+/// always resolve the same classification for the same mainline ply.
+int? resolveMainlineMoveIndex({
+  required bool isMainline,
+  required int? tokenMoveIndex,
+  ChessMovePointer? pointer,
+  int? ply,
+  int startingPly = 0,
+}) {
+  if (!isMainline) return null;
+  if (tokenMoveIndex != null && tokenMoveIndex >= 0) return tokenMoveIndex;
+  if (pointer != null && pointer.isNotEmpty) {
+    final fromPointer = pointer.first;
+    if (fromPointer >= 0) return fromPointer;
+  }
+  if (ply != null) {
+    final fromPly = ply - startingPly;
+    if (fromPly >= 0) return fromPly;
+  }
+  return null;
+}
+
+/// Looks up a Lichess classification for a mainline notation token.
+///
+/// Returns null for variations, missing indices, or when [annotations] has no
+/// entry for that index. Pure: once [annotations] is non-empty for an index,
+/// a subsequent call returns that entry without any UI gesture.
+LichessMoveAnnotation? resolveLichessAnnotationForMainlineMove({
+  required bool isMainline,
+  required int? moveIndex,
+  required Map<int, LichessMoveAnnotation> annotations,
+}) {
+  if (!isMainline) return null;
+  if (moveIndex == null || moveIndex < 0) return null;
+  if (annotations.isEmpty) return null;
+  return annotations[moveIndex];
+}
+
+/// Whether author/user quality NAGs should suppress Lichess classifications.
+///
+/// Evaluation/observation NAGs (e.g. `=`, `±`) must not hide classification
+/// markers — only quality glyphs (`!`, `?`, `!!`, …) take precedence.
+bool qualityNagsSuppressLichess(Iterable<int> nags) {
+  for (final nag in nags) {
+    // $1–$6 and $7 are quality / only-move glyphs (see NagCategory.quality).
+    if (nag >= 1 && nag <= 7) return true;
+  }
+  return false;
+}
+
+/// Final classification to render on a notation move chip.
+///
+/// - [rawPgnMode] ⇒ always null (no auto markers from this path).
+/// - Quality NAGs present ⇒ null (UI renders NAG glyphs instead).
+/// - Else mainline Lichess annotation for [moveIndex], if any.
+///
+/// Callers that keep report classification icons in raw PGN mode should pass
+/// `rawPgnMode: false` and apply their own raw-mode filter on the result.
+LichessMoveAnnotation? resolveNotationClassification({
+  required bool rawPgnMode,
+  required bool isMainline,
+  required int? moveIndex,
+  required Map<int, LichessMoveAnnotation> annotations,
+  Iterable<int> nags = const [],
+}) {
+  if (rawPgnMode) return null;
+  if (qualityNagsSuppressLichess(nags)) return null;
+  return resolveLichessAnnotationForMainlineMove(
+    isMainline: isMainline,
+    moveIndex: moveIndex,
+    annotations: annotations,
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Move text formatter
 // ---------------------------------------------------------------------------
 
@@ -195,14 +275,27 @@ List<NotationDisplayToken> buildNotationTokens(
         (variationMovesList?.isNotEmpty ?? false)
             ? List<Number>.of(variationMovesList!.first.pointer)
             : null;
-    final moveIndex = node.ply - startingPly;
+    // Prefer mainline pointer index so notation keys match board badge lookup
+    // (`activeMovePointer[0]`). Fall back to ply offset for safety. Variations
+    // still get a ply-relative index for non-annotation consumers.
+    final plyOffset = node.ply - startingPly;
+    final moveIndex =
+        node.isMainline
+            ? resolveMainlineMoveIndex(
+              isMainline: true,
+              tokenMoveIndex: null,
+              pointer: pointerList,
+              ply: node.ply,
+              startingPly: startingPly,
+            )
+            : (plyOffset >= 0 ? plyOffset : null);
     tokens.add(
       NotationDisplayToken(
         type: NotationTokenType.move,
         text: text,
         depth: depth,
         pointerId: pointerId,
-        moveIndex: moveIndex >= 0 ? moveIndex : null,
+        moveIndex: moveIndex,
         node: node,
         pointer: pointerList,
         variationIndex: variationContext?.variationIndex,
@@ -237,7 +330,10 @@ List<NotationDisplayToken> buildNotationTokens(
     // not create a prose block. When the same prose already appears as a
     // brighter PGN/override comment, skip the dimmer lichessComment twin.
     final analysisAnnotation =
-        !rawPgnMode && depth == 0 && moveIndex >= 0
+        !rawPgnMode &&
+                node.isMainline &&
+                moveIndex != null &&
+                moveIndex >= 0
             ? lichessAnnotations[moveIndex]
             : null;
     if (analysisAnnotation != null &&

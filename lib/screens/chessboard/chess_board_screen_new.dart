@@ -12311,10 +12311,10 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
         tailPointerId != null &&
         pointerId == tailPointerId;
 
-    // Author/user NAGs win for inline glyphs — Lichess fetched analysis is only
-    // used as a fallback when no NAGs are present on the move.
     // Raw PGN mode hides PGN NAGs and non-report Lichess glyphs, but keeps the
     // whole-game report classification icons (engine verdict after analysis).
+    // Quality NAGs ($1–$7) win over Lichess classifications; evaluation /
+    // observation NAGs do not suppress Lichess markers.
     final resolvedAnnotation = _resolveLichessAnnotation(
       token,
       lichessAnnotations,
@@ -12366,7 +12366,9 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
       }
     }
 
-    final annotation = displayNags.isEmpty ? rawAnnotation : null;
+    // Only quality NAGs suppress inline Lichess classification symbols.
+    final annotation =
+        qualityNagsSuppressLichess(nags) ? null : rawAnnotation;
 
     // The generated report verdict (classification icon) is the engine's own
     // assessment of the move and must ALWAYS show — even on moves that already
