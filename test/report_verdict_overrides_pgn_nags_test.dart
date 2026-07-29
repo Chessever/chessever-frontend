@@ -1,4 +1,6 @@
 import 'package:chessever2/screens/chessboard/chess_board_screen_new.dart';
+import 'package:chessever2/screens/chessboard/notation/notation_token_builder.dart';
+import 'package:chessever2/services/lichess_move_annotations_service.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 /// Broadcast PGNs come out of the Lichess database with move-quality NAGs
@@ -161,6 +163,103 @@ void main() {
       expect(userNagsForMovePointer(const [4], userNags), isEmpty);
       expect(userNagsForMovePointer(const [], userNags), isEmpty);
       expect(userNagsForMovePointer(null, userNags), isEmpty);
+    });
+  });
+
+  group('Annotate quality NAG overrides report classification badge', () {
+    const reportBadge = LichessMoveAnnotation(
+      type: LichessMoveAnnotationType.bestMove,
+      comment: '',
+      useClassificationIcon: true,
+    );
+
+    test('report wins when the reader has no quality NAG', () {
+      expect(
+        resolveClassificationBadgeAnnotation(
+          rawAnnotation: reportBadge,
+          userNags: const [],
+        ),
+        reportBadge,
+      );
+      expect(
+        resolveClassificationBadgeAnnotation(
+          rawAnnotation: reportBadge,
+          // Evaluation-only user NAG must not hide the report badge.
+          userNags: const [16],
+        ),
+        reportBadge,
+      );
+    });
+
+    test('user quality Annotate NAG hides the report badge', () {
+      // Board already prefers user quality NAGs; notation must match.
+      for (final nag in const [1, 2, 3, 4, 5, 6, 7]) {
+        expect(
+          resolveClassificationBadgeAnnotation(
+            rawAnnotation: reportBadge,
+            userNags: [nag],
+          ),
+          isNull,
+          reason: 'user NAG \$$nag must override report classification icon',
+        );
+        expect(
+          userQualityNagsOverrideClassification([nag]),
+          isTrue,
+        );
+      }
+    });
+
+    test('clearing the user quality NAG restores the report badge', () {
+      // Simulate Annotate toggle on then off: map entry → empty.
+      final withOverride = resolveClassificationBadgeAnnotation(
+        rawAnnotation: reportBadge,
+        userNags: const [4], // ??
+      );
+      expect(withOverride, isNull);
+
+      final afterClear = resolveClassificationBadgeAnnotation(
+        rawAnnotation: reportBadge,
+        userNags: const [],
+      );
+      expect(afterClear, reportBadge);
+    });
+
+    test(
+      'merge keeps user quality NAG under a report so notation can render it',
+      () {
+        // mergeMoveNags strips PGN $2 but keeps the reader's $6; notation then
+        // draws the user glyph and resolveClassificationBadgeAnnotation hides
+        // the report badge.
+        final merged = mergeMoveNags(
+          pgnNags: const [2],
+          userNags: const [6],
+          reportJudgedMove: true,
+        );
+        expect(merged, const [6]);
+        expect(qualityNagsSuppressLichess(merged), isTrue);
+        expect(
+          resolveClassificationBadgeAnnotation(
+            rawAnnotation: reportBadge,
+            userNags: const [6],
+          ),
+          isNull,
+        );
+      },
+    );
+
+    test('non-classification annotations are never promoted to a badge', () {
+      const lichessOnly = LichessMoveAnnotation(
+        type: LichessMoveAnnotationType.blunder,
+        comment: 'from Lichess',
+        useClassificationIcon: false,
+      );
+      expect(
+        resolveClassificationBadgeAnnotation(
+          rawAnnotation: lichessOnly,
+          userNags: const [],
+        ),
+        isNull,
+      );
     });
   });
 }

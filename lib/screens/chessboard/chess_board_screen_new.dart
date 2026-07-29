@@ -12376,14 +12376,20 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
     final annotation =
         qualityNagsSuppressLichess(nags) ? null : rawAnnotation;
 
-    // The generated report verdict (classification icon) is the engine's own
-    // assessment of the move and must ALWAYS show — even on moves that already
-    // carry author/Lichess NAGs. Finished broadcast PGNs bake NAGs into the
-    // analysed moves, and gating the badge on the NAG-suppressed `annotation`
-    // hid every classification icon on exactly those games. Resolve it from the
-    // un-suppressed annotation instead, keyed only on useClassificationIcon.
-    final classificationAnnotation =
-        rawAnnotation?.useClassificationIcon == true ? rawAnnotation : null;
+    // Report classification icons still show when the *PGN* baked quality NAGs
+    // into the move (broadcast games) — those author glyphs are stripped via
+    // mergeMoveNags once the report judged the move, and must not hide our
+    // badge. The reader's own Annotate quality NAG is different: it is
+    // explicit intent and must override the report badge so board + notation
+    // stay in step (board already prefers user quality NAGs).
+    final userNags = userNagsForMovePointer(
+      token.pointer,
+      widget.state.moveNags,
+    );
+    final classificationAnnotation = resolveClassificationBadgeAnnotation(
+      rawAnnotation: rawAnnotation,
+      userNags: userNags,
+    );
 
     final depth = token.depth;
     final isMainline = token.node?.isMainline ?? (depth <= 0);

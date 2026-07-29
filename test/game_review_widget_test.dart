@@ -15,6 +15,7 @@ import 'package:chessever2/screens/chessboard/view_model/chess_board_state_new.d
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/widgets/player_initials_avatar.dart';
 import 'package:dartchess/dartchess.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -792,6 +793,21 @@ void main() {
       find.byKey(const ValueKey('game-review-graph-info')),
       findsOneWidget,
     );
+    // Prev/next sit beside the chart (horizontal row), not under it.
+    final graphRect = tester.getRect(
+      find.byKey(const ValueKey('game-review-evaluation-graph')),
+    );
+    final prevCenter = tester.getCenter(
+      find.byKey(const ValueKey('game-review-previous-move')),
+    );
+    final nextCenter = tester.getCenter(
+      find.byKey(const ValueKey('game-review-next-move')),
+    );
+    expect(prevCenter.dx, lessThan(graphRect.left));
+    expect(nextCenter.dx, greaterThan(graphRect.right));
+    // Vertically aligned with the chart band.
+    expect(prevCenter.dy, inInclusiveRange(graphRect.top, graphRect.bottom));
+    expect(nextCenter.dy, inInclusiveRange(graphRect.top, graphRect.bottom));
     // Two snap steps: opens at the measured peek, drags up to `full`, and the
     // floor below the peek dismisses.
     expect(find.byType(DraggableScrollableSheet), findsOneWidget);
@@ -854,6 +870,205 @@ void main() {
     await tester.pumpAndSettle();
     expect(closed, isTrue);
   });
+
+  testWidgets(
+    'report step arrows hold-to-repeat scrub plies like bottom-nav arrows',
+    (tester) async {
+      // Long enough that multiple 150ms repeats stay in range.
+      final chessGame = ChessGame.fromPgn(
+        'sheet-hold',
+        '[White "Ada"]\n[Black "Grace"]\n[Result "1-0"]\n\n'
+        '1. e4 e5 2. Nf3 Nc6 3. Bb5 a6 4. Ba4 Nf6 1-0',
+      );
+      final controller = MobileGameReviewController(
+        reportController: GameAnalysisReportController(evaluator: _evaluator),
+        claimQuota: _allowClaim,
+      );
+      addTearDown(controller.dispose);
+      final game = _game();
+      await tester.runAsync(() async {
+        controller.configure(
+          game: chessGame,
+          active: true,
+          finished: true,
+          whiteRating: game.whitePlayer.rating,
+          blackRating: game.blackPlayer.rating,
+        );
+        await controller.retry();
+        for (
+          var i = 0;
+          i < 40 &&
+              controller.reviewState.reportState.status !=
+                  GameReportStatus.completed;
+          i++
+        ) {
+          await Future<void>.delayed(const Duration(milliseconds: 20));
+        }
+      });
+      expect(
+        controller.reviewState.reportState.status,
+        GameReportStatus.completed,
+      );
+      final lastPly =
+          controller.reviewState.reportState.report!.positions.length - 1;
+      expect(lastPly, greaterThanOrEqualTo(6));
+
+      final jumps = <int>[];
+      var activePly = 0;
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: StatefulBuilder(
+              builder: (context, setState) {
+                return GameReviewSheet(
+                  controller: controller,
+                  game: game,
+                  activePly: activePly,
+                  onJumpToPly: (ply) {
+                    jumps.add(ply);
+                    setState(() => activePly = ply);
+                  },
+                  onClose: () {},
+                );
+              },
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 500));
+
+      final nextKey = find.byKey(const ValueKey('game-review-next-move'));
+      final prevKey = find.byKey(const ValueKey('game-review-previous-move'));
+      expect(nextKey, findsOneWidget);
+      expect(prevKey, findsOneWidget);
+
+      // Short tap → exactly one step (existing single-step contract).
+      await tester.tap(nextKey);
+      await tester.pump();
+      expect(jumps, [1]);
+      expect(activePly, 1);
+
+      // Hold next → periodic steps while pressed.
+      jumps.clear();
+      final nextCenter = tester.getCenter(nextKey);
+      final forwardHold = await tester.startGesture(nextCenter);
+      await tester.pump(kLongPressTimeout + const Duration(milliseconds: 20));
+      // Long-press start alone must not step (timer fires after interval).
+      expect(jumps, isEmpty);
+      await tester.pump(kGameReviewStepRepeatInterval);
+      await tester.pump();
+      expect(jumps, isNotEmpty);
+      final afterFirstInterval = List<int>.from(jumps);
+      await tester.pump(kGameReviewStepRepeatInterval);
+      await tester.pump();
+      await tester.pump(kGameReviewStepRepeatInterval);
+      await tester.pump();
+      expect(jumps.length, greaterThan(afterFirstInterval.length));
+      // Successive plies increase while holding forward.
+      for (var i = 1; i < jumps.length; i++) {
+        expect(jumps[i], jumps[i - 1] + 1);
+      }
+      final jumpsAtRelease = jumps.length;
+      final plyAtRelease = activePly;
+      await forwardHold.up();
+      await tester.pump();
+      // After release, further time must not add jumps.
+      await tester.pump(kGameReviewStepRepeatInterval * 4);
+      await tester.pump();
+      expect(jumps.length, jumpsAtRelease);
+      expect(activePly, plyAtRelease);
+
+      // Hold previous → steps backward.
+      jumps.clear();
+      final prevCenter = tester.getCenter(prevKey);
+      final backHold = await tester.startGesture(prevCenter);
+      await tester.pump(kLongPressTimeout + const Duration(milliseconds: 20));
+      await tester.pump(kGameReviewStepRepeatInterval);
+      await tester.pump();
+      await tester.pump(kGameReviewStepRepeatInterval);
+      await tester.pump();
+      expect(jumps.length, greaterThanOrEqualTo(2));
+      for (var i = 1; i < jumps.length; i++) {
+        expect(jumps[i], jumps[i - 1] - 1);
+      }
+      await backHold.up();
+      await tester.pump();
+
+      // Holding next at the last ply must not jump past bounds.
+      jumps.clear();
+      activePly = lastPly;
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: StatefulBuilder(
+              builder: (context, setState) {
+                return GameReviewSheet(
+                  controller: controller,
+                  game: game,
+                  activePly: activePly,
+                  onJumpToPly: (ply) {
+                    jumps.add(ply);
+                    setState(() => activePly = ply);
+                  },
+                  onClose: () {},
+                );
+              },
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+      final endHold = await tester.startGesture(
+        tester.getCenter(find.byKey(const ValueKey('game-review-next-move'))),
+      );
+      await tester.pump(kLongPressTimeout + const Duration(milliseconds: 20));
+      await tester.pump(kGameReviewStepRepeatInterval * 4);
+      await tester.pump();
+      await endHold.up();
+      await tester.pump();
+      expect(jumps, isEmpty, reason: 'next is disabled at last ply');
+      expect(activePly, lastPly);
+
+      // Holding previous at start must not jump past 0.
+      jumps.clear();
+      activePly = 0;
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: StatefulBuilder(
+              builder: (context, setState) {
+                return GameReviewSheet(
+                  controller: controller,
+                  game: game,
+                  activePly: activePly,
+                  onJumpToPly: (ply) {
+                    jumps.add(ply);
+                    setState(() => activePly = ply);
+                  },
+                  onClose: () {},
+                );
+              },
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+      final startHold = await tester.startGesture(
+        tester.getCenter(
+          find.byKey(const ValueKey('game-review-previous-move')),
+        ),
+      );
+      await tester.pump(kLongPressTimeout + const Duration(milliseconds: 20));
+      await tester.pump(kGameReviewStepRepeatInterval * 4);
+      await tester.pump();
+      await startHold.up();
+      await tester.pump();
+      expect(jumps, isEmpty, reason: 'previous is disabled at ply 0');
+      expect(activePly, 0);
+    },
+  );
 
   testWidgets('graph marker follows the board, not a cursor inside the sheet', (
     tester,

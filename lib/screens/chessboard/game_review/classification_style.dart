@@ -9,32 +9,34 @@ import 'package:flutter/material.dart';
 /// win, mistake and blunder carrying different hexes on the board than in the
 /// recap.
 ///
-/// Each asset paints its own filled disc edge-to-edge, so callers render the
-/// SVG directly and must not wrap it in a tinted circle. The colours below are
-/// for *text* tinting (the SAN in the notation list, recap counters) and are
-/// kept in step with the disc colour baked into each SVG.
+/// Each asset paints its own gradient rounded-square badge edge-to-edge, so
+/// callers render the SVG directly and must not wrap it in a tinted circle.
+/// The colours below are for *text* tinting (the SAN in the notation list,
+/// recap counters) and track the gradient top stop of each badge SVG.
 Color moveAnnotationColor(LichessMoveAnnotationType type) => switch (type) {
-  LichessMoveAnnotationType.brilliant => const Color(0xFF177A68),
-  LichessMoveAnnotationType.goodMove => const Color(0xFF177A68),
-  LichessMoveAnnotationType.bestMove => const Color(0xFF28833A),
-  LichessMoveAnnotationType.missedWin => const Color(0xFF8F1E1E),
-  LichessMoveAnnotationType.inaccuracy => const Color(0xFFD9900A),
-  LichessMoveAnnotationType.mistake => const Color(0xFFC55A1E),
-  LichessMoveAnnotationType.blunder => const Color(0xFFB52626),
-  LichessMoveAnnotationType.bookMove => const Color(0xFF6B7A8A),
+  LichessMoveAnnotationType.brilliant => const Color(0xFF0FB4E5),
+  LichessMoveAnnotationType.goodMove => const Color(0xFF26408B),
+  LichessMoveAnnotationType.bestMove => const Color(0xFF1E924D),
+  // Missed win: warm coral-red so it separates from pure-red blunder (??).
+  LichessMoveAnnotationType.missedWin => const Color(0xFFE8331A),
+  LichessMoveAnnotationType.inaccuracy => const Color(0xFFC47335),
+  LichessMoveAnnotationType.mistake => const Color(0xFFB20D30),
+  LichessMoveAnnotationType.blunder => const Color(0xFFF70400),
+  LichessMoveAnnotationType.bookMove => const Color(0xFFB4A472),
   LichessMoveAnnotationType.forced => const Color(0xFF4E5B4F),
 };
 
 String moveAnnotationIconAsset(LichessMoveAnnotationType type) =>
     switch (type) {
       LichessMoveAnnotationType.brilliant => 'assets/svgs/brilliant.svg',
-      LichessMoveAnnotationType.goodMove => 'assets/svgs/good_move.svg',
-      LichessMoveAnnotationType.bestMove => 'assets/svgs/best_move.svg',
+      LichessMoveAnnotationType.goodMove => 'assets/svgs/good.svg',
+      LichessMoveAnnotationType.bestMove => 'assets/svgs/best.svg',
       LichessMoveAnnotationType.missedWin => 'assets/svgs/missed_win.svg',
       LichessMoveAnnotationType.inaccuracy => 'assets/svgs/inaccuracy.svg',
       LichessMoveAnnotationType.mistake => 'assets/svgs/mistake.svg',
       LichessMoveAnnotationType.blunder => 'assets/svgs/blunder.svg',
-      LichessMoveAnnotationType.bookMove => 'assets/svgs/book_move.svg',
+      LichessMoveAnnotationType.bookMove => 'assets/svgs/book.svg',
+      // Live-annotation only; not part of the report-classification set.
       LichessMoveAnnotationType.forced => 'assets/svgs/forced_move.svg',
     };
 

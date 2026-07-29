@@ -25,7 +25,9 @@ class SvgAsset {
   static const boardColorPurple = 'assets/svgs/board_color_purple.svg';
   static const boardColorBlue = 'assets/svgs/board_color_blue.svg';
   static const boardColorPink = 'assets/svgs/board_color_pink.svg';
-  static const bookIcon = 'assets/svgs/book.svg';
+  // Library/chrome book mark — not the report-classification book badge
+  // (`assets/svgs/book.svg`), which is a gradient rounded-square glyph.
+  static const bookIcon = 'assets/svgs/library_book.svg';
   static const addToLibraryIcon = 'assets/svgs/add_to_library.svg';
   static const tournamentPgnIcon = 'assets/svgs/pgn.svg';
   static const calendarIcon = 'assets/svgs/calendar.svg';

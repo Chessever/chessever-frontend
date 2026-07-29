@@ -150,6 +150,30 @@ bool qualityNagsSuppressLichess(Iterable<int> nags) {
   return false;
 }
 
+/// Whether the reader's own Annotate quality NAG(s) should hide the report /
+/// Lichess classification badge on a notation chip.
+///
+/// Matches the board path: user quality intent wins over the engine/report
+/// verdict. Author/PGN quality NAGs are *not* passed here — those are stripped
+/// separately via [mergeMoveNags] when a report has judged the move, so the
+/// report badge can still show beside broadcast games that baked in `?!`.
+bool userQualityNagsOverrideClassification(Iterable<int> userNags) =>
+    qualityNagsSuppressLichess(userNags);
+
+/// Report/Lichess classification badge for a notation move chip.
+///
+/// Returns [rawAnnotation] only when it is a classification icon badge and the
+/// reader has **not** applied a quality Annotate NAG on that move. Clearing the
+/// user quality NAG restores the badge (pass empty [userNags]).
+LichessMoveAnnotation? resolveClassificationBadgeAnnotation({
+  required LichessMoveAnnotation? rawAnnotation,
+  required Iterable<int> userNags,
+}) {
+  if (userQualityNagsOverrideClassification(userNags)) return null;
+  if (rawAnnotation?.useClassificationIcon == true) return rawAnnotation;
+  return null;
+}
+
 /// Final classification to render on a notation move chip.
 ///
 /// - [rawPgnMode] ⇒ always null (no auto markers from this path).

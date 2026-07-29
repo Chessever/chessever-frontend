@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:chessever2/screens/chessboard/game_review/classification_style.dart';
+import 'package:chessever2/screens/chessboard/game_review/evaluation_graph_markers.dart';
 import 'package:chessever2/screens/chessboard/game_review/game_analysis_report.dart';
 import 'package:chessever2/screens/chessboard/game_review/game_review_provider.dart';
 import 'package:chessever2/screens/player_profile/player_profile_screen.dart';
@@ -58,6 +59,12 @@ class GameReviewSheetExtents {
   static final Curve snapCurve = motion.toCurve;
   static Duration get snapDuration => motion.duration;
 }
+
+/// Cadence for report step-arrow hold-to-repeat.
+///
+/// Matches board bottom-nav long-press scrubbing
+/// (`startLongPressForward` / `startLongPressBackward` at 150ms).
+const Duration kGameReviewStepRepeatInterval = Duration(milliseconds: 150);
 
 /// Two-step, non-modal Game Analysis sheet.
 ///
@@ -1287,8 +1294,11 @@ class _EvaluationGraph extends StatelessWidget {
         _GraphStepButton(
           key: const ValueKey('game-review-previous-move'),
           icon: Icons.chevron_left_rounded,
-          enabled: activePly > 0,
-          onTap: () => onJumpToPly(activePly - 1),
+          activePly: activePly,
+          minPly: 0,
+          maxPly: report.positions.length - 1,
+          direction: -1,
+          onJumpToPly: onJumpToPly,
         ),
         const SizedBox(width: 8),
         Expanded(
@@ -1310,6 +1320,7 @@ class _EvaluationGraph extends StatelessWidget {
                       child: CustomPaint(
                         painter: _ReviewGraphPainter(
                           positions: report.positions,
+                          moves: report.moves,
                           activePly: activePly,
                         ),
                         child: const SizedBox.expand(),
@@ -1380,51 +1391,157 @@ class _EvaluationGraph extends StatelessWidget {
         _GraphStepButton(
           key: const ValueKey('game-review-next-move'),
           icon: Icons.chevron_right_rounded,
-          enabled: activePly < report.positions.length - 1,
-          onTap: () => onJumpToPly(activePly + 1),
+          activePly: activePly,
+          minPly: 0,
+          maxPly: report.positions.length - 1,
+          direction: 1,
+          onJumpToPly: onJumpToPly,
         ),
       ],
     );
   }
 }
 
-class _GraphStepButton extends StatelessWidget {
+/// Step arrow beside the eval graph.
+///
+/// Short tap advances one ply. Hold (long-press) auto-repeats at
+/// [kGameReviewStepRepeatInterval], matching board bottom-nav scrubbing
+/// (`ChessSvgBottomNavbarWithLongPress` + `startLongPressForward` /
+/// `startLongPressBackward`).
+class _GraphStepButton extends StatefulWidget {
   const _GraphStepButton({
     super.key,
     required this.icon,
-    required this.enabled,
-    required this.onTap,
+    required this.activePly,
+    required this.minPly,
+    required this.maxPly,
+    required this.direction,
+    required this.onJumpToPly,
   });
 
   final IconData icon;
-  final bool enabled;
-  final VoidCallback onTap;
+  final int activePly;
+  final int minPly;
+  final int maxPly;
+
+  /// `-1` previous, `+1` next.
+  final int direction;
+  final ValueChanged<int> onJumpToPly;
+
+  bool get enabled {
+    final next = activePly + direction;
+    return next >= minPly && next <= maxPly;
+  }
+
+  @override
+  State<_GraphStepButton> createState() => _GraphStepButtonState();
+}
+
+class _GraphStepButtonState extends State<_GraphStepButton> {
+  Timer? _repeatTimer;
+
+  /// Ply cursor while a hold is active. Same idea as the board provider
+  /// reading live state each tick: do not wait for parent rebuilds between
+  /// 150ms steps or scrubbing stalls when navigation is async.
+  int? _holdPly;
+
+  bool get _canStepFrom {
+    final ply = _holdPly ?? widget.activePly;
+    final next = ply + widget.direction;
+    return next >= widget.minPly && next <= widget.maxPly;
+  }
+
+  void _stepOnce() {
+    final ply = _holdPly ?? widget.activePly;
+    final next = ply + widget.direction;
+    if (next < widget.minPly || next > widget.maxPly) return;
+    _holdPly = next;
+    widget.onJumpToPly(next);
+  }
+
+  void _handleTap() {
+    if (!widget.enabled) return;
+    HapticFeedback.selectionClick();
+    _holdPly = null;
+    _stepOnce();
+    _holdPly = null;
+  }
+
+  void _startRepeat() {
+    if (!widget.enabled) return;
+    // Seed from the board-owned ply at long-press start (bottom-nav style).
+    _holdPly = widget.activePly;
+    HapticFeedback.mediumImpact();
+    _repeatTimer?.cancel();
+    // Same cadence as [ChessBoardScreenProviderNew.startLongPressForward]:
+    // first step after one interval, then every interval while held.
+    _repeatTimer = Timer.periodic(kGameReviewStepRepeatInterval, (_) {
+      if (!mounted || !_canStepFrom) {
+        if (mounted) HapticFeedback.lightImpact();
+        _stopRepeat();
+        return;
+      }
+      HapticFeedback.selectionClick();
+      _stepOnce();
+    });
+  }
+
+  void _stopRepeat() {
+    _repeatTimer?.cancel();
+    _repeatTimer = null;
+    _holdPly = null;
+  }
+
+  @override
+  void dispose() {
+    _stopRepeat();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
+    final enabled = widget.enabled;
+    final foreground =
+        enabled ? kWhiteColor : kLightGreyColor.withValues(alpha: 0.4);
+    final background =
+        enabled ? kBlack3Color : kBlack3Color.withValues(alpha: 0.45);
+
+    // Mirror [ChessSvgBottomNavbarWithLongPress]: GestureDetector with
+    // onTap + onLongPressStart/End/Cancel. Opaque hit target so the sheet's
+    // CustomScrollView does not steal the hold.
     return SizedBox.square(
       dimension: 34,
-      child: IconButton(
-        padding: EdgeInsets.zero,
-        iconSize: 25,
-        onPressed: enabled ? onTap : null,
-        style: IconButton.styleFrom(
-          foregroundColor: kWhiteColor,
-          disabledForegroundColor: kLightGreyColor.withValues(alpha: 0.4),
-          backgroundColor: kBlack3Color,
-          disabledBackgroundColor: kBlack3Color.withValues(alpha: 0.45),
+      child: Material(
+        color: background,
+        shape: const CircleBorder(),
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: enabled ? _handleTap : null,
+          onLongPressStart: enabled ? (_) => _startRepeat() : null,
+          onLongPressEnd: (_) => _stopRepeat(),
+          onLongPressCancel: _stopRepeat,
+          child: Center(
+            child: Icon(widget.icon, size: 25, color: foreground),
+          ),
         ),
-        icon: Icon(icon),
       ),
     );
   }
 }
 
 class _ReviewGraphPainter extends CustomPainter {
-  const _ReviewGraphPainter({required this.positions, required this.activePly});
+  const _ReviewGraphPainter({
+    required this.positions,
+    required this.moves,
+    required this.activePly,
+  });
 
   final List<GameReportPosition> positions;
+  final List<GameReportMove> moves;
   final int activePly;
+
+  /// Radius of classification dots on the win% curve (chess.com-style).
+  static const double _classificationDotRadius = 3.5;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -1453,10 +1570,10 @@ class _ReviewGraphPainter extends CustomPainter {
       }
     }
     if (positions.isEmpty) return;
+    final maxIndex = positions.length - 1;
     final path = Path();
     for (var i = 0; i < positions.length; i++) {
-      final x =
-          positions.length == 1 ? 0.0 : size.width * i / (positions.length - 1);
+      final x = maxIndex <= 0 ? 0.0 : size.width * i / maxIndex;
       final y =
           size.height -
           gameReportWinPercentage(positions[i].bestLine) / 100 * size.height;
@@ -1479,11 +1596,32 @@ class _ReviewGraphPainter extends CustomPainter {
         ..style = PaintingStyle.stroke
         ..strokeWidth = 2,
     );
-    final safePly = activePly.clamp(0, positions.length - 1);
-    final markerX =
-        positions.length == 1
-            ? 0.0
-            : size.width * safePly / (positions.length - 1);
+
+    // Classification markers sit on the curve (chess.com-style). Paint before
+    // the active scrubber so the white active point stays readable on top.
+    final classificationMarkers = buildEvaluationGraphClassificationMarkers(
+      moves: moves,
+      positions: positions,
+    );
+    final outline =
+        Paint()
+          ..color = kBlack3Color.withValues(alpha: 0.55)
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 1;
+    for (final marker in classificationMarkers) {
+      final x = maxIndex <= 0 ? 0.0 : size.width * marker.ply / maxIndex;
+      final y = size.height - marker.winPercentage / 100 * size.height;
+      final center = Offset(x, y);
+      canvas.drawCircle(
+        center,
+        _classificationDotRadius,
+        Paint()..color = marker.color,
+      );
+      canvas.drawCircle(center, _classificationDotRadius, outline);
+    }
+
+    final safePly = activePly.clamp(0, maxIndex);
+    final markerX = maxIndex <= 0 ? 0.0 : size.width * safePly / maxIndex;
     canvas.drawLine(
       Offset(markerX, 0),
       Offset(markerX, size.height),
@@ -1505,5 +1643,7 @@ class _ReviewGraphPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant _ReviewGraphPainter oldDelegate) =>
-      oldDelegate.activePly != activePly || oldDelegate.positions != positions;
+      oldDelegate.activePly != activePly ||
+      oldDelegate.positions != positions ||
+      oldDelegate.moves != moves;
 }

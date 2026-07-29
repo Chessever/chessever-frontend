@@ -1,3 +1,5 @@
+import 'package:chessever2/screens/chessboard/game_review/classification_style.dart';
+import 'package:chessever2/services/lichess_move_annotations_service.dart';
 import 'package:flutter/material.dart';
 
 enum NagCategory {
@@ -25,33 +27,56 @@ class NagDisplay {
 const Color _kEvalSlate = Color(0xFF9AA3AD);
 const Color _kObservationDim = Color(0xFFB8C4D0);
 
-// Quality NAG colors mirror LichessMoveAnnotationTypeX.color in
-// chess_board_screen_new.dart so glyphs render identically whether they
-// come from the PGN ($N), the user's Annotate sheet, or a Lichess fetched
-// analysis classification (good/inaccuracy/mistake/blunder/brilliant).
+// Quality NAG colors resolve through [moveAnnotationColor] so text glyphs
+// match the classification badge SVG gradient tops (board, notation, recap).
 NagDisplay? getNagDisplay(int nag) {
   switch (nag) {
     case 1:
-      // Lichess goodMove
-      return const NagDisplay('!', Color(0xFF177A68), NagCategory.quality);
+      // goodMove — navy !
+      return NagDisplay(
+        '!',
+        moveAnnotationColor(LichessMoveAnnotationType.goodMove),
+        NagCategory.quality,
+      );
     case 2:
-      // Lichess mistake
-      return const NagDisplay('?', Color(0xFFEB9518), NagCategory.quality);
+      // mistake — dark red ?
+      return NagDisplay(
+        '?',
+        moveAnnotationColor(LichessMoveAnnotationType.mistake),
+        NagCategory.quality,
+      );
     case 3:
-      // Lichess brilliant
-      return const NagDisplay('!!', Color(0xFF177A68), NagCategory.quality);
+      // brilliant — cyan !!
+      return NagDisplay(
+        '!!',
+        moveAnnotationColor(LichessMoveAnnotationType.brilliant),
+        NagCategory.quality,
+      );
     case 4:
-      // Lichess blunder
-      return const NagDisplay('??', Color(0xFFC9342E), NagCategory.quality);
+      // blunder — bright red ??
+      return NagDisplay(
+        '??',
+        moveAnnotationColor(LichessMoveAnnotationType.blunder),
+        NagCategory.quality,
+      );
     case 5:
-      // No Lichess equivalent — keep the canonical "speculative" magenta.
+      // No classification badge equivalent — keep the canonical
+      // "speculative" magenta.
       return const NagDisplay('!?', Color(0xFFEA45D8), NagCategory.quality);
     case 6:
-      // Lichess inaccuracy (matches the yellow rendered for $6 when the
-      // game is fetched from Lichess analysis).
-      return const NagDisplay('?!', Color(0xFFFABE46), NagCategory.quality);
+      // inaccuracy — brown/orange ?!
+      return NagDisplay(
+        '?!',
+        moveAnnotationColor(LichessMoveAnnotationType.inaccuracy),
+        NagCategory.quality,
+      );
     case 7:
-      return const NagDisplay('□', Color(0xFFA04048), NagCategory.quality);
+      // only-move / forced
+      return NagDisplay(
+        '□',
+        moveAnnotationColor(LichessMoveAnnotationType.forced),
+        NagCategory.quality,
+      );
     case 10:
       return const NagDisplay('=', _kEvalSlate, NagCategory.evaluation);
     case 13:
