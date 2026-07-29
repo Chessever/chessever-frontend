@@ -43,6 +43,7 @@ import 'package:chessever2/screens/player_profile/player_profile_data_source.dar
 import 'package:chessever2/screens/player_profile/player_profile_screen.dart'
     show PlayerProfileScreen;
 import 'package:chessever2/services/pgn_file_intake_service.dart';
+import 'package:chessever2/services/player_profile_deep_link.dart';
 import 'package:chessever2/widgets/event_card/event_context_menu.dart'
     show kEventTabQueryParam;
 import 'package:flutter/material.dart';
@@ -199,6 +200,8 @@ class DeepLinkService {
       int? playerFideId;
       String? teamName;
       int? profileFideId;
+      final profileDeepLink = parsePlayerProfileDeepLink(uri);
+      profileFideId = profileDeepLink?.fideId;
 
       // Universal link: https://chessever.com/games/<id>
       if (uri.pathSegments.length >= 2 && uri.pathSegments[0] == 'games') {
@@ -240,7 +243,9 @@ class DeepLinkService {
       // Player profile: https://chessever.com/player/<fideId>, plus the
       // canonical SEO form https://chessever.com/player/<name-slug>/<fideId>.
       // The FIDE id is always the last segment.
-      if (uri.pathSegments.length >= 2 && uri.pathSegments[0] == 'player') {
+      if (profileFideId == null &&
+          uri.pathSegments.length >= 2 &&
+          uri.pathSegments[0] == 'player') {
         profileFideId = int.tryParse(uri.pathSegments.last);
       }
 
@@ -390,7 +395,12 @@ class DeepLinkService {
           'routing to player profile',
           data: {'fideId': profileFideId.toString()},
         );
-        _navigateToPlayerProfile(profileFideId, navigatorKey, ref);
+        _navigateToPlayerProfile(
+          profileFideId,
+          navigatorKey,
+          ref,
+          initialDeepLink: profileDeepLink,
+        );
       } else {
         _addBreadcrumb(
           'deep link ignored',
@@ -1448,8 +1458,9 @@ class DeepLinkService {
   Future<void> _navigateToPlayerProfile(
     int fideId,
     GlobalKey<NavigatorState> navigatorKey,
-    WidgetRef ref,
-  ) async {
+    WidgetRef ref, {
+    PlayerProfileDeepLink? initialDeepLink,
+  }) async {
     if (_isNavigating) {
       debugPrint('DeepLinkService: Navigation already in progress, ignoring');
       return;
@@ -1505,6 +1516,7 @@ class DeepLinkService {
                 title: player.title,
                 federation: player.country,
                 rating: player.rating,
+                initialDeepLink: initialDeepLink,
               ),
         ),
       );

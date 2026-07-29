@@ -14,6 +14,7 @@ import 'package:chessever2/screens/player_profile/tabs/player_about_tab.dart';
 import 'package:chessever2/screens/player_profile/utils/player_profile_share_utils.dart';
 import 'package:chessever2/screens/player_profile/widgets/player_profile_share_image_card.dart';
 import 'package:chessever2/screens/player_profile/widgets/save_to_library_sheet.dart';
+import 'package:chessever2/services/player_profile_deep_link.dart';
 import 'package:chessever2/screens/player_profile/tabs/player_events_tab.dart';
 import 'package:chessever2/screens/player_profile/tabs/player_games_tab.dart';
 import 'package:chessever2/services/fide_photo_service.dart';
@@ -72,6 +73,7 @@ class PlayerProfileScreen extends ConsumerStatefulWidget {
     this.federation,
     this.rating,
     this.gamebasePlayerId,
+    this.initialDeepLink,
   });
 
   /// FIDE ID - can be null for players without official FIDE registration
@@ -81,6 +83,7 @@ class PlayerProfileScreen extends ConsumerStatefulWidget {
   final String? federation;
   final int? rating;
   final String? gamebasePlayerId;
+  final PlayerProfileDeepLink? initialDeepLink;
 
   /// Create from SearchPlayer model
   factory PlayerProfileScreen.fromSearchPlayer(SearchPlayer player) {
@@ -147,7 +150,13 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
   void initState() {
     super.initState();
     _currentGamebasePlayerId = _normalizePlayerId(widget.gamebasePlayerId);
-    final initialTab = ref.read(selectedPlayerProfileTabProvider);
+    final initialTab =
+        widget.initialDeepLink != null
+            ? PlayerProfileTab.games
+            : ref.read(selectedPlayerProfileTabProvider);
+    if (widget.initialDeepLink != null) {
+      ref.read(selectedPlayerProfileTabProvider.notifier).state = initialTab;
+    }
     _pageController = PageController(
       initialPage: PlayerProfileTab.values.indexOf(initialTab),
     );
@@ -160,6 +169,43 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
       CurvedAnimation(
         parent: _favoriteAnimationController,
         curve: Curves.easeInOut,
+      ),
+    );
+    if (widget.initialDeepLink?.hasFilters ?? false) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _applyInitialDeepLinkFilters();
+      });
+    }
+  }
+
+  void _applyInitialDeepLinkFilters() {
+    final link = widget.initialDeepLink;
+    if (link == null) return;
+
+    final timeControl = switch (link.timeControl) {
+      'classical' => GameTimeControlFilter.classical,
+      'rapid' => GameTimeControlFilter.rapid,
+      'blitz' => GameTimeControlFilter.blitz,
+      _ => null,
+    };
+    final color = switch (link.color) {
+      'white' => GameColorFilter.white,
+      'black' => GameColorFilter.black,
+      _ => null,
+    };
+    final playerResult = switch (link.result) {
+      'win' => PlayerResultFilter.win,
+      'draw' => PlayerResultFilter.draw,
+      'loss' => PlayerResultFilter.loss,
+      _ => null,
+    };
+
+    unawaited(
+      _openGames(
+        timeControl: timeControl,
+        color: color,
+        eco: link.eco == null ? null : GameEcoFilter(code: link.eco),
+        playerResultFilter: playerResult,
       ),
     );
   }
