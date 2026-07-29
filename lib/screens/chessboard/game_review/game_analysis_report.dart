@@ -13,8 +13,8 @@ enum GameReportStatus { idle, running, completed, cancelled, failed }
 
 enum GameMoveClassification {
   brilliant('Brilliant'),
-  goodMove('Best'),
-  bestMove('Great'),
+  goodMove('Great move'),
+  bestMove('Top move'),
   missedWin('Missed Win'),
   inaccuracy('Inaccuracy'),
   mistake('Mistake'),

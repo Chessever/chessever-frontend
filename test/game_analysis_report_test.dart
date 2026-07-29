@@ -248,6 +248,12 @@ void main() {
   group('move classification', () {
     final game = ChessGame.fromPgn('classify', '1. e4 *');
 
+    test('positive labels use the approved visible names', () {
+      expect(GameMoveClassification.goodMove.label, 'Great move');
+      expect(GameMoveClassification.bestMove.label, 'Top move');
+      expect(GameMoveClassification.brilliant.label, 'Brilliant');
+    });
+
     test('engine top among near-equals stays untagged', () {
       expect(
         _classifyWin(
@@ -261,7 +267,7 @@ void main() {
       );
     });
 
-    test('engine top with a PV moat is Best', () {
+    test('engine top with a PV moat enters the lower positive tier', () {
       expect(
         _classifyWin(
           game,
@@ -373,7 +379,7 @@ void main() {
         positions: positions,
       );
       expect(report.moves.single.bestAlternative, 'd2d4');
-      // Tiny multipv gap → not Best
+      // Tiny MultiPV gap → no positive tier.
       expect(report.moves.single.classification, isNull);
     });
   });
