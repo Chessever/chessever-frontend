@@ -316,10 +316,9 @@ List<int> mergeMoveNags({
 }) {
   var pgn = pgnNags ?? const <int>[];
   if (reportJudgedMove && pgn.isNotEmpty) {
-    pgn =
-        pgn
-            .where((nag) => !kMoveVerdictNags.contains(nag))
-            .toList(growable: false);
+    pgn = pgn
+        .where((nag) => !kMoveVerdictNags.contains(nag))
+        .toList(growable: false);
   }
   if (userNags.isEmpty) return pgn;
   if (pgn.isEmpty) return userNags;
@@ -976,6 +975,7 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
   int _currentPageIndex = 0;
   final Set<String> _syncedLatestPositions = <String>{};
   bool _isRevertingPage = false;
+
   /// When true, [PageController.jumpToPage] fired [onPageChanged] from a
   /// programmatic expand remap (not a user swipe). [_handlePageChange] must
   /// no-op — that path writes [currentlyVisiblePageIndexProvider], which
@@ -2934,9 +2934,10 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
                               syncedGames.isEmpty
                                   ? null
                                   : syncedGames[_currentPageIndex.clamp(
-                                    0,
-                                    syncedGames.length - 1,
-                                  )].gameId,
+                                        0,
+                                        syncedGames.length - 1,
+                                      )]
+                                      .gameId,
                         ),
                         // Game-switcher popdown. Lives here — a sibling of the
                         // PageView, not inside a page's app bar — so a game tap
@@ -3878,10 +3879,7 @@ class _AppBarState extends ConsumerState<_AppBar> {
     final boardState = ref.read(chessBoardScreenProviderNew(params));
 
     if (!boardState.hasValue || boardState.value == null) {
-      showAppSnack(
-        context,
-        'Please wait for the game to load',
-      );
+      showAppSnack(context, 'Please wait for the game to load');
       return;
     }
 
@@ -3982,11 +3980,7 @@ class _AppBarState extends ConsumerState<_AppBar> {
       showAppSnack(context, 'PGN copied to clipboard');
     } catch (e) {
       if (!mounted) return;
-      showAppSnack(
-        context,
-        'Failed to copy PGN',
-        tone: AppSnackTone.danger,
-      );
+      showAppSnack(context, 'Failed to copy PGN', tone: AppSnackTone.danger);
     }
   }
 
@@ -4329,10 +4323,7 @@ class _AppBarState extends ConsumerState<_AppBar> {
                       );
 
                       if (!hasCustomAnalysis) {
-                        showAppSnack(
-                          context,
-                          'No custom analysis to clear',
-                        );
+                        showAppSnack(context, 'No custom analysis to clear');
                         return;
                       }
 
@@ -4453,10 +4444,7 @@ class _AppBarState extends ConsumerState<_AppBar> {
                       );
 
                       if (!hasCustomAnalysis) {
-                        showAppSnack(
-                          context,
-                          'No custom analysis to clear',
-                        );
+                        showAppSnack(context, 'No custom analysis to clear');
                         return;
                       }
 
@@ -5569,7 +5557,9 @@ gameSelectorBoardFrameLayout({
   );
   // Never let the gauge eat the whole row — leave at least 1px for the board.
   final evalWidth =
-      showEvalBar ? math.min(evalBarWidth, math.max(0.0, innerWidth - 1.0)) : 0.0;
+      showEvalBar
+          ? math.min(evalBarWidth, math.max(0.0, innerWidth - 1.0))
+          : 0.0;
   // Chessboard is square: side length = width left after the eval bar.
   final boardSize = math.max(1.0, innerWidth - evalWidth);
   // Outer frame height tracks the square board + pad + border.
@@ -9458,7 +9448,9 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard>
                     ...reportAnnotations,
                   };
           final reportVerdict =
-              currentMoveIndex >= 0 ? reportAnnotations[currentMoveIndex] : null;
+              currentMoveIndex >= 0
+                  ? reportAnnotations[currentMoveIndex]
+                  : null;
           final userNags = userNagsForMovePointer(
             annotationMovePointer,
             widget.chessBoardState.moveNags,
@@ -10639,11 +10631,7 @@ class _FenPositionGamesTableState
     } catch (_) {
       if (!mounted) return;
       Navigator.of(context).pop();
-      showAppSnack(
-        context,
-        'Failed to open game',
-        tone: AppSnackTone.danger,
-      );
+      showAppSnack(context, 'Failed to open game', tone: AppSnackTone.danger);
     }
   }
 
@@ -11821,14 +11809,9 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
               ...reportAnnotations,
             };
 
-    // Debug: Log annotation state
     if (kDebugMode) {
-      if (reportAnnotations.isNotEmpty) {
-        debugPrint(
-          '🎯 [ReportClassifications] attached ${reportAnnotations.length} '
-          'icons (fp match board=$boardFingerprint status=${reviewState.reportState.status})',
-        );
-      } else if (reviewState.reportState.status == GameReportStatus.completed) {
+      if (reportAnnotations.isEmpty &&
+          reviewState.reportState.status == GameReportStatus.completed) {
         debugPrint(
           '⚠️ [ReportClassifications] report completed but attach map empty '
           '(boardFp=$boardFingerprint reviewFp=${reviewState.fingerprint} '
@@ -12395,8 +12378,7 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
     }
 
     // Only quality NAGs suppress inline Lichess classification symbols.
-    final annotation =
-        qualityNagsSuppressLichess(nags) ? null : rawAnnotation;
+    final annotation = qualityNagsSuppressLichess(nags) ? null : rawAnnotation;
 
     // Report classification icons still show when the *PGN* baked quality NAGs
     // into the move (broadcast games) — those author glyphs are stripped via
@@ -15455,13 +15437,13 @@ class _PrincipalVariationListState
       );
     }
 
-    // Always reserve a stable number of slots (capped at 3) so the list never
-    // grows/shrinks as the engine streams lines in.
+    // Reserve the configured rows while searching, then collapse to the usable
+    // results so cancelled/partial evaluations do not leave empty rows.
     return Padding(
       padding: EdgeInsets.fromLTRB(16.sp, 8.sp, 16.sp, 4.h),
       child: EnginePvListView(
         items: items,
-        slotCount: multiPV,
+        slotCount: isEvaluating ? multiPV : math.max(1, items.length),
         isEvaluating: isEvaluating,
         trailingDivider: false,
       ),

@@ -1,5 +1,7 @@
 import 'dart:io' as io;
+import 'package:chessever2/repository/lichess/cloud_eval/cloud_eval.dart';
 import 'package:chessever2/screens/chessboard/provider/board_eval_restart_policy.dart';
+import 'package:chessever2/screens/chessboard/provider/current_eval_provider.dart';
 import 'package:chessever2/screens/chessboard/view_model/chess_board_state_new.dart';
 import 'package:dartchess/dartchess.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -13,12 +15,11 @@ String _fenCacheKey(String fen, {int multiPV = 4}) {
 }
 
 AnalysisLine _line(String uci, {double eval = 0.3}) {
-  final moves =
-      uci
-          .split(' ')
-          .where((t) => t.isNotEmpty)
-          .map((t) => Move.parse(t)!)
-          .toList(growable: false);
+  final moves = uci
+      .split(' ')
+      .where((t) => t.isNotEmpty)
+      .map((t) => Move.parse(t)!)
+      .toList(growable: false);
   return AnalysisLine(
     moves: moves,
     sanMoves: List.filled(moves.length, 'X'),
@@ -29,8 +30,7 @@ AnalysisLine _line(String uci, {double eval = 0.3}) {
 void main() {
   const fenA =
       'r2qkb1r/pp1nnpp1/2p1p3/3pPb1p/3P1P2/1N2B3/PPP3PP/R2QKBNR w KQkq - 0 8';
-  const fenB =
-      'rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq e3 0 1';
+  const fenB = 'rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq e3 0 1';
 
   group('boardEvalTargetPvWidth', () {
     test('uses configured MultiPV when legal moves are plentiful', () {
@@ -41,26 +41,17 @@ void main() {
     });
 
     test('caps by legal-move count when position is constrained', () {
-      expect(
-        boardEvalTargetPvWidth(configuredMultiPv: 5, maxLegalLines: 2),
-        2,
-      );
+      expect(boardEvalTargetPvWidth(configuredMultiPv: 5, maxLegalLines: 2), 2);
     });
 
     test('zero legal moves yields zero target', () {
-      expect(
-        boardEvalTargetPvWidth(configuredMultiPv: 3, maxLegalLines: 0),
-        0,
-      );
+      expect(boardEvalTargetPvWidth(configuredMultiPv: 3, maxLegalLines: 0), 0);
     });
   });
 
   group('boardEvalNeedsMoreDepth / shallow settle', () {
     test('true when depth is below the interim floor', () {
-      expect(
-        boardEvalNeedsMoreDepth(reachedDepth: 4),
-        isTrue,
-      );
+      expect(boardEvalNeedsMoreDepth(reachedDepth: 4), isTrue);
       expect(
         boardEvalNeedsMoreDepth(reachedDepth: boardEvalMinCompleteDepth - 1),
         isTrue,
@@ -76,10 +67,7 @@ void main() {
     });
 
     test('mate never needs more depth', () {
-      expect(
-        boardEvalNeedsMoreDepth(reachedDepth: 2, isMate: true),
-        isFalse,
-      );
+      expect(boardEvalNeedsMoreDepth(reachedDepth: 2, isMate: true), isFalse);
     });
 
     test(
@@ -161,22 +149,19 @@ void main() {
       );
     });
 
-    test(
-      'false when only 1 line settled but user configured MultiPV is 3',
-      () {
-        expect(
-          hasCompleteUsableBoardEval(
-            principalVariationsBaseFen: fenA,
-            principalVariationCount: 1,
-            currentBoardFen: fenA,
-            isEvaluating: false,
-            normalizeFen: _normalizeFen,
-            configuredMultiPv: 3,
-          ),
-          isFalse,
-        );
-      },
-    );
+    test('false when only 1 line settled but user configured MultiPV is 3', () {
+      expect(
+        hasCompleteUsableBoardEval(
+          principalVariationsBaseFen: fenA,
+          principalVariationCount: 1,
+          currentBoardFen: fenA,
+          isEvaluating: false,
+          normalizeFen: _normalizeFen,
+          configuredMultiPv: 3,
+        ),
+        isFalse,
+      );
+    });
 
     test('false for 2 of 3 lines', () {
       expect(
@@ -242,23 +227,20 @@ void main() {
       );
     });
 
-    test(
-      'true under-width when legal moves cannot produce more lines',
-      () {
-        expect(
-          hasCompleteUsableBoardEval(
-            principalVariationsBaseFen: fenA,
-            principalVariationCount: 2,
-            currentBoardFen: fenA,
-            isEvaluating: false,
-            normalizeFen: _normalizeFen,
-            configuredMultiPv: 5,
-            maxLegalLines: 2,
-          ),
-          isTrue,
-        );
-      },
-    );
+    test('true under-width when legal moves cannot produce more lines', () {
+      expect(
+        hasCompleteUsableBoardEval(
+          principalVariationsBaseFen: fenA,
+          principalVariationCount: 2,
+          currentBoardFen: fenA,
+          isEvaluating: false,
+          normalizeFen: _normalizeFen,
+          configuredMultiPv: 5,
+          maxLegalLines: 2,
+        ),
+        isTrue,
+      );
+    });
 
     test('true under-width when width requirement is waived (mate)', () {
       expect(
@@ -313,46 +295,40 @@ void main() {
     final keyA = _fenCacheKey(fenA);
     final keyB = _fenCacheKey(fenB);
 
-    test(
-      'repeated same-FEN force after complete cascade does not restart',
-      () {
-        var startCount = 0;
-        for (var i = 0; i < 20; i++) {
-          final decision = decideBoardEvalStart(
-            requestedCacheKey: keyA,
-            activeEvalKey: null,
-            hasActiveRequest: false,
-            activeRequestIsStale: false,
-            hasCompleteUsableResultForKey: true,
-            forceRestart: false,
-          );
-          if (decision.shouldStart) startCount++;
-          expect(
-            decision.action,
-            BoardEvalStartAction.skipAlreadyComplete,
-            reason: 'iteration $i must no-op after complete cascade',
-          );
-        }
-        expect(startCount, 0);
-      },
-    );
-
-    test(
-      'incomplete-width settle is NOT skipAlreadyComplete — restarts',
-      () {
+    test('repeated same-FEN force after complete cascade does not restart', () {
+      var startCount = 0;
+      for (var i = 0; i < 20; i++) {
         final decision = decideBoardEvalStart(
           requestedCacheKey: keyA,
           activeEvalKey: null,
           hasActiveRequest: false,
           activeRequestIsStale: false,
-          hasCompleteUsableResultForKey: false,
+          hasCompleteUsableResultForKey: true,
           forceRestart: false,
         );
-        expect(decision.shouldStart, isTrue);
-        expect(decision.action, BoardEvalStartAction.start);
-        expect(decision.reason, 'needs evaluation');
-      },
-    );
+        if (decision.shouldStart) startCount++;
+        expect(
+          decision.action,
+          BoardEvalStartAction.skipAlreadyComplete,
+          reason: 'iteration $i must no-op after complete cascade',
+        );
+      }
+      expect(startCount, 0);
+    });
+
+    test('incomplete-width settle is NOT skipAlreadyComplete — restarts', () {
+      final decision = decideBoardEvalStart(
+        requestedCacheKey: keyA,
+        activeEvalKey: null,
+        hasActiveRequest: false,
+        activeRequestIsStale: false,
+        hasCompleteUsableResultForKey: false,
+        forceRestart: false,
+      );
+      expect(decision.shouldStart, isTrue);
+      expect(decision.action, BoardEvalStartAction.start);
+      expect(decision.reason, 'needs evaluation');
+    });
 
     test('in-flight same-FEN force coalesces instead of restarting', () {
       var startCount = 0;
@@ -440,11 +416,13 @@ void main() {
         _line('d2d4 d7d5', eval: 0.2),
         _line('c2c4 c7c5', eval: 0.1),
       ];
-      final incoming = [
-        _line('e2e4 e7e5 g1f3', eval: 0.35),
-      ];
+      final incoming = [_line('e2e4 e7e5 g1f3', eval: 0.35)];
       final merged = mergeBoardPvProgress(previous, incoming);
-      expect(merged.length, 3, reason: 'degraded frame must not collapse panel');
+      expect(
+        merged.length,
+        3,
+        reason: 'degraded frame must not collapse panel',
+      );
       expect(merged[0].moves.length, 3, reason: 'line 0 takes longer incoming');
       expect(merged[0].evaluation, 0.35);
       expect(merged[1].evaluation, 0.2);
@@ -478,9 +456,7 @@ void main() {
           _line('d2d4 d7d5', eval: 0.20),
           _line('g1f3 b8c6', eval: 0.15),
         ];
-        final degradedDepthFrame = [
-          _line('e2e4 e7e5 g1f3', eval: 0.31),
-        ];
+        final degradedDepthFrame = [_line('e2e4 e7e5 g1f3', eval: 0.31)];
         final merged = mergeBoardPvProgress(previous, degradedDepthFrame);
         expect(merged.length, 3);
         expect(merged[1].moves.first.uci, 'd2d4');
@@ -567,11 +543,7 @@ void main() {
         // Real engine-style multipv for the start position.
         final lines = buildBoardAnalysisLinesFromUci(
           fen: whiteToMoveFen,
-          pvMoveStrings: const [
-            'e2e4 e7e5 g1f3',
-            'd2d4 d7d5',
-            'g1f3 b8c6',
-          ],
+          pvMoveStrings: const ['e2e4 e7e5 g1f3', 'd2d4 d7d5', 'g1f3 b8c6'],
         );
         expect(lines.length, 3);
         expect(lines[0].sanMoves.first, 'e4');
@@ -594,11 +566,7 @@ void main() {
       () {
         final lines = buildBoardAnalysisLinesFromUci(
           fen: blackToMoveFen,
-          pvMoveStrings: const [
-            'e7e5 g1f3 b8c6',
-            'c7c5 g1f3',
-            'e7e6 d2d4',
-          ],
+          pvMoveStrings: const ['e7e5 g1f3 b8c6', 'c7c5 g1f3', 'e7e6 d2d4'],
         );
         expect(lines.length, 3);
         expect(lines[0].sanMoves.first, 'e5');
@@ -641,9 +609,7 @@ void main() {
           _line('d2d4 d7d5', eval: 0.2),
           _line('g1f3 b8c6', eval: 0.1),
         ];
-        final incomingBlack = [
-          _line('e7e5 g1f3', eval: 0.25),
-        ];
+        final incomingBlack = [_line('e7e5 g1f3', eval: 0.25)];
         final merged = mergeBoardPvProgressForPosition(
           previous: previousWhite,
           incoming: incomingBlack,
@@ -666,9 +632,7 @@ void main() {
           _line('e7e5 g1f3', eval: 0.2),
           _line('c7c5', eval: 0.1),
         ];
-        final incoming = [
-          _line('e7e5 g1f3 b8c6', eval: 0.22),
-        ];
+        final incoming = [_line('e7e5 g1f3 b8c6', eval: 0.22)];
         final merged = mergeBoardPvProgressForPosition(
           previous: previous,
           incoming: incoming,
@@ -682,11 +646,7 @@ void main() {
     );
 
     test('formatEnginePvNotation: white-to-move numbering', () {
-      final tokens = formatEnginePvNotation(
-        const ['e4', 'e5', 'Nf3'],
-        1,
-        true,
-      );
+      final tokens = formatEnginePvNotation(const ['e4', 'e5', 'Nf3'], 1, true);
       expect(tokens, ['1.', 'e4', 'e5', '2.', 'Nf3']);
     });
 
@@ -731,9 +691,10 @@ void main() {
 
   group('provider wiring (shipped control path is used)', () {
     test('board provider imports and calls the restart policy', () {
-      final source = io.File(
-        'lib/screens/chessboard/provider/chess_board_screen_provider_new.dart',
-      ).readAsStringSync();
+      final source =
+          io.File(
+            'lib/screens/chessboard/provider/chess_board_screen_provider_new.dart',
+          ).readAsStringSync();
       expect(
         source.contains(
           "import 'package:chessever2/screens/chessboard/provider/board_eval_restart_policy.dart';",
@@ -752,30 +713,27 @@ void main() {
       expect(source.contains('incomplete-board-settle'), isTrue);
       // Hard 10s search cap that froze depth must be gone.
       expect(source.contains('fallbackCap'), isFalse);
-      expect(
-        source.contains("const Duration(seconds: 10)"),
-        isFalse,
-      );
+      expect(source.contains("const Duration(seconds: 10)"), isFalse);
       // 800ms first-eval shortcut that left half-move PVs must be gone.
-      expect(
-        source.contains("const Duration(milliseconds: 800)"),
-        isFalse,
-      );
+      expect(source.contains("const Duration(milliseconds: 800)"), isFalse);
       // Progressive path must keep isEvaluating true for the live search.
       expect(
         source.contains('// Stay evaluating for the whole live search'),
         isTrue,
       );
       expect(
-        source.contains('final shouldForce = force || (visibleIndex == index);'),
+        source.contains(
+          'final shouldForce = force || (visibleIndex == index);',
+        ),
         isFalse,
       );
     });
 
     test('PV UI formats via shared formatEnginePvNotation helper', () {
-      final source = io.File(
-        'lib/screens/chessboard/chess_board_screen_new.dart',
-      ).readAsStringSync();
+      final source =
+          io.File(
+            'lib/screens/chessboard/chess_board_screen_new.dart',
+          ).readAsStringSync();
       expect(
         source.contains(
           "import 'package:chessever2/screens/chessboard/provider/board_eval_restart_policy.dart';",
@@ -785,49 +743,126 @@ void main() {
       expect(source.contains('formatEnginePvNotation('), isTrue);
     });
 
-    test('stockfish always re-asserts MultiPV; no mid-search self-heal stop', () {
-      final source = io.File(
-        'lib/screens/chessboard/provider/stockfish_singleton.dart',
-      ).readAsStringSync();
-      expect(
-        source.contains("setoption name MultiPV value \$multiPV"),
-        isTrue,
-      );
-      // Mid-search stop for MultiPV self-heal must not exist (froze depth).
-      expect(source.contains('MultiPV self-heal'), isFalse);
-      expect(
-        source.contains("setoption name UCI_Chess960 value true"),
-        isTrue,
-      );
-      // Board handoff still yields only with full MultiPV width.
-      expect(source.contains('boardHandoffDepth'), isTrue);
-      expect(source.contains('settled.length >= multiPV'), isTrue);
-    });
+    test(
+      'stockfish always re-asserts MultiPV; no mid-search self-heal stop',
+      () {
+        final source =
+            io.File(
+              'lib/screens/chessboard/provider/stockfish_singleton.dart',
+            ).readAsStringSync();
+        expect(
+          source.contains("setoption name MultiPV value \$multiPV"),
+          isTrue,
+        );
+        // Mid-search stop for MultiPV self-heal must not exist (froze depth).
+        expect(source.contains('MultiPV self-heal'), isFalse);
+        expect(
+          source.contains("setoption name UCI_Chess960 value true"),
+          isTrue,
+        );
+        // Board handoff still yields only with full MultiPV width.
+        expect(source.contains('boardHandoffDepth'), isTrue);
+        expect(source.contains('settled.length >= multiPV'), isTrue);
+      },
+    );
 
     test('cloud skip still requires requested MultiPV width', () {
-      final source = io.File(
-        'lib/screens/chessboard/provider/current_eval_provider.dart',
-      ).readAsStringSync();
+      final source =
+          io.File(
+            'lib/screens/chessboard/provider/current_eval_provider.dart',
+          ).readAsStringSync();
+      expect(source.contains('usablePvCount < requestedMultiPv'), isTrue);
       expect(
-        source.contains('eval.pvs.length < requestedMultiPv'),
+        source.contains("pv.moves.trim().isNotEmpty"),
         isTrue,
+        reason: 'empty cached PV rows must not count toward MultiPV width',
       );
     });
 
     test('board analysis must not pass allowInDebug: true', () {
-      final source = io.File(
-        'lib/screens/chessboard/provider/chess_board_screen_provider_new.dart',
-      ).readAsStringSync();
+      final source =
+          io.File(
+            'lib/screens/chessboard/provider/chess_board_screen_provider_new.dart',
+          ).readAsStringSync();
       // Guardrail comment must remain; actual call sites must not opt in.
-      expect(
-        source.contains('DO NOT pass allowInDebug: true'),
-        isTrue,
-      );
+      expect(source.contains('DO NOT pass allowInDebug: true'), isTrue);
       // No evaluatePosition/warmUp call may pass allowInDebug: true.
       final callSites = RegExp(
         r'evaluatePosition\s*\([^)]*allowInDebug\s*:\s*true',
       );
       expect(callSites.hasMatch(source), isFalse);
+      expect(source.contains('_allowBoardStockfishInDebug'), isFalse);
+      expect(
+        source.contains('kDebugMode && !kEnableStockfishInDebug'),
+        isTrue,
+        reason: 'the intentional debug cancellation must not be retried',
+      );
+    });
+
+    test('cancelled and incomplete evaluations use a bounded retry path', () {
+      final source =
+          io.File(
+            'lib/screens/chessboard/provider/chess_board_screen_provider_new.dart',
+          ).readAsStringSync();
+      expect(source.contains('_abandonPendingEvaluation'), isTrue);
+      expect(
+        source.contains('Future.delayed(const Duration(milliseconds: 250)'),
+        isTrue,
+      );
+      expect(source.contains('var evaluationResolved = false'), isTrue);
+      expect(
+        source.contains('if (evaluationResolved && lastEvaluatedFen != null)'),
+        isTrue,
+      );
+    });
+
+    test('nested PV preview rebases from the displayed prefix', () {
+      final source =
+          io.File(
+            'lib/screens/chessboard/provider/chess_board_screen_provider_new.dart',
+          ).readAsStringSync();
+      expect(source.contains('final isNestedPreview ='), isTrue);
+      expect(source.contains('currentPreviewMoveCount'), isTrue);
+      expect(
+        RegExp(
+          r'lockedPositions\s*\.take\(currentPreviewMoveCount \+ 1\)',
+        ).hasMatch(source),
+        isTrue,
+      );
+      expect(source.contains('positionCursor.isLegal(move)'), isTrue);
+      expect(source.contains('_pvPreviewEvaluationGeneration'), isTrue);
+    });
+  });
+
+  group('cloud board-eval completeness', () {
+    test('empty cached rows do not satisfy requested MultiPV width', () {
+      final eval = CloudEval(
+        fen: fenA,
+        knodes: 100,
+        depth: boardEvalSufficientDepth,
+        pvs: [
+          Pv(moves: 'e2e4', cp: 20),
+          Pv(moves: '', cp: 10),
+          Pv(moves: '   ', cp: 5),
+        ],
+      );
+
+      expect(cloudEvalSkipsBoardStockfish(eval, requestedMultiPv: 3), isFalse);
+    });
+
+    test('full usable cached MultiPV can satisfy board evaluation', () {
+      final eval = CloudEval(
+        fen: fenA,
+        knodes: 100,
+        depth: boardEvalSufficientDepth,
+        pvs: [
+          Pv(moves: 'e2e4', cp: 20),
+          Pv(moves: 'd2d4', cp: 10),
+          Pv(moves: 'g1f3', cp: 5),
+        ],
+      );
+
+      expect(cloudEvalSkipsBoardStockfish(eval, requestedMultiPv: 3), isTrue);
     });
   });
 }

@@ -108,9 +108,12 @@ bool cloudEvalSkipsBoardStockfish(CloudEval eval, {int requestedMultiPv = 1}) {
   // We must have actual moves to show in the UI; evaluation alone is not enough.
   if (eval.pvs.first.moves.trim().isEmpty) return false;
   if (_isMatePv(eval.pvs.first)) return true;
+  final usablePvCount =
+      eval.pvs.where((pv) => pv.moves.trim().isNotEmpty).length;
+  if (usablePvCount == 0) return false;
   // A deep eval carrying fewer lines than the board is configured to show must
   // not silence the engine — it would pin the panel below the user's MultiPV.
-  if (eval.pvs.length < requestedMultiPv) return false;
+  if (usablePvCount < requestedMultiPv) return false;
   return eval.depth >= boardEvalSufficientDepth;
 }
 
