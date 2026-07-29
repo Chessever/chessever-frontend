@@ -5,6 +5,7 @@ import 'package:chessever2/repository/lichess/cloud_eval/cloud_eval.dart';
 import 'package:chessever2/repository/supabase/game_analysis_quota_repository.dart';
 import 'package:chessever2/screens/chessboard/analysis/chess_game.dart';
 import 'package:chessever2/screens/chessboard/game_review/game_analysis_report.dart';
+import 'package:chessever2/screens/chessboard/game_review/game_analysis_report_store.dart';
 import 'package:chessever2/screens/chessboard/game_review/game_review_provider.dart';
 import 'package:chessever2/screens/chessboard/game_review/game_review_sheet.dart';
 import 'package:chessever2/screens/chessboard/game_review/game_review_sheet_host.dart';
@@ -123,7 +124,7 @@ void main() {
   });
 
   test(
-    'deactivate while running leaves non-running CTA and resume does not auto-start',
+    'swipe-away setActive(false) cancels running report; resume does not auto-start',
     () async {
       final gate = Completer<void>();
       var claims = 0;
@@ -162,7 +163,7 @@ void main() {
 
       controller.configure(
         game: ChessGame.fromPgn(
-          'bg-cancel',
+          'swipe-cancel',
           '[White "A"]\n[Black "B"]\n[Result "1-0"]\n\n1. e4 e5 1-0',
         ),
         active: true,
@@ -183,7 +184,7 @@ void main() {
       expect(controller.reviewState.reportState.status, GameReportStatus.running);
       expect(claims, 1);
 
-      // Lifecycle deactivate (background / swipe-away) cancels promptly.
+      // Swipe-away / game leave cancels promptly via setActive(false).
       controller.setActive(false);
       // Status must leave running without waiting on the blocked evaluator.
       for (
@@ -221,6 +222,312 @@ void main() {
       );
     },
   );
+
+  // App background must not cancel an in-flight report. Lifecycle marks
+  // background, resume soft-continues when the loop can still make progress.
+  test(
+    'background + resume soft-continues running report without re-claim',
+    () async {
+      final gate = Completer<void>();
+      var claims = 0;
+      var evalCalls = 0;
+      Future<EnhancedCloudEval> gatedThenCompleteEvaluator(
+        String fen, {
+        required int depth,
+        required int multiPv,
+        required String ownerId,
+        void Function(int reachedDepth, int knodes)? onProgress,
+      }) async {
+        evalCalls++;
+        // First call blocks (simulates mid-run when app backgrounds).
+        if (!gate.isCompleted) {
+          await gate.future;
+        }
+        return EnhancedCloudEval(
+          fen: fen,
+          knodes: 100,
+          depth: depth,
+          pvs: [Pv(moves: 'e2e4', cp: 0)],
+          requestedMultiPv: multiPv,
+        );
+      }
+
+      final reportController = GameAnalysisReportController(
+        evaluator: gatedThenCompleteEvaluator,
+      );
+      final controller = MobileGameReviewController(
+        reportController: reportController,
+        claimQuota: (_) async {
+          claims++;
+          return const GameAnalysisClaimResult(
+            allowed: true,
+            reason: 'premium',
+            isPremium: true,
+          );
+        },
+      );
+      addTearDown(controller.dispose);
+
+      controller.configure(
+        game: ChessGame.fromPgn(
+          'bg-continue',
+          '[White "A"]\n[Black "B"]\n[Result "1-0"]\n\n1. e4 e5 1-0',
+        ),
+        active: true,
+        finished: true,
+        whiteRating: 2100,
+        blackRating: 2050,
+      );
+
+      unawaited(controller.retry());
+      for (
+        var i = 0;
+        i < 50 && !controller.reviewState.reportState.isRunning;
+        i++
+      ) {
+        await Future<void>.delayed(const Duration(milliseconds: 10));
+      }
+      expect(controller.reviewState.reportState.status, GameReportStatus.running);
+      expect(claims, 1);
+      final claimsAtRun = claims;
+
+      // App background: mark suspended, do NOT setActive(false).
+      controller.onAppBackgrounded();
+      await Future<void>.delayed(const Duration(milliseconds: 30));
+      expect(
+        controller.reviewState.reportState.status,
+        GameReportStatus.running,
+        reason: 'background must not flip report to cancelled/stopped',
+      );
+      expect(
+        controller.reviewState.reportState.message,
+        isNot(contains('cancelled')),
+      );
+      expect(claims, claimsAtRun);
+
+      // Unblock before soft-recovery window ends so the same run advances.
+      gate.complete();
+      await controller.onAppResumed();
+      for (
+        var i = 0;
+        i < 80 &&
+            controller.reviewState.reportState.status !=
+                GameReportStatus.completed;
+        i++
+      ) {
+        await Future<void>.delayed(const Duration(milliseconds: 20));
+      }
+      expect(
+        controller.reviewState.reportState.status,
+        GameReportStatus.completed,
+      );
+      expect(claims, claimsAtRun, reason: 'resume must not re-claim quota');
+      expect(evalCalls, greaterThan(0));
+    },
+  );
+
+  test(
+    'background + stalled resume hard-restarts from scratch without re-claim',
+    () async {
+      final firstHang = Completer<void>();
+      var claims = 0;
+      var evalCalls = 0;
+      Future<EnhancedCloudEval> hangFirstThenSucceed(
+        String fen, {
+        required int depth,
+        required int multiPv,
+        required String ownerId,
+        void Function(int reachedDepth, int knodes)? onProgress,
+      }) async {
+        evalCalls++;
+        // First session's first eval never progresses → soft recovery fails.
+        if (evalCalls == 1) {
+          await firstHang.future;
+        }
+        return EnhancedCloudEval(
+          fen: fen,
+          knodes: 100,
+          depth: depth,
+          pvs: [Pv(moves: 'e2e4', cp: 0)],
+          requestedMultiPv: multiPv,
+        );
+      }
+
+      final reportController = GameAnalysisReportController(
+        evaluator: hangFirstThenSucceed,
+      )..softRecoveryWindow = const Duration(milliseconds: 80);
+      final controller = MobileGameReviewController(
+        reportController: reportController,
+        claimQuota: (_) async {
+          claims++;
+          return const GameAnalysisClaimResult(
+            allowed: true,
+            reason: 'premium',
+            isPremium: true,
+          );
+        },
+      );
+      addTearDown(controller.dispose);
+
+      controller.configure(
+        game: ChessGame.fromPgn(
+          'bg-hard-restart',
+          '[White "A"]\n[Black "B"]\n[Result "1-0"]\n\n1. e4 e5 1-0',
+        ),
+        active: true,
+        finished: true,
+        whiteRating: 2100,
+        blackRating: 2050,
+      );
+
+      unawaited(controller.retry());
+      for (
+        var i = 0;
+        i < 50 && !controller.reviewState.reportState.isRunning;
+        i++
+      ) {
+        await Future<void>.delayed(const Duration(milliseconds: 10));
+      }
+      expect(controller.reviewState.reportState.isRunning, isTrue);
+      expect(claims, 1);
+
+      controller.onAppBackgrounded();
+      // Soft window expires with no progress → hard restart same game.
+      await controller.onAppResumed();
+
+      for (
+        var i = 0;
+        i < 100 &&
+            controller.reviewState.reportState.status !=
+                GameReportStatus.completed;
+        i++
+      ) {
+        await Future<void>.delayed(const Duration(milliseconds: 20));
+      }
+      expect(
+        controller.reviewState.reportState.status,
+        GameReportStatus.completed,
+        reason: 'stalled run must restart from scratch and finish',
+      );
+      expect(claims, 1, reason: 'hard restart must not re-claim');
+      expect(
+        controller.reviewState.reportState.message,
+        isNot(contains('cancelled')),
+      );
+      // Release hung first-session future so the abandoned loop can exit.
+      firstHang.complete();
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+    },
+  );
+
+  test('interrupted pending run resumes on configure without re-claim', () async {
+    // Unique line so session cache from other tests cannot satisfy this fp.
+    final game = ChessGame.fromPgn(
+      'pending-resume',
+      '[White "A"]\n[Black "B"]\n[Result "1-0"]\n\n'
+      '1. c4 c5 2. Nc3 Nc6 1-0',
+    );
+    final store = GameAnalysisReportStore.memory();
+    final fingerprint = gameReportFingerprint(game);
+    await store.markPending(fingerprint);
+    var claims = 0;
+    final reportController = GameAnalysisReportController(
+      evaluator: _evaluator,
+      store: store,
+    );
+    final controller = MobileGameReviewController(
+      reportController: reportController,
+      claimQuota: (_) async {
+        claims++;
+        return const GameAnalysisClaimResult(
+          allowed: true,
+          reason: 'premium',
+          isPremium: true,
+        );
+      },
+    );
+    addTearDown(() {
+      controller.dispose();
+      // Store-backed completes write the static session map — isolate peers.
+      GameAnalysisReportController.clearSessionCacheForTest();
+    });
+
+    controller.configure(
+      game: game,
+      active: true,
+      finished: true,
+      whiteRating: 2100,
+      blackRating: 2050,
+    );
+
+    for (
+      var i = 0;
+      i < 100 &&
+          controller.reviewState.reportState.status !=
+              GameReportStatus.completed;
+      i++
+    ) {
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+    }
+    expect(
+      controller.reviewState.reportState.status,
+      GameReportStatus.completed,
+      reason: 'durable pending must auto-restart analysis after process death',
+    );
+    expect(claims, 0, reason: 'interrupted resume must not spend a new claim');
+    expect(await store.isPending(fingerprint), isFalse);
+  });
+
+  test('app lifecycle pause path does not deactivate game review (source)', () {
+    final boardSource =
+        io.File(
+          'lib/screens/chessboard/chess_board_screen_new.dart',
+        ).readAsStringSync();
+    expect(
+      boardSource,
+      contains('deactivateGameReview: false'),
+      reason:
+          'paused/detached must pass deactivateGameReview: false so a running '
+          'report is not cancelled',
+    );
+    expect(
+      boardSource,
+      contains('noteGameReviewBackgrounded: true'),
+      reason: 'paused path must mark report for resume recovery',
+    );
+    expect(
+      boardSource,
+      contains('onAppResumed()'),
+      reason: 'resume must call game-review recovery',
+    );
+    // Swipe-away still deactivates the previous page's review.
+    expect(
+      boardSource,
+      contains('.setActive(false)'),
+      reason: 'page swipe must still setActive(false) on the outgoing game',
+    );
+    // Parameter exists and defaults to canceling for route covers / explicit.
+    expect(boardSource, contains('bool deactivateGameReview = true'));
+    // App-background call site must not use the canceling default.
+    final lifecycleIdx = boardSource.indexOf(
+      'void didChangeAppLifecycleState(AppLifecycleState state)',
+    );
+    expect(lifecycleIdx, greaterThan(0));
+    final lifecycleBody = boardSource.substring(
+      lifecycleIdx,
+      lifecycleIdx + 1400,
+    );
+    expect(
+      lifecycleBody,
+      contains('deactivateGameReview: false'),
+      reason: 'paused/detached branch must opt out of report cancel',
+    );
+    expect(
+      lifecycleBody,
+      isNot(contains('_handleLifecyclePaused();')),
+      reason: 'default pause would cancel the report on background',
+    );
+  });
 
   test('second tap / stopAnalysis stops generation while running', () async {
     final gate = Completer<void>();
@@ -774,7 +1081,7 @@ void main() {
       findsAtLeastNWidgets(1),
     );
     expect(find.text('Forced'), findsNothing);
-    expect(find.text('Great move'), findsOneWidget);
+    expect(find.text('Great'), findsOneWidget);
     expect(find.text('Top move'), findsOneWidget);
     expect(find.text('Missed Win'), findsOneWidget);
     expect(find.text('1-0'), findsNothing);

@@ -13,7 +13,7 @@ enum GameReportStatus { idle, running, completed, cancelled, failed }
 
 enum GameMoveClassification {
   brilliant('Brilliant'),
-  goodMove('Great move'),
+  goodMove('Great'),
   bestMove('Top move'),
   missedWin('Missed Win'),
   inaccuracy('Inaccuracy'),
@@ -202,6 +202,29 @@ class GameAnalysisReportController extends ChangeNotifier {
   bool _disposed = false;
   DateTime? _lastProgressNotification;
 
+  /// Game + ratings for the in-flight run so foreground recovery can restart
+  /// from scratch without the UI having to re-supply them.
+  ChessGame? _inFlightGame;
+  int? _inFlightWhiteRating;
+  int? _inFlightBlackRating;
+  String? _inFlightFingerprint;
+
+  /// True after [noteAppBackgrounded] while a report was running. Cleared by
+  /// [recoverAfterForeground] (soft continue or hard restart).
+  bool _suspendedWhileRunning = false;
+  bool _recoveryInProgress = false;
+
+  /// How long after resume we wait for the existing loop to make progress
+  /// before tearing it down and restarting from scratch.
+  static const Duration defaultSoftRecoveryWindow = Duration(
+    milliseconds: 2500,
+  );
+
+  /// Per-controller soft window (tests inject a short value without racing
+  /// parallel suites that would share a static override).
+  @visibleForTesting
+  Duration softRecoveryWindow = defaultSoftRecoveryWindow;
+
   /// Completed reports keyed by game fingerprint. Session-hot path; durable
   /// store backs cold starts (see [loadPersistedReport]).
   static final Map<String, GameAnalysisReport> _reportCache =
@@ -240,7 +263,157 @@ class GameAnalysisReportController extends ChangeNotifier {
     );
   }
 
+  void _markPending(String fingerprint) {
+    if (_evaluator != null && _store == null) return;
+    unawaited(
+      _effectiveStore.markPending(fingerprint).catchError((
+        Object e,
+        StackTrace st,
+      ) {
+        debugPrint('Game report pending mark failed: $e\n$st');
+      }),
+    );
+  }
+
+  void _clearPending(String? fingerprint) {
+    if (fingerprint == null) return;
+    if (_evaluator != null && _store == null) return;
+    unawaited(
+      _effectiveStore.clearPending(fingerprint).catchError((
+        Object e,
+        StackTrace st,
+      ) {
+        debugPrint('Game report pending clear failed: $e\n$st');
+      }),
+    );
+  }
+
+  void _clearInFlight({bool clearPending = true}) {
+    final fp = _inFlightFingerprint;
+    _inFlightGame = null;
+    _inFlightWhiteRating = null;
+    _inFlightBlackRating = null;
+    _inFlightFingerprint = null;
+    _suspendedWhileRunning = false;
+    if (clearPending) _clearPending(fp);
+  }
+
   GameReportState get state => _state;
+
+  /// Whether a whole-game report was interrupted by process death / kill and
+  /// should be restarted for [fingerprint] without a new free-tier claim.
+  Future<bool> hasInterruptedRun(String fingerprint) async {
+    if (_evaluator != null && _store == null) return false;
+    return _effectiveStore.isPending(fingerprint);
+  }
+
+  /// App went to background while a report may be running. Does not cancel;
+  /// pairs with [recoverAfterForeground] on resume.
+  void noteAppBackgrounded() {
+    if (_disposed) return;
+    if (_state.isRunning) {
+      _suspendedWhileRunning = true;
+    }
+  }
+
+  /// After the app returns to foreground: keep a healthy in-flight run, or
+  /// restart the same game from scratch when the old loop is stuck / dead.
+  ///
+  /// Never flips to the cancelled/"stopped" CTA — the UI stays on progress
+  /// through soft continue or hard restart. No free-tier re-claim (caller
+  /// already claimed before the original [analyze]).
+  Future<void> recoverAfterForeground() async {
+    if (_disposed || _recoveryInProgress) return;
+    if (!_state.isRunning) return;
+    // Only recover runs that actually saw background; plain setActive resume
+    // must not tear down a healthy mid-report.
+    if (!_suspendedWhileRunning) return;
+
+    _recoveryInProgress = true;
+    final softGeneration = _generation;
+    final progressBefore = _state.completedPositions;
+    final fractionBefore = _state.progress;
+    try {
+      _suspendedWhileRunning = false;
+      if (_evaluator == null) {
+        try {
+          await _stockfish.warmUp(allowInDebug: true);
+        } catch (e, st) {
+          debugPrint('Game report resume warmUp failed: $e\n$st');
+        }
+      }
+
+      final window = softRecoveryWindow;
+      final deadline = DateTime.now().add(window);
+      while (DateTime.now().isBefore(deadline)) {
+        if (_disposed) return;
+        if (!_state.isRunning) return;
+        if (_generation != softGeneration) return;
+        if (_state.completedPositions > progressBefore ||
+            _state.progress > fractionBefore + 0.0005) {
+          // Existing loop is alive again — keep it.
+          return;
+        }
+        await Future<void>.delayed(const Duration(milliseconds: 100));
+      }
+
+      if (_disposed || !_state.isRunning || _generation != softGeneration) {
+        return;
+      }
+      // Stalled after soft window: kill the old loop and start clean.
+      await _restartInFlightFromScratch();
+    } finally {
+      _recoveryInProgress = false;
+    }
+  }
+
+  /// Tear down a stuck generation and re-enter [analyze] for the same game.
+  /// Keeps the user on a progress surface (never cancelled) when possible.
+  Future<void> _restartInFlightFromScratch() async {
+    final game = _inFlightGame;
+    final whiteRating = _inFlightWhiteRating;
+    final blackRating = _inFlightBlackRating;
+    final fingerprint = _inFlightFingerprint;
+
+    // Invalidate the stuck loop first so its awaits exit.
+    _generation++;
+    try {
+      await _stockfish.cancelEvaluationsForOwner(_ownerId);
+    } catch (_) {}
+    try {
+      _stockfish.notifyEngineReleased();
+    } catch (_) {}
+
+    if (_disposed) return;
+
+    if (game == null || game.mainline.isEmpty) {
+      // Nothing to restart with — fall back to the retry CTA.
+      _clearInFlight();
+      _setState(
+        const GameReportState(
+          status: GameReportStatus.cancelled,
+          message: 'Analysis interrupted. Tap Generate Report to try again.',
+        ),
+      );
+      return;
+    }
+
+    // Drop to non-running so [analyze] can re-enter, without "cancelled" copy.
+    _setState(
+      const GameReportState(
+        status: GameReportStatus.idle,
+        message: 'Resuming analysis…',
+      ),
+    );
+    // Re-mark pending for the new attempt (cleared only on terminal states).
+    if (fingerprint != null) _markPending(fingerprint);
+
+    await analyze(
+      game,
+      whiteRating: whiteRating,
+      blackRating: blackRating,
+    );
+  }
 
   /// Adopts a previously computed report for [fingerprint] from the **session**
   /// memory cache without touching Stockfish. Returns true when applied.
@@ -300,6 +473,7 @@ class GameAnalysisReportController extends ChangeNotifier {
     if (_state.isRunning) {
       unawaited(_stockfish.cancelEvaluationsForOwner(_ownerId));
     }
+    _clearInFlight();
     _setState(const GameReportState());
   }
 
@@ -309,6 +483,7 @@ class GameAnalysisReportController extends ChangeNotifier {
     // (and hang if Stockfish was suspended while the app was backgrounded);
     // the CTA must not stay stuck on progress for that duration.
     _generation++;
+    _clearInFlight();
     _setState(
       const GameReportState(
         status: GameReportStatus.cancelled,
@@ -336,13 +511,25 @@ class GameAnalysisReportController extends ChangeNotifier {
     final fingerprint = gameReportFingerprint(game);
     // Always check previous generations first: session memory, then durable
     // local store. Skip Stockfish when either hits.
-    if (loadCachedReport(fingerprint)) return;
-    if (await loadPersistedReport(fingerprint)) return;
+    if (loadCachedReport(fingerprint)) {
+      _clearPending(fingerprint);
+      return;
+    }
+    if (await loadPersistedReport(fingerprint)) {
+      _clearPending(fingerprint);
+      return;
+    }
     final generation = ++_generation;
     final fens = gameReportFens(game);
     final totalMoves = (game.mainline.length + 1) ~/ 2;
     final totalWorkUnits = fens.length + game.mainline.length;
     _lastProgressNotification = null;
+    _inFlightGame = game;
+    _inFlightWhiteRating = whiteRating;
+    _inFlightBlackRating = blackRating;
+    _inFlightFingerprint = fingerprint;
+    _suspendedWhileRunning = false;
+    _markPending(fingerprint);
     _setState(
       GameReportState(
         status: GameReportStatus.running,
@@ -544,6 +731,7 @@ class GameAnalysisReportController extends ChangeNotifier {
         _cacheReport(fingerprint, report);
         _persistReport(report);
       }
+      _clearInFlight();
       _setState(
         GameReportState(
           status: GameReportStatus.completed,
@@ -554,7 +742,10 @@ class GameAnalysisReportController extends ChangeNotifier {
         ),
       );
     } catch (error) {
-      if (generation == _generation) _fail('Game analysis failed: $error');
+      if (generation == _generation) {
+        _clearInFlight();
+        _fail('Game analysis failed: $error');
+      }
     } finally {
       // Drop any leftover report jobs so they cannot linger on the engine after
       // settle. Owner-scoped cancel never touches the board's Stockfish owner.
@@ -855,6 +1046,13 @@ class GameAnalysisReportController extends ChangeNotifier {
   void dispose() {
     _disposed = true;
     _generation++;
+    // Keep durable pending so a process-death / dispose mid-run can resume
+    // when the same game is opened again. In-memory in-flight refs go away.
+    _inFlightGame = null;
+    _inFlightWhiteRating = null;
+    _inFlightBlackRating = null;
+    // fingerprint left for pending row; clear only the live refs
+    _suspendedWhileRunning = false;
     unawaited(_stockfish.cancelEvaluationsForOwner(_ownerId));
     super.dispose();
   }

@@ -139,25 +139,82 @@ void main() {
       },
     );
 
-    test('missedWin and blunder reds are distinct in shared palette', () {
-      final missed = classificationColor(GameMoveClassification.missedWin);
-      final blunder = classificationColor(GameMoveClassification.blunder);
-      expect(
-        missed,
-        isNot(blunder),
-        reason:
-            'missedWin and blunder previously shared pure red; '
-            'they must differ so recap/graph/text stay distinguishable',
+    test('mistake badge restores pre–Archive-7 orange #C55A1E', () {
+      final svgTop = _gradientTopFromSvg(
+        classificationIconAsset(GameMoveClassification.mistake),
       );
       expect(
-        moveAnnotationColor(LichessMoveAnnotationType.missedWin),
-        missed,
+        svgTop,
+        const Color(0xFFC55A1E),
+        reason: 'mistake (?) must keep the previous orange disc, not wine red',
       );
       expect(
-        moveAnnotationColor(LichessMoveAnnotationType.blunder),
-        blunder,
+        classificationColor(GameMoveClassification.mistake),
+        svgTop,
       );
     });
+
+    test(
+      'mistake / missedWin / blunder tops are pairwise distinct and match palette',
+      () {
+        final mistakePath = classificationIconAsset(
+          GameMoveClassification.mistake,
+        );
+        final missedPath = classificationIconAsset(
+          GameMoveClassification.missedWin,
+        );
+        final blunderPath = classificationIconAsset(
+          GameMoveClassification.blunder,
+        );
+
+        final mistakeTop = _gradientTopFromSvg(mistakePath);
+        final missedTop = _gradientTopFromSvg(missedPath);
+        final blunderTop = _gradientTopFromSvg(blunderPath);
+
+        expect(mistakeTop, const Color(0xFFC55A1E));
+        expect(
+          mistakeTop,
+          isNot(missedTop),
+          reason: 'mistake orange must not match missed-win red',
+        );
+        expect(
+          mistakeTop,
+          isNot(blunderTop),
+          reason: 'mistake orange must not match blunder red',
+        );
+        expect(
+          missedTop,
+          isNot(blunderTop),
+          reason:
+              'missedWin and blunder must stay distinguishable pure/coral reds',
+        );
+
+        expect(
+          classificationColor(GameMoveClassification.mistake),
+          mistakeTop,
+        );
+        expect(
+          classificationColor(GameMoveClassification.missedWin),
+          missedTop,
+        );
+        expect(
+          classificationColor(GameMoveClassification.blunder),
+          blunderTop,
+        );
+        expect(
+          moveAnnotationColor(LichessMoveAnnotationType.mistake),
+          mistakeTop,
+        );
+        expect(
+          moveAnnotationColor(LichessMoveAnnotationType.missedWin),
+          missedTop,
+        );
+        expect(
+          moveAnnotationColor(LichessMoveAnnotationType.blunder),
+          blunderTop,
+        );
+      },
+    );
 
     test('quality NAG text colors track the same classification palette', () {
       expect(

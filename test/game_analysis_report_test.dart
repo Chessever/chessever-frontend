@@ -311,13 +311,113 @@ void main() {
         expect(controller2.state.status, GameReportStatus.completed);
       },
     );
+
+    test(
+      'recoverAfterForeground restarts from scratch when the run is stalled',
+      () async {
+        final firstHang = Completer<void>();
+        var evalCalls = 0;
+        Future<EnhancedCloudEval> hangFirst(
+          String fen, {
+          required int depth,
+          required int multiPv,
+          required String ownerId,
+          void Function(int reachedDepth, int knodes)? onProgress,
+        }) async {
+          evalCalls++;
+          if (evalCalls == 1) {
+            await firstHang.future;
+          }
+          return EnhancedCloudEval(
+            fen: fen,
+            knodes: 100,
+            depth: depth,
+            pvs: [Pv(moves: 'e2e4', cp: 0)],
+            requestedMultiPv: multiPv,
+          );
+        }
+
+        final controller = GameAnalysisReportController(evaluator: hangFirst)
+          ..softRecoveryWindow = const Duration(milliseconds: 60);
+        addTearDown(controller.dispose);
+        final game = ChessGame.fromPgn('recover-hard', '1. e4 e5 *');
+
+        unawaited(controller.analyze(game));
+        for (var i = 0; i < 50 && !controller.state.isRunning; i++) {
+          await Future<void>.delayed(const Duration(milliseconds: 10));
+        }
+        expect(controller.state.isRunning, isTrue);
+
+        controller.noteAppBackgrounded();
+        await controller.recoverAfterForeground();
+
+        for (
+          var i = 0;
+          i < 100 && controller.state.status != GameReportStatus.completed;
+          i++
+        ) {
+          await Future<void>.delayed(const Duration(milliseconds: 20));
+        }
+        expect(controller.state.status, GameReportStatus.completed);
+        expect(controller.state.report, isNotNull);
+        expect(evalCalls, greaterThan(1));
+        firstHang.complete();
+        await Future<void>.delayed(const Duration(milliseconds: 20));
+      },
+    );
+
+    test(
+      'recoverAfterForeground is a no-op when not suspended while running',
+      () async {
+        final gate = Completer<void>();
+        final controller = GameAnalysisReportController(
+          evaluator: (
+            String fen, {
+            required int depth,
+            required int multiPv,
+            required String ownerId,
+            void Function(int reachedDepth, int knodes)? onProgress,
+          }) async {
+            await gate.future;
+            return EnhancedCloudEval(
+              fen: fen,
+              knodes: 100,
+              depth: depth,
+              pvs: [Pv(moves: 'e2e4', cp: 0)],
+              requestedMultiPv: multiPv,
+            );
+          },
+        );
+        addTearDown(controller.dispose);
+        unawaited(controller.analyze(ChessGame.fromPgn('no-bg', '1. e4 *')));
+        for (var i = 0; i < 50 && !controller.state.isRunning; i++) {
+          await Future<void>.delayed(const Duration(milliseconds: 10));
+        }
+        expect(controller.state.isRunning, isTrue);
+
+        // Without noteAppBackgrounded, recover must not tear down the run.
+        await controller.recoverAfterForeground();
+        expect(controller.state.isRunning, isTrue);
+        expect(controller.state.status, isNot(GameReportStatus.cancelled));
+
+        gate.complete();
+        for (
+          var i = 0;
+          i < 80 && controller.state.status != GameReportStatus.completed;
+          i++
+        ) {
+          await Future<void>.delayed(const Duration(milliseconds: 20));
+        }
+        expect(controller.state.status, GameReportStatus.completed);
+      },
+    );
   });
 
   group('move classification', () {
     final game = ChessGame.fromPgn('classify', '1. e4 *');
 
     test('positive labels use the approved visible names', () {
-      expect(GameMoveClassification.goodMove.label, 'Great move');
+      expect(GameMoveClassification.goodMove.label, 'Great');
       expect(GameMoveClassification.bestMove.label, 'Top move');
       expect(GameMoveClassification.brilliant.label, 'Brilliant');
     });

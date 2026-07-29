@@ -45,10 +45,71 @@ class GameAnalysisReportStore {
 
   static const String keyPrefix = 'game_report:';
 
+  /// Intent that a whole-game report was in flight and should be restarted after
+  /// process death (distinct from completed report rows).
+  static const String pendingKeyPrefix = 'game_report_pending:';
+
   /// Stable cache key for [fingerprint].
   static String cacheKeyForFingerprint(String fingerprint) {
     final digest = sha1.convert(utf8.encode(fingerprint));
     return '$keyPrefix$digest';
+  }
+
+  /// Stable pending-intent key for [fingerprint].
+  static String pendingKeyForFingerprint(String fingerprint) {
+    final digest = sha1.convert(utf8.encode(fingerprint));
+    return '$pendingKeyPrefix$digest';
+  }
+
+  /// Mark that generation for [fingerprint] was started and not finished.
+  /// Survives process death so a cold open can restart without a fresh claim.
+  Future<void> markPending(String fingerprint) {
+    final previous = _writeChain ?? Future<void>.value();
+    final done = previous.catchError((_) {}).then((_) async {
+      final key = pendingKeyForFingerprint(fingerprint);
+      final value = DateTime.now().toUtc().toIso8601String();
+      final memory = _memory;
+      if (memory != null) {
+        memory[key] = _MemoryEntry(
+          value: value,
+          cachedAt: DateTime.now().millisecondsSinceEpoch,
+          fingerprint: fingerprint,
+        );
+        return;
+      }
+      final db = _database ?? AppDatabase.instance;
+      await db.setCache(key: key, value: value);
+    });
+    _writeChain = done;
+    return done;
+  }
+
+  /// Clear interrupted-generation intent for [fingerprint].
+  Future<void> clearPending(String fingerprint) {
+    final previous = _writeChain ?? Future<void>.value();
+    final done = previous.catchError((_) {}).then((_) async {
+      final key = pendingKeyForFingerprint(fingerprint);
+      final memory = _memory;
+      if (memory != null) {
+        memory.remove(key);
+        return;
+      }
+      final db = _database ?? AppDatabase.instance;
+      await db.removeCache(key: key);
+    });
+    _writeChain = done;
+    return done;
+  }
+
+  /// Whether a previous run for [fingerprint] was interrupted before completion.
+  Future<bool> isPending(String fingerprint) async {
+    try {
+      final raw = await _readRaw(pendingKeyForFingerprint(fingerprint));
+      return raw != null && raw.isNotEmpty;
+    } catch (e, st) {
+      debugPrint('GameAnalysisReportStore.isPending failed: $e\n$st');
+      return false;
+    }
   }
 
   /// Persist [report] and mark it most-recent (updates `cached_at`).
@@ -153,6 +214,7 @@ class GameAnalysisReportStore {
     }
     final db = _database ?? AppDatabase.instance;
     await db.clearCacheByPrefix(keyPrefix);
+    await db.clearCacheByPrefix(pendingKeyPrefix);
   }
 }
 

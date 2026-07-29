@@ -20,7 +20,9 @@ Color moveAnnotationColor(LichessMoveAnnotationType type) => switch (type) {
   // Missed win: warm coral-red so it separates from pure-red blunder (??).
   LichessMoveAnnotationType.missedWin => const Color(0xFFE8331A),
   LichessMoveAnnotationType.inaccuracy => const Color(0xFFC47335),
-  LichessMoveAnnotationType.mistake => const Color(0xFFB20D30),
+  // Mistake (?): pre–Archive-7 orange so it is not a third red next to
+  // missed win / blunder.
+  LichessMoveAnnotationType.mistake => const Color(0xFFC55A1E),
   LichessMoveAnnotationType.blunder => const Color(0xFFF70400),
   LichessMoveAnnotationType.bookMove => const Color(0xFFB4A472),
   LichessMoveAnnotationType.forced => const Color(0xFF4E5B4F),

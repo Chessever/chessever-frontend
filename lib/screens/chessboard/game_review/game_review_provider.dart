@@ -211,19 +211,73 @@ class MobileGameReviewController extends StateNotifier<MobileGameReviewState> {
       }
     }
 
-    // Swiping the board page away stops a report the reader started here; going
-    // active again never starts one on its own.
+    // Swiping the board page away (active:false for this game) stops a report
+    // the reader started here. App background must not flip active false.
+    // Going active again never auto-starts a *new* report, but may resume an
+    // interrupted one (durable pending) via [_maybeResumeInterruptedRun].
     if (!active && _reportController.state.isRunning) {
       unawaited(_reportController.cancel());
+    } else if (active) {
+      unawaited(_maybeResumeInterruptedRun());
     }
   }
 
+  /// Marks whether this board page is the visible game for review.
+  ///
+  /// [active] false cancels an in-flight report — use for swipe-away / game
+  /// leave only. App background must not call this; use [onAppBackgrounded] /
+  /// [onAppResumed] so the run can soft-continue or restart from scratch.
   void setActive(bool active) {
     if (!mounted || _active == active) return;
     _active = active;
     if (!active && _reportController.state.isRunning) {
       unawaited(_reportController.cancel());
     }
+    // Becoming the visible page again: resume any durable interrupted run.
+    if (active) {
+      unawaited(_maybeResumeInterruptedRun());
+    }
+  }
+
+  /// App entered background. Does not cancel a running report; marks it for
+  /// [onAppResumed] recovery.
+  void onAppBackgrounded() {
+    if (!mounted) return;
+    _reportController.noteAppBackgrounded();
+  }
+
+  /// App returned to foreground. Soft-continues a healthy run, or restarts the
+  /// same analysis from scratch when the old loop is stuck — never the
+  /// cancelled/"stopped" CTA solely because of backgrounding.
+  Future<void> onAppResumed() async {
+    if (!mounted) return;
+    await _reportController.recoverAfterForeground();
+    if (!mounted) return;
+    // Process may have been killed mid-run (pending intent, no live loop).
+    await _maybeResumeInterruptedRun();
+  }
+
+  /// Restarts a report that was interrupted (process death / dispose) for the
+  /// configured game, without spending another free-tier claim.
+  Future<void> _maybeResumeInterruptedRun() async {
+    if (!mounted || !_active) return;
+    if (!state.isEligible) return;
+    if (_reportController.state.isRunning) return;
+    if (_reportController.state.status == GameReportStatus.completed) return;
+    final game = _game;
+    final fingerprint = state.fingerprint;
+    if (game == null || fingerprint == null) return;
+    if (_reportController.loadCachedReport(fingerprint)) return;
+    if (await _reportController.loadPersistedReport(fingerprint)) return;
+    if (!mounted || !_active) return;
+    final interrupted = await _reportController.hasInterruptedRun(fingerprint);
+    if (!interrupted || !mounted || !_active) return;
+    // Same user request that already claimed — re-enter analyze only.
+    await _reportController.analyze(
+      game,
+      whiteRating: _whiteRating,
+      blackRating: _blackRating,
+    );
   }
 
   String? _unavailableMessage({
@@ -247,8 +301,9 @@ class MobileGameReviewController extends StateNotifier<MobileGameReviewState> {
   /// Stops in-flight whole-game analysis if one is running.
   ///
   /// Primary Game Analysis control uses this on a second tap while generating;
-  /// lifecycle deactivation uses [setActive]/false) / [configure] which call
-  /// the same report [GameAnalysisReportController.cancel].
+  /// swipe-away / game leave uses [setActive]/false) / [configure] which call
+  /// the same report [GameAnalysisReportController.cancel]. App background does
+  /// not cancel via this path.
   Future<void> stopAnalysis() async {
     if (!mounted || !_reportController.state.isRunning) return;
     await _reportController.cancel();

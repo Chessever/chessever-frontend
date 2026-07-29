@@ -2321,7 +2321,10 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
     final currentGame = _resolveGameForIndex(safeIndex);
     final params = _createParams(currentGame, safeIndex);
     _ensureAudioListener(params);
-    ref.read(mobileGameReviewProvider(params).notifier).setActive(true);
+    final review = ref.read(mobileGameReviewProvider(params).notifier);
+    review.setActive(true);
+    // Soft-continue or hard-restart an in-flight / interrupted whole-game report.
+    unawaited(review.onAppResumed());
     final boardSettings = ref.read(boardSettingsProviderNew).valueOrNull;
     if (boardSettings?.soundEnabled == true) {
       unawaited(AudioPlayerService.instance.prepareForForegroundPlayback());
@@ -2345,19 +2348,32 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
     );
   }
 
-  void _handleLifecyclePaused({bool preserveVisibleGameReview = false}) {
+  void _handleLifecyclePaused({
+    bool preserveVisibleGameReview = false,
+    bool deactivateGameReview = true,
+    bool noteGameReviewBackgrounded = false,
+  }) {
     if (!mounted || widget.games.isEmpty) return;
     final safeIndex = _currentPageIndex.clamp(0, widget.games.length - 1);
     final currentGame = _resolveGameForIndex(safeIndex);
     final params = _createParams(currentGame, safeIndex);
     try {
       final notifier = ref.read(chessBoardScreenProviderNew(params).notifier);
-      // A modal bottom sheet also triggers RouteAware.didPushNext(). The Game
-      // Review sheet has already suspended this page's live-position analysis,
-      // so keep the whole-game report active while that specific route covers
-      // the board. Real app backgrounding and other routes still pause it.
-      if (!preserveVisibleGameReview || !notifier.isGameReviewVisible) {
-        ref.read(mobileGameReviewProvider(params).notifier).setActive(false);
+      final review = ref.read(mobileGameReviewProvider(params).notifier);
+      // App background must NOT cancel a running whole-game report — Stockfish
+      // already returns cancelled/empty while suspended; recoverAfterForeground
+      // soft-continues or restarts from scratch. setActive(false) is reserved
+      // for swipe-away / game leave and for RouteAware covers that are not the
+      // review sheet. A modal bottom sheet also triggers RouteAware.didPushNext();
+      // the Game Review sheet has already suspended this page's live-position
+      // analysis, so keep the whole-game report active while that specific
+      // route covers the board.
+      if (noteGameReviewBackgrounded) {
+        review.onAppBackgrounded();
+      }
+      if (deactivateGameReview &&
+          (!preserveVisibleGameReview || !notifier.isGameReviewVisible)) {
+        review.setActive(false);
       }
       unawaited(notifier.onBecameInvisible());
     } catch (e) {
@@ -2455,7 +2471,13 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
       if (!_isRouteCovered) {
         unawaited(_enterPipForCurrentGameIfEligible());
       }
-      _handleLifecyclePaused();
+      // Pause board Stockfish, but leave in-flight Game Analysis generation
+      // intact (no cancelled/"stopped" UI). Mark for soft-continue / hard
+      // restart on resume.
+      _handleLifecyclePaused(
+        deactivateGameReview: false,
+        noteGameReviewBackgrounded: true,
+      );
     } else {
       // inactive/hidden are transient focus or visibility states. Flutter also
       // synthesizes hidden before paused on mobile, so doing background work here
