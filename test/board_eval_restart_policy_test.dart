@@ -524,6 +524,211 @@ void main() {
     });
   });
 
+  group('engine PV side ownership (white / black / threats)', () {
+    // Starting position: white to move.
+    const whiteToMoveFen =
+        'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
+    // After 1.e4: black to move.
+    const blackToMoveFen =
+        'rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq e3 0 1';
+
+    test('boardEvalAnalysisFen never flips side when threats is off', () {
+      expect(
+        boardEvalAnalysisFen(whiteToMoveFen, isThreatsMode: false),
+        whiteToMoveFen,
+      );
+      expect(
+        boardEvalAnalysisFen(blackToMoveFen, isThreatsMode: false),
+        blackToMoveFen,
+      );
+      expect(boardEvalSideToMove(whiteToMoveFen), 'w');
+      expect(boardEvalSideToMove(blackToMoveFen), 'b');
+    });
+
+    test('threats mode flips only the analysis FEN side to move', () {
+      final threatOnWhite = boardEvalAnalysisFen(
+        whiteToMoveFen,
+        isThreatsMode: true,
+      );
+      final threatOnBlack = boardEvalAnalysisFen(
+        blackToMoveFen,
+        isThreatsMode: true,
+      );
+      expect(boardEvalSideToMove(threatOnWhite), 'b');
+      expect(boardEvalSideToMove(threatOnBlack), 'w');
+      // Piece placement unchanged.
+      expect(threatOnWhite.split(' ').first, whiteToMoveFen.split(' ').first);
+      expect(threatOnBlack.split(' ').first, blackToMoveFen.split(' ').first);
+    });
+
+    test(
+      'white-to-move UCI PVs convert to SAN and first move is legal for white',
+      () {
+        // Real engine-style multipv for the start position.
+        final lines = buildBoardAnalysisLinesFromUci(
+          fen: whiteToMoveFen,
+          pvMoveStrings: const [
+            'e2e4 e7e5 g1f3',
+            'd2d4 d7d5',
+            'g1f3 b8c6',
+          ],
+        );
+        expect(lines.length, 3);
+        expect(lines[0].sanMoves.first, 'e4');
+        expect(lines[0].moves.first.uci, 'e2e4');
+        expect(isFirstUciLegalForFen(whiteToMoveFen, 'e2e4'), isTrue);
+        // Opposite-side black reply is NOT legal for white-to-move.
+        expect(isFirstUciLegalForFen(whiteToMoveFen, 'e7e5'), isFalse);
+        for (final line in lines) {
+          expect(
+            isFirstUciLegalForFen(whiteToMoveFen, line.moves.first.uci),
+            isTrue,
+            reason: 'PV ${line.moves.first.uci} must be legal for white',
+          );
+        }
+      },
+    );
+
+    test(
+      'black-to-move UCI PVs convert to SAN and first move is legal for black',
+      () {
+        final lines = buildBoardAnalysisLinesFromUci(
+          fen: blackToMoveFen,
+          pvMoveStrings: const [
+            'e7e5 g1f3 b8c6',
+            'c7c5 g1f3',
+            'e7e6 d2d4',
+          ],
+        );
+        expect(lines.length, 3);
+        expect(lines[0].sanMoves.first, 'e5');
+        expect(lines[0].moves.first.uci, 'e7e5');
+        expect(isFirstUciLegalForFen(blackToMoveFen, 'e7e5'), isTrue);
+        // White's e2e4 is not legal when black is to move.
+        expect(isFirstUciLegalForFen(blackToMoveFen, 'e2e4'), isFalse);
+        for (final line in lines) {
+          expect(
+            isFirstUciLegalForFen(blackToMoveFen, line.moves.first.uci),
+            isTrue,
+            reason: 'PV ${line.moves.first.uci} must be legal for black',
+          );
+        }
+      },
+    );
+
+    test(
+      'stale opposite-side PVs fail board match and merge drops previous',
+      () {
+        // After a half-move the stored base is white-to-move but board is black.
+        expect(
+          boardPvLinesBelongToBoard(
+            principalVariationsBaseFen: whiteToMoveFen,
+            currentBoardFen: blackToMoveFen,
+          ),
+          isFalse,
+        );
+        expect(
+          boardPvLinesBelongToBoard(
+            principalVariationsBaseFen: blackToMoveFen,
+            currentBoardFen: blackToMoveFen,
+          ),
+          isTrue,
+        );
+
+        // Previous white multipv must not re-attach when black-to-move arrives.
+        final previousWhite = [
+          _line('e2e4 e7e5', eval: 0.3),
+          _line('d2d4 d7d5', eval: 0.2),
+          _line('g1f3 b8c6', eval: 0.1),
+        ];
+        final incomingBlack = [
+          _line('e7e5 g1f3', eval: 0.25),
+        ];
+        final merged = mergeBoardPvProgressForPosition(
+          previous: previousWhite,
+          incoming: incomingBlack,
+          previousBaseFen: whiteToMoveFen,
+          currentBoardFen: blackToMoveFen,
+        );
+        expect(merged.length, 1, reason: 'must not keep white multipv tail');
+        expect(merged.single.moves.first.uci, 'e7e5');
+        expect(
+          isFirstUciLegalForFen(blackToMoveFen, merged.single.moves.first.uci),
+          isTrue,
+        );
+      },
+    );
+
+    test(
+      'same-position merge still retains multi-line width (no regression)',
+      () {
+        final previous = [
+          _line('e7e5 g1f3', eval: 0.2),
+          _line('c7c5', eval: 0.1),
+        ];
+        final incoming = [
+          _line('e7e5 g1f3 b8c6', eval: 0.22),
+        ];
+        final merged = mergeBoardPvProgressForPosition(
+          previous: previous,
+          incoming: incoming,
+          previousBaseFen: blackToMoveFen,
+          currentBoardFen: blackToMoveFen,
+        );
+        expect(merged.length, 2);
+        expect(merged[0].moves.length, 3);
+        expect(merged[1].moves.first.uci, 'c7c5');
+      },
+    );
+
+    test('formatEnginePvNotation: white-to-move numbering', () {
+      final tokens = formatEnginePvNotation(
+        const ['e4', 'e5', 'Nf3'],
+        1,
+        true,
+      );
+      expect(tokens, ['1.', 'e4', 'e5', '2.', 'Nf3']);
+    });
+
+    test('formatEnginePvNotation: black-to-move opens with N…', () {
+      final tokens = formatEnginePvNotation(
+        const ['e5', 'Nf3', 'Nc6'],
+        1,
+        false,
+      );
+      expect(tokens.first, '1\u2026');
+      expect(tokens, ['1\u2026', 'e5', '2.', 'Nf3', 'Nc6']);
+    });
+
+    test(
+      'formatEnginePvNotation: threats mode flips ownership on white-to-move board',
+      () {
+        // Board is white to move; threats analyses black — first move is black's.
+        final tokens = formatEnginePvNotation(
+          const ['e5', 'Nf3'],
+          4,
+          true,
+          isThreatsMode: true,
+        );
+        expect(tokens.first, '4\u2026');
+        expect(tokens, ['4\u2026', 'e5', '5.', 'Nf3']);
+      },
+    );
+
+    test(
+      'formatEnginePvNotation: threats mode on black-to-move board is white first',
+      () {
+        final tokens = formatEnginePvNotation(
+          const ['e4', 'e5'],
+          1,
+          false,
+          isThreatsMode: true,
+        );
+        expect(tokens, ['1.', 'e4', 'e5']);
+      },
+    );
+  });
+
   group('provider wiring (shipped control path is used)', () {
     test('board provider imports and calls the restart policy', () {
       final source = io.File(
@@ -539,6 +744,10 @@ void main() {
       expect(source.contains('hasCompleteUsableBoardEval('), isTrue);
       expect(source.contains('configuredMultiPv:'), isTrue);
       expect(source.contains('mergeBoardPvProgress'), isTrue);
+      expect(source.contains('mergeBoardPvProgressForPosition'), isTrue);
+      expect(source.contains('boardEvalAnalysisFen'), isTrue);
+      expect(source.contains('_evalApplyStillValid'), isTrue);
+      expect(source.contains('boardPvLinesBelongToBoard'), isTrue);
       expect(source.contains('boardEvalShouldRetryAfterSettle'), isTrue);
       expect(source.contains('incomplete-board-settle'), isTrue);
       // Hard 10s search cap that froze depth must be gone.
@@ -561,6 +770,19 @@ void main() {
         source.contains('final shouldForce = force || (visibleIndex == index);'),
         isFalse,
       );
+    });
+
+    test('PV UI formats via shared formatEnginePvNotation helper', () {
+      final source = io.File(
+        'lib/screens/chessboard/chess_board_screen_new.dart',
+      ).readAsStringSync();
+      expect(
+        source.contains(
+          "import 'package:chessever2/screens/chessboard/provider/board_eval_restart_policy.dart';",
+        ),
+        isTrue,
+      );
+      expect(source.contains('formatEnginePvNotation('), isTrue);
     });
 
     test('stockfish always re-asserts MultiPV; no mid-search self-heal stop', () {

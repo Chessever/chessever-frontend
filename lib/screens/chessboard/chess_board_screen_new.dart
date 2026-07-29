@@ -20,6 +20,7 @@ import 'package:chessever2/screens/chessboard/game_review/game_analysis_report.d
 import 'package:chessever2/screens/chessboard/game_review/game_review_provider.dart';
 import 'package:chessever2/screens/chessboard/game_review/game_review_sheet.dart';
 import 'package:chessever2/screens/chessboard/game_review/game_review_sheet_host.dart';
+import 'package:chessever2/screens/chessboard/provider/board_eval_restart_policy.dart';
 import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
 import 'package:chessever2/screens/chessboard/provider/game_pgn_stream_provider.dart';
 import 'package:chessever2/screens/chessboard/provider/lichess_move_annotations_provider.dart';
@@ -15254,30 +15255,14 @@ class _PrincipalVariationListState
     bool whiteToMove, {
     bool isThreatsMode = false,
   }) {
-    // In threats mode the engine analyses a flipped FEN, so the PV moves
-    // belong to the opposite side from what the position indicates.
-    final effectiveWhiteToMove = isThreatsMode ? !whiteToMove : whiteToMove;
-
-    final formatted = <String>[];
-    for (var i = 0; i < sanMoves.length; i++) {
-      final isWhiteMove = effectiveWhiteToMove ? i.isEven : i.isOdd;
-
-      final moveNumber =
-          effectiveWhiteToMove
-              ? baseMoveNumber + (i ~/ 2)
-              : baseMoveNumber + ((i + 1) ~/ 2);
-
-      if (isWhiteMove) {
-        formatted.add('$moveNumber.');
-      } else if (i == 0 && isThreatsMode && !effectiveWhiteToMove) {
-        // Threats mode, black moves first: prefix with "N…" per standard
-        // notation (e.g. 4…Nf6 5.Nf3).
-        formatted.add('$moveNumber\u2026');
-      }
-
-      formatted.add(sanMoves[i]);
-    }
-    return formatted;
+    // Shared pure formatter: threats mode flips ownership; black-to-move
+    // always opens with "N…". See formatEnginePvNotation.
+    return formatEnginePvNotation(
+      sanMoves,
+      baseMoveNumber,
+      whiteToMove,
+      isThreatsMode: isThreatsMode,
+    );
   }
 
   Future<void> _showPvMoveActionSheet(

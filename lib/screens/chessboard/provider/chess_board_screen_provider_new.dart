@@ -3244,11 +3244,6 @@ class ChessBoardScreenNotifierNew
   }
 
   bool _principalVariationsMatchCurrentPosition(ChessBoardStateNew state) {
-    final pvBaseFen = state.principalVariationsBaseFen;
-    if (pvBaseFen == null) {
-      return false;
-    }
-
     final currentFen =
         state.isAnalysisMode
             ? state.analysisState.position.fen
@@ -3257,9 +3252,11 @@ class ChessBoardScreenNotifierNew
       return false;
     }
 
-    String fenKey(String fen) =>
-        fen.trim().split(RegExp(r'\s+')).take(4).join(' ');
-    return fenKey(pvBaseFen) == fenKey(currentFen);
+    return boardPvLinesBelongToBoard(
+      principalVariationsBaseFen: state.principalVariationsBaseFen,
+      currentBoardFen: currentFen,
+      normalizeFen: _normalizeFen,
+    );
   }
 
   void _requestVariantMoveFromCurrentPosition(ChessBoardStateNew currentState) {
@@ -5038,9 +5035,46 @@ class ChessBoardScreenNotifierNew
 
   List<AnalysisLine> _mergePvProgress(
     List<AnalysisLine> previous,
-    List<AnalysisLine> incoming,
-  ) {
+    List<AnalysisLine> incoming, {
+    String? previousBaseFen,
+    String? currentBoardFen,
+  }) {
+    // When callers know the board FEN, never re-attach previous half-move /
+    // opposite-side lines into the merge (regression: stale white lines on
+    // black-to-move after cascade race or incomplete clear).
+    if (currentBoardFen != null) {
+      return mergeBoardPvProgressForPosition(
+        previous: previous,
+        incoming: incoming,
+        previousBaseFen: previousBaseFen,
+        currentBoardFen: currentBoardFen,
+        normalizeFen: _normalizeFen,
+      );
+    }
     return mergeBoardPvProgress(previous, incoming);
+  }
+
+  /// True when this eval request still owns the UI and the board FEN matches
+  /// [expectedBoardFen] (including side to move). Stale cascade frames after a
+  /// half-move must not paint opposite-side PVs.
+  bool _evalApplyStillValid({
+    required int currentRequestId,
+    required String expectedBoardFen,
+  }) {
+    if (!mounted || _cancelEvaluation) return false;
+    if (_activeEvalRequestId != null &&
+        _activeEvalRequestId != currentRequestId) {
+      return false;
+    }
+    final snapshot = state.value;
+    if (snapshot == null) return false;
+    final pos =
+        snapshot.isAnalysisMode
+            ? snapshot.analysisState.position
+            : snapshot.position;
+    final currentFen = pos?.fen;
+    if (currentFen == null) return false;
+    return _normalizeFen(currentFen) == _normalizeFen(expectedBoardFen);
   }
 
   /// Legal-move count for MultiPV completeness (caps target width).
@@ -5705,7 +5739,10 @@ class ChessBoardScreenNotifierNew
 
       // In threats mode, analyze from opponent's perspective
       final isThreatsMode = initialState.isThreatsMode;
-      final fenToAnalyze = isThreatsMode ? _getThreatFen(fen) : fen;
+      final fenToAnalyze = boardEvalAnalysisFen(
+        fen,
+        isThreatsMode: isThreatsMode,
+      );
       final Position positionForAnalysis =
           isThreatsMode
               ? Position.setupPosition(Rule.chess, Setup.parseFen(fenToAnalyze))
@@ -6057,7 +6094,13 @@ class ChessBoardScreenNotifierNew
             context: 'cached/backend D:${cascadeEval.depth}',
             allowDecrease: !preserveDepthProgress,
           );
-          if (pvLines.isNotEmpty && mounted) {
+          // Guard: never apply cascade PVs after the board side/FEN changed or
+          // a newer eval request owns the UI (opposite-side lines / empty arrows).
+          if (pvLines.isNotEmpty &&
+              _evalApplyStillValid(
+                currentRequestId: currentRequestId,
+                expectedBoardFen: fen,
+              )) {
             final snapshot = state.value;
             if (snapshot != null) {
               final inAnalysis = snapshot.isAnalysisMode;
@@ -6070,6 +6113,8 @@ class ChessBoardScreenNotifierNew
               final mergedCascade = _mergePvProgress(
                 snapshot.principalVariations,
                 pvLines,
+                previousBaseFen: snapshot.principalVariationsBaseFen,
+                currentBoardFen: fen,
               );
               pvLines = mergedCascade;
               final updatedCascade = snapshot.copyWith(
@@ -6098,25 +6143,35 @@ class ChessBoardScreenNotifierNew
                 );
               }
             }
+          } else if (pvLines.isNotEmpty) {
+            _releaseLog(
+              '🚫 CASCADE APPLY: Skipped stale PVs (request superseded or side/FEN changed)',
+            );
+            pvLines = const [];
           }
-          if (shouldSkipLocalStockfish && pvLines.isNotEmpty && mounted) {
+          if (shouldSkipLocalStockfish &&
+              pvLines.isNotEmpty &&
+              _evalApplyStillValid(
+                currentRequestId: currentRequestId,
+                expectedBoardFen: fen,
+              )) {
             final snapshot = state.value;
             if (snapshot != null) {
+              final shapePos =
+                  snapshot.isThreatsMode
+                      ? positionForAnalysis
+                      : (snapshot.isAnalysisMode
+                          ? snapshot.analysisState.position
+                          : snapshot.position!);
               final shapes =
                   snapshot.selectedVariantIndex != null && pvLines.isNotEmpty
                       ? _getAllVariantArrowShapes(
                         pvLines,
                         snapshot.selectedVariantIndex!,
                         isThreatsMode: snapshot.isThreatsMode,
+                        legalForPosition: shapePos,
                       )
-                      : getBestMoveShape(
-                        snapshot.isThreatsMode
-                            ? positionForAnalysis
-                            : (snapshot.isAnalysisMode
-                                ? snapshot.analysisState.position
-                                : snapshot.position!),
-                        cascadeEval,
-                      );
+                      : getBestMoveShape(shapePos, cascadeEval);
               // Mark evaluation fully settled so same-FEN re-triggers no-op
               // via hasCompleteUsableBoardEval (isEvaluating must be false with
               // matching principalVariationsBaseFen).
@@ -6273,9 +6328,17 @@ class ChessBoardScreenNotifierNew
 
                 // Re-read state to avoid overwriting concurrent updates
                 final freshState = state.value ?? workingState;
+                if (!_evalApplyStillValid(
+                  currentRequestId: currentRequestId,
+                  expectedBoardFen: fen,
+                )) {
+                  return;
+                }
                 final mergedLines = _mergePvProgress(
                   freshState.principalVariations,
                   lines,
+                  previousBaseFen: freshState.principalVariationsBaseFen,
+                  currentBoardFen: fen,
                 );
                 pvLines = mergedLines;
 
@@ -6430,7 +6493,10 @@ class ChessBoardScreenNotifierNew
               fenToAnalyze,
               stockfishResult.pvs,
             );
-            if (mounted) {
+            if (_evalApplyStillValid(
+              currentRequestId: currentRequestId,
+              expectedBoardFen: fen,
+            )) {
               final currentState = state.value;
               if (currentState != null) {
                 if (finalLines.isNotEmpty) {
@@ -6439,7 +6505,14 @@ class ChessBoardScreenNotifierNew
                         .take(configuredMultiPV)
                         .toList(growable: false);
                   }
-                  pvLines = _mergePvProgress(pvLines, finalLines);
+                  // Prefer live same-position panel lines as previous so we
+                  // never glue a prior half-move's PV set onto this settle.
+                  pvLines = _mergePvProgress(
+                    currentState.principalVariations,
+                    finalLines,
+                    previousBaseFen: currentState.principalVariationsBaseFen,
+                    currentBoardFen: fen,
+                  );
                   final basePointer =
                       currentState.isAnalysisMode
                           ? currentState.analysisState.movePointer
@@ -6487,6 +6560,11 @@ class ChessBoardScreenNotifierNew
                   );
                 }
               }
+            } else if (finalLines.isNotEmpty) {
+              _releaseLog(
+                '🚫 STOCKFISH APPLY: Skipped stale final PVs (request superseded or side/FEN changed)',
+              );
+              pvLines = const [];
             }
           }
         }
@@ -6647,6 +6725,8 @@ class ChessBoardScreenNotifierNew
                   final mergedRetryLines = _mergePvProgress(
                     latestState.principalVariations,
                     retryPvLines,
+                    previousBaseFen: latestState.principalVariationsBaseFen,
+                    currentBoardFen: fen,
                   );
                   state = AsyncValue.data(
                     latestState.copyWith(
@@ -6760,13 +6840,11 @@ class ChessBoardScreenNotifierNew
               ? currentSnapshot.analysisState.position
               : currentSnapshot.position!;
 
-      // Allow small FEN differences (like move counters) during variant exploration
-      final currentFenBase = position.fen.split(' ').take(3).join(' ');
-      final evalFenBase = fen.split(' ').take(3).join(' ');
-
-      if (currentFenBase != evalFenBase) {
+      // Allow small FEN differences (halfmove/fullmove) but never a side/piece
+      // change — opposite-side lines must not land after a half-move.
+      if (_normalizeFen(position.fen) != _normalizeFen(fen)) {
         _releaseLog(
-          '🎯 EVAL: Position changed during eval (current=$currentFenBase vs eval=$evalFenBase)',
+          '🎯 EVAL: Position changed during eval (current=${_normalizeFen(position.fen)} vs eval=${_normalizeFen(fen)})',
         );
         state = AsyncValue.data(currentSnapshot.copyWith(isEvaluating: false));
         return;
@@ -6812,6 +6890,7 @@ class ChessBoardScreenNotifierNew
           pvLines,
           currentSnapshot.selectedVariantIndex!,
           isThreatsMode: currentSnapshot.isThreatsMode,
+          legalForPosition: positionForArrows,
         );
       } else {
         // Fallback: if primaryEval is null, build a minimal CloudEval from pvLines
@@ -7145,9 +7224,10 @@ class ChessBoardScreenNotifierNew
     if (cloudEval?.pvs.isNotEmpty ?? false) {
       final arrowShapes = <Shape>[];
 
-      // CRITICAL: Validate that the PVs are for the correct position
-      // The cloudEval.fen should match the position we're displaying arrows for
-      if (cloudEval!.fen != pos.fen) {
+      // CRITICAL: Validate that the PVs are for the correct position (incl.
+      // side to move). Ignore halfmove/fullmove so arrows do not vanish solely
+      // due to counter drift between board and cached eval FEN.
+      if (_normalizeFen(cloudEval!.fen) != _normalizeFen(pos.fen)) {
         _releaseLog('⚠️ PV ARROWS: Skipping - PVs are for different position');
         _releaseLog('   Current FEN: ${pos.fen}');
         _releaseLog('   Eval FEN: ${cloudEval.fen}');
@@ -7198,37 +7278,9 @@ class ChessBoardScreenNotifierNew
             Square from = Square.fromName(fromStr);
             Square to = Square.fromName(toStr);
 
-            // VALIDATION: Verify this move is legal for the current position
-            // This ensures we're showing moves for the correct color
-            final promotion = bestMove.length == 5 ? bestMove[4] : null;
-            NormalMove? move;
-
-            if (promotion != null) {
-              // Promotion move
-              final promRole = switch (promotion) {
-                'q' => Role.queen,
-                'r' => Role.rook,
-                'b' => Role.bishop,
-                'n' => Role.knight,
-                _ => Role.queen,
-              };
-              move = NormalMove(from: from, to: to, promotion: promRole);
-            } else {
-              move = NormalMove(from: from, to: to);
-            }
-
-            // Validate the move by trying to play it on the position
-            bool isLegal = false;
-            try {
-              // If play succeeds, the move is legal
-              pos.play(move);
-              isLegal = true;
-            } catch (e) {
-              // If play throws an exception, the move is illegal
-              isLegal = false;
-            }
-
-            if (!isLegal) {
+            // Validate the move is legal for this side/position so opposite-
+            // side UCI never paints and correct-side UCI is not dropped.
+            if (!isFirstUciLegalForFen(pos.fen, bestMove)) {
               _releaseLog(
                 '⚠️ PV ARROWS: Move $bestMove is not legal for position (turn: ${pos.turn})',
               );
@@ -7302,6 +7354,7 @@ class ChessBoardScreenNotifierNew
     List<AnalysisLine> variants,
     int selectedIndex, {
     bool isThreatsMode = false,
+    Position? legalForPosition,
   }) {
     final arrows = <Shape>[];
 
@@ -7309,12 +7362,21 @@ class ChessBoardScreenNotifierNew
     final engineSettings = ref.read(engineSettingsProviderNew).valueOrNull;
     final maxArrows = engineSettings?.getMaxArrowsOnBoard() ?? 3;
 
+    // When available, only draw arrows legal for the analysis position so
+    // opposite-side stale lines cannot paint (and correct-side lines still do).
+    final legalityFen = legalForPosition?.fen;
+
     for (int i = 0; i < variants.length && i < maxArrows; i++) {
       final variant = variants[i];
       if (variant.moves.isEmpty) continue;
 
       final move = variant.moves[0];
       if (move is! NormalMove) continue;
+
+      if (legalityFen != null &&
+          !isFirstUciLegalForFen(legalityFen, move.uci)) {
+        continue;
+      }
 
       try {
         final arrowColor =
@@ -7349,7 +7411,7 @@ class ChessBoardScreenNotifierNew
     return candidate;
   }
 
-  String _normalizeFen(String fen) => fen.split(' ').take(4).join(' ');
+  String _normalizeFen(String fen) => boardEvalNormalizeFen(fen);
 
   /// Parse the live game FEN into a display-only placeholder position.
   /// Returns null for non-live games, missing FEN, or parse failures.
@@ -7367,16 +7429,7 @@ class ChessBoardScreenNotifierNew
 
   /// Generate a "threat FEN" by flipping the side to move
   /// This allows analyzing what the opponent threatens on the current position
-  String _getThreatFen(String fen) {
-    final parts = fen.split(' ');
-    if (parts.length < 4) return fen;
-
-    final turn = parts[1];
-    final newTurn = turn == 'w' ? 'b' : 'w';
-    parts[1] = newTurn;
-    parts[3] = '-'; // Clear en passant target square
-    return parts.join(' ');
-  }
+  String _getThreatFen(String fen) => boardEvalFlipSideToMove(fen);
 
   /// Toggle threats mode on/off
   void toggleThreatsMode() {
@@ -7468,34 +7521,35 @@ class ChessBoardScreenNotifierNew
     final effectivePreserveDepth = previewActive ? true : preserveDepthProgress;
     final skipPvUpdates = previewActive;
 
-    // CRITICAL: Clear stale PVs immediately when position changes
+    // CRITICAL: Clear stale PVs immediately when position/side changes.
+    // Match on full board identity (incl. side to move) so opposite-side
+    // lines never linger while the next eval is scheduled.
     if (currentState.principalVariations.isNotEmpty) {
       final fenToEval =
           currentState.isAnalysisMode
               ? currentState.analysisState.position.fen
               : currentState.position?.fen;
 
-      // Check if current PVs match the position we're about to evaluate
-      // Use stored PV base FEN to detect staleness
       final pvBaseFen =
           currentState.principalVariationsBaseFen ??
           currentState.variantBaseFen;
-      if (pvBaseFen != null && fenToEval != null) {
-        final pvFenBase = pvBaseFen.split(' ').take(3).join(' ');
-        final currentFenBase = fenToEval.split(' ').take(3).join(' ');
-
-        if (pvFenBase != currentFenBase) {
-          _releaseLog('🎯 UPDATE EVAL: Clearing stale PVs for new position');
-          state = AsyncValue.data(
-            currentState.copyWith(
-              principalVariations: const [],
-              principalVariationsBaseFen: null,
-              selectedVariantIndex: null,
-              variantBaseFen: null,
-              variantMovePointer: const [],
-            ),
-          );
-        }
+      if (fenToEval != null &&
+          !boardPvLinesBelongToBoard(
+            principalVariationsBaseFen: pvBaseFen,
+            currentBoardFen: fenToEval,
+            normalizeFen: _normalizeFen,
+          )) {
+        _releaseLog('🎯 UPDATE EVAL: Clearing stale PVs for new position');
+        state = AsyncValue.data(
+          currentState.copyWith(
+            principalVariations: const [],
+            principalVariationsBaseFen: null,
+            selectedVariantIndex: null,
+            variantBaseFen: null,
+            variantMovePointer: const [],
+            shapes: const ISet.empty(),
+          ),
+        );
       }
     }
 

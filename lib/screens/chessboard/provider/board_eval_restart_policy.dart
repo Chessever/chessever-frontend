@@ -160,6 +160,156 @@ BoardEvalStartDecision decideBoardEvalStart({
   );
 }
 
+/// Normalize a FEN to the board identity used for PV / eval matching: piece
+/// placement, side to move, castling, en passant. Halfmove/fullmove ignored.
+String boardEvalNormalizeFen(String fen) {
+  final parts = fen.trim().split(RegExp(r'\s+'));
+  if (parts.length < 4) return fen.trim();
+  return parts.take(4).join(' ');
+}
+
+/// Side to move in [fen] (`w` / `b`); empty when malformed.
+String boardEvalSideToMove(String fen) {
+  final parts = fen.trim().split(RegExp(r'\s+'));
+  return parts.length > 1 ? parts[1] : '';
+}
+
+/// Flip only the side-to-move (and clear en passant). Used for threats mode.
+String boardEvalFlipSideToMove(String fen) {
+  final parts = fen.trim().split(RegExp(r'\s+'));
+  if (parts.length < 4) return fen;
+  final turn = parts[1];
+  parts[1] = turn == 'w' ? 'b' : 'w';
+  parts[3] = '-';
+  return parts.join(' ');
+}
+
+/// FEN actually analysed by the engine / used for UCI→SAN conversion.
+///
+/// Normal mode: the board FEN. Threats mode: side-to-move flipped so lines are
+/// the opponent's threats. Never flip when threats is off.
+String boardEvalAnalysisFen(String boardFen, {required bool isThreatsMode}) {
+  if (!isThreatsMode) return boardFen;
+  return boardEvalFlipSideToMove(boardFen);
+}
+
+/// Whether stored PV base FEN matches the board position (incl. side to move).
+bool boardPvLinesBelongToBoard({
+  required String? principalVariationsBaseFen,
+  required String currentBoardFen,
+  String Function(String fen)? normalizeFen,
+}) {
+  final base = principalVariationsBaseFen;
+  if (base == null || base.trim().isEmpty) return false;
+  final normalize = normalizeFen ?? boardEvalNormalizeFen;
+  return normalize(base) == normalize(currentBoardFen);
+}
+
+/// First UCI token of a PV is legal for [fen]'s side to move (and position).
+///
+/// Used to reject stale opposite-side lines and to decide whether a board arrow
+/// may be drawn for that recommendation.
+bool isFirstUciLegalForFen(String fen, String firstUci) {
+  final token = firstUci.trim().split(RegExp(r'\s+')).firstWhere(
+    (t) => t.isNotEmpty,
+    orElse: () => '',
+  );
+  if (token.isEmpty) return false;
+  try {
+    final position = Position.setupPosition(Rule.chess, Setup.parseFen(fen));
+    var parsed = Move.parse(token);
+    if (parsed == null) return false;
+    if (parsed is NormalMove) {
+      parsed = position.normalizeMove(parsed);
+    }
+    position.play(parsed);
+    return true;
+  } catch (_) {
+    return false;
+  }
+}
+
+/// Convert engine UCI PVs into [AnalysisLine]s for [fen] (side that owns the
+/// search). Prefixes that convert cleanly are kept when a tail token fails.
+///
+/// This is the pure core of the board provider's analysis-lines worker so unit
+/// tests drive the same SAN path the UI ships.
+List<AnalysisLine> buildBoardAnalysisLinesFromUci({
+  required String fen,
+  required List<String> pvMoveStrings,
+}) {
+  if (pvMoveStrings.isEmpty) return const [];
+  Position basePosition;
+  try {
+    basePosition = Position.setupPosition(Rule.chess, Setup.parseFen(fen));
+  } catch (_) {
+    return const [];
+  }
+
+  final lines = <AnalysisLine>[];
+  for (final movesString in pvMoveStrings) {
+    final tokens =
+        movesString.split(' ').where((token) => token.isNotEmpty).toList();
+    if (tokens.isEmpty) continue;
+
+    var position = basePosition;
+    final moves = <Move>[];
+    final sanMoves = <String>[];
+
+    for (final token in tokens) {
+      var parsedMove = Move.parse(token);
+      if (parsedMove == null) break;
+      if (parsedMove is NormalMove) {
+        parsedMove = position.normalizeMove(parsedMove);
+      }
+      try {
+        final (nextPosition, san) = position.makeSan(parsedMove);
+        position = nextPosition;
+        moves.add(parsedMove);
+        sanMoves.add(san);
+      } catch (_) {
+        break;
+      }
+    }
+
+    if (moves.isEmpty) continue;
+    lines.add(AnalysisLine(moves: moves, sanMoves: sanMoves));
+  }
+  return lines;
+}
+
+/// PV move-number notation for board engine lines.
+///
+/// [whiteToMove] is the board side to move. When [isThreatsMode] is true the
+/// engine analysed the flipped side, so ownership flips for numbering.
+/// Black's first half-move always gets an `N…` prefix (standard notation).
+List<String> formatEnginePvNotation(
+  List<String> sanMoves,
+  int baseMoveNumber,
+  bool whiteToMove, {
+  bool isThreatsMode = false,
+}) {
+  final effectiveWhiteToMove = isThreatsMode ? !whiteToMove : whiteToMove;
+  final formatted = <String>[];
+  for (var i = 0; i < sanMoves.length; i++) {
+    final isWhiteMove = effectiveWhiteToMove ? i.isEven : i.isOdd;
+    final moveNumber =
+        effectiveWhiteToMove
+            ? baseMoveNumber + (i ~/ 2)
+            : baseMoveNumber + ((i + 1) ~/ 2);
+
+    if (isWhiteMove) {
+      formatted.add('$moveNumber.');
+    } else if (i == 0 && !isWhiteMove) {
+      // Black opens the PV (normal black-to-move, or threats when white just
+      // moved): prefix with "N…" per standard notation.
+      formatted.add('$moveNumber\u2026');
+    }
+    formatted.add(sanMoves[i]);
+  }
+  return formatted;
+}
+
 /// Merge progressive / cascade PV frames without shrinking the panel and
 /// without collapsing multi-ply lines to a single half-move snapshot.
 ///
@@ -167,7 +317,8 @@ BoardEvalStartDecision decideBoardEvalStart({
 /// whose conversion failed mid-tail) keeps previously known same-position lines
 /// beyond its own length and prefers the longer move list when the incoming
 /// line is a prefix of the previous one. Call sites clear [previous] on
-/// position change.
+/// position change — prefer [mergeBoardPvProgressForPosition] which enforces
+/// that.
 List<AnalysisLine> mergeBoardPvProgress(
   List<AnalysisLine> previous,
   List<AnalysisLine> incoming,
@@ -224,6 +375,26 @@ List<AnalysisLine> mergeBoardPvProgress(
     merged.add(previous[i]);
   }
   return merged;
+}
+
+/// Like [mergeBoardPvProgress], but drops [previous] entirely when it belongs
+/// to a different board FEN (including a different side to move). Prevents
+/// opposite-side engine lines from being re-attached after a half-move.
+List<AnalysisLine> mergeBoardPvProgressForPosition({
+  required List<AnalysisLine> previous,
+  required List<AnalysisLine> incoming,
+  required String? previousBaseFen,
+  required String currentBoardFen,
+  String Function(String fen)? normalizeFen,
+}) {
+  if (!boardPvLinesBelongToBoard(
+    principalVariationsBaseFen: previousBaseFen,
+    currentBoardFen: currentBoardFen,
+    normalizeFen: normalizeFen,
+  )) {
+    return incoming;
+  }
+  return mergeBoardPvProgress(previous, incoming);
 }
 
 /// Whether a finished settle should schedule another search to grow MultiPV
