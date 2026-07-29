@@ -1,5 +1,3 @@
-import 'dart:async';
-
 import 'package:chessever2/services/lichess_move_annotations_service.dart';
 import 'package:flutter/foundation.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -32,10 +30,6 @@ class LichessMoveAnnotationsParams {
   int get hashCode =>
       Object.hash(lichessGameId, siteUrl, signature, isLiveGame);
 }
-
-/// Delay before re-probing when the first fetch returned empty/null.
-/// Lichess computer analysis is often still running on first open.
-const Duration kLichessAnnotationsEmptyRetryDelay = Duration(seconds: 20);
 
 final lichessMoveAnnotationsProvider = FutureProvider.family.autoDispose<
   Map<int, LichessMoveAnnotation>?,
@@ -70,30 +64,6 @@ final lichessMoveAnnotationsProvider = FutureProvider.family.autoDispose<
     debugPrint(
       '🔍 [AnnotationsProvider] Annotation indices: ${result.keys.toList()}',
     );
-    return result;
   }
-
-  // Analysis not ready yet (or none). Soft-invalidate so watchers rebuild when
-  // a later probe returns markers — without requiring a tap/gesture.
-  if (LichessMoveAnnotationsService.shouldScheduleEmptyRetry(
-    gameId,
-    params.signature,
-  )) {
-    LichessMoveAnnotationsService.recordEmptyRetryScheduled(
-      gameId,
-      params.signature,
-    );
-    final link = ref.keepAlive();
-    final timer = Timer(kLichessAnnotationsEmptyRetryDelay, () {
-      link.close();
-      try {
-        ref.invalidateSelf();
-      } catch (_) {
-        // Provider may already be disposed.
-      }
-    });
-    ref.onDispose(timer.cancel);
-  }
-
   return result;
 });
