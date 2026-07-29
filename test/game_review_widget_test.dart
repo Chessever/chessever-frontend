@@ -526,8 +526,8 @@ void main() {
       findsAtLeastNWidgets(1),
     );
     expect(find.text('Forced'), findsNothing);
-    expect(find.text('Best'), findsOneWidget);
-    expect(find.text('Great'), findsOneWidget);
+    expect(find.text('Great move'), findsOneWidget);
+    expect(find.text('Top move'), findsOneWidget);
     expect(find.text('Missed Win'), findsOneWidget);
     expect(find.text('1-0'), findsNothing);
     expect(find.byType(CircleAvatar), findsNothing);
