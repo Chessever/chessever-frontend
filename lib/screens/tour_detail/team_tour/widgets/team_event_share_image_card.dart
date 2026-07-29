@@ -14,12 +14,16 @@ class TeamEventShareMatchRow {
     required this.ourPointsLabel,
     required this.opponentPointsLabel,
     required this.result,
+    this.roundLabel,
   });
 
   final String opponentTeam;
   final String ourPointsLabel;
   final String opponentPointsLabel;
   final TeamMatchResult result;
+
+  /// Numeric round label like `"6."` when available; null for knockout-style.
+  final String? roundLabel;
 }
 
 /// Branded share image for a team scorecard (dark palette, independent of app theme).
@@ -53,6 +57,15 @@ class TeamEventShareImageCard extends StatelessWidget {
   static const _gold = kLightYellowColor;
   static const _padH = 22.0;
   static const footerSlogan = 'Follow Chess Better';
+
+  /// Static MATCHES heading when no row carries a round label; null otherwise
+  /// (rows show their own round text, matching the live score card).
+  static String? _matchesSectionHeading(List<TeamEventShareMatchRow> matches) {
+    for (final m in matches) {
+      if (m.roundLabel != null && m.roundLabel!.isNotEmpty) return null;
+    }
+    return 'MATCHES';
+  }
 
   /// Compact share label: optional title + surname-first name, e.g. "GM Carlsen".
   static String playerShareLabel(PlayerStandingModel player) {
@@ -114,17 +127,20 @@ class TeamEventShareImageCard extends StatelessWidget {
                 ],
                 if (matches.isNotEmpty) ...[
                   const SizedBox(height: 14),
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: _padH),
-                    child: Text(
-                      'MATCHES',
-                      style: AppTypography.textXsMedium.copyWith(
-                        color: _textLo,
-                        letterSpacing: 1.2,
+                  // Prefer per-row round labels when available; else static MATCHES.
+                  if (_matchesSectionHeading(matches) case final heading?) ...[
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: _padH),
+                      child: Text(
+                        heading,
+                        style: AppTypography.textXsMedium.copyWith(
+                          color: _textLo,
+                          letterSpacing: 1.2,
+                        ),
                       ),
                     ),
-                  ),
-                  const SizedBox(height: 6),
+                    const SizedBox(height: 6),
+                  ],
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: _padH),
                     child: Container(
@@ -446,10 +462,25 @@ class _MatchRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final round = row.roundLabel?.trim();
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
       child: Row(
         children: [
+          if (round != null && round.isNotEmpty) ...[
+            SizedBox(
+              width: 24,
+              child: Text(
+                round,
+                maxLines: 1,
+                style: AppTypography.textXsBold.copyWith(
+                  color: TeamEventShareImageCard._textMid,
+                  fontFeatures: const [FontFeature.tabularFigures()],
+                ),
+              ),
+            ),
+            const SizedBox(width: 6),
+          ],
           Expanded(
             child: Text(
               teamName,

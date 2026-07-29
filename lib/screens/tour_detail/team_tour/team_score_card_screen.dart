@@ -157,23 +157,26 @@ class TeamScoreCardScreen extends ConsumerWidget {
                       ),
                     ),
                   ),
-                SliverToBoxAdapter(
-                  child: Padding(
-                    padding: EdgeInsets.fromLTRB(
-                      horizontalPadding,
-                      18.h,
-                      horizontalPadding,
-                      10.h,
-                    ),
-                    child: Text(
-                      'MATCHES',
-                      style: AppTypography.textXsMedium.copyWith(
-                        color: context.colors.textTertiary,
-                        letterSpacing: 1.2,
+                if (teamMatchesSectionHeading(matches) case final heading?)
+                  SliverToBoxAdapter(
+                    child: Padding(
+                      padding: EdgeInsets.fromLTRB(
+                        horizontalPadding,
+                        18.h,
+                        horizontalPadding,
+                        10.h,
+                      ),
+                      child: Text(
+                        heading,
+                        style: AppTypography.textXsMedium.copyWith(
+                          color: context.colors.textTertiary,
+                          letterSpacing: 1.2,
+                        ),
                       ),
                     ),
-                  ),
-                ),
+                  )
+                else if (matches.isNotEmpty)
+                  SliverToBoxAdapter(child: SizedBox(height: 18.h)),
                 if (matches.isEmpty)
                   SliverToBoxAdapter(
                     child: Padding(
@@ -424,6 +427,7 @@ Future<void> _shareTeamScorecard({
           ourPointsLabel: m.ourPointsLabel,
           opponentPointsLabel: m.opponentPointsLabel,
           result: m.result,
+          roundLabel: teamMatchHasRoundNumber(m) ? m.roundLabel : null,
         ),
     ];
     final avgElo =

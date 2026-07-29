@@ -305,15 +305,26 @@ class GameAnalysisReportController extends ChangeNotifier {
 
   Future<void> cancel() async {
     if (!_state.isRunning) return;
+    // Leave `running` immediately. Engine teardown can wait on bestmove/idle
+    // (and hang if Stockfish was suspended while the app was backgrounded);
+    // the CTA must not stay stuck on progress for that duration.
     _generation++;
-    await _stockfish.cancelEvaluationsForOwner(_ownerId);
-    _stockfish.notifyEngineReleased();
     _setState(
       const GameReportState(
         status: GameReportStatus.cancelled,
-        message: 'Analysis paused. It will restart when this game is active.',
+        message: 'Analysis cancelled. Tap Generate Report to try again.',
       ),
     );
+    // Best-effort teardown after UI state is already non-running. Generation
+    // bump already invalidates the in-flight analyze loop.
+    try {
+      await _stockfish.cancelEvaluationsForOwner(_ownerId);
+    } catch (_) {
+      // Engine may be suspended or disposed after backgrounding.
+    }
+    try {
+      _stockfish.notifyEngineReleased();
+    } catch (_) {}
   }
 
   Future<void> analyze(

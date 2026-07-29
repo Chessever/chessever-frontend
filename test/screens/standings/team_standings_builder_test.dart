@@ -205,20 +205,37 @@ void main() {
       ];
       final m = buildTeamMatches(games: games, teamName: 'A');
       expect(m.length, 2);
-      // Sorted by round number ascending.
-      expect(m[0].opponentTeam, 'B');
-      expect(m[0].ourPoints, 1.5);
-      expect(m[0].opponentPoints, 0.5);
-      expect(m[0].result, TeamMatchResult.win);
-      expect(m[0].matchPoints, 2);
-      expect(m[0].roundLabel, '1.');
-      expect(m[1].opponentTeam, 'C');
-      expect(m[1].result, TeamMatchResult.loss);
-      expect(m[1].matchPoints, 0);
+      // Sorted by round number descending (latest first).
+      expect(m[0].opponentTeam, 'C');
+      expect(m[0].result, TeamMatchResult.loss);
+      expect(m[0].matchPoints, 0);
+      expect(m[0].roundLabel, '2.');
+      expect(m[1].opponentTeam, 'B');
+      expect(m[1].ourPoints, 1.5);
+      expect(m[1].opponentPoints, 0.5);
+      expect(m[1].result, TeamMatchResult.win);
+      expect(m[1].matchPoints, 2);
+      expect(m[1].roundLabel, '1.');
       // Each match carries its individual board games.
-      expect(m[0].boardGames.length, 2);
-      expect(m[0].boardGames.first.result, TeamMatchResult.win);
-      expect(m[0].boardGames.first.ourIsWhite, isTrue);
+      expect(m[1].boardGames.length, 2);
+      expect(m[1].boardGames.first.result, TeamMatchResult.win);
+      expect(m[1].boardGames.first.ourIsWhite, isTrue);
+    });
+
+    test('latest round is top-most across three rounds', () {
+      final games = [
+        for (final round in ['round-1', 'round-3', 'round-2'])
+          _game(
+            round: round,
+            whiteTeam: 'A',
+            blackTeam: 'B',
+            status: GameStatus.draw,
+            board: 1,
+          ),
+      ];
+      final m = buildTeamMatches(games: games, teamName: 'A');
+      expect(m.map((e) => e.roundLabel).toList(), ['3.', '2.', '1.']);
+      expect(m.first.roundId, 'round-3');
     });
 
     test('unfinished board leaves the match ongoing', () {
@@ -243,6 +260,56 @@ void main() {
       expect(m[0].complete, isFalse);
       expect(m[0].result, TeamMatchResult.ongoing);
       expect(m[0].ourPoints, 1.0);
+    });
+  });
+
+  group('teamMatchesSectionHeading / round info', () {
+    test('numeric rounds → null heading (use per-match round labels)', () {
+      final games = [
+        _game(
+          round: 'round-1',
+          whiteTeam: 'A',
+          blackTeam: 'B',
+          status: GameStatus.draw,
+        ),
+        _game(
+          round: 'round-2',
+          whiteTeam: 'A',
+          blackTeam: 'C',
+          status: GameStatus.draw,
+        ),
+      ];
+      final m = buildTeamMatches(games: games, teamName: 'A');
+      expect(teamMatchesHaveRoundInfo(m), isTrue);
+      expect(teamMatchesSectionHeading(m), isNull);
+      expect(teamMatchHasRoundNumber(m.first), isTrue);
+      expect(m.first.roundLabel, '2.');
+    });
+
+    test('non-numeric knockout stages → MATCHES fallback', () {
+      final games = [
+        _game(
+          round: 'semi-final',
+          whiteTeam: 'A',
+          blackTeam: 'B',
+          status: GameStatus.whiteWins,
+        ),
+        _game(
+          round: 'final',
+          whiteTeam: 'A',
+          blackTeam: 'C',
+          status: GameStatus.draw,
+        ),
+      ];
+      final m = buildTeamMatches(games: games, teamName: 'A');
+      expect(teamMatchesHaveRoundInfo(m), isFalse);
+      expect(teamMatchesSectionHeading(m), 'MATCHES');
+      expect(teamMatchHasRoundNumber(m.first), isFalse);
+    });
+
+    test('empty list falls back to MATCHES', () {
+      expect(teamMatchesSectionHeading(const <TeamMatch>[]), 'MATCHES');
+      expect(teamMatchesHaveRoundInfo(const <TeamMatch>[]), isFalse);
     });
   });
 }

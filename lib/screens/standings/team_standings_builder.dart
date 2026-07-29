@@ -325,13 +325,40 @@ List<TeamMatch> buildTeamMatches({
     );
   }
 
+  // Latest round first; unparseable round ids sink to the bottom.
   matches.sort((a, b) {
-    final ar = _roundNumber(a.roundSlug ?? a.roundId) ?? 1 << 30;
-    final br = _roundNumber(b.roundSlug ?? b.roundId) ?? 1 << 30;
-    return ar.compareTo(br);
+    final ar = _roundNumber(a.roundSlug ?? a.roundId);
+    final br = _roundNumber(b.roundSlug ?? b.roundId);
+    if (ar == null && br == null) return 0;
+    if (ar == null) return 1;
+    if (br == null) return -1;
+    return br.compareTo(ar);
   });
   return matches;
 }
+
+/// Whether any match has a parseable round number (round robin / swiss style).
+/// Knockout-style events often only have stage names, so this is false.
+bool teamMatchesHaveRoundInfo(Iterable<TeamMatch> matches) {
+  for (final m in matches) {
+    if (_roundNumber(m.roundSlug ?? m.roundId) != null) return true;
+  }
+  return false;
+}
+
+/// Section heading for the team matches block on the score card / share image.
+///
+/// Returns `'MATCHES'` when no usable round numbers exist (e.g. team knockout).
+/// Returns `null` when callers should use per-match [TeamMatch.roundLabel]
+/// instead of a static heading.
+String? teamMatchesSectionHeading(Iterable<TeamMatch> matches) {
+  if (teamMatchesHaveRoundInfo(matches)) return null;
+  return 'MATCHES';
+}
+
+/// Whether this match has a numeric round suitable for a "1." / "6." label.
+bool teamMatchHasRoundNumber(TeamMatch match) =>
+    _roundNumber(match.roundSlug ?? match.roundId) != null;
 
 TeamMatchResult _boardResultFor(GameStatus status, bool ourIsWhite) {
   switch (status) {

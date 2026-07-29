@@ -11944,6 +11944,11 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
       final sheet = GameReviewSheetScope.maybeOf(context);
       if (sheet == null) return;
       unawaited(() async {
+        // Second tap while generating stops the run and does not open the sheet.
+        if (reviewController.reviewState.reportState.isRunning) {
+          await reviewController.stopAnalysis();
+          return;
+        }
         reviewController.reveal();
         // On-demand generation (free daily slot / premium unlimited). Cached
         // reports return immediately without consuming quota.

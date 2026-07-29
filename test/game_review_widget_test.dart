@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io' as io;
 
 import 'package:chessever2/repository/lichess/cloud_eval/cloud_eval.dart';
@@ -117,6 +118,252 @@ void main() {
     expect(source, isNot(contains('_scheduleAnalyze')));
     expect(source, isNot(contains('Timer(')));
     expect(source, contains('requestAnalysis('));
+    expect(source, contains('stopAnalysis('));
+  });
+
+  test(
+    'deactivate while running leaves non-running CTA and resume does not auto-start',
+    () async {
+      final gate = Completer<void>();
+      var claims = 0;
+      Future<EnhancedCloudEval> blockedEvaluator(
+        String fen, {
+        required int depth,
+        required int multiPv,
+        required String ownerId,
+        void Function(int reachedDepth, int knodes)? onProgress,
+      }) async {
+        await gate.future;
+        return EnhancedCloudEval(
+          fen: fen,
+          knodes: 100,
+          depth: depth,
+          pvs: [Pv(moves: 'e2e4', cp: 0)],
+          requestedMultiPv: multiPv,
+        );
+      }
+
+      final reportController = GameAnalysisReportController(
+        evaluator: blockedEvaluator,
+      );
+      final controller = MobileGameReviewController(
+        reportController: reportController,
+        claimQuota: (_) async {
+          claims++;
+          return const GameAnalysisClaimResult(
+            allowed: true,
+            reason: 'premium',
+            isPremium: true,
+          );
+        },
+      );
+      addTearDown(controller.dispose);
+
+      controller.configure(
+        game: ChessGame.fromPgn(
+          'bg-cancel',
+          '[White "A"]\n[Black "B"]\n[Result "1-0"]\n\n1. e4 e5 1-0',
+        ),
+        active: true,
+        finished: true,
+        whiteRating: 2100,
+        blackRating: 2050,
+      );
+
+      // Start without awaiting completion (evaluator is gated).
+      unawaited(controller.retry());
+      for (
+        var i = 0;
+        i < 50 && !controller.reviewState.reportState.isRunning;
+        i++
+      ) {
+        await Future<void>.delayed(const Duration(milliseconds: 10));
+      }
+      expect(controller.reviewState.reportState.status, GameReportStatus.running);
+      expect(claims, 1);
+
+      // Lifecycle deactivate (background / swipe-away) cancels promptly.
+      controller.setActive(false);
+      // Status must leave running without waiting on the blocked evaluator.
+      for (
+        var i = 0;
+        i < 20 && controller.reviewState.reportState.isRunning;
+        i++
+      ) {
+        await Future<void>.delayed(const Duration(milliseconds: 5));
+      }
+      expect(controller.reviewState.reportState.isRunning, isFalse);
+      expect(
+        controller.reviewState.reportState.status,
+        GameReportStatus.cancelled,
+      );
+      // Cancelled surfaces as retry CTA, not in-progress %.
+      expect(
+        controller.reviewState.reportState.status == GameReportStatus.running,
+        isFalse,
+      );
+
+      // Resume must not auto-start a new report or spend another claim.
+      final claimsBeforeResume = claims;
+      controller.setActive(true);
+      await Future<void>.delayed(const Duration(milliseconds: 60));
+      expect(controller.reviewState.reportState.isRunning, isFalse);
+      expect(claims, claimsBeforeResume);
+
+      gate.complete();
+      // Explicit ask after stop can run again.
+      await controller.retry();
+      expect(claims, claimsBeforeResume + 1);
+      expect(
+        controller.reviewState.reportState.status,
+        GameReportStatus.completed,
+      );
+    },
+  );
+
+  test('second tap / stopAnalysis stops generation while running', () async {
+    final gate = Completer<void>();
+    Future<EnhancedCloudEval> blockedEvaluator(
+      String fen, {
+      required int depth,
+      required int multiPv,
+      required String ownerId,
+      void Function(int reachedDepth, int knodes)? onProgress,
+    }) async {
+      await gate.future;
+      return EnhancedCloudEval(
+        fen: fen,
+        knodes: 100,
+        depth: depth,
+        pvs: [Pv(moves: 'e2e4', cp: 0)],
+        requestedMultiPv: multiPv,
+      );
+    }
+
+    final reportController = GameAnalysisReportController(
+      evaluator: blockedEvaluator,
+    );
+    final controller = MobileGameReviewController(
+      reportController: reportController,
+      claimQuota: _allowClaim,
+    );
+    addTearDown(controller.dispose);
+
+    controller.configure(
+      game: ChessGame.fromPgn(
+        'second-tap',
+        '[White "A"]\n[Black "B"]\n[Result "1-0"]\n\n1. e4 e5 1-0',
+      ),
+      active: true,
+      finished: true,
+      whiteRating: 2100,
+      blackRating: 2050,
+    );
+
+    unawaited(controller.retry());
+    for (
+      var i = 0;
+      i < 50 && !controller.reviewState.reportState.isRunning;
+      i++
+    ) {
+      await Future<void>.delayed(const Duration(milliseconds: 10));
+    }
+    expect(controller.reviewState.reportState.isRunning, isTrue);
+
+    // Same user-facing entry the notation button uses when already running.
+    await controller.stopAnalysis();
+    expect(controller.reviewState.reportState.isRunning, isFalse);
+    expect(
+      controller.reviewState.reportState.status,
+      GameReportStatus.cancelled,
+    );
+
+    // retry() while running also stops (sheet / second path).
+    final gate2 = Completer<void>();
+    final report2 = GameAnalysisReportController(
+      evaluator: (
+        String fen, {
+        required int depth,
+        required int multiPv,
+        required String ownerId,
+        void Function(int reachedDepth, int knodes)? onProgress,
+      }) async {
+        await gate2.future;
+        return EnhancedCloudEval(
+          fen: fen,
+          knodes: 100,
+          depth: depth,
+          pvs: [Pv(moves: 'e2e4', cp: 0)],
+          requestedMultiPv: multiPv,
+        );
+      },
+    );
+    final controller2 = MobileGameReviewController(
+      reportController: report2,
+      claimQuota: _allowClaim,
+    );
+    addTearDown(controller2.dispose);
+    controller2.configure(
+      game: ChessGame.fromPgn(
+        'retry-stops',
+        '[White "A"]\n[Black "B"]\n[Result "1-0"]\n\n1. d4 d5 1-0',
+      ),
+      active: true,
+      finished: true,
+      whiteRating: 2100,
+      blackRating: 2050,
+    );
+    unawaited(controller2.retry());
+    for (
+      var i = 0;
+      i < 50 && !controller2.reviewState.reportState.isRunning;
+      i++
+    ) {
+      await Future<void>.delayed(const Duration(milliseconds: 10));
+    }
+    expect(controller2.reviewState.reportState.isRunning, isTrue);
+    await controller2.retry();
+    expect(controller2.reviewState.reportState.isRunning, isFalse);
+    expect(
+      controller2.reviewState.reportState.status,
+      GameReportStatus.cancelled,
+    );
+
+    gate.complete();
+    gate2.complete();
+  });
+
+  test('openGameReview path stops when report is running (source wiring)', () {
+    final boardSource =
+        io.File(
+          'lib/screens/chessboard/chess_board_screen_new.dart',
+        ).readAsStringSync();
+    expect(boardSource, contains('stopAnalysis()'));
+    expect(
+      boardSource,
+      contains('reportState.isRunning'),
+      reason: 'openGameReview must branch on running to stop without sheet open',
+    );
+    final reportSource =
+        io.File(
+          'lib/screens/chessboard/game_review/game_analysis_report.dart',
+        ).readAsStringSync();
+    // Cancel must set cancelled status before awaiting Stockfish teardown.
+    final cancelIdx = reportSource.indexOf('Future<void> cancel() async');
+    expect(cancelIdx, greaterThan(0));
+    final cancelBody = reportSource.substring(
+      cancelIdx,
+      cancelIdx + 800,
+    );
+    final statusBeforeAwait =
+        cancelBody.indexOf('GameReportStatus.cancelled') <
+        cancelBody.indexOf('cancelEvaluationsForOwner');
+    expect(
+      statusBeforeAwait,
+      isTrue,
+      reason: 'UI status must leave running before engine cancel await',
+    );
+    expect(cancelBody, isNot(contains('will restart when this game is active')));
   });
 
   test(

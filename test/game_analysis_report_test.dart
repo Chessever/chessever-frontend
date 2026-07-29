@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:chessever2/repository/lichess/cloud_eval/cloud_eval.dart';
@@ -243,6 +244,73 @@ void main() {
       expect(controller.state.status, GameReportStatus.completed);
       expect(controller.state.report, isNotNull);
     });
+
+    test(
+      'cancel leaves running immediately even while evaluator is blocked',
+      () async {
+        final gate = Completer<void>();
+        var evalCalls = 0;
+        Future<EnhancedCloudEval> blockedEvaluator(
+          String fen, {
+          required int depth,
+          required int multiPv,
+          required String ownerId,
+          void Function(int reachedDepth, int knodes)? onProgress,
+        }) async {
+          evalCalls++;
+          // Hang until the test releases — models Stockfish suspended in
+          // background so cancel must not wait on engine idle to flip UI.
+          await gate.future;
+          return EnhancedCloudEval(
+            fen: fen,
+            knodes: 100,
+            depth: depth,
+            pvs: [Pv(moves: 'e2e4', cp: 0)],
+            requestedMultiPv: multiPv,
+          );
+        }
+
+        final controller = GameAnalysisReportController(
+          evaluator: blockedEvaluator,
+        );
+        addTearDown(controller.dispose);
+        final game = ChessGame.fromPgn('cancel-bg', '1. e4 e5 2. Nf3 *');
+
+        final analyzeFuture = controller.analyze(game);
+        // Wait until status is running (first eval entered).
+        for (var i = 0; i < 50 && !controller.state.isRunning; i++) {
+          await Future<void>.delayed(const Duration(milliseconds: 10));
+        }
+        expect(controller.state.status, GameReportStatus.running);
+        expect(evalCalls, greaterThan(0));
+
+        // cancel() must flip off running without waiting for the blocked eval.
+        final cancelFuture = controller.cancel();
+        // Microtask / sync path: status is cancelled before cancel completes.
+        expect(controller.state.status, GameReportStatus.cancelled);
+        expect(controller.state.isRunning, isFalse);
+        expect(
+          controller.state.message,
+          isNot(contains('will restart')),
+          reason: 'no false promise of auto-restart on become-active',
+        );
+
+        await cancelFuture;
+        expect(controller.state.status, GameReportStatus.cancelled);
+
+        // Release the hung evaluator; the aborted generation must not complete.
+        gate.complete();
+        await analyzeFuture;
+        expect(controller.state.status, GameReportStatus.cancelled);
+        expect(controller.state.report, isNull);
+
+        // A fresh explicit start still works after cancel.
+        final controller2 = GameAnalysisReportController(evaluator: evaluator);
+        addTearDown(controller2.dispose);
+        await controller2.analyze(ChessGame.fromPgn('after-cancel', '1. e4 *'));
+        expect(controller2.state.status, GameReportStatus.completed);
+      },
+    );
   });
 
   group('move classification', () {

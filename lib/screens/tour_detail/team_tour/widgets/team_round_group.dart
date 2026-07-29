@@ -83,11 +83,25 @@ class _TeamRoundGroupState extends State<TeamRoundGroup> {
 
     final chevronSize = 20.ic;
 
+    final showRound = teamMatchHasRoundNumber(match);
+
     return Padding(
       padding: EdgeInsets.only(bottom: 8.h),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          if (showRound)
+            Padding(
+              padding: EdgeInsets.only(left: 2.w, bottom: 6.h),
+              child: Text(
+                match.roundLabel,
+                style: AppTypography.textXsMedium.copyWith(
+                  color: colors.textTertiary,
+                  letterSpacing: 1.0,
+                  fontFeatures: const [FontFeature.tabularFigures()],
+                ),
+              ),
+            ),
           Material(
             color: colors.surface,
             borderRadius: BorderRadius.circular(12.br),

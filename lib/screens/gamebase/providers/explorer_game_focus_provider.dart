@@ -1,8 +1,13 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 import 'gamebase_explorer_state.dart';
 import 'gamebase_providers.dart';
+
+/// Interval for focused-card long-press auto-repeat (parity with board ~150ms).
+const Duration kExplorerCardLongPressInterval = Duration(milliseconds: 150);
 
 /// A game card focused for continuation traversal inside the opening
 /// explorer's inline games section (Trello #984).
@@ -54,6 +59,8 @@ class ExplorerGameFocus {
 class ExplorerFocusedGameNotifier extends StateNotifier<ExplorerGameFocus?> {
   ExplorerFocusedGameNotifier() : super(null);
 
+  Timer? _longPressTimer;
+
   /// Focuses [gameId], starting at [ply] (clamped into the continuation).
   void focus({
     required String gameId,
@@ -63,6 +70,7 @@ class ExplorerFocusedGameNotifier extends StateNotifier<ExplorerGameFocus?> {
     int ply = 0,
   }) {
     if (sans.isEmpty || fens.length != sans.length + 1) return;
+    stopLongPress();
     state = ExplorerGameFocus(
       gameId: gameId,
       anchorFen: anchorFen,
@@ -90,7 +98,46 @@ class ExplorerFocusedGameNotifier extends StateNotifier<ExplorerGameFocus?> {
     state = current.copyWith(ply: current.ply - 1);
   }
 
+  /// Auto-repeat [forward] while the bottom-nav forward control is held.
+  /// Stops at line end or when [stopLongPress] is called.
+  void startLongPressForward() {
+    _longPressTimer?.cancel();
+    _longPressTimer = Timer.periodic(kExplorerCardLongPressInterval, (_) {
+      final current = state;
+      if (current == null || !current.canGoForward) {
+        stopLongPress();
+        return;
+      }
+      forward();
+    });
+  }
+
+  /// Auto-repeat [backward] while the bottom-nav back control is held.
+  /// Stops at the start of the line or when [stopLongPress] is called.
+  void startLongPressBackward() {
+    _longPressTimer?.cancel();
+    _longPressTimer = Timer.periodic(kExplorerCardLongPressInterval, (_) {
+      final current = state;
+      if (current == null || !current.canGoBackward) {
+        stopLongPress();
+        return;
+      }
+      backward();
+    });
+  }
+
+  /// Cancels any in-flight long-press auto-repeat.
+  void stopLongPress() {
+    _longPressTimer?.cancel();
+    _longPressTimer = null;
+  }
+
+  /// Whether a long-press auto-repeat timer is currently active.
+  @visibleForTesting
+  bool get isLongPressing => _longPressTimer != null;
+
   void clear() {
+    stopLongPress();
     if (state != null) state = null;
   }
 
@@ -105,7 +152,16 @@ class ExplorerFocusedGameNotifier extends StateNotifier<ExplorerGameFocus?> {
   void onExplorerPositionChanged(String currentFen) {
     final current = state;
     if (current == null) return;
-    if (currentFen != current.anchorFen) state = null;
+    if (currentFen != current.anchorFen) {
+      stopLongPress();
+      state = null;
+    }
+  }
+
+  @override
+  void dispose() {
+    stopLongPress();
+    super.dispose();
   }
 }
 
@@ -171,7 +227,7 @@ class BoardNavArrowRouting {
 /// Shipped ownership rules for board bottom-nav arrows (Trello #984).
 ///
 /// Callers pass board-side handlers; when a card is focused those are ignored
-/// and the focus notifier owns forward/back (and long-press steps).
+/// and the focus notifier owns forward/back (and long-press auto-repeat).
 BoardNavArrowRouting resolveBoardNavArrowRouting({
   required ExplorerGameFocus? focus,
   required ExplorerFocusedGameNotifier focusNotifier,
@@ -190,12 +246,15 @@ BoardNavArrowRouting resolveBoardNavArrowRouting({
       onRightMove: focus.canGoForward ? focusNotifier.forward : null,
       canMoveForward: focus.canGoForward,
       canMoveBackward: focus.canGoBackward,
+      // Long-press auto-repeats through the card continuation (same model as
+      // board notation hold). End always stops so release/cancel is safe even
+      // when the line already ended mid-hold.
       onLongPressBackwardStart:
-          focus.canGoBackward ? focusNotifier.backward : null,
-      onLongPressBackwardEnd: null,
+          focus.canGoBackward ? focusNotifier.startLongPressBackward : null,
+      onLongPressBackwardEnd: focusNotifier.stopLongPress,
       onLongPressForwardStart:
-          focus.canGoForward ? focusNotifier.forward : null,
-      onLongPressForwardEnd: null,
+          focus.canGoForward ? focusNotifier.startLongPressForward : null,
+      onLongPressForwardEnd: focusNotifier.stopLongPress,
     );
   }
   return BoardNavArrowRouting(

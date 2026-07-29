@@ -1443,4 +1443,266 @@ void main() {
       },
     );
   });
+
+  group('focused card long-press auto-repeat', () {
+    testWidgets(
+      'long-press forward advances multiple plies then stop freezes ply',
+      (tester) async {
+        final container = ProviderContainer();
+        addTearDown(container.dispose);
+
+        final focusSub = container.listen(
+          explorerFocusedGameProvider,
+          (_, __) {},
+        );
+        addTearDown(focusSub.close);
+
+        // 5 continuation plies → focus starts at ply 0, can advance to 4.
+        final line = _lineFromUcis(const [
+          'e2e4',
+          'e7e5',
+          'g1f3',
+          'b8c6',
+          'f1b5',
+        ]);
+        final focusNotifier = container.read(
+          explorerFocusedGameProvider.notifier,
+        );
+        focusNotifier.focus(
+          gameId: 'g1',
+          anchorFen: _anchorFen,
+          sans: line.sans,
+          fens: line.fens,
+          ply: 0,
+        );
+
+        var boardLongPressForwardStarts = 0;
+        final routing = resolveBoardNavArrowRouting(
+          focus: container.read(explorerFocusedGameProvider),
+          focusNotifier: focusNotifier,
+          boardCanMoveForward: true,
+          boardCanMoveBackward: true,
+          onBoardForward: () {},
+          onBoardBackward: () {},
+          onBoardLongPressBackwardStart: () {},
+          onBoardLongPressBackwardEnd: () {},
+          onBoardLongPressForwardStart: () => boardLongPressForwardStarts++,
+          onBoardLongPressForwardEnd: () {},
+        );
+
+        expect(routing.onLongPressForwardStart, isNotNull);
+        expect(routing.onLongPressForwardEnd, isNotNull);
+        // Focused path owns long-press — board handler never wired.
+        expect(boardLongPressForwardStarts, 0);
+
+        routing.onLongPressForwardStart!();
+        expect(focusNotifier.isLongPressing, isTrue);
+
+        // First tick at 150ms, second at 300ms → at least 2 steps.
+        await tester.pump(kExplorerCardLongPressInterval);
+        final plyAfterOne = container.read(explorerFocusedGameProvider)!.ply;
+        expect(plyAfterOne, greaterThan(0));
+
+        await tester.pump(kExplorerCardLongPressInterval);
+        final plyAfterTwo = container.read(explorerFocusedGameProvider)!.ply;
+        expect(plyAfterTwo, greaterThan(plyAfterOne));
+
+        // Release stops further advances.
+        routing.onLongPressForwardEnd!();
+        expect(focusNotifier.isLongPressing, isFalse);
+        final plyAtStop = container.read(explorerFocusedGameProvider)!.ply;
+
+        await tester.pump(kExplorerCardLongPressInterval * 3);
+        expect(container.read(explorerFocusedGameProvider)!.ply, plyAtStop);
+        expect(boardLongPressForwardStarts, 0);
+      },
+    );
+
+    testWidgets(
+      'long-press forward stops at line end without overshooting',
+      (tester) async {
+        final container = ProviderContainer();
+        addTearDown(container.dispose);
+
+        final focusSub = container.listen(
+          explorerFocusedGameProvider,
+          (_, __) {},
+        );
+        addTearDown(focusSub.close);
+
+        final line = _lineFromUcis(const ['e2e4', 'e7e5', 'g1f3']);
+        final focusNotifier = container.read(
+          explorerFocusedGameProvider.notifier,
+        );
+        focusNotifier.focus(
+          gameId: 'g1',
+          anchorFen: _anchorFen,
+          sans: line.sans,
+          fens: line.fens,
+          ply: 0,
+        );
+
+        final routing = resolveBoardNavArrowRouting(
+          focus: container.read(explorerFocusedGameProvider),
+          focusNotifier: focusNotifier,
+          boardCanMoveForward: true,
+          boardCanMoveBackward: true,
+          onBoardForward: () {},
+          onBoardBackward: () {},
+          onBoardLongPressBackwardStart: () {},
+          onBoardLongPressBackwardEnd: () {},
+          onBoardLongPressForwardStart: () {},
+          onBoardLongPressForwardEnd: () {},
+        );
+
+        routing.onLongPressForwardStart!();
+        // Enough ticks to pass the end of a 3-ply line (max ply = 2).
+        await tester.pump(kExplorerCardLongPressInterval * 6);
+
+        final focus = container.read(explorerFocusedGameProvider)!;
+        expect(focus.ply, line.sans.length - 1);
+        expect(focus.canGoForward, isFalse);
+        expect(focusNotifier.isLongPressing, isFalse);
+
+        routing.onLongPressForwardEnd!();
+      },
+    );
+
+    testWidgets(
+      'long-press backward auto-repeats then stops at start',
+      (tester) async {
+        final container = ProviderContainer();
+        addTearDown(container.dispose);
+
+        final focusSub = container.listen(
+          explorerFocusedGameProvider,
+          (_, __) {},
+        );
+        addTearDown(focusSub.close);
+
+        final line = _lineFromUcis(const [
+          'e2e4',
+          'e7e5',
+          'g1f3',
+          'b8c6',
+          'f1b5',
+        ]);
+        final focusNotifier = container.read(
+          explorerFocusedGameProvider.notifier,
+        );
+        focusNotifier.focus(
+          gameId: 'g1',
+          anchorFen: _anchorFen,
+          sans: line.sans,
+          fens: line.fens,
+          ply: 4,
+        );
+
+        final routing = resolveBoardNavArrowRouting(
+          focus: container.read(explorerFocusedGameProvider),
+          focusNotifier: focusNotifier,
+          boardCanMoveForward: true,
+          boardCanMoveBackward: true,
+          onBoardForward: () {},
+          onBoardBackward: () {},
+          onBoardLongPressBackwardStart: () {},
+          onBoardLongPressBackwardEnd: () {},
+          onBoardLongPressForwardStart: () {},
+          onBoardLongPressForwardEnd: () {},
+        );
+
+        expect(routing.onLongPressBackwardStart, isNotNull);
+        expect(routing.onLongPressBackwardEnd, isNotNull);
+
+        routing.onLongPressBackwardStart!();
+        await tester.pump(kExplorerCardLongPressInterval);
+        final plyAfterOne = container.read(explorerFocusedGameProvider)!.ply;
+        expect(plyAfterOne, lessThan(4));
+
+        await tester.pump(kExplorerCardLongPressInterval);
+        expect(
+          container.read(explorerFocusedGameProvider)!.ply,
+          lessThan(plyAfterOne),
+        );
+
+        // Run out the line to the start.
+        await tester.pump(kExplorerCardLongPressInterval * 8);
+        expect(container.read(explorerFocusedGameProvider)!.ply, -1);
+        expect(focusNotifier.isLongPressing, isFalse);
+
+        routing.onLongPressBackwardEnd!();
+      },
+    );
+
+    test(
+      'when focus is null, long-press callbacks route to board handlers',
+      () {
+        final container = ProviderContainer();
+        addTearDown(container.dispose);
+
+        final focusNotifier = container.read(
+          explorerFocusedGameProvider.notifier,
+        );
+
+        var boardForwardStart = 0;
+        var boardForwardEnd = 0;
+        var boardBackwardStart = 0;
+        var boardBackwardEnd = 0;
+
+        final routing = resolveBoardNavArrowRouting(
+          focus: null,
+          focusNotifier: focusNotifier,
+          boardCanMoveForward: true,
+          boardCanMoveBackward: true,
+          onBoardForward: () {},
+          onBoardBackward: () {},
+          onBoardLongPressBackwardStart: () => boardBackwardStart++,
+          onBoardLongPressBackwardEnd: () => boardBackwardEnd++,
+          onBoardLongPressForwardStart: () => boardForwardStart++,
+          onBoardLongPressForwardEnd: () => boardForwardEnd++,
+        );
+
+        expect(routing.onLongPressForwardStart, isNotNull);
+        expect(routing.onLongPressForwardEnd, isNotNull);
+        expect(routing.onLongPressBackwardStart, isNotNull);
+        expect(routing.onLongPressBackwardEnd, isNotNull);
+
+        routing.onLongPressForwardStart!();
+        routing.onLongPressForwardEnd!();
+        routing.onLongPressBackwardStart!();
+        routing.onLongPressBackwardEnd!();
+
+        expect(boardForwardStart, 1);
+        expect(boardForwardEnd, 1);
+        expect(boardBackwardStart, 1);
+        expect(boardBackwardEnd, 1);
+        expect(focusNotifier.isLongPressing, isFalse);
+      },
+    );
+
+    test('clear cancels in-flight long-press timer', () {
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+
+      final focusSub = container.listen(explorerFocusedGameProvider, (_, __) {});
+      addTearDown(focusSub.close);
+
+      final line = _lineFromUcis(const ['e2e4', 'e7e5', 'g1f3']);
+      final focusNotifier = container.read(explorerFocusedGameProvider.notifier);
+      focusNotifier.focus(
+        gameId: 'g1',
+        anchorFen: _anchorFen,
+        sans: line.sans,
+        fens: line.fens,
+        ply: 0,
+      );
+
+      focusNotifier.startLongPressForward();
+      expect(focusNotifier.isLongPressing, isTrue);
+
+      focusNotifier.clear();
+      expect(focusNotifier.isLongPressing, isFalse);
+      expect(container.read(explorerFocusedGameProvider), isNull);
+    });
+  });
 }

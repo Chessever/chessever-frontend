@@ -244,12 +244,31 @@ class MobileGameReviewController extends StateNotifier<MobileGameReviewState> {
     _emit(state.copyWith(revealedFingerprint: fingerprint));
   }
 
+  /// Stops in-flight whole-game analysis if one is running.
+  ///
+  /// Primary Game Analysis control uses this on a second tap while generating;
+  /// lifecycle deactivation uses [setActive]/false) / [configure] which call
+  /// the same report [GameAnalysisReportController.cancel].
+  Future<void> stopAnalysis() async {
+    if (!mounted || !_reportController.state.isRunning) return;
+    await _reportController.cancel();
+  }
+
   /// Explicit user-started analysis. Handles auth + daily quota + paywall.
+  ///
+  /// While a report is already generating, this **stops** generation instead
+  /// of no-oping — the notation Game Analysis button is start-or-stop.
   ///
   /// This is the only path a report is ever generated from in the app: the
   /// notation entry point and the sheet's Analyze / Retry action both land here.
   Future<void> requestAnalysis(BuildContext context) async {
-    if (!mounted || !state.isEligible) return;
+    if (!mounted) return;
+    // Second tap while generating stops the run (does not open/retry).
+    if (_reportController.state.isRunning) {
+      await stopAnalysis();
+      return;
+    }
+    if (!state.isEligible) return;
     final game = _game;
     if (game == null) return;
     final fingerprint = gameReportFingerprint(game);
@@ -273,7 +292,12 @@ class MobileGameReviewController extends StateNotifier<MobileGameReviewState> {
 
   /// Sheet "Retry" / "Analyze Game" — same gated path as the notation button.
   Future<void> retry([BuildContext? context]) async {
-    if (!mounted || !_active || !state.isEligible) return;
+    if (!mounted || !_active) return;
+    if (_reportController.state.isRunning) {
+      await stopAnalysis();
+      return;
+    }
+    if (!state.isEligible) return;
     if (context != null) {
       await requestAnalysis(context);
       return;
