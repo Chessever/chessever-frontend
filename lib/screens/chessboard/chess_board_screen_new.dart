@@ -11181,13 +11181,10 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
         tailPointerId != null &&
         pointerId == tailPointerId;
 
-    // Author/user NAGs win — Lichess fetched analysis is only used as a
-    // fallback when no NAGs are present on the move.
     // Raw PGN mode hides all auto symbols (NAGs + Lichess annotations).
-    final rawAnnotation =
-        rawPgnMode
-            ? null
-            : _resolveLichessAnnotation(token, lichessAnnotations);
+    // Quality NAGs ($1–$7) win over Lichess classifications; evaluation /
+    // observation NAGs do not suppress Lichess markers (so classifications
+    // still appear once the report map is non-empty).
     final nags =
         rawPgnMode
             ? const <int>[]
@@ -11212,7 +11209,13 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
       }
     }
 
-    final annotation = displayNags.isEmpty ? rawAnnotation : null;
+    final annotation = resolveNotationClassification(
+      rawPgnMode: rawPgnMode,
+      isMainline: token.node?.isMainline ?? false,
+      moveIndex: token.moveIndex,
+      annotations: lichessAnnotations,
+      nags: nags,
+    );
 
     final depth = token.depth;
     final isMainline = token.node?.isMainline ?? (depth <= 0);
@@ -12142,24 +12145,6 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
       numberSize: 10.5.sp,
       numberAlpha: 0.35,
     );
-  }
-
-  LichessMoveAnnotation? _resolveLichessAnnotation(
-    NotationDisplayToken token,
-    Map<int, LichessMoveAnnotation> annotations,
-  ) {
-    final node = token.node;
-    if (node == null || !node.isMainline) return null;
-    final moveIndex = token.moveIndex;
-    if (moveIndex == null) return null;
-    final result = annotations[moveIndex];
-    // Debug: Only log when we should find an annotation but don't
-    if (result == null && annotations.containsKey(moveIndex)) {
-      debugPrint(
-        '⚠️ [Annotation] MISMATCH: moveIndex=$moveIndex exists in annotations but lookup returned null',
-      );
-    }
-    return result;
   }
 
   void _schedulePointerScroll(ChessMovePointer pointer, String? pointerId) {
