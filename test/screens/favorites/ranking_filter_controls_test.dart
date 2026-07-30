@@ -33,6 +33,12 @@ Future<void> _pumpControls(
   );
 }
 
+Finder _timeControlChip(String label) =>
+    find.byKey(ValueKey('ranking-time-control-${label.toLowerCase()}'));
+
+Finder _categoryChip(String label) =>
+    find.byKey(ValueKey('ranking-category-${label.toLowerCase()}'));
+
 void main() {
   testWidgets('shows phone ranking selectors with default selections', (
     tester,
@@ -41,9 +47,10 @@ void main() {
 
     expect(find.text('Active'), findsOneWidget);
     expect(find.text('All'), findsOneWidget);
-    expect(find.text('Classical'), findsOneWidget);
-    expect(find.text('Rapid'), findsOneWidget);
-    expect(find.text('Blitz'), findsOneWidget);
+    for (final label in ['Classical', 'Rapid', 'Blitz']) {
+      expect(_timeControlChip(label), findsOneWidget);
+      expect(find.text(label), findsNothing);
+    }
     expect(find.text('Overall'), findsOneWidget);
     expect(find.text('Women'), findsOneWidget);
     expect(find.text('Juniors'), findsOneWidget);
@@ -63,7 +70,7 @@ void main() {
     RankingFilters? changed;
     await _pumpControls(tester, onChanged: (value) => changed = value);
 
-    await tester.tap(find.text('Rapid'));
+    await tester.tap(_timeControlChip('Rapid'));
     await tester.pump();
 
     expect(changed?.activity, RankingActivity.active);
@@ -79,21 +86,18 @@ void main() {
   ) async {
     await _pumpControls(tester);
 
-    BoxDecoration decorationOf(String label) {
+    BoxDecoration decorationOf(Finder chip) {
       final container = tester.widget<AnimatedContainer>(
-        find.ancestor(
-          of: find.text(label),
-          matching: find.byType(AnimatedContainer),
-        ),
+        find.descendant(of: chip, matching: find.byType(AnimatedContainer)),
       );
       return container.decoration! as BoxDecoration;
     }
 
-    expect(decorationOf('Classical').color, kPrimaryColor);
-    expect(decorationOf('Overall').color, kPrimaryColor);
-    expect(decorationOf('Rapid').color, isNot(kPrimaryColor));
+    expect(decorationOf(_timeControlChip('Classical')).color, kPrimaryColor);
+    expect(decorationOf(_categoryChip('Overall')).color, kPrimaryColor);
+    expect(decorationOf(_timeControlChip('Rapid')).color, isNot(kPrimaryColor));
 
-    final selectedLabel = tester.widget<Text>(find.text('Classical'));
+    final selectedLabel = tester.widget<Text>(find.text('Overall'));
     expect(selectedLabel.style?.color, kBlackColor);
   });
 
@@ -107,8 +111,8 @@ void main() {
     expect(tester.takeException(), isNull);
     expect(
       find.byType(ShaderMask),
-      findsNWidgets(2),
-      reason: 'both the time-control and category strips fade at their edges',
+      findsOneWidget,
+      reason: 'the combined filter rail fades at its edges',
     );
   });
 
@@ -121,26 +125,20 @@ void main() {
   ) async {
     await _pumpControls(tester);
 
+    final chip = _timeControlChip('Classical');
     final painted =
         tester
             .getSize(
-              find
-                  .ancestor(
-                    of: find.text('Classical'),
-                    matching: find.byType(AnimatedContainer),
-                  )
-                  .first,
+              find.descendant(
+                of: chip,
+                matching: find.byType(AnimatedContainer),
+              ),
             )
             .height;
     final touch =
         tester
             .getSize(
-              find
-                  .ancestor(
-                    of: find.text('Classical'),
-                    matching: find.byType(GestureDetector),
-                  )
-                  .first,
+              find.descendant(of: chip, matching: find.byType(GestureDetector)),
             )
             .height;
 
@@ -157,32 +155,48 @@ void main() {
     expect(touch, greaterThan(painted));
   });
 
-  // The three time controls have to fit the phone width outright — overflowing
-  // by even a few pixels just reads as a clipped chip. The four categories are
-  // meant to scroll, per the card's "swipeable" requirement.
-  //
-  // Asserted on the real scroll extent rather than by adding up widths: `.w`
-  // scales, so the strip's 16.w inset is 24px here, not 16.
-  testWidgets('time controls fit exactly; categories stay swipeable', (
-    tester,
-  ) async {
-    await _pumpControls(tester, showActivity: false);
+  // Time control is conveyed by ChessEver's established owl/rabbit/lightning
+  // assets. Keeping those icon-only lets the ranking categories share the same
+  // swipeable rail instead of spending a second line above the player list.
+  testWidgets(
+    'time controls and categories share one icon-first swipeable rail',
+    (tester) async {
+      await _pumpControls(tester, showActivity: false);
 
-    final strips =
-        tester.stateList<ScrollableState>(find.byType(Scrollable)).toList();
-    expect(strips, hasLength(2));
+      final strips =
+          tester.stateList<ScrollableState>(find.byType(Scrollable)).toList();
+      expect(strips, hasLength(1));
+      expect(strips.single.position.maxScrollExtent, greaterThan(0));
+      expect(find.byType(ShaderMask), findsOneWidget);
 
-    expect(
-      strips[0].position.maxScrollExtent,
-      0,
-      reason: 'Classical/Rapid/Blitz must not be clipped at phone width',
-    );
-    expect(
-      strips[1].position.maxScrollExtent,
-      greaterThan(0),
-      reason: 'Overall/Women/Juniors/Girls is a swipeable strip',
-    );
-  });
+      for (final label in ['Classical', 'Rapid', 'Blitz']) {
+        final key = find.byKey(
+          ValueKey('ranking-time-control-${label.toLowerCase()}'),
+        );
+        expect(key, findsOneWidget);
+        expect(
+          find.descendant(of: key, matching: find.text(label)),
+          findsNothing,
+        );
+
+        final semantics = tester.widget<Semantics>(
+          find.descendant(of: key, matching: find.byType(Semantics)).first,
+        );
+        expect(semantics.properties.label, label);
+      }
+
+      expect(
+        tester
+            .getCenter(
+              find.byKey(const ValueKey('ranking-time-control-classical')),
+            )
+            .dy,
+        tester
+            .getCenter(find.byKey(const ValueKey('ranking-category-overall')))
+            .dy,
+      );
+    },
+  );
 
   // The selected fill and label are fixed colours, so light theme is the case
   // that can silently lose contrast or shift geometry.
@@ -213,21 +227,22 @@ void main() {
     expect(tester.takeException(), isNull);
 
     final selected =
-        tester.widget<AnimatedContainer>(
-              find
-                  .ancestor(
-                    of: find.text('Classical'),
+        tester
+                .widget<AnimatedContainer>(
+                  find.descendant(
+                    of: _timeControlChip('Classical'),
                     matching: find.byType(AnimatedContainer),
-                  )
-                  .first,
-            ).decoration!
+                  ),
+                )
+                .decoration!
             as BoxDecoration;
     expect(selected.color, kPrimaryColor);
-    expect(tester.widget<Text>(find.text('Classical')).style?.color, kBlackColor);
+    expect(tester.widget<Text>(find.text('Overall')).style?.color, kBlackColor);
 
     final strips =
         tester.stateList<ScrollableState>(find.byType(Scrollable)).toList();
-    expect(strips[0].position.maxScrollExtent, 0);
+    expect(strips, hasLength(1));
+    expect(strips.single.position.maxScrollExtent, greaterThan(0));
   });
 
   // The Active/All chips sit beside the search field. They are shorter than it,

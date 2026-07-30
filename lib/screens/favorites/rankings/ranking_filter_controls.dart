@@ -34,23 +34,30 @@ class _RankingChip extends StatelessWidget {
     required this.isSelected,
     required this.onTap,
     this.iconAsset,
+    this.showLabel = true,
   });
 
   final String label;
   final bool isSelected;
   final VoidCallback onTap;
   final String? iconAsset;
+  final bool showLabel;
 
   @override
   Widget build(BuildContext context) {
     return Semantics(
+      label: label,
+      excludeSemantics: true,
       selected: isSelected,
       button: true,
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
         onTap: onTap,
         child: Padding(
-          padding: EdgeInsets.symmetric(vertical: _chipTouchPadding),
+          padding: EdgeInsets.symmetric(
+            horizontal: showLabel ? 0 : 8.w,
+            vertical: showLabel ? _chipTouchPadding : 12.h,
+          ),
           child: AnimatedContainer(
             duration: const Duration(milliseconds: 150),
             padding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 8.h),
@@ -73,19 +80,20 @@ class _RankingChip extends StatelessWidget {
                     height: 14.ic,
                     fit: BoxFit.contain,
                   ),
-                  SizedBox(width: 4.w),
+                  if (showLabel) SizedBox(width: 4.w),
                 ],
-                Text(
-                  label,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: AppTypography.textXsMedium.copyWith(
-                    color:
-                        isSelected ? kBlackColor : context.colors.textPrimary,
-                    fontWeight:
-                        isSelected ? FontWeight.w600 : FontWeight.w500,
+                if (showLabel)
+                  Text(
+                    label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: AppTypography.textXsMedium.copyWith(
+                      color:
+                          isSelected ? kBlackColor : context.colors.textPrimary,
+                      fontWeight:
+                          isSelected ? FontWeight.w600 : FontWeight.w500,
+                    ),
                   ),
-                ),
               ],
             ),
           ),
@@ -205,14 +213,12 @@ class RankingFilterControls extends StatelessWidget {
                 ),
                 label: timeControl.label,
                 iconAsset: timeControl.iconAsset,
+                showLabel: false,
                 isSelected: timeControl == filters.timeControl,
                 onTap:
                     () => onChanged(filters.copyWith(timeControl: timeControl)),
               ),
-          ],
-        ),
-        _ChipStrip(
-          children: [
+            SizedBox(width: 8.w),
             for (final category in RankingCategory.values)
               _RankingChip(
                 key: ValueKey(
