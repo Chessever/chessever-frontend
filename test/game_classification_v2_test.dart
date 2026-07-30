@@ -163,6 +163,78 @@ void main() {
       );
     });
 
+    test('Sitges quiet king conversion remains Great', () {
+      expect(
+        _classify(
+          _sitgesKg7Game,
+          moverBefore: 81,
+          moverAfter: 94,
+          bestMove: 'h7g7',
+          alternativeMoverWin: 79,
+        ),
+        GameMoveClassification.bestMove,
+      );
+    });
+
+    test('Sitges knight sacrifice remains Great', () {
+      expect(
+        _classify(
+          _sitgesNg3Game,
+          moverBefore: 86,
+          moverAfter: 85,
+          bestMove: 'h5g3',
+          alternativeMoverWin: 6,
+        ),
+        GameMoveClassification.bestMove,
+      );
+    });
+
+    test('Sitges tactical continuation captures earn no praise', () {
+      expect(
+        _classify(
+          _sitgesRxe7Game,
+          moverBefore: 14,
+          moverAfter: 19,
+          bestMove: 'a7e7',
+          alternativeMoverWin: 0,
+        ),
+        isNull,
+      );
+      expect(
+        _classify(
+          _sitgesGxf4Game,
+          moverBefore: 19,
+          moverAfter: 15,
+          bestMove: 'g3f4',
+          alternativeMoverWin: 1,
+        ),
+        isNull,
+      );
+      expect(
+        _classify(
+          _sitgesBxg1Game,
+          moverBefore: 82,
+          moverAfter: 82,
+          bestMove: 'd4g1',
+          alternativeMoverWin: 70,
+        ),
+        isNull,
+      );
+    });
+
+    test('Sitges saturated conversion stops positive labels after Nb5', () {
+      expect(
+        _classify(
+          _sitgesQe3Game,
+          moverBefore: 99,
+          moverAfter: 99,
+          bestMove: 'f4e3',
+          alternativeMoverWin: 91,
+        ),
+        isNull,
+      );
+    });
+
     test('an attacked rook stepping away earns no symbol', () {
       expect(
         _classify(
@@ -581,6 +653,16 @@ const _onlyMoveFen = 'Q6k/8/8/8/8/8/8/K5R1 b - - 0 1';
 /// is still materially worse afterwards.
 const _looseCaptureFen = '2r1k3/8/2B5/8/8/8/8/R3K2R b - - 0 1';
 
+/// Owner-reviewed Sitges regression positions from Nidhish–Asis, round 8.
+const _sitgesNg3Fen =
+    '5q2/R3r1bk/3p2p1/3P3n/2pBPp1p/2Nn3P/1P4QP/6RK b - - 11 37';
+const _sitgesRxe7Fen =
+    '5q2/R3r2k/3p2p1/3P4/2pbPp1p/2Nn2PP/1P4Q1/6RK w - - 0 39';
+const _sitgesGxf4Fen = '8/4q2k/3p2p1/3P4/2pbPp1p/2Nn2PP/1P4Q1/6RK w - - 0 40';
+const _sitgesBxg1Fen = '8/4q2k/3p2p1/3P4/2pbPP1p/2Nn3P/1P4Q1/6RK b - - 0 40';
+const _sitgesKg7Fen = '8/7k/3p2p1/3P2q1/2p1Pn1p/2N2Q1P/1P6/7K b - - 3 43';
+const _sitgesQe3Fen = '8/6k1/3p2p1/1N1P4/2p1Pq1p/3n3P/1P4Q1/6K1 b - - 11 47';
+
 final _openingGame = ChessGame.fromPgn(
   'opening',
   '[White "Ada"]\n[Black "Grace"]\n\n1. e4 e5 *',
@@ -589,6 +671,12 @@ final _openingGame = ChessGame.fromPgn(
 final _retreatGame = _gameFromFen(_retreatFen, '1... Rd8 *');
 final _onlyMoveGame = _gameFromFen(_onlyMoveFen, '1... Kh7 *');
 final _looseCaptureGame = _gameFromFen(_looseCaptureFen, '1... Rxc6 *');
+final _sitgesNg3Game = _gameFromFen(_sitgesNg3Fen, '37... Ng3+ *');
+final _sitgesRxe7Game = _gameFromFen(_sitgesRxe7Fen, '39. Rxe7+ *');
+final _sitgesGxf4Game = _gameFromFen(_sitgesGxf4Fen, '40. gxf4 *');
+final _sitgesBxg1Game = _gameFromFen(_sitgesBxg1Fen, '40... Bxg1 *');
+final _sitgesKg7Game = _gameFromFen(_sitgesKg7Fen, '43... Kg7 *');
+final _sitgesQe3Game = _gameFromFen(_sitgesQe3Fen, '47... Qe3+ *');
 
 /// Positions for the loose-capture fixture, scored so the mover sits well above
 /// the praise floor — isolating [verifyBrilliantMove]'s own verdict from it.
