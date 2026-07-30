@@ -1,5 +1,4 @@
 import 'package:cached_network_image/cached_network_image.dart';
-import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/player_initials_avatar.dart';
@@ -143,51 +142,59 @@ class _InitialsDisplay extends StatelessWidget {
     final effectiveInitials =
         initials.isNotEmpty ? initials.toUpperCase() : '?';
 
-    return Stack(
-      children: [
-        Container(
-          width: size,
-          height: size,
-          decoration: const BoxDecoration(gradient: kProfileInitialsGradient),
-          child: Center(
-            child: Text(
-              effectiveInitials,
-              style: TextStyle(
-                fontFamily: 'InterDisplay',
-                fontSize: fontSize,
-                fontWeight: FontWeight.w700,
-                color: Colors.white,
-                letterSpacing: 2.0,
-              ),
-            ),
-          ),
-        ),
-        if (title != null && title!.isNotEmpty)
-          Positioned(
-            bottom: 0,
-            left: 0,
-            right: 0,
-            child: Container(
-              padding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 6.h),
-              decoration: BoxDecoration(
-                color: getTitleBadgeColor(title!),
-                borderRadius: BorderRadius.only(
-                  bottomLeft: Radius.circular(22.br),
-                  bottomRight: Radius.circular(22.br),
-                ),
-              ),
+    // Transparent Material ancestor ensures Text descendants always have a
+    // Material parent — without this the widget renders with yellow-underline
+    // debug decorations while Heroine hoists it into the overlay during
+    // flight (no Scaffold/Material in the overlay tree). Same pattern as
+    // PlayerInitialsAvatar.
+    return Material(
+      type: MaterialType.transparency,
+      child: Stack(
+        children: [
+          Container(
+            width: size,
+            height: size,
+            decoration: const BoxDecoration(gradient: kProfileInitialsGradient),
+            child: Center(
               child: Text(
-                title!,
-                textAlign: TextAlign.center,
+                effectiveInitials,
                 style: TextStyle(
+                  fontFamily: 'InterDisplay',
+                  fontSize: fontSize,
+                  fontWeight: FontWeight.w700,
                   color: Colors.white,
-                  fontSize: 16.sp,
-                  fontWeight: FontWeight.w600,
+                  letterSpacing: 2.0,
                 ),
               ),
             ),
           ),
-      ],
+          if (title != null && title!.isNotEmpty)
+            Positioned(
+              bottom: 0,
+              left: 0,
+              right: 0,
+              child: Container(
+                padding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 6.h),
+                decoration: BoxDecoration(
+                  color: getTitleBadgeColor(title!),
+                  borderRadius: BorderRadius.only(
+                    bottomLeft: Radius.circular(22.br),
+                    bottomRight: Radius.circular(22.br),
+                  ),
+                ),
+                child: Text(
+                  title!,
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 16.sp,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ),
+        ],
+      ),
     );
   }
 }
