@@ -67,6 +67,33 @@ List<NotationDisplayToken> _buildTokens(
 // ---------------------------------------------------------------------------
 
 void main() {
+  group('variation collapse defaults', () {
+    test('keeps long top-level variation lines expanded', () {
+      final move = _treeFromSans(['e4']).mainline.first;
+      final variation = NotationVariationNode(
+        id: 'long-top-level',
+        parentPointer: const [0],
+        variationIndex: 0,
+        depth: 1,
+        moves: List<NotationMoveNode>.filled(34, move),
+      );
+
+      expect(shouldCollapseByDefault(variation), isFalse);
+    });
+
+    test('still collapses deeply nested variation lines', () {
+      final variation = NotationVariationNode(
+        id: 'deep-variation',
+        parentPointer: const [0, 0, 0],
+        variationIndex: 0,
+        depth: 3,
+        moves: const [],
+      );
+
+      expect(shouldCollapseByDefault(variation), isTrue);
+    });
+  });
+
   group('resolveAnnotationPresentation', () {
     test('evaluative types resolve to inlineSymbol', () {
       const evaluativeTypes = [
