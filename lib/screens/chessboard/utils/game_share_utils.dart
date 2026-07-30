@@ -27,8 +27,13 @@ const _moveVerdictNags = <int>{1, 2, 3, 4, 5, 6};
 ///
 /// A matching completed report is authoritative for every evaluated ply, so
 /// freshly generated Game Analysis values replace older/default PGN values.
-/// [exportGameToPgn] serializes them as `[%eval ...]`,
-/// `[%chessever_annotation ...]`, and standard quality NAGs (`!`, `!!`, `?`…).
+///
+/// Classifications are exported with the **classic portable glyphs** every
+/// chess app already understands (`!`, `?`, `!!`, `??`, `?!`), not ChessEver
+/// product names:
+/// - standard PGN NAGs `$1`–`$6` (rendered as those glyphs), and
+/// - `[%chessever_annotation !!]` (same glyph slug for consumers that read the
+///   comment). Book has no classic glyph and is omitted from both.
 ChessGame mergeGameReportAnnotationsForExport(
   ChessGame game,
   GameAnalysisReport? report,
@@ -57,13 +62,11 @@ ChessGame mergeGameReportAnnotationsForExport(
                 : reportLine.centipawns != null
                 ? (reportLine.centipawns! / 100).toStringAsFixed(2)
                 : move.eval;
-        final classificationName = _exportClassificationName(
+        final classic = classicGlyphForClassification(
           reportMove.classification,
         );
         final directive =
-            classificationName == null
-                ? null
-                : '[%chessever_annotation $classificationName]';
+            classic == null ? null : '[%chessever_annotation $classic]';
         final existingComments = move.comments ?? const <String>[];
         final hasClassificationDirective = existingComments.any(
           (comment) => comment.contains('[%chessever_annotation '),
@@ -73,7 +76,7 @@ ChessGame mergeGameReportAnnotationsForExport(
                 ? existingComments
                 : <String>[...existingComments, directive];
 
-        final reportNag = _exportClassificationNag(reportMove.classification);
+        final reportNag = nagForClassicGlyph(classic);
         final existingNags = move.nags ?? const <int>[];
         final nonVerdictNags =
             existingNags
@@ -131,32 +134,33 @@ Future<GameAnalysisReport?> resolveCompletedGameAnalysisReport({
   return null;
 }
 
-String? _exportClassificationName(GameMoveClassification? classification) =>
+/// Classic portable glyph for a report classification (best-effort for other apps).
+///
+/// ChessEver’s richer labels collapse onto the five standard quality marks
+/// every PGN consumer already knows. Book has no classic glyph.
+String? classicGlyphForClassification(GameMoveClassification? classification) =>
     switch (classification) {
-      GameMoveClassification.brilliant => 'brilliant',
-      GameMoveClassification.goodMove => 'good_move',
-      GameMoveClassification.bestMove => 'best_move',
-      GameMoveClassification.missedWin => 'missed_win',
-      GameMoveClassification.inaccuracy => 'inaccuracy',
-      GameMoveClassification.mistake => 'mistake',
-      GameMoveClassification.blunder => 'blunder',
-      GameMoveClassification.bookMove => 'book_move',
-      null => null,
-    };
-
-/// Standard PGN quality NAG for a report classification ($1–$6).
-int? _exportClassificationNag(GameMoveClassification? classification) =>
-    switch (classification) {
-      GameMoveClassification.brilliant => 3, // !!
-      GameMoveClassification.goodMove => 1, // !
-      GameMoveClassification.bestMove => 1, // !
-      GameMoveClassification.missedWin => 4, // ??
-      GameMoveClassification.inaccuracy => 6, // ?!
-      GameMoveClassification.mistake => 2, // ?
-      GameMoveClassification.blunder => 4, // ??
+      GameMoveClassification.brilliant => '!!',
+      GameMoveClassification.goodMove => '!',
+      GameMoveClassification.bestMove => '!',
+      GameMoveClassification.missedWin => '??',
+      GameMoveClassification.inaccuracy => '?!',
+      GameMoveClassification.mistake => '?',
+      GameMoveClassification.blunder => '??',
       GameMoveClassification.bookMove => null,
       null => null,
     };
+
+/// Standard PGN quality NAG ($1–$6) for a classic glyph.
+int? nagForClassicGlyph(String? glyph) => switch (glyph) {
+  '!' => 1,
+  '?' => 2,
+  '!!' => 3,
+  '??' => 4,
+  '!?' => 5,
+  '?!' => 6,
+  _ => null,
+};
 
 /// Query param marking a `/games/<uuid>` share link whose id lives in the
 /// gamebase (TWIC archive) rather than the app's Supabase games table. The

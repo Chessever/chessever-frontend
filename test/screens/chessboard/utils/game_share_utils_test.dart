@@ -437,13 +437,53 @@ void main() {
       expect(pgn, isNot(contains('[%eval 0.15]')));
       expect(pgn, contains('[%eval -0.31]'));
       expect(pgn, contains('[%eval #3]'));
-      expect(pgn, contains('[%chessever_annotation brilliant]'));
-      expect(pgn, contains('[%chessever_annotation inaccuracy]'));
-      expect(pgn, contains('[%chessever_annotation missed_win]'));
-      expect(pgn, contains('[%chessever_annotation book_move]'));
-      // Standard PGN quality glyphs from report NAGs.
+      // Classic portable glyphs (not product names) for other chess apps.
+      expect(pgn, contains('[%chessever_annotation !!]'));
+      expect(pgn, contains('[%chessever_annotation ?!]'));
+      expect(pgn, contains('[%chessever_annotation ??]'));
+      // Book has no classic glyph — do not invent a private slug.
+      expect(pgn, isNot(contains('[%chessever_annotation book')));
+      expect(pgn, isNot(contains('[%chessever_annotation brilliant]')));
+      // Standard PGN quality NAGs from the same glyph map.
       expect(pgn, contains(RegExp(r'e4\s*\$3|e4!!')));
       expect(pgn, contains(RegExp(r'e5\s*\$6|e5\?!')));
+    });
+
+    test('classicGlyphForClassification maps every class to portable marks', () {
+      expect(
+        classicGlyphForClassification(GameMoveClassification.brilliant),
+        '!!',
+      );
+      expect(
+        classicGlyphForClassification(GameMoveClassification.goodMove),
+        '!',
+      );
+      expect(
+        classicGlyphForClassification(GameMoveClassification.bestMove),
+        '!',
+      );
+      expect(
+        classicGlyphForClassification(GameMoveClassification.missedWin),
+        '??',
+      );
+      expect(
+        classicGlyphForClassification(GameMoveClassification.inaccuracy),
+        '?!',
+      );
+      expect(
+        classicGlyphForClassification(GameMoveClassification.mistake),
+        '?',
+      );
+      expect(
+        classicGlyphForClassification(GameMoveClassification.blunder),
+        '??',
+      );
+      expect(
+        classicGlyphForClassification(GameMoveClassification.bookMove),
+        isNull,
+      );
+      expect(nagForClassicGlyph('!!'), 3);
+      expect(nagForClassicGlyph('?!'), 6);
     });
 
     test('resolveGameSharePgn (Copy/Share path) hydrates analysis report', () async {
@@ -462,9 +502,9 @@ void main() {
       );
 
       expect(pgn, contains('[%eval 0.42]'));
-      expect(pgn, contains('[%chessever_annotation brilliant]'));
+      expect(pgn, contains('[%chessever_annotation !!]'));
       expect(pgn, contains('[%eval -0.31]'));
-      expect(pgn, contains('[%chessever_annotation inaccuracy]'));
+      expect(pgn, contains('[%chessever_annotation ?!]'));
     });
 
     test('GIF alias still forwards to the export merge', () {
