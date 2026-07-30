@@ -1,50 +1,48 @@
 import 'package:chessever2/screens/favorites/rankings/ranking_filters.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
+import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/png_asset.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:flutter/material.dart';
 import 'package:motor/motor.dart';
 
-/// Horizontal inset matching the Rankings search row.
-double get _stripInset => 12.w;
+/// Horizontal inset for the scrolling strips. The padding lives *inside* the
+/// scroll view (as it does on the Games tab) so the edge fade falls on empty
+/// gutter at rest and only ever eats into a chip once the strip is actually
+/// scrolled.
+/// A getter, not a `final`: a top-level final is computed once and cached, so
+/// it would freeze the first scale it ever saw and go stale when the responsive
+/// metrics change.
+double get _stripInset => 16.w;
 
-/// Vertical padding outside the painted chip (keeps the tap target large while
-/// the pill itself stays compact).
-double get _chipTouchPadding => 8.h;
+/// Vertical padding wrapped *outside* the chip's painted box. It widens the
+/// touch area to a comfortable target without making the chip look bigger —
+/// the whole point of a filter chip is that it reads small.
+double get _chipTouchPadding => 9.h;
 
 /// Gap between chips inside the same group (time controls, or categories).
-double get _intraGroupGap => 2.w;
+/// Intentionally tighter than the old flat 6.w-between-every-child strip so
+/// more of the rail is visible on first paint — chip *size* is unchanged.
+double get _intraGroupGap => 3.w;
 
 /// Gap between the time-control group and the category group.
-double get _interGroupGap => 6.w;
-
-double get _chipPadH => 5.w;
-double get _chipPadV => 5.h;
-double get _chipIconSize => 12.ic;
-
-/// Dense label style so owl/rabbit/lightning + Overall/Women/Juniors/Girls can
-/// share one phone-width row. Tighter than [AppTypography.textXsMedium] (which
-/// uses a tall 20/12 line-height and wide default tracking).
-TextStyle _chipLabelStyle({required Color color, required bool selected}) {
-  return TextStyle(
-    fontFamily: 'InterDisplay',
-    fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
-    fontSize: 11.f,
-    height: 1.15,
-    letterSpacing: -0.2,
-    color: color,
-  );
-}
+double get _interGroupGap => 8.w;
 
 /// Spring used when a time-control chip expands to show its label.
 const _labelMotion = CupertinoMotion.smooth();
 
-/// One ranking filter chip: compact bordered pill, not a tappable slab.
+/// One ranking filter chip, built to the Games tab's filter-chip spec: a
+/// compact bordered pill, not a tappable slab.
+///
+/// The geometry is deliberate. An earlier pass gave these a 44.h floor height
+/// and 14/10 padding, which made them read as action buttons and left them
+/// taller than the search field they sit beside. Chips are sized by their
+/// content here, and the touch target is bought with outside padding instead.
 ///
 /// [showLabel] always paints the text. [expandLabelWhenSelected] is for the
 /// icon time-control group: unselected chips stay icon-only; the selected one
-/// springs the label in with Motor.
+/// springs the label in with Motor so the rail doesn't jump.
 class _RankingChip extends StatelessWidget {
   const _RankingChip({
     super.key,
@@ -65,9 +63,8 @@ class _RankingChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final labelColor =
-        isSelected ? kBlackColor : context.colors.textPrimary;
-    final style = _chipLabelStyle(color: labelColor, selected: isSelected);
+    final iconOnly =
+        iconAsset != null && !showLabel && !expandLabelWhenSelected;
 
     return Semantics(
       label: label,
@@ -78,17 +75,20 @@ class _RankingChip extends StatelessWidget {
         behavior: HitTestBehavior.opaque,
         onTap: onTap,
         child: Padding(
-          padding: EdgeInsets.symmetric(vertical: _chipTouchPadding),
+          padding: EdgeInsets.symmetric(
+            horizontal: iconOnly ? 8.w : 0,
+            vertical:
+                expandLabelWhenSelected || showLabel
+                    ? _chipTouchPadding
+                    : 12.h,
+          ),
           child: AnimatedContainer(
             duration: const Duration(milliseconds: 150),
-            padding: EdgeInsets.symmetric(
-              horizontal: _chipPadH,
-              vertical: _chipPadV,
-            ),
+            padding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 8.h),
             decoration: BoxDecoration(
               color:
                   isSelected ? kPrimaryColor : context.colors.surfaceRecessed,
-              borderRadius: BorderRadius.circular(14.br),
+              borderRadius: BorderRadius.circular(16.br),
               border: Border.all(
                 color: isSelected ? kPrimaryColor : context.colors.divider,
                 width: 1,
@@ -100,8 +100,8 @@ class _RankingChip extends StatelessWidget {
                 if (iconAsset != null)
                   Image.asset(
                     iconAsset!,
-                    width: _chipIconSize,
-                    height: _chipIconSize,
+                    width: 14.ic,
+                    height: 14.ic,
                     fit: BoxFit.contain,
                   ),
                 if (expandLabelWhenSelected)
@@ -124,23 +124,38 @@ class _RankingChip extends StatelessWidget {
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        SizedBox(width: 2.w),
+                        SizedBox(width: 4.w),
                         Text(
                           label,
                           maxLines: 1,
                           softWrap: false,
-                          style: style,
+                          overflow: TextOverflow.ellipsis,
+                          style: AppTypography.textXsMedium.copyWith(
+                            color:
+                                isSelected
+                                    ? kBlackColor
+                                    : context.colors.textPrimary,
+                            fontWeight:
+                                isSelected ? FontWeight.w600 : FontWeight.w500,
+                          ),
                         ),
                       ],
                     ),
                   )
                 else if (showLabel) ...[
-                  if (iconAsset != null) SizedBox(width: 2.w),
+                  if (iconAsset != null) SizedBox(width: 4.w),
                   Text(
                     label,
                     maxLines: 1,
-                    softWrap: false,
-                    style: style,
+                    overflow: TextOverflow.ellipsis,
+                    style: AppTypography.textXsMedium.copyWith(
+                      color:
+                          isSelected
+                              ? kBlackColor
+                              : context.colors.textPrimary,
+                      fontWeight:
+                          isSelected ? FontWeight.w600 : FontWeight.w500,
+                    ),
                   ),
                 ],
               ],
@@ -172,9 +187,11 @@ class _ChipGroup extends StatelessWidget {
   }
 }
 
-/// One-line rail of chip groups. Uses [FittedBox] scale-down so the full
-/// time-control + category set stays on screen at phone width without a
-/// horizontal scroll (gaps stay proportional if a slight scale is needed).
+/// A swipeable strip of chip groups that fades at both edges instead of
+/// guillotining whichever chip happens to land on the boundary.
+///
+/// [children] are groups (time controls, then categories). Only a single
+/// inter-group gap sits between them — chip painted size is unchanged.
 class _ChipStrip extends StatelessWidget {
   const _ChipStrip({required this.children});
 
@@ -182,22 +199,31 @@ class _ChipStrip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: EdgeInsets.symmetric(horizontal: _stripInset),
-      child: Align(
-        alignment: Alignment.centerLeft,
-        child: FittedBox(
-          fit: BoxFit.scaleDown,
-          alignment: Alignment.centerLeft,
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              for (var i = 0; i < children.length; i++) ...[
-                if (i > 0) SizedBox(width: _interGroupGap),
-                children[i],
-              ],
+    return ShaderMask(
+      shaderCallback:
+          (bounds) => const LinearGradient(
+            begin: Alignment.centerLeft,
+            end: Alignment.centerRight,
+            colors: [
+              Colors.transparent,
+              Colors.white,
+              Colors.white,
+              Colors.transparent,
             ],
-          ),
+            stops: [0.0, 0.03, 0.97, 1.0],
+          ).createShader(bounds),
+      blendMode: BlendMode.dstIn,
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        physics: const BouncingScrollPhysics(),
+        padding: EdgeInsets.symmetric(horizontal: _stripInset),
+        child: Row(
+          children: [
+            for (var i = 0; i < children.length; i++) ...[
+              if (i > 0) SizedBox(width: _interGroupGap),
+              children[i],
+            ],
+          ],
         ),
       ),
     );

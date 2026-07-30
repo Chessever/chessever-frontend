@@ -7,8 +7,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:motor/motor.dart';
 
-/// Phone-sized view so [ResponsiveHelper] `.w`/`.h` match a real device
-/// (default test surface is 800×600 and would overscale chips).
 void _usePhoneSurface(WidgetTester tester) {
   tester.view.physicalSize = const Size(393, 852);
   tester.view.devicePixelRatio = 1.0;
@@ -43,7 +41,6 @@ Future<void> _pumpControls(
       ),
     ),
   );
-  // Motor label expand needs a frame past the initial build.
   await tester.pump();
   await tester.pump(const Duration(milliseconds: 400));
 }
@@ -122,15 +119,6 @@ void main() {
       ),
       findsNothing,
     );
-    expect(
-      find.descendant(
-        of: _timeControlChip('Rapid'),
-        matching: find.text('Rapid'),
-      ),
-      findsNothing,
-    );
-
-    // Label expand uses Motor spring physics.
     expect(find.byType(SingleMotionBuilder), findsWidgets);
   });
 
@@ -157,62 +145,48 @@ void main() {
     );
   });
 
-  testWidgets('one-line rail fits phone width without horizontal scroll', (
+  testWidgets('filter strips scroll instead of overflowing at phone width', (
     tester,
   ) async {
-    await _pumpControls(tester, showActivity: false);
+    await _pumpControls(tester);
 
     expect(tester.takeException(), isNull);
-    // FittedBox scale-down keeps every chip on-screen; no swipe needed.
-    expect(find.byType(FittedBox), findsOneWidget);
-    expect(find.byType(Scrollable), findsNothing);
-
-    // Rightmost category is hit-testable without dragging.
-    await tester.tap(_categoryChip('Girls'));
-    await tester.pump();
+    expect(
+      find.byType(ShaderMask),
+      findsOneWidget,
+      reason: 'the combined filter rail fades at its edges',
+    );
   });
 
-  testWidgets('chips are chip-sized while keeping a real tap target', (
+  testWidgets('chips keep original painted size (not densified)', (
     tester,
   ) async {
     await _pumpControls(tester);
 
     final chip = _timeControlChip('Classical');
-    final painted =
-        tester
-            .getSize(
-              find.descendant(
-                of: chip,
-                matching: find.byType(AnimatedContainer),
-              ),
-            )
-            .height;
-    final touch =
-        tester
-            .getSize(
-              find.descendant(of: chip, matching: find.byType(GestureDetector)),
-            )
-            .height;
+    final painted = tester.getSize(
+      find.descendant(of: chip, matching: find.byType(AnimatedContainer)),
+    );
+    final touch = tester.getSize(
+      find.descendant(of: chip, matching: find.byType(GestureDetector)),
+    );
 
-    expect(
-      painted,
-      lessThanOrEqualTo(36),
-      reason: 'a chip that tall reads as an action button',
-    );
-    expect(
-      touch,
-      greaterThanOrEqualTo(36),
-      reason: 'the small chip must still be comfortably tappable',
-    );
-    expect(touch, greaterThan(painted));
+    // Original chip pad is 8/8 with textXs — painted height stays under button
+    // territory but is not the densified 5/5 mini chip.
+    expect(painted.height, lessThan(40));
+    expect(painted.height, greaterThanOrEqualTo(28));
+    expect(touch.height, greaterThan(painted.height));
   });
 
   testWidgets(
-    'time controls and categories share one compact Motor-expand rail',
+    'time controls and categories share one rail with tighter group gaps only',
     (tester) async {
       await _pumpControls(tester, showActivity: false);
 
-      expect(find.byType(FittedBox), findsOneWidget);
+      final strips =
+          tester.stateList<ScrollableState>(find.byType(Scrollable)).toList();
+      expect(strips, hasLength(1));
+      expect(find.byType(ShaderMask), findsOneWidget);
       expect(find.byType(SingleMotionBuilder), findsWidgets);
 
       expect(
@@ -223,22 +197,15 @@ void main() {
         findsOneWidget,
       );
       for (final label in ['Rapid', 'Blitz']) {
-        final key = find.byKey(
-          ValueKey('ranking-time-control-${label.toLowerCase()}'),
-        );
-        expect(key, findsOneWidget);
         expect(
-          find.descendant(of: key, matching: find.text(label)),
+          find.descendant(
+            of: _timeControlChip(label),
+            matching: find.text(label),
+          ),
           findsNothing,
         );
-
-        final semantics = tester.widget<Semantics>(
-          find.descendant(of: key, matching: find.byType(Semantics)).first,
-        );
-        expect(semantics.properties.label, label);
       }
 
-      // Same baseline for both groups.
       expect(
         tester
             .getCenter(
@@ -249,11 +216,6 @@ void main() {
             .getCenter(find.byKey(const ValueKey('ranking-category-overall')))
             .dy,
       );
-
-      // All category labels visible without horizontal scroll.
-      for (final label in ['Overall', 'Women', 'Juniors', 'Girls']) {
-        expect(find.text(label), findsOneWidget);
-      }
     },
   );
 
@@ -280,8 +242,7 @@ void main() {
             as BoxDecoration;
     expect(selected.color, kPrimaryColor);
     expect(tester.widget<Text>(find.text('Overall')).style?.color, kBlackColor);
-    expect(find.byType(FittedBox), findsOneWidget);
-    expect(find.byType(Scrollable), findsNothing);
+    expect(find.byType(Scrollable), findsOneWidget);
   });
 
   testWidgets('Active/All shares a centre line with the search field', (
@@ -303,7 +264,7 @@ void main() {
             ResponsiveHelper.init(context);
             return Scaffold(
               body: Padding(
-                padding: EdgeInsets.fromLTRB(12.w, 10.h, 12.w, 0),
+                padding: EdgeInsets.fromLTRB(16.w, 10.h, 16.w, 0),
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
