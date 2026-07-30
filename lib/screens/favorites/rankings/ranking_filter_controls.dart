@@ -21,13 +21,12 @@ double get _stripInset => 16.w;
 /// the whole point of a filter chip is that it reads small.
 double get _chipTouchPadding => 9.h;
 
-/// Gap between chips inside the same group (time controls, or categories).
-/// Intentionally tighter than the old flat 6.w-between-every-child strip so
-/// more of the rail is visible on first paint — chip *size* is unchanged.
-double get _intraGroupGap => 3.w;
+/// Same chip-to-chip spacing as the Favorites Games filter strip.
+double get _chipGap => 6.w;
 
-/// Gap between the time-control group and the category group.
-double get _interGroupGap => 8.w;
+/// Single gap between the time-control group and the category group (replaces
+/// the old accidental 6 + 8 + 6 double spacing from an extra spacer child).
+double get _groupGap => 10.w;
 
 /// Spring used when a time-control chip expands to show its label.
 const _labelMotion = CupertinoMotion.smooth();
@@ -35,14 +34,13 @@ const _labelMotion = CupertinoMotion.smooth();
 /// One ranking filter chip, built to the Games tab's filter-chip spec: a
 /// compact bordered pill, not a tappable slab.
 ///
-/// The geometry is deliberate. An earlier pass gave these a 44.h floor height
-/// and 14/10 padding, which made them read as action buttons and left them
-/// taller than the search field they sit beside. Chips are sized by their
-/// content here, and the touch target is bought with outside padding instead.
+/// Painted geometry matches the Games-tab filter chips / original Rankings
+/// chips: 8×8 pad, 14.ic icons, textXs, 16.br. Touch size comes from outer
+/// padding only — do not densify the painted box.
 ///
 /// [showLabel] always paints the text. [expandLabelWhenSelected] is for the
-/// icon time-control group: unselected chips stay icon-only; the selected one
-/// springs the label in with Motor so the rail doesn't jump.
+/// icon time-control group: unselected chips stay icon-only (with the original
+/// icon-only outer pad); the selected one springs the label in with Motor.
 class _RankingChip extends StatelessWidget {
   const _RankingChip({
     super.key,
@@ -63,8 +61,12 @@ class _RankingChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final iconOnly =
-        iconAsset != null && !showLabel && !expandLabelWhenSelected;
+    // Match original outer-pad rules: labeled chips use 0 / 9.h; icon-only
+    // chips use 8.w / 12.h. When expandLabelWhenSelected is on, only the
+    // *selected* chip is treated as labeled for padding so unselected time
+    // controls keep the same footprint as before.
+    final labelVisible =
+        showLabel || (expandLabelWhenSelected && isSelected);
 
     return Semantics(
       label: label,
@@ -76,11 +78,8 @@ class _RankingChip extends StatelessWidget {
         onTap: onTap,
         child: Padding(
           padding: EdgeInsets.symmetric(
-            horizontal: iconOnly ? 8.w : 0,
-            vertical:
-                expandLabelWhenSelected || showLabel
-                    ? _chipTouchPadding
-                    : 12.h,
+            horizontal: labelVisible ? 0 : 8.w,
+            vertical: labelVisible ? _chipTouchPadding : 12.h,
           ),
           child: AnimatedContainer(
             duration: const Duration(milliseconds: 150),
@@ -97,13 +96,15 @@ class _RankingChip extends StatelessWidget {
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                if (iconAsset != null)
+                if (iconAsset != null) ...[
                   Image.asset(
                     iconAsset!,
                     width: 14.ic,
                     height: 14.ic,
                     fit: BoxFit.contain,
                   ),
+                  if (showLabel) SizedBox(width: 4.w),
+                ],
                 if (expandLabelWhenSelected)
                   SingleMotionBuilder(
                     motion: _labelMotion,
@@ -124,7 +125,8 @@ class _RankingChip extends StatelessWidget {
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        SizedBox(width: 4.w),
+                        // Icon already painted; only the icon→label gap animates in.
+                        if (iconAsset != null) SizedBox(width: 4.w),
                         Text(
                           label,
                           maxLines: 1,
@@ -142,8 +144,7 @@ class _RankingChip extends StatelessWidget {
                       ],
                     ),
                   )
-                else if (showLabel) ...[
-                  if (iconAsset != null) SizedBox(width: 4.w),
+                else if (showLabel)
                   Text(
                     label,
                     maxLines: 1,
@@ -157,7 +158,6 @@ class _RankingChip extends StatelessWidget {
                           isSelected ? FontWeight.w600 : FontWeight.w500,
                     ),
                   ),
-                ],
               ],
             ),
           ),
@@ -167,7 +167,7 @@ class _RankingChip extends StatelessWidget {
   }
 }
 
-/// Tight row of chips that belong to one filter group.
+/// Row of chips in one filter group (time controls, or categories).
 class _ChipGroup extends StatelessWidget {
   const _ChipGroup({required this.children});
 
@@ -179,7 +179,7 @@ class _ChipGroup extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       children: [
         for (var i = 0; i < children.length; i++) ...[
-          if (i > 0) SizedBox(width: _intraGroupGap),
+          if (i > 0) SizedBox(width: _chipGap),
           children[i],
         ],
       ],
@@ -189,9 +189,6 @@ class _ChipGroup extends StatelessWidget {
 
 /// A swipeable strip of chip groups that fades at both edges instead of
 /// guillotining whichever chip happens to land on the boundary.
-///
-/// [children] are groups (time controls, then categories). Only a single
-/// inter-group gap sits between them — chip painted size is unchanged.
 class _ChipStrip extends StatelessWidget {
   const _ChipStrip({required this.children});
 
@@ -220,7 +217,7 @@ class _ChipStrip extends StatelessWidget {
         child: Row(
           children: [
             for (var i = 0; i < children.length; i++) ...[
-              if (i > 0) SizedBox(width: _interGroupGap),
+              if (i > 0) SizedBox(width: _groupGap),
               children[i],
             ],
           ],
@@ -247,8 +244,7 @@ class RankingActivityControl extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       children: [
         for (final activity in RankingActivity.values) ...[
-          if (activity != RankingActivity.values.first)
-            SizedBox(width: _intraGroupGap),
+          if (activity != RankingActivity.values.first) SizedBox(width: _chipGap),
           _RankingChip(
             key: ValueKey('ranking-activity-${activity.name}'),
             label: activity == RankingActivity.active ? 'Active' : 'All',

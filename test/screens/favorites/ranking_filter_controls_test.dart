@@ -179,7 +179,7 @@ void main() {
   });
 
   testWidgets(
-    'time controls and categories share one rail with tighter group gaps only',
+    'time controls and categories share one rail with original chip geometry',
     (tester) async {
       await _pumpControls(tester, showActivity: false);
 
