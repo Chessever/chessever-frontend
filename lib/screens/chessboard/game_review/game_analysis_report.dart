@@ -1292,8 +1292,12 @@ GameMoveClassification? _classifyGameReportMoveCore({
   final alternatives = before.lines
       .where((line) => line.moves.isNotEmpty && line.moves.first != move.uci)
       .toList(growable: false);
-  final alternativeWin =
-      alternatives.isEmpty ? null : gameReportWinPercentage(alternatives.first);
+  final alternativeWin = alternatives.isEmpty
+      ? null
+      : gameReportWinPercentage(alternatives.first);
+  final alternativeMoverWin = alternativeWin == null
+      ? null
+      : (isWhite ? alternativeWin : (100 - alternativeWin));
 
   // Gap: played result vs next-best path (pp, mover's favour).
   final alternativeGap =
@@ -1348,6 +1352,30 @@ GameMoveClassification? _classifyGameReportMoveCore({
   // in a losing position is unreachable today — a known gap, tracked separately
   // rather than papered over here.
   var greatAndBestEligible = positiveLabelsEligible;
+
+  // Once the played move and the first real alternative both keep a clearly
+  // won position clearly won, their gap is conversion noise rather than a
+  // prestigious decision. Brilliant remains separate: an independently
+  // verified exceptional idea may still qualify on its own evidence.
+  final saturatedWinningConversion =
+      moverBefore >= kBandBetterMax &&
+      moverAfter >= kBandBetterMax &&
+      alternativeMoverWin != null &&
+      alternativeMoverWin >= kBandBetterMax;
+  if (saturatedWinningConversion) greatAndBestEligible = false;
+
+  // Do not let routine captures inherit the prestige of the tactic that made
+  // them possible. A capture can still earn praise in a competitive position,
+  // by crossing an outcome band, or by producing a substantial win% gain.
+  final beforeBand = outcomeBandFor(moverBefore);
+  final afterBand = outcomeBandFor(moverAfter);
+  final routineConversionCapture =
+      facts.isCapture &&
+      beforeBand == afterBand &&
+      beforeBand != OutcomeBand.competitive &&
+      moverChange < kRoutinePraiseMinWinGainPp;
+  if (routineConversionCapture) greatAndBestEligible = false;
+
   if (moverAfter <= kPositivePraiseWinFloorPp &&
       (facts.isCapture || facts.isRoutineRetreat || facts.isForcedRecapture)) {
     final earnsException =
@@ -1415,8 +1443,7 @@ GameMoveClassification? _classifyGameReportMoveCore({
           playedIsBest: playedIsBest,
           moverBefore: moverBefore,
           moverAfter: moverAfter,
-          alternativeMoverWin:
-              isWhite ? alternativeWin : (100 - alternativeWin),
+          alternativeMoverWin: alternativeMoverWin!,
           alternativeGap: alternativeGap,
         );
         if (defensiveSave ||
