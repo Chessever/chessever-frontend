@@ -16,6 +16,7 @@ import 'package:chessever2/screens/chessboard/analysis/chess_game_navigator_stat
 import 'package:chessever2/screens/chessboard/provider/current_eval_provider.dart';
 import 'package:chessever2/screens/chessboard/provider/game_pgn_stream_provider.dart';
 import 'package:chessever2/screens/chessboard/provider/stockfish_singleton.dart';
+import 'package:chessever2/screens/chessboard/utils/engine_arrow_visibility.dart';
 import 'package:chessever2/screens/chessboard/view_model/chess_board_state_new.dart';
 import 'package:chessever2/screens/chessboard/notation/notation_tree.dart';
 import 'package:chessever2/screens/chessboard/widgets/nag_display.dart';
@@ -6674,9 +6675,19 @@ class ChessBoardScreenNotifierNew
       final Position positionForArrows =
           currentSnapshot.isThreatsMode ? positionForAnalysis : position;
 
+      // Do not paint engine recommendation arrows once the displayed position is
+      // checkmate. A mate board has no legal next move, so best-move/threat
+      // arrows look like actionable engine advice after the game is over.
+      final shouldSuppressEngineArrows = shouldSuppressEngineArrowsForPosition(
+        positionForArrows,
+      );
+
       // CRITICAL: Use multi-variant arrows if variant selected, otherwise use best move
       final ISet<Shape> shapes;
-      if (currentSnapshot.selectedVariantIndex != null && pvLines.isNotEmpty) {
+      if (shouldSuppressEngineArrows) {
+        shapes = const ISet<Shape>.empty();
+      } else if (currentSnapshot.selectedVariantIndex != null &&
+          pvLines.isNotEmpty) {
         shapes = _getAllVariantArrowShapes(
           pvLines,
           currentSnapshot.selectedVariantIndex!,
@@ -6899,6 +6910,10 @@ class ChessBoardScreenNotifierNew
         // (and not inside an analysis variation). Applies to completed games too
         // so PiP shows the exact viewed move instead of jumping to the latest.
         isAtLiveTail: isAtMainlineTail,
+        shapes:
+            shouldSuppressEngineArrowsForPosition(position)
+                ? const ISet<Shape>.empty()
+                : current.shapes,
       );
 
       var progressedState = _setVariantProgress(
@@ -6975,6 +6990,10 @@ class ChessBoardScreenNotifierNew
   }
 
   ISet<Shape> getBestMoveShape(Position pos, CloudEval? cloudEval) {
+    if (shouldSuppressEngineArrowsForPosition(pos)) {
+      return const ISet.empty();
+    }
+
     if (cloudEval?.pvs.isNotEmpty ?? false) {
       final arrowShapes = <Shape>[];
 
