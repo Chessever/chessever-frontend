@@ -5,6 +5,8 @@ import 'package:chessever2/providers/pip_mode_provider.dart';
 import 'package:chessever2/repository/board_settings/models/board_settings_model.dart';
 import 'package:chessever2/repository/sqlite/app_database.dart';
 import 'package:chessever2/utils/board_customization_utils.dart';
+import 'package:chessever2/utils/audio_player_service.dart';
+import 'package:chessever2/utils/sound_preferences.dart';
 import 'package:chessever2/utils/chessground_image_cache.dart';
 import 'package:chessground/chessground.dart';
 import 'package:flutter/foundation.dart';
@@ -31,6 +33,8 @@ class BoardSettingsNew {
     this.boardThemeIndex = 9, // Grey (default chessground theme)
     this.showEvaluationBar = true,
     this.soundEnabled = true,
+    this.soundThemeIndex = 0,
+    this.soundVolume = kDefaultSoundVolume,
     this.chatEnabled = true,
     this.pieceStyleIndex = 0, // cburnett (Colin M.L. Burnett)
     this.gamesListViewModeIndex = 1, // chessBoardGrid (Grid)
@@ -48,7 +52,11 @@ class BoardSettingsNew {
   final int boardThemeIndex;
   final bool showEvaluationBar;
   final bool soundEnabled;
+  final int soundThemeIndex;
+  final double soundVolume;
   final bool chatEnabled;
+
+  SoundTheme get soundTheme => SoundTheme.fromIndex(soundThemeIndex);
 
   /// Index into PieceSet.values (chessground piece sets)
   final int pieceStyleIndex;
@@ -136,6 +144,8 @@ class BoardSettingsNew {
     int? boardThemeIndex,
     bool? showEvaluationBar,
     bool? soundEnabled,
+    int? soundThemeIndex,
+    double? soundVolume,
     bool? chatEnabled,
     int? pieceStyleIndex,
     int? gamesListViewModeIndex,
@@ -149,6 +159,8 @@ class BoardSettingsNew {
       boardThemeIndex: boardThemeIndex ?? this.boardThemeIndex,
       showEvaluationBar: showEvaluationBar ?? this.showEvaluationBar,
       soundEnabled: soundEnabled ?? this.soundEnabled,
+      soundThemeIndex: soundThemeIndex ?? this.soundThemeIndex,
+      soundVolume: soundVolume ?? this.soundVolume,
       chatEnabled: chatEnabled ?? this.chatEnabled,
       pieceStyleIndex: pieceStyleIndex ?? this.pieceStyleIndex,
       gamesListViewModeIndex:
@@ -184,6 +196,7 @@ class BoardSettingsNotifierNew extends AsyncNotifier<BoardSettingsNew> {
         debugPrint('[BoardSettings] No user logged in, returning defaults');
         const settings = BoardSettingsNew();
         await _preloadPieceImages(settings);
+        _applyAudioSettings(settings);
         return settings;
       }
 
@@ -211,6 +224,7 @@ class BoardSettingsNotifierNew extends AsyncNotifier<BoardSettingsNew> {
         }
         const settings = BoardSettingsNew();
         await _preloadPieceImages(settings);
+        _applyAudioSettings(settings);
         return settings;
       }
 
@@ -226,11 +240,15 @@ class BoardSettingsNotifierNew extends AsyncNotifier<BoardSettingsNew> {
         );
       }
 
+      final cachedSoundPrefs = await _getCachedSoundPrefs();
+
       final settings = BoardSettingsNew(
         boardColorIndex: model.boardColorIndex,
         boardThemeIndex: boardThemeIndex,
         showEvaluationBar: model.showEvaluationBar,
         soundEnabled: model.soundEnabled,
+        soundThemeIndex: cachedSoundPrefs.soundThemeIndex,
+        soundVolume: cachedSoundPrefs.soundVolume,
         chatEnabled: model.chatEnabled,
         pieceStyleIndex: model.pieceStyleIndex,
         gamesListViewModeIndex: model.gamesListViewModeIndex,
@@ -245,6 +263,7 @@ class BoardSettingsNotifierNew extends AsyncNotifier<BoardSettingsNew> {
       // Cache locally
       await _cacheSettings(settings);
       await _preloadPieceImages(settings);
+      _applyAudioSettings(settings);
 
       debugPrint('[BoardSettings] Fetched settings from Supabase');
       return settings;
@@ -302,6 +321,24 @@ class BoardSettingsNotifierNew extends AsyncNotifier<BoardSettingsNew> {
     final newSettings = currentState.copyWith(soundEnabled: value);
     state = AsyncValue.data(newSettings);
     await _persist(newSettings);
+  }
+
+  /// Set the move-sound theme.
+  Future<void> setSoundThemeIndex(int index, {bool preview = true}) async {
+    final clamped = index.clamp(0, SoundTheme.values.length - 1);
+    final currentState = state.valueOrNull ?? const BoardSettingsNew();
+    final newSettings = currentState.copyWith(soundThemeIndex: clamped);
+    state = AsyncValue.data(newSettings);
+    await _persist(newSettings, previewSound: preview);
+  }
+
+  /// Set the master move-sound volume.
+  Future<void> setSoundVolume(double value, {bool preview = false}) async {
+    final clamped = value.clamp(0.0, 1.0).toDouble();
+    final currentState = state.valueOrNull ?? const BoardSettingsNew();
+    final newSettings = currentState.copyWith(soundVolume: clamped);
+    state = AsyncValue.data(newSettings);
+    await _persist(newSettings, previewSound: preview);
   }
 
   /// Toggle chat
@@ -376,9 +413,7 @@ class BoardSettingsNotifierNew extends AsyncNotifier<BoardSettingsNew> {
   Future<void> toggleShowCoordinates(bool value) async {
     final currentState = state.valueOrNull ?? const BoardSettingsNew();
     final newSettings = currentState.copyWith(showCoordinates: value);
-    debugPrint(
-      '🔤 BoardSettings: Coordinates ${value ? 'shown' : 'hidden'}',
-    );
+    debugPrint('🔤 BoardSettings: Coordinates ${value ? 'shown' : 'hidden'}');
     state = AsyncValue.data(newSettings);
     await _persist(newSettings);
   }
@@ -431,18 +466,32 @@ class BoardSettingsNotifierNew extends AsyncNotifier<BoardSettingsNew> {
     }
   }
 
-  Future<void> _persist(BoardSettingsNew settings) async {
+  Future<void> _persist(
+    BoardSettingsNew settings, {
+    bool previewSound = false,
+  }) async {
     try {
+      // Cache locally first (fast, immediate). Sound theme/volume are currently
+      // local-only so we don't need a Supabase schema migration just to expose
+      // Lichess-style move-sound preferences.
+      await _cacheSettings(settings);
+      await AudioPlayerService.instance.applySoundPreferences(
+        theme: settings.soundTheme,
+        volume: settings.soundVolume,
+        preview: previewSound && settings.soundEnabled,
+      );
+
       final userId = _supabase.auth.currentUser?.id;
       if (userId == null) {
-        debugPrint('[BoardSettings] No user logged in, skipping persist');
+        debugPrint(
+          '[BoardSettings] No user logged in, skipping Supabase persist',
+        );
         return;
       }
 
-      // Cache locally first (fast, immediate)
-      await _cacheSettings(settings);
-
-      // Save to Supabase in background (fire-and-forget, non-blocking)
+      // Save existing Supabase-backed settings in background (fire-and-forget,
+      // non-blocking). Do not send sound_theme/sound_volume until the backend
+      // schema has those columns.
       unawaited(_saveToSupabase(settings, userId));
     } catch (e, st) {
       debugPrint('[BoardSettings] Error persisting settings: $e');
@@ -488,6 +537,8 @@ class BoardSettingsNotifierNew extends AsyncNotifier<BoardSettingsNew> {
         'boardThemeIndex': settings.boardThemeIndex,
         'showEvaluationBar': settings.showEvaluationBar,
         'soundEnabled': settings.soundEnabled,
+        'soundThemeIndex': settings.soundThemeIndex,
+        'soundVolume': settings.soundVolume,
         'chatEnabled': settings.chatEnabled,
         'pieceStyleIndex': settings.pieceStyleIndex,
         'gamesListViewModeIndex': settings.gamesListViewModeIndex,
@@ -511,6 +562,7 @@ class BoardSettingsNotifierNew extends AsyncNotifier<BoardSettingsNew> {
         debugPrint('[BoardSettings] No cached settings, using defaults');
         const settings = BoardSettingsNew();
         await _preloadPieceImages(settings);
+        _applyAudioSettings(settings);
         return settings;
       }
 
@@ -532,6 +584,9 @@ class BoardSettingsNotifierNew extends AsyncNotifier<BoardSettingsNew> {
         boardThemeIndex: boardThemeIndex,
         showEvaluationBar: map['showEvaluationBar'] as bool? ?? true,
         soundEnabled: map['soundEnabled'] as bool? ?? true,
+        soundThemeIndex: map['soundThemeIndex'] as int? ?? 0,
+        soundVolume:
+            (map['soundVolume'] as num?)?.toDouble() ?? kDefaultSoundVolume,
         chatEnabled: map['chatEnabled'] as bool? ?? true,
         pieceStyleIndex: map['pieceStyleIndex'] as int? ?? 0,
         gamesListViewModeIndex: map['gamesListViewModeIndex'] as int? ?? 0,
@@ -549,6 +604,35 @@ class BoardSettingsNotifierNew extends AsyncNotifier<BoardSettingsNew> {
       await _preloadPieceImages(settings);
       return settings;
     }
+  }
+
+  Future<({int soundThemeIndex, double soundVolume})>
+  _getCachedSoundPrefs() async {
+    try {
+      final db = AppDatabase.instance;
+      final json = await db.getString(_cacheKey);
+      if (json == null) {
+        return (soundThemeIndex: 0, soundVolume: kDefaultSoundVolume);
+      }
+      final map = jsonDecode(json) as Map<String, dynamic>;
+      return (
+        soundThemeIndex: map['soundThemeIndex'] as int? ?? 0,
+        soundVolume:
+            (map['soundVolume'] as num?)?.toDouble() ?? kDefaultSoundVolume,
+      );
+    } catch (e) {
+      debugPrint('[BoardSettings] Error reading cached sound preferences: $e');
+      return (soundThemeIndex: 0, soundVolume: kDefaultSoundVolume);
+    }
+  }
+
+  void _applyAudioSettings(BoardSettingsNew settings) {
+    unawaited(
+      AudioPlayerService.instance.applySoundPreferences(
+        theme: settings.soundTheme,
+        volume: settings.soundVolume,
+      ),
+    );
   }
 
   /// Clear cache (useful on sign out)

@@ -2,6 +2,7 @@ import 'package:chessever2/e2e/e2e_ids.dart';
 import 'package:chessever2/screens/settings/widgets/board_settings_body.dart';
 import 'package:chessever2/screens/settings/widgets/engine_settings_body.dart';
 import 'package:chessever2/screens/settings/widgets/notification_settings_body.dart';
+import 'package:chessever2/screens/settings/widgets/sound_settings_body.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
@@ -13,7 +14,7 @@ import 'package:chessever2/widgets/svg_widget.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
-enum SettingsSection { board, engine, notification }
+enum SettingsSection { board, engine, notification, sound }
 
 class SettingsPage extends ConsumerStatefulWidget {
   const SettingsPage({super.key, this.initiallyExpanded});
@@ -166,6 +167,18 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                     liveWidgetsKey: _liveWidgetsKey,
                   ),
                 ),
+                SizedBox(height: 14.h),
+                _CollapsibleSection(
+                  title: 'Sound Settings',
+                  leading: Icon(
+                    Icons.volume_up_outlined,
+                    color: context.colors.iconPrimary,
+                    size: 22.ic,
+                  ),
+                  expanded: _expanded == SettingsSection.sound,
+                  onTap: () => _toggle(SettingsSection.sound),
+                  child: SoundSettingsBody(trackPersist: _trackPersist),
+                ),
                 SizedBox(height: 24.h),
                 _DeleteAccountRow(
                   onTap: () {
@@ -234,11 +247,7 @@ class _DeleteAccountRow extends StatelessWidget {
                   ),
                 ),
                 SizedBox(width: 8.w),
-                Icon(
-                  Icons.chevron_right_rounded,
-                  color: danger,
-                  size: 24.ic,
-                ),
+                Icon(Icons.chevron_right_rounded, color: danger, size: 24.ic),
               ],
             ),
           ),
@@ -266,9 +275,10 @@ class _CollapsibleSection extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final accent = kPrimaryColor;
-    final borderColor = expanded
-        ? accent.withValues(alpha: 0.45)
-        : context.colors.divider.withValues(alpha: 0.4);
+    final borderColor =
+        expanded
+            ? accent.withValues(alpha: 0.45)
+            : context.colors.divider.withValues(alpha: 0.4);
 
     return AnimatedContainer(
       duration: const Duration(milliseconds: 240),
@@ -277,23 +287,24 @@ class _CollapsibleSection extends StatelessWidget {
         color: context.colors.surface,
         borderRadius: BorderRadius.circular(20.br),
         border: Border.all(color: borderColor),
-        boxShadow: expanded
-            ? [
-                BoxShadow(
-                  color: accent.withValues(alpha: 0.18),
-                  blurRadius: 18,
-                  spreadRadius: -4,
-                  offset: const Offset(0, 6),
-                ),
-              ]
-            : context.isLightTheme
+        boxShadow:
+            expanded
                 ? [
-                    BoxShadow(
-                      color: context.colors.shadow,
-                      blurRadius: 8,
-                      offset: const Offset(0, 1),
-                    ),
-                  ]
+                  BoxShadow(
+                    color: accent.withValues(alpha: 0.18),
+                    blurRadius: 18,
+                    spreadRadius: -4,
+                    offset: const Offset(0, 6),
+                  ),
+                ]
+                : context.isLightTheme
+                ? [
+                  BoxShadow(
+                    color: context.colors.shadow,
+                    blurRadius: 8,
+                    offset: const Offset(0, 1),
+                  ),
+                ]
                 : null,
       ),
       child: ClipRRect(
@@ -319,14 +330,16 @@ class _CollapsibleSection extends StatelessWidget {
                         width: 40.w,
                         height: 40.h,
                         decoration: BoxDecoration(
-                          color: expanded
-                              ? accent.withValues(alpha: 0.16)
-                              : context.colors.surfaceRecessed,
+                          color:
+                              expanded
+                                  ? accent.withValues(alpha: 0.16)
+                                  : context.colors.surfaceRecessed,
                           borderRadius: BorderRadius.circular(12.br),
                           border: Border.all(
-                            color: expanded
-                                ? accent.withValues(alpha: 0.35)
-                                : Colors.transparent,
+                            color:
+                                expanded
+                                    ? accent.withValues(alpha: 0.35)
+                                    : Colors.transparent,
                           ),
                         ),
                         child: Center(
@@ -357,9 +370,8 @@ class _CollapsibleSection extends StatelessWidget {
                         turns: expanded ? 0.25 : 0.0,
                         child: Icon(
                           Icons.chevron_right_rounded,
-                          color: expanded
-                              ? accent
-                              : context.colors.textTertiary,
+                          color:
+                              expanded ? accent : context.colors.textTertiary,
                           size: 24.ic,
                         ),
                       ),
