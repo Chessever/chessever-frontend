@@ -11972,16 +11972,28 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
       final sheet = GameReviewSheetScope.maybeOf(context);
       if (sheet == null) return;
       unawaited(() async {
+        final alreadyRunning =
+            reviewController.reviewState.reportState.isRunning;
         reviewController.reveal();
-        // Open immediately. When a report is already running, this reconnects
-        // the progress surface without cancelling or restarting that work.
-        await notifier.setGameReviewVisible(true);
-        if (!mounted || !context.mounted) return;
-        sheet.target.value = params;
-        // On-demand generation (free daily slot / premium unlimited). Cached
-        // reports return immediately without consuming quota. A running report
-        // makes requestAnalysis a no-op and continues in this open sheet.
+
+        // Mid-run: reconnect the progress surface only. Never stop/cancel —
+        // that was the original bug (second tap killed generation).
+        if (alreadyRunning) {
+          await notifier.setGameReviewVisible(true);
+          if (!mounted || !context.mounted) return;
+          sheet.target.value = params;
+          return;
+        }
+
+        // Fresh generate: run analysis first (silent). requestAnalysis awaits
+        // the full Stockfish pass (or returns immediately on cache hit). Open
+        // the sheet only after that path returns so the board is not blocked
+        // by an open review sheet for the entire run.
         await reviewController.requestAnalysis(context);
+        if (!mounted || !context.mounted) return;
+        await notifier.setGameReviewVisible(true);
+        if (!mounted) return;
+        sheet.target.value = params;
       }());
     }
 

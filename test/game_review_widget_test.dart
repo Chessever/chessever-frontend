@@ -605,22 +605,47 @@ void main() {
     },
   );
 
-  test('openGameReview reconnects to a running report (source wiring)', () {
+  test('openGameReview analyze-then-sheet; mid-run reconnect without cancel', () {
     final boardSource =
         io.File(
           'lib/screens/chessboard/chess_board_screen_new.dart',
         ).readAsStringSync();
     final openIndex = boardSource.indexOf('void openGameReview()');
     expect(openIndex, greaterThan(0));
-    final openBody = boardSource.substring(openIndex, openIndex + 1200);
+    final openBody = boardSource.substring(openIndex, openIndex + 1800);
+
+    // Never kill an in-flight report from the notation entry point.
     expect(openBody, isNot(contains('stopAnalysis()')));
+    expect(openBody, contains('alreadyRunning'));
+    expect(openBody, contains('reportState.isRunning'));
     expect(openBody, contains('setGameReviewVisible(true)'));
     expect(openBody, contains('sheet.target.value = params'));
-    expect(
-      openBody.indexOf('setGameReviewVisible(true)'),
-      lessThan(openBody.indexOf('requestAnalysis(context)')),
-      reason: 'the progress sheet must reopen before awaiting existing work',
+    expect(openBody, contains('requestAnalysis(context)'));
+
+    // Fresh generate must request analysis BEFORE opening the sheet (silent load).
+    final analyzeIdx = openBody.indexOf('requestAnalysis(context)');
+    final openAfterAnalyzeIdx = openBody.indexOf(
+      'setGameReviewVisible(true)',
+      analyzeIdx,
     );
+    expect(analyzeIdx, greaterThan(0));
+    expect(
+      openAfterAnalyzeIdx,
+      greaterThan(analyzeIdx),
+      reason: 'fresh generate opens the sheet only after requestAnalysis returns',
+    );
+
+    // Mid-run branch reconnects the sheet without calling requestAnalysis first.
+    final runningBranchIdx = openBody.indexOf('if (alreadyRunning)');
+    expect(runningBranchIdx, greaterThan(0));
+    final runningBranch = openBody.substring(
+      runningBranchIdx,
+      openBody.indexOf('// Fresh generate', runningBranchIdx),
+    );
+    expect(runningBranch, contains('setGameReviewVisible(true)'));
+    expect(runningBranch, isNot(contains('requestAnalysis')));
+    expect(runningBranch, isNot(contains('stopAnalysis')));
+
     final reportSource =
         io.File(
           'lib/screens/chessboard/game_review/game_analysis_report.dart',
@@ -641,6 +666,47 @@ void main() {
       reason: 'UI status must leave running before engine cancel await',
     );
     expect(cancelBody, isNot(contains('will restart when this game is active')));
+
+    // requestAnalysis must no-op while running (keep mid-run alive).
+    final providerSource =
+        io.File(
+          'lib/screens/chessboard/game_review/game_review_provider.dart',
+        ).readAsStringSync();
+    final requestIdx = providerSource.indexOf(
+      'Future<void> requestAnalysis(BuildContext context) async',
+    );
+    expect(requestIdx, greaterThan(0));
+    final requestBody = providerSource.substring(requestIdx, requestIdx + 600);
+    expect(requestBody, contains('if (_reportController.state.isRunning) return;'));
+    expect(requestBody, isNot(contains('stopAnalysis')));
+    expect(requestBody, isNot(contains('cancel()')));
+
+    // Board eval must resume when the review sheet hides, and must not hard-defer
+    // MultiPV while the sheet is open (Arun #285 freeze collateral).
+    final boardProviderSource =
+        io.File(
+          'lib/screens/chessboard/provider/chess_board_screen_provider_new.dart',
+        ).readAsStringSync();
+    expect(boardProviderSource, isNot(contains('_deferredReviewEvaluationFen')));
+    expect(
+      boardProviderSource,
+      isNot(contains('Deferring board evaluation while sheet is visible')),
+    );
+    final setVisibleIdx = boardProviderSource.indexOf(
+      'Future<void> setGameReviewVisible(bool visible) async',
+    );
+    expect(setVisibleIdx, greaterThan(0));
+    final setVisibleBody = boardProviderSource.substring(
+      setVisibleIdx,
+      setVisibleIdx + 450,
+    );
+    expect(setVisibleBody, contains('if (!visible)'));
+    expect(setVisibleBody, contains('_updateEvaluation(force: true)'));
+    // No early-return that clears isEvaluating solely because the sheet is open.
+    final updateIdx = boardProviderSource.indexOf('void _updateEvaluation({');
+    expect(updateIdx, greaterThan(0));
+    final updateHead = boardProviderSource.substring(updateIdx, updateIdx + 700);
+    expect(updateHead, isNot(contains('if (_gameReviewVisible)')));
   });
 
   test(

@@ -809,11 +809,20 @@ void main() {
         source.contains('Future.delayed(const Duration(milliseconds: 250)'),
         isTrue,
       );
-      expect(source.contains('var evaluationResolved = false'), isTrue);
+      // Always clear the pending/watchdog for the last FEN the request touched.
+      // Gating resolve on evaluationResolved left cancelled/partial settles
+      // pending forever and froze MultiPV (Arun #285 collateral — reverted).
+      expect(source.contains('var evaluationResolved = false'), isFalse);
       expect(
         source.contains('if (evaluationResolved && lastEvaluatedFen != null)'),
-        isTrue,
+        isFalse,
       );
+      expect(
+        source.contains('if (lastEvaluatedFen != null)'),
+        isTrue,
+        reason: 'finally must resolve pending eval for lastEvaluatedFen always',
+      );
+      expect(source.contains('_resolvePendingEvaluation(lastEvaluatedFen)'), isTrue);
     });
 
     test('nested PV preview rebases from the displayed prefix', () {

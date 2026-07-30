@@ -243,7 +243,6 @@ class ChessBoardScreenNotifierNew
   ProviderSubscription<ChessGameNavigatorState>? _navigatorSubscription;
   bool _isInitialLoad = true;
   bool _gameReviewVisible = false;
-  String? _deferredReviewEvaluationFen;
 
   bool get isGameReviewVisible => _gameReviewVisible;
 
@@ -1930,21 +1929,14 @@ class ChessBoardScreenNotifierNew
     _updateEvaluation();
   }
 
-  /// Tracks whether the review sheet is open. Position jumps still update the
-  /// board, but evaluation is deferred until the sheet's route is dismissed.
+  /// Tracks whether the review sheet is open. Never cancels board Stockfish —
+  /// report generation must not own or interrupt the eval bar / engine lines.
+  /// Hiding the sheet forces a board eval refresh so MultiPV is not left stale.
   Future<void> setGameReviewVisible(bool visible) async {
     if (_gameReviewVisible == visible) return;
     _gameReviewVisible = visible;
-    if (visible) {
-      _releaseLog(
-        '🎯 REVIEW: Deferring board evaluation while sheet is visible',
-      );
-    } else {
-      // The modal route lifecycle owns the single resume/restart. Starting
-      // here too races the visibility callback and cancels the first job.
-      _releaseLog(
-        '🎯 REVIEW: Sheet hidden; waiting for board lifecycle resume',
-      );
+    if (!visible) {
+      _updateEvaluation(force: true);
     }
   }
 
@@ -5751,7 +5743,6 @@ class ChessBoardScreenNotifierNew
     bool skipPvUpdates = false,
     bool allowPvUpdatesDuringPreview = false,
   }) async {
-    var evaluationResolved = false;
     int? requestId;
     String? lastEvaluatedFen;
     try {
@@ -6263,7 +6254,6 @@ class ChessBoardScreenNotifierNew
             }
             // Resolve pending/watchdog before return so a complete cascade does
             // not look "stuck" and re-arm a force restart.
-            evaluationResolved = true;
             _resolvePendingEvaluation(fen);
             _releaseLog(
               '🎯 EVAL: Skipping local Stockfish - cached/backend eval is sufficient (depth=${cascadeEval.depth}, mate=${firstCascadePv.mate})',
@@ -7083,8 +7073,6 @@ class ChessBoardScreenNotifierNew
           );
           _retryEvaluationForFen(fen, reason: 'incomplete-board-settle');
         });
-      } else {
-        evaluationResolved = true;
       }
     } catch (e) {
       if (!_cancelEvaluation) {
@@ -7108,7 +7096,10 @@ class ChessBoardScreenNotifierNew
           state = AsyncValue.data(finalState.copyWith(isEvaluating: false));
         }
       }
-      if (evaluationResolved && lastEvaluatedFen != null) {
+      // Always clear the watchdog for the last FEN this request touched.
+      // Gating on evaluationResolved left cancelled/partial settles "pending"
+      // forever and the UI looked stuck (Arun #285 collateral).
+      if (lastEvaluatedFen != null) {
         _resolvePendingEvaluation(lastEvaluatedFen);
       }
     }
@@ -7539,27 +7530,6 @@ class ChessBoardScreenNotifierNew
     bool refreshPreviewPvs = false,
   }) {
     if (_isLongPressing) return;
-
-    if (_gameReviewVisible) {
-      final reviewState = state.value;
-      final reviewPosition =
-          reviewState?.isAnalysisMode == true
-              ? reviewState!.analysisState.position
-              : reviewState?.position;
-      final reviewFen = reviewPosition?.fen;
-      if (_deferredReviewEvaluationFen != reviewFen) {
-        _deferredReviewEvaluationFen = reviewFen;
-        _releaseLog(
-          '🎯 REVIEW: Deferred board evaluation for '
-          '${reviewFen ?? "unknown position"}',
-        );
-      }
-      if (reviewState != null && reviewState.isEvaluating) {
-        state = AsyncValue.data(reviewState.copyWith(isEvaluating: false));
-      }
-      return;
-    }
-    _deferredReviewEvaluationFen = null;
 
     if (force || forceRestart) {
       // Force requests should interrupt any pending scheduled evaluations
