@@ -25,11 +25,27 @@ import 'package:flutter/widget_previews.dart';
 /// Everything here must stay top-level and public: `@Preview` arguments have to
 /// be const, and its callbacks have to be static and non-private.
 
+/// Concrete [PreviewThemeData] for Flutter 3.47+ (base class is abstract).
+///
+/// Applies the app light/dark [ThemeData] from [AppTheme] based on the
+/// ambient platform brightness so previews match what ships.
+final class AppPreviewThemeData extends PreviewThemeData {
+  /// Creates the ChessEver widget-preview theme adapter.
+  const AppPreviewThemeData();
+
+  @override
+  Widget apply(BuildContext context, Widget child) {
+    final brightness =
+        MediaQuery.maybePlatformBrightnessOf(context) ?? Brightness.light;
+    final theme = brightness == Brightness.dark
+        ? AppTheme.darkTheme
+        : AppTheme.lightTheme;
+    return Theme(data: theme, child: child);
+  }
+}
+
 /// The app's real themes, so previews match what ships.
-PreviewThemeData appPreviewTheme() => PreviewThemeData(
-  materialLight: AppTheme.lightTheme,
-  materialDark: AppTheme.darkTheme,
-);
+PreviewThemeData appPreviewTheme() => const AppPreviewThemeData();
 
 /// Initializes [ResponsiveHelper] before the previewed widget builds.
 ///
