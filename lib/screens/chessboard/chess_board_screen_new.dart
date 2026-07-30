@@ -3918,10 +3918,33 @@ class _AppBarState extends ConsumerState<_AppBar> {
     );
     final boardState = ref.read(chessBoardScreenProviderNew(params));
     final state = boardState.valueOrNull;
+    final analysisGame = state?.analysisState.game;
+    final reviewState = ref.read(mobileGameReviewProvider(params));
+    final analysisFingerprint =
+        analysisGame == null ? null : gameReportFingerprint(analysisGame);
+    final currentReport =
+        reviewState.reportState.status == GameReportStatus.completed
+            ? reviewState.reportState.report
+            : null;
+    final stateReport =
+        currentReport?.fingerprint == analysisFingerprint
+            ? currentReport
+            : null;
+    final completedReport =
+        analysisFingerprint == null
+            ? stateReport
+            : stateReport ??
+                GameAnalysisReportController.cachedReportFor(
+                  analysisFingerprint,
+                );
+    final gifAnalysisGame =
+        analysisGame == null
+            ? null
+            : mergeGameReportAnnotationsForGif(analysisGame, completedReport);
 
     final pgn = await resolveGameSharePgn(
       game: widget.game,
-      analysisGame: state?.analysisState.game,
+      analysisGame: gifAnalysisGame,
       savedAnalysisData: widget.savedAnalysisData,
       fetchSupabasePgn: (gameId) async {
         try {
@@ -11949,19 +11972,16 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
       final sheet = GameReviewSheetScope.maybeOf(context);
       if (sheet == null) return;
       unawaited(() async {
-        // Second tap while generating stops the run and does not open the sheet.
-        if (reviewController.reviewState.reportState.isRunning) {
-          await reviewController.stopAnalysis();
-          return;
-        }
         reviewController.reveal();
-        // On-demand generation (free daily slot / premium unlimited). Cached
-        // reports return immediately without consuming quota.
-        await reviewController.requestAnalysis(context);
-        if (!mounted || !context.mounted) return;
+        // Open immediately. When a report is already running, this reconnects
+        // the progress surface without cancelling or restarting that work.
         await notifier.setGameReviewVisible(true);
-        if (!mounted) return;
+        if (!mounted || !context.mounted) return;
         sheet.target.value = params;
+        // On-demand generation (free daily slot / premium unlimited). Cached
+        // reports return immediately without consuming quota. A running report
+        // makes requestAnalysis a no-op and continues in this open sheet.
+        await reviewController.requestAnalysis(context);
       }());
     }
 

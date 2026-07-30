@@ -529,74 +529,19 @@ void main() {
     );
   });
 
-  test('second tap / stopAnalysis stops generation while running', () async {
-    final gate = Completer<void>();
-    Future<EnhancedCloudEval> blockedEvaluator(
-      String fen, {
-      required int depth,
-      required int multiPv,
-      required String ownerId,
-      void Function(int reachedDepth, int knodes)? onProgress,
-    }) async {
-      await gate.future;
-      return EnhancedCloudEval(
-        fen: fen,
-        knodes: 100,
-        depth: depth,
-        pvs: [Pv(moves: 'e2e4', cp: 0)],
-        requestedMultiPv: multiPv,
-      );
-    }
-
-    final reportController = GameAnalysisReportController(
-      evaluator: blockedEvaluator,
-    );
-    final controller = MobileGameReviewController(
-      reportController: reportController,
-      claimQuota: _allowClaim,
-    );
-    addTearDown(controller.dispose);
-
-    controller.configure(
-      game: ChessGame.fromPgn(
-        'second-tap',
-        '[White "A"]\n[Black "B"]\n[Result "1-0"]\n\n1. e4 e5 1-0',
-      ),
-      active: true,
-      finished: true,
-      whiteRating: 2100,
-      blackRating: 2050,
-    );
-
-    unawaited(controller.retry());
-    for (
-      var i = 0;
-      i < 50 && !controller.reviewState.reportState.isRunning;
-      i++
-    ) {
-      await Future<void>.delayed(const Duration(milliseconds: 10));
-    }
-    expect(controller.reviewState.reportState.isRunning, isTrue);
-
-    // Same user-facing entry the notation button uses when already running.
-    await controller.stopAnalysis();
-    expect(controller.reviewState.reportState.isRunning, isFalse);
-    expect(
-      controller.reviewState.reportState.status,
-      GameReportStatus.cancelled,
-    );
-
-    // retry() while running also stops (sheet / second path).
-    final gate2 = Completer<void>();
-    final report2 = GameAnalysisReportController(
-      evaluator: (
+  test(
+    'explicit stop cancels, but reopening/retry keeps a running report',
+    () async {
+      final gate = Completer<void>();
+      var claims = 0;
+      Future<EnhancedCloudEval> blockedEvaluator(
         String fen, {
         required int depth,
         required int multiPv,
         required String ownerId,
         void Function(int reachedDepth, int knodes)? onProgress,
       }) async {
-        await gate2.future;
+        await gate.future;
         return EnhancedCloudEval(
           fen: fen,
           knodes: 100,
@@ -604,53 +549,77 @@ void main() {
           pvs: [Pv(moves: 'e2e4', cp: 0)],
           requestedMultiPv: multiPv,
         );
-      },
-    );
-    final controller2 = MobileGameReviewController(
-      reportController: report2,
-      claimQuota: _allowClaim,
-    );
-    addTearDown(controller2.dispose);
-    controller2.configure(
-      game: ChessGame.fromPgn(
-        'retry-stops',
-        '[White "A"]\n[Black "B"]\n[Result "1-0"]\n\n1. d4 d5 1-0',
-      ),
-      active: true,
-      finished: true,
-      whiteRating: 2100,
-      blackRating: 2050,
-    );
-    unawaited(controller2.retry());
-    for (
-      var i = 0;
-      i < 50 && !controller2.reviewState.reportState.isRunning;
-      i++
-    ) {
-      await Future<void>.delayed(const Duration(milliseconds: 10));
-    }
-    expect(controller2.reviewState.reportState.isRunning, isTrue);
-    await controller2.retry();
-    expect(controller2.reviewState.reportState.isRunning, isFalse);
-    expect(
-      controller2.reviewState.reportState.status,
-      GameReportStatus.cancelled,
-    );
+      }
 
-    gate.complete();
-    gate2.complete();
-  });
+      final reportController = GameAnalysisReportController(
+        evaluator: blockedEvaluator,
+      );
+      final controller = MobileGameReviewController(
+        reportController: reportController,
+        claimQuota: (fingerprint) async {
+          claims++;
+          return _allowClaim(fingerprint);
+        },
+      );
+      addTearDown(controller.dispose);
 
-  test('openGameReview path stops when report is running (source wiring)', () {
+      controller.configure(
+        game: ChessGame.fromPgn(
+          'second-tap',
+          '[White "A"]\n[Black "B"]\n[Result "1-0"]\n\n1. e4 e5 1-0',
+        ),
+        active: true,
+        finished: true,
+        whiteRating: 2100,
+        blackRating: 2050,
+      );
+
+      unawaited(controller.retry());
+      for (
+        var i = 0;
+        i < 50 && !controller.reviewState.reportState.isRunning;
+        i++
+      ) {
+        await Future<void>.delayed(const Duration(milliseconds: 10));
+      }
+      expect(controller.reviewState.reportState.isRunning, isTrue);
+
+      // Reopening/retrying attaches to the same work and does not claim again.
+      await controller.retry();
+      expect(controller.reviewState.reportState.isRunning, isTrue);
+      expect(
+        controller.reviewState.reportState.status,
+        GameReportStatus.running,
+      );
+      expect(claims, 1);
+
+      // Explicit cancellation remains available for true leave/stop paths.
+      await controller.stopAnalysis();
+      expect(controller.reviewState.reportState.isRunning, isFalse);
+      expect(
+        controller.reviewState.reportState.status,
+        GameReportStatus.cancelled,
+      );
+
+      gate.complete();
+    },
+  );
+
+  test('openGameReview reconnects to a running report (source wiring)', () {
     final boardSource =
         io.File(
           'lib/screens/chessboard/chess_board_screen_new.dart',
         ).readAsStringSync();
-    expect(boardSource, contains('stopAnalysis()'));
+    final openIndex = boardSource.indexOf('void openGameReview()');
+    expect(openIndex, greaterThan(0));
+    final openBody = boardSource.substring(openIndex, openIndex + 1200);
+    expect(openBody, isNot(contains('stopAnalysis()')));
+    expect(openBody, contains('setGameReviewVisible(true)'));
+    expect(openBody, contains('sheet.target.value = params'));
     expect(
-      boardSource,
-      contains('reportState.isRunning'),
-      reason: 'openGameReview must branch on running to stop without sheet open',
+      openBody.indexOf('setGameReviewVisible(true)'),
+      lessThan(openBody.indexOf('requestAnalysis(context)')),
+      reason: 'the progress sheet must reopen before awaiting existing work',
     );
     final reportSource =
         io.File(

@@ -1,4 +1,6 @@
 import 'package:chessever2/screens/chessboard/analysis/chess_game.dart';
+import 'package:chessever2/screens/chessboard/game_review/game_analysis_report.dart';
+import 'package:chessever2/screens/chessboard/notation/notation_tree.dart';
 import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
 import 'package:chessever2/screens/chessboard/utils/game_share_utils.dart';
 import 'package:chessever2/screens/chessboard/view_model/chess_board_state_new.dart';
@@ -356,6 +358,110 @@ void main() {
       );
 
       expect(resolved, contains('1. e4 e5'));
+    });
+  });
+
+  group('mergeGameReportAnnotationsForGif', () {
+    test('uses Game Analysis evals instead of older PGN evals', () {
+      final game = ChessGame.fromPgn(
+        'gif-evals',
+        r'1. e4 {[%eval 0.15]} e5 2. Nf3 Nc6 *',
+      );
+      final report = GameAnalysisReport(
+        fingerprint: gameReportFingerprint(game),
+        positions: const [],
+        moves: const [
+          GameReportMove(
+            ply: 1,
+            san: 'e4',
+            uci: 'e2e4',
+            isWhite: true,
+            classification: GameMoveClassification.brilliant,
+            evaluation: GameReportLine(
+              moves: ['e2e4'],
+              depth: 18,
+              centipawns: 42,
+            ),
+          ),
+          GameReportMove(
+            ply: 2,
+            san: 'e5',
+            uci: 'e7e5',
+            isWhite: false,
+            classification: GameMoveClassification.inaccuracy,
+            evaluation: GameReportLine(
+              moves: ['e7e5'],
+              depth: 18,
+              centipawns: -31,
+            ),
+          ),
+          GameReportMove(
+            ply: 3,
+            san: 'Nf3',
+            uci: 'g1f3',
+            isWhite: true,
+            classification: GameMoveClassification.missedWin,
+            evaluation: GameReportLine(moves: ['g1f3'], depth: 18, mate: 3),
+          ),
+          GameReportMove(
+            ply: 4,
+            san: 'Nc6',
+            uci: 'b8c6',
+            isWhite: false,
+            classification: GameMoveClassification.bookMove,
+            evaluation: GameReportLine(
+              moves: ['b8c6'],
+              depth: 18,
+              centipawns: 18,
+            ),
+          ),
+        ],
+        whiteAccuracy: 90,
+        blackAccuracy: 80,
+        generatedAt: DateTime.utc(2026, 7, 29),
+      );
+
+      final merged = mergeGameReportAnnotationsForGif(game, report);
+      final pgn = exportGameToPgn(merged);
+
+      expect(merged.mainline[0].eval, '0.42');
+      expect(merged.mainline[1].eval, '-0.31');
+      expect(merged.mainline[2].eval, '#3');
+      expect(pgn, contains('[%eval 0.42]'));
+      expect(pgn, isNot(contains('[%eval 0.15]')));
+      expect(pgn, contains('[%eval -0.31]'));
+      expect(pgn, contains('[%eval #3]'));
+      expect(pgn, contains('[%chessever_annotation brilliant]'));
+      expect(pgn, contains('[%chessever_annotation inaccuracy]'));
+      expect(pgn, contains('[%chessever_annotation missed_win]'));
+      expect(pgn, contains('[%chessever_annotation book_move]'));
+    });
+
+    test('ignores a report for a different game', () {
+      final game = ChessGame.fromPgn('gif-evals', '1. e4 e5 *');
+      final report = GameAnalysisReport(
+        fingerprint: 'different-game',
+        positions: const [],
+        moves: const [
+          GameReportMove(
+            ply: 1,
+            san: 'e4',
+            uci: 'e2e4',
+            isWhite: true,
+            classification: GameMoveClassification.bestMove,
+            evaluation: GameReportLine(
+              moves: ['e2e4'],
+              depth: 18,
+              centipawns: 25,
+            ),
+          ),
+        ],
+        whiteAccuracy: 90,
+        blackAccuracy: 80,
+        generatedAt: DateTime.utc(2026, 7, 29),
+      );
+
+      expect(mergeGameReportAnnotationsForGif(game, report), same(game));
     });
   });
 

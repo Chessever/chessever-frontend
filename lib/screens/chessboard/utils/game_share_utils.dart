@@ -1,4 +1,5 @@
 import 'package:chessever2/screens/chessboard/analysis/chess_game.dart';
+import 'package:chessever2/screens/chessboard/game_review/game_analysis_report.dart';
 import 'package:chessever2/screens/chessboard/notation/notation_tree.dart';
 import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
 import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new_worker.dart';
@@ -15,6 +16,81 @@ typedef SharePgnParser = PgnParseResult Function(String pgn);
 
 const _defaultStartingFen =
     'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
+
+/// Adds completed Game Analysis scores and classifications to the PGN model
+/// sent to the Cloudflare GIF renderer.
+///
+/// A matching completed report is authoritative for every evaluated ply, so
+/// freshly generated Game Analysis values replace older/default PGN values.
+/// Cloudflare consumes these as `[%eval ...]` and
+/// `[%chessever_annotation ...]` comments when [exportGameToPgn] runs.
+ChessGame mergeGameReportAnnotationsForGif(
+  ChessGame game,
+  GameAnalysisReport? report,
+) {
+  if (report == null ||
+      report.moves.isEmpty ||
+      report.fingerprint != gameReportFingerprint(game)) {
+    return game;
+  }
+
+  final byPly = <int, GameReportMove>{
+    for (final move in report.moves) move.ply: move,
+  };
+  var changed = false;
+  final mainline = <ChessMove>[
+    for (var index = 0; index < game.mainline.length; index++)
+      (() {
+        final move = game.mainline[index];
+        final reportMove = byPly[index + 1];
+        if (reportMove == null) return move;
+
+        final reportLine = reportMove.evaluation;
+        final evaluation =
+            reportLine.mate != null
+                ? '#${reportLine.mate}'
+                : reportLine.centipawns != null
+                ? (reportLine.centipawns! / 100).toStringAsFixed(2)
+                : move.eval;
+        final classificationName = _gifClassificationName(
+          reportMove.classification,
+        );
+        final directive =
+            classificationName == null
+                ? null
+                : '[%chessever_annotation $classificationName]';
+        final existingComments = move.comments ?? const <String>[];
+        final hasClassificationDirective = existingComments.any(
+          (comment) => comment.contains('[%chessever_annotation '),
+        );
+        final comments =
+            directive == null || hasClassificationDirective
+                ? existingComments
+                : <String>[...existingComments, directive];
+
+        final evalChanged = evaluation != null && evaluation != move.eval;
+        final commentsChanged = comments.length != existingComments.length;
+        if (!evalChanged && !commentsChanged) return move;
+        changed = true;
+        return move.copyWith(eval: evaluation, comments: comments);
+      })(),
+  ];
+
+  return changed ? game.copyWith(mainline: mainline) : game;
+}
+
+String? _gifClassificationName(GameMoveClassification? classification) =>
+    switch (classification) {
+      GameMoveClassification.brilliant => 'brilliant',
+      GameMoveClassification.goodMove => 'good_move',
+      GameMoveClassification.bestMove => 'best_move',
+      GameMoveClassification.missedWin => 'missed_win',
+      GameMoveClassification.inaccuracy => 'inaccuracy',
+      GameMoveClassification.mistake => 'mistake',
+      GameMoveClassification.blunder => 'blunder',
+      GameMoveClassification.bookMove => 'book_move',
+      null => null,
+    };
 
 /// Query param marking a `/games/<uuid>` share link whose id lives in the
 /// gamebase (TWIC archive) rather than the app's Supabase games table. The
