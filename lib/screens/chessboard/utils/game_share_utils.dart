@@ -1,5 +1,6 @@
 import 'package:chessever2/screens/chessboard/analysis/chess_game.dart';
 import 'package:chessever2/screens/chessboard/game_review/game_analysis_report.dart';
+import 'package:chessever2/screens/chessboard/game_review/game_analysis_report_store.dart';
 import 'package:chessever2/screens/chessboard/notation/notation_tree.dart';
 import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
 import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new_worker.dart';
@@ -17,14 +18,18 @@ typedef SharePgnParser = PgnParseResult Function(String pgn);
 const _defaultStartingFen =
     'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
 
-/// Adds completed Game Analysis scores and classifications to the PGN model
-/// sent to the Cloudflare GIF renderer.
+/// PGN quality-verdict NAGs ($1–$6) that answer "how good was this move".
+/// A completed Game Analysis report owns that question and replaces them.
+const _moveVerdictNags = <int>{1, 2, 3, 4, 5, 6};
+
+/// Adds completed Game Analysis scores and classifications onto a [ChessGame]
+/// before export (Copy PGN, Share PGN, and GIF).
 ///
 /// A matching completed report is authoritative for every evaluated ply, so
 /// freshly generated Game Analysis values replace older/default PGN values.
-/// Cloudflare consumes these as `[%eval ...]` and
-/// `[%chessever_annotation ...]` comments when [exportGameToPgn] runs.
-ChessGame mergeGameReportAnnotationsForGif(
+/// [exportGameToPgn] serializes them as `[%eval ...]`,
+/// `[%chessever_annotation ...]`, and standard quality NAGs (`!`, `!!`, `?`…).
+ChessGame mergeGameReportAnnotationsForExport(
   ChessGame game,
   GameAnalysisReport? report,
 ) {
@@ -52,7 +57,7 @@ ChessGame mergeGameReportAnnotationsForGif(
                 : reportLine.centipawns != null
                 ? (reportLine.centipawns! / 100).toStringAsFixed(2)
                 : move.eval;
-        final classificationName = _gifClassificationName(
+        final classificationName = _exportClassificationName(
           reportMove.classification,
         );
         final directive =
@@ -68,18 +73,65 @@ ChessGame mergeGameReportAnnotationsForGif(
                 ? existingComments
                 : <String>[...existingComments, directive];
 
+        final reportNag = _exportClassificationNag(reportMove.classification);
+        final existingNags = move.nags ?? const <int>[];
+        final nonVerdictNags =
+            existingNags
+                .where((nag) => !_moveVerdictNags.contains(nag))
+                .toList(growable: true);
+        if (reportNag != null && !nonVerdictNags.contains(reportNag)) {
+          nonVerdictNags.add(reportNag);
+        }
+        final nags = nonVerdictNags;
+
         final evalChanged = evaluation != null && evaluation != move.eval;
         final commentsChanged = comments.length != existingComments.length;
-        if (!evalChanged && !commentsChanged) return move;
+        final nagsChanged =
+            nags.length != existingNags.length ||
+            !nags.every(existingNags.contains);
+        if (!evalChanged && !commentsChanged && !nagsChanged) return move;
         changed = true;
-        return move.copyWith(eval: evaluation, comments: comments);
+        return move.copyWith(eval: evaluation, comments: comments, nags: nags);
       })(),
   ];
 
   return changed ? game.copyWith(mainline: mainline) : game;
 }
 
-String? _gifClassificationName(GameMoveClassification? classification) =>
+/// Backward-compatible alias — GIF was the first consumer of this merge.
+ChessGame mergeGameReportAnnotationsForGif(
+  ChessGame game,
+  GameAnalysisReport? report,
+) => mergeGameReportAnnotationsForExport(game, report);
+
+/// Merge + [exportGameToPgn] in one step (Copy PGN / Share PGN / tests).
+String exportGamePgnWithReport(ChessGame game, GameAnalysisReport? report) {
+  return exportGameToPgn(mergeGameReportAnnotationsForExport(game, report));
+}
+
+/// Prefer the live completed report, then session cache, then durable store.
+Future<GameAnalysisReport?> resolveCompletedGameAnalysisReport({
+  required ChessGame? analysisGame,
+  GameAnalysisReport? liveReport,
+  GameAnalysisReportStore? store,
+}) async {
+  if (analysisGame == null) return null;
+  final fingerprint = gameReportFingerprint(analysisGame);
+  if (liveReport != null &&
+      liveReport.fingerprint == fingerprint &&
+      liveReport.moves.isNotEmpty) {
+    return liveReport;
+  }
+  final cached = GameAnalysisReportController.cachedReportFor(fingerprint);
+  if (cached != null && cached.moves.isNotEmpty) return cached;
+  final disk = await (store ?? GameAnalysisReportStore.instance).load(
+    fingerprint,
+  );
+  if (disk != null && disk.moves.isNotEmpty) return disk;
+  return null;
+}
+
+String? _exportClassificationName(GameMoveClassification? classification) =>
     switch (classification) {
       GameMoveClassification.brilliant => 'brilliant',
       GameMoveClassification.goodMove => 'good_move',
@@ -89,6 +141,20 @@ String? _gifClassificationName(GameMoveClassification? classification) =>
       GameMoveClassification.mistake => 'mistake',
       GameMoveClassification.blunder => 'blunder',
       GameMoveClassification.bookMove => 'book_move',
+      null => null,
+    };
+
+/// Standard PGN quality NAG for a report classification ($1–$6).
+int? _exportClassificationNag(GameMoveClassification? classification) =>
+    switch (classification) {
+      GameMoveClassification.brilliant => 3, // !!
+      GameMoveClassification.goodMove => 1, // !
+      GameMoveClassification.bestMove => 1, // !
+      GameMoveClassification.missedWin => 4, // ??
+      GameMoveClassification.inaccuracy => 6, // ?!
+      GameMoveClassification.mistake => 2, // ?
+      GameMoveClassification.blunder => 4, // ??
+      GameMoveClassification.bookMove => null,
       null => null,
     };
 

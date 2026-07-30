@@ -1,6 +1,6 @@
 import 'package:chessever2/screens/chessboard/analysis/chess_game.dart';
 import 'package:chessever2/screens/chessboard/game_review/game_analysis_report.dart';
-import 'package:chessever2/screens/chessboard/notation/notation_tree.dart';
+import 'package:chessever2/screens/chessboard/game_review/game_analysis_report_store.dart';
 import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
 import 'package:chessever2/screens/chessboard/utils/game_share_utils.dart';
 import 'package:chessever2/screens/chessboard/view_model/chess_board_state_new.dart';
@@ -361,13 +361,9 @@ void main() {
     });
   });
 
-  group('mergeGameReportAnnotationsForGif', () {
-    test('uses Game Analysis evals instead of older PGN evals', () {
-      final game = ChessGame.fromPgn(
-        'gif-evals',
-        r'1. e4 {[%eval 0.15]} e5 2. Nf3 Nc6 *',
-      );
-      final report = GameAnalysisReport(
+  group('mergeGameReportAnnotationsForExport / Copy+Share PGN hydrate', () {
+    GameAnalysisReport reportFor(ChessGame game) {
+      return GameAnalysisReport(
         fingerprint: gameReportFingerprint(game),
         positions: const [],
         moves: const [
@@ -420,13 +416,23 @@ void main() {
         blackAccuracy: 80,
         generatedAt: DateTime.utc(2026, 7, 29),
       );
+    }
 
-      final merged = mergeGameReportAnnotationsForGif(game, report);
-      final pgn = exportGameToPgn(merged);
+    test('uses Game Analysis evals and classifications in exported PGN', () {
+      final game = ChessGame.fromPgn(
+        'export-evals',
+        r'1. e4 {[%eval 0.15]} e5 2. Nf3 Nc6 *',
+      );
+      final report = reportFor(game);
+
+      final merged = mergeGameReportAnnotationsForExport(game, report);
+      final pgn = exportGamePgnWithReport(game, report);
 
       expect(merged.mainline[0].eval, '0.42');
       expect(merged.mainline[1].eval, '-0.31');
       expect(merged.mainline[2].eval, '#3');
+      expect(merged.mainline[0].nags, contains(3)); // !!
+      expect(merged.mainline[1].nags, contains(6)); // ?!
       expect(pgn, contains('[%eval 0.42]'));
       expect(pgn, isNot(contains('[%eval 0.15]')));
       expect(pgn, contains('[%eval -0.31]'));
@@ -435,10 +441,63 @@ void main() {
       expect(pgn, contains('[%chessever_annotation inaccuracy]'));
       expect(pgn, contains('[%chessever_annotation missed_win]'));
       expect(pgn, contains('[%chessever_annotation book_move]'));
+      // Standard PGN quality glyphs from report NAGs.
+      expect(pgn, contains(RegExp(r'e4\s*\$3|e4!!')));
+      expect(pgn, contains(RegExp(r'e5\s*\$6|e5\?!')));
+    });
+
+    test('resolveGameSharePgn (Copy/Share path) hydrates analysis report', () async {
+      final gameModel = _game(pgn: _headerOnlyPgn);
+      final analysis = ChessGame.fromPgn(
+        'share-hydrate',
+        r'1. e4 e5 2. Nf3 Nc6 *',
+      );
+      final report = reportFor(analysis);
+      final hydrated = mergeGameReportAnnotationsForExport(analysis, report);
+
+      final pgn = await resolveGameSharePgn(
+        game: gameModel,
+        analysisGame: hydrated,
+        savedAnalysisData: null,
+      );
+
+      expect(pgn, contains('[%eval 0.42]'));
+      expect(pgn, contains('[%chessever_annotation brilliant]'));
+      expect(pgn, contains('[%eval -0.31]'));
+      expect(pgn, contains('[%chessever_annotation inaccuracy]'));
+    });
+
+    test('GIF alias still forwards to the export merge', () {
+      final game = ChessGame.fromPgn('alias', r'1. e4 e5 *');
+      final report = GameAnalysisReport(
+        fingerprint: gameReportFingerprint(game),
+        positions: const [],
+        moves: const [
+          GameReportMove(
+            ply: 1,
+            san: 'e4',
+            uci: 'e2e4',
+            isWhite: true,
+            classification: GameMoveClassification.bestMove,
+            evaluation: GameReportLine(
+              moves: ['e2e4'],
+              depth: 18,
+              centipawns: 25,
+            ),
+          ),
+        ],
+        whiteAccuracy: 90,
+        blackAccuracy: 80,
+        generatedAt: DateTime.utc(2026, 7, 29),
+      );
+      final viaAlias = mergeGameReportAnnotationsForGif(game, report);
+      final viaExport = mergeGameReportAnnotationsForExport(game, report);
+      expect(viaAlias.mainline[0].eval, viaExport.mainline[0].eval);
+      expect(viaAlias.mainline[0].eval, '0.25');
     });
 
     test('ignores a report for a different game', () {
-      final game = ChessGame.fromPgn('gif-evals', '1. e4 e5 *');
+      final game = ChessGame.fromPgn('export-evals', '1. e4 e5 *');
       final report = GameAnalysisReport(
         fingerprint: 'different-game',
         positions: const [],
@@ -461,7 +520,49 @@ void main() {
         generatedAt: DateTime.utc(2026, 7, 29),
       );
 
-      expect(mergeGameReportAnnotationsForGif(game, report), same(game));
+      expect(mergeGameReportAnnotationsForExport(game, report), same(game));
+    });
+
+    test('resolveCompletedGameAnalysisReport prefers live then store', () async {
+      final game = ChessGame.fromPgn('store-resolve', '1. e4 e5 *');
+      final store = GameAnalysisReportStore.memory();
+      final live = GameAnalysisReport(
+        fingerprint: gameReportFingerprint(game),
+        positions: const [],
+        moves: const [
+          GameReportMove(
+            ply: 1,
+            san: 'e4',
+            uci: 'e2e4',
+            isWhite: true,
+            classification: GameMoveClassification.mistake,
+            evaluation: GameReportLine(
+              moves: ['e2e4'],
+              depth: 18,
+              centipawns: 10,
+            ),
+          ),
+        ],
+        whiteAccuracy: 50,
+        blackAccuracy: 50,
+        generatedAt: DateTime.utc(2026, 7, 30),
+      );
+
+      final resolvedLive = await resolveCompletedGameAnalysisReport(
+        analysisGame: game,
+        liveReport: live,
+        store: store,
+      );
+      expect(resolvedLive?.moves.first.classification, GameMoveClassification.mistake);
+
+      await store.save(live);
+      final resolvedDisk = await resolveCompletedGameAnalysisReport(
+        analysisGame: game,
+        liveReport: null,
+        store: store,
+      );
+      expect(resolvedDisk?.fingerprint, gameReportFingerprint(game));
+      expect(resolvedDisk?.moves.first.evaluation.centipawns, 10);
     });
   });
 

@@ -3920,31 +3920,27 @@ class _AppBarState extends ConsumerState<_AppBar> {
     final state = boardState.valueOrNull;
     final analysisGame = state?.analysisState.game;
     final reviewState = ref.read(mobileGameReviewProvider(params));
-    final analysisFingerprint =
-        analysisGame == null ? null : gameReportFingerprint(analysisGame);
-    final currentReport =
+    final liveReport =
         reviewState.reportState.status == GameReportStatus.completed
             ? reviewState.reportState.report
             : null;
-    final stateReport =
-        currentReport?.fingerprint == analysisFingerprint
-            ? currentReport
-            : null;
-    final completedReport =
-        analysisFingerprint == null
-            ? stateReport
-            : stateReport ??
-                GameAnalysisReportController.cachedReportFor(
-                  analysisFingerprint,
-                );
-    final gifAnalysisGame =
+    // Live report → session cache → durable store so Copy/Share PGN still
+    // hydrates after a cold start once Game Analysis has finished once.
+    final completedReport = await resolveCompletedGameAnalysisReport(
+      analysisGame: analysisGame,
+      liveReport: liveReport,
+    );
+    final exportAnalysisGame =
         analysisGame == null
             ? null
-            : mergeGameReportAnnotationsForGif(analysisGame, completedReport);
+            : mergeGameReportAnnotationsForExport(
+              analysisGame,
+              completedReport,
+            );
 
     final pgn = await resolveGameSharePgn(
       game: widget.game,
-      analysisGame: gifAnalysisGame,
+      analysisGame: exportAnalysisGame,
       savedAnalysisData: widget.savedAnalysisData,
       fetchSupabasePgn: (gameId) async {
         try {
