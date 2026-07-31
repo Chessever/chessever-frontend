@@ -43,6 +43,14 @@ def test_onesignal_targets_are_deduped_before_send() -> None:
     assert "subscriptionIds.add(subscriptionId)" in source
 
 
+def test_stale_saved_tokens_use_external_id_fallback() -> None:
+    source = _source()
+
+    assert "function freshPushTokenCutoff" in source
+    assert '.gte("last_seen_at", freshPushTokenCutoff())' in source
+    assert "PUSH_TOKEN_FRESHNESS_DAYS = 7" in source
+
+
 def test_game_started_notifications_do_not_reinclude_event_only_recipients() -> None:
     source = _source()
     game_block_start = source.index(

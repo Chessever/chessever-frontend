@@ -77,6 +77,7 @@ const POSTGREST_IN_QUERY_CHUNK_SIZE = 100;
 const PUSH_USER_QUERY_CHUNK_SIZE = POSTGREST_IN_QUERY_CHUNK_SIZE;
 const ONESIGNAL_EXTERNAL_ID_CHUNK_SIZE = 1000;
 const ONESIGNAL_SUBSCRIPTION_ID_CHUNK_SIZE = 20000;
+const PUSH_TOKEN_FRESHNESS_DAYS = 7;
 const dispatchTokenCache: { token: string | null; expiresAtMs: number } = {
   token: null,
   expiresAtMs: 0,
@@ -2290,6 +2291,7 @@ async function fetchPushSubscriptionTargets(userIds: string[]) {
         .select("user_id, subscription_id")
         .eq("provider", "onesignal")
         .eq("opted_in", true)
+        .gte("last_seen_at", freshPushTokenCutoff())
         .in("user_id", batch);
 
       if (error) throw error;
@@ -2312,6 +2314,12 @@ async function fetchPushSubscriptionTargets(userIds: string[]) {
       !usersWithSubscriptions.has(userId)
     ),
   };
+}
+
+function freshPushTokenCutoff(now = new Date()) {
+  return new Date(
+    now.getTime() - PUSH_TOKEN_FRESHNESS_DAYS * 24 * 60 * 60 * 1000,
+  ).toISOString();
 }
 
 function chunk<T>(list: T[], size: number) {

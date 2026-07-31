@@ -7,6 +7,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../services/push_notifications_service.dart';
 import 'auth_state_provider.dart';
+import 'push_token_sync_retry_state.dart';
 
 final pushTokenSyncProvider = Provider<PushTokenSyncController>((ref) {
   final controller = PushTokenSyncController(ref);
@@ -22,7 +23,9 @@ class PushTokenSyncController {
   bool _started = false;
   bool _disposed = false;
   String? _userId;
-  String? _lastSyncedSignature;
+  final PushTokenSyncRetryState _retryState = PushTokenSyncRetryState();
+  final Set<String> _inFlightSignatures = <String>{};
+  Timer? _retryTimer;
 
   void start() {
     if (_started) return;
@@ -46,6 +49,7 @@ class PushTokenSyncController {
 
   void dispose() {
     _disposed = true;
+    _retryTimer?.cancel();
   }
 
   void _handlePushSubscriptionChanged(OSPushSubscriptionChangedState state) {
@@ -138,8 +142,10 @@ class PushTokenSyncController {
     if (_disposed) return;
 
     final signature = '$userId|$subscriptionId|$token|$optedIn';
-    if (_lastSyncedSignature == signature) return;
-    _lastSyncedSignature = signature;
+    if (!_retryState.shouldSync(signature) ||
+        !_inFlightSignatures.add(signature)) {
+      return;
+    }
 
     try {
       await Supabase.instance.client.from('user_push_tokens').upsert({
@@ -151,8 +157,25 @@ class PushTokenSyncController {
         'opted_in': optedIn,
         'last_seen_at': DateTime.now().toUtc().toIso8601String(),
       }, onConflict: 'provider,subscription_id');
-    } catch (_) {
-      // Don't block app flow on token updates.
+      _retryState.recordSuccess(signature);
+      _retryTimer?.cancel();
+      _retryTimer = null;
+    } catch (error) {
+      final delay = _retryState.recordFailure(signature);
+      if (!_disposed && _userId == userId && delay != null) {
+        _retryTimer?.cancel();
+        _retryTimer = Timer(delay, () {
+          if (!_disposed && _userId == userId) {
+            unawaited(_syncCurrentSubscription());
+          }
+        });
+      }
+      debugPrint(
+        '[PushTokenSync] Subscription sync failed '
+        '(${error.runtimeType}); ${delay == null ? 'retry limit reached' : 'retry scheduled'}',
+      );
+    } finally {
+      _inFlightSignatures.remove(signature);
     }
   }
 
