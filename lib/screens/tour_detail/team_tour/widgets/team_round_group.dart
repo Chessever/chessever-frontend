@@ -1,6 +1,7 @@
 import 'package:chessever2/screens/standings/team_standings_builder.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrapper/game_card_wrapper_widget.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/widgets/games_tour_content_provider.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart' show kRedColor;
 import 'package:chessever2/utils/app_typography.dart';
@@ -218,7 +219,14 @@ class _RoundGames extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final orderedGames = [for (final b in match.boardGames) b.game];
+    final boardGames = match.boardGames;
+    final orderedGames = [for (final b in boardGames) b.game];
+    // Same "selected team stays on one side" rule as games tab:
+    // our White → sameOrder (left), our Black → oppositeOrder.
+    final comparisons = [
+      for (final b in boardGames)
+        matchComparisonForSelectedTeamSide(selectedTeamIsWhite: b.ourIsWhite),
+    ];
     final gamesData = GamesScreenModel(
       gamesTourModels: orderedGames,
       pinnedGamedIs: const [],
@@ -239,6 +247,8 @@ class _RoundGames extends StatelessWidget {
                   gamesData: gamesData,
                   gameIndex: i,
                   isChessBoardVisible: false,
+                  comparison: comparisons[i],
+                  fixedBottomSide: teamOneBottomSide(comparisons[i]),
                   // Results refresh when the matches provider re-emits; avoid a
                   // live subscription per card across many rounds.
                   streamEnabled: false,

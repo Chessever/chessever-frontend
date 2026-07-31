@@ -74,4 +74,68 @@ void main() {
       'Team B',
     ]);
   });
+
+  group('matchComparisonForSelectedTeamSide', () {
+    test('selected team White → sameOrder (left is White)', () {
+      final comparison = matchComparisonForSelectedTeamSide(
+        selectedTeamIsWhite: true,
+      );
+      expect(comparison, MatchComparison.sameOrder);
+      expect(teamOneBottomSide(comparison), Side.white);
+
+      final ordered = teamOrderedPlayers(
+        MatchWithComparison(game: games[0], comparison: comparison),
+      );
+      expect(ordered.teamOne.team, 'Team A');
+      expect(ordered.teamOne.name, 'A One');
+      expect(ordered.teamTwo.team, 'Team B');
+    });
+
+    test('selected team Black → oppositeOrder (left is Black)', () {
+      // Board 2: Team A is Black. Score card must still put Team A on left.
+      final comparison = matchComparisonForSelectedTeamSide(
+        selectedTeamIsWhite: false,
+      );
+      expect(comparison, MatchComparison.oppositeOrder);
+      expect(teamOneBottomSide(comparison), Side.black);
+
+      final ordered = teamOrderedPlayers(
+        MatchWithComparison(game: games[1], comparison: comparison),
+      );
+      expect(ordered.teamOne.team, 'Team A');
+      expect(ordered.teamOne.name, 'A Two');
+      expect(ordered.teamTwo.team, 'Team B');
+      expect(ordered.teamTwo.name, 'B Two');
+    });
+
+    test(
+      'alternating board colors keep selected team on left for every board',
+      () {
+        // Mirrors team score card / standings expand path: each board's
+        // ourIsWhite drives comparison (games[0] Team A White, games[1] Black).
+        final ourIsWhitePerBoard = [true, false];
+        final comparisons = [
+          for (final oursWhite in ourIsWhitePerBoard)
+            matchComparisonForSelectedTeamSide(selectedTeamIsWhite: oursWhite),
+        ];
+
+        expect(comparisons, [
+          MatchComparison.sameOrder,
+          MatchComparison.oppositeOrder,
+        ]);
+
+        for (var i = 0; i < games.length; i++) {
+          final ordered = teamOrderedPlayers(
+            MatchWithComparison(game: games[i], comparison: comparisons[i]),
+          );
+          expect(
+            ordered.teamOne.team,
+            'Team A',
+            reason: 'board ${i + 1}: selected team must stay left',
+          );
+          expect(ordered.teamTwo.team, 'Team B');
+        }
+      },
+    );
+  });
 }

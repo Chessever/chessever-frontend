@@ -24,6 +24,16 @@ Side teamOneBottomSide(MatchComparison comparison) => switch (comparison) {
   MatchComparison.different => Side.white,
 };
 
+/// Comparison that keeps a selected team on the left (compact cards) / bottom
+/// (board previews). White for that team → natural order; Black → swap sides.
+/// Shared by games-tab matchup grouping consumers and team score card boards.
+MatchComparison matchComparisonForSelectedTeamSide({
+  required bool selectedTeamIsWhite,
+}) =>
+    selectedTeamIsWhite
+        ? MatchComparison.sameOrder
+        : MatchComparison.oppositeOrder;
+
 /// Player order for compact team-event cards. The matchup header's first team
 /// stays on the first/left side even when that player is Black in this game.
 ({PlayerCard teamOne, PlayerCard teamTwo}) teamOrderedPlayers(

@@ -26,6 +26,11 @@ class GameCardWrapperWidget extends ConsumerWidget {
   final LiveGamesBatchKey? liveBatchKey;
   final Future<bool> Function()? onBeforeOpen;
 
+  /// Side mapping for compact cards (left/right players, clocks, score, eval).
+  /// Defaults to white-left; team score card / games-tab pass opposite when the
+  /// anchored team is Black so that team stays on one visual side.
+  final MatchComparison comparison;
+
   /// Metadata line for the card footer, used by archive lists whose games have
   /// no clock and no last move so the footer strip would otherwise be blank.
   final String? footerDetail;
@@ -48,6 +53,7 @@ class GameCardWrapperWidget extends ConsumerWidget {
     this.streamEnabled = true,
     this.liveBatchKey,
     this.onBeforeOpen,
+    this.comparison = MatchComparison.sameOrder,
     this.footerDetail,
     this.showPin = true,
   });
@@ -144,7 +150,7 @@ class GameCardWrapperWidget extends ConsumerWidget {
                 key: ValueKey(keyValue),
                 matchComparison: MatchWithComparison(
                   game: liveGame,
-                  comparison: MatchComparison.sameOrder,
+                  comparison: comparison,
                 ),
                 pinnedIds: gamesData.pinnedGamedIs,
                 onPinToggle: handlePinToggle,
