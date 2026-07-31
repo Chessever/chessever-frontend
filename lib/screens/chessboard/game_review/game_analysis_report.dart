@@ -1525,13 +1525,13 @@ LichessJudgement? lichessJudgementForReportMove({
 }
 
 /// The negative half of the verdict: lichess's judgment, with ChessEver's
-/// decisive-win amnesty and Missed Win layered on top of it.
+/// decided-outcome amnesty and Missed Win layered on top of it.
 ///
 /// The port remains the source of thresholds and severity. The one deliberate
-/// product overlay is that a mover who remains at 77 or higher on the report's
-/// winning-chance scale receives no negative symbol. That floor maps roughly to
-/// +3.3 and makes human-equivalent winning conversions such as +7 → +3.3 or mate
-/// → +4 silent without weakening judgments that lose the decisive advantage.
+/// product overlay is that a mover who remains at 77 or higher, or at 23 or
+/// lower, on the report's winning-chance scale receives no negative symbol.
+/// Those bounds map roughly to ±3.3 and keep conversion noise silent on either
+/// side without weakening judgments that change the outcome.
 GameMoveClassification? _missedOrLoss({
   required int index,
   required ChessGame game,
@@ -1541,8 +1541,13 @@ GameMoveClassification? _missedOrLoss({
   required double moverAfter,
   required GameMoveClassification? previousMoveClassification,
 }) {
-  if (moverBefore >= kDecisiveWinNoErrorFloorPp &&
-      moverAfter >= kDecisiveWinNoErrorFloorPp) {
+  final retainedDecisiveWin =
+      moverBefore >= kDecisiveWinNoErrorFloorPp &&
+      moverAfter >= kDecisiveWinNoErrorFloorPp;
+  final retainedDecisiveLoss =
+      moverBefore <= kDecisiveLossNoErrorCeilingPp &&
+      moverAfter <= kDecisiveLossNoErrorCeilingPp;
+  if (retainedDecisiveWin || retainedDecisiveLoss) {
     return null;
   }
 
@@ -1714,6 +1719,12 @@ const double kRoutinePraiseMinWinGainPp = 10;
 /// Stockfish-to-win curve maps +3.3 to about 77.1%, so 77% intentionally treats
 /// +7, +4 and +3.3 as the same won outcome for negative-symbol purposes.
 const double kDecisiveWinNoErrorFloorPp = 77;
+
+/// Mover-relative mirror of [kDecisiveWinNoErrorFloorPp]. A move that remains
+/// below this ceiling stays decisively lost and receives no evaluation-based
+/// negative symbol merely for shortening the conversion to mate.
+const double kDecisiveLossNoErrorCeilingPp =
+    100 - kDecisiveWinNoErrorFloorPp;
 
 /// Minimum MultiPV gap (played vs next-best, mover pp) for non-unique best.
 const double kBrilliantMinAlternativeGapPp = 8;

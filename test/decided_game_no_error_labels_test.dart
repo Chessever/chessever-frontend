@@ -130,37 +130,34 @@ void main() {
     });
   });
 
-  group('a lost position can still receive lichess-softened errors', () {
-    test('walking into mate from a lost game is only a Mistake', () {
-      // `MateCreated` from -9.00 for the mover: worse than -7.00, so it is a
-      // Mistake rather than a Blunder.
+  group('a decisive loss retained receives no error', () {
+    test('Ka6-style Black +7 to mate receives no symbol', () {
       expect(
         _classify(
           _hopelessBlack,
           playedUci: 'g7g5',
           engineBest: 'h7h6',
-          before: _cp(900),
-          after: _mate(6),
-          beforeWin: 96.5,
+          before: _cp(700),
+          after: _mate(3),
+          beforeWin: gameReportWinPercentage(_cp(700)),
           afterWin: 100,
         ),
-        GameMoveClassification.mistake,
+        isNull,
       );
     });
 
-    test('walking into mate from a hopeless game is only an Inaccuracy', () {
-      // Past -9.99 there is nothing left to lose, so the mark is the softest one.
+    test('the same decisive-loss rule includes White at -3.3', () {
       expect(
         _classify(
-          _hopelessBlack,
-          playedUci: 'g7g5',
-          engineBest: 'h7h6',
-          before: _cp(1100),
-          after: _mate(6),
-          beforeWin: 97.5,
-          afterWin: 100,
+          _crushingWhite,
+          playedUci: 'g2a2',
+          engineBest: 'g2g7',
+          before: _cp(-330),
+          after: _mate(-3),
+          beforeWin: gameReportWinPercentage(_cp(-330)),
+          afterWin: 0,
         ),
-        GameMoveClassification.inaccuracy,
+        isNull,
       );
     });
   });

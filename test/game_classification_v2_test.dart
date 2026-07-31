@@ -606,16 +606,12 @@ void main() {
     });
   });
 
-  group('the damage is judged the way lichess judges it', () {
-    // There is no longer a centipawn "tactical override" sitting behind the
-    // thresholds looking for losses the win-percentage scale had compressed
-    // away. Lichess measures in winning chances and accepts the compression as
-    // the answer, so a lopsided position simply has less left to lose.
-    test('a compressed loss in a bad position is only an Inaccuracy', () {
-      // 12% -> 6%: a real ~200cp slide, but 0.12 winning chances.
+  group('decided outcomes stay quiet while contested outcomes are judged', () {
+    test('a compressed loss in a decisively lost position is unlabelled', () {
+      // 12% -> 6% remains below the 23% decisive-loss ceiling.
       expect(
         _classify(_openingGame, moverBefore: 12, moverAfter: 6),
-        GameMoveClassification.inaccuracy,
+        isNull,
       );
     });
 
