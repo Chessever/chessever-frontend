@@ -1524,16 +1524,14 @@ LichessJudgement? lichessJudgementForReportMove({
   );
 }
 
-/// The negative half of the verdict: lichess's judgment, with Missed Win as the
-/// only thing layered on top of it.
+/// The negative half of the verdict: lichess's judgment, with ChessEver's
+/// decisive-win amnesty and Missed Win layered on top of it.
 ///
-/// Everything that used to live here — hand-tuned percentage-point tiers,
-/// garbage-time softening, a decided-game amnesty and a centipawn "tactical
-/// override" — has been replaced by [lichessJudgementForReportMove]. Those rules
-/// existed to patch symptoms of measuring damage in win-percentage points, and
-/// lichess does not need them: winning chances compress so hard near the edges
-/// that a lost game genuinely cannot shed another 0.1, and mate-to-mate moves
-/// are excluded by name rather than by band. Do not reintroduce a tier here.
+/// The port remains the source of thresholds and severity. The one deliberate
+/// product overlay is that a mover who remains at 77 or higher on the report's
+/// winning-chance scale receives no negative symbol. That floor maps roughly to
+/// +3.3 and makes human-equivalent winning conversions such as +7 → +3.3 or mate
+/// → +4 silent without weakening judgments that lose the decisive advantage.
 GameMoveClassification? _missedOrLoss({
   required int index,
   required ChessGame game,
@@ -1543,6 +1541,11 @@ GameMoveClassification? _missedOrLoss({
   required double moverAfter,
   required GameMoveClassification? previousMoveClassification,
 }) {
+  if (moverBefore >= kDecisiveWinNoErrorFloorPp &&
+      moverAfter >= kDecisiveWinNoErrorFloorPp) {
+    return null;
+  }
+
   final judgement = lichessJudgementForReportMove(
     index: index,
     game: game,
@@ -1706,6 +1709,11 @@ const double kPositivePraiseWinFloorPp = 25;
 /// The winning-chance gain (pp) that buys a routine-looking move its symbol
 /// back, at any point on the scale.
 const double kRoutinePraiseMinWinGainPp = 10;
+
+/// Human-facing Game Report floor for a retained decisive win. The report's
+/// Stockfish-to-win curve maps +3.3 to about 77.1%, so 77% intentionally treats
+/// +7, +4 and +3.3 as the same won outcome for negative-symbol purposes.
+const double kDecisiveWinNoErrorFloorPp = 77;
 
 /// Minimum MultiPV gap (played vs next-best, mover pp) for non-unique best.
 const double kBrilliantMinAlternativeGapPp = 8;
