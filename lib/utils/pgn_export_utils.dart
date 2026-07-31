@@ -1,3 +1,5 @@
+import 'package:chessever2/utils/pgn_time_control.dart';
+
 const pgnHeaderOrder = <String>[
   'Event',
   'Site',
@@ -42,6 +44,15 @@ Map<String, String> canonicalPgnHeaders(Map<String, String> source) {
   for (final entry in source.entries) {
     final key = entry.key.trim();
     if (key.isEmpty || internalPgnMetadataKeys.contains(key)) continue;
+    if (key == 'TimeControl') {
+      // TimeControl is a machine field, and readers act on it: ChessBase
+      // converts `[%clk]` to elapsed time through it and drops every clock in
+      // the game when it cannot. Games saved before we knew that carry a
+      // category word ("standard"); rewrite what we can, drop the rest.
+      final field = pgnTimeControlField(entry.value);
+      if (field != null) headers[key] = field;
+      continue;
+    }
     headers[key] = entry.value;
   }
 

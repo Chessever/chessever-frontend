@@ -17214,8 +17214,11 @@ class _EventInfoSheet extends ConsumerWidget {
           _EventInfoRow(
             icon: Icons.access_time_rounded,
             label: 'Time Control',
+            // The header now holds the PGN machine field
+            // (`40/5400+30:1800+30`) so exports are readable by other apps.
+            // A reader wants the plain speed word, so prefer that.
             value: StringUtils.capitalizeWords(
-              headers['TimeControl'] ?? game.timeControl!,
+              game.timeControl ?? headers['TimeControl']!,
             ),
           ),
           SizedBox(height: 12.h),

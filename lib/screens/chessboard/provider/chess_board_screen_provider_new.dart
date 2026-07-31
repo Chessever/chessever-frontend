@@ -27,6 +27,7 @@ import 'package:chessever2/screens/tour_detail/games_tour/utils/live_game_positi
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/audio_player_service.dart';
 import 'package:chessever2/utils/pgn_clock_utils.dart';
+import 'package:chessever2/utils/pgn_time_control.dart';
 import 'package:chessever2/utils/time_control_bonus.dart';
 import 'package:chessground/chessground.dart';
 import 'package:collection/collection.dart';
@@ -4234,8 +4235,20 @@ class ChessBoardScreenNotifierNew
       }
     }
 
-    if (metadata['TimeControl'] == null || metadata['TimeControl'] == '?') {
-      if (game.timeControl != null && game.timeControl!.isNotEmpty) {
+    // PGN's TimeControl is a machine field (`40/5400+30:1800+30`), never a
+    // category word. ChessBase converts every `[%clk]` into its own elapsed
+    // time using this tag, so `[TimeControl "standard"]` cost the reader the
+    // whole game's clocks. Derive it from the tournament's real time-control
+    // text, and leave the tag out when we cannot — no tag beats a wrong one.
+    // Only ever an upgrade: an unusable value is left in place for the info
+    // panel to display, and the export layer drops it there. Deleting it here
+    // would blank the Time Control row for games whose category is all we know.
+    if (!isValidPgnTimeControl(metadata['TimeControl']?.toString())) {
+      final field = pgnTimeControlField(game.timeControlText);
+      if (field != null) {
+        metadata['TimeControl'] = field;
+      } else if (metadata['TimeControl'] == null ||
+          metadata['TimeControl'] == '?') {
         metadata['TimeControl'] = game.timeControl;
       }
     }
