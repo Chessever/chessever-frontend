@@ -1,5 +1,6 @@
 import 'package:chessever2/screens/chessboard/chess_board_screen_new.dart';
 import 'package:chessever2/screens/chessboard/notation/notation_token_builder.dart';
+import 'package:chessever2/screens/chessboard/utils/game_share_utils.dart';
 import 'package:chessever2/services/lichess_move_annotations_service.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -55,6 +56,39 @@ void main() {
             'an in-app NAG is the reader\'s explicit intent, so it outranks the '
             'report the same way it always outranked Lichess analysis',
       );
+    });
+
+    test('a PGN-carried classification displaces the verdict on its own', () {
+      // A game synced from desktop has no local report, but its moves carry our
+      // $240–$247 codes. That is the same claim a live report makes, so the
+      // standard glyph beside it yields to the badge rather than doubling it.
+      expect(
+        mergeMoveNags(pgnNags: const [3, 240], userNags: const []),
+        isEmpty,
+      );
+      expect(
+        mergeMoveNags(pgnNags: const [4, 16, 243], userNags: const []),
+        const [16],
+        reason: 'the positional glyph answers a different question',
+      );
+      // The reader's own annotation still wins over ours.
+      expect(
+        mergeMoveNags(pgnNags: const [3, 240], userNags: const [2]),
+        const [2],
+      );
+    });
+
+    test('classification codes never render as glyphs', () {
+      // $240–$247 are an identity for the badge, not something to draw. Even
+      // with no report and no verdict beside them they must not reach the UI.
+      expect(mergeMoveNags(pgnNags: const [247], userNags: const []), isEmpty);
+      for (final nag in kChesseverClassificationNags.values) {
+        expect(isChesseverClassificationNag(nag), isTrue);
+        expect(
+          mergeMoveNags(pgnNags: [nag, 16], userNags: const []),
+          const [16],
+        );
+      }
     });
 
     test(r'$7 (only move) is not a quality verdict and stays', () {

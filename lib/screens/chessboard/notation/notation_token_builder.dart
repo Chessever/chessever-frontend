@@ -260,6 +260,13 @@ String cleanPgnCommentText(String comment) {
       .replaceAll(RegExp(r'\[%csl\s+[^\]]+\]'), '')
       .replaceAll(RegExp(r'\[%emt\s+[^\]]+\]'), '')
       .replaceAll(RegExp(r'\[%tag\s+[^\]]+\]'), '')
+      // Legacy ChessEver classification directive: no longer written (the
+      // $240–$247 NAG block carries the verdict), but PGNs saved by shipped
+      // builds still have it and it is machine data, never prose.
+      .replaceAll(
+        RegExp(r'\[%\s*chessever_annotation\s+[^\]]*\]', caseSensitive: false),
+        '',
+      )
       .trim();
 }
 

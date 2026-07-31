@@ -6,8 +6,11 @@ import 'package:chessever2/repository/library/library_repository.dart';
 import 'package:chessever2/repository/library/library_game_event.dart';
 import 'package:chessever2/repository/library/models/library_folder.dart';
 import 'package:chessever2/repository/library/models/saved_analysis.dart';
+import 'package:chessever2/screens/chessboard/game_review/game_analysis_report.dart';
+import 'package:chessever2/screens/chessboard/game_review/game_review_provider.dart';
 import 'package:chessever2/screens/chessboard/models/like_tag.dart';
 import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
+import 'package:chessever2/screens/chessboard/utils/game_share_utils.dart';
 import 'package:chessever2/screens/chessboard/view_model/chess_board_state_new.dart';
 import 'package:chessever2/screens/chessboard/widgets/smooth_sheet_config.dart';
 import 'package:chessever2/screens/library/providers/library_folders_provider.dart';
@@ -611,6 +614,24 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
       if (analysisGame == null) {
         throw Exception('No analysis game to save');
       }
+
+      // Bake a finished Game Analysis into the saved moves, exactly as Copy /
+      // Share PGN does. The library row is what syncs to desktop, so without
+      // this the classifications would live only in this device's report store
+      // and the same game would open bare everywhere else.
+      final reportState =
+          ref.read(mobileGameReviewProvider(widget.config.params)).reportState;
+      final savedReport = await resolveCompletedGameAnalysisReport(
+        analysisGame: analysisGame,
+        liveReport:
+            reportState.status == GameReportStatus.completed
+                ? reportState.report
+                : null,
+      );
+      analysisGame = mergeGameReportAnnotationsForExport(
+        analysisGame,
+        savedReport,
+      );
 
       // Update metadata with form values
       final updatedMetadata = Map<String, dynamic>.from(analysisGame.metadata);

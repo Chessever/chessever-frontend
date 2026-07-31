@@ -437,16 +437,118 @@ void main() {
       expect(pgn, isNot(contains('[%eval 0.15]')));
       expect(pgn, contains('[%eval -0.31]'));
       expect(pgn, contains('[%eval #3]'));
-      // Product names for Cloudflare / our apps — not classic glyphs.
-      expect(pgn, contains('[%chessever_annotation brilliant]'));
-      expect(pgn, contains('[%chessever_annotation inaccuracy]'));
-      expect(pgn, contains('[%chessever_annotation missed_win]'));
-      expect(pgn, contains('[%chessever_annotation book_move]'));
-      expect(pgn, isNot(contains('[%chessever_annotation !!]')));
-      expect(pgn, isNot(contains('[%chessever_annotation ?!]')));
-      // Standard PGN quality NAGs as portable companions.
-      expect(pgn, contains(RegExp(r'e4\s*\$3|e4!!')));
-      expect(pgn, contains(RegExp(r'e5\s*\$6|e5\?!')));
+      // No custom comment directive survives — the verdict is in the NAGs.
+      expect(pgn, isNot(contains('chessever_annotation')));
+      // Standard PGN quality NAGs every reader understands.
+      expect(pgn, contains(RegExp(r'e4 \$3\b')));
+      expect(pgn, contains(RegExp(r'e5 \$6\b')));
+      expect(pgn, contains(RegExp(r'Nf3 \$4\b')));
+      // ChessEver classification block ($240–$247) beside them.
+      expect(pgn, contains(RegExp(r'e4 \$3 \$240\b')));
+      expect(pgn, contains(RegExp(r'e5 \$6 \$244\b')));
+      expect(pgn, contains(RegExp(r'Nf3 \$4 \$243\b')));
+      // Book has no standard glyph, so it travels on the block code alone.
+      expect(pgn, contains(RegExp(r'Nc6 \$247\b')));
+      expect(merged.mainline[3].nags, [247]);
+    });
+
+    test('classification NAG block round-trips every class', () {
+      for (final classification in GameMoveClassification.values) {
+        final nag = chesseverClassificationNag(classification);
+        expect(nag, isNotNull, reason: '$classification has no NAG');
+        expect(isChesseverClassificationNag(nag!), isTrue);
+        expect(classificationForChesseverNag(nag), classification);
+        expect(classificationFromNags([7, nag, 14]), classification);
+      }
+      expect(chesseverClassificationNag(null), isNull);
+      expect(classificationFromNags(const [1, 2, 3, 4, 5, 6]), isNull);
+      expect(classificationFromNags(null), isNull);
+      // The block sits clear of the PGN spec ($0–$139) and the ChessBase
+      // extensions, so no standard glyph can collide with it.
+      for (final nag in kChesseverClassificationNags.values) {
+        expect(nag, greaterThan(200));
+        expect(nag, lessThanOrEqualTo(255));
+      }
+    });
+
+    test('report NAGs displace imported Lichess verdicts, keep the rest', () {
+      final game = ChessGame.fromPgn(
+        'displace',
+        r'1. e4 $6 $14 e5 $1 2. Nf3 $2 Nc6 $5 *',
+      );
+      final merged = mergeGameReportAnnotationsForExport(game, reportFor(game));
+
+      // Imported $6 replaced by our $3; the positional $14 (⩲) survives, since
+      // it answers a different question than "how good was this move".
+      expect(merged.mainline[0].nags, [14, 3, 240]);
+      expect(merged.mainline[1].nags, [6, 244]);
+      expect(merged.mainline[2].nags, [4, 243]);
+      // Book: the imported $5 goes, and nothing standard replaces it.
+      expect(merged.mainline[3].nags, [247]);
+    });
+
+    test('re-export replaces a stale block code and legacy directive', () {
+      final game = ChessGame.fromPgn('restale', r'1. e4 e5 2. Nf3 Nc6 *');
+      final stale = game.copyWith(
+        mainline: [
+          game.mainline[0].copyWith(
+            nags: const [3, 246],
+            comments: const [
+              '[%chessever_annotation blunder]',
+              'Sharp line [%chessever_annotation blunder]',
+            ],
+          ),
+          ...game.mainline.sublist(1),
+        ],
+      );
+
+      final merged = mergeGameReportAnnotationsForExport(stale, reportFor(game));
+
+      // One classification per move, never two.
+      expect(merged.mainline[0].nags, [3, 240]);
+      expect(
+        merged.mainline[0].nags!.where(isChesseverClassificationNag).length,
+        1,
+      );
+      // Directive-only comment dropped, prose kept and cleaned.
+      expect(merged.mainline[0].comments, ['Sharp line']);
+      expect(
+        exportGamePgnWithReport(stale, reportFor(game)),
+        isNot(contains('chessever_annotation')),
+      );
+    });
+
+    test('PGN-carried classifications read back 1:1 (desktop sync)', () {
+      final game = ChessGame.fromPgn('roundtrip', r'1. e4 e5 2. Nf3 Nc6 *');
+      final exported = exportGamePgnWithReport(game, reportFor(game));
+
+      // Re-parse the exported PGN as another device would.
+      final reopened = ChessGame.fromPgn('roundtrip', exported);
+      expect(chesseverClassificationsFromMainline(reopened), {
+        0: GameMoveClassification.brilliant,
+        1: GameMoveClassification.inaccuracy,
+        2: GameMoveClassification.missedWin,
+        3: GameMoveClassification.bookMove,
+      });
+    });
+
+    test('legacy directive still resolves for PGNs saved before the block', () {
+      final game = ChessGame.fromPgn('legacy', r'1. e4 e5 *');
+      final legacy = game.copyWith(
+        mainline: [
+          game.mainline[0].copyWith(
+            comments: const ['[%chessever_annotation best_move]'],
+          ),
+          game.mainline[1].copyWith(
+            comments: const ['[%chessever_annotation missed_win]'],
+          ),
+        ],
+      );
+
+      expect(chesseverClassificationsFromMainline(legacy), {
+        0: GameMoveClassification.bestMove,
+        1: GameMoveClassification.missedWin,
+      });
     });
 
     test('chesseverClassificationName maps every class to product slugs', () {
@@ -507,9 +609,10 @@ void main() {
       );
 
       expect(pgn, contains('[%eval 0.42]'));
-      expect(pgn, contains('[%chessever_annotation brilliant]'));
+      expect(pgn, contains(RegExp(r'e4 \$3 \$240\b')));
       expect(pgn, contains('[%eval -0.31]'));
-      expect(pgn, contains('[%chessever_annotation inaccuracy]'));
+      expect(pgn, contains(RegExp(r'e5 \$6 \$244\b')));
+      expect(pgn, isNot(contains('chessever_annotation')));
     });
 
     test('GIF alias still forwards to the export merge', () {

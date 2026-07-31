@@ -288,6 +288,27 @@ LichessMoveAnnotationType _annotationTypeForGameReport(
   GameMoveClassification classification,
 ) => annotationTypeForClassification(classification);
 
+/// Classification badges the PGN itself carries — the `$240`–`$247` ChessEver
+/// block, or the legacy `[%chessever_annotation …]` directive.
+///
+/// This is how a report crosses devices. The report store is local, so a saved
+/// analysis synced from desktop (or a share PGN pasted back in) has no report
+/// here; the moves still know what our analysis called them, and these badges
+/// are that knowledge. A live local report always wins on the plies it covers.
+Map<int, LichessMoveAnnotation> pgnClassificationAnnotations(ChessGame? game) {
+  if (game == null) return const <int, LichessMoveAnnotation>{};
+  final classifications = chesseverClassificationsFromMainline(game);
+  if (classifications.isEmpty) return const <int, LichessMoveAnnotation>{};
+  return <int, LichessMoveAnnotation>{
+    for (final entry in classifications.entries)
+      entry.key: LichessMoveAnnotation(
+        type: annotationTypeForClassification(entry.value),
+        comment: '',
+        useClassificationIcon: true,
+      ),
+  };
+}
+
 /// PGN NAGs that answer the same question our own report answers: how good was
 /// this move. These are the ones our report displaces.
 ///
@@ -315,9 +336,19 @@ List<int> mergeMoveNags({
   bool reportJudgedMove = false,
 }) {
   var pgn = pgnNags ?? const <int>[];
-  if (reportJudgedMove && pgn.isNotEmpty) {
+  // A move carrying a ChessEver classification code was judged by a report of
+  // ours, wherever that PGN came from — so the same displacement applies as for
+  // a live local report, and the badge speaks for the verdict. The block codes
+  // themselves are never rendered: they are the badge's identity, not a glyph.
+  final carriesChesseverClassification = pgn.any(isChesseverClassificationNag);
+  if (pgn.isNotEmpty) {
+    final dropVerdicts = reportJudgedMove || carriesChesseverClassification;
     pgn = pgn
-        .where((nag) => !kMoveVerdictNags.contains(nag))
+        .where(
+          (nag) =>
+              !isChesseverClassificationNag(nag) &&
+              !(dropVerdicts && kMoveVerdictNags.contains(nag)),
+        )
         .toList(growable: false);
   }
   if (userNags.isEmpty) return pgn;
@@ -9431,6 +9462,9 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard>
             boardGameFingerprint: boardFingerprint,
           );
           final reportAnnotations = <int, LichessMoveAnnotation>{
+            // PGN-carried classifications first: a live report on the same
+            // plies is fresher and overwrites them.
+            ...pgnClassificationAnnotations(analysisGame),
             for (final entry in reportClassifications.entries)
               entry.key: LichessMoveAnnotation(
                 type: _annotationTypeForGameReport(entry.value),
@@ -11788,6 +11822,9 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
       boardGameFingerprint: boardFingerprint,
     );
     final reportAnnotations = <int, LichessMoveAnnotation>{
+      // PGN-carried classifications first: a live report on the same plies is
+      // fresher and overwrites them.
+      ...pgnClassificationAnnotations(navigatorState.game),
       for (final entry in reportClassifications.entries)
         entry.key: LichessMoveAnnotation(
           type: _annotationTypeForGameReport(entry.value),

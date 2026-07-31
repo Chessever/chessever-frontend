@@ -22,11 +22,75 @@ const _defaultStartingFen =
 /// A completed Game Analysis report owns that question and replaces them.
 const _moveVerdictNags = <int>{1, 2, 3, 4, 5, 6};
 
-/// ChessEver product slug for a report classification (Cloudflare GIF asset key).
+/// ChessEver's classification NAG block: `$240`–`$247`, one code per report
+/// class, written **beside** the standard quality NAG rather than instead of it.
 ///
-/// The cloud renderer expects `[%chessever_annotation brilliant]` /
-/// `good_move` / … and maps those 1:1 onto badge PNGs. When **we** generated
-/// the report, hydrate with these product names — not classic glyphs.
+/// Why a NAG and not a comment directive: a NAG is the PGN standard's own slot
+/// for "how good was this move", so `$3` reaches every reader in the world as
+/// `!!` while `$240` rides along to say *which* ChessEver class produced it.
+/// `$1`–`$6` alone cannot: good and best both collapse to `!`, missed win and
+/// blunder both to `??`, and book has no glyph at all. The block restores those
+/// three distinctions losslessly for ChessEver mobile, ChessEver desktop and the
+/// Cloudflare GIF renderer, with no `[%…]` directive to strip.
+///
+/// Codes sit far above the PGN spec's assigned range ($0–$139) and above the
+/// ChessBase extensions ($140–$190ish), so nothing else claims them. A reader
+/// that does not know them ignores them and still sees the standard glyph.
+const kChesseverClassificationNags = <GameMoveClassification, int>{
+  GameMoveClassification.brilliant: 240,
+  GameMoveClassification.goodMove: 241,
+  GameMoveClassification.bestMove: 242,
+  GameMoveClassification.missedWin: 243,
+  GameMoveClassification.inaccuracy: 244,
+  GameMoveClassification.mistake: 245,
+  GameMoveClassification.blunder: 246,
+  GameMoveClassification.bookMove: 247,
+};
+
+final Map<int, GameMoveClassification> _classificationByNag = {
+  for (final entry in kChesseverClassificationNags.entries)
+    entry.value: entry.key,
+};
+
+/// The `$240`–`$247` code carrying [classification], or null when unclassified.
+int? chesseverClassificationNag(GameMoveClassification? classification) =>
+    classification == null ? null : kChesseverClassificationNags[classification];
+
+/// Inverse of [chesseverClassificationNag].
+GameMoveClassification? classificationForChesseverNag(int nag) =>
+    _classificationByNag[nag];
+
+/// Whether [nag] belongs to the ChessEver classification block.
+bool isChesseverClassificationNag(int nag) =>
+    _classificationByNag.containsKey(nag);
+
+/// The ChessEver classification a move's NAGs carry, if any.
+///
+/// Presence of a block code also means "a ChessEver report judged this move",
+/// which is what lets a reader show the badge instead of the imported glyph.
+GameMoveClassification? classificationFromNags(Iterable<int>? nags) {
+  if (nags == null) return null;
+  for (final nag in nags) {
+    final classification = _classificationByNag[nag];
+    if (classification != null) return classification;
+  }
+  return null;
+}
+
+/// Legacy `[%chessever_annotation …]` comment directive.
+///
+/// No longer written — the `$240`–`$247` block replaced it. Still matched so
+/// PGNs saved by shipped builds keep resolving, and so a re-export drops the
+/// directive instead of carrying two competing sources of the same verdict.
+final _legacyChesseverDirective = RegExp(
+  r'\[%\s*chessever_annotation\s+[^\]]*\]',
+  caseSensitive: false,
+);
+
+/// Legacy product slug for a report classification.
+///
+/// Kept for the Cloudflare renderer's own legacy path and for reading PGNs
+/// written before the NAG block. Never emitted on export any more.
 String? chesseverClassificationName(GameMoveClassification? classification) =>
     switch (classification) {
       GameMoveClassification.brilliant => 'brilliant',
@@ -40,18 +104,69 @@ String? chesseverClassificationName(GameMoveClassification? classification) =>
       null => null,
     };
 
+/// Classification carried by a legacy `[%chessever_annotation …]` directive.
+GameMoveClassification? legacyClassificationFromComments(
+  Iterable<String>? comments,
+) {
+  if (comments == null) return null;
+  final pattern = RegExp(
+    r'\[%\s*chessever_annotation\s+([^\]]+?)\s*\]',
+    caseSensitive: false,
+  );
+  for (final comment in comments) {
+    final token = pattern.firstMatch(comment)?.group(1)?.trim().toLowerCase();
+    if (token == null || token.isEmpty) continue;
+    final normalized = token.replaceAll(RegExp(r'[\s-]+'), '_');
+    final classification = switch (normalized) {
+      'brilliant' || '!!' => GameMoveClassification.brilliant,
+      'good' || 'good_move' || 'great' => GameMoveClassification.goodMove,
+      'best' || 'best_move' || 'top_move' => GameMoveClassification.bestMove,
+      'missed_win' || 'missedwin' => GameMoveClassification.missedWin,
+      'inaccuracy' || '?!' => GameMoveClassification.inaccuracy,
+      'mistake' || '?' => GameMoveClassification.mistake,
+      'blunder' || '??' => GameMoveClassification.blunder,
+      'book' || 'book_move' => GameMoveClassification.bookMove,
+      '!' => GameMoveClassification.goodMove,
+      _ => null,
+    };
+    if (classification != null) return classification;
+  }
+  return null;
+}
+
+/// Mainline-index → classification for a game whose PGN carries ChessEver
+/// annotations, so a device with no local report (a synced saved analysis, a
+/// pasted share PGN) still renders the badges the report produced.
+///
+/// NAG block first, legacy directive second.
+Map<int, GameMoveClassification> chesseverClassificationsFromMainline(
+  ChessGame game,
+) {
+  final out = <int, GameMoveClassification>{};
+  for (var index = 0; index < game.mainline.length; index++) {
+    final move = game.mainline[index];
+    final classification =
+        classificationFromNags(move.nags) ??
+        legacyClassificationFromComments(move.comments);
+    if (classification != null) out[index] = classification;
+  }
+  return out;
+}
+
 /// Adds completed Game Analysis scores and classifications onto a [ChessGame]
 /// before export (Copy PGN, Share PGN, and GIF).
 ///
 /// A matching completed report is authoritative for every evaluated ply, so
 /// freshly generated Game Analysis values replace older/default PGN values.
 ///
-/// When **we** generated the report, hydrate with ChessEver product-name
-/// directives Cloudflare and the apps expect:
-/// `[%chessever_annotation brilliant]` / `good_move` / `best_move` / …
-/// plus quality NAGs `$1`–`$6` as a portable best-effort companion.
-/// Classic glyph tokens (`!!`, `?!`) are for import/best-effort only — never
-/// the report-export format.
+/// Every classified move gets two NAGs: the standard quality verdict
+/// (`$1`/`$2`/`$3`/`$4`/`$6`) that any PGN reader understands, and the
+/// ChessEver code (`$240`–`$247`, see [kChesseverClassificationNags]) that
+/// names the exact class for our own apps and the GIF renderer. The report
+/// owns the verdict, so imported `$1`–`$6` are dropped first — including on
+/// moves it deliberately left unlabelled.
+///
+/// Legacy `[%chessever_annotation …]` comments are stripped, never written.
 ChessGame mergeGameReportAnnotationsForExport(
   ChessGame game,
   GameAnalysisReport? report,
@@ -80,36 +195,44 @@ ChessGame mergeGameReportAnnotationsForExport(
                 : reportLine.centipawns != null
                 ? (reportLine.centipawns! / 100).toStringAsFixed(2)
                 : move.eval;
-        final product = chesseverClassificationName(
-          reportMove.classification,
-        );
-        final directive =
-            product == null ? null : '[%chessever_annotation $product]';
         final existingComments = move.comments ?? const <String>[];
-        // Replace any prior chessever directive so export always carries
-        // product names for this report (Cloudflare asset keys).
-        final withoutChessever =
-            existingComments
-                .where((c) => !c.contains('[%chessever_annotation '))
-                .toList(growable: true);
-        final comments =
-            directive == null
-                ? withoutChessever
-                : <String>[...withoutChessever, directive];
+        // Drop the legacy directive: this report's verdict now travels in the
+        // NAGs, and a stale comment beside it would contradict them.
+        final comments = <String>[
+          for (final comment in existingComments)
+            if (!_legacyChesseverDirective.hasMatch(comment))
+              comment
+            else if (comment
+                .replaceAll(_legacyChesseverDirective, '')
+                .trim()
+                .isNotEmpty)
+              comment.replaceAll(_legacyChesseverDirective, '').trim(),
+        ];
 
         final classic = classicGlyphForClassification(
           reportMove.classification,
         );
         final reportNag = nagForClassicGlyph(classic);
+        final chesseverNag = chesseverClassificationNag(
+          reportMove.classification,
+        );
         final existingNags = move.nags ?? const <int>[];
-        final nonVerdictNags =
+        // Strip both what the report displaces (imported $1–$6) and any earlier
+        // ChessEver code, so a re-run never stacks two classifications.
+        final nags =
             existingNags
-                .where((nag) => !_moveVerdictNags.contains(nag))
+                .where(
+                  (nag) =>
+                      !_moveVerdictNags.contains(nag) &&
+                      !_classificationByNag.containsKey(nag),
+                )
                 .toList(growable: true);
-        if (reportNag != null && !nonVerdictNags.contains(reportNag)) {
-          nonVerdictNags.add(reportNag);
+        if (reportNag != null && !nags.contains(reportNag)) {
+          nags.add(reportNag);
         }
-        final nags = nonVerdictNags;
+        if (chesseverNag != null && !nags.contains(chesseverNag)) {
+          nags.add(chesseverNag);
+        }
 
         final evalChanged = evaluation != null && evaluation != move.eval;
         final commentsChanged =
@@ -127,7 +250,8 @@ ChessGame mergeGameReportAnnotationsForExport(
   return changed ? game.copyWith(mainline: mainline) : game;
 }
 
-/// Alias — GIF was the first consumer; same product-name hydrate as export.
+/// Alias — GIF was the first consumer; identical hydrate to export, so the
+/// PGN we render a GIF from is byte-for-byte the PGN the user copies.
 ChessGame mergeGameReportAnnotationsForGif(
   ChessGame game,
   GameAnalysisReport? report,
