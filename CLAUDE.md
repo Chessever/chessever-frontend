@@ -9,6 +9,27 @@
 - For runtime behavior verification, ask the user to test on device — do not invoke `flutter run` or `flutter build` proactively.
 - **Never run the app to test things — always delegate runtime/on-screen testing to the user.** Do not start/`flutter run` the app, do not attach to or drive a running app (Marionette, VM Service, DevTools), and do not hunt for a debug instance to connect to. Your job ends at: code change + `flutter analyze` clean + (when useful) unit/widget tests. The user does all live-app/UI verification. Hand them the exact steps to check; don't try to observe it yourself even if a Stop hook or goal asks for runtime confirmation.
 
+## Versioning: every commit bumps `pubspec.yaml`
+
+Every commit that changes shipped code bumps `version:` in `pubspec.yaml`. Patch
+segment and build number move together, both by one: `34.1.15+3288` →
+`34.1.16+3289`. Never bump one without the other.
+
+- **The bump rides with the change that earned it.** Do not land a fix and then
+  follow it with a separate `chore: bump patch version` commit — that pattern is
+  what this rule replaces.
+- **Put the resulting version in the commit subject**, in parentheses at the end:
+  `fix(share): map PGN Lichess URLs to working chessever.com routes (34.1.16).`
+- **A squash-merged PR is one commit, so the PR branch must carry the bump.** If a
+  PR lands without one, bump immediately in a follow-up commit rather than letting
+  it ride to the next unrelated change.
+- **Exempt:** docs-only, test-only, CI-only and tooling-only commits.
+- `pubspec.yaml` often carries unrelated local edits (a `.env` asset line
+  uncommented for local dev). Stage the version line alone; never sweep those in.
+
+The same rule holds in `chessever_frontend_desktop` (`20.27.7+277`). Shared logic
+ported to both repos — the Game Report classifier above all — bumps both.
+
 ## Stockfish in debug (DO NOT "fix")
 
 We **purposefully deactivate local Stockfish in debug mode** because its native FFI isolates hang Flutter **hot restart / hot reload** ("Performing hot restart…" never finishes).
