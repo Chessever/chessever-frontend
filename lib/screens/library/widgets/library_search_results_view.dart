@@ -150,8 +150,12 @@ class _LibrarySearchResultsViewState
 
     final dateFromMd = parseMdDate(md['Date'] as String?);
 
+    // `TimeControl` is the PGN machine field; the speed word lives on
+    // `TcCategory`, and this feeds a format label.
     final timeControl =
-        row['timeControl']?.toString() ?? md['TimeControl']?.toString();
+        row['timeControl']?.toString() ??
+        md['TcCategory']?.toString() ??
+        md['TimeControl']?.toString();
     final eco =
         (md['ECO'] as String?)?.trim().isNotEmpty == true
             ? md['ECO'].toString()
