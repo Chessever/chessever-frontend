@@ -244,8 +244,10 @@ class _MemoryEntry {
 /// moat and Great only-reliable gap relaxed (★ / ! less conservative); same
 /// games can gain positive labels they did not under v4. v6: routine tactical
 /// continuation and saturated won-position praise are suppressed. v7: negative
-/// symbols are suppressed when the mover retains a decisive (77%+, about ±3.3) win.
-const int gameAnalysisReportSchemaVersion = 7;
+/// symbols are suppressed when the mover retains a decisive (77%+, about +3.3)
+/// win. v8: the same amnesty applies when the mover remains decisively lost
+/// (23% or lower, about -3.3).
+const int gameAnalysisReportSchemaVersion = 8;
 
 Map<String, dynamic> gameAnalysisReportToJson(GameAnalysisReport report) {
   return <String, dynamic>{
