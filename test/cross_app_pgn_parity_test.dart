@@ -60,6 +60,50 @@ const kCrossAppParityEvals = <String>[
   '-0.25',
 ];
 
+/// Plain broadcast PGN with clocks and no annotations — the input both apps
+/// hydrate when a report finishes.
+const kCrossAppExportSourcePgn = '''
+[Event "Senior DM50+"]
+[Site "https://chessever.com/games/ghAKkSCe"]
+[Date "2026.07.31"]
+[Round "7.2"]
+[White "Rewitz, Poul"]
+[Black "Nielsen, Frode Benedikt"]
+[Result "1-0"]
+[TimeControl "40/5400+30:1800+30"]
+
+1. b3 { [%clk 1:30:53] } 1... d6 { [%clk 1:29:21] } 2. Bb2 { [%clk 1:31:04] } 2... c6 { [%clk 1:29:34] } 3. f4 { [%clk 1:28:36] } 3... Nf6 { [%clk 1:29:10] } 4. e3 { [%clk 1:27:12] } 1-0
+''';
+
+/// Centipawns and classification per ply, in report order. Both apps build
+/// their own report object from this and must export the same bytes.
+const kCrossAppExportPlies = <(int, GameMoveClassification)>[
+  (-32, GameMoveClassification.inaccuracy),
+  (16, GameMoveClassification.bookMove),
+  (14, GameMoveClassification.bestMove),
+  (25, GameMoveClassification.brilliant),
+  (-16, GameMoveClassification.missedWin),
+  (-13, GameMoveClassification.mistake),
+  (-25, GameMoveClassification.blunder),
+];
+
+/// The exact PGN both apps must produce from the two constants above.
+///
+/// Byte equality is the point: it makes desktop→mobile parity as strong as
+/// mobile→desktop, because neither app can change what it writes without this
+/// failing in its own suite.
+const kCrossAppCanonicalExport = '''
+[Event "Senior DM50+"]
+[Site "https://chessever.com/games/ghAKkSCe"]
+[Date "2026.07.31"]
+[Round "7.2"]
+[White "Rewitz, Poul"]
+[Black "Nielsen, Frode Benedikt"]
+[Result "1-0"]
+[TimeControl "40/5400+30:1800+30"]
+
+1. b3 \$6 \$244 { [%eval -0.32] [%clk 1:30:53] } 1... d6 \$247 { [%eval 0.16] [%clk 1:29:21] } 2. Bb2 \$1 \$242 { [%eval 0.14] [%clk 1:31:04] } 2... c6 \$3 \$240 { [%eval 0.25] [%clk 1:29:34] } 3. f4 \$4 \$243 { [%eval -0.16] [%clk 1:28:36] } 3... Nf6 \$2 \$245 { [%eval -0.13] [%clk 1:29:10] } 4. e3 \$4 \$246 { [%eval -0.25] [%clk 1:27:12] } 1-0''';
+
 void main() {
   final game = ChessGame.fromPgn('parity', kCrossAppParityPgn);
 
@@ -101,6 +145,52 @@ void main() {
         isEmpty,
         reason: 'ply $ply must render as a badge only',
       );
+    }
+  });
+
+  test('exports the same bytes the desktop app exports', () {
+    final source = ChessGame.fromPgn('export-parity', kCrossAppExportSourcePgn);
+    final report = GameAnalysisReport(
+      fingerprint: gameReportFingerprint(source),
+      positions: const [],
+      moves: [
+        for (var i = 0; i < kCrossAppExportPlies.length; i++)
+          GameReportMove(
+            ply: i + 1,
+            san: source.mainline[i].san,
+            uci: source.mainline[i].uci,
+            isWhite: i.isEven,
+            classification: kCrossAppExportPlies[i].$2,
+            evaluation: GameReportLine(
+              moves: [source.mainline[i].uci],
+              depth: 18,
+              centipawns: kCrossAppExportPlies[i].$1,
+            ),
+          ),
+      ],
+      whiteAccuracy: 90,
+      blackAccuracy: 80,
+      generatedAt: DateTime.utc(2026, 7, 31),
+    );
+
+    expect(
+      exportGamePgnWithReport(source, report).trim(),
+      kCrossAppCanonicalExport.trim(),
+    );
+  });
+
+  test('what we export is what both apps read back', () {
+    // Closes the loop: the canonical bytes above re-read to the same
+    // classifications the fixture asserts, so a game copied either direction
+    // renders the same.
+    final reopened = ChessGame.fromPgn('roundtrip', kCrossAppCanonicalExport);
+    expect(
+      chesseverClassificationsFromMainline(reopened),
+      kCrossAppParityClassifications,
+    );
+    for (var ply = 0; ply < kCrossAppParityClocks.length; ply++) {
+      expect(reopened.mainline[ply].clockTime, kCrossAppParityClocks[ply]);
+      expect(reopened.mainline[ply].eval, kCrossAppParityEvals[ply]);
     }
   });
 
