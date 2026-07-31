@@ -99,16 +99,16 @@ void main() {
       );
     });
 
-    test('easing from +7 to +4 receives no symbol', () {
+    test('easing from +7 to +3.3 receives no symbol', () {
       expect(
         _classify(
           _crushingWhite,
           playedUci: 'g2a2',
           engineBest: 'g2g7',
           before: _cp(700),
-          after: _cp(400),
+          after: _cp(330),
           beforeWin: gameReportWinPercentage(_cp(700)),
-          afterWin: gameReportWinPercentage(_cp(400)),
+          afterWin: gameReportWinPercentage(_cp(330)),
         ),
         isNull,
       );
@@ -121,9 +121,9 @@ void main() {
           playedUci: 'g7g5',
           engineBest: 'h7h6',
           before: _cp(-700),
-          after: _cp(-400),
+          after: _cp(-330),
           beforeWin: gameReportWinPercentage(_cp(-700)),
-          afterWin: gameReportWinPercentage(_cp(-400)),
+          afterWin: gameReportWinPercentage(_cp(-330)),
         ),
         isNull,
       );

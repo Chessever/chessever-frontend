@@ -1528,10 +1528,10 @@ LichessJudgement? lichessJudgementForReportMove({
 /// decisive-win amnesty and Missed Win layered on top of it.
 ///
 /// The port remains the source of thresholds and severity. The one deliberate
-/// product overlay is that a mover who remains at 80 or higher on the report's
+/// product overlay is that a mover who remains at 77 or higher on the report's
 /// winning-chance scale receives no negative symbol. That floor maps roughly to
-/// +4 and makes human-equivalent winning conversions such as +7 → +4 or mate →
-/// +4 silent without weakening judgments that lose the decisive advantage.
+/// +3.3 and makes human-equivalent winning conversions such as +7 → +3.3 or mate
+/// → +4 silent without weakening judgments that lose the decisive advantage.
 GameMoveClassification? _missedOrLoss({
   required int index,
   required ChessGame game,
@@ -1711,9 +1711,9 @@ const double kPositivePraiseWinFloorPp = 25;
 const double kRoutinePraiseMinWinGainPp = 10;
 
 /// Human-facing Game Report floor for a retained decisive win. The report's
-/// Stockfish-to-win curve maps +4 to about 81%, so 80% intentionally treats both
-/// +7 and +4 as the same won outcome for negative-symbol purposes.
-const double kDecisiveWinNoErrorFloorPp = 80;
+/// Stockfish-to-win curve maps +3.3 to about 77.1%, so 77% intentionally treats
+/// +7, +4 and +3.3 as the same won outcome for negative-symbol purposes.
+const double kDecisiveWinNoErrorFloorPp = 77;
 
 /// Minimum MultiPV gap (played vs next-best, mover pp) for non-unique best.
 const double kBrilliantMinAlternativeGapPp = 8;
