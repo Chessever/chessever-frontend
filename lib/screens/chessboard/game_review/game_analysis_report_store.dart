@@ -243,8 +243,9 @@ class _MemoryEntry {
 /// changed, so every stored report still carries the old symbols. v5: Best PV
 /// moat and Great only-reliable gap relaxed (★ / ! less conservative); same
 /// games can gain positive labels they did not under v4. v6: routine tactical
-/// continuation and saturated won-position praise are suppressed.
-const int gameAnalysisReportSchemaVersion = 6;
+/// continuation and saturated won-position praise are suppressed. v7: negative
+/// symbols are suppressed when the mover retains a decisive (80%+) win.
+const int gameAnalysisReportSchemaVersion = 7;
 
 Map<String, dynamic> gameAnalysisReportToJson(GameAnalysisReport report) {
   return <String, dynamic>{

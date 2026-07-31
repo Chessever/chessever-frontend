@@ -10,11 +10,9 @@ import 'package:flutter_test/flutter_test.dart';
 /// itself. A player already lost by nine pawns cannot shed another 0.1, and a
 /// mate held in either direction is excluded by name rather than by band.
 ///
-/// Two of the cases below changed verdict when the port landed, and that is
-/// deliberate: lichess *does* mark giving up a forced mate and walking into one,
-/// just far more gently than our old tiers did. The band-scoped amnesty that used
-/// to silence them (`reportOutcomeAlreadySettled`) is gone. Do not bring it back
-/// without deciding to diverge from lichess on purpose.
+/// ChessEver deliberately overlays one product rule on the lichess judgment:
+/// when the mover is decisively winning before and after the move, conversion
+/// noise receives no negative symbol. For human review, +7 and +4 are both won.
 void main() {
   group('a decided game hands out no errors', () {
     test('mating slower than necessary is not an error', () {
@@ -85,24 +83,54 @@ void main() {
     });
   });
 
-  group('lichess still marks a mate created or thrown away, gently', () {
-    test('losing a forced mate while crushing is only an Inaccuracy', () {
-      // `MateLost` with the mover still better than +9.99: lichess's own
-      // softening, and the reason this needs no band rule of ours.
+  group('a decisive win retained receives no error', () {
+    test('losing forced mate but retaining +4 receives no symbol', () {
       expect(
         _classify(
           _crushingWhite,
           playedUci: 'g2a2',
           engineBest: 'g2g7',
           before: _mate(7),
-          after: _cp(2500),
+          after: _cp(400),
           beforeWin: 100,
-          afterWin: 97.5,
+          afterWin: gameReportWinPercentage(_cp(400)),
         ),
-        GameMoveClassification.inaccuracy,
+        isNull,
       );
     });
 
+    test('easing from +7 to +4 receives no symbol', () {
+      expect(
+        _classify(
+          _crushingWhite,
+          playedUci: 'g2a2',
+          engineBest: 'g2g7',
+          before: _cp(700),
+          after: _cp(400),
+          beforeWin: gameReportWinPercentage(_cp(700)),
+          afterWin: gameReportWinPercentage(_cp(400)),
+        ),
+        isNull,
+      );
+    });
+
+    test('the same decisive-win rule is mover-relative for Black', () {
+      expect(
+        _classify(
+          _hopelessBlack,
+          playedUci: 'g7g5',
+          engineBest: 'h7h6',
+          before: _cp(-700),
+          after: _cp(-400),
+          beforeWin: gameReportWinPercentage(_cp(-700)),
+          afterWin: gameReportWinPercentage(_cp(-400)),
+        ),
+        isNull,
+      );
+    });
+  });
+
+  group('a lost position can still receive lichess-softened errors', () {
     test('walking into mate from a lost game is only a Mistake', () {
       // `MateCreated` from -9.00 for the mover: worse than -7.00, so it is a
       // Mistake rather than a Blunder.
@@ -138,16 +166,16 @@ void main() {
   });
 
   group('a changed result is punished in full', () {
-    test('giving up a forced mate for merely better is a Blunder', () {
+    test('giving up a forced mate below the decisive floor is a Blunder', () {
       expect(
         _classify(
           _crushingWhite,
           playedUci: 'g2a2',
           engineBest: 'g2g7',
           before: _mate(7),
-          after: _cp(400),
+          after: _cp(200),
           beforeWin: 100,
-          afterWin: 81.3,
+          afterWin: gameReportWinPercentage(_cp(200)),
         ),
         GameMoveClassification.blunder,
       );
