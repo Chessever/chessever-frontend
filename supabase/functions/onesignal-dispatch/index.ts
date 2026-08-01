@@ -74,10 +74,8 @@ const jsonHeaders = { "Content-Type": "application/json" };
 const DEFAULT_DISPATCH_LIMIT = 50;
 const MAX_DISPATCH_LIMIT = 500;
 const POSTGREST_IN_QUERY_CHUNK_SIZE = 100;
-const PUSH_USER_QUERY_CHUNK_SIZE = POSTGREST_IN_QUERY_CHUNK_SIZE;
 const ONESIGNAL_EXTERNAL_ID_CHUNK_SIZE = 1000;
 const ONESIGNAL_SUBSCRIPTION_ID_CHUNK_SIZE = 20000;
-const PUSH_TOKEN_FRESHNESS_DAYS = 7;
 const dispatchTokenCache: { token: string | null; expiresAtMs: number } = {
   token: null,
   expiresAtMs: 0,
@@ -2149,7 +2147,9 @@ function isGameOverStatus(status: string | null) {
   return trimmed !== "*" && trimmed !== "ongoing";
 }
 
-async function sendOneSignalPayload(payload: Record<string, unknown>) {
+async function sendOneSignalPayload(
+  payload: Record<string, unknown>,
+): Promise<number | null> {
   const res = await fetch("https://api.onesignal.com/notifications", {
     method: "POST",
     headers: {
@@ -2163,40 +2163,32 @@ async function sendOneSignalPayload(payload: Record<string, unknown>) {
     const text = await res.text();
     throw new Error(`OneSignal API error: ${res.status} ${text}`);
   }
+
+  try {
+    const response = await res.json() as { recipients?: unknown };
+    if (typeof response?.recipients === "number") {
+      return response.recipients;
+    }
+  } catch {
+    // A successful response without JSON may still have been accepted. Do not
+    // issue a fallback send when acceptance is uncertain; that could duplicate.
+  }
+  return null;
 }
 
 async function sendOneSignal(
   userIds: string[],
   notification: NotificationPayload,
 ) {
-  if (userIds.length === 0) return;
+  const uniqueUserIds = [...new Set(userIds.filter(Boolean))];
+  if (uniqueUserIds.length === 0) return;
 
-  const targets = await fetchPushSubscriptionTargets(userIds);
-
+  // OneSignal.login() links every enabled subscription for an authenticated
+  // account to this external_id. Alias targeting is therefore the canonical
+  // multi-device path: it reaches the user's enabled iOS and Android devices
+  // without depending on an eventually consistent local token mirror.
   for (
-    const batch of chunk(
-      targets.subscriptionIds,
-      ONESIGNAL_SUBSCRIPTION_ID_CHUNK_SIZE,
-    )
-  ) {
-    const payload: Record<string, unknown> = {
-      ...buildOneSignalPayload(notification),
-      app_id: ONESIGNAL_APP_ID,
-      include_subscription_ids: batch,
-      target_channel: "push",
-    };
-
-    await sendOneSignalPayload(payload);
-  }
-
-  // Some older installs may have a OneSignal external_id but no mirrored row in
-  // user_push_tokens yet. Keep a fallback for those users only, so users with
-  // synced devices do not receive duplicates.
-  for (
-    const batch of chunk(
-      targets.externalIdFallbackUserIds,
-      ONESIGNAL_EXTERNAL_ID_CHUNK_SIZE,
-    )
+    const batch of chunk(uniqueUserIds, ONESIGNAL_EXTERNAL_ID_CHUNK_SIZE)
   ) {
     const payload: Record<string, unknown> = {
       ...buildOneSignalPayload(notification),
@@ -2205,7 +2197,29 @@ async function sendOneSignal(
       target_channel: "push",
     };
 
-    await sendOneSignalPayload(payload);
+    const aliasRecipientCount = await sendOneSignalPayload(payload);
+    if (aliasRecipientCount !== 0) continue;
+
+    // External-ID login and the token mirror shipped together. This fallback is
+    // only for a legacy/race edge where OneSignal resolves none of the alias
+    // batch but an opted-in mirrored subscription still exists. It runs only
+    // after a confirmed zero, so it cannot duplicate an accepted alias send.
+    const fallbackSubscriptionIds = await fetchLegacySubscriptionFallback(
+      batch,
+    );
+    for (
+      const subscriptionBatch of chunk(
+        fallbackSubscriptionIds,
+        ONESIGNAL_SUBSCRIPTION_ID_CHUNK_SIZE,
+      )
+    ) {
+      await sendOneSignalPayload({
+        ...buildOneSignalPayload(notification),
+        app_id: ONESIGNAL_APP_ID,
+        include_subscription_ids: subscriptionBatch,
+        target_channel: "push",
+      });
+    }
   }
 }
 
@@ -2273,53 +2287,27 @@ function compactCollapseId(value: string): string {
   return `${value.slice(0, 48)}:${Math.abs(hash).toString(36)}`;
 }
 
-async function fetchPushSubscriptionTargets(userIds: string[]) {
-  const uniqueUserIds = [...new Set(userIds.filter(Boolean))];
+async function fetchLegacySubscriptionFallback(
+  userIds: string[],
+): Promise<string[]> {
   const subscriptionIds = new Set<string>();
-  const usersWithSubscriptions = new Set<string>();
-  if (uniqueUserIds.length === 0) {
-    return {
-      subscriptionIds: [],
-      externalIdFallbackUserIds: [],
-    };
-  }
+  for (const batch of chunk(userIds, POSTGREST_IN_QUERY_CHUNK_SIZE)) {
+    const { data, error } = await supabase
+      .from("user_push_tokens")
+      .select("subscription_id")
+      .eq("provider", "onesignal")
+      .eq("opted_in", true)
+      .in("user_id", batch);
 
-  try {
-    for (const batch of chunk(uniqueUserIds, PUSH_USER_QUERY_CHUNK_SIZE)) {
-      const { data, error } = await supabase
-        .from("user_push_tokens")
-        .select("user_id, subscription_id")
-        .eq("provider", "onesignal")
-        .eq("opted_in", true)
-        .gte("last_seen_at", freshPushTokenCutoff())
-        .in("user_id", batch);
-
-      if (error) throw error;
-
-      for (const row of data ?? []) {
-        const userId = row.user_id as string | null;
-        const subscriptionId = row.subscription_id as string | null;
-        if (!userId || !subscriptionId) continue;
-        usersWithSubscriptions.add(userId);
-        subscriptionIds.add(subscriptionId);
-      }
+    if (error) {
+      throw new Error(`Legacy push token lookup failed: ${error.message}`);
     }
-  } catch (error) {
-    throw new Error(`Push token lookup failed: ${error}`);
+    for (const row of data ?? []) {
+      const subscriptionId = row.subscription_id as string | null;
+      if (subscriptionId) subscriptionIds.add(subscriptionId);
+    }
   }
-
-  return {
-    subscriptionIds: Array.from(subscriptionIds),
-    externalIdFallbackUserIds: uniqueUserIds.filter((userId) =>
-      !usersWithSubscriptions.has(userId)
-    ),
-  };
-}
-
-function freshPushTokenCutoff(now = new Date()) {
-  return new Date(
-    now.getTime() - PUSH_TOKEN_FRESHNESS_DAYS * 24 * 60 * 60 * 1000,
-  ).toISOString();
+  return [...subscriptionIds];
 }
 
 function chunk<T>(list: T[], size: number) {

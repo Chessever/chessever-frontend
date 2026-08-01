@@ -35,20 +35,30 @@ def test_dispatch_function_keeps_gateway_jwt_verification_disabled() -> None:
     assert "verify_jwt = false" in config
 
 
-def test_onesignal_targets_are_deduped_before_send() -> None:
+def test_onesignal_targets_every_enabled_device_by_external_id() -> None:
     source = _source()
+    send_start = source.index("async function sendOneSignal(")
+    send_end = source.index("function buildOneSignalPayload", send_start)
+    send_block = source[send_start:send_end]
 
-    assert "const uniqueUserIds = [...new Set(userIds.filter(Boolean))]" in source
-    assert "const subscriptionIds = new Set<string>()" in source
-    assert "subscriptionIds.add(subscriptionId)" in source
+    assert "const uniqueUserIds = [...new Set(userIds.filter(Boolean))]" in send_block
+    assert "include_aliases: { external_id: batch }" in send_block
+    assert "const aliasRecipientCount = await sendOneSignalPayload" in send_block
+    assert "if (aliasRecipientCount !== 0) continue" in send_block
+    fallback_guard = send_block.index("if (aliasRecipientCount !== 0) continue")
+    direct_fallback = send_block.index("include_subscription_ids")
+    assert direct_fallback > fallback_guard
+    assert "fetchLegacySubscriptionFallback" in send_block
 
 
-def test_stale_saved_tokens_use_external_id_fallback() -> None:
+def test_onesignal_create_response_recipient_count_is_observed() -> None:
     source = _source()
+    payload_start = source.index("async function sendOneSignalPayload(")
+    payload_end = source.index("async function sendOneSignal(", payload_start)
+    payload_block = source[payload_start:payload_end]
 
-    assert "function freshPushTokenCutoff" in source
-    assert '.gte("last_seen_at", freshPushTokenCutoff())' in source
-    assert "PUSH_TOKEN_FRESHNESS_DAYS = 7" in source
+    assert 'typeof response?.recipients === "number"' in payload_block
+    assert "return response.recipients" in payload_block
 
 
 def test_game_started_notifications_do_not_reinclude_event_only_recipients() -> None:
