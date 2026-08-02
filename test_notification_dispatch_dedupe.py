@@ -134,6 +134,45 @@ def test_successful_retry_clears_the_waiting_reason() -> None:
     assert 'update({ status: "sent", last_error: null })' in mark_sent
 
 
+def test_favorite_recipient_queries_paginate_past_postgrest_row_cap() -> None:
+    # PostgREST silently caps un-ranged selects at 1000 rows. A star-studded
+    # round (Saint Louis 2026 R1: 1883 favoriter rows) lost ~half its
+    # recipients to that cap until resolveRecipients paged every lookup.
+    source = _source()
+    resolve_start = source.index("async function resolveRecipients(")
+    resolve_end = source.index("type TimeControlLookup", resolve_start)
+    resolve_block = source[resolve_start:resolve_end]
+
+    assert "function fetchAllPages" in source
+    assert resolve_block.count("fetchAllPages") == 4
+    assert '.in("user_id", batch)' in resolve_block  # muted lookup is chunked
+    assert "POSTGREST_IN_QUERY_CHUNK_SIZE" in resolve_block
+
+
+def test_favorite_map_user_list_is_chunked_not_one_giant_in_query() -> None:
+    # An unchunked .in(user_id, <hundreds of uuids>) builds a URL the gateway
+    # rejects; the swallowed error sent everyone the generic round template.
+    source = _source()
+    map_start = source.index("async function resolvePlayerFavoriteMap(")
+    map_end = source.index("function buildEventHeader(", map_start)
+    map_block = source[map_start:map_end]
+
+    assert map_block.count("chunk(userIds, POSTGREST_IN_QUERY_CHUNK_SIZE)") == 2
+    assert map_block.count("fetchAllPages") == 2
+
+
+def test_game_start_window_lookup_is_chunked_and_fails_loud() -> None:
+    # If the window read fails silently, covered users look uncovered and the
+    # per-game fallback double-sends after a round_started push.
+    source = _source()
+    win_start = source.index("async function fetchUsersWithActiveGameStartWindow(")
+    win_end = source.index("async function resolveRecursiveBookSubscribers(", win_start)
+    win_block = source[win_start:win_end]
+
+    assert "chunk(userIds, POSTGREST_IN_QUERY_CHUNK_SIZE)" in win_block
+    assert "Game-start window lookup failed" in win_block
+
+
 def test_round_event_display_name_omits_redundant_single_open_section() -> None:
     source = _source()
 

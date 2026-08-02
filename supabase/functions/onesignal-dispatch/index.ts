@@ -1139,63 +1139,97 @@ async function resolveRecipients(args: {
       eventIds.add(calendarEventFavoriteIdFromName(name));
     }
 
-    const { data } = await supabase
-      .from("user_favorite_events")
-      .select("user_id")
-      .in("event_id", Array.from(eventIds));
-    for (const row of data ?? []) {
-      eventUserIds.add(row.user_id as string);
+    const byId = await fetchAllPages<{ user_id: string | null }>(
+      "Favorite event lookup",
+      (from, to) =>
+        supabase
+          .from("user_favorite_events")
+          .select("user_id")
+          .in("event_id", Array.from(eventIds))
+          .order("id")
+          .range(from, to),
+    );
+    for (const row of byId) {
+      if (row.user_id) eventUserIds.add(row.user_id);
     }
 
     // Also match by display name (case-insensitive) so renamed-id leftovers
     // and pure name-starred rows still receive round notifications.
     if (name) {
-      const { data: byName } = await supabase
-        .from("user_favorite_events")
-        .select("user_id")
-        .ilike("event_name", name);
-      for (const row of byName ?? []) {
-        eventUserIds.add(row.user_id as string);
+      const byName = await fetchAllPages<{ user_id: string | null }>(
+        "Favorite event name lookup",
+        (from, to) =>
+          supabase
+            .from("user_favorite_events")
+            .select("user_id")
+            .ilike("event_name", name)
+            .order("id")
+            .range(from, to),
+      );
+      for (const row of byName) {
+        if (row.user_id) eventUserIds.add(row.user_id);
       }
     }
   }
 
   if (args.fideIds.length > 0) {
-    const { data } = await supabase
-      .from("user_favorite_players")
-      .select("user_id")
-      .in("fide_id", args.fideIds);
-    for (const row of data ?? []) {
-      playerUserIds.add(row.user_id as string);
+    const rows = await fetchAllPages<{ user_id: string | null }>(
+      "Favorite player fide lookup",
+      (from, to) =>
+        supabase
+          .from("user_favorite_players")
+          .select("user_id")
+          .in("fide_id", args.fideIds)
+          .order("id")
+          .range(from, to),
+    );
+    for (const row of rows) {
+      if (row.user_id) playerUserIds.add(row.user_id);
     }
   }
 
   if (args.players.length > 0) {
-    const { data } = await supabase
-      .from("user_favorite_players")
-      .select("user_id")
-      .in("player_name", args.players);
-    for (const row of data ?? []) {
-      playerUserIds.add(row.user_id as string);
+    const rows = await fetchAllPages<{ user_id: string | null }>(
+      "Favorite player name lookup",
+      (from, to) =>
+        supabase
+          .from("user_favorite_players")
+          .select("user_id")
+          .in("player_name", args.players)
+          .order("id")
+          .range(from, to),
+    );
+    for (const row of rows) {
+      if (row.user_id) playerUserIds.add(row.user_id);
     }
   }
 
-  // Remove muted users from BOTH channels in one query.
+  // Remove muted users from BOTH channels.
   // A user who has muted this event must receive no notification from it —
   // regardless of whether they arrive via eventUserIds (starred) or
   // playerUserIds (favorite player).
   if (args.groupBroadcastId) {
     const allCandidates = new Set([...eventUserIds, ...playerUserIds]);
     if (allCandidates.size > 0) {
-      const { data: mutedData } = await supabase
-        .from("user_muted_events")
-        .select("user_id")
-        .eq("group_broadcast_id", args.groupBroadcastId)
-        .in("user_id", Array.from(allCandidates));
-      for (const row of mutedData ?? []) {
-        const uid = row.user_id as string;
-        eventUserIds.delete(uid);
-        playerUserIds.delete(uid);
+      for (
+        const batch of chunk(
+          Array.from(allCandidates),
+          POSTGREST_IN_QUERY_CHUNK_SIZE,
+        )
+      ) {
+        const { data: mutedData, error } = await supabase
+          .from("user_muted_events")
+          .select("user_id")
+          .eq("group_broadcast_id", args.groupBroadcastId)
+          .in("user_id", batch);
+        if (error) {
+          throw new Error(`Muted event lookup failed: ${error.message}`);
+        }
+        for (const row of mutedData ?? []) {
+          const uid = row.user_id as string;
+          eventUserIds.delete(uid);
+          playerUserIds.delete(uid);
+        }
       }
     }
   }
@@ -1616,17 +1650,25 @@ async function fetchUsersWithActiveGameStartWindow(
   roundId: string,
   userIds: string[],
 ): Promise<Set<string>> {
-  if (userIds.length === 0) return new Set();
-  const { data } = await supabase
-    .from("notification_user_windows")
-    .select("user_id")
-    .eq("round_id", roundId)
-    .eq("family", "game_start")
-    .gt("expires_at", new Date().toISOString())
-    .in("user_id", userIds);
   const suppressed = new Set<string>();
-  for (const row of data ?? []) {
-    suppressed.add(row.user_id as string);
+  if (userIds.length === 0) return suppressed;
+  const nowIso = new Date().toISOString();
+  for (const batch of chunk(userIds, POSTGREST_IN_QUERY_CHUNK_SIZE)) {
+    const { data, error } = await supabase
+      .from("notification_user_windows")
+      .select("user_id")
+      .eq("round_id", roundId)
+      .eq("family", "game_start")
+      .gt("expires_at", nowIso)
+      .in("user_id", batch);
+    if (error) {
+      // A failed window read must fail the item (and retry) rather than
+      // treat covered users as uncovered and double-send.
+      throw new Error(`Game-start window lookup failed: ${error.message}`);
+    }
+    for (const row of data ?? []) {
+      suppressed.add(row.user_id as string);
+    }
   }
   return suppressed;
 }
@@ -1967,15 +2009,27 @@ async function resolvePlayerFavoriteMap(
 
   const userIds = Array.from(playerUserIds);
 
-  // Fetch by fide_id
+  // Fetch by fide_id. userIds can be thousands of uuids — an unchunked
+  // .in() builds a URL the gateway rejects, and the error used to be
+  // swallowed, which sent every user the generic round template.
   if (roundFideIds.size > 0) {
-    const { data: faveByFide } = await supabase
-      .from("user_favorite_players")
-      .select("user_id,fide_id")
-      .in("user_id", userIds)
-      .in("fide_id", Array.from(roundFideIds));
+    const faveByFide: Array<Record<string, unknown>> = [];
+    for (const batch of chunk(userIds, POSTGREST_IN_QUERY_CHUNK_SIZE)) {
+      const rows = await fetchAllPages<Record<string, unknown>>(
+        "Favorite map fide lookup",
+        (from, to) =>
+          supabase
+            .from("user_favorite_players")
+            .select("user_id,fide_id")
+            .in("user_id", batch)
+            .in("fide_id", Array.from(roundFideIds))
+            .order("id")
+            .range(from, to),
+      );
+      faveByFide.push(...rows);
+    }
 
-    for (const row of faveByFide ?? []) {
+    for (const row of faveByFide) {
       const userId = row.user_id as string;
       const fideId = String(row.fide_id);
       const name = fideIdToName.get(fideId);
@@ -1988,13 +2042,23 @@ async function resolvePlayerFavoriteMap(
 
   // Fetch by player_name (fallback for players without fide_id matches)
   if (roundPlayerNames.size > 0) {
-    const { data: faveByName } = await supabase
-      .from("user_favorite_players")
-      .select("user_id,player_name")
-      .in("user_id", userIds)
-      .in("player_name", Array.from(roundPlayerNames));
+    const faveByName: Array<Record<string, unknown>> = [];
+    for (const batch of chunk(userIds, POSTGREST_IN_QUERY_CHUNK_SIZE)) {
+      const rows = await fetchAllPages<Record<string, unknown>>(
+        "Favorite map name lookup",
+        (from, to) =>
+          supabase
+            .from("user_favorite_players")
+            .select("user_id,player_name")
+            .in("user_id", batch)
+            .in("player_name", Array.from(roundPlayerNames))
+            .order("id")
+            .range(from, to),
+      );
+      faveByName.push(...rows);
+    }
 
-    for (const row of faveByName ?? []) {
+    for (const row of faveByName) {
       const userId = row.user_id as string;
       const name = row.player_name as string;
       if (!result.has(userId)) result.set(userId, []);
@@ -2316,4 +2380,28 @@ function chunk<T>(list: T[], size: number) {
     chunks.push(list.slice(i, i + size));
   }
   return chunks;
+}
+
+const POSTGREST_PAGE_SIZE = 1000;
+
+// PostgREST silently caps un-ranged selects at 1000 rows. Any query whose
+// result set can exceed that (favorite rows for a star-studded round) must
+// page with a stable ORDER BY, or an arbitrary subset of users is dropped.
+async function fetchAllPages<T>(
+  label: string,
+  page: (
+    from: number,
+    to: number,
+  ) => PromiseLike<{ data: T[] | null; error: { message: string } | null }>,
+): Promise<T[]> {
+  const rows: T[] = [];
+  let from = 0;
+  while (true) {
+    const { data, error } = await page(from, from + POSTGREST_PAGE_SIZE - 1);
+    if (error) throw new Error(`${label} failed: ${error.message}`);
+    const batch = data ?? [];
+    rows.push(...batch);
+    if (batch.length < POSTGREST_PAGE_SIZE) return rows;
+    from += POSTGREST_PAGE_SIZE;
+  }
 }
