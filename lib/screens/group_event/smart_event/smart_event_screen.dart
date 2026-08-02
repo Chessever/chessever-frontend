@@ -505,13 +505,12 @@ GameFilter? _mergeTierIntoFilter(GameFilter filter, String tier) {
   return merged.hasActiveFilters ? merged : null;
 }
 
-/// Tier thresholds keyed off the game's TOP player Elo ([smartGameTopElo]) —
-/// a board qualifies when at least one player clears the floor (product
-/// decision 2026-07-16, superseding game-average matching). Every tier is an
-/// open-ended floor (CM 2200+, FM 2300+, IM 2400+, GM 2500+), matching the
-/// "+2200"-style chips in the filter dialog. Product decision (2026-06-11):
-/// a closed band like CM 2200–2299 surfaces games nobody asked for; every
-/// tier should behave like GM — that level and everything above.
+/// Tier thresholds keyed off the game's average Elo — the same scalar the
+/// smart event pipeline uses to build, filter and sort these events. Every
+/// tier is an open-ended floor (CM 2200+, FM 2300+, IM 2400+, GM 2500+),
+/// matching the "+2200"-style chips in the filter dialog. Product decision
+/// (2026-06-11): a closed band like CM 2200–2299 surfaces games nobody asked
+/// for; every tier should behave like GM — that level and everything above.
 int _tierFloor(String tier) {
   switch (tier) {
     case 'GM':
@@ -546,10 +545,16 @@ String _tierForMinRating(int minRating) {
 
 bool _gameMatchesTier(GamesTourModel game, String tier) {
   if (tier == 'All') return true;
-  final topElo = smartGameTopElo(game);
-  if (topElo <= 0) return false;
-  return topElo >= _tierFloor(tier);
+  final avgElo = smartGameAverageElo(game);
+  if (avgElo <= 0) return false;
+  return avgElo >= _tierFloor(tier);
 }
+
+/// Exposes the tier gate so the reported GM+ boards (2591-2371 and 2521-2440,
+/// both averaging 2481) stay excluded no matter how this file is refactored.
+@visibleForTesting
+bool smartGameMatchesTierForTest(GamesTourModel game, String tier) =>
+    _gameMatchesTier(game, tier);
 
 class _AppBar extends ConsumerWidget {
   const _AppBar({
@@ -1685,8 +1690,8 @@ class _GamesTabState extends ConsumerState<_GamesTab>
     }
     if (!filter.eco.matches(game.eco)) return false;
 
-    final topElo = smartGameTopElo(game);
-    if (topElo < filter.minRating || topElo > filter.maxRating) {
+    final gameAvgElo = smartGameAverageElo(game);
+    if (gameAvgElo < filter.minRating || gameAvgElo > filter.maxRating) {
       return false;
     }
     return true;
@@ -2294,7 +2299,7 @@ class _StandingsTabState extends ConsumerState<_StandingsTab>
     );
   }
 
-  /// Keeps only events that contain at least one game whose top player
+  /// Keeps only events that contain at least one game whose average Elo
   /// clears the selected tier threshold. Classification is per-game, not
   /// per-event: a CM-rated event that happens to include one GM-level game
   /// still shows up under the GM filter.

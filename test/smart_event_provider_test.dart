@@ -4,8 +4,12 @@ import 'package:chessever2/screens/group_event/model/tour_event_card_model.dart'
 import 'package:chessever2/screens/group_event/providers/group_event_screen_provider.dart'
     show filterBroadcastsByPopupState;
 import 'package:chessever2/screens/group_event/smart_event/smart_aggregate_event_provider.dart';
+import 'package:chessever2/screens/group_event/smart_event/smart_event_screen.dart'
+    show smartGameMatchesTierForTest;
 import 'package:chessever2/screens/group_event/widget/filter_popup/filter_popup_state.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
+import 'package:chessever2/widgets/game_filter/game_filter_model.dart'
+    show GameFilter;
 import 'package:flutter/material.dart' show RangeValues;
 import 'package:flutter_test/flutter_test.dart';
 
@@ -282,7 +286,7 @@ void main() {
       expect(filtered.map((b) => b.id), ['blitz-one']);
     });
 
-    test('SmartEventCriteria.toPopupState round-trips the criteria', () {
+    test('event membership ignores Elo because rating belongs to games', () {
       final criteria = SmartEventCriteria(
         minElo: 2500,
         maxElo: 3200,
@@ -291,8 +295,8 @@ void main() {
       final state = criteria.toPopupState();
 
       expect(state.formatsAndStates, {'blitz'});
-      expect(state.minElo, 2500);
-      expect(state.hasEloFilter, isTrue);
+      expect(state.minElo, isNull);
+      expect(state.hasEloFilter, isFalse);
     });
   });
 
@@ -304,6 +308,17 @@ void main() {
       );
     });
 
+    test('keeps reported sub-2500 GM boards below the threshold', () {
+      expect(
+        smartGameAverageElo(_game(whiteRating: 2591, blackRating: 2371)),
+        2481,
+      );
+      expect(
+        smartGameAverageElo(_game(whiteRating: 2521, blackRating: 2440)),
+        2481,
+      );
+    });
+
     test('falls back to available player rating when one side is missing', () {
       expect(
         smartGameAverageElo(_game(whiteRating: 2600, blackRating: 0)),
@@ -312,14 +327,73 @@ void main() {
     });
   });
 
-  group('smartGameTopElo', () {
-    test('is the strongest player, not the average — one qualifying player '
-        'is enough for a tier', () {
-      expect(smartGameTopElo(_game(whiteRating: 2600, blackRating: 2300)), 2600);
+  group('rating tiers gate on the game average', () {
+    // The exact boards from the report: a 2500+ player on the board is NOT
+    // enough — the two-player average decides.
+    final reportedGmBoards = [
+      _game(id: 'gm-1', whiteRating: 2591, blackRating: 2371),
+      _game(id: 'gm-2', whiteRating: 2521, blackRating: 2440),
+    ];
+
+    test('GM+ excludes strong-player boards whose average is below 2500', () {
+      for (final game in reportedGmBoards) {
+        expect(smartGameMatchesTierForTest(game, 'GM'), isFalse);
+        expect(
+          matchesSmartEventAverageEloForTest(
+            game,
+            minAverageElo: 2500,
+            maxAverageElo: GameFilter.absoluteMaxRating,
+          ),
+          isFalse,
+        );
+      }
     });
 
-    test('falls back to the rated side when one rating is missing', () {
-      expect(smartGameTopElo(_game(whiteRating: 0, blackRating: 2450)), 2450);
+    test('GM+ keeps a board whose average lands exactly on the floor', () {
+      final onFloor = _game(whiteRating: 2560, blackRating: 2440);
+      expect(smartGameMatchesTierForTest(onFloor, 'GM'), isTrue);
+      expect(
+        matchesSmartEventAverageEloForTest(
+          onFloor,
+          minAverageElo: 2500,
+          maxAverageElo: GameFilter.absoluteMaxRating,
+        ),
+        isTrue,
+      );
+    });
+
+    test('every tier is an open-ended floor on the same scalar', () {
+      // Average 2350: clears CM (2200) and FM (2300), misses IM (2400) and GM.
+      final game = _game(whiteRating: 2400, blackRating: 2300);
+      expect(smartGameMatchesTierForTest(game, 'CM'), isTrue);
+      expect(smartGameMatchesTierForTest(game, 'FM'), isTrue);
+      expect(smartGameMatchesTierForTest(game, 'IM'), isFalse);
+      expect(smartGameMatchesTierForTest(game, 'GM'), isFalse);
+      expect(smartGameMatchesTierForTest(game, 'All'), isTrue);
+    });
+
+    test('an unrated board never satisfies an active floor', () {
+      final unrated = _game(whiteRating: 0, blackRating: 0);
+      expect(smartGameMatchesTierForTest(unrated, 'CM'), isFalse);
+      expect(
+        matchesSmartEventAverageEloForTest(
+          unrated,
+          minAverageElo: 2200,
+          maxAverageElo: GameFilter.absoluteMaxRating,
+        ),
+        isFalse,
+      );
+    });
+
+    test('a neutral band admits everything, including unrated boards', () {
+      expect(
+        matchesSmartEventAverageEloForTest(
+          _game(whiteRating: 0, blackRating: 0),
+          minAverageElo: GameFilter.defaultMinRating,
+          maxAverageElo: GameFilter.absoluteMaxRating,
+        ),
+        isTrue,
+      );
     });
   });
 
