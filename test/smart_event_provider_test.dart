@@ -282,7 +282,7 @@ void main() {
       expect(filtered.map((b) => b.id), ['blitz-one']);
     });
 
-    test('SmartEventCriteria.toPopupState round-trips the criteria', () {
+    test('event membership ignores Elo because rating belongs to games', () {
       final criteria = SmartEventCriteria(
         minElo: 2500,
         maxElo: 3200,
@@ -291,8 +291,8 @@ void main() {
       final state = criteria.toPopupState();
 
       expect(state.formatsAndStates, {'blitz'});
-      expect(state.minElo, 2500);
-      expect(state.hasEloFilter, isTrue);
+      expect(state.minElo, isNull);
+      expect(state.hasEloFilter, isFalse);
     });
   });
 
@@ -304,22 +304,22 @@ void main() {
       );
     });
 
+    test('keeps reported sub-2500 GM boards below the threshold', () {
+      expect(
+        smartGameAverageElo(_game(whiteRating: 2591, blackRating: 2371)),
+        2481,
+      );
+      expect(
+        smartGameAverageElo(_game(whiteRating: 2521, blackRating: 2440)),
+        2481,
+      );
+    });
+
     test('falls back to available player rating when one side is missing', () {
       expect(
         smartGameAverageElo(_game(whiteRating: 2600, blackRating: 0)),
         2600,
       );
-    });
-  });
-
-  group('smartGameTopElo', () {
-    test('is the strongest player, not the average — one qualifying player '
-        'is enough for a tier', () {
-      expect(smartGameTopElo(_game(whiteRating: 2600, blackRating: 2300)), 2600);
-    });
-
-    test('falls back to the rated side when one rating is missing', () {
-      expect(smartGameTopElo(_game(whiteRating: 0, blackRating: 2450)), 2450);
     });
   });
 
