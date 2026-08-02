@@ -569,15 +569,14 @@ class SmartEventCriteria {
     return '$minElo-$maxElo:${criteria.join('|')}';
   }
 
-  /// The criteria projected onto the home tabs' filter state, so the
-  /// resolver runs the events through the exact same filter function.
+  /// Projects only event-level criteria onto the home tabs' filter state.
+  /// Rating is deliberately left unfiltered here: smart-event rating tiers
+  /// apply to each game's two-player average after candidate tournaments are
+  /// resolved, not to a broadcast's `max_avg_elo`.
   FilterPopupState toPopupState() {
     return FilterPopupState(
       formatsAndStates: formatsAndStates,
-      eloRange: RangeValues(
-        minElo.toDouble().clamp(kFilterMinElo, kFilterMaxElo),
-        maxElo.toDouble().clamp(kFilterMinElo, kFilterMaxElo),
-      ),
+      eloRange: const RangeValues(kFilterMinElo, kFilterMaxElo),
     );
   }
 
@@ -596,10 +595,11 @@ class SmartEventCriteria {
 }
 
 /// SERVER-FRESH membership of a smart event: every broadcast in the server's
-/// `group_broadcasts_current` view that matches the criteria right now,
-/// filtered through [filterBroadcastsByPopupState] — the identical function
-/// the home Current tab uses, so a saved smart event always agrees with what
-/// the user would get by re-applying the same filters by hand.
+/// `group_broadcasts_current` view that matches the event-level criteria now.
+/// Live/completed and format reuse [filterBroadcastsByPopupState]; rating is
+/// intentionally deferred to each game's two-player average in the aggregate
+/// pipeline so an event average can neither admit weak boards nor hide a
+/// qualifying board.
 ///
 /// Watches the strict live-id stream, so live/completed criteria (and the
 /// live badges on resolved cards) re-evaluate whenever liveness changes —
@@ -854,20 +854,21 @@ Future<SmartAggregateEvent> _loadAggregateEventFromRepository({
       events: activeEvents,
       games: const <Games>[],
       tourIdToEventId: tourIdToEventId,
-      minElo: _effectiveMinElo(request, query.filter),
-      maxElo: _effectiveMaxElo(request, query.filter),
+      minAverageElo: _effectiveMinAverageElo(request, query.filter),
+      maxAverageElo: _effectiveMaxAverageElo(request, query.filter),
     );
   }
 
-  final minElo = _effectiveMinElo(request, query.filter);
-  final maxElo = _effectiveMaxElo(request, query.filter);
+  final minAverageElo = _effectiveMinAverageElo(request, query.filter);
+  final maxAverageElo = _effectiveMaxAverageElo(request, query.filter);
   final games = await ref
       .read(gameRepositoryProvider)
       .getSmartEventGamesFromTourIds(
         tourIds: tourIds,
         filter: query.filter,
         query: query.normalizedSearchQuery,
-        minTopElo: minElo > GameFilter.defaultMinRating ? minElo : null,
+        minAverageEloForPrefilter:
+            minAverageElo > GameFilter.defaultMinRating ? minAverageElo : null,
         limit: _smartEventGamesFetchCap,
       );
 
@@ -876,8 +877,8 @@ Future<SmartAggregateEvent> _loadAggregateEventFromRepository({
     events: activeEvents,
     games: games,
     tourIdToEventId: tourIdToEventId,
-    minElo: minElo,
-    maxElo: maxElo,
+    minAverageElo: minAverageElo,
+    maxAverageElo: maxAverageElo,
     truncated: games.length >= _smartEventGamesFetchCap,
   );
 }
@@ -896,8 +897,8 @@ SmartAggregateEvent _buildAggregateEventFromGameRows({
   required List<GroupEventCardModel> events,
   required List<Games> games,
   required Map<String, String> tourIdToEventId,
-  required int minElo,
-  required int maxElo,
+  required int minAverageElo,
+  required int maxAverageElo,
   bool truncated = false,
 }) {
   final eventById = {for (final event in events) event.id: event};
@@ -915,7 +916,11 @@ SmartAggregateEvent _buildAggregateEventFromGameRows({
       continue;
     }
 
-    if (!_matchesEloRange(gameModel, minElo: minElo, maxElo: maxElo)) {
+    if (!_matchesAverageEloRange(
+      gameModel,
+      minAverageElo: minAverageElo,
+      maxAverageElo: maxAverageElo,
+    )) {
       continue;
     }
 
@@ -1008,20 +1013,20 @@ SmartAggregateEvent _createSmartAggregateEvent({
   );
 }
 
-bool _matchesEloRange(
+bool _matchesAverageEloRange(
   GamesTourModel game, {
-  required int minElo,
-  required int maxElo,
+  required int minAverageElo,
+  required int maxAverageElo,
 }) {
-  final hasLowerBound = minElo > GameFilter.defaultMinRating;
-  final hasUpperBound = maxElo < GameFilter.absoluteMaxRating;
+  final hasLowerBound = minAverageElo > GameFilter.defaultMinRating;
+  final hasUpperBound = maxAverageElo < GameFilter.absoluteMaxRating;
   if (!hasLowerBound && !hasUpperBound) return true;
-  final topElo = smartGameTopElo(game);
-  if (topElo <= 0) return false;
-  return topElo >= minElo && topElo <= maxElo;
+  final gameAvgElo = smartGameAverageElo(game);
+  if (gameAvgElo <= 0) return false;
+  return gameAvgElo >= minAverageElo && gameAvgElo <= maxAverageElo;
 }
 
-int _effectiveMinElo(SmartEventRequest request, GameFilter? filter) {
+int _effectiveMinAverageElo(SmartEventRequest request, GameFilter? filter) {
   var value =
       request.hasEloRange ? request.minElo : GameFilter.defaultMinRating;
   final filterMin = filter?.minRating ?? GameFilter.defaultMinRating;
@@ -1029,7 +1034,7 @@ int _effectiveMinElo(SmartEventRequest request, GameFilter? filter) {
   return value;
 }
 
-int _effectiveMaxElo(SmartEventRequest request, GameFilter? filter) {
+int _effectiveMaxAverageElo(SmartEventRequest request, GameFilter? filter) {
   var value =
       request.hasEloRange ? request.maxElo : GameFilter.absoluteMaxRating;
   final filterMax = filter?.maxRating ?? GameFilter.absoluteMaxRating;
@@ -1087,14 +1092,6 @@ int smartGameAverageElo(GamesTourModel game) {
   if (ratings.isEmpty) return 0;
   return (ratings.reduce((a, b) => a + b) / ratings.length).round();
 }
-
-/// The scalar every smart-event Elo bound applies to: the game's strongest
-/// player. A board qualifies for a tier when at least ONE player clears the
-/// floor — the game average would drop a 2600-vs-2300 board from GM even
-/// though a GM is playing on it (product decision 2026-07-16, superseding
-/// the game-average semantics). Matches the server's `player_max_rating`
-/// column, so the repository prefilter and this check agree exactly.
-int smartGameTopElo(GamesTourModel game) => game.cardElo;
 
 @visibleForTesting
 List<GamesTourModel> sortSmartGamesForTest(
