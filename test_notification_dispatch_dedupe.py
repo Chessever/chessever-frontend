@@ -35,12 +35,30 @@ def test_dispatch_function_keeps_gateway_jwt_verification_disabled() -> None:
     assert "verify_jwt = false" in config
 
 
-def test_onesignal_targets_are_deduped_before_send() -> None:
+def test_onesignal_targets_every_enabled_device_by_external_id() -> None:
     source = _source()
+    send_start = source.index("async function sendOneSignal(")
+    send_end = source.index("function buildOneSignalPayload", send_start)
+    send_block = source[send_start:send_end]
 
-    assert "const uniqueUserIds = [...new Set(userIds.filter(Boolean))]" in source
-    assert "const subscriptionIds = new Set<string>()" in source
-    assert "subscriptionIds.add(subscriptionId)" in source
+    assert "const uniqueUserIds = [...new Set(userIds.filter(Boolean))]" in send_block
+    assert "include_aliases: { external_id: batch }" in send_block
+    assert "const aliasRecipientCount = await sendOneSignalPayload" in send_block
+    assert "if (aliasRecipientCount !== 0) continue" in send_block
+    fallback_guard = send_block.index("if (aliasRecipientCount !== 0) continue")
+    direct_fallback = send_block.index("include_subscription_ids")
+    assert direct_fallback > fallback_guard
+    assert "fetchLegacySubscriptionFallback" in send_block
+
+
+def test_onesignal_create_response_recipient_count_is_observed() -> None:
+    source = _source()
+    payload_start = source.index("async function sendOneSignalPayload(")
+    payload_end = source.index("async function sendOneSignal(", payload_start)
+    payload_block = source[payload_start:payload_end]
+
+    assert 'typeof response?.recipients === "number"' in payload_block
+    assert "return response.recipients" in payload_block
 
 
 def test_game_started_notifications_do_not_reinclude_event_only_recipients() -> None:
@@ -48,7 +66,7 @@ def test_game_started_notifications_do_not_reinclude_event_only_recipients() -> 
     game_block_start = source.index(
         'if (eventType === "game_started" || eventType === "game_finished")'
     )
-    game_block_end = source.index('if (eventType === "live_game_update")', game_block_start)
+    game_block_end = source.index('if (eventType === "call_to_action")', game_block_start)
     game_block = source[game_block_start:game_block_end]
 
     assert "favorite_player_alerts" in game_block
@@ -93,6 +111,27 @@ def test_round_started_requires_actual_move_before_dispatch() -> None:
     assert "round_not_live_yet" in source
     assert '.select("id")' in source
     assert '.not("last_move_time", "is", null)' in source
+
+
+def test_round_started_waits_for_moves_instead_of_terminally_skipping() -> None:
+    source = _source()
+    guard_start = source.index('if (item.event_type === "round_started")')
+    guard_end = source.index("hasSentGroupedRoundStart", guard_start)
+    guard = source[guard_start:guard_end]
+
+    assert 'await reschedulePending(item.id, "round_not_live_yet")' in guard
+    assert 'await markSkipped(item.id, "round_not_live_yet")' not in guard
+    assert 'status: "pending"' in guard
+    assert "function reschedulePending" in source
+
+
+def test_successful_retry_clears_the_waiting_reason() -> None:
+    source = _source()
+    mark_sent_start = source.index("async function markSent")
+    mark_sent_end = source.index("async function markSkipped", mark_sent_start)
+    mark_sent = source[mark_sent_start:mark_sent_end]
+
+    assert 'update({ status: "sent", last_error: null })' in mark_sent
 
 
 def test_round_event_display_name_omits_redundant_single_open_section() -> None:

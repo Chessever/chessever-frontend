@@ -74,7 +74,6 @@ const jsonHeaders = { "Content-Type": "application/json" };
 const DEFAULT_DISPATCH_LIMIT = 50;
 const MAX_DISPATCH_LIMIT = 500;
 const POSTGREST_IN_QUERY_CHUNK_SIZE = 100;
-const PUSH_USER_QUERY_CHUNK_SIZE = POSTGREST_IN_QUERY_CHUNK_SIZE;
 const ONESIGNAL_EXTERNAL_ID_CHUNK_SIZE = 1000;
 const ONESIGNAL_SUBSCRIPTION_ID_CHUNK_SIZE = 20000;
 const dispatchTokenCache: { token: string | null; expiresAtMs: number } = {
@@ -181,6 +180,7 @@ async function claimPending(limit: number): Promise<OutboxItem[]> {
 }
 
 const STALE_THRESHOLD_MS = 60 * 60 * 1000; // 1 hour
+const ROUND_START_RETRY_DELAY_MS = 30 * 1000;
 
 async function processItem(item: OutboxItem) {
   // Skip stale items to prevent sending outdated notifications
@@ -193,11 +193,19 @@ async function processItem(item: OutboxItem) {
   try {
     const context = await buildContext(item);
     if (item.event_type === "round_started") {
-      if (!item.round_id || !(await hasRoundWithMoves(item.round_id))) {
-        await markSkipped(item.id, "round_not_live_yet");
+      if (!item.round_id) {
+        await markSkipped(item.id, "missing_round_id");
         return {
           id: item.id,
           status: "skipped",
+          reason: "missing_round_id",
+        };
+      }
+      if (!(await hasRoundWithMoves(item.round_id))) {
+        await reschedulePending(item.id, "round_not_live_yet");
+        return {
+          id: item.id,
+          status: "pending",
           reason: "round_not_live_yet",
         };
       }
@@ -754,11 +762,10 @@ async function processItem(item: OutboxItem) {
       return { id: item.id, status: "skipped", reason: "no_recipients" };
     }
 
-    // For game_started: multi-fav (2+ favorites in the round) users get the
-    // combined round_started push (Scenarios B/C), not per-game spam.
-    // Single-favorite users (Scenario A) and map-miss (count 0 but still in
-    // playerUserIds for THIS game) keep game_started — see
-    // filterGameStartedPlayerRecipients / shouldReceiveGameStartedForPlayerFavorite.
+    // For game_started, suppress only users already covered by a confirmed
+    // combined round_started or an earlier per-game fallback. Favorite count
+    // alone is not proof of delivery: if round_started was waiting for moves,
+    // the first matching game_started becomes the safe one-per-round fallback.
     if (item.event_type === "game_started" && item.round_id) {
       const alreadyCovered = await fetchUsersWithActiveGameStartWindow(
         item.round_id,
@@ -766,7 +773,6 @@ async function processItem(item: OutboxItem) {
       );
       const { keep } = filterGameStartedPlayerRecipients(
         filteredUserIds,
-        context.playerFavoriteMap,
         alreadyCovered,
       );
       filteredUserIds.clear();
@@ -817,7 +823,7 @@ async function processItem(item: OutboxItem) {
 async function markSent(id: string) {
   await supabase
     .from("notification_outbox")
-    .update({ status: "sent" })
+    .update({ status: "sent", last_error: null })
     .eq("id", id);
 }
 
@@ -825,6 +831,18 @@ async function markSkipped(id: string, reason: string) {
   await supabase
     .from("notification_outbox")
     .update({ status: "skipped", last_error: reason })
+    .eq("id", id);
+}
+
+async function reschedulePending(id: string, reason: string) {
+  await supabase
+    .from("notification_outbox")
+    .update({
+      status: "pending",
+      last_error: reason,
+      not_before: new Date(Date.now() + ROUND_START_RETRY_DELAY_MS)
+        .toISOString(),
+    })
     .eq("id", id);
 }
 
@@ -2129,7 +2147,9 @@ function isGameOverStatus(status: string | null) {
   return trimmed !== "*" && trimmed !== "ongoing";
 }
 
-async function sendOneSignalPayload(payload: Record<string, unknown>) {
+async function sendOneSignalPayload(
+  payload: Record<string, unknown>,
+): Promise<number | null> {
   const res = await fetch("https://api.onesignal.com/notifications", {
     method: "POST",
     headers: {
@@ -2143,40 +2163,32 @@ async function sendOneSignalPayload(payload: Record<string, unknown>) {
     const text = await res.text();
     throw new Error(`OneSignal API error: ${res.status} ${text}`);
   }
+
+  try {
+    const response = await res.json() as { recipients?: unknown };
+    if (typeof response?.recipients === "number") {
+      return response.recipients;
+    }
+  } catch {
+    // A successful response without JSON may still have been accepted. Do not
+    // issue a fallback send when acceptance is uncertain; that could duplicate.
+  }
+  return null;
 }
 
 async function sendOneSignal(
   userIds: string[],
   notification: NotificationPayload,
 ) {
-  if (userIds.length === 0) return;
+  const uniqueUserIds = [...new Set(userIds.filter(Boolean))];
+  if (uniqueUserIds.length === 0) return;
 
-  const targets = await fetchPushSubscriptionTargets(userIds);
-
+  // OneSignal.login() links every enabled subscription for an authenticated
+  // account to this external_id. Alias targeting is therefore the canonical
+  // multi-device path: it reaches the user's enabled iOS and Android devices
+  // without depending on an eventually consistent local token mirror.
   for (
-    const batch of chunk(
-      targets.subscriptionIds,
-      ONESIGNAL_SUBSCRIPTION_ID_CHUNK_SIZE,
-    )
-  ) {
-    const payload: Record<string, unknown> = {
-      ...buildOneSignalPayload(notification),
-      app_id: ONESIGNAL_APP_ID,
-      include_subscription_ids: batch,
-      target_channel: "push",
-    };
-
-    await sendOneSignalPayload(payload);
-  }
-
-  // Some older installs may have a OneSignal external_id but no mirrored row in
-  // user_push_tokens yet. Keep a fallback for those users only, so users with
-  // synced devices do not receive duplicates.
-  for (
-    const batch of chunk(
-      targets.externalIdFallbackUserIds,
-      ONESIGNAL_EXTERNAL_ID_CHUNK_SIZE,
-    )
+    const batch of chunk(uniqueUserIds, ONESIGNAL_EXTERNAL_ID_CHUNK_SIZE)
   ) {
     const payload: Record<string, unknown> = {
       ...buildOneSignalPayload(notification),
@@ -2185,7 +2197,29 @@ async function sendOneSignal(
       target_channel: "push",
     };
 
-    await sendOneSignalPayload(payload);
+    const aliasRecipientCount = await sendOneSignalPayload(payload);
+    if (aliasRecipientCount !== 0) continue;
+
+    // External-ID login and the token mirror shipped together. This fallback is
+    // only for a legacy/race edge where OneSignal resolves none of the alias
+    // batch but an opted-in mirrored subscription still exists. It runs only
+    // after a confirmed zero, so it cannot duplicate an accepted alias send.
+    const fallbackSubscriptionIds = await fetchLegacySubscriptionFallback(
+      batch,
+    );
+    for (
+      const subscriptionBatch of chunk(
+        fallbackSubscriptionIds,
+        ONESIGNAL_SUBSCRIPTION_ID_CHUNK_SIZE,
+      )
+    ) {
+      await sendOneSignalPayload({
+        ...buildOneSignalPayload(notification),
+        app_id: ONESIGNAL_APP_ID,
+        include_subscription_ids: subscriptionBatch,
+        target_channel: "push",
+      });
+    }
   }
 }
 
@@ -2253,46 +2287,27 @@ function compactCollapseId(value: string): string {
   return `${value.slice(0, 48)}:${Math.abs(hash).toString(36)}`;
 }
 
-async function fetchPushSubscriptionTargets(userIds: string[]) {
-  const uniqueUserIds = [...new Set(userIds.filter(Boolean))];
+async function fetchLegacySubscriptionFallback(
+  userIds: string[],
+): Promise<string[]> {
   const subscriptionIds = new Set<string>();
-  const usersWithSubscriptions = new Set<string>();
-  if (uniqueUserIds.length === 0) {
-    return {
-      subscriptionIds: [],
-      externalIdFallbackUserIds: [],
-    };
-  }
+  for (const batch of chunk(userIds, POSTGREST_IN_QUERY_CHUNK_SIZE)) {
+    const { data, error } = await supabase
+      .from("user_push_tokens")
+      .select("subscription_id")
+      .eq("provider", "onesignal")
+      .eq("opted_in", true)
+      .in("user_id", batch);
 
-  try {
-    for (const batch of chunk(uniqueUserIds, PUSH_USER_QUERY_CHUNK_SIZE)) {
-      const { data, error } = await supabase
-        .from("user_push_tokens")
-        .select("user_id, subscription_id")
-        .eq("provider", "onesignal")
-        .eq("opted_in", true)
-        .in("user_id", batch);
-
-      if (error) throw error;
-
-      for (const row of data ?? []) {
-        const userId = row.user_id as string | null;
-        const subscriptionId = row.subscription_id as string | null;
-        if (!userId || !subscriptionId) continue;
-        usersWithSubscriptions.add(userId);
-        subscriptionIds.add(subscriptionId);
-      }
+    if (error) {
+      throw new Error(`Legacy push token lookup failed: ${error.message}`);
     }
-  } catch (error) {
-    throw new Error(`Push token lookup failed: ${error}`);
+    for (const row of data ?? []) {
+      const subscriptionId = row.subscription_id as string | null;
+      if (subscriptionId) subscriptionIds.add(subscriptionId);
+    }
   }
-
-  return {
-    subscriptionIds: Array.from(subscriptionIds),
-    externalIdFallbackUserIds: uniqueUserIds.filter((userId) =>
-      !usersWithSubscriptions.has(userId)
-    ),
-  };
+  return [...subscriptionIds];
 }
 
 function chunk<T>(list: T[], size: number) {
