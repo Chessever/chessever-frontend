@@ -32,11 +32,15 @@ type GameRow = {
 };
 
 type RoundGameRow = {
+  id: string;
   player_white: string | null;
   player_black: string | null;
   player_fide_ids: number[] | null;
   players: Record<string, unknown>[] | null;
 };
+
+/** One board of a round, used to word a per-game notification. */
+type RoundBoard = { white: string; black: string };
 
 type RoundRow = {
   id: string;
@@ -302,60 +306,69 @@ async function processItem(item: OutboxItem) {
         (uid) => !suppressedByWindow.has(uid),
       );
 
-      // Per-user personalized notifications for player-favorite users.
-      // Batch users with identical messages into a single sendOneSignal() call.
+      // One notification PER BOARD for player-favorite users.
+      //
+      // A favorite's start alert has to mirror its finish alert: favorite two
+      // players on two boards and you get two "… : result" pushes at the end,
+      // so you must get two "… is live." pushes at the start. Grouping by the
+      // user's whole favorite set instead ("X and Y are live.") collapsed every
+      // board a user cared about into a single push, and split the audience of
+      // one board across dozens of tiny sends — Saint Louis R4 sent 40 separate
+      // notifications where 5 boards were starting.
+      //
+      // Wording and payload match game_started exactly, so the same board reads
+      // the same whichever row wins the race to dispatch it.
       if (dedupedPlayerRecipients.length > 0) {
-        const messageBatches = new Map<string, string[]>();
-        const unresolved: string[] = []; // favorites not resolved → event fallback
+        const boardBatches = new Map<string, string[]>();
+        const unresolved: string[] = []; // no favorite board → event fallback
 
         for (const userId of dedupedPlayerRecipients) {
           const favNames = context.playerFavoriteMap.get(userId) ?? [];
-          if (favNames.length === 0) {
+          const gameIds = new Set<string>();
+          for (const name of favNames) {
+            const boards = context.playerGameIds.get(playerBoardKey(name));
+            for (const gameId of boards ?? []) {
+              if (context.roundBoards.has(gameId)) gameIds.add(gameId);
+            }
+          }
+
+          if (gameIds.size === 0) {
             unresolved.push(userId);
             continue;
           }
 
-          // Sort favorites by rating DESC
-          const sorted = [...favNames].sort((a, b) => {
-            const ra = context.playerRatingMap.get(a) ?? 0;
-            const rb = context.playerRatingMap.get(b) ?? 0;
-            return rb - ra;
-          });
-
-          let body: string;
-          if (sorted.length === 1) {
-            const fav = formatPlayerName(sorted[0]);
-            const oppName = context.playerOpponentMap.get(sorted[0]) ??
-              "Opponent";
-            const opp = formatPlayerName(oppName);
-            body = `${fav} vs ${opp} is live.`;
-          } else if (sorted.length === 2) {
-            const p1 = formatPlayerName(sorted[0]);
-            const p2 = formatPlayerName(sorted[1]);
-            body = `${p1} and ${p2} are live.`;
-          } else {
-            const p1 = formatPlayerName(sorted[0]);
-            const p2 = formatPlayerName(sorted[1]);
-            body = `${p1}, ${p2}, and others are live.`;
+          for (const gameId of gameIds) {
+            const batch = boardBatches.get(gameId);
+            if (batch) batch.push(userId);
+            else boardBatches.set(gameId, [userId]);
           }
-
-          const key = body;
-          if (!messageBatches.has(key)) messageBatches.set(key, []);
-          messageBatches.get(key)!.push(userId);
         }
 
-        for (const [body, userIds] of messageBatches) {
+        for (const [gameId, userIds] of boardBatches) {
+          const board = context.roundBoards.get(gameId);
+          // Unreachable: gameIds were filtered against roundBoards above.
+          if (!board) continue;
           await sendOneSignal(userIds, {
             title,
-            body,
+            body: `${formatPlayerName(board.white)} vs ${
+              formatPlayerName(board.black)
+            } is live.`,
             url: null,
-            data: buildRoundStartedNotificationData(context, roundId),
+            // Board-level payload: tapping opens that game (deep_link_service
+            // routes `game_started` by game_id) and the push collapses per
+            // board instead of once per round.
+            data: {
+              ...buildRoundStartedNotificationData(context, roundId),
+              type: "game_started",
+              game_id: gameId,
+            },
             androidChannelId: channelForEvent("round_started"),
           });
         }
 
-        // Fallback for player-favorite users whose specific favorites
-        // couldn't be resolved to a name — send the event-level template.
+        // Fallback for player-favorite users whose favorites resolve to no
+        // paired board this round (unnamed pairing, bye) — they still matched
+        // playerUserIds, so send the event-level template rather than nothing.
         if (unresolved.length > 0) {
           const template = pickTemplate(ROUND_STARTED_EVENT, roundId);
           const filled = fillTemplate(template, { e: eventName, r: roundName });
@@ -932,8 +945,8 @@ async function buildContext(item: OutboxItem) {
     fideIdSet.add(id.toString());
   }
 
-  let playerRatingMap = new Map<string, number>();
-  let playerOpponentMap = new Map<string, string>();
+  let playerGameIds = new Map<string, Set<string>>();
+  let roundBoards = new Map<string, RoundBoard>();
 
   if (
     (item.event_type === "round_started" ||
@@ -947,8 +960,8 @@ async function buildContext(item: OutboxItem) {
     for (const id of roundPlayers.fideIds) {
       fideIdSet.add(id);
     }
-    playerRatingMap = roundPlayers.playerRatingMap;
-    playerOpponentMap = roundPlayers.playerOpponentMap;
+    playerGameIds = roundPlayers.playerGameIds;
+    roundBoards = roundPlayers.roundBoards;
   }
 
   const { eventUserIds, playerUserIds } = await resolveRecipients({
@@ -983,8 +996,8 @@ async function buildContext(item: OutboxItem) {
     eventUserIds,
     playerUserIds,
     playerFavoriteMap,
-    playerRatingMap,
-    playerOpponentMap,
+    playerGameIds,
+    roundBoards,
   };
 }
 
@@ -1063,10 +1076,22 @@ function sameInstant(a: unknown, b: string): boolean {
   return aTime === bTime;
 }
 
+/**
+ * Key a player name for board lookup.
+ *
+ * The same player reaches us under two spellings: `games.player_white` /
+ * `player_black` and the `name` inside the `players` JSONB. A favorite resolved
+ * through fide_id carries the JSONB spelling, one resolved by name carries the
+ * column spelling, so the board index must accept either.
+ */
+function playerBoardKey(name: string): string {
+  return name.trim().toLowerCase();
+}
+
 async function fetchRoundPlayers(roundId: string) {
   const { data, error } = await supabase
     .from("games")
-    .select("player_white,player_black,player_fide_ids,players")
+    .select("id,player_white,player_black,player_fide_ids,players")
     .eq("round_id", roundId);
 
   if (error) {
@@ -1075,8 +1100,10 @@ async function fetchRoundPlayers(roundId: string) {
 
   const playerNames = new Set<string>();
   const fideIds = new Set<string>();
-  const playerRatingMap = new Map<string, number>();
-  const playerOpponentMap = new Map<string, string>();
+  // name → the boards that player sits at this round. A Set of game ids (not a
+  // single id) because a knockout round can pair the same player twice.
+  const playerGameIds = new Map<string, Set<string>>();
+  const roundBoards = new Map<string, RoundBoard>();
 
   for (const row of (data ?? []) as RoundGameRow[]) {
     if (row.player_white) playerNames.add(row.player_white);
@@ -1085,29 +1112,34 @@ async function fetchRoundPlayers(roundId: string) {
       fideIds.add(id.toString());
     }
 
-    // Build opponent map
-    if (row.player_white && row.player_black) {
-      playerOpponentMap.set(row.player_white, row.player_black);
-      playerOpponentMap.set(row.player_black, row.player_white);
-    }
+    // Only a fully-paired board can be worded as "White vs Black is live."
+    if (!row.id || !row.player_white || !row.player_black) continue;
+    roundBoards.set(row.id, {
+      white: row.player_white,
+      black: row.player_black,
+    });
 
-    // Extract ratings from players JSON
+    const boardNames = [row.player_white, row.player_black];
     if (Array.isArray(row.players)) {
       for (const p of row.players) {
         const name = (p?.name as string | undefined) ?? null;
-        const rating = p?.rating as number | undefined;
-        if (name && typeof rating === "number" && rating > 0) {
-          playerRatingMap.set(name, rating);
-        }
+        if (name) boardNames.push(name);
       }
+    }
+    for (const name of boardNames) {
+      const key = playerBoardKey(name);
+      if (!key) continue;
+      const existing = playerGameIds.get(key);
+      if (existing) existing.add(row.id);
+      else playerGameIds.set(key, new Set([row.id]));
     }
   }
 
   return {
     playerNames: Array.from(playerNames),
     fideIds: Array.from(fideIds),
-    playerRatingMap,
-    playerOpponentMap,
+    playerGameIds,
+    roundBoards,
   };
 }
 
@@ -1977,7 +2009,7 @@ async function resolvePlayerFavoriteMap(
   // Get all games in this round to know which players are participating
   const { data: games } = await supabase
     .from("games")
-    .select("player_white,player_black,players")
+    .select("id,player_white,player_black,players")
     .eq("round_id", roundId);
 
   if (!games || games.length === 0) return result;

@@ -207,3 +207,56 @@ def test_round_start_queue_requires_a_real_move_before_enqueue() -> None:
     assert "FROM public.games g" in migration
     assert "g.round_id = r.id" in migration
     assert "g.last_move_time IS NOT NULL" in migration
+
+
+def test_round_started_favorites_notify_per_board_not_per_favorite_set() -> None:
+    # Favorite two players on two boards and the round-end pushes arrive twice,
+    # so the round-start pushes must too. Grouping recipients by their whole
+    # favorite set ("X and Y are live.") collapsed several boards into one push
+    # AND split one board's audience across dozens of tiny sends: Saint Louis
+    # R4 fanned 5 starting boards out into 40 separate notifications, the
+    # biggest Aronian/Caruana batch reaching 6 users against 467 at game end.
+    source = _source()
+    start = source.index("const rsTimeControl = await resolveGameTimeControl(")
+    end = source.index('if (item.event_type === "round_heads_up")', start)
+    block = source[start:end]
+
+    assert "const boardBatches = new Map<string, string[]>()" in block
+    assert "context.playerGameIds.get(playerBoardKey(name))" in block
+    assert "context.roundBoards.has(gameId)" in block
+    assert "} is live.`" in block
+    # The per-favorite-set wording is what fragmented the audience.
+    assert "${p1} and ${p2} are live." not in block
+    assert "${p1}, ${p2}, and others are live." not in block
+    assert "playerRatingMap" not in source
+    assert "playerOpponentMap" not in source
+
+
+def test_round_started_board_pushes_carry_a_game_deep_link() -> None:
+    # deep_link_service routes `game_started` by game_id, so a board-worded
+    # start push opens that board and collapses per board — not once per round.
+    source = _source()
+    start = source.index("for (const [gameId, userIds] of boardBatches)")
+    end = source.index("if (unresolved.length > 0)", start)
+    block = source[start:end]
+
+    assert "...buildRoundStartedNotificationData(context, roundId)" in block
+    assert 'type: "game_started"' in block
+    assert "game_id: gameId" in block
+
+
+def test_round_board_index_accepts_both_player_name_spellings() -> None:
+    # A favorite matched by fide_id carries the players-JSONB spelling; one
+    # matched by name carries the games column spelling. Indexing only one of
+    # them would drop that user into the generic event fallback.
+    source = _source()
+    start = source.index("async function fetchRoundPlayers(")
+    end = source.index("function calendarEventFavoriteIdFromName(", start)
+    block = source[start:end]
+
+    assert "function playerBoardKey" in source
+    assert "const boardNames = [row.player_white, row.player_black]" in block
+    assert "if (name) boardNames.push(name)" in block
+    assert "playerGameIds.set(key, new Set([row.id]))" in block
+    # An unpaired board cannot be worded "White vs Black is live."
+    assert "if (!row.id || !row.player_white || !row.player_black) continue" in block
