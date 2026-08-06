@@ -1610,7 +1610,9 @@ class _SliverScoreboardAppBarState
   }
 
   Future<void> _toggleFavorite() async {
-    if (ref.read(chessboardViewFromProviderNew) != ChessboardView.forYou) {
+    if (!ref
+        .read(chessboardViewFromProviderNew)
+        .usesEventScopedScorecardContext) {
       return;
     }
 
@@ -1709,7 +1711,9 @@ class _SliverScoreboardAppBarState
     final selectedBroadcast = ref.watch(selectedBroadcastModelProvider);
     final hasTournamentContext = selectedBroadcast != null;
     final isForYouView =
-        ref.watch(chessboardViewFromProviderNew) == ChessboardView.forYou;
+        ref
+            .watch(chessboardViewFromProviderNew)
+            .usesEventScopedScorecardContext;
 
     final validCountryCode = ref
         .read(locationServiceProvider)

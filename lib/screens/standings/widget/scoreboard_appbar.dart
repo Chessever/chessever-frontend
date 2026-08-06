@@ -47,7 +47,9 @@ class _ScoreboardAppbarState extends ConsumerState<ScoreboardAppbar>
   }
 
   Future<void> _toggleFavorite() async {
-    if (ref.read(chessboardViewFromProviderNew) != ChessboardView.forYou) {
+    if (!ref
+        .read(chessboardViewFromProviderNew)
+        .usesEventScopedScorecardContext) {
       return;
     }
 
@@ -110,7 +112,9 @@ class _ScoreboardAppbarState extends ConsumerState<ScoreboardAppbar>
   Widget build(BuildContext context) {
     final player = ref.watch(selectedPlayerProvider);
     final isForYouView =
-        ref.watch(chessboardViewFromProviderNew) == ChessboardView.forYou;
+        ref
+            .watch(chessboardViewFromProviderNew)
+            .usesEventScopedScorecardContext;
 
     bool isFavorite = false;
     if (isForYouView) {

@@ -1346,7 +1346,7 @@ class _FavoritesGamesTabState extends ConsumerState<FavoritesGamesTab>
           orderedGames: allGames,
           gameIndex: gameIndex,
           onReturnFromChessboard: (_) {},
-          viewSource: ChessboardView.forYou,
+          viewSource: ChessboardView.favorites,
         );
   }
 }
