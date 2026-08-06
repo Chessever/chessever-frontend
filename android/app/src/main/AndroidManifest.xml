@@ -24,7 +24,7 @@
    <uses-permission android:name="android.permission.READ_MEDIA_AUDIO" tools:node="remove" />
 
    <application
-       android:label="ChessEver"
+       android:label="${appName}"
        android:name=".ChessEverApplication"
        android:icon="@mipmap/ic_launcher"
 		
@@ -63,7 +63,7 @@
                <action android:name="android.intent.action.VIEW" />
                <category android:name="android.intent.category.DEFAULT" />
                <category android:name="android.intent.category.BROWSABLE" />
-               <data android:scheme="com.chessever.app" />
+               <data android:scheme="${authRedirectScheme}" />
            </intent-filter>
            <!-- Android App Links for HTTPS deep links (sharing, notifications) -->
            <!-- Catch-all: any path on chessever.com opens the app -->

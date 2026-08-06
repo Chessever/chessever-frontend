@@ -5,6 +5,7 @@ import 'dart:ui';
 import 'package:logarte/logarte.dart';
 import 'package:chessever2/e2e/e2e_config.dart';
 import 'package:chessever2/e2e/e2e_ids.dart';
+import 'package:chessever2/config/app_environment.dart';
 import 'package:chessever2/utils/logger/logger.dart';
 import 'package:chessever2/localization/locale_provider.dart';
 import 'package:chessever2/screens/authentication/auth_screen.dart';
@@ -163,7 +164,7 @@ String _getEnv(String key) {
     return releaseValue;
   }
 
-  if (kDebugMode) {
+  if (kDebugMode && !AppEnvironment.isTest) {
     final value = dotenv.env[key];
     if (value == null || value.isEmpty) {
       throw Exception('Missing env variable in .env file: $key');
@@ -179,6 +180,15 @@ String _getEnv(String key) {
     );
   }
   return value;
+}
+
+String _getOptionalEnv(String key) {
+  final releaseValue = _releaseEnvValues[key]?.trim();
+  if (releaseValue != null && releaseValue.isNotEmpty) return releaseValue;
+  if (kDebugMode && !AppEnvironment.isTest) {
+    return dotenv.env[key]?.trim() ?? '';
+  }
+  return '';
 }
 
 /// Compile-time environment values injected via `--dart-define`.
@@ -219,19 +229,14 @@ const Map<String, String> _releaseEnvValues = {
 };
 
 String _resolveAmplitudeApiKey() {
-  try {
-    final envApiKey = _getEnv('AMPLITUDE');
-    if (envApiKey.isNotEmpty) return envApiKey;
-  } catch (_) {}
+  final envApiKey = _getOptionalEnv('AMPLITUDE');
+  if (envApiKey.isNotEmpty) return envApiKey;
+  if (AppEnvironment.isTest) return '';
   return AnalyticsService.fallbackApiKey;
 }
 
 String _resolveOneSignalAppId() {
-  try {
-    final envAppId = _getEnv('ONESIGNAL_APP_ID');
-    if (envAppId.isNotEmpty) return envAppId;
-  } catch (_) {}
-  return '';
+  return _getOptionalEnv('ONESIGNAL_APP_ID');
 }
 
 void _e2eStartupLog(String message) {
@@ -250,12 +255,15 @@ void _e2eStartupLog(String message) {
   debugPrint(line);
 }
 
-Future<void> main() async {
+Future<void> main() => runChessEver(AppFlavor.production);
+
+Future<void> runChessEver(AppFlavor flavor) async {
+  AppEnvironment.configure(flavor);
   await runZonedGuarded(
     () async {
       _e2eStartupLog('runZonedGuarded entered');
       WidgetsBinding widgetsBinding;
-      if (kDebugMode && !E2eConfig.isEnabled) {
+      if (kDebugMode && !E2eConfig.isEnabled && !AppEnvironment.isTest) {
         widgetsBinding = MarionetteBinding.ensureInitialized();
       } else if (E2eConfig.isEnabled) {
         widgetsBinding = WidgetsFlutterBinding.ensureInitialized();
@@ -315,7 +323,7 @@ Future<void> main() async {
         _e2eStartupLog('starting SentryFlutter.init');
         await SentryFlutter.init(
           (options) {
-            options.dsn = _getEnv('SENTRY_FLUTTER');
+            options.dsn = _getOptionalEnv('SENTRY_FLUTTER');
             options.sendDefaultPii = true;
 
             // ========== PERFORMANCE OPTIMIZATIONS ==========
@@ -497,9 +505,19 @@ Future<void> _migrateToSqliteStorage(String supabaseAuthKey) async {
 /// Initialize RevenueCat for subscription management
 Future<void> _initializeRevenueCat() async {
   try {
-    // Platform-specific API keys
+    // Production keeps its existing platform keys. The test app has no
+    // fallback: CI must inject the key for its separate RevenueCat app.
+    final configuredTestKey = _getOptionalEnv('RevenueCatAPIKey');
+    if (AppEnvironment.isTest && configuredTestKey.isEmpty) {
+      debugPrint(
+        'RevenueCat disabled: ChessEver Test API key is not configured.',
+      );
+      return;
+    }
     final apiKey =
-        Platform.isIOS
+        AppEnvironment.isTest
+            ? configuredTestKey
+            : Platform.isIOS
             ? 'appl_hggBdZrNsqmMHEorxxxLYjyHTzz'
             : 'goog_ZmINjxirbMFvSsVMUfviZwrpfBY';
 
@@ -634,6 +652,7 @@ Future<void> _initializeCoreServices() async {
 
   final supabaseUrl = _getEnv('SUPABASE_URL');
   final supabaseAnonKey = _getEnv('SUPABASE_ANON_KEY');
+  AppEnvironment.validateSupabaseUrl(supabaseUrl);
   final persistSessionKey = _buildPersistSessionKey(supabaseUrl);
 
   await _initializeSupabaseWithRecovery(
@@ -1218,9 +1237,9 @@ class MyApp extends HookConsumerWidget {
             task: () {
               if (!context.mounted) return;
               try {
-                final clarityConfig = ClarityConfig(
-                  projectId: _getEnv('CLARITY_PROJECT_ID'),
-                );
+                final projectId = _getOptionalEnv('CLARITY_PROJECT_ID');
+                if (projectId.isEmpty) return;
+                final clarityConfig = ClarityConfig(projectId: projectId);
 
                 final initialized = Clarity.initialize(context, clarityConfig);
                 debugPrint('Clarity initialized: $initialized');

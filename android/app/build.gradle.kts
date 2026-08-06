@@ -28,10 +28,6 @@
             isCoreLibraryDesugaringEnabled = true
         }
 
-        kotlinOptions {
-            jvmTarget = JavaVersion.VERSION_17.toString()
-        }
-
         signingConfigs {
             if (keystorePropertiesFile.exists()) {
                 create("release") {
@@ -56,6 +52,23 @@
             versionName = flutter.versionName
             testInstrumentationRunner = "pl.leancode.patrol.PatrolJUnitRunner"
             testInstrumentationRunnerArguments["clearPackageData"] = "true"
+            manifestPlaceholders["appName"] = "ChessEver"
+            manifestPlaceholders["authRedirectScheme"] = "com.chessever.app"
+        }
+
+        flavorDimensions += "environment"
+        productFlavors {
+            create("production") {
+                dimension = "environment"
+                manifestPlaceholders["appName"] = "ChessEver"
+                manifestPlaceholders["authRedirectScheme"] = "com.chessever.app"
+            }
+            create("chessevertest") {
+                dimension = "environment"
+                applicationIdSuffix = ".test"
+                manifestPlaceholders["appName"] = "ChessEver Test"
+                manifestPlaceholders["authRedirectScheme"] = "com.chessever.app.test"
+            }
         }
 
         testOptions {
@@ -81,9 +94,16 @@
         }
 
     }
+
+    kotlin {
+        compilerOptions {
+            jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
+        }
+    }
+
     dependencies {
         // Latest stable Kotlin version compatible with Flutter 2025
-        implementation("org.jetbrains.kotlin:kotlin-stdlib-jdk8:2.2.0")
+        implementation("org.jetbrains.kotlin:kotlin-stdlib-jdk8:2.2.20")
 
         // Ensure okhttp is present for Amplitude's Android core (R8 was missing HttpUrl)
         implementation("com.squareup.okhttp3:okhttp:4.12.0")

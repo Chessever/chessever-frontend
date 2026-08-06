@@ -7,7 +7,7 @@
 		<key>CFBundleDevelopmentRegion</key>
 		<string>$(DEVELOPMENT_LANGUAGE)</string>
 		<key>CFBundleDisplayName</key>
-		<string>Chessever</string>
+		<string>$(APP_DISPLAY_NAME)</string>
 		<key>CFBundleExecutable</key>
 		<string>$(EXECUTABLE_NAME)</string>
 		<key>CFBundleIdentifier</key>
@@ -21,7 +21,7 @@
 		<key>CFBundleInfoDictionaryVersion</key>
 		<string>6.0</string>
 		<key>CFBundleName</key>
-		<string>Chessever</string>
+		<string>$(APP_DISPLAY_NAME)</string>
 		<key>CFBundlePackageType</key>
 		<string>APPL</string>
 		<key>CFBundleShortVersionString</key>
@@ -32,10 +32,10 @@
 		<array>
 			<dict>
 				<key>CFBundleURLName</key>
-				<string>com.chessever.app</string>
+				<string>$(AUTH_REDIRECT_SCHEME)</string>
 				<key>CFBundleURLSchemes</key>
 				<array>
-					<string>com.chessever.app</string>
+					<string>$(AUTH_REDIRECT_SCHEME)</string>
 				</array>
 			</dict>
 			<!-- Google Sign In URL Scheme -->
@@ -44,15 +44,15 @@
 				<string>Editor</string>
 				<key>CFBundleURLSchemes</key>
 				<array>
-					<string>com.googleusercontent.apps.882734779574-8v68and9jcueedkvk0dl2ftse6dn8kt3</string>
+					<string>$(REVERSED_GOOGLE_CLIENT_ID)</string>
 				</array>
 			</dict>
 		</array>
 		<!-- Google Sign In Client IDs -->
 		<key>GIDClientID</key>
-		<string>882734779574-8v68and9jcueedkvk0dl2ftse6dn8kt3.apps.googleusercontent.com</string>
+		<string>$(GOOGLE_IOS_CLIENT_ID)</string>
 		<key>GIDServerClientID</key>
-		<string>882734779574-0qk635jlqrbp9qhenmau7pd6bffiag2j.apps.googleusercontent.com</string>
+		<string>$(GOOGLE_WEB_CLIENT_ID)</string>
 		<key>CFBundleVersion</key>
 		<string>$(FLUTTER_BUILD_NUMBER)</string>
 		<key>LSApplicationQueriesSchemes</key>

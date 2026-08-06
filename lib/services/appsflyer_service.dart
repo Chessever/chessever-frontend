@@ -9,6 +9,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:chessever2/config/app_environment.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:sentry_flutter/sentry_flutter.dart';
 
@@ -141,7 +142,7 @@ class AppsflyerService {
     );
     if (releaseKey.isNotEmpty) return releaseKey;
 
-    if (kDebugMode) {
+    if (kDebugMode && !AppEnvironment.isTest) {
       final envKey = dotenv.env['APPSFLYER_DEV_KEY']?.trim();
       if (envKey != null && envKey.isNotEmpty) return envKey;
     }

@@ -32,7 +32,7 @@ This is a Flutter project for the Chessever application.
    - Paste it into `.env` as `GAMEBASE_API_KEY=...`
 5. Run the app with compile-time env values:
    ```bash
-   flutter run --dart-define-from-file=.env
+   flutter run --flavor production -t lib/main.dart --dart-define-from-file=.env
    ```
 
 `.env.example` contains only public client config and empty personal-key slots.

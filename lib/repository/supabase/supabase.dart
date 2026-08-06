@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:chessever2/config/app_environment.dart';
 
 /// Helper function to get environment variables.
 /// Prefer --dart-define/--dart-define-from-file values in every build mode.
@@ -12,7 +13,7 @@ String _getEnv(String key) {
     return releaseValue;
   }
 
-  if (kDebugMode) {
+  if (kDebugMode && !AppEnvironment.isTest) {
     final value = dotenv.env[key];
     if (value == null || value.isEmpty) {
       throw Exception('Missing env variable in .env file: $key');
@@ -25,5 +26,7 @@ String _getEnv(String key) {
 }
 
 final supabaseProvider = Provider<SupabaseClient>((ref) {
-  return SupabaseClient(_getEnv('SUPABASE_URL'), _getEnv('SUPABASE_ANON_KEY'));
+  final url = _getEnv('SUPABASE_URL');
+  AppEnvironment.validateSupabaseUrl(url);
+  return SupabaseClient(url, _getEnv('SUPABASE_ANON_KEY'));
 });

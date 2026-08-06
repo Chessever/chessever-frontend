@@ -4,6 +4,7 @@ import 'dart:math';
 import 'dart:io' show Platform;
 
 import 'package:chessever2/providers/error_logger_provider.dart';
+import 'package:chessever2/config/app_environment.dart';
 import 'package:chessever2/repository/authentication/model/app_user.dart';
 import 'package:chessever2/repository/authentication/model/auth_state.dart';
 import 'package:chessever2/repository/authentication/model/exceptions.dart';
@@ -902,7 +903,7 @@ class AuthController extends AutoDisposeAsyncNotifier<AppAuthState> {
       final launched = await _supabase.auth.linkIdentity(
         provider,
         scopes: scopes,
-        redirectTo: 'com.chessever.app://login-callback',
+        redirectTo: '${AppEnvironment.authRedirectScheme}://login-callback',
       );
 
       if (!launched) {
@@ -1057,7 +1058,7 @@ class AuthController extends AutoDisposeAsyncNotifier<AppAuthState> {
 
     if (releaseValue != null && releaseValue.isNotEmpty) {
       value = releaseValue;
-    } else if (kDebugMode) {
+    } else if (kDebugMode && !AppEnvironment.isTest) {
       value = dotenv.env[key]?.trim();
     } else {
       value = releaseValue;

@@ -1,9 +1,6 @@
-import 'dart:convert';
-
 import 'package:chessever2/services/push_notifications_service.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
-import 'package:http/http.dart' as http;
 import 'package:purchases_flutter/purchases_flutter.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -37,11 +34,6 @@ class RevenueCatService {
   /// The entitlement identifier for ChessEver premium
   /// Must match the lookup_key in RevenueCat dashboard
   static const String premiumEntitlement = 'Chessever Subscription';
-
-  static const String _billingApiBase = String.fromEnvironment(
-    'BILLING_API_BASE',
-    defaultValue: 'https://oelbsuggrzyqwzmvidju.supabase.co/functions/v1',
-  );
 
   /// Callback to be invoked on app resume to sync subscription state.
   /// Set by SubscriptionNotifier to ensure state is updated after sync.
@@ -133,20 +125,18 @@ class RevenueCatService {
     if (session == null) return null;
 
     try {
-      final response = await http.get(
-        Uri.parse('$_billingApiBase/entitlement'),
-        headers: <String, String>{
-          'authorization': 'Bearer ${session.accessToken}',
-        },
+      final response = await Supabase.instance.client.functions.invoke(
+        'entitlement',
+        method: HttpMethod.get,
       );
-      if (response.statusCode != 200) {
+      if (response.status != 200 || response.data is! Map) {
         debugPrint(
-          'Backend entitlement returned ${response.statusCode}: ${response.body}',
+          'Backend entitlement returned ${response.status}: ${response.data}',
         );
         return null;
       }
       return BackendEntitlementSnapshot.fromJson(
-        jsonDecode(response.body) as Map<String, dynamic>,
+        Map<String, dynamic>.from(response.data as Map),
       );
     } catch (e) {
       debugPrint('Error getting backend entitlement: $e');

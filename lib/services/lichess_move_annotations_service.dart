@@ -1,7 +1,5 @@
-import 'dart:convert';
-
 import 'package:flutter/foundation.dart';
-import 'package:http/http.dart' as http;
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 enum LichessMoveAnnotationType {
   brilliant,
@@ -30,13 +28,9 @@ class LichessMoveAnnotation {
 class LichessMoveAnnotationsService {
   LichessMoveAnnotationsService._();
 
-  static const String _functionUrl =
-      'https://oelbsuggrzyqwzmvidju.supabase.co/functions/v1/fetch-lichess-annotations';
-  static const String _anonKey =
-      'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9lbGJzdWdncnp5cXd6bXZpZGp1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDk5MDgyODYsImV4cCI6MjA2NTQ4NDI4Nn0.YpIEGIVCN2yUmh4ALnuF0i4jKI3ld1VHNVSCN2J7R30';
-
   static final Map<String, Map<int, LichessMoveAnnotation>?> _cache = {};
   static final Set<String> _attemptedFetches = {};
+
   /// Empty / pending fetches are not permanent — Lichess analysis may finish
   /// after the first probe. Allow a quiet retry after this backoff.
   static final Map<String, DateTime> _emptyOrFailedAt = {};
@@ -103,36 +97,35 @@ class LichessMoveAnnotationsService {
       }
     }
 
-    final uri = Uri.parse(_functionUrl);
     try {
-      final response = await http.post(
-        uri,
-        headers: {
-          'Authorization': 'Bearer $_anonKey',
-          'apikey': _anonKey,
-          'Content-Type': 'application/json',
-        },
-        body: jsonEncode({
+      final response = await Supabase.instance.client.functions.invoke(
+        'fetch-lichess-annotations',
+        body: <String, dynamic>{
           'game_id': lichessGameId,
           'moves_signature': signature,
           'moves': moveSans,
           'force_refresh': forceRefresh,
           if (siteUrl != null) 'site_url': siteUrl,
-        }),
+        },
       );
 
       _attemptedFetches.add(cacheKey);
 
-      if (response.statusCode != 200) {
+      if (response.status != 200) {
         debugPrint(
-          'Lichess annotations error (${response.statusCode}): ${response.body}',
+          'Lichess annotations error (${response.status}): ${response.data}',
         );
         _cache[cacheKey] = null;
         _emptyOrFailedAt[cacheKey] = DateTime.now();
         return null;
       }
 
-      final data = jsonDecode(response.body) as Map<String, dynamic>;
+      if (response.data is! Map) {
+        _cache[cacheKey] = null;
+        _emptyOrFailedAt[cacheKey] = DateTime.now();
+        return null;
+      }
+      final data = Map<String, dynamic>.from(response.data as Map);
       final responseSignature = data['moves_signature'] as String?;
       if (responseSignature != null && responseSignature != signature) {
         debugPrint('🔍 [AnnotationsService] Signature mismatch!');

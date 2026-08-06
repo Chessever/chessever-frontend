@@ -1,7 +1,6 @@
-import 'dart:convert';
-
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 /// Service for fetching FIDE player photos from Supabase storage.
 ///
@@ -18,11 +17,6 @@ import 'package:http/http.dart' as http;
 ///   disable photos for the rest of the session.
 class FidePhotoService {
   FidePhotoService._();
-
-  static const String _functionUrl =
-      'https://oelbsuggrzyqwzmvidju.supabase.co/functions/v1/fetch-fide-photo-webp';
-  static const String _anonKey =
-      'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9lbGJzdWdncnp5cXd6bXZpZGp1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDk5MDgyODYsImV4cCI6MjA2NTQ4NDI4Nn0.YpIEGIVCN2yUmh4ALnuF0i4jKI3ld1VHNVSCN2J7R30';
 
   /// Minimum file size in bytes for a valid photo (5KB).
   /// Placeholder/default images from FIDE are typically smaller.
@@ -63,18 +57,18 @@ class FidePhotoService {
       }
     }
 
-    final uri = Uri.parse(
-      '$_functionUrl?fide_id=$fideId${forceRefresh ? '&force_refresh=true' : ''}',
-    );
-
     try {
-      final response = await http.get(
-        uri,
-        headers: {'Authorization': 'Bearer $_anonKey', 'apikey': _anonKey},
+      final response = await Supabase.instance.client.functions.invoke(
+        'fetch-fide-photo-webp',
+        method: HttpMethod.get,
+        queryParameters: <String, dynamic>{
+          'fide_id': fideId,
+          if (forceRefresh) 'force_refresh': 'true',
+        },
       );
 
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body) as Map<String, dynamic>;
+      if (response.status == 200 && response.data is Map) {
+        final data = Map<String, dynamic>.from(response.data as Map);
         final url = data['url'] as String?;
 
         if (url == null || url.isEmpty) {
@@ -103,16 +97,7 @@ class FidePhotoService {
       }
 
       // Non-200 from edge function: transient. Log, back off briefly, retry later.
-      try {
-        final error = jsonDecode(response.body);
-        debugPrint(
-          'FIDE photo error (${response.statusCode}): ${error['error']}',
-        );
-      } catch (_) {
-        debugPrint(
-          'FIDE photo error (${response.statusCode}): ${response.body}',
-        );
-      }
+      debugPrint('FIDE photo error (${response.status}): ${response.data}');
     } catch (e) {
       debugPrint('Failed to fetch FIDE photo for $fideId: $e');
     }

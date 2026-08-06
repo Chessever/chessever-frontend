@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:chessever2/utils/audio_player_service.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:chessever2/config/app_environment.dart';
 
 typedef PipModeChanged = void Function(bool isInPip);
 
@@ -85,7 +86,7 @@ class PipService {
   String? _env(String key) {
     final releaseValue = _releaseEnvValues[key]?.trim();
     if (releaseValue != null && releaseValue.isNotEmpty) return releaseValue;
-    final debugValue = dotenv.env[key]?.trim();
+    final debugValue = AppEnvironment.isTest ? null : dotenv.env[key]?.trim();
     if (debugValue != null && debugValue.isNotEmpty) return debugValue;
     return null;
   }
