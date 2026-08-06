@@ -67,7 +67,10 @@ extension ChessboardViewNavigationContext on ChessboardView {
     ChessboardView.favorites ||
     ChessboardView.countryman ||
     ChessboardView.smartEvent => true,
-    _ => false,
+    ChessboardView.favScorecard ||
+    ChessboardView.tour ||
+    ChessboardView.playerProfile ||
+    ChessboardView.forYou => false,
   };
 
   /// These feed-like surfaces pass the authoritative board list directly.
@@ -81,7 +84,11 @@ extension ChessboardViewNavigationContext on ChessboardView {
   /// to be mislabeled as For You before receiving an explicit context.
   bool get usesEventScopedScorecardContext => switch (this) {
     ChessboardView.forYou || ChessboardView.favorites => true,
-    _ => false,
+    ChessboardView.favScorecard ||
+    ChessboardView.tour ||
+    ChessboardView.countryman ||
+    ChessboardView.playerProfile ||
+    ChessboardView.smartEvent => false,
   };
 }
 
