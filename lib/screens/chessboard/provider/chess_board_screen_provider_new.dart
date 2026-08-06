@@ -50,7 +50,47 @@ bool _shouldPersistCloudEval(CloudEval eval) {
 // REMOVED: Hardcoded limit - now we use all PVs that were requested
 // const int _kMaxPrincipalVariations = 3;
 
-enum ChessboardView { favScorecard, tour, countryman, playerProfile, forYou }
+enum ChessboardView {
+  favScorecard,
+  tour,
+  countryman,
+  playerProfile,
+  forYou,
+  favorites,
+  smartEvent,
+}
+
+extension ChessboardViewNavigationContext on ChessboardView {
+  /// True when the board must keep exactly the filtered and ordered game list
+  /// supplied by the surface that opened it.
+  bool get preservesNavigationCollection => switch (this) {
+    ChessboardView.favorites ||
+    ChessboardView.countryman ||
+    ChessboardView.smartEvent => true,
+    ChessboardView.favScorecard ||
+    ChessboardView.tour ||
+    ChessboardView.playerProfile ||
+    ChessboardView.forYou => false,
+  };
+
+  /// These feed-like surfaces pass the authoritative board list directly.
+  /// Countrymen also preserves the passed list, but still merges fresher rows
+  /// from its collection-scoped provider by game ID.
+  bool get usesNavigationGamesAsPrimarySource =>
+      this == ChessboardView.forYou ||
+      (preservesNavigationCollection && this != ChessboardView.countryman);
+
+  /// Preserve the former For You scorecard behavior for Favorites, which used
+  /// to be mislabeled as For You before receiving an explicit context.
+  bool get usesEventScopedScorecardContext => switch (this) {
+    ChessboardView.forYou || ChessboardView.favorites => true,
+    ChessboardView.favScorecard ||
+    ChessboardView.tour ||
+    ChessboardView.countryman ||
+    ChessboardView.playerProfile ||
+    ChessboardView.smartEvent => false,
+  };
+}
 
 final chessboardViewFromProviderNew = StateProvider<ChessboardView>((ref) {
   return ChessboardView.tour;

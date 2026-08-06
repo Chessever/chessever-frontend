@@ -2091,6 +2091,14 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
       case ChessboardView.countryman:
         gamesAsync = ref.watch(countrymanGamesTourScreenProvider);
         break;
+      case ChessboardView.favorites:
+      case ChessboardView.smartEvent:
+        // These filtered collection screens already passed the authoritative
+        // list and order. Never replace it with a tournament-wide provider.
+        gamesAsync = AsyncValue.data(
+          GamesScreenModel(gamesTourModels: widget.games, pinnedGamedIs: []),
+        );
+        break;
       case ChessboardView.forYou:
         // For "For You" tab, use the converted games from forYouGamesProvider
         final games = ref.watch(convertedForYouGamesProvider);
@@ -2137,16 +2145,13 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
       );
     }
 
-    // Merge game data between gamesModel and widget.games
-    // CRITICAL: For "For You" view, widget.games has live updates from liveGameCardProvider,
-    // while gamesModel (convertedForYouGamesProvider) is a static snapshot without live streaming.
-    // So for "For You", we use widget.games directly to preserve live state.
-    // For tour/countryman views, gamesModel has live streaming, so prefer it.
+    // Feed and filtered-collection contexts pass the authoritative navigation
+    // list directly, including card-level live snapshots and custom ordering.
     final shouldStream = ref.watch(shouldStreamProvider);
-    final preferWidgetGames = view == ChessboardView.forYou || !shouldStream;
+    final preferWidgetGames =
+        view.usesNavigationGamesAsPrimarySource || !shouldStream;
     final List<GamesTourModel> liveGames;
     if (preferWidgetGames) {
-      // For "For You": widget.games already has live updates from liveGameCardProvider
       liveGames = widget.games;
     } else {
       // For other views: merge with gamesModel which has live streaming

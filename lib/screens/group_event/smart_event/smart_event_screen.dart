@@ -1624,7 +1624,7 @@ class _GamesTabState extends ConsumerState<_GamesTab>
                   gamesData: gamesData,
                   gameIndex: gameIndex < 0 ? 0 : gameIndex,
                   isChessBoardVisible: viewMode == GamesListViewMode.chessBoard,
-                  viewSource: ChessboardView.tour,
+                  viewSource: ChessboardView.smartEvent,
                   onReturnFromChessboard: (_) {},
                   liveBatchKey: liveBatchKeyByGameId[game.gameId],
                   allowStockfishFallback: allowStockfishFallback,
@@ -1781,7 +1781,7 @@ class _GamesTabState extends ConsumerState<_GamesTab>
               orderedGames: updatedGames,
               gameIndex: safeIndex,
               onReturnFromChessboard: (_) {},
-              viewSource: ChessboardView.tour,
+              viewSource: ChessboardView.smartEvent,
             );
       },
     );

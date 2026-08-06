@@ -598,6 +598,7 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
           hasEventContext = false;
           break;
         case ChessboardView.tour:
+        case ChessboardView.smartEvent:
           if (playerProfileDataSource == PlayerProfileDataSource.twic) {
             // TWIC route: no broadcast model, use board screen's game list
             // filtered to the current event for score card context.
@@ -643,6 +644,7 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
           }
           break;
         case ChessboardView.forYou:
+        case ChessboardView.favorites:
           // Seed ScoreCardScreen with the already-loaded games for this event.
           // It will still fetch the complete event by tourId, while this list
           // keeps cold-start navigation populated during loading or on failure.
