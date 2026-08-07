@@ -542,7 +542,6 @@
 			);
 			inputPaths = (
 				"$(PROJECT_DIR)/Runner/GoogleService-Info.plist",
-				"$(PROJECT_DIR)/Runner/GoogleService-Info-test.plist",
 			);
 			name = "Select Firebase configuration";
 			outputFileListPaths = (
@@ -552,7 +551,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "set -eu\n\ncase \"${CONFIGURATION}\" in\n  *-chessevertest) source_plist=\"${PROJECT_DIR}/Runner/GoogleService-Info-test.plist\" ;;\n  *) source_plist=\"${PROJECT_DIR}/Runner/GoogleService-Info.plist\" ;;\nesac\n\ndestination=\"${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/GoogleService-Info.plist\"\n/bin/cp -f \"${source_plist}\" \"${destination}\"\n";
+			shellScript = "set -eu\n\ncase \"${CONFIGURATION}\" in\n  *-chessevertest)\n    if [ -f \"${PROJECT_DIR}/Runner/GoogleService-Info-test.plist\" ]; then\n      source_plist=\"${PROJECT_DIR}/Runner/GoogleService-Info-test.plist\"\n    else\n      # CI post-clone often writes only GoogleService-Info.plist (gitignored *-test file).\n      source_plist=\"${PROJECT_DIR}/Runner/GoogleService-Info.plist\"\n    fi\n    ;;\n  *) source_plist=\"${PROJECT_DIR}/Runner/GoogleService-Info.plist\" ;;\nesac\n\nif [ ! -f \"${source_plist}\" ]; then\n  echo \"error: missing Firebase plist at ${source_plist}\" >&2\n  exit 1\nfi\n\ndestination=\"${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/GoogleService-Info.plist\"\n/bin/cp -f \"${source_plist}\" \"${destination}\"\n";
 		};
 		8CFFF3C1B71550BA0352AF51 /* [CP] Check Pods Manifest.lock */ = {
 			isa = PBXShellScriptBuildPhase;
