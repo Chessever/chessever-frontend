@@ -17,6 +17,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:app_tracking_transparency/app_tracking_transparency.dart';
 import 'package:purchases_flutter/purchases_flutter.dart';
 import 'package:chessever2/repository/local_storage/local_storage_repository.dart';
+import 'package:chessever2/revenue_cat_service/revenue_cat_service.dart';
 
 /// AppsFlyer predefined event names.
 ///
@@ -332,6 +333,7 @@ class AppsflyerService {
   /// Fetch the AppsFlyer UID and forward it to RevenueCat so subscription
   /// events get attributed back to the install.
   Future<void> _forwardUidToRevenueCat() async {
+    if (!RevenueCatService().isSdkReady) return;
     try {
       final uid = await _appsflyerSdk?.getAppsFlyerUID();
       if (uid == null || uid.isEmpty) return;
@@ -344,6 +346,7 @@ class AppsflyerService {
   }
 
   Future<void> _forwardCachedInstallMetadataToRevenueCat() async {
+    if (!RevenueCatService().isSdkReady) return;
     try {
       final prefs = await SharedPreferencesService.instance.ensureInitialized();
       final raw = prefs?.getString(_kCachedInstallMetadataKey);
@@ -371,6 +374,7 @@ class AppsflyerService {
   /// the customer in RC and to enrich postbacks back to AppsFlyer. Empty/null
   /// payload values are skipped so we don't overwrite real data with blanks.
   Future<void> _forwardAttributionToRevenueCat(Map payload) async {
+    if (!RevenueCatService().isSdkReady) return;
     Future<void> setIfPresent(
       String key,
       Future<void> Function(String) setter,

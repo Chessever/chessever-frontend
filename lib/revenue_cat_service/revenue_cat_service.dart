@@ -35,6 +35,24 @@ class RevenueCatService {
   /// Must match the lookup_key in RevenueCat dashboard
   static const String premiumEntitlement = 'Chessever Subscription';
 
+  /// True only after [Purchases.configure] succeeded. ChessEver Test can boot
+  /// without a RevenueCat key; every SDK call must no-op until this is true.
+  bool _sdkReady = false;
+  bool get isSdkReady => _sdkReady;
+
+  void Function(CustomerInfo)? _pendingCustomerInfoListener;
+
+  /// Mark the Purchases SDK as configured. Call once after successful
+  /// `Purchases.configure` in app startup.
+  void markSdkReady() {
+    _sdkReady = true;
+    final pending = _pendingCustomerInfoListener;
+    if (pending != null) {
+      _pendingCustomerInfoListener = null;
+      Purchases.addCustomerInfoUpdateListener(pending);
+    }
+  }
+
   /// Callback to be invoked on app resume to sync subscription state.
   /// Set by SubscriptionNotifier to ensure state is updated after sync.
   Future<void> Function()? onAppResumeCallback;
@@ -42,6 +60,7 @@ class RevenueCatService {
   /// Login user to RevenueCat with their app user ID
   /// Call this when user logs in to your auth system (Supabase)
   Future<void> logIn(String userId) async {
+    if (!_sdkReady) return;
     try {
       final result = await Purchases.logIn(userId);
       debugPrint(
@@ -80,6 +99,7 @@ class RevenueCatService {
   /// Logout user from RevenueCat
   /// Call this when user logs out of your auth system
   Future<void> logOut() async {
+    if (!_sdkReady) return;
     try {
       await Purchases.logOut();
       debugPrint('✅ RevenueCat user logged out');
@@ -90,17 +110,19 @@ class RevenueCatService {
 
   /// Check if user has active premium subscription
   Future<bool> isSubscribed() async {
-    try {
-      final customerInfo = await Purchases.getCustomerInfo();
-      // Check for our specific entitlement
-      final hasEntitlement = customerInfo.entitlements.active.containsKey(
-        premiumEntitlement,
-      );
-      // Fallback: also check if any entitlement is active
-      final hasAnyEntitlement = customerInfo.entitlements.active.isNotEmpty;
-      if (hasEntitlement || hasAnyEntitlement) return true;
-    } catch (e) {
-      debugPrint('Error checking subscription: $e');
+    if (_sdkReady) {
+      try {
+        final customerInfo = await Purchases.getCustomerInfo();
+        // Check for our specific entitlement
+        final hasEntitlement = customerInfo.entitlements.active.containsKey(
+          premiumEntitlement,
+        );
+        // Fallback: also check if any entitlement is active
+        final hasAnyEntitlement = customerInfo.entitlements.active.isNotEmpty;
+        if (hasEntitlement || hasAnyEntitlement) return true;
+      } catch (e) {
+        debugPrint('Error checking subscription: $e');
+      }
     }
 
     final backendEntitlement = await getBackendEntitlement();
@@ -109,6 +131,7 @@ class RevenueCatService {
 
   /// Get current customer info
   Future<CustomerInfo?> getCustomerInfo() async {
+    if (!_sdkReady) return null;
     try {
       return await Purchases.getCustomerInfo();
     } catch (e) {
@@ -146,6 +169,7 @@ class RevenueCatService {
 
   /// Get available products/packages
   Future<List<Package>> getProducts() async {
+    if (!_sdkReady) return [];
     try {
       final offerings = await Purchases.getOfferings();
       if (offerings.current != null) {
@@ -228,6 +252,9 @@ class RevenueCatService {
     required String label,
     required Future<PurchaseResult> Function() run,
   }) async {
+    if (!_sdkReady) {
+      return PurchaseAttemptResult.error('Purchases is not configured');
+    }
     try {
       debugPrint('🛒 Starting purchase for: $label');
 
@@ -273,6 +300,7 @@ class RevenueCatService {
 
   /// Restore purchases
   Future<bool> restorePurchases() async {
+    if (!_sdkReady) return false;
     try {
       final customerInfo = await Purchases.restorePurchases();
       final hasEntitlement =
@@ -291,6 +319,7 @@ class RevenueCatService {
   /// This ensures subscription status is always up-to-date.
   /// Returns the latest CustomerInfo after sync.
   Future<CustomerInfo?> syncPurchases() async {
+    if (!_sdkReady) return null;
     try {
       // Invalidate cache first to ensure we get fresh data from RevenueCat servers
       await Purchases.invalidateCustomerInfoCache();
@@ -307,12 +336,19 @@ class RevenueCatService {
 
   /// Set up listener for customer info changes
   void setCustomerInfoListener(void Function(CustomerInfo) listener) {
+    if (!_sdkReady) {
+      // Provider may construct before configure finishes, or ChessEver Test
+      // may intentionally skip RC. Attach later via [markSdkReady].
+      _pendingCustomerInfoListener = listener;
+      return;
+    }
     Purchases.addCustomerInfoUpdateListener(listener);
   }
 
   /// iOS only. Opens Apple's native offer-code redemption sheet.
   /// On Android this is a no-op — codes are redeemed on the Play Store.
   Future<void> presentCodeRedemptionSheet() async {
+    if (!_sdkReady) return;
     try {
       await Purchases.presentCodeRedemptionSheet();
     } catch (e) {
@@ -335,6 +371,7 @@ class RevenueCatService {
     String? code,
     Map<String, String>? affiliateContext,
   }) async {
+    if (!_sdkReady) return;
     try {
       final attrs = <String, String>{
         'redemption_source': source,

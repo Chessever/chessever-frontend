@@ -2,6 +2,7 @@ import 'package:chessever2/repository/sqlite/app_database.dart';
 import 'package:flutter/foundation.dart';
 import 'package:onesignal_flutter/onesignal_flutter.dart';
 import 'package:purchases_flutter/purchases_flutter.dart';
+import 'package:chessever2/revenue_cat_service/revenue_cat_service.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 class PushNotificationsService {
@@ -123,6 +124,7 @@ class PushNotificationsService {
 
   void _forwardSubscriptionIdToRevenueCat(String? id) {
     if (id == null || id.isEmpty) return;
+    if (!RevenueCatService().isSdkReady) return;
     Purchases.setOnesignalID(id).catchError((Object e) {
       debugPrint('[PushNotifications] Purchases.setOnesignalID failed: $e');
     });

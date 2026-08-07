@@ -4,6 +4,7 @@ import 'package:chessever2/repository/gamebase/gamebase_repository.dart';
 import 'package:chessever2/repository/supabase/game_analysis_quota_repository.dart';
 import 'package:chessever2/screens/chessboard/analysis/chess_game.dart';
 import 'package:chessever2/screens/chessboard/game_review/game_analysis_report.dart';
+import 'package:chessever2/screens/chessboard/game_review/server_game_report.dart';
 import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
 import 'package:chessever2/widgets/auth/auth_upgrade_sheet.dart';
 import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
@@ -121,9 +122,17 @@ class MobileGameReviewController extends StateNotifier<MobileGameReviewState> {
     GameAnalysisReportController? reportController,
     Future<GameAnalysisClaimResult> Function(String fingerprint)? claimQuota,
     GameReportBookLookup? bookLookup,
+    GameReportRemoteRunner? remoteRunner,
   }) : _reportController =
            reportController ??
-           GameAnalysisReportController(bookLookup: bookLookup),
+           GameAnalysisReportController(
+             bookLookup: bookLookup,
+             // Analysis runs on the server when it can: the same classifier,
+             // searched deeper than a phone can afford and without the 500 ms
+             // per-position cap that makes on-device reports vary run to run.
+             // The local passes remain the offline fallback.
+             remoteRunner: remoteRunner ?? serverGameReportRunner(),
+           ),
        _claimQuota =
            claimQuota ??
            ((_) async => const GameAnalysisClaimResult(

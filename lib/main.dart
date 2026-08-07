@@ -538,6 +538,7 @@ Future<void> _initializeRevenueCat() async {
     await Purchases.configure(
       PurchasesConfiguration(apiKey)..appUserID = bootUserId,
     );
+    RevenueCatService().markSdkReady();
     debugPrint(
       '✅ RevenueCat initialized for ${Platform.isIOS ? 'iOS' : 'Android'} '
       '(appUserID=${bootUserId ?? 'anonymous'})',

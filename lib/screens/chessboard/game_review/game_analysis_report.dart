@@ -156,16 +156,35 @@ typedef GameReportEvaluator =
 typedef GameReportBookLookup =
     Future<int?> Function(String fen, String uci, List<String> path);
 
+/// Produces a whole report off-device.
+///
+/// The server runs a checksummed copy of the algorithm below, on the same
+/// gamebase, at a deeper and uncapped search than a phone can afford — so what
+/// comes back is this report, only better and reproducible.
+///
+/// [onProgress] drives the same progress UI the engine passes drive.
+/// [isCancelled] is polled so leaving the review stops the wait.
+typedef GameReportRemoteRunner =
+    Future<GameAnalysisReport> Function(
+      ChessGame game, {
+      int? whiteRating,
+      int? blackRating,
+      required void Function(double progress, String message) onProgress,
+      required bool Function() isCancelled,
+    });
+
 class GameAnalysisReportController extends ChangeNotifier {
   GameAnalysisReportController({
     StockfishSingleton? stockfish,
     GameReportEvaluator? evaluator,
     GameAnalysisReportStore? store,
     GameReportBookLookup? bookLookup,
+    GameReportRemoteRunner? remoteRunner,
   }) : _stockfish = stockfish ?? StockfishSingleton(),
        _evaluator = evaluator,
        _store = store,
-       _bookLookup = bookLookup;
+       _bookLookup = bookLookup,
+       _remoteRunner = remoteRunner;
 
   static const int reportDepth = 12;
   static const int reportMultiPv = 3;
@@ -193,6 +212,9 @@ class GameAnalysisReportController extends ChangeNotifier {
   /// Opening-tree access. Null disables book detection entirely, which is the
   /// correct behaviour offline — every move simply keeps its engine label.
   final GameReportBookLookup? _bookLookup;
+
+  /// Server-side analysis. Null keeps every report on this device's engine.
+  final GameReportRemoteRunner? _remoteRunner;
   late final String _ownerId = StockfishSingleton.generateOwnerId(
     'gameReport',
     identityHashCode(this),
@@ -519,6 +541,22 @@ class GameAnalysisReportController extends ChangeNotifier {
       _clearPending(fingerprint);
       return;
     }
+
+    // Neither cache had it, so it has to be analysed. Prefer the server: it
+    // runs this same classifier deeper than a phone can, without spending the
+    // user's battery. Anything that stops it falls through to the passes below,
+    // so the review still works offline — it is just shallower.
+    final remote = _remoteRunner;
+    if (remote != null &&
+        await _analyzeRemotely(
+          remote,
+          game,
+          whiteRating: whiteRating,
+          blackRating: blackRating,
+        )) {
+      return;
+    }
+
     final generation = ++_generation;
     final fens = gameReportFens(game);
     final totalMoves = (game.mainline.length + 1) ~/ 2;
@@ -756,6 +794,101 @@ class GameAnalysisReportController extends ChangeNotifier {
         // done with it, tell the board to carry the on-screen position deeper.
         _stockfish.notifyEngineReleased();
       }
+    }
+  }
+
+  /// Runs the report on the server, driving the same state machine, session
+  /// cache and durable store the local passes drive.
+  ///
+  /// Returns true when the outcome is final — the report arrived, or the run was
+  /// cancelled or superseded. Returns false when the service could not answer,
+  /// which is the signal to analyse on this device instead.
+  Future<bool> _analyzeRemotely(
+    GameReportRemoteRunner remote,
+    ChessGame game, {
+    int? whiteRating,
+    int? blackRating,
+  }) async {
+    final generation = ++_generation;
+    final fingerprint = gameReportFingerprint(game);
+    // The server reports one fraction for the whole job rather than a position
+    // count. Totals are set to the move count only so the existing progress
+    // widgets have a scale to draw against.
+    final totalUnits = game.mainline.length;
+    _lastProgressNotification = null;
+    _inFlightGame = game;
+    _inFlightWhiteRating = whiteRating;
+    _inFlightBlackRating = blackRating;
+    _inFlightFingerprint = fingerprint;
+    _suspendedWhileRunning = false;
+    _markPending(fingerprint);
+    _setState(
+      GameReportState(
+        status: GameReportStatus.running,
+        totalPositions: totalUnits,
+        message: 'Sending game for analysis…',
+      ),
+    );
+
+    try {
+      final report = await remote(
+        game,
+        whiteRating: whiteRating,
+        blackRating: blackRating,
+        onProgress: (progress, message) {
+          if (_disposed || generation != _generation) return;
+          _setState(
+            GameReportState(
+              status: GameReportStatus.running,
+              progress: progress.clamp(0.0, 0.99),
+              completedPositions: (totalUnits * progress).round(),
+              totalPositions: totalUnits,
+              message: message,
+            ),
+          );
+        },
+        isCancelled: () => _disposed || generation != _generation,
+      );
+
+      if (_disposed || generation != _generation) return true;
+      if (report.fingerprint != fingerprint) {
+        // Everything downstream is keyed on the fingerprint, so a mismatch
+        // would paint one game's verdicts onto another. The client checks this
+        // too; this is the backstop.
+        _clearInFlight();
+        _fail('The server analysed a different game.');
+        return true;
+      }
+      // Same rule as the local path: real app and store-injected harnesses keep
+      // session and durable copies, pure unit evaluators stay isolated.
+      if (_evaluator == null || _store != null) {
+        _cacheReport(fingerprint, report);
+        _persistReport(report);
+      }
+      _clearInFlight();
+      _setState(
+        GameReportState(
+          status: GameReportStatus.completed,
+          progress: 1,
+          completedPositions: totalUnits,
+          totalPositions: totalUnits,
+          report: report,
+        ),
+      );
+      return true;
+    } catch (error) {
+      // A cancelled or superseded run has already had its state set by whoever
+      // cancelled it. Anything else means the server did not answer, and the
+      // passes below can analyse any game it declined — so every remaining
+      // failure falls back rather than surfacing.
+      if (_disposed || generation != _generation) return true;
+      // Cleared so the local path re-establishes its own in-flight state from
+      // scratch rather than inheriting a half-finished remote attempt.
+      _clearInFlight();
+      debugPrint(
+        '[GameReport] server analysis unavailable ($error); analysing locally',
+      );
+      return false;
     }
   }
 

@@ -63,8 +63,13 @@ post_install do |installer|
   # "Could not find incbin file 'nn-*.nnue'". The stockfish pod's flags live
   # in its xcconfig files (not the pbxproj), so patch those directly: strip
   # LTO and forward the include path to the integrated assembler.
+  #
+  # Flavor configs are named Debug-chessevertest / Release-production / etc.
+  # The stockfish pod only ships OTHER_CPLUSPLUSFLAGS[config=Debug|Release],
+  # so those flags never apply under flavors unless we mirror them.
   stockfish_xcconfig_dir = File.join(installer.sandbox.target_support_files_root, 'stockfish')
   if File.directory?(stockfish_xcconfig_dir)
+    flavor_configs = installer.pods_project.build_configurations.map(&:name).uniq
     Dir.glob(File.join(stockfish_xcconfig_dir, 'stockfish.*.xcconfig')).each do |path|
       contents = File.read(path)
       patched = contents.gsub(/\s-flto(?:=full|=thin)?\b/, '')
@@ -72,6 +77,39 @@ post_install do |installer|
       patched = patched.gsub(/^(OTHER_CPLUSPLUSFLAGS(?:\[[^\]]+\])?\s*=.*)$/) do |line|
         line.include?(extra.strip) ? line : "#{line}#{extra}"
       end
+
+      debug_line = patched[/^OTHER_CPLUSPLUSFLAGS\[config=Debug\]\s*=.*$/]
+      release_line = patched[/^OTHER_CPLUSPLUSFLAGS\[config=Release\]\s*=.*$/]
+      debug_ld = patched[/^OTHER_LDFLAGS\[config=Debug\]\s*=.*$/]
+      release_ld = patched[/^OTHER_LDFLAGS\[config=Release\]\s*=.*$/]
+
+      flavor_configs.each do |cfg|
+        next if cfg == 'Debug' || cfg == 'Release'
+        if cfg.start_with?('Debug') && debug_line
+          key = "OTHER_CPLUSPLUSFLAGS[config=#{cfg}]"
+          unless patched.include?(key)
+            patched << "\n#{debug_line.sub('[config=Debug]', "[config=#{cfg}]")}"
+          end
+          if debug_ld
+            ld_key = "OTHER_LDFLAGS[config=#{cfg}]"
+            unless patched.include?(ld_key)
+              patched << "\n#{debug_ld.sub('[config=Debug]', "[config=#{cfg}]")}"
+            end
+          end
+        elsif (cfg.start_with?('Release') || cfg.start_with?('Profile')) && release_line
+          key = "OTHER_CPLUSPLUSFLAGS[config=#{cfg}]"
+          unless patched.include?(key)
+            patched << "\n#{release_line.sub('[config=Release]', "[config=#{cfg}]")}"
+          end
+          if release_ld
+            ld_key = "OTHER_LDFLAGS[config=#{cfg}]"
+            unless patched.include?(ld_key)
+              patched << "\n#{release_ld.sub('[config=Release]', "[config=#{cfg}]")}"
+            end
+          end
+        end
+      end
+
       File.write(path, patched) if patched != contents
     end
   end
