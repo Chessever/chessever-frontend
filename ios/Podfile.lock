@@ -123,12 +123,12 @@ PODS:
     - GTMSessionFetcher/Core
   - in_app_review (2.0.0):
     - Flutter
-  - onesignal_flutter (5.3.4):
+  - onesignal_flutter (5.6.7):
     - Flutter
-    - OneSignalXCFramework (= 5.4.0)
-  - OneSignalXCFramework (5.4.0):
-    - OneSignalXCFramework/OneSignalComplete (= 5.4.0)
-  - OneSignalXCFramework/OneSignal (5.4.0):
+    - OneSignalXCFramework (= 5.5.5)
+  - OneSignalXCFramework (5.5.5):
+    - OneSignalXCFramework/OneSignalComplete (= 5.5.5)
+  - OneSignalXCFramework/OneSignal (5.5.5):
     - OneSignalXCFramework/OneSignalCore
     - OneSignalXCFramework/OneSignalExtension
     - OneSignalXCFramework/OneSignalLiveActivities
@@ -136,38 +136,41 @@ PODS:
     - OneSignalXCFramework/OneSignalOSCore
     - OneSignalXCFramework/OneSignalOutcomes
     - OneSignalXCFramework/OneSignalUser
-  - OneSignalXCFramework/OneSignalComplete (5.4.0):
+  - OneSignalXCFramework/OneSignalComplete (5.5.5):
     - OneSignalXCFramework/OneSignal
     - OneSignalXCFramework/OneSignalInAppMessages
     - OneSignalXCFramework/OneSignalLocation
-  - OneSignalXCFramework/OneSignalCore (5.4.0)
-  - OneSignalXCFramework/OneSignalExtension (5.4.0):
+  - OneSignalXCFramework/OneSignalCore (5.5.5)
+  - OneSignalXCFramework/OneSignalExtension (5.5.5):
     - OneSignalXCFramework/OneSignalCore
+    - OneSignalXCFramework/OneSignalOSCore
     - OneSignalXCFramework/OneSignalOutcomes
-  - OneSignalXCFramework/OneSignalInAppMessages (5.4.0):
+  - OneSignalXCFramework/OneSignalInAppMessages (5.5.5):
     - OneSignalXCFramework/OneSignalCore
     - OneSignalXCFramework/OneSignalNotifications
     - OneSignalXCFramework/OneSignalOSCore
     - OneSignalXCFramework/OneSignalOutcomes
     - OneSignalXCFramework/OneSignalUser
-  - OneSignalXCFramework/OneSignalLiveActivities (5.4.0):
+  - OneSignalXCFramework/OneSignalLiveActivities (5.5.5):
     - OneSignalXCFramework/OneSignalCore
     - OneSignalXCFramework/OneSignalOSCore
     - OneSignalXCFramework/OneSignalUser
-  - OneSignalXCFramework/OneSignalLocation (5.4.0):
+  - OneSignalXCFramework/OneSignalLocation (5.5.5):
     - OneSignalXCFramework/OneSignalCore
     - OneSignalXCFramework/OneSignalNotifications
     - OneSignalXCFramework/OneSignalOSCore
     - OneSignalXCFramework/OneSignalUser
-  - OneSignalXCFramework/OneSignalNotifications (5.4.0):
+  - OneSignalXCFramework/OneSignalNotifications (5.5.5):
     - OneSignalXCFramework/OneSignalCore
     - OneSignalXCFramework/OneSignalExtension
+    - OneSignalXCFramework/OneSignalOSCore
     - OneSignalXCFramework/OneSignalOutcomes
-  - OneSignalXCFramework/OneSignalOSCore (5.4.0):
+  - OneSignalXCFramework/OneSignalOSCore (5.5.5):
     - OneSignalXCFramework/OneSignalCore
-  - OneSignalXCFramework/OneSignalOutcomes (5.4.0):
+  - OneSignalXCFramework/OneSignalOutcomes (5.5.5):
     - OneSignalXCFramework/OneSignalCore
-  - OneSignalXCFramework/OneSignalUser (5.4.0):
+    - OneSignalXCFramework/OneSignalOSCore
+  - OneSignalXCFramework/OneSignalUser (5.5.5):
     - OneSignalXCFramework/OneSignalCore
     - OneSignalXCFramework/OneSignalNotifications
     - OneSignalXCFramework/OneSignalOSCore
@@ -375,8 +378,8 @@ SPEC CHECKSUMS:
   GTMAppAuth: 217a876b249c3c585a54fd6f73e6b58c4f5c4238
   GTMSessionFetcher: 5aea5ba6bd522a239e236100971f10cb71b96ab6
   in_app_review: 7dd1ea365263f834b8464673f9df72c80c17c937
-  onesignal_flutter: 6822b73de41c2286b17b6e8af3924a0e9d236aff
-  OneSignalXCFramework: 95b6391df5a91b448003149c1a633ade42ceca1e
+  onesignal_flutter: 29eeda57e99e9615280a7f10dc103840ed6f4746
+  OneSignalXCFramework: 48e5b7c5b51d4e67bab3405229f963efde1a3894
   package_info_plus: af8e2ca6888548050f16fa2f1938db7b5a5df499
   path_provider_foundation: 080d55be775b7414fd5a5ef3ac137b97b097e564
   patrol: cea8074f183a2a4232d0ebd10569ae05149ada42

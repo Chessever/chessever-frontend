@@ -134,6 +134,62 @@ void main() {
       expect(envAssetLines.single.trimLeft().startsWith('#'), isTrue);
     });
 
+    // The click-loss fixes that matter to this app landed across 5.5.3
+    // (native SDK clears `unprocessedOpenedNotifs` after replaying to a new
+    // listener), 5.5.4 (unsubscribe the click listener when the Flutter engine
+    // detaches) and 5.5.6 (guard `getNotifications()` in
+    // `onDetachedFromEngine`). 5.5.8's `firebase_messaging` fix does not apply
+    // here — this app ships `firebase_core` only — so 5.5.6 is the real floor;
+    // the guard keeps 5.5.8 as a safe round number above it.
+    test('OneSignal keeps Android notification click delivery fix', () {
+      final pubspec = File('pubspec.yaml').readAsStringSync();
+      final lockfile = File('pubspec.lock').readAsStringSync();
+      final constraint = RegExp(
+        r'^  onesignal_flutter: \^([0-9]+\.[0-9]+\.[0-9]+)$',
+        multiLine: true,
+      ).firstMatch(pubspec)?.group(1);
+      final locked = RegExp(
+        r'  onesignal_flutter:\n(?:.*\n){0,8}?    version: "([0-9]+\.[0-9]+\.[0-9]+)"',
+      ).firstMatch(lockfile)?.group(1);
+
+      expect(
+        _isAtLeast(constraint, '5.5.8'),
+        isTrue,
+        reason:
+            'OneSignal 5.5.3-5.5.6 fix lost Android notification click events '
+            'on engine detach/reattach. The direct constraint must not permit '
+            'the affected 5.4.0 SDK.',
+      );
+      expect(
+        _isAtLeast(locked, '5.5.8'),
+        isTrue,
+        reason:
+            'The lockfile must retain the Android notification click delivery '
+            'fixes. Keep ios/Podfile.lock in step: the plugin pins an exact '
+            'OneSignalXCFramework version, so a stale pod lock fails '
+            '`pod install` outright.',
+      );
+
+      // PR #290 bumped the Dart package but left ios/Podfile.lock pinned at
+      // OneSignalXCFramework 5.4.0, which makes `pod install` fail resolution
+      // instead of silently drifting. Keep the two locks moving together.
+      final podfileLock = File('ios/Podfile.lock').readAsStringSync();
+      final pod =
+          RegExp(
+            r'^  - OneSignalXCFramework \(([0-9]+\.[0-9]+\.[0-9]+)\):',
+            multiLine: true,
+          ).firstMatch(podfileLock)?.group(1);
+
+      expect(
+        _isAtLeast(pod, '5.5.5'),
+        isTrue,
+        reason:
+            'onesignal_flutter 5.6.7 pins OneSignalXCFramework 5.5.5. Run '
+            '`pod update OneSignalXCFramework` in ios/ after bumping the '
+            'Dart package, or the iOS build fails to resolve.',
+      );
+    });
+
     test('Codemagic dart defines include Gamebase API key', () {
       final source = File('CODEMAGIC_DART_DEFINES.txt').readAsStringSync();
 
@@ -146,6 +202,18 @@ void main() {
       );
     });
   });
+}
+
+bool _isAtLeast(String? version, String minimum) {
+  if (version == null) return false;
+  final actualParts = version.split('.').map(int.parse).toList();
+  final minimumParts = minimum.split('.').map(int.parse).toList();
+  for (var index = 0; index < minimumParts.length; index++) {
+    if (actualParts[index] != minimumParts[index]) {
+      return actualParts[index] > minimumParts[index];
+    }
+  }
+  return true;
 }
 
 void _expectBefore(
