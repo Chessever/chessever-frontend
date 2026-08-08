@@ -48,6 +48,28 @@ The Firebase client IDs below are public OAuth identifiers, not secrets:
 - Web: `537883311096-2vtod3ffbtcs3bhda8psl3m2muth70hb.apps.googleusercontent.com`
 - iOS: `537883311096-6j22655t8lfk67m6hkhnkguuen90smvh.apps.googleusercontent.com`
 
+### Android Google Sign-In (Play App Signing)
+
+Android Google Sign-In for this package is package-name + SHA-1 based. Supabase
+only needs the **Web** client ID (same as iOS). The Play install path needs the
+**App signing** SHA-1 registered on Firebase project `chessever-test-2026` for
+`com.chessEver.app.test`.
+
+Fingerprints currently registered (Firebase → Project settings → Android app):
+
+| Source | SHA-1 |
+|---|---|
+| Local debug keystore | `68:A8:CC:6B:…:34:76` |
+| Upload / local release (`my-release-key.jks`) | `DC:83:1A:5D:…:A9:F9` |
+| Play App signing (current) | `76:36:BE:7B:…:A3:72` |
+| Play App signing (previous, Aug 2026) | `D9:7B:69:0B:…:27:C9` |
+
+When Play rotates the app signing key, add the new SHA-1 in Firebase, re-download
+`android/app/src/chessevertest/google-services.json`, and if CI injects
+`TEST_GOOGLE_SERVICES_JSON`, re-base64 the updated file into that secret.
+Propagation can take a few minutes (rarely longer). Production Firebase
+(`chessever-53078` / `com.chessEver.app`) is intentionally untouched.
+
 ## CI build commands
 
 Both targets pass the identical define set. Keep the two lists in sync with each
@@ -145,8 +167,34 @@ in the script and again in `AppEnvironment.validateSupabaseUrl`.
 ## Codemagic auto-deploy (honest status)
 
 The **ChessEver Test** Codemagic workflow is a Workflow Editor clone of
-production with test dart-defines and Shorebird off. Auto-publish is **not**
-guaranteed until each of these is true in the Codemagic UI:
+production with test dart-defines and Shorebird off. Workflow id:
+`6a74e4eb68ba776b681ec344` under app `68eadad7aefafda5702248a0`.
+
+### Must-be-true checklist (audited)
+
+| Check | Expected |
+|---|---|
+| Shorebird | **Disabled** (never Release/Patch) |
+| Android build args | `--flavor chessevertest -t lib/main_test.dart` + test dart-defines |
+| iOS build args | same flavor/entry/defines |
+| `SUPABASE_URL` | `https://odmekzlfunfocvedqusl.supabase.co` |
+| `GOOGLE_WEB_CLIENT_ID` / `GOOGLE_IOS_CLIENT_ID` | test Firebase project `537883311096-…` |
+| `GOOGLE_SERVICES_JSON` | base64 of **test** `google-services.json` (`com.chessEver.app.test`, includes Play App signing SHA-1 `7636be7b…`) |
+| Post-clone script | writes JSON to `android/app/src/chessevertest/google-services.json` **and** validates package/project/Play SHA |
+| Google Play publish | Internal track only, package comes from the AAB (`.test`) |
+| TestFlight | ASC app `6798829510` / `com.chessever.app.test` |
+
+### Refresh `GOOGLE_SERVICES_JSON` after Firebase SHA changes
+
+```bash
+base64 -i android/app/src/chessevertest/google-services.json | pbcopy
+```
+
+Paste into Codemagic → ChessEver Test → Environment variables →
+`GOOGLE_SERVICES_JSON` (secret). Next build’s post-clone script fails loudly if
+the secret is still the old file without the Play App signing SHA.
+
+Auto-publish is **not** guaranteed until each of these is true in the Codemagic UI:
 
 | Target | Required |
 |---|---|
