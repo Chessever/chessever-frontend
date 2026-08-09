@@ -101,6 +101,7 @@ class ChessPlayerRepository extends BaseRepository {
   /// Fetch a stable page from the canonical FIDE monthly ranking fields.
   Future<List<ChessPlayer>> getRankedPlayers({
     required RankingFilters filters,
+    String? countryCode,
     String searchQuery = '',
     int limit = 30,
     int offset = 0,
@@ -116,6 +117,11 @@ class ChessPlayerRepository extends BaseRepository {
         .not(ratingColumn, 'is', null)
         .gt(ratingColumn, 0)
         .lt(ratingColumn, 3300);
+
+    final normalizedCountry = countryCode?.trim().toUpperCase();
+    if (normalizedCountry != null && normalizedCountry.isNotEmpty) {
+      query = query.eq('country', normalizedCountry);
+    }
 
     if (filters.activity == RankingActivity.active) {
       query = query.or('flag.is.null,flag.not.ilike.*i*');

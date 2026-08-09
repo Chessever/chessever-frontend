@@ -3,6 +3,8 @@ import 'dart:async';
 import 'package:chessever2/providers/country_dropdown_provider.dart';
 import 'package:chessever2/repository/supabase/chess_player/chess_player_repository.dart';
 import 'package:chessever2/providers/favorite_players_provider.dart';
+import 'package:chessever2/screens/favorites/rankings/ranking_filter_controls.dart';
+import 'package:chessever2/screens/favorites/rankings/ranking_filters.dart';
 import 'package:chessever2/utils/favorite_constants.dart';
 import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
 import 'package:chessever2/screens/standings/player_standing_model.dart';
@@ -27,6 +29,14 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 // --- Provider ---
 
+typedef CountryRankingsFetcher = Future<List<ChessPlayer>> Function({
+  required String countryCode,
+  required RankingFilters filters,
+  required String searchQuery,
+  required int limit,
+  required int offset,
+});
+
 final countrymenPlayersProvider = StateNotifierProvider.autoDispose<
   CountrymenPlayersNotifier,
   CountrymenPlayersState
@@ -34,6 +44,8 @@ final countrymenPlayersProvider = StateNotifierProvider.autoDispose<
 
 class CountrymenPlayersState {
   final List<PlayerStandingModel> players;
+  final Set<int> inactivePlayerIds;
+  final RankingFilters filters;
   final bool isLoading;
   final bool hasMore;
   final int offset;
@@ -42,6 +54,8 @@ class CountrymenPlayersState {
 
   const CountrymenPlayersState({
     this.players = const [],
+    this.inactivePlayerIds = const {},
+    this.filters = RankingFilters.defaults,
     this.isLoading = false,
     this.hasMore = true,
     this.offset = 0,
@@ -53,6 +67,8 @@ class CountrymenPlayersState {
 
   CountrymenPlayersState copyWith({
     List<PlayerStandingModel>? players,
+    Set<int>? inactivePlayerIds,
+    RankingFilters? filters,
     bool? isLoading,
     bool? hasMore,
     int? offset,
@@ -61,6 +77,8 @@ class CountrymenPlayersState {
   }) {
     return CountrymenPlayersState(
       players: players ?? this.players,
+      inactivePlayerIds: inactivePlayerIds ?? this.inactivePlayerIds,
+      filters: filters ?? this.filters,
       isLoading: isLoading ?? this.isLoading,
       hasMore: hasMore ?? this.hasMore,
       offset: offset ?? this.offset,
@@ -71,34 +89,44 @@ class CountrymenPlayersState {
 }
 
 class CountrymenPlayersNotifier extends StateNotifier<CountrymenPlayersState> {
-  final Ref _ref;
-  static const int _pageSize = 30;
-
-  CountrymenPlayersNotifier(this._ref)
-    : super(const CountrymenPlayersState(isLoading: true)) {
+  CountrymenPlayersNotifier(
+    this._ref, {
+    CountryRankingsFetcher? fetchRankings,
+    String? Function()? countryCodeOverride,
+  }) : _fetchRankings = fetchRankings,
+       _countryCodeOverride = countryCodeOverride,
+       super(const CountrymenPlayersState(isLoading: true)) {
     _loadInitial();
 
-    // Listen to effective country changes (includes temporary selections)
-    _ref.listen(effectiveCountryProvider, (previous, next) {
-      next.whenData((country) {
-        if (previous?.valueOrNull?.countryCode != country.countryCode) {
-          refresh();
-        }
+    // Test callers can provide a fixed federation without activating the
+    // asynchronous app-country listener.
+    if (_countryCodeOverride == null) {
+      _ref.listen(effectiveCountryProvider, (previous, next) {
+        next.whenData((country) {
+          if (previous?.valueOrNull?.countryCode != country.countryCode) {
+            refresh();
+          }
+        });
       });
-    });
+    }
   }
 
+  final Ref _ref;
+  final CountryRankingsFetcher? _fetchRankings;
+  final String? Function()? _countryCodeOverride;
+  static const int _pageSize = 30;
+  int _requestGeneration = 0;
+
   String? _getCountryCode() {
-    final countryAsync = _ref.read(effectiveCountryProvider);
-    final country = countryAsync.valueOrNull;
+    final override = _countryCodeOverride;
+    if (override != null) return override();
+
+    final country = _ref.read(effectiveCountryProvider).valueOrNull;
     if (country == null) return null;
-    // Convert to FIDE federation code
     return CountryUtils.toFideCode(country.countryCode);
   }
 
-  Future<void> _loadInitial() async {
-    await _fetchPlayers(isInitial: true);
-  }
+  Future<void> _loadInitial() => _fetchPlayers(isInitial: true);
 
   Future<void> _fetchPlayers({required bool isInitial}) async {
     if (!mounted) return;
@@ -109,51 +137,75 @@ class CountrymenPlayersNotifier extends StateNotifier<CountrymenPlayersState> {
       return;
     }
 
+    final generation = _requestGeneration;
+    final requestedFilters = state.filters;
+    final requestedSearch = state.searchQuery;
+    final offset = isInitial ? 0 : state.offset;
     state = state.copyWith(isLoading: true);
 
     try {
-      final repo = _ref.read(chessPlayerRepositoryProvider);
-      final offset = isInitial ? 0 : state.offset;
-
+      final fetchRankings =
+          _fetchRankings ??
+          ({
+            required String countryCode,
+            required RankingFilters filters,
+            required String searchQuery,
+            required int limit,
+            required int offset,
+          }) => _ref.read(chessPlayerRepositoryProvider).getRankedPlayers(
+            countryCode: countryCode,
+            filters: filters,
+            searchQuery: searchQuery,
+            limit: limit,
+            offset: offset,
+          );
       final players = await retryTransientRead(
-        () => repo.getPlayersByCountry(
+        () => fetchRankings(
           countryCode: countryCode,
-          searchQuery: state.isSearching ? state.searchQuery : null,
+          filters: requestedFilters,
+          searchQuery: requestedSearch,
           limit: _pageSize,
           offset: offset,
         ),
       );
 
+      if (!mounted || generation != _requestGeneration) return;
+
       final playerModels =
           players
               .map(
-                (p) => PlayerStandingModel(
-                  name: p.name,
-                  countryCode: _fideFedToCountryCode(p.country),
-                  score: p.rating ?? 0,
+                (player) => PlayerStandingModel(
+                  name: player.name,
+                  countryCode: _fideFedToCountryCode(player.country),
+                  score: player.ratingFor(requestedFilters.timeControl) ?? 0,
                   scoreChange: 0,
                   matchScore: null,
-                  title: p.title,
-                  fideId: p.fideid,
+                  title: player.title,
+                  fideId: player.fideid,
                 ),
               )
               .toList();
-
       final allPlayers =
           isInitial ? playerModels : [...state.players, ...playerModels];
-
-      if (!mounted) return;
+      final inactiveIds = <int>{
+        if (!isInitial) ...state.inactivePlayerIds,
+        ...players.where((player) => player.isInactive).map((p) => p.fideid),
+      };
 
       state = state.copyWith(
         players: allPlayers,
+        inactivePlayerIds: inactiveIds,
         isLoading: false,
         hasMore: players.length >= _pageSize,
         offset: offset + players.length,
       );
     } catch (e) {
-      debugPrint('[CountrymenPlayers] Error: $e');
-      if (!mounted) return;
-      final error = userFacingError(e, fallback: 'Failed to load players.');
+      debugPrint('[CountrymenRankings] Error: $e');
+      if (!mounted || generation != _requestGeneration) return;
+      final error = userFacingError(
+        e,
+        fallback: 'Could not load rankings. Please try again.',
+      );
       state = state.copyWith(
         isLoading: false,
         error: state.players.isEmpty ? error : null,
@@ -168,41 +220,50 @@ class CountrymenPlayersNotifier extends StateNotifier<CountrymenPlayersState> {
 
   Future<void> search(String query) async {
     final trimmed = query.trim();
+    if (trimmed == state.searchQuery) return;
 
-    if (trimmed.isEmpty) {
-      await clearSearch();
-      return;
-    }
-
+    _requestGeneration++;
     state = state.copyWith(
       searchQuery: trimmed,
+      players: const [],
+      inactivePlayerIds: const {},
       offset: 0,
       hasMore: true,
-      error: null,
+      isLoading: true,
     );
-
     await _fetchPlayers(isInitial: true);
   }
 
-  Future<void> clearSearch() async {
-    if (!state.isSearching) return;
+  Future<void> clearSearch() => search('');
 
+  Future<void> updateFilters(RankingFilters filters) async {
+    if (filters == state.filters) return;
+
+    _requestGeneration++;
     state = state.copyWith(
-      searchQuery: '',
+      filters: filters,
+      players: const [],
+      inactivePlayerIds: const {},
       offset: 0,
       hasMore: true,
-      error: null,
+      isLoading: true,
     );
-
     await _fetchPlayers(isInitial: true);
   }
 
   Future<void> refresh() async {
-    state = const CountrymenPlayersState(isLoading: true);
-    await _loadInitial();
+    _requestGeneration++;
+    state = state.copyWith(
+      players: const [],
+      inactivePlayerIds: const {},
+      offset: 0,
+      hasMore: true,
+      isLoading: true,
+    );
+    await _fetchPlayers(isInitial: true);
   }
 
-  /// Convert FIDE federation code to ISO country code
+  /// Convert FIDE federation code to ISO country code.
   String _fideFedToCountryCode(String? fed) {
     if (fed == null || fed.isEmpty) return '';
     return CountryUtils.toIso2Code(fed);
@@ -273,6 +334,18 @@ class _CountrymenPlayersTabState extends ConsumerState<CountrymenPlayersTab>
     ref.read(countrymenPlayersProvider.notifier).clearSearch();
   }
 
+  Future<void> _onFiltersChanged(RankingFilters filters) async {
+    HapticFeedback.selectionClick();
+    _searchFocusNode.unfocus();
+    await ref.read(countrymenPlayersProvider.notifier).updateFilters(filters);
+    if (!mounted || !_scrollController.hasClients) return;
+    await _scrollController.animateTo(
+      0,
+      duration: const Duration(milliseconds: 220),
+      curve: Curves.easeOut,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     super.build(context);
@@ -306,24 +379,48 @@ class _CountrymenPlayersTabState extends ConsumerState<CountrymenPlayersTab>
           parent: BouncingScrollPhysics(),
         ),
         slivers: [
-          // Search bar (scrolls with content)
           SliverToBoxAdapter(
-            child: Padding(
-              padding: EdgeInsets.fromLTRB(
-                horizontalPadding,
-                12.h,
-                horizontalPadding,
-                8.h,
-              ),
-              child: SearchBarWidget(
-                hintText: 'Search',
-                margin: 0.sp,
-                autoFocus: false,
-                controller: _searchController,
-                focusNode: _searchFocusNode,
-                onChanged: _onSearchChanged,
-                onClose: _clearSearch,
-              ),
+            child: Column(
+              children: [
+                Padding(
+                  padding: EdgeInsets.fromLTRB(
+                    horizontalPadding,
+                    10.h,
+                    horizontalPadding,
+                    0,
+                  ),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      Expanded(
+                        child: SearchBarWidget(
+                          hintText: 'Search',
+                          margin: 0.sp,
+                          autoFocus: false,
+                          controller: _searchController,
+                          focusNode: _searchFocusNode,
+                          onChanged: _onSearchChanged,
+                          onClose: _clearSearch,
+                        ),
+                      ),
+                      SizedBox(width: 8.w),
+                      RankingActivityControl(
+                        value: state.filters.activity,
+                        onChanged:
+                            (value) => _onFiltersChanged(
+                              state.filters.copyWith(activity: value),
+                            ),
+                      ),
+                    ],
+                  ),
+                ),
+                RankingFilterControls(
+                  filters: state.filters,
+                  showActivity: false,
+                  onChanged: _onFiltersChanged,
+                ),
+                SizedBox(height: 4.h),
+              ],
             ),
           ),
           // Content
@@ -457,7 +554,11 @@ class _CountrymenPlayersTabState extends ConsumerState<CountrymenPlayersTab>
             player: player,
             isFavorite: isFavorite,
             rank: index + 1,
+            showRank: !state.isSearching,
             showFavoriteButton: true,
+            isInactive:
+                player.fideId != null &&
+                state.inactivePlayerIds.contains(player.fideId),
             onTap: () => _navigateToPlayerDetail(player),
             onToggleFavorite: () => _toggleFavorite(player, isFavorite),
           );
