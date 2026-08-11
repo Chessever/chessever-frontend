@@ -46,6 +46,28 @@ class StringUtils {
     return words.join(' ');
   }
 
+  /// A real URL slug: lowercase alphanumerics joined by `-`/`_` and nothing
+  /// else. Capitals, spaces or other punctuation mean the value is already a
+  /// written name.
+  static final RegExp _slugPattern = RegExp(r'^[a-z0-9]+(?:[-_][a-z0-9]+)*$');
+
+  /// Title-cases [value] only when it is a slug, otherwise returns it as-is.
+  ///
+  /// `GamesTourModel.tourSlug` carries a genuine slug for broadcast games
+  /// ("tata-steel-masters-2024"), but gamebase/TWIC archive rows reuse the same
+  /// field for the raw event name (see `buildGameShareUrl`). Pushing those
+  /// through [slugToTitle] flattens their casing — "TCh-RUS 2026" comes back as
+  /// "Tch Rus 2026" — so leave a written name alone.
+  ///
+  /// Examples:
+  /// - "tata-steel-masters-2024" -> "Tata Steel Masters 2024"
+  /// - "TCh-RUS 2026" -> "TCh-RUS 2026"
+  static String titleFromSlugOrName(String value) {
+    final trimmed = value.trim();
+    if (trimmed.isEmpty) return '';
+    return _slugPattern.hasMatch(trimmed) ? slugToTitle(trimmed) : trimmed;
+  }
+
   /// Formats a round slug into a readable round label
   ///
   /// Examples:

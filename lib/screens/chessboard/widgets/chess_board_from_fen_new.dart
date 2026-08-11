@@ -343,9 +343,12 @@ Future<void> showGameShareOverlay(
     boxShadow: const [],
   );
 
-  // Format tournament and round names
+  // Format tournament and round names. Archive rows keep a written event name
+  // in `tourSlug`, so only real slugs get title-cased.
   final tournamentName =
-      game.tourSlug != null ? StringUtils.slugToTitle(game.tourSlug!) : null;
+      game.tourSlug?.trim().isNotEmpty == true
+          ? StringUtils.titleFromSlugOrName(game.tourSlug!)
+          : null;
   final roundInfo =
       game.roundSlug != null
           ? StringUtils.formatRoundLabel(game.roundSlug)

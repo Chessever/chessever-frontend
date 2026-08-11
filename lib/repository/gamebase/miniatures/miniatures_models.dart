@@ -531,11 +531,17 @@ class GamebaseMiniature {
     final whiteClean = (whiteName ?? '').trim();
     final blackClean = (blackName ?? '').trim();
 
+    // Every display path (share card, library card, board header) reads the
+    // event off `tourSlug`/`tourId`, so both carry the same label here — the
+    // archive rows have no URL slug to distinguish them (see
+    // `buildGameShareUrl`, which keeps these display labels out of the link).
+    final eventLabel = eventClean.isNotEmpty ? eventClean : 'Miniatures';
+
     final fallbackPgn = buildHeaderOnlyPgn(
       whiteName: whiteClean,
       blackName: blackClean,
       result: result,
-      event: eventClean.isNotEmpty ? eventClean : 'Miniatures',
+      event: eventLabel,
       date: date,
       eco: ecoClean.isNotEmpty ? ecoClean : null,
       opening: opening,
@@ -570,8 +576,8 @@ class GamebaseMiniature {
       gameStatus: status,
       roundId: kGamebaseMiniaturesRoundId,
       roundSlug: ecoClean.isNotEmpty ? ecoClean : null,
-      tourId: eventClean.isNotEmpty ? eventClean : 'Miniatures',
-      tourSlug: null,
+      tourId: eventLabel,
+      tourSlug: eventLabel,
       pgn: fallbackPgn,
       // Miniatures have no event board number; reuse this sortable slot for
       // the final move number (desktop does the same).
