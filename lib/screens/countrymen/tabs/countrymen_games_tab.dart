@@ -917,6 +917,9 @@ class _CountrymenGamesTabState extends ConsumerState<CountrymenGamesTab>
       gameIndex: gameIndex,
       allowStockfishFallback: true,
       streamEnabled: streamEnabled,
+      // Carried for the player-name tap, which opens the score card straight
+      // from the card without going through [navigateToChessBoard].
+      viewSource: ChessboardView.countryman,
       onChangedWithLiveGames: (updatedGames) async {
         // Premium guard - show paywall if not subscribed
         final hasPremium = await requirePremiumGuard(context, ref);

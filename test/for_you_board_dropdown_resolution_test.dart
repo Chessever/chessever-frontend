@@ -19,6 +19,11 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 /// resolved `(games, index)` handed to `ChessBoardScreenNew` is the full event
 /// list in Games-tab order with the tapped game's index re-derived, and that
 /// already multi-round Games-tab lists stay untouched.
+///
+/// Collection surfaces (Favorites, Countrymen, Smart Events) are the deliberate
+/// exception: their list is filtered and ordered on purpose, so expanding it
+/// would discard the user's filter. Those never expand — see
+/// `test/board_collection_navigation_context_test.dart`.
 void main() {
   // Five games across three rounds. Games-tab order is round DESC, then board
   // ASC, so the canonical full order is:
@@ -189,11 +194,12 @@ void main() {
   });
 
   test(
-    'multi-tour favorites/countrymen list expands the tapped event only',
+    'multi-tour non-collection list expands the tapped event only',
     () async {
-      // Favorites / countrymen Games tabs mix events. The board switcher must
-      // still receive the FULL tapped tour (prior rounds + boards), not the
-      // mixed feed and not only the single tapped card.
+      // Score card / player profile mix events but are not a collection the
+      // user filtered, so the board switcher must still receive the FULL
+      // tapped tour (prior rounds + boards), not the mixed feed and not only
+      // the single tapped card.
       final tourAFull = fullEventRawGames(); // tour-1 by default
       final tourBOnly = [
         _makeGame(
@@ -226,7 +232,7 @@ void main() {
 
       for (final viewSource in [
         ChessboardView.favScorecard,
-        ChessboardView.countryman,
+        ChessboardView.playerProfile,
       ]) {
         final (games, index) = await container
             .read(gameCardWrapperProvider)
@@ -292,7 +298,7 @@ void main() {
           .debugResolveNavigation(
             orderedGames: mixedFeed,
             gameIndex: 1,
-            viewSource: ChessboardView.countryman,
+            viewSource: ChessboardView.favScorecard,
           );
 
       expect(games.map((g) => g.gameId).toList(), ['b-r2-b1', 'b-r1-b1']);

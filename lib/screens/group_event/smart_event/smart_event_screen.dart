@@ -1585,7 +1585,7 @@ class _GamesTabState extends ConsumerState<_GamesTab>
                   gamesData: gamesData,
                   gameIndex: gameIndex < 0 ? 0 : gameIndex,
                   isChessBoardVisible: viewMode == GamesListViewMode.chessBoard,
-                  viewSource: ChessboardView.tour,
+                  viewSource: ChessboardView.smartEvent,
                   onReturnFromChessboard: (_) {},
                   liveBatchKey: liveBatchKeyByGameId[game.gameId],
                   allowStockfishFallback: allowStockfishFallback,
@@ -1728,6 +1728,9 @@ class _GamesTabState extends ConsumerState<_GamesTab>
       pinnedIds: gamesData.pinnedGamedIs,
       liveBatchKey: liveBatchKey,
       allowStockfishFallback: allowStockfishFallback,
+      // Carried for the player-name tap, which opens the score card straight
+      // from the card without going through [navigateToChessBoard].
+      viewSource: ChessboardView.smartEvent,
       onPinToggle:
           (g) async => await ref
               .read(gamesTourScreenProvider.notifier)
@@ -1742,7 +1745,7 @@ class _GamesTabState extends ConsumerState<_GamesTab>
               orderedGames: updatedGames,
               gameIndex: safeIndex,
               onReturnFromChessboard: (_) {},
-              viewSource: ChessboardView.tour,
+              viewSource: ChessboardView.smartEvent,
             );
       },
     );

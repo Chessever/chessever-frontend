@@ -1102,6 +1102,9 @@ class _FavoritesGamesTabState extends ConsumerState<FavoritesGamesTab>
       gameIndex: gameIndex,
       allowStockfishFallback: true,
       streamEnabled: true,
+      // Carried for the player-name tap, which opens the score card straight
+      // from the card without going through [_navigateToChessBoard].
+      viewSource: ChessboardView.favorites,
       onChangedWithLiveGames: (updatedGames) {
         if (!mounted) return;
         _navigateToChessBoard(updatedGames[gameIndex], updatedGames, gameIndex);
@@ -1349,7 +1352,7 @@ class _FavoritesGamesTabState extends ConsumerState<FavoritesGamesTab>
           orderedGames: allGames,
           gameIndex: gameIndex,
           onReturnFromChessboard: (_) {},
-          viewSource: ChessboardView.forYou,
+          viewSource: ChessboardView.favorites,
         );
   }
 }

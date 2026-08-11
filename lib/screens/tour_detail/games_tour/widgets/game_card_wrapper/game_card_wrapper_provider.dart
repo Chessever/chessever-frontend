@@ -77,9 +77,10 @@ class _GameCardWrapperProvider {
   Future<_ResolvedNavigation> _resolveNavigationGames({
     required List<GamesTourModel> orderedGames,
     required int gameIndex,
-    // Kept for call-site clarity; expansion keys off the *tapped* game's event
-    // so For You, favorites Games, countrymen Games, and the tournament Games
-    // tab all hydrate the switcher the same way.
+    // Decides whether this list may be expanded at all. Collection surfaces
+    // are authoritative; everything else keys expansion off the *tapped*
+    // game's event so For You and the tournament Games tab hydrate the
+    // switcher the same way.
     required ChessboardView viewSource,
   }) async {
     if (orderedGames.isEmpty) {
@@ -89,21 +90,28 @@ class _GameCardWrapperProvider {
     final safeIndex = gameIndex.clamp(0, orderedGames.length - 1);
     final tappedGame = orderedGames[safeIndex];
 
-    // The board's game-switcher dropdown (and its round timeline) must list the
-    // FULL event of the game being opened — every prior round and board — no
-    // matter which screen opened the board (For You, favorites Games,
-    // countrymen Games, smart events, single-round pins, …). Source lists often
-    // hand only a subset (top-N preview) or a multi-event feed; expand by the
-    // *tapped* game's tourId rather than requiring the whole ordered list to be
-    // single-tour.
+    // Favorites, countrymen and smart events hand over a list the user built
+    // or filtered on purpose. Swapping it for the tapped game's full event
+    // throws that filter away — the dropdown fills with games the collection
+    // deliberately excluded — so those contexts keep exactly what they passed.
+    // The selected game is still freshened downstream by
+    // [_hydrateSelectedGameForNavigation]; only the *membership and order* are
+    // frozen here.
+    if (viewSource.preservesNavigationCollection) {
+      return _ResolvedNavigation(games: orderedGames, index: safeIndex);
+    }
+
+    // For every remaining route the board's game-switcher dropdown (and its
+    // round timeline) must list the FULL event of the game being opened —
+    // every prior round and board. Those lists hand over only a subset (a
+    // top-N preview, a single-round pin), so expand by the *tapped* game's
+    // tourId rather than requiring the whole ordered list to be single-tour.
     //
     // Leave the list EXACTLY as passed when expanding is wrong/unneeded:
     //  - virtual gamebase / empty tourId → no broadcast tour to fetch.
     //  - single-tour list that already covers 2+ rounds and is not For You →
     //    already the full multi-round Games-tab list (or equivalent); never
     //    refetch or reorder it.
-    // Multi-tour lists (favorites / countrymen) always expand the tapped tour
-    // so the dropdown is that event alone, not the mixed feed.
     final tourId = tappedGame.tourId;
     if (tourId.isEmpty || isVirtualGamebaseId(tourId)) {
       return _ResolvedNavigation(games: orderedGames, index: safeIndex);
@@ -116,8 +124,8 @@ class _GameCardWrapperProvider {
             : orderedGames.where((g) => g.tourId == tourId).toList();
     final coveredRounds = sameTourGames.map((g) => g.roundId).toSet();
     // For You always carries a re-ranked top-N preview (never the full event),
-    // so it always expands. Multi-tour feeds always expand the tapped tour.
-    // A single-event multi-round list is left alone (Games tab).
+    // so it always expands. A single-event multi-round list is left alone
+    // (Games tab).
     if (viewSource != ChessboardView.forYou &&
         isSingleTourList &&
         coveredRounds.length >= 2) {

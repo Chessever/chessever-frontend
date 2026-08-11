@@ -2677,6 +2677,15 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
       case ChessboardView.countryman:
         gamesAsync = ref.watch(countrymanGamesTourScreenProvider);
         break;
+      case ChessboardView.favorites:
+      case ChessboardView.smartEvent:
+        // These surfaces already handed over the authoritative filtered and
+        // ordered list. Reading a tournament-wide provider here would widen
+        // the switcher back past the filter the user applied.
+        gamesAsync = AsyncValue.data(
+          GamesScreenModel(gamesTourModels: widget.games, pinnedGamedIs: []),
+        );
+        break;
       case ChessboardView.forYou:
         // For "For You" tab, use the converted games from forYouGamesProvider
         final games = ref.watch(convertedForYouGamesProvider);
@@ -2737,12 +2746,17 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
     }
 
     // Merge game data between gamesModel and widget.games
-    // CRITICAL: For "For You" view, widget.games has live updates from liveGameCardProvider,
-    // while gamesModel (convertedForYouGamesProvider) is a static snapshot without live streaming.
-    // So for "For You", we use widget.games directly to preserve live state.
+    // CRITICAL: For "For You" and Favorites, widget.games has live updates from
+    // liveGameCardProvider, while gamesModel is a static snapshot without live
+    // streaming. So for those we use widget.games directly to preserve live state.
     // For tour/countryman views, gamesModel has live streaming, so prefer it.
+    // The merge only ever substitutes fresher rows by game id, so it can never
+    // widen or reorder a collection list either way.
     final shouldStream = ref.watch(shouldStreamProvider);
-    final preferWidgetGames = view == ChessboardView.forYou || !shouldStream;
+    final preferWidgetGames =
+        view == ChessboardView.forYou ||
+        view == ChessboardView.favorites ||
+        !shouldStream;
     final List<GamesTourModel> liveGames;
     if (preferWidgetGames) {
       // For "For You": widget.games already has live updates from liveGameCardProvider

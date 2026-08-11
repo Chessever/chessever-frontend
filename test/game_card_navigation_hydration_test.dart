@@ -170,6 +170,8 @@ void main() {
     for (final viewSource in [
       ChessboardView.tour,
       ChessboardView.forYou,
+      ChessboardView.favorites,
+      ChessboardView.smartEvent,
       ChessboardView.countryman,
       ChessboardView.favScorecard,
     ]) {

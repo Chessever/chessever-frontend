@@ -54,7 +54,49 @@ bool _shouldPersistCloudEval(CloudEval eval) {
 // REMOVED: Hardcoded limit - now we use all PVs that were requested
 // const int _kMaxPrincipalVariations = 3;
 
-enum ChessboardView { favScorecard, tour, countryman, playerProfile, forYou }
+enum ChessboardView {
+  favScorecard,
+  tour,
+  countryman,
+  playerProfile,
+  forYou,
+  favorites,
+  smartEvent,
+}
+
+extension ChessboardViewNavigationContext on ChessboardView {
+  /// Surfaces whose list is a deliberate collection the user assembled or
+  /// filtered themselves. Board navigation — the switcher dropdown and
+  /// previous/next — must keep exactly that list and order.
+  ///
+  /// The opposite case is a feed preview (For You) or a single-round entry
+  /// point, whose list is *incomplete* rather than intentional; those still
+  /// expand to the tapped game's full event so every round is reachable.
+  ///
+  /// Written as an exhaustive switch on purpose: a new [ChessboardView] must
+  /// declare which side it is on instead of silently inheriting a default.
+  bool get preservesNavigationCollection => switch (this) {
+    ChessboardView.favorites ||
+    ChessboardView.countryman ||
+    ChessboardView.smartEvent => true,
+    ChessboardView.favScorecard ||
+    ChessboardView.tour ||
+    ChessboardView.playerProfile ||
+    ChessboardView.forYou => false,
+  };
+
+  /// Favorites used to travel as [ChessboardView.forYou]. The score card's
+  /// event-scoped favourite toggle keys off that view, so both must answer
+  /// true or splitting Favorites out would silently disable the toggle.
+  bool get usesEventScopedScorecardContext => switch (this) {
+    ChessboardView.forYou || ChessboardView.favorites => true,
+    ChessboardView.favScorecard ||
+    ChessboardView.tour ||
+    ChessboardView.countryman ||
+    ChessboardView.playerProfile ||
+    ChessboardView.smartEvent => false,
+  };
+}
 
 final chessboardViewFromProviderNew = StateProvider<ChessboardView>((ref) {
   return ChessboardView.tour;
