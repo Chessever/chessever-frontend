@@ -2,6 +2,7 @@ import 'package:chessever2/repository/library/library_repository.dart';
 import 'package:chessever2/repository/library/models/library_folder.dart';
 import 'package:chessever2/repository/library/models/saved_analysis.dart';
 import 'package:chessever2/screens/chessboard/notation/notation_tree.dart';
+import 'package:chessever2/screens/chessboard/utils/game_share_utils.dart';
 import 'package:chessever2/utils/pgn_link_rebrand.dart';
 import 'package:chessever2/widgets/game_filter/game_filter_model.dart';
 
@@ -203,7 +204,12 @@ String _serializeAnalysis(
     md['SourceURL'] = '$_kBrandSite/books/$shareToken';
   }
 
-  final branded = analysis.chessGame.copyWith(metadata: md);
+  // `move_nags` is a ChessEver-only column, so a database exported as PGN has
+  // to bake the reader's own annotations into the moves or they never leave.
+  final branded = mergeUserMoveNagsForExport(
+    analysis.chessGame,
+    analysis.moveNags,
+  ).copyWith(metadata: md);
   // `Site` is overridden above, but broadcast-sourced games also carry Lichess
   // links in secondary tags (GameURL/BroadcastURL/ChapterURL/Annotator); strip
   // those too so exported databases stay Lichess-free.

@@ -1,6 +1,8 @@
 import 'package:chessever2/screens/chessboard/analysis/chess_game.dart';
+import 'package:chessever2/screens/chessboard/game_review/classification_style.dart';
 import 'package:chessever2/screens/chessboard/game_review/game_analysis_report.dart';
 import 'package:chessever2/screens/chessboard/game_review/game_analysis_report_store.dart';
+import 'package:chessever2/screens/chessboard/notation/notation_pointer.dart';
 import 'package:chessever2/screens/chessboard/notation/notation_tree.dart';
 import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
 import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new_worker.dart';
@@ -66,8 +68,11 @@ bool isChesseverClassificationNag(int nag) =>
 
 /// The ChessEver classification a move's NAGs carry, if any.
 ///
-/// Presence of a block code also means "a ChessEver report judged this move",
-/// which is what lets a reader show the badge instead of the imported glyph.
+/// Presence of a block code means "this move has a ChessEver verdict" — from a
+/// report, or from a reader who annotated it by hand (see
+/// [mergeUserMoveNagsForExport]; both write the same codes, because both mean
+/// the same badge). Either way it is what lets a reader show that badge instead
+/// of the imported glyph.
 GameMoveClassification? classificationFromNags(Iterable<int>? nags) {
   if (nags == null) return null;
   for (final nag in nags) {
@@ -257,9 +262,150 @@ ChessGame mergeGameReportAnnotationsForGif(
   GameAnalysisReport? report,
 ) => mergeGameReportAnnotationsForExport(game, report);
 
+/// Bakes the reader's own Annotate NAGs into the move tree before export.
+///
+/// [userMoveNags] is the board's live `moveNags` map (also the saved analysis's
+/// `move_nags` column): encoded move pointer → the NAGs that reader applied by
+/// hand. It is app state, so until this runs a manually annotated `!!` exists
+/// nowhere in the PGN — copy it, share it, sync it to desktop, render a GIF of
+/// it, and the annotation is simply gone.
+///
+/// A hand-applied quality glyph is hydrated exactly the way a report
+/// classification is: the standard NAG the reader picked, plus the matching
+/// ChessEver code from the `$240`–`$247` block ([kChesseverClassificationNags])
+/// so the badge survives the round trip instead of degrading to bare text. The
+/// five glyphs that carry a badge are listed in [kQualityNagClassifications];
+/// `!?` and `□` travel as their standard NAG alone, which is all they ever had.
+///
+/// Where the reader's verdict lands on a move that already carries one — an
+/// imported `?!`, or a classification this device's report wrote a moment ago —
+/// theirs replaces it. Two verdicts on one move would contradict each other on
+/// re-import, and the reader's is the deliberate one. Evaluation and
+/// observation NAGs (`±`, `N`, …) answer a different question and merge in
+/// beside whatever is already there.
+///
+/// Variations are covered too: pointers address the whole tree, and the
+/// notation lets a reader annotate any node in it.
+ChessGame mergeUserMoveNagsForExport(
+  ChessGame game,
+  Map<String, List<int>> userMoveNags,
+) {
+  if (userMoveNags.isEmpty) return game;
+  var changed = false;
+
+  // Mutually recursive with hydrateMove: a variation is a line of moves, each
+  // of which can hold variations of its own.
+  late final ChessLine Function(ChessLine line, List<int> prefix) hydrateLine;
+
+  ChessMove hydrateMove(ChessMove move, List<int> pointer) {
+    // Even pointer depths index a move within a line, odd depths index one of
+    // that move's variations — so a variation's moves are `[...pointer, v, i]`.
+    final variations = move.variations;
+    final nextVariations =
+        variations == null
+            ? null
+            : <ChessLine>[
+              for (var index = 0; index < variations.length; index++)
+                hydrateLine(variations[index], <int>[...pointer, index]),
+            ];
+    var variationsChanged = false;
+    if (nextVariations != null) {
+      for (var index = 0; index < nextVariations.length; index++) {
+        if (!identical(nextVariations[index], variations![index])) {
+          variationsChanged = true;
+          break;
+        }
+      }
+    }
+
+    final userNags = userMoveNags[NotationPointer.encode(pointer)];
+    final existingNags = move.nags ?? const <int>[];
+    // Left null when this move's NAGs are untouched, so a move that only had
+    // to rebuild for a variation below it keeps its original (often null) list
+    // rather than picking up an empty one.
+    List<int>? nags;
+
+    if (userNags != null && userNags.isNotEmpty) {
+      // The picker allows one glyph per category, so at most one quality NAG —
+      // and therefore at most one badge code — is ever written to a move.
+      final badgedClassification = classificationForQualityNag(
+        firstBadgedQualityNag(userNags) ?? 0,
+      );
+      final userOverridesVerdict = userNags.any(_moveVerdictNags.contains);
+      final next =
+          existingNags
+              .where(
+                (nag) =>
+                    !userNags.contains(nag) &&
+                    !(userOverridesVerdict &&
+                        (_moveVerdictNags.contains(nag) ||
+                            _classificationByNag.containsKey(nag))),
+              )
+              .toList(growable: true)
+            ..addAll(userNags);
+      final chesseverNag = chesseverClassificationNag(badgedClassification);
+      if (chesseverNag != null && !next.contains(chesseverNag)) {
+        next.add(chesseverNag);
+      }
+      if (next.length != existingNags.length ||
+          !next.every(existingNags.contains)) {
+        nags = next;
+      }
+    }
+
+    if (nags == null && !variationsChanged) return move;
+    changed = true;
+    return move.copyWith(
+      nags: nags,
+      variations: nextVariations,
+      overrideVariations: variationsChanged,
+    );
+  }
+
+  hydrateLine = (ChessLine line, List<int> prefix) {
+    final next = <ChessMove>[
+      for (var index = 0; index < line.length; index++)
+        hydrateMove(line[index], <int>[...prefix, index]),
+    ];
+    for (var index = 0; index < line.length; index++) {
+      if (!identical(next[index], line[index])) return next;
+    }
+    return line;
+  };
+
+  final mainline = hydrateLine(game.mainline, const <int>[]);
+  return changed ? game.copyWith(mainline: mainline) : game;
+}
+
+/// The full export hydrate: the finished report first, the reader's own
+/// annotations over the top.
+///
+/// Order matters. The report claims every mainline ply it analysed, then the
+/// reader's hand-applied glyphs overrule it move by move — the same precedence
+/// the board and the notation list already show on screen, so the PGN that
+/// leaves the app says exactly what the reader was looking at.
+ChessGame hydrateGameAnnotationsForExport(
+  ChessGame game, {
+  GameAnalysisReport? report,
+  Map<String, List<int>> userMoveNags = const <String, List<int>>{},
+}) => mergeUserMoveNagsForExport(
+  mergeGameReportAnnotationsForExport(game, report),
+  userMoveNags,
+);
+
 /// Merge + [exportGameToPgn] in one step (Copy PGN / Share PGN / tests).
-String exportGamePgnWithReport(ChessGame game, GameAnalysisReport? report) {
-  return exportGameToPgn(mergeGameReportAnnotationsForExport(game, report));
+String exportGamePgnWithReport(
+  ChessGame game,
+  GameAnalysisReport? report, {
+  Map<String, List<int>> userMoveNags = const <String, List<int>>{},
+}) {
+  return exportGameToPgn(
+    hydrateGameAnnotationsForExport(
+      game,
+      report: report,
+      userMoveNags: userMoveNags,
+    ),
+  );
 }
 
 /// Prefer the live completed report, then session cache, then durable store.

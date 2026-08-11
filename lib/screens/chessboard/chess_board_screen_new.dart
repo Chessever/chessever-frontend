@@ -341,8 +341,17 @@ List<int> mergeMoveNags({
   // a live local report, and the badge speaks for the verdict. The block codes
   // themselves are never rendered: they are the badge's identity, not a glyph.
   final carriesChesseverClassification = pgn.any(isChesseverClassificationNag);
+  // The reader's own quality glyph answers the same question the PGN's does,
+  // and theirs is the later, deliberate one — so it replaces rather than stacks
+  // beside it. Without this a broadcast `!` outranks the `?` they just applied
+  // (both survive the merge, and the lower code wins the badge slot), and the
+  // move keeps showing the imported verdict they were trying to overrule.
+  final userOverridesVerdict = userNags.any(kMoveVerdictNags.contains);
   if (pgn.isNotEmpty) {
-    final dropVerdicts = reportJudgedMove || carriesChesseverClassification;
+    final dropVerdicts =
+        reportJudgedMove ||
+        carriesChesseverClassification ||
+        userOverridesVerdict;
     pgn = pgn
         .where(
           (nag) =>
@@ -3961,12 +3970,16 @@ class _AppBarState extends ConsumerState<_AppBar> {
       analysisGame: analysisGame,
       liveReport: liveReport,
     );
+    // Report first, then the reader's own Annotate glyphs over the top — the
+    // PGN that leaves the app carries both, so a hand-applied `!!` survives
+    // Copy PGN, Share PGN and the GIF render instead of dying with the session.
     final exportAnalysisGame =
         analysisGame == null
             ? null
-            : mergeGameReportAnnotationsForExport(
+            : hydrateGameAnnotationsForExport(
               analysisGame,
-              completedReport,
+              report: completedReport,
+              userMoveNags: state?.moveNags ?? const <String, List<int>>{},
             );
 
     final pgn = await resolveGameSharePgn(
@@ -8152,28 +8165,16 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard>
     );
   }
 
-  // Map an author-supplied PGN NAG to a Lichess SVG annotation type — but
-  // only for NAGs whose glyph is faithfully reproduced by the Lichess SVG.
-  // NAG 5 (!?, "Interesting") and NAG 6 (?!, "Dubious") are intentionally
-  // omitted: $5 used to map to goodMove, whose SVG renders just "!", which
-  // squashed "!?" → "!" on the board. Returning null for those (and $7 □,
-  // $10+ evaluation, $32+ observation) lets the fallback in the caller
-  // render the literal Unicode glyph from getNagDisplay() in the author
-  // color from nag_display.dart, matching the SAN-text rendering exactly.
-  LichessMoveAnnotationType? _mapNagToAnnotationType(int nag) {
-    switch (nag) {
-      case 1:
-        return LichessMoveAnnotationType.goodMove; // !
-      case 2:
-        return LichessMoveAnnotationType.mistake; // ?
-      case 3:
-        return LichessMoveAnnotationType.brilliant; // !!
-      case 4:
-        return LichessMoveAnnotationType.blunder; // ??
-      default:
-        return null;
-    }
-  }
+  // Map a quality NAG — the reader's own or the PGN author's — to the
+  // classification badge that stands for that glyph.
+  //
+  // The map lives in classification_style.dart so the board, the notation chip
+  // and the Annotate picker cannot drift: a hand-applied `!` draws the same
+  // mark as a `!` the report earned. $5 (!?) and $7 (□) have no badge and fall
+  // through to the caller's Unicode-glyph path, rendered in the author colour
+  // from nag_display.dart so it still matches the SAN text exactly.
+  LichessMoveAnnotationType? _mapNagToAnnotationType(int nag) =>
+      annotationTypeForQualityNag(nag);
 
   Square? _lastMoveDestinationSquare(Move? lastMove) {
     if (lastMove == null) return null;
@@ -12427,14 +12428,37 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
               reportJudgedMove: reportJudgedThisMove,
             );
 
-    // Resolve NAGs into displays. Quality NAGs are highlighted on the move
-    // text itself; evaluation/observation NAGs render in their muted slate
-    // and never tint the SAN.
+    // A quality glyph that has a classification badge is drawn as that badge,
+    // exactly as a report verdict is — a hand-applied `!!` and an analysed one
+    // are the same claim about the move, so they must not read as two different
+    // things in the same list. The board has always resolved these NAGs to the
+    // SVG; the notation printed coloured text beside the SAN instead.
+    //
+    // `nags` is already ordered reader-first (mergeMoveNags drops the PGN's
+    // verdict when the reader applied their own), so this picks their glyph.
+    // `$5` (!?) and `$7` (□) have no badge and stay text — see
+    // [kQualityNagClassifications].
+    final badgedQualityNag = firstBadgedQualityNag(nags);
+    final qualityBadgeAnnotation =
+        badgedQualityNag == null
+            ? null
+            : LichessMoveAnnotation(
+              type: annotationTypeForQualityNag(badgedQualityNag)!,
+              comment: '',
+              useClassificationIcon: true,
+            );
+
+    // Resolve the remaining NAGs into displays. Quality NAGs are highlighted on
+    // the move text itself; evaluation/observation NAGs render in their muted
+    // slate and never tint the SAN.
     final displayNags = <NagDisplay>[];
     NagDisplay? firstQualityNag;
     final seen = <int>{};
     for (final nag in nags) {
       if (!seen.add(nag)) continue;
+      // Already spoken for by the badge — printing it again would put `!!`
+      // beside its own icon.
+      if (nag == badgedQualityNag) continue;
       final d = getNagDisplay(nag);
       if (d != null) {
         displayNags.add(d);
@@ -12455,10 +12479,14 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
       token.pointer,
       widget.state.moveNags,
     );
-    final classificationAnnotation = resolveClassificationBadgeAnnotation(
-      rawAnnotation: rawAnnotation,
-      userNags: userNags,
-    );
+    // The reader's glyph already resolved to a badge above, so the report badge
+    // steps aside for it rather than both being drawn.
+    final classificationAnnotation =
+        qualityBadgeAnnotation ??
+        resolveClassificationBadgeAnnotation(
+          rawAnnotation: rawAnnotation,
+          userNags: userNags,
+        );
 
     final depth = token.depth;
     final isMainline = token.node?.isMainline ?? (depth <= 0);
@@ -12469,8 +12497,10 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
     // Report classification color must tint the SAN even when author NAGs
     // suppressed the inline-annotation path above.
     final classificationColor = classificationAnnotation?.type.color;
+    // Badge first: it is the verdict on the move, so it owns the SAN colour.
+    // A leftover text glyph ($5/$7) only tints when nothing badged it.
     final color =
-        qualityColor ?? annotationColor ?? classificationColor ?? baseColor;
+        classificationColor ?? qualityColor ?? annotationColor ?? baseColor;
 
     final textStyle = AppTypography.textXsMedium.copyWith(
       color: color,
@@ -17916,6 +17946,77 @@ class _NagChip extends StatelessWidget {
   Widget build(BuildContext context) {
     final display = getNagDisplay(nag);
     if (display == null) return const SizedBox.shrink();
+
+    // The quality row shows the reader the mark they are about to attach — the
+    // same badge the board, the notation list and the exported PGN will carry.
+    // The assets paint their own gradient square, so the marks are drawn bare:
+    // a tile behind them would nest a second surface inside the first, and it
+    // would make the two unbadged glyphs (`!?`, `□`) the odd ones out. So the
+    // whole row is bare, badge or glyph, and selection reads as full weight
+    // against its dimmed neighbours.
+    if (display.isQuality) {
+      final badgeAsset = annotationTypeForQualityNag(nag)?.iconAssetPath;
+      return GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: onTap,
+        child: SizedBox(
+          width: 46.sp,
+          height: 38.sp,
+          child: Center(
+            child: AnimatedScale(
+              duration: const Duration(milliseconds: 140),
+              curve: Curves.easeOutCubic,
+              scale: isActive ? 1 : 0.88,
+              child: AnimatedOpacity(
+                duration: const Duration(milliseconds: 140),
+                curve: Curves.easeOutCubic,
+                opacity: isActive ? 1 : 0.38,
+                child:
+                    badgeAsset != null
+                        ? SvgPicture.asset(
+                          badgeAsset,
+                          width: 30.sp,
+                          height: 30.sp,
+                          fit: BoxFit.contain,
+                        )
+                        : Container(
+                          width: 30.sp,
+                          height: 30.sp,
+                          // `!?` and `□` have no drawn badge, so the mark is
+                          // built here in the same silhouette the assets use —
+                          // three rounded corners, one nearly square at the
+                          // bottom-left — with the glyph in white on the
+                          // glyph's own colour, so it stays legible in both
+                          // themes and sits in the row as an equal.
+                          decoration: BoxDecoration(
+                            color: display.color,
+                            borderRadius: BorderRadius.only(
+                              topLeft: Radius.circular(9.sp),
+                              topRight: Radius.circular(9.sp),
+                              bottomRight: Radius.circular(9.sp),
+                              bottomLeft: Radius.circular(1.5.sp),
+                            ),
+                          ),
+                          child: Center(
+                            child: Text(
+                              display.symbol,
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                fontSize: 15.sp,
+                                color: Colors.white,
+                                fontWeight: FontWeight.w800,
+                                height: 1.0,
+                                letterSpacing: -0.4,
+                              ),
+                            ),
+                          ),
+                        ),
+              ),
+            ),
+          ),
+        ),
+      );
+    }
 
     final activeBg = display.color;
     final inactiveBg = display.color.withValues(alpha: 0.10);

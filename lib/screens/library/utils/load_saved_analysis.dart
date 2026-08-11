@@ -6,6 +6,7 @@ import 'package:chessever2/repository/library/models/saved_analysis.dart';
 import 'package:chessever2/screens/chessboard/chess_board_screen_new.dart';
 import 'package:chessever2/screens/chessboard/notation/notation_tree.dart';
 import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
+import 'package:chessever2/screens/chessboard/utils/game_share_utils.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -295,8 +296,13 @@ GamesTourModel convertSavedAnalysisToGame(SavedAnalysis analysis) {
     tourId: tourId,
     timeControl: timeControl,
     isOnline: isOnline,
-    // PGN populated for swiped-to games (the tapped game uses savedAnalysisData instead)
-    pgn: exportGameToPgn(chessGame),
+    // PGN populated for swiped-to games (the tapped game uses savedAnalysisData
+    // instead, which carries `moveNags` directly). Hydrating the reader's own
+    // annotations here keeps a swiped-to game showing the same badges as the
+    // tapped one rather than a bare move list.
+    pgn: exportGameToPgn(
+      mergeUserMoveNagsForExport(chessGame, analysis.moveNags),
+    ),
     eco: eco,
     openingName: openingName,
     lastMoveTime: parsedDate,

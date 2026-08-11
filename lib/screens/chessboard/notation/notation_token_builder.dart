@@ -165,6 +165,12 @@ bool userQualityNagsOverrideClassification(Iterable<int> userNags) =>
 /// Returns [rawAnnotation] only when it is a classification icon badge and the
 /// reader has **not** applied a quality Annotate NAG on that move. Clearing the
 /// user quality NAG restores the badge (pass empty [userNags]).
+///
+/// Stepping aside does not leave the move bare: a quality glyph that has a
+/// badge of its own (see `kQualityNagClassifications`) draws it, so the chip
+/// shows the reader's verdict in place of the report's rather than falling back
+/// to coloured text. Only `!?` and `□` — the two with no badge — render as
+/// glyphs beside the SAN.
 LichessMoveAnnotation? resolveClassificationBadgeAnnotation({
   required LichessMoveAnnotation? rawAnnotation,
   required Iterable<int> userNags,

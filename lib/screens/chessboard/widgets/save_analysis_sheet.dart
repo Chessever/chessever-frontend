@@ -628,9 +628,13 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
                 ? reportState.report
                 : null,
       );
-      analysisGame = mergeGameReportAnnotationsForExport(
+      // The reader's own Annotate glyphs ride along for the same reason: the
+      // `move_nags` column travels with the row, but only ChessEver reads it,
+      // and a PGN exported out of the library would otherwise lose them.
+      analysisGame = hydrateGameAnnotationsForExport(
         analysisGame,
-        savedReport,
+        report: savedReport,
+        userMoveNags: state.moveNags,
       );
 
       // Update metadata with form values

@@ -60,3 +60,55 @@ String classificationIconAsset(GameMoveClassification classification) =>
 
 Color classificationColor(GameMoveClassification classification) =>
     moveAnnotationColor(annotationTypeForClassification(classification));
+
+/// Standard PGN quality NAG (`$1`–`$6`) → the classification whose badge stands
+/// for that glyph.
+///
+/// This is the bridge between the two ways a move gets a verdict. A report
+/// produces a [GameMoveClassification]; a reader tapping Annotate produces a
+/// NAG. Both must land on the same badge, so `!` drawn by hand is the same
+/// mark as `!` earned from analysis — on the board, in the notation list, and
+/// in the PGN the move is exported to.
+///
+/// Two of the picker's quality glyphs are deliberately absent:
+/// - `$5` (`!?`) — the classification set has no "interesting/speculative"
+///   class and no asset for one, and folding it into `goodMove` would draw a
+///   `!` badge over a `!?` move.
+/// - `$7` (`□`, only move) — `forced_move.svg` is a circular live-annotation
+///   mark, not one of the rounded-square report badges, and forced says
+///   *how many* moves there were, not how good this one was.
+///
+/// Both keep rendering as their Unicode glyph, which is the honest answer.
+const Map<int, GameMoveClassification> kQualityNagClassifications =
+    <int, GameMoveClassification>{
+      1: GameMoveClassification.goodMove, // !
+      2: GameMoveClassification.mistake, // ?
+      3: GameMoveClassification.brilliant, // !!
+      4: GameMoveClassification.blunder, // ??
+      6: GameMoveClassification.inaccuracy, // ?!
+    };
+
+/// The classification a quality NAG stands for, or null when the glyph has no
+/// badge of its own (`$5`, `$7`, and every non-quality NAG).
+GameMoveClassification? classificationForQualityNag(int nag) =>
+    kQualityNagClassifications[nag];
+
+/// The badge type for a quality NAG — [classificationForQualityNag] resolved
+/// through to the annotation type the SVG/colour maps are keyed by.
+LichessMoveAnnotationType? annotationTypeForQualityNag(int nag) {
+  final classification = classificationForQualityNag(nag);
+  return classification == null
+      ? null
+      : annotationTypeForClassification(classification);
+}
+
+/// The first NAG in [nags] that carries a classification badge.
+///
+/// Order is the caller's priority order, so a merged list that puts the
+/// reader's own glyph first resolves to the reader's badge.
+int? firstBadgedQualityNag(Iterable<int> nags) {
+  for (final nag in nags) {
+    if (kQualityNagClassifications.containsKey(nag)) return nag;
+  }
+  return null;
+}
