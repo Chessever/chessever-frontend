@@ -1,5 +1,14 @@
 # Chessever Frontend — Agent Rules
 
+## Test app and broadcasting environment isolation
+
+This repository is the Chessever **test-flavored app**. By default, all work here targets the **test Supabase branch/project** and the companion broadcasting repository at `projects/chessever-broadcasting` (available from this workspace as `../chessever-broadcasting`). These test targets are the only environments in scope unless the user explicitly says otherwise.
+
+- Keep app, Supabase, and broadcasting work on the intended test branches and test configuration. Use test-only URLs, credentials, secrets, topics, migrations, and deployment targets.
+- **Never check out, merge, rebase, push to, modify, query, migrate, deploy to, or otherwise operate on `main`, production branches/projects, production Supabase, production services, production secrets/URLs, or any production version of the broadcasting system while working on this test app or `projects/chessever-broadcasting`.**
+- Do not assume that a similarly named branch, project, URL, key, or environment is safe. Verify that every backend-affecting or external command points to the test target before running it.
+- If a target is ambiguous or a requested action could affect main/production, stop and ask for explicit confirmation. Main/production work is allowed only when the user explicitly names the exact target and operation.
+
 ## Validation
 
 - **Never run `flutter build`** (any flavor: apk, ios, ipa, web, macos, etc.). Builds are slow and unnecessary for validation.
