@@ -9,11 +9,12 @@
 /// 12 is reached — reports come out shallow, and because the cap is time-based
 /// they differ between devices and between runs of the same game.
 ///
-/// The server reproduces the desktop app instead: `go depth 14`, no time cap,
-/// one thread, Stockfish 17.1, and desktop's own hash configuration down to
-/// never sending `ucinewgame` between positions. That is both deeper and
-/// reproducible, so moving a review to the server makes mobile and desktop
-/// agree where they previously did not.
+/// The server reproduces the desktop app's search configuration instead:
+/// `go depth 14`, no time cap, one thread, and desktop's own hash configuration
+/// down to never sending `ucinewgame` between positions. The server uses
+/// Stockfish 18 while the desktop fallback remains on its bundled Stockfish
+/// 17.1, so server reports are deeper and reproducible but can differ from
+/// offline fallback evaluations.
 ///
 /// The engine path stays in place and is what runs if this is unavailable. That
 /// is deliberate: a review that cannot run offline is a worse app than one that
@@ -23,21 +24,102 @@ library;
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:chessever2/config/app_environment.dart';
 import 'package:chessever2/screens/chessboard/game_review/game_analysis_report.dart';
 import 'package:chessever2/screens/chessboard/analysis/chess_game.dart';
 import 'package:chessever2/screens/chessboard/notation/notation_tree.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:http/http.dart' as http;
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-/// Where the analysis Worker lives.
+/// The production analysis Worker.
 ///
-/// Overridable so a build can point at a preview deployment without a code
-/// change: `--dart-define=ANALYSIS_API_BASE=http://127.0.0.1:8787`.
-const String kAnalysisApiBase = String.fromEnvironment(
+/// A *different* service from the GIF Worker, which builds ship as
+/// `CHESSEVER_CLOUDFLARE_API_BASE`. Only this deployment serves `/v1/reports`;
+/// pointing one base URL at the other's service 404s every report and drops
+/// every review to the on-device engine.
+const String kDefaultAnalysisApiBase =
+    'https://chessever-analysis.young-sun-69a8.workers.dev';
+
+/// Values that turn the server path off and keep every report on this device.
+///
+/// A build cannot express "no analysis service" as an empty
+/// `--dart-define=ANALYSIS_API_BASE=`, because [String.fromEnvironment] cannot
+/// tell an empty define from an absent one, so the word is the switch.
+const Set<String> _analysisDisabledValues = {
+  'off',
+  'none',
+  'disabled',
+  'local',
+};
+
+const String _analysisApiBaseDefine = String.fromEnvironment(
   'ANALYSIS_API_BASE',
-  defaultValue: 'https://chessever-analysis.young-sun-69a8.workers.dev',
 );
+
+/// Where the analysis Worker lives for this build.
+///
+/// Resolved once per process, in the same order `CloudflareGifService` resolves
+/// its own base:
+///
+///  1. `--dart-define=ANALYSIS_API_BASE=…`, which is also what
+///     `--dart-define-from-file=.env` feeds — so a build can be aimed at a
+///     preview deployment or `http://127.0.0.1:8787` with no code change.
+///  2. An `ANALYSIS_API_BASE` line in `.env`, read through dotenv. Debug only,
+///     and never in the test flavor: the same gate `main.dart` uses, because a
+///     release build has no `.env` to read.
+///  3. [kDefaultAnalysisApiBase], so a build that defines nothing still gets
+///     server reports instead of silently falling back to the phone's engine.
+///
+/// Empty only when the build asked for it — see [_analysisDisabledValues].
+final String kAnalysisApiBase = resolveAnalysisApiBase();
+
+/// Applies the resolution order above. Parameters exist for tests only.
+@visibleForTesting
+String resolveAnalysisApiBase({
+  String define = _analysisApiBaseDefine,
+  String Function()? debugEnvValue,
+  bool? allowDebugEnv,
+}) {
+  final defined = define.trim();
+  if (defined.isNotEmpty) return _normalizeBase(defined);
+
+  final readEnv = allowDebugEnv ?? (kDebugMode && !AppEnvironment.isTest);
+  if (readEnv) {
+    final fromEnv = (debugEnvValue ?? _dotenvAnalysisApiBase)().trim();
+    if (fromEnv.isNotEmpty) return _normalizeBase(fromEnv);
+  }
+  return kDefaultAnalysisApiBase;
+}
+
+String _dotenvAnalysisApiBase() {
+  try {
+    return dotenv.env['ANALYSIS_API_BASE'] ?? '';
+  } catch (_) {
+    // dotenv never loaded — a release build, a test, or a debug run started
+    // without a `.env`. Not an error; the default below covers it.
+    return '';
+  }
+}
+
+/// Keeps a configured value only when it can actually be requested.
+///
+/// A typo'd base would fail every report and fall the review back to the engine
+/// with nothing to explain why, so an unusable value yields to the production
+/// deployment rather than breaking the feature quietly.
+String _normalizeBase(String value) {
+  if (_analysisDisabledValues.contains(value.toLowerCase())) return '';
+  final uri = Uri.tryParse(value);
+  if (uri != null && uri.hasScheme && uri.hasAuthority) return value;
+  if (kDebugMode) {
+    debugPrint(
+      '[ServerGameReport] ANALYSIS_API_BASE="$value" is not a usable URL; '
+      'using $kDefaultAnalysisApiBase',
+    );
+  }
+  return kDefaultAnalysisApiBase;
+}
 
 /// A server report could not be produced.
 ///
@@ -67,8 +149,8 @@ class ServerGameReportClient {
   /// How often the job is polled.
   ///
   /// A whole-game report is tens of seconds at least, so a tight poll buys
-  /// nothing but requests. The Worker's own progress fraction is what moves the
-  /// bar between polls.
+  /// nothing but requests. The Worker's phase-aware fraction seeds the bar;
+  /// the controller's local progress simulator carries it between polls.
   static const Duration pollInterval = Duration(seconds: 2);
 
   /// Ceiling on one report, matching the Workflow's own 30-minute step timeout.
@@ -264,7 +346,7 @@ class ServerGameReportClient {
 
 /// The controller-facing form of [ServerGameReportClient].
 ///
-/// Returns null when no analysis service is configured, which leaves the
+/// Returns null when the build turned the service off, which leaves the
 /// controller on its local engine path with nothing to fall back from.
 GameReportRemoteRunner? serverGameReportRunner({
   ServerGameReportClient Function()? clientFactory,

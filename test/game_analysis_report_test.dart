@@ -4,6 +4,7 @@ import 'dart:math' as math;
 import 'package:chessever2/repository/lichess/cloud_eval/cloud_eval.dart';
 import 'package:chessever2/screens/chessboard/analysis/chess_game.dart';
 import 'package:chessever2/screens/chessboard/game_review/game_analysis_report.dart';
+import 'package:chessever2/screens/chessboard/game_review/game_analysis_report_store.dart';
 import 'package:chessever2/screens/chessboard/provider/stockfish_singleton.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -114,6 +115,7 @@ void main() {
 
       expect(controller.state.status, GameReportStatus.completed);
       expect(controller.state.progress, 1);
+      expect(progresses, everyElement(lessThan(1)));
       for (var i = 1; i < progresses.length; i++) {
         expect(progresses[i], greaterThanOrEqualTo(progresses[i - 1]));
       }
@@ -122,6 +124,62 @@ void main() {
       expect(messages, contains('Analyzing move 2 of 2'));
       expect(messages.where((message) => message.contains('of 4')), isEmpty);
     });
+
+    test(
+      'remote progress reserves completion for the fetched report',
+      () async {
+        final game = ChessGame.fromPgn(
+          'remote-smooth',
+          '1. e4 e5 2. Nf3 Nc6 *',
+        );
+        final remoteReport = GameAnalysisReport(
+          fingerprint: gameReportFingerprint(game),
+          positions: const [],
+          moves: const [],
+          whiteAccuracy: 0,
+          blackAccuracy: 0,
+          generatedAt: DateTime(2026, 1, 1),
+        );
+        Future<GameAnalysisReport> remoteRunner(
+          ChessGame game, {
+          int? whiteRating,
+          int? blackRating,
+          required void Function(double progress, String message) onProgress,
+          required bool Function() isCancelled,
+        }) async {
+          onProgress(1, 'Analyzing on the server…');
+          await Future<void>.delayed(const Duration(milliseconds: 1));
+          return remoteReport;
+        }
+
+        final controller = GameAnalysisReportController(
+          remoteRunner: remoteRunner,
+          store: GameAnalysisReportStore.memory(),
+        );
+        addTearDown(controller.dispose);
+        addTearDown(GameAnalysisReportController.clearSessionCacheForTest);
+        final progresses = <double>[];
+        controller.addListener(() {
+          if (controller.state.isRunning) {
+            progresses.add(controller.state.progress);
+          }
+        });
+
+        await controller.analyze(game);
+
+        expect(progresses, isNotEmpty);
+        expect(progresses, everyElement(lessThan(1)));
+        expect(controller.state.status, GameReportStatus.completed);
+        expect(controller.state.progress, 1);
+        // The server sends one fraction, not a position count, so the total is
+        // only a scale — but it must be the local passes' scale, because the
+        // sheet reads the move count back out of it.
+        expect(
+          controller.state.totalPositions,
+          gameReportFens(game).length + game.mainline.length,
+        );
+      },
+    );
 
     test('runs a primary pass before selective MultiPV refinement', () async {
       expect(

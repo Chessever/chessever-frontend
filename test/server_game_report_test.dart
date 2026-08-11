@@ -96,4 +96,82 @@ void main() {
     expect(returnedPgn, contains(r'$247')); // book
     expect(returnedPgn, contains(r'$246')); // blunder
   });
+
+  group('ANALYSIS_API_BASE', () {
+    test('a build that defines nothing still reaches the service', () {
+      // The whole point of the default: a build that forgets the define gets
+      // server reports, not a silent demotion to the phone's own engine.
+      expect(
+        resolveAnalysisApiBase(define: '', allowDebugEnv: false),
+        kDefaultAnalysisApiBase,
+      );
+      expect(kAnalysisApiBase, isNotEmpty);
+    });
+
+    test('the define wins, whitespace and all', () {
+      expect(
+        resolveAnalysisApiBase(
+          define: '  http://127.0.0.1:8787 ',
+          allowDebugEnv: false,
+        ),
+        'http://127.0.0.1:8787',
+      );
+    });
+
+    test('a .env value is read only when the define is absent', () {
+      expect(
+        resolveAnalysisApiBase(
+          define: '',
+          allowDebugEnv: true,
+          debugEnvValue: () => 'https://preview.example.workers.dev',
+        ),
+        'https://preview.example.workers.dev',
+      );
+      expect(
+        resolveAnalysisApiBase(
+          define: 'https://defined.example.workers.dev',
+          allowDebugEnv: true,
+          debugEnvValue: () => 'https://preview.example.workers.dev',
+        ),
+        'https://defined.example.workers.dev',
+      );
+    });
+
+    test('a release build never reads .env', () {
+      // Release has no dotenv asset, and reading one would be a way for a
+      // developer machine's file to change what a shipped build talks to.
+      expect(
+        resolveAnalysisApiBase(
+          define: '',
+          allowDebugEnv: false,
+          debugEnvValue: () => 'https://preview.example.workers.dev',
+        ),
+        kDefaultAnalysisApiBase,
+      );
+    });
+
+    test('an unusable value yields to the default instead of failing', () {
+      // A typo would 404 every report and fall the review back to the engine
+      // with nothing on screen to explain it.
+      expect(
+        resolveAnalysisApiBase(
+          define: 'chessever-analysis.workers.dev',
+          allowDebugEnv: false,
+        ),
+        kDefaultAnalysisApiBase,
+      );
+    });
+
+    test('the service can be turned off by name', () {
+      // An empty define is indistinguishable from an absent one, so the word is
+      // the switch — and an empty base is what keeps the runner null.
+      for (final off in const ['off', 'none', 'DISABLED', 'local']) {
+        expect(
+          resolveAnalysisApiBase(define: off, allowDebugEnv: false),
+          isEmpty,
+          reason: off,
+        );
+      }
+    });
+  });
 }

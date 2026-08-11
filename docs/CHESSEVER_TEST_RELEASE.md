@@ -30,6 +30,14 @@ group: `GAMEBASE_API_KEY`, `CHESSEVER_CLOUDFLARE_API_BASE`, `RevenueCatAPIKey`,
 `ONESIGNAL_APP_ID`, `AMPLITUDE`, `CLARITY_PROJECT_ID`, `APPSFLYER_DEV_KEY`,
 `TELEGRAM_FEEDBACK_BOT_TOKEN`, `TELEGRAM_FEEDBACK_CHAT_ID`.
 
+`ANALYSIS_API_BASE` is the one define with no Codemagic variable behind it: the
+report Worker's URL is public, so the build passes the literal. It is a
+*different* service from `CHESSEVER_CLOUDFLARE_API_BASE` — the GIF Worker serves
+`/v1/gif-jobs` and nothing else, so crossing the two 404s every Game Report and
+drops each review to the phone's own engine. Omitting the define is safe (the
+client falls back to the same production URL); pointing it at the GIF Worker is
+not.
+
 `SENTRY_FLUTTER` is **not** passed to this flavor. `main.dart` assigns
 `options.dsn` from it, and an empty DSN makes the SDK a no-op, so omitting the
 define is the entire off switch. Do not add a `TEST_SENTRY_DSN`.
@@ -86,6 +94,7 @@ GOOGLE_WEB_CLIENT_ID=537883311096-2vtod3ffbtcs3bhda8psl3m2muth70hb.apps.googleus
 GOOGLE_IOS_CLIENT_ID=537883311096-6j22655t8lfk67m6hkhnkguuen90smvh.apps.googleusercontent.com
 GAMEBASE_API_KEY=$GAMEBASE_API_KEY
 CHESSEVER_CLOUDFLARE_API_BASE=$CHESSEVER_CLOUDFLARE_API_BASE
+ANALYSIS_API_BASE=https://chessever-analysis.young-sun-69a8.workers.dev
 RevenueCatAPIKey=$RevenueCatAPIKey
 ONESIGNAL_APP_ID=$ONESIGNAL_APP_ID
 AMPLITUDE=$AMPLITUDE

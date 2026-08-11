@@ -3,6 +3,7 @@ import 'dart:math' as math;
 
 import 'package:chessever2/screens/chessboard/analysis/chess_game.dart';
 import 'package:chessever2/screens/chessboard/game_review/game_analysis_report_store.dart';
+import 'package:chessever2/screens/chessboard/game_review/game_report_progress.dart';
 import 'package:chessever2/screens/chessboard/game_review/lichess_judgment.dart';
 import 'package:chessever2/screens/chessboard/game_review/move_position_facts.dart';
 import 'package:chessever2/screens/chessboard/provider/stockfish_singleton.dart';
@@ -201,6 +202,9 @@ class GameAnalysisReportController extends ChangeNotifier {
   static const int unavailableRetryLimit = 8;
   static const Duration unavailableRetryDelay = Duration(milliseconds: 200);
   static const Duration _progressThrottle = Duration(milliseconds: 120);
+
+  /// How often the server run's progress curve repaints between polls.
+  static const Duration _progressTick = Duration(milliseconds: 250);
   static const Duration _mobileSearchYield = Duration(milliseconds: 12);
 
   final StockfishSingleton _stockfish;
@@ -223,6 +227,9 @@ class GameAnalysisReportController extends ChangeNotifier {
   int _generation = 0;
   bool _disposed = false;
   DateTime? _lastProgressNotification;
+  Timer? _progressTicker;
+  final GameReportProgressSimulator _progressSimulator =
+      GameReportProgressSimulator();
 
   /// Game + ratings for the in-flight run so foreground recovery can restart
   /// from scratch without the UI having to re-supply them.
@@ -311,6 +318,7 @@ class GameAnalysisReportController extends ChangeNotifier {
   }
 
   void _clearInFlight({bool clearPending = true}) {
+    _stopProgressTicker();
     final fp = _inFlightFingerprint;
     _inFlightGame = null;
     _inFlightWhiteRating = null;
@@ -398,6 +406,7 @@ class GameAnalysisReportController extends ChangeNotifier {
     final fingerprint = _inFlightFingerprint;
 
     // Invalidate the stuck loop first so its awaits exit.
+    _stopProgressTicker();
     _generation++;
     try {
       await _stockfish.cancelEvaluationsForOwner(_ownerId);
@@ -479,6 +488,7 @@ class GameAnalysisReportController extends ChangeNotifier {
 
   void _adoptCompletedReport(GameAnalysisReport report) {
     _generation++;
+    _stopProgressTicker();
     _setState(
       GameReportState(
         status: GameReportStatus.completed,
@@ -812,9 +822,11 @@ class GameAnalysisReportController extends ChangeNotifier {
     final generation = ++_generation;
     final fingerprint = gameReportFingerprint(game);
     // The server reports one fraction for the whole job rather than a position
-    // count. Totals are set to the move count only so the existing progress
-    // widgets have a scale to draw against.
-    final totalUnits = game.mainline.length;
+    // count, so the total exists only to give the progress widgets a scale.
+    // It has to be the *same* scale the local passes use — one unit per FEN
+    // plus one per move — because the sheet reads the move count back out of
+    // it, and a shorter scale would label a 40-move game as 20.
+    final totalUnits = gameReportFens(game).length + game.mainline.length;
     _lastProgressNotification = null;
     _inFlightGame = game;
     _inFlightWhiteRating = whiteRating;
@@ -822,6 +834,7 @@ class GameAnalysisReportController extends ChangeNotifier {
     _inFlightFingerprint = fingerprint;
     _suspendedWhileRunning = false;
     _markPending(fingerprint);
+    _beginProgressTicker();
     _setState(
       GameReportState(
         status: GameReportStatus.running,
@@ -837,14 +850,13 @@ class GameAnalysisReportController extends ChangeNotifier {
         blackRating: blackRating,
         onProgress: (progress, message) {
           if (_disposed || generation != _generation) return;
-          _setState(
-            GameReportState(
-              status: GameReportStatus.running,
-              progress: progress.clamp(0.0, 0.99),
-              completedPositions: (totalUnits * progress).round(),
-              totalPositions: totalUnits,
-              message: message,
-            ),
+          _reportProgress(
+            generation: generation,
+            progress: progress,
+            completedPositions: (totalUnits * progress.clamp(0.0, 1.0)).round(),
+            totalPositions: totalUnits,
+            message: message,
+            force: true,
           );
         },
         isCancelled: () => _disposed || generation != _generation,
@@ -1134,6 +1146,7 @@ class GameAnalysisReportController extends ChangeNotifier {
   }
 
   void _fail(String message) {
+    _stopProgressTicker();
     _setState(
       GameReportState(status: GameReportStatus.failed, message: message),
     );
@@ -1148,6 +1161,7 @@ class GameAnalysisReportController extends ChangeNotifier {
     bool force = false,
   }) {
     if (_disposed || generation != _generation) return;
+    final simulatedProgress = _progressSimulator.observe(progress);
     final now = DateTime.now();
     final lastNotification = _lastProgressNotification;
     if (!force &&
@@ -1155,7 +1169,7 @@ class GameAnalysisReportController extends ChangeNotifier {
         now.difference(lastNotification) < _progressThrottle) {
       return;
     }
-    final nextProgress = math.max(progress, _state.progress);
+    final nextProgress = math.max(simulatedProgress, _state.progress);
     if (nextProgress == _state.progress && message == _state.message) return;
     _lastProgressNotification = now;
     _setState(
@@ -1177,6 +1191,7 @@ class GameAnalysisReportController extends ChangeNotifier {
 
   @override
   void dispose() {
+    _stopProgressTicker();
     _disposed = true;
     _generation++;
     // Keep durable pending so a process-death / dispose mid-run can resume
@@ -1188,6 +1203,43 @@ class GameAnalysisReportController extends ChangeNotifier {
     _suspendedWhileRunning = false;
     unawaited(_stockfish.cancelEvaluationsForOwner(_ownerId));
     super.dispose();
+  }
+
+  /// Keeps the bar moving while the server works.
+  ///
+  /// The Worker answers one poll every couple of seconds and holds a single
+  /// phase fraction for most of the job, so without this the bar would freeze
+  /// for tens of seconds at a time and read as a hang. The local passes do not
+  /// arm it: they call back per analysed position, which is already an honest
+  /// bar, and a synthetic curve there would only overstate real work.
+  void _beginProgressTicker() {
+    _progressTicker?.cancel();
+    _progressSimulator.start();
+    _progressTicker = Timer.periodic(_progressTick, (_) {
+      if (_disposed || !_state.isRunning) {
+        _stopProgressTicker();
+        return;
+      }
+      final progress = _progressSimulator.tick();
+      if (progress <= _state.progress) return;
+      _setState(
+        GameReportState(
+          status: GameReportStatus.running,
+          progress: progress,
+          completedPositions: _state.completedPositions,
+          totalPositions: _state.totalPositions,
+          message: _state.message,
+        ),
+      );
+    });
+  }
+
+  void _stopProgressTicker() {
+    _progressTicker?.cancel();
+    _progressTicker = null;
+    // Disarm the curve too: a server attempt that failed hands over to the
+    // local passes, and those must report their own progress from zero.
+    _progressSimulator.reset();
   }
 }
 
