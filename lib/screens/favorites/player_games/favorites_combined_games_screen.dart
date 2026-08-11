@@ -3,8 +3,9 @@ import 'dart:async';
 import 'package:chessever2/main.dart' show routeObserver;
 import 'package:chessever2/providers/favorite_players_provider.dart';
 import 'package:chessever2/repository/favorites/models/favorite_player.dart';
-import 'package:chessever2/screens/favorites/player_games/provider/favorites_combined_games_provider.dart';
+import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
 import 'package:chessever2/screens/chessboard/provider/game_pgn_stream_provider.dart';
+import 'package:chessever2/screens/favorites/player_games/provider/favorites_combined_games_provider.dart';
 import 'package:chessever2/screens/library/widgets/add_to_folder_sheet.dart';
 import 'package:chessever2/screens/library/widgets/live_gamebase_search_game_card.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
@@ -889,6 +890,7 @@ class _FavoritesCombinedGamesScreenState
               animationIndex: index,
               showRound: true,
               streamEnabled: true,
+              viewSource: ChessboardView.favorites,
               onAdd: () => _showAddToFolderSheet(context, game),
               onLiveAdd: (liveGame) => _showAddToFolderSheet(context, liveGame),
             ),

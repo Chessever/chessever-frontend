@@ -383,6 +383,7 @@ class _PlayerAboutTabState extends ConsumerState<PlayerAboutTab>
                               widget.fideId,
                               widget.playerName,
                             ),
+                            dataSource: widget.dataSource,
                             onOpenGames: widget.onOpenGames,
                           ),
                           SizedBox(height: 24.h),
@@ -412,7 +413,8 @@ class _PlayerAboutTabState extends ConsumerState<PlayerAboutTab>
                     );
                   },
                   loading: () => _buildLoadingAnalytics(),
-                  error: (error, _) => _buildErrorMessage(userFacingError(error)),
+                  error:
+                      (error, _) => _buildErrorMessage(userFacingError(error)),
                 ),
           ],
         ),
@@ -514,7 +516,9 @@ class _PlayerAboutTabState extends ConsumerState<PlayerAboutTab>
           SizedBox(height: 12.h),
           Text(
             'No games found',
-            style: AppTypography.textMdMedium.copyWith(color: context.colors.textPrimary),
+            style: AppTypography.textMdMedium.copyWith(
+              color: context.colors.textPrimary,
+            ),
           ),
           SizedBox(height: 4.h),
           Text(
@@ -561,7 +565,9 @@ class _PlayerAboutTabState extends ConsumerState<PlayerAboutTab>
           SizedBox(height: 12.h),
           Text(
             'No $filterName games',
-            style: AppTypography.textMdMedium.copyWith(color: context.colors.textPrimary),
+            style: AppTypography.textMdMedium.copyWith(
+              color: context.colors.textPrimary,
+            ),
           ),
           SizedBox(height: 4.h),
           Text(
@@ -591,7 +597,10 @@ class _PlayerAboutTabState extends ConsumerState<PlayerAboutTab>
           ),
         )
         .animate(onPlay: (c) => c.repeat())
-        .shimmer(duration: 1500.ms, color: context.colors.textPrimary.withValues(alpha: 0.1));
+        .shimmer(
+          duration: 1500.ms,
+          color: context.colors.textPrimary.withValues(alpha: 0.1),
+        );
   }
 
   Widget _buildErrorMessage(String error) {
@@ -611,7 +620,9 @@ class _PlayerAboutTabState extends ConsumerState<PlayerAboutTab>
           SizedBox(height: 12.h),
           Text(
             'Failed to load analytics',
-            style: AppTypography.textMdMedium.copyWith(color: context.colors.textPrimary),
+            style: AppTypography.textMdMedium.copyWith(
+              color: context.colors.textPrimary,
+            ),
           ),
           SizedBox(height: 4.h),
           Text(
@@ -730,6 +741,7 @@ class _PlayerAboutTabState extends ConsumerState<PlayerAboutTab>
               widget.fideId,
               widget.playerName,
             ),
+            dataSource: widget.dataSource,
             onOpenGames: widget.onOpenGames,
           ),
           SizedBox(height: 24.h),
@@ -865,7 +877,9 @@ class _FilterActiveBanner extends StatelessWidget {
           Expanded(
             child: Text(
               _buildFilterDescription(),
-              style: AppTypography.textSmMedium.copyWith(color: context.colors.textPrimary),
+              style: AppTypography.textSmMedium.copyWith(
+                color: context.colors.textPrimary,
+              ),
             ),
           ),
           Text(
@@ -1067,10 +1081,9 @@ class _PlayerHeaderSectionState extends ConsumerState<_PlayerHeaderSection> {
                 ClipRRect(
                   borderRadius: BorderRadius.circular(2.br),
                   child: CountryFlag.fromCountryCode(
-countryCode,
-  theme: ImageTheme(height: 20.h,
-                    width: 28.w,),
-),
+                    countryCode,
+                    theme: ImageTheme(height: 20.h, width: 28.w),
+                  ),
                 ),
                 SizedBox(width: 10.w),
                 Expanded(
@@ -1088,7 +1101,9 @@ countryCode,
                       Text(
                         'Federation',
                         style: AppTypography.textXsRegular.copyWith(
-                          color: context.colors.textPrimary.withValues(alpha: 0.5),
+                          color: context.colors.textPrimary.withValues(
+                            alpha: 0.5,
+                          ),
                         ),
                       ),
                     ],
@@ -1115,7 +1130,9 @@ countryCode,
                     Text(
                       'FIDE ID',
                       style: AppTypography.textXsRegular.copyWith(
-                        color: context.colors.textPrimary.withValues(alpha: 0.5),
+                        color: context.colors.textPrimary.withValues(
+                          alpha: 0.5,
+                        ),
                       ),
                     ),
                   ],
@@ -1234,9 +1251,17 @@ class _RatingCardState extends State<_RatingCard> {
                     selectProgress,
                   )!;
               final labelColor =
-                  Color.lerp(context.colors.textPrimaryMuted, kPrimaryColor, selectProgress)!;
+                  Color.lerp(
+                    context.colors.textPrimaryMuted,
+                    kPrimaryColor,
+                    selectProgress,
+                  )!;
               final ratingColor =
-                  Color.lerp(context.colors.textPrimary, kPrimaryColor, selectProgress)!;
+                  Color.lerp(
+                    context.colors.textPrimary,
+                    kPrimaryColor,
+                    selectProgress,
+                  )!;
 
               // Subtle scale bump when selected
               final selectScale = 1.0 + (selectProgress * 0.03);
@@ -1343,7 +1368,9 @@ class _OverallStatsSection extends StatelessWidget {
       children: [
         Text(
           'Overall Performance',
-          style: AppTypography.textSmBold.copyWith(color: context.colors.textPrimary),
+          style: AppTypography.textSmBold.copyWith(
+            color: context.colors.textPrimary,
+          ),
         ),
         SizedBox(height: 12.h),
         Container(
@@ -1370,9 +1397,10 @@ class _OverallStatsSection extends StatelessWidget {
                               : PlayerResultFilter.win;
                       onOpenGames?.call(
                         playerResultFilter: newFilter,
-                        gamesTabCueCount: newFilter == PlayerResultFilter.win
-                            ? resultStats.wins
-                            : 0,
+                        gamesTabCueCount:
+                            newFilter == PlayerResultFilter.win
+                                ? resultStats.wins
+                                : 0,
                       );
                     },
                   ),
@@ -1391,9 +1419,10 @@ class _OverallStatsSection extends StatelessWidget {
                               : PlayerResultFilter.draw;
                       onOpenGames?.call(
                         playerResultFilter: newFilter,
-                        gamesTabCueCount: newFilter == PlayerResultFilter.draw
-                            ? resultStats.draws
-                            : 0,
+                        gamesTabCueCount:
+                            newFilter == PlayerResultFilter.draw
+                                ? resultStats.draws
+                                : 0,
                       );
                     },
                   ),
@@ -1412,9 +1441,10 @@ class _OverallStatsSection extends StatelessWidget {
                               : PlayerResultFilter.loss;
                       onOpenGames?.call(
                         playerResultFilter: newFilter,
-                        gamesTabCueCount: newFilter == PlayerResultFilter.loss
-                            ? resultStats.losses
-                            : 0,
+                        gamesTabCueCount:
+                            newFilter == PlayerResultFilter.loss
+                                ? resultStats.losses
+                                : 0,
                       );
                     },
                   ),
@@ -1438,7 +1468,9 @@ class _OverallStatsSection extends StatelessWidget {
                         Expanded(
                           flex: resultStats.draws,
                           child: Container(
-                            color: context.colors.textPrimary.withValues(alpha: 0.5),
+                            color: context.colors.textPrimary.withValues(
+                              alpha: 0.5,
+                            ),
                           ),
                         ),
                       if (resultStats.losses > 0)
@@ -1470,7 +1502,9 @@ class _OverallStatsSection extends StatelessWidget {
                         Text(
                           'Total Games',
                           style: AppTypography.textXsRegular.copyWith(
-                            color: context.colors.textPrimary.withValues(alpha: 0.5),
+                            color: context.colors.textPrimary.withValues(
+                              alpha: 0.5,
+                            ),
                           ),
                         ),
                       ],
@@ -1493,7 +1527,9 @@ class _OverallStatsSection extends StatelessWidget {
                           Text(
                             'Avg. Opponent',
                             style: AppTypography.textXsRegular.copyWith(
-                              color: context.colors.textPrimary.withValues(alpha: 0.5),
+                              color: context.colors.textPrimary.withValues(
+                                alpha: 0.5,
+                              ),
                             ),
                           ),
                         ],
@@ -1574,10 +1610,7 @@ class _ResultCountColumn extends StatelessWidget {
           maxLines: 1,
           style: AppTypography.textSmMedium.copyWith(color: color),
         ),
-        Text(
-          label,
-          style: AppTypography.textXsRegular.copyWith(color: color),
-        ),
+        Text(label, style: AppTypography.textXsRegular.copyWith(color: color)),
       ],
     );
   }
@@ -1697,7 +1730,9 @@ class _StatBoxState extends State<_StatBox> {
                         Text(
                           widget.label,
                           style: AppTypography.textXsRegular.copyWith(
-                            color: context.colors.textPrimary.withValues(alpha: 0.6),
+                            color: context.colors.textPrimary.withValues(
+                              alpha: 0.6,
+                            ),
                           ),
                         ),
                       ],
@@ -1732,7 +1767,9 @@ class _ColorPerformanceSection extends StatelessWidget {
       children: [
         Text(
           'Performance by Color',
-          style: AppTypography.textSmBold.copyWith(color: context.colors.textPrimary),
+          style: AppTypography.textSmBold.copyWith(
+            color: context.colors.textPrimary,
+          ),
         ),
         SizedBox(height: 12.h),
         Row(
@@ -1760,9 +1797,10 @@ class _ColorPerformanceSection extends StatelessWidget {
                   onOpenGames?.call(
                     color: newFilter,
                     eco: shouldClearOpening ? GameEcoFilter.all : null,
-                    gamesTabCueCount: newFilter == GameColorFilter.white
-                        ? colorStats.whiteGames
-                        : 0,
+                    gamesTabCueCount:
+                        newFilter == GameColorFilter.white
+                            ? colorStats.whiteGames
+                            : 0,
                   );
                 },
               ),
@@ -1790,9 +1828,10 @@ class _ColorPerformanceSection extends StatelessWidget {
                   onOpenGames?.call(
                     color: newFilter,
                     eco: shouldClearOpening ? GameEcoFilter.all : null,
-                    gamesTabCueCount: newFilter == GameColorFilter.black
-                        ? colorStats.blackGames
-                        : 0,
+                    gamesTabCueCount:
+                        newFilter == GameColorFilter.black
+                            ? colorStats.blackGames
+                            : 0,
                   );
                 },
               ),
@@ -1876,7 +1915,9 @@ class _ColorStatCardState extends State<_ColorStatCard> {
                     selectProgress,
                   )!;
 
-              final defaultBorderColor = context.colors.textPrimary.withValues(alpha: 0.08);
+              final defaultBorderColor = context.colors.textPrimary.withValues(
+                alpha: 0.08,
+              );
               final selectedBorderColor = accentColor;
               final borderColor =
                   Color.lerp(
@@ -1927,7 +1968,9 @@ class _ColorStatCardState extends State<_ColorStatCard> {
                               border: Border.all(
                                 color:
                                     Color.lerp(
-                                      context.colors.textPrimary.withValues(alpha: 0.3),
+                                      context.colors.textPrimary.withValues(
+                                        alpha: 0.3,
+                                      ),
                                       accentColor,
                                       selectProgress,
                                     )!,
@@ -1966,7 +2009,9 @@ class _ColorStatCardState extends State<_ColorStatCard> {
                       Text(
                         'Score',
                         style: AppTypography.textXsRegular.copyWith(
-                          color: context.colors.textPrimary.withValues(alpha: 0.5),
+                          color: context.colors.textPrimary.withValues(
+                            alpha: 0.5,
+                          ),
                         ),
                       ),
                       SizedBox(height: 8.h),
@@ -1993,7 +2038,9 @@ class _ColorStatCardState extends State<_ColorStatCard> {
                           Text(
                             '${widget.games} games',
                             style: AppTypography.textXsRegular.copyWith(
-                              color: context.colors.textPrimary.withValues(alpha: 0.4),
+                              color: context.colors.textPrimary.withValues(
+                                alpha: 0.4,
+                              ),
                             ),
                           ),
                         ],
@@ -2015,11 +2062,13 @@ class _RecentFormSection extends StatefulWidget {
   const _RecentFormSection({
     required this.form,
     required this.recentGames,
+    required this.dataSource,
     this.onOpenGames,
   });
 
   final List<double> form;
   final List<GamesTourModel> recentGames;
+  final PlayerProfileDataSource dataSource;
   final PlayerGamesOpenCallback? onOpenGames;
 
   @override
@@ -2060,7 +2109,9 @@ class _RecentFormSectionState extends State<_RecentFormSection> {
       children: [
         Text(
           'Recent Form (Last ${widget.form.length} games)',
-          style: AppTypography.textSmBold.copyWith(color: context.colors.textPrimary),
+          style: AppTypography.textSmBold.copyWith(
+            color: context.colors.textPrimary,
+          ),
         ),
         SizedBox(height: 12.h),
         Container(
@@ -2107,6 +2158,7 @@ class _RecentFormSectionState extends State<_RecentFormSection> {
                 selectedIndex: _selectedIndex,
                 allRecentGames: widget.recentGames,
                 eventName: eventName,
+                dataSource: widget.dataSource,
               ),
             ],
           ),
@@ -2232,12 +2284,14 @@ class _ExpandableGameCard extends ConsumerWidget {
     required this.selectedGame,
     required this.selectedIndex,
     required this.allRecentGames,
+    required this.dataSource,
     this.eventName,
   });
 
   final GamesTourModel? selectedGame;
   final int? selectedIndex;
   final List<GamesTourModel> allRecentGames;
+  final PlayerProfileDataSource dataSource;
   final String? eventName;
 
   @override
@@ -2335,6 +2389,8 @@ class _ExpandableGameCard extends ConsumerWidget {
               gameIndex: selectedIndex ?? 0,
               onReturnFromChessboard: null,
               viewSource: ChessboardView.playerProfile,
+              playerProfileDataSource: dataSource,
+              showClock: dataSource != PlayerProfileDataSource.twic,
             );
       },
       child: ClipRRect(
@@ -2558,7 +2614,9 @@ class _OpeningRepertoireSectionState
       children: [
         Text(
           'Opening Repertoire',
-          style: AppTypography.textSmBold.copyWith(color: context.colors.textPrimary),
+          style: AppTypography.textSmBold.copyWith(
+            color: context.colors.textPrimary,
+          ),
         ),
         SizedBox(height: 12.h),
         Container(
@@ -2637,13 +2695,17 @@ class _OpeningRepertoireSectionState
   Widget _buildFilterChip(_OpeningRepertoireFilter filter, String label) {
     final isSelected = _effectiveFilter == filter;
     final background =
-        isSelected ? context.colors.textPrimary.withValues(alpha: 0.12) : context.colors.surface;
+        isSelected
+            ? context.colors.textPrimary.withValues(alpha: 0.12)
+            : context.colors.surface;
     final borderColor =
         isSelected
             ? context.colors.textPrimary.withValues(alpha: 0.6)
             : context.colors.divider.withValues(alpha: 0.6);
     final textColor =
-        isSelected ? context.colors.textPrimary : context.colors.textPrimary.withValues(alpha: 0.6);
+        isSelected
+            ? context.colors.textPrimary
+            : context.colors.textPrimary.withValues(alpha: 0.6);
 
     return GestureDetector(
       onTap: () => _onLocalFilterChanged(filter),
@@ -2870,7 +2932,9 @@ class _OpeningRowState extends State<_OpeningRow> {
                                 style: AppTypography.textXsBold.copyWith(
                                   color: Color.lerp(
                                     context.colors.textPrimary,
-                                    context.colors.textPrimary.withValues(alpha: 0.35),
+                                    context.colors.textPrimary.withValues(
+                                      alpha: 0.35,
+                                    ),
                                     inactiveAmount,
                                   ),
                                   fontFamily: 'monospace',
@@ -2924,9 +2988,10 @@ class _OpeningRowState extends State<_OpeningRow> {
                                         '${widget.opening.count} games',
                                         style: AppTypography.textXsRegular
                                             .copyWith(
-                                              color: context.colors.textPrimary.withValues(
-                                                alpha: secondaryTextAlpha,
-                                              ),
+                                              color: context.colors.textPrimary
+                                                  .withValues(
+                                                    alpha: secondaryTextAlpha,
+                                                  ),
                                             ),
                                       ),
                                     ],
@@ -2948,9 +3013,8 @@ class _OpeningRowState extends State<_OpeningRow> {
                                 Text(
                                   'score',
                                   style: AppTypography.textXsRegular.copyWith(
-                                    color: context.colors.textPrimary.withValues(
-                                      alpha: secondaryTextAlpha,
-                                    ),
+                                    color: context.colors.textPrimary
+                                        .withValues(alpha: secondaryTextAlpha),
                                   ),
                                 ),
                               ],

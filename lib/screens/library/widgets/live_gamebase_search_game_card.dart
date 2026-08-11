@@ -1,3 +1,4 @@
+import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
 import 'package:chessever2/screens/library/widgets/gamebase_search_game_card.dart';
 import 'package:chessever2/screens/player_profile/player_profile_data_source.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
@@ -20,6 +21,8 @@ class LiveGamebaseSearchGameCard extends ConsumerWidget {
     this.showGamebaseButton = false,
     this.hideEventInfo = false,
     this.playerProfileDataSource = PlayerProfileDataSource.supabase,
+    this.viewSource = ChessboardView.tour,
+    this.navigationListPolicy = BoardNavigationListPolicy.preserve,
     this.streamEnabled = true,
     this.onTap,
     this.onLiveTap,
@@ -36,6 +39,8 @@ class LiveGamebaseSearchGameCard extends ConsumerWidget {
   final bool showGamebaseButton;
   final bool hideEventInfo;
   final PlayerProfileDataSource playerProfileDataSource;
+  final ChessboardView viewSource;
+  final BoardNavigationListPolicy navigationListPolicy;
   final bool streamEnabled;
 
   /// Optional tap callback. If provided, overrides default chessboard navigation.
@@ -88,6 +93,8 @@ class LiveGamebaseSearchGameCard extends ConsumerWidget {
       showGamebaseButton: showGamebaseButton,
       hideEventInfo: hideEventInfo,
       playerProfileDataSource: playerProfileDataSource,
+      viewSource: viewSource,
+      navigationListPolicy: navigationListPolicy,
       onTap:
           onLiveTap == null
               ? onTap

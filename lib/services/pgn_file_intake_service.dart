@@ -142,15 +142,10 @@ class PgnFileIntakeService {
 
     // Cold start: app launched by tapping a .pgn file.
     try {
-      final initial =
-          await ReceiveSharingIntent.instance.getInitialMedia();
+      final initial = await ReceiveSharingIntent.instance.getInitialMedia();
       if (initial.isNotEmpty) {
         unawaited(
-          _handleSharedMedia(
-            initial,
-            navigatorKey,
-            waitAppReady: true,
-          ),
+          _handleSharedMedia(initial, navigatorKey, waitAppReady: true),
         );
       }
       ReceiveSharingIntent.instance.reset();
@@ -161,11 +156,7 @@ class PgnFileIntakeService {
     // Warm start: file-open arrives while app is running.
     _intentStreamSub = ReceiveSharingIntent.instance.getMediaStream().listen(
       (files) => unawaited(
-        _handleSharedMedia(
-          files,
-          navigatorKey,
-          waitAppReady: false,
-        ),
+        _handleSharedMedia(files, navigatorKey, waitAppReady: false),
       ),
       onError: (Object error) {
         debugPrint('PgnFileIntakeService: media stream error: $error');
@@ -202,11 +193,12 @@ class PgnFileIntakeService {
     if (!context.mounted) return false;
     await Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (_) => PgnImportPreviewScreen(
-          games: parsed.map((e) => e.chessGame).toList(),
-          initialFolderId: initialFolderId,
-          sourceLabel: sourceLabel,
-        ),
+        builder:
+            (_) => PgnImportPreviewScreen(
+              games: parsed.map((e) => e.chessGame).toList(),
+              initialFolderId: initialFolderId,
+              sourceLabel: sourceLabel,
+            ),
       ),
     );
     return true;
@@ -315,10 +307,11 @@ class PgnFileIntakeService {
     } else {
       navigator.push(
         MaterialPageRoute(
-          builder: (_) => PgnImportPreviewScreen(
-            games: games,
-            sourceLabel: 'shared file',
-          ),
+          builder:
+              (_) => PgnImportPreviewScreen(
+                games: games,
+                sourceLabel: 'shared file',
+              ),
         ),
       );
     }
@@ -333,12 +326,14 @@ class PgnFileIntakeService {
 
     navigator.push(
       MaterialPageRoute(
-        builder: (_) => ChessBoardScreenNew(
-          currentIndex: 0,
-          games: [tourModel],
-          showGamebaseButton: false,
-          disableGamebaseOverlayByDefault: true,
-        ),
+        builder:
+            (_) => ChessBoardScreenNew(
+              currentIndex: 0,
+              games: [tourModel],
+              viewSource: ChessboardView.tour,
+              showGamebaseButton: false,
+              disableGamebaseOverlayByDefault: true,
+            ),
       ),
     );
   }

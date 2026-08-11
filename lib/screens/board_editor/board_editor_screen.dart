@@ -149,6 +149,7 @@ class _BoardEditorScreenState extends ConsumerState<BoardEditorScreen> {
             (_) => ChessBoardScreenNew(
               currentIndex: 0,
               games: [game],
+              viewSource: ChessboardView.tour,
               showGamebaseButton: false,
               disableGamebaseOverlayByDefault: true,
             ),
@@ -308,6 +309,7 @@ class _BoardEditorScreenState extends ConsumerState<BoardEditorScreen> {
                 (_) => ChessBoardScreenNew(
                   currentIndex: 0,
                   games: [game],
+                  viewSource: ChessboardView.tour,
                   showGamebaseButton: false,
                   disableGamebaseOverlayByDefault: true,
                 ),
@@ -477,13 +479,14 @@ class _BoardEditorScreenState extends ConsumerState<BoardEditorScreen> {
       child: LayoutBuilder(
         builder: (context, inner) {
           // Compute the largest square board that fits both height and width.
-          final maxBoardFromHeight =
-              ((inner.maxHeight - trayOverhead) / 1.225)
-                  .clamp(0.0, double.infinity);
+          final maxBoardFromHeight = ((inner.maxHeight - trayOverhead) / 1.225)
+              .clamp(0.0, double.infinity);
           // Reserve at least 280px on the right for controls + fen + actions.
-          final maxBoardFromWidth =
-              (inner.maxWidth - 12.sp - 280.0 - evalBarWidth)
-                  .clamp(0.0, double.infinity);
+          final maxBoardFromWidth = (inner.maxWidth -
+                  12.sp -
+                  280.0 -
+                  evalBarWidth)
+              .clamp(0.0, double.infinity);
           final boardSize =
               (maxBoardFromHeight < maxBoardFromWidth
                       ? maxBoardFromHeight
@@ -522,10 +525,7 @@ class _BoardEditorScreenState extends ConsumerState<BoardEditorScreen> {
                     _buildTopControls(),
                     const Spacer(),
                     _FenBar(fen: editorState.fullFen, onCopy: _copyFen),
-                    _ActionRow(
-                      onPasteFen: _pasteFen,
-                      onPastePgn: _pastePgn,
-                    ),
+                    _ActionRow(onPasteFen: _pasteFen, onPastePgn: _pastePgn),
                   ],
                 ),
               ),
@@ -556,9 +556,9 @@ class _BoardEditorScreenState extends ConsumerState<BoardEditorScreen> {
             Expanded(
               child: LayoutBuilder(
                 builder: (context, inner) {
-                  final maxBoardFromHeight =
-                      ((inner.maxHeight - trayOverhead) / 1.225)
-                          .clamp(0.0, double.infinity);
+                  final maxBoardFromHeight = ((inner.maxHeight - trayOverhead) /
+                          1.225)
+                      .clamp(0.0, double.infinity);
                   final maxBoardFromWidth = inner.maxWidth;
                   final boardSize =
                       (maxBoardFromHeight < maxBoardFromWidth
@@ -615,7 +615,9 @@ class _BoardEditorScreenState extends ConsumerState<BoardEditorScreen> {
           Expanded(
             child: Text(
               'Board Editor',
-              style: AppTypography.textLgMedium.copyWith(color: context.colors.textPrimary),
+              style: AppTypography.textLgMedium.copyWith(
+                color: context.colors.textPrimary,
+              ),
               textAlign: TextAlign.center,
             ),
           ),
@@ -915,7 +917,9 @@ class _SmallButton extends StatelessWidget {
         ),
         child: Text(
           label,
-          style: AppTypography.textSmMedium.copyWith(color: context.colors.background),
+          style: AppTypography.textSmMedium.copyWith(
+            color: context.colors.background,
+          ),
         ),
       ),
     );
@@ -968,7 +972,10 @@ class _SideOption extends StatelessWidget {
         width: 36.h,
         height: 36.h,
         decoration: BoxDecoration(
-          color: isSelected ? context.colors.textPrimary : context.colors.surfaceRecessed,
+          color:
+              isSelected
+                  ? context.colors.textPrimary
+                  : context.colors.surfaceRecessed,
           borderRadius: BorderRadius.circular(8.br),
         ),
         child: Center(
@@ -976,7 +983,10 @@ class _SideOption extends StatelessWidget {
             label,
             style: TextStyle(
               fontSize: 20.f,
-              color: isSelected ? context.colors.background : context.colors.textPrimary,
+              color:
+                  isSelected
+                      ? context.colors.background
+                      : context.colors.textPrimary,
             ),
           ),
         ),
@@ -1057,7 +1067,9 @@ class _CastlingCheck extends StatelessWidget {
               onChanged: (v) => onChanged(v ?? false),
               activeColor: context.colors.textPrimary,
               checkColor: context.colors.background,
-              side: BorderSide(color: context.colors.textPrimary.withValues(alpha: 0.5)),
+              side: BorderSide(
+                color: context.colors.textPrimary.withValues(alpha: 0.5),
+              ),
               materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
               visualDensity: VisualDensity.compact,
             ),
@@ -1226,7 +1238,10 @@ class _TrayActionButton extends StatelessWidget {
         child: Center(
           child: Icon(
             icon,
-            color: isActive ? context.colors.background : context.colors.surfaceRecessed,
+            color:
+                isActive
+                    ? context.colors.background
+                    : context.colors.surfaceRecessed,
             size: size * 0.6,
           ),
         ),
@@ -1280,7 +1295,9 @@ class _TrayPiece extends StatelessWidget {
               border:
                   isSelected
                       ? Border.all(
-                        color: context.colors.textPrimary.withValues(alpha: 0.6),
+                        color: context.colors.textPrimary.withValues(
+                          alpha: 0.6,
+                        ),
                         width: 1.5,
                       )
                       : null,
@@ -1383,7 +1400,9 @@ class _ActionButton extends StatelessWidget {
         child: Center(
           child: Text(
             label,
-            style: AppTypography.textSmMedium.copyWith(color: context.colors.background),
+            style: AppTypography.textSmMedium.copyWith(
+              color: context.colors.background,
+            ),
           ),
         ),
       ),
@@ -1404,8 +1423,7 @@ String? _extractFen(String input) {
   final trimmed = input.trim();
   if (_isValidFen(trimmed)) return trimmed;
 
-  final pgnMatch =
-      RegExp(r'\[\s*FEN\s+"([^"]+)"\s*\]').firstMatch(input);
+  final pgnMatch = RegExp(r'\[\s*FEN\s+"([^"]+)"\s*\]').firstMatch(input);
   if (pgnMatch != null) {
     final inside = pgnMatch.group(1)!.trim();
     if (_isValidFen(inside)) return inside;
@@ -1456,7 +1474,8 @@ String _stripFenWrappers(String s) {
   while (current.length >= 2) {
     final first = current[0];
     final last = current[current.length - 1];
-    final isMatchingPair = (first == '"' && last == '"') ||
+    final isMatchingPair =
+        (first == '"' && last == '"') ||
         (first == "'" && last == "'") ||
         (first == '`' && last == '`');
     if (!isMatchingPair) break;

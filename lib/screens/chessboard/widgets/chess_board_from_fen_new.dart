@@ -12,6 +12,7 @@ import 'package:chessever2/screens/library/utils/gamebase_pgn_builder.dart';
 import 'package:chessever2/screens/chessboard/widgets/evaluation_bar_widget.dart';
 import 'package:chessever2/screens/chessboard/widgets/player_first_row_detail_widget.dart';
 import 'package:chessever2/screens/chessboard/widgets/share_game_card_overlay.dart';
+import 'package:chessever2/screens/player_profile/player_profile_data_source.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/event_no_spoilers_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/utils/live_game_position_resolver.dart';
@@ -427,6 +428,7 @@ class ChessBoardFromFENNew extends ConsumerWidget {
     this.liveBatchKey,
     this.scoreCardViewSource,
     this.scoreCardGamesContext = const [],
+    this.playerProfileDataSource = PlayerProfileDataSource.supabase,
     this.showPin = true,
   });
 
@@ -439,6 +441,7 @@ class ChessBoardFromFENNew extends ConsumerWidget {
   final LiveGamesBatchKey? liveBatchKey;
   final ChessboardView? scoreCardViewSource;
   final List<GamesTourModel> scoreCardGamesContext;
+  final PlayerProfileDataSource playerProfileDataSource;
 
   /// Whether the long-press menu offers Pin. Lists with no tour scope to pin
   /// into (Favorites, Countrymen, archive views) drop the item rather than
@@ -501,6 +504,7 @@ class ChessBoardFromFENNew extends ConsumerWidget {
               liveBatchKey: liveBatchKey,
               scoreCardViewSource: scoreCardViewSource,
               scoreCardGamesContext: scoreCardGamesContext,
+              playerProfileDataSource: playerProfileDataSource,
             ),
           );
         },
@@ -521,6 +525,7 @@ class GridChessBoardFromFENNew extends ConsumerWidget {
     this.liveBatchKey,
     this.scoreCardViewSource,
     this.scoreCardGamesContext = const [],
+    this.playerProfileDataSource = PlayerProfileDataSource.supabase,
     this.showPin = true,
   });
 
@@ -533,6 +538,7 @@ class GridChessBoardFromFENNew extends ConsumerWidget {
   final LiveGamesBatchKey? liveBatchKey;
   final ChessboardView? scoreCardViewSource;
   final List<GamesTourModel> scoreCardGamesContext;
+  final PlayerProfileDataSource playerProfileDataSource;
 
   /// Whether the long-press menu offers Pin. Lists with no tour scope to pin
   /// into (Favorites, Countrymen, archive views) drop the item rather than
@@ -592,6 +598,7 @@ class GridChessBoardFromFENNew extends ConsumerWidget {
                 liveBatchKey: liveBatchKey,
                 scoreCardViewSource: scoreCardViewSource,
                 scoreCardGamesContext: scoreCardGamesContext,
+                playerProfileDataSource: playerProfileDataSource,
               ),
               SizedBox(height: 4.h),
               _ChessBoardWithEvaluation(
@@ -615,6 +622,7 @@ class GridChessBoardFromFENNew extends ConsumerWidget {
                 liveBatchKey: liveBatchKey,
                 scoreCardViewSource: scoreCardViewSource,
                 scoreCardGamesContext: scoreCardGamesContext,
+                playerProfileDataSource: playerProfileDataSource,
               ),
             ],
           ),
@@ -646,6 +654,7 @@ class GridChessBoardFromFENNew extends ConsumerWidget {
                 liveBatchKey: liveBatchKey,
                 scoreCardViewSource: scoreCardViewSource,
                 scoreCardGamesContext: scoreCardGamesContext,
+                playerProfileDataSource: playerProfileDataSource,
               ),
               SizedBox(height: 4.h),
               _ChessBoardWithEvaluation(
@@ -669,6 +678,7 @@ class GridChessBoardFromFENNew extends ConsumerWidget {
                 liveBatchKey: liveBatchKey,
                 scoreCardViewSource: scoreCardViewSource,
                 scoreCardGamesContext: scoreCardGamesContext,
+                playerProfileDataSource: playerProfileDataSource,
               ),
             ],
           ),
@@ -722,6 +732,7 @@ class _ChessBoardLayout extends ConsumerWidget {
     required this.liveBatchKey,
     required this.scoreCardViewSource,
     required this.scoreCardGamesContext,
+    required this.playerProfileDataSource,
   });
 
   final GamesTourModel gamesTourModel;
@@ -735,6 +746,7 @@ class _ChessBoardLayout extends ConsumerWidget {
   final LiveGamesBatchKey? liveBatchKey;
   final ChessboardView? scoreCardViewSource;
   final List<GamesTourModel> scoreCardGamesContext;
+  final PlayerProfileDataSource playerProfileDataSource;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -752,6 +764,7 @@ class _ChessBoardLayout extends ConsumerWidget {
           liveBatchKey: liveBatchKey,
           scoreCardViewSource: scoreCardViewSource,
           scoreCardGamesContext: scoreCardGamesContext,
+          playerProfileDataSource: playerProfileDataSource,
         ),
         SizedBox(height: 4.h),
         _ChessBoardWithEvaluation(
@@ -775,6 +788,7 @@ class _ChessBoardLayout extends ConsumerWidget {
           liveBatchKey: liveBatchKey,
           scoreCardViewSource: scoreCardViewSource,
           scoreCardGamesContext: scoreCardGamesContext,
+          playerProfileDataSource: playerProfileDataSource,
         ),
       ],
     );
@@ -791,6 +805,7 @@ class _PlayerRow extends StatelessWidget {
     this.liveBatchKey,
     this.scoreCardViewSource,
     this.scoreCardGamesContext = const [],
+    required this.playerProfileDataSource,
   });
 
   final GamesTourModel gamesTourModel;
@@ -801,6 +816,7 @@ class _PlayerRow extends StatelessWidget {
   final LiveGamesBatchKey? liveBatchKey;
   final ChessboardView? scoreCardViewSource;
   final List<GamesTourModel> scoreCardGamesContext;
+  final PlayerProfileDataSource playerProfileDataSource;
 
   @override
   Widget build(BuildContext context) {
@@ -814,6 +830,7 @@ class _PlayerRow extends StatelessWidget {
       liveBatchKey: liveBatchKey,
       scoreCardViewSource: scoreCardViewSource,
       scoreCardGamesContext: scoreCardGamesContext,
+      playerProfileDataSource: playerProfileDataSource,
     );
   }
 }

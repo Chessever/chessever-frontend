@@ -135,6 +135,24 @@ import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
 
 const Color kGameEndingRedColor = Color(0xCCF53236);
 
+/// Stable widget-test handle for the games PageView. The board also contains
+/// an analysis PageView, so `find.byType(PageView)` cannot identify the swipe
+/// surface unambiguously.
+@visibleForTesting
+const boardGamesPageViewTestKey = ValueKey<String>(
+  'board-games-page-view-test',
+);
+
+/// Stable widget-test handle for the game-switcher content.
+@visibleForTesting
+const boardGameDropdownContentTestKey = ValueKey<String>(
+  'board-game-dropdown-content-test',
+);
+
+@visibleForTesting
+Key boardGameDropdownCardTestKey(String gameId) =>
+    ValueKey<String>('board-game-dropdown-card-$gameId');
+
 /// Counter bumped by [_ChessBoardScreenNewState] once the outer "Swipe to
 /// Browse" walkthrough (step 1/2) is dismissed. The visible analysis panel
 /// (`_AnalysisSwipePanels`) listens to this and runs the chained
@@ -805,6 +823,11 @@ class ChessBoardScreenNew extends ConsumerStatefulWidget {
   final int currentIndex;
   final List<GamesTourModel> games;
 
+  /// Immutable source contract for this board route. Shared navigation always
+  /// supplies it so a nested board/scorecard cannot rewrite an older board by
+  /// mutating the legacy global source provider while that route is covered.
+  final ChessboardView viewSource;
+
   /// Optional saved analysis data to restore full state (variations, comments, position)
   final SavedAnalysisData? savedAnalysisData;
   final List<SavedAnalysisData>? savedAnalysesDataByIndex;
@@ -831,9 +854,15 @@ class ChessBoardScreenNew extends ConsumerStatefulWidget {
   /// Optional initial position to show (FEN).
   final String? initialFen;
 
+  /// Reports a user-selected PageView game to the deferred navigation host.
+  /// If background event expansion omits that game, the host keeps the
+  /// immediate list instead of replacing it and jumping the visible page.
+  final ValueChanged<String>? onVisibleGameChanged;
+
   const ChessBoardScreenNew({
     required this.currentIndex,
     required this.games,
+    required this.viewSource,
     this.savedAnalysisData,
     this.savedAnalysesDataByIndex,
     this.hideEventInfo = false,
@@ -844,6 +873,7 @@ class ChessBoardScreenNew extends ConsumerStatefulWidget {
     this.startAtLastMove = false,
     this.showSaveAnalysisOnLoad = false,
     this.initialFen,
+    this.onVisibleGameChanged,
     super.key,
   });
 
@@ -1080,7 +1110,9 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
 
     // Store all games for score card context (used by player name tap → score card)
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) {
+      if (mounted && !_isRouteCovered) {
+        ref.read(chessboardViewFromProviderNew.notifier).state =
+            widget.viewSource;
         ref.read(chessBoardAllGamesProvider.notifier).state = widget.games;
       }
     });
@@ -1413,7 +1445,7 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
 
     final safeIndex = index.clamp(0, widget.games.length - 1);
     final fallbackGame = widget.games[safeIndex];
-    final view = ref.read(chessboardViewFromProviderNew);
+    final view = widget.viewSource;
 
     final AsyncValue<GamesScreenModel>? gamesAsync;
     switch (view) {
@@ -1614,10 +1646,41 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
     );
   }
 
+  /// Claims the shared board notifier's page index for this route's PageView.
+  ///
+  /// [chessBoardScreenProviderNew] is keyed by **gameId alone**, so two routes
+  /// showing the same game share one notifier — and with it one mutable `index`
+  /// field. That happens in production: a live board → player row tap → score
+  /// card → tapping that same live game pushes a second board whose list (the
+  /// player's own games) holds it at a different position, while the first
+  /// board is still mounted underneath keeping the notifier alive.
+  ///
+  /// Every engine gate compares that field against
+  /// [currentlyVisiblePageIndexProvider] — `parseMoves`, `_evaluatePosition`
+  /// and the engine-released listener — so a notifier still carrying the
+  /// covered route's index skips every evaluation and the engine looks dead
+  /// with no error. Only the visible board route may own the field: adopt it on
+  /// mount, on user page change, and on reveal ([didPopNext]).
+  void _adoptBoardIndexForPage(int pageIndex) {
+    if (widget.games.isEmpty) return;
+    try {
+      final game = _resolveGameForIndex(pageIndex);
+      ref
+          .read(
+            chessBoardScreenProviderNew(
+              _createParams(game, pageIndex),
+            ).notifier,
+          )
+          .syncPageIndex(pageIndex);
+    } catch (e) {
+      debugPrint('Error adopting board page index: $e');
+    }
+  }
+
   @override
   void didUpdateWidget(covariant ChessBoardScreenNew oldWidget) {
     super.didUpdateWidget(oldWidget);
-    // Background full-event expand (For You / favorites / countrymen open path)
+    // Background full-event expand (For You / tournament preview open path)
     // can replace the constructor games list after the first frame. Keep the
     // user on the same gameId and jump the page controller when its index moves
     // in the expanded Games-tab order. Provider identity is gameId-only, so we
@@ -1649,6 +1712,12 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
     final previousIndex = _currentPageIndex;
     if (indexChanged) {
       _currentPageIndex = desiredIndex;
+      // Back navigation returns this index to the screen that opened the
+      // board. Once expansion reorders the current game, keep that return
+      // position in the same (new) index space as the PageView.
+      if (_lastViewedIndex != null) {
+        _lastViewedIndex = desiredIndex;
+      }
       // Jump immediately so this rebuild's PageView ±1 window matches the
       // controller page — a post-frame jump would paint a blank frame first.
       // Suppress [_handlePageChange]: jumpToPage notifies onPageChanged
@@ -1669,7 +1738,12 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
         nextGameForId = candidate;
         final params = _createParams(candidate, desiredIndex);
         final notifier = ref.read(chessBoardScreenProviderNew(params).notifier);
-        if (indexChanged) {
+        // The notifier's index is shared state (identity is gameId-only), so it
+        // belongs to whichever board route is visible — the same rule the
+        // global writes below follow. An expand that lands while a score card
+        // or a nested board of the same game covers us must not steal it;
+        // [didPopNext] adopts the retained index when this route is revealed.
+        if (indexChanged && !_isRouteCovered) {
           notifier.syncPageIndex(desiredIndex);
         }
       }
@@ -1716,8 +1790,8 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
   ///   "Tried to modify a provider while the widget tree was building."
   ///
   /// It reproduces every time `_ExpandingChessBoardScreen` swaps its entry
-  /// subset for the full-event list (For You / favorites / countrymen / team
-  /// Standings open path). [initState] and [didChangeDependencies] already
+  /// subset for the full-event list (For You / tournament preview open path).
+  /// [initState] and [didChangeDependencies] already
   /// defer the same writes for the same reason — keep all three consistent.
   ///
   /// Also re-applies [PageController.jumpToPage] post-frame: the didUpdateWidget
@@ -1725,17 +1799,20 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
   /// frame the PageView has the expanded count so the controller can land on
   /// [desiredIndex].
   ///
-  /// Guards: bail if the widget was disposed, if a newer games list already
-  /// landed (identity check), or if the page moved on after this frame — a
-  /// concurrent `_handlePageChange` owns the index in that case and must not
-  /// be clobbered with a stale one.
+  /// Guards: bail if the widget was disposed or a newer games list already
+  /// landed (identity check). The internal controller correction still runs
+  /// while this route is covered: an expansion can land behind a score card,
+  /// and [didPopNext] must reveal a PageView aligned with the retained index.
+  /// Global provider writes remain suppressed until that route is revealed.
   void _syncExpandedGameProvidersAfterFrame({
     required List<GamesTourModel> games,
     required bool indexChanged,
     required int desiredIndex,
   }) {
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted || !identical(widget.games, games)) return;
+      if (!mounted || !identical(widget.games, games)) {
+        return;
+      }
 
       if (indexChanged &&
           _currentPageIndex == desiredIndex &&
@@ -1745,6 +1822,8 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
           _jumpToPageProgrammatically(desiredIndex);
         }
       }
+
+      if (_isRouteCovered) return;
 
       ref.read(chessBoardAllGamesProvider.notifier).state = games;
       if (indexChanged && _currentPageIndex == desiredIndex) {
@@ -1778,9 +1857,14 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
 
     // Set the initial visible page index - delayed to avoid modifying provider during build
     Future.microtask(() {
-      if (mounted) {
+      if (mounted && !_isRouteCovered) {
         ref.read(currentlyVisiblePageIndexProvider.notifier).state =
             _currentPageIndex;
+        // A board re-opened for a game that another mounted board still holds
+        // (score card → same live game) reuses that gameId-keyed notifier with
+        // the other route's index. Claim it before the first parse/eval below,
+        // or every evaluation is gated off as "not the visible game".
+        _adoptBoardIndexForPage(_currentPageIndex);
 
         // Disable gamebase overlay by default for library routes (games past move 10)
         if (widget.disableGamebaseOverlayByDefault) {
@@ -2287,13 +2371,20 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
     setState(() {
       _currentPageIndex = newIndex;
     });
+    widget.onVisibleGameChanged?.call(_resolveGameForIndex(newIndex).gameId);
     _keepBoardProviderAlive(newIndex);
     unawaited(_syncPipGameSnapshot(_resolveGameForIndex(newIndex)));
 
     // CRITICAL: Update the global provider to track which page is visible
     // This prevents off-screen games from playing audio
     // (User swipe only — programmatic jumps are gated above.)
-    ref.read(currentlyVisiblePageIndexProvider.notifier).state = newIndex;
+    if (!_isRouteCovered) {
+      ref.read(currentlyVisiblePageIndexProvider.notifier).state = newIndex;
+      // Swiping onto a game another mounted board also holds must move that
+      // shared notifier's index with the PageView, not leave it on the other
+      // route's page.
+      _adoptBoardIndexForPage(newIndex);
+    }
 
     // Cancel active evaluations on the board that just went off-screen
     try {
@@ -2461,6 +2552,17 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
   void didPopNext() {
     // Route on top was popped — board is visible again.
     _isRouteCovered = false;
+    // Nested score cards and boards update the legacy global source. Restore
+    // this route's immutable contract before its player rows become tappable
+    // again, so returning cannot silently inherit the nested route's context.
+    ref.read(chessboardViewFromProviderNew.notifier).state = widget.viewSource;
+    ref.read(chessBoardAllGamesProvider.notifier).state = widget.games;
+    ref.read(currentlyVisiblePageIndexProvider.notifier).state =
+        _currentPageIndex;
+    // The nested route may have shared this game's notifier and moved its page
+    // index to its own list position. Take it back now that this PageView is
+    // the visible one, otherwise this board's engine stays gated off.
+    _adoptBoardIndexForPage(_currentPageIndex);
     _scheduleLifecycleResume();
     super.didPopNext();
   }
@@ -2641,7 +2743,7 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
       });
     });
 
-    final view = ref.watch(chessboardViewFromProviderNew);
+    final view = widget.viewSource;
     AsyncValue<GamesScreenModel> gamesAsync;
 
     switch (view) {
@@ -2881,6 +2983,7 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
                       key: _gameSwitcher.panelSpaceKey,
                       children: [
                         PageView.builder(
+                          key: boardGamesPageViewTestKey,
                           padEnds: true,
                           // PERF: Disabled implicit scrolling entirely - it pre-renders adjacent
                           // pages for accessibility which is too expensive for complex chess views.
@@ -2933,6 +3036,8 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
                                           game: chessBoardState.game,
                                           state: chessBoardState,
                                           games: syncedGames,
+                                          scoreCardViewSource:
+                                              widget.viewSource,
                                           currentGameIndex: index,
                                           currentPageIndex: _currentPageIndex,
                                           lastViewedIndex: _lastViewedIndex,
@@ -3022,6 +3127,9 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
                                         32.sp,
                                     animation: _gameSwitcher.animation,
                                     games: syncedGames,
+                                    viewSource: widget.viewSource,
+                                    playerProfileDataSource:
+                                        widget.playerProfileDataSource,
                                     currentGameIndex: _currentPageIndex.clamp(
                                       0,
                                       syncedGames.length - 1,
@@ -3523,6 +3631,7 @@ class _GamePage extends ConsumerWidget {
   final GamesTourModel game;
   final ChessBoardStateNew state;
   final List<GamesTourModel> games;
+  final ChessboardView scoreCardViewSource;
   final int currentGameIndex;
   final int currentPageIndex;
   final int? lastViewedIndex;
@@ -3537,6 +3646,7 @@ class _GamePage extends ConsumerWidget {
     required this.game,
     required this.state,
     required this.games,
+    required this.scoreCardViewSource,
     required this.currentGameIndex,
     required this.currentPageIndex,
     required this.onToggleGamebase,
@@ -3577,6 +3687,8 @@ class _GamePage extends ConsumerWidget {
         index: currentGameIndex,
         currentPageIndex: currentPageIndex,
         game: game,
+        scoreCardGamesContext: games,
+        scoreCardViewSource: scoreCardViewSource,
         state: state,
         playerProfileDataSource: playerProfileDataSource,
         showGamebaseButton: showGamebaseButton,
@@ -5447,6 +5559,8 @@ class _GameDropdownOverlay extends StatelessWidget {
   final double availableHeight;
   final Animation<double> animation;
   final List<GamesTourModel> games;
+  final ChessboardView viewSource;
+  final PlayerProfileDataSource playerProfileDataSource;
   final int currentGameIndex;
   final bool isLoading;
   final ValueChanged<int> onSelect;
@@ -5458,6 +5572,8 @@ class _GameDropdownOverlay extends StatelessWidget {
     required this.availableHeight,
     required this.animation,
     required this.games,
+    required this.viewSource,
+    required this.playerProfileDataSource,
     required this.currentGameIndex,
     required this.isLoading,
     required this.onSelect,
@@ -5578,10 +5694,13 @@ class _GameDropdownOverlay extends StatelessWidget {
                   child: ClipRRect(
                     borderRadius: BorderRadius.circular(12.br),
                     child: _GameDropdownContent(
+                      key: boardGameDropdownContentTestKey,
                       dropdownWidth: dropdownWidth,
                       availableHeight: maxPanelHeight,
                       animation: animation,
                       games: games,
+                      viewSource: viewSource,
+                      playerProfileDataSource: playerProfileDataSource,
                       currentGameIndex: currentGameIndex,
                       isLoading: isLoading,
                       onSelect: onSelect,
@@ -5761,15 +5880,20 @@ class _GameDropdownContent extends ConsumerStatefulWidget {
   final double availableHeight;
   final Animation<double> animation;
   final List<GamesTourModel> games;
+  final ChessboardView viewSource;
+  final PlayerProfileDataSource playerProfileDataSource;
   final int currentGameIndex;
   final bool isLoading;
   final ValueChanged<int> onSelect;
 
   const _GameDropdownContent({
+    super.key,
     required this.dropdownWidth,
     required this.availableHeight,
     required this.animation,
     required this.games,
+    required this.viewSource,
+    required this.playerProfileDataSource,
     required this.currentGameIndex,
     required this.isLoading,
     required this.onSelect,
@@ -5778,6 +5902,22 @@ class _GameDropdownContent extends ConsumerStatefulWidget {
   @override
   ConsumerState<_GameDropdownContent> createState() =>
       _GameDropdownContentState();
+}
+
+/// Reads the user-visible navigation contract supplied to the dropdown
+/// without exposing its private implementation widget to tests.
+@visibleForTesting
+({List<String> gameIds, int currentIndex, String? selectedGameId})
+boardGameDropdownSnapshotForTesting(Widget widget) {
+  final dropdown = widget as _GameDropdownContent;
+  final games = dropdown.games;
+  final index =
+      games.isEmpty ? 0 : dropdown.currentGameIndex.clamp(0, games.length - 1);
+  return (
+    gameIds: games.map((game) => game.gameId).toList(growable: false),
+    currentIndex: dropdown.currentGameIndex,
+    selectedGameId: games.isEmpty ? null : games[index].gameId,
+  );
 }
 
 class _GameDropdownContentState extends ConsumerState<_GameDropdownContent> {
@@ -6028,6 +6168,9 @@ class _GameDropdownContentState extends ConsumerState<_GameDropdownContent> {
                         game: game,
                         isSelected: isSelected,
                         liveBatchKey: liveBatchKeys[game.gameId],
+                        viewSource: widget.viewSource,
+                        gamesContext: widget.games,
+                        playerProfileDataSource: widget.playerProfileDataSource,
                         onTap: () {
                           HapticFeedback.selectionClick();
                           // Any game tap dismisses the popdown. Re-tapping the
@@ -6344,12 +6487,18 @@ class _GameSelectorCard extends ConsumerWidget {
     required this.game,
     required this.isSelected,
     required this.onTap,
+    required this.viewSource,
+    required this.gamesContext,
+    required this.playerProfileDataSource,
     this.liveBatchKey,
   });
 
   final GamesTourModel game;
   final bool isSelected;
   final VoidCallback onTap;
+  final ChessboardView viewSource;
+  final List<GamesTourModel> gamesContext;
+  final PlayerProfileDataSource playerProfileDataSource;
 
   /// Shared batched realtime channel for this game's round chunk. Null for
   /// finished/non-live games (no subscription).
@@ -6406,6 +6555,9 @@ class _GameSelectorCard extends ConsumerWidget {
       playerView: PlayerView.gridView,
       showClock: liveGame.hasStarted,
       liveBatchKey: liveBatchKey,
+      scoreCardViewSource: viewSource,
+      scoreCardGamesContext: gamesContext,
+      playerProfileDataSource: playerProfileDataSource,
       compactName: true,
     );
 
@@ -6418,6 +6570,7 @@ class _GameSelectorCard extends ConsumerWidget {
     final evalBarWidth = 10.w;
 
     return GestureDetector(
+      key: boardGameDropdownCardTestKey(game.gameId),
       behavior: HitTestBehavior.opaque,
       onTap: onTap,
       child: SizedBox(
@@ -7029,6 +7182,8 @@ class _GameBody extends StatelessWidget {
   final int index;
   final int currentPageIndex;
   final GamesTourModel game;
+  final List<GamesTourModel> scoreCardGamesContext;
+  final ChessboardView scoreCardViewSource;
   final ChessBoardStateNew state;
   final PlayerProfileDataSource playerProfileDataSource;
   final bool showGamebaseButton;
@@ -7038,6 +7193,8 @@ class _GameBody extends StatelessWidget {
     required this.index,
     required this.currentPageIndex,
     required this.game,
+    required this.scoreCardGamesContext,
+    required this.scoreCardViewSource,
     required this.state,
     this.playerProfileDataSource = PlayerProfileDataSource.supabase,
     this.showGamebaseButton = false,
@@ -7051,6 +7208,8 @@ class _GameBody extends StatelessWidget {
       index: index,
       currentPageIndex: currentPageIndex,
       game: game,
+      scoreCardGamesContext: scoreCardGamesContext,
+      scoreCardViewSource: scoreCardViewSource,
       state: state,
       playerProfileDataSource: playerProfileDataSource,
       showGamebaseButton: showGamebaseButton,
@@ -7168,6 +7327,8 @@ class _AnalysisGameBody extends ConsumerWidget {
   final int index;
   final int currentPageIndex;
   final GamesTourModel game;
+  final List<GamesTourModel> scoreCardGamesContext;
+  final ChessboardView scoreCardViewSource;
   final ChessBoardStateNew state;
   final PlayerProfileDataSource playerProfileDataSource;
   final bool showGamebaseButton;
@@ -7177,6 +7338,8 @@ class _AnalysisGameBody extends ConsumerWidget {
     required this.index,
     required this.currentPageIndex,
     required this.game,
+    required this.scoreCardGamesContext,
+    required this.scoreCardViewSource,
     required this.state,
     this.playerProfileDataSource = PlayerProfileDataSource.supabase,
     this.showGamebaseButton = false,
@@ -7271,6 +7434,8 @@ class _AnalysisGameBody extends ConsumerWidget {
         final boardHeaderChildren = <Widget>[
           _PlayerWidget(
             game: game,
+            scoreCardGamesContext: scoreCardGamesContext,
+            scoreCardViewSource: scoreCardViewSource,
             isFlipped: state.isBoardFlipped,
             blackPlayer: false,
             state: state,
@@ -7298,6 +7463,8 @@ class _AnalysisGameBody extends ConsumerWidget {
             enabled: isVisiblePage,
             child: _PlayerWidget(
               game: game,
+              scoreCardGamesContext: scoreCardGamesContext,
+              scoreCardViewSource: scoreCardViewSource,
               isFlipped: state.isBoardFlipped,
               blackPlayer: true,
               state: state,
@@ -7472,9 +7639,12 @@ class _AnalysisGameBody extends ConsumerWidget {
                       // Top player card
                       _TabletPlayerCard(
                         game: game,
+                        scoreCardGamesContext: scoreCardGamesContext,
+                        scoreCardViewSource: scoreCardViewSource,
                         isFlipped: state.isBoardFlipped,
                         blackPlayer: false,
                         state: state,
+                        playerProfileDataSource: playerProfileDataSource,
                         showClock: showClock,
                         onEditName:
                             showGamebaseButton
@@ -7495,9 +7665,12 @@ class _AnalysisGameBody extends ConsumerWidget {
                       // Bottom player card
                       _TabletPlayerCard(
                         game: game,
+                        scoreCardGamesContext: scoreCardGamesContext,
+                        scoreCardViewSource: scoreCardViewSource,
                         isFlipped: state.isBoardFlipped,
                         blackPlayer: true,
                         state: state,
+                        playerProfileDataSource: playerProfileDataSource,
                         showClock: showClock,
                         onEditName:
                             showGamebaseButton
@@ -7565,9 +7738,12 @@ class _AnalysisGameBody extends ConsumerWidget {
                       padding: EdgeInsets.symmetric(horizontal: 16.sp),
                       child: _TabletPlayerCard(
                         game: game,
+                        scoreCardGamesContext: scoreCardGamesContext,
+                        scoreCardViewSource: scoreCardViewSource,
                         isFlipped: state.isBoardFlipped,
                         blackPlayer: false,
                         state: state,
+                        playerProfileDataSource: playerProfileDataSource,
                         showClock: showClock,
                         onEditName:
                             showGamebaseButton
@@ -7589,9 +7765,12 @@ class _AnalysisGameBody extends ConsumerWidget {
                       padding: EdgeInsets.symmetric(horizontal: 16.sp),
                       child: _TabletPlayerCard(
                         game: game,
+                        scoreCardGamesContext: scoreCardGamesContext,
+                        scoreCardViewSource: scoreCardViewSource,
                         isFlipped: state.isBoardFlipped,
                         blackPlayer: true,
                         state: state,
+                        playerProfileDataSource: playerProfileDataSource,
                         showClock: showClock,
                         onEditName:
                             showGamebaseButton
@@ -7670,6 +7849,8 @@ class _AnalysisGameBody extends ConsumerWidget {
 
 class _PlayerWidget extends StatelessWidget {
   final GamesTourModel game;
+  final List<GamesTourModel> scoreCardGamesContext;
+  final ChessboardView scoreCardViewSource;
   final bool isFlipped;
   final bool blackPlayer;
   final ChessBoardStateNew state;
@@ -7679,6 +7860,8 @@ class _PlayerWidget extends StatelessWidget {
 
   const _PlayerWidget({
     required this.game,
+    required this.scoreCardGamesContext,
+    required this.scoreCardViewSource,
     required this.isFlipped,
     required this.blackPlayer,
     required this.state,
@@ -7707,7 +7890,10 @@ class _PlayerWidget extends StatelessWidget {
       isWhitePlayer: isWhitePlayer,
       playerView: PlayerView.boardView,
       gamesTourModel: game,
-      chessBoardState: state, // Pass the state for move time calculation
+      // Pass the state for move time calculation.
+      chessBoardState: state,
+      scoreCardViewSource: scoreCardViewSource,
+      scoreCardGamesContext: scoreCardGamesContext,
       playerProfileDataSource: playerProfileDataSource,
       showClock: showClock,
       onEditName: onEditName,
@@ -7724,6 +7910,8 @@ class _PlayerWidget extends StatelessWidget {
 /// Features subtle background, better spacing, and enhanced typography
 class _TabletPlayerCard extends StatelessWidget {
   final GamesTourModel game;
+  final List<GamesTourModel> scoreCardGamesContext;
+  final ChessboardView scoreCardViewSource;
   final bool isFlipped;
   final bool blackPlayer;
   final ChessBoardStateNew state;
@@ -7733,10 +7921,11 @@ class _TabletPlayerCard extends StatelessWidget {
 
   const _TabletPlayerCard({
     required this.game,
+    required this.scoreCardGamesContext,
+    required this.scoreCardViewSource,
     required this.isFlipped,
     required this.blackPlayer,
     required this.state,
-    // ignore: unused_element_parameter
     this.playerProfileDataSource = PlayerProfileDataSource.supabase,
     this.showClock = true,
     this.onEditName,
@@ -7779,6 +7968,8 @@ class _TabletPlayerCard extends StatelessWidget {
         playerView: PlayerView.boardView,
         gamesTourModel: game,
         chessBoardState: state,
+        scoreCardViewSource: scoreCardViewSource,
+        scoreCardGamesContext: scoreCardGamesContext,
         playerProfileDataSource: playerProfileDataSource,
         showClock: showClock,
         onEditName: onEditName,
@@ -10691,7 +10882,10 @@ class _FenPositionGamesTableState
               (_) => ChessBoardScreenNew(
                 games: boardGames,
                 currentIndex: index.clamp(0, boardGames.length - 1),
+                viewSource: ChessboardView.tour,
+                playerProfileDataSource: PlayerProfileDataSource.twic,
                 disableGamebaseOverlayByDefault: true,
+                showClock: false,
                 initialFen: widget.fen,
               ),
         ),

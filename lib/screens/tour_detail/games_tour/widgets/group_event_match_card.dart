@@ -368,6 +368,9 @@ class GroupEventMatchCard extends ConsumerWidget {
             ),
             gameIndex: gameIndex,
             isChessBoardVisible: true,
+            navigationListPolicy: boardNavigationListPolicyForGamesData(
+              gamesData,
+            ),
             fixedBottomSide: teamOneBottomSide(matchWithComparison.comparison),
             allowStockfishFallback: allowStockfishFallback,
             streamEnabled: streamEnabled,
@@ -403,6 +406,7 @@ class GroupEventMatchCard extends ConsumerWidget {
                 orderedGames: updatedGames,
                 gameIndex: gameIndex,
                 onReturnFromChessboard: onReturnFromChessboard,
+                listPolicy: boardNavigationListPolicyForGamesData(gamesData),
               ),
       pinnedIds: gamesData.pinnedGamedIs,
       allowStockfishFallback: allowStockfishFallback,

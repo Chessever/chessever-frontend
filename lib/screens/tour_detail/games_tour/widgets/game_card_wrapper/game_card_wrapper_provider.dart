@@ -26,6 +26,19 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 List<GamesTourModel> sortForYouEventGames(List<Games> games) =>
     sortGamesForGamesTab(games: games, pinnedIds: const <String>[]);
 
+/// Search and live/finished filters turn an otherwise expandable tournament
+/// preview into a deliberate user-visible collection. Keep that filtered
+/// membership and order; an unfiltered event list may still hydrate a
+/// one-round preview to the complete event.
+BoardNavigationListPolicy boardNavigationListPolicyForGamesData(
+  GamesScreenModel gamesData,
+) {
+  return gamesData.isSearchMode ||
+          gamesData.gameDisplayMode != GameDisplayMode.all
+      ? BoardNavigationListPolicy.preserve
+      : BoardNavigationListPolicy.sourceDefault;
+}
+
 final gameCardWrapperProvider = AutoDisposeProvider<_GameCardWrapperProvider>((
   ref,
 ) {
@@ -48,12 +61,42 @@ class BoardNavigationLaunch {
   final List<GamesTourModel> immediateGames;
   final int immediateIndex;
   final Future<({List<GamesTourModel> games, int index})> expanded;
+  final _BoardNavigationSnapshot _latest;
 
-  const BoardNavigationLaunch({
+  const BoardNavigationLaunch._({
     required this.immediateGames,
     required this.immediateIndex,
     required this.expanded,
-  });
+    required _BoardNavigationSnapshot latest,
+  }) : _latest = latest;
+
+  /// The list currently installed in the deferred board host. Navigation back
+  /// uses this snapshot to translate the board's index into the caller's list
+  /// by game ID, because an expanded event and its preview use different index
+  /// spaces.
+  List<GamesTourModel> get currentGames => _latest.games;
+}
+
+class _BoardNavigationSnapshot {
+  _BoardNavigationSnapshot({required this.games});
+
+  List<GamesTourModel> games;
+}
+
+/// Maps a board result back into the exact list that opened it. A game exposed
+/// only by full-event expansion has no row in the caller, so returning to the
+/// previous screen keeps its existing scroll position instead of jumping to an
+/// unrelated row that happens to share the expanded index.
+@visibleForTesting
+int? callerIndexForBoardReturn({
+  required List<GamesTourModel> callerGames,
+  required List<GamesTourModel> boardGames,
+  required int boardIndex,
+}) {
+  if (boardIndex < 0 || boardIndex >= boardGames.length) return null;
+  final gameId = boardGames[boardIndex].gameId;
+  final callerIndex = callerGames.indexWhere((game) => game.gameId == gameId);
+  return callerIndex < 0 ? null : callerIndex;
 }
 
 class _GameCardWrapperProvider {
@@ -82,6 +125,7 @@ class _GameCardWrapperProvider {
     // game's event so For You and the tournament Games tab hydrate the
     // switcher the same way.
     required ChessboardView viewSource,
+    required BoardNavigationListPolicy listPolicy,
   }) async {
     if (orderedGames.isEmpty) {
       return _ResolvedNavigation(games: orderedGames, index: gameIndex);
@@ -90,14 +134,14 @@ class _GameCardWrapperProvider {
     final safeIndex = gameIndex.clamp(0, orderedGames.length - 1);
     final tappedGame = orderedGames[safeIndex];
 
-    // Favorites, countrymen and smart events hand over a list the user built
-    // or filtered on purpose. Swapping it for the tapped game's full event
-    // throws that filter away — the dropdown fills with games the collection
-    // deliberately excluded — so those contexts keep exactly what they passed.
+    // Collection sources and explicit preserve callers hand over a list the
+    // user built or filtered on purpose. Swapping it for the tapped game's full
+    // event throws that filter away, so keep exactly what they passed.
     // The selected game is still freshened downstream by
     // [_hydrateSelectedGameForNavigation]; only the *membership and order* are
     // frozen here.
-    if (viewSource.preservesNavigationCollection) {
+    if (listPolicy == BoardNavigationListPolicy.preserve ||
+        viewSource.preservesNavigationCollection) {
       return _ResolvedNavigation(games: orderedGames, index: safeIndex);
     }
 
@@ -108,12 +152,15 @@ class _GameCardWrapperProvider {
     // tourId rather than requiring the whole ordered list to be single-tour.
     //
     // Leave the list EXACTLY as passed when expanding is wrong/unneeded:
-    //  - virtual gamebase / empty tourId → no broadcast tour to fetch.
+    //  - archive/local game, virtual gamebase, or empty tourId → no broadcast
+    //    tour to fetch.
     //  - single-tour list that already covers 2+ rounds and is not For You →
     //    already the full multi-round Games-tab list (or equivalent); never
     //    refetch or reorder it.
     final tourId = tappedGame.tourId;
-    if (tourId.isEmpty || isVirtualGamebaseId(tourId)) {
+    if (tappedGame.source != GameSource.supabase ||
+        tourId.isEmpty ||
+        isVirtualGamebaseId(tourId)) {
       return _ResolvedNavigation(games: orderedGames, index: safeIndex);
     }
 
@@ -139,8 +186,8 @@ class _GameCardWrapperProvider {
       // top-N preview per event via a pure RPC (`getForYouTopGamesByEventIds`)
       // that never writes the games cache — so an event reached ONLY through
       // For You (never opened via its event card / Games tab) has NO cached
-      // games. Same for a cold favorites/countrymen open of a never-visited
-      // tour. Fetch the full event once so the dropdown lists every round,
+      // games. An expandable tournament preview can be cold for the same
+      // reason. Fetch the full event once so the dropdown lists every round,
       // exactly like entering through the Games tab. `fetchAndSaveGames` also
       // persists it, so every re-open of this event stays network-free.
       //
@@ -155,6 +202,33 @@ class _GameCardWrapperProvider {
       }
 
       final fullGames = await compute(sortForYouEventGames, rawGames);
+      final fullGameIds = fullGames.map((game) => game.gameId).toSet();
+      final omitsImmediateSibling = sameTourGames.any(
+        (game) => !fullGameIds.contains(game.gameId),
+      );
+      // A non-empty cache can still lag a live preview. Never let that stale
+      // candidate delete a game the caller already displayed: if the user has
+      // swiped to the missing sibling while expansion is running, replacing
+      // the list would make the PageView remap fail and jump to another game.
+      if (omitsImmediateSibling) {
+        return _ResolvedNavigation(games: orderedGames, index: safeIndex);
+      }
+
+      // Expansion must add event membership without rewinding any live row the
+      // caller already owns. Merge every immediate sibling, not only the
+      // tapped game: the user can swipe while this background work is running.
+      final immediateById = {
+        for (final game in sameTourGames) game.gameId: game,
+      };
+      for (var i = 0; i < fullGames.length; i++) {
+        final immediate = immediateById[fullGames[i].gameId];
+        if (immediate != null) {
+          fullGames[i] = selectFreshestNavigationGame(
+            current: fullGames[i],
+            incoming: immediate,
+          );
+        }
+      }
       final resolvedIndex = fullGames.indexWhere(
         (g) => g.gameId == tappedGame.gameId,
       );
@@ -165,9 +239,6 @@ class _GameCardWrapperProvider {
         return _ResolvedNavigation(games: orderedGames, index: safeIndex);
       }
 
-      // Preserve the tapped game's live version (fresh fen/clock from the feed)
-      // while the rest of the event fills out the dropdown.
-      fullGames[resolvedIndex] = tappedGame;
       return _ResolvedNavigation(games: fullGames, index: resolvedIndex);
     } catch (_) {
       return _ResolvedNavigation(games: orderedGames, index: safeIndex);
@@ -178,11 +249,13 @@ class _GameCardWrapperProvider {
     required List<GamesTourModel> orderedGames,
     required int gameIndex,
     required ChessboardView viewSource,
+    required BoardNavigationListPolicy listPolicy,
   }) async {
     final resolved = await _resolveNavigationGames(
       orderedGames: orderedGames,
       gameIndex: gameIndex,
       viewSource: viewSource,
+      listPolicy: listPolicy,
     );
     return _hydrateSelectedGameForNavigation(resolved);
   }
@@ -228,20 +301,25 @@ class _GameCardWrapperProvider {
     required List<GamesTourModel> orderedGames,
     required int gameIndex,
     required ChessboardView viewSource,
+    BoardNavigationListPolicy listPolicy =
+        BoardNavigationListPolicy.sourceDefault,
   }) {
     final immediate = _immediateOpenNavigation(
       orderedGames: orderedGames,
       gameIndex: gameIndex,
     );
+    final latest = _BoardNavigationSnapshot(games: immediate.games);
     final expanded = _resolveHydratedNavigationGames(
       orderedGames: orderedGames,
       gameIndex: gameIndex,
       viewSource: viewSource,
+      listPolicy: listPolicy,
     ).then((resolved) => (games: resolved.games, index: resolved.index));
-    return BoardNavigationLaunch(
+    return BoardNavigationLaunch._(
       immediateGames: immediate.games,
       immediateIndex: immediate.index,
       expanded: expanded,
+      latest: latest,
     );
   }
 
@@ -258,6 +336,7 @@ class _GameCardWrapperProvider {
       orderedGames: orderedGames,
       gameIndex: gameIndex,
       viewSource: ChessboardView.forYou,
+      listPolicy: BoardNavigationListPolicy.sourceDefault,
     );
     return (resolved.games, resolved.index);
   }
@@ -267,11 +346,14 @@ class _GameCardWrapperProvider {
     required List<GamesTourModel> orderedGames,
     required int gameIndex,
     ChessboardView viewSource = ChessboardView.tour,
+    BoardNavigationListPolicy listPolicy =
+        BoardNavigationListPolicy.sourceDefault,
   }) async {
     final resolved = await _resolveHydratedNavigationGames(
       orderedGames: orderedGames,
       gameIndex: gameIndex,
       viewSource: viewSource,
+      listPolicy: listPolicy,
     );
     return (resolved.games, resolved.index);
   }
@@ -283,11 +365,14 @@ class _GameCardWrapperProvider {
     required List<GamesTourModel> orderedGames,
     required int gameIndex,
     ChessboardView viewSource = ChessboardView.forYou,
+    BoardNavigationListPolicy listPolicy =
+        BoardNavigationListPolicy.sourceDefault,
   }) {
     return beginBoardNavigation(
       orderedGames: orderedGames,
       gameIndex: gameIndex,
       viewSource: viewSource,
+      listPolicy: listPolicy,
     );
   }
 
@@ -297,6 +382,8 @@ class _GameCardWrapperProvider {
     required int gameIndex,
     required void Function(int)? onReturnFromChessboard,
     ChessboardView viewSource = ChessboardView.tour,
+    BoardNavigationListPolicy listPolicy =
+        BoardNavigationListPolicy.sourceDefault,
     bool hideEventInfo = false,
     PlayerProfileDataSource playerProfileDataSource =
         PlayerProfileDataSource.supabase,
@@ -305,6 +392,10 @@ class _GameCardWrapperProvider {
     bool showClock = true,
     SavedAnalysisData? savedAnalysisData,
   }) async {
+    final previousViewSource = _ref.read(chessboardViewFromProviderNew);
+    final previousBoardGames = _ref.read(chessBoardAllGamesProvider);
+    final previousVisibleIndex = _ref.read(currentlyVisiblePageIndexProvider);
+    final previousShouldStream = _ref.read(shouldStreamProvider);
     _ref.read(chessboardViewFromProviderNew.notifier).state = viewSource;
 
     // Critical path: open with the already-available card/list model. Full-event
@@ -314,9 +405,16 @@ class _GameCardWrapperProvider {
       orderedGames: orderedGames,
       gameIndex: gameIndex,
       viewSource: viewSource,
+      listPolicy: listPolicy,
     );
 
     if (!context.mounted) {
+      _restoreBoardNavigationContext(
+        viewSource: previousViewSource,
+        games: previousBoardGames,
+        visibleIndex: previousVisibleIndex,
+        shouldStream: previousShouldStream,
+      );
       return;
     }
 
@@ -324,36 +422,80 @@ class _GameCardWrapperProvider {
     // periodic refreshes and repeated fetch logs.
     _ref.read(shouldStreamProvider.notifier).state = false;
 
-    final returnedIndex = await Navigator.push<int>(
-      context,
-      MaterialPageRoute(
-        builder:
-            (_) => _ExpandingChessBoardScreen(
-              initialGames: launch.immediateGames,
-              initialIndex: launch.immediateIndex,
-              expandedNavigation: launch.expanded,
-              hideEventInfo: hideEventInfo,
-              playerProfileDataSource: playerProfileDataSource,
-              showGamebaseButton: showGamebaseButton,
-              disableGamebaseOverlayByDefault: disableGamebaseOverlayByDefault,
-              showClock: showClock,
-              savedAnalysisData: savedAnalysisData,
-            ),
-      ),
+    int? returnedIndex;
+    var boardGamesAtPop = launch.currentGames;
+    final callerRoute = ModalRoute.of(context);
+    var callerWasRevealed = false;
+    final boardRoute = MaterialPageRoute<int>(
+      builder:
+          (_) => _ExpandingChessBoardScreen(
+            initialGames: launch.immediateGames,
+            initialIndex: launch.immediateIndex,
+            expandedNavigation: launch.expanded,
+            navigationSnapshot: launch._latest,
+            viewSource: viewSource,
+            hideEventInfo: hideEventInfo,
+            playerProfileDataSource: playerProfileDataSource,
+            showGamebaseButton: showGamebaseButton,
+            disableGamebaseOverlayByDefault: disableGamebaseOverlayByDefault,
+            showClock: showClock,
+            savedAnalysisData: savedAnalysisData,
+          ),
     );
-
-    // Re-enable streaming when coming back to the tournament screen
-    _ref.read(shouldStreamProvider.notifier).state = true;
-    _ref.invalidate(gameUpdatesStreamProvider);
-    _ref.invalidate(liveGameUpdateStreamProvider);
-    _ref.invalidate(gameUpdatesBatchStreamProvider);
-
-    // If a different index was returned from the chessboard, notify the parent
-    if (returnedIndex != null &&
-        returnedIndex != gameIndex &&
-        onReturnFromChessboard != null) {
-      onReturnFromChessboard(returnedIndex);
+    try {
+      returnedIndex = await Navigator.push<int>(context, boardRoute);
+      boardGamesAtPop = List<GamesTourModel>.of(launch.currentGames);
+      // `Navigator.push` completes when the pop starts. Wait for the route's
+      // exit animation and disposal so outgoing dropdown/board callbacks cannot
+      // overwrite the caller context after it is restored below.
+      await boardRoute.completed;
+    } finally {
+      // Board navigation is stack-scoped. A nested board (for example one
+      // opened from a score card) must not leak its list, page, source, or
+      // streaming state into the route revealed underneath it.
+      callerWasRevealed = callerRoute?.isCurrent ?? context.mounted;
+      if (callerWasRevealed) {
+        _restoreBoardNavigationContext(
+          viewSource: previousViewSource,
+          games: previousBoardGames,
+          visibleIndex: previousVisibleIndex,
+          shouldStream: previousShouldStream,
+        );
+        if (previousShouldStream) {
+          _ref.invalidate(gameUpdatesStreamProvider);
+          _ref.invalidate(liveGameUpdateStreamProvider);
+          _ref.invalidate(gameUpdatesBatchStreamProvider);
+        }
+      }
     }
+
+    // Translate through gameId before telling the previous screen to scroll.
+    // Expanded and caller lists can have different membership and ordering.
+    if (callerWasRevealed &&
+        context.mounted &&
+        returnedIndex != null &&
+        onReturnFromChessboard != null) {
+      final callerIndex = callerIndexForBoardReturn(
+        callerGames: orderedGames,
+        boardGames: boardGamesAtPop,
+        boardIndex: returnedIndex,
+      );
+      if (callerIndex != null && callerIndex != gameIndex) {
+        onReturnFromChessboard(callerIndex);
+      }
+    }
+  }
+
+  void _restoreBoardNavigationContext({
+    required ChessboardView viewSource,
+    required List<GamesTourModel> games,
+    required int visibleIndex,
+    required bool shouldStream,
+  }) {
+    _ref.read(chessboardViewFromProviderNew.notifier).state = viewSource;
+    _ref.read(chessBoardAllGamesProvider.notifier).state = games;
+    _ref.read(currentlyVisiblePageIndexProvider.notifier).state = visibleIndex;
+    _ref.read(shouldStreamProvider.notifier).state = shouldStream;
   }
 }
 
@@ -365,6 +507,8 @@ class _ExpandingChessBoardScreen extends StatefulWidget {
     required this.initialGames,
     required this.initialIndex,
     required this.expandedNavigation,
+    required this.navigationSnapshot,
+    required this.viewSource,
     required this.hideEventInfo,
     required this.playerProfileDataSource,
     required this.showGamebaseButton,
@@ -376,6 +520,8 @@ class _ExpandingChessBoardScreen extends StatefulWidget {
   final List<GamesTourModel> initialGames;
   final int initialIndex;
   final Future<({List<GamesTourModel> games, int index})> expandedNavigation;
+  final _BoardNavigationSnapshot navigationSnapshot;
+  final ChessboardView viewSource;
   final bool hideEventInfo;
   final PlayerProfileDataSource playerProfileDataSource;
   final bool showGamebaseButton;
@@ -388,10 +534,46 @@ class _ExpandingChessBoardScreen extends StatefulWidget {
       _ExpandingChessBoardScreenState();
 }
 
-class _ExpandingChessBoardScreenState extends State<_ExpandingChessBoardScreen> {
+/// Pumps the production deferred-navigation host in widget tests without
+/// routing through a tap-only UI surface. The child remains the real
+/// [ChessBoardScreenNew], including its games PageView and switcher dropdown.
+@visibleForTesting
+class BoardNavigationSnapshotProbe {
+  _BoardNavigationSnapshot? _snapshot;
+
+  List<GamesTourModel> get games =>
+      List<GamesTourModel>.unmodifiable(_snapshot?.games ?? const []);
+}
+
+@visibleForTesting
+Widget expandingChessBoardScreenForTesting({
+  required List<GamesTourModel> initialGames,
+  required int initialIndex,
+  required Future<({List<GamesTourModel> games, int index})> expandedNavigation,
+  required ChessboardView viewSource,
+  BoardNavigationSnapshotProbe? snapshotProbe,
+}) {
+  final snapshot = _BoardNavigationSnapshot(games: initialGames);
+  snapshotProbe?._snapshot = snapshot;
+  return _ExpandingChessBoardScreen(
+    initialGames: initialGames,
+    initialIndex: initialIndex,
+    expandedNavigation: expandedNavigation,
+    navigationSnapshot: snapshot,
+    viewSource: viewSource,
+    hideEventInfo: false,
+    playerProfileDataSource: PlayerProfileDataSource.supabase,
+    showGamebaseButton: false,
+    disableGamebaseOverlayByDefault: true,
+    showClock: true,
+  );
+}
+
+class _ExpandingChessBoardScreenState
+    extends State<_ExpandingChessBoardScreen> {
   late List<GamesTourModel> _games;
   late int _index;
-  String? _openedGameId;
+  String? _visibleGameId;
 
   @override
   void initState() {
@@ -402,7 +584,7 @@ class _ExpandingChessBoardScreenState extends State<_ExpandingChessBoardScreen> 
             ? widget.initialIndex
             : widget.initialIndex.clamp(0, widget.initialGames.length - 1);
     if (_games.isNotEmpty) {
-      _openedGameId = _games[_index].gameId;
+      _visibleGameId = _games[_index].gameId;
     }
     unawaited(_applyExpandedNavigation());
   }
@@ -413,20 +595,38 @@ class _ExpandingChessBoardScreenState extends State<_ExpandingChessBoardScreen> 
       if (!mounted || resolved.games.isEmpty) return;
 
       var nextIndex = resolved.index.clamp(0, resolved.games.length - 1);
-      if (_openedGameId != null) {
-        final byId = resolved.games.indexWhere((g) => g.gameId == _openedGameId);
-        if (byId >= 0) {
-          nextIndex = byId;
+      if (_visibleGameId != null) {
+        final byId = resolved.games.indexWhere(
+          (g) => g.gameId == _visibleGameId,
+        );
+        // The user may swipe to another event while the originally tapped
+        // event is still expanding. Never install a candidate that deletes
+        // the game they have already made active.
+        if (byId < 0) {
+          return;
         }
+        nextIndex = byId;
       }
 
       if (!_navigationChanged(_games, _index, resolved.games, nextIndex)) {
         return;
       }
 
+      final acceptedGames = resolved.games;
       setState(() {
-        _games = resolved.games;
+        _games = acceptedGames;
         _index = nextIndex;
+      });
+      // Keep the return-index mapper in the same index space as the child
+      // PageView. `setState` updates [_games] immediately, but the child still
+      // owns the previous list until the next frame. Publishing the expanded
+      // snapshot before that rebuild creates a one-frame race where Back can
+      // return an old-list index and map it through the new list. Commit only
+      // after the child has rebuilt/remapped, and ignore a stale callback if a
+      // newer candidate ever supersedes this one.
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted || !identical(_games, acceptedGames)) return;
+        widget.navigationSnapshot.games = acceptedGames;
       });
     } catch (_) {
       // Keep the immediate open list; switcher stays on the entry subset.
@@ -461,12 +661,14 @@ class _ExpandingChessBoardScreenState extends State<_ExpandingChessBoardScreen> 
     return ChessBoardScreenNew(
       games: _games,
       currentIndex: _index,
+      viewSource: widget.viewSource,
       hideEventInfo: widget.hideEventInfo,
       playerProfileDataSource: widget.playerProfileDataSource,
       showGamebaseButton: widget.showGamebaseButton,
       disableGamebaseOverlayByDefault: widget.disableGamebaseOverlayByDefault,
       showClock: widget.showClock,
       savedAnalysisData: widget.savedAnalysisData,
+      onVisibleGameChanged: (gameId) => _visibleGameId = gameId,
     );
   }
 }

@@ -322,6 +322,107 @@ void main() {
     },
   );
 
+  test(
+    'reopening a live game from its score card reuses the notifier at the old index',
+    () {
+      // Board on a live game (round list, board 3) → tap a player row → score
+      // card → tap that same live game. The first board is still mounted, so
+      // its gameId-keyed notifier is alive; the second board opens on the
+      // player's own games where the game sits at a different position.
+      final game = _boardGame(
+        id: 'r5-b3',
+        pgn: _shortPgn,
+        fen: _afterE4Fen,
+        lastMove: 'e2e4',
+      );
+      final container = _boardContainer();
+      addTearDown(container.dispose);
+      // Keep every page "off screen" so no real evaluation starts in a unit
+      // test; the invariant under test is the notifier's own index field.
+      container.read(currentlyVisiblePageIndexProvider.notifier).state = 99;
+
+      final outerParams = ChessBoardProviderParams(game: game, index: 2);
+      final sub = container.listen(
+        chessBoardScreenProviderNew(outerParams),
+        (_, __) {},
+      );
+      addTearDown(sub.close);
+      final outer =
+          container.read(chessBoardScreenProviderNew(outerParams).notifier);
+      expect(outer.index, 2);
+
+      // Second board: same gameId, its own list position.
+      final nestedParams = ChessBoardProviderParams(game: game, index: 8);
+      final nested =
+          container.read(chessBoardScreenProviderNew(nestedParams).notifier);
+      expect(identical(outer, nested), isTrue);
+      expect(
+        nested.index,
+        2,
+        reason:
+            'constructing params with a new index does NOT move the live '
+            'notifier — only syncPageIndex does',
+      );
+
+      // The second board writes 8 to currentlyVisiblePageIndexProvider on
+      // mount. Every eval gate compares that against the notifier's index, so
+      // leaving it on 2 is the engine-dead state.
+      const nestedVisiblePage = 8;
+      expect(nested.index, isNot(nestedVisiblePage));
+
+      // Adoption by the visible route is the fix.
+      nested.syncPageIndex(nestedVisiblePage);
+      expect(nested.index, nestedVisiblePage);
+
+      // Popping back: the first board reclaims it for its own PageView.
+      outer.syncPageIndex(2);
+      expect(outer.index, 2);
+    },
+  );
+
+  test(
+    'board screen adopts the shared notifier index whenever it is the visible route',
+    () {
+      final boardSrc = File(
+        'lib/screens/chessboard/chess_board_screen_new.dart',
+      ).readAsStringSync();
+
+      expect(
+        boardSrc,
+        contains('void _adoptBoardIndexForPage(int pageIndex)'),
+        reason: 'helper claims the gameId-keyed notifier for this PageView',
+      );
+
+      for (final site in const [
+        'void didChangeDependencies',
+        'void didPopNext',
+        'Future<void> _handlePageChange',
+      ]) {
+        final start = boardSrc.indexOf(site);
+        expect(start, greaterThanOrEqualTo(0), reason: '$site present');
+        final slice = boardSrc.substring(
+          start,
+          (start + 3000).clamp(0, boardSrc.length),
+        );
+        expect(
+          slice,
+          contains('_adoptBoardIndexForPage('),
+          reason:
+              '$site makes this route the visible board — it must claim the '
+              'shared notifier index or every eval is gated off as '
+              '"not the visible game" (engine dead after score card reopen)',
+        );
+      }
+
+      // A covered route (score card / nested board of the same game on top)
+      // must not steal the index back when its background expand lands.
+      expect(
+        boardSrc,
+        contains('if (indexChanged && !_isRouteCovered) {'),
+        reason: 'expand remap syncs the notifier only while visible',
+      );
+    },
+  );
 }
 
 const _shortPgn = '''

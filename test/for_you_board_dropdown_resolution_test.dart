@@ -38,8 +38,9 @@ void main() {
 
   const expectedFullOrder = ['r3-b1', 'r2-b1', 'r2-b2', 'r1-b1', 'r1-b2'];
 
-  GamesTourModel modelFor(String id) =>
-      GamesTourModel.fromGame(fullEventRawGames().firstWhere((g) => g.id == id));
+  GamesTourModel modelFor(String id) => GamesTourModel.fromGame(
+    fullEventRawGames().firstWhere((g) => g.id == id),
+  );
 
   ProviderContainer containerWithCache(
     List<Games> cached, {
@@ -103,7 +104,10 @@ void main() {
 
     final (games, index) = await container
         .read(gameCardWrapperProvider)
-        .debugResolveForYouNavigation(orderedGames: previewSubset, gameIndex: 0);
+        .debugResolveForYouNavigation(
+          orderedGames: previewSubset,
+          gameIndex: 0,
+        );
 
     expect(games.length, 5);
     expect(index, 4);
@@ -113,7 +117,10 @@ void main() {
   test('cold cache fetches the full event once, then expands', () async {
     // Nothing cached (the For You feed never warmed the games cache), but the
     // network has the full event.
-    final container = containerWithCache(const [], network: fullEventRawGames());
+    final container = containerWithCache(
+      const [],
+      network: fullEventRawGames(),
+    );
     addTearDown(container.dispose);
 
     final previewSubset = [modelFor('r3-b1'), modelFor('r2-b1')];
@@ -175,7 +182,11 @@ void main() {
     final container = containerWithCache(const []); // would throw if it fetched
     addTearDown(container.dispose);
 
-    final multiRound = [modelFor('r3-b1'), modelFor('r2-b1'), modelFor('r1-b1')];
+    final multiRound = [
+      modelFor('r3-b1'),
+      modelFor('r2-b1'),
+      modelFor('r1-b1'),
+    ];
 
     final (games, index) = await container
         .read(gameCardWrapperProvider)
@@ -185,74 +196,53 @@ void main() {
           viewSource: ChessboardView.tour,
         );
 
-    expect(games.map((g) => g.gameId).toList(), [
-      'r3-b1',
-      'r2-b1',
-      'r1-b1',
-    ]);
+    expect(games.map((g) => g.gameId).toList(), ['r3-b1', 'r2-b1', 'r1-b1']);
     expect(index, 1);
   });
 
-  test(
-    'multi-tour non-collection list expands the tapped event only',
-    () async {
-      // Score card / player profile mix events but are not a collection the
-      // user filtered, so the board switcher must still receive the FULL
-      // tapped tour (prior rounds + boards), not the mixed feed and not only
-      // the single tapped card.
-      final tourAFull = fullEventRawGames(); // tour-1 by default
-      final tourBOnly = [
-        _makeGame(
-          id: 'b-r1-b1',
-          roundSlug: 'round-1',
-          boardNr: 1,
-          tourId: 'tour-B',
-        ),
-      ];
-      final container = ProviderContainer(
-        overrides: [
-          gamesLocalStorage.overrideWith(
-            (ref) => _FakeGamesLocalStorage(
-              ref,
-              const [],
-              byTour: {
-                'tour-1': tourAFull,
-                'tour-B': tourBOnly,
-              },
-            ),
+  test('multi-tour tournament preview expands the tapped event only', () async {
+    // A tournament preview may mix events and is explicitly expandable, so
+    // the board switcher receives the full tapped tour.
+    final tourAFull = fullEventRawGames(); // tour-1 by default
+    final tourBOnly = [
+      _makeGame(
+        id: 'b-r1-b1',
+        roundSlug: 'round-1',
+        boardNr: 1,
+        tourId: 'tour-B',
+      ),
+    ];
+    final container = ProviderContainer(
+      overrides: [
+        gamesLocalStorage.overrideWith(
+          (ref) => _FakeGamesLocalStorage(
+            ref,
+            const [],
+            byTour: {'tour-1': tourAFull, 'tour-B': tourBOnly},
           ),
-        ],
-      );
-      addTearDown(container.dispose);
+        ),
+      ],
+    );
+    addTearDown(container.dispose);
 
-      final mixedFeed = [
-        modelFor('r2-b1'), // tour-1, mid-event
-        GamesTourModel.fromGame(tourBOnly.first),
-      ];
+    final mixedFeed = [
+      modelFor('r2-b1'), // tour-1, mid-event
+      GamesTourModel.fromGame(tourBOnly.first),
+    ];
 
-      for (final viewSource in [
-        ChessboardView.favScorecard,
-        ChessboardView.playerProfile,
-      ]) {
-        final (games, index) = await container
-            .read(gameCardWrapperProvider)
-            .debugResolveNavigation(
-              orderedGames: mixedFeed,
-              gameIndex: 0,
-              viewSource: viewSource,
-            );
-
-        expect(
-          games.map((g) => g.gameId).toList(),
-          expectedFullOrder,
-          reason: '$viewSource must expand tour-1, not keep mixed feed',
+    final (games, index) = await container
+        .read(gameCardWrapperProvider)
+        .debugResolveNavigation(
+          orderedGames: mixedFeed,
+          gameIndex: 0,
+          viewSource: ChessboardView.tour,
         );
-        expect(games.every((g) => g.tourId == 'tour-1'), isTrue);
-        expect(index, 1);
-        expect(games[index].gameId, 'r2-b1');
-      }
-    },
-  );
+
+    expect(games.map((g) => g.gameId).toList(), expectedFullOrder);
+    expect(games.every((g) => g.tourId == 'tour-1'), isTrue);
+    expect(index, 1);
+    expect(games[index].gameId, 'r2-b1');
+  });
 
   test(
     'multi-tour list expands tour-B when the other event is tapped',
@@ -278,10 +268,7 @@ void main() {
             (ref) => _FakeGamesLocalStorage(
               ref,
               const [],
-              byTour: {
-                'tour-1': tourAFull,
-                'tour-B': tourBFull,
-              },
+              byTour: {'tour-1': tourAFull, 'tour-B': tourBFull},
             ),
           ),
         ],
@@ -298,7 +285,7 @@ void main() {
           .debugResolveNavigation(
             orderedGames: mixedFeed,
             gameIndex: 1,
-            viewSource: ChessboardView.favScorecard,
+            viewSource: ChessboardView.tour,
           );
 
       expect(games.map((g) => g.gameId).toList(), ['b-r2-b1', 'b-r1-b1']);
@@ -309,7 +296,7 @@ void main() {
   );
 
   test(
-    'cold multi-tour favorites fetch expands tapped tour when cache empty',
+    'cold multi-tour preview fetch expands tapped tour when cache empty',
     () async {
       final container = ProviderContainer(
         overrides: [
@@ -341,7 +328,7 @@ void main() {
           .debugResolveNavigation(
             orderedGames: mixedFeed,
             gameIndex: 0,
-            viewSource: ChessboardView.favScorecard,
+            viewSource: ChessboardView.tour,
           );
 
       expect(games.map((g) => g.gameId).toList(), expectedFullOrder);

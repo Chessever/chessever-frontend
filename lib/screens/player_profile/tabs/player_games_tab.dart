@@ -444,7 +444,7 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
         userFacingError(
           e,
           fallback: 'Could not select all games. Please try again.',
-          ),
+        ),
         tone: AppSnackTone.danger,
       );
     } finally {
@@ -1354,6 +1354,8 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
           game: entry.game,
           orderedGames: games,
           gameIndex: entry.gameIndex,
+          viewSource: ChessboardView.playerProfile,
+          playerProfileDataSource: widget.dataSource,
           allowStockfishFallback: true,
           streamEnabled: true,
           onChangedWithLiveGames: (updatedGames) async {
@@ -1369,6 +1371,7 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
                   gameIndex: entry.gameIndex,
                   onReturnFromChessboard: (_) {},
                   viewSource: ChessboardView.playerProfile,
+                  playerProfileDataSource: widget.dataSource,
                 );
           },
           pinnedIds: const [],
@@ -1389,6 +1392,7 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
         showGamebaseButton: false,
         playerProfileDataSource: widget.dataSource,
         streamEnabled: true,
+        viewSource: ChessboardView.playerProfile,
         onAdd:
             isSelectionMode
                 ? () => _toggleGameSelection(entry.game.gameId)
@@ -1438,6 +1442,8 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
       gameIndex: gameIndex,
       allowStockfishFallback: true,
       streamEnabled: true,
+      viewSource: ChessboardView.playerProfile,
+      playerProfileDataSource: widget.dataSource,
       onChangedWithLiveGames: (updatedGames) async {
         // Premium guard - show paywall if not subscribed
         final hasPremium = await requirePremiumGuard(context, ref);
@@ -1452,6 +1458,7 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
               gameIndex: gameIndex,
               onReturnFromChessboard: (_) {},
               viewSource: ChessboardView.playerProfile,
+              playerProfileDataSource: widget.dataSource,
             );
       },
       pinnedIds: const [],

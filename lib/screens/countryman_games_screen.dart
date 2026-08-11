@@ -282,6 +282,8 @@ class _CountrymanGamesListState extends ConsumerState<CountrymanGamesList>
                         },
                         gamesTourModel: game,
                         allowStockfishFallback: allowStockfishFallback,
+                        scoreCardViewSource: ChessboardView.countryman,
+                        scoreCardGamesContext: updatedGames,
                         showPin: false,
                       )
                       : GameCard(

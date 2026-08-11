@@ -36,7 +36,9 @@ class GamebaseSearchGameCard extends ConsumerWidget {
     this.showGamebaseButton = false,
     this.hideEventInfo = false,
     this.requirePremiumToAdd = true,
-    this.playerProfileDataSource = PlayerProfileDataSource.supabase,
+    this.playerProfileDataSource = PlayerProfileDataSource.twic,
+    this.viewSource = ChessboardView.tour,
+    this.navigationListPolicy = BoardNavigationListPolicy.preserve,
     this.onTap,
   });
 
@@ -62,6 +64,11 @@ class GamebaseSearchGameCard extends ConsumerWidget {
   final bool requirePremiumToAdd;
 
   final PlayerProfileDataSource playerProfileDataSource;
+
+  /// Identifies the collection that owns [allGames]. The board must preserve
+  /// that collection instead of replacing it with the tapped game's event.
+  final ChessboardView viewSource;
+  final BoardNavigationListPolicy navigationListPolicy;
 
   /// Optional tap callback. If provided, overrides default chessboard navigation.
   final VoidCallback? onTap;
@@ -199,8 +206,7 @@ class GamebaseSearchGameCard extends ConsumerWidget {
     final hasPremium = await requirePremiumGuard(context, ref);
     if (!hasPremium) return;
 
-    ref.read(chessboardViewFromProviderNew.notifier).state =
-        ChessboardView.tour;
+    ref.read(chessboardViewFromProviderNew.notifier).state = viewSource;
 
     final savedAnalysisData = await _resolveSavedAnalysisData(ref, game);
     if (!context.mounted) return;
@@ -366,7 +372,8 @@ class GamebaseSearchGameCard extends ConsumerWidget {
           orderedGames: games,
           gameIndex: index,
           onReturnFromChessboard: (_) {},
-          viewSource: ChessboardView.tour,
+          viewSource: viewSource,
+          listPolicy: navigationListPolicy,
           hideEventInfo: hideEventInfo,
           playerProfileDataSource: playerProfileDataSource,
           showGamebaseButton: showGamebaseButton,

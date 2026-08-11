@@ -856,6 +856,7 @@ class _CountrymenGamesTabState extends ConsumerState<CountrymenGamesTab>
           showSwipeHint: entry.showHint,
           showGamebaseButton: false,
           streamEnabled: streamEnabled,
+          viewSource: ChessboardView.countryman,
           onAdd: () => _showAddToFolderSheet(context, entry.game),
           onLiveAdd: (liveGame) => _showAddToFolderSheet(context, liveGame),
           onLiveTap: (liveGame, updatedGames, liveIndex) async {
@@ -1413,6 +1414,8 @@ class _CountrymenLiveBoardGameCardState
             !ref.watch(liveGameCardsPausedProvider) &&
             ref.watch(shouldStreamProvider),
         onPinToggle: (_) {},
+        scoreCardViewSource: ChessboardView.countryman,
+        scoreCardGamesContext: updatedGames,
       ),
     );
 

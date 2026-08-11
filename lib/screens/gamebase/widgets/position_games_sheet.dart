@@ -5,6 +5,7 @@ import 'package:chessever2/screens/chessboard/chess_board_screen_new.dart';
 import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
 import 'package:chessever2/screens/library/utils/gamebase_pgn_builder.dart';
 import 'package:chessever2/screens/library/widgets/library_game_card.dart';
+import 'package:chessever2/screens/player_profile/player_profile_data_source.dart';
 import 'package:chessever2/screens/player_profile/utils/twic_event_identity.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/repository/gamebase/search/gamebase_search_models.dart';
@@ -741,7 +742,10 @@ Future<void> openGamebaseGame(
             (_) => ChessBoardScreenNew(
               games: boardGames,
               currentIndex: safeIndex,
+              viewSource: ChessboardView.tour,
+              playerProfileDataSource: PlayerProfileDataSource.twic,
               disableGamebaseOverlayByDefault: true,
+              showClock: false,
               initialFen: initialFen,
             ),
       ),

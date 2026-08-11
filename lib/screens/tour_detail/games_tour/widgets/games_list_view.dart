@@ -321,6 +321,7 @@ class GamesListView extends ConsumerWidget {
                   _scrollToGameIndex(returnedIndex);
                   onReturnFromChessboard?.call(returnedIndex);
                 },
+                listPolicy: boardNavigationListPolicyForGamesData(gamesData),
               ),
       pinnedIds: gamesData.pinnedGamedIs,
       fixedBottomSide: fixedBottomSide,
@@ -354,6 +355,7 @@ class GamesListView extends ConsumerWidget {
       gamesData: modifiedGamesData,
       gameIndex: item.globalIndex1,
       isChessBoardVisible: gamesListViewMode == GamesListViewMode.chessBoard,
+      navigationListPolicy: boardNavigationListPolicyForGamesData(gamesData),
       fixedBottomSide: item.fixedBottomSide1,
       allowStockfishFallback: allowStockfishFallback,
       streamEnabled: streamEnabled,

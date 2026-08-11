@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:chessever2/repository/gamebase/miniatures/miniatures_models.dart';
 import 'package:chessever2/screens/library/miniatures/miniature_game_launcher.dart';
 import 'package:chessever2/screens/library/miniatures/miniatures_day_list_utils.dart';
+import 'package:chessever2/screens/player_profile/player_profile_data_source.dart';
 import 'package:chessever2/screens/library/providers/miniatures_provider.dart';
 import 'package:chessever2/screens/library/widgets/add_to_folder_sheet.dart';
 import 'package:chessever2/screens/library/widgets/miniatures_filter_dialog.dart';
@@ -464,10 +465,7 @@ class _MiniaturesGamesTabState extends ConsumerState<MiniaturesGamesTab>
       final isCollapsed = _collapsedDates.contains(dateKey);
 
       listEntries.add(
-        _MiniatureDateHeaderEntry(
-          dateKey: dateKey,
-          isExpanded: !isCollapsed,
-        ),
+        _MiniatureDateHeaderEntry(dateKey: dateKey, isExpanded: !isCollapsed),
       );
       if (isCollapsed) continue;
 
@@ -547,9 +545,7 @@ class _MiniaturesGamesTabState extends ConsumerState<MiniaturesGamesTab>
       return Padding(
         padding: EdgeInsets.only(bottom: 12.h),
         child: _DateHeader(
-          dateLabel: miniatureDateHeaderLabel(
-            _formatDateHeader(entry.dateKey),
-          ),
+          dateLabel: miniatureDateHeaderLabel(_formatDateHeader(entry.dateKey)),
           isExpanded: entry.isExpanded,
           onToggle: () => _toggleDateSection(entry.dateKey),
         ),
@@ -605,6 +601,7 @@ class _MiniaturesGamesTabState extends ConsumerState<MiniaturesGamesTab>
         gameIndex: entry.gameIndex,
         isChessBoardVisible: entry.isBoard,
         streamEnabled: false,
+        playerProfileDataSource: PlayerProfileDataSource.twic,
         footerDetail: _footerDetail(entry.game),
         // Pinning is meaningless outside a tour scope, so the long-press menu
         // drops the item rather than offering a tap that does nothing.
@@ -689,6 +686,7 @@ class _MiniaturesGamesTabState extends ConsumerState<MiniaturesGamesTab>
       orderedGames: allGames,
       gameIndex: gameIndex,
       streamEnabled: false,
+      playerProfileDataSource: PlayerProfileDataSource.twic,
       pinnedIds: const [],
       onPinToggle: (_) {},
       onChangedWithLiveGames: (_) => _openGame(allGames, gameIndex),

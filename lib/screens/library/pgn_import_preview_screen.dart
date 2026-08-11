@@ -3,9 +3,9 @@ import 'package:chessever2/screens/chessboard/chess_board_screen_new.dart';
 import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
 import 'package:chessever2/screens/library/widgets/import_pgn_to_folder_sheet.dart';
 import 'package:chessever2/screens/library/widgets/library_game_card.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/services/pgn_file_intake_service.dart';
 import 'package:chessever2/theme/app_colors.dart';
-import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
@@ -32,6 +32,42 @@ class PgnImportPreviewScreen extends ConsumerStatefulWidget {
   @override
   ConsumerState<PgnImportPreviewScreen> createState() =>
       _PgnImportPreviewScreenState();
+}
+
+bool _pgnImportGameMatches(ChessGame game, String query) {
+  if (query.isEmpty) return true;
+  final metadata = game.metadata;
+  final fields = [
+    metadata['White']?.toString() ?? '',
+    metadata['Black']?.toString() ?? '',
+    metadata['Event']?.toString() ?? '',
+    metadata['Site']?.toString() ?? '',
+    metadata['Opening']?.toString() ?? '',
+    metadata['ECO']?.toString() ?? '',
+  ];
+  return fields.any((field) => field.toLowerCase().contains(query));
+}
+
+@visibleForTesting
+List<ChessGame> filterPgnImportGames(List<ChessGame> games, String rawQuery) {
+  final query = rawQuery.trim().toLowerCase();
+  return games
+      .where((game) => _pgnImportGameMatches(game, query))
+      .toList(growable: false);
+}
+
+@visibleForTesting
+({List<GamesTourModel> games, int selectedIndex})
+buildPgnImportBoardNavigation({
+  required List<ChessGame> visibleGames,
+  required int selectedIndex,
+}) {
+  return (
+    games: visibleGames
+        .map(chessGameToImportedGamesTourModel)
+        .toList(growable: false),
+    selectedIndex: selectedIndex,
+  );
 }
 
 class _PgnImportPreviewScreenState
@@ -71,12 +107,14 @@ class _PgnImportPreviewScreenState
     }
   }
 
-  void _openGame(int index) {
+  void _openGame(List<ChessGame> visibleGames, int index) {
     HapticFeedbackService.cardTap();
     // Build a minimal GamesTourModel per game, embedding the full PGN so
     // ChessBoardScreenNew can render it without a Supabase lookup.
-    final games =
-        widget.games.map(chessGameToImportedGamesTourModel).toList();
+    final navigation = buildPgnImportBoardNavigation(
+      visibleGames: visibleGames,
+      selectedIndex: index,
+    );
 
     ref.read(chessboardViewFromProviderNew.notifier).state =
         ChessboardView.tour;
@@ -85,8 +123,9 @@ class _PgnImportPreviewScreenState
       MaterialPageRoute(
         builder:
             (_) => ChessBoardScreenNew(
-              currentIndex: index,
-              games: games,
+              currentIndex: navigation.selectedIndex,
+              games: navigation.games,
+              viewSource: ChessboardView.tour,
               showGamebaseButton: false,
               disableGamebaseOverlayByDefault: true,
             ),
@@ -94,29 +133,10 @@ class _PgnImportPreviewScreenState
     );
   }
 
-  bool _matches(ChessGame game, String query) {
-    if (query.isEmpty) return true;
-    final md = game.metadata;
-    final fields = [
-      md['White']?.toString() ?? '',
-      md['Black']?.toString() ?? '',
-      md['Event']?.toString() ?? '',
-      md['Site']?.toString() ?? '',
-      md['Opening']?.toString() ?? '',
-      md['ECO']?.toString() ?? '',
-    ];
-    return fields.any((f) => f.toLowerCase().contains(query));
-  }
-
   @override
   Widget build(BuildContext context) {
     final query = _searchController.text.trim().toLowerCase();
-    final filtered = <({ChessGame game, int originalIndex})>[];
-    for (var i = 0; i < widget.games.length; i++) {
-      if (_matches(widget.games[i], query)) {
-        filtered.add((game: widget.games[i], originalIndex: i));
-      }
-    }
+    final filtered = filterPgnImportGames(widget.games, query);
 
     return Scaffold(
       backgroundColor: context.colors.background,
@@ -145,7 +165,7 @@ class _PgnImportPreviewScreenState
     final topPadding = MediaQuery.of(context).viewPadding.top;
     return Container(
       padding: EdgeInsets.only(top: topPadding + 8.h, bottom: 6.h),
-      decoration:  BoxDecoration(
+      decoration: BoxDecoration(
         gradient: LinearGradient(
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
@@ -155,9 +175,7 @@ class _PgnImportPreviewScreenState
           ],
         ),
       ),
-      child: Column(
-        children: [_buildHeader(context), _buildSearchBar()],
-      ),
+      child: Column(children: [_buildHeader(context), _buildSearchBar()]),
     );
   }
 
@@ -255,7 +273,9 @@ class _PgnImportPreviewScreenState
             Expanded(
               child: TextField(
                 controller: _searchController,
-                style: AppTypography.textSmRegular.copyWith(color: context.colors.textPrimary),
+                style: AppTypography.textSmRegular.copyWith(
+                  color: context.colors.textPrimary,
+                ),
                 decoration: InputDecoration(
                   hintText: 'Search games...',
                   hintStyle: AppTypography.textSmRegular.copyWith(
@@ -285,26 +305,23 @@ class _PgnImportPreviewScreenState
     );
   }
 
-  Widget _buildList(
-    List<({ChessGame game, int originalIndex})> filtered,
-    String query,
-  ) {
+  Widget _buildList(List<ChessGame> filtered, String query) {
     if (filtered.isEmpty) {
       return Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Icon(
-              query.isEmpty
-                  ? Icons.inbox_outlined
-                  : Icons.search_off_rounded,
+              query.isEmpty ? Icons.inbox_outlined : Icons.search_off_rounded,
               size: 64.sp,
               color: context.colors.textPrimary.withValues(alpha: 0.1),
             ),
             SizedBox(height: 16.h),
             Text(
               query.isEmpty ? 'No games to import' : 'No matches found',
-              style: AppTypography.textMdMedium.copyWith(color: context.colors.textPrimary),
+              style: AppTypography.textMdMedium.copyWith(
+                color: context.colors.textPrimary,
+              ),
             ),
           ],
         ),
@@ -315,9 +332,9 @@ class _PgnImportPreviewScreenState
       padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 12.h),
       itemCount: filtered.length,
       itemBuilder: (context, index) {
-        final entry = filtered[index];
-        final tourModel = chessGameToImportedGamesTourModel(entry.game);
-        final md = entry.game.metadata;
+        final game = filtered[index];
+        final tourModel = chessGameToImportedGamesTourModel(game);
+        final md = game.metadata;
         final eventName = _eventNameFromMetadata(md);
 
         return Padding(
@@ -325,7 +342,7 @@ class _PgnImportPreviewScreenState
           child: LibraryGameCard(
             game: tourModel,
             eventName: eventName,
-            onTap: () => _openGame(entry.originalIndex),
+            onTap: () => _openGame(filtered, index),
           ),
         ).animate().fadeIn(duration: 150.ms);
       },

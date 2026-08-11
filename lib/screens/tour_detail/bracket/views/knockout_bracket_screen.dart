@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 
 import 'package:chessever2/repository/supabase/game/games.dart';
+import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
 import 'package:chessever2/screens/tour_detail/bracket/models/knockout_bracket.dart';
 import 'package:chessever2/screens/tour_detail/bracket/providers/bracket_share_provider.dart';
 import 'package:chessever2/screens/tour_detail/bracket/providers/knockout_bracket_provider.dart';
@@ -406,6 +407,7 @@ class _KnockoutBracketScreenState extends ConsumerState<KnockoutBracketScreen>
           orderedGames: navigation.games,
           gameIndex: navigation.selectedIndex,
           onReturnFromChessboard: null,
+          listPolicy: BoardNavigationListPolicy.preserve,
         );
   }
 }

@@ -102,6 +102,84 @@ void main() {
       await tester.pump(const Duration(seconds: 3));
     },
   );
+
+  testWidgets(
+    'global player-list player-name tap stays outside event context',
+    (tester) async {
+      tester.view.devicePixelRatio = 1;
+      tester.view.physicalSize = const Size(900, 1400);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      addTearDown(tester.view.resetPhysicalSize);
+
+      final games = [
+        _game(id: 'round-1', opponent: 'Opponent One'),
+        _game(id: 'round-2', opponent: 'Opponent Two'),
+      ];
+      final container = ProviderContainer(
+        overrides: [
+          boardSettingsProviderNew.overrideWith(_TestBoardSettingsNotifier.new),
+          engineSettingsProviderNew.overrideWith(
+            _TestEngineSettingsNotifier.new,
+          ),
+          playerTourScreenProvider.overrideWith(
+            _EmptyPlayerTourScreenNotifier.new,
+          ),
+          eventNoSpoilersProvider.overrideWith(
+            (ref, tourId) =>
+                _TestEventNoSpoilersController(ref: ref, tourId: tourId),
+          ),
+        ],
+      );
+      addTearDown(container.dispose);
+
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: container,
+          child: MaterialApp(
+            routes: {
+              '/scorecard_screen':
+                  (_) => const Scaffold(body: Text('scorecard')),
+            },
+            home: Builder(
+              builder: (context) {
+                ResponsiveHelper.init(context);
+                return Scaffold(
+                  body: GameCardWrapperWidget(
+                    game: games.first,
+                    gamesData: GamesScreenModel(
+                      gamesTourModels: games,
+                      pinnedGamedIs: const [],
+                    ),
+                    gameIndex: 0,
+                    isChessBoardVisible: true,
+                    viewSource: ChessboardView.favScorecard,
+                    streamEnabled: false,
+                  ),
+                );
+              },
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(
+        find.textContaining('Player One', findRichText: true).first,
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('scorecard'), findsOneWidget);
+      expect(container.read(scoreCardHasEventContextProvider), isFalse);
+      expect(container.read(scoreCardGamesContextProvider), isNull);
+      expect(
+        container.read(chessboardViewFromProviderNew),
+        ChessboardView.favScorecard,
+      );
+
+      // Let the board's short keep-alive timer expire inside fake async.
+      await tester.pump(const Duration(seconds: 3));
+    },
+  );
 }
 
 class _TestEventNoSpoilersController extends EventNoSpoilersController {

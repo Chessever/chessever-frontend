@@ -1,4 +1,5 @@
 import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
+import 'package:chessever2/screens/player_profile/player_profile_data_source.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrapper/game_card_wrapper_provider.dart';
 import 'package:chessever2/theme/app_colors.dart';
@@ -32,33 +33,33 @@ class TwicGameCard extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     return TappableScale(
-          onTap: () => _handleTap(context, ref),
-          child: Container(
-            margin: EdgeInsets.only(bottom: 10.sp),
-            padding: EdgeInsets.symmetric(horizontal: 14.sp, vertical: 12.sp),
-            decoration: BoxDecoration(
-              color: const Color(0xFFF5F5F5),
-              borderRadius: BorderRadius.circular(12.br),
-              boxShadow: [
-                BoxShadow(
-                  color: kBlackColor.withValues(alpha: 0.15),
-                  blurRadius: 8,
-                  offset: const Offset(0, 2),
-                ),
-              ],
+      onTap: () => _handleTap(context, ref),
+      child: Container(
+        margin: EdgeInsets.only(bottom: 10.sp),
+        padding: EdgeInsets.symmetric(horizontal: 14.sp, vertical: 12.sp),
+        decoration: BoxDecoration(
+          color: const Color(0xFFF5F5F5),
+          borderRadius: BorderRadius.circular(12.br),
+          boxShadow: [
+            BoxShadow(
+              color: kBlackColor.withValues(alpha: 0.15),
+              blurRadius: 8,
+              offset: const Offset(0, 2),
             ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // Players row
-                _PlayersRow(game: game),
-                SizedBox(height: 10.sp),
-                // Meta row: Tournament | Date
-                _MetaRow(game: game),
-              ],
-            ),
-          ),
-        );
+          ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Players row
+            _PlayersRow(game: game),
+            SizedBox(height: 10.sp),
+            // Meta row: Tournament | Date
+            _MetaRow(game: game),
+          ],
+        ),
+      ),
+    );
     // Staggered fadeIn/slideY entrance removed: animated Opacity (saveLayer)
     // per card with an animationIndex stagger cascaded jank across the premium
     // games list. Cards paint instantly now.
@@ -79,8 +80,11 @@ class TwicGameCard extends ConsumerWidget {
           gameIndex: gameIndex,
           onReturnFromChessboard: (_) {},
           viewSource: ChessboardView.tour,
+          listPolicy: BoardNavigationListPolicy.preserve,
           showGamebaseButton: true,
           disableGamebaseOverlayByDefault: true,
+          playerProfileDataSource: PlayerProfileDataSource.twic,
+          showClock: false,
         );
   }
 }
@@ -145,7 +149,10 @@ class _PlayerInfo extends StatelessWidget {
         Text(
           player.name,
           style: AppTypography.textSmMedium.copyWith(
-            color: isWinner ? context.colors.surface : context.colors.dividerStrong,
+            color:
+                isWinner
+                    ? context.colors.surface
+                    : context.colors.dividerStrong,
             fontWeight: isWinner ? FontWeight.w700 : FontWeight.w500,
           ),
           maxLines: 1,

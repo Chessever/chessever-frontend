@@ -1,3 +1,4 @@
+import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
 import 'package:chessever2/screens/standings/team_standings_builder.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrapper/game_card_wrapper_widget.dart';
@@ -247,6 +248,7 @@ class _RoundGames extends StatelessWidget {
                   gamesData: gamesData,
                   gameIndex: i,
                   isChessBoardVisible: false,
+                  navigationListPolicy: BoardNavigationListPolicy.preserve,
                   comparison: comparisons[i],
                   fixedBottomSide: teamOneBottomSide(comparisons[i]),
                   // Results refresh when the matches provider re-emits; avoid a

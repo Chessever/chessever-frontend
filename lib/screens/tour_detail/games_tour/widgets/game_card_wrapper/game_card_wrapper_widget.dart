@@ -1,6 +1,7 @@
 import 'package:chessever2/screens/chessboard/widgets/chess_board_from_fen_new.dart';
 import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
 import 'package:chessever2/screens/chessboard/provider/game_pgn_stream_provider.dart';
+import 'package:chessever2/screens/player_profile/player_profile_data_source.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_screen_provider.dart';
@@ -20,6 +21,8 @@ class GameCardWrapperWidget extends ConsumerWidget {
   final Future<void> Function(GamesTourModel game)? onPinToggle;
   final void Function(int)? onReturnFromChessboard;
   final ChessboardView viewSource;
+  final BoardNavigationListPolicy? navigationListPolicy;
+  final PlayerProfileDataSource playerProfileDataSource;
   final Side? fixedBottomSide;
   final bool allowStockfishFallback;
   final bool streamEnabled;
@@ -48,6 +51,8 @@ class GameCardWrapperWidget extends ConsumerWidget {
     this.onPinToggle,
     this.onReturnFromChessboard,
     this.viewSource = ChessboardView.tour,
+    this.navigationListPolicy,
+    this.playerProfileDataSource = PlayerProfileDataSource.supabase,
     this.fixedBottomSide,
     this.allowStockfishFallback = true,
     this.streamEnabled = true,
@@ -124,6 +129,10 @@ class GameCardWrapperWidget extends ConsumerWidget {
             gameIndex: gameIndex,
             onReturnFromChessboard: onReturnFromChessboard,
             viewSource: viewSource,
+            listPolicy:
+                navigationListPolicy ??
+                boardNavigationListPolicyForGamesData(gamesData),
+            playerProfileDataSource: playerProfileDataSource,
           );
     }
 
@@ -145,6 +154,7 @@ class GameCardWrapperWidget extends ConsumerWidget {
                 liveBatchKey: effectiveLiveBatchKey,
                 scoreCardViewSource: viewSource,
                 scoreCardGamesContext: getUpdatedGamesList(),
+                playerProfileDataSource: playerProfileDataSource,
               )
               : GameCard(
                 key: ValueKey(keyValue),

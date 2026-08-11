@@ -4,6 +4,7 @@ import 'package:chessever2/screens/chessboard/chess_board_screen_new.dart';
 import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
 import 'package:chessever2/screens/library/miniatures/miniatures_access.dart';
 import 'package:chessever2/screens/library/utils/gamebase_pgn_builder.dart';
+import 'package:chessever2/screens/player_profile/player_profile_data_source.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
@@ -103,8 +104,11 @@ Future<void> openMiniatureGame({
             (_) => ChessBoardScreenNew(
               games: boardGames,
               currentIndex: index,
+              viewSource: ChessboardView.tour,
+              playerProfileDataSource: PlayerProfileDataSource.twic,
               showGamebaseButton: false,
               disableGamebaseOverlayByDefault: true,
+              showClock: false,
             ),
       ),
     );

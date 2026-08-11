@@ -1044,6 +1044,7 @@ class _FavoritesGamesTabState extends ConsumerState<FavoritesGamesTab>
           showSwipeHint: entry.showHint,
           showGamebaseButton: false,
           streamEnabled: true,
+          viewSource: ChessboardView.favorites,
           onAdd: () => _showAddToFolderSheet(context, entry.game),
           onLiveAdd: (liveGame) => _showAddToFolderSheet(context, liveGame),
           onLiveTap: (liveGame, updatedGames, liveIndex) {
@@ -1564,14 +1565,15 @@ class _FavoritesLiveBoardGameCardState
         game: widget.game,
         orderedGames: widget.allGames,
         gameIndex: widget.gameIndex,
+        viewSource: ChessboardView.favorites,
         onChangedWithLiveGames: _handleNavigate,
         pinnedIds: widget.gamesData.pinnedGamedIs,
         allowStockfishFallback: widget.streamEnabled,
         streamEnabled: widget.streamEnabled,
         // Favorites has no tour scope to pin into, so the menu drops the item
-      // rather than offering a tap that does nothing.
-      showPin: false,
-      onPinToggle: (_) {},
+        // rather than offering a tap that does nothing.
+        showPin: false,
+        onPinToggle: (_) {},
       ),
     );
 

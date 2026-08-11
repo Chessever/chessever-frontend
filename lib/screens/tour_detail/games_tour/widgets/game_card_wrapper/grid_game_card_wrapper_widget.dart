@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
 import 'package:chessever2/screens/chessboard/widgets/chess_board_from_fen_new.dart';
 import 'package:chessever2/screens/chessboard/provider/game_pgn_stream_provider.dart';
+import 'package:chessever2/screens/player_profile/player_profile_data_source.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrapper/live_game_card_provider.dart';
@@ -27,6 +28,7 @@ class GridGameCardWrapperWidget extends ConsumerWidget {
   final bool streamEnabled;
   final LiveGamesBatchKey? liveBatchKey;
   final ChessboardView viewSource;
+  final PlayerProfileDataSource playerProfileDataSource;
 
   /// Whether the long-press menu offers Pin. Off for lists with no tour scope
   /// to pin into (Favorites, Countrymen).
@@ -45,6 +47,7 @@ class GridGameCardWrapperWidget extends ConsumerWidget {
     this.streamEnabled = true,
     this.liveBatchKey,
     this.viewSource = ChessboardView.tour,
+    this.playerProfileDataSource = PlayerProfileDataSource.supabase,
     this.showPin = true,
   });
 
@@ -94,6 +97,7 @@ class GridGameCardWrapperWidget extends ConsumerWidget {
       liveBatchKey: effectiveLiveBatchKey,
       scoreCardViewSource: viewSource,
       scoreCardGamesContext: getUpdatedGamesList(),
+      playerProfileDataSource: playerProfileDataSource,
       showPin: showPin,
     );
   }

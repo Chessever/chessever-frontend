@@ -774,6 +774,7 @@ class DeepLinkService {
                 (_) => _DeepLinkedChessBoardRoute(
                   initialGame: gameTourModel,
                   initialGameId: resolvedGameId,
+                  viewSource: ref.read(chessboardViewFromProviderNew),
                   initialFen: initialFen,
                   roundGamesFuture: roundGamesFuture,
                   onRoundGamesError: (error, stackTrace) {
@@ -868,8 +869,11 @@ class DeepLinkService {
               key: ValueKey('deep-link-gamebase-$gameId'),
               games: [gameTourModel],
               currentIndex: 0,
+              viewSource: ChessboardView.forYou,
+              playerProfileDataSource: PlayerProfileDataSource.twic,
               initialFen: initialFen,
               showGamebaseButton: false,
+              showClock: false,
             ),
       ),
       (route) => route.isFirst,
@@ -1859,6 +1863,7 @@ class _DeepLinkedChessBoardRoute extends StatefulWidget {
   const _DeepLinkedChessBoardRoute({
     required this.initialGame,
     required this.initialGameId,
+    required this.viewSource,
     required this.roundGamesFuture,
     required this.onRoundGamesError,
     this.initialFen,
@@ -1866,6 +1871,7 @@ class _DeepLinkedChessBoardRoute extends StatefulWidget {
 
   final GamesTourModel initialGame;
   final String initialGameId;
+  final ChessboardView viewSource;
   final String? initialFen;
   final Future<List<Games>> roundGamesFuture;
   final void Function(Object error, StackTrace stackTrace) onRoundGamesError;
@@ -1923,6 +1929,7 @@ class _DeepLinkedChessBoardRouteState
       key: ValueKey('deep-link-${widget.initialGameId}'),
       games: _games,
       currentIndex: _currentIndex,
+      viewSource: widget.viewSource,
       initialFen: widget.initialFen,
     );
   }

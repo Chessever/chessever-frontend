@@ -54,6 +54,7 @@ Future<void> loadSavedAnalysis(
           (_) => ChessBoardScreenNew(
             currentIndex: 0,
             games: [game],
+            viewSource: ChessboardView.tour,
             savedAnalysisData: savedAnalysisData,
             showGamebaseButton: false,
             showSaveAnalysisOnLoad: showSaveAnalysisOnLoad,
@@ -113,6 +114,7 @@ Future<void> loadSavedAnalysisWithSwiping(
           (_) => ChessBoardScreenNew(
             currentIndex: tappedIndex,
             games: games,
+            viewSource: ChessboardView.tour,
             savedAnalysisData: savedAnalysisData,
             savedAnalysesDataByIndex: savedAnalysesDataByIndex,
             showGamebaseButton: false,

@@ -64,6 +64,15 @@ enum ChessboardView {
   smartEvent,
 }
 
+/// Whether board navigation may replace the caller's games with a larger
+/// event list while the route is already open.
+///
+/// Most callers use [sourceDefault], which follows [ChessboardView]'s normal
+/// contract. Event-scoped sublists (for example one player's tournament games
+/// or one knockout match) use [preserve] without pretending they came from a
+/// different screen.
+enum BoardNavigationListPolicy { sourceDefault, preserve }
+
 extension ChessboardViewNavigationContext on ChessboardView {
   /// Surfaces whose list is a deliberate collection the user assembled or
   /// filtered themselves. Board navigation — the switcher dropdown and
@@ -78,11 +87,10 @@ extension ChessboardViewNavigationContext on ChessboardView {
   bool get preservesNavigationCollection => switch (this) {
     ChessboardView.favorites ||
     ChessboardView.countryman ||
-    ChessboardView.smartEvent => true,
+    ChessboardView.smartEvent ||
     ChessboardView.favScorecard ||
-    ChessboardView.tour ||
-    ChessboardView.playerProfile ||
-    ChessboardView.forYou => false,
+    ChessboardView.playerProfile => true,
+    ChessboardView.tour || ChessboardView.forYou => false,
   };
 
   /// Favorites used to travel as [ChessboardView.forYou]. The score card's
@@ -4291,7 +4299,8 @@ class ChessBoardScreenNotifierNew
         // Keep the speed word on the key the app already displays from, so
         // library cards and the info row still read "Standard" rather than the
         // machine field. [TcCategory] predates this and is the same idea.
-        final category = game.timeControl ?? metadata['TimeControl']?.toString();
+        final category =
+            game.timeControl ?? metadata['TimeControl']?.toString();
         if (category != null &&
             category.isNotEmpty &&
             category != '?' &&

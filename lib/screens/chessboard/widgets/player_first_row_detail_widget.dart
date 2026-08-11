@@ -82,8 +82,7 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
     // waiting on it only delays result/eval-bar padding and causes layout shift
     // (same short-circuit as board cards in chess_board_from_fen_new).
     // Ongoing games also skip the lookup (nothing to spoil yet).
-    final isArchiveSource =
-        effectiveGameModel.source != GameSource.supabase;
+    final isArchiveSource = effectiveGameModel.source != GameSource.supabase;
     final needsSpoilerLookup =
         !isArchiveSource && effectiveGameModel.gameStatus.isFinished;
     final spoilerState =
@@ -621,11 +620,22 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
           break;
         case ChessboardView.tour:
         case ChessboardView.smartEvent:
-          if (playerProfileDataSource == PlayerProfileDataSource.twic) {
-            // TWIC route: no broadcast model, use board screen's game list
-            // filtered to the current event for score card context.
+          final selectedBroadcast = ref.read(selectedBroadcastModelProvider);
+          final hasExplicitGames = scoreCardGamesContext.isNotEmpty;
+          final shouldUseOwnedGames =
+              playerProfileDataSource == PlayerProfileDataSource.twic ||
+              effectiveGameModel.source != GameSource.supabase ||
+              view == ChessboardView.smartEvent ||
+              (hasExplicitGames && selectedBroadcast == null);
+          if (shouldUseOwnedGames) {
+            // Archive/TWIC previews have no authoritative broadcast provider.
+            // Prefer the exact list owned by the tapped preview, then fall back
+            // to the active board list for older callers.
             ref.read(selectedBroadcastModelProvider.notifier).state = null;
-            final allBoardGames = ref.read(chessBoardAllGamesProvider);
+            final allBoardGames =
+                hasExplicitGames
+                    ? scoreCardGamesContext
+                    : ref.read(chessBoardAllGamesProvider);
             final currentEvent = effectiveGameModel.tourId;
             if (currentEvent.isNotEmpty && allBoardGames.isNotEmpty) {
               gamesContext =
@@ -645,14 +655,23 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
           break;
         case ChessboardView.countryman:
           // For countrymen view, filter games by the current game's tournament
-          // This ensures ScoreCardScreen shows only games from that specific event
+          // This ensures ScoreCardScreen shows only games from that specific
+          // event. Combined/filtered countrymen surfaces pass their live-patched
+          // visible list explicitly; the legacy provider remains a fallback.
           ref.read(selectedBroadcastModelProvider.notifier).state = null;
-          final allCountrymanGames =
-              ref
-                  .read(countrymanGamesTourScreenProvider)
-                  .valueOrNull
-                  ?.gamesTourModels ??
-              [];
+          final activeBoardGames = ref.read(chessBoardAllGamesProvider);
+          var allCountrymanGames = scoreCardGamesContext;
+          if (allCountrymanGames.isEmpty) {
+            allCountrymanGames = activeBoardGames;
+          }
+          if (allCountrymanGames.isEmpty) {
+            allCountrymanGames =
+                ref
+                    .read(countrymanGamesTourScreenProvider)
+                    .valueOrNull
+                    ?.gamesTourModels ??
+                [];
+          }
           final currentTourIdCountryman = effectiveGameModel.tourId;
           if (currentTourIdCountryman.isNotEmpty) {
             gamesContext =
@@ -673,8 +692,12 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
           ref.read(selectedBroadcastModelProvider.notifier).state = null;
           final currentTourId = effectiveGameModel.tourId;
           if (currentTourId.isNotEmpty) {
+            final allContextGames =
+                scoreCardGamesContext.isNotEmpty
+                    ? scoreCardGamesContext
+                    : ref.read(chessBoardAllGamesProvider);
             final eventGames =
-                scoreCardGamesContext
+                allContextGames
                     .where((game) => game.tourId == currentTourId)
                     .toList();
             gamesContext =
@@ -692,7 +715,8 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
       // This handles cases where:
       // - view might not match expected case
       // - gamesContext filter returned empty (e.g., For You only has few games from event)
-      if ((gamesContext == null || gamesContext.isEmpty) &&
+      if (hasEventContext &&
+          (gamesContext == null || gamesContext.isEmpty) &&
           effectiveGameModel.tourId.isNotEmpty) {
         gamesContext = [effectiveGameModel];
         hasEventContext = true;
@@ -835,10 +859,11 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
                     // No "Surname, Given" comma: treat "Given ... Surname" by
                     // taking the last token as the surname and the first token's
                     // initial (e.g. "Magnus Carlsen" -> "Carlsen M.").
-                    final tokens = surname
-                        .split(RegExp(r'\s+'))
-                        .where((token) => token.isNotEmpty)
-                        .toList();
+                    final tokens =
+                        surname
+                            .split(RegExp(r'\s+'))
+                            .where((token) => token.isNotEmpty)
+                            .toList();
                     if (tokens.length > 1) {
                       displaySurname = tokens.last;
                       displayFirstName = ' ${tokens.first[0].toUpperCase()}.';

@@ -126,6 +126,7 @@ class _GroupEventGameCardTile extends ConsumerWidget {
               orderedGames: buildUpdatedGamesList(),
               gameIndex: gameIndex,
               onReturnFromChessboard: onReturnFromChessboard,
+              listPolicy: boardNavigationListPolicyForGamesData(gamesData),
             );
       },
     );

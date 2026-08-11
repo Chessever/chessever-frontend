@@ -12,10 +12,10 @@ import 'package:chessever2/repository/supabase/chess_player/chess_player_reposit
 import 'package:chessever2/screens/board_editor/board_editor_screen.dart';
 import 'package:chessever2/screens/calendar/calendar_event_detail_screen.dart';
 import 'package:chessever2/screens/chessboard/chess_board_screen_new.dart';
+import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
 import 'package:chessever2/screens/gamebase/gamebase_explorer_screen.dart';
 import 'package:chessever2/screens/library/book_preview_screen.dart';
 import 'package:chessever2/screens/library/folder_contents_screen.dart';
-import 'package:chessever2/screens/player_profile/player_profile_data_source.dart';
 import 'package:chessever2/screens/player_profile/player_profile_screen.dart';
 import 'package:chessever2/screens/premium/premium_screen.dart';
 import 'package:chessever2/screens/premium_games/premium_games_screen.dart';
@@ -104,7 +104,9 @@ Future<void> launchAppAndReachSignedInShell(PatrolTester $) async {
   _trace('[E2E] launchAppAndReachSignedInShell: initial settle');
   await $.pumpAndTrySettle(timeout: const Duration(seconds: 30));
 
-  _trace('[E2E] launchAppAndReachSignedInShell: waiting for home or onboarding');
+  _trace(
+    '[E2E] launchAppAndReachSignedInShell: waiting for home or onboarding',
+  );
   await pumpUntil(
     $,
     () =>
@@ -177,9 +179,7 @@ Future<void> completePlayerSelectionIfVisible(PatrolTester $) async {
   }
 
   if (_isButtonEnabled($, E2eIds.playerSelectionContinueButton)) {
-    _trace(
-      '[E2E] completePlayerSelectionIfVisible: continue already enabled',
-    );
+    _trace('[E2E] completePlayerSelectionIfVisible: continue already enabled');
     await byId($, E2eIds.playerSelectionContinueButton).tap();
     await _pumpAfterOnboardingInteraction($);
     return;
@@ -677,7 +677,9 @@ Future<void> swipeBoardBetweenGames(
   await assertBoardEngineReady($);
 
   if (expectedVisibleToken != null) {
-    await expectAnyTextVisible($, [expectedVisibleToken], timeout: _engineTimeout);
+    await expectAnyTextVisible($, [
+      expectedVisibleToken,
+    ], timeout: _engineTimeout);
   }
 }
 
@@ -857,7 +859,11 @@ List<GamesTourModel> buildSyntheticGames() {
 Future<void> openSyntheticBoard(PatrolTester $) async {
   await pushWidgetRoute(
     $,
-    ChessBoardScreenNew(games: buildSyntheticGames(), currentIndex: 0),
+    ChessBoardScreenNew(
+      games: buildSyntheticGames(),
+      currentIndex: 0,
+      viewSource: ChessboardView.tour,
+    ),
   );
 }
 
@@ -913,15 +919,17 @@ Future<void> openSeededCalendarEvent(PatrolTester $, E2eSeedData seed) async {
   if (event == null) {
     throw TestFailure('No calendar event available for E2E detail route');
   }
-  await pushWidgetRoute($, CalendarEventDetailScreen(event: event));
+  await pushWidgetRoute(
+    $,
+    CalendarEventDetailScreen(events: [event], initialIndex: 0),
+  );
   await expectVisible($, E2eIds.calendarEventDetailRoot);
 }
 
 Future<void> openSeededPlayerProfile(
   PatrolTester $,
-  SeededPlayerData player, {
-  PlayerProfileDataSource dataSource = PlayerProfileDataSource.supabase,
-}) async {
+  SeededPlayerData player,
+) async {
   await pushWidgetRoute(
     $,
     PlayerProfileScreen(
@@ -930,7 +938,6 @@ Future<void> openSeededPlayerProfile(
       title: player.title,
       federation: player.countryCode,
       rating: player.rating,
-      dataSource: dataSource,
     ),
   );
   await expectVisible($, E2eIds.playerProfileRoot);

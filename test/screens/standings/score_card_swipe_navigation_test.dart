@@ -1,3 +1,4 @@
+import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
 import 'package:chessever2/screens/standings/player_standing_model.dart';
 import 'package:chessever2/screens/standings/score_card_screen.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -20,6 +21,18 @@ void main() {
   }
 
   group('score card swipe navigation', () {
+    test('event player games keep their filtered board navigation list', () {
+      final context = scoreCardGameNavigationContext(hasEventContext: true);
+      expect(context.viewSource, ChessboardView.tour);
+      expect(context.listPolicy, BoardNavigationListPolicy.preserve);
+    });
+
+    test('global player games keep their filtered board navigation list', () {
+      final context = scoreCardGameNavigationContext(hasEventContext: false);
+      expect(context.viewSource, ChessboardView.favScorecard);
+      expect(context.listPolicy, BoardNavigationListPolicy.preserve);
+    });
+
     test('selects adjacent players in standings order', () {
       final players = [
         player(name: 'First, Player', fideId: 1),

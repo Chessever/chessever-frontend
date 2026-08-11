@@ -11,6 +11,7 @@ import 'package:chessever2/screens/library/widgets/book_saved_game_card.dart';
 import 'package:chessever2/screens/library/widgets/folder_card.dart';
 import 'package:chessever2/screens/library/widgets/gamebase_search_game_card.dart';
 import 'package:chessever2/screens/library/widgets/gamebase_search_player_card.dart';
+import 'package:chessever2/screens/player_profile/player_profile_data_source.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_list_view_mode_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrapper/game_card_wrapper_provider.dart';
@@ -387,7 +388,7 @@ class _LibrarySearchResultsViewState
       if (games.isEmpty && paginationState.isLoading)
         Padding(
           padding: EdgeInsets.symmetric(vertical: 24.h),
-          child:  Center(
+          child: Center(
             child: CircularProgressIndicator(color: context.colors.textPrimary),
           ),
         )
@@ -617,11 +618,16 @@ class _LibraryGridGame extends ConsumerWidget {
               gameIndex: gameIndex,
               onReturnFromChessboard: (_) {},
               viewSource: ChessboardView.tour,
+              listPolicy: BoardNavigationListPolicy.preserve,
+              playerProfileDataSource: PlayerProfileDataSource.twic,
               showGamebaseButton: false,
             );
       },
       pinnedIds: const [],
       onPinToggle: (_) {},
+      scoreCardViewSource: ChessboardView.tour,
+      scoreCardGamesContext: allGames,
+      playerProfileDataSource: PlayerProfileDataSource.twic,
     );
   }
 }
@@ -657,11 +663,16 @@ class _LibraryBoardGame extends ConsumerWidget {
               gameIndex: gameIndex,
               onReturnFromChessboard: (_) {},
               viewSource: ChessboardView.tour,
+              listPolicy: BoardNavigationListPolicy.preserve,
+              playerProfileDataSource: PlayerProfileDataSource.twic,
               showGamebaseButton: false,
             );
       },
       pinnedIds: const [],
       onPinToggle: (_) {},
+      scoreCardViewSource: ChessboardView.tour,
+      scoreCardGamesContext: allGames,
+      playerProfileDataSource: PlayerProfileDataSource.twic,
     );
   }
 }
@@ -680,7 +691,9 @@ class _SectionHeader extends StatelessWidget {
         children: [
           Text(
             title,
-            style: AppTypography.textSmBold.copyWith(color: context.colors.textPrimary),
+            style: AppTypography.textSmBold.copyWith(
+              color: context.colors.textPrimary,
+            ),
           ),
           if (count != null && count! > 0) ...[
             SizedBox(width: 8.w),

@@ -1,7 +1,10 @@
 import 'package:chessever2/repository/local_storage/tournament/games/games_local_storage.dart';
 import 'package:chessever2/repository/supabase/game/games.dart';
 import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart'
-    show ChessboardView, ChessboardViewNavigationContext;
+    show
+        BoardNavigationListPolicy,
+        ChessboardView,
+        ChessboardViewNavigationContext;
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrapper/game_card_wrapper_provider.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -32,8 +35,18 @@ void main() {
   ];
 
   List<Games> tourTwoRawGames() => [
-    _makeGame(id: 'b-r2-b1', roundSlug: 'round-2', boardNr: 1, tourId: 'tour-2'),
-    _makeGame(id: 'b-r1-b1', roundSlug: 'round-1', boardNr: 1, tourId: 'tour-2'),
+    _makeGame(
+      id: 'b-r2-b1',
+      roundSlug: 'round-2',
+      boardNr: 1,
+      tourId: 'tour-2',
+    ),
+    _makeGame(
+      id: 'b-r1-b1',
+      roundSlug: 'round-1',
+      boardNr: 1,
+      tourId: 'tour-2',
+    ),
   ];
 
   GamesTourModel modelFor(String id) {
@@ -62,6 +75,8 @@ void main() {
     required List<GamesTourModel> orderedGames,
     required int gameIndex,
     required ChessboardView viewSource,
+    BoardNavigationListPolicy listPolicy =
+        BoardNavigationListPolicy.sourceDefault,
   }) {
     return container
         .read(gameCardWrapperProvider)
@@ -69,15 +84,19 @@ void main() {
           orderedGames: orderedGames,
           gameIndex: gameIndex,
           viewSource: viewSource,
+          listPolicy: listPolicy,
         );
   }
 
   group('collection contexts keep their list', () {
-    // Favorites and Countrymen both hand over a cross-event feed. Before the
-    // context gate this expanded to the tapped game's whole tournament.
+    // Every collection/player-list surface hands over a deliberate ordered
+    // feed. Background navigation hydration must never replace that feed with
+    // the tapped game's whole tournament.
     for (final viewSource in [
       ChessboardView.favorites,
       ChessboardView.countryman,
+      ChessboardView.favScorecard,
+      ChessboardView.playerProfile,
     ]) {
       test('$viewSource keeps its mixed-event feed exactly', () async {
         final container = containerWithFullCache();
@@ -86,7 +105,6 @@ void main() {
         final feed = [
           modelFor('r2-b1'), // tour-1
           modelFor('b-r1-b1'), // tour-2
-          modelFor('r1-b2'), // tour-1
         ];
 
         final (games, index) = await resolve(
@@ -96,81 +114,89 @@ void main() {
           viewSource: viewSource,
         );
 
-        expect(
-          games.map((g) => g.gameId).toList(),
-          ['r2-b1', 'b-r1-b1', 'r1-b2'],
-          reason: '$viewSource must not refill the switcher with tour-1',
-        );
+        expect(games.map((g) => g.gameId).toList(), [
+          'r2-b1',
+          'b-r1-b1',
+        ], reason: '$viewSource must not refill the switcher with tour-1');
         expect(index, 0);
         expect(games[index].gameId, 'r2-b1');
       });
     }
 
-    test('smartEvent keeps a filtered single-round subset of one event', () async {
-      final container = containerWithFullCache();
-      addTearDown(container.dispose);
+    test(
+      'smartEvent keeps a filtered single-round subset of one event',
+      () async {
+        final container = containerWithFullCache();
+        addTearDown(container.dispose);
 
-      // The strongest case: a single-tour, single-round list is exactly the
-      // shape the resolver expands for every other route. A Smart Event that
-      // filtered down to these two games must still see only these two.
-      final filtered = [modelFor('r1-b1'), modelFor('r1-b2')];
+        // The strongest case: a single-tour, single-round list is exactly the
+        // shape the resolver expands for every other route. A Smart Event that
+        // filtered down to these two games must still see only these two.
+        final filtered = [modelFor('r1-b1'), modelFor('r1-b2')];
 
-      final (games, index) = await resolve(
-        container,
-        orderedGames: filtered,
-        gameIndex: 1,
-        viewSource: ChessboardView.smartEvent,
-      );
+        final (games, index) = await resolve(
+          container,
+          orderedGames: filtered,
+          gameIndex: 1,
+          viewSource: ChessboardView.smartEvent,
+        );
 
-      expect(games.map((g) => g.gameId).toList(), ['r1-b1', 'r1-b2']);
-      expect(index, 1);
-      expect(games[index].gameId, 'r1-b2');
-    });
+        expect(games.map((g) => g.gameId).toList(), ['r1-b1', 'r1-b2']);
+        expect(index, 1);
+        expect(games[index].gameId, 'r1-b2');
+      },
+    );
 
-    test('smartEvent keeps a custom order the Games tab would resort', () async {
-      final container = containerWithFullCache();
-      addTearDown(container.dispose);
+    test(
+      'smartEvent keeps a custom order the Games tab would resort',
+      () async {
+        final container = containerWithFullCache();
+        addTearDown(container.dispose);
 
-      // Reverse of Games-tab order. An expansion would resort to round DESC /
-      // board ASC and lose the Smart Event's own ranking.
-      final customOrder = [
-        modelFor('r1-b2'),
-        modelFor('r1-b1'),
-        modelFor('r2-b1'),
-        modelFor('r3-b1'),
-      ];
+        // Reverse of Games-tab order. An expansion would resort to round DESC /
+        // board ASC and lose the Smart Event's own ranking.
+        final customOrder = [
+          modelFor('r1-b2'),
+          modelFor('r1-b1'),
+          modelFor('r2-b1'),
+          modelFor('r3-b1'),
+        ];
 
-      final (games, _) = await resolve(
-        container,
-        orderedGames: customOrder,
-        gameIndex: 0,
-        viewSource: ChessboardView.smartEvent,
-      );
+        final (games, _) = await resolve(
+          container,
+          orderedGames: customOrder,
+          gameIndex: 0,
+          viewSource: ChessboardView.smartEvent,
+        );
 
-      expect(games.map((g) => g.gameId).toList(), [
-        'r1-b2',
-        'r1-b1',
-        'r2-b1',
-        'r3-b1',
-      ]);
-    });
+        expect(games.map((g) => g.gameId).toList(), [
+          'r1-b2',
+          'r1-b1',
+          'r2-b1',
+          'r3-b1',
+        ]);
+      },
+    );
 
-    test('an out-of-range index is clamped without widening the list', () async {
-      final container = containerWithFullCache();
-      addTearDown(container.dispose);
+    test(
+      'an out-of-range index is clamped without widening the list',
+      () async {
+        final container = containerWithFullCache();
+        addTearDown(container.dispose);
 
-      final feed = [modelFor('r1-b1'), modelFor('r1-b2')];
+        final feed = [modelFor('r1-b1'), modelFor('r1-b2')];
 
-      final (games, index) = await resolve(
-        container,
-        orderedGames: feed,
-        gameIndex: 9,
-        viewSource: ChessboardView.favorites,
-      );
+        final (games, index) = await resolve(
+          container,
+          orderedGames: feed,
+          gameIndex: 9,
+          viewSource: ChessboardView.favorites,
+        );
 
-      expect(games, hasLength(2));
-      expect(index, 1);
-    });
+        expect(games, hasLength(2));
+        expect(index, 1);
+      },
+    );
   });
 
   test('control: the same subset from a tournament still expands', () async {
@@ -198,17 +224,160 @@ void main() {
     expect(games[index].gameId, 'r1-b2');
   });
 
+  test(
+    'stale event cache cannot discard an immediate preview sibling',
+    () async {
+      // The cache contains the tapped game, but is missing another game that
+      // was already visible in the caller's live preview. Treating this cache
+      // as authoritative would remove that sibling from the open board. If the
+      // user swiped to it before expansion completed, the PageView could no
+      // longer remap its gameId and would jump to a different game.
+      final staleCachedEvent =
+          tourOneRawGames().where((game) => game.id != 'r2-b2').toList();
+      final container = ProviderContainer(
+        overrides: [
+          gamesLocalStorage.overrideWith(
+            (ref) => _FakeGamesLocalStorage(
+              ref,
+              byTour: {'tour-1': staleCachedEvent},
+            ),
+          ),
+        ],
+      );
+      addTearDown(container.dispose);
+
+      final immediatePreview = [modelFor('r2-b1'), modelFor('r2-b2')];
+      final (games, index) = await container
+          .read(gameCardWrapperProvider)
+          .debugResolveForYouNavigation(
+            orderedGames: immediatePreview,
+            gameIndex: 0,
+          );
+
+      expect(
+        games.map((game) => game.gameId).toList(),
+        ['r2-b1', 'r2-b2'],
+        reason:
+            'an expansion candidate that omits any same-event immediate game '
+            'must be rejected instead of deleting a caller-visible sibling',
+      );
+      expect(index, 0);
+      expect(games[index].gameId, 'r2-b1');
+    },
+  );
+
+  test(
+    'event expansion keeps the freshest version of every immediate sibling',
+    () async {
+      final cachedEvent = tourOneRawGames();
+      final container = ProviderContainer(
+        overrides: [
+          gamesLocalStorage.overrideWith(
+            (ref) =>
+                _FakeGamesLocalStorage(ref, byTour: {'tour-1': cachedEvent}),
+          ),
+        ],
+      );
+      addTearDown(container.dispose);
+
+      const freshSiblingPgn = '''
+[Event "Fresh live preview"]
+[White "White r2-b2"]
+[Black "Black r2-b2"]
+[Result "1-0"]
+
+1. e4 e5 2. Nf3 Nc6 1-0
+''';
+      const freshSiblingFen =
+          'r1bqkbnr/pppp1ppp/2n5/4p3/4P3/5N2/PPPP1PPP/RNBQKB1R w KQkq - 2 3';
+      final immediatePreview = [
+        modelFor('r2-b1'),
+        modelFor('r2-b2').copyWith(
+          pgn: freshSiblingPgn,
+          fen: freshSiblingFen,
+          lastMove: 'b8c6',
+          lastMoveTime: DateTime.utc(2026, 8, 12, 12),
+          whiteClockSeconds: 287,
+          blackClockSeconds: 281,
+          gameStatus: GameStatus.whiteWins,
+        ),
+      ];
+
+      final (games, _) = await container
+          .read(gameCardWrapperProvider)
+          .debugResolveForYouNavigation(
+            orderedGames: immediatePreview,
+            gameIndex: 0,
+          );
+
+      final resolvedSibling = games.singleWhere(
+        (game) => game.gameId == 'r2-b2',
+      );
+      expect(
+        resolvedSibling.pgn,
+        freshSiblingPgn,
+        reason:
+            'cache expansion must not rewind a sibling the user can swipe to '
+            'while hydration is running',
+      );
+      expect(resolvedSibling.fen, freshSiblingFen);
+      expect(resolvedSibling.lastMove, 'b8c6');
+      expect(resolvedSibling.whiteClockSeconds, 287);
+      expect(resolvedSibling.blackClockSeconds, 281);
+      expect(resolvedSibling.gameStatus, GameStatus.whiteWins);
+    },
+  );
+
+  test(
+    'an event-scoped player list preserves its tournament context',
+    () async {
+      final container = containerWithFullCache();
+      addTearDown(container.dispose);
+
+      final playerGames = [modelFor('r1-b1'), modelFor('r1-b2')];
+      final (games, index) = await resolve(
+        container,
+        orderedGames: playerGames,
+        gameIndex: 1,
+        viewSource: ChessboardView.tour,
+        listPolicy: BoardNavigationListPolicy.preserve,
+      );
+
+      expect(games.map((g) => g.gameId).toList(), ['r1-b1', 'r1-b2']);
+      expect(index, 1);
+      expect(games[index].gameId, 'r1-b2');
+    },
+  );
+
+  test('archive lists never hydrate from a broadcast event cache', () async {
+    final container = containerWithFullCache();
+    addTearDown(container.dispose);
+
+    final archiveGames = [
+      modelFor('r1-b1').copyWith(source: GameSource.twic),
+      modelFor('r1-b2').copyWith(source: GameSource.twic),
+    ];
+    final (games, index) = await resolve(
+      container,
+      orderedGames: archiveGames,
+      gameIndex: 1,
+      viewSource: ChessboardView.tour,
+    );
+
+    expect(games.map((g) => g.gameId).toList(), ['r1-b1', 'r1-b2']);
+    expect(index, 1);
+  });
+
   test('every board view declares its navigation contract', () {
     // The getters are exhaustive switches, so this also fails to COMPILE if a
     // new ChessboardView is added without choosing a side.
     expect(ChessboardView.favorites.preservesNavigationCollection, isTrue);
     expect(ChessboardView.countryman.preservesNavigationCollection, isTrue);
     expect(ChessboardView.smartEvent.preservesNavigationCollection, isTrue);
-
+    expect(ChessboardView.favScorecard.preservesNavigationCollection, isTrue);
+    expect(ChessboardView.playerProfile.preservesNavigationCollection, isTrue);
     expect(ChessboardView.forYou.preservesNavigationCollection, isFalse);
     expect(ChessboardView.tour.preservesNavigationCollection, isFalse);
-    expect(ChessboardView.favScorecard.preservesNavigationCollection, isFalse);
-    expect(ChessboardView.playerProfile.preservesNavigationCollection, isFalse);
 
     // Favorites used to travel as forYou; the score card's event-scoped
     // favourite toggle must keep working now that it has its own context.
@@ -216,6 +385,33 @@ void main() {
     expect(ChessboardView.favorites.usesEventScopedScorecardContext, isTrue);
     expect(ChessboardView.tour.usesEventScopedScorecardContext, isFalse);
     expect(ChessboardView.smartEvent.usesEventScopedScorecardContext, isFalse);
+  });
+
+  test('tournament search and status filters preserve their visible list', () {
+    GamesScreenModel data({
+      bool isSearchMode = false,
+      GameDisplayMode displayMode = GameDisplayMode.all,
+    }) => GamesScreenModel(
+      gamesTourModels: const [],
+      pinnedGamedIs: const [],
+      isSearchMode: isSearchMode,
+      gameDisplayMode: displayMode,
+    );
+
+    expect(
+      boardNavigationListPolicyForGamesData(data()),
+      BoardNavigationListPolicy.sourceDefault,
+    );
+    expect(
+      boardNavigationListPolicyForGamesData(data(isSearchMode: true)),
+      BoardNavigationListPolicy.preserve,
+    );
+    expect(
+      boardNavigationListPolicyForGamesData(
+        data(displayMode: GameDisplayMode.hideFinishedGames),
+      ),
+      BoardNavigationListPolicy.preserve,
+    );
   });
 }
 

@@ -856,6 +856,7 @@ class _GamebaseExplorerScreenState extends ConsumerState<GamebaseExplorerScreen>
             (_) => ChessBoardScreenNew(
               currentIndex: 0,
               games: [tourGame],
+              viewSource: ChessboardView.tour,
               hideEventInfo: true,
               showGamebaseButton: false,
               disableGamebaseOverlayByDefault: true,

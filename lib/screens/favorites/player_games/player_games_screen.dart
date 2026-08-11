@@ -1,3 +1,4 @@
+import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
 import 'package:chessever2/screens/favorites/player_games/provider/player_games_provider.dart';
 import 'package:chessever2/screens/favorites/player_games/view_model/player_games_state.dart';
 import 'package:chessever2/screens/favorites/player_games/models/player_identifier.dart';
@@ -109,7 +110,9 @@ class _PlayerGamesScreenState extends ConsumerState<PlayerGamesScreen> {
                             child: Text(
                               userFacingError(error),
                               style: AppTypography.textSmRegular.copyWith(
-                                color: context.colors.textPrimary.withValues(alpha: 0.7),
+                                color: context.colors.textPrimary.withValues(
+                                  alpha: 0.7,
+                                ),
                               ),
                               textAlign: TextAlign.center,
                             ),
@@ -302,6 +305,7 @@ class _PlayerGamesScreenState extends ConsumerState<PlayerGamesScreen> {
               gamesData: gamesData,
               gameIndex: gameIdx,
               isChessBoardVisible: false,
+              navigationListPolicy: BoardNavigationListPolicy.preserve,
               onReturnFromChessboard: (returnedIndex) {},
             ),
           );
