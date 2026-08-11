@@ -9,6 +9,28 @@ This repository is the Chessever **test-flavored app**. By default, all work her
 - Do not assume that a similarly named branch, project, URL, key, or environment is safe. Verify that every backend-affecting or external command points to the test target before running it.
 - If a target is ambiguous or a requested action could affect main/production, stop and ask for explicit confirmation. Main/production work is allowed only when the user explicitly names the exact target and operation.
 
+## Branches: `stable` ships, `main` is dead
+
+**`stable` is the only branch that matters here.** It is where work is committed,
+where releases are cut, and the branch every Codemagic build is triggered
+against (`"branch":"stable"` in the API payload — production *and* ChessEver
+Test workflows alike).
+
+`main` is an **abandoned branch**, not a release line. As of 2026-08-11 it sits
+at `36a466da` (2026-06-16, `pubspec` version `21.0.0+2100`) — **383 commits
+behind `stable` and 0 ahead**. Building it would produce build number `2100`
+against the `3305`+ already published, which the stores reject outright. Nothing
+is merged into it, nothing is built from it, nothing is shipped off it. Treat
+its GitHub "default branch" badge as a leftover, not a signal.
+
+`dev` is likewise stale (167 behind `stable`, 12 ahead) but is still the base
+GitHub picks for contributor PRs, so a merged PR there is not shipped until it
+is ported onto `stable`.
+
+When a request says "**the main production app**", that means the **production
+flavor** — the counterpart to the test-flavored app — and never the `main`
+branch. Read it that way and keep working on `stable`.
+
 ## Validation
 
 - **Never run `flutter build`** (any flavor: apk, ios, ipa, web, macos, etc.). Builds are slow and unnecessary for validation.
