@@ -1,4 +1,3 @@
-import 'package:chessever2/repository/supabase/supabase.dart';
 import 'package:chessever2/repository/local_storage/favorite/favourate_standings_player_services.dart';
 import 'package:chessever2/repository/supabase/tour/tour.dart';
 import 'package:chessever2/screens/standings/player_standing_model.dart';
@@ -9,6 +8,7 @@ import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_s
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_mode_provider.dart';
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_screen_provider.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 /// Provides player standings for the tournament detail "Players" tab.
 /// Uses [AutoDisposeAsyncNotifier] so the heavy computation only runs when needed
@@ -229,8 +229,12 @@ class PlayerTourScreenNotifier
         relatedTours.length == 1 &&
         relatedTours.first.tour.usesExternalStandings;
 
+    // Use the app singleton client (same session/headers as Games), not the
+    // secondary [supabaseProvider] client. A second anonymous client on the
+    // release HTTP stack was implicated in Standings-only infinite loading
+    // while every other tab (which go through Supabase.instance) worked.
     final builtStandings = await buildStandingsFromData(
-      supabase: ref.read(supabaseProvider),
+      supabase: Supabase.instance.client,
       tournamentPlayers: allPlayers,
       gamesTourModels: allGames,
       useExternalOrder: useExternalOrder,
@@ -290,8 +294,11 @@ class PlayerTourScreenNotifier
 
     for (final tourModel in relatedTours) {
       final tourId = tourModel.tour.id;
+      // Select rebuilds only when result-affecting fields change. Read the
+      // full list via watch (not read-after-select) so release builds never
+      // hit the "ref after dependency changed" path that debug asserts catch.
       ref.watch(gamesTourProvider(tourId).select(standingsGamesSignature));
-      final games = ref.read(gamesTourProvider(tourId)).valueOrNull;
+      final games = ref.watch(gamesTourProvider(tourId)).valueOrNull;
       if (games == null || games.isEmpty) continue;
 
       for (final game in games) {

@@ -47,7 +47,7 @@ List<GamesTourModel> _watchTeamGames(Ref ref) {
   final games = <GamesTourModel>[];
   if (tourId.isEmpty) return games;
   ref.watch(gamesTourProvider(tourId).select(standingsGamesSignature));
-  final raw = ref.read(gamesTourProvider(tourId)).valueOrNull ?? const [];
+  final raw = ref.watch(gamesTourProvider(tourId)).valueOrNull ?? const [];
   for (final g in raw) {
     try {
       games.add(GamesTourModel.fromGame(g));

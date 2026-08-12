@@ -1,32 +1,13 @@
-import 'package:flutter/foundation.dart';
-import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:chessever2/config/app_environment.dart';
 
-/// Helper function to get environment variables.
-/// Prefer --dart-define/--dart-define-from-file values in every build mode.
-/// Local debug can fall back to dotenv only when a private workflow loads it.
-String _getEnv(String key) {
-  final releaseValue = String.fromEnvironment(key);
-  if (releaseValue.isNotEmpty) {
-    return releaseValue;
-  }
-
-  if (kDebugMode && !AppEnvironment.isTest) {
-    final value = dotenv.env[key];
-    if (value == null || value.isEmpty) {
-      throw Exception('Missing env variable in .env file: $key');
-    }
-    return value;
-  } else {
-    // In production, CodeMagic injects environment variables
-    return releaseValue;
-  }
-}
-
+/// Shared Supabase access for Riverpod call sites.
+///
+/// Always returns the app singleton from [Supabase.initialize] — never a second
+/// anonymous [SupabaseClient]. A second client (URL+anon only, no session /
+/// shared HTTP stack) was the release-only Standings hang: Games used
+/// [Supabase.instance] and worked, while [supabaseProvider] callers stalled
+/// with no Sentry signal. Flavor URL validation already runs at boot in main.
 final supabaseProvider = Provider<SupabaseClient>((ref) {
-  final url = _getEnv('SUPABASE_URL');
-  AppEnvironment.validateSupabaseUrl(url);
-  return SupabaseClient(url, _getEnv('SUPABASE_ANON_KEY'));
+  return Supabase.instance.client;
 });

@@ -220,7 +220,15 @@ class _StandingsList extends ConsumerWidget {
               },
             );
           },
-          error: (e, _) => const _StandingScreenLoading(),
+          // Never paint errors as the loading skeleton — that made release-only
+          // standings failures look like an infinite shimmer with no Sentry hit.
+          error:
+              (e, _) => Padding(
+                padding: EdgeInsets.only(top: 48.h),
+                child: EmptyWidget(
+                  title: "Couldn't load standings. Pull away and try again.",
+                ),
+              ),
           loading: () => const _StandingScreenLoading(),
         );
   }

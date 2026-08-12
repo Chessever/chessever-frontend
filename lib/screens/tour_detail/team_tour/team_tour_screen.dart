@@ -100,8 +100,12 @@ class _TeamList extends ConsumerWidget {
                     .toList(growable: false);
         final isSearching = query.isNotEmpty;
 
-        if (allTeams.isEmpty) {
-          return const _TeamStandingsLoading();
+        // Empty finished compute must not look like "still loading".
+        if (allTeams.isEmpty && !isSearching) {
+          return Padding(
+            padding: EdgeInsets.only(top: 48.h),
+            child: const EmptyWidget(title: "No data available"),
+          );
         }
 
         return ListView.builder(
@@ -162,7 +166,13 @@ class _TeamList extends ConsumerWidget {
           },
         );
       },
-      error: (e, _) => const _TeamStandingsLoading(),
+      error:
+          (e, _) => Padding(
+            padding: EdgeInsets.only(top: 48.h),
+            child: const EmptyWidget(
+              title: "Couldn't load team standings. Pull away and try again.",
+            ),
+          ),
       loading: () => const _TeamStandingsLoading(),
     );
   }

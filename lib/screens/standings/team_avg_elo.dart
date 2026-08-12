@@ -1,5 +1,8 @@
+import 'dart:async';
+
 import 'package:chessever2/repository/supabase/supabase.dart';
 import 'package:chessever2/screens/standings/player_standing_model.dart';
+import 'package:chessever2/screens/standings/standings_builder.dart';
 import 'package:chessever2/screens/standings/team_standing_model.dart';
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_mode_provider.dart';
 import 'package:chessever2/screens/tour_detail/team_tour/team_tour_screen_provider.dart';
@@ -109,24 +112,37 @@ final teamAvgEloProvider = FutureProvider.autoDispose.family<int?, String>((
 
   try {
     final supabase = ref.read(supabaseProvider);
-    final rows = await supabase
-        .from('chess_players')
-        .select('fideid, rating, rapid_rating, blitz_rating')
-        .inFilter('fideid', fideIds);
-
+    // Same chunk/timeout policy as standings FIDE enrichment — a single large
+    // inFilter can stall release HTTP without throwing.
     final byFide = <int, Map<String, dynamic>>{};
-    for (final row in rows) {
-      final map = Map<String, dynamic>.from(row as Map);
-      final id = map['fideid'];
-      final fideId =
-          id is int
-              ? id
-              : id is num
-              ? id.toInt()
-              : int.tryParse('$id');
-      if (fideId == null) continue;
-      byFide[fideId] = map;
+    final unique = fideIds.toSet().toList(growable: false);
+    const chunkSize = kStandingsFideEloInFilterChunkSize;
+
+    Future<void> loadChunks() async {
+      for (var i = 0; i < unique.length; i += chunkSize) {
+        final end =
+            (i + chunkSize < unique.length) ? i + chunkSize : unique.length;
+        final chunk = unique.sublist(i, end);
+        final rows = await supabase
+            .from('chess_players')
+            .select('fideid, rating, rapid_rating, blitz_rating')
+            .inFilter('fideid', chunk);
+        for (final row in rows as List) {
+          final map = Map<String, dynamic>.from(row as Map);
+          final id = map['fideid'];
+          final fideId =
+              id is int
+                  ? id
+                  : id is num
+                  ? id.toInt()
+                  : int.tryParse('$id');
+          if (fideId == null) continue;
+          byFide[fideId] = map;
+        }
+      }
     }
+
+    await loadChunks().timeout(kStandingsFideEloFetchTimeout);
 
     final ratings = <int>[];
     for (final p in team.players) {

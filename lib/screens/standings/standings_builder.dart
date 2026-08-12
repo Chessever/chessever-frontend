@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:chessever2/repository/supabase/game/games.dart';
@@ -7,6 +8,15 @@ import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_mode
 import 'package:flutter/foundation.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+
+/// PostgREST `in` filters blow up URL size (and can hang on some release HTTP
+/// stacks) when hundreds of FIDE ids are packed into one request. Match the
+/// chunk size used by [ChessPlayerRepository].
+const int kStandingsFideEloInFilterChunkSize = 150;
+
+/// Wall-clock budget for the optional FIDE Elo enrichment pass. Standings must
+/// still paint if this is slow or stuck — rating-diff is nice-to-have.
+const Duration kStandingsFideEloFetchTimeout = Duration(seconds: 8);
 
 /// Shared standings computation used by the tournament detail "Standings" tab
 /// and the smart event per-event standings sections. Extracted from
@@ -441,32 +451,62 @@ Future<Map<int, _FideEloRow>> _fetchFideEloBatch(
   List<int> fideIds,
 ) async {
   if (fideIds.isEmpty) return const {};
+
+  // One giant `in.(…)` request is a known failure mode on release/AOT builds:
+  // long URLs can stall the HTTP client with no error, which left the Standings
+  // tab on its skeleton forever (debug often "worked" because of different
+  // timing and smaller warm caches). Chunk + timeout so standings always settle.
   try {
+    return await _fetchFideEloBatchChunked(
+      supabase,
+      fideIds,
+    ).timeout(kStandingsFideEloFetchTimeout);
+  } catch (e) {
+    debugPrint('Error fetching FIDE Elo batch: $e');
+    return const {};
+  }
+}
+
+Future<Map<int, _FideEloRow>> _fetchFideEloBatchChunked(
+  SupabaseClient supabase,
+  List<int> fideIds,
+) async {
+  final map = <int, _FideEloRow>{};
+  final unique = fideIds.toSet().toList(growable: false);
+
+  for (var i = 0; i < unique.length; i += kStandingsFideEloInFilterChunkSize) {
+    final end = math.min(i + kStandingsFideEloInFilterChunkSize, unique.length);
+    final chunk = unique.sublist(i, end);
     final rows = await supabase
         .from('chess_players')
         .select(
           'fideid, rating, rapid_rating, blitz_rating, k, rapid_k, blitz_k',
         )
-        .inFilter('fideid', fideIds);
+        .inFilter('fideid', chunk);
 
-    final map = <int, _FideEloRow>{};
-    for (final row in rows) {
-      final id = row['fideid'];
-      if (id is! int) continue;
+    for (final row in rows as List) {
+      final raw = Map<String, dynamic>.from(row as Map);
+      final id = _readJsonInt(raw['fideid']);
+      if (id == null || id <= 0) continue;
       map[id] = _FideEloRow(
-        standard: row['rating'] as int?,
-        rapid: row['rapid_rating'] as int?,
-        blitz: row['blitz_rating'] as int?,
-        standardK: row['k'] as int?,
-        rapidK: row['rapid_k'] as int?,
-        blitzK: row['blitz_k'] as int?,
+        standard: _readJsonInt(raw['rating']),
+        rapid: _readJsonInt(raw['rapid_rating']),
+        blitz: _readJsonInt(raw['blitz_rating']),
+        standardK: _readJsonInt(raw['k']),
+        rapidK: _readJsonInt(raw['rapid_k']),
+        blitzK: _readJsonInt(raw['blitz_k']),
       );
     }
-    return map;
-  } catch (e) {
-    debugPrint('Error fetching FIDE Elo batch: $e');
-    return const {};
   }
+
+  return map;
+}
+
+int? _readJsonInt(Object? value) {
+  if (value is int) return value;
+  if (value is num) return value.toInt();
+  if (value is String) return int.tryParse(value);
+  return null;
 }
 
 /// Normalizes a player's name into a canonical form so that "Magnus Carlsen"
