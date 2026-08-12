@@ -17,7 +17,7 @@ import 'package:motor/motor.dart';
 /// Replaces the roulette wheel: instead of a full-screen casino spinner sliding
 /// in from the right, the toolbar's action icons quietly hand over to a single
 /// pill — a "Tag this game" chip whose border drains as a countdown. Tapping it
-/// drops a small menu of the ten [kLikeTags] (each with an explanatory icon);
+/// drops a small menu of the curated [kLikeTags] (each with an explanatory icon);
 /// checking one or more tags writes the full tag list, letting the countdown
 /// elapse leaves the like untagged.
 class LikeTagChip extends ConsumerStatefulWidget {
@@ -725,7 +725,7 @@ class _TagDropdownState extends State<_TagDropdown> {
 }
 
 /// One selectable tag in the dropdown: text-only clickable square that wraps
-/// alongside its siblings so all ten tags fit at a glance. Tag colour survives
+/// alongside its siblings in a compact, scrollable grid. Tag colour survives
 /// as the selected-state accent (border + tinted fill) so the curated palette
 /// still distinguishes tags without per-tag glyphs.
 class _TagSquare extends StatelessWidget {

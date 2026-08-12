@@ -4,8 +4,8 @@ import 'package:flutter/material.dart';
 ///
 /// Tags are the public-facing taxonomy for liked games: later, liked games
 /// surface in shared/library views filtered by these tags. The list is a
-/// closed vocabulary (ten curated tags) so the taxonomy stays browsable and
-/// the picker stays legible — a free-text field would fragment the data and
+/// closed vocabulary (fourteen curated tags) so the taxonomy stays browsable
+/// and the picker stays legible — a free-text field would fragment the data and
 /// make cross-user filtering meaningless.
 ///
 /// [color] is the chip / dropdown-row accent and the dot on the save-sheet
@@ -39,6 +39,12 @@ class LikeTag {
 /// The canonical, ordered tag vocabulary. Keep the order stable so a remembered
 /// initial tag lists always render consistently.
 const List<LikeTag> kLikeTags = <LikeTag>[
+  // blue — the book · the game's first phase
+  LikeTag('Opening', Color(0xFF4F9BE0), Icons.menu_book_rounded),
+  // orange — active play · the game's central phase
+  LikeTag('Middlegame', Color(0xFFFF8A3D), Icons.swap_horiz_rounded),
+  // gold — the king · the game's final phase
+  LikeTag('Endgame', Color(0xFFF2B84B), Icons.flag_rounded),
   // hot pink — chaos · a spinning storm
   LikeTag('Wild Game', Color(0xFFFF4D9D), Icons.cyclone_rounded),
   // gold — the crown · checkmate beauty
@@ -53,6 +59,8 @@ const List<LikeTag> kLikeTags = <LikeTag>[
   LikeTag('High Technique', Color(0xFF2FD4C4), Icons.architecture_rounded),
   // royal purple — mastery · the board's structure
   LikeTag('Positional Masterpiece', Color(0xFFA77BF0), Icons.grid_on_rounded),
+  // violet — strategic rerouting · a winding path
+  LikeTag('Maneuver', Color(0xFF8D79D6), Icons.alt_route_rounded),
   // crimson — blood · giving material away
   LikeTag('Sacrifice', Color(0xFFFF5A5A), Icons.volunteer_activism_rounded),
   // indigo — intricate · linked tactics
