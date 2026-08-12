@@ -799,12 +799,40 @@ void _initializePostStartupServices(WidgetRef ref) {
   );
 
   // Initialize OneSignal (non-blocking)
-  if (!E2eConfig.suppressInterruptivePrompts) {
+  final oneSignalAppId = _resolveOneSignalAppId();
+  final oneSignalStarted =
+      !E2eConfig.suppressInterruptivePrompts && oneSignalAppId.trim().isNotEmpty;
+  if (oneSignalStarted) {
     unawaited(
-      PushNotificationsService.instance.initialize(
-        appId: _resolveOneSignalAppId(),
-      ),
+      PushNotificationsService.instance.initialize(appId: oneSignalAppId),
     );
+  }
+
+  // Handle OneSignal notification taps.
+  //
+  // This listener is registered here, during startup, and NOT from the widget
+  // tree. A terminated-app tap is replayed by the native SDK as soon as a click
+  // listener exists, which on a cold start is long before `MyApp` has painted —
+  // so a listener that only comes up with the first frame leaves a window where
+  // the tap has nobody to deliver it to. That window does not exist when the app
+  // is merely backgrounded, which is exactly why a backgrounded tap routed
+  // correctly while a cold-start tap landed on Home.
+  //
+  // The payload is handed to DeepLinkService, which routes it immediately if the
+  // app can already navigate and buffers it otherwise. Nothing here needs a
+  // WidgetRef, so registration cannot be blocked on the tree being ready.
+  //
+  // Gated on OneSignal actually having been started: the native side resolves
+  // this through OneSignal.getNotifications(), which throws before
+  // initWithContext, and the plugin latches "a listener was requested" before it
+  // makes that call — so registering against a dead SDK is not a no-op, it burns
+  // the one registration attempt.
+  if (oneSignalStarted) {
+    OneSignal.Notifications.addClickListener((event) {
+      final data = event.notification.additionalData;
+      if (data == null) return;
+      DeepLinkService.instance.ingestNotificationData(data);
+    });
   }
 
   // Non-critical initializers - run in parallel, don't block app startup
@@ -1177,30 +1205,39 @@ class MyApp extends HookConsumerWidget {
 
     useEffect(() {
       WidgetsBinding.instance.addPostFrameCallback((_) {
+        // Give the notification router its navigator and ref first, and outside
+        // the `context.mounted` guard below: the click listener registered in
+        // main() may already be holding a cold-start tap, and this is the call
+        // that lets it through. A tap must never be lost to an early return.
+        DeepLinkService.instance.attachNotificationRouter(navigatorKey, ref);
+
         if (!context.mounted) {
           return;
         }
 
-        // Handle OneSignal notification taps — route to correct screen.
-        // Registered BEFORE DeepLinkService.initialize() so that clicks
-        // queued during async I/O are not missed.
-        OneSignal.Notifications.addClickListener((event) {
-          final data = event.notification.additionalData;
-          if (data != null) {
-            DeepLinkService.instance.handleNotificationData(
-              data,
-              navigatorKey,
-              ref,
-            );
-          }
-        });
+        // Cold-start universal links (a shared chessever.com game/event opened
+        // from the browser) are read by DeepLinkService.initialize via
+        // getInitialLink. That must not ride ForegroundTaskScheduler: it drops
+        // the task outright when the lifecycle isn't `resumed` at fire time and
+        // never retries, so a link that launched the app would vanish. Run it
+        // directly — it is a single platform channel read.
+        unawaited(
+          DeepLinkService.instance.initialize(navigatorKey, ref).catchError((
+            Object e,
+            StackTrace st,
+          ) {
+            debugPrint('Failed to initialize deep link service: $e');
+            if (kDebugMode) {
+              debugPrintStack(stackTrace: st);
+            }
+          }),
+        );
 
         ForegroundTaskScheduler.schedule(
           key: 'startup_deep_link_services',
           delay: const Duration(milliseconds: 250),
           task: () async {
             try {
-              await DeepLinkService.instance.initialize(navigatorKey, ref);
               // Handle PGN files opened from Files / file managers / share sheet.
               await PgnFileIntakeService.instance.initialize(navigatorKey, ref);
               // Initialize AppsFlyer for marketing attribution and OneLink.
@@ -1254,6 +1291,7 @@ class MyApp extends HookConsumerWidget {
       });
 
       return () {
+        DeepLinkService.instance.detachNotificationRouter();
         DeepLinkService.instance.dispose();
         PgnFileIntakeService.instance.dispose();
       };

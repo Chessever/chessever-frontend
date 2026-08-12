@@ -94,6 +94,71 @@ class DeepLinkService {
   /// Timeout for individual network fetches (game, event).
   static const _fetchTimeout = Duration(seconds: 10);
 
+  /// Where a notification tap is routed once the widget tree that owns a
+  /// [WidgetRef] exists. Null until [attachNotificationRouter] runs.
+  GlobalKey<NavigatorState>? _routerNavigatorKey;
+  WidgetRef? _routerRef;
+
+  /// Taps that arrived before the router was attached.
+  ///
+  /// The OneSignal click listener is registered from `main()`, which is minutes
+  /// of engine work earlier than the first frame of `MyApp` — on a cold start
+  /// the OS replays the tapped notification while `StartupGate` is still
+  /// opening the database, so the payload has nowhere to go yet. Holding it
+  /// here is what makes a terminated-app tap behave like a backgrounded one;
+  /// dropping it is what left the user on Home.
+  final List<Map<String, dynamic>> _pendingNotificationData =
+      <Map<String, dynamic>>[];
+
+  /// Bound so a stuck payload can never pin the app to a stale destination.
+  static const _maxPendingNotificationData = 8;
+
+  /// Feed a notification tap in. Routes immediately when the app can navigate,
+  /// buffers otherwise. Safe to call from anywhere, including before `runApp`.
+  void ingestNotificationData(Map<String, dynamic> data) {
+    final navigatorKey = _routerNavigatorKey;
+    final ref = _routerRef;
+    if (navigatorKey != null && ref != null) {
+      handleNotificationData(data, navigatorKey, ref);
+      return;
+    }
+
+    _addBreadcrumb(
+      'notification tap buffered before router attached',
+      data: {'type': _asNonEmptyString(data['type'])},
+    );
+    if (_pendingNotificationData.length >= _maxPendingNotificationData) {
+      _pendingNotificationData.removeAt(0);
+    }
+    _pendingNotificationData.add(data);
+  }
+
+  /// Called once the app has a navigator and a [WidgetRef]. Drains anything
+  /// that arrived while the tree was still being built.
+  void attachNotificationRouter(
+    GlobalKey<NavigatorState> navigatorKey,
+    WidgetRef ref,
+  ) {
+    _routerNavigatorKey = navigatorKey;
+    _routerRef = ref;
+
+    if (_pendingNotificationData.isEmpty) return;
+    // Only the most recent tap can win — the user tapped one notification, and
+    // routing several in a row would fight over the navigator.
+    final data = _pendingNotificationData.removeLast();
+    _pendingNotificationData.clear();
+    _addBreadcrumb(
+      'draining buffered notification tap',
+      data: {'type': _asNonEmptyString(data['type'])},
+    );
+    handleNotificationData(data, navigatorKey, ref);
+  }
+
+  void detachNotificationRouter() {
+    _routerNavigatorKey = null;
+    _routerRef = null;
+  }
+
   /// Completer that resolves when the app navigates past the splash screen.
   /// Prevents deep link navigation from racing with splash screen navigation.
   static Completer<void> _appReadyCompleter = Completer<void>();
@@ -943,13 +1008,36 @@ class DeepLinkService {
       data['folderId'],
     ]);
 
+    // The notification path used to be completely untelemetered, so a tap that
+    // ended on Home was indistinguishable from a tap that never reached Dart at
+    // all. Record what arrived and whether the app was already past splash
+    // (backgrounded) or still cold-starting — that split is the whole bug.
+    final wasAppReady = _appReadyCompleter.isCompleted;
+    _addBreadcrumb(
+      'notification tap received',
+      data: {
+        'type': type,
+        'appReady': wasAppReady,
+        'hasGameId': gameId != null,
+        'hasBroadcastId': broadcastId != null,
+        'hasRoundId': roundId != null,
+        'hasTourId': tourId != null,
+        'hasFolderId': folderId != null,
+        'keys': data.keys.toList()..sort(),
+      },
+    );
+
     switch (type) {
       case 'game_started':
       case 'game_finished':
         if (gameId != null && gameId.isNotEmpty) {
           _navigateToGame(gameId, navigatorKey, ref);
         } else {
-          _navigateToHome(navigatorKey);
+          _navigateToHome(
+            navigatorKey,
+            reason: 'notification_missing_game_id',
+            extras: {'type': type, 'appReady': wasAppReady},
+          );
         }
         return;
       case 'round_started':
@@ -964,7 +1052,11 @@ class DeepLinkService {
             tourId: tourId,
           );
         } else {
-          _navigateToHome(navigatorKey);
+          _navigateToHome(
+            navigatorKey,
+            reason: 'notification_missing_event_ids',
+            extras: {'type': type, 'appReady': wasAppReady},
+          );
         }
         return;
       case 'book_game_added':
@@ -973,7 +1065,11 @@ class DeepLinkService {
         if (folderId != null && folderId.isNotEmpty) {
           _navigateToFolder(folderId, navigatorKey, ref);
         } else {
-          _navigateToHome(navigatorKey);
+          _navigateToHome(
+            navigatorKey,
+            reason: 'notification_missing_folder_id',
+            extras: {'type': type, 'appReady': wasAppReady},
+          );
         }
         return;
       default:
@@ -1000,13 +1096,42 @@ class DeepLinkService {
         }
 
         // call_to_action and any unknown types — open the app to home
-        _navigateToHome(navigatorKey);
+        _navigateToHome(
+          navigatorKey,
+          reason: 'notification_no_routing_hints',
+          extras: {'type': type, 'appReady': wasAppReady},
+        );
         return;
     }
   }
 
-  /// Navigate to home screen — fallback for notifications without routing data
-  void _navigateToHome(GlobalKey<NavigatorState> navigatorKey) {
+  /// Navigate to home screen — the fallback when a tap can't be resolved to a
+  /// real destination.
+  ///
+  /// Every fallback is recorded. Landing on Home is precisely the reported
+  /// failure, and until now it left no trace, so a device report ("I ended up
+  /// on Home") could not be told apart from the tap never reaching Dart.
+  /// [report] is false where the caller already captured the underlying error.
+  void _navigateToHome(
+    GlobalKey<NavigatorState> navigatorKey, {
+    required String reason,
+    Map<String, dynamic>? extras,
+    bool report = true,
+  }) {
+    _addBreadcrumb(
+      'falling back to home',
+      data: {'reason': reason, ...?extras},
+    );
+    if (report) {
+      unawaited(
+        _captureDeepLinkMessage(
+          'deep link fell back to home',
+          stage: 'fallback_to_home',
+          extras: {'reason': reason, ...?extras},
+          level: SentryLevel.warning,
+        ),
+      );
+    }
     navigatorKey.currentState?.pushNamedAndRemoveUntil(
       '/home_screen',
       (route) => false,
@@ -1092,7 +1217,16 @@ class DeepLinkService {
             'tourId': tourId,
           },
         );
-        _navigateToHome(navigatorKey);
+        _navigateToHome(
+          navigatorKey,
+          reason: 'event_route_context_unresolved',
+          extras: {
+            'groupBroadcastId': groupBroadcastId,
+            'roundId': roundId,
+            'tourId': tourId,
+          },
+          report: false, // captured above as an exception
+        );
         return;
       }
 
@@ -1239,7 +1373,11 @@ class DeepLinkService {
           'DeepLinkService: Could not resolve event for player scorecard '
           '(group_broadcast_id=$groupBroadcastId)',
         );
-        _navigateToHome(navigatorKey);
+        _navigateToHome(
+          navigatorKey,
+          reason: 'player_scorecard_event_unresolved',
+          extras: {'groupBroadcastId': groupBroadcastId, 'fideId': fideId},
+        );
         return;
       }
 
@@ -1367,7 +1505,11 @@ class DeepLinkService {
           'DeepLinkService: Could not resolve event for team scorecard '
           '(group_broadcast_id=$groupBroadcastId)',
         );
-        _navigateToHome(navigatorKey);
+        _navigateToHome(
+          navigatorKey,
+          reason: 'team_scorecard_event_unresolved',
+          extras: {'groupBroadcastId': groupBroadcastId, 'teamName': teamName},
+        );
         return;
       }
 
@@ -1490,7 +1632,11 @@ class DeepLinkService {
         debugPrint(
           'DeepLinkService: Player $fideId not found, routing to home',
         );
-        _navigateToHome(navigatorKey);
+        _navigateToHome(
+          navigatorKey,
+          reason: 'player_profile_not_found',
+          extras: {'fideId': fideId},
+        );
         return;
       }
 
