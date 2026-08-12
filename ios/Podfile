@@ -3,6 +3,37 @@ install! 'cocoapods', :disable_input_output_paths => true
 # Uncomment this line to define a global platform for your project
 platform :ios, '16.1'
 
+# CocoaPods' HTTP downloader only passes curl `--retry 2`, which is not
+# enough for GitHub release-asset 503s (AmplitudeCore.zip). CI has died
+# on that during `pod install` with no compile error. Retry the whole
+# download with backoff so a transient 503 is not a red build.
+module CodemagicHttpDownloadRetry
+  RETRIES = 6
+  def download_file(full_filename)
+    last_error = nil
+    RETRIES.times do |attempt|
+      begin
+        return super
+      rescue => e
+        last_error = e
+        wait = 8 * (attempt + 1)
+        Pod::UI.puts "[pod-retry] #{url} failed (#{e.class}: #{e.message.strip}) " \
+                     "attempt #{attempt + 1}/#{RETRIES}, sleeping #{wait}s"
+        sleep(wait)
+      end
+    end
+    raise last_error
+  end
+end
+
+module Pod
+  module Downloader
+    class Http
+      prepend CodemagicHttpDownloadRetry
+    end
+  end
+end
+
 # CocoaPods analytics sends network stats synchronously affecting flutter build latency.
 ENV['COCOAPODS_DISABLE_STATS'] = 'true'
 
