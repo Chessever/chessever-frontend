@@ -15,5 +15,5 @@ final selectedCountrymenModeProvider =
 const countrymenModeNames = {
   CountrymenScreenMode.events: 'Events',
   CountrymenScreenMode.games: 'Games',
-  CountrymenScreenMode.players: 'Players',
+  CountrymenScreenMode.players: 'Rankings',
 };

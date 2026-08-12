@@ -99,8 +99,13 @@ class ChessPlayerRepository extends BaseRepository {
   }
 
   /// Fetch a stable page from the canonical FIDE monthly ranking fields.
+  ///
+  /// [countryCode] is a FIDE federation code (`USA`, `TUR`, …), not ISO-2. Pass
+  /// it to scope the whole ranking — filters, search and pagination included —
+  /// to one federation; leave it null for the world list.
   Future<List<ChessPlayer>> getRankedPlayers({
     required RankingFilters filters,
+    String? countryCode,
     String searchQuery = '',
     int limit = 30,
     int offset = 0,
@@ -116,6 +121,11 @@ class ChessPlayerRepository extends BaseRepository {
         .not(ratingColumn, 'is', null)
         .gt(ratingColumn, 0)
         .lt(ratingColumn, 3300);
+
+    final federation = countryCode?.trim().toUpperCase();
+    if (federation != null && federation.isNotEmpty) {
+      query = query.eq('country', federation);
+    }
 
     if (filters.activity == RankingActivity.active) {
       query = query.or('flag.is.null,flag.not.ilike.*i*');
@@ -212,32 +222,6 @@ class ChessPlayerRepository extends BaseRepository {
     final data = await builder
         .or('rating.lt.3300,rating.is.null')
         .order('rating', ascending: false, nullsFirst: false)
-        .range(offset, offset + limit - 1);
-
-    return (data as List).map((row) => ChessPlayer.fromMap(row)).toList();
-  }
-
-  /// Get players by country (FIDE federation code)
-  Future<List<ChessPlayer>> getPlayersByCountry({
-    required String countryCode,
-    String? searchQuery,
-    int limit = 30,
-    int offset = 0,
-  }) async {
-    var builder = supabase
-        .from('chess_players')
-        .select('fideid, name, title, rating, country')
-        .eq('country', countryCode)
-        .gt('rating', 0)
-        .lt('rating', 3300);
-
-    if (searchQuery != null && searchQuery.trim().isNotEmpty) {
-      final term = '%${searchQuery.trim()}%';
-      builder = builder.or('name.ilike.$term,title.ilike.$term');
-    }
-
-    final data = await builder
-        .order('rating', ascending: false)
         .range(offset, offset + limit - 1);
 
     return (data as List).map((row) => ChessPlayer.fromMap(row)).toList();

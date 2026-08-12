@@ -190,9 +190,10 @@ class _ChipGroup extends StatelessWidget {
 /// A swipeable strip of chip groups that fades at both edges instead of
 /// guillotining whichever chip happens to land on the boundary.
 class _ChipStrip extends StatelessWidget {
-  const _ChipStrip({required this.children});
+  const _ChipStrip({required this.children, required this.inset});
 
   final List<Widget> children;
+  final double inset;
 
   @override
   Widget build(BuildContext context) {
@@ -213,7 +214,7 @@ class _ChipStrip extends StatelessWidget {
       child: SingleChildScrollView(
         scrollDirection: Axis.horizontal,
         physics: const BouncingScrollPhysics(),
-        padding: EdgeInsets.symmetric(horizontal: _stripInset),
+        padding: EdgeInsets.symmetric(horizontal: inset),
         child: Row(
           children: [
             for (var i = 0; i < children.length; i++) ...[
@@ -263,20 +264,28 @@ class RankingFilterControls extends StatelessWidget {
     required this.filters,
     required this.onChanged,
     this.showActivity = true,
+    this.horizontalInset,
   });
 
   final RankingFilters filters;
   final ValueChanged<RankingFilters> onChanged;
   final bool showActivity;
 
+  /// Gutter the chips rest against, so a host with a wider content margin
+  /// (tablet) keeps the strip on the same edge as its cards instead of
+  /// hanging 8dp inside them. Defaults to the phone gutter.
+  final double? horizontalInset;
+
   @override
   Widget build(BuildContext context) {
+    final inset = horizontalInset ?? _stripInset;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         if (showActivity) ...[
           Padding(
-            padding: EdgeInsets.symmetric(horizontal: _stripInset),
+            padding: EdgeInsets.symmetric(horizontal: inset),
             child: RankingActivityControl(
               value: filters.activity,
               onChanged:
@@ -285,6 +294,7 @@ class RankingFilterControls extends StatelessWidget {
           ),
         ],
         _ChipStrip(
+          inset: inset,
           children: [
             _ChipGroup(
               children: [
