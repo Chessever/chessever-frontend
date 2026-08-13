@@ -43,11 +43,14 @@ class GamesTourStableOrder {
     required Iterable<GamesTourModel> games,
     required Set<String> favoriteGameIds,
     required Set<String> countrymanGameIds,
+    bool newestBoardsFirst = false,
   }) {
     final currentById = _gamesById(games);
     if (currentById.isEmpty) return const <GamesTourModel>[];
 
     final round = _rounds.putIfAbsent(roundId, _StableRoundOrder.new);
+    final boardDirectionChanged = round.newestBoardsFirst != newestBoardsFirst;
+    round.newestBoardsFirst = newestBoardsFirst;
     var addedBoard = false;
     for (final game in currentById.values) {
       if (round.boardNumberByGameId.containsKey(game.gameId)) continue;
@@ -67,10 +70,11 @@ class GamesTourStableOrder {
         priorityChange.changedGameIds.contains,
       );
       _sortRoundsContaining(priorityChange.changedGameIds);
-      if (addedBoard && !currentRoundContainsPriorityChange) {
+      if ((addedBoard || boardDirectionChanged) &&
+          !currentRoundContainsPriorityChange) {
         _sortRound(round);
       }
-    } else if (addedBoard) {
+    } else if (addedBoard || boardDirectionChanged) {
       _sortRound(round);
     }
 
@@ -127,6 +131,7 @@ class GamesTourStableOrder {
         bBoardNumber: round.boardNumberByGameId[b],
         favoriteGameIds: _favoriteGameIds,
         countrymanGameIds: _countrymanGameIds,
+        newestBoardsFirst: round.newestBoardsFirst,
       ),
     );
     _sortPassCount++;
@@ -142,9 +147,13 @@ List<GamesTourModel> resolveTournamentRoundPresentationOrder({
   required bool isRefreshingAutoPins,
   required Set<String> favoriteGameIds,
   required Set<String> countrymanGameIds,
+  bool newestBoardsFirst = false,
 }) {
   if (isSearchMode || !hasResolvedAutoPins || stableOrder == null) {
-    return sortTournamentRoundGamesByPriority(games: games);
+    return sortTournamentRoundGamesByPriority(
+      games: games,
+      newestBoardsFirst: newestBoardsFirst,
+    );
   }
   if (isRefreshingAutoPins) {
     return stableOrder.remapExistingRound(roundId: roundId, games: games);
@@ -154,6 +163,7 @@ List<GamesTourModel> resolveTournamentRoundPresentationOrder({
     games: games,
     favoriteGameIds: favoriteGameIds,
     countrymanGameIds: countrymanGameIds,
+    newestBoardsFirst: newestBoardsFirst,
   );
 }
 
@@ -168,12 +178,14 @@ Map<String, GamesTourModel> _gamesById(Iterable<GamesTourModel> games) {
 class _StableRoundOrder {
   final Map<String, int?> boardNumberByGameId = <String, int?>{};
   final List<String> orderedGameIds = <String>[];
+  bool newestBoardsFirst = false;
 }
 
 List<GamesTourModel> sortTournamentRoundGamesByPriority({
   required Iterable<GamesTourModel> games,
   Set<String> favoriteGameIds = const <String>{},
   Set<String> countrymanGameIds = const <String>{},
+  bool newestBoardsFirst = false,
 }) {
   final sorted = games.toList(growable: false);
   final priorityByGameId = <String, int>{
@@ -194,6 +206,7 @@ List<GamesTourModel> sortTournamentRoundGamesByPriority({
       aBoardNumber: a.boardNr,
       bGameId: b.gameId,
       bBoardNumber: b.boardNr,
+      newestBoardsFirst: newestBoardsFirst,
     );
   });
   return sorted;
@@ -206,6 +219,7 @@ int compareTournamentGameOrder({
   required int? bBoardNumber,
   required Set<String> favoriteGameIds,
   required Set<String> countrymanGameIds,
+  bool newestBoardsFirst = false,
 }) {
   final priorityOrder = _priorityForGame(
     aGameId,
@@ -218,6 +232,7 @@ int compareTournamentGameOrder({
     aBoardNumber: aBoardNumber,
     bGameId: bGameId,
     bBoardNumber: bBoardNumber,
+    newestBoardsFirst: newestBoardsFirst,
   );
 }
 
@@ -226,9 +241,13 @@ int compareTournamentBoardAndId({
   required int? aBoardNumber,
   required String bGameId,
   required int? bBoardNumber,
+  bool newestBoardsFirst = false,
 }) {
   if (aBoardNumber != null && bBoardNumber != null) {
-    final boardOrder = aBoardNumber.compareTo(bBoardNumber);
+    final boardOrder =
+        newestBoardsFirst
+            ? bBoardNumber.compareTo(aBoardNumber)
+            : aBoardNumber.compareTo(bBoardNumber);
     if (boardOrder != 0) return boardOrder;
   } else if (aBoardNumber != null) {
     return -1;

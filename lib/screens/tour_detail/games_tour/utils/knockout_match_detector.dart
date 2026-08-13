@@ -3,6 +3,30 @@ import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_mode
 /// Utility class to detect and handle knockout tournament formats
 /// where players face each other multiple times in matches
 class KnockoutMatchDetector {
+  /// Whether an individual knockout feed is appending replay/decider games to
+  /// one source round instead of publishing a new round for every leg.
+  ///
+  /// This is the shape used by double-elimination/GSL feeds such as EWC: the
+  /// same player pair appears again under one [GamesTourModel.roundId], and
+  /// each new game receives a higher board number. Requiring both a shared
+  /// source round and a repeated matchup keeps ordinary Swiss/round-robin
+  /// board order out of this special path.
+  static bool hasRepeatedMatchupInSingleSourceRound({
+    required bool isKnockoutTournament,
+    required List<GamesTourModel> games,
+  }) {
+    if (!isKnockoutTournament) return false;
+    if (games.length < 2) return false;
+    if (games.map((game) => game.roundId).toSet().length != 1) return false;
+
+    final matches = groupByMatches(games);
+    if (matches.values.fold<int>(0, (count, match) => count + match.length) !=
+        games.length) {
+      return false;
+    }
+    return matches.values.any((match) => match.length > 1);
+  }
+
   /// Detects if this is a 1v1 match format event (e.g., "12-game Match").
   ///
   /// Returns true when the tour format string contains "match"
@@ -149,8 +173,9 @@ class KnockoutMatchDetector {
   /// strands the live board among finished ones. Live boards outrank
   /// everything (a long think must not let a just-finished board leapfrog
   /// the game in progress); finished boards follow by actual play time,
-  /// with the chronological slug order reversed as the undated fallback and
-  /// gameId keeping the order total.
+  /// with the chronological slug order reversed as the undated fallback,
+  /// descending append board number when source metadata ties, and gameId
+  /// keeping the order total.
   static List<GamesTourModel> orderMatchGamesLatestFirst(
     List<GamesTourModel> games,
   ) {
@@ -180,6 +205,19 @@ class KnockoutMatchDetector {
       }
       final bySlug = _compareRoundSlugs(b.roundSlug, a.roundSlug);
       if (bySlug != 0) return bySlug;
+      // Some live-PGN feeds stamp every game in a round with the same sync
+      // time and round slug. In those feeds board_nr is the only authoritative
+      // append sequence: a higher number is a newer decider.
+      final aBoard = a.boardNr;
+      final bBoard = b.boardNr;
+      if (aBoard != null && bBoard != null) {
+        final byBoard = bBoard.compareTo(aBoard);
+        if (byBoard != 0) return byBoard;
+      } else if (aBoard != null) {
+        return -1;
+      } else if (bBoard != null) {
+        return 1;
+      }
       return a.gameId.compareTo(b.gameId);
     });
   }

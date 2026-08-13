@@ -96,6 +96,113 @@ void main() {
       expect(KnockoutMatchDetector.groupByMatches(games), isEmpty);
       expect(KnockoutMatchDetector.isKnockoutMatchFormat(games), isFalse);
     });
+
+    test('detects replay games appended to one source round', () {
+      final alpha = _player('Alpha', fideId: 11);
+      final beta = _player('Beta', fideId: 22);
+      final gamma = _player('Gamma', fideId: 33);
+      final delta = _player('Delta', fideId: 44);
+      final games = [
+        _game(
+          id: 'board-1',
+          white: alpha,
+          black: beta,
+          slug: 'lower-round-1',
+          roundId: 'source-round',
+          boardNr: 1,
+        ),
+        _game(
+          id: 'board-2',
+          white: gamma,
+          black: delta,
+          slug: 'lower-round-1',
+          roundId: 'source-round',
+          boardNr: 2,
+        ),
+        _game(
+          id: 'board-3',
+          white: beta,
+          black: alpha,
+          slug: 'lower-round-1',
+          roundId: 'source-round',
+          boardNr: 3,
+        ),
+      ];
+
+      expect(
+        KnockoutMatchDetector.hasRepeatedMatchupInSingleSourceRound(
+          isKnockoutTournament: true,
+          games: games,
+        ),
+        isTrue,
+      );
+      expect(
+        KnockoutMatchDetector.hasRepeatedMatchupInSingleSourceRound(
+          isKnockoutTournament: false,
+          games: games,
+        ),
+        isFalse,
+        reason: 'ordinary tournament formats must retain board order',
+      );
+    });
+
+    test(
+      'does not treat legs from separate source rounds as appended boards',
+      () {
+        final alpha = _player('Alpha', fideId: 11);
+        final beta = _player('Beta', fideId: 22);
+        final games = [
+          _game(
+            id: 'leg-1',
+            white: alpha,
+            black: beta,
+            slug: 'game-1',
+            roundId: 'round-game-1',
+          ),
+          _game(
+            id: 'leg-2',
+            white: beta,
+            black: alpha,
+            slug: 'game-2',
+            roundId: 'round-game-2',
+          ),
+        ];
+
+        expect(
+          KnockoutMatchDetector.hasRepeatedMatchupInSingleSourceRound(
+            isKnockoutTournament: true,
+            games: games,
+          ),
+          isFalse,
+        );
+      },
+    );
+
+    test('uses descending board number when timestamps and slugs tie', () {
+      final alpha = _player('Alpha', fideId: 11);
+      final beta = _player('Beta', fideId: 22);
+      final syncedAt = DateTime.utc(2026, 8, 13, 12, 12);
+      final ordered = KnockoutMatchDetector.orderMatchGamesLatestFirst([
+        _game(
+          id: 'z-older',
+          white: alpha,
+          black: beta,
+          slug: 'lower-round-1',
+          boardNr: 1,
+          lastMoveTime: syncedAt,
+        ),
+        _game(
+          id: 'a-newer',
+          white: beta,
+          black: alpha,
+          slug: 'lower-round-1',
+          boardNr: 3,
+          lastMoveTime: syncedAt,
+        ),
+      ]);
+
+      expect(ordered.map((game) => game.gameId), ['a-newer', 'z-older']);
+    });
   });
 }
 
@@ -104,6 +211,9 @@ GamesTourModel _game({
   required PlayerCard white,
   required PlayerCard black,
   required String slug,
+  String? roundId,
+  int? boardNr,
+  DateTime? lastMoveTime,
 }) => GamesTourModel(
   gameId: id,
   whitePlayer: white,
@@ -113,9 +223,11 @@ GamesTourModel _game({
   whiteClockCentiseconds: 0,
   blackClockCentiseconds: 0,
   gameStatus: GameStatus.draw,
-  roundId: slug,
+  roundId: roundId ?? slug,
   roundSlug: slug,
   tourId: 'tour',
+  boardNr: boardNr,
+  lastMoveTime: lastMoveTime,
 );
 
 PlayerCard _player(String name, {int? fideId}) => PlayerCard(

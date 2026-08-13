@@ -153,6 +153,77 @@ void main() {
       expect(order.sortPassCount, afterArrival);
     });
 
+    test(
+      'new replay boards sort first when the round switches append mode',
+      () {
+        final order = GamesTourStableOrder();
+        order.resolveRound(
+          roundId: 'lower-round-1',
+          games: <GamesTourModel>[
+            _game('board-1', boardNr: 1),
+            _game('board-2', boardNr: 2),
+          ],
+          favoriteGameIds: const <String>{},
+          countrymanGameIds: const <String>{},
+        );
+        final beforeReplay = order.sortPassCount;
+
+        final withReplays = order.resolveRound(
+          roundId: 'lower-round-1',
+          games: <GamesTourModel>[
+            _game('board-1', boardNr: 1),
+            _game('board-2', boardNr: 2),
+            _game('board-3', boardNr: 3),
+            _game('board-4', boardNr: 4),
+          ],
+          favoriteGameIds: const <String>{},
+          countrymanGameIds: const <String>{},
+          newestBoardsFirst: true,
+        );
+        final afterReplay = order.sortPassCount;
+        final refreshed = order.resolveRound(
+          roundId: 'lower-round-1',
+          games: withReplays.reversed,
+          favoriteGameIds: const <String>{},
+          countrymanGameIds: const <String>{},
+          newestBoardsFirst: true,
+        );
+
+        expect(withReplays.map((game) => game.gameId), <String>[
+          'board-4',
+          'board-3',
+          'board-2',
+          'board-1',
+        ]);
+        expect(refreshed.map((game) => game.gameId), <String>[
+          'board-4',
+          'board-3',
+          'board-2',
+          'board-1',
+        ]);
+        expect(afterReplay, beforeReplay + 1);
+        expect(order.sortPassCount, afterReplay);
+      },
+    );
+
+    test('favorite priority remains ahead of newest-board ordering', () {
+      final sorted = sortTournamentRoundGamesByPriority(
+        games: <GamesTourModel>[
+          _game('favorite-old', boardNr: 1),
+          _game('regular-new', boardNr: 4),
+          _game('regular-middle', boardNr: 3),
+        ],
+        favoriteGameIds: const <String>{'favorite-old'},
+        newestBoardsFirst: true,
+      );
+
+      expect(sorted.map((game) => game.gameId), <String>[
+        'favorite-old',
+        'regular-new',
+        'regular-middle',
+      ]);
+    });
+
     test('re-sorts once for an explicit priority change', () {
       final order = GamesTourStableOrder();
       final games = <GamesTourModel>[

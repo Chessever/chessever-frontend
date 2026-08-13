@@ -437,6 +437,11 @@ final gamesTourGroupedProvider = Provider.autoDispose<GroupedGamesData>((ref) {
       tourId == null ? null : ref.watch(liveFocusSnapshotProvider(tourId));
   for (final roundId in gamesByRound.keys.toList(growable: false)) {
     final roundGames = gamesByRound[roundId]!;
+    final newestBoardsFirst =
+        KnockoutMatchDetector.hasRepeatedMatchupInSingleSourceRound(
+          isKnockoutTournament: isKnockoutTournament,
+          games: roundGames,
+        );
     final ordered = resolveTournamentRoundPresentationOrder(
       stableOrder: stableOrder,
       roundId: roundId,
@@ -446,6 +451,7 @@ final gamesTourGroupedProvider = Provider.autoDispose<GroupedGamesData>((ref) {
       isRefreshingAutoPins: pinState.isRefreshingAutoPins,
       favoriteGameIds: favoritePriorityIds,
       countrymanGameIds: countrymanPriorityIds,
+      newestBoardsFirst: newestBoardsFirst,
     );
     gamesByRound[roundId] =
         liveFocusSnapshot == null
