@@ -17,7 +17,7 @@ import 'package:motor/motor.dart';
 /// Replaces the roulette wheel: instead of a full-screen casino spinner sliding
 /// in from the right, the toolbar's action icons quietly hand over to a single
 /// pill — a "Tag this game" chip whose border drains as a countdown. Tapping it
-/// drops a small menu of the ten [kLikeTags] (each with an explanatory icon);
+/// drops a small menu of the [kLikeTags] (each with an explanatory icon);
 /// checking one or more tags writes the full tag list, letting the countdown
 /// elapse leaves the like untagged.
 class LikeTagChip extends ConsumerStatefulWidget {
@@ -513,12 +513,48 @@ class _TagDropdown extends StatefulWidget {
 }
 
 class _TagDropdownState extends State<_TagDropdown> {
+  /// The tag grid is capped at [_visibleRows] rows and scrolls past that, so
+  /// the panel keeps the same footprint no matter how long the vocabulary
+  /// grows. Adding a tag must never push the menu further down the screen.
+  static const int _columns = 2;
+  static const int _visibleRows = 5;
+  static const int _pageSize = _columns * _visibleRows;
+
   late final Set<String> _selected;
+  final ScrollController _grid = ScrollController();
+
+  /// Whether content runs off the top / bottom of the capped viewport. Drives
+  /// the edge fades — the only hint that the list continues.
+  bool _moreAbove = false;
+  bool _moreBelow = kLikeTags.length > _pageSize;
 
   @override
   void initState() {
     super.initState();
     _selected = <String>{...normalizeLikeTagLabels(widget.initialLabels)};
+    _grid.addListener(_syncEdges);
+    // First frame has no scroll metrics yet; read them once laid out so a
+    // short screen (which shrinks the panel further) also gets its fades.
+    WidgetsBinding.instance.addPostFrameCallback((_) => _syncEdges());
+  }
+
+  @override
+  void dispose() {
+    _grid.removeListener(_syncEdges);
+    _grid.dispose();
+    super.dispose();
+  }
+
+  void _syncEdges() {
+    if (!mounted || !_grid.hasClients) return;
+    final position = _grid.position;
+    final above = position.extentBefore > 1;
+    final below = position.extentAfter > 1;
+    if (above == _moreAbove && below == _moreBelow) return;
+    setState(() {
+      _moreAbove = above;
+      _moreBelow = below;
+    });
   }
 
   void _toggle(String label) {
@@ -590,6 +626,17 @@ class _TagDropdownState extends State<_TagDropdown> {
 
   Widget _panel(AppColors colors) {
     final tags = kLikeTags;
+    final rowExtent = 48.h;
+    final rowGap = 8.h;
+    final padTop = 8.h;
+    final padBottom = 10.h;
+    // Exactly [_visibleRows] rows — the footprint the menu had at ten tags.
+    // Everything past that scrolls instead of stretching the panel.
+    final gridHeight =
+        rowExtent * _visibleRows +
+        rowGap * (_visibleRows - 1) +
+        padTop +
+        padBottom;
     return Material(
       color: colors.surfaceElevated,
       elevation: 12,
@@ -671,49 +718,90 @@ class _TagDropdownState extends State<_TagDropdown> {
                 color: colors.dividerStrong.withValues(alpha: 0.4),
               ),
               Flexible(
-                child: GridView.builder(
-                  padding: EdgeInsets.fromLTRB(10.w, 8.h, 10.w, 10.h),
-                  shrinkWrap: true,
-                  physics: const ClampingScrollPhysics(),
-                  itemCount: tags.length,
-                  gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                    crossAxisCount: 2,
-                    mainAxisSpacing: 8.h,
-                    crossAxisSpacing: 8.w,
-                    mainAxisExtent: 48.h,
+                // Rows now scroll under the panel's bottom corners, so clip
+                // them to the border's inner radius — otherwise a square's
+                // corner paints outside the rounded edge on the way past.
+                child: ClipRRect(
+                  borderRadius: BorderRadius.vertical(
+                    bottom: Radius.circular(16.br - 1),
                   ),
-                  itemBuilder: (_, i) {
-                    final t = tags[i];
-                    final selected = _selected.contains(t.label);
-                    return _TagSquare(
-                          label: t.label,
-                          accent: t.color,
-                          selected: selected,
-                          onTap: () => _toggle(t.label),
-                        )
-                        // Stagger reveal — each chip arrives ~22ms after the
-                        // previous so the grid feels assembled, not slammed.
-                        .animate()
-                        .fadeIn(
-                          delay: Duration(milliseconds: 60 + i * 22),
-                          duration: 200.ms,
-                          curve: Curves.easeOutCubic,
-                        )
-                        .moveY(
-                          begin: 6,
-                          end: 0,
-                          delay: Duration(milliseconds: 60 + i * 22),
-                          duration: 220.ms,
-                          curve: Curves.easeOutCubic,
-                        )
-                        .scaleXY(
-                          begin: 0.94,
-                          end: 1.0,
-                          delay: Duration(milliseconds: 60 + i * 22),
-                          duration: 240.ms,
-                          curve: Curves.easeOutBack,
-                        );
-                  },
+                  child: ConstrainedBox(
+                    constraints: BoxConstraints(maxHeight: gridHeight),
+                    child: Stack(
+                      children: [
+                        GridView.builder(
+                          controller: _grid,
+                          padding: EdgeInsets.fromLTRB(
+                            10.w,
+                            padTop,
+                            10.w,
+                            padBottom,
+                          ),
+                          shrinkWrap: true,
+                          physics: const ClampingScrollPhysics(),
+                          itemCount: tags.length,
+                          gridDelegate:
+                              SliverGridDelegateWithFixedCrossAxisCount(
+                                crossAxisCount: _columns,
+                                mainAxisSpacing: rowGap,
+                                crossAxisSpacing: 8.w,
+                                mainAxisExtent: rowExtent,
+                              ),
+                          itemBuilder: (_, i) {
+                            final t = tags[i];
+                            final square = _TagSquare(
+                              label: t.label,
+                              accent: t.color,
+                              selected: _selected.contains(t.label),
+                              onTap: () => _toggle(t.label),
+                            );
+                            // Only the first screenful joins the opening
+                            // stagger. Rows below the fold are built as the user
+                            // scrolls, and a delayed fade there would pop in
+                            // under the thumb.
+                            if (i >= _pageSize) return square;
+                            final delay = Duration(milliseconds: 60 + i * 22);
+                            return square
+                                // Stagger reveal — each chip arrives ~22ms after
+                                // the previous so the grid feels assembled, not
+                                // slammed.
+                                .animate()
+                                .fadeIn(
+                                  delay: delay,
+                                  duration: 200.ms,
+                                  curve: Curves.easeOutCubic,
+                                )
+                                .moveY(
+                                  begin: 6,
+                                  end: 0,
+                                  delay: delay,
+                                  duration: 220.ms,
+                                  curve: Curves.easeOutCubic,
+                                )
+                                .scaleXY(
+                                  begin: 0.94,
+                                  end: 1.0,
+                                  delay: delay,
+                                  duration: 240.ms,
+                                  curve: Curves.easeOutBack,
+                                );
+                          },
+                        ),
+                        _ScrollEdgeFade(
+                          fromTop: true,
+                          visible: _moreAbove,
+                          surface: colors.surfaceElevated,
+                          height: padTop + rowExtent * 0.34,
+                        ),
+                        _ScrollEdgeFade(
+                          fromTop: false,
+                          visible: _moreBelow,
+                          surface: colors.surfaceElevated,
+                          height: padBottom + rowExtent * 0.34,
+                        ),
+                      ],
+                    ),
+                  ),
                 ),
               ),
             ],
@@ -724,10 +812,56 @@ class _TagDropdownState extends State<_TagDropdown> {
   }
 }
 
-/// One selectable tag in the dropdown: text-only clickable square that wraps
-/// alongside its siblings so all ten tags fit at a glance. Tag colour survives
-/// as the selected-state accent (border + tinted fill) so the curated palette
-/// still distinguishes tags without per-tag glyphs.
+/// Softens the row at a scrolling edge into the panel surface, so a clipped
+/// half-row reads as "there is more" instead of as a botched cut. Same colour
+/// as the panel behind it, so there is no seam — and it only shows while
+/// content actually runs past that edge.
+class _ScrollEdgeFade extends StatelessWidget {
+  const _ScrollEdgeFade({
+    required this.fromTop,
+    required this.visible,
+    required this.surface,
+    required this.height,
+  });
+
+  final bool fromTop;
+  final bool visible;
+  final Color surface;
+  final double height;
+
+  @override
+  Widget build(BuildContext context) {
+    return Positioned(
+      top: fromTop ? 0 : null,
+      bottom: fromTop ? null : 0,
+      left: 0,
+      right: 0,
+      child: IgnorePointer(
+        child: AnimatedOpacity(
+          opacity: visible ? 1 : 0,
+          duration: const Duration(milliseconds: 160),
+          curve: Curves.easeOut,
+          child: Container(
+            height: height,
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: fromTop ? Alignment.topCenter : Alignment.bottomCenter,
+                end: fromTop ? Alignment.bottomCenter : Alignment.topCenter,
+                colors: [surface, surface.withValues(alpha: 0)],
+                stops: const [0.15, 1.0],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// One selectable tag in the dropdown: text-only clickable square laid out
+/// two-up in a scrolling grid. Tag colour survives as the selected-state accent
+/// (border + tinted fill) so the curated palette still distinguishes tags
+/// without per-tag glyphs.
 class _TagSquare extends StatelessWidget {
   const _TagSquare({
     required this.label,
