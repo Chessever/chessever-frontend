@@ -3,7 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   group('LikeLearningPromptTracker', () {
-    test('prompts at 10, 20, 40, then every 40 completed games', () async {
+    test('prompts every 40 completed games without a like', () async {
       final tracker = LikeLearningPromptTracker(_MemoryStore());
       await tracker.initialize(userId: 'user-1', hasExistingLikes: false);
 
@@ -16,7 +16,7 @@ void main() {
         if (shouldPrompt) promptGames.add(game);
       }
 
-      expect(promptGames, [10, 20, 40, 80, 120]);
+      expect(promptGames, [40, 80, 120]);
     });
 
     test('a confirmed like restarts the next prompt at 40 games', () async {
@@ -86,7 +86,7 @@ void main() {
         final tracker = LikeLearningPromptTracker(store);
         await tracker.initialize(userId: 'user-1', hasExistingLikes: false);
 
-        for (var game = 1; game <= 9; game++) {
+        for (var game = 1; game <= 39; game++) {
           expect(
             await tracker.recordCompletedGame(
               userId: 'user-1',
@@ -97,7 +97,10 @@ void main() {
         }
         // Re-opening a game already on the ledger must not advance the count.
         expect(
-          await tracker.recordCompletedGame(userId: 'user-1', gameId: 'game-9'),
+          await tracker.recordCompletedGame(
+            userId: 'user-1',
+            gameId: 'game-39',
+          ),
           isFalse,
         );
 
@@ -105,7 +108,7 @@ void main() {
         expect(
           await restoredTracker.recordCompletedGame(
             userId: 'user-1',
-            gameId: 'game-10',
+            gameId: 'game-40',
           ),
           isTrue,
         );
@@ -130,6 +133,38 @@ void main() {
         isTrue,
       );
     });
+
+    test(
+      'migrates an old introductory target to the 40-game minimum',
+      () async {
+        final store = _MemoryStore();
+        await store.write('user-1', <String, Object?>{
+          'initialized': true,
+          'hasEverLiked': false,
+          'completedSinceLike': 12,
+          'nextPromptAt': 20,
+          'countedGameIds': List.generate(12, (index) => 'game-${index + 1}'),
+        });
+        final tracker = LikeLearningPromptTracker(store);
+
+        for (var game = 13; game < 40; game++) {
+          expect(
+            await tracker.recordCompletedGame(
+              userId: 'user-1',
+              gameId: 'game-$game',
+            ),
+            isFalse,
+          );
+        }
+        expect(
+          await tracker.recordCompletedGame(
+            userId: 'user-1',
+            gameId: 'game-40',
+          ),
+          isTrue,
+        );
+      },
+    );
 
     test(
       'initialization is one-time and does not repeatedly reset progress',

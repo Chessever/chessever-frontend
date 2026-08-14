@@ -11,6 +11,7 @@ import 'package:chessever2/screens/group_event/smart_event/smart_aggregate_event
 import 'package:chessever2/screens/group_event/providers/group_event_screen_provider.dart';
 import 'package:chessever2/screens/group_event/widget/filter_popup/filter_popup_provider.dart';
 import 'package:chessever2/screens/group_event/widget/filter_popup/filter_popup_state.dart';
+import 'package:chessever2/utils/event_time_control.dart';
 import 'package:chessever2/screens/group_event/smart_event/smart_event_standings_provider.dart';
 import 'package:chessever2/screens/player_profile/player_profile_screen.dart';
 import 'package:chessever2/screens/standings/player_standing_model.dart';
@@ -53,10 +54,11 @@ import 'package:flutter_svg/flutter_svg.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:intl/intl.dart';
 
-/// Full event view for generated level games — an aggregate of every game in
-/// the events from the Current view (NOT live-only). Renders the familiar
-/// About / Games / Standings tabbed shell, with every tab computed from the
-/// one repository fetch ([smartAggregateEventRepositoryProvider]).
+/// Full event view for generated level games — an aggregate of every matching
+/// game across broadcasts, not just currently-running events. Renders the
+/// familiar About / Games / Standings tabbed shell. Games paginate one day
+/// at a time ([smartAggregateEventRepositoryProvider]) so first paint is the
+/// newest day rather than a multi-thousand-row fetch.
 class SmartEventScreen extends ConsumerStatefulWidget {
   const SmartEventScreen({required this.request, super.key});
 
@@ -1391,6 +1393,10 @@ class _GamesTabState extends ConsumerState<_GamesTab>
   bool _handleScrollNotification(ScrollNotification notification) {
     if (notification.metrics.axis != Axis.vertical) return false;
 
+    if (notification.metrics.extentAfter <= 420) {
+      _requestOlderDays();
+    }
+
     if (notification is ScrollEndNotification) {
       _scheduleScrollIdle();
       return false;
@@ -1410,6 +1416,18 @@ class _GamesTabState extends ConsumerState<_GamesTab>
     }
 
     return false;
+  }
+
+  void _requestOlderDays() {
+    if (!mounted) return;
+    final request = _SmartEventRequestScope.of(context);
+    final tabScope = _SmartTierFilterScope.of(context);
+    final query = SmartEventGamesQuery(
+      request: request.withNeutralEloRange(),
+      filter: _dataFilterForTier(tabScope.tier),
+      searchQuery: tabScope.searchQuery,
+    );
+    ref.read(smartAggregateEventRepositoryProvider(query).notifier).loadMore();
   }
 
   void _markScrolling() {
@@ -1507,7 +1525,10 @@ class _GamesTabState extends ConsumerState<_GamesTab>
             physics: const AlwaysScrollableScrollPhysics(
               parent: BouncingScrollPhysics(),
             ),
-            itemCount: games.isEmpty ? 1 : rows.length,
+            itemCount:
+                games.isEmpty
+                    ? 1
+                    : rows.length + (event.hasMore || event.isLoadingMore ? 1 : 0),
             itemBuilder: (context, i) {
               if (games.isEmpty) {
                 final hasNarrowingControls =
@@ -1535,6 +1556,21 @@ class _GamesTabState extends ConsumerState<_GamesTab>
                                     : 'No games right now',
                           ),
                 );
+              }
+              if (i >= rows.length) {
+                if (event.isLoadingMore) {
+                  return Padding(
+                    padding: EdgeInsets.symmetric(vertical: 16.h),
+                    child: const Center(
+                      child: SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      ),
+                    ),
+                  );
+                }
+                return const SizedBox(height: 24);
               }
               final row = rows[i];
               if (row.header != null) {
@@ -1699,13 +1735,13 @@ class _GamesTabState extends ConsumerState<_GamesTab>
 
   bool _matchesTimeControl(GamesTourModel game, GameTimeControlFilter filter) {
     if (filter == GameTimeControlFilter.all) return true;
-    final value = game.timeControl?.toLowerCase();
-    if (value == null || value.isEmpty) return true;
+    final bucket = timeControlBucketFor(game.timeControl);
+    if (bucket == null) return true;
     return switch (filter) {
       GameTimeControlFilter.classical =>
-        value == 'standard' || value == 'classical',
-      GameTimeControlFilter.rapid => value == 'rapid',
-      GameTimeControlFilter.blitz => value == 'blitz' || value == 'bullet',
+        bucket == TimeControlBucket.classical,
+      GameTimeControlFilter.rapid => bucket == TimeControlBucket.rapid,
+      GameTimeControlFilter.blitz => bucket == TimeControlBucket.blitz,
       GameTimeControlFilter.all => true,
     };
   }
@@ -1808,9 +1844,8 @@ class _GamesTabState extends ConsumerState<_GamesTab>
   }
 
   DateTime _gameDay(GamesTourModel game) {
-    final raw = game.lastMoveTime ?? game.bucketDate ?? DateTime.now();
-    final local = raw.toLocal();
-    return DateTime(local.year, local.month, local.day);
+    final raw = game.gameDay ?? game.bucketDate ?? DateTime.now();
+    return DateTime(raw.year, raw.month, raw.day);
   }
 
   String _formatDateHeader(String dateKey) {

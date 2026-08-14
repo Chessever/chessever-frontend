@@ -9,14 +9,17 @@ import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   group('selectGamesTourDisplayRounds', () {
-    test('keeps every populated upcoming synthetic stage', () {
+    test('puts a populated synthetic semifinal above quarterfinals', () {
+      final now = DateTime(2026, 8, 13, 19, 31);
       final quarterfinals = _round(
         'knockout-stage-quarterfinals',
         RoundStatus.completed,
+        startsAt: DateTime(2026, 8, 10, 22),
       );
       final semifinals = _round(
         'knockout-stage-semifinals',
         RoundStatus.upcoming,
+        startsAt: DateTime(2026, 8, 13, 22, 3),
       );
 
       final visible = selectGamesTourDisplayRounds(
@@ -29,11 +32,12 @@ void main() {
         upcomingPairingRoundIds: const {},
         isSearchMode: false,
         isMultiStageKnockout: true,
+        now: now,
       );
 
       expect(visible.map((round) => round.id), [
-        quarterfinals.id,
         semifinals.id,
+        quarterfinals.id,
       ]);
     });
 

@@ -30,6 +30,12 @@ class Games {
   /// 40-move bonus that broadcast relays credit late.
   final String? timeControlText;
   final int? avgElo; // From tours: average ELO of the tournament
+  final String? tourName;
+  final String? eventName;
+  final String? groupBroadcastId;
+  final int? eventMaxAvgElo;
+  final DateTime? eventDateStart;
+  final DateTime? eventDateEnd;
 
   Games({
     required this.id,
@@ -57,6 +63,12 @@ class Games {
     this.timeControl,
     this.timeControlText,
     this.avgElo,
+    this.tourName,
+    this.eventName,
+    this.groupBroadcastId,
+    this.eventMaxAvgElo,
+    this.eventDateStart,
+    this.eventDateEnd,
   });
 
   Games copyWith({
@@ -85,6 +97,12 @@ class Games {
     String? timeControl,
     String? timeControlText,
     int? avgElo,
+    String? tourName,
+    String? eventName,
+    String? groupBroadcastId,
+    int? eventMaxAvgElo,
+    DateTime? eventDateStart,
+    DateTime? eventDateEnd,
   }) {
     return Games(
       id: id ?? this.id,
@@ -112,6 +130,12 @@ class Games {
       timeControl: timeControl ?? this.timeControl,
       timeControlText: timeControlText ?? this.timeControlText,
       avgElo: avgElo ?? this.avgElo,
+      tourName: tourName ?? this.tourName,
+      eventName: eventName ?? this.eventName,
+      groupBroadcastId: groupBroadcastId ?? this.groupBroadcastId,
+      eventMaxAvgElo: eventMaxAvgElo ?? this.eventMaxAvgElo,
+      eventDateStart: eventDateStart ?? this.eventDateStart,
+      eventDateEnd: eventDateEnd ?? this.eventDateEnd,
     );
   }
 
@@ -121,19 +145,43 @@ class Games {
       String? timeControl;
       String? timeControlText;
       int? avgElo;
+      String? tourName;
+      String? eventName;
+      String? groupBroadcastId;
+      int? eventMaxAvgElo;
+      DateTime? eventDateStart;
+      DateTime? eventDateEnd;
       final tours = json['tours'];
       if (tours is Map<String, dynamic>) {
+        tourName = tours['name'] as String?;
         avgElo =
             tours['avg_elo'] != null ? (tours['avg_elo'] as num).toInt() : null;
         timeControlText = tours['tc'] as String?;
         final groupBroadcasts = tours['group_broadcasts'];
         if (groupBroadcasts is Map<String, dynamic>) {
+          groupBroadcastId = groupBroadcasts['id'] as String?;
+          eventName = groupBroadcasts['name'] as String?;
           timeControl = groupBroadcasts['time_control'] as String?;
+          eventMaxAvgElo =
+              groupBroadcasts['max_avg_elo'] != null
+                  ? (groupBroadcasts['max_avg_elo'] as num).toInt()
+                  : null;
+          final startRaw = groupBroadcasts['date_start'];
+          final endRaw = groupBroadcasts['date_end'];
+          if (startRaw is String && startRaw.isNotEmpty) {
+            eventDateStart = DateTime.tryParse(startRaw);
+          }
+          if (endRaw is String && endRaw.isNotEmpty) {
+            eventDateEnd = DateTime.tryParse(endRaw);
+          }
         }
       }
       // Also check direct fields (for backwards compatibility)
       timeControl ??= json['time_control'] as String?;
       timeControlText ??= json['time_control_text'] as String?;
+      tourName ??= json['tour_name'] as String?;
+      eventName ??= json['event_name'] as String?;
+      groupBroadcastId ??= json['group_broadcast_id'] as String?;
       avgElo ??=
           json['avg_elo'] != null ? (json['avg_elo'] as num).toInt() : null;
 
@@ -193,8 +241,14 @@ class Games {
         timeControl: timeControl,
         timeControlText: timeControlText,
         avgElo: avgElo,
+        tourName: tourName,
+        eventName: eventName,
+        groupBroadcastId: groupBroadcastId,
+        eventMaxAvgElo: eventMaxAvgElo,
+        eventDateStart: eventDateStart,
+        eventDateEnd: eventDateEnd,
       );
-    } catch (e, _) {
+    } catch (e) {
       rethrow;
     }
   }
@@ -228,6 +282,9 @@ class Games {
       if (openingName != null) 'opening_name': openingName,
       if (timeControl != null) 'time_control': timeControl,
       if (timeControlText != null) 'time_control_text': timeControlText,
+      if (tourName != null) 'tour_name': tourName,
+      if (eventName != null) 'event_name': eventName,
+      if (groupBroadcastId != null) 'group_broadcast_id': groupBroadcastId,
     };
   }
 }

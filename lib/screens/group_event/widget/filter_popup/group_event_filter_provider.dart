@@ -2,6 +2,8 @@ import 'package:chessever2/repository/local_storage/group_broadcast/group_broadc
 import 'package:chessever2/repository/supabase/group_broadcast/group_broadcast.dart';
 import 'package:chessever2/screens/group_event/group_event_screen.dart';
 import 'package:chessever2/screens/group_event/providers/live_group_broadcast_id_provider.dart';
+import 'package:chessever2/screens/group_event/widget/filter_popup/event_filter_matching.dart';
+import 'package:chessever2/screens/group_event/widget/filter_popup/filter_popup_state.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:flutter/material.dart';
 
@@ -82,52 +84,16 @@ class _GroupEventFilterController {
     required RangeValues eloRange,
     required List<String> liveIds,
   }) {
-    // Normalize filters
-    final filterSet =
-        (filters ?? const <String>[])
-            .map((f) => f.trim().toLowerCase())
-            .where((f) => f.isNotEmpty)
-            .toSet();
-
-    // Separate status vs format filters
-    final requestedStatuses = <String>{
-      EventStatus.live.name,
-      EventStatus.completed.name,
-    }.intersection(filterSet);
-
-    final requestedFormats = filterSet.difference(requestedStatuses);
-
-    return broadcasts.where((tour) {
-      // Status filter: handle live and completed
-      if (requestedStatuses.isNotEmpty) {
-        final isLive = liveIds.contains(tour.id);
-        final isCompleted = !isLive;
-
-        final matchesStatus =
-            (requestedStatuses.contains(EventStatus.live.name) && isLive) ||
-            (requestedStatuses.contains(EventStatus.completed.name) &&
-                isCompleted);
-        if (!matchesStatus) return false;
-      }
-
-      // Format filter: blitz/rapid/standard
-      if (requestedFormats.isNotEmpty) {
-        final tourFormat = tour.timeControl?.trim().toLowerCase();
-        final matchesFormat =
-            tourFormat != null && requestedFormats.contains(tourFormat);
-        if (!matchesFormat) return false;
-      }
-
-      // Elo filter (inclusive)
-      final minElo = eloRange.start.round();
-      final maxElo = eloRange.end.round();
-      if (tour.maxAvgElo != null) {
-        if (tour.maxAvgElo! < minElo || tour.maxAvgElo! > maxElo) {
-          return false;
-        }
-      }
-
-      return true;
-    }).toList();
+    return filterBroadcastsByPopupState(
+      broadcasts,
+      FilterPopupState(
+        formatsAndStates: {
+          for (final value in filters ?? const <String>[])
+            if (value.trim().isNotEmpty) value.trim().toLowerCase(),
+        },
+        eloRange: eloRange,
+      ),
+      liveIds: liveIds,
+    );
   }
 }

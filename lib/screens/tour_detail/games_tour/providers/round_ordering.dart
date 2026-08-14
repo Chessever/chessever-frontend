@@ -3,6 +3,7 @@ import 'package:chessever2/screens/tour_detail/games_tour/models/games_app_bar_v
 typedef RoundDateResolver = DateTime? Function(GamesAppBarModel model);
 typedef RoundHasGames = bool Function(GamesAppBarModel model);
 typedef RoundIsFullyPlayed = bool Function(GamesAppBarModel model);
+typedef RoundHasStartedActivity = bool Function(GamesAppBarModel model);
 
 const Duration upcomingRoundPromotionWindow = Duration(hours: 2);
 
@@ -11,6 +12,7 @@ List<GamesAppBarModel> sortRoundsForDisplay(
   required RoundDateResolver resolveDate,
   RoundHasGames? hasGames,
   RoundIsFullyPlayed? isRoundFullyPlayed,
+  RoundHasStartedActivity? hasStartedActivity,
   DateTime? now,
 }) {
   if (models.length <= 1) return List<GamesAppBarModel>.from(models);
@@ -18,31 +20,31 @@ List<GamesAppBarModel> sortRoundsForDisplay(
   final effectiveNow = now ?? DateTime.now();
   final allHaveStartTimes = models.every((m) => resolveDate(m) != null);
   final useGenericRoundOrder = _shouldUseGenericRoundOrder(models);
+  bool isStarted(GamesAppBarModel model) => _isStartedRound(
+    model,
+    effectiveNow,
+    resolveDate,
+    hasStartedActivity: hasStartedActivity,
+  );
 
   if (!allHaveStartTimes) {
     final started =
-        models
-            .where((model) => _isStartedRound(model, effectiveNow, resolveDate))
-            .toList()
-          ..sort((a, b) {
-            if (useGenericRoundOrder) {
-              final roundCompare = _compareByGenericRoundNumber(a, b);
-              if (roundCompare != 0) return roundCompare;
-            }
-            return _compareByStart(a, b, false, resolveDate);
-          });
+        models.where(isStarted).toList()..sort((a, b) {
+          if (useGenericRoundOrder) {
+            final roundCompare = _compareByGenericRoundNumber(a, b);
+            if (roundCompare != 0) return roundCompare;
+          }
+          return _compareByStart(a, b, false, resolveDate);
+        });
     final future =
-        models
-            .where(
-              (model) => !_isStartedRound(model, effectiveNow, resolveDate),
-            )
-            .toList()
+        models.where((model) => !isStarted(model)).toList()
           ..sort((a, b) => _compareByStart(a, b, true, resolveDate));
     final promoted = pickUpcomingRoundForPromotion(
       models,
       resolveDate: resolveDate,
       hasGames: hasGames,
       isRoundFullyPlayed: isRoundFullyPlayed,
+      hasStartedActivity: hasStartedActivity,
       now: effectiveNow,
     );
     return <GamesAppBarModel>[
@@ -53,26 +55,22 @@ List<GamesAppBarModel> sortRoundsForDisplay(
   }
 
   final started =
-      models
-          .where((m) => _isStartedRound(m, effectiveNow, resolveDate))
-          .toList()
-        ..sort((a, b) {
-          if (useGenericRoundOrder) {
-            final roundCompare = _compareByGenericRoundNumber(a, b);
-            if (roundCompare != 0) return roundCompare;
-          }
-          return _compareByStart(a, b, false, resolveDate);
-        });
+      models.where(isStarted).toList()..sort((a, b) {
+        if (useGenericRoundOrder) {
+          final roundCompare = _compareByGenericRoundNumber(a, b);
+          if (roundCompare != 0) return roundCompare;
+        }
+        return _compareByStart(a, b, false, resolveDate);
+      });
   final future =
-      models
-          .where((m) => !_isStartedRound(m, effectiveNow, resolveDate))
-          .toList()
+      models.where((model) => !isStarted(model)).toList()
         ..sort((a, b) => _compareByStart(a, b, true, resolveDate));
   final promoted = pickUpcomingRoundForPromotion(
     models,
     resolveDate: resolveDate,
     hasGames: hasGames,
     isRoundFullyPlayed: isRoundFullyPlayed,
+    hasStartedActivity: hasStartedActivity,
     now: effectiveNow,
   );
 
@@ -179,6 +177,7 @@ GamesAppBarModel? pickUpcomingRoundForPromotion(
   required RoundDateResolver resolveDate,
   RoundHasGames? hasGames,
   RoundIsFullyPlayed? isRoundFullyPlayed,
+  RoundHasStartedActivity? hasStartedActivity,
   DateTime? now,
 }) {
   final effectiveNow = now ?? DateTime.now();
@@ -199,7 +198,13 @@ GamesAppBarModel? pickUpcomingRoundForPromotion(
 
   final startedRounds = models.where(
     (model) =>
-        include(model) && _isStartedRound(model, effectiveNow, resolveDate),
+        include(model) &&
+        _isStartedRound(
+          model,
+          effectiveNow,
+          resolveDate,
+          hasStartedActivity: hasStartedActivity,
+        ),
   );
   if (startedRounds.isEmpty || !startedRounds.every(fullyPlayed)) {
     return null;
@@ -224,8 +229,15 @@ GamesAppBarModel? pickUpcomingRoundForPromotion(
 bool _isStartedRound(
   GamesAppBarModel model,
   DateTime now,
-  RoundDateResolver resolveDate,
-) {
+  RoundDateResolver resolveDate, {
+  RoundHasStartedActivity? hasStartedActivity,
+}) {
+  // Renderable game activity is stronger evidence than coarse synthetic
+  // stage metadata. Sibling knockout stages can briefly retain `upcoming`
+  // (or a later tour-level timestamp) after their first boards are underway.
+  if (hasStartedActivity?.call(model) ?? false) {
+    return true;
+  }
   if (model.roundStatus == RoundStatus.live ||
       model.roundStatus == RoundStatus.ongoing ||
       model.roundStatus == RoundStatus.completed) {

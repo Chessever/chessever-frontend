@@ -7,6 +7,7 @@ import 'package:chessever2/screens/group_event/widget/filter_popup/filter_popup_
 import 'package:chessever2/screens/group_event/widget/player_search_cards.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
+import 'package:chessever2/utils/event_time_control.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/scroll_cache.dart';
 import 'package:chessever2/widgets/event_card/event_card.dart';
@@ -441,9 +442,11 @@ List<GroupEventCardModel> _applySearchFilter(
       if (!matchesStatus) return false;
     }
 
-    if (requestedFormats.isNotEmpty) {
-      final tourFormat = tour.timeControl.trim().toLowerCase();
-      if (!requestedFormats.contains(tourFormat)) return false;
+    if (!broadcastMatchesTimeControlFilter(
+      tour.timeControl,
+      requestedFormats,
+    )) {
+      return false;
     }
 
     if (filter.hasEloFilter && tour.maxAvgElo > 0) {

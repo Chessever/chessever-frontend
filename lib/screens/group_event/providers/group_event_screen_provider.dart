@@ -9,6 +9,7 @@ import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_s
 import 'package:chessever2/screens/group_event/providers/interfaces/igroup_event_screen_controller.dart';
 import 'package:chessever2/screens/group_event/providers/live_group_broadcast_id_provider.dart';
 import 'package:chessever2/screens/group_event/providers/sorting_all_event_provider.dart';
+import 'package:chessever2/screens/group_event/widget/filter_popup/event_filter_matching.dart';
 import 'package:chessever2/screens/group_event/widget/filter_popup/filter_popup_provider.dart';
 import 'package:chessever2/screens/group_event/widget/filter_popup/filter_popup_state.dart';
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_mode_provider.dart';
@@ -22,6 +23,9 @@ import 'package:flutter/cupertino.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:chessever2/repository/supabase/group_broadcast/group_tour_repository.dart';
 import 'package:chessever2/screens/tour_detail/player_tour/player_tour_screen_provider.dart';
+
+export 'package:chessever2/screens/group_event/widget/filter_popup/event_filter_matching.dart'
+    show filterBroadcastsByPopupState;
 
 final selectedPlayerNameProvider = StateProvider<String?>((ref) => null);
 final isSearchingProvider = StateProvider<bool>((ref) => false);
@@ -45,58 +49,6 @@ void updateDebouncedSearchQuery(WidgetRef ref, String query) {
 /// Cancel any pending debounce timer
 void cancelSearchDebounce() {
   _searchDebounceTimer?.cancel();
-}
-
-/// THE filter semantics of the home Current/Past lists, extracted so other
-/// surfaces (the smart event resolver) evaluate the exact same criteria over
-/// the exact same fields — the two can never drift.
-///
-/// Semantics: live/completed test against [liveIds]; formats test the
-/// broadcast's time control; the Elo band tests `max_avg_elo` and lets
-/// null-rated broadcasts through (unknown is not a mismatch).
-List<GroupBroadcast> filterBroadcastsByPopupState(
-  List<GroupBroadcast> broadcasts,
-  FilterPopupState filter, {
-  required List<String> liveIds,
-}) {
-  final filterSet =
-      filter.formatsAndStates
-          .map((f) => f.trim().toLowerCase())
-          .where((f) => f.isNotEmpty)
-          .toSet();
-
-  final requestedStatuses = <String>{
-    'live',
-    'completed',
-  }.intersection(filterSet);
-  final requestedFormats = filterSet.difference(requestedStatuses);
-
-  return broadcasts.where((tour) {
-    if (requestedStatuses.isNotEmpty) {
-      final isLive = liveIds.contains(tour.id);
-      final matchesStatus =
-          (requestedStatuses.contains('live') && isLive) ||
-          (requestedStatuses.contains('completed') && !isLive);
-      if (!matchesStatus) return false;
-    }
-
-    if (requestedFormats.isNotEmpty) {
-      final tourFormat = tour.timeControl?.trim().toLowerCase();
-      if (tourFormat == null || !requestedFormats.contains(tourFormat)) {
-        return false;
-      }
-    }
-
-    if (filter.hasEloFilter && tour.maxAvgElo != null) {
-      final minElo = filter.minElo ?? kFilterMinElo.round();
-      final maxElo = filter.maxElo ?? kFilterMaxElo.round();
-      if (tour.maxAvgElo! < minElo || tour.maxAvgElo! > maxElo) {
-        return false;
-      }
-    }
-
-    return true;
-  }).toList();
 }
 
 final supabaseSearchProvider =

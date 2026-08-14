@@ -5,10 +5,10 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 /// Persisted cadence for the contextual "Did you like this game?" reminder.
 ///
-/// New users are asked after 10, 20, and 40 distinct completed games. After
-/// that the question repeats every 40 games. Any confirmed like restarts the
-/// cadence at 40 games, so the reminder only ever reaches someone who has gone
-/// a long stretch without liking anything.
+/// Users are asked after 40 distinct completed games without a like, and again
+/// after each further run of 40. Any confirmed like restarts the cadence, so
+/// the reminder only ever reaches someone who has gone a long stretch without
+/// liking anything.
 class LikeLearningPromptProgress {
   const LikeLearningPromptProgress({
     required this.initialized,
@@ -23,7 +23,7 @@ class LikeLearningPromptProgress {
       initialized: false,
       hasEverLiked: false,
       completedSinceLike: 0,
-      nextPromptAt: 10,
+      nextPromptAt: 40,
       countedGameIds: <String>{},
     );
   }
@@ -43,8 +43,10 @@ class LikeLearningPromptProgress {
           (json['completedSinceLike'] as num?)?.toInt().clamp(0, 1 << 30) ?? 0,
       nextPromptAt:
           nextPromptAt is num
-              ? nextPromptAt.toInt().clamp(1, 1 << 30)
-              : (hasEverLiked ? 40 : 10),
+              // Older installs used introductory prompts at 10 and 20 games.
+              // Lift that persisted target to the new 40-game minimum.
+              ? nextPromptAt.toInt().clamp(40, 1 << 30)
+              : 40,
       countedGameIds: LikeLearningPromptTracker.trimTrackedIds(ids),
     );
   }
@@ -183,7 +185,7 @@ class LikeLearningPromptTracker {
             .copyWith(
               initialized: true,
               hasEverLiked: hasExistingLikes,
-              nextPromptAt: hasExistingLikes ? 40 : 10,
+              nextPromptAt: 40,
             )
             .toJson(),
       );
@@ -247,8 +249,6 @@ class LikeLearningPromptTracker {
   }
 
   int _nextPromptTarget(int currentTarget) {
-    if (currentTarget < 20) return 20;
-    if (currentTarget < 40) return 40;
     return currentTarget + 40;
   }
 }

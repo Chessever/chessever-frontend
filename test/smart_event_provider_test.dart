@@ -30,6 +30,7 @@ GamesTourModel _game({
   required int whiteRating,
   required int blackRating,
   DateTime? lastMoveTime,
+  DateTime? gameDay,
   int? boardNr,
 }) {
   return GamesTourModel(
@@ -44,6 +45,7 @@ GamesTourModel _game({
     roundId: 'round-1',
     tourId: 'tour-1',
     lastMoveTime: lastMoveTime,
+    gameDay: gameDay,
     boardNr: boardNr,
   );
 }
@@ -269,11 +271,29 @@ void main() {
       expect(completedOnly.map((b) => b.id), ['finished']);
     });
 
-    test('format criteria test the broadcast time control', () {
+    test('Classical chip matches events tagged classical', () {
       final filtered = filterBroadcastsByPopupState(
         [
-          _broadcast(id: 'blitz-one', timeControl: 'Blitz'),
-          _broadcast(id: 'classical', timeControl: 'Standard'),
+          _broadcast(id: 'classical-db', timeControl: 'classical'),
+          _broadcast(id: 'standard-db', timeControl: 'Standard'),
+          _broadcast(id: 'blitz-db', timeControl: 'Blitz'),
+        ],
+        const FilterPopupState(
+          formatsAndStates: {'standard'},
+          eloRange: RangeValues(kFilterMinElo, kFilterMaxElo),
+        ),
+        liveIds: const [],
+      );
+
+      expect(filtered.map((b) => b.id), ['classical-db', 'standard-db']);
+    });
+
+    test('Blitz chip matches bullet events', () {
+      final filtered = filterBroadcastsByPopupState(
+        [
+          _broadcast(id: 'bullet', timeControl: 'bullet'),
+          _broadcast(id: 'blitz', timeControl: 'Blitz'),
+          _broadcast(id: 'rapid', timeControl: 'Rapid'),
           _broadcast(id: 'unknown', timeControl: null),
         ],
         const FilterPopupState(
@@ -283,7 +303,39 @@ void main() {
         liveIds: const [],
       );
 
-      expect(filtered.map((b) => b.id), ['blitz-one']);
+      expect(filtered.map((b) => b.id), ['bullet', 'blitz']);
+    });
+
+    test('every Time Control chip keeps unknown-control broadcasts', () {
+      final filtered = filterBroadcastsByPopupState(
+        [
+          _broadcast(id: 'unknown', timeControl: null),
+          _broadcast(id: 'blitz', timeControl: 'Blitz'),
+        ],
+        const FilterPopupState(
+          formatsAndStates: {'standard', 'rapid', 'blitz'},
+          eloRange: RangeValues(kFilterMinElo, kFilterMaxElo),
+        ),
+        liveIds: const [],
+      );
+
+      expect(filtered.map((b) => b.id), ['unknown', 'blitz']);
+    });
+
+    test('Live+Completed together is every event, not an empty intersection', () {
+      final filtered = filterBroadcastsByPopupState(
+        [
+          _broadcast(id: 'live-one', maxAvgElo: 2600),
+          _broadcast(id: 'finished', maxAvgElo: 2600),
+        ],
+        const FilterPopupState(
+          formatsAndStates: {'live', 'completed'},
+          eloRange: RangeValues(kFilterMinElo, kFilterMaxElo),
+        ),
+        liveIds: const ['live-one'],
+      );
+
+      expect(filtered.map((b) => b.id), ['live-one', 'finished']);
     });
 
     test('event membership ignores Elo because rating belongs to games', () {
@@ -572,6 +624,275 @@ void main() {
       // legacy "live event(s)" labels are rewritten on restore.
       expect(restored.countSingular, 'event');
       expect(restored.countPlural, 'events');
+    });
+  });
+
+  group('smart event fetch scope matches desktop', () {
+    test('GM is decided per game, with no event-level tour list', () {
+      // Scoping GM to currently-running broadcasts (or to events whose own
+      // average clears 2500) drops qualifying games played inside opens —
+      // desktop showed 160 boards on 11 Aug 2026 while mobile showed 59.
+      final scope = smartEventFetchScopeFor(
+        SmartEventGamesQuery(
+          request: _request().withNeutralEloRange(),
+          filter: GameFilter(minRating: 2500),
+        ),
+      );
+
+      expect(scope.minGameAverageElo, 2500);
+      expect(scope.eventTimeControls, isNull);
+      expect(scope.liveOnly, isFalse);
+      expect(scope.completedOnly, isFalse);
+    });
+
+    test('Classical carries both spellings of the event time control', () {
+      final scope = smartEventFetchScopeFor(
+        SmartEventGamesQuery(
+          request: _request(
+            minElo: 0,
+            maxElo: 3500,
+            formatsAndStates: const {'standard'},
+          ),
+        ),
+      );
+
+      expect(scope.minGameAverageElo, isNull);
+      expect(
+        scope.eventTimeControls,
+        containsAll(<String>['standard', 'classical', 'Standard', 'Classical']),
+      );
+    });
+
+    test('Blitz carries bullet so a Blitz chip does not drop bullet tours', () {
+      final scope = smartEventFetchScopeFor(
+        SmartEventGamesQuery(
+          request: _request(
+            minElo: 0,
+            maxElo: 3500,
+            formatsAndStates: const {'blitz'},
+          ),
+        ),
+      );
+
+      expect(
+        scope.eventTimeControls,
+        containsAll(<String>['blitz', 'Blitz', 'bullet', 'Bullet']),
+      );
+    });
+
+    test('all three Time Control chips skip event-level tour scoping', () {
+      final scope = smartEventFetchScopeFor(
+        SmartEventGamesQuery(
+          request: _request(
+            minElo: 0,
+            maxElo: 3500,
+            formatsAndStates: const {'standard', 'rapid', 'blitz'},
+          ),
+        ),
+      );
+
+      expect(scope.eventTimeControls, isNull);
+    });
+
+    test('Live+Completed is every game, not live-only or completed-only', () {
+      final scope = smartEventFetchScopeFor(
+        SmartEventGamesQuery(
+          request: _request(
+            minElo: 0,
+            maxElo: 3500,
+            formatsAndStates: const {'live', 'completed'},
+          ),
+        ),
+      );
+
+      expect(scope.liveOnly, isFalse);
+      expect(scope.completedOnly, isFalse);
+    });
+
+    test('Completed is the only collection restricted to finished games', () {
+      final completed = smartEventFetchScopeFor(
+        SmartEventGamesQuery(
+          request: _request(
+            minElo: 0,
+            maxElo: 3500,
+            formatsAndStates: const {'completed'},
+          ),
+        ),
+      );
+
+      expect(completed.completedOnly, isTrue);
+      expect(completed.liveOnly, isFalse);
+    });
+
+    test('home GM 2500–3200 is an open floor, not a 3200 ceiling', () {
+      final scope = smartEventFetchScopeFor(
+        SmartEventGamesQuery(request: _request(minElo: 2500, maxElo: 3200)),
+      );
+
+      expect(scope.minGameAverageElo, 2500);
+      expect(scope.maxGameAverageElo, isNull);
+    });
+
+    test('every Level chip is the matching open floor', () {
+      expect(
+        smartEventFetchScopeFor(
+          SmartEventGamesQuery(request: _request(minElo: 2400, maxElo: 3200)),
+        ).minGameAverageElo,
+        2400,
+      );
+      expect(
+        smartEventFetchScopeFor(
+          SmartEventGamesQuery(request: _request(minElo: 2300, maxElo: 3200)),
+        ).minGameAverageElo,
+        2300,
+      );
+      expect(
+        smartEventFetchScopeFor(
+          SmartEventGamesQuery(request: _request(minElo: 2200, maxElo: 3200)),
+        ).minGameAverageElo,
+        2200,
+      );
+    });
+
+    test('Live + Blitz + GM compose without dropping any dimension', () {
+      final scope = smartEventFetchScopeFor(
+        SmartEventGamesQuery(
+          request: _request(
+            minElo: 2500,
+            maxElo: 3200,
+            formatsAndStates: const {'live', 'blitz'},
+          ),
+        ),
+      );
+
+      expect(scope.liveOnly, isTrue);
+      expect(scope.completedOnly, isFalse);
+      expect(scope.minGameAverageElo, 2500);
+      expect(scope.maxGameAverageElo, isNull);
+      expect(scope.eventTimeControls, contains('blitz'));
+      expect(scope.eventTimeControls, contains('bullet'));
+    });
+
+    test('Completed + Classical + IM compose without dropping any dimension', () {
+      final scope = smartEventFetchScopeFor(
+        SmartEventGamesQuery(
+          request: _request(
+            minElo: 2400,
+            maxElo: 3200,
+            formatsAndStates: const {'completed', 'standard'},
+          ),
+        ),
+      );
+
+      expect(scope.liveOnly, isFalse);
+      expect(scope.completedOnly, isTrue);
+      expect(scope.minGameAverageElo, 2400);
+      expect(
+        scope.eventTimeControls,
+        containsAll(<String>['standard', 'classical']),
+      );
+    });
+
+    test('every status × time-control × level combination composes', () {
+      const statuses = <Set<String>>[
+        {},
+        {'live'},
+        {'completed'},
+        {'live', 'completed'},
+      ];
+      const timeControls = <Set<String>>[
+        {},
+        {'standard'},
+        {'rapid'},
+        {'blitz'},
+        {'blitz', 'rapid'},
+        {'standard', 'rapid', 'blitz'},
+      ];
+      const levels = <int>[0, 2200, 2300, 2400, 2500];
+
+      for (final status in statuses) {
+        for (final tc in timeControls) {
+          for (final floor in levels) {
+            final label = 'status=$status tc=$tc floor=$floor';
+            final scope = smartEventFetchScopeFor(
+              SmartEventGamesQuery(
+                request: _request(
+                  minElo: floor,
+                  maxElo: 3200,
+                  formatsAndStates: {...status, ...tc},
+                ),
+              ),
+            );
+            final hasLive = status.contains('live');
+            final hasCompleted = status.contains('completed');
+            expect(
+              scope.liveOnly,
+              hasLive && !hasCompleted,
+              reason: label,
+            );
+            expect(
+              scope.completedOnly,
+              hasCompleted && !hasLive,
+              reason: label,
+            );
+            expect(
+              scope.minGameAverageElo,
+              floor == 0 ? isNull : floor,
+              reason: label,
+            );
+            expect(scope.maxGameAverageElo, isNull, reason: label);
+            if (tc.isEmpty || tc.length == 3) {
+              expect(scope.eventTimeControls, isNull, reason: label);
+            } else {
+              expect(scope.eventTimeControls, isNotNull, reason: label);
+            }
+          }
+        }
+      }
+    });
+
+    test('Live is the only collection restricted to running games', () {
+      final live = smartEventFetchScopeFor(
+        SmartEventGamesQuery(
+          request: _request(
+            minElo: 0,
+            maxElo: 3500,
+            formatsAndStates: const {'live'},
+          ),
+        ),
+      );
+      final gm = smartEventFetchScopeFor(
+        SmartEventGamesQuery(request: _request()),
+      );
+
+      expect(live.liveOnly, isTrue);
+      expect(gm.liveOnly, isFalse);
+    });
+  });
+
+  group('smart event day grouping', () {
+    test('buckets by game_day even when lastMoveTime is the next morning', () {
+      final sorted = sortSmartGamesForTest(
+        [
+          _game(
+            id: 'aug11-finished-late',
+            whiteRating: 2600,
+            blackRating: 2600,
+            gameDay: DateTime(2026, 8, 11),
+            lastMoveTime: DateTime(2026, 8, 12, 2),
+          ),
+          _game(
+            id: 'aug12',
+            whiteRating: 2550,
+            blackRating: 2550,
+            gameDay: DateTime(2026, 8, 12),
+            lastMoveTime: DateTime(2026, 8, 12, 18),
+          ),
+        ],
+        pinnedIds: const [],
+      );
+
+      expect(sorted.map((game) => game.gameId), ['aug12', 'aug11-finished-late']);
     });
   });
 }

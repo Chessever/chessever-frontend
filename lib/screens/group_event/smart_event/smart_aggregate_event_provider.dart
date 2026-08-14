@@ -4,14 +4,15 @@ import 'package:chessever2/providers/favorite_events_provider.dart';
 import 'package:chessever2/repository/favorites/models/favorite_event.dart';
 import 'package:chessever2/repository/supabase/game/game_repository.dart';
 import 'package:chessever2/repository/supabase/game/games.dart';
+import 'package:chessever2/repository/supabase/group_broadcast/group_broadcast.dart';
 import 'package:chessever2/repository/supabase/group_broadcast/group_tour_repository.dart';
-import 'package:chessever2/repository/supabase/tour/tour_repository.dart';
 import 'package:chessever2/screens/group_event/model/tour_event_card_model.dart';
 import 'package:chessever2/screens/group_event/providers/group_event_screen_provider.dart'
     show filterBroadcastsByPopupState, liveBroadcastIdsProvider;
 import 'package:chessever2/screens/group_event/providers/live_group_broadcast_id_provider.dart';
 import 'package:chessever2/screens/group_event/widget/filter_popup/filter_popup_state.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
+import 'package:chessever2/utils/event_time_control.dart';
 import 'package:chessever2/widgets/game_filter/game_filter_model.dart';
 import 'package:chessever2/widgets/game_filter/rating_tier_filter.dart';
 import 'package:flutter/foundation.dart';
@@ -594,6 +595,81 @@ class SmartEventCriteria {
       Object.hash(minElo, maxElo, Object.hashAllUnordered(formatsAndStates));
 }
 
+/// What a smart-event games fetch counts as one of its games.
+///
+/// Shared by the day probe and the day fetch so they never disagree.
+/// GM is "average player rating 2500 or higher" with **no** event-level
+/// scoping — a floor on the event's own average (or a restriction to
+/// currently-running broadcasts) silently drops qualifying games played
+/// inside opens, which is what left older days showing a handful of boards.
+@immutable
+class SmartEventFetchScope {
+  const SmartEventFetchScope({
+    required this.liveOnly,
+    required this.completedOnly,
+    this.minGameAverageElo,
+    this.maxGameAverageElo,
+    this.eventTimeControls,
+  });
+
+  final bool liveOnly;
+  final bool completedOnly;
+  final int? minGameAverageElo;
+  final int? maxGameAverageElo;
+  final List<String>? eventTimeControls;
+}
+
+/// Scope of the smart collection [query] serves — same contract as desktop.
+SmartEventFetchScope smartEventFetchScopeFor(SmartEventGamesQuery query) {
+  final minElo = _effectiveMinAverageElo(query.request, query.filter);
+  final maxElo = _effectiveMaxAverageElo(query.request, query.filter);
+  final hasLowerBound = minElo > GameFilter.defaultMinRating;
+  final hasUpperBound = maxElo < GameFilter.absoluteMaxRating;
+
+  final formats = query.request.formatsAndStates;
+  final filterLive = query.filter?.live ?? GameLiveFilter.all;
+  final hasLive = formats.contains('live') || filterLive == GameLiveFilter.live;
+  final hasCompleted =
+      formats.contains('completed') ||
+      filterLive == GameLiveFilter.completed;
+  final liveOnly = hasLive && !hasCompleted;
+  final completedOnly = hasCompleted && !hasLive;
+
+  final timeControlTokens = <String>{
+    ...formats.where((token) => timeControlBucketFor(token) != null),
+  };
+  switch (query.filter?.timeControl) {
+    case GameTimeControlFilter.classical:
+      timeControlTokens
+        ..removeWhere((token) => timeControlBucketFor(token) != null)
+        ..add('standard');
+    case GameTimeControlFilter.rapid:
+      timeControlTokens
+        ..removeWhere((token) => timeControlBucketFor(token) != null)
+        ..add('rapid');
+    case GameTimeControlFilter.blitz:
+      timeControlTokens
+        ..removeWhere((token) => timeControlBucketFor(token) != null)
+        ..add('blitz');
+    case GameTimeControlFilter.all:
+    case null:
+      break;
+  }
+
+  final eventTimeControls = postgrestTimeControlValues(timeControlTokens);
+
+  return SmartEventFetchScope(
+    liveOnly: liveOnly,
+    completedOnly: completedOnly,
+    minGameAverageElo: hasLowerBound ? minElo : null,
+    maxGameAverageElo: hasUpperBound ? maxElo : null,
+    eventTimeControls:
+        eventTimeControls.isEmpty
+            ? null
+            : eventTimeControls.toSet().toList(growable: false),
+  );
+}
+
 /// SERVER-FRESH membership of a smart event: every broadcast in the server's
 /// `group_broadcasts_current` view that matches the event-level criteria now.
 /// Live/completed and format reuse [filterBroadcastsByPopupState]; rating is
@@ -646,6 +722,8 @@ class SmartAggregateEvent {
     required this.pinnedGameIds,
     required this.events,
     required this.gameEventNames,
+    this.hasMore = false,
+    this.isLoadingMore = false,
   });
 
   /// Ordered by day, then pinned games, then average rating.
@@ -660,6 +738,8 @@ class SmartAggregateEvent {
   final List<String> pinnedGameIds;
   final List<GroupEventCardModel> events;
   final Map<String, String> gameEventNames;
+  final bool hasMore;
+  final bool isLoadingMore;
 
   int get liveGameCount =>
       games.where((g) => g.effectiveGameStatus.isOngoing).length;
@@ -677,6 +757,38 @@ class SmartAggregateEvent {
     events: <GroupEventCardModel>[],
     gameEventNames: <String, String>{},
   );
+
+  SmartAggregateEvent copyWith({
+    List<GamesTourModel>? games,
+    int? tournamentCount,
+    int? avgElo,
+    int? minElo,
+    List<String>? tournamentNames,
+    DateTime? dateStart,
+    DateTime? dateEnd,
+    List<String>? timeControls,
+    List<String>? pinnedGameIds,
+    List<GroupEventCardModel>? events,
+    Map<String, String>? gameEventNames,
+    bool? hasMore,
+    bool? isLoadingMore,
+  }) {
+    return SmartAggregateEvent(
+      games: games ?? this.games,
+      tournamentCount: tournamentCount ?? this.tournamentCount,
+      avgElo: avgElo ?? this.avgElo,
+      minElo: minElo ?? this.minElo,
+      tournamentNames: tournamentNames ?? this.tournamentNames,
+      dateStart: dateStart ?? this.dateStart,
+      dateEnd: dateEnd ?? this.dateEnd,
+      timeControls: timeControls ?? this.timeControls,
+      pinnedGameIds: pinnedGameIds ?? this.pinnedGameIds,
+      events: events ?? this.events,
+      gameEventNames: gameEventNames ?? this.gameEventNames,
+      hasMore: hasMore ?? this.hasMore,
+      isLoadingMore: isLoadingMore ?? this.isLoadingMore,
+    );
+  }
 }
 
 /// The saved favorite (if any) whose smart event matches [criteriaKey]
@@ -781,134 +893,261 @@ Future<void> refreshSavedSmartEventSnapshot({
   }
 }
 
-/// THE single data path for the smart event view. The member events are
-/// resolved SERVER-FRESH from the criteria on every load (the request's
-/// carried snapshot is only an offline fallback), then one server fetch per
-/// query gathers their games, then a deterministic client-side sort. What
-/// loads is what renders, so the list can't reshuffle after first paint —
-/// and a saved smart event can never show a stale event set.
-final smartAggregateEventRepositoryProvider = FutureProvider.autoDispose
-    .family<SmartAggregateEvent, SmartEventGamesQuery>((ref, query) async {
-      return _loadAggregateEventFromRepository(ref: ref, query: query);
+/// THE single data path for the smart event view.
+///
+/// Games are fetched the same way desktop GM / Live / Classical collections
+/// are: globally by `game_day`, one whole day at a time, with no restriction
+/// to currently-running broadcasts. First paint is the newest day; older days
+/// append in the background and on scroll. Event cards for About / Standings
+/// are derived from the loaded games' broadcast metadata.
+final smartAggregateEventRepositoryProvider = StateNotifierProvider.autoDispose
+    .family<
+      SmartAggregateEventNotifier,
+      AsyncValue<SmartAggregateEvent>,
+      SmartEventGamesQuery
+    >((ref, query) {
+      return SmartAggregateEventNotifier(ref, query);
     });
 
-Future<SmartAggregateEvent> _loadAggregateEventFromRepository({
-  required Ref ref,
-  required SmartEventGamesQuery query,
-}) async {
-  final request = query.request;
-  List<GroupEventCardModel> activeEvents;
-  try {
-    // Watch (not read): liveness changes and pull-to-refresh invalidations
-    // re-resolve the membership and flow straight into this aggregate.
-    activeEvents = await ref.watch(
-      smartEventResolvedEventsProvider(request.criteria).future,
-    );
-  } catch (_) {
-    // Offline / transient failure: fall back to the snapshot the request
-    // carried in (saved metadata or the generating tab's list).
-    activeEvents = request.events;
+class SmartAggregateEventNotifier
+    extends StateNotifier<AsyncValue<SmartAggregateEvent>> {
+  SmartAggregateEventNotifier(this._ref, this._query)
+    : super(const AsyncValue.loading()) {
+    unawaited(_initialize());
   }
-  if (activeEvents.isEmpty) return SmartAggregateEvent.empty;
 
-  final eventIds = activeEvents
-      .map((event) => event.id)
-      .toList(growable: false);
-  final tourRepository = ref.read(tourRepositoryProvider);
-  final toursByEvent = await tourRepository.getToursByGroupBroadcastIds(
-    eventIds,
-  );
+  final Ref _ref;
+  final SmartEventGamesQuery _query;
 
-  final missingEventIds =
-      eventIds.where((id) => (toursByEvent[id] ?? const []).isEmpty).toList();
-  if (missingEventIds.isNotEmpty) {
-    final fallbackTours = await tourRepository.getToursByIds(missingEventIds);
-    for (final tour in fallbackTours) {
-      final eventId =
-          missingEventIds.contains(tour.id)
-              ? tour.id
-              : tour.groupBroadcastId != null &&
-                  missingEventIds.contains(tour.groupBroadcastId)
-              ? tour.groupBroadcastId!
-              : null;
-      if (eventId == null) continue;
-      toursByEvent.putIfAbsent(eventId, () => []).add(tour);
+  DateTime? _nextDay;
+  bool _cursorReady = false;
+  bool _isFetching = false;
+  bool _didPrefetch = false;
+
+  /// Upper bound on days skipped in one fetch when a day survives the backend
+  /// predicates but is emptied by client-side narrowing.
+  static const int _maxSkippedSmartEventDays = 12;
+
+  /// Days to pull in after first paint so Yesterday / older headers appear
+  /// without waiting on a scroll. First paint itself is still one day.
+  static const int _prefetchOlderDays = 6;
+
+  Future<void> _initialize() async {
+    await _fetchNextNonEmptyDay(append: false);
+    if (!mounted || _didPrefetch) return;
+    _didPrefetch = true;
+    unawaited(_prefetch());
+  }
+
+  Future<void> _prefetch() async {
+    for (var i = 0; i < _prefetchOlderDays; i++) {
+      if (!mounted) return;
+      final current = state.valueOrNull;
+      if (current == null || !current.hasMore) return;
+      await _fetchNextNonEmptyDay(append: true);
     }
   }
 
-  final tourIds = <String>[];
-  final seenTourIds = <String>{};
-  final tourIdToEventId = <String, String>{};
-  for (final event in activeEvents) {
-    for (final tour in toursByEvent[event.id] ?? const []) {
-      if (seenTourIds.add(tour.id)) {
-        tourIds.add(tour.id);
+  Future<void> loadMore() async {
+    final current = state.valueOrNull;
+    if (current == null || current.isLoadingMore || !current.hasMore) return;
+    await _fetchNextNonEmptyDay(append: true);
+  }
+
+  Future<void> _fetchNextNonEmptyDay({required bool append}) async {
+    if (_isFetching) return;
+    _isFetching = true;
+    if (append) {
+      final current = state.valueOrNull;
+      if (current != null) {
+        state = AsyncValue.data(current.copyWith(isLoadingMore: true));
       }
-      tourIdToEventId[tour.id] = event.id;
+    }
+
+    try {
+      final repository = _ref.read(gameRepositoryProvider);
+      final scope = smartEventFetchScopeFor(_query);
+      final extraFilter = _residualSmartEventFilter(_query.filter);
+      final search =
+          _query.normalizedSearchQuery.isEmpty
+              ? null
+              : _query.normalizedSearchQuery;
+
+      var targetDay =
+          _cursorReady
+              ? _nextDay
+              : await repository.getCurrentSmartEventDay(
+                liveOnly: scope.liveOnly,
+                completedOnly: scope.completedOnly,
+                minGameAverageElo: scope.minGameAverageElo,
+                searchQuery: search,
+                extraFilter: extraFilter,
+              );
+      _cursorReady = true;
+
+      if (targetDay == null) {
+        _nextDay = null;
+        if (!append) {
+          state = const AsyncValue.data(SmartAggregateEvent.empty);
+        } else {
+          final current = state.valueOrNull;
+          if (current != null) {
+            state = AsyncValue.data(
+              current.copyWith(hasMore: false, isLoadingMore: false),
+            );
+          }
+        }
+        return;
+      }
+
+      for (var skipped = 0; skipped <= _maxSkippedSmartEventDays; skipped++) {
+        final page = await repository.getCurrentSmartEventGamesOnDay(
+          day: targetDay!,
+          liveOnly: scope.liveOnly,
+          completedOnly: scope.completedOnly,
+          minGameAverageElo: scope.minGameAverageElo,
+          maxGameAverageElo: scope.maxGameAverageElo,
+          eventTimeControls: scope.eventTimeControls,
+          searchQuery: search,
+          extraFilter: extraFilter,
+        );
+        _nextDay = page.nextDay;
+
+        if (page.games.isNotEmpty) {
+          final liveIds = _ref.read(liveBroadcastIdsProvider);
+          final dayEvent = _buildAggregateEventFromGameRows(
+            request: _query.request,
+            games: page.games,
+            liveIds: liveIds,
+            minAverageElo:
+                scope.minGameAverageElo ?? GameFilter.defaultMinRating,
+            maxAverageElo:
+                scope.maxGameAverageElo ?? GameFilter.absoluteMaxRating,
+          );
+          final merged =
+              append
+                  ? _mergeOlderDay(
+                    state.valueOrNull ?? SmartAggregateEvent.empty,
+                    dayEvent,
+                  )
+                  : dayEvent;
+          if (!mounted) return;
+          state = AsyncValue.data(
+            merged.copyWith(
+              hasMore: page.hasMore,
+              isLoadingMore: false,
+            ),
+          );
+          return;
+        }
+
+        if (page.nextDay == null) {
+          if (!append) {
+            state = const AsyncValue.data(SmartAggregateEvent.empty);
+          } else {
+            final current = state.valueOrNull;
+            if (current != null) {
+              state = AsyncValue.data(
+                current.copyWith(hasMore: false, isLoadingMore: false),
+              );
+            }
+          }
+          return;
+        }
+        targetDay = page.nextDay;
+      }
+
+      final current = state.valueOrNull;
+      if (!append) {
+        state = const AsyncValue.data(SmartAggregateEvent.empty);
+      } else if (current != null) {
+        state = AsyncValue.data(
+          current.copyWith(
+            hasMore: _nextDay != null,
+            isLoadingMore: false,
+          ),
+        );
+      }
+    } catch (error, stackTrace) {
+      if (!append) {
+        state = AsyncValue.error(error, stackTrace);
+      } else {
+        final current = state.valueOrNull;
+        if (current != null) {
+          state = AsyncValue.data(current.copyWith(isLoadingMore: false));
+        }
+      }
+    } finally {
+      _isFetching = false;
     }
   }
+}
 
-  if (tourIds.isEmpty) {
-    return _buildAggregateEventFromGameRows(
-      request: request,
-      events: activeEvents,
-      games: const <Games>[],
-      tourIdToEventId: tourIdToEventId,
-      minAverageElo: _effectiveMinAverageElo(request, query.filter),
-      maxAverageElo: _effectiveMaxAverageElo(request, query.filter),
-    );
+/// Filters that are not already expressed as day-query scope (live / time
+/// control / rating floor). Passing those through again would either double
+/// apply or take the slow inner-join-on-broadcasts path.
+GameFilter? _residualSmartEventFilter(GameFilter? filter) {
+  if (filter == null) return null;
+  final residual = filter.copyWith(
+    live: GameLiveFilter.all,
+    timeControl: GameTimeControlFilter.all,
+    minRating: GameFilter.defaultMinRating,
+    maxRating: GameFilter.absoluteMaxRating,
+  );
+  return residual.hasActiveFilters ? residual : null;
+}
+
+SmartAggregateEvent _mergeOlderDay(
+  SmartAggregateEvent newer,
+  SmartAggregateEvent older,
+) {
+  final seenGameIds = <String>{};
+  final games = <GamesTourModel>[];
+  for (final game in [...newer.games, ...older.games]) {
+    if (seenGameIds.add(game.gameId)) games.add(game);
   }
-
-  final minAverageElo = _effectiveMinAverageElo(request, query.filter);
-  final maxAverageElo = _effectiveMaxAverageElo(request, query.filter);
-  final games = await ref
-      .read(gameRepositoryProvider)
-      .getSmartEventGamesFromTourIds(
-        tourIds: tourIds,
-        filter: query.filter,
-        query: query.normalizedSearchQuery,
-        minAverageEloForPrefilter:
-            minAverageElo > GameFilter.defaultMinRating ? minAverageElo : null,
-        limit: _smartEventGamesFetchCap,
-      );
-
-  return _buildAggregateEventFromGameRows(
-    request: request,
-    events: activeEvents,
-    games: games,
-    tourIdToEventId: tourIdToEventId,
-    minAverageElo: minAverageElo,
-    maxAverageElo: maxAverageElo,
-    truncated: games.length >= _smartEventGamesFetchCap,
+  final eventsById = <String, GroupEventCardModel>{
+    for (final event in newer.events) event.id: event,
+    for (final event in older.events) event.id: event,
+  };
+  final gameEventNames = {...newer.gameEventNames, ...older.gameEventNames};
+  final gameEventIds = <String, String>{};
+  for (final game in games) {
+    final name = gameEventNames[game.gameId];
+    if (name == null) continue;
+    for (final event in eventsById.values) {
+      if (event.title == name) {
+        gameEventIds[game.gameId] = event.id;
+        break;
+      }
+    }
+  }
+  return _createSmartAggregateEvent(
+    minElo: newer.minElo,
+    participatingEvents: _sortEventsByAvgElo(
+      eventsById.values.toList(growable: false),
+      games: games,
+      gameEventIds: gameEventIds,
+    ),
+    orderedGames: games,
+    gameEventNames: gameEventNames,
+    pinnedIds: const <String>[],
+    hasMore: older.hasMore,
   );
 }
 
-/// Hard ceiling on how many game rows one smart event aggregation may pull.
-/// The repository pages until every matching row is fetched, so a broad
-/// filter (e.g. Classical across every current broadcast) sees the same day
-/// span as a narrow one (e.g. Classical + GM) — a fixed single-page cap made
-/// the broader filter cover FEWER days than the narrower one, which read as
-/// "more games with more filters". The cap only guards against pathological
-/// aggregations; when it is hit the trailing (incomplete) day is trimmed.
-const int _smartEventGamesFetchCap = 6000;
-
 SmartAggregateEvent _buildAggregateEventFromGameRows({
   required SmartEventRequest request,
-  required List<GroupEventCardModel> events,
   required List<Games> games,
-  required Map<String, String> tourIdToEventId,
+  required List<String> liveIds,
   required int minAverageElo,
   required int maxAverageElo,
-  bool truncated = false,
 }) {
-  final eventById = {for (final event in events) event.id: event};
+  final eventsById = <String, GroupEventCardModel>{};
   final gamesById = <String, GamesTourModel>{};
   final gameEventIds = <String, String>{};
 
   for (final game in games) {
-    final eventId = tourIdToEventId[game.tourId];
-    if (eventId == null) continue;
-
     late final GamesTourModel gameModel;
     try {
       gameModel = GamesTourModel.fromGame(game);
@@ -925,41 +1164,35 @@ SmartAggregateEvent _buildAggregateEventFromGameRows({
     }
 
     gamesById.putIfAbsent(gameModel.gameId, () => gameModel);
+
+    final eventId = game.groupBroadcastId ?? game.tourId;
     gameEventIds[gameModel.gameId] = eventId;
+    eventsById.putIfAbsent(
+      eventId,
+      () => _eventCardFromGame(game, liveIds),
+    );
   }
 
-  var orderedGames = _sortSmartGames(
+  final orderedGames = _sortSmartGames(
     gamesById.values.toList(growable: false),
     pinnedIds: const <String>[],
   );
-  if (truncated) {
-    orderedGames = _trimTrailingPartialDay(orderedGames);
-  }
 
-  // Names and participating events derive from the games that actually
-  // render, so a trimmed trailing day can't leave a tournament listed in
-  // About with zero visible games.
   final gameEventNames = <String, String>{};
-  final eventIdsWithGames = <String>{};
   for (final game in orderedGames) {
     final eventId = gameEventIds[game.gameId];
     if (eventId == null) continue;
-    gameEventNames[game.gameId] = eventById[eventId]?.title ?? eventId;
-    eventIdsWithGames.add(eventId);
+    gameEventNames[game.gameId] = eventsById[eventId]?.title ?? eventId;
   }
 
   final participatingEvents = _sortEventsByAvgElo(
-    eventIdsWithGames.isEmpty
-        ? events
-        : events
-            .where((event) => eventIdsWithGames.contains(event.id))
-            .toList(growable: false),
+    eventsById.values.toList(growable: false),
     games: orderedGames,
     gameEventIds: gameEventIds,
   );
 
   return _createSmartAggregateEvent(
-    request: request,
+    minElo: request.minElo > kFilterMinElo ? request.minElo : null,
     participatingEvents: participatingEvents,
     orderedGames: orderedGames,
     gameEventNames: gameEventNames,
@@ -967,12 +1200,30 @@ SmartAggregateEvent _buildAggregateEventFromGameRows({
   );
 }
 
+GroupEventCardModel _eventCardFromGame(Games game, List<String> liveIds) {
+  final id = game.groupBroadcastId ?? game.tourId;
+  return GroupEventCardModel.fromGroupBroadcast(
+    GroupBroadcast(
+      id: id,
+      createdAt: game.eventDateStart ?? DateTime.fromMillisecondsSinceEpoch(0),
+      name: game.eventName ?? game.tourName ?? id,
+      search: const <String>[],
+      maxAvgElo: game.eventMaxAvgElo ?? game.avgElo,
+      dateStart: game.eventDateStart,
+      dateEnd: game.eventDateEnd,
+      timeControl: game.timeControl,
+    ),
+    liveIds,
+  );
+}
+
 SmartAggregateEvent _createSmartAggregateEvent({
-  required SmartEventRequest request,
+  required int? minElo,
   required List<GroupEventCardModel> participatingEvents,
   required List<GamesTourModel> orderedGames,
   required Map<String, String> gameEventNames,
   required List<String> pinnedIds,
+  bool hasMore = false,
 }) {
   final elos =
       participatingEvents
@@ -1000,7 +1251,7 @@ SmartAggregateEvent _createSmartAggregateEvent({
     games: orderedGames,
     tournamentCount: participatingEvents.length,
     avgElo: avgElo,
-    minElo: request.minElo > kFilterMinElo ? request.minElo : null,
+    minElo: minElo,
     tournamentNames: participatingEvents
         .map((event) => event.title)
         .toList(growable: false),
@@ -1010,6 +1261,7 @@ SmartAggregateEvent _createSmartAggregateEvent({
     pinnedGameIds: pinnedIds,
     events: participatingEvents,
     gameEventNames: gameEventNames,
+    hasMore: hasMore,
   );
 }
 
@@ -1051,8 +1303,13 @@ int _effectiveMinAverageElo(SmartEventRequest request, GameFilter? filter) {
 }
 
 int _effectiveMaxAverageElo(SmartEventRequest request, GameFilter? filter) {
-  var value =
-      request.hasEloRange ? request.maxElo : GameFilter.absoluteMaxRating;
+  // The home Level chips are open-ended floors (GM 2500+). Their range end is
+  // always [kFilterMaxElo], which is a UI ceiling, not a real cap — treating
+  // it as one dropped 3200+ boards from every GM/IM/FM/CM collection.
+  var value = GameFilter.absoluteMaxRating;
+  if (request.hasEloRange && request.maxElo < kFilterMaxElo.round()) {
+    value = request.maxElo;
+  }
   final filterMax = filter?.maxRating ?? GameFilter.absoluteMaxRating;
   if (filterMax < value) value = filterMax;
   return value;
@@ -1124,11 +1381,10 @@ List<GamesTourModel> trimTrailingPartialDayForTest(
   return _trimTrailingPartialDay(sortedGames);
 }
 
-/// Drops the oldest day from a day-desc sorted games list. Used only when the
-/// fetch hit [_smartEventGamesFetchCap]: the trailing day is then almost
-/// certainly half-fetched, and rendering it would show a misleadingly small
-/// count for that day. A single-day list stays untouched — an empty list
-/// would be worse than a partial one.
+/// Drops the oldest day from a day-desc sorted games list. Kept for tests
+/// of the old capped-fetch path; day pagination no longer produces a
+/// half-fetched trailing day. A single-day list stays untouched — an empty
+/// list would be worse than a partial one.
 List<GamesTourModel> _trimTrailingPartialDay(List<GamesTourModel> sortedGames) {
   if (sortedGames.isEmpty) return sortedGames;
   final oldestDay = _smartGameDay(sortedGames.last);
@@ -1176,9 +1432,11 @@ List<GamesTourModel> _sortSmartGames(
 }
 
 DateTime _smartGameDay(GamesTourModel game) {
-  final raw = game.lastMoveTime ?? game.bucketDate ?? DateTime(0);
-  final local = raw.toLocal();
-  return DateTime(local.year, local.month, local.day);
+  // `game_day` is the pagination cursor and the desktop section key. Prefer
+  // it over lastMoveTime so a game that finished the next morning still
+  // sits on the round it was played.
+  final raw = game.gameDay ?? game.bucketDate ?? game.lastMoveTime ?? DateTime(0);
+  return DateTime(raw.year, raw.month, raw.day);
 }
 
 String _normalizedTierLabel(Object? value, String fallbackName) {
