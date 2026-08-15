@@ -97,12 +97,7 @@ Deno.serve(async (req) => {
 
   const limit = await resolveDispatchLimit(req);
   const items = await claimPending(limit);
-  const results: Array<Record<string, unknown>> = [];
-
-  for (const item of items) {
-    const result = await processItem(item);
-    results.push(result);
-  }
+  const results = await processClaimedItems(items);
 
   // SEND-AND-FORGET: purge clock-ping refresh rows that are already done so they
   // never accumulate. The ~1s clock ping makes this run every second, so a
@@ -184,7 +179,47 @@ async function claimPending(limit: number): Promise<OutboxItem[]> {
 }
 
 const STALE_THRESHOLD_MS = 60 * 60 * 1000; // 1 hour
-const ROUND_START_RETRY_DELAY_MS = 30 * 1000;
+const ROUND_START_RETRY_DELAY_MS = 10 * 1000;
+
+// A claimed batch used to be walked one item at a time. Rounds start on the
+// hour together, so a burst put the last board of the last event minutes behind
+// the first — the whole point of a start alert is that it is not late.
+//
+// Items that share a round also share dedupe state (the grouped-round-start
+// lookup, the game_start windows), so they stay strictly ordered relative to
+// each other. Only independent rounds overlap.
+const DISPATCH_CONCURRENCY = 6;
+
+function dispatchGroupKey(item: OutboxItem): string {
+  return item.round_id ?? item.game_id ?? item.id;
+}
+
+async function processClaimedItems(items: OutboxItem[]) {
+  const groups = new Map<string, OutboxItem[]>();
+  for (const item of items) {
+    const key = dispatchGroupKey(item);
+    const bucket = groups.get(key);
+    if (bucket) bucket.push(item);
+    else groups.set(key, [item]);
+  }
+
+  const queue = [...groups.values()];
+  const results: Array<Record<string, unknown>> = [];
+  let cursor = 0;
+
+  async function drainQueue() {
+    while (cursor < queue.length) {
+      const group = queue[cursor++];
+      for (const item of group) {
+        results.push(await processItem(item));
+      }
+    }
+  }
+
+  const workers = Math.min(DISPATCH_CONCURRENCY, queue.length);
+  await Promise.all(Array.from({ length: workers }, () => drainQueue()));
+  return results;
+}
 
 async function processItem(item: OutboxItem) {
   // Skip stale items to prevent sending outdated notifications
@@ -828,6 +863,15 @@ async function processItem(item: OutboxItem) {
       recipients: filteredUserIds.size,
     };
   } catch (error) {
+    // A transient PostgREST hiccup or a OneSignal 5xx used to burn the row
+    // permanently on the first try, so the push simply never arrived. Retry a
+    // few times instead; every board/round push carries a collapse_id, so a
+    // duplicate after a partial send replaces the tray entry rather than
+    // stacking a second one.
+    if (item.attempts < MAX_DISPATCH_ATTEMPTS) {
+      await markRetry(item.id, item.attempts, `${error}`);
+      return { id: item.id, status: "pending", reason: `retry: ${error}` };
+    }
     await markFailed(item.id, item.attempts, `${error}`);
     return { id: item.id, status: "failed", error: `${error}` };
   }
@@ -853,7 +897,27 @@ async function reschedulePending(id: string, reason: string) {
     .update({
       status: "pending",
       last_error: reason,
+      // Waiting is not a failed attempt. Every claim increments attempts, so a
+      // round that sits 10 minutes between its outbox row and its first move
+      // would otherwise exhaust the error-retry budget before it ever tried to
+      // send, and the first transient blip would burn the row.
+      attempts: 0,
       not_before: new Date(Date.now() + ROUND_START_RETRY_DELAY_MS)
+        .toISOString(),
+    })
+    .eq("id", id);
+}
+
+const MAX_DISPATCH_ATTEMPTS = 4;
+const RETRY_BACKOFF_MS = 15 * 1000;
+
+async function markRetry(id: string, attempts: number, error: string) {
+  await supabase
+    .from("notification_outbox")
+    .update({
+      status: "pending",
+      last_error: error,
+      not_before: new Date(Date.now() + RETRY_BACKOFF_MS * attempts)
         .toISOString(),
     })
     .eq("id", id);
@@ -1062,7 +1126,13 @@ async function hasRoundWithMoves(roundId: string): Promise<boolean> {
     .not("last_move_time", "is", null)
     .limit(1);
 
-  if (error) return false;
+  // A broken lookup used to be indistinguishable from "no moves yet": the row
+  // rescheduled every retry with last_error='round_not_live_yet' until the 1h
+  // stale guard skipped it, and nothing in the outbox said the query was at
+  // fault. Fail loud — processItem's catch retries with backoff instead.
+  if (error) {
+    throw new Error(`Round move lookup failed: ${error.message}`);
+  }
   return (data ?? []).length > 0;
 }
 
@@ -2319,12 +2389,32 @@ async function sendOneSignal(
   }
 }
 
+// Board alerts are worthless late. Without an explicit priority OneSignal hands
+// FCM a normal-priority message, which Android may hold until the next Doze
+// maintenance window — minutes after the first move. 10 is "wake the device" on
+// both transports and is what OneSignal documents for standard notifications.
+const ONESIGNAL_HIGH_PRIORITY = 10;
+
+// ...and if it could not be delivered inside the window where "is live" is
+// still true, drop it rather than push a stale board. Finish/results pushes
+// keep OneSignal's default TTL: they stay true.
+const TIME_CRITICAL_TTL_SECONDS = 900;
+const TIME_CRITICAL_TYPES = new Set(["game_started", "round_started"]);
+
 function buildOneSignalPayload(notification: NotificationPayload) {
   const payload: Record<string, unknown> = {
     headings: { en: notification.title },
     contents: { en: notification.body },
     data: notification.data,
+    priority: ONESIGNAL_HIGH_PRIORITY,
   };
+
+  const notificationType = typeof notification.data?.type === "string"
+    ? notification.data.type
+    : null;
+  if (notificationType && TIME_CRITICAL_TYPES.has(notificationType)) {
+    payload.ttl = TIME_CRITICAL_TTL_SECONDS;
+  }
 
   const collapseId = notificationCollapseId(notification);
   if (collapseId) {

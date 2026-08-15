@@ -6,6 +6,9 @@ SUPABASE_CONFIG = Path("supabase/config.toml")
 ROUND_START_DEDUPE_MIGRATION = Path(
     "supabase/migrations/20260527232342_grouped_round_start_exact_time_dedupe.sql"
 )
+PUNCTUALITY_MIGRATION = Path(
+    "supabase/migrations/20260815155000_start_alert_punctuality.sql"
+)
 
 
 def _source() -> str:
@@ -111,6 +114,12 @@ def test_round_started_requires_actual_move_before_dispatch() -> None:
     assert "round_not_live_yet" in source
     assert '.select("id")' in source
     assert '.not("last_move_time", "is", null)' in source
+    # A failed lookup must not masquerade as "no moves yet" — that reschedules
+    # silently until the 1h stale guard eats the row.
+    moves_start = source.index("async function hasRoundWithMoves(")
+    moves = source[moves_start:source.index("function sameInstant(", moves_start)]
+    assert "throw new Error(`Round move lookup failed: ${error.message}`)" in moves
+    assert "if (error) return false" not in moves
 
 
 def test_round_started_waits_for_moves_instead_of_terminally_skipping() -> None:
@@ -123,6 +132,12 @@ def test_round_started_waits_for_moves_instead_of_terminally_skipping() -> None:
     assert 'await markSkipped(item.id, "round_not_live_yet")' not in guard
     assert 'status: "pending"' in guard
     assert "function reschedulePending" in source
+
+    resched_start = source.index("async function reschedulePending(")
+    resched = source[resched_start:source.index("const MAX_DISPATCH_ATTEMPTS", resched_start)]
+    # Every claim bumps attempts; a long wait for the first move must not eat
+    # the error-retry budget.
+    assert "attempts: 0," in resched
 
 
 def test_successful_retry_clears_the_waiting_reason() -> None:
@@ -200,13 +215,15 @@ def test_round_start_queue_dedupe_is_exact_group_start_time_not_two_hour_bucket(
     assert "/ 7200" not in migration
 
 
-def test_round_start_queue_requires_a_real_move_before_enqueue() -> None:
-    migration = ROUND_START_DEDUPE_MIGRATION.read_text(encoding="utf-8")
+def test_round_start_queue_widens_its_window_without_dropping_the_move_gate() -> None:
+    # The enqueue window is deliberately generous (a round whose scheduled start
+    # drifted still gets a row); the *send* is what requires a real move, and
+    # that gate lives in the dispatcher (hasRoundWithMoves).
+    migration = PUNCTUALITY_MIGRATION.read_text(encoding="utf-8")
+    source = _source()
 
-    assert "EXISTS (" in migration
-    assert "FROM public.games g" in migration
-    assert "g.round_id = r.id" in migration
-    assert "g.last_move_time IS NOT NULL" in migration
+    assert "r.starts_at >= now_ts - interval '60 minutes'" in migration
+    assert "hasRoundWithMoves(item.round_id)" in source
 
 
 def test_round_started_favorites_notify_per_board_not_per_favorite_set() -> None:
@@ -260,3 +277,77 @@ def test_round_board_index_accepts_both_player_name_spellings() -> None:
     assert "playerGameIds.set(key, new Set([row.id]))" in block
     # An unpaired board cannot be worded "White vs Black is live."
     assert "if (!row.id || !row.player_white || !row.player_black) continue" in block
+
+
+def test_start_pushes_are_high_priority_and_expire_when_stale() -> None:
+    # No explicit priority means OneSignal hands FCM a normal-priority message,
+    # which Android is free to hold until the next Doze window. That is the
+    # difference between "is live" and "was live two minutes ago".
+    source = _source()
+
+    assert "const ONESIGNAL_HIGH_PRIORITY = 10" in source
+    assert "priority: ONESIGNAL_HIGH_PRIORITY" in source
+    assert "payload.ttl = TIME_CRITICAL_TTL_SECONDS" in source
+    assert 'TIME_CRITICAL_TYPES = new Set(["game_started", "round_started"])' in source
+
+
+def test_a_claimed_batch_is_not_walked_one_item_at_a_time() -> None:
+    # Rounds start on the hour together; a serial walk put the last board of the
+    # last event minutes behind the first. Same-round items stay ordered because
+    # they share dedupe state (grouped-round-start, game_start windows).
+    source = _source()
+
+    assert "function dispatchGroupKey" in source
+    assert "return item.round_id ?? item.game_id ?? item.id" in source
+    assert "const workers = Math.min(DISPATCH_CONCURRENCY, queue.length)" in source
+    assert "for (const item of items) {\n    const result = await processItem(item)" not in source
+
+
+def test_transient_dispatch_errors_retry_instead_of_burning_the_row() -> None:
+    source = _source()
+
+    assert "if (item.attempts < MAX_DISPATCH_ATTEMPTS)" in source
+    assert "await markRetry(item.id, item.attempts, `${error}`)" in source
+    assert "function markRetry" in source
+
+
+def test_game_started_is_not_parked_for_two_minutes() -> None:
+    # Measured on prod: game_started rows carried not_before = created_at + 120s
+    # unconditionally, so any board the round-level push did not cover was two
+    # minutes late by construction. The hold now exists only while a
+    # round_started row for the same round is still pending or processing —
+    # those terminate in 1-2s, so 20s is ample.
+    migration = PUNCTUALITY_MIGRATION.read_text(encoding="utf-8")
+
+    body_start = migration.index(
+        "CREATE OR REPLACE FUNCTION public.queue_game_notifications()"
+    )
+    body = migration[body_start:]
+
+    assert "now() + interval '2 minutes'" not in body
+    assert "v_game_delay := now();" in migration
+    assert "v_game_delay := now() + interval '20 seconds';" in migration
+    assert "IF v_round_status IN ('pending', 'processing') THEN" in migration
+
+
+def test_first_move_pulls_a_waiting_round_start_forward() -> None:
+    # The cron queues round_started at the scheduled start and the dispatcher
+    # reschedules it until a move exists. Without this the row waited out its
+    # retry delay plus the next heartbeat (~90s) after the move it was waiting
+    # for had already landed.
+    migration = PUNCTUALITY_MIGRATION.read_text(encoding="utf-8")
+
+    assert "SET not_before = now()" in migration
+    assert "AND n.not_before > now()" in migration
+    assert "PERFORM public.dispatch_notification_now();" in migration
+    # The poke sits on the live ingestion path and must never abort the write.
+    assert "EXCEPTION WHEN OTHERS THEN" in migration
+
+
+def test_rows_abandoned_in_processing_are_requeued() -> None:
+    migration = PUNCTUALITY_MIGRATION.read_text(encoding="utf-8")
+
+    assert "FUNCTION public.requeue_stuck_notification_outbox()" in migration
+    assert "WHERE status = 'processing'" in migration
+    assert "requeue-stuck-notification-outbox" in migration
+    assert "dispatch-pending-heartbeat-15s" in migration

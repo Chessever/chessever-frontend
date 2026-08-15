@@ -50,8 +50,10 @@ Vault secrets (Supabase DB):
 
 ### Enqueue Triggers & Functions
 
-- `queue_game_notifications` (trigger on `games`): enqueues `game_started` and `game_finished` on game state transitions. Includes `board_nr` in payload. Also handles round-level events via its internal `round_started` and `round_finished` branches: it piggybacks `round_started` when a game goes live and has a `round_id` (catches rounds missed by cron), and enqueues `round_finished` when the last game in a round finishes (embeds the full results array in the payload and uses dedupe key `round_finished:{round_id}` to handle simultaneous last-game finishes).
-- `queue_round_start_notifications()` (cron): enqueues `round_started` for rounds within 10-min window.
+- `queue_game_notifications` (trigger on `games`, `AFTER INSERT OR UPDATE`): enqueues `game_started` and `game_finished` on game state transitions. The INSERT arm exists because the streamer's `apply_live_game_updates` RPC *inserts* a games row whenever the board is new to us (no pre-created pairing, or Lichess regenerated the round's game ids) and that row already carries `last_move_time`; it is gated on freshness (`last_move_time` under 5 min for a start, 10 min for a finish) so imports and restores stay out of the outbox.
+  - `game_started` is held on `not_before` **only while a `round_started` row for the same round is still pending or processing**, and then only for 20 seconds. The round-level push has better copy and covers several favourites at once, so it should win — but a board whose first move lands after its round was already announced has nothing to lose the race to and must go out immediately. This used to be an unconditional `now() + 2 minutes`, which is exactly how long a late "is live" alert was late.
+  - When the first move of a round lands and a `round_started` row is already parked in the future (queued by cron at the scheduled start, rescheduled by the dispatcher while it waited for a move), the trigger pulls its `not_before` to `now()` and calls `dispatch_notification_now()`. Only the first board of the round matches, so a 12-board simultaneous start still pokes once. Includes `board_nr` in payload. Also handles round-level events via its internal `round_started` and `round_finished` branches: it piggybacks `round_started` when a game goes live and has a `round_id` (catches rounds missed by cron), and enqueues `round_finished` when the last game in a round finishes (embeds the full results array in the payload and uses dedupe key `round_finished:{round_id}` to handle simultaneous last-game finishes).
+- `queue_round_start_notifications()` (cron): backstop that enqueues `round_started` for rounds whose `starts_at` is within the last 60 minutes. It does **not** require a move — the dispatcher gates the send on `hasRoundWithMoves` and reschedules until one exists, so the row is staged and ready before the round begins.
 - `queue_round_heads_up_notifications()` (cron): enqueues `round_heads_up` for rounds 25-45 min away.
 - `queue_live_game_updates()` (cron/trigger): enqueues `live_game_update` for active games.
 
@@ -107,7 +109,9 @@ This function:
 10. All round/event data payloads include `tour_id`, `round_id`, and `group_broadcast_id` for deep-link routing.
 11. Database activity payloads include `folder_id` and a deep-link URL so taps can land directly on the subscribed database screen on both iOS and Android.
 12. Records 900-second bidirectional cooldown windows after sending `game_started` or `round_started` (player channel).
-13. Marks rows as `sent`, `skipped`, or `failed`.
+13. Marks rows as `sent`, `skipped`, or `failed`. A transient error requeues the row with backoff (15s × attempt) up to 4 attempts before it is burned.
+14. Processes a claimed batch with bounded concurrency (6), grouped by `round_id` so items that share dedupe state stay ordered while independent rounds overlap.
+15. Sends every push at OneSignal `priority: 10`. Without it FCM treats the message as normal priority and Android may hold it until the next Doze maintenance window. `game_started` / `round_started` also carry `ttl: 900` so a delayed "is live" expires instead of arriving stale.
 
 
 ## Live Updates (Per-Game)
@@ -126,10 +130,19 @@ Active cron jobs:
 | Job | Schedule | Description |
 |-----|----------|-------------|
 | `queue-round-heads-up` | `*/5 * * * *` | Queue heads-up for rounds 25-45 min away |
-| `queue-round-started` | `*/3 * * * *` | Queue round_started for rounds in 10-min window |
+| `queue-round-started` | `* * * * *` | Backstop: queue round_started for rounds in the 60-min window |
 | `dispatch-pending-heartbeat` | `* * * * *` | Fallback dispatch for any pending items |
+| `dispatch-pending-heartbeat-15s` | `* * * * *` | Same, offset 15s into the minute |
+| `dispatch-pending-heartbeat-30s` | `* * * * *` | Same, offset 30s into the minute |
+| `dispatch-pending-heartbeat-45s` | `* * * * *` | Same, offset 45s into the minute |
+| `requeue-stuck-notification-outbox` | `* * * * *` | Return rows abandoned in `processing` (>2 min) to `pending` |
 | `cleanup-notification-outbox` | `0 */6 * * *` | Delete terminal rows older than 48h |
 | `cleanup-notification-user-windows` | `*/10 * * * *` | Remove expired cooldown windows |
+
+pg_cron's finest granularity is one minute, so the three offset heartbeats sleep
+into the minute before posting. That takes the fallback floor from 60s to 15s;
+the `AFTER INSERT` dispatch trigger is still the fast path and normally fires in
+under a second.
 
 ## Live Activities / Live Notifications
 
