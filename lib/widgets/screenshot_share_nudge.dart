@@ -5,8 +5,8 @@ import 'package:flutter_screenshot_detect/flutter_screenshot_detect.dart';
 
 /// Wraps [child] and, while it is the current visible route, watches for device
 /// screenshots. When the user grabs one, it directly opens the branded share
-/// preview (same flow as tapping the explicit share button) so the user can
-/// post the polished ChessEver card instead of the raw screenshot.
+/// preview so the user can post the polished ChessEver card instead of the raw
+/// screenshot, without requiring permanent share chrome on the wrapped screen.
 ///
 /// Detection is best-effort by platform: iOS and Android 14+ fire with no
 /// permission; older Android needs a storage permission we deliberately do not

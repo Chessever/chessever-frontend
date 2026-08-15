@@ -702,7 +702,6 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
               _buildAppBar(
                 context,
                 isFavorite,
-                effectiveFederation: effectiveFederation,
                 effectiveName: effectiveName,
                 effectiveTitle: effectiveTitle,
               ),
@@ -766,8 +765,8 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
       ),
     );
 
-    // Screenshot → open the branded profile share preview (same flow as the
-    // share button in the top bar).
+    // Sharing is intentionally contextual: taking a screenshot opens the
+    // branded profile share preview without adding permanent header chrome.
     return ScreenshotShareNudge(
       onShare:
           () => _shareProfile(
@@ -782,7 +781,6 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
   Widget _buildAppBar(
     BuildContext context,
     bool isFavorite, {
-    required String? effectiveFederation,
     required String effectiveName,
     required String? effectiveTitle,
   }) {
@@ -806,8 +804,8 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
             ),
           ),
 
-          // Title and name — no flag, compact style so the share + favorite
-          // actions fit without crowding the header.
+          // Title and name — no flag, keeping the header compact beside the
+          // primary follow action.
           Expanded(
             child: Center(
               child: RichText(
@@ -831,31 +829,6 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
                     ),
                   ],
                 ),
-              ),
-            ),
-          ),
-
-          // Share button
-          GestureDetector(
-            onTap:
-                () => _shareProfile(
-                  effectiveName: effectiveName,
-                  effectiveTitle: effectiveTitle,
-                  effectiveFederation: effectiveFederation,
-                ),
-            child: Container(
-              width: 38.w,
-              height: 44.h,
-              padding: EdgeInsets.all(6.sp),
-              alignment: Alignment.center,
-              // The heart SVG next door fills its whole 20px box while the
-              // Material ios_share glyph carries ~2px of built-in padding per
-              // side on its 24-grid — 24 here optically matches the 20px heart.
-              child: Icon(
-                Icons.ios_share,
-                color: context.colors.textPrimary,
-                size: 24.ic,
-                semanticLabel: 'Share Profile',
               ),
             ),
           ),

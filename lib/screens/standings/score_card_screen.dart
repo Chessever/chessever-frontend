@@ -835,7 +835,7 @@ class _ScoreCardPage extends ConsumerWidget {
             // (see [ScoreCardScreen]); this page only scrolls vertically.
             child: CustomScrollView(
               slivers: [
-                _SliverScoreboardAppBar(onShareProfile: sharePlayerProfile),
+                const _SliverScoreboardAppBar(),
                 SliverToBoxAdapter(
                   child: Padding(
                     padding: EdgeInsets.symmetric(
@@ -1662,9 +1662,7 @@ class _PlayerAvatarTile extends StatelessWidget {
 }
 
 class _SliverScoreboardAppBar extends ConsumerStatefulWidget {
-  const _SliverScoreboardAppBar({this.onShareProfile});
-
-  final Future<void> Function()? onShareProfile;
+  const _SliverScoreboardAppBar();
 
   @override
   ConsumerState<_SliverScoreboardAppBar> createState() =>
@@ -1696,12 +1694,6 @@ class _SliverScoreboardAppBarState
   }
 
   Future<void> _toggleFavorite() async {
-    if (!ref
-        .read(chessboardViewFromProviderNew)
-        .usesEventScopedScorecardContext) {
-      return;
-    }
-
     final allowed = await requireFullAuthGuard(context);
     if (!allowed) return;
 
@@ -1776,11 +1768,7 @@ class _SliverScoreboardAppBarState
         maxHeight: MediaQuery.of(context).size.height * 0.6,
         maxWidth: ResponsiveHelper.bottomSheetMaxWidth,
       ),
-      builder:
-          (context) => _PlayerSelectionSheet(
-            players: players,
-            onShareProfile: widget.onShareProfile,
-          ),
+      builder: (context) => _PlayerSelectionSheet(players: players),
     );
   }
 
@@ -1795,27 +1783,20 @@ class _SliverScoreboardAppBarState
 
     final selectedBroadcast = ref.watch(selectedBroadcastModelProvider);
     final hasTournamentContext = selectedBroadcast != null;
-    final isForYouView =
-        ref
-            .watch(chessboardViewFromProviderNew)
-            .usesEventScopedScorecardContext;
 
     final validCountryCode = ref
         .read(locationServiceProvider)
         .getValidCountryCode(player.countryCode);
 
-    bool isFavorite = false;
-    if (isForYouView) {
-      final favoritesAsync = ref.watch(favoritePlayersProviderNew);
-      isFavorite = favoritesAsync.maybeWhen(
-        data:
-            (players) =>
-                players.any((p) => p.fideId == player.fideId?.toString()),
-        orElse: () => false,
-        skipLoadingOnRefresh: true,
-        skipLoadingOnReload: true,
-      );
-    }
+    final favoritesAsync = ref.watch(favoritePlayersProviderNew);
+    final isFavorite = favoritesAsync.maybeWhen(
+      data:
+          (players) =>
+              players.any((p) => p.fideId == player.fideId?.toString()),
+      orElse: () => false,
+      skipLoadingOnRefresh: true,
+      skipLoadingOnReload: true,
+    );
 
     final headerRow = _PlayerHeaderRow(
       countryCode: validCountryCode,
@@ -1846,42 +1827,27 @@ class _SliverScoreboardAppBarState
               )
               : headerRow,
       actions: [
-        if (widget.onShareProfile != null)
-          InkWell(
-            onTap: () => widget.onShareProfile!(),
-            child: Container(
-              width: 48.w,
-              padding: EdgeInsets.all(8.sp),
-              child: Icon(
-                Icons.ios_share,
-                color: context.colors.textPrimary,
-                size: 20.ic,
-                semanticLabel: 'Share Profile',
+        InkWell(
+          onTap: _toggleFavorite,
+          child: Container(
+            width: 48.w,
+            padding: EdgeInsets.all(8.sp),
+            child: ScaleTransition(
+              scale: _scaleAnimation,
+              child: SvgWidget(
+                isFavorite
+                    ? SvgAsset.favouriteRedIcon
+                    : SvgAsset.favouriteIcon2,
+                semanticsLabel: 'Favorite Icon',
+                height: 20.h,
+                width: 20.w,
+                // Red heart keeps its fill; outline heart is auto-tinted
+                // by SvgWidget so it stays visible on light surfaces.
+                preserveOriginalColors: isFavorite,
               ),
             ),
           ),
-        if (isForYouView)
-          InkWell(
-            onTap: _toggleFavorite,
-            child: Container(
-              width: 48.w,
-              padding: EdgeInsets.all(8.sp),
-              child: ScaleTransition(
-                scale: _scaleAnimation,
-                child: SvgWidget(
-                  isFavorite
-                      ? SvgAsset.favouriteRedIcon
-                      : SvgAsset.favouriteIcon2,
-                  semanticsLabel: 'Favorite Icon',
-                  height: 20.h,
-                  width: 20.w,
-                  // Red heart keeps its fill; outline heart is auto-tinted
-                  // by SvgWidget so it stays visible on light surfaces.
-                  preserveOriginalColors: isFavorite,
-                ),
-              ),
-            ),
-          ),
+        ),
         SizedBox(width: 8.w),
       ],
     );
@@ -2013,9 +1979,8 @@ class _RatingDisplay extends ConsumerWidget {
 /// Bottom sheet for selecting a player from the tournament
 class _PlayerSelectionSheet extends ConsumerWidget {
   final List<PlayerStandingModel> players;
-  final Future<void> Function()? onShareProfile;
 
-  const _PlayerSelectionSheet({required this.players, this.onShareProfile});
+  const _PlayerSelectionSheet({required this.players});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -2034,34 +1999,6 @@ class _PlayerSelectionSheet extends ConsumerWidget {
             borderRadius: BorderRadius.circular(2.br),
           ),
         ),
-        if (onShareProfile != null) ...[
-          InkWell(
-            onTap: () {
-              Navigator.pop(context);
-              onShareProfile!();
-            },
-            child: Padding(
-              padding: EdgeInsets.symmetric(horizontal: 16.sp, vertical: 10.h),
-              child: Row(
-                children: [
-                  Icon(
-                    Icons.ios_share,
-                    color: context.colors.brand,
-                    size: 18.ic,
-                  ),
-                  SizedBox(width: 10.w),
-                  Text(
-                    'Share Profile',
-                    style: AppTypography.textSmBold.copyWith(
-                      color: context.colors.textPrimary,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          Divider(color: context.colors.surfaceRecessed, height: 1.h),
-        ],
         // Title
         Padding(
           padding: EdgeInsets.symmetric(horizontal: 16.sp, vertical: 10.h),
