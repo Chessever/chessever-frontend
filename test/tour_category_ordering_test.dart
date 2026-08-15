@@ -352,6 +352,90 @@ void main() {
       expect(tourCategoryLabel('Some Event: Masters'), 'Masters');
     });
 
+    test('removes the exact parent name before a category separator', () {
+      const parent = 'Rubinstein Chess Festival 2026';
+
+      expect(
+        tourCategoryLabel('$parent - BLITZ Open', groupName: parent),
+        'BLITZ Open',
+      );
+      expect(
+        tourCategoryLabel('$parent – Open B', groupName: parent),
+        'Open B',
+      );
+      expect(
+        tourCategoryLabel('$parent | Open C', groupName: parent),
+        'Open C',
+      );
+    });
+
+    test('still reduces to the distinguishing tail after stripping the parent', () {
+      const parent = 'Esports World Cup 2026';
+
+      // Returning the first segment after the parent would render
+      // "Group Stage | A" — longer than the "A" the same name produces with
+      // no groupName at all, which is the opposite of the point.
+      expect(
+        tourCategoryLabel('$parent | Group Stage | A', groupName: parent),
+        'A',
+      );
+      expect(tourCategoryLabel('$parent | Group Stage | A'), 'A');
+      expect(
+        tourCategoryLabel('$parent - Playoffs: Upper', groupName: parent),
+        'Upper',
+      );
+      expect(
+        tourCategoryLabel('$parent - Masters Boards 1-10', groupName: parent),
+        'Boards 1-10',
+      );
+    });
+
+    test('handles parents and children that end at a separator', () {
+      // A parent stored with its own trailing dash still matches.
+      expect(
+        tourCategoryLabel(
+          'Rubinstein Chess Festival 2026 - Open B',
+          groupName: 'Rubinstein Chess Festival 2026 -',
+        ),
+        'Open B',
+      );
+      // Nothing left after the separator: keep the name rather than return an
+      // empty chip, and keep it trimmed.
+      expect(
+        tourCategoryLabel(
+          'Rubinstein Chess Festival 2026 - ',
+          groupName: 'Rubinstein Chess Festival 2026',
+        ),
+        'Rubinstein Chess Festival 2026 -',
+      );
+    });
+
+    test('accepts the other separators broadcasts ship', () {
+      const parent = 'Rubinstein Chess Festival 2026';
+
+      expect(tourCategoryLabel('$parent ― Open D', groupName: parent), 'Open D');
+      expect(tourCategoryLabel('$parent − Open E', groupName: parent), 'Open E');
+      expect(tourCategoryLabel('$parent / Open F', groupName: parent), 'Open F');
+      expect(tourCategoryLabel('$parent • Open G', groupName: parent), 'Open G');
+    });
+
+    test('does not remove a partial or separator-free parent prefix', () {
+      expect(
+        tourCategoryLabel(
+          'Rubinstein Chess Festival 2026 Open',
+          groupName: 'Rubinstein Chess Festival 2026',
+        ),
+        'Rubinstein Chess Festival 2026 Open',
+      );
+      expect(
+        tourCategoryLabel(
+          'Rubinstein Chess Festival 2026 - Open',
+          groupName: 'Rubinstein Chess Festival',
+        ),
+        'Rubinstein Chess Festival 2026 - Open',
+      );
+    });
+
     test('recognises board bands and group suffixes without a separator', () {
       expect(tourCategoryLabel('Big Open 2026 Boards 1-10'), 'Boards 1-10');
       expect(tourCategoryLabel('Big Open 2026 Group B'), 'Group B');

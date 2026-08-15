@@ -5,6 +5,7 @@ import 'package:chessever2/screens/tour_detail/games_tour/models/games_app_bar_v
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_app_bar_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_scroll_provider.dart';
 import 'package:chessever2/screens/tour_detail/provider/tour_category_ordering.dart';
+import 'package:chessever2/screens/tour_detail/provider/tour_detail_mode_provider.dart';
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_screen_provider.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
@@ -100,6 +101,9 @@ class CategoryDropdown extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final tourDetailAsync = ref.watch(tourDetailScreenProvider);
     final roundsAsync = ref.watch(gamesAppBarProvider);
+    final groupName = ref.watch(
+      selectedBroadcastModelProvider.select((broadcast) => broadcast?.name),
+    );
 
     return SizedBox(
       height: 38.h,
@@ -131,6 +135,11 @@ class CategoryDropdown extends ConsumerWidget {
             selectedCategory: selectedTour,
             rounds: rounds,
             selectedRound: selectedRound,
+            // Only a real multi-category event repeats its own name across
+            // rows. On a single-category event this chip is the only title in
+            // the app bar, so stripping the parent would delete the event name
+            // from the screen entirely.
+            groupName: tourData.tours.length > 1 ? groupName : null,
             constrainWidth: constrainWidth,
             onCategoryChanged: (category) {
               ref
@@ -174,6 +183,7 @@ class _CategoryDropdownContent extends HookConsumerWidget {
   final TourModel selectedCategory;
   final List<GamesAppBarModel> rounds;
   final GamesAppBarModel? selectedRound;
+  final String? groupName;
   final bool constrainWidth;
   final ValueChanged<TourModel> onCategoryChanged;
   final ValueChanged<GamesAppBarModel> onRoundChanged;
@@ -183,6 +193,7 @@ class _CategoryDropdownContent extends HookConsumerWidget {
     required this.selectedCategory,
     required this.rounds,
     required this.selectedRound,
+    required this.groupName,
     required this.constrainWidth,
     required this.onCategoryChanged,
     required this.onRoundChanged,
@@ -243,7 +254,10 @@ class _CategoryDropdownContent extends HookConsumerWidget {
     return CompositedTransformTarget(
       link: layerLink,
       child: _StadiumChipButton(
-        label: tourCategoryLabel(selectedCategory.tour.name),
+        label: tourCategoryLabel(
+          selectedCategory.tour.name,
+          groupName: groupName,
+        ),
         status: selectedRound?.roundStatus ?? selectedCategory.roundStatus,
         isOpen: isOpen.value,
         showChevron: hasMultipleOptions,
@@ -305,6 +319,7 @@ class _CategoryDropdownContent extends HookConsumerWidget {
               availableHeight: availableHeight,
               animation: animation,
               categories: categories,
+              groupName: groupName,
               openedAt: openedAt,
               onCategorySelect: (category) {
                 HapticFeedbackService.selection();
@@ -756,6 +771,7 @@ class _DropdownOverlay extends ConsumerWidget {
   final double availableHeight;
   final Animation<double> animation;
   final List<TourModel> categories;
+  final String? groupName;
   final DateTime openedAt;
   final ValueChanged<TourModel> onCategorySelect;
   final ValueChanged<TourModel> onCategoryChange; // Select without closing
@@ -770,6 +786,7 @@ class _DropdownOverlay extends ConsumerWidget {
     required this.availableHeight,
     required this.animation,
     required this.categories,
+    required this.groupName,
     required this.openedAt,
     required this.onCategorySelect,
     required this.onCategoryChange,
@@ -868,6 +885,7 @@ class _DropdownOverlay extends ConsumerWidget {
                       child: _DropdownContent(
                         animation: animation,
                         categories: categories,
+                        groupName: groupName,
                         selectedCategory: selectedCategory,
                         rounds: rounds,
                         selectedRound: selectedRound,
@@ -891,6 +909,7 @@ class _DropdownOverlay extends ConsumerWidget {
 class _DropdownContent extends StatefulWidget {
   final Animation<double> animation;
   final List<TourModel> categories;
+  final String? groupName;
   final TourModel selectedCategory;
   final List<GamesAppBarModel> rounds;
   final GamesAppBarModel? selectedRound;
@@ -902,6 +921,7 @@ class _DropdownContent extends StatefulWidget {
   const _DropdownContent({
     required this.animation,
     required this.categories,
+    required this.groupName,
     required this.selectedCategory,
     required this.rounds,
     required this.selectedRound,
@@ -1404,6 +1424,7 @@ class _DropdownContentState extends State<_DropdownContent> {
                       index: index,
                       animation: widget.animation,
                       category: category,
+                      groupName: widget.groupName,
                       isSelected: isSelected,
                       isExpanded: isExpanded,
                       hasRounds: hasRounds,
@@ -1527,6 +1548,7 @@ class _CategoryRow extends StatelessWidget {
   final int index;
   final Animation<double> animation;
   final TourModel category;
+  final String? groupName;
   final bool isSelected;
   final bool isExpanded;
   final bool hasRounds;
@@ -1538,6 +1560,7 @@ class _CategoryRow extends StatelessWidget {
     required this.index,
     required this.animation,
     required this.category,
+    required this.groupName,
     required this.isSelected,
     required this.isExpanded,
     required this.hasRounds,
@@ -1587,7 +1610,10 @@ class _CategoryRow extends StatelessWidget {
                     // Category name
                     Expanded(
                       child: _MarqueeText(
-                        text: tourCategoryLabel(category.tour.name),
+                        text: tourCategoryLabel(
+                          category.tour.name,
+                          groupName: groupName,
+                        ),
                         style: AppTypography.textSmMedium.copyWith(
                           color: isSelected ? kPrimaryColor : context.colors.textPrimary,
                           fontWeight:
