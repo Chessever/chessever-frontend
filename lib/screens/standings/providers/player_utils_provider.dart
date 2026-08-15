@@ -1,5 +1,21 @@
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
+/// Presents canonical `Last, First` chess data in natural `First Last` order.
+/// Names already supplied in display order are preserved.
+String formatPlayerDisplayName(String name) {
+  final displayName = name.trim();
+  final commaIndex = displayName.indexOf(',');
+  if (commaIndex <= 0 || commaIndex == displayName.length - 1) {
+    return displayName;
+  }
+
+  final familyName = displayName.substring(0, commaIndex).trim();
+  final givenNames = displayName.substring(commaIndex + 1).trim();
+  if (familyName.isEmpty || givenNames.isEmpty) return displayName;
+
+  return '$givenNames $familyName';
+}
+
 final playerUtilsProvider = AutoDisposeProvider(
   (ref) => _PlayerUtilsController(ref),
 );

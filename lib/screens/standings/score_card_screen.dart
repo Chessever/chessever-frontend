@@ -1595,7 +1595,7 @@ class _PlayerHeaderRow extends StatelessWidget {
                     ),
                   ),
                 TextSpan(
-                  text: name,
+                  text: formatPlayerDisplayName(name),
                   style: AppTypography.textMdBold.copyWith(
                     color: context.colors.textPrimary,
                   ),
