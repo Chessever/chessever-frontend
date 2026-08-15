@@ -81,3 +81,37 @@ We **purposefully deactivate local Stockfish in debug mode** because its native 
 - The gotcha is worst where logic awaits `ScaffoldFeatureController.closed` (the My Likes export gate): with `persist: true` that future never completes and the flow hangs silently.
 - Tone carries the meaning: `neutral` for confirmations, `danger` for genuine failures, `success` for completed work. The capsule is black in both themes — do not recolour the surface per message.
 - Regression cover lives in `test/app_snack_test.dart` (auto-dismiss, action close, 44dp tap target).
+
+## Cursor Cloud specific instructions
+
+The Flutter SDK is baked into the VM snapshot at `/opt/flutter` (Flutter **3.44.9** /
+Dart 3.12.2, on `PATH` via `~/.bashrc`). The startup update script only runs
+`flutter pub get`; the SDK is not reinstalled per boot. Flutter 3.29.x and older
+reject `pubspec.yaml` (`Unexpected child "config" found under "flutter"`), so any
+newer SDK must be ≥3.38 — do not downgrade below that.
+
+Validation here follows the repo rules above: no `flutter build`/`flutter run`
+(no device/emulator in the VM). `flutter analyze` + `flutter test` are the proof.
+
+- **Whole-repo `flutter analyze` is misleadingly noisy.** ~360 issues (incl.
+  `error`s) come entirely from the vendored `third_party/chessground/example/`
+  and `third_party/chessground/test/` trees, which reference dev-only packages
+  (`mocktail`, a `board_example` package) that aren't resolved in this workspace.
+  That is expected. Scope to the app instead: `flutter analyze --no-pub lib test`.
+  `lib/` has **0 `error`-level issues** (only pre-existing warnings/infos such as
+  `deprecated_member_use` for `withOpacity` and a few unused imports), but `flutter
+  analyze` still exits non-zero on those warnings — judge changed files by the
+  `error •` count, not the exit code.
+- **Piping analyze/test through `tail`/`tee` masks the real exit code** (you get
+  the pipe's). Redirect to a file and check `$?` when you need the true status.
+- `flutter test test/` (the app suite) is **~1503 pass / ~4 skipped / 6 fail**.
+  The 6 failures are pre-existing stale tests, not environment problems, and are
+  safe to ignore unless you touch their area: `test/widget_test.dart` (leftover
+  default "Counter" template referencing a non-existent `MyApp` counter);
+  `test/library_book_tag_filter_test.dart` + `test/liked_games_provider_test.dart`
+  (drifted `tag:`/`tags:` `LibraryRepository` signature — won't compile);
+  `test/android_native_regression_test.dart` (source-grep guard whose expectation
+  drifted from the checked-in Kotlin); and two
+  `test/gamebase_explorer_filter_paywall_test.dart` widget-assertion cases.
+- Generated code (`*.mapper.dart`, `lib/l10n/app_localizations*.dart`) is checked
+  in, so `build_runner`/`gen-l10n` are **not** needed just to analyze or test.
