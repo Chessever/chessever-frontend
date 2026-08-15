@@ -1,5 +1,4 @@
 import 'package:chessever2/theme/app_colors.dart';
-import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/svg_widget.dart';
@@ -23,12 +22,8 @@ class BottomNavBarWidget extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final selectedColor = context.isLightTheme
-        ? kPrimaryColor
-        : context.colors.textPrimary;
-    final inactiveColor = context.isLightTheme
-        ? context.colors.textTertiary
-        : context.colors.tabInactive;
+    final selectedColor = context.colors.textPrimary;
+    final inactiveColor = context.colors.tabInactive;
     return InkWell(
       splashColor: context.colors.surfaceRecessed,
       onTap: onTap,

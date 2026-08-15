@@ -22,7 +22,7 @@ Future<AddToLibraryChoice?> showAddToLibrarySheet(
   return showModalBottomSheet<AddToLibraryChoice>(
     context: context,
     backgroundColor: Colors.transparent,
-    barrierColor: Colors.black.withValues(alpha: 0.6),
+    barrierColor: context.colors.scrim,
     builder:
         (context) => SafeArea(
           top: false,

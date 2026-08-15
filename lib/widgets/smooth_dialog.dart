@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:motor/motor.dart';
 import 'package:chessever2/providers/keyboard_total_height_provider.dart';
+import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/utils/keyboard_animation_builder.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 
@@ -17,7 +18,7 @@ Future<T?> showSmoothDialog<T>({
     context: context,
     barrierDismissible: true,
     barrierLabel: 'Dismiss',
-    barrierColor: Colors.black54,
+    barrierColor: context.colors.scrim,
     transitionDuration: const Duration(
       milliseconds: 0,
     ), // We handle animation manually

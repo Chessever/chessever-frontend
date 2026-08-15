@@ -310,7 +310,7 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
             ? TextStyle(
               fontSize: 8.5.f,
               fontWeight: FontWeight.w600,
-              color: kLightYellowColor,
+              color: context.colors.titleAccent,
               height: 1.15,
               letterSpacing: 0,
             )
@@ -318,12 +318,12 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
             ? TextStyle(
               fontSize: 8.f,
               fontWeight: FontWeight.w600,
-              color: kLightYellowColor,
+              color: context.colors.titleAccent,
               height: 1.15,
               letterSpacing: -0.15,
             )
             : AppTypography.textXsMedium.copyWith(
-              color: kLightYellowColor,
+              color: context.colors.titleAccent,
               fontWeight: FontWeight.w700,
               fontSize: 14.f,
               height: 1.2,

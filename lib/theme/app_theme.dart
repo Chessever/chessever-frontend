@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import 'app_colors.dart';
 
@@ -61,6 +62,11 @@ const Color kBoardLightGreen = Colors.white; // #FFFFFF
 const Color kBoardLightGrey = Color(0xFFD9D9D9);
 const Color kBoardLightBrown = Color(0xFFC29D62);
 const Color kBoardLightDefault = Color(0xFFD1E9E9);
+/// Broadcast Blue set used by the light-theme board mock. Chrome around the
+/// board always follows [AppColors]; these squares apply only when the user
+/// is on the default board theme and the app is in light mode.
+const Color kBoardLightThemeLightSquare = Color(0xFFDEE3E6);
+const Color kBoardLightThemeDarkSquare = Color(0xFF8CA2AD);
 
 const Color kInactiveTabColor = Color(
   0x66FFFFFF,
@@ -131,11 +137,31 @@ class AppTheme {
       backgroundColor: kBackgroundColor,
       foregroundColor: kWhiteColor,
       elevation: 0,
+      systemOverlayStyle: SystemUiOverlayStyle(
+        statusBarColor: Colors.transparent,
+        statusBarIconBrightness: Brightness.light,
+        statusBarBrightness: Brightness.dark,
+        systemNavigationBarColor: Colors.transparent,
+        systemNavigationBarIconBrightness: Brightness.light,
+      ),
     ),
     scaffoldBackgroundColor: kBackgroundColor,
     canvasColor: kBackgroundColor,
     dividerColor: kDividerColor,
     iconTheme: const IconThemeData(color: kWhiteColor),
+    drawerTheme: const DrawerThemeData(
+      backgroundColor: kBackgroundColor,
+      scrimColor: Color(0x8C000000),
+    ),
+    dialogTheme: const DialogThemeData(
+      backgroundColor: kPopUpColor,
+      surfaceTintColor: Colors.transparent,
+    ),
+    bottomSheetTheme: const BottomSheetThemeData(
+      backgroundColor: kBlack2Color,
+      modalBarrierColor: Color(0x99000000),
+      surfaceTintColor: Colors.transparent,
+    ),
     extensions: const [_darkAppColors],
     useMaterial3: true,
   );
@@ -148,24 +174,58 @@ class AppTheme {
     ).copyWith(
       primary: kPrimaryColor,
       onPrimary: kWhiteColor,
-      surface: const Color(0xFFFFFFFF),
-      onSurface: const Color(0xFF1C1C1E),
-      surfaceContainerHighest: const Color(0xFFEDEDF2),
-      outline: const Color(0xFFE5E5EA),
-      error: const Color(0xFFFF3B30),
+      surface: const Color(0xFFF4FAF9),
+      onSurface: const Color(0xFF0E1A1C),
+      surfaceContainerHighest: const Color(0xFFC5D6D5),
+      outline: const Color(0xFFB7C9C8),
+      error: kRedColor,
     ),
     appBarTheme: const AppBarTheme(
-      backgroundColor: Color(0xFFF2F2F7),
-      foregroundColor: Color(0xFF1C1C1E),
+      backgroundColor: Color(0xFFE2ECEC),
+      foregroundColor: Color(0xFF0E1A1C),
       elevation: 0,
+      systemOverlayStyle: SystemUiOverlayStyle(
+        statusBarColor: Colors.transparent,
+        statusBarIconBrightness: Brightness.dark,
+        statusBarBrightness: Brightness.light,
+        systemNavigationBarColor: Colors.transparent,
+        systemNavigationBarIconBrightness: Brightness.dark,
+      ),
     ),
-    scaffoldBackgroundColor: const Color(0xFFF2F2F7),
-    canvasColor: const Color(0xFFF2F2F7),
-    dividerColor: const Color(0xFFE5E5EA),
-    iconTheme: const IconThemeData(color: Color(0xFF1C1C1E)),
+    scaffoldBackgroundColor: const Color(0xFFE2ECEC),
+    canvasColor: const Color(0xFFE2ECEC),
+    dividerColor: const Color(0xFFB7C9C8),
+    iconTheme: const IconThemeData(color: Color(0xFF0E1A1C)),
+    drawerTheme: const DrawerThemeData(
+      backgroundColor: Color(0xFFE2ECEC),
+      scrimColor: Color(0x660E1A1C),
+    ),
+    dialogTheme: const DialogThemeData(
+      backgroundColor: Color(0xFFF4FAF9),
+      surfaceTintColor: Colors.transparent,
+    ),
+    bottomSheetTheme: const BottomSheetThemeData(
+      backgroundColor: Color(0xFFF4FAF9),
+      modalBarrierColor: Color(0x660E1A1C),
+      surfaceTintColor: Colors.transparent,
+    ),
     extensions: const [_lightAppColors],
     useMaterial3: true,
   );
+
+  /// Status / nav bar overlay that flips with the resolved brightness.
+  static SystemUiOverlayStyle overlayFor(Brightness brightness) {
+    final isLight = brightness == Brightness.light;
+    return SystemUiOverlayStyle(
+      statusBarColor: Colors.transparent,
+      systemNavigationBarColor: Colors.transparent,
+      statusBarIconBrightness: isLight ? Brightness.dark : Brightness.light,
+      statusBarBrightness: isLight ? Brightness.light : Brightness.dark,
+      systemNavigationBarIconBrightness:
+          isLight ? Brightness.dark : Brightness.light,
+      systemNavigationBarContrastEnforced: false,
+    );
+  }
 }
 
 // Forward-declared via app_colors.dart import at the call sites; we redeclare

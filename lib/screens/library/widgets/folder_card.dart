@@ -180,7 +180,7 @@ class FolderCard extends ConsumerWidget {
     if (isTwic) {
       final twicTotalAsync = ref.watch(twicDatabaseTotalGamesProvider);
       final twicLabelStyle = AppTypography.textXsRegular.copyWith(
-        color: const Color(0xFFA1A1A1),
+        color: context.colors.textSecondary,
         height: 16 / 12,
       );
       countWidget = twicTotalAsync.when(
@@ -197,7 +197,7 @@ class FolderCard extends ConsumerWidget {
     } else if (isMiniatures) {
       final miniaturesTotalAsync = ref.watch(miniaturesTotalCountProvider);
       final miniaturesLabelStyle = AppTypography.textXsRegular.copyWith(
-        color: const Color(0xFFA1A1A1),
+        color: context.colors.textSecondary,
         height: 16 / 12,
       );
       countWidget = miniaturesTotalAsync.when(
@@ -217,7 +217,7 @@ class FolderCard extends ConsumerWidget {
       countWidget = Text(
         _formatChildCount(childCount),
         style: AppTypography.textXsRegular.copyWith(
-          color: const Color(0xFFA1A1A1),
+          color: context.colors.textSecondary,
           height: 16 / 12,
         ),
       );
@@ -228,7 +228,7 @@ class FolderCard extends ConsumerWidget {
             (count) => Text(
               _formatGameCount(count),
               style: AppTypography.textXsRegular.copyWith(
-                color: const Color(0xFFA1A1A1),
+                color: context.colors.textSecondary,
                 height: 16 / 12,
               ),
             ),
@@ -236,7 +236,7 @@ class FolderCard extends ConsumerWidget {
             () => Text(
               '...',
               style: AppTypography.textXsRegular.copyWith(
-                color: const Color(0xFFA1A1A1),
+                color: context.colors.textSecondary,
               ),
             ),
         error: (_, __) => const SizedBox.shrink(),
@@ -249,7 +249,7 @@ class FolderCard extends ConsumerWidget {
       subtitleWidget = Text(
         'by ${folder.ownerDisplayName}',
         style: AppTypography.textXsRegular.copyWith(
-          color: const Color(0xFFA1A1A1),
+          color: context.colors.textSecondary,
           height: 16 / 12,
         ),
         maxLines: 1,
@@ -308,7 +308,7 @@ class FolderCard extends ConsumerWidget {
                         child: Icon(
                           Icons.link_rounded,
                           size: 10.sp,
-                          color: const Color(0xFFA1A1A1),
+                          color: context.colors.textSecondary,
                         ),
                       ),
                     ),

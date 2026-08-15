@@ -825,7 +825,7 @@ class _PlayerStandingRow extends StatelessWidget {
                         TextSpan(
                           text: '$title ',
                           style: AppTypography.textSmMedium.copyWith(
-                            color: kLightYellowColor,
+                            color: context.colors.titleAccent,
                           ),
                         ),
                       TextSpan(

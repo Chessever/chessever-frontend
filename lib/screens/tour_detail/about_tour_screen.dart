@@ -45,11 +45,13 @@ class _AboutTourScreenState extends ConsumerState<AboutTourScreen>
     super.dispose();
   }
 
-  static const _skeletonEffect = ShimmerEffect(
-    baseColor: Color(0xFF2A2A2A),
-    highlightColor: Color(0xFF3A3A3A),
-    duration: Duration(seconds: 1),
-  );
+  ShimmerEffect _skeletonEffect(BuildContext context) {
+    return ShimmerEffect(
+      baseColor: context.colors.skeleton,
+      highlightColor: context.colors.divider,
+      duration: const Duration(seconds: 1),
+    );
+  }
 
   static const AboutTourModel _fallbackAboutModel = AboutTourModel(
     id: 'Chessever',
@@ -211,7 +213,7 @@ class _AboutTourScreenState extends ConsumerState<AboutTourScreen>
                   Skeletonizer(
                     enabled: isSkeleton,
                     ignoreContainers: true,
-                    effect: _skeletonEffect,
+                    effect: _skeletonEffect(context),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
@@ -346,7 +348,7 @@ class _AboutTourScreenState extends ConsumerState<AboutTourScreen>
     return Skeletonizer(
       enabled: isSkeleton,
       ignoreContainers: true,
-      effect: _skeletonEffect,
+      effect: _skeletonEffect(context),
       child: Container(
         padding: EdgeInsets.only(
           bottom: MediaQuery.of(context).viewPadding.bottom,

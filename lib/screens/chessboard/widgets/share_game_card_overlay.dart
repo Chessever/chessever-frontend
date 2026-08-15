@@ -1217,7 +1217,7 @@ class _ShareCard extends ConsumerWidget {
   }) {
     // Text styles matching PlayerFirstRowDetailWidget boardView
     final titleStyle = AppTypography.textXsMedium.copyWith(
-      color: kLightYellowColor,
+      color: context.colors.titleAccent,
       fontWeight: FontWeight.w700,
       fontSize: 14.sp,
       height: 1.2,

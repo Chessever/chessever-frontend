@@ -8,6 +8,7 @@ import 'package:chessever2/screens/chessboard/game_review/game_review_provider.d
 import 'package:chessever2/screens/player_profile/player_profile_screen.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/services/fide_photo_service.dart';
+import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/widgets/player_initials_avatar.dart';
 import 'package:flutter/material.dart';
@@ -362,8 +363,10 @@ class GameAnalysisButton extends StatelessWidget {
                   decoration: BoxDecoration(
                     color:
                         enabled
-                            ? kBlack3Color
-                            : kBlack3Color.withValues(alpha: 0.5),
+                            ? context.colors.surfaceRecessed
+                            : context.colors.surfaceRecessed.withValues(
+                              alpha: 0.5,
+                            ),
                     borderRadius: BorderRadius.circular(12),
                     border: Border.all(
                       color:
@@ -371,7 +374,7 @@ class GameAnalysisButton extends StatelessWidget {
                               ? const Color(0xFF28833A)
                               : running
                               ? kPrimaryColor.withValues(alpha: 0.7)
-                              : kDividerColor,
+                              : context.colors.divider,
                     ),
                   ),
                   child: Stack(
@@ -423,7 +426,9 @@ class GameAnalysisButton extends StatelessWidget {
                                 overflow: TextOverflow.ellipsis,
                                 style: TextStyle(
                                   color:
-                                      enabled ? kWhiteColor : kLightGreyColor,
+                                      enabled
+                                          ? context.colors.textPrimary
+                                          : context.colors.textTertiary,
                                   fontSize: enabled ? 14 : 12,
                                   fontWeight: FontWeight.w700,
                                 ),
@@ -481,7 +486,7 @@ class _GameReviewSurface extends StatelessWidget {
     return DecoratedBox(
       key: const ValueKey('game-review-full-sheet'),
       decoration: BoxDecoration(
-        color: kBlack2Color,
+        color: context.colors.surface,
         borderRadius: radius,
         boxShadow: [
           BoxShadow(
@@ -508,7 +513,9 @@ class _GameReviewSurface extends StatelessWidget {
               right: 0,
               height: 1,
               child: IgnorePointer(
-                child: ColoredBox(color: kWhiteColor.withValues(alpha: 0.07)),
+                child: ColoredBox(
+                  color: context.colors.textPrimary.withValues(alpha: 0.07),
+                ),
               ),
             ),
           ],
@@ -647,7 +654,7 @@ class _SheetHeader extends StatelessWidget {
                   ),
                   iconSize: 20,
                   tooltip: 'Close game analysis',
-                  color: kWhiteColor70,
+                  color: context.colors.textPrimaryMuted,
                   icon: const Icon(Icons.close_rounded),
                 ),
               ),
@@ -678,8 +685,8 @@ class _ReviewProgress extends StatelessWidget {
           Text(
             state.message ?? 'Analyzing game…',
             textAlign: TextAlign.center,
-            style: const TextStyle(
-              color: kWhiteColor,
+            style: TextStyle(
+              color: context.colors.textPrimary,
               fontSize: 16,
               fontWeight: FontWeight.w700,
             ),
@@ -698,13 +705,16 @@ class _ReviewProgress extends StatelessWidget {
                       minHeight: 8,
                       value: value,
                       color: kPrimaryColor,
-                      backgroundColor: kBlack3Color,
+                      backgroundColor: context.colors.surfaceRecessed,
                     ),
                   ),
                   const SizedBox(height: 10),
                   Text(
                     '${(value * 100).round()}% · $totalMoves moves',
-                    style: const TextStyle(color: kWhiteColor70, fontSize: 13),
+                    style: TextStyle(
+                      color: context.colors.textPrimaryMuted,
+                      fontSize: 13,
+                    ),
                   ),
                 ],
               );
@@ -741,8 +751,8 @@ class _ReviewMessage extends StatelessWidget {
           const SizedBox(height: 14),
           Text(
             title,
-            style: const TextStyle(
-              color: kWhiteColor,
+            style: TextStyle(
+              color: context.colors.textPrimary,
               fontSize: 17,
               fontWeight: FontWeight.w700,
             ),
@@ -751,7 +761,10 @@ class _ReviewMessage extends StatelessWidget {
           Text(
             body,
             textAlign: TextAlign.center,
-            style: const TextStyle(color: kWhiteColor70, height: 1.4),
+            style: TextStyle(
+              color: context.colors.textPrimaryMuted,
+              height: 1.4,
+            ),
           ),
           if (actionLabel != null && onAction != null) ...[
             const SizedBox(height: 18),
@@ -916,25 +929,31 @@ class _SummaryMetricRow extends StatelessWidget {
   Widget build(BuildContext context) {
     return Row(
       children: [
-        Expanded(child: _metricValue(left, lightBackground: cardValues)),
+        Expanded(
+          child: _metricValue(context, left, lightBackground: cardValues),
+        ),
         SizedBox(
           width: _kMetricLabelColumnWidth,
           child: Text(
             label,
             textAlign: TextAlign.center,
-            style: const TextStyle(
-              color: kWhiteColor70,
+            style: TextStyle(
+              color: context.colors.textPrimaryMuted,
               fontSize: 12,
               fontWeight: FontWeight.w600,
             ),
           ),
         ),
-        Expanded(child: _metricValue(right, lightBackground: false)),
+        Expanded(child: _metricValue(context, right, lightBackground: false)),
       ],
     );
   }
 
-  Widget _metricValue(String value, {required bool lightBackground}) {
+  Widget _metricValue(
+    BuildContext context,
+    String value, {
+    required bool lightBackground,
+  }) {
     final content = Text.rich(
       TextSpan(
         children: [
@@ -944,7 +963,9 @@ class _SummaryMetricRow extends StatelessWidget {
               text: suffix,
               style: TextStyle(
                 color:
-                    lightBackground ? const Color(0xFF77777A) : kWhiteColor70,
+                    lightBackground
+                        ? context.colors.textSecondary
+                        : context.colors.textPrimaryMuted,
                 fontSize: 15,
               ),
             ),
@@ -952,7 +973,10 @@ class _SummaryMetricRow extends StatelessWidget {
       ),
       textAlign: TextAlign.center,
       style: TextStyle(
-        color: lightBackground ? const Color(0xFF222222) : kWhiteColor,
+        color:
+            lightBackground
+                ? context.colors.textPrimary
+                : context.colors.textPrimary,
         fontSize: cardValues ? 24 : 17,
         fontWeight: FontWeight.w800,
       ),
@@ -968,11 +992,9 @@ class _SummaryMetricRow extends StatelessWidget {
           height: 44,
           alignment: Alignment.center,
           decoration: BoxDecoration(
-            color: lightBackground ? const Color(0xFFD0D0D2) : kBlack3Color,
+            color: context.colors.surfaceRecessed,
             borderRadius: BorderRadius.circular(10),
-            border: Border.all(
-              color: lightBackground ? kDividerColor : kLightGreyColor,
-            ),
+            border: Border.all(color: context.colors.divider),
           ),
           child: content,
         ),
@@ -1045,7 +1067,9 @@ class _PlayerColumnState extends State<_PlayerColumn> {
                       if (player.title.trim().isNotEmpty)
                         TextSpan(
                           text: '${player.title.trim()} ',
-                          style: const TextStyle(color: kLightYellowColor),
+                          style: TextStyle(
+                            color: context.colors.titleAccent,
+                          ),
                         ),
                       TextSpan(text: _playerLastName(player)),
                     ],
@@ -1053,8 +1077,8 @@ class _PlayerColumnState extends State<_PlayerColumn> {
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   textAlign: TextAlign.center,
-                  style: const TextStyle(
-                    color: kWhiteColor,
+                  style: TextStyle(
+                    color: context.colors.textPrimary,
                     fontSize: 16,
                     fontWeight: FontWeight.w700,
                   ),
@@ -1322,6 +1346,16 @@ class _EvaluationGraph extends StatelessWidget {
                           positions: report.positions,
                           moves: report.moves,
                           activePly: activePly,
+                          surface: context.colors.surfaceRecessed,
+                          grid: context.colors.divider,
+                          fill: context.colors.textPrimary.withValues(
+                            alpha: 0.08,
+                          ),
+                          stroke: context.colors.textPrimaryMuted,
+                          outline: context.colors.surfaceRecessed.withValues(
+                            alpha: 0.55,
+                          ),
+                          marker: context.colors.textPrimary,
                         ),
                         child: const SizedBox.expand(),
                       ),
@@ -1368,8 +1402,8 @@ class _EvaluationGraph extends StatelessWidget {
                                     maxLines: 1,
                                     overflow: TextOverflow.ellipsis,
                                     textAlign: TextAlign.center,
-                                    style: const TextStyle(
-                                      color: kWhiteColor,
+                                    style: TextStyle(
+                                      color: context.colors.textPrimary,
                                       fontSize: 10,
                                       fontWeight: FontWeight.w600,
                                     ),
@@ -1502,9 +1536,13 @@ class _GraphStepButtonState extends State<_GraphStepButton> {
   Widget build(BuildContext context) {
     final enabled = widget.enabled;
     final foreground =
-        enabled ? kWhiteColor : kLightGreyColor.withValues(alpha: 0.4);
+        enabled
+            ? context.colors.textPrimary
+            : context.colors.textTertiary.withValues(alpha: 0.4);
     final background =
-        enabled ? kBlack3Color : kBlack3Color.withValues(alpha: 0.45);
+        enabled
+            ? context.colors.surfaceRecessed
+            : context.colors.surfaceRecessed.withValues(alpha: 0.45);
 
     // Mirror [ChessSvgBottomNavbarWithLongPress]: GestureDetector with
     // onTap + onLongPressStart/End/Cancel. Opaque hit target so the sheet's
@@ -1534,11 +1572,23 @@ class _ReviewGraphPainter extends CustomPainter {
     required this.positions,
     required this.moves,
     required this.activePly,
+    required this.surface,
+    required this.grid,
+    required this.fill,
+    required this.stroke,
+    required this.outline,
+    required this.marker,
   });
 
   final List<GameReportPosition> positions;
   final List<GameReportMove> moves;
   final int activePly;
+  final Color surface;
+  final Color grid;
+  final Color fill;
+  final Color stroke;
+  final Color outline;
+  final Color marker;
 
   /// Radius of classification dots on the win% curve (chess.com-style).
   static const double _classificationDotRadius = 3.5;
@@ -1548,16 +1598,16 @@ class _ReviewGraphPainter extends CustomPainter {
     final rect = Offset.zero & size;
     canvas.drawRRect(
       RRect.fromRectAndRadius(rect, const Radius.circular(14)),
-      Paint()..color = kBlack3Color,
+      Paint()..color = surface,
     );
-    final grid =
+    final gridPaint =
         Paint()
-          ..color = kDividerColor
+          ..color = grid
           ..strokeWidth = 1;
     canvas.drawLine(
       Offset(0, size.height / 2),
       Offset(size.width, size.height / 2),
-      grid,
+      gridPaint,
     );
     for (final fraction in const [1 / 3, 2 / 3]) {
       final x = size.width * fraction;
@@ -1565,7 +1615,7 @@ class _ReviewGraphPainter extends CustomPainter {
         canvas.drawLine(
           Offset(x, y),
           Offset(x, math.min(y + 3, size.height)),
-          grid,
+          gridPaint,
         );
       }
     }
@@ -1583,16 +1633,16 @@ class _ReviewGraphPainter extends CustomPainter {
         path.lineTo(x, y);
       }
     }
-    final fill =
+    final fillPath =
         Path.from(path)
           ..lineTo(size.width, size.height)
           ..lineTo(0, size.height)
           ..close();
-    canvas.drawPath(fill, Paint()..color = kWhiteColor.withValues(alpha: 0.08));
+    canvas.drawPath(fillPath, Paint()..color = fill);
     canvas.drawPath(
       path,
       Paint()
-        ..color = kWhiteColor70
+        ..color = stroke
         ..style = PaintingStyle.stroke
         ..strokeWidth = 2,
     );
@@ -1603,21 +1653,21 @@ class _ReviewGraphPainter extends CustomPainter {
       moves: moves,
       positions: positions,
     );
-    final outline =
+    final outlinePaint =
         Paint()
-          ..color = kBlack3Color.withValues(alpha: 0.55)
+          ..color = outline
           ..style = PaintingStyle.stroke
           ..strokeWidth = 1;
-    for (final marker in classificationMarkers) {
-      final x = maxIndex <= 0 ? 0.0 : size.width * marker.ply / maxIndex;
-      final y = size.height - marker.winPercentage / 100 * size.height;
+    for (final graphMarker in classificationMarkers) {
+      final x = maxIndex <= 0 ? 0.0 : size.width * graphMarker.ply / maxIndex;
+      final y = size.height - graphMarker.winPercentage / 100 * size.height;
       final center = Offset(x, y);
       canvas.drawCircle(
         center,
         _classificationDotRadius,
-        Paint()..color = marker.color,
+        Paint()..color = graphMarker.color,
       );
-      canvas.drawCircle(center, _classificationDotRadius, outline);
+      canvas.drawCircle(center, _classificationDotRadius, outlinePaint);
     }
 
     final safePly = activePly.clamp(0, maxIndex);
@@ -1637,7 +1687,7 @@ class _ReviewGraphPainter extends CustomPainter {
     canvas.drawCircle(
       Offset(markerX, markerY),
       5,
-      Paint()..color = kWhiteColor,
+      Paint()..color = marker,
     );
   }
 
@@ -1645,5 +1695,11 @@ class _ReviewGraphPainter extends CustomPainter {
   bool shouldRepaint(covariant _ReviewGraphPainter oldDelegate) =>
       oldDelegate.activePly != activePly ||
       oldDelegate.positions != positions ||
-      oldDelegate.moves != moves;
+      oldDelegate.moves != moves ||
+      oldDelegate.surface != surface ||
+      oldDelegate.grid != grid ||
+      oldDelegate.fill != fill ||
+      oldDelegate.stroke != stroke ||
+      oldDelegate.outline != outline ||
+      oldDelegate.marker != marker;
 }

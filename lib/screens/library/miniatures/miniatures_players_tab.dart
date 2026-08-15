@@ -555,7 +555,7 @@ class _MiniaturePlayerCardSkeleton extends StatelessWidget {
         padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 12.h),
         decoration: BoxDecoration(
           border: Border(
-            bottom: BorderSide(color: Color(0xFF1F1F1F), width: 1),
+            bottom: BorderSide(color: context.colors.divider, width: 1),
           ),
         ),
         child: Row(

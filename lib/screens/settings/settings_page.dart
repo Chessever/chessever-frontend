@@ -4,6 +4,7 @@ import 'package:chessever2/screens/settings/widgets/engine_settings_body.dart';
 import 'package:chessever2/screens/settings/widgets/notification_settings_body.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
+import 'package:chessever2/theme/theme_provider.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
@@ -127,6 +128,8 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                 bottom: 16.sp + bottomPadding,
               ),
               children: [
+                const _AppearanceSection(),
+                SizedBox(height: 14.h),
                 _CollapsibleSection(
                   title: 'Board Settings',
                   leading: SvgWidget(
@@ -175,6 +178,153 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                 ),
               ],
             ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _AppearanceSection extends ConsumerWidget {
+  const _AppearanceSection();
+
+  static const _modes = <(ThemeMode, String, IconData)>[
+    (ThemeMode.dark, 'Dark', Icons.dark_mode_outlined),
+    (ThemeMode.system, 'Auto', Icons.brightness_auto_outlined),
+    (ThemeMode.light, 'Light', Icons.light_mode_outlined),
+  ];
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final selected = ref.watch(themeModeProvider);
+    final accent = kPrimaryColor;
+
+    return Container(
+      decoration: BoxDecoration(
+        color: context.colors.surface,
+        borderRadius: BorderRadius.circular(20.br),
+        border: Border.all(
+          color: context.colors.divider.withValues(alpha: 0.4),
+        ),
+        boxShadow: context.isLightTheme
+            ? [
+                BoxShadow(
+                  color: context.colors.shadow,
+                  blurRadius: 8,
+                  offset: const Offset(0, 1),
+                ),
+              ]
+            : null,
+      ),
+      padding: EdgeInsets.fromLTRB(16.sp, 14.sp, 16.sp, 16.sp),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 40.w,
+                height: 40.h,
+                decoration: BoxDecoration(
+                  color: context.colors.surfaceRecessed,
+                  borderRadius: BorderRadius.circular(12.br),
+                ),
+                child: Icon(
+                  Icons.contrast,
+                  color: context.colors.iconPrimary,
+                  size: 22.ic,
+                ),
+              ),
+              SizedBox(width: 14.w),
+              Expanded(
+                child: Text(
+                  'Appearance',
+                  style: AppTypography.textMdMedium.copyWith(
+                    color: context.colors.textPrimary,
+                    fontSize: 14.f,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          SizedBox(height: 14.h),
+          Container(
+            decoration: BoxDecoration(
+              color: context.colors.surfaceRecessed,
+              borderRadius: BorderRadius.circular(14.br),
+            ),
+            padding: EdgeInsets.all(3.sp),
+            child: Row(
+              children: [
+                for (final entry in _modes)
+                  Expanded(
+                    child: _ThemeModeChip(
+                      label: entry.$2,
+                      icon: entry.$3,
+                      selected: selected == entry.$1,
+                      accent: accent,
+                      onTap: () {
+                        HapticFeedbackService.selection();
+                        ref.read(themeModeProvider.notifier).setTheme(entry.$1);
+                      },
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ThemeModeChip extends StatelessWidget {
+  const _ThemeModeChip({
+    required this.label,
+    required this.icon,
+    required this.selected,
+    required this.accent,
+    required this.onTap,
+  });
+
+  final String label;
+  final IconData icon;
+  final bool selected;
+  final Color accent;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: selected ? context.colors.surface : Colors.transparent,
+      borderRadius: BorderRadius.circular(11.br),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(11.br),
+        splashColor: accent.withValues(alpha: 0.08),
+        highlightColor: accent.withValues(alpha: 0.04),
+        child: Padding(
+          padding: EdgeInsets.symmetric(vertical: 10.sp),
+          child: Column(
+            children: [
+              Icon(
+                icon,
+                size: 18.ic,
+                color: selected ? accent : context.colors.textTertiary,
+              ),
+              SizedBox(height: 4.h),
+              Text(
+                label,
+                style: AppTypography.textXsMedium.copyWith(
+                  color: selected
+                      ? context.colors.textPrimary
+                      : context.colors.textSecondary,
+                  fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+                  fontSize: 12.f,
+                ),
+              ),
+            ],
           ),
         ),
       ),

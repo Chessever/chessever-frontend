@@ -615,7 +615,7 @@ class _PlayerAboutTabState extends ConsumerState<PlayerAboutTab>
           Icon(
             Icons.error_outline,
             size: 48.ic,
-            color: Colors.redAccent.withValues(alpha: 0.7),
+            color: context.colors.danger.withValues(alpha: 0.7),
           ),
           SizedBox(height: 12.h),
           Text(
@@ -1409,7 +1409,7 @@ class _OverallStatsSection extends StatelessWidget {
                     label: 'Draw Rate',
                     value:
                         '${(resultStats.drawRate * 100).toStringAsFixed(1)}%',
-                    color: context.colors.textPrimaryMuted,
+                    color: context.colors.textSecondary,
                     isSelected: currentResultFilter == PlayerResultFilter.draw,
                     onTap: () {
                       // Toggle: if already selected, clear filter; otherwise apply
@@ -1431,7 +1431,7 @@ class _OverallStatsSection extends StatelessWidget {
                     label: 'Loss Rate',
                     value:
                         '${(resultStats.lossRate * 100).toStringAsFixed(1)}%',
-                    color: Colors.redAccent,
+                    color: context.colors.danger,
                     isSelected: currentResultFilter == PlayerResultFilter.loss,
                     onTap: () {
                       // Toggle: if already selected, clear filter; otherwise apply
@@ -1468,15 +1468,13 @@ class _OverallStatsSection extends StatelessWidget {
                         Expanded(
                           flex: resultStats.draws,
                           child: Container(
-                            color: context.colors.textPrimary.withValues(
-                              alpha: 0.5,
-                            ),
+                            color: context.colors.textSecondary,
                           ),
                         ),
                       if (resultStats.losses > 0)
                         Expanded(
                           flex: resultStats.losses,
-                          child: Container(color: Colors.redAccent),
+                          child: Container(color: context.colors.danger),
                         ),
                     ],
                   ),
@@ -1572,13 +1570,13 @@ class _ResultCountTriplet extends StatelessWidget {
           _ResultCountColumn(
             value: formatTightStatCount(resultStats.draws),
             label: 'D',
-            color: context.colors.textPrimary.withValues(alpha: 0.5),
+            color: context.colors.textSecondary,
           ),
           SizedBox(width: 12.w),
           _ResultCountColumn(
             value: formatTightStatCount(resultStats.losses),
             label: 'L',
-            color: Colors.redAccent,
+            color: context.colors.danger,
           ),
         ],
       ),
@@ -2135,10 +2133,10 @@ class _RecentFormSectionState extends State<_RecentFormSection> {
                     bgColor = kGreenColor;
                     text = 'W';
                   } else if (result == 0.5) {
-                    bgColor = context.colors.textPrimary.withValues(alpha: 0.5);
+                    bgColor = context.colors.textSecondary;
                     text = 'D';
                   } else {
-                    bgColor = Colors.redAccent;
+                    bgColor = context.colors.danger;
                     text = 'L';
                   }
 
@@ -2781,7 +2779,7 @@ class _OpeningRowState extends State<_OpeningRow> {
   Color _getScoreColor(double score) {
     if (score >= 0.6) return kGreenColor;
     if (score >= 0.4) return context.colors.textPrimary;
-    return Colors.redAccent;
+    return context.colors.danger;
   }
 
   @override
@@ -3059,8 +3057,8 @@ class _WLDIndicator extends StatelessWidget {
         baseTextColor = kGreenColor;
         break;
       case 'L':
-        baseBgColor = Colors.redAccent.withValues(alpha: 0.2);
-        baseTextColor = Colors.redAccent;
+        baseBgColor = context.colors.danger.withValues(alpha: 0.2);
+        baseTextColor = context.colors.danger;
         break;
       case 'D':
       default:

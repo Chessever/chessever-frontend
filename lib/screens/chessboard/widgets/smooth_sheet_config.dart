@@ -4,7 +4,6 @@ library;
 
 import 'dart:math' as math;
 import 'package:chessever2/theme/app_colors.dart';
-import 'package:chessever2/theme/app_theme.dart';
 import 'package:flutter/material.dart';
 import 'package:smooth_sheets/smooth_sheets.dart';
 
@@ -186,7 +185,7 @@ class SpringModalSheetRoute<T> extends ModalSheetRoute<T> {
     Duration? transitionDuration,
     Duration? reverseTransitionDuration,
   }) : super(
-         barrierColor: barrierColor ?? Colors.black.withValues(alpha: 0.65),
+         barrierColor: barrierColor ?? const Color(0xB3000000),
          transitionCurve: springCurve,
          transitionDuration:
              transitionDuration ?? const Duration(milliseconds: 450),
@@ -219,7 +218,7 @@ class ChessSheetRoutes {
     return SpringModalSheetRoute<void>(
       builder: builder,
       springCurve: ChessSheetCurves.snappy,
-      barrierColor: Colors.black.withValues(alpha: 0.65),
+      barrierColor: context?.colors.scrim ?? const Color(0xB3000000),
       barrierLabel: 'Close menu',
       // Only respect top padding; allow the sheet to cover the bottom safe area
       viewportPadding: EdgeInsets.only(top: padding.top),
@@ -236,7 +235,7 @@ class ChessSheetRoutes {
     return SpringModalSheetRoute<void>(
       builder: builder,
       springCurve: ChessSheetCurves.smooth,
-      barrierColor: Colors.black.withValues(alpha: 0.70),
+      barrierColor: context?.colors.scrim ?? const Color(0xB3000000),
       barrierLabel: 'Close editor',
       // Only respect top padding; allow the sheet to cover the bottom safe area
       viewportPadding: EdgeInsets.only(top: padding.top),
@@ -254,7 +253,7 @@ class ChessSheetRoutes {
       builder: builder,
       springCurve: ChessSheetCurves.bouncy,
       // Keep background visible while dimming slightly behind the sheet
-      barrierColor: Colors.black.withValues(alpha: 0.55),
+      barrierColor: context?.colors.scrim ?? const Color(0xB3000000),
       barrierLabel: 'Close preview',
       // Only respect top padding; allow the sheet to cover the bottom safe area
       viewportPadding: EdgeInsets.only(top: padding.top),

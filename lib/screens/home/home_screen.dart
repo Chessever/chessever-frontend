@@ -219,6 +219,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       return Scaffold(
         key: _scaffoldKey,
         resizeToAvoidBottomInset: false,
+        drawerScrimColor: context.colors.scrim,
         drawer: HamburgerMenu(callbacks: _menuCallbacks),
         body: BillingIssueGate(
           child: Row(
@@ -244,6 +245,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     return Scaffold(
       key: _scaffoldKey,
       resizeToAvoidBottomInset: false,
+      drawerScrimColor: context.colors.scrim,
       drawer: HamburgerMenu(callbacks: _menuCallbacks),
       bottomNavigationBar: BottomNavBar(),
       body: BillingIssueGate(

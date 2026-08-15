@@ -2,6 +2,7 @@ import 'dart:io' show Platform;
 
 import 'package:app_settings/app_settings.dart';
 import 'package:chessever2/revenue_cat_service/subscribe_state.dart';
+import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
@@ -40,8 +41,6 @@ Future<void> showManageSubscriptionSheet(BuildContext context) {
 /// the Stripe customer portal with a valid web return URL.
 final Uri _kAccountUrl = Uri.https('chessever.com', '/account');
 
-const Color _kSheetSurface = Color(0xFF1C1C1E);
-
 class _ManageSubscriptionSheet extends ConsumerWidget {
   const _ManageSubscriptionSheet();
 
@@ -52,7 +51,7 @@ class _ManageSubscriptionSheet extends ConsumerWidget {
 
     return Container(
       decoration: BoxDecoration(
-        color: _kSheetSurface,
+        color: context.colors.popup,
         borderRadius: BorderRadius.vertical(top: Radius.circular(24.br)),
       ),
       padding: EdgeInsets.fromLTRB(
@@ -70,7 +69,7 @@ class _ManageSubscriptionSheet extends ConsumerWidget {
               width: 40.w,
               height: 4.h,
               decoration: BoxDecoration(
-                color: kWhiteColor.withValues(alpha: 0.18),
+                color: context.colors.divider,
                 borderRadius: BorderRadius.circular(2.br),
               ),
             ),
@@ -79,7 +78,7 @@ class _ManageSubscriptionSheet extends ConsumerWidget {
           Text(
             'Manage subscription',
             style: AppTypography.displaySmBold.copyWith(
-              color: kWhiteColor,
+              color: context.colors.textPrimary,
               fontSize: 22.f,
             ),
           ),
@@ -96,7 +95,9 @@ class _ManageSubscriptionSheet extends ConsumerWidget {
               onPressed: () => Navigator.of(context).pop(),
               child: Text(
                 'Done',
-                style: AppTypography.textSmMedium.copyWith(color: kWhiteColor70),
+                style: AppTypography.textSmMedium.copyWith(
+                  color: context.colors.textPrimaryMuted,
+                ),
               ),
             ),
           ),
@@ -116,7 +117,9 @@ class _StatusLine extends StatelessWidget {
     if (!state.isSubscribed) {
       return Text(
         'No active subscription',
-        style: AppTypography.textSmRegular.copyWith(color: kWhiteColor70),
+        style: AppTypography.textSmRegular.copyWith(
+          color: context.colors.textPrimaryMuted,
+        ),
       );
     }
     final renew = state.willRenew;
@@ -131,7 +134,9 @@ class _StatusLine extends StatelessWidget {
         Flexible(
           child: Text(
             '${renew ? 'Premium' : 'Premium · cancels at term end'}$tail',
-            style: AppTypography.textSmMedium.copyWith(color: kWhiteColor),
+            style: AppTypography.textSmMedium.copyWith(
+              color: context.colors.textPrimary,
+            ),
           ),
         ),
       ],
@@ -154,7 +159,7 @@ class _StripeBody extends StatelessWidget {
           'invoices, or cancel anytime — changes sync back to the app within '
           'a few minutes.',
           style: AppTypography.textSmRegular.copyWith(
-            color: kWhiteColor70,
+            color: context.colors.textPrimaryMuted,
             height: 1.45,
           ),
         ),
@@ -193,13 +198,15 @@ class _StoreBody extends ConsumerWidget {
       children: [
         Text(
           'Your subscription is managed by ${isIOS ? 'the App Store' : 'Google Play'}.',
-          style: AppTypography.textSmMedium.copyWith(color: kWhiteColor),
+          style: AppTypography.textSmMedium.copyWith(
+            color: context.colors.textPrimary,
+          ),
         ),
         SizedBox(height: 8.h),
         Text(
           steps,
           style: AppTypography.textSmRegular.copyWith(
-            color: kWhiteColor70,
+            color: context.colors.textPrimaryMuted,
             height: 1.45,
           ),
         ),

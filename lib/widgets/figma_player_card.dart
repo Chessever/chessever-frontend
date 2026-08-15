@@ -86,9 +86,9 @@ class FigmaPlayerCard extends ConsumerWidget {
     if (pending) {
       final bone = skel.Skeletonizer(
         enabled: true,
-        effect: const skel.ShimmerEffect(
-          baseColor: Color(0xFF2A2A2A),
-          highlightColor: Color(0xFF3A3A3A),
+        effect: skel.ShimmerEffect(
+          baseColor: context.colors.skeleton,
+          highlightColor: context.colors.divider,
         ),
         child: Text(_widestMatchScore, style: style),
       );
@@ -188,7 +188,7 @@ class FigmaPlayerCard extends ConsumerWidget {
         padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 12.h),
         decoration: BoxDecoration(
           border: Border(
-            bottom: BorderSide(color: Color(0xFF1F1F1F), width: 1),
+            bottom: BorderSide(color: context.colors.divider, width: 1),
           ),
         ),
         child: Row(
@@ -213,9 +213,9 @@ class FigmaPlayerCard extends ConsumerWidget {
                       )
                       : skel.Skeletonizer(
                         enabled: true,
-                        effect: const skel.ShimmerEffect(
-                          baseColor: Color(0xFF2A2A2A),
-                          highlightColor: Color(0xFF3A3A3A),
+                        effect: skel.ShimmerEffect(
+                          baseColor: context.colors.skeleton,
+                          highlightColor: context.colors.divider,
                         ),
                         child: Text(
                           '00',

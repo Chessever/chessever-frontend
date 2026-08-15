@@ -14169,7 +14169,7 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
       context: context,
       backgroundColor: Colors.transparent,
       isScrollControlled: true,
-      barrierColor: Colors.black.withValues(alpha: 0.55),
+      barrierColor: context.colors.scrim,
       builder:
           (sheetContext) => _NagPickerSheet(
             moveText: moveText,

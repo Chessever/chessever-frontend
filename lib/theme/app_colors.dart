@@ -3,9 +3,8 @@ import 'package:flutter/material.dart';
 import 'app_theme.dart';
 
 /// Semantic color tokens used across the app. The dark variant maps 1:1 to the
-/// historical `k*Color` constants in `app_theme.dart`; the light variant is a
-/// freshly-designed iOS-leaning palette that preserves brand identity while
-/// staying comfortable on a bright background.
+/// historical `k*Color` constants in `app_theme.dart`; the light variant is the
+/// broadcast mint/teal palette from `ChessEver Light Theme.dc.html` §4a.
 @immutable
 class AppColors extends ThemeExtension<AppColors> {
   const AppColors({
@@ -36,6 +35,8 @@ class AppColors extends ThemeExtension<AppColors> {
     required this.scrim,
     required this.skeleton,
     required this.profileGradient,
+    required this.titleAccent,
+    required this.inkOnAccent,
   });
 
   final Color brand;
@@ -66,6 +67,14 @@ class AppColors extends ThemeExtension<AppColors> {
   final Color skeleton;
   final LinearGradient profileGradient;
 
+  /// Chess title prefix (GM, IM, …). Dark keeps the historic gold; light uses
+  /// broadcast `--title` so the ink stays readable on paper.
+  final Color titleAccent;
+
+  /// Ink that sits on a saturated brand fill (BEST VALUE, similar chips).
+  /// Dark keeps a dark recessed tone; light pins to broadcast `--ink-on-accent`.
+  final Color inkOnAccent;
+
   static const AppColors dark = AppColors(
     brand: kPrimaryColor,
     brandMuted: Color(0xFF17AAD6),
@@ -94,44 +103,47 @@ class AppColors extends ThemeExtension<AppColors> {
     scrim: Color(0xB3000000),
     skeleton: Color(0xFF2A2A2C),
     profileGradient: kProfileInitialsGradient,
+    titleAccent: kLightYellowColor,
+    inkOnAccent: kBlack3Color,
   );
 
-  /// iOS-leaning premium light palette. Off-white scaffold so the eye relaxes;
-  /// pure white cards for crisp contrast; brand cyan stays the same so the
-  /// product still feels like ChessEver.
+  /// Broadcast-ported mint/teal light palette. Values come from
+  /// `ChessEver Light Theme.dc.html` §4a — do not drift back to iOS greys.
   static const AppColors light = AppColors(
     brand: kPrimaryColor,
-    brandMuted: Color(0xFF0894C2),
-    background: Color(0xFFF2F2F7), // iOS systemGroupedBackground
-    surface: Color(0xFFFFFFFF),
-    surfaceElevated: Color(0xFFFFFFFF),
-    surfaceRecessed: Color(0xFFEDEDF2),
-    surfaceInverse: Color(0xFF1C1C1E),
-    popup: Color(0xFFFFFFFF),
-    divider: Color(0xFFE5E5EA),
-    dividerStrong: Color(0xFFD1D1D6),
-    textPrimary: Color(0xFF1C1C1E), // near-black, never pure black
-    textPrimaryMuted: Color(0xB31C1C1E), // 70% opacity equivalent
-    textSecondary: Color(0xFF6D6D72), // iOS secondaryLabel
-    textTertiary: Color(0xFF8E8E93), // iOS tertiaryLabel
-    textInverse: Color(0xFFFFFFFF),
-    placeholder: Color(0xFFC7C7CC),
-    iconPrimary: Color(0xFF1C1C1E),
-    iconSecondary: Color(0xFF8E8E93),
-    success: Color(0xFF34C759), // iOS systemGreen
-    successStrong: Color(0xFF248A3D),
-    danger: Color(0xFFFF3B30), // iOS systemRed
-    dangerMuted: Color(0xFFFF6B6B),
-    tabInactive: Color(0x661C1C1E),
-    shadow: Color(0x1F000000),
-    scrim: Color(0x66000000),
-    skeleton: Color(0xFFE5E5EA),
+    brandMuted: Color(0xFF17AAD6),
+    background: Color(0xFFE2ECEC),
+    surface: Color(0xFFF4FAF9),
+    surfaceElevated: Color(0xFFEEF6F5),
+    surfaceRecessed: Color(0xFFC5D6D5),
+    surfaceInverse: Color(0xFF0E1A1C),
+    popup: Color(0xFFF4FAF9),
+    divider: Color(0xFFB7C9C8),
+    dividerStrong: Color(0xFFB7C9C8),
+    textPrimary: Color(0xFF0E1A1C),
+    textPrimaryMuted: Color(0xB30E1A1C),
+    textSecondary: Color(0xFF4D5E61),
+    textTertiary: Color(0xFF6B7C7E),
+    textInverse: Color(0xFFE2ECEC),
+    placeholder: Color(0xFF8A9A9C),
+    iconPrimary: Color(0xFF0E1A1C),
+    iconSecondary: Color(0xFF6B7C7E),
+    success: kGreenColor,
+    successStrong: Color(0xFF007A33),
+    danger: kRedColor,
+    dangerMuted: kDarkRedColor,
+    tabInactive: Color(0xB30E1A1C),
+    shadow: Color(0x1F0E1A1C),
+    scrim: Color(0x660E1A1C),
+    skeleton: Color(0xFFC5D6D5),
     profileGradient: LinearGradient(
       begin: Alignment.topCenter,
       end: Alignment.bottomCenter,
       colors: [Color(0xFF0FB4E5), Color(0xFF0894C2)],
       stops: [0.0, 1.0],
     ),
+    titleAccent: Color(0xFF4F5334),
+    inkOnAccent: Color(0xFF0A0A0A),
   );
 
   @override
@@ -163,6 +175,8 @@ class AppColors extends ThemeExtension<AppColors> {
     Color? scrim,
     Color? skeleton,
     LinearGradient? profileGradient,
+    Color? titleAccent,
+    Color? inkOnAccent,
   }) {
     return AppColors(
       brand: brand ?? this.brand,
@@ -192,6 +206,8 @@ class AppColors extends ThemeExtension<AppColors> {
       scrim: scrim ?? this.scrim,
       skeleton: skeleton ?? this.skeleton,
       profileGradient: profileGradient ?? this.profileGradient,
+      titleAccent: titleAccent ?? this.titleAccent,
+      inkOnAccent: inkOnAccent ?? this.inkOnAccent,
     );
   }
 
@@ -227,6 +243,8 @@ class AppColors extends ThemeExtension<AppColors> {
       scrim: Color.lerp(scrim, other.scrim, t)!,
       skeleton: Color.lerp(skeleton, other.skeleton, t)!,
       profileGradient: t < 0.5 ? profileGradient : other.profileGradient,
+      titleAccent: Color.lerp(titleAccent, other.titleAccent, t)!,
+      inkOnAccent: Color.lerp(inkOnAccent, other.inkOnAccent, t)!,
     );
   }
 }

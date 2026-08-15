@@ -21,7 +21,7 @@ void showDeleteAccountDialog(BuildContext context) {
   showAlertModal<void>(
     context: context,
     barrierDismissible: true,
-    barrierColor: Colors.black87,
+    barrierColor: context.colors.scrim,
     child: const _DeleteAccountDialog(),
   );
 }

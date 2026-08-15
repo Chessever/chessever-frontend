@@ -2,7 +2,6 @@ import 'package:chessever2/screens/group_event/model/tour_event_card_model.dart'
 import 'package:chessever2/screens/group_event/smart_event/smart_aggregate_event_provider.dart';
 import 'package:chessever2/screens/group_event/smart_event/smart_event_screen.dart';
 import 'package:chessever2/theme/app_colors.dart';
-import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/scroll_cache.dart';
 import 'package:chessever2/widgets/event_card/event_card.dart';
@@ -135,8 +134,7 @@ class _AllEventsTabWidgetState extends ConsumerState<AllEventsTabWidget> {
               padding: EdgeInsets.only(bottom: bottomPadding + 20),
               child: Center(
                 child: CircularProgressIndicator(
-                  color:
-                      context.isLightTheme ? kPrimaryColor : kBoardLightDefault,
+                  color: context.colors.brand,
                 ),
               ),
             ),
@@ -170,8 +168,8 @@ class _AllEventsTabWidgetState extends ConsumerState<AllEventsTabWidget> {
         if (index == widget.filteredEvents.length + smartOffset) {
           return Padding(
             padding: EdgeInsets.only(bottom: bottomPadding + 20),
-            child: const Center(
-              child: CircularProgressIndicator(color: kBoardLightDefault),
+            child: Center(
+              child: CircularProgressIndicator(color: context.colors.brand),
             ),
           );
         }

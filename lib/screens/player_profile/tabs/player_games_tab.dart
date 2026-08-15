@@ -1665,12 +1665,12 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
             width: 64.w,
             height: 64.h,
             decoration: BoxDecoration(
-              color: Colors.redAccent.withValues(alpha: 0.1),
+              color: context.colors.danger.withValues(alpha: 0.1),
               borderRadius: BorderRadius.circular(16.br),
             ),
             child: Icon(
               Icons.error_outline_rounded,
-              color: Colors.redAccent,
+              color: context.colors.danger,
               size: 32.ic,
             ),
           ),
@@ -2189,6 +2189,6 @@ class _EventSection extends ConsumerWidget {
     final percentage = playerScore / gameCount;
     if (percentage >= 0.6) return kGreenColor;
     if (percentage >= 0.4) return context.colors.textPrimary;
-    return Colors.redAccent;
+    return context.colors.danger;
   }
 }

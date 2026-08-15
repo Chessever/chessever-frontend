@@ -1296,7 +1296,7 @@ class _ExplorerCardPlayerRow extends StatelessWidget {
       height: 1.15,
     );
     final titleStyle = nameStyle.copyWith(
-      color: kLightYellowColor,
+      color: context.colors.titleAccent,
       fontWeight: FontWeight.w700,
     );
     final ratingStyle = AppTypography.textXsRegular.copyWith(

@@ -30,7 +30,6 @@ import 'package:skeletonizer/skeletonizer.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:chessever2/theme/app_colors.dart';
-import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/repository/supabase/game/game_repository.dart';
 import 'package:chessever2/repository/supabase/game/games.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
@@ -1592,7 +1591,7 @@ class _PlayerHeaderRow extends StatelessWidget {
                   TextSpan(
                     text: '$titleText ',
                     style: AppTypography.textMdBold.copyWith(
-                      color: kLightYellowColor,
+                      color: context.colors.titleAccent,
                     ),
                   ),
                 TextSpan(

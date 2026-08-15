@@ -105,7 +105,7 @@ class ScoreboardCardWidget extends ConsumerWidget {
                       TextSpan(
                         text: '$title ',
                         style: AppTypography.textMdBold.copyWith(
-                          color: kLightYellowColor,
+                          color: context.colors.titleAccent,
                         ),
                       ),
                     TextSpan(

@@ -25,7 +25,7 @@ class ThemeModeNotifier extends StateNotifier<ThemeMode> {
 
   Future<void> _restore() async {
     try {
-      final prefs = SharedPreferencesService.instance.prefsOrNull;
+      final prefs = await SharedPreferencesService.instance.ensureInitialized();
       if (prefs == null) return;
       final raw = prefs.getString(_themeModeStorageKey);
       final restored = _decode(raw);
@@ -39,7 +39,7 @@ class ThemeModeNotifier extends StateNotifier<ThemeMode> {
 
   Future<void> _persist(ThemeMode mode) async {
     try {
-      final prefs = SharedPreferencesService.instance.prefsOrNull;
+      final prefs = await SharedPreferencesService.instance.ensureInitialized();
       if (prefs == null) return;
       await prefs.setString(_themeModeStorageKey, _encode(mode));
     } catch (e, st) {

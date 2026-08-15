@@ -723,7 +723,7 @@ class _PricingCard extends HookWidget {
                     child: Text(
                       'BEST VALUE',
                       style: AppTypography.textXxsBold.copyWith(
-                        color: context.colors.surfaceRecessed,
+                        color: context.colors.inkOnAccent,
                         letterSpacing: 1.0,
                       ),
                     ),

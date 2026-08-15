@@ -112,7 +112,7 @@ class StandingScoreCard extends ConsumerWidget {
                         TextSpan(
                           text: '$title ',
                           style: AppTypography.textXsMedium.copyWith(
-                            color: kLightYellowColor,
+                            color: context.colors.titleAccent,
                           ),
                         ),
                       TextSpan(

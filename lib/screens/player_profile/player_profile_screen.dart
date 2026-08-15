@@ -820,7 +820,7 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
                       TextSpan(
                         text: '${effectiveTitle.trim()} ',
                         style: AppTypography.textMdBold.copyWith(
-                          color: kLightYellowColor,
+                          color: context.colors.titleAccent,
                         ),
                       ),
                     TextSpan(

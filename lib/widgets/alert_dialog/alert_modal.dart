@@ -14,9 +14,10 @@ Future<T?> showAlertModal<T>({
   double verticalPadding = 0,
   Color? backgroundColor,
   bool barrierDismissible = true,
-  Color barrierColor = Colors.black54,
+  Color? barrierColor,
   bool useBlur = true,
 }) {
+  final resolvedBarrier = barrierColor ?? context.colors.scrim;
   return showGeneralDialog<T>(
     context: context,
     barrierDismissible: barrierDismissible,
@@ -29,7 +30,7 @@ Future<T?> showAlertModal<T>({
         verticalPadding: verticalPadding,
         backgroundColor: backgroundColor,
         barrierDismissible: barrierDismissible,
-        barrierColor: barrierColor,
+        barrierColor: resolvedBarrier,
         useBlur: useBlur,
         child: child,
       );

@@ -114,7 +114,9 @@ class LibraryGameCard extends HookConsumerWidget {
                 : null,
         child: Container(
           decoration: BoxDecoration(
-            color: context.colors.surfaceRecessed,
+            color: context.isLightTheme
+                ? context.colors.surface
+                : context.colors.surfaceRecessed,
             borderRadius: BorderRadius.circular(12.br),
           ),
           child: Column(
@@ -123,11 +125,16 @@ class LibraryGameCard extends HookConsumerWidget {
               Container(
                 padding: EdgeInsets.fromLTRB(14.w, 10.h, 14.w, 10.h),
                 decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                    begin: Alignment(-1.0, 0.26),
-                    end: Alignment(1.0, -0.26),
-                    colors: [Color(0xFFDDDDE0), Color(0xFFADAEB3)],
-                  ),
+                  color: context.isLightTheme
+                      ? context.colors.surfaceRecessed
+                      : null,
+                  gradient: context.isLightTheme
+                      ? null
+                      : const LinearGradient(
+                          begin: Alignment(-1.0, 0.26),
+                          end: Alignment(1.0, -0.26),
+                          colors: [Color(0xFFDDDDE0), Color(0xFFADAEB3)],
+                        ),
                   borderRadius: BorderRadius.vertical(
                     top: Radius.circular(12.br),
                   ),
@@ -387,7 +394,7 @@ class _PlayerInfo extends StatelessWidget {
               child: Text(
                 name,
                 style: AppTypography.textSmMedium.copyWith(
-                  color: context.colors.background,
+                  color: const Color(0xFF0E1A1C),
                 ),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
@@ -407,7 +414,7 @@ class _PlayerInfo extends StatelessWidget {
         Text(
           rank,
           style: AppTypography.textXsRegular.copyWith(
-            color: context.colors.textTertiary,
+            color: const Color(0xFF4A5259),
             fontSize: 12.sp,
           ),
           maxLines: 1,
