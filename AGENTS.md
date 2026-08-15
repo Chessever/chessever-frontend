@@ -84,8 +84,8 @@ We **purposefully deactivate local Stockfish in debug mode** because its native 
 
 ## Cursor Cloud specific instructions
 
-The Flutter SDK is baked into the VM snapshot at `/opt/flutter` (Flutter **3.44.9** /
-Dart 3.12.2, on `PATH` via `~/.bashrc`). The startup update script only runs
+The Flutter SDK is baked into the VM snapshot at `/opt/flutter` (Flutter **3.47.0** /
+Dart 3.13.0 — latest stable, on `PATH` via `~/.bashrc`). The startup update script only runs
 `flutter pub get`; the SDK is not reinstalled per boot. Flutter 3.29.x and older
 reject `pubspec.yaml` (`Unexpected child "config" found under "flutter"`), so any
 newer SDK must be ≥3.38 — do not downgrade below that.
