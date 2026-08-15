@@ -1,14 +1,20 @@
 import 'package:chessever2/screens/chessboard/utils/like_learning_prompt_tracker.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+const int _interval = LikeLearningPromptTracker.promptInterval;
+
 void main() {
   group('LikeLearningPromptTracker', () {
-    test('prompts every 40 completed games without a like', () async {
+    test('the reminder interval is 30 completed games', () {
+      expect(_interval, 30);
+    });
+
+    test('prompts every $_interval completed games without a like', () async {
       final tracker = LikeLearningPromptTracker(_MemoryStore());
       await tracker.initialize(userId: 'user-1', hasExistingLikes: false);
 
       final promptGames = <int>[];
-      for (var game = 1; game <= 120; game++) {
+      for (var game = 1; game <= _interval * 3; game++) {
         final shouldPrompt = await tracker.recordCompletedGame(
           userId: 'user-1',
           gameId: 'game-$game',
@@ -16,10 +22,10 @@ void main() {
         if (shouldPrompt) promptGames.add(game);
       }
 
-      expect(promptGames, [40, 80, 120]);
+      expect(promptGames, [_interval, _interval * 2, _interval * 3]);
     });
 
-    test('a confirmed like restarts the next prompt at 40 games', () async {
+    test('a confirmed like restarts the next prompt at $_interval games', () async {
       final tracker = LikeLearningPromptTracker(_MemoryStore());
       await tracker.initialize(userId: 'user-1', hasExistingLikes: false);
 
@@ -31,7 +37,7 @@ void main() {
       }
       await tracker.recordLike(userId: 'user-1');
 
-      for (var game = 1; game < 40; game++) {
+      for (var game = 1; game < _interval; game++) {
         expect(
           await tracker.recordCompletedGame(
             userId: 'user-1',
@@ -43,13 +49,13 @@ void main() {
       expect(
         await tracker.recordCompletedGame(
           userId: 'user-1',
-          gameId: 'after-like-40',
+          gameId: 'after-like-$_interval',
         ),
         isTrue,
       );
     });
 
-    test('any later like restarts an active 40-game interval', () async {
+    test('any later like restarts an active $_interval-game interval', () async {
       final tracker = LikeLearningPromptTracker(_MemoryStore());
       await tracker.initialize(userId: 'user-1', hasExistingLikes: true);
 
@@ -61,7 +67,7 @@ void main() {
       }
       await tracker.recordLike(userId: 'user-1');
 
-      for (var game = 1; game < 40; game++) {
+      for (var game = 1; game < _interval; game++) {
         expect(
           await tracker.recordCompletedGame(
             userId: 'user-1',
@@ -73,7 +79,7 @@ void main() {
       expect(
         await tracker.recordCompletedGame(
           userId: 'user-1',
-          gameId: 'second-run-40',
+          gameId: 'second-run-$_interval',
         ),
         isTrue,
       );
@@ -86,7 +92,7 @@ void main() {
         final tracker = LikeLearningPromptTracker(store);
         await tracker.initialize(userId: 'user-1', hasExistingLikes: false);
 
-        for (var game = 1; game <= 39; game++) {
+        for (var game = 1; game <= _interval - 1; game++) {
           expect(
             await tracker.recordCompletedGame(
               userId: 'user-1',
@@ -99,7 +105,7 @@ void main() {
         expect(
           await tracker.recordCompletedGame(
             userId: 'user-1',
-            gameId: 'game-39',
+            gameId: 'game-${_interval - 1}',
           ),
           isFalse,
         );
@@ -108,46 +114,20 @@ void main() {
         expect(
           await restoredTracker.recordCompletedGame(
             userId: 'user-1',
-            gameId: 'game-40',
+            gameId: 'game-$_interval',
           ),
           isTrue,
         );
       },
     );
 
-    test('existing liked games start directly on the 40-game cadence', () async {
-      final tracker = LikeLearningPromptTracker(_MemoryStore());
-      await tracker.initialize(userId: 'user-1', hasExistingLikes: true);
-
-      for (var game = 1; game < 40; game++) {
-        expect(
-          await tracker.recordCompletedGame(
-            userId: 'user-1',
-            gameId: 'game-$game',
-          ),
-          isFalse,
-        );
-      }
-      expect(
-        await tracker.recordCompletedGame(userId: 'user-1', gameId: 'game-40'),
-        isTrue,
-      );
-    });
-
     test(
-      'migrates an old introductory target to the 40-game minimum',
+      'existing liked games start directly on the $_interval-game cadence',
       () async {
-        final store = _MemoryStore();
-        await store.write('user-1', <String, Object?>{
-          'initialized': true,
-          'hasEverLiked': false,
-          'completedSinceLike': 12,
-          'nextPromptAt': 20,
-          'countedGameIds': List.generate(12, (index) => 'game-${index + 1}'),
-        });
-        final tracker = LikeLearningPromptTracker(store);
+        final tracker = LikeLearningPromptTracker(_MemoryStore());
+        await tracker.initialize(userId: 'user-1', hasExistingLikes: true);
 
-        for (var game = 13; game < 40; game++) {
+        for (var game = 1; game < _interval; game++) {
           expect(
             await tracker.recordCompletedGame(
               userId: 'user-1',
@@ -159,12 +139,94 @@ void main() {
         expect(
           await tracker.recordCompletedGame(
             userId: 'user-1',
-            gameId: 'game-40',
+            gameId: 'game-$_interval',
           ),
           isTrue,
         );
       },
     );
+
+    test(
+      'migrates an old introductory target to the $_interval-game minimum',
+      () async {
+        final store = _MemoryStore();
+        await store.write('user-1', <String, Object?>{
+          'initialized': true,
+          'hasEverLiked': false,
+          'completedSinceLike': 12,
+          'nextPromptAt': 20,
+          'countedGameIds': List.generate(12, (index) => 'game-${index + 1}'),
+        });
+        final tracker = LikeLearningPromptTracker(store);
+
+        for (var game = 13; game < _interval; game++) {
+          expect(
+            await tracker.recordCompletedGame(
+              userId: 'user-1',
+              gameId: 'game-$game',
+            ),
+            isFalse,
+          );
+        }
+        expect(
+          await tracker.recordCompletedGame(
+            userId: 'user-1',
+            gameId: 'game-$_interval',
+          ),
+          isTrue,
+        );
+      },
+    );
+
+    test('a persisted 40-game target still fires at 40, not 60', () async {
+      final store = _MemoryStore();
+      await store.write('user-1', <String, Object?>{
+        'initialized': true,
+        'hasEverLiked': false,
+        'completedSinceLike': 38,
+        'nextPromptAt': 40,
+        'countedGameIds': List.generate(38, (index) => 'game-${index + 1}'),
+      });
+      final tracker = LikeLearningPromptTracker(store);
+
+      expect(
+        await tracker.recordCompletedGame(userId: 'user-1', gameId: 'game-39'),
+        isFalse,
+      );
+      expect(
+        await tracker.recordCompletedGame(userId: 'user-1', gameId: 'game-40'),
+        isTrue,
+      );
+      // …and the run that follows re-aligns onto the 30-game grid.
+      final progress = await tracker.loadProgress(userId: 'user-1');
+      expect(progress.nextPromptAt, 60);
+    });
+
+    test('a persisted 80-game target is pulled forward to 60', () async {
+      final store = _MemoryStore();
+      await store.write('user-1', <String, Object?>{
+        'initialized': true,
+        'hasEverLiked': false,
+        'completedSinceLike': 45,
+        'nextPromptAt': 80,
+        'countedGameIds': List.generate(45, (index) => 'game-${index + 1}'),
+      });
+      final tracker = LikeLearningPromptTracker(store);
+
+      for (var game = 46; game < 60; game++) {
+        expect(
+          await tracker.recordCompletedGame(
+            userId: 'user-1',
+            gameId: 'game-$game',
+          ),
+          isFalse,
+        );
+      }
+      expect(
+        await tracker.recordCompletedGame(userId: 'user-1', gameId: 'game-60'),
+        isTrue,
+      );
+    });
 
     test(
       'initialization is one-time and does not repeatedly reset progress',
@@ -182,7 +244,7 @@ void main() {
         final progress = await tracker.loadProgress(userId: 'user-1');
 
         expect(progress.completedSinceLike, 12);
-        expect(progress.nextPromptAt, 40);
+        expect(progress.nextPromptAt, _interval);
       },
     );
 

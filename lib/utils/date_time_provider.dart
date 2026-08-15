@@ -12,6 +12,22 @@ final dateTimeProvider = StreamProvider<DateTime>((ref) async* {
   }
 });
 
+/// Fine-grained tick used only while a *running* board clock is inside the
+/// last-30-seconds window, where the focused board row resolves one tenth of
+/// a second.
+///
+/// Deliberately `autoDispose`: the periodic timer exists only while some clock
+/// is actually asking for the tenth, so the rest of the app — every game card,
+/// every idle clock — stays on the 1 Hz [dateTimeProvider]. 50 ms keeps the
+/// displayed tenth at most half a tenth stale.
+final subSecondTimeProvider = StreamProvider.autoDispose<DateTime>((ref) async* {
+  yield DateTime.now();
+
+  await for (final _ in Stream.periodic(const Duration(milliseconds: 50))) {
+    yield DateTime.now();
+  }
+});
+
 /// Helper extension for calculating time differences for chess clocks
 extension ChessClockExtension on DateTime {
   /// Calculates remaining time given a clock duration in milliseconds

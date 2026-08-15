@@ -6559,6 +6559,8 @@ class _GameSelectorCard extends ConsumerWidget {
       scoreCardGamesContext: gamesContext,
       playerProfileDataSource: playerProfileDataSource,
       compactName: true,
+      // Whole seconds only — the tenth-digit clock is for the focused board
+      // rows, not these switcher thumbnails (same chip as a game card).
     );
 
     // Keep the board frame the same width as the card so the mini board
@@ -7491,7 +7493,7 @@ class _AnalysisGameBody extends ConsumerWidget {
           // This prevents multiple PageView children from racing to set the
           // Gamebase FEN, which breaks lookups for real game positions.
           if (!isVisiblePage) {
-            return movesDisplay;
+            return LikeNudgeOverlay(pageIndex: index, child: movesDisplay);
           }
 
           // Paste-FEN flow: the starting position is non-default (notation
@@ -7576,11 +7578,14 @@ class _AnalysisGameBody extends ConsumerWidget {
           // Tablet landscape keeps game switching on the board/chrome, while
           // drags that start inside the notation panel should still reveal
           // the explorer page.
-          return _AnalysisSwipePanels(
-            movesDisplay: movesDisplay,
-            gamebaseDisplay: gamebaseDisplay,
-            syncWithGamebaseToggle: showGamebaseButton,
-            teachingsEnabled: shouldShowChessBoardTeachingsForGame(state.game),
+          return LikeNudgeOverlay(
+            pageIndex: index,
+            child: _AnalysisSwipePanels(
+              movesDisplay: movesDisplay,
+              gamebaseDisplay: gamebaseDisplay,
+              syncWithGamebaseToggle: showGamebaseButton,
+              teachingsEnabled: shouldShowChessBoardTeachingsForGame(state.game),
+            ),
           );
         }
 
@@ -7897,6 +7902,8 @@ class _PlayerWidget extends StatelessWidget {
       playerProfileDataSource: playerProfileDataSource,
       showClock: showClock,
       onEditName: onEditName,
+      // One tenth of a second under 30s — only this focused board row.
+      showSubSecondClock: true,
     );
   }
 }
@@ -7973,6 +7980,8 @@ class _TabletPlayerCard extends StatelessWidget {
         playerProfileDataSource: playerProfileDataSource,
         showClock: showClock,
         onEditName: onEditName,
+        // Same as the phone row: the focused board gets the tenth digit.
+        showSubSecondClock: true,
       ),
     );
   }
@@ -8317,10 +8326,12 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard>
 
   // Contextual "Did you like this game?" reminder (see LikeNudge). Raised at
   // the end of a finished game once the persisted cadence says the user has
-  // gone a long stretch without liking anything.
+  // gone a long stretch without liking anything. The capsule itself is hosted
+  // over the notation ([LikeNudgeOverlay]), not on this board.
   bool _likeNudgeVisible = false;
   bool _likeNudgeCheckInProgress = false;
   Timer? _likeNudgeSafetyTimer;
+  StateController<LikeNudgeOffer?>? _likeNudgeOfferController;
   // Same-square double-tap-to-like tracking. We detect the "like" double-tap
   // with a passive Listener (raw pointer events) instead of a
   // DoubleTapGestureRecognizer. A DoubleTapGestureRecognizer lives in the
@@ -8592,6 +8603,12 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard>
   void didUpdateWidget(covariant _AnalysisBoard oldWidget) {
     super.didUpdateWidget(oldWidget);
 
+    if (widget.index != oldWidget.index) {
+      _likeNudgeOfferController?.state = null;
+      _likeNudgeOfferController = ref
+          .read(likeNudgeOfferProvider(widget.index).notifier);
+    }
+
     if (widget.game.gameId != oldWidget.game.gameId) {
       _cancelLikeInteraction(resetAnchor: true);
     }
@@ -8724,6 +8741,8 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard>
   void initState() {
     super.initState();
     _likeFlightAnchor = ref.read(likeFlightAnchorProvider);
+    _likeNudgeOfferController =
+        ref.read(likeNudgeOfferProvider(widget.index).notifier);
     final analysisState = widget.chessBoardState.analysisState;
     _wasAtEnd = _isAtGameEnd(analysisState);
     _boardController = ChessboardController(game: _gameDataFor(analysisState));
@@ -8821,7 +8840,8 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard>
   @override
   void dispose() {
     _cancelLikeInteraction(resetAnchor: true);
-    _retireLikeNudge();
+    _retireLikeNudge(syncNow: true);
+    _likeNudgeOfferController = null;
     _detachBoardControllerPromotionListener(_boardController);
     _boardController.dispose();
     _flipCommitCtrl.dispose();
@@ -9025,37 +9045,18 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard>
   //   * GestureDetector — picks up vertical drags only (the card flip). A pure
   //     tap has no drag, so the drag recognizer loses the arena on taps and the
   //     Chessboard's own pointer-based tap-to-move stays intact.
-  /// Wraps the board in its gesture layers and reserves the slot the
-  /// contextual like reminder occupies.
+  /// Wraps the board in its gesture layers.
   ///
-  /// The reminder sits OUTSIDE the board's pointer [Listener] on purpose:
-  /// inside it, two quick taps on the reminder's own controls would land on the
-  /// same board square and trip the double-tap-to-like detector.
-  ///
-  /// The slot is always present — an empty box when there is nothing to ask.
-  /// Adding and removing the wrapping Stack instead would change the type of
-  /// this subtree's root as the reminder came and went, remounting the
-  /// Chessboard underneath it; chessground detaches its controller on
-  /// deactivate, so that remount can trip `ChessboardController.fadeAnimation`
-  /// on the next build.
+  /// The contextual like reminder used to occupy a [Positioned] slot in this
+  /// stack (over the bottom ranks). It now lives on the notation panel via
+  /// [LikeNudgeOverlay] so it cannot cover pieces. The wrapping [Stack] stays
+  /// so this subtree's root type never changes — adding and removing it would
+  /// remount the Chessboard, and chessground detaches its controller on
+  /// deactivate, which can trip `ChessboardController.fadeAnimation`.
   Widget _wrapWithFlipGesture(Widget child) {
     return Stack(
       clipBehavior: Clip.none,
-      children: [
-        _wrapWithBoardGestures(child),
-        Positioned(
-          left: 12.w,
-          right: 12.w,
-          bottom: 20.h,
-          child:
-              _likeNudgeVisible
-                  ? LikeNudge(
-                    onLike: _acceptLikeNudge,
-                    onDismiss: _dismissLikeNudge,
-                  )
-                  : const SizedBox.shrink(),
-        ),
-      ],
+      children: [_wrapWithBoardGestures(child)],
     );
   }
 
@@ -9475,8 +9476,9 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard>
       if (!shouldAsk || !mounted || !_isLikeNudgeEligible) return;
 
       setState(() => _likeNudgeVisible = true);
+      _syncLikeNudgeOffer();
       // Belt-and-braces: the reminder normally leaves when the user leaves the
-      // final position or the game, but it must never camp on the board.
+      // final position or the game, but it must never camp on the notation.
       _likeNudgeSafetyTimer?.cancel();
       _likeNudgeSafetyTimer = Timer(
         const Duration(seconds: 20),
@@ -9491,10 +9493,38 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard>
 
   /// Retire the reminder without scheduling a rebuild — for callers that are
   /// already inside one (didUpdateWidget, dispose).
-  void _retireLikeNudge() {
+  ///
+  /// [syncNow] writes the notation host immediately (dispose). Otherwise the
+  /// provider write is deferred — [didUpdateWidget] runs during build.
+  void _retireLikeNudge({bool syncNow = false}) {
     _likeNudgeSafetyTimer?.cancel();
     _likeNudgeSafetyTimer = null;
     _likeNudgeVisible = false;
+    if (syncNow) {
+      _likeNudgeOfferController?.state = null;
+    } else {
+      _syncLikeNudgeOffer(defer: true);
+    }
+  }
+
+  void _syncLikeNudgeOffer({bool defer = false}) {
+    void write() {
+      final controller = _likeNudgeOfferController;
+      if (controller == null) return;
+      controller.state =
+          _likeNudgeVisible
+              ? LikeNudgeOffer(
+                onLike: _acceptLikeNudge,
+                onDismiss: _dismissLikeNudge,
+              )
+              : null;
+    }
+
+    if (defer) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => write());
+    } else {
+      write();
+    }
   }
 
   void _dismissLikeNudge() {
@@ -9509,17 +9539,29 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard>
     setState(_retireLikeNudge);
   }
 
-  /// "Yes" runs the exact double-tap path, sourced at the heart the user just
-  /// tapped so the burst grows out of that same mark rather than appearing
-  /// somewhere else on the board.
+  /// "Yes" runs the exact double-tap path. The heart now lives on the
+  /// notation, so if that tap is off the board we source the burst at the
+  /// board centre — the gesture the reminder is teaching.
   void _acceptLikeNudge(Offset heartGlobalCenter) {
     _dismissLikeNudge();
     final renderBox = context.findRenderObject();
-    _lastTapPosition =
-        renderBox is RenderBox
-            ? renderBox.globalToLocal(heartGlobalCenter)
-            : Offset(widget.size / 2, widget.size / 2);
-    _lastTapGlobalPosition = heartGlobalCenter;
+    final boardCentre = Offset(widget.size / 2, widget.size / 2);
+    if (renderBox is RenderBox) {
+      final local = renderBox.globalToLocal(heartGlobalCenter);
+      final onBoard =
+          local.dx >= 0 &&
+          local.dy >= 0 &&
+          local.dx <= widget.size &&
+          local.dy <= widget.size;
+      _lastTapPosition = onBoard ? local : boardCentre;
+      _lastTapGlobalPosition =
+          onBoard
+              ? heartGlobalCenter
+              : renderBox.localToGlobal(boardCentre);
+    } else {
+      _lastTapPosition = boardCentre;
+      _lastTapGlobalPosition = heartGlobalCenter;
+    }
     _handleDoubleTapLike();
   }
 

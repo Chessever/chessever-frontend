@@ -12,6 +12,7 @@ import 'package:chessever2/screens/group_event/model/tour_detail_view_model.dart
 import 'package:chessever2/screens/tour_detail/games_tour/providers/live_tour_id_provider.dart';
 import 'package:chessever2/screens/tour_detail/provider/interface/itour_detail_provider.dart';
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_mode_provider.dart';
+import 'package:chessever2/screens/tour_detail/provider/tour_category_ordering.dart';
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_repo_provider.dart';
 import 'package:chessever2/screens/tour_detail/provider/tour_selection_logic.dart';
 import 'package:flutter/material.dart';
@@ -119,7 +120,7 @@ class _TourDetailScreenNotifier
       }
 
       final now = DateTime.now();
-      final updatedTourModels =
+      final restatusedTourModels =
           currentState.tours.map((tourModel) {
             final tour = tourModel.tour;
 
@@ -144,6 +145,13 @@ class _TourDetailScreenNotifier
 
             return TourModel(tour: tour, roundStatus: newRoundStatus);
           }).toList();
+
+      // Statuses just moved, so re-order: a stage that has now started belongs
+      // above the ones still waiting for their first game.
+      final updatedTourModels = sortTourCategoriesForDisplay(
+        restatusedTourModels,
+        now: now,
+      );
 
       final currentSelectedTourId = currentState.aboutTourModel.id;
       final updatedSelectedTourModel = findTourModel(
@@ -305,7 +313,11 @@ class _TourDetailScreenNotifier
       }
     }
 
-    return tourModels;
+    // The repository orders by average rating, which scrambles an event's own
+    // chronology (Playoffs landing under its group stage). The dropdown reads
+    // this list top to bottom, so settle the display order here — it covers the
+    // Supabase, SQLite-cache and virtual-gamebase paths alike.
+    return sortTourCategoriesForDisplay(tourModels, now: now);
   }
 
   @override

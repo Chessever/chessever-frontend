@@ -52,6 +52,12 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
   /// tight, e.g. the game-switcher dropdown boards.
   final bool compactName;
 
+  /// Reveals one tenth of a second on the running clock once it drops under
+  /// 30s. Only the focused board rows in [chess_board_screen_new] pass this;
+  /// game cards, explorer cards, and the switcher's mini boards stay on whole
+  /// seconds so the extra digit cannot overflow those tighter chips.
+  final bool showSubSecondClock;
+
   const PlayerFirstRowDetailWidget({
     super.key,
     required this.playerView,
@@ -67,6 +73,7 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
     this.scoreCardViewSource,
     this.scoreCardGamesContext = const [],
     this.compactName = false,
+    this.showSubSecondClock = false,
   });
 
   @override
@@ -1034,6 +1041,10 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
                 isCurrentPlayer: visibleIsCurrentPlayer,
                 timeStyle: timeStyle,
                 moveTime: moveTime,
+                // Belt-and-suspenders: even if a caller passes the flag on a
+                // card/list/grid row, the extra digit is board-view only.
+                showSubSecondClock:
+                    showSubSecondClock && playerView == PlayerView.boardView,
               ),
             ),
           SizedBox(width: endPadding),
@@ -1170,6 +1181,7 @@ class _PlayerClock extends StatelessWidget {
     required this.isCurrentPlayer,
     required this.timeStyle,
     required this.moveTime,
+    required this.showSubSecondClock,
   });
 
   final bool isWhitePlayer;
@@ -1178,6 +1190,7 @@ class _PlayerClock extends StatelessWidget {
   final bool isCurrentPlayer;
   final TextStyle timeStyle;
   final String? moveTime;
+  final bool showSubSecondClock;
 
   @override
   Widget build(BuildContext context) {
@@ -1243,9 +1256,20 @@ class _PlayerClock extends StatelessWidget {
     return AtomicCountdownText(
       // Force a fresh countdown widget when either the reference time or the
       // live clock snapshot changes.
-      key: ValueKey(
-        '${effectiveGameModel.lastMoveTime?.millisecondsSinceEpoch ?? 0}:${liveClockSeconds ?? -1}',
-      ),
+      //
+      // The sub-second board clock keeps a stable identity instead: it derives
+      // everything from its props each tick, and remounting it on every move
+      // would reset the tenths reveal mid-spring — the digit has to be able to
+      // animate out when the turn passes to the other row.
+      key:
+          showSubSecondClock
+              ? ValueKey(
+                'board-sub-second-clock-${isWhitePlayer ? 'w' : 'b'}',
+              )
+              : ValueKey(
+                '${effectiveGameModel.lastMoveTime?.millisecondsSinceEpoch ?? 0}:${liveClockSeconds ?? -1}',
+              ),
+      showSubSecond: showSubSecondClock,
       moveTime:
           moveTime, // Primary for past moves: PGN-parsed move times (more accurate for historical display)
       clockSeconds:

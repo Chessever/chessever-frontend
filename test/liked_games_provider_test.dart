@@ -241,7 +241,7 @@ void main() {
     final progress = await promptTracker.loadProgress(userId: _currentUser.id);
     expect(progress.hasEverLiked, isTrue);
     expect(progress.completedSinceLike, 0);
-    expect(progress.nextPromptAt, 40);
+    expect(progress.nextPromptAt, LikeLearningPromptTracker.promptInterval);
   });
 
   test('rapid repeated unlikes delete one liked game', () async {

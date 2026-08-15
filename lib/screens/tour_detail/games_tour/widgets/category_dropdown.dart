@@ -4,6 +4,7 @@ import 'package:chessever2/repository/supabase/tour/tour.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_app_bar_view_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_app_bar_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_scroll_provider.dart';
+import 'package:chessever2/screens/tour_detail/provider/tour_category_ordering.dart';
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_screen_provider.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
@@ -242,7 +243,7 @@ class _CategoryDropdownContent extends HookConsumerWidget {
     return CompositedTransformTarget(
       link: layerLink,
       child: _StadiumChipButton(
-        label: _extractCategoryName(selectedCategory.tour.name),
+        label: tourCategoryLabel(selectedCategory.tour.name),
         status: selectedRound?.roundStatus ?? selectedCategory.roundStatus,
         isOpen: isOpen.value,
         showChevron: hasMultipleOptions,
@@ -364,36 +365,6 @@ class _CategoryDropdownContent extends HookConsumerWidget {
     });
   }
 
-  String _extractCategoryName(String fullName) {
-    // Extract just the category part if formatted with separator
-    if (fullName.contains('|')) {
-      return fullName.split('|').last.trim();
-    }
-    if (fullName.contains(':')) {
-      return fullName.split(':').last.trim();
-    }
-
-    // Look for common category patterns like "Boards X-Y" or "Boards X+"
-    final boardsMatch = RegExp(
-      r'(Boards?\s+\d+[\-\+]?\d*\+?)$',
-      caseSensitive: false,
-    ).firstMatch(fullName);
-    if (boardsMatch != null) {
-      return boardsMatch.group(0)!.trim();
-    }
-
-    // Look for patterns like "Group A", "Section B", "Division 1"
-    final groupMatch = RegExp(
-      r'((?:Group|Section|Division|Category)\s+\w+)$',
-      caseSensitive: false,
-    ).firstMatch(fullName);
-    if (groupMatch != null) {
-      return groupMatch.group(0)!.trim();
-    }
-
-    // Don't truncate - let the marquee handle long text
-    return fullName;
-  }
 }
 
 /// Stadium-shaped chip button that triggers the dropdown
@@ -1616,7 +1587,7 @@ class _CategoryRow extends StatelessWidget {
                     // Category name
                     Expanded(
                       child: _MarqueeText(
-                        text: _extractName(category.tour.name),
+                        text: tourCategoryLabel(category.tour.name),
                         style: AppTypography.textSmMedium.copyWith(
                           color: isSelected ? kPrimaryColor : context.colors.textPrimary,
                           fontWeight:
@@ -1660,36 +1631,6 @@ class _CategoryRow extends StatelessWidget {
     );
   }
 
-  String _extractName(String fullName) {
-    // Extract just the category part if formatted with separator
-    if (fullName.contains('|')) {
-      return fullName.split('|').last.trim();
-    }
-    if (fullName.contains(':')) {
-      return fullName.split(':').last.trim();
-    }
-
-    // Look for common category patterns like "Boards X-Y" or "Boards X+"
-    final boardsMatch = RegExp(
-      r'(Boards?\s+\d+[\-\+]?\d*\+?)$',
-      caseSensitive: false,
-    ).firstMatch(fullName);
-    if (boardsMatch != null) {
-      return boardsMatch.group(0)!.trim();
-    }
-
-    // Look for patterns like "Group A", "Section B", "Division 1"
-    final groupMatch = RegExp(
-      r'((?:Group|Section|Division|Category)\s+\w+)$',
-      caseSensitive: false,
-    ).firstMatch(fullName);
-    if (groupMatch != null) {
-      return groupMatch.group(0)!.trim();
-    }
-
-    // Don't truncate - let the marquee/ellipsis handle overflow
-    return fullName;
-  }
 }
 
 /// Round row (can be nested under a category)

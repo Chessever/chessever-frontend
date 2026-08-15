@@ -4,10 +4,64 @@ import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:flutter/material.dart';
+import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:motor/motor.dart';
 
-/// The contextual "Did you like this game?" reminder, shown over the bottom of
-/// the board once a user has finished a long run of games without liking any.
+/// Question + teaching line for the contextual like reminder.
+const String kLikeNudgeQuestion = 'Did you like this game?';
+const String kLikeNudgeHint = 'Double-tap the board to like any game.';
+
+/// Affirmative / dismiss callbacks for a raised [LikeNudge], keyed per games
+/// PageView slot so a recycled board cannot leave a stale reminder on another
+/// game's notation.
+class LikeNudgeOffer {
+  const LikeNudgeOffer({required this.onLike, required this.onDismiss});
+
+  final ValueChanged<Offset> onLike;
+  final VoidCallback onDismiss;
+}
+
+final likeNudgeOfferProvider = StateProvider.family<LikeNudgeOffer?, int>(
+  (ref, index) => null,
+);
+
+/// Hosts [LikeNudge] over the top of the notation / explorer panel.
+///
+/// The reminder used to sit on the board itself. That covered pieces. Hosting
+/// it here keeps the board clear and parks the capsule at the notation — the
+/// junction the user is already looking at after playing to the end. Opening
+/// moves at the top of the list are the ones already behind them.
+class LikeNudgeOverlay extends ConsumerWidget {
+  const LikeNudgeOverlay({
+    super.key,
+    required this.pageIndex,
+    required this.child,
+  });
+
+  final int pageIndex;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final offer = ref.watch(likeNudgeOfferProvider(pageIndex));
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        child,
+        if (offer != null)
+          Positioned(
+            left: 12.w,
+            right: 12.w,
+            top: 8.h,
+            child: LikeNudge(onLike: offer.onLike, onDismiss: offer.onDismiss),
+          ),
+      ],
+    );
+  }
+}
+
+/// The contextual "Did you like this game?" reminder, shown over the top of
+/// the notation once a user has finished a long run of games without liking any.
 ///
 /// Why it is shaped like this:
 ///
@@ -98,16 +152,15 @@ class _LikeNudgeState extends State<LikeNudge> {
       value: _rise,
       builder: (context, rise, child) {
         return Transform.translate(
-          // Rests 20.h off the board's bottom edge and travels 16 — so even a
-          // frame where the spring never advances leaves the whole capsule
-          // on-board rather than clipped by the edge it rose from.
+          // Settles 16px from its rest. Opacity is never animated, so a frame
+          // where the spring has not run still shows a fully readable capsule.
           offset: Offset(0, rise.clamp(0.0, 1.0) * 16),
           child: child,
         );
       },
       child: Semantics(
         container: true,
-        label: 'Did you like this game? Tap the heart to like it.',
+        label: '$kLikeNudgeQuestion $kLikeNudgeHint',
         child: Material(
           type: MaterialType.transparency,
           child: Container(
@@ -137,7 +190,7 @@ class _LikeNudgeState extends State<LikeNudge> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        'Did you like this game?',
+                        kLikeNudgeQuestion,
                         style: AppTypography.textSmSemiBold.copyWith(
                           color: Colors.white.withValues(alpha: 0.95),
                           height: 1.25,
@@ -145,7 +198,7 @@ class _LikeNudgeState extends State<LikeNudge> {
                       ),
                       SizedBox(height: 3.h),
                       Text(
-                        'Tap the heart, or double-tap any board.',
+                        kLikeNudgeHint,
                         style: AppTypography.textXsRegular.copyWith(
                           color: Colors.white.withValues(alpha: 0.52),
                           height: 1.3,

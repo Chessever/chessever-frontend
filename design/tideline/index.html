@@ -1,0 +1,1096 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Tideline: who wins? live vote</title>
+<style>
+/* ═══════════════════════════════════════════════════════════════════════
+   TIDELINE — live "who wins?" vote for ChessEver
+   Palette + metrics lifted from lib/screens/chessboard/chess_board_screen_new.dart
+   ═════════════════════════════════════════════════════════════════════ */
+
+/* the app's own face, straight out of pubspec assets */
+@font-face{font-family:'InterDisplay';src:url('../../assets/fonts/Inter-Regular.otf') format('opentype');
+           font-weight:400;font-display:swap}
+@font-face{font-family:'InterDisplay';src:url('../../assets/fonts/Inter-Medium.otf') format('opentype');
+           font-weight:500 600;font-display:swap}
+@font-face{font-family:'InterDisplay';src:url('../../assets/fonts/Inter-Bold.otf') format('opentype');
+           font-weight:700;font-display:swap}
+
+@property --p  { syntax:'<percentage>'; inherits:true; initial-value:50%; }
+@property --p2 { syntax:'<percentage>'; inherits:true; initial-value:70%; }
+
+:root{
+  --ink:#0C0C0E;          /* kBackgroundColor  */
+  --panel:#141416;
+  --panel-2:#1A1A1C;      /* kBlack2Color      */
+  --recessed:#252527;     /* kBlack3Color      */
+  --line:rgba(255,255,255,.07);
+  --line-2:rgba(255,255,255,.13);
+  --txt:#F3F4F5;
+  --txt-2:#9B9BA1;
+  --txt-3:#7E7E86;
+  --brand:#0FB4E5;        /* kPrimaryColor     */
+  --green:#45C86E;
+  --red:#F5453A;
+  --board-dark:#6B939F;
+  --board-light:#D1E9E9;
+  --hl-light:#ADB9CF;
+  --hl-dark:#9DAAC2;
+
+  --water: rgba(6,9,12,.44);
+  --spring: cubic-bezier(.28,1.24,.36,1);
+}
+
+*{box-sizing:border-box;margin:0;padding:0}
+html{-webkit-text-size-adjust:100%}
+body{
+  background:var(--ink); color:var(--txt);
+  font-family:'InterDisplay',Inter,-apple-system,BlinkMacSystemFont,'Segoe UI',system-ui,sans-serif;
+  font-size:15px; line-height:1.5; letter-spacing:-.011em;
+  -webkit-font-smoothing:antialiased;
+  padding:40px 28px 96px;
+}
+.wrap{max-width:792px;margin:0 auto}
+
+/* ── page head ─────────────────────────────────────────────────────── */
+.head{display:flex;flex-wrap:wrap;align-items:flex-end;gap:20px 40px;
+      margin-bottom:46px}
+.head h1{font-size:24px;font-weight:700;letter-spacing:-.03em}
+.head p{color:var(--txt-2);font-size:13.5px;max-width:46ch}
+.head .spec{margin-left:auto;display:flex;gap:26px;color:var(--txt-3);font-size:12px}
+.head .spec b{display:block;color:var(--txt-2);font-weight:500;font-size:12.5px;
+              font-variant-numeric:tabular-nums}
+
+/* ═══ THE PILL ═════════════════════════════════════════════════════════
+   --h    pill height (= avatar diameter, = 2 × border radius)
+   --p    white's share, the only truth the layout needs
+   --cap  minimum seam distance from either end: one avatar + breathing room
+   ══════════════════════════════════════════════════════════════════ */
+.pill{
+  --h:64px;
+  --cap:calc(var(--h) + 14px);
+  --seam:clamp(var(--cap), var(--p), calc(100% - var(--cap)));
+  position:relative; height:var(--h); border-radius:calc(var(--h)/2);
+  isolation:isolate; cursor:pointer; user-select:none;
+  transition:--p 820ms var(--spring);
+  -webkit-tap-highlight-color:transparent;
+}
+.pill.is-still{transition:none}
+
+/* water — everything clipped lives here, avatars deliberately do not */
+.water{position:absolute;inset:0;border-radius:inherit;overflow:hidden;
+       background:#0A0C0D;
+       box-shadow:inset 0 1px 0 rgba(255,255,255,.11),
+                  inset 0 -9px 14px -9px rgba(0,0,0,.72);}
+
+/* --tone is that country's water: its flag, taken down to a deep, quiet value */
+.side{position:absolute;inset:0;background:var(--tone,#101215)}
+.side--w{--capdark:-8%;
+  -webkit-mask-image:linear-gradient(to right,#000 calc(var(--seam) - 7px),transparent calc(var(--seam) + 3px));
+          mask-image:linear-gradient(to right,#000 calc(var(--seam) - 7px),transparent calc(var(--seam) + 3px));}
+.side--b{--capdark:108%;
+  -webkit-mask-image:linear-gradient(to right,transparent calc(var(--seam) - 3px),#000 calc(var(--seam) + 7px));
+          mask-image:linear-gradient(to right,transparent calc(var(--seam) - 3px),#000 calc(var(--seam) + 7px));}
+
+/* the flag keeps its own proportions and hangs off its player's cap, then
+   dissolves into that country's water. no crop through the middle of a cross,
+   no stretch, and nothing to squash when the seam travels. */
+.flag{position:absolute;top:-22%;height:144%;width:auto;
+  -webkit-mask-image:linear-gradient(to right, #000 0 30%, rgba(0,0,0,.42) 56%, transparent 84%);
+          mask-image:linear-gradient(to right, #000 0 30%, rgba(0,0,0,.42) 56%, transparent 84%);}
+.side--w .flag{left:calc(var(--h) * -.34)}
+.side--b .flag{right:calc(var(--h) * -.34);
+  -webkit-mask-image:linear-gradient(to left, #000 0 30%, rgba(0,0,0,.42) 56%, transparent 84%);
+          mask-image:linear-gradient(to left, #000 0 30%, rgba(0,0,0,.42) 56%, transparent 84%);}
+.flag svg{height:100%;width:auto;display:block;
+          filter:saturate(.82) contrast(1.02) brightness(.66) blur(1.3px)}
+
+/* the water body over the flag: depth top→bottom, plus two slow caustics.
+   kept light enough that the flag still reads as that country's colour. */
+.tint{position:absolute;inset:0;
+  background:
+    radial-gradient(120% 200% at 24% -46%, rgba(255,255,255,.16), transparent 56%),
+    radial-gradient(78% 200% at var(--capdark,-8%) 50%, rgba(0,0,0,.62), transparent 64%),
+    radial-gradient(70% 130% at 50% 130%, rgba(0,0,0,.46), transparent 64%),
+    linear-gradient(to bottom, rgba(255,255,255,.07), rgba(0,0,0,.26) 70%, rgba(0,0,0,.46)),
+    var(--water);
+}
+.caustic{position:absolute;inset:-40% -18%;opacity:.5;
+  background:
+    radial-gradient(38% 62% at 30% 40%, rgba(255,255,255,.09), transparent 70%),
+    radial-gradient(30% 48% at 72% 62%, rgba(255,255,255,.06), transparent 72%);
+  animation:drift 26s ease-in-out infinite alternate;}
+.caustic.b{animation-duration:34s;animation-direction:alternate-reverse;opacity:.34}
+@keyframes drift{
+  from{transform:translate3d(-5%,3%,0) scale(1)}
+  to  {transform:translate3d(6%,-4%,0) scale(1.12)}
+}
+
+/* grain lives on the substrate, never over the type */
+.grain{position:absolute;inset:0;opacity:.16;mix-blend-mode:overlay;pointer-events:none;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.86' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)'/%3E%3C/svg%3E");}
+
+/* bubbles: decoration only, never carries content */
+.bub{position:absolute;bottom:-8px;border-radius:50%;
+     background:radial-gradient(circle at 32% 28%, rgba(255,255,255,.34), rgba(255,255,255,.05) 62%, transparent 74%);
+     animation:rise linear infinite}
+@keyframes rise{
+  0%  {transform:translate3d(0,4px,0) scale(.72);opacity:0}
+  14% {opacity:.85}
+  78% {opacity:.5}
+  100%{transform:translate3d(4px,calc(-1 * var(--h)),0) scale(1);opacity:0}
+}
+
+/* the seam — a meniscus, never a drawn rule. a straight hairline here is what
+   makes a split bar read as two boxes instead of one body of water. */
+.seam{position:absolute;top:0;bottom:0;left:var(--seam);width:26px;
+      transform:translateX(-13px);pointer-events:none;
+      /* the waterline dips behind the type instead of cutting through it */
+      -webkit-mask-image:linear-gradient(to bottom,#000 0 20%,rgba(0,0,0,.30) 50%,#000 80% 100%);
+              mask-image:linear-gradient(to bottom,#000 0 20%,rgba(0,0,0,.30) 50%,#000 80% 100%);}
+.seam::before{content:'';position:absolute;inset:0;
+  background:linear-gradient(to right,
+    transparent, rgba(0,0,0,.26) 32%, rgba(0,0,0,.34) 50%,
+    rgba(0,0,0,.26) 68%, transparent);}
+.seam__wave{position:absolute;left:13px;top:0;width:16px;height:200%;
+            transform:translateX(-8px);animation:swell 11s linear infinite}
+.seam__wave path{fill:none;stroke:rgba(255,255,255,.46);stroke-width:1.4;
+                 vector-effect:non-scaling-stroke;stroke-linecap:round}
+@keyframes swell{from{transform:translate(-8px,0)}to{transform:translate(-8px,-50%)}}
+
+/* faces: diameter === pill height, so the circle IS the cap arc */
+.face{position:absolute;top:0;width:var(--h);height:var(--h);border-radius:50%;
+      overflow:hidden;pointer-events:none;z-index:3;
+      display:grid;place-items:center;
+      background:radial-gradient(120% 120% at 50% 8%, #33353A, #1E2023 76%);
+      box-shadow:inset 0 0 0 1px rgba(255,255,255,.20),
+                 inset 0 2px 6px -2px rgba(255,255,255,.26);}
+.face--l{left:0}
+.face--r{right:0}
+.face span{font-size:calc(var(--h) * .30);font-weight:600;letter-spacing:.005em;
+           color:#EDEFF0;line-height:1}
+.face--r{background:radial-gradient(120% 120% at 50% 8%, #1D1F22, #0D0E10 76%)}
+.face--r span{color:#C6C9CB}
+.pill.picked-w .face--l,
+.pill.picked-b .face--r{box-shadow:inset 0 0 0 1.5px rgba(15,180,229,.5),
+                                   inset 0 2px 5px -2px rgba(255,255,255,.24)}
+
+/* values anchored to their cap — immune to where the seam goes */
+.val{position:absolute;top:0;height:100%;display:flex;align-items:center;gap:1px;
+     z-index:2;pointer-events:none;
+     font-variant-numeric:tabular-nums;font-weight:700;letter-spacing:-.025em;
+     color:#FBFCFC;text-shadow:0 1px 3px rgba(0,0,0,.72), 0 0 10px rgba(0,0,0,.42)}
+.val i{font-style:normal;font-weight:500;opacity:.62;font-size:.62em;
+       transform:translateY(-.06em)}
+.val--l{left:calc(var(--h) + 15px);font-size:calc(var(--h) * .335)}
+.val--r{right:calc(var(--h) + 15px);font-size:calc(var(--h) * .335)}
+
+/* hit targets sit above the water, below the faces */
+.hit{position:absolute;top:0;bottom:0;z-index:1;border:0;background:transparent;
+     cursor:pointer;border-radius:inherit;font:inherit;color:transparent}
+.hit--w{left:0;width:var(--seam)}
+.hit--b{left:var(--seam);right:0}
+.hit:focus-visible{outline:2px solid var(--brand);outline-offset:3px}
+@media (hover:hover){
+  .hit--w:hover ~ .water .side--w .tint,
+  .hit--b:hover ~ .water .side--b .tint{background:
+    radial-gradient(120% 210% at 22% -40%, rgba(255,255,255,.15), transparent 58%),
+    linear-gradient(to bottom, rgba(255,255,255,.08), rgba(0,0,0,.30) 78%, rgba(0,0,0,.42)),
+    rgba(7,9,11,.52)}
+}
+
+/* ── the row under the pill ───────────────────────────────────────── */
+.names{display:flex;align-items:flex-start;gap:16px;margin-top:11px}
+.nm{min-width:0}
+.nm--r{margin-left:auto;text-align:right}
+.nm b{display:block;font-size:13.5px;font-weight:600;letter-spacing:-.015em;
+      white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.nm small{display:block;font-size:11.5px;color:#8B8B93;font-variant-numeric:tabular-nums;
+          margin-top:1px}
+.pickmark{font-style:normal;color:#6EC3DA;white-space:nowrap}
+.tally{margin-top:9px;text-align:center;font-size:11.5px;color:#8B8B93;
+       font-variant-numeric:tabular-nums}
+.tally b{color:var(--txt-2);font-weight:500}
+
+/* ═══ demo page furniture ══════════════════════════════════════════ */
+.stage{display:grid;grid-template-columns:390px 1fr;gap:40px;align-items:start;
+       margin-bottom:56px}
+
+/* phone */
+.phone{width:390px;border-radius:34px;background:#000;padding:9px;
+       box-shadow:0 4px 14px -6px rgba(0,0,0,.9);border:1px solid rgba(255,255,255,.09)}
+.screen{border-radius:26px;overflow:hidden;background:var(--ink);height:722px;
+        position:relative;display:flex;flex-direction:column}
+.nav{display:flex;align-items:center;gap:10px;padding:14px 16px 10px;color:var(--txt-2)}
+.nav .back{width:9px;height:9px;border-left:1.6px solid currentColor;border-bottom:1.6px solid currentColor;
+           transform:rotate(45deg);margin-left:2px}
+.nav .ev{font-size:12.5px;color:var(--txt-2);flex:1;overflow:hidden;text-overflow:ellipsis;
+         white-space:nowrap}
+.nav .rd{font-size:11.5px;color:var(--txt-3);font-variant-numeric:tabular-nums}
+
+/* player strip — mirrors PlayerFirstRowDetailWidget */
+.prow{display:flex;align-items:center;gap:8px;padding:7px 16px}
+.prow .fl{width:20px;height:14px;border-radius:2px;overflow:hidden;flex:none;
+          box-shadow:inset 0 0 0 .5px rgba(255,255,255,.16)}
+.prow .fl svg{width:100%;height:100%;display:block}
+.prow .pn{font-size:13px;font-weight:600;letter-spacing:-.01em}
+.prow .el{font-size:11px;color:var(--txt-3);font-variant-numeric:tabular-nums}
+.prow .ck{margin-left:auto;font-variant-numeric:tabular-nums;font-size:14px;font-weight:600;
+          letter-spacing:-.02em;padding:3px 9px;border-radius:7px;
+          background:rgba(255,255,255,.055);color:var(--txt-2)}
+.prow .ck.on{background:#F2F3F4;color:#101012}
+
+/* board */
+.board{width:100%;aspect-ratio:1;display:grid;grid-template-columns:repeat(8,1fr);
+       background:
+         repeating-conic-gradient(var(--board-light) 0 25%, var(--board-dark) 0 50%)
+         0 0/25% 25%;}
+.sq{display:grid;place-items:center;font-size:29px;line-height:1}
+.sq.hl{background:var(--hl-light)}
+.sq.hl.dk{background:var(--hl-dark)}
+.pc-w{color:#FCFDFD;-webkit-text-stroke:.6px rgba(0,0,0,.42);
+      text-shadow:0 1px 1.5px rgba(0,0,0,.42)}
+.pc-b{color:#141618;-webkit-text-stroke:.6px rgba(255,255,255,.18)}
+
+.moves{padding:9px 16px;display:flex;gap:12px;color:var(--txt-3);font-size:12px;
+       font-variant-numeric:tabular-nums;border-bottom:1px solid var(--line)}
+.moves b{color:var(--txt);font-weight:600}
+
+/* the popup, docked */
+.dock{margin-top:auto;padding:0 12px 12px}
+.pop{background:var(--panel);border-radius:20px;
+     padding:14px 14px 13px;
+     box-shadow:inset 0 1px 0 rgba(255,255,255,.05);
+     box-shadow:0 8px 22px -12px rgba(0,0,0,.85);
+     animation:rise-in 560ms var(--spring)}      /* fill-mode none: visible by default */
+@keyframes rise-in{from{transform:translateY(26px)}to{transform:none}}
+.pop__top{display:flex;align-items:baseline;gap:8px;margin-bottom:12px}
+.pop__top h3{font-size:15px;font-weight:700;letter-spacing:-.025em}
+.pop__top small{color:var(--txt-3);font-size:11.5px}
+.x{margin-left:auto;width:26px;height:26px;border:0;background:transparent;cursor:pointer;
+   color:var(--txt-3);display:grid;place-items:center;border-radius:50%}
+.x:hover{color:var(--txt)}
+.x svg{width:11px;height:11px}
+.x:focus-visible{outline:2px solid var(--brand);outline-offset:1px}
+
+/* collapsed / always-available state */
+.slimdock{display:none;margin-top:auto;padding:0 14px 16px}
+.screen.collapsed .dock{display:none}
+.screen.collapsed .slimdock{display:block}
+
+.rules{margin-top:30px;display:grid;grid-template-columns:auto 1fr;
+       gap:9px 18px;align-items:baseline}
+.rules dt{font-size:12px;color:var(--txt-3);white-space:nowrap}
+.rules dd{font-size:12.5px;color:var(--txt-2)}
+
+/* option cards */
+.opts{display:flex;flex-direction:column;gap:0}
+.opt{display:grid;grid-template-columns:1fr 396px;gap:36px;align-items:start;
+     padding:34px 0}
+.opt:first-child{padding-top:0}
+.opt__meta{padding-top:2px}
+.opt__n{font-size:11px;color:var(--txt-3);font-variant-numeric:tabular-nums;margin-bottom:5px}
+.opt__meta h2{font-size:16.5px;font-weight:700;letter-spacing:-.028em;margin-bottom:6px}
+.opt__meta p{font-size:12.5px;color:var(--txt-2);line-height:1.55}
+.opt__meta ul{list-style:none;margin-top:11px;display:flex;flex-direction:column;gap:5px}
+.opt__meta li{font-size:11.5px;color:#8B8B93;display:flex;gap:7px}
+.opt__meta li::before{content:'';width:5px;height:5px;border-radius:50%;flex:none;
+                      background:var(--line-2);margin-top:6px}
+.opt__body{background:var(--panel);border-radius:20px;padding:18px;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.045)}
+.rig{max-width:358px;margin:0 auto}
+/* option 04 sits on the board's own footer tone, not on a card */
+.opt__body.on-board{background:#161B1D}
+
+.foot{display:flex;gap:14px;align-items:center;margin-top:34px;
+      color:var(--txt-3);font-size:12px;flex-wrap:wrap;max-width:64ch}
+.btn{border:1px solid var(--line-2);background:transparent;color:var(--txt-2);
+     border-radius:9px;padding:7px 13px;font:inherit;font-size:12.5px;cursor:pointer}
+.btn:hover{color:var(--txt);border-color:rgba(255,255,255,.24)}
+.btn:focus-visible{outline:2px solid var(--brand);outline-offset:2px}
+.btn[aria-pressed=true]{color:var(--txt);border-color:rgba(15,180,229,.5)}
+
+/* ── variant: DEEP ─────────────────────────────────────────────────── */
+.pill--deep{--h:78px}
+.pill--deep .water{box-shadow:inset 0 2px 0 rgba(255,255,255,.15),
+                              inset 0 -14px 20px -12px rgba(0,0,0,.8)}
+.pill--deep .tint{background:
+    radial-gradient(130% 220% at 26% -46%, rgba(255,255,255,.14), transparent 56%),
+    linear-gradient(to bottom, rgba(255,255,255,.06), rgba(0,0,0,.40) 74%, rgba(0,0,0,.55)),
+    rgba(6,8,10,.66)}
+.pill--deep .seam{width:36px;transform:translateX(-18px)}
+.pill--deep .seam__wave{left:18px;width:22px;transform:translateX(-11px);animation-duration:9s}
+.pill--deep .seam__wave path{stroke:rgba(255,255,255,.52);stroke-width:1.6}
+@keyframes swell-deep{from{transform:translate(-11px,0)}to{transform:translate(-11px,-50%)}}
+.pill--deep .seam__wave{animation-name:swell-deep}
+
+/* ── variant: THREE ────────────────────────────────────────────────── */
+.pill--three{--p2:74%}
+.pill--three{--s1:clamp(var(--cap), var(--p),  calc(100% - var(--cap) - 58px));
+             --s2:clamp(calc(var(--s1) + 58px), var(--p2), calc(100% - var(--cap)));
+             transition:--p 820ms var(--spring), --p2 820ms var(--spring)}
+.pill--three .side--w{
+  -webkit-mask-image:linear-gradient(to right,#000 calc(var(--s1) - 11px),transparent calc(var(--s1) + 5px));
+          mask-image:linear-gradient(to right,#000 calc(var(--s1) - 11px),transparent calc(var(--s1) + 5px));}
+.pill--three .side--d{
+  -webkit-mask-image:linear-gradient(to right,transparent calc(var(--s1) - 11px),#000 calc(var(--s1) + 5px),
+                     #000 calc(var(--s2) - 11px),transparent calc(var(--s2) + 5px));
+          mask-image:linear-gradient(to right,transparent calc(var(--s1) - 11px),#000 calc(var(--s1) + 5px),
+                     #000 calc(var(--s2) - 11px),transparent calc(var(--s2) + 5px));}
+.pill--three .side--b{
+  -webkit-mask-image:linear-gradient(to right,transparent calc(var(--s2) - 11px),#000 calc(var(--s2) + 5px));
+          mask-image:linear-gradient(to right,transparent calc(var(--s2) - 11px),#000 calc(var(--s2) + 5px));}
+.pill--three .side--d{--capdark:250%}
+.pill--three .seam--1{left:var(--s1)}
+.pill--three .seam--2{left:var(--s2)}
+.pill--three .seam--2 .seam__wave{animation-delay:-3.7s}
+.pill--three .seam__wave path{stroke:rgba(255,255,255,.34)}
+.pill--three .seam::before{background:linear-gradient(to right,
+    transparent, rgba(0,0,0,.18) 34%, rgba(0,0,0,.24) 50%, rgba(0,0,0,.18) 66%, transparent)}
+.pill--three .hit--w{width:var(--s1)}
+.pill--three .hit--d{left:var(--s1);width:calc(var(--s2) - var(--s1))}
+.pill--three .hit--b{left:var(--s2);right:0}
+.val--d{position:absolute;top:0;height:100%;display:grid;place-items:center;
+        left:calc((var(--s1) + var(--s2)) / 2);transform:translateX(-50%);z-index:2;
+        pointer-events:none;font-weight:500;font-size:calc(var(--h) * .30);
+        color:rgba(240,242,243,.72);line-height:1;
+        text-shadow:0 1px 2px rgba(0,0,0,.6)}
+.pill--three .val--l,.pill--three .val--r{font-size:calc(var(--h) * .30)}
+.pill.picked-d .side--d{--tone:#252B31}
+
+/* ── variant: SLIM ─────────────────────────────────────────────────── */
+.pill--slim{--h:34px;--cap:calc(var(--h) + 8px)}
+.pill--slim .val--l,.pill--slim .val--r{font-size:13px;letter-spacing:-.02em}
+.pill--slim .val--l{left:calc(var(--h) + 11px)}
+.pill--slim .val--r{right:calc(var(--h) + 11px)}
+.pill--slim .face span{font-size:10.5px;font-weight:700}
+.pill--slim .seam{width:18px;transform:translateX(-9px)}
+.pill--slim .seam__wave{left:9px;width:11px;transform:translateX(-5.5px);animation-name:swell-slim}
+.pill--slim .seam__wave path{stroke-width:1.1}
+@keyframes swell-slim{from{transform:translate(-5.5px,0)}to{transform:translate(-5.5px,-50%)}}
+.slimrow{display:flex;align-items:center;gap:11px}
+.slimrow .lab{font-size:11.5px;color:var(--txt-3);white-space:nowrap}
+
+/* ── variant: PRE-GAME ─────────────────────────────────────────────── */
+.pill--pre .caustic{animation-duration:52s}
+.pill--pre .bub{animation-duration:14s !important}
+.pill--pre .seam__wave{animation-play-state:paused}
+.pill--pre .val--l,.pill--pre .val--r{opacity:.56;font-weight:600}
+.pregame{display:flex;align-items:center;gap:9px;margin-bottom:11px}
+.pregame b{font-size:13px;font-weight:600;letter-spacing:-.02em}
+.pregame span{font-size:11.5px;color:var(--txt-3);font-variant-numeric:tabular-nums;
+              margin-left:auto}
+
+@media (prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation:none !important;transition:none !important}
+}
+@media (max-width:800px){
+  .stage{grid-template-columns:1fr;gap:34px}
+  .phone{width:100%;max-width:390px}
+  .opt{grid-template-columns:1fr;gap:16px}
+}
+</style>
+</head>
+<body>
+
+<!-- ══ flag artwork: real national flags, drawn to spec ═══════════════ -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <path id="star5" d="M0-1 .2246-.309 .951-.309 .3634 .1181 .588 .809 0 .382
+                        -.588 .809 -.3634 .1181 -.951-.309 -.2246-.309Z"/>
+    <pattern id="usstars" width="1.2667" height="1.077" patternUnits="userSpaceOnUse">
+      <use href="#star5" x="0" y="0" transform="translate(.3167 .269) scale(.30)" fill="#fff"/>
+      <use href="#star5" x="0" y="0" transform="translate(.95 .8078) scale(.30)" fill="#fff"/>
+    </pattern>
+  </defs>
+
+  <symbol id="f-nor" viewBox="0 0 22 16">
+    <rect width="22" height="16" fill="#BA0C2F"/>
+    <path fill="#fff" d="M6 0h4v16H6zM0 6h22v4H0z"/>
+    <path fill="#00205B" d="M7 0h2v16H7zM0 7h22v2H0z"/>
+  </symbol>
+
+  <symbol id="f-ind" viewBox="0 0 18 12">
+    <rect width="18" height="4" fill="#FF9933"/>
+    <rect y="4" width="18" height="4" fill="#fff"/>
+    <rect y="8" width="18" height="4" fill="#138808"/>
+    <circle cx="9" cy="6" r="1.62" fill="none" stroke="#000080" stroke-width=".17"/>
+    <circle cx="9" cy="6" r="1.1" fill="none" stroke="#000080" stroke-width=".95"
+            stroke-dasharray="0.1 0.188"/>
+    <circle cx="9" cy="6" r=".26" fill="#000080"/>
+  </symbol>
+
+  <symbol id="f-usa" viewBox="0 0 19 10">
+    <rect width="19" height="10" fill="#B31942"/>
+    <g fill="#fff">
+      <rect y=".769" width="19" height=".769"/><rect y="2.308" width="19" height=".769"/>
+      <rect y="3.846" width="19" height=".769"/><rect y="5.385" width="19" height=".769"/>
+      <rect y="6.923" width="19" height=".769"/><rect y="8.462" width="19" height=".769"/>
+    </g>
+    <rect width="7.6" height="5.385" fill="#0A3161"/>
+    <rect width="7.6" height="5.385" fill="url(#usstars)"/>
+  </symbol>
+
+  <symbol id="f-chn" viewBox="0 0 30 20">
+    <rect width="30" height="20" fill="#EE1C25"/>
+    <use href="#star5" transform="translate(5 5) scale(3)" fill="#FFDE00"/>
+    <use href="#star5" transform="translate(10 2) rotate(23) scale(1)" fill="#FFDE00"/>
+    <use href="#star5" transform="translate(12 4) rotate(45) scale(1)" fill="#FFDE00"/>
+    <use href="#star5" transform="translate(12 7) rotate(70) scale(1)" fill="#FFDE00"/>
+    <use href="#star5" transform="translate(10 9) rotate(20) scale(1)" fill="#FFDE00"/>
+  </symbol>
+
+  <symbol id="f-fra" viewBox="0 0 3 2">
+    <rect width="3" height="2" fill="#fff"/>
+    <rect width="1" height="2" fill="#002395"/>
+    <rect x="2" width="1" height="2" fill="#ED2939"/>
+  </symbol>
+</svg>
+
+<div class="wrap">
+
+  <header class="head">
+    <div>
+      <h1>Tideline</h1>
+      <p>One pill, split by the vote. Flags run under dark water, the two faces sit
+         exactly on the caps. Five ways to spend it.</p>
+    </div>
+    <div class="spec">
+      <div>trigger<b>30s in a live game</b></div>
+      <div>closes<b>move 20</b></div>
+      <div>after<b>stays docked</b></div>
+    </div>
+  </header>
+
+  <!-- ══ 1 · IN CONTEXT ══════════════════════════════════════════════ -->
+  <section class="stage">
+    <div class="phone">
+      <div class="screen" id="screen">
+        <div class="nav">
+          <div class="back"></div>
+          <div class="ev">Norway Chess 2026</div>
+          <div class="rd">R6 · Bd 1</div>
+        </div>
+
+        <div class="prow">
+          <div class="fl"><svg viewBox="0 0 18 12" preserveAspectRatio="none"><use href="#f-ind"/></svg></div>
+          <div class="pn">Gukesh D</div>
+          <div class="el">2794</div>
+          <div class="ck">1:04:11</div>
+        </div>
+
+        <div class="board" id="board" data-fen="r1bq1rk1/pp2bppp/2n1pn2/3p4/3P4/2NBPN2/PP3PPP/R1BQ1RK1"></div>
+
+        <div class="prow">
+          <div class="fl"><svg viewBox="0 0 22 16" preserveAspectRatio="none"><use href="#f-nor"/></svg></div>
+          <div class="pn">Magnus Carlsen</div>
+          <div class="el">2833</div>
+          <div class="ck on">0:47:52</div>
+        </div>
+
+        <div class="moves"><b>14. Bd3</b><span>Nc6</span><span>15. O-O</span></div>
+
+        <!-- docked vote -->
+        <div class="dock">
+          <div class="pop">
+            <div class="pop__top">
+              <h3>Who wins?</h3>
+              <small>closes at move 20</small>
+              <button class="x" id="dismiss" aria-label="Collapse the vote">
+                <svg viewBox="0 0 12 12"><path d="M1 1l10 10M11 1L1 11" stroke="currentColor"
+                     stroke-width="1.6" stroke-linecap="round" fill="none"/></svg>
+              </button>
+            </div>
+
+            <div class="pill" style="--h:60px;--p:63%" data-pill data-w="63" data-group="phone">
+              <button class="hit hit--w" data-vote="w" aria-label="Vote for Magnus Carlsen"></button>
+              <button class="hit hit--b" data-vote="b" aria-label="Vote for Gukesh D"></button>
+              <div class="water">
+                <div style="--tone:#5A1424" class="side side--w">
+                  <div class="flag"><svg viewBox="0 0 22 16"><use href="#f-nor"/></svg></div>
+                  <div class="tint"></div><div class="caustic"></div>
+                  <span class="bub" style="left:16%;width:4px;height:4px;animation-duration:7.2s;animation-delay:-1.4s"></span>
+                  <span class="bub" style="left:34%;width:2.5px;height:2.5px;animation-duration:9.1s;animation-delay:-4.2s"></span>
+                  <span class="bub" style="left:52%;width:5px;height:5px;animation-duration:8.4s;animation-delay:-6.1s"></span>
+                  <span class="bub" style="left:70%;width:3px;height:3px;animation-duration:10.3s;animation-delay:-2.7s"></span>
+                </div>
+                <div style="--tone:#4B3714" class="side side--b">
+                  <div class="flag"><svg viewBox="0 0 18 12"><use href="#f-ind"/></svg></div>
+                  <div class="tint"></div><div class="caustic b"></div>
+                  <span class="bub" style="left:24%;width:3.5px;height:3.5px;animation-duration:8.8s;animation-delay:-3.3s"></span>
+                  <span class="bub" style="left:48%;width:2.5px;height:2.5px;animation-duration:10.6s;animation-delay:-7.4s"></span>
+                  <span class="bub" style="left:76%;width:4.5px;height:4.5px;animation-duration:7.9s;animation-delay:-5.2s"></span>
+                </div>
+                <div class="grain"></div>
+                <div class="seam"><svg class="seam__wave" viewBox="0 0 14 240" preserveAspectRatio="none" aria-hidden="true"><path d="M7 0C10.5 10 10.5 20 7 30C3.5 40 3.5 50 7 60C10.5 70 10.5 80 7 90C3.5 100 3.5 110 7 120C10.5 130 10.5 140 7 150C3.5 160 3.5 170 7 180C10.5 190 10.5 200 7 210C3.5 220 3.5 230 7 240"/></svg></div>
+              </div>
+              <div class="face face--l"><span>MC</span></div>
+              <div class="face face--r"><span>GD</span></div>
+              <div class="val val--l"><span data-val="w">63</span><i>%</i></div>
+              <div class="val val--r"><span data-val="b">37</span><i>%</i></div>
+            </div>
+
+            <div class="names">
+              <div class="nm"><b>Carlsen</b><small>2833 · white</small></div>
+              <div class="nm nm--r"><b>Gukesh</b><small>2794 · black</small></div>
+            </div>
+            <div class="tally"><b data-count>3,182</b> votes · moving live</div>
+          </div>
+        </div>
+
+        <!-- collapsed state: stays available for the whole game -->
+        <div class="slimdock">
+          <div class="slimrow">
+            <div class="pill pill--slim" style="--p:63%" data-pill data-w="63" data-group="phone">
+              <button class="hit hit--w" data-vote="w" aria-label="Vote for Magnus Carlsen"></button>
+              <button class="hit hit--b" data-vote="b" aria-label="Vote for Gukesh D"></button>
+              <div class="water">
+                <div style="--tone:#5A1424" class="side side--w">
+                  <div class="flag"><svg viewBox="0 0 22 16"><use href="#f-nor"/></svg></div>
+                  <div class="tint"></div><div class="caustic"></div>
+                </div>
+                <div style="--tone:#4B3714" class="side side--b">
+                  <div class="flag"><svg viewBox="0 0 18 12"><use href="#f-ind"/></svg></div>
+                  <div class="tint"></div><div class="caustic b"></div>
+                </div>
+                <div class="grain"></div>
+                <div class="seam"><svg class="seam__wave" viewBox="0 0 14 240" preserveAspectRatio="none" aria-hidden="true"><path d="M7 0C10.5 10 10.5 20 7 30C3.5 40 3.5 50 7 60C10.5 70 10.5 80 7 90C3.5 100 3.5 110 7 120C10.5 130 10.5 140 7 150C3.5 160 3.5 170 7 180C10.5 190 10.5 200 7 210C3.5 220 3.5 230 7 240"/></svg></div>
+              </div>
+              <div class="face face--l"><span>MC</span></div>
+              <div class="face face--r"><span>GD</span></div>
+              <div class="val val--l"><span data-val="w">63</span><i>%</i></div>
+              <div class="val val--r"><span data-val="b">37</span><i>%</i></div>
+            </div>
+            <button class="btn" id="expand">Open</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div>
+      <h2 style="font-size:16.5px;font-weight:700;letter-spacing:-.028em;margin-bottom:8px">
+        In place</h2>
+      <p style="font-size:12.5px;color:var(--txt-2);max-width:40ch;line-height:1.6">
+        The vote docks under the move row, over the board's own footer. It arrives once,
+        after thirty seconds of watching, and it is dismissible. Dismissing does not kill
+        it: it drops to the slim rail and stays there until move 20, so a late guess is
+        always one tap away.</p>
+      <ul style="list-style:none;margin-top:16px;display:flex;flex-direction:column;gap:7px">
+        <li style="font-size:12px;color:var(--txt-3)">Tap either half of the pill to vote. Tap again to switch.</li>
+        <li style="font-size:12px;color:var(--txt-3)">The × collapses; it never removes.</li>
+        <li style="font-size:12px;color:var(--txt-3)">Numbers keep moving whether you voted or not.</li>
+      </ul>
+      <div style="display:flex;gap:9px;margin-top:20px;flex-wrap:wrap">
+        <button class="btn" id="replay">Replay entry</button>
+        <button class="btn" id="swing">Swing the vote</button>
+        <button class="btn" id="livebtn" aria-pressed="true">Live ticker on</button>
+      </div>
+
+      <dl class="rules">
+        <dt>Appears</dt>
+        <dd>30s of dwell on a live game, once per game, per device</dd>
+        <dt>Also appears</dt>
+        <dd>10 min before a round starts, on the pairing you opened</dd>
+        <dt>Closes</dt>
+        <dd>Move 20, or the moment a result lands</dd>
+        <dt>Changing your mind</dt>
+        <dd>Allowed until it closes; last tap is the one that counts</dd>
+        <dt>Never</dt>
+        <dd>No stakes, no streaks, no second popup if you dismissed it</dd>
+      </dl>
+    </div>
+  </section>
+
+  <!-- ══ 2 · THE OPTIONS ═════════════════════════════════════════════ -->
+  <div class="opts">
+
+    <!-- A · TIDE -->
+    <article class="opt">
+      <div class="opt__meta">
+        <div class="opt__n">01</div>
+        <h2>Tide</h2>
+        <p>The plain reading of the idea. Two shares, one meniscus, faces flush on
+           both caps. Everything else is a variation of this.</p>
+        <ul>
+          <li>Percent anchored beside its own face, so it never travels</li>
+          <li>Seam clamped one face-width from each end</li>
+          <li>Flag keeps its own proportions and dissolves into the water</li>
+        </ul>
+      </div>
+      <div class="opt__body">
+        <div class="rig">
+        <div class="pill" style="--p:58%" data-pill data-w="58">
+          <button class="hit hit--w" data-vote="w" aria-label="Vote Carlsen"></button>
+          <button class="hit hit--b" data-vote="b" aria-label="Vote Gukesh"></button>
+          <div class="water">
+            <div style="--tone:#5A1424" class="side side--w">
+              <div class="flag"><svg viewBox="0 0 22 16"><use href="#f-nor"/></svg></div>
+              <div class="tint"></div><div class="caustic"></div>
+              <span class="bub" style="left:14%;width:4px;height:4px;animation-duration:7.6s;animation-delay:-1.1s"></span>
+              <span class="bub" style="left:31%;width:2.5px;height:2.5px;animation-duration:9.4s;animation-delay:-5.2s"></span>
+              <span class="bub" style="left:49%;width:5.5px;height:5.5px;animation-duration:8.2s;animation-delay:-3.4s"></span>
+              <span class="bub" style="left:66%;width:3px;height:3px;animation-duration:10.8s;animation-delay:-7.6s"></span>
+              <span class="bub" style="left:82%;width:4px;height:4px;animation-duration:9s;animation-delay:-2.2s"></span>
+            </div>
+            <div style="--tone:#4B3714" class="side side--b">
+              <div class="flag"><svg viewBox="0 0 18 12"><use href="#f-ind"/></svg></div>
+              <div class="tint"></div><div class="caustic b"></div>
+              <span class="bub" style="left:22%;width:3.5px;height:3.5px;animation-duration:8.6s;animation-delay:-4.4s"></span>
+              <span class="bub" style="left:44%;width:2.5px;height:2.5px;animation-duration:11s;animation-delay:-1.9s"></span>
+              <span class="bub" style="left:63%;width:5px;height:5px;animation-duration:7.4s;animation-delay:-6.3s"></span>
+              <span class="bub" style="left:84%;width:3px;height:3px;animation-duration:9.8s;animation-delay:-3.1s"></span>
+            </div>
+            <div class="grain"></div>
+            <div class="seam"><svg class="seam__wave" viewBox="0 0 14 240" preserveAspectRatio="none" aria-hidden="true"><path d="M7 0C10.5 10 10.5 20 7 30C3.5 40 3.5 50 7 60C10.5 70 10.5 80 7 90C3.5 100 3.5 110 7 120C10.5 130 10.5 140 7 150C3.5 160 3.5 170 7 180C10.5 190 10.5 200 7 210C3.5 220 3.5 230 7 240"/></svg></div>
+          </div>
+          <div class="face face--l"><span>MC</span></div>
+          <div class="face face--r"><span>GD</span></div>
+          <div class="val val--l"><span data-val="w">58</span><i>%</i></div>
+          <div class="val val--r"><span data-val="b">42</span><i>%</i></div>
+        </div>
+        <div class="names">
+          <div class="nm"><b>Magnus Carlsen</b><small>2833 · white</small></div>
+          <div class="nm nm--r"><b>Gukesh D</b><small>2794 · black</small></div>
+        </div>
+        <div class="tally"><b data-count>3,182</b> votes · moving live</div>
+        </div>
+      
+      </div>
+    </article>
+
+    <!-- B · DEEP -->
+    <article class="opt">
+      <div class="opt__meta">
+        <div class="opt__n">02</div>
+        <h2>Deep</h2>
+        <p>The same pill with the water turned up: taller body, a wider meniscus,
+           heavier bubble traffic. For the hero moment when the vote first
+           arrives.</p>
+        <ul>
+          <li>78px body, so the faces get room to read as portraits</li>
+          <li>Wider, brighter waterline on a faster drift</li>
+          <li>Costs the most vertical space of the five</li>
+        </ul>
+      </div>
+      <div class="opt__body">
+        <div class="rig">
+        <div class="pill pill--deep" style="--p:44%" data-pill data-w="44">
+          <button class="hit hit--w" data-vote="w" aria-label="Vote Nakamura"></button>
+          <button class="hit hit--b" data-vote="b" aria-label="Vote Ding"></button>
+          <div class="water">
+            <div style="--tone:#151F39" class="side side--w">
+              <div class="flag"><svg viewBox="0 0 19 10"><use href="#f-usa"/></svg></div>
+              <div class="tint"></div><div class="caustic"></div>
+              <span class="bub" style="left:12%;width:5px;height:5px;animation-duration:6.8s;animation-delay:-1.6s"></span>
+              <span class="bub" style="left:26%;width:3px;height:3px;animation-duration:9.2s;animation-delay:-4.8s"></span>
+              <span class="bub" style="left:41%;width:6.5px;height:6.5px;animation-duration:7.4s;animation-delay:-3.1s"></span>
+              <span class="bub" style="left:57%;width:3.5px;height:3.5px;animation-duration:10.4s;animation-delay:-6.9s"></span>
+              <span class="bub" style="left:73%;width:4.5px;height:4.5px;animation-duration:8.1s;animation-delay:-2.4s"></span>
+              <span class="bub" style="left:88%;width:2.5px;height:2.5px;animation-duration:11.4s;animation-delay:-8.2s"></span>
+            </div>
+            <div style="--tone:#58151A" class="side side--b">
+              <div class="flag"><svg viewBox="0 0 30 20"><use href="#f-chn"/></svg></div>
+              <div class="tint"></div><div class="caustic b"></div>
+              <span class="bub" style="left:18%;width:4px;height:4px;animation-duration:8.9s;animation-delay:-5.5s"></span>
+              <span class="bub" style="left:38%;width:6px;height:6px;animation-duration:7.1s;animation-delay:-2.8s"></span>
+              <span class="bub" style="left:55%;width:3px;height:3px;animation-duration:10.9s;animation-delay:-7.1s"></span>
+              <span class="bub" style="left:72%;width:4.5px;height:4.5px;animation-duration:8.4s;animation-delay:-1.3s"></span>
+              <span class="bub" style="left:89%;width:2.5px;height:2.5px;animation-duration:12s;animation-delay:-9.4s"></span>
+            </div>
+            <div class="grain"></div>
+            <div class="seam">
+              <svg class="seam__wave" viewBox="0 0 14 240" preserveAspectRatio="none" aria-hidden="true"><path d="M7 0C10.5 10 10.5 20 7 30C3.5 40 3.5 50 7 60C10.5 70 10.5 80 7 90C3.5 100 3.5 110 7 120C10.5 130 10.5 140 7 150C3.5 160 3.5 170 7 180C10.5 190 10.5 200 7 210C3.5 220 3.5 230 7 240"/></svg>
+            </div>
+          </div>
+          <div class="face face--l"><span>HN</span></div>
+          <div class="face face--r"><span>DL</span></div>
+          <div class="val val--l"><span data-val="w">44</span><i>%</i></div>
+          <div class="val val--r"><span data-val="b">56</span><i>%</i></div>
+        </div>
+        <div class="names">
+          <div class="nm"><b>Hikaru Nakamura</b><small>2802 · white</small></div>
+          <div class="nm nm--r"><b>Ding Liren</b><small>2728 · black</small></div>
+        </div>
+        <div class="tally"><b data-count>7,410</b> votes · moving live</div>
+        </div>
+      
+      </div>
+    </article>
+
+    <!-- C · THREE -->
+    <article class="opt">
+      <div class="opt__meta">
+        <div class="opt__n">03</div>
+        <h2>Three</h2>
+        <p>Chess has three results, not two. The middle slice is the draw: no flag,
+           graphite water, the one place the pill goes quiet. Same caps, same faces.</p>
+        <ul>
+          <li>Honest at the top level: draws are most of elite chess</li>
+          <li>Draw slice holds a 58px floor, so the ½ always fits</li>
+          <li>Three hit targets; the middle one is the least fun to tap</li>
+        </ul>
+      </div>
+      <div class="opt__body">
+        <div class="rig">
+        <div class="pill pill--three" style="--p:41%;--p2:73%" data-pill data-w="41" data-d="32">
+          <button class="hit hit--w" data-vote="w" aria-label="Vote Praggnanandhaa"></button>
+          <button class="hit hit--d" data-vote="d" aria-label="Vote draw"></button>
+          <button class="hit hit--b" data-vote="b" aria-label="Vote Firouzja"></button>
+          <div class="water">
+            <div style="--tone:#4B3714" class="side side--w">
+              <div class="flag"><svg viewBox="0 0 18 12"><use href="#f-ind"/></svg></div>
+              <div class="tint"></div><div class="caustic"></div>
+              <span class="bub" style="left:15%;width:4px;height:4px;animation-duration:7.8s;animation-delay:-2.1s"></span>
+              <span class="bub" style="left:33%;width:2.5px;height:2.5px;animation-duration:10.2s;animation-delay:-5.9s"></span>
+            </div>
+            <div style="--tone:#1B1F23" class="side side--d">
+              <div class="tint"></div><div class="caustic"></div>
+              <span class="bub" style="left:47%;width:3px;height:3px;animation-duration:9.6s;animation-delay:-3.7s"></span>
+              <span class="bub" style="left:58%;width:4px;height:4px;animation-duration:8.3s;animation-delay:-6.6s"></span>
+            </div>
+            <div style="--tone:#141F47" class="side side--b">
+              <div class="flag"><svg viewBox="0 0 3 2"><use href="#f-fra"/></svg></div>
+              <div class="tint"></div><div class="caustic b"></div>
+              <span class="bub" style="left:80%;width:4.5px;height:4.5px;animation-duration:8s;animation-delay:-1.5s"></span>
+              <span class="bub" style="left:92%;width:2.5px;height:2.5px;animation-duration:11.2s;animation-delay:-7.8s"></span>
+            </div>
+            <div class="grain"></div>
+            <div class="seam seam--1"><svg class="seam__wave" viewBox="0 0 14 240" preserveAspectRatio="none" aria-hidden="true"><path d="M7 0C10.5 10 10.5 20 7 30C3.5 40 3.5 50 7 60C10.5 70 10.5 80 7 90C3.5 100 3.5 110 7 120C10.5 130 10.5 140 7 150C3.5 160 3.5 170 7 180C10.5 190 10.5 200 7 210C3.5 220 3.5 230 7 240"/></svg></div>
+            <div class="seam seam--2"><svg class="seam__wave" viewBox="0 0 14 240" preserveAspectRatio="none" aria-hidden="true"><path d="M7 0C10.5 10 10.5 20 7 30C3.5 40 3.5 50 7 60C10.5 70 10.5 80 7 90C3.5 100 3.5 110 7 120C10.5 130 10.5 140 7 150C3.5 160 3.5 170 7 180C10.5 190 10.5 200 7 210C3.5 220 3.5 230 7 240"/></svg></div>
+          </div>
+          <div class="face face--l"><span>RP</span></div>
+          <div class="face face--r"><span>AF</span></div>
+          <div class="val val--l"><span data-val="w">41</span><i>%</i></div>
+          <div class="val--d" aria-hidden="true">&frac12;</div>
+          <div class="val val--r"><span data-val="b">27</span><i>%</i></div>
+        </div>
+        <div class="names">
+          <div class="nm"><b>R Praggnanandhaa</b><small>2758 · white</small></div>
+          <div class="nm nm--r"><b>Alireza Firouzja</b><small>2766 · black</small></div>
+        </div>
+        <div class="tally"><b data-val="d">32</b>% see a draw · <b data-count>1,905</b> votes</div>
+        </div>
+      
+      </div>
+    </article>
+
+    <!-- D · RAIL -->
+    <article class="opt">
+      <div class="opt__meta">
+        <div class="opt__n">04</div>
+        <h2>Rail</h2>
+        <p>What is left after the popup is dismissed. 34px, no card, no title. The
+           faces and two numbers carry it. This is the "keep it available" half of
+           the brief.</p>
+        <ul>
+          <li>Sits inline under the move row for the rest of the game</li>
+          <li>Still a live control: tap to vote or change your pick</li>
+          <li>Reads at a glance without stealing the board</li>
+        </ul>
+      </div>
+      <div class="opt__body on-board" style="padding:16px 18px">
+        <div class="rig">
+        <div class="slimrow">
+          <div class="pill pill--slim" style="--p:58%;flex:1" data-pill data-w="58">
+            <button class="hit hit--w" data-vote="w" aria-label="Vote Carlsen"></button>
+            <button class="hit hit--b" data-vote="b" aria-label="Vote Gukesh"></button>
+            <div class="water">
+              <div style="--tone:#5A1424" class="side side--w">
+                <div class="flag"><svg viewBox="0 0 22 16"><use href="#f-nor"/></svg></div>
+                <div class="tint"></div><div class="caustic"></div>
+                <span class="bub" style="left:38%;width:2.5px;height:2.5px;animation-duration:9.9s;animation-delay:-3.6s"></span>
+              </div>
+              <div style="--tone:#4B3714" class="side side--b">
+                <div class="flag"><svg viewBox="0 0 18 12"><use href="#f-ind"/></svg></div>
+                <div class="tint"></div><div class="caustic b"></div>
+                <span class="bub" style="left:74%;width:3px;height:3px;animation-duration:8.7s;animation-delay:-6.2s"></span>
+              </div>
+              <div class="grain"></div>
+              <div class="seam"><svg class="seam__wave" viewBox="0 0 14 240" preserveAspectRatio="none" aria-hidden="true"><path d="M7 0C10.5 10 10.5 20 7 30C3.5 40 3.5 50 7 60C10.5 70 10.5 80 7 90C3.5 100 3.5 110 7 120C10.5 130 10.5 140 7 150C3.5 160 3.5 170 7 180C10.5 190 10.5 200 7 210C3.5 220 3.5 230 7 240"/></svg></div>
+            </div>
+            <div class="face face--l"><span>MC</span></div>
+            <div class="face face--r"><span>GD</span></div>
+            <div class="val val--l"><span data-val="w">58</span><i>%</i></div>
+            <div class="val val--r"><span data-val="b">42</span><i>%</i></div>
+          </div>
+          <div class="lab"><span data-count>3,182</span> votes</div>
+        </div>
+        </div>
+      
+      </div>
+    </article>
+
+    <!-- E · SLACK WATER -->
+    <article class="opt">
+      <div class="opt__meta">
+        <div class="opt__n">05</div>
+        <h2>Slack water</h2>
+        <p>The pre-game window. Water is level and still, numbers sit back at low
+           weight because nothing has happened yet. It only starts moving on move one.</p>
+        <ul>
+          <li>Opens ~10 min before the round, closes at move 20</li>
+          <li>Dead-still seam; the calm is the signal</li>
+          <li>Early votes are the ones worth having</li>
+        </ul>
+      </div>
+      <div class="opt__body">
+        <div class="rig">
+        <div class="pregame">
+            <b>Round starts soon</b>
+          <span>4:12</span>
+        </div>
+        <div class="pill pill--pre" style="--p:52%" data-pill data-w="52" data-frozen>
+          <button class="hit hit--w" data-vote="w" aria-label="Vote Nakamura"></button>
+          <button class="hit hit--b" data-vote="b" aria-label="Vote Ding"></button>
+          <div class="water">
+            <div style="--tone:#151F39" class="side side--w">
+              <div class="flag"><svg viewBox="0 0 19 10"><use href="#f-usa"/></svg></div>
+              <div class="tint"></div><div class="caustic"></div>
+              <span class="bub" style="left:29%;width:3px;height:3px;animation-delay:-6s"></span>
+            </div>
+            <div style="--tone:#58151A" class="side side--b">
+              <div class="flag"><svg viewBox="0 0 30 20"><use href="#f-chn"/></svg></div>
+              <div class="tint"></div><div class="caustic b"></div>
+              <span class="bub" style="left:71%;width:2.5px;height:2.5px;animation-delay:-11s"></span>
+            </div>
+            <div class="grain"></div>
+            <div class="seam"><svg class="seam__wave" viewBox="0 0 14 240" preserveAspectRatio="none" aria-hidden="true"><path d="M7 0C10.5 10 10.5 20 7 30C3.5 40 3.5 50 7 60C10.5 70 10.5 80 7 90C3.5 100 3.5 110 7 120C10.5 130 10.5 140 7 150C3.5 160 3.5 170 7 180C10.5 190 10.5 200 7 210C3.5 220 3.5 230 7 240"/></svg></div>
+          </div>
+          <div class="face face--l"><span>HN</span></div>
+          <div class="face face--r"><span>DL</span></div>
+          <div class="val val--l"><span data-val="w">52</span><i>%</i></div>
+          <div class="val val--r"><span data-val="b">48</span><i>%</i></div>
+        </div>
+        <div class="names">
+          <div class="nm"><b>Hikaru Nakamura</b><small>2802 · white</small></div>
+          <div class="nm nm--r"><b>Ding Liren</b><small>2728 · black</small></div>
+        </div>
+        <div class="tally">first <b data-count>214</b> guesses in</div>
+        </div>
+      
+      </div>
+    </article>
+
+  </div>
+
+  <footer class="foot">
+    <span>Flags drawn to spec here; production uses the real <code
+      style="font-family:ui-monospace,monospace;font-size:11.5px;color:var(--txt-2)">FederationFlag</code> assets.
+      Faces fall back to initials exactly as <code
+      style="font-family:ui-monospace,monospace;font-size:11.5px;color:var(--txt-2)">PlayerInitialsAvatar</code> does.</span>
+  </footer>
+</div>
+
+<script>
+'use strict';
+(function () {
+  /* ── board: context only. the checkerboard is baked in CSS, so a JS
+        failure leaves an empty board, never an empty vote component. ── */
+  var GLYPH = {k:'♚',q:'♛',r:'♜',b:'♝',n:'♞',p:'♟'};
+  /* last move 14. Bd3, so e2 (r6,f4) and d3 (r5,f3) carry the highlight */
+  function squareClass(r, f) {
+    var lit = (r === 6 && f === 4) || (r === 5 && f === 3);
+    if (!lit) return '';
+    return (r + f) % 2 ? ' hl dk' : ' hl';
+  }
+  var board = document.getElementById('board');
+  if (board) {
+    var rows = board.dataset.fen.split('/'), html = '';
+    for (var r = 0; r < 8; r++) {
+      var row = rows[r], file = 0;
+      for (var i = 0; i < row.length; i++) {
+        var c = row[i];
+        if (c >= '1' && c <= '8') {
+          for (var e = 0; e < +c; e++) {
+            html += '<div class="sq' + squareClass(r, file) + '"></div>'; file++;
+          }
+        } else {
+          var white = c === c.toUpperCase();
+          html += '<div class="sq' + squareClass(r, file) + '"><span class="' +
+                  (white ? 'pc-w' : 'pc-b') + '">' + GLYPH[c.toLowerCase()] + '</span></div>';
+          file++;
+        }
+      }
+    }
+    board.innerHTML = html;
+  }
+
+  /* ── pills ─────────────────────────────────────────────────────── */
+  var pills = [].slice.call(document.querySelectorAll('[data-pill]'));
+  var groups = {};
+  var reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  pills.forEach(function (pill) {
+    var three = pill.classList.contains('pill--three');
+    var w = +pill.dataset.w;
+    var d = three ? +pill.dataset.d : 0;
+    pill.state = { w: w, d: d, b: 100 - w - d, pick: null, frozen: 'frozen' in pill.dataset };
+    register(pill);
+
+    pill.addEventListener('click', function (ev) {
+      var hit = ev.target.closest('[data-vote]');
+      if (!hit) return;
+      var side = hit.dataset.vote;
+      var s = pill.state;
+      if (s.pick === side) return;
+      s.pick = side;
+      pill.classList.remove('picked-w', 'picked-b', 'picked-d');
+      pill.classList.add('picked-' + side);
+
+      /* your vote actually moves the bar, a little */
+      var nudge = 2.4;
+      if (side === 'w') { s.w += nudge; s.b -= nudge * (three ? .6 : 1); if (three) s.d -= nudge * .4; }
+      else if (side === 'b') { s.b += nudge; s.w -= nudge * (three ? .6 : 1); if (three) s.d -= nudge * .4; }
+      else { s.d += nudge; s.w -= nudge * .5; s.b -= nudge * .5; }
+      normalise(s, three);
+      paint(pill, three);
+      mark(pill, side);
+      sync(pill);
+      bumpCounts(1);
+    });
+
+    paint(pill, three);
+  });
+
+  function normalise(s, three) {
+    s.w = Math.max(4, Math.min(three ? 88 : 96, s.w));
+    if (three) {
+      s.d = Math.max(6, Math.min(70, s.d));
+      s.b = Math.max(4, 100 - s.w - s.d);
+    } else {
+      s.b = 100 - s.w;
+    }
+    var t = s.w + s.d + s.b;
+    if (Math.abs(t - 100) > .01) { s.b += 100 - t; }
+  }
+
+  function paint(pill, three) {
+    var s = pill.state;
+    pill.style.setProperty('--p', s.w.toFixed(2) + '%');
+    if (three) pill.style.setProperty('--p2', (s.w + s.d).toFixed(2) + '%');
+    setVal(pill, 'w', s.w);
+    setVal(pill, 'b', s.b);
+    if (three) setVal(pill, 'd', s.d);
+  }
+  /* the draw figure lives under the pill, so look in the whole card */
+  function setVal(pill, key, v) {
+    var scope = pill.closest('.opt__body') || pill.closest('.pop') || pill;
+    var els = scope.querySelectorAll('[data-val="' + key + '"]');
+    for (var i = 0; i < els.length; i++) els[i].textContent = Math.round(v);
+  }
+
+  /* pills sharing a data-group show one poll and must never disagree */
+  function register(pill) {
+    var g = pill.dataset.group;
+    if (!g) return;
+    (groups[g] = groups[g] || []).push(pill);
+  }
+  function leads(pill) {
+    var g = pill.dataset.group;
+    return !g || groups[g][0] === pill;
+  }
+  function sync(pill) {
+    var g = pill.dataset.group;
+    if (!g) return;
+    groups[g].forEach(function (other) {
+      if (other === pill) return;
+      other.state.w = pill.state.w;
+      other.state.d = pill.state.d;
+      other.state.b = pill.state.b;
+      other.state.pick = pill.state.pick;
+      other.className = pill.className.replace('pill--slim', '') +
+                        (other.classList.contains('pill--slim') ? ' pill--slim' : '');
+      paint(other, other.classList.contains('pill--three'));
+    });
+  }
+
+  /* "your pick" is written into a line that already exists, so casting a vote
+     never changes the popup's height and nothing under it jumps */
+  function mark(pill, side) {
+    var body = pill.closest('.opt__body') || pill.closest('.pop');
+    if (!body) return;
+    var old = body.querySelectorAll('.pickmark');
+    for (var i = 0; i < old.length; i++) old[i].remove();
+    var host = side === 'd'
+      ? body.querySelector('.tally')
+      : body.querySelector(side === 'b' ? '.nm--r small' : '.nm small');
+    if (!host) return;
+    var em = document.createElement('em');
+    em.className = 'pickmark';
+    em.textContent = ' · your pick';
+    host.appendChild(em);
+  }
+
+  function bumpCounts(n) {
+    document.querySelectorAll('[data-count]').forEach(function (el) {
+      var v = +el.textContent.replace(/[^\d]/g, '') + n;
+      el.textContent = v.toLocaleString('en-US');
+    });
+  }
+
+  /* ── live ticker: a bounded random walk, so it always looks like a
+        real crowd rather than a bar sweeping end to end ───────────── */
+  var live = true;
+  var timer = setInterval(tick, 1700);
+  function tick() {
+    if (!live || document.hidden) return;
+    pills.forEach(function (pill) {
+      if (pill.state.frozen || !leads(pill)) return;
+      var three = pill.classList.contains('pill--three');
+      var s = pill.state;
+      var drift = (Math.random() - 0.5) * 1.8;
+      s.w += drift;
+      if (three) { s.d += (Math.random() - 0.5) * 1.1; }
+      normalise(s, three);
+      paint(pill, three);
+      sync(pill);
+    });
+    bumpCounts(1 + Math.floor(Math.random() * 6));
+  }
+
+  /* ── page controls ─────────────────────────────────────────────── */
+  var screen = document.getElementById('screen');
+  document.getElementById('dismiss').addEventListener('click', function () {
+    screen.classList.add('collapsed');
+  });
+  document.getElementById('expand').addEventListener('click', function () {
+    screen.classList.remove('collapsed');
+    replay();
+  });
+  document.getElementById('replay').addEventListener('click', function () {
+    screen.classList.remove('collapsed');
+    replay();
+  });
+  function replay() {
+    var pop = screen.querySelector('.pop');
+    if (!pop || reduce) return;
+    pop.style.animation = 'none';
+    void pop.offsetWidth;
+    pop.style.animation = '';
+  }
+
+  document.getElementById('swing').addEventListener('click', function () {
+    pills.forEach(function (pill) {
+      var three = pill.classList.contains('pill--three');
+      var s = pill.state;
+      s.w = 8 + Math.random() * (three ? 70 : 84);
+      if (three) s.d = 8 + Math.random() * 34;
+      normalise(s, three);
+      paint(pill, three);
+      sync(pill);
+    });
+    bumpCounts(40 + Math.floor(Math.random() * 90));
+  });
+
+  var lb = document.getElementById('livebtn');
+  lb.addEventListener('click', function () {
+    live = !live;
+    lb.setAttribute('aria-pressed', String(live));
+    lb.textContent = live ? 'Live ticker on' : 'Live ticker off';
+  });
+})();
+</script>
+</body>
+</html>

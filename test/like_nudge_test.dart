@@ -4,13 +4,15 @@ import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 void main() {
   testWidgets('asks the question and teaches the gesture', (tester) async {
     await _pumpNudge(tester);
 
-    expect(find.text('Did you like this game?'), findsOneWidget);
-    expect(find.text('Tap the heart, or double-tap any board.'), findsOneWidget);
+    expect(find.text(kLikeNudgeQuestion), findsOneWidget);
+    expect(find.text(kLikeNudgeHint), findsOneWidget);
+    expect(find.textContaining('Tap the heart'), findsNothing);
     expect(tester.takeException(), isNull);
 
     await _drainBeat(tester);
@@ -22,7 +24,7 @@ void main() {
     await _pumpNudge(tester, settle: false);
     await tester.pump();
 
-    final question = find.text('Did you like this game?');
+    final question = find.text(kLikeNudgeQuestion);
     expect(question, findsOneWidget);
     expect(tester.getSize(question).isEmpty, isFalse);
     // Nothing in the entrance touches opacity, so no Opacity can be hiding it.
@@ -66,6 +68,61 @@ void main() {
 
     expect(dismissed, isTrue);
     expect(liked, isFalse);
+
+    await _drainBeat(tester);
+  });
+
+  testWidgets('sits on the notation panel and leaves the board uncovered', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    const boardKey = Key('board');
+    const notationKey = Key('notation');
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          likeNudgeOfferProvider(0).overrideWith(
+            (ref) => LikeNudgeOffer(onLike: (_) {}, onDismiss: () {}),
+          ),
+        ],
+        child: MaterialApp(
+          theme: AppTheme.darkTheme,
+          home: Builder(
+            builder: (context) {
+              ResponsiveHelper.init(context);
+              return Scaffold(
+                backgroundColor: context.colors.background,
+                body: Column(
+                  children: [
+                    const SizedBox(key: boardKey, height: 280, width: 390),
+                    Expanded(
+                      child: LikeNudgeOverlay(
+                        pageIndex: 0,
+                        child: const SizedBox.expand(key: notationKey),
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            },
+          ),
+        ),
+      ),
+    );
+    await tester.pump(const Duration(milliseconds: 16));
+
+    final nudge = tester.getRect(find.byType(LikeNudge));
+    final board = tester.getRect(find.byKey(boardKey));
+    final notation = tester.getRect(find.byKey(notationKey));
+
+    expect(nudge.overlaps(board), isFalse);
+    expect(nudge.overlaps(notation), isTrue);
+    expect(nudge.top, greaterThanOrEqualTo(board.bottom));
 
     await _drainBeat(tester);
   });

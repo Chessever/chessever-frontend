@@ -5,10 +5,10 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 /// Persisted cadence for the contextual "Did you like this game?" reminder.
 ///
-/// Users are asked after 40 distinct completed games without a like, and again
-/// after each further run of 40. Any confirmed like restarts the cadence, so
-/// the reminder only ever reaches someone who has gone a long stretch without
-/// liking anything.
+/// Users are asked after [LikeLearningPromptTracker.promptInterval] distinct
+/// completed games without a like, and again after each further run of that
+/// many. Any confirmed like restarts the cadence, so the reminder only ever
+/// reaches someone who has gone a long stretch without liking anything.
 class LikeLearningPromptProgress {
   const LikeLearningPromptProgress({
     required this.initialized,
@@ -23,7 +23,7 @@ class LikeLearningPromptProgress {
       initialized: false,
       hasEverLiked: false,
       completedSinceLike: 0,
-      nextPromptAt: 40,
+      nextPromptAt: LikeLearningPromptTracker.promptInterval,
       countedGameIds: <String>{},
     );
   }
@@ -36,17 +36,22 @@ class LikeLearningPromptProgress {
             : <String>{};
     final hasEverLiked = json['hasEverLiked'] == true;
     final nextPromptAt = json['nextPromptAt'];
+    final completedSinceLike =
+        (json['completedSinceLike'] as num?)?.toInt().clamp(0, 1 << 30) ?? 0;
     return LikeLearningPromptProgress(
       initialized: json['initialized'] == true,
       hasEverLiked: hasEverLiked,
-      completedSinceLike:
-          (json['completedSinceLike'] as num?)?.toInt().clamp(0, 1 << 30) ?? 0,
+      completedSinceLike: completedSinceLike,
       nextPromptAt:
           nextPromptAt is num
-              // Older installs used introductory prompts at 10 and 20 games.
-              // Lift that persisted target to the new 40-game minimum.
-              ? nextPromptAt.toInt().clamp(40, 1 << 30)
-              : 40,
+              // Installs persisted targets from older cadences (introductory
+              // prompts at 10 and 20 games, later a 40-game interval). Fold
+              // them onto the current schedule.
+              ? LikeLearningPromptTracker.normalizePromptTarget(
+                nextPromptAt.toInt(),
+                completedSinceLike,
+              )
+              : LikeLearningPromptTracker.promptInterval,
       countedGameIds: LikeLearningPromptTracker.trimTrackedIds(ids),
     );
   }
@@ -118,15 +123,17 @@ class AppDatabaseLikeLearningPromptStore implements LikeLearningPromptStore {
 class LikeLearningPromptTracker {
   LikeLearningPromptTracker(this._store);
 
+  /// Completed games without a like between two reminders.
+  static const int promptInterval = 30;
+
   /// How many recently-seen game ids stay on the ledger.
   ///
   /// The ledger exists so re-opening a game you already finished cannot advance
   /// the counter twice. It is deliberately BOUNDED: the whole record is
   /// serialised to SQLite on every finished game, so an unbounded lifetime set
   /// would grow into a six-figure JSON blob that is re-read and re-written each
-  /// time a user reaches the end of a game. 256 is several times the longest
-  /// (40-game) interval, which is all the protection the counter actually
-  /// needs.
+  /// time a user reaches the end of a game. 256 is several times the
+  /// [promptInterval], which is all the protection the counter actually needs.
   static const int maxTrackedGameIds = 256;
 
   final LikeLearningPromptStore _store;
@@ -139,6 +146,25 @@ class LikeLearningPromptTracker {
   /// Users whose one-time seeding has already run in this process, so the
   /// common path costs no extra store read per finished game.
   final Set<String> _seededUserIds = <String>{};
+
+  /// The next stop on the [promptInterval] grid strictly above
+  /// [completedSinceLike] — 30, 60, 90, …
+  static int scheduledTarget(int completedSinceLike) {
+    return ((completedSinceLike ~/ promptInterval) + 1) * promptInterval;
+  }
+
+  /// Folds a target persisted under an older cadence onto the current one.
+  ///
+  /// Takes whichever of the two comes SOONER, so shortening the interval never
+  /// makes a user who is already mid-run wait longer than they were promised:
+  /// someone 39 games in on the old 40-game target is still asked at 40, while
+  /// someone 45 games in on an old 80-game target is asked at 60 rather than
+  /// stranded for another 35 games.
+  static int normalizePromptTarget(int storedTarget, int completedSinceLike) {
+    final scheduled = scheduledTarget(completedSinceLike);
+    final target = storedTarget < scheduled ? storedTarget : scheduled;
+    return target < promptInterval ? promptInterval : target;
+  }
 
   /// Keeps only the [maxTrackedGameIds] most recent ids, preserving order.
   static Set<String> trimTrackedIds(Set<String> ids) {
@@ -185,7 +211,7 @@ class LikeLearningPromptTracker {
             .copyWith(
               initialized: true,
               hasEverLiked: hasExistingLikes,
-              nextPromptAt: 40,
+              nextPromptAt: promptInterval,
             )
             .toJson(),
       );
@@ -212,10 +238,10 @@ class LikeLearningPromptTracker {
       );
       final completed = progress.completedSinceLike + 1;
       final shouldPrompt = completed >= progress.nextPromptAt;
+      // Re-align on the grid after firing, so a target inherited from an older
+      // cadence does not carry its offset forward for the rest of the run.
       final nextPromptAt =
-          shouldPrompt
-              ? _nextPromptTarget(progress.nextPromptAt)
-              : progress.nextPromptAt;
+          shouldPrompt ? scheduledTarget(completed) : progress.nextPromptAt;
 
       progress = progress.copyWith(
         completedSinceLike: completed,
@@ -241,15 +267,11 @@ class LikeLearningPromptTracker {
               initialized: true,
               hasEverLiked: true,
               completedSinceLike: 0,
-              nextPromptAt: 40,
+              nextPromptAt: promptInterval,
             )
             .toJson(),
       );
     });
-  }
-
-  int _nextPromptTarget(int currentTarget) {
-    return currentTarget + 40;
   }
 }
 
