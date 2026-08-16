@@ -347,8 +347,8 @@ class _GameFilterDialogState extends State<GameFilterDialog> {
               child: ElevatedButton(
                 onPressed: _applyFilters,
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: context.colors.textPrimary,
-                  foregroundColor: kBlackColor,
+                  backgroundColor: kPrimaryColor,
+                  foregroundColor: context.colors.inkOnAccent,
                   elevation: 0,
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(10.br),
@@ -356,7 +356,9 @@ class _GameFilterDialogState extends State<GameFilterDialog> {
                 ),
                 child: Text(
                   'Apply Filters',
-                  style: AppTypography.textSmBold.copyWith(color: kBlackColor),
+                  style: AppTypography.textSmBold.copyWith(
+                    color: context.colors.inkOnAccent,
+                  ),
                 ),
               ),
             ),

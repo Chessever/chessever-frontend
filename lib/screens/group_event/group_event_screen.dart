@@ -15,7 +15,6 @@ import 'package:chessever2/screens/group_event/model/tour_event_card_model.dart'
 import 'package:chessever2/screens/group_event/providers/sorting_all_event_provider.dart';
 import 'package:chessever2/screens/player_profile/player_profile_screen.dart';
 import 'package:chessever2/theme/app_colors.dart';
-import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/screens/group_event/widget/filter_popup/filter_popup.dart';
@@ -684,8 +683,8 @@ class _SegmentedSwitcher extends ConsumerWidget {
         }).toList();
 
     return SegmentedSwitcher(
-      backgroundColor: kBlackColor,
-      selectedBackgroundColor: kBlackColor,
+      backgroundColor: context.colors.popup,
+      selectedBackgroundColor: context.colors.popup,
       options: options,
       optionLabels: optionLabels,
       currentSelection: visibleCategories

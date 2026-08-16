@@ -37,6 +37,8 @@ class AppColors extends ThemeExtension<AppColors> {
     required this.profileGradient,
     required this.titleAccent,
     required this.inkOnAccent,
+    required this.evalWhite,
+    required this.evalBlack,
   });
 
   final Color brand;
@@ -75,6 +77,14 @@ class AppColors extends ThemeExtension<AppColors> {
   /// Dark keeps a dark recessed tone; light pins to broadcast `--ink-on-accent`.
   final Color inkOnAccent;
 
+  /// Eval-bar white share. Dark keeps historic `textPrimary` white; light uses
+  /// broadcast `--eval-white` so the fill stays paper, not a flipped ink block.
+  final Color evalWhite;
+
+  /// Eval-bar black share / rail. Dark keeps historic `popup` near-black; light
+  /// uses broadcast `--eval-rail` (mint-grey) so the rail is not a dark-mode slab.
+  final Color evalBlack;
+
   static const AppColors dark = AppColors(
     brand: kPrimaryColor,
     brandMuted: Color(0xFF17AAD6),
@@ -105,6 +115,8 @@ class AppColors extends ThemeExtension<AppColors> {
     profileGradient: kProfileInitialsGradient,
     titleAccent: kLightYellowColor,
     inkOnAccent: kBlack3Color,
+    evalWhite: kWhiteColor,
+    evalBlack: kPopUpColor,
   );
 
   /// Broadcast-ported mint/teal light palette. Values come from
@@ -144,6 +156,8 @@ class AppColors extends ThemeExtension<AppColors> {
     ),
     titleAccent: Color(0xFF4F5334),
     inkOnAccent: Color(0xFF0A0A0A),
+    evalWhite: Color(0xFFE8EAED),
+    evalBlack: Color(0xFFB7C6C7),
   );
 
   @override
@@ -177,6 +191,8 @@ class AppColors extends ThemeExtension<AppColors> {
     LinearGradient? profileGradient,
     Color? titleAccent,
     Color? inkOnAccent,
+    Color? evalWhite,
+    Color? evalBlack,
   }) {
     return AppColors(
       brand: brand ?? this.brand,
@@ -208,6 +224,8 @@ class AppColors extends ThemeExtension<AppColors> {
       profileGradient: profileGradient ?? this.profileGradient,
       titleAccent: titleAccent ?? this.titleAccent,
       inkOnAccent: inkOnAccent ?? this.inkOnAccent,
+      evalWhite: evalWhite ?? this.evalWhite,
+      evalBlack: evalBlack ?? this.evalBlack,
     );
   }
 
@@ -245,6 +263,8 @@ class AppColors extends ThemeExtension<AppColors> {
       profileGradient: t < 0.5 ? profileGradient : other.profileGradient,
       titleAccent: Color.lerp(titleAccent, other.titleAccent, t)!,
       inkOnAccent: Color.lerp(inkOnAccent, other.inkOnAccent, t)!,
+      evalWhite: Color.lerp(evalWhite, other.evalWhite, t)!,
+      evalBlack: Color.lerp(evalBlack, other.evalBlack, t)!,
     );
   }
 }

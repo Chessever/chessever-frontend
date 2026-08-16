@@ -26,6 +26,8 @@ void main() {
     expect(light.titleAccent, const Color(0xFF4F5334));
     expect(light.inkOnAccent, const Color(0xFF0A0A0A));
     expect(light.scrim, const Color(0x660E1A1C));
+    expect(light.evalWhite, const Color(0xFFE8EAED));
+    expect(light.evalBlack, const Color(0xFFB7C6C7));
   });
 
   test('AppColors.dark keeps the historic chrome tokens', () {
@@ -36,6 +38,8 @@ void main() {
     expect(dark.textPrimary, kWhiteColor);
     expect(dark.titleAccent, kLightYellowColor);
     expect(dark.inkOnAccent, kBlack3Color);
+    expect(dark.evalWhite, kWhiteColor);
+    expect(dark.evalBlack, kPopUpColor);
   });
 
   test('light ThemeData wires the light extension and mint scaffold', () {

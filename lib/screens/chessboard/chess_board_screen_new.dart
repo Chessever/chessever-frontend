@@ -7705,7 +7705,12 @@ class _AnalysisGameBody extends ConsumerWidget {
                               color: context.colors.surface,
                               borderRadius: BorderRadius.circular(12.sp),
                               border: Border.all(
-                                color: Colors.white.withValues(alpha: 0.06),
+                                color:
+                                    context.isLightTheme
+                                        ? context.colors.divider.withValues(
+                                          alpha: 0.55,
+                                        )
+                                        : Colors.white.withValues(alpha: 0.06),
                                 width: 1,
                               ),
                             ),
@@ -7799,15 +7804,30 @@ class _AnalysisGameBody extends ConsumerWidget {
                           ),
                           border: Border(
                             top: BorderSide(
-                              color: Colors.white.withValues(alpha: 0.06),
+                              color:
+                                  context.isLightTheme
+                                      ? context.colors.divider.withValues(
+                                        alpha: 0.55,
+                                      )
+                                      : Colors.white.withValues(alpha: 0.06),
                               width: 1,
                             ),
                             left: BorderSide(
-                              color: Colors.white.withValues(alpha: 0.06),
+                              color:
+                                  context.isLightTheme
+                                      ? context.colors.divider.withValues(
+                                        alpha: 0.55,
+                                      )
+                                      : Colors.white.withValues(alpha: 0.06),
                               width: 1,
                             ),
                             right: BorderSide(
-                              color: Colors.white.withValues(alpha: 0.06),
+                              color:
+                                  context.isLightTheme
+                                      ? context.colors.divider.withValues(
+                                        alpha: 0.55,
+                                      )
+                                      : Colors.white.withValues(alpha: 0.06),
                               width: 1,
                             ),
                           ),
@@ -15784,13 +15804,26 @@ class _PrincipalVariationListState
 
     // Reserve the configured rows while searching, then collapse to the usable
     // results so cancelled/partial evaluations do not leave empty rows.
+    // Light theme: paper card on the mint page, matching the board mock.
+    // Dark keeps a quieter elevated well so the lines still sit as a unit.
     return Padding(
       padding: EdgeInsets.fromLTRB(16.sp, 8.sp, 16.sp, 4.h),
-      child: EnginePvListView(
-        items: items,
-        slotCount: isEvaluating ? multiPV : math.max(1, items.length),
-        isEvaluating: isEvaluating,
-        trailingDivider: false,
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: context.colors.surface,
+          borderRadius: BorderRadius.circular(10.sp),
+          border: Border.all(
+            color: context.colors.divider.withValues(
+              alpha: context.isLightTheme ? 0.55 : 0.35,
+            ),
+          ),
+        ),
+        child: EnginePvListView(
+          items: items,
+          slotCount: isEvaluating ? multiPV : math.max(1, items.length),
+          isEvaluating: isEvaluating,
+          trailingDivider: false,
+        ),
       ),
     );
   }

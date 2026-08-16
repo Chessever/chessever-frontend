@@ -166,17 +166,11 @@ class _EvaluationBarWidgetState extends State<EvaluationBarWidget> {
 
         final topHeight = widget.isFlipped ? whiteHeight : blackHeight;
         final bottomHeight = widget.isFlipped ? blackHeight : whiteHeight;
-        // Eval bar segments are *piece colours*, not theme colours. Dark
-        // theme worked because `textPrimary` and `popup` happened to be
-        // white and near-black; in light theme they flip and the bar would
-        // display upside down. Use literal piece colours in light theme;
-        // keep the original tokens in dark for byte-identical rendering.
-        final whitePieceColor = context.isLightTheme
-            ? kMoveStatWhiteColor
-            : context.colors.textPrimary;
-        final blackPieceColor = context.isLightTheme
-            ? kMoveStatBlackColor
-            : context.colors.popup;
+        // White/black shares are chess-semantic, but the *paints* come from
+        // AppColors so light mode can use the broadcast mint-grey rail
+        // instead of a leftover near-black slab.
+        final whitePieceColor = context.colors.evalWhite;
+        final blackPieceColor = context.colors.evalBlack;
         final topColor = widget.isFlipped ? whitePieceColor : blackPieceColor;
         final bottomColor = widget.isFlipped ? blackPieceColor : whitePieceColor;
 
@@ -503,15 +497,8 @@ class _Bars extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Same piece-colour rationale as in the live eval bar above: light
-    // theme uses literal piece colours, dark theme keeps the original
-    // tokens so its rendering is unchanged.
-    final whitePieceColor = context.isLightTheme
-        ? kMoveStatWhiteColor
-        : context.colors.textPrimary;
-    final blackPieceColor = context.isLightTheme
-        ? kMoveStatBlackColor
-        : context.colors.popup;
+    final whitePieceColor = context.colors.evalWhite;
+    final blackPieceColor = context.colors.evalBlack;
 
     final labelInset = playerView == PlayerView.gridView ? 6.h : 10.h;
     final labelClampMax =

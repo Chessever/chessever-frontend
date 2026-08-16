@@ -2,7 +2,6 @@ import 'package:chessever2/repository/lichess/cloud_eval/cloud_eval.dart';
 import 'package:chessever2/screens/chessboard/provider/current_eval_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/theme/app_colors.dart';
-import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -71,17 +70,10 @@ class _ChessProgressBarState extends ConsumerState<ChessProgressBar> {
     // Adjust for reversed mode (invert the evaluation visually)
     final displayEval = widget.isReversedMode ? (1.0 - evaluation) : evaluation;
 
-    // The bar's two halves are *piece colours*, not theme colours: the
-    // foreground = white side's share, background = black side's share.
-    // Dark theme used `surface`/`textPrimary` because both happen to be
-    // black/white-shaped in dark mode, but in light mode that flips and
-    // shows white advantage as a dark pixel block. Force literal piece
-    // colours in light theme; dark theme keeps the original tokens so its
-    // appearance is unchanged.
-    final barBg =
-        context.isLightTheme ? kMoveStatBlackColor : context.colors.surface;
-    final barFg =
-        context.isLightTheme ? kMoveStatWhiteColor : context.colors.textPrimary;
+    // Foreground = white's share, background = black's share. Tokens live
+    // on AppColors so light mode uses the broadcast mint-grey rail.
+    final barBg = context.colors.evalBlack;
+    final barFg = context.colors.evalWhite;
 
     return SizedBox(
       width: 48.w,

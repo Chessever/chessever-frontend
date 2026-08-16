@@ -52,143 +52,164 @@ class MatchHeader extends ConsumerWidget {
             color: context.colors.surface,
             borderRadius: BorderRadius.circular(12.br),
           ),
-          child: Row(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Status indicator bar
-              Container(
-                width: 3.w,
-                height: 48.h,
-                decoration: BoxDecoration(
-                  color: _getStatusColor(context),
-                  borderRadius: BorderRadius.circular(1.5),
-                ),
-              ),
-              SizedBox(width: 12.w),
-
-              // Match info - Player names with scores
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    // Player 1 with score
-                    Row(
-                      children: [
-                        Expanded(
-                          child: Row(
-                            crossAxisAlignment: CrossAxisAlignment.center,
-                            children: [
-                              if (player1Flag != null) ...[
-                                player1Flag,
-                                SizedBox(width: 6.w),
-                              ],
-                              Expanded(
-                                child: Text(
-                                  match.player1,
-                                  style: AppTypography.textSmMedium.copyWith(
-                                    color: context.colors.textPrimary,
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
+              Row(
+                children: [
+                  Expanded(
+                    // Rail height follows the pairing, not a magic 48.h.
+                    // A fixed bar in a centered Row sank once the timestamp
+                    // made the column taller than the two name rows.
+                    child: IntrinsicHeight(
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          _MatchStatusRail(color: _getStatusColor(context)),
+                          SizedBox(width: 12.w),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Row(
+                                  children: [
+                                    Expanded(
+                                      child: Row(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.center,
+                                        children: [
+                                          if (player1Flag != null) ...[
+                                            player1Flag,
+                                            SizedBox(width: 6.w),
+                                          ],
+                                          Expanded(
+                                            child: Text(
+                                              match.player1,
+                                              style: AppTypography.textSmMedium
+                                                  .copyWith(
+                                                    color: context
+                                                        .colors
+                                                        .textPrimary,
+                                                    fontWeight: FontWeight.w600,
+                                                  ),
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                    SizedBox(width: 8.w),
+                                    Container(
+                                      padding: EdgeInsets.symmetric(
+                                        horizontal: 8.w,
+                                        vertical: 4.h,
+                                      ),
+                                      decoration: BoxDecoration(
+                                        color: kPrimaryColor.withValues(
+                                          alpha: 0.2,
+                                        ),
+                                        borderRadius: BorderRadius.circular(
+                                          6.br,
+                                        ),
+                                      ),
+                                      child: Text(
+                                        '${match.player1Score}',
+                                        style: AppTypography.textSmMedium
+                                            .copyWith(
+                                              color: kPrimaryColor,
+                                              fontWeight: FontWeight.w700,
+                                            ),
+                                      ),
+                                    ),
+                                  ],
                                 ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        SizedBox(width: 8.w),
-                        // Player 1 score badge
-                        Container(
-                          padding: EdgeInsets.symmetric(
-                            horizontal: 8.w,
-                            vertical: 4.h,
-                          ),
-                          decoration: BoxDecoration(
-                            color: kPrimaryColor.withValues(alpha: 0.2),
-                            borderRadius: BorderRadius.circular(6.br),
-                          ),
-                          child: Text(
-                            '${match.player1Score}',
-                            style: AppTypography.textSmMedium.copyWith(
-                              color: kPrimaryColor,
-                              fontWeight: FontWeight.w700,
+                                SizedBox(height: 6.h),
+                                Row(
+                                  children: [
+                                    Expanded(
+                                      child: Row(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.center,
+                                        children: [
+                                          if (player2Flag != null) ...[
+                                            player2Flag,
+                                            SizedBox(width: 6.w),
+                                          ],
+                                          Expanded(
+                                            child: Text(
+                                              match.player2,
+                                              style: AppTypography.textSmMedium
+                                                  .copyWith(
+                                                    color: context
+                                                        .colors
+                                                        .textPrimary,
+                                                    fontWeight: FontWeight.w600,
+                                                  ),
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                    SizedBox(width: 8.w),
+                                    Container(
+                                      padding: EdgeInsets.symmetric(
+                                        horizontal: 8.w,
+                                        vertical: 4.h,
+                                      ),
+                                      decoration: BoxDecoration(
+                                        color: kPrimaryColor.withValues(
+                                          alpha: 0.2,
+                                        ),
+                                        borderRadius: BorderRadius.circular(
+                                          6.br,
+                                        ),
+                                      ),
+                                      child: Text(
+                                        '${match.player2Score}',
+                                        style: AppTypography.textSmMedium
+                                            .copyWith(
+                                              color: kPrimaryColor,
+                                              fontWeight: FontWeight.w700,
+                                            ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ],
                             ),
                           ),
-                        ),
-                      ],
-                    ),
-                    SizedBox(height: 6.h),
-                    // Player 2 with score
-                    Row(
-                      children: [
-                        Expanded(
-                          child: Row(
-                            crossAxisAlignment: CrossAxisAlignment.center,
-                            children: [
-                              if (player2Flag != null) ...[
-                                player2Flag,
-                                SizedBox(width: 6.w),
-                              ],
-                              Expanded(
-                                child: Text(
-                                  match.player2,
-                                  style: AppTypography.textSmMedium.copyWith(
-                                    color: context.colors.textPrimary,
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        SizedBox(width: 8.w),
-                        // Player 2 score badge
-                        Container(
-                          padding: EdgeInsets.symmetric(
-                            horizontal: 8.w,
-                            vertical: 4.h,
-                          ),
-                          decoration: BoxDecoration(
-                            color: kPrimaryColor.withValues(alpha: 0.2),
-                            borderRadius: BorderRadius.circular(6.br),
-                          ),
-                          child: Text(
-                            '${match.player2Score}',
-                            style: AppTypography.textSmMedium.copyWith(
-                              color: kPrimaryColor,
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                    if (match.playedAt != null) ...[
-                      SizedBox(height: 6.h),
-                      Text(
-                        TimeUtils.formatRoundDateTime(match.playedAt),
-                        style: AppTypography.textXsRegular.copyWith(
-                          color: context.colors.textPrimary.withValues(
-                            alpha: 0.45,
-                          ),
-                          fontSize: 10.sp,
-                        ),
+                        ],
                       ),
-                    ],
+                    ),
+                  ),
+                  if (onToggle != null) ...[
+                    SizedBox(width: 8.w),
+                    Icon(
+                      isExpanded
+                          ? Icons.keyboard_arrow_up_rounded
+                          : Icons.keyboard_arrow_down_rounded,
+                      color: context.colors.textPrimary.withValues(alpha: 0.5),
+                      size: 20.sp,
+                    ),
                   ],
-                ),
+                ],
               ),
-
-              // Optional expand/collapse icon
-              if (onToggle != null) ...[
-                SizedBox(width: 8.w),
-                Icon(
-                  isExpanded
-                      ? Icons.keyboard_arrow_up_rounded
-                      : Icons.keyboard_arrow_down_rounded,
-                  color: context.colors.textPrimary.withValues(alpha: 0.5),
-                  size: 20.sp,
+              if (match.playedAt != null) ...[
+                SizedBox(height: 6.h),
+                Padding(
+                  padding: EdgeInsets.only(left: 3.w + 12.w),
+                  child: Text(
+                    TimeUtils.formatRoundDateTime(match.playedAt),
+                    style: AppTypography.textXsRegular.copyWith(
+                      color: context.colors.textPrimary.withValues(alpha: 0.45),
+                      fontSize: 10.sp,
+                    ),
+                  ),
                 ),
               ],
             ],
@@ -297,6 +318,26 @@ class CompactMatchHeader extends ConsumerWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// Pairing spine: stretches to the two name rows. No fixed height — a
+/// magic `48.h` is what made the live rail sit low once a timestamp
+/// appeared under the names.
+class _MatchStatusRail extends StatelessWidget {
+  const _MatchStatusRail({required this.color});
+
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 3.w,
+      decoration: BoxDecoration(
+        color: color,
+        borderRadius: BorderRadius.circular(1.5),
       ),
     );
   }

@@ -3,7 +3,6 @@ import 'dart:math' as math;
 import 'package:chessever2/repository/lichess/cloud_eval/cloud_eval.dart';
 import 'package:chessever2/screens/chessboard/provider/current_eval_provider.dart';
 import 'package:chessever2/theme/app_colors.dart';
-import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -76,11 +75,11 @@ class MiniEvalBar extends ConsumerWidget {
                       children: [
                         Expanded(
                           flex: (whiteRatio * 100).round(),
-                          child: Container(color: context.colors.textPrimary),
+                          child: Container(color: context.colors.evalWhite),
                         ),
                         Expanded(
                           flex: ((1.0 - whiteRatio) * 100).round(),
-                          child: Container(color: context.colors.popup),
+                          child: Container(color: context.colors.evalBlack),
                         ),
                       ],
                     ),
