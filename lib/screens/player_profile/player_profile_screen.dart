@@ -853,31 +853,6 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
             ),
           ),
 
-          // Share button
-          GestureDetector(
-            onTap:
-                () => _shareProfile(
-                  effectiveName: effectiveName,
-                  effectiveTitle: effectiveTitle,
-                  effectiveFederation: effectiveFederation,
-                ),
-            child: Container(
-              width: 38.w,
-              height: 44.h,
-              padding: EdgeInsets.all(6.sp),
-              alignment: Alignment.center,
-              // The heart SVG next door fills its whole 20px box while the
-              // Material ios_share glyph carries ~2px of built-in padding per
-              // side on its 24-grid — 24 here optically matches the 20px heart.
-              child: Icon(
-                Icons.ios_share,
-                color: context.colors.textPrimary,
-                size: 24.ic,
-                semanticLabel: 'Share Profile',
-              ),
-            ),
-          ),
-
           // Favorite button
           GestureDetector(
             onTap: _toggleFavorite,

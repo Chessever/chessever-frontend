@@ -835,7 +835,7 @@ class _ScoreCardPage extends ConsumerWidget {
             // (see [ScoreCardScreen]); this page only scrolls vertically.
             child: CustomScrollView(
               slivers: [
-                _SliverScoreboardAppBar(onShareProfile: sharePlayerProfile),
+                const _SliverScoreboardAppBar(),
                 SliverToBoxAdapter(
                   child: Padding(
                     padding: EdgeInsets.symmetric(
@@ -1110,7 +1110,10 @@ class _ScoreCardPage extends ConsumerWidget {
 
     // Detect a screenshot of the scorecard and nudge sharing the branded card.
     return ScreenshotShareNudge(
-      enabled: hasEventContext && playerGames.isNotEmpty,
+      // `isActive` keeps the PageView's pre-built neighbour pages out of this:
+      // the nudge's guards are per-instance, so without it one screenshot
+      // opens a share preview for two or three players at once.
+      enabled: isActive && hasEventContext && playerGames.isNotEmpty,
       onShare: sharePlayerProfile,
       child: scoreCardScaffold,
     );
@@ -1662,9 +1665,7 @@ class _PlayerAvatarTile extends StatelessWidget {
 }
 
 class _SliverScoreboardAppBar extends ConsumerStatefulWidget {
-  const _SliverScoreboardAppBar({this.onShareProfile});
-
-  final Future<void> Function()? onShareProfile;
+  const _SliverScoreboardAppBar();
 
   @override
   ConsumerState<_SliverScoreboardAppBar> createState() =>
@@ -1708,15 +1709,18 @@ class _SliverScoreboardAppBarState
         );
 
         // Check if adding (not removing) and enforce limit
-        final currentlyFavorited = ref
+        final stored = ref
             .read(favoritePlayersProviderNew)
             .maybeWhen(
               data:
-                  (players) =>
-                      players.any((p) => p.fideId == player.fideId?.toString()),
-              orElse: () => false,
+                  (players) => storedFavoriteFor(
+                    players,
+                    fideId: player.fideId?.toString(),
+                    name: player.name,
+                  ),
+              orElse: () => null,
             );
-        if (!currentlyFavorited) {
+        if (stored == null) {
           if (!mounted) return;
           final canAdd = await canAddMoreFavorites(context, ref);
           if (!canAdd) return;
@@ -1726,7 +1730,11 @@ class _SliverScoreboardAppBarState
             .read(favoritePlayersProviderNew.notifier)
             .toggleFavorite(
               fideId: player.fideId?.toString(),
-              playerName: player.name,
+              // Removal matches on the stored `player_name`, so unfollowing
+              // has to name the row that actually exists: the profile screen
+              // writes the raw profile name and this screen writes the
+              // backfilled standings name.
+              playerName: stored?.playerName ?? player.name,
               countryCode: player.countryCode,
               rating: player.score,
               title: player.title,
@@ -1770,11 +1778,7 @@ class _SliverScoreboardAppBarState
         maxHeight: MediaQuery.of(context).size.height * 0.6,
         maxWidth: ResponsiveHelper.bottomSheetMaxWidth,
       ),
-      builder:
-          (context) => _PlayerSelectionSheet(
-            players: players,
-            onShareProfile: widget.onShareProfile,
-          ),
+      builder: (context) => _PlayerSelectionSheet(players: players),
     );
   }
 
@@ -1798,7 +1802,12 @@ class _SliverScoreboardAppBarState
     final isFavorite = favoritesAsync.maybeWhen(
       data:
           (players) =>
-              players.any((p) => p.fideId == player.fideId?.toString()),
+              storedFavoriteFor(
+                players,
+                fideId: player.fideId?.toString(),
+                name: player.name,
+              ) !=
+              null,
       orElse: () => false,
       skipLoadingOnRefresh: true,
       skipLoadingOnReload: true,
@@ -1833,20 +1842,6 @@ class _SliverScoreboardAppBarState
               )
               : headerRow,
       actions: [
-        if (widget.onShareProfile != null)
-          InkWell(
-            onTap: () => widget.onShareProfile!(),
-            child: Container(
-              width: 48.w,
-              padding: EdgeInsets.all(8.sp),
-              child: Icon(
-                Icons.ios_share,
-                color: context.colors.textPrimary,
-                size: 20.ic,
-                semanticLabel: 'Share Profile',
-              ),
-            ),
-          ),
         InkWell(
           onTap: _toggleFavorite,
           child: Container(
@@ -1999,9 +1994,8 @@ class _RatingDisplay extends ConsumerWidget {
 /// Bottom sheet for selecting a player from the tournament
 class _PlayerSelectionSheet extends ConsumerWidget {
   final List<PlayerStandingModel> players;
-  final Future<void> Function()? onShareProfile;
 
-  const _PlayerSelectionSheet({required this.players, this.onShareProfile});
+  const _PlayerSelectionSheet({required this.players});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -2020,34 +2014,6 @@ class _PlayerSelectionSheet extends ConsumerWidget {
             borderRadius: BorderRadius.circular(2.br),
           ),
         ),
-        if (onShareProfile != null) ...[
-          InkWell(
-            onTap: () {
-              Navigator.pop(context);
-              onShareProfile!();
-            },
-            child: Padding(
-              padding: EdgeInsets.symmetric(horizontal: 16.sp, vertical: 10.h),
-              child: Row(
-                children: [
-                  Icon(
-                    Icons.ios_share,
-                    color: context.colors.brand,
-                    size: 18.ic,
-                  ),
-                  SizedBox(width: 10.w),
-                  Text(
-                    'Share Profile',
-                    style: AppTypography.textSmBold.copyWith(
-                      color: context.colors.textPrimary,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          Divider(color: context.colors.surfaceRecessed, height: 1.h),
-        ],
         // Title
         Padding(
           padding: EdgeInsets.symmetric(horizontal: 16.sp, vertical: 10.h),

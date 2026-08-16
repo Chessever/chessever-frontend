@@ -1,4 +1,44 @@
+import 'package:chessever2/repository/favorites/models/favorite_player.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+
+/// The stored favourite matching a player, or null when they are not followed.
+///
+/// A FIDE id identifies the player when both sides have one. Comparing the raw
+/// ids without that guard makes `null == null` a match, so the first favourite
+/// saved without a FIDE id would light up the heart for every unrated or
+/// unidentified player in the standings — routine in broadcast fields — and
+/// each tap would take the add branch again, burning a free-tier slot and
+/// firing the paywall while the heart never clears.
+///
+/// The name fallback covers players a broadcast ships with no FIDE id at all,
+/// and it is also what removal keys on: the profile screen stores the raw
+/// profile name while the scorecard stores the backfilled standings name, so
+/// callers unfollow by the returned favourite's own [FavoritePlayer.playerName]
+/// rather than by whatever name their own screen happens to hold.
+FavoritePlayer? storedFavoriteFor(
+  List<FavoritePlayer> favorites, {
+  String? fideId,
+  required String name,
+}) {
+  final id = fideId?.trim();
+  if (id != null && id.isNotEmpty) {
+    for (final favorite in favorites) {
+      final storedId = favorite.fideId?.trim();
+      if (storedId != null && storedId.isNotEmpty && storedId == id) {
+        return favorite;
+      }
+    }
+  }
+
+  final normalized = name.trim().toLowerCase();
+  if (normalized.isEmpty) return null;
+  for (final favorite in favorites) {
+    if (favorite.playerName.trim().toLowerCase() == normalized) {
+      return favorite;
+    }
+  }
+  return null;
+}
 
 /// Presents canonical `Last, First` chess data in natural `First Last` order.
 /// Names already supplied in display order are preserved.
