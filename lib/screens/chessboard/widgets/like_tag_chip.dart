@@ -12,6 +12,10 @@ import 'package:flutter_animate/flutter_animate.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:motor/motor.dart';
 
+const double kTagDropdownMaxHeight = 720;
+const double kTagDropdownItemHeight = 48;
+const double kTagDropdownMainAxisSpacing = 8;
+
 /// The post-like tag picker that lives *in the AppBar*.
 ///
 /// Replaces the roulette wheel: instead of a full-screen casino spinner sliding
@@ -368,7 +372,10 @@ class _LikeTagChipState extends ConsumerState<LikeTagChip>
       (screenW - panelWidth - 8.w).clamp(8.w, screenW),
     );
     final top = chipRect.bottom + 8.h;
-    final maxHeight = (media.size.height - top - 24.h).clamp(120.h, 540.h);
+    final maxHeight = (media.size.height - top - 24.h).clamp(
+      120.h,
+      kTagDropdownMaxHeight.h,
+    );
 
     return _TagDropdown(
       animation: _menu,
@@ -678,9 +685,9 @@ class _TagDropdownState extends State<_TagDropdown> {
                   itemCount: tags.length,
                   gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
                     crossAxisCount: 2,
-                    mainAxisSpacing: 8.h,
+                    mainAxisSpacing: kTagDropdownMainAxisSpacing.h,
                     crossAxisSpacing: 8.w,
-                    mainAxisExtent: 48.h,
+                    mainAxisExtent: kTagDropdownItemHeight.h,
                   ),
                   itemBuilder: (_, i) {
                     final t = tags[i];
