@@ -67,7 +67,8 @@ void _readSeriesInOrder(List<TourModel> ordered) {
   var start = 0;
   while (start < ordered.length) {
     var end = start + 1;
-    while (end < ordered.length && _sameSchedule(ordered[start], ordered[end])) {
+    while (end < ordered.length &&
+        _sameSchedule(ordered[start], ordered[end])) {
       end++;
     }
     _readSeriesInSegment(ordered, start, end);
@@ -113,41 +114,83 @@ final RegExp _seriesLabel = RegExp(
 String? _seriesStem(String label) =>
     _seriesLabel.firstMatch(label.trim())?.group(1)!.trim().toLowerCase();
 
+/// Separators a broadcast actually uses between a parent event and its child
+/// section. Hoisted because [tourCategoryLabel] runs inside the sort
+/// comparator and on every dropdown row build.
+final RegExp _groupSeparator = RegExp(r'^\s*[|:\-–—―−/•]\s*(.+)$');
+
+/// Trailing separators on the parent name itself ("Rubinstein 2026 -"), which
+/// would otherwise leave the child with no separator left to match.
+final RegExp _trailingSeparator = RegExp(r'[\s|:\-–—―−/•]+$');
+
 /// The text the dropdown shows for a category, trimmed off the full tour name.
 ///
-/// Broadcast names repeat the event before the part that actually
-/// distinguishes one category from another ("Esports World Cup 2026 |
-/// Playoffs"), so the trailing segment is both what the row renders and what
-/// the ordering compares.
-String tourCategoryLabel(String fullName) {
-  if (fullName.contains('|')) {
-    return fullName.split('|').last.trim();
+/// Two rules, applied in that order.
+///
+/// First, when the selected grouped broadcast supplies its parent name, that
+/// exact prefix plus a real separator is removed. This keeps names such as
+/// "Rubinstein Chess Festival 2026 - Open B" compact without guessing from an
+/// arbitrary dash inside an unrelated event name.
+///
+/// Then the legacy rule runs on whatever is left: broadcast names repeat the
+/// event before the part that actually distinguishes one category from another
+/// ("Esports World Cup 2026 | Playoffs"), so the trailing segment is both what
+/// the row renders and what the ordering compares. The two rules compose
+/// rather than compete — stripping a "Esports World Cup 2026" prefix off
+/// "Esports World Cup 2026 | Group Stage | A" leaves "Group Stage | A", and
+/// the legacy rule still reduces that to "A". Returning the first segment
+/// instead would make the label *longer* than it was before.
+String tourCategoryLabel(String fullName, {String? groupName}) {
+  final trimmedName = fullName.trim();
+  return _distinguishingSegment(_stripGroupPrefix(trimmedName, groupName));
+}
+
+/// Removes a leading parent-event name, or returns [name] untouched.
+String _stripGroupPrefix(String name, String? groupName) {
+  final parent = groupName?.trim().replaceFirst(_trailingSeparator, '');
+  if (parent == null || parent.isEmpty) return name;
+  if (name.length <= parent.length) return name;
+  if (!name.toLowerCase().startsWith(parent.toLowerCase())) return name;
+
+  final child = _groupSeparator.firstMatch(name.substring(parent.length));
+  final trimmedChild = child?.group(1)?.trim();
+  if (trimmedChild == null || trimmedChild.isEmpty) return name;
+  return trimmedChild;
+}
+
+String _distinguishingSegment(String name) {
+  if (name.contains('|')) {
+    return name.split('|').last.trim();
   }
-  if (fullName.contains(':')) {
-    return fullName.split(':').last.trim();
+  if (name.contains(':')) {
+    return name.split(':').last.trim();
   }
 
   // Common category patterns like "Boards 1-10" or "Boards 21+".
-  final boardsMatch = RegExp(
-    r'(Boards?\s+\d+[\-\+]?\d*\+?)$',
-    caseSensitive: false,
-  ).firstMatch(fullName);
+  final boardsMatch = _boardsLabel.firstMatch(name);
   if (boardsMatch != null) {
     return boardsMatch.group(0)!.trim();
   }
 
   // Patterns like "Group A", "Section B", "Division 1".
-  final groupMatch = RegExp(
-    r'((?:Group|Section|Division|Category)\s+\w+)$',
-    caseSensitive: false,
-  ).firstMatch(fullName);
+  final groupMatch = _namedGroupLabel.firstMatch(name);
   if (groupMatch != null) {
     return groupMatch.group(0)!.trim();
   }
 
   // No recognisable suffix — the marquee handles the length.
-  return fullName;
+  return name;
 }
+
+final RegExp _boardsLabel = RegExp(
+  r'(Boards?\s+\d+[\-\+]?\d*\+?)$',
+  caseSensitive: false,
+);
+
+final RegExp _namedGroupLabel = RegExp(
+  r'((?:Group|Section|Division|Category)\s+\w+)$',
+  caseSensitive: false,
+);
 
 /// Case-insensitive comparison that reads digit runs as numbers, so `Boards 2`
 /// sorts before `Boards 11` rather than after it.
