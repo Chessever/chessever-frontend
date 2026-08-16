@@ -157,6 +157,15 @@ class GameEcoFilter {
   /// Factory for "all openings" filter
   static const GameEcoFilter all = GameEcoFilter();
 
+  /// Gamebase stores `'?'` verbatim for games whose PGN carried no ECO —
+  /// Chess960/Freestyle broadcasts above all, plus a chess24 residue of
+  /// `[Variant "From Position"]` standard games. It is a real stored value, so
+  /// it filters like any other code; it just has no code to display.
+  static const String unknownEcoCode = '?';
+  static const String unknownEcoLabel = 'Chess960 & unclassified';
+
+  bool get isUnknownEco => code == unknownEcoCode;
+
   /// Create a filter for a specific ECO code
   factory GameEcoFilter.forCode(String code) =>
       GameEcoFilter(code: code.toUpperCase());
@@ -168,7 +177,8 @@ class GameEcoFilter {
   String? get categoryLetter => code?.isNotEmpty == true ? code![0] : null;
 
   /// Display text for the filter
-  String get displayText => code ?? 'All Openings';
+  String get displayText =>
+      isUnknownEco ? unknownEcoLabel : (code ?? 'All Openings');
 
   /// Check if a game's ECO code matches this filter
   bool matches(String? eco) {

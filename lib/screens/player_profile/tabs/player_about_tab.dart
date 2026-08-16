@@ -402,6 +402,7 @@ class _PlayerAboutTabState extends ConsumerState<PlayerAboutTab>
                                 openingAnalytics.openingStatsWhite,
                             filteredOpeningStatsBlack:
                                 openingAnalytics.openingStatsBlack,
+                            colorStats: baseOpeningAnalytics.colorStats,
                             hasNonEcoFilters:
                                 filterForOpenings.hasActiveFilters,
                             playerKey: _playerKey,
@@ -545,7 +546,7 @@ class _PlayerAboutTabState extends ConsumerState<PlayerAboutTab>
       parts.add(filter.color == GameColorFilter.white ? 'White' : 'Black');
     }
     if (!filter.eco.isAll) {
-      parts.add(filter.eco.code ?? 'this opening');
+      parts.add(filter.eco.displayText);
     }
     final filterName = parts.isNotEmpty ? parts.join(' + ') : 'matching';
 
@@ -754,6 +755,7 @@ class _PlayerAboutTabState extends ConsumerState<PlayerAboutTab>
             filteredOpeningStats: opening.openingStats,
             filteredOpeningStatsWhite: opening.openingStatsWhite,
             filteredOpeningStatsBlack: opening.openingStatsBlack,
+            colorStats: base.colorStats,
             hasNonEcoFilters: filterForOpenings.hasActiveFilters,
             playerKey: _playerKey,
             onOpenGames: widget.onOpenGames,
@@ -844,7 +846,7 @@ class _FilterActiveBanner extends StatelessWidget {
       parts.add(filter.online.displayText);
     }
     if (!filter.eco.isAll) {
-      parts.add(filter.eco.code ?? 'Opening');
+      parts.add(filter.eco.displayText);
     }
 
     if (parts.isEmpty) return 'Filtered games';
@@ -2419,6 +2421,7 @@ class _OpeningRepertoireSection extends ConsumerStatefulWidget {
     required this.filteredOpeningStats,
     required this.filteredOpeningStatsWhite,
     required this.filteredOpeningStatsBlack,
+    required this.colorStats,
     required this.hasNonEcoFilters,
     required this.playerKey,
     this.onOpenGames,
@@ -2433,6 +2436,10 @@ class _OpeningRepertoireSection extends ConsumerStatefulWidget {
   final List<OpeningStatistic> filteredOpeningStats;
   final List<OpeningStatistic> filteredOpeningStatsWhite;
   final List<OpeningStatistic> filteredOpeningStatsBlack;
+
+  /// True per-colour totals. The opening lists are capped and exclude games
+  /// with no ECO tag, so they cannot be summed for the Games-tab cue.
+  final ColorStatistics colorStats;
 
   /// Whether any non-ECO filters are currently active
   final bool hasNonEcoFilters;
@@ -2496,16 +2503,19 @@ class _OpeningRepertoireSectionState
   }
 
   int _openingCountForFilter(_OpeningRepertoireFilter filter) {
-    final openings = switch (filter) {
-      _OpeningRepertoireFilter.white => widget.baseOpeningStatsWhite,
-      _OpeningRepertoireFilter.black => widget.baseOpeningStatsBlack,
-      _OpeningRepertoireFilter.all => widget.baseOpeningStats,
+    return switch (filter) {
+      _OpeningRepertoireFilter.white => widget.colorStats.whiteGames,
+      _OpeningRepertoireFilter.black => widget.colorStats.blackGames,
+      _OpeningRepertoireFilter.all =>
+        widget.colorStats.whiteGames + widget.colorStats.blackGames,
     };
-    return openings.fold<int>(0, (sum, opening) => sum + opening.count);
   }
 
   /// Check if an opening is active (has games matching current filters)
   bool _isOpeningActive(OpeningStatistic opening) {
+    // The NULL-eco bucket has no queryable value behind it, so it can never
+    // drive the filter and is never offered as a tappable control.
+    if (!opening.isFilterable) return false;
     if (!widget.hasNonEcoFilters) return true;
     return _activeEcoCodes.contains(opening.eco.toUpperCase());
   }
@@ -2525,6 +2535,11 @@ class _OpeningRepertoireSectionState
   }
 
   void _onOpeningTapped(OpeningStatistic opening) {
+    // Guarded by _isOpeningActive, but never let a tap reach here and quietly
+    // do nothing: passing a null eco means "leave the filter alone", which is
+    // exactly what made these rows feel broken.
+    if (!opening.isFilterable) return;
+
     HapticFeedbackService.buttonPress();
 
     final isCurrentlySelected = _isOpeningSelected(opening);
@@ -2535,7 +2550,6 @@ class _OpeningRepertoireSectionState
     } else {
       // Select: apply the ECO filter only (no searchQuery — ECO is the unique key)
       final eco = opening.eco.trim();
-      final hasEco = RegExp(r'^[A-E]').hasMatch(eco);
 
       // Also set matching color filter if selecting from White/Black tab
       GameColorFilter? colorToSet;
@@ -2546,7 +2560,7 @@ class _OpeningRepertoireSectionState
       }
 
       widget.onOpenGames?.call(
-        eco: hasEco ? GameEcoFilter.forCode(eco) : null,
+        eco: GameEcoFilter.forCode(eco),
         color: colorToSet,
         gamesTabCueCount: opening.count,
       );
@@ -2925,8 +2939,9 @@ class _OpeningRowState extends State<_OpeningRow> {
                                         : null,
                               ),
                               child: Text(
-                                widget.opening.eco,
+                                widget.opening.displayEcoBadge,
                                 textAlign: TextAlign.center,
+                                maxLines: 1,
                                 style: AppTypography.textXsBold.copyWith(
                                   color: Color.lerp(
                                     context.colors.textPrimary,
@@ -2948,8 +2963,7 @@ class _OpeningRowState extends State<_OpeningRow> {
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   Text(
-                                    widget.opening.openingName ??
-                                        widget.opening.eco,
+                                    widget.opening.displayTitle,
                                     style: AppTypography.textSmMedium.copyWith(
                                       color: nameColor,
                                     ),

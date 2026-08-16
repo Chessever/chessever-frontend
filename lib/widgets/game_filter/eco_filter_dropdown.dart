@@ -146,8 +146,9 @@ class _EcoFilterDropdownState extends State<EcoFilterDropdown>
             ),
             child: Row(
               children: [
-                // Category badge if specific code selected
-                if (!widget.value.isAll) ...[
+                // Category badge if specific code selected. The unknown-ECO
+                // sentinel belongs to no A–E category, so it gets no badge.
+                if (!widget.value.isAll && !widget.value.isUnknownEco) ...[
                   _buildCategoryBadge(
                     widget.value.categoryLetter!,
                     isHeader: true,
@@ -160,15 +161,13 @@ class _EcoFilterDropdownState extends State<EcoFilterDropdown>
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        widget.value.isAll
-                            ? 'All Openings'
-                            : widget.value.code!,
+                        widget.value.displayText,
                         style: AppTypography.textSmMedium.copyWith(
                           color: _isExpanded ? kBlackColor : context.colors.textPrimary,
                           fontWeight: FontWeight.w600,
                         ),
                       ),
-                      if (!widget.value.isAll) ...[
+                      if (!widget.value.isAll && !widget.value.isUnknownEco) ...[
                         SizedBox(height: 2.h),
                         Text(
                           EcoOpenings.getOpeningName(widget.value.code) ?? '',

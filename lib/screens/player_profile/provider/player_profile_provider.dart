@@ -124,6 +124,75 @@ class OpeningStatistic {
 
   double get winRate => count > 0 ? wins / count : 0.0;
   double get score => count > 0 ? (wins + draws * 0.5) / count : 0.0;
+
+  /// A real ECO code is `A00`–`E99`. Games with no ECO reach us under two
+  /// different sentinels, and only one of them is queryable:
+  ///
+  /// * `'?'` — written by Lichess broadcast PGNs. Overwhelmingly Chess960 /
+  ///   Freestyle (grenke Freestyle, FIDE World Fischer Random, Chess9LX), with
+  ///   a chess24 residue of `[Variant "From Position"]` standard games for
+  ///   players with a Playzone history. Gamebase stores it verbatim, so
+  ///   `?eco=%3F` filters on it and the row can be tapped.
+  /// * NULL — TWIC PGNs with no `[ECO]` tag. The gamebase stats endpoint
+  ///   reports these under the invented display label `Unknown`, which is not a
+  ///   stored value: every spelling of it (`Unknown`, `null`, `none`, empty)
+  ///   returns zero rows, so this bucket cannot drive a filter today.
+  static bool isRealEcoCode(String eco) =>
+      _ecoCodePattern.hasMatch(eco.trim().toUpperCase());
+
+  /// Whether a row can drive the ECO filter — a real code, or the one sentinel
+  /// gamebase actually stores. Rows that fail this must never be tappable.
+  static bool isFilterableEco(String eco) =>
+      isRealEcoCode(eco) || eco.trim() == unknownEcoSentinel;
+
+  /// The literal ECO value gamebase stores for Chess960/Freestyle broadcasts.
+  static const String unknownEcoSentinel = GameEcoFilter.unknownEcoCode;
+
+  /// The label the stats endpoint invents for a NULL eco. Not a stored value.
+  static const String missingEcoLabel = 'Unknown';
+
+  static final RegExp _ecoCodePattern = RegExp(r'^[A-E]\d{2}$');
+
+  bool get hasRealEcoCode => isRealEcoCode(eco);
+  bool get isFilterable => isFilterableEco(eco);
+  bool get isChess960Bucket => eco.trim() == unknownEcoSentinel;
+
+  /// Human title for the Chess960 sentinel. Not every game behind it is
+  /// Chess960 — players with a chess24 history carry `[Variant "From
+  /// Position"]` standard games in the same bucket — so the label has to cover
+  /// both rather than claim Chess960 outright.
+  static const String chess960BucketTitle = GameEcoFilter.unknownEcoLabel;
+
+  /// Short mark for the fixed-width ECO chip. The chip holds three glyphs; a
+  /// longer string wraps and gets shaved, which is how `Unknown` rendered as
+  /// "Unkno / wn".
+  String get displayEcoBadge {
+    if (hasRealEcoCode) return eco;
+    return isChess960Bucket ? '960' : '--';
+  }
+
+  /// Row title. Neither sentinel has a usable opening name to fall back on:
+  /// the server sends `'?'` for one and null for the other.
+  String get displayTitle {
+    final name = openingName?.trim();
+    if (name != null && name.isNotEmpty && name != unknownEcoSentinel) {
+      return name;
+    }
+    if (isChess960Bucket) return chess960BucketTitle;
+    if (!hasRealEcoCode) return 'Opening not recorded';
+    return eco;
+  }
+}
+
+/// Orders a repertoire list by games played, but always sinks the two
+/// missing-ECO buckets below the real openings. They are usually a player's
+/// two biggest rows, and the list is capped at ten — left in place they push
+/// the actual repertoire off the card.
+int _byRealOpeningsFirstThenCount(OpeningStatistic a, OpeningStatistic b) {
+  if (a.hasRealEcoCode != b.hasRealEcoCode) {
+    return a.hasRealEcoCode ? -1 : 1;
+  }
+  return b.count.compareTo(a.count);
 }
 
 /// Statistics for playing as white vs black
@@ -1121,8 +1190,9 @@ class PlayerAnalytics {
 
     for (int i = 0; i < games.length; i++) {
       final game = games[i];
-      // Normalize ECO: treat null or '?' as 'Unknown'
-      final eco = (game.eco == null || game.eco == '?') ? 'Unknown' : game.eco!;
+      // Keep the two missing-ECO sentinels apart: '?' is a real stored value
+      // that the ECO filter can match, a null one is not.
+      final eco = game.eco ?? OpeningStatistic.missingEcoLabel;
       final openingName =
           (game.openingName == null || game.openingName == '?')
               ? null
@@ -1240,19 +1310,20 @@ class PlayerAnalytics {
       Map<String, Map<String, dynamic>> map,
     ) {
       final stats =
-          map.entries.map((e) {
-            final data = e.value;
-            return OpeningStatistic(
-              eco: data['eco'] as String,
-              openingName: data['openingName'] as String?,
-              count: data['count'] as int,
-              wins: data['wins'] as int,
-              draws: data['draws'] as int,
-              losses: data['losses'] as int,
-            );
-          }).toList();
+          map.values
+              .map((data) {
+                return OpeningStatistic(
+                  eco: data['eco'] as String,
+                  openingName: data['openingName'] as String?,
+                  count: data['count'] as int,
+                  wins: data['wins'] as int,
+                  draws: data['draws'] as int,
+                  losses: data['losses'] as int,
+                );
+              })
+              .toList();
 
-      stats.sort((a, b) => b.count.compareTo(a.count));
+      stats.sort(_byRealOpeningsFirstThenCount);
       return stats;
     }
 
@@ -2881,6 +2952,9 @@ final twicPlayerStatsProvider = FutureProvider.family.autoDispose<
         ),
       );
     }
+    // Server order is games-desc, which floats the missing-ECO buckets to the
+    // top of nearly every player. Re-sort so real openings lead.
+    stats.sort(_byRealOpeningsFirstThenCount);
     return stats;
   }
 

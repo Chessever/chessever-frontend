@@ -130,10 +130,10 @@ class PlayerProfileShareImageCard extends StatelessWidget {
   List<OpeningStatistic> _topOpenings() {
     final stats = analytics?.openingStats;
     if (stats == null || stats.isEmpty) return const [];
-    final named =
-        stats.where((s) => s.eco != 'Unknown').toList(growable: false);
-    final pool = named.isNotEmpty ? named : stats;
-    final sorted = [...pool]..sort((a, b) => b.count.compareTo(a.count));
+    // Never fall back to the unknown-ECO buckets: a share image reading
+    // "Unknown — 661 games" is worse than one opening row fewer.
+    final named = stats.where((s) => s.hasRealEcoCode).toList(growable: false);
+    final sorted = [...named]..sort((a, b) => b.count.compareTo(a.count));
     return sorted.take(_maxOpenings).toList(growable: false);
   }
 
