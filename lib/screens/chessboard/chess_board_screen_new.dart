@@ -88,6 +88,7 @@ import 'package:chessever2/widgets/alert_dialog/alert_modal.dart';
 import 'package:chessever2/widgets/auth/auth_upgrade_sheet.dart';
 import 'package:chessever2/widgets/backfilled_federation_flag.dart';
 import 'package:chessever2/widgets/federation_flag.dart';
+import 'package:chessever2/widgets/generic_error_widget.dart';
 import 'package:chessever2/widgets/logo_pattern_fallback.dart';
 import 'package:chessever2/widgets/screenshot_share_nudge.dart';
 // import 'package:chessever2/widgets/smooth_dialog.dart'; // UNUSED: Removed with old dialog
@@ -2340,22 +2341,29 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
     }
   }
 
-  Future<void> _handlePageChange(int newIndex) async {
+  /// [deliberate] marks a page change the user actually asked for — today only
+  /// a game picked from the switcher. The guards below exist to ignore
+  /// *incidental* `onPageChanged` notifications (an expand remap mid-build, the
+  /// tutorial's demo swipe); dropping an explicit selection through them leaves
+  /// the PageView parked on a page the build window never catches up to, which
+  /// is what the user sees as the board going dark.
+  Future<void> _handlePageChange(int newIndex, {bool deliberate = false}) async {
     // Expand remap / other programmatic jumps: index + provider sync is owned
     // by didUpdateWidget + _syncExpandedGameProvidersAfterFrame. Must not write
     // providers (or clobber _currentPageIndex) while the tree is building.
-    if (_isProgrammaticPageJump) {
+    // A deliberate pick always arrives from a tap handler, never mid-build.
+    if (_isProgrammaticPageJump && !deliberate) {
       return;
     }
 
-    if (_isRevertingPage) {
+    if (_isRevertingPage && !deliberate) {
       _isRevertingPage = false;
       return;
     }
 
     // Ignore page changes during tutorial swipe animation
     // The animation moves the page position but shouldn't change the current index
-    if (_showTutorialOverlay) return;
+    if (_showTutorialOverlay && !deliberate) return;
 
     if (_currentPageIndex == newIndex) return;
 
@@ -2702,6 +2710,30 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
         duration: const Duration(milliseconds: 300),
         curve: Curves.easeInOut,
       );
+    }
+
+    // Own the index instead of waiting on `onPageChanged`. `jumpToPage` only
+    // notifies when the scroll offset actually moves, and `animateToPage`
+    // notifies halfway through — until then the PageView's ±1 build window is
+    // still centred on the old page, so the game the user picked renders as a
+    // placeholder. `_handlePageChange` no-ops when the index already matches,
+    // so this is idempotent with the notification when it does arrive.
+    unawaited(_handlePageChange(gameIndex, deliberate: true));
+  }
+
+  /// Re-runs the parse for the game at [index] after a load failure. Keyed by
+  /// the same params the page watches, so the retry lands on the notifier whose
+  /// error the user is looking at.
+  void _reloadGameAt(int index) {
+    if (widget.games.isEmpty) return;
+    try {
+      final game = _resolveGameForIndex(index);
+      final notifier = ref.read(
+        chessBoardScreenProviderNew(_createParams(game, index)).notifier,
+      );
+      unawaited(notifier.parseMoves());
+    } catch (e) {
+      debugPrint('Error retrying game load at $index: $e');
     }
   }
 
@@ -3063,7 +3095,12 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
                                             isActivePage:
                                                 index == _currentPageIndex,
                                           ),
-                                      error: (e, _) => ErrorWidget(e),
+                                      error:
+                                          (e, _) => _GameLoadFailure(
+                                            error: e,
+                                            onRetry:
+                                                () => _reloadGameAt(index),
+                                          ),
                                     );
                                   } catch (e) {
                                     // Fallback for when provider isn't ready
@@ -3077,9 +3114,20 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
                                   }
                                 },
                               );
-                            } else {
-                              return SizedBox.shrink();
                             }
+                            // Outside the ±1 build window. This page is only
+                            // ever on screen for the frame or two between a
+                            // jump landing and [_currentPageIndex] catching
+                            // up, so it must still paint the game's chrome —
+                            // an empty box here reads as the whole screen
+                            // going black.
+                            return _LoadingScreen(
+                              games: syncedGames,
+                              currentGameIndex: index,
+                              lastViewedIndex: _lastViewedIndex,
+                              hideEventInfo: widget.hideEventInfo,
+                              isActivePage: false,
+                            );
                           },
                         ),
                         // Game Analysis report. A sibling of the PageView, not
@@ -3180,6 +3228,32 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
               );
             },
           ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Shown when a board page's provider lands in [AsyncValue.error]. Replaces a
+/// bare [ErrorWidget], which paints an unlabelled flat box the user can only
+/// read as the screen having died, and gives the failure a way out.
+class _GameLoadFailure extends StatelessWidget {
+  const _GameLoadFailure({required this.error, required this.onRetry});
+
+  final Object error;
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    return ColoredBox(
+      color: context.colors.background,
+      child: SafeArea(
+        child: GenericErrorWidget(
+          message: userFacingError(
+            error,
+            fallback: 'This game could not be opened.',
+          ),
+          onRetry: onRetry,
         ),
       ),
     );
@@ -3720,6 +3794,16 @@ class _LoadingScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // This screen is also the backstop for a page the PageView reached before
+    // the build window caught up, so it must survive any index it is handed —
+    // an out-of-range read here would trade a blank page for a crash.
+    if (games.isEmpty) {
+      return Scaffold(
+        backgroundColor: context.colors.background,
+        resizeToAvoidBottomInset: false,
+      );
+    }
+    final safeIndex = currentGameIndex.clamp(0, games.length - 1);
     final sideBarWidth = 20.w;
     final fullScreenWidth = MediaQuery.sizeOf(context).width;
 
@@ -3745,9 +3829,9 @@ class _LoadingScreen extends StatelessWidget {
       backgroundColor: context.colors.background,
       resizeToAvoidBottomInset: false,
       appBar: _AppBar(
-        game: games[currentGameIndex],
+        game: games[safeIndex],
         games: games,
-        currentGameIndex: currentGameIndex,
+        currentGameIndex: safeIndex,
         isLoading: true,
         lastViewedIndex: lastViewedIndex,
         hideEventInfo: hideEventInfo,
@@ -5918,6 +6002,14 @@ boardGameDropdownSnapshotForTesting(Widget widget) {
     currentIndex: dropdown.currentGameIndex,
     selectedGameId: games.isEmpty ? null : games[index].gameId,
   );
+}
+
+/// Fires the switcher's production select callback for [index]. The card strip
+/// is a lazy horizontal list, so a far card is not built until scrolled into
+/// view — this exercises the same handler a tap would without that dependency.
+@visibleForTesting
+void boardGameDropdownSelectForTesting(Widget widget, int index) {
+  (widget as _GameDropdownContent).onSelect(index);
 }
 
 class _GameDropdownContentState extends ConsumerState<_GameDropdownContent> {
@@ -15804,26 +15896,16 @@ class _PrincipalVariationListState
 
     // Reserve the configured rows while searching, then collapse to the usable
     // results so cancelled/partial evaluations do not leave empty rows.
-    // Light theme: paper card on the mint page, matching the board mock.
-    // Dark keeps a quieter elevated well so the lines still sit as a unit.
+    // The lines sit directly on the page — no card, no fill, no border. Their
+    // own row rhythm is the structure; boxing them added a container the
+    // layout never needed.
     return Padding(
       padding: EdgeInsets.fromLTRB(16.sp, 8.sp, 16.sp, 4.h),
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          color: context.colors.surface,
-          borderRadius: BorderRadius.circular(10.sp),
-          border: Border.all(
-            color: context.colors.divider.withValues(
-              alpha: context.isLightTheme ? 0.55 : 0.35,
-            ),
-          ),
-        ),
-        child: EnginePvListView(
-          items: items,
-          slotCount: isEvaluating ? multiPV : math.max(1, items.length),
-          isEvaluating: isEvaluating,
-          trailingDivider: false,
-        ),
+      child: EnginePvListView(
+        items: items,
+        slotCount: isEvaluating ? multiPV : math.max(1, items.length),
+        isEvaluating: isEvaluating,
+        trailingDivider: false,
       ),
     );
   }

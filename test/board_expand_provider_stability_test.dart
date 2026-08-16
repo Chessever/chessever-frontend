@@ -253,8 +253,25 @@ void main() {
       );
       expect(
         boardSrc,
-        contains('if (_isProgrammaticPageJump)'),
+        contains('if (_isProgrammaticPageJump && !deliberate)'),
         reason: '_handlePageChange must early-return for programmatic jumps',
+      );
+      // The `deliberate` escape hatch exists for the switcher's game pick,
+      // which always arrives from a tap handler. If it ever reaches the expand
+      // path it re-opens CHESSEVER-1TV/1TW, so pin it to that one call site.
+      expect(
+        'deliberate: true'.allMatches(boardSrc).length,
+        1,
+        reason: 'only the switcher selection may bypass the jump guards',
+      );
+      final navStart = boardSrc.indexOf('void _navigateToGame(');
+      expect(navStart, greaterThanOrEqualTo(0));
+      final navEnd = boardSrc.indexOf('\n  /// Re-runs the parse', navStart);
+      expect(navEnd, greaterThan(navStart));
+      expect(
+        boardSrc.substring(navStart, navEnd),
+        contains('deliberate: true'),
+        reason: 'the deliberate bypass belongs to _navigateToGame',
       );
 
       // currentlyVisiblePageIndexProvider write in _handlePageChange must sit
@@ -271,7 +288,9 @@ void main() {
               ? handleEndCandidate
               : (handleStart + 4000).clamp(0, boardSrc.length);
       final handleSlice = boardSrc.substring(handleStart, handleEnd);
-      final guardAt = handleSlice.indexOf('if (_isProgrammaticPageJump)');
+      final guardAt = handleSlice.indexOf(
+        'if (_isProgrammaticPageJump && !deliberate)',
+      );
       final writeAt = handleSlice.indexOf(
         'currentlyVisiblePageIndexProvider.notifier).state = newIndex',
       );

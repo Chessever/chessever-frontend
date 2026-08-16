@@ -9,7 +9,6 @@ import 'package:chessever2/screens/favorites/favorites_tab_screen.dart';
 import 'package:chessever2/screens/premium_games/premium_games_screen.dart';
 import 'package:chessever2/services/fide_photo_service.dart';
 import 'package:chessever2/theme/app_colors.dart';
-import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
@@ -19,6 +18,27 @@ import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+
+/// Opaque ink the collection tiles are printed on.
+///
+/// These tiles are a **media surface**, not a page surface: artwork (the photo
+/// mosaic / the country flag) under a dark ramp with white type on top. That
+/// composition only works over a dark base, so the base — and every ink inside
+/// the tile — is pinned here rather than resolved from [AppColors].
+///
+/// Before this was pinned, the Stack had no fill and the tile's top half was
+/// simply the scaffold showing through the artwork. In dark mode that happened
+/// to equal this exact ink, so it read as intended; in light mode the mint page
+/// showed through instead, the photo rings (drawn from `textPrimary`, which is
+/// near-black on light) turned into black halos, and the scrim hit the page in
+/// a hard seam at the bottom edge. Same value as the dark scaffold, so dark
+/// mode is unchanged.
+const Color _kTileInk = Color(0xFF0C0C0E);
+
+/// On-media inks. White-based because they always sit on [_kTileInk] or on
+/// darkened artwork — in dark mode these are exactly what `textPrimary`
+/// resolved to, so nothing there moves.
+const Color _kOnTile = Color(0xFFFFFFFF);
 
 /// Collection cards displayed at the top of For You tab.
 /// Shows "Favorites" and "Countrymen" cards that navigate to combined game lists.
@@ -64,34 +84,18 @@ class _PremiumCollectionCard extends ConsumerWidget {
       child: Container(
         height: 108.sp,
         decoration: BoxDecoration(
+          color: _kTileInk,
           borderRadius: BorderRadius.circular(14.br),
-          // Light theme: hairline border (`black @ 8%`) for crisp edge.
-          // Dark theme keeps the original divider border.
-          border: Border.all(
-            color: isLight
-                ? Colors.black.withValues(alpha: 0.08)
-                : context.colors.divider,
-            width: 1,
-          ),
-          // Light theme: layered drop shadow (close + far) for premium depth,
-          // following Principle 3 (shadows over borders). Dark theme: no
-          // shadow — the tile sits on a dark surface and doesn't need lift.
-          boxShadow: isLight
-              ? [
-                  // Close, tight shadow defines the edge contour.
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.06),
-                    blurRadius: 1,
-                    offset: const Offset(0, 1),
-                  ),
-                  // Wider, softer shadow for ambient lift off the scaffold.
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.05),
-                    blurRadius: 16,
-                    offset: const Offset(0, 6),
-                  ),
-                ]
-              : null,
+          // The edge is the only part of the tile that meets the page, so it
+          // is the only part that follows the theme. On dark the page and the
+          // tile share an ink, so a divider-toned lip is what separates them.
+          // On light the near-black tile already cuts cleanly against the mint
+          // page — any hairline there only muddies an edge that reads better
+          // from tone alone.
+          border:
+              isLight
+                  ? null
+                  : Border.all(color: context.colors.divider, width: 1),
         ),
         child: ClipRRect(
           borderRadius: BorderRadius.circular(14.br),
@@ -103,27 +107,20 @@ class _PremiumCollectionCard extends ConsumerWidget {
                 const Positioned.fill(child: _FavoritePlayersGridBackground())
               else
                 _FlagFullBackground(ref: ref),
-              // Gradient overlay for text readability. Light theme uses a
-              // softer ramp (less aggressive black) so the bottom edge of
-              // the tile doesn't slam into the white scaffold; dark theme
-              // keeps the original deep gradient.
+              // Readability ramp for the label. One ramp in both themes: it
+              // grades the tile's own artwork down to its own ink, and never
+              // touches the page behind it.
               Positioned.fill(
                 child: DecoratedBox(
                   decoration: BoxDecoration(
                     gradient: LinearGradient(
                       begin: Alignment.topCenter,
                       end: Alignment.bottomCenter,
-                      colors: isLight
-                          ? [
-                              Colors.transparent,
-                              Colors.black.withValues(alpha: 0.45),
-                              Colors.black.withValues(alpha: 0.78),
-                            ]
-                          : [
-                              Colors.transparent,
-                              Colors.black.withValues(alpha: 0.6),
-                              Colors.black.withValues(alpha: 0.95),
-                            ],
+                      colors: [
+                        Colors.transparent,
+                        Colors.black.withValues(alpha: 0.6),
+                        Colors.black.withValues(alpha: 0.95),
+                      ],
                       stops: const [0.0, 0.5, 1.0],
                     ),
                   ),
@@ -139,11 +136,11 @@ class _PremiumCollectionCard extends ConsumerWidget {
                     Text(
                       title,
                       style: AppTypography.textMdBold.copyWith(
-                        color: Colors.white,
+                        color: _kOnTile,
                         letterSpacing: 0.3,
-                        // Subtle text shadow guarantees legibility regardless
-                        // of the artwork underneath the lighter light-theme
-                        // gradient.
+                        // A pale FIDE headshot can land right under the label.
+                        // The ramp alone does not always clear it, so the type
+                        // carries its own contrast.
                         shadows: [
                           Shadow(
                             color: Colors.black.withValues(alpha: 0.45),
@@ -160,7 +157,7 @@ class _PremiumCollectionCard extends ConsumerWidget {
                         Text(
                           'Tap to view',
                           style: AppTypography.textXsRegular.copyWith(
-                            color: Colors.white.withValues(alpha: 0.85),
+                            color: _kOnTile.withValues(alpha: 0.85),
                             shadows: [
                               Shadow(
                                 color: Colors.black.withValues(alpha: 0.4),
@@ -175,7 +172,7 @@ class _PremiumCollectionCard extends ConsumerWidget {
                         Icon(
                           Icons.arrow_forward_rounded,
                           size: 12.sp,
-                          color: Colors.white.withValues(alpha: 0.85),
+                          color: _kOnTile.withValues(alpha: 0.85),
                           shadows: [
                             Shadow(
                               color: Colors.black.withValues(alpha: 0.4),
@@ -479,10 +476,7 @@ class _PlayerPhotoCell extends StatelessWidget {
       height: size,
       decoration: BoxDecoration(
         shape: BoxShape.circle,
-        border: Border.all(
-          color: context.colors.textPrimary.withValues(alpha: 0.35),
-          width: 1.5,
-        ),
+        border: Border.all(color: _kOnTile.withValues(alpha: 0.35), width: 1.5),
       ),
       child: ClipOval(
         child:
@@ -512,8 +506,8 @@ class _PlayerPhotoCell extends StatelessWidget {
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
           colors: [
-            context.colors.textPrimary.withValues(alpha: 0.15),
-            context.colors.textPrimary.withValues(alpha: 0.08),
+            _kOnTile.withValues(alpha: 0.15),
+            _kOnTile.withValues(alpha: 0.08),
           ],
         ),
       ),
@@ -521,7 +515,7 @@ class _PlayerPhotoCell extends StatelessWidget {
         child: Icon(
           Icons.person_rounded,
           size: size * 0.5,
-          color: context.colors.textPrimary.withValues(alpha: 0.4),
+          color: _kOnTile.withValues(alpha: 0.4),
         ),
       ),
     );
@@ -553,19 +547,24 @@ class _PlayerPhotoCell extends StatelessWidget {
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
           colors: [
-            context.colors.textPrimary.withValues(alpha: 0.2),
-            context.colors.textPrimary.withValues(alpha: 0.1),
+            _kOnTile.withValues(alpha: 0.2),
+            _kOnTile.withValues(alpha: 0.1),
           ],
         ),
       ),
       child: Center(
         child: Text(
           initials.toUpperCase(),
+          textAlign: TextAlign.center,
           style: TextStyle(
             fontSize: size * 0.32,
             fontWeight: FontWeight.w700,
-            color: Colors.white.withValues(alpha: 0.9),
+            color: _kOnTile.withValues(alpha: 0.9),
             letterSpacing: -0.5,
+            // Default line height leaves the glyphs sitting a hair high in the
+            // circle. Pinning it to 1 hands the vertical centring to the Center
+            // above, so the initials land on the true middle.
+            height: 1,
           ),
         ),
       ),
@@ -585,14 +584,14 @@ class _EmptyFavoritesPlaceholder extends StatelessWidget {
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
           colors: [
-            context.colors.textPrimary.withValues(alpha: 0.1),
-            context.colors.textPrimary.withValues(alpha: 0.05),
-            context.colors.textPrimary.withValues(alpha: 0.07),
+            _kOnTile.withValues(alpha: 0.1),
+            _kOnTile.withValues(alpha: 0.05),
+            _kOnTile.withValues(alpha: 0.07),
           ],
         ),
       ),
       child: CustomPaint(
-        painter: _FloatingHeartsPainter(accentColor: context.colors.textPrimary),
+        painter: const _FloatingHeartsPainter(accentColor: _kOnTile),
         size: Size.infinite,
       ),
     );
@@ -601,7 +600,7 @@ class _EmptyFavoritesPlaceholder extends StatelessWidget {
 
 /// Paints floating hearts pattern for empty favorites state
 class _FloatingHeartsPainter extends CustomPainter {
-  _FloatingHeartsPainter({required this.accentColor});
+  const _FloatingHeartsPainter({required this.accentColor});
 
   final Color accentColor;
 
@@ -699,8 +698,8 @@ class _FlagPlaceholder extends StatelessWidget {
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
           colors: [
-            context.colors.textPrimary.withValues(alpha: 0.1),
-            context.colors.textPrimary.withValues(alpha: 0.05),
+            _kOnTile.withValues(alpha: 0.1),
+            _kOnTile.withValues(alpha: 0.05),
           ],
         ),
       ),
@@ -708,7 +707,7 @@ class _FlagPlaceholder extends StatelessWidget {
         child: Icon(
           Icons.public_rounded,
           size: 48.sp,
-          color: context.colors.textPrimary.withValues(alpha: 0.15),
+          color: _kOnTile.withValues(alpha: 0.15),
         ),
       ),
     );
