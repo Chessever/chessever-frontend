@@ -70,6 +70,7 @@ import 'package:chessever2/utils/figurine_notation.dart';
 import 'package:chessever2/utils/logger/logger.dart';
 import 'package:chessever2/utils/pgn_export_utils.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/utils/share_card.dart';
 import 'package:chessever2/utils/string_utils.dart';
 import 'package:chessever2/utils/user_error_message.dart';
 import 'package:chessground/chessground.dart';
@@ -169,6 +170,33 @@ final likeTutorialRequestProvider = StateProvider<int>((_) => 0);
 final boardSelectionClearRequestProvider = StateProvider.family<int, String>(
   (_, _) => 0,
 );
+
+@visibleForTesting
+final boardShareBoundaryKeyProvider = Provider<GlobalKey>((ref) => GlobalKey());
+
+class _BoardShareBoundaryScope extends StatefulWidget {
+  const _BoardShareBoundaryScope({required this.child});
+
+  final Widget child;
+
+  @override
+  State<_BoardShareBoundaryScope> createState() =>
+      _BoardShareBoundaryScopeState();
+}
+
+class _BoardShareBoundaryScopeState extends State<_BoardShareBoundaryScope> {
+  final GlobalKey _boundaryKey = GlobalKey();
+
+  @override
+  Widget build(BuildContext context) {
+    return ProviderScope(
+      overrides: [
+        boardShareBoundaryKeyProvider.overrideWithValue(_boundaryKey),
+      ],
+      child: widget.child,
+    );
+  }
+}
 
 /// True while the board notation↔explorer PageView is on the explorer page
 /// (left-swipe). Drives a light translucent bottom nav so games under the bar
@@ -3695,10 +3723,12 @@ class _GamePage extends ConsumerWidget {
         showClock: showClock,
       ),
     );
-    return MediaQuery.removeViewInsets(
-      context: context,
-      removeBottom: true,
-      child: scaffold,
+    return _BoardShareBoundaryScope(
+      child: MediaQuery.removeViewInsets(
+        context: context,
+        removeBottom: true,
+        child: scaffold,
+      ),
     );
   }
 }
@@ -4077,7 +4107,9 @@ class _AppBarState extends ConsumerState<_AppBar> {
     return null;
   }
 
-  Future<ResolvedGameShareData> _resolveAppBarShareData() async {
+  Future<ResolvedGameShareData> _resolveAppBarShareData({
+    bool captureBoardImage = false,
+  }) async {
     final params = ChessBoardProviderParams(
       game: widget.game,
       index: widget.currentGameIndex,
@@ -4129,6 +4161,11 @@ class _AppBarState extends ConsumerState<_AppBar> {
     );
 
     final boardReady = state != null && !state.isLoadingMoves;
+    final boardBoundaryKey = ref.read(boardShareBoundaryKeyProvider);
+    final boardImageBytes =
+        boardReady && captureBoardImage
+            ? await captureBoundaryPng(boardBoundaryKey, pixelRatio: 3)
+            : null;
     final isAtGameEnd =
         boardReady
             ? _isAnalysisAtFinishedSharePosition(
@@ -4150,6 +4187,7 @@ class _AppBarState extends ConsumerState<_AppBar> {
       mate: boardReady ? state.mate ?? 0 : 0,
       isFlipped: boardReady ? state.isBoardFlipped : false,
       isAtGameEnd: isAtGameEnd,
+      boardImageBytes: boardImageBytes,
     );
   }
 
@@ -4175,7 +4213,7 @@ class _AppBarState extends ConsumerState<_AppBar> {
 
   Future<void> shareGameBtnClicked() async {
     try {
-      final resolved = await _resolveAppBarShareData();
+      final resolved = await _resolveAppBarShareData(captureBoardImage: true);
       if (!mounted) return;
       await pushGameShareScreen(
         context: context,
@@ -9645,6 +9683,7 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard>
       game: widget.game,
       index: widget.index,
     );
+    final boardShareBoundaryKey = ref.watch(boardShareBoundaryKeyProvider);
     final notifier = ref.read(chessBoardScreenProviderNew(params).notifier);
     // chessground v10: the board's tap-selection is cleared via the controller
     // (playerSide:none) in didUpdateWidget when a selection-clear is requested,
@@ -9949,6 +9988,7 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard>
 
       return _wrapWithFlipGesture(
         RepaintBoundary(
+          key: boardShareBoundaryKey,
           child: Stack(
             children: [
               chessboard,
@@ -10005,6 +10045,7 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard>
 
         return _wrapWithFlipGesture(
           RepaintBoundary(
+            key: boardShareBoundaryKey,
             child: Stack(
               children: [
                 chessboard,
@@ -10037,6 +10078,7 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard>
 
     return _wrapWithFlipGesture(
       RepaintBoundary(
+        key: boardShareBoundaryKey,
         child: Stack(
           children: [
             chessboard,

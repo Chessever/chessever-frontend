@@ -38,6 +38,7 @@ class ShareGameCardOverlay extends StatefulWidget {
   final ChessboardSettings boardSettings;
   final String positionFen;
   final Move? lastMove;
+  final Uint8List? boardImageBytes;
   final String pgn;
   final List<String> moveSans; // The actual move list from analysis state
   final String whitePlayerName;
@@ -70,6 +71,7 @@ class ShareGameCardOverlay extends StatefulWidget {
     required this.boardSettings,
     required this.positionFen,
     required this.lastMove,
+    this.boardImageBytes,
     required this.pgn,
     required this.moveSans,
     required this.whitePlayerName,
@@ -997,6 +999,7 @@ class _ShareGameCardOverlayState extends State<ShareGameCardOverlay> {
                                     boardSettings: widget.boardSettings,
                                     positionFen: widget.positionFen,
                                     lastMove: widget.lastMove,
+                                    boardImageBytes: widget.boardImageBytes,
                                     onClose: widget.onClose,
                                     pgn: widget.pgn,
                                     moveSans: widget.moveSans,
@@ -1077,6 +1080,7 @@ class _ShareGameCardOverlayState extends State<ShareGameCardOverlay> {
                     boardSettings: widget.boardSettings,
                     positionFen: widget.positionFen,
                     lastMove: widget.lastMove,
+                    boardImageBytes: widget.boardImageBytes,
                     onClose: null,
                     pgn: widget.pgn,
                     moveSans: widget.moveSans,
@@ -1116,6 +1120,7 @@ class _ShareCard extends ConsumerWidget {
   final ChessboardSettings boardSettings;
   final String positionFen;
   final Move? lastMove;
+  final Uint8List? boardImageBytes;
   final VoidCallback? onClose;
   final String pgn;
   final List<String> moveSans; // The actual move list from analysis state
@@ -1145,6 +1150,7 @@ class _ShareCard extends ConsumerWidget {
     required this.boardSettings,
     required this.positionFen,
     required this.lastMove,
+    this.boardImageBytes,
     this.onClose,
     required this.pgn,
     required this.moveSans,
@@ -1496,27 +1502,42 @@ class _ShareCard extends ConsumerWidget {
                   );
                 }
 
-                // Build chessboard with square highlights
-                final chessboard = StaticChessboard(
-                  size: boardSize,
-                  fen: displayFen,
-                  orientation: boardOrientation,
-                  lastMove: lastMove,
-                  settings: StaticChessboardSettings.fromBoardSettings(
-                    boardSettings,
-                  ),
-                  squareHighlights:
-                      showGameEndingEffect
-                          ? (gameEndingData?.squareHighlights.unlock ??
-                              const <Square, SquareHighlight>{})
-                          : const <Square, SquareHighlight>{},
-                );
+                // A board-screen share reuses the exact rendered board pixels so
+                // annotations, arrows, highlights, coordinates, orientation, theme,
+                // and piece set cannot drift in the cleaned card. Other entry points
+                // (for example a grid-card share) retain the reconstructed fallback.
+                final Widget chessboard =
+                    boardImageBytes != null
+                        ? Image.memory(
+                          boardImageBytes!,
+                          width: boardSize,
+                          height: boardSize,
+                          fit: BoxFit.fill,
+                          filterQuality: FilterQuality.high,
+                          gaplessPlayback: true,
+                        )
+                        : StaticChessboard(
+                          size: boardSize,
+                          fen: displayFen,
+                          orientation: boardOrientation,
+                          lastMove: lastMove,
+                          settings: StaticChessboardSettings.fromBoardSettings(
+                            boardSettings,
+                          ),
+                          squareHighlights:
+                              showGameEndingEffect
+                                  ? (gameEndingData?.squareHighlights.unlock ??
+                                      const <Square, SquareHighlight>{})
+                                  : const <Square, SquareHighlight>{},
+                        );
 
-                // Build board widget with overlays if game ended
+                // The captured board already contains its visible overlays; only
+                // reconstructed boards need the share-card ending effects added.
                 Widget boardWidget;
                 final squareSize = boardSize / 8;
 
-                if (showGameEndingEffect &&
+                if (boardImageBytes == null &&
+                    showGameEndingEffect &&
                     gameEndingData?.loserKingSquare != null) {
                   // Game ended with a winner - show fallen king overlay
                   final loserSquare = gameEndingData!.loserKingSquare!;
@@ -1551,7 +1572,8 @@ class _ShareCard extends ConsumerWidget {
                         ),
                     ],
                   );
-                } else if (showGameEndingEffect &&
+                } else if (boardImageBytes == null &&
+                    showGameEndingEffect &&
                     gameStatus == GameStatus.draw) {
                   // Game ended in draw - show peace icons on both kings
                   final position = Chess.fromSetup(Setup.parseFen(positionFen));

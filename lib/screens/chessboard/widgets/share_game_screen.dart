@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:chessever2/providers/board_settings_provider_new.dart';
 import 'package:chessever2/screens/chessboard/utils/game_share_utils.dart';
 import 'package:chessever2/screens/chessboard/widgets/share_game_card_overlay.dart';
@@ -19,6 +21,7 @@ class ResolvedGameShareData {
   final int mate;
   final bool isFlipped;
   final bool isAtGameEnd;
+  final Uint8List? boardImageBytes;
 
   const ResolvedGameShareData({
     required this.pgn,
@@ -28,6 +31,7 @@ class ResolvedGameShareData {
     required this.mate,
     required this.isFlipped,
     required this.isAtGameEnd,
+    this.boardImageBytes,
   });
 }
 
@@ -149,6 +153,7 @@ class ShareGameScreen extends ConsumerWidget {
       boardSettings: chessboardSettings,
       positionFen: shareData.snapshot.positionFen,
       lastMove: shareData.snapshot.lastMove,
+      boardImageBytes: shareData.boardImageBytes,
       pgn: shareData.pgn,
       moveSans: shareData.snapshot.moveSans,
       whitePlayerName: game.whitePlayer.name,
