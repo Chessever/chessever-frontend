@@ -17,11 +17,17 @@ class MatchHeader extends ConsumerWidget {
   final bool isExpanded;
   final VoidCallback? onToggle;
 
+  /// Suppresses the aggregate match score when the event runs with No
+  /// Spoilers on. The individual game results are already hidden there, and
+  /// the running score gives the outcome away just as plainly.
+  final bool hideScores;
+
   const MatchHeader({
     super.key,
     required this.match,
     this.isExpanded = true,
     this.onToggle,
+    this.hideScores = false,
   });
 
   @override
@@ -89,9 +95,10 @@ class MatchHeader extends ConsumerWidget {
                                               match.player1,
                                               style: AppTypography.textSmMedium
                                                   .copyWith(
-                                                    color: context
-                                                        .colors
-                                                        .textPrimary,
+                                                    color:
+                                                        context
+                                                            .colors
+                                                            .textPrimary,
                                                     fontWeight: FontWeight.w600,
                                                   ),
                                               maxLines: 1,
@@ -101,29 +108,21 @@ class MatchHeader extends ConsumerWidget {
                                         ],
                                       ),
                                     ),
-                                    SizedBox(width: 8.w),
-                                    Container(
-                                      padding: EdgeInsets.symmetric(
-                                        horizontal: 8.w,
-                                        vertical: 4.h,
-                                      ),
-                                      decoration: BoxDecoration(
-                                        color: kPrimaryColor.withValues(
-                                          alpha: 0.2,
-                                        ),
-                                        borderRadius: BorderRadius.circular(
-                                          6.br,
-                                        ),
-                                      ),
-                                      child: Text(
+                                    if (!hideScores) ...[
+                                      SizedBox(width: 8.w),
+                                      Text(
                                         '${match.player1Score}',
                                         style: AppTypography.textSmMedium
                                             .copyWith(
-                                              color: kPrimaryColor,
+                                              color: _matchScoreColor(
+                                                context,
+                                                match.player1Score,
+                                                match.player2Score,
+                                              ),
                                               fontWeight: FontWeight.w700,
                                             ),
                                       ),
-                                    ),
+                                    ],
                                   ],
                                 ),
                                 SizedBox(height: 6.h),
@@ -143,9 +142,10 @@ class MatchHeader extends ConsumerWidget {
                                               match.player2,
                                               style: AppTypography.textSmMedium
                                                   .copyWith(
-                                                    color: context
-                                                        .colors
-                                                        .textPrimary,
+                                                    color:
+                                                        context
+                                                            .colors
+                                                            .textPrimary,
                                                     fontWeight: FontWeight.w600,
                                                   ),
                                               maxLines: 1,
@@ -155,29 +155,21 @@ class MatchHeader extends ConsumerWidget {
                                         ],
                                       ),
                                     ),
-                                    SizedBox(width: 8.w),
-                                    Container(
-                                      padding: EdgeInsets.symmetric(
-                                        horizontal: 8.w,
-                                        vertical: 4.h,
-                                      ),
-                                      decoration: BoxDecoration(
-                                        color: kPrimaryColor.withValues(
-                                          alpha: 0.2,
-                                        ),
-                                        borderRadius: BorderRadius.circular(
-                                          6.br,
-                                        ),
-                                      ),
-                                      child: Text(
+                                    if (!hideScores) ...[
+                                      SizedBox(width: 8.w),
+                                      Text(
                                         '${match.player2Score}',
                                         style: AppTypography.textSmMedium
                                             .copyWith(
-                                              color: kPrimaryColor,
+                                              color: _matchScoreColor(
+                                                context,
+                                                match.player2Score,
+                                                match.player1Score,
+                                              ),
                                               fontWeight: FontWeight.w700,
                                             ),
                                       ),
-                                    ),
+                                    ],
                                   ],
                                 ),
                               ],
@@ -352,6 +344,34 @@ PlayerCard? _matchPlayerCard(MatchHeaderModel match, String playerName) {
     if (black.name == playerName) return black;
   }
   return null;
+}
+
+/// Light-theme inks for the two decisive states.
+///
+/// `AppColors.brand` (#0FB4E5) and `AppColors.danger` (#F5453A) are the same
+/// value on both palettes, and on the light card surface (#F4FAF9) they
+/// measure 2.29:1 and 3.43:1 — under the 4.5:1 AA floor for text this size.
+/// The old tinted plate masked that; with the plate gone the number has to
+/// carry its own contrast, so light mode gets deepened variants of the same
+/// two hues (5.34:1 and 6.19:1).
+const _lightScoreLeadInk = Color(0xFF06708F);
+const _lightScoreTrailInk = Color(0xFFB3261E);
+
+/// Reads a knockout match score the way the pairing does: whoever is ahead
+/// carries the brand colour, whoever trails carries the danger colour, and a
+/// level match stays neutral so a tie never looks like a result.
+Color _matchScoreColor(
+  BuildContext context,
+  double score,
+  double opponentScore,
+) {
+  if (score == opponentScore) return context.colors.textPrimary;
+
+  final isLeading = score > opponentScore;
+  if (context.isLightTheme) {
+    return isLeading ? _lightScoreLeadInk : _lightScoreTrailInk;
+  }
+  return isLeading ? context.colors.brand : context.colors.danger;
 }
 
 Widget? _playerFlag(PlayerCard? player) {

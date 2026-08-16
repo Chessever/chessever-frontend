@@ -1,4 +1,5 @@
 import 'package:chessever2/screens/chessboard/provider/game_pgn_stream_provider.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/providers/event_no_spoilers_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_list_view_mode_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_scroll_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_flattened_layout.dart';
@@ -12,6 +13,7 @@ import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_p
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/round_header_widget.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/match_header_widget.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_screen_provider.dart';
+import 'package:chessever2/screens/tour_detail/provider/tour_detail_screen_provider.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/scroll_cache.dart';
 import 'package:chessever2/widgets/positioned_list_scrollbar.dart';
@@ -64,6 +66,30 @@ class GamesListView extends ConsumerWidget {
     // one channel's `in` filter never grows unbounded on huge rounds.
     final liveBatchKeyByGameId = _buildLiveBatchKeys(gamesByRound);
 
+    // No Spoilers is stored per event under the tour the menu writes —
+    // `aboutTourModel.id` (tournament_menu_button.dart). Keying off a game's
+    // own `tourId` instead would miss every multi-stage knockout, because
+    // those rounds are filled from sibling tours, so the setting would hide
+    // nothing on exactly the events that have match headers. Read once here
+    // rather than per row: it is one value for the whole list, and this keeps
+    // the provider's first touch (which does sqlite I/O) out of the lazy
+    // sliver layout pass.
+    final eventTourId = ref.watch(
+      tourDetailScreenProvider.select(
+        (state) => state.valueOrNull?.aboutTourModel.id,
+      ),
+    );
+    // Hide while the stored value is still loading too, so a score can never
+    // flash before the setting resolves.
+    final hideMatchScores =
+        eventTourId == null || eventTourId.isEmpty
+            ? false
+            : ref.watch(
+              eventNoSpoilersProvider(
+                eventTourId,
+              ).select((state) => state.isLoading || state.enabled),
+            );
+
     final itemCount = layout.itemCount;
 
     if (itemCount == 0) {
@@ -112,6 +138,7 @@ class GamesListView extends ConsumerWidget {
                   padding: EdgeInsets.only(bottom: 16.sp),
                   child: MatchHeader(
                     match: lookup.matchHeader,
+                    hideScores: hideMatchScores,
                     isExpanded: true,
                     onToggle: null,
                   ),
@@ -154,6 +181,7 @@ class GamesListView extends ConsumerWidget {
                   padding: EdgeInsets.only(bottom: 12.sp),
                   child: MatchHeader(
                     match: lookup.matchHeader,
+                    hideScores: hideMatchScores,
                     isExpanded: isExpanded,
                     onToggle:
                         isSearchMode
