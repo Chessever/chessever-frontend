@@ -4,33 +4,34 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 const _themeModeStorageKey = 'app.theme_mode.v1';
 
-/// StateNotifier managing the active [ThemeMode]. The selection is persisted
-/// to SharedPreferences so the user's choice survives app restarts. We never
-/// throw if storage is unavailable — the app simply falls back to the default.
+/// StateNotifier managing the active [ThemeMode]. Light theme is temporarily
+/// disabled, so this always stays on [ThemeMode.dark] and overwrites any
+/// previously persisted light/system choice.
 class ThemeModeNotifier extends StateNotifier<ThemeMode> {
   ThemeModeNotifier() : super(ThemeMode.dark) {
     _restore();
   }
 
   void setTheme(ThemeMode mode) {
+    // Light theme is temporarily disabled.
+    if (mode != ThemeMode.dark) return;
     if (state == mode) return;
     state = mode;
     _persist(mode);
   }
 
   void toggleTheme() {
-    final next = state == ThemeMode.dark ? ThemeMode.light : ThemeMode.dark;
-    setTheme(next);
+    setTheme(ThemeMode.dark);
   }
 
   Future<void> _restore() async {
     try {
       final prefs = await SharedPreferencesService.instance.ensureInitialized();
       if (prefs == null) return;
-      final raw = prefs.getString(_themeModeStorageKey);
-      final restored = _decode(raw);
-      if (restored != null && restored != state) {
-        state = restored;
+      // Do not restore light/system — pin the stored value back to dark.
+      await prefs.setString(_themeModeStorageKey, _encode(ThemeMode.dark));
+      if (state != ThemeMode.dark) {
+        state = ThemeMode.dark;
       }
     } catch (e, st) {
       debugPrint('[theme] failed to restore theme mode: $e\n$st');
@@ -55,19 +56,6 @@ class ThemeModeNotifier extends StateNotifier<ThemeMode> {
         return 'light';
       case ThemeMode.system:
         return 'system';
-    }
-  }
-
-  static ThemeMode? _decode(String? raw) {
-    switch (raw) {
-      case 'dark':
-        return ThemeMode.dark;
-      case 'light':
-        return ThemeMode.light;
-      case 'system':
-        return ThemeMode.system;
-      default:
-        return null;
     }
   }
 }

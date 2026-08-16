@@ -16,6 +16,7 @@ import 'package:chessever2/screens/player_profile/widgets/player_profile_share_i
 import 'package:chessever2/screens/player_profile/widgets/save_to_library_sheet.dart';
 import 'package:chessever2/screens/player_profile/tabs/player_events_tab.dart';
 import 'package:chessever2/screens/player_profile/tabs/player_games_tab.dart';
+import 'package:chessever2/screens/standings/providers/player_utils_provider.dart';
 import 'package:chessever2/services/fide_photo_service.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
@@ -32,6 +33,7 @@ import 'package:chessever2/utils/favorite_limit_guard.dart';
 import 'package:chessever2/widgets/app_snack.dart';
 import 'package:chessever2/widgets/auth/auth_upgrade_sheet.dart';
 import 'package:chessever2/widgets/game_filter/game_filter_model.dart';
+import 'package:chessever2/widgets/federation_flag.dart';
 import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
 import 'package:chessever2/widgets/screenshot_share_nudge.dart';
 import 'package:chessever2/widgets/scroll_to_top_bus.dart';
@@ -806,31 +808,47 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
             ),
           ),
 
-          // Title and name — no flag, compact style so the share + favorite
-          // actions fit without crowding the header.
+          // Flag, title, and natural display name. Share + heart stay as the
+          // permanent actions. Unknown federations render no placeholder.
           Expanded(
             child: Center(
-              child: RichText(
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                text: TextSpan(
-                  children: [
-                    if (effectiveTitle != null &&
-                        effectiveTitle.trim().isNotEmpty)
-                      TextSpan(
-                        text: '${effectiveTitle.trim()} ',
-                        style: AppTypography.textMdBold.copyWith(
-                          color: context.colors.titleAccent,
-                        ),
-                      ),
-                    TextSpan(
-                      text: _formatDisplayName(name: effectiveName),
-                      style: AppTypography.textMdBold.copyWith(
-                        color: context.colors.textPrimary,
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (FederationFlag.hasVisibleFlag(effectiveFederation)) ...[
+                    FederationFlag(
+                      federation: effectiveFederation!.trim(),
+                      height: 16.h,
+                      width: 22.w,
+                      borderRadius: BorderRadius.circular(2.br),
+                    ),
+                    SizedBox(width: 8.w),
+                  ],
+                  Flexible(
+                    child: RichText(
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      text: TextSpan(
+                        children: [
+                          if (effectiveTitle != null &&
+                              effectiveTitle.trim().isNotEmpty)
+                            TextSpan(
+                              text: '${effectiveTitle.trim()} ',
+                              style: AppTypography.textMdBold.copyWith(
+                                color: context.colors.titleAccent,
+                              ),
+                            ),
+                          TextSpan(
+                            text: formatPlayerDisplayName(effectiveName),
+                            style: AppTypography.textMdBold.copyWith(
+                              color: context.colors.textPrimary,
+                            ),
+                          ),
+                        ],
                       ),
                     ),
-                  ],
-                ),
+                  ),
+                ],
               ),
             ),
           ),
@@ -1141,20 +1159,6 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
         },
       ),
     );
-  }
-
-  String _formatDisplayName({String? name}) {
-    String displayName = name ?? widget.playerName;
-
-    // Handle "Lastname, Firstname" format
-    if (displayName.contains(',')) {
-      final parts = displayName.split(',');
-      if (parts.length >= 2) {
-        displayName = '${parts[1].trim()} ${parts[0].trim()}';
-      }
-    }
-
-    return displayName;
   }
 }
 

@@ -190,8 +190,9 @@ class _AppearanceSection extends ConsumerWidget {
 
   static const _modes = <(ThemeMode, String, IconData)>[
     (ThemeMode.dark, 'Dark', Icons.dark_mode_outlined),
-    (ThemeMode.system, 'Auto', Icons.brightness_auto_outlined),
-    (ThemeMode.light, 'Light', Icons.light_mode_outlined),
+    // Light theme is temporarily disabled — the app stays dark.
+    // (ThemeMode.system, 'Auto', Icons.brightness_auto_outlined),
+    // (ThemeMode.light, 'Light', Icons.light_mode_outlined),
   ];
 
   @override

@@ -1595,7 +1595,7 @@ class _PlayerHeaderRow extends StatelessWidget {
                     ),
                   ),
                 TextSpan(
-                  text: name,
+                  text: formatPlayerDisplayName(name),
                   style: AppTypography.textMdBold.copyWith(
                     color: context.colors.textPrimary,
                   ),
@@ -1696,12 +1696,6 @@ class _SliverScoreboardAppBarState
   }
 
   Future<void> _toggleFavorite() async {
-    if (!ref
-        .read(chessboardViewFromProviderNew)
-        .usesEventScopedScorecardContext) {
-      return;
-    }
-
     final allowed = await requireFullAuthGuard(context);
     if (!allowed) return;
 
@@ -1795,27 +1789,20 @@ class _SliverScoreboardAppBarState
 
     final selectedBroadcast = ref.watch(selectedBroadcastModelProvider);
     final hasTournamentContext = selectedBroadcast != null;
-    final isForYouView =
-        ref
-            .watch(chessboardViewFromProviderNew)
-            .usesEventScopedScorecardContext;
 
     final validCountryCode = ref
         .read(locationServiceProvider)
         .getValidCountryCode(player.countryCode);
 
-    bool isFavorite = false;
-    if (isForYouView) {
-      final favoritesAsync = ref.watch(favoritePlayersProviderNew);
-      isFavorite = favoritesAsync.maybeWhen(
-        data:
-            (players) =>
-                players.any((p) => p.fideId == player.fideId?.toString()),
-        orElse: () => false,
-        skipLoadingOnRefresh: true,
-        skipLoadingOnReload: true,
-      );
-    }
+    final favoritesAsync = ref.watch(favoritePlayersProviderNew);
+    final isFavorite = favoritesAsync.maybeWhen(
+      data:
+          (players) =>
+              players.any((p) => p.fideId == player.fideId?.toString()),
+      orElse: () => false,
+      skipLoadingOnRefresh: true,
+      skipLoadingOnReload: true,
+    );
 
     final headerRow = _PlayerHeaderRow(
       countryCode: validCountryCode,
@@ -1860,28 +1847,27 @@ class _SliverScoreboardAppBarState
               ),
             ),
           ),
-        if (isForYouView)
-          InkWell(
-            onTap: _toggleFavorite,
-            child: Container(
-              width: 48.w,
-              padding: EdgeInsets.all(8.sp),
-              child: ScaleTransition(
-                scale: _scaleAnimation,
-                child: SvgWidget(
-                  isFavorite
-                      ? SvgAsset.favouriteRedIcon
-                      : SvgAsset.favouriteIcon2,
-                  semanticsLabel: 'Favorite Icon',
-                  height: 20.h,
-                  width: 20.w,
-                  // Red heart keeps its fill; outline heart is auto-tinted
-                  // by SvgWidget so it stays visible on light surfaces.
-                  preserveOriginalColors: isFavorite,
-                ),
+        InkWell(
+          onTap: _toggleFavorite,
+          child: Container(
+            width: 48.w,
+            padding: EdgeInsets.all(8.sp),
+            child: ScaleTransition(
+              scale: _scaleAnimation,
+              child: SvgWidget(
+                isFavorite
+                    ? SvgAsset.favouriteRedIcon
+                    : SvgAsset.favouriteIcon2,
+                semanticsLabel: 'Favorite Icon',
+                height: 20.h,
+                width: 20.w,
+                // Red heart keeps its fill; outline heart is auto-tinted
+                // by SvgWidget so it stays visible on light surfaces.
+                preserveOriginalColors: isFavorite,
               ),
             ),
           ),
+        ),
         SizedBox(width: 8.w),
       ],
     );
