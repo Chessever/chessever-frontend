@@ -98,7 +98,8 @@ List<String> _libraryExactGameSelectColumns() => const [
   'lastMove',
 ];
 
-Map<String, dynamic>? _buildLibraryExactWhere(
+@visibleForTesting
+Map<String, dynamic>? buildLibraryExactWhere(
   GamebaseFilter filter, {
   String? selectedEvent,
 }) {
@@ -129,11 +130,16 @@ Map<String, dynamic>? _buildLibraryExactWhere(
     });
   }
   if (!filter.eco.isAll) {
-    expressions.add({
-      'field': 'eco',
-      'op': 'ilike',
-      'value': '${filter.eco.code}%',
-    });
+    final code = filter.eco.code!;
+    if (code == GameEcoFilter.unknownEcoCode) {
+      expressions.add({
+        'field': 'eco',
+        'op': 'eq',
+        'value': GameEcoFilter.unknownEcoCode,
+      });
+    } else {
+      expressions.add({'field': 'eco', 'op': 'startsWith', 'value': code});
+    }
   }
   if (_hasYearFilter(filter)) {
     expressions.add({
@@ -162,17 +168,34 @@ Map<String, dynamic>? _buildLibraryExactWhere(
 }
 
 @visibleForTesting
+String composeGamebaseSearchQuery({
+  required String query,
+  required GamebaseFilter filter,
+  String? selectedEvent,
+}) {
+  final baseQuery = query.trim().isEmpty ? '*' : query.trim();
+  final escapedEvent = selectedEvent?.trim().replaceAll('"', r'\"');
+  final composedQuery =
+      (escapedEvent == null || escapedEvent.isEmpty)
+          ? baseQuery
+          : '$baseQuery event:"$escapedEvent"';
+  if (filter.eco.isAll) return composedQuery;
+  return 'eco:${filter.eco.code} $composedQuery';
+}
+
+@visibleForTesting
 bool shouldUseExactLibraryGameQuery(String query, GamebaseFilter filter) {
   // If there's a free-text query, use globalSearch (indexed tsvector).
   if (query.trim().isNotEmpty) return false;
 
-  // Use exact query only if we have selective structured filters (year or rating).
+  // Use exact query only if we have selective structured filters.
   final hasYear = _hasYearFilter(filter);
   final hasRating =
       filter.minRating > GameFilter.absoluteMinRating ||
       filter.maxRating < GameFilter.absoluteMaxRating;
+  final hasEco = !filter.eco.isAll;
 
-  if (!hasYear && !hasRating) return false;
+  if (!hasYear && !hasRating && !hasEco) return false;
 
   // Exact query currently doesn't handle color filter as easily as globalSearch.
   if (filter.colorApiValue != null) return false;
@@ -269,20 +292,14 @@ class DatabaseGamesPaginationNotifier
 
   Future<_PageResult> _fetchPage(int pageNumber) async {
     final repo = _ref.read(gamebaseRepositoryProvider);
-    final baseQuery = _query.trim().isEmpty ? '*' : _query.trim();
     final selectedEvent = _selectedEvent?.trim();
-    final escapedEvent = selectedEvent?.replaceAll('"', r'\"');
-    final composedQuery =
-        (escapedEvent == null || escapedEvent.isEmpty)
-            ? baseQuery
-            : '$baseQuery event:"$escapedEvent"';
     late final List<Map<String, dynamic>> rawRows;
     late final int totalCount;
     late final bool totalCountIsEstimate;
     late final bool hasMore;
 
     if (shouldUseExactLibraryGameQuery(_query, _filter)) {
-      final where = _buildLibraryExactWhere(
+      final where = buildLibraryExactWhere(
         _filter,
         selectedEvent: selectedEvent,
       );
@@ -305,13 +322,12 @@ class DatabaseGamesPaginationNotifier
     } else {
       // Use GET /api/search (token-based + FTS) because it is indexed and fast.
       // POST /api/search/query currently can be very slow for free-text search.
-      String finalQuery = composedQuery;
-      if (!_filter.eco.isAll) {
-        finalQuery = 'eco:${_filter.eco.code} $finalQuery';
-      }
-
       final response = await repo.globalSearch(
-        query: finalQuery,
+        query: composeGamebaseSearchQuery(
+          query: _query,
+          filter: _filter,
+          selectedEvent: selectedEvent,
+        ),
         resources: const ['game'],
         pageNumber: pageNumber,
         pageSize: _pageSize,
@@ -640,7 +656,7 @@ final gamebaseDatabaseGamesProvider = FutureProvider.autoDispose<
   try {
     late final List<Map<String, dynamic>> rawRows;
     if (shouldUseExactLibraryGameQuery(query, filter)) {
-      final where = _buildLibraryExactWhere(filter);
+      final where = buildLibraryExactWhere(filter);
       final response = await repo.queryResource(
         body: {
           'resource': 'game',
@@ -655,13 +671,8 @@ final gamebaseDatabaseGamesProvider = FutureProvider.autoDispose<
       );
       rawRows = response.data;
     } else {
-      String finalQuery = query.trim().isEmpty ? '*' : query.trim();
-      if (!filter.eco.isAll) {
-        finalQuery = 'eco:${filter.eco.code} $finalQuery';
-      }
-
       final response = await repo.globalSearch(
-        query: finalQuery,
+        query: composeGamebaseSearchQuery(query: query, filter: filter),
         resources: const ['game'],
         pageNumber: 1,
         pageSize: 50,
