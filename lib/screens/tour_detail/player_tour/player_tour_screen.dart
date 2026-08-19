@@ -1,8 +1,10 @@
-import 'package:chessever2/screens/favorites/favorite_players_provider.dart';
+import 'package:chessever2/providers/favorite_players_provider.dart';
+import 'package:chessever2/repository/favorites/models/favorite_player.dart';
 import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
 import 'package:chessever2/e2e/e2e_ids.dart';
 import 'package:chessever2/screens/player_profile/player_profile_data_source.dart';
 import 'package:chessever2/screens/standings/player_standing_model.dart';
+import 'package:chessever2/screens/standings/providers/player_utils_provider.dart';
 import 'package:chessever2/screens/standings/score_card_screen.dart';
 import 'package:chessever2/screens/tour_detail/player_tour/player_tour_screen_provider.dart';
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_screen_provider.dart';
@@ -143,12 +145,11 @@ class _StandingsList extends ConsumerWidget {
             final query = ref.watch(standingsSearchQueryProvider);
             final data = filterStandingsByQuery(allRanked, query);
             final isSearching = query.trim().isNotEmpty;
-            final favIds = ref
-                .watch(favoritePlayersNotifierProvider)
+            final favorites = ref
+                .watch(favoritePlayersProviderNew)
                 .maybeWhen(
-                  data:
-                      (favData) => favData.players.map((e) => e.fideId).toSet(),
-                  orElse: () => <int?>{},
+                  data: (players) => players,
+                  orElse: () => const <FavoritePlayer>[],
                   skipLoadingOnRefresh: true,
                   skipLoadingOnReload: true,
                 );
@@ -194,7 +195,14 @@ class _StandingsList extends ConsumerWidget {
                 }
 
                 final player = data[index];
-                final isFav = favIds.contains(player.fideId);
+                final isFav =
+                    storedFavoriteFor(
+                      favorites,
+                      fideId: player.fideId?.toString(),
+                      name: player.name,
+                      countryCode: player.countryCode,
+                    ) !=
+                    null;
                 return FigmaPlayerCard(
                   key: ValueKey(
                     'standing_${player.fideId ?? player.gamebasePlayerId ?? player.name}',

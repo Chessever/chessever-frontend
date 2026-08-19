@@ -1717,6 +1717,7 @@ class _SliverScoreboardAppBarState
                     players,
                     fideId: player.fideId?.toString(),
                     name: player.name,
+                    countryCode: player.countryCode,
                   ),
               orElse: () => null,
             );
@@ -1806,6 +1807,7 @@ class _SliverScoreboardAppBarState
                 players,
                 fideId: player.fideId?.toString(),
                 name: player.name,
+                countryCode: player.countryCode,
               ) !=
               null,
       orElse: () => false,

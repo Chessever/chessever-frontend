@@ -2,6 +2,7 @@ import 'package:chessever2/repository/favorites/models/favorite_player.dart';
 import 'package:chessever2/repository/supabase/game/games.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/utils/country_utils.dart';
+import 'package:chessever2/utils/favorite_player_identity.dart';
 
 typedef GamePriorityPlayerIdentity =
     ({String name, int? fideId, String countryCode, String federation});
@@ -12,8 +13,6 @@ typedef GamePriorityIdentity =
       GamePriorityPlayerIdentity whitePlayer,
       GamePriorityPlayerIdentity blackPlayer,
     });
-
-typedef _FavoriteMatchIdentity = ({int? fideId, String countryCode});
 
 /// Extracts only the fields used by favorite/country priority matching.
 ///
@@ -130,47 +129,21 @@ Set<String> favoritePlayerGameIdsForIdentities({
   required Iterable<GamePriorityIdentity> games,
   required Iterable<FavoritePlayer> favorites,
 }) {
-  final favoriteFideIds = <int>{};
-  final favoriteIdentitiesByName = <String, List<_FavoriteMatchIdentity>>{};
-
-  for (final favorite in favorites) {
-    final fideId = int.tryParse(favorite.fideId?.trim() ?? '');
-    final validFideId = fideId != null && fideId > 0 ? fideId : null;
-    if (validFideId != null) favoriteFideIds.add(validFideId);
-
-    final normalizedName = normalizeFavoritePlayerName(favorite.playerName);
-    if (normalizedName.isNotEmpty) {
-      favoriteIdentitiesByName
-          .putIfAbsent(normalizedName, () => <_FavoriteMatchIdentity>[])
-          .add((
-            fideId: validFideId,
-            countryCode: _favoriteCountryCode(favorite),
-          ));
-    }
-  }
+  final favoriteList = favorites.toList(growable: false);
+  if (favoriteList.isEmpty) return <String>{};
 
   bool isFavorite(GamePriorityPlayerIdentity player) {
-    final playerFideId = player.fideId;
-    if (playerFideId != null &&
-        playerFideId > 0 &&
-        favoriteFideIds.contains(playerFideId)) {
-      return true;
-    }
-
-    final normalizedName = normalizeFavoritePlayerName(player.name);
-    final favoriteIdentities = favoriteIdentitiesByName[normalizedName];
-    if (favoriteIdentities == null) return false;
-
-    for (final favorite in favoriteIdentities) {
-      // When both sides have ids, never accept conflicting ids. A missing id
-      // can fall back to the complete name plus country, matching legacy rows.
-      if (playerFideId != null &&
-          playerFideId > 0 &&
-          favorite.fideId != null &&
-          playerFideId != favorite.fideId) {
-        continue;
-      }
-      if (_favoriteCountryMatchesPlayer(favorite.countryCode, player)) {
+    final playerCountry =
+        player.countryCode.trim().isNotEmpty
+            ? player.countryCode
+            : player.federation;
+    for (final favorite in favoriteList) {
+      if (favoriteMatchesPlayer(
+        favorite: favorite,
+        playerName: player.name,
+        playerFideId: player.fideId,
+        playerCountry: playerCountry,
+      )) {
         return true;
       }
     }
@@ -231,14 +204,6 @@ Set<String> countrymanGameIdsForIdentities({
   return gameIds;
 }
 
-String normalizeFavoritePlayerName(String value) {
-  return value
-      .trim()
-      .toLowerCase()
-      .replaceFirst(RegExp(r'^(gm|im|fm|cm|nm|wgm|wim|wfm|wcm|wnm)\s+'), '')
-      .replaceAll(RegExp(r'\s+'), ' ');
-}
-
 GamePriorityPlayerIdentity _priorityIdentityFromRawPlayer(Player player) => (
   name: player.name,
   fideId: player.fideId > 0 ? player.fideId : null,
@@ -265,32 +230,4 @@ bool _haveSamePlayerCardPriorityInputs(PlayerCard first, PlayerCard second) {
       first.fideId == second.fideId &&
       first.countryCode == second.countryCode &&
       first.federation == second.federation;
-}
-
-String _favoriteCountryCode(FavoritePlayer favorite) {
-  return (favorite.metadata['countryCode'] ?? favorite.metadata['country'])
-          ?.toString()
-          .trim() ??
-      '';
-}
-
-bool _favoriteCountryMatchesPlayer(
-  String favoriteCountryCode,
-  GamePriorityPlayerIdentity player,
-) {
-  if (favoriteCountryCode.isEmpty) return true;
-  final playerCountryCode =
-      player.countryCode.trim().isNotEmpty
-          ? player.countryCode
-          : player.federation;
-  final favoriteIso2 = _countryCodeToIso2(favoriteCountryCode);
-  final playerIso2 = _countryCodeToIso2(playerCountryCode);
-  return favoriteIso2.isNotEmpty && favoriteIso2 == playerIso2;
-}
-
-String _countryCodeToIso2(String value) {
-  final normalized = value.trim().toUpperCase();
-  if (normalized.length == 2) return normalized;
-  if (normalized.length == 3) return CountryUtils.toIso2Code(normalized);
-  return CountryUtils.countryNameToIso2(value);
 }

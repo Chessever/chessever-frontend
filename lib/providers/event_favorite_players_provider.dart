@@ -1,7 +1,9 @@
+import 'package:chessever2/repository/favorites/models/favorite_player.dart';
 import 'package:chessever2/repository/local_storage/tournament/tour_local_storage.dart';
 import 'package:chessever2/repository/supabase/game/game_repository.dart';
 import 'package:chessever2/repository/supabase/group_broadcast/group_tour_repository.dart';
 import 'package:chessever2/providers/favorite_players_provider.dart';
+import 'package:chessever2/utils/favorite_player_identity.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 /// Model representing favorite player information for an event
@@ -26,6 +28,46 @@ class EventFavoritePlayers {
   int get hashCode => count.hashCode;
 }
 
+/// Counts event players that match the user's favourites.
+///
+/// FIDE ids are authoritative. When a board/roster row has no id — common
+/// for live Russian/FID players — the same name+neutral-federation rules as
+/// auto-pin apply so the event still shows that a favourite is playing.
+EventFavoritePlayers matchingEventFavoritePlayers({
+  required Iterable<({String name, int? fideId, String federation})>
+  eventPlayers,
+  required Iterable<FavoritePlayer> favorites,
+}) {
+  final favoriteList = favorites.toList(growable: false);
+  if (favoriteList.isEmpty) return const EventFavoritePlayers.empty();
+
+  final matchingFideIds = <int>{};
+  final matchingNameless = <String>{};
+
+  for (final player in eventPlayers) {
+    final matches = favoriteList.any(
+      (favorite) => favoriteMatchesPlayer(
+        favorite: favorite,
+        playerName: player.name,
+        playerFideId: player.fideId,
+        playerCountry: player.federation,
+      ),
+    );
+    if (!matches) continue;
+    final fideId = player.fideId;
+    if (fideId != null && fideId > 0) {
+      matchingFideIds.add(fideId);
+    } else if (player.name.trim().isNotEmpty) {
+      matchingNameless.add(player.name.trim().toLowerCase());
+    }
+  }
+
+  return EventFavoritePlayers(
+    count: matchingFideIds.length + matchingNameless.length,
+    fideIds: matchingFideIds.toList(),
+  );
+}
+
 /// Provider that checks if an event contains favorite players
 /// This is a family provider that takes an event ID
 /// This provider is REACTIVE - it automatically updates when favorite players change
@@ -44,18 +86,6 @@ final eventFavoritePlayersProvider = FutureProvider.autoDispose.family<
       return const EventFavoritePlayers.empty();
     }
 
-    // Get favorite player FIDE IDs (filter out nulls, parse String→int)
-    final favoriteFideIds =
-        favoritePlayers
-            .where((p) => p.fideId != null)
-            .map((p) => int.tryParse(p.fideId!))
-            .whereType<int>()
-            .toSet();
-
-    if (favoriteFideIds.isEmpty) {
-      return const EventFavoritePlayers.empty();
-    }
-
     // Get tours for this event
     final tourLocalStorage = ref.read(tourLocalStorageProvider);
     final tours = await tourLocalStorage.getTours(eventId);
@@ -64,18 +94,19 @@ final eventFavoritePlayersProvider = FutureProvider.autoDispose.family<
       return const EventFavoritePlayers.empty();
     }
 
-    // Collect all unique players from all tours in this event
-    final eventPlayerFideIds = <int>{};
+    final eventPlayers = <({String name, int? fideId, String federation})>[];
     for (final tour in tours) {
       for (final player in tour.players) {
-        if (player.fideId != null && player.fideId! > 0) {
-          eventPlayerFideIds.add(player.fideId!);
-        }
+        eventPlayers.add((
+          name: player.name,
+          fideId: player.fideId,
+          federation: player.federation ?? '',
+        ));
       }
     }
 
     // Fallback: if tours have no players (stale or missing), derive from games
-    if (eventPlayerFideIds.isEmpty) {
+    if (eventPlayers.isEmpty) {
       final groupBroadcastRepo = ref.read(groupBroadcastRepositoryProvider);
       final gameRepo = ref.read(gameRepositoryProvider);
 
@@ -100,20 +131,18 @@ final eventFavoritePlayersProvider = FutureProvider.autoDispose.family<
         final players = game.players;
         if (players == null || players.isEmpty) continue;
         for (final player in players) {
-          if (player.fideId > 0) {
-            eventPlayerFideIds.add(player.fideId);
-          }
+          eventPlayers.add((
+            name: player.name,
+            fideId: player.fideId > 0 ? player.fideId : null,
+            federation: player.fed,
+          ));
         }
       }
     }
 
-    // Find matching favorite players
-    final matchingFideIds =
-        eventPlayerFideIds.intersection(favoriteFideIds).toList();
-
-    return EventFavoritePlayers(
-      count: matchingFideIds.length,
-      fideIds: matchingFideIds,
+    return matchingEventFavoritePlayers(
+      eventPlayers: eventPlayers,
+      favorites: favoritePlayers,
     );
   } catch (e) {
     // On error, return empty (fail gracefully)

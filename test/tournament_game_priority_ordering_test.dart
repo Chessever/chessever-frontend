@@ -480,6 +480,63 @@ void main() {
       expect(matches, <String>{'same-country'});
     });
 
+    test(
+      'pins a Russian favorite when the board has no FIDE id and federation is FID',
+      () {
+        // Yesterday's Titled Tuesday shape: the user favorited the player
+        // from chess_players (RUS / real FIDE id). Live chess.com/Lichess
+        // boards often omit WhiteFideId and ship federation FID for the
+        // same person. Name+country fallback used to reject that pair.
+        final matches = favoritePlayerGameIdsForGames(
+          games: <GamesTourModel>[
+            _game(
+              'andreikin-live',
+              boardNr: 1,
+              white: _player('Andreikin, Dmitry', countryCode: 'FID'),
+            ),
+            _game(
+              'unrelated',
+              boardNr: 2,
+              white: _player('Nakamura, Hikaru', fideId: 2016192),
+            ),
+          ],
+          favorites: <FavoritePlayer>[
+            _favorite(
+              'Andreikin, Dmitry',
+              fideId: '4158814',
+              countryCode: 'RUS',
+            ),
+          ],
+        );
+
+        expect(matches, <String>{'andreikin-live'});
+      },
+    );
+
+    test(
+      'pins a Russian favorite when live PGN has First Last name and no federation',
+      () {
+        final matches = favoritePlayerGameIdsForGames(
+          games: <GamesTourModel>[
+            _game(
+              'nepo-live',
+              boardNr: 3,
+              white: _player('Ian Nepomniachtchi', countryCode: ''),
+            ),
+          ],
+          favorites: <FavoritePlayer>[
+            _favorite(
+              'Nepomniachtchi, Ian',
+              fideId: '4168119',
+              countryCode: 'RU',
+            ),
+          ],
+        );
+
+        expect(matches, <String>{'nepo-live'});
+      },
+    );
+
     test('matches ISO-2 selection against FIDE federation codes', () {
       final games = <GamesTourModel>[
         _game(
@@ -722,42 +779,48 @@ void main() {
       );
 
       expect(snapshot, isEmpty);
-      expect(focused.map((g) => g.gameId), priorityOrdered.map((g) => g.gameId));
+      expect(
+        focused.map((g) => g.gameId),
+        priorityOrdered.map((g) => g.gameId),
+      );
       expect(focused.length, 3);
     });
 
-    test('composes under favorite priority within live and non-live groups', () {
-      final priorityOrdered = sortTournamentRoundGamesByPriority(
-        games: <GamesTourModel>[
-          _game('reg-live', boardNr: 1),
-          _game('fav-finished', boardNr: 2, status: GameStatus.draw),
-          _game('fav-live', boardNr: 5),
-          _game('reg-finished', boardNr: 3, status: GameStatus.whiteWins),
-        ],
-        favoriteGameIds: const <String>{'fav-finished', 'fav-live'},
-      );
-      // Priority alone: fav-finished, fav-live, reg-live, reg-finished
-      expect(priorityOrdered.map((g) => g.gameId), <String>[
-        'fav-finished',
-        'fav-live',
-        'reg-live',
-        'reg-finished',
-      ]);
+    test(
+      'composes under favorite priority within live and non-live groups',
+      () {
+        final priorityOrdered = sortTournamentRoundGamesByPriority(
+          games: <GamesTourModel>[
+            _game('reg-live', boardNr: 1),
+            _game('fav-finished', boardNr: 2, status: GameStatus.draw),
+            _game('fav-live', boardNr: 5),
+            _game('reg-finished', boardNr: 3, status: GameStatus.whiteWins),
+          ],
+          favoriteGameIds: const <String>{'fav-finished', 'fav-live'},
+        );
+        // Priority alone: fav-finished, fav-live, reg-live, reg-finished
+        expect(priorityOrdered.map((g) => g.gameId), <String>[
+          'fav-finished',
+          'fav-live',
+          'reg-live',
+          'reg-finished',
+        ]);
 
-      final snapshot = liveGameIdsForFocusSnapshot(priorityOrdered);
-      final focused = applyLiveFocusOrder(
-        games: priorityOrdered,
-        liveGameIdsAtSnapshot: snapshot,
-      );
+        final snapshot = liveGameIdsForFocusSnapshot(priorityOrdered);
+        final focused = applyLiveFocusOrder(
+          games: priorityOrdered,
+          liveGameIdsAtSnapshot: snapshot,
+        );
 
-      // Live group keeps priority (fav before regular); finished group same.
-      expect(focused.map((g) => g.gameId), <String>[
-        'fav-live',
-        'reg-live',
-        'fav-finished',
-        'reg-finished',
-      ]);
-    });
+        // Live group keeps priority (fav before regular); finished group same.
+        expect(focused.map((g) => g.gameId), <String>[
+          'fav-live',
+          'reg-live',
+          'fav-finished',
+          'reg-finished',
+        ]);
+      },
+    );
   });
 }
 

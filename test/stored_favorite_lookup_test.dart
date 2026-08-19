@@ -1,16 +1,23 @@
+import 'package:chessever2/providers/event_favorite_players_provider.dart';
 import 'package:chessever2/repository/favorites/models/favorite_player.dart';
 import 'package:chessever2/screens/standings/providers/player_utils_provider.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  FavoritePlayer favorite({String? fideId, required String playerName}) {
+  FavoritePlayer favorite({
+    String? fideId,
+    required String playerName,
+    String? countryCode,
+  }) {
     final now = DateTime.utc(2026, 1, 1);
     return FavoritePlayer(
       id: 'row-$playerName',
       userId: 'user',
       fideId: fideId,
       playerName: playerName,
-      metadata: const {},
+      metadata: <String, dynamic>{
+        if (countryCode != null) 'countryCode': countryCode,
+      },
       createdAt: now,
       updatedAt: now,
     );
@@ -85,5 +92,47 @@ void main() {
 
       expect(storedFavoriteFor(favorites, fideId: null, name: '  '), isNull);
     });
+
+    test(
+      'matches Last, First against First Last when FIDE ids are missing',
+      () {
+        final favorites = [
+          favorite(fideId: '4168119', playerName: 'Nepomniachtchi, Ian'),
+        ];
+
+        expect(
+          storedFavoriteFor(
+            favorites,
+            fideId: null,
+            name: 'Ian Nepomniachtchi',
+          )?.playerName,
+          'Nepomniachtchi, Ian',
+        );
+      },
+    );
+  });
+
+  group('event favourite roster matching', () {
+    test(
+      'counts a FID board player against a RUS favourite without a FIDE id on the board',
+      () {
+        final result = matchingEventFavoritePlayers(
+          eventPlayers: [
+            (name: 'Andreikin, Dmitry', fideId: null, federation: 'FID'),
+            (name: 'Nakamura, Hikaru', fideId: 2016192, federation: 'USA'),
+          ],
+          favorites: [
+            favorite(
+              fideId: '4158814',
+              playerName: 'Andreikin, Dmitry',
+              countryCode: 'RUS',
+            ),
+          ],
+        );
+
+        expect(result.hasFavorites, isTrue);
+        expect(result.count, 1);
+      },
+    );
   });
 }
