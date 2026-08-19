@@ -1,5 +1,11 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import {
+  allowDatabaseWork,
+  clientIp,
+  memGet,
+  memSet,
+} from "../_shared/fide_photo_guard.ts";
 
 const STORAGE_BUCKET = "player-photos";
 const STORAGE_FOLDER = "fide";
@@ -35,7 +41,13 @@ type PhotoResult =
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
     status,
-    headers: { ...corsHeaders, "Content-Type": "application/json" },
+    headers: {
+      ...corsHeaders,
+      "Content-Type": "application/json",
+      "Cache-Control": status === 200
+        ? "public, max-age=60, s-maxage=300"
+        : "no-store",
+    },
   });
 }
 
@@ -217,6 +229,11 @@ Deno.serve(async (req: Request) => {
       return jsonResponse({ error: "force_refresh is not allowed" }, 403);
     }
     const forceRefresh = requestedForceRefresh;
+    const cacheKey = `${fideId}_webp`;
+    if (!forceRefresh) {
+      const cached = memGet(cacheKey);
+      if (cached) return jsonResponse(cached);
+    }
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL");
     const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
@@ -234,25 +251,42 @@ Deno.serve(async (req: Request) => {
     // width=300&height=300&resize=cover ensures we get a perfectly square cropped image from the CDN
     const optimizedWebpUrl = publicUrlData.publicUrl.replace('/object/public/', '/render/image/public/') + '?width=300&height=300&resize=cover&quality=80';
 
-    const cacheKey = `${fideId}_webp`;
+    const dbGate = allowDatabaseWork(clientIp(req));
+    if (!dbGate.ok) {
+      if (forceRefresh) {
+        return jsonResponse({ error: "rate_limited", reason: dbGate.reason }, 429);
+      }
+      const limited = {
+        url: optimizedWebpUrl,
+        cached: true,
+        fide_id: fideId,
+        source: "rate_limited",
+      };
+      memSet(cacheKey, limited);
+      return jsonResponse(limited);
+    }
 
     if (!forceRefresh) {
       const cacheRow = await readCacheRow(supabase, cacheKey);
       if (cacheRow && new Date(cacheRow.retry_after).getTime() > Date.now()) {
         if (cacheRow.status === "photo") {
-          return jsonResponse({
+          const body = {
             url: optimizedWebpUrl,
             cached: true,
             fide_id: fideId,
             source: "cache_table",
-          });
+          };
+          memSet(cacheKey, body);
+          return jsonResponse(body);
         }
-        return jsonResponse({
+        const body = {
           url: null,
           cached: true,
           fide_id: fideId,
           reason: cacheRow.reason ?? cacheRow.status,
-        });
+        };
+        memSet(cacheKey, body);
+        return jsonResponse(body);
       }
 
       const { data: listedFiles } = await supabase.storage
@@ -273,12 +307,14 @@ Deno.serve(async (req: Request) => {
             storagePath,
             toIsoAfter(PHOTO_REVALIDATE_TTL_MS),
           );
-          return jsonResponse({
+          const body = {
             url: optimizedWebpUrl,
             cached: true,
             fide_id: fideId,
             source: "storage",
-          });
+          };
+          memSet(cacheKey, body);
+          return jsonResponse(body);
         }
       }
     }

@@ -514,10 +514,11 @@ class _TagDropdown extends StatefulWidget {
 
 class _TagDropdownState extends State<_TagDropdown> {
   /// The tag grid is capped at [_visibleRows] rows and scrolls past that, so
-  /// the panel keeps the same footprint no matter how long the vocabulary
-  /// grows. Adding a tag must never push the menu further down the screen.
+  /// the panel keeps a stable footprint if the vocabulary grows past the
+  /// current fourteen tags (seven 2-up rows). The cap is the full set so
+  /// nothing starts clipped behind a scroll.
   static const int _columns = 2;
-  static const int _visibleRows = 5;
+  static const int _visibleRows = 7;
   static const int _pageSize = _columns * _visibleRows;
 
   late final Set<String> _selected;
@@ -630,8 +631,8 @@ class _TagDropdownState extends State<_TagDropdown> {
     final rowGap = 8.h;
     final padTop = 8.h;
     final padBottom = 10.h;
-    // Exactly [_visibleRows] rows — the footprint the menu had at ten tags.
-    // Everything past that scrolls instead of stretching the panel.
+    // Exactly [_visibleRows] rows — the full current vocabulary. Anything
+    // past that scrolls instead of stretching the panel.
     final gridHeight =
         rowExtent * _visibleRows +
         rowGap * (_visibleRows - 1) +

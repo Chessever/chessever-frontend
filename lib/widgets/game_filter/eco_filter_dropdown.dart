@@ -30,7 +30,12 @@ class _EcoFilterDropdownState extends State<EcoFilterDropdown>
   late Animation<double> _expandAnimation;
   late Animation<double> _rotationAnimation;
   final TextEditingController _searchController = TextEditingController();
-  final FocusNode _searchFocusNode = FocusNode();
+  // Collapsed Opening search must not steal route focus (which opens the
+  // keyboard) when the Library ChessEver Database filter dialog appears.
+  final FocusNode _searchFocusNode = FocusNode(
+    canRequestFocus: false,
+    skipTraversal: true,
+  );
   final ScrollController _scrollController = ScrollController();
 
   // Category colors
@@ -72,12 +77,15 @@ class _EcoFilterDropdownState extends State<EcoFilterDropdown>
       _isExpanded = !_isExpanded;
       if (_isExpanded) {
         _animationController.forward();
-        // Focus search field when expanded
-        Future.delayed(const Duration(milliseconds: 100), () {
-          if (mounted) _searchFocusNode.requestFocus();
-        });
+        // Keep the search field focusable so an explicit tap can type,
+        // but do not request the keyboard just because Opening expanded.
+        _searchFocusNode.canRequestFocus = true;
+        _searchFocusNode.skipTraversal = false;
       } else {
         _animationController.reverse();
+        _searchFocusNode.unfocus();
+        _searchFocusNode.canRequestFocus = false;
+        _searchFocusNode.skipTraversal = true;
         _searchController.clear();
         _searchQuery = '';
       }
@@ -201,31 +209,33 @@ class _EcoFilterDropdownState extends State<EcoFilterDropdown>
           ),
         ),
 
-        // Expandable options list
-        SizeTransition(
-          sizeFactor: _expandAnimation,
-          axisAlignment: -1,
-          child: Container(
-            constraints: BoxConstraints(maxHeight: 320.h),
-            decoration: BoxDecoration(
-              color: context.colors.surface,
-              borderRadius: BorderRadius.vertical(
-                bottom: Radius.circular(12.br),
+        // Expandable options list. ExcludeFocus while collapsed so the
+        // offscreen TextField cannot become the dialog's first focus.
+        ExcludeFocus(
+          excluding: !_isExpanded,
+          child: SizeTransition(
+            sizeFactor: _expandAnimation,
+            alignment: Alignment.topCenter,
+            child: Container(
+              constraints: BoxConstraints(maxHeight: 320.h),
+              decoration: BoxDecoration(
+                color: context.colors.surface,
+                borderRadius: BorderRadius.vertical(
+                  bottom: Radius.circular(12.br),
+                ),
+                border: Border(
+                  left: BorderSide(color: context.colors.divider),
+                  right: BorderSide(color: context.colors.divider),
+                  bottom: BorderSide(color: context.colors.divider),
+                ),
               ),
-              border: Border(
-                left: BorderSide(color: context.colors.divider),
-                right: BorderSide(color: context.colors.divider),
-                bottom: BorderSide(color: context.colors.divider),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  _buildSearchField(),
+                  Flexible(child: _buildOptionsList()),
+                ],
               ),
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                // Search field
-                _buildSearchField(),
-                // Options list
-                Flexible(child: _buildOptionsList()),
-              ],
             ),
           ),
         ),
@@ -244,6 +254,8 @@ class _EcoFilterDropdownState extends State<EcoFilterDropdown>
       child: TextField(
         controller: _searchController,
         focusNode: _searchFocusNode,
+        autofocus: false,
+        onTapOutside: (_) => _searchFocusNode.unfocus(),
         onChanged: (value) => setState(() => _searchQuery = value),
         style: AppTypography.textSmMedium.copyWith(color: context.colors.textPrimary),
         decoration: InputDecoration(

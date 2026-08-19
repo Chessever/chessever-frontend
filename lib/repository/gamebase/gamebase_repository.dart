@@ -90,6 +90,147 @@ class GamebaseRepository {
     return {'X-API-Key': _apiKey, 'Accept': 'application/json'};
   }
 
+  /// Filter keys shared by aggregates and position-games requests.
+  /// Null / empty values are omitted so the backend ANDs only present keys.
+  @visibleForTesting
+  static Map<String, dynamic> buildExplorerQueryFilterFields({
+    TimeControl? timeControl,
+    String? playerId,
+    String? color,
+    String? result,
+    int? minRating,
+    int? maxRating,
+    int? yearFrom,
+    int? yearTo,
+    bool? isOnline,
+  }) {
+    return <String, dynamic>{
+      if (playerId != null && playerId.isNotEmpty) 'playerId': playerId,
+      if (timeControl != null) 'timeControl': timeControl.name.toUpperCase(),
+      if (minRating != null) 'minRating': minRating,
+      if (maxRating != null) 'maxRating': maxRating,
+      if (color != null) 'color': color,
+      if (result != null) 'result': result,
+      if (yearFrom != null) 'yearFrom': yearFrom,
+      if (yearTo != null) 'yearTo': yearTo,
+      if (isOnline != null) 'isOnline': isOnline,
+    };
+  }
+
+  /// POST body for `/api/game-position/aggregates/query`.
+  @visibleForTesting
+  static Map<String, dynamic> buildMoveAggregatesQueryBody({
+    required String fen,
+    List<String> moves = const [],
+    String? playerId,
+    TimeControl? timeControl,
+    int? minRating,
+    int? maxRating,
+    String? color,
+    String? result,
+    int? yearFrom,
+    int? yearTo,
+    bool? isOnline,
+  }) {
+    final normalizedFen = _normalizeFenForLookup(fen);
+    final normalizedMoves = _sanitizeMovesForFen(normalizedFen, moves);
+    return <String, dynamic>{
+      'fen': normalizedFen,
+      'moves': normalizedMoves,
+      ...buildExplorerQueryFilterFields(
+        timeControl: timeControl,
+        playerId: playerId,
+        color: color,
+        result: result,
+        minRating: minRating,
+        maxRating: maxRating,
+        yearFrom: yearFrom,
+        yearTo: yearTo,
+        isOnline: isOnline,
+      ),
+    };
+  }
+
+  /// Request map for position-games: POST body when [moves] survive
+  /// sanitization, otherwise GET query parameters.
+  @visibleForTesting
+  static Map<String, dynamic> buildPositionGamesQueryBody({
+    required String fen,
+    List<String> moves = const [],
+    String? uci,
+    TimeControl? timeControl,
+    String? playerId,
+    String? color,
+    String? result,
+    int? minRating,
+    int? maxRating,
+    int? yearFrom,
+    int? yearTo,
+    GamebaseSortField? sortBy,
+    GamebaseSortDirection? sortDirection,
+    bool? isOnline,
+    int notationPlies = 0,
+    int pageNumber = 0,
+    int pageSize = 20,
+  }) {
+    final normalizedFen = _normalizeFenForLookup(fen);
+    final normalizedMoves = _sanitizeMovesForFen(normalizedFen, moves);
+    final trimmedPlayerId = playerId?.trim();
+    final trimmedUci = uci?.trim();
+    final filters = buildExplorerQueryFilterFields(
+      timeControl: timeControl,
+      playerId:
+          trimmedPlayerId != null && trimmedPlayerId.isNotEmpty
+              ? trimmedPlayerId
+              : null,
+      color: color,
+      result: result,
+      minRating: minRating,
+      maxRating: maxRating,
+      yearFrom: yearFrom,
+      yearTo: yearTo,
+      isOnline: isOnline,
+    );
+
+    if (normalizedMoves.isNotEmpty) {
+      final orderBy =
+          sortBy != null
+              ? [
+                {
+                  'field': sortBy.name,
+                  'direction':
+                      sortDirection == GamebaseSortDirection.asc
+                          ? 'asc'
+                          : 'desc',
+                },
+              ]
+              : null;
+      return <String, dynamic>{
+        'fen': normalizedFen,
+        'moves': normalizedMoves,
+        'pageNumber': pageNumber,
+        'pageSize': pageSize,
+        if (trimmedUci != null && trimmedUci.isNotEmpty) 'uci': trimmedUci,
+        ...filters,
+        if (notationPlies > 0) 'notationPlies': notationPlies,
+        if (orderBy != null) 'orderBy': orderBy,
+        if (sortBy != null) 'sortBy': sortBy.name,
+        if (sortDirection != null) 'sortDirection': sortDirection.name,
+      };
+    }
+
+    return <String, dynamic>{
+      'fen': normalizedFen,
+      'pageNumber': pageNumber,
+      'pageSize': pageSize,
+      if (trimmedUci != null && trimmedUci.isNotEmpty) 'uci': trimmedUci,
+      ...filters,
+      if (notationPlies > 0) 'notationPlies': notationPlies,
+      if (sortBy != null) 'sortBy': sortBy.name,
+      if (sortDirection != null) 'sortDirection': sortDirection.name,
+    };
+  }
+
   Future<GamebaseResponse> getMoveAggregates({
     required String fen,
     List<String> moves = const [],
@@ -104,30 +245,27 @@ class GamebaseRepository {
     bool? isOnline,
   }) async {
     try {
-      final normalizedFen = _normalizeFenForLookup(fen);
-      final normalizedMoves = _sanitizeMovesForFen(normalizedFen, moves);
+      final body = buildMoveAggregatesQueryBody(
+        fen: fen,
+        moves: moves,
+        playerId: playerId,
+        timeControl: timeControl,
+        minRating: minRating,
+        maxRating: maxRating,
+        color: color,
+        result: result,
+        yearFrom: yearFrom,
+        yearTo: yearTo,
+        isOnline: isOnline,
+      );
 
       if (kDebugMode &&
           moves.isNotEmpty &&
-          normalizedMoves.length != moves.length) {
+          (body['moves'] as List).length != moves.length) {
         debugPrint(
           '[GamebaseRepository] Dropping mismatched move path for aggregates query',
         );
       }
-
-      final body = <String, dynamic>{
-        'fen': normalizedFen,
-        'moves': normalizedMoves,
-        if (playerId != null && playerId.isNotEmpty) 'playerId': playerId,
-        if (timeControl != null) 'timeControl': timeControl.name.toUpperCase(),
-        if (minRating != null) 'minRating': minRating,
-        if (maxRating != null) 'maxRating': maxRating,
-        if (color != null) 'color': color,
-        if (result != null) 'result': result,
-        if (yearFrom != null) 'yearFrom': yearFrom,
-        if (yearTo != null) 'yearTo': yearTo,
-        if (isOnline != null) 'isOnline': isOnline,
-      };
 
       if (kDebugMode) {
         debugPrint('[GamebaseRepository] getMoveAggregates:');
@@ -1107,8 +1245,26 @@ class GamebaseRepository {
     int pageSize = 20,
   }) async {
     try {
-      final normalizedFen = _normalizeFenForLookup(fen);
-      final normalizedMoves = _sanitizeMovesForFen(normalizedFen, moves);
+      final body = buildPositionGamesQueryBody(
+        fen: fen,
+        moves: moves,
+        uci: uci,
+        timeControl: timeControl,
+        playerId: playerId,
+        color: color,
+        result: result,
+        minRating: minRating,
+        maxRating: maxRating,
+        yearFrom: yearFrom,
+        yearTo: yearTo,
+        sortBy: sortBy,
+        sortDirection: sortDirection,
+        isOnline: isOnline,
+        notationPlies: notationPlies,
+        pageNumber: pageNumber,
+        pageSize: pageSize,
+      );
+      final normalizedMoves = (body['moves'] as List?) ?? const [];
 
       if (kDebugMode &&
           moves.isNotEmpty &&
@@ -1118,71 +1274,16 @@ class GamebaseRepository {
         );
       }
 
-      final orderBy =
-          sortBy != null
-              ? [
-                {
-                  'field': sortBy.name,
-                  'direction':
-                      sortDirection == GamebaseSortDirection.asc
-                          ? 'asc'
-                          : 'desc',
-                },
-              ]
-              : null;
-
       final response =
           normalizedMoves.isNotEmpty
               ? await _dio.post(
                 '$_baseUrl/api/game-position/games/query',
-                data: {
-                  'fen': normalizedFen,
-                  'moves': normalizedMoves,
-                  'pageNumber': pageNumber,
-                  'pageSize': pageSize,
-                  if (uci != null && uci.trim().isNotEmpty) 'uci': uci.trim(),
-                  if (playerId != null && playerId.trim().isNotEmpty)
-                    'playerId': playerId.trim(),
-                  if (timeControl != null)
-                    'timeControl': timeControl.name.toUpperCase(),
-                  if (minRating != null) 'minRating': minRating,
-                  if (maxRating != null) 'maxRating': maxRating,
-                  if (color != null) 'color': color,
-                  if (result != null) 'result': result,
-                  if (yearFrom != null) 'yearFrom': yearFrom,
-                  if (yearTo != null) 'yearTo': yearTo,
-                  if (isOnline != null) 'isOnline': isOnline,
-                  if (notationPlies > 0) 'notationPlies': notationPlies,
-                  if (orderBy != null) 'orderBy': orderBy,
-                  if (sortBy != null) 'sortBy': sortBy.name,
-                  if (sortDirection != null)
-                    'sortDirection': sortDirection.name,
-                },
+                data: body,
                 options: Options(headers: _headers),
               )
               : await _dio.get(
                 '$_baseUrl/api/game-position/games',
-                queryParameters: {
-                  'fen': normalizedFen,
-                  'pageNumber': pageNumber,
-                  'pageSize': pageSize,
-                  if (uci != null && uci.trim().isNotEmpty) 'uci': uci.trim(),
-                  if (playerId != null && playerId.trim().isNotEmpty)
-                    'playerId': playerId.trim(),
-                  if (timeControl != null)
-                    'timeControl': timeControl.name.toUpperCase(),
-                  if (minRating != null) 'minRating': minRating,
-                  if (maxRating != null) 'maxRating': maxRating,
-                  if (color != null) 'color': color,
-                  if (result != null) 'result': result,
-                  if (yearFrom != null) 'yearFrom': yearFrom,
-                  if (yearTo != null) 'yearTo': yearTo,
-                  if (isOnline != null) 'isOnline': isOnline,
-                  if (notationPlies > 0) 'notationPlies': notationPlies,
-                  if (sortBy != null) 'sortBy': sortBy.name,
-                  if (sortDirection != null)
-                    'sortDirection': sortDirection.name,
-                },
+                queryParameters: body,
                 options: Options(headers: _headers),
               );
 
@@ -1225,24 +1326,29 @@ class GamebaseRepository {
   }) async {
     try {
       final normalizedFen = _normalizeFenForLookup(fen);
+      final trimmedPlayerId = playerId?.trim();
+      final trimmedUci = uci?.trim();
       final response = await _dio.get(
         '$_baseUrl/api/game-position/fen/games',
         queryParameters: {
           'fen': normalizedFen,
           'pageNumber': pageNumber,
           'pageSize': pageSize,
-          if (uci != null && uci.trim().isNotEmpty) 'uci': uci.trim(),
-          if (playerId != null && playerId.trim().isNotEmpty)
-            'playerId': playerId.trim(),
-          if (timeControl != null)
-            'timeControl': timeControl.name.toUpperCase(),
-          if (minRating != null) 'minRating': minRating,
-          if (maxRating != null) 'maxRating': maxRating,
-          if (color != null) 'color': color,
-          if (result != null) 'result': result,
-          if (yearFrom != null) 'yearFrom': yearFrom,
-          if (yearTo != null) 'yearTo': yearTo,
-          if (isOnline != null) 'isOnline': isOnline,
+          if (trimmedUci != null && trimmedUci.isNotEmpty) 'uci': trimmedUci,
+          ...buildExplorerQueryFilterFields(
+            timeControl: timeControl,
+            playerId:
+                trimmedPlayerId != null && trimmedPlayerId.isNotEmpty
+                    ? trimmedPlayerId
+                    : null,
+            color: color,
+            result: result,
+            minRating: minRating,
+            maxRating: maxRating,
+            yearFrom: yearFrom,
+            yearTo: yearTo,
+            isOnline: isOnline,
+          ),
           if (notationPlies > 0) 'notationPlies': notationPlies,
           if (sortBy != null) 'sortBy': sortBy.name,
           if (sortDirection != null) 'sortDirection': sortDirection.name,

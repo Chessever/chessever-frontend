@@ -1,5 +1,11 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import {
+  allowDatabaseWork,
+  clientIp,
+  memGet,
+  memSet,
+} from "../_shared/fide_photo_guard.ts";
 
 const STORAGE_BUCKET = "player-photos";
 const STORAGE_FOLDER = "fide";
@@ -36,7 +42,13 @@ type PhotoResult =
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
     status,
-    headers: { ...corsHeaders, "Content-Type": "application/json" },
+    headers: {
+      ...corsHeaders,
+      "Content-Type": "application/json",
+      "Cache-Control": status === 200
+        ? "public, max-age=60, s-maxage=300"
+        : "no-store",
+    },
   });
 }
 
@@ -218,6 +230,10 @@ Deno.serve(async (req: Request) => {
       return jsonResponse({ error: "force_refresh is not allowed" }, 403);
     }
     const forceRefresh = requestedForceRefresh;
+    if (!forceRefresh) {
+      const cached = memGet(fideId);
+      if (cached) return jsonResponse(cached);
+    }
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL");
     const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
@@ -230,23 +246,42 @@ Deno.serve(async (req: Request) => {
       .from(STORAGE_BUCKET)
       .getPublicUrl(storagePath);
 
+    const dbGate = allowDatabaseWork(clientIp(req));
+    if (!dbGate.ok) {
+      if (forceRefresh) {
+        return jsonResponse({ error: "rate_limited", reason: dbGate.reason }, 429);
+      }
+      const limited = {
+        url: publicUrlData.publicUrl,
+        cached: true,
+        fide_id: fideId,
+        source: "rate_limited",
+      };
+      memSet(fideId, limited);
+      return jsonResponse(limited);
+    }
+
     if (!forceRefresh) {
       const cacheRow = await readCacheRow(supabase, fideId);
       if (cacheRow && new Date(cacheRow.retry_after).getTime() > Date.now()) {
         if (cacheRow.status === "photo") {
-          return jsonResponse({
+          const body = {
             url: publicUrlData.publicUrl,
             cached: true,
             fide_id: fideId,
             source: "cache_table",
-          });
+          };
+          memSet(fideId, body);
+          return jsonResponse(body);
         }
-        return jsonResponse({
+        const body = {
           url: null,
           cached: true,
           fide_id: fideId,
           reason: cacheRow.reason ?? cacheRow.status,
-        });
+        };
+        memSet(fideId, body);
+        return jsonResponse(body);
       }
 
       const { data: listedFiles } = await supabase.storage

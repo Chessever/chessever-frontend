@@ -36,6 +36,7 @@ import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/auth_state_listener.dart';
 import 'package:chessever2/widgets/board_color_dialog.dart';
 import 'package:chessever2/widgets/custom_upgrade_alert.dart';
+import 'package:chessever2/widgets/dismiss_keyboard.dart';
 import 'package:chessever2/widgets/guest_session_gate_listener.dart';
 import 'package:chessground/chessground.dart';
 import 'package:onesignal_flutter/onesignal_flutter.dart';
@@ -1317,12 +1318,14 @@ class MyApp extends HookConsumerWidget {
           ],
           initialRoute: '/',
           builder:
-              (context, child) => AnnotatedRegion<SystemUiOverlayStyle>(
-                value: AppTheme.overlayFor(Theme.of(context).brightness),
-                child: CustomUpgradeAlert(
-                  upgrader: upgrader,
-                  navigatorKey: navigatorKey,
-                  child: child ?? const SizedBox.shrink(),
+              (context, child) => DismissKeyboard(
+                child: AnnotatedRegion<SystemUiOverlayStyle>(
+                  value: AppTheme.overlayFor(Theme.of(context).brightness),
+                  child: CustomUpgradeAlert(
+                    upgrader: upgrader,
+                    navigatorKey: navigatorKey,
+                    child: child ?? const SizedBox.shrink(),
+                  ),
                 ),
               ),
           routes: {
