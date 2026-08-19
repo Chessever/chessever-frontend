@@ -146,6 +146,14 @@ void main() {
       await tester.tap(openingHeader);
       await _pumpPastExpandAndDelayedFocus(tester);
       expect(_openingSearchHasFocus(tester), isFalse);
+
+      await tester.tap(find.byType(TextField));
+      await tester.pump();
+      expect(_openingSearchHasFocus(tester), isTrue);
+
+      await tester.tap(find.text('Filters'));
+      await tester.pump();
+      expect(_openingSearchHasFocus(tester), isFalse);
     },
   );
 }
