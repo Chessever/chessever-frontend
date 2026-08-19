@@ -4,7 +4,6 @@ import 'dart:io' show Platform;
 import 'package:app_links/app_links.dart';
 import 'package:chessever2/repository/authentication/auth_repository.dart';
 import 'package:chessever2/repository/authentication/model/auth_state.dart';
-import 'package:chessever2/repository/sqlite/app_database.dart';
 import 'package:chessever2/repository/supabase/chess_player/chess_player_repository.dart';
 import 'package:chessever2/repository/supabase/game/games.dart';
 import 'package:chessever2/repository/supabase/game/game_repository.dart';
@@ -25,6 +24,7 @@ import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_mode
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_app_bar_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_provider.dart';
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_mode_provider.dart';
+import 'package:chessever2/screens/tour_detail/provider/tour_detail_repo_provider.dart';
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_tabs.dart';
 import 'package:chessever2/screens/tour_detail/player_tour/player_tour_screen_provider.dart'
     show playerTourScreenProvider;
@@ -1790,8 +1790,12 @@ class DeepLinkService {
 
     if (cleanTourId != null) {
       try {
-        final db = AppDatabase.instance;
-        await db.setString('selected_tour_$groupBroadcastId', cleanTourId);
+        await ref
+            .read(tourDetailRepoProvider)
+            .saveSelectedTourId(
+              groupEventId: groupBroadcastId,
+              tourId: cleanTourId,
+            );
       } catch (e) {
         debugPrint('DeepLinkService: Failed to persist selected tour: $e');
       }

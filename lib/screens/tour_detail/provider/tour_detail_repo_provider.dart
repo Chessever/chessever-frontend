@@ -3,17 +3,55 @@ import 'dart:convert';
 import 'package:chessever2/repository/sqlite/app_database.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
-final tourDetailRepoProvider = AutoDisposeProvider<_TourDetailRepo>((ref) {
-  return _TourDetailRepo();
+final tourDetailRepoProvider = AutoDisposeProvider<TourDetailRepo>((ref) {
+  return TourDetailRepo();
 });
 
-class _TourDetailRepo {
-  static const _prefix = 'selected_tour_';
+class PersistedTourSelection {
+  const PersistedTourSelection({required this.tourId, required this.savedAt});
+
+  final String tourId;
+  final DateTime savedAt;
+}
+
+/// Parses the SQLite payload written by [TourDetailRepo.saveSelectedTourId].
+///
+/// Returns null for empty, legacy plain-string, or otherwise unreadable
+/// values. Those are treated as expired by the repo layer.
+PersistedTourSelection? parsePersistedTourSelection(String? raw) {
+  if (raw == null || raw.isEmpty) return null;
+  try {
+    final decoded = jsonDecode(raw);
+    if (decoded is! Map) return null;
+    final map = Map<String, dynamic>.from(decoded);
+    final tourId = map['tourId'] as String?;
+    final savedAtRaw = map['savedAt'];
+    final savedAt = savedAtRaw is String ? DateTime.tryParse(savedAtRaw) : null;
+    if (tourId == null || tourId.isEmpty || savedAt == null) return null;
+    return PersistedTourSelection(tourId: tourId, savedAt: savedAt);
+  } catch (_) {
+    return null;
+  }
+}
+
+bool isPersistedTourSelectionFresh(
+  PersistedTourSelection selection, {
+  DateTime? now,
+  Duration ttl = TourDetailRepo.selectionTtl,
+}) {
+  final current = now ?? DateTime.now().toUtc();
+  return current.difference(selection.savedAt.toUtc()) <= ttl;
+}
+
+class TourDetailRepo {
+  static const prefix = 'selected_tour_';
 
   /// How long an explicit dropdown pick keeps overriding the default
   /// category-selection strategy. After this window the persisted
   /// selection is deleted and ignored.
   static const selectionTtl = Duration(hours: 12);
+
+  String keyFor(String groupEventId) => '$prefix$groupEventId';
 
   Future<void> saveSelectedTourId({
     required String groupEventId,
@@ -21,7 +59,7 @@ class _TourDetailRepo {
   }) async {
     final db = AppDatabase.instance;
     await db.setString(
-      '$_prefix$groupEventId',
+      keyFor(groupEventId),
       jsonEncode({
         'tourId': tourId,
         'savedAt': DateTime.now().toUtc().toIso8601String(),
@@ -35,42 +73,20 @@ class _TourDetailRepo {
   /// unknowable age and are treated as expired.
   Future<String?> getSelectedTourId(String groupEventId) async {
     final db = AppDatabase.instance;
-    final raw = await db.getString('$_prefix$groupEventId');
-    if (raw == null || raw.isEmpty) {
-      return null;
-    }
-
-    String? tourId;
-    DateTime? savedAt;
-    try {
-      final decoded = jsonDecode(raw);
-      if (decoded is Map<String, dynamic>) {
-        tourId = decoded['tourId'] as String?;
-        final savedAtRaw = decoded['savedAt'];
-        if (savedAtRaw is String) {
-          savedAt = DateTime.tryParse(savedAtRaw);
-        }
+    final raw = await db.getString(keyFor(groupEventId));
+    final parsed = parsePersistedTourSelection(raw);
+    if (parsed == null || !isPersistedTourSelectionFresh(parsed)) {
+      if (raw != null && raw.isNotEmpty) {
+        await clearSelectedTourId(groupEventId);
       }
-    } catch (_) {
-      // Not JSON — legacy value handled below.
-    }
-
-    final isExpired =
-        tourId == null ||
-        tourId.isEmpty ||
-        savedAt == null ||
-        DateTime.now().toUtc().difference(savedAt.toUtc()) > selectionTtl;
-
-    if (isExpired) {
-      await clearSelectedTourId(groupEventId);
       return null;
     }
-    return tourId;
+    return parsed.tourId;
   }
 
   /// Optional: clear tourId for a given groupEventId
   Future<void> clearSelectedTourId(String groupEventId) async {
     final db = AppDatabase.instance;
-    await db.remove('$_prefix$groupEventId');
+    await db.remove(keyFor(groupEventId));
   }
 }

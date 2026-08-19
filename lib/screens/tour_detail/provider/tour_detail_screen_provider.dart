@@ -266,14 +266,9 @@ class _TourDetailScreenNotifier
         return;
       }
 
-      final updatedViewModel = createViewModelFromExisting(
-        currentState,
-        selectedTourModel.tour,
-        _liveTourIdsForTours(_currentLiveTourIds, currentState.tours),
-      );
-      setDataState(updatedViewModel);
-
-      // ✅ Save the user's selection for future sessions (ensure persistence before any reloads)
+      // Persist before mutating UI state. Leaving this screen invalidates
+      // [tourDetailScreenProvider], so a back-tap during the SQLite write
+      // used to drop the pick before it landed on disk.
       try {
         await ref
             .read(tourDetailRepoProvider)
@@ -284,6 +279,15 @@ class _TourDetailScreenNotifier
       } catch (e) {
         logWarning('Failed to persist selected tour: $e');
       }
+
+      if (!mounted) return;
+
+      final updatedViewModel = createViewModelFromExisting(
+        currentState,
+        selectedTourModel.tour,
+        _liveTourIdsForTours(_currentLiveTourIds, currentState.tours),
+      );
+      setDataState(updatedViewModel);
     } catch (e, st) {
       setErrorState(e, st);
     }
