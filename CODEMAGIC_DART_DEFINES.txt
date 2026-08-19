@@ -20,8 +20,8 @@ flutter build apk --release --flavor production -t lib/main.dart \
   --dart-define=CLARITY_PROJECT_ID="$CLARITY_PROJECT_ID" \
   --dart-define=ONESIGNAL_APP_ID="$ONESIGNAL_APP_ID" \
   --dart-define=APPSFLYER_DEV_KEY="$APPSFLYER_DEV_KEY" \
-  --dart-define=TELEGRAM_FEEDBACK_BOT_TOKEN=$TELEGRAM_FEEDBACK_BOT_TOKEN \
-  --dart-define=TELEGRAM_FEEDBACK_CHAT_ID=$TELEGRAM_FEEDBACK_CHAT_ID
+  --dart-define=TELEGRAM_FEEDBACK_BOT_TOKEN="$TELEGRAM_FEEDBACK_BOT_TOKEN" \
+  --dart-define=TELEGRAM_FEEDBACK_CHAT_ID="$TELEGRAM_FEEDBACK_CHAT_ID"
 ```
 
 ## For Android App Bundle
@@ -44,8 +44,8 @@ flutter build appbundle --release --flavor production -t lib/main.dart \
   --dart-define=CLARITY_PROJECT_ID="$CLARITY_PROJECT_ID" \
   --dart-define=ONESIGNAL_APP_ID="$ONESIGNAL_APP_ID" \
   --dart-define=APPSFLYER_DEV_KEY="$APPSFLYER_DEV_KEY" \
-  --dart-define=TELEGRAM_FEEDBACK_BOT_TOKEN=$TELEGRAM_FEEDBACK_BOT_TOKEN \
-  --dart-define=TELEGRAM_FEEDBACK_CHAT_ID=$TELEGRAM_FEEDBACK_CHAT_ID
+  --dart-define=TELEGRAM_FEEDBACK_BOT_TOKEN="$TELEGRAM_FEEDBACK_BOT_TOKEN" \
+  --dart-define=TELEGRAM_FEEDBACK_CHAT_ID="$TELEGRAM_FEEDBACK_CHAT_ID"
 ```
 
 ## For iOS Build (IPA)
@@ -68,8 +68,8 @@ flutter build ipa --release --flavor production -t lib/main.dart \
   --dart-define=CLARITY_PROJECT_ID="$CLARITY_PROJECT_ID" \
   --dart-define=ONESIGNAL_APP_ID="$ONESIGNAL_APP_ID" \
   --dart-define=APPSFLYER_DEV_KEY="$APPSFLYER_DEV_KEY" \
-  --dart-define=TELEGRAM_FEEDBACK_BOT_TOKEN=$TELEGRAM_FEEDBACK_BOT_TOKEN \
-  --dart-define=TELEGRAM_FEEDBACK_CHAT_ID=$TELEGRAM_FEEDBACK_CHAT_ID
+  --dart-define=TELEGRAM_FEEDBACK_BOT_TOKEN="$TELEGRAM_FEEDBACK_BOT_TOKEN" \
+  --dart-define=TELEGRAM_FEEDBACK_CHAT_ID="$TELEGRAM_FEEDBACK_CHAT_ID"
 ```
 
 ## For iOS Archive (Xcode build)
@@ -92,8 +92,8 @@ flutter build ios --release --flavor production -t lib/main.dart \
   --dart-define=CLARITY_PROJECT_ID="$CLARITY_PROJECT_ID" \
   --dart-define=ONESIGNAL_APP_ID="$ONESIGNAL_APP_ID" \
   --dart-define=APPSFLYER_DEV_KEY="$APPSFLYER_DEV_KEY" \
-  --dart-define=TELEGRAM_FEEDBACK_BOT_TOKEN=$TELEGRAM_FEEDBACK_BOT_TOKEN \
-  --dart-define=TELEGRAM_FEEDBACK_CHAT_ID=$TELEGRAM_FEEDBACK_CHAT_ID
+  --dart-define=TELEGRAM_FEEDBACK_BOT_TOKEN="$TELEGRAM_FEEDBACK_BOT_TOKEN" \
+  --dart-define=TELEGRAM_FEEDBACK_CHAT_ID="$TELEGRAM_FEEDBACK_CHAT_ID"
 ```
 
 ## Single-Line Format (if needed)
@@ -102,16 +102,16 @@ For Android APK:
 ```bash
 flutter build apk --release --flavor production -t lib/main.dart --dart-define=SUPABASE_URL="$SUPABASE_URL" --dart-define=SUPABASE_ANON_KEY="$SUPABASE_ANON_KEY" --dart-define=GOOGLE_WEB_CLIENT_ID="$GOOGLE_WEB_CLIENT_ID" --dart-define=GOOGLE_IOS_CLIENT_ID="$GOOGLE_IOS_CLIENT_ID" --dart-define=GAMEBASE_API_KEY="$GAMEBASE_API_KEY" --dart-define=CHESSEVER_CLOUDFLARE_API_BASE="$CHESSEVER_CLOUDFLARE_API_BASE" --dart-define=ANALYSIS_API_BASE=https://chessever-analysis.young-sun-69a8.workers.dev --dart-define=RevenueCatAPIKey="$RevenueCatAPIKey" --dart-define=APPLE_SERVICE_ID="$APPLE_SERVICE_ID" --dart-define=APPLE_REDIRECT_URI="$APPLE_REDIRECT_URI" --dart-define=APPLE_BUNDLE_ID="$APPLE_BUNDLE_ID" --dart-define=SENTRY_FLUTTER="$SENTRY_FLUTTER" --dart-define=AMPLITUDE="$AMPLITUDE" --dart-define=CLARITY_PROJECT_ID="$CLARITY_PROJECT_ID" --dart-define=ONESIGNAL_APP_ID="$ONESIGNAL_APP_ID" \
   --dart-define=APPSFLYER_DEV_KEY="$APPSFLYER_DEV_KEY" \
-  --dart-define=TELEGRAM_FEEDBACK_BOT_TOKEN=$TELEGRAM_FEEDBACK_BOT_TOKEN \
-  --dart-define=TELEGRAM_FEEDBACK_CHAT_ID=$TELEGRAM_FEEDBACK_CHAT_ID
+  --dart-define=TELEGRAM_FEEDBACK_BOT_TOKEN="$TELEGRAM_FEEDBACK_BOT_TOKEN" \
+  --dart-define=TELEGRAM_FEEDBACK_CHAT_ID="$TELEGRAM_FEEDBACK_CHAT_ID"
 ```
 
 For iOS IPA:
 ```bash
 flutter build ipa --release --flavor production -t lib/main.dart --dart-define=SUPABASE_URL="$SUPABASE_URL" --dart-define=SUPABASE_ANON_KEY="$SUPABASE_ANON_KEY" --dart-define=GOOGLE_WEB_CLIENT_ID="$GOOGLE_WEB_CLIENT_ID" --dart-define=GOOGLE_IOS_CLIENT_ID="$GOOGLE_IOS_CLIENT_ID" --dart-define=GAMEBASE_API_KEY="$GAMEBASE_API_KEY" --dart-define=CHESSEVER_CLOUDFLARE_API_BASE="$CHESSEVER_CLOUDFLARE_API_BASE" --dart-define=ANALYSIS_API_BASE=https://chessever-analysis.young-sun-69a8.workers.dev --dart-define=RevenueCatAPIKey="$RevenueCatAPIKey" --dart-define=APPLE_SERVICE_ID="$APPLE_SERVICE_ID" --dart-define=APPLE_REDIRECT_URI="$APPLE_REDIRECT_URI" --dart-define=APPLE_BUNDLE_ID="$APPLE_BUNDLE_ID" --dart-define=SENTRY_FLUTTER="$SENTRY_FLUTTER" --dart-define=AMPLITUDE="$AMPLITUDE" --dart-define=CLARITY_PROJECT_ID="$CLARITY_PROJECT_ID" --dart-define=ONESIGNAL_APP_ID="$ONESIGNAL_APP_ID" \
   --dart-define=APPSFLYER_DEV_KEY="$APPSFLYER_DEV_KEY" \
-  --dart-define=TELEGRAM_FEEDBACK_BOT_TOKEN=$TELEGRAM_FEEDBACK_BOT_TOKEN \
-  --dart-define=TELEGRAM_FEEDBACK_CHAT_ID=$TELEGRAM_FEEDBACK_CHAT_ID
+  --dart-define=TELEGRAM_FEEDBACK_BOT_TOKEN="$TELEGRAM_FEEDBACK_BOT_TOKEN" \
+  --dart-define=TELEGRAM_FEEDBACK_CHAT_ID="$TELEGRAM_FEEDBACK_CHAT_ID"
 ```
 
 ## Notes:
