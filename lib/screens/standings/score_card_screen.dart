@@ -117,6 +117,37 @@ int findScoreCardPlayerIndex(
   );
 }
 
+PlayerStandingModel scoreCardOpponentTarget({
+  required List<PlayerStandingModel> players,
+  required String name,
+  required String countryCode,
+  required String? title,
+  required int rating,
+  int? fideId,
+  String? gamebasePlayerId,
+  String? team,
+}) {
+  final fallback = PlayerStandingModel(
+    countryCode: countryCode,
+    title: title == null || title.isEmpty ? null : title,
+    name: name,
+    score: rating,
+    scoreChange: 0,
+    matchScore: null,
+    fideId: fideId,
+    gamebasePlayerId: gamebasePlayerId,
+    team: team,
+  );
+  final matchingIndex = findScoreCardPlayerIndex(players, fallback);
+  if (matchingIndex >= 0) return players[matchingIndex];
+
+  final normalizedName = name.trim().toLowerCase();
+  for (final player in players) {
+    if (player.name.trim().toLowerCase() == normalizedName) return player;
+  }
+  return fallback;
+}
+
 PlayerStandingModel? adjacentScoreCardPlayerForSwipe({
   required List<PlayerStandingModel> players,
   required PlayerStandingModel selectedPlayer,
@@ -1074,6 +1105,25 @@ class _ScoreCardPage extends ConsumerWidget {
                           index: index,
                           isFirst: index == 0,
                           isLast: index == playerGames.length - 1,
+                          onPlayerTap: () {
+                            final standingsPlayers =
+                                ref
+                                    .read(playerTourScreenProvider)
+                                    .valueOrNull ??
+                                const <PlayerStandingModel>[];
+                            ref
+                                .read(selectedPlayerProvider.notifier)
+                                .state = scoreCardOpponentTarget(
+                              players: standingsPlayers,
+                              name: opponent.name,
+                              countryCode: opponent.countryCode,
+                              title: opponent.title,
+                              rating: opponent.rating,
+                              fideId: opponent.fideId,
+                              gamebasePlayerId: opponent.gamebasePlayerId,
+                              team: opponent.team,
+                            );
+                          },
                           onTap: () {
                             final navigation = scoreCardGameNavigationContext(
                               hasEventContext: hasEventContext,

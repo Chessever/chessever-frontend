@@ -23,6 +23,7 @@ class ScoreboardCardWidget extends ConsumerWidget {
   final int index;
   final bool isFirst;
   final bool isLast;
+  final VoidCallback onPlayerTap;
   final VoidCallback onTap;
 
   const ScoreboardCardWidget({
@@ -38,6 +39,7 @@ class ScoreboardCardWidget extends ConsumerWidget {
     required this.index,
     required this.isFirst,
     required this.isLast,
+    required this.onPlayerTap,
     required this.onTap,
   });
 
@@ -79,7 +81,9 @@ class ScoreboardCardWidget extends ConsumerWidget {
           children: [
             Text(
               '${index + 1}.',
-              style: AppTypography.textMdBold.copyWith(color: context.colors.textPrimary),
+              style: AppTypography.textMdBold.copyWith(
+                color: context.colors.textPrimary,
+              ),
             ),
             SizedBox(width: 10.w),
             if (countryCode.trim().isNotEmpty) ...[
@@ -96,25 +100,35 @@ class ScoreboardCardWidget extends ConsumerWidget {
               SizedBox(width: 10.w),
             ],
             Expanded(
-              child: RichText(
-                overflow: TextOverflow.ellipsis,
-                maxLines: 1,
-                text: TextSpan(
-                  children: [
-                    if (title != null && title!.isNotEmpty)
-                      TextSpan(
-                        text: '$title ',
-                        style: AppTypography.textMdBold.copyWith(
-                          color: context.colors.titleAccent,
-                        ),
-                      ),
-                    TextSpan(
-                      text: name,
-                      style: AppTypography.textMdBold.copyWith(
-                        color: context.colors.textPrimary,
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: Semantics(
+                  button: true,
+                  label: 'Open performance card for $name',
+                  child: GestureDetector(
+                    onTap: onPlayerTap,
+                    child: RichText(
+                      overflow: TextOverflow.ellipsis,
+                      maxLines: 1,
+                      text: TextSpan(
+                        children: [
+                          if (title != null && title!.isNotEmpty)
+                            TextSpan(
+                              text: '$title ',
+                              style: AppTypography.textMdBold.copyWith(
+                                color: context.colors.titleAccent,
+                              ),
+                            ),
+                          TextSpan(
+                            text: name,
+                            style: AppTypography.textMdBold.copyWith(
+                              color: context.colors.textPrimary,
+                            ),
+                          ),
+                        ],
                       ),
                     ),
-                  ],
+                  ),
                 ),
               ),
             ),
@@ -140,8 +154,7 @@ class ScoreboardCardWidget extends ConsumerWidget {
                                 ? '+${scoreChange!.toStringAsFixed(0)}'
                                 : scoreChange!.toStringAsFixed(0),
                             style: AppTypography.textXsMedium.copyWith(
-                              color:
-                                  scoreChange! > 0 ? kGreenColor : kRedColor,
+                              color: scoreChange! > 0 ? kGreenColor : kRedColor,
                             ),
                           )
                           : null,
@@ -160,7 +173,9 @@ class ScoreboardCardWidget extends ConsumerWidget {
                       isWhite!
                           ? null
                           : Border.all(
-                            color: context.colors.textPrimary.withValues(alpha: 0.35),
+                            color: context.colors.textPrimary.withValues(
+                              alpha: 0.35,
+                            ),
                             width: 1.1,
                           ),
                 ),
@@ -180,7 +195,9 @@ class ScoreboardCardWidget extends ConsumerWidget {
               Text(
                 matchScore!,
                 textAlign: TextAlign.start,
-                style: AppTypography.textMdBold.copyWith(color: context.colors.textPrimary),
+                style: AppTypography.textMdBold.copyWith(
+                  color: context.colors.textPrimary,
+                ),
               ),
           ],
         ),

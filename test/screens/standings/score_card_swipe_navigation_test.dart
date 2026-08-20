@@ -91,5 +91,44 @@ void main() {
 
       expect(findScoreCardPlayerIndex(players, selected), 0);
     });
+
+    test('opponent name navigation reuses the event standings player', () {
+      final players = [
+        player(name: 'Atousa Pourkashiyan', fideId: 12501049),
+        player(name: 'Displayed Differently', fideId: 2012782),
+      ];
+
+      final target = scoreCardOpponentTarget(
+        players: players,
+        name: 'Yip, Carissa',
+        fideId: 2012782,
+        countryCode: 'USA',
+        title: 'GM',
+        rating: 2504,
+      );
+
+      expect(target, same(players[1]));
+    });
+
+    test('opponent name navigation has a complete event-card fallback', () {
+      final target = scoreCardOpponentTarget(
+        players: const [],
+        name: 'Atousa Pourkashiyan',
+        fideId: 12501049,
+        gamebasePlayerId: 'player-42',
+        countryCode: 'USA',
+        title: 'WGM',
+        rating: 2308,
+        team: 'Team A',
+      );
+
+      expect(target.name, 'Atousa Pourkashiyan');
+      expect(target.fideId, 12501049);
+      expect(target.gamebasePlayerId, 'player-42');
+      expect(target.countryCode, 'USA');
+      expect(target.title, 'WGM');
+      expect(target.score, 2308);
+      expect(target.team, 'Team A');
+    });
   });
 }
