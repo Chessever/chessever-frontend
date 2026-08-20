@@ -17,7 +17,6 @@ import 'package:chessever2/screens/player_profile/widgets/save_to_library_sheet.
 import 'package:chessever2/screens/player_profile/tabs/player_events_tab.dart';
 import 'package:chessever2/screens/player_profile/tabs/player_games_tab.dart';
 import 'package:chessever2/screens/standings/providers/player_utils_provider.dart';
-import 'package:chessever2/screens/standings/utils/scorecard_name_actions.dart';
 import 'package:chessever2/services/fide_photo_service.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
@@ -109,8 +108,6 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
   late AnimationController _favoriteAnimationController;
   late Animation<double> _favoriteScaleAnimation;
   final ScrollToTopBus _scrollToTopBus = ScrollToTopBus();
-  final GlobalKey<TooltipState> _shareCoachmarkKey = GlobalKey<TooltipState>();
-  bool _shareCoachmarkCheckScheduled = false;
 
   /// Games/events are now sourced exclusively from TWIC. The old
   /// ChessEver/TWIC source selector was removed after the two databases were
@@ -169,35 +166,14 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
         curve: Curves.easeInOut,
       ),
     );
-    _scheduleShareCoachmark();
   }
 
   @override
   void dispose() {
-    Tooltip.dismissAllToolTips();
     _pageController.dispose();
     _favoriteAnimationController.dispose();
     _scrollToTopBus.dispose();
     super.dispose();
-  }
-
-  void _scheduleShareCoachmark() {
-    if (_shareCoachmarkCheckScheduled) return;
-    _shareCoachmarkCheckScheduled = true;
-    WidgetsBinding.instance.addPostFrameCallback((_) async {
-      try {
-        await displayScorecardNameCoachmark(
-          tracker: playerNameShareCoachmarkTracker,
-          isEligible: () => mounted,
-          showTooltip:
-              () =>
-                  _shareCoachmarkKey.currentState?.ensureTooltipVisible() ??
-                  false,
-        );
-      } finally {
-        _shareCoachmarkCheckScheduled = false;
-      }
-    });
   }
 
   String? _normalizePlayerId(String? raw) {
@@ -793,8 +769,8 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
       ),
     );
 
-    // Screenshot → open the branded profile share preview (same flow as the
-    // share button in the top bar).
+    // Screenshot → open the branded profile share preview (same flow as
+    // tapping the player name in the app bar).
     return ScreenshotShareNudge(
       onShare:
           () => _shareProfile(
@@ -834,9 +810,8 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
           ),
 
           // Flag, title, and natural display name. Tapping the identity opens
-          // the same share preview as screenshot detection. A quiet outward
-          // arrow hints at share without a permanent chrome button beside the
-          // heart. Unknown federations render no placeholder.
+          // the same share preview as screenshot detection. Unknown
+          // federations render no placeholder.
           Expanded(
             child: Center(
               child: PlayerNameShareTarget(
@@ -847,8 +822,6 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
                       effectiveTitle: effectiveTitle,
                       effectiveFederation: effectiveFederation,
                     ),
-                compactHint: true,
-                coachmarkKey: _shareCoachmarkKey,
                 coachmarkMessage:
                     'Tap the player’s name to share this profile.',
                 child: Row(

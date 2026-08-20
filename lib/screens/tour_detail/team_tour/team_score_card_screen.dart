@@ -4,6 +4,7 @@ import 'dart:math' as math;
 import 'package:chessever2/screens/standings/team_avg_elo.dart';
 import 'package:chessever2/screens/standings/team_standing_model.dart';
 import 'package:chessever2/screens/standings/team_standings_builder.dart';
+import 'package:chessever2/screens/standings/utils/player_event_share_utils.dart';
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_screen_provider.dart';
 import 'package:chessever2/screens/tour_detail/team_tour/team_tour_screen_provider.dart';
 import 'package:chessever2/screens/tour_detail/team_tour/widgets/team_event_share_image_card.dart';
@@ -15,7 +16,6 @@ import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/share_card.dart';
 import 'package:chessever2/widgets/app_snack.dart';
-import 'package:chessever2/widgets/event_card/event_context_menu.dart';
 import 'package:chessever2/widgets/player_name_share_target.dart';
 import 'package:chessever2/widgets/team_crest_avatar.dart';
 import 'package:flutter/material.dart';
@@ -50,16 +50,13 @@ class TeamScoreCardScreen extends ConsumerWidget {
         about?.groupBroadcastId?.isNotEmpty == true
             ? about!.groupBroadcastId!
             : about?.id;
-    final shareUrl =
-        (eventShareId != null && eventShareId.isNotEmpty)
-            ? buildEventShareUrl(
-              id: eventShareId,
-              title: eventName ?? team.teamName,
-              tourId: about?.id,
-              tourSlug: about?.slug,
-              teamName: team.teamName,
-            )
-            : null;
+    final shareUrl = buildTeamEventShareUrl(
+      teamName: team.teamName,
+      canonicalEventId: eventShareId,
+      eventName: eventName,
+      tourId: about?.id,
+      tourSlug: about?.slug,
+    );
 
     return Scaffold(
       backgroundColor: context.colors.background,
@@ -85,36 +82,28 @@ class TeamScoreCardScreen extends ConsumerWidget {
                     ),
                     onPressed: () => Navigator.of(context).pop(),
                   ),
-                  title:
-                      shareUrl != null
-                          ? PlayerNameShareTarget(
-                            playerName: team.teamName,
-                            onShare:
-                                () => _shareTeamScorecard(
-                                  context: context,
-                                  ref: ref,
-                                  team: team,
-                                  matches: matches,
-                                  eventName: eventName,
-                                  shareUrl: shareUrl,
-                                ),
-                            child: Text(
-                              team.teamName,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: AppTypography.textMdBold.copyWith(
-                                color: context.colors.textPrimary,
-                              ),
-                            ),
-                          )
-                          : Text(
-                            team.teamName,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: AppTypography.textMdBold.copyWith(
-                              color: context.colors.textPrimary,
-                            ),
-                          ),
+                  title: PlayerNameShareTarget(
+                    playerName: team.teamName,
+                    onShare:
+                        () => _shareTeamScorecard(
+                          context: context,
+                          ref: ref,
+                          team: team,
+                          matches: matches,
+                          eventName: eventName,
+                          shareUrl: shareUrl,
+                        ),
+                    coachmarkMessage:
+                        'Tap the team’s name to share this performance.',
+                    child: Text(
+                      team.teamName,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: AppTypography.textMdBold.copyWith(
+                        color: context.colors.textPrimary,
+                      ),
+                    ),
+                  ),
                   actions: [
                     // Average roster Elo for the event's time control
                     // (standard / rapid / blitz) — not board-point average.
@@ -416,7 +405,7 @@ Future<void> _shareTeamScorecard({
   required TeamStandingModel team,
   required List<TeamMatch> matches,
   required String? eventName,
-  required String shareUrl,
+  required String? shareUrl,
 }) async {
   try {
     final logicalWidth = math.min(MediaQuery.of(context).size.width, 430.0);
@@ -479,13 +468,16 @@ Future<void> _shareTeamScorecard({
           sharePositionOrigin: const Rect.fromLTWH(0, 0, 1, 1),
         );
       },
-      onShareLink: () async {
-        await Share.share(
-          shareUrl,
-          subject: subject,
-          sharePositionOrigin: const Rect.fromLTWH(0, 0, 1, 1),
-        );
-      },
+      onShareLink:
+          shareUrl == null || shareUrl.isEmpty
+              ? null
+              : () async {
+                await Share.share(
+                  shareUrl,
+                  subject: subject,
+                  sharePositionOrigin: const Rect.fromLTWH(0, 0, 1, 1),
+                );
+              },
     );
   } catch (e) {
     debugPrint('Failed to share team scorecard: $e');
