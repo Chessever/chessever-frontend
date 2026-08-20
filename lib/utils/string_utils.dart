@@ -51,6 +51,16 @@ class StringUtils {
   /// written name.
   static final RegExp _slugPattern = RegExp(r'^[a-z0-9]+(?:[-_][a-z0-9]+)*$');
 
+  /// True when [value] is a genuine URL slug (not a written event name).
+  ///
+  /// Gamebase/TWIC archive rows reuse `tourSlug` for display labels like
+  /// "TCh-RUS 2026"; those must not be interpolated into `/broadcast/...`.
+  static bool looksLikeUrlSlug(String? value) {
+    final trimmed = value?.trim();
+    if (trimmed == null || trimmed.isEmpty) return false;
+    return _slugPattern.hasMatch(trimmed);
+  }
+
   /// Title-cases [value] only when it is a slug, otherwise returns it as-is.
   ///
   /// `GamesTourModel.tourSlug` carries a genuine slug for broadcast games

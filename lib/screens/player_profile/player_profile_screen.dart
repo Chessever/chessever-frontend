@@ -834,20 +834,23 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
           ),
 
           // Flag, title, and natural display name. Tapping the identity opens
-          // the same share preview as screenshot detection. Unknown federations
-          // render no placeholder.
+          // the same share preview as screenshot detection. A quiet outward
+          // arrow hints at share without a permanent chrome button beside the
+          // heart. Unknown federations render no placeholder.
           Expanded(
-            child: PlayerNameShareTarget(
-              playerName: effectiveName,
-              onShare:
-                  () => _shareProfile(
-                    effectiveName: effectiveName,
-                    effectiveTitle: effectiveTitle,
-                    effectiveFederation: effectiveFederation,
-                  ),
-              coachmarkKey: _shareCoachmarkKey,
-              coachmarkMessage: 'Tap the player’s name to share this profile.',
-              child: Center(
+            child: Center(
+              child: PlayerNameShareTarget(
+                playerName: effectiveName,
+                onShare:
+                    () => _shareProfile(
+                      effectiveName: effectiveName,
+                      effectiveTitle: effectiveTitle,
+                      effectiveFederation: effectiveFederation,
+                    ),
+                compactHint: true,
+                coachmarkKey: _shareCoachmarkKey,
+                coachmarkMessage:
+                    'Tap the player’s name to share this profile.',
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
