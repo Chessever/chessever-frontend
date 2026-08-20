@@ -30,6 +30,19 @@ void main() {
       );
     });
 
+    test('keeps a group-broadcast UUID when no tour slug pair is present', () {
+      const id = '550e8400-e29b-41d4-a716-446655440000';
+      expect(
+        buildPlayerEventShareUrl(
+          hasEventContext: true,
+          canonicalEventId: id,
+          eventName: 'KazChess Masters',
+          playerFideId: 13730039,
+        ),
+        'https://chessever.com/broadcast/kazchess-masters/$id/player/13730039',
+      );
+    });
+
     test(
       'rejects display-only TWIC/gamebase tour labels and falls back to profile',
       () {
@@ -53,8 +66,43 @@ void main() {
           ),
           'https://chessever.com/player/13730039',
         );
+        expect(
+          buildPlayerEventShareUrl(
+            hasEventContext: true,
+            canonicalEventId: 'TCh-RUS 2026',
+            eventName: 'TCh-RUS 2026',
+            tourId: 'TCh-RUS 2026',
+            tourSlug: 'TCh-RUS 2026',
+            playerFideId: 13730039,
+          ),
+          'https://chessever.com/player/13730039',
+        );
+        expect(
+          buildPlayerEventShareUrl(
+            hasEventContext: true,
+            canonicalEventId: 'Miniatures',
+            eventName: 'Miniatures',
+            tourId: 'Miniatures',
+            tourSlug: 'italian-game',
+            playerFideId: 13730039,
+          ),
+          'https://chessever.com/player/13730039',
+        );
       },
     );
+
+    test('never interpolates archive labels into a /broadcast/ path', () {
+      final url = buildPlayerEventShareUrl(
+        hasEventContext: true,
+        canonicalEventId: 'Gamebase',
+        eventName: 'Titled Tuesday',
+        tourId: 'Gamebase',
+        tourSlug: 'Titled Tuesday',
+        playerFideId: 13730039,
+      );
+      expect(url, isNot(contains('/broadcast/')));
+      expect(url, 'https://chessever.com/player/13730039');
+    });
 
     test(
       'falls back to the main player profile when event identity is absent',
@@ -75,6 +123,34 @@ void main() {
         buildPlayerEventShareUrl(
           hasEventContext: true,
           eventName: 'Unknown event',
+        ),
+        isNull,
+      );
+    });
+  });
+
+  group('buildTeamEventShareUrl', () {
+    test('builds the team-event route for URL-backed tours', () {
+      expect(
+        buildTeamEventShareUrl(
+          teamName: 'USA',
+          canonicalEventId: 'gb-123',
+          eventName: 'Olympiad',
+          tourId: 'QXavbhIZ',
+          tourSlug: 'olympiad-2024',
+        ),
+        'https://chessever.com/broadcast/olympiad-2024/QXavbhIZ/team/USA',
+      );
+    });
+
+    test('returns null for archive / display-only identities', () {
+      expect(
+        buildTeamEventShareUrl(
+          teamName: 'USA',
+          canonicalEventId: 'TCh-RUS 2026',
+          eventName: 'TCh-RUS 2026',
+          tourId: 'TCh-RUS 2026',
+          tourSlug: 'TCh-RUS 2026',
         ),
         isNull,
       );
@@ -104,6 +180,27 @@ void main() {
         isUrlBackedTourIdentity(tourId: 'Gamebase', tourSlug: 'some-open'),
         isFalse,
       );
+      expect(
+        isUrlBackedTourIdentity(tourId: 'Miniatures', tourSlug: 'italian-game'),
+        isFalse,
+      );
+    });
+  });
+
+  group('isUrlBackedEventId', () {
+    test('accepts kebab slugs, UUIDs, and Lichess short ids', () {
+      expect(isUrlBackedEventId('group-123'), isTrue);
+      expect(
+        isUrlBackedEventId('550e8400-e29b-41d4-a716-446655440000'),
+        isTrue,
+      );
+      expect(isUrlBackedEventId('GtTXd69H'), isTrue);
+    });
+
+    test('rejects archive sentinels and written names', () {
+      expect(isUrlBackedEventId('Gamebase'), isFalse);
+      expect(isUrlBackedEventId('Miniatures'), isFalse);
+      expect(isUrlBackedEventId('TCh-RUS 2026'), isFalse);
     });
   });
 }

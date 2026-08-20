@@ -12,7 +12,6 @@ import 'package:chessever2/screens/standings/providers/twic_scorecard_event_game
 import 'package:chessever2/screens/standings/providers/player_utils_provider.dart';
 import 'package:chessever2/screens/standings/utils/fide_rating_change.dart';
 import 'package:chessever2/screens/standings/utils/player_event_share_utils.dart';
-import 'package:chessever2/screens/standings/utils/scorecard_name_actions.dart';
 import 'package:chessever2/screens/standings/widget/scoreboard_card_widget.dart';
 import 'package:chessever2/screens/standings/widgets/player_event_share_image_card.dart';
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_mode_provider.dart';
@@ -837,8 +836,7 @@ class _ScoreCardPage extends ConsumerWidget {
             child: CustomScrollView(
               slivers: [
                 _SliverScoreboardAppBar(
-                  enableNameActions: hasEventContext,
-                  coachmarkEnabled: isActive && hasEventContext,
+                  coachmarkEnabled: isActive,
                   onSharePerformance: sharePlayerProfile,
                 ),
                 SliverToBoxAdapter(
@@ -1671,12 +1669,10 @@ class _PlayerAvatarTile extends StatelessWidget {
 
 class _SliverScoreboardAppBar extends ConsumerStatefulWidget {
   const _SliverScoreboardAppBar({
-    required this.enableNameActions,
     required this.coachmarkEnabled,
     required this.onSharePerformance,
   });
 
-  final bool enableNameActions;
   final bool coachmarkEnabled;
   final Future<void> Function() onSharePerformance;
 
@@ -1690,8 +1686,6 @@ class _SliverScoreboardAppBarState
     with SingleTickerProviderStateMixin {
   late AnimationController _animationController;
   late Animation<double> _scaleAnimation;
-  final GlobalKey<TooltipState> _coachmarkKey = GlobalKey<TooltipState>();
-  bool _coachmarkCheckScheduled = false;
 
   @override
   void initState() {
@@ -1703,39 +1697,12 @@ class _SliverScoreboardAppBarState
     _scaleAnimation = Tween<double>(begin: 1.0, end: 1.2).animate(
       CurvedAnimation(parent: _animationController, curve: Curves.easeInOut),
     );
-    _scheduleCoachmark();
-  }
-
-  @override
-  void didUpdateWidget(covariant _SliverScoreboardAppBar oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (!oldWidget.coachmarkEnabled && widget.coachmarkEnabled) {
-      _scheduleCoachmark();
-    }
   }
 
   @override
   void dispose() {
-    Tooltip.dismissAllToolTips();
     _animationController.dispose();
     super.dispose();
-  }
-
-  void _scheduleCoachmark() {
-    if (!widget.coachmarkEnabled || _coachmarkCheckScheduled) return;
-    _coachmarkCheckScheduled = true;
-    WidgetsBinding.instance.addPostFrameCallback((_) async {
-      try {
-        await displayScorecardNameCoachmark(
-          tracker: playerNameShareCoachmarkTracker,
-          isEligible: () => mounted && widget.coachmarkEnabled,
-          showTooltip:
-              () => _coachmarkKey.currentState?.ensureTooltipVisible() ?? false,
-        );
-      } finally {
-        _coachmarkCheckScheduled = false;
-      }
-    });
   }
 
   Future<void> _toggleFavorite() async {
@@ -1853,17 +1820,13 @@ class _SliverScoreboardAppBarState
         ),
         onPressed: () => Navigator.of(context).pop(),
       ),
-      title:
-          widget.enableNameActions
-              ? PlayerNameShareTarget(
-                playerName: player.name,
-                onShare: widget.onSharePerformance,
-                coachmarkKey: _coachmarkKey,
-                coachmarkMessage:
-                    'Tap the player’s name to share this performance.',
-                child: headerRow,
-              )
-              : headerRow,
+      title: PlayerNameShareTarget(
+        playerName: player.name,
+        onShare: widget.onSharePerformance,
+        coachmarkEnabled: widget.coachmarkEnabled,
+        coachmarkMessage: 'Tap the player’s name to share this performance.',
+        child: headerRow,
+      ),
       actions: [
         InkWell(
           onTap: _toggleFavorite,
