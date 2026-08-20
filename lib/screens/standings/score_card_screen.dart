@@ -11,6 +11,8 @@ import 'package:chessever2/screens/standings/providers/player_ratings_provider.d
 import 'package:chessever2/screens/standings/providers/twic_scorecard_event_games_provider.dart';
 import 'package:chessever2/screens/standings/providers/player_utils_provider.dart';
 import 'package:chessever2/screens/standings/utils/fide_rating_change.dart';
+import 'package:chessever2/screens/standings/utils/player_event_share_utils.dart';
+import 'package:chessever2/screens/standings/utils/scorecard_name_actions.dart';
 import 'package:chessever2/screens/standings/widget/scoreboard_card_widget.dart';
 import 'package:chessever2/screens/standings/widgets/player_event_share_image_card.dart';
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_mode_provider.dart';
@@ -46,11 +48,10 @@ import 'package:chessever2/utils/svg_asset.dart';
 import 'package:chessever2/utils/favorite_limit_guard.dart';
 import 'package:chessever2/widgets/auth/auth_upgrade_sheet.dart';
 import 'package:chessever2/widgets/svg_widget.dart';
-import 'package:chessever2/widgets/event_card/event_context_menu.dart'
-    show buildEventShareUrl;
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:chessever2/utils/share_card.dart';
 import 'package:chessever2/widgets/screenshot_share_nudge.dart';
+import 'package:chessever2/widgets/player_name_share_target.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:motor/motor.dart';
@@ -764,17 +765,17 @@ class _ScoreCardPage extends ConsumerWidget {
         aboutModel?.groupBroadcastId?.isNotEmpty == true
             ? aboutModel!.groupBroadcastId!
             : (aboutModel?.id ?? selectedBroadcast?.id);
-    final playerShareUrl =
-        (hasEventContext && eventShareId != null && eventShareId.isNotEmpty)
-            ? buildEventShareUrl(
-              id: eventShareId,
-              title: eventName ?? selectedBroadcast?.name ?? 'ChessEver',
-              tourId: aboutModel?.id,
-              tourSlug: aboutModel?.slug,
-              // null fideId → buildEventShareUrl returns the plain event URL.
-              playerFideId: player.fideId,
-            )
-            : null;
+    final playerShareUrl = buildPlayerEventShareUrl(
+      hasEventContext: hasEventContext,
+      canonicalEventId: eventShareId,
+      eventName: eventName ?? selectedBroadcast?.name,
+      tourId: aboutModel?.id,
+      tourSlug: aboutModel?.slug,
+      contextTourId: contextEvent,
+      contextTourSlug:
+          playerGames.isNotEmpty ? playerGames.first.tourSlug : null,
+      playerFideId: player.fideId,
+    );
     final shareRows = _buildPlayerEventShareRows(
       playerGames: playerGames,
       player: player,
@@ -835,7 +836,11 @@ class _ScoreCardPage extends ConsumerWidget {
             // (see [ScoreCardScreen]); this page only scrolls vertically.
             child: CustomScrollView(
               slivers: [
-                const _SliverScoreboardAppBar(),
+                _SliverScoreboardAppBar(
+                  enableNameActions: hasEventContext,
+                  coachmarkEnabled: isActive && hasEventContext,
+                  onSharePerformance: sharePlayerProfile,
+                ),
                 SliverToBoxAdapter(
                   child: Padding(
                     padding: EdgeInsets.symmetric(
@@ -1665,7 +1670,15 @@ class _PlayerAvatarTile extends StatelessWidget {
 }
 
 class _SliverScoreboardAppBar extends ConsumerStatefulWidget {
-  const _SliverScoreboardAppBar();
+  const _SliverScoreboardAppBar({
+    required this.enableNameActions,
+    required this.coachmarkEnabled,
+    required this.onSharePerformance,
+  });
+
+  final bool enableNameActions;
+  final bool coachmarkEnabled;
+  final Future<void> Function() onSharePerformance;
 
   @override
   ConsumerState<_SliverScoreboardAppBar> createState() =>
@@ -1677,6 +1690,8 @@ class _SliverScoreboardAppBarState
     with SingleTickerProviderStateMixin {
   late AnimationController _animationController;
   late Animation<double> _scaleAnimation;
+  final GlobalKey<TooltipState> _coachmarkKey = GlobalKey<TooltipState>();
+  bool _coachmarkCheckScheduled = false;
 
   @override
   void initState() {
@@ -1688,12 +1703,39 @@ class _SliverScoreboardAppBarState
     _scaleAnimation = Tween<double>(begin: 1.0, end: 1.2).animate(
       CurvedAnimation(parent: _animationController, curve: Curves.easeInOut),
     );
+    _scheduleCoachmark();
+  }
+
+  @override
+  void didUpdateWidget(covariant _SliverScoreboardAppBar oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!oldWidget.coachmarkEnabled && widget.coachmarkEnabled) {
+      _scheduleCoachmark();
+    }
   }
 
   @override
   void dispose() {
+    Tooltip.dismissAllToolTips();
     _animationController.dispose();
     super.dispose();
+  }
+
+  void _scheduleCoachmark() {
+    if (!widget.coachmarkEnabled || _coachmarkCheckScheduled) return;
+    _coachmarkCheckScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      try {
+        await displayScorecardNameCoachmark(
+          tracker: playerNameShareCoachmarkTracker,
+          isEligible: () => mounted && widget.coachmarkEnabled,
+          showTooltip:
+              () => _coachmarkKey.currentState?.ensureTooltipVisible() ?? false,
+        );
+      } finally {
+        _coachmarkCheckScheduled = false;
+      }
+    });
   }
 
   Future<void> _toggleFavorite() async {
@@ -1762,27 +1804,6 @@ class _SliverScoreboardAppBarState
     }
   }
 
-  void _showPlayerSelectionSheet(BuildContext context) {
-    final playerTourAsync = ref.read(playerTourScreenProvider);
-    final players = playerTourAsync.valueOrNull ?? [];
-
-    if (players.isEmpty) return;
-
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: context.colors.surface,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16.br)),
-      ),
-      isScrollControlled: true,
-      constraints: BoxConstraints(
-        maxHeight: MediaQuery.of(context).size.height * 0.6,
-        maxWidth: ResponsiveHelper.bottomSheetMaxWidth,
-      ),
-      builder: (context) => _PlayerSelectionSheet(players: players),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     final selectedPlayer = ref.watch(selectedPlayerProvider);
@@ -1791,9 +1812,6 @@ class _SliverScoreboardAppBarState
       backfilledStandingPlayerProvider(selectedPlayer),
     );
     final player = backfilledPlayerAsync.valueOrNull ?? selectedPlayer;
-
-    final selectedBroadcast = ref.watch(selectedBroadcastModelProvider);
-    final hasTournamentContext = selectedBroadcast != null;
 
     final validCountryCode = ref
         .read(locationServiceProvider)
@@ -1836,10 +1854,13 @@ class _SliverScoreboardAppBarState
         onPressed: () => Navigator.of(context).pop(),
       ),
       title:
-          hasTournamentContext
-              ? GestureDetector(
-                onTap: () => _showPlayerSelectionSheet(context),
-                behavior: HitTestBehavior.opaque,
+          widget.enableNameActions
+              ? PlayerNameShareTarget(
+                playerName: player.name,
+                onShare: widget.onSharePerformance,
+                coachmarkKey: _coachmarkKey,
+                coachmarkMessage:
+                    'Tap the player’s name to share this performance.',
                 child: headerRow,
               )
               : headerRow,
@@ -1989,136 +2010,6 @@ class _RatingDisplay extends ConsumerWidget {
           ],
         ),
       ),
-    );
-  }
-}
-
-/// Bottom sheet for selecting a player from the tournament
-class _PlayerSelectionSheet extends ConsumerWidget {
-  final List<PlayerStandingModel> players;
-
-  const _PlayerSelectionSheet({required this.players});
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final selectedPlayer = ref.watch(selectedPlayerProvider);
-
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        // Handle bar
-        Container(
-          margin: EdgeInsets.only(top: 10.h, bottom: 6.h),
-          width: 36.w,
-          height: 3.h,
-          decoration: BoxDecoration(
-            color: context.colors.textPrimary.withValues(alpha: 0.3),
-            borderRadius: BorderRadius.circular(2.br),
-          ),
-        ),
-        // Title
-        Padding(
-          padding: EdgeInsets.symmetric(horizontal: 16.sp, vertical: 10.h),
-          child: Row(
-            children: [
-              Text(
-                'Select Player',
-                style: AppTypography.textMdBold.copyWith(
-                  color: context.colors.textPrimary,
-                ),
-              ),
-              const Spacer(),
-              GestureDetector(
-                onTap: () => Navigator.pop(context),
-                child: Icon(
-                  Icons.close,
-                  color: context.colors.textPrimaryMuted,
-                  size: 20.ic,
-                ),
-              ),
-            ],
-          ),
-        ),
-        Divider(color: context.colors.surfaceRecessed, height: 1.h),
-        // Player list
-        Expanded(
-          child: ListView.separated(
-            padding: EdgeInsets.symmetric(vertical: 6.h),
-            itemCount: players.length,
-            separatorBuilder:
-                (_, __) => Divider(
-                  color: context.colors.surfaceRecessed,
-                  height: 1.h,
-                  indent: 16.w,
-                  endIndent: 16.w,
-                ),
-            itemBuilder: (context, index) {
-              final player = players[index];
-              final isSelected = selectedPlayer?.name == player.name;
-              final validCountryCode = ref
-                  .read(locationServiceProvider)
-                  .getValidCountryCode(player.countryCode);
-
-              return InkWell(
-                onTap: () {
-                  ref.read(selectedPlayerProvider.notifier).state = player;
-                  Navigator.pop(context);
-                },
-                child: Container(
-                  padding: EdgeInsets.symmetric(
-                    horizontal: 16.sp,
-                    vertical: 10.h,
-                  ),
-                  color:
-                      isSelected ? context.colors.surface : Colors.transparent,
-                  child: Row(
-                    children: [
-                      // Country flag
-                      if (player.countryCode.trim().isNotEmpty ||
-                          validCountryCode.isNotEmpty)
-                        FederationFlag(
-                          federation:
-                              player.countryCode.trim().isNotEmpty
-                                  ? player.countryCode
-                                  : validCountryCode,
-                          height: 14.h,
-                          width: 20.w,
-                          borderRadius: BorderRadius.circular(2.br),
-                        )
-                      else
-                        SizedBox(width: 20.w),
-                      SizedBox(width: 10.w),
-                      // Title and name
-                      Expanded(
-                        child: Text(
-                          '${player.title != null && player.title!.isNotEmpty ? '${player.title} ' : ''}${player.name}',
-                          style: AppTypography.textSmMedium.copyWith(
-                            color:
-                                isSelected
-                                    ? context.colors.brand
-                                    : context.colors.textPrimary,
-                          ),
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                      // Rating
-                      Text(
-                        player.score.toStringAsFixed(0),
-                        style: AppTypography.textXsMedium.copyWith(
-                          color:
-                              isSelected
-                                  ? context.colors.brand
-                                  : context.colors.textPrimaryMuted,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              );
-            },
-          ),
-        ),
-      ],
     );
   }
 }

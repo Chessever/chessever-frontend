@@ -17,6 +17,7 @@ import 'package:chessever2/screens/player_profile/widgets/save_to_library_sheet.
 import 'package:chessever2/screens/player_profile/tabs/player_events_tab.dart';
 import 'package:chessever2/screens/player_profile/tabs/player_games_tab.dart';
 import 'package:chessever2/screens/standings/providers/player_utils_provider.dart';
+import 'package:chessever2/screens/standings/utils/scorecard_name_actions.dart';
 import 'package:chessever2/services/fide_photo_service.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
@@ -35,6 +36,7 @@ import 'package:chessever2/widgets/auth/auth_upgrade_sheet.dart';
 import 'package:chessever2/widgets/game_filter/game_filter_model.dart';
 import 'package:chessever2/widgets/federation_flag.dart';
 import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
+import 'package:chessever2/widgets/player_name_share_target.dart';
 import 'package:chessever2/widgets/screenshot_share_nudge.dart';
 import 'package:chessever2/widgets/scroll_to_top_bus.dart';
 import 'package:chessever2/widgets/segmented_switcher.dart';
@@ -107,6 +109,8 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
   late AnimationController _favoriteAnimationController;
   late Animation<double> _favoriteScaleAnimation;
   final ScrollToTopBus _scrollToTopBus = ScrollToTopBus();
+  final GlobalKey<TooltipState> _shareCoachmarkKey = GlobalKey<TooltipState>();
+  bool _shareCoachmarkCheckScheduled = false;
 
   /// Games/events are now sourced exclusively from TWIC. The old
   /// ChessEver/TWIC source selector was removed after the two databases were
@@ -165,14 +169,35 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
         curve: Curves.easeInOut,
       ),
     );
+    _scheduleShareCoachmark();
   }
 
   @override
   void dispose() {
+    Tooltip.dismissAllToolTips();
     _pageController.dispose();
     _favoriteAnimationController.dispose();
     _scrollToTopBus.dispose();
     super.dispose();
+  }
+
+  void _scheduleShareCoachmark() {
+    if (_shareCoachmarkCheckScheduled) return;
+    _shareCoachmarkCheckScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      try {
+        await displayScorecardNameCoachmark(
+          tracker: playerNameShareCoachmarkTracker,
+          isEligible: () => mounted,
+          showTooltip:
+              () =>
+                  _shareCoachmarkKey.currentState?.ensureTooltipVisible() ??
+                  false,
+        );
+      } finally {
+        _shareCoachmarkCheckScheduled = false;
+      }
+    });
   }
 
   String? _normalizePlayerId(String? raw) {
@@ -808,47 +833,62 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
             ),
           ),
 
-          // Flag, title, and natural display name. Share + heart stay as the
-          // permanent actions. Unknown federations render no placeholder.
+          // Flag, title, and natural display name. Tapping the identity opens
+          // the same share preview as screenshot detection. A quiet outward
+          // arrow hints at share without a permanent chrome button beside the
+          // heart. Unknown federations render no placeholder.
           Expanded(
             child: Center(
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  if (FederationFlag.hasVisibleFlag(effectiveFederation)) ...[
-                    FederationFlag(
-                      federation: effectiveFederation!.trim(),
-                      height: 16.h,
-                      width: 22.w,
-                      borderRadius: BorderRadius.circular(2.br),
+              child: PlayerNameShareTarget(
+                playerName: effectiveName,
+                onShare:
+                    () => _shareProfile(
+                      effectiveName: effectiveName,
+                      effectiveTitle: effectiveTitle,
+                      effectiveFederation: effectiveFederation,
                     ),
-                    SizedBox(width: 8.w),
-                  ],
-                  Flexible(
-                    child: RichText(
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      text: TextSpan(
-                        children: [
-                          if (effectiveTitle != null &&
-                              effectiveTitle.trim().isNotEmpty)
+                compactHint: true,
+                coachmarkKey: _shareCoachmarkKey,
+                coachmarkMessage:
+                    'Tap the player’s name to share this profile.',
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (FederationFlag.hasVisibleFlag(effectiveFederation)) ...[
+                      FederationFlag(
+                        federation: effectiveFederation!.trim(),
+                        height: 16.h,
+                        width: 22.w,
+                        borderRadius: BorderRadius.circular(2.br),
+                      ),
+                      SizedBox(width: 8.w),
+                    ],
+                    Flexible(
+                      child: RichText(
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        text: TextSpan(
+                          children: [
+                            if (effectiveTitle != null &&
+                                effectiveTitle.trim().isNotEmpty)
+                              TextSpan(
+                                text: '${effectiveTitle.trim()} ',
+                                style: AppTypography.textMdBold.copyWith(
+                                  color: context.colors.titleAccent,
+                                ),
+                              ),
                             TextSpan(
-                              text: '${effectiveTitle.trim()} ',
+                              text: formatPlayerDisplayName(effectiveName),
                               style: AppTypography.textMdBold.copyWith(
-                                color: context.colors.titleAccent,
+                                color: context.colors.textPrimary,
                               ),
                             ),
-                          TextSpan(
-                            text: formatPlayerDisplayName(effectiveName),
-                            style: AppTypography.textMdBold.copyWith(
-                              color: context.colors.textPrimary,
-                            ),
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
           ),

@@ -16,6 +16,7 @@ import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/share_card.dart';
 import 'package:chessever2/widgets/app_snack.dart';
 import 'package:chessever2/widgets/event_card/event_context_menu.dart';
+import 'package:chessever2/widgets/player_name_share_target.dart';
 import 'package:chessever2/widgets/team_crest_avatar.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -84,44 +85,43 @@ class TeamScoreCardScreen extends ConsumerWidget {
                     ),
                     onPressed: () => Navigator.of(context).pop(),
                   ),
-                  title: Text(
-                    team.teamName,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: AppTypography.textMdBold.copyWith(
-                      color: context.colors.textPrimary,
-                    ),
-                  ),
+                  title:
+                      shareUrl != null
+                          ? PlayerNameShareTarget(
+                            playerName: team.teamName,
+                            onShare:
+                                () => _shareTeamScorecard(
+                                  context: context,
+                                  ref: ref,
+                                  team: team,
+                                  matches: matches,
+                                  eventName: eventName,
+                                  shareUrl: shareUrl,
+                                ),
+                            child: Text(
+                              team.teamName,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: AppTypography.textMdBold.copyWith(
+                                color: context.colors.textPrimary,
+                              ),
+                            ),
+                          )
+                          : Text(
+                            team.teamName,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: AppTypography.textMdBold.copyWith(
+                              color: context.colors.textPrimary,
+                            ),
+                          ),
                   actions: [
                     // Average roster Elo for the event's time control
                     // (standard / rapid / blitz) — not board-point average.
                     Padding(
-                      padding: EdgeInsets.only(right: 4.w),
+                      padding: EdgeInsets.only(right: 12.w),
                       child: _TeamAvgEloLabel(team: team),
                     ),
-                    if (shareUrl != null)
-                      InkWell(
-                        onTap:
-                            () => _shareTeamScorecard(
-                              context: context,
-                              ref: ref,
-                              team: team,
-                              matches: matches,
-                              eventName: eventName,
-                              shareUrl: shareUrl,
-                            ),
-                        child: Container(
-                          width: 48.w,
-                          padding: EdgeInsets.all(8.sp),
-                          child: Icon(
-                            Icons.ios_share,
-                            color: context.colors.textPrimary,
-                            size: 20.ic,
-                            semanticLabel: 'Share team scorecard',
-                          ),
-                        ),
-                      ),
-                    SizedBox(width: 8.w),
                   ],
                 ),
                 SliverToBoxAdapter(
