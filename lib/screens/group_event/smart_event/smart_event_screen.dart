@@ -1308,10 +1308,6 @@ class _GamesTabState extends ConsumerState<_GamesTab>
   /// spinner or a false empty state.
   SmartAggregateEvent? _lastLoadedEvent;
 
-  // Keep rendering while backgrounded so the OS app-switcher snapshot is not
-  // blank. Route coverage still removes the tab from active provider work.
-  bool get _isActiveOnScreen => _routeIsCurrent;
-
   @override
   void initState() {
     super.initState();
@@ -1462,9 +1458,11 @@ class _GamesTabState extends ConsumerState<_GamesTab>
   Widget build(BuildContext context) {
     super.build(context);
     final tabScope = _SmartTierFilterScope.of(context);
-    if (!_isActiveOnScreen || tabScope.tabIndex != 1) {
-      return const SizedBox.shrink();
-    }
+    // Keep the Games subtree mounted beneath pushed routes and sibling tabs.
+    // Replacing it with an empty box used to detach the ListView, release the
+    // autoDispose aggregate provider, and recreate both on return. This makes
+    // AutomaticKeepAlive fulfill its contract for the data and scroll tree,
+    // not only for this State object's fields.
     final request = _SmartEventRequestScope.of(context);
     final tier = tabScope.tier;
     const allowStockfishFallback = true;
@@ -1657,11 +1655,16 @@ class _GamesTabState extends ConsumerState<_GamesTab>
     } else {
       content = const _GamesShimmerList(key: ValueKey('smart_games_loading'));
     }
-    return AnimatedSwitcher(
-      duration: const Duration(milliseconds: 250),
-      switchInCurve: Curves.easeOut,
-      switchOutCurve: Curves.easeIn,
-      child: content,
+    return TickerMode(
+      // Preserve the subtree and provider while a child route covers it, but
+      // do not spend frames animating an invisible list or a backgrounded app.
+      enabled: _routeIsCurrent && _appIsResumed && tabScope.tabIndex == 1,
+      child: AnimatedSwitcher(
+        duration: const Duration(milliseconds: 250),
+        switchInCurve: Curves.easeOut,
+        switchOutCurve: Curves.easeIn,
+        child: content,
+      ),
     );
   }
 
