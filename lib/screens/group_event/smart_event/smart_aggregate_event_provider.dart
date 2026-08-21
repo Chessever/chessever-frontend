@@ -64,7 +64,7 @@ class SmartEventRequest {
       titleSuffix: '',
       minElo: kFilterMinElo.round(),
       maxElo: kFilterMaxElo.round(),
-      caption: 'From your ${eco.code} opening filter',
+      caption: 'From your $label opening filter',
       countSingular: 'event',
       countPlural: 'events',
       events: const [],
@@ -306,7 +306,7 @@ class SmartEventRequest {
   }
 
   /// The same request with the Elo range opened up to the full scale. The
-  /// Games / Standings tabs load through this so the tier dropdown can move
+  /// Games / Events tabs load through this so the tier dropdown can move
   /// BELOW the saved floor — the selected band travels in the query's
   /// [GameFilter] instead.
   SmartEventRequest withNeutralEloRange() {
@@ -798,6 +798,7 @@ class SmartAggregateEvent {
     required this.pinnedGameIds,
     required this.events,
     required this.gameEventNames,
+    required this.gameEventIds,
     this.hasMore = false,
     this.isLoadingMore = false,
   });
@@ -814,6 +815,7 @@ class SmartAggregateEvent {
   final List<String> pinnedGameIds;
   final List<GroupEventCardModel> events;
   final Map<String, String> gameEventNames;
+  final Map<String, String> gameEventIds;
   final bool hasMore;
   final bool isLoadingMore;
 
@@ -832,6 +834,7 @@ class SmartAggregateEvent {
     pinnedGameIds: <String>[],
     events: <GroupEventCardModel>[],
     gameEventNames: <String, String>{},
+    gameEventIds: <String, String>{},
   );
 
   SmartAggregateEvent copyWith({
@@ -846,6 +849,7 @@ class SmartAggregateEvent {
     List<String>? pinnedGameIds,
     List<GroupEventCardModel>? events,
     Map<String, String>? gameEventNames,
+    Map<String, String>? gameEventIds,
     bool? hasMore,
     bool? isLoadingMore,
   }) {
@@ -861,10 +865,40 @@ class SmartAggregateEvent {
       pinnedGameIds: pinnedGameIds ?? this.pinnedGameIds,
       events: events ?? this.events,
       gameEventNames: gameEventNames ?? this.gameEventNames,
+      gameEventIds: gameEventIds ?? this.gameEventIds,
       hasMore: hasMore ?? this.hasMore,
       isLoadingMore: isLoadingMore ?? this.isLoadingMore,
     );
   }
+}
+
+class SmartEventGameGroup {
+  const SmartEventGameGroup({required this.event, required this.games});
+
+  final GroupEventCardModel event;
+  final List<GamesTourModel> games;
+}
+
+/// Groups the currently visible game slice beneath its source event while
+/// preserving both the event order and the game order chosen by the caller.
+List<SmartEventGameGroup> groupSmartEventGames({
+  required SmartAggregateEvent event,
+  required Iterable<GamesTourModel> visibleGames,
+}) {
+  final gamesByEventId = <String, List<GamesTourModel>>{};
+  for (final game in visibleGames) {
+    final eventId = event.gameEventIds[game.gameId];
+    if (eventId == null) continue;
+    gamesByEventId.putIfAbsent(eventId, () => []).add(game);
+  }
+
+  final groups = <SmartEventGameGroup>[];
+  for (final includedEvent in event.events) {
+    final games = gamesByEventId[includedEvent.id];
+    if (games == null || games.isEmpty) continue;
+    groups.add(SmartEventGameGroup(event: includedEvent, games: games));
+  }
+  return groups;
 }
 
 /// The saved favorite (if any) whose smart event matches [criteriaKey]
@@ -974,7 +1008,7 @@ Future<void> refreshSavedSmartEventSnapshot({
 /// Games are fetched the same way desktop GM / Live / Classical collections
 /// are: globally by `game_day`, one whole day at a time, with no restriction
 /// to currently-running broadcasts. First paint is the newest day; older days
-/// append in the background and on scroll. Event cards for About / Standings
+/// append in the background and on scroll. Event cards for About / Events
 /// are derived from the loaded games' broadcast metadata.
 final smartAggregateEventRepositoryProvider = StateNotifierProvider.autoDispose
     .family<
@@ -1171,7 +1205,7 @@ GameFilter? _residualSmartEventFilter(
     minRating: GameFilter.defaultMinRating,
     maxRating: GameFilter.absoluteMaxRating,
     // ECO is generating criteria, not merely a Games-tab view control.
-    // Carry it even in consumers such as Standings that intentionally omit
+    // Carry it even in consumers such as Events that intentionally omit
     // the rest of the local filter object.
     eco: base.eco.isAll ? requestEco : base.eco,
   );
@@ -1198,17 +1232,7 @@ SmartAggregateEvent _mergeOlderDay(
     for (final event in older.events) event.id: event,
   };
   final gameEventNames = {...newer.gameEventNames, ...older.gameEventNames};
-  final gameEventIds = <String, String>{};
-  for (final game in games) {
-    final name = gameEventNames[game.gameId];
-    if (name == null) continue;
-    for (final event in eventsById.values) {
-      if (event.title == name) {
-        gameEventIds[game.gameId] = event.id;
-        break;
-      }
-    }
-  }
+  final gameEventIds = {...newer.gameEventIds, ...older.gameEventIds};
   return _createSmartAggregateEvent(
     minElo: newer.minElo,
     participatingEvents: _sortEventsByAvgElo(
@@ -1218,6 +1242,7 @@ SmartAggregateEvent _mergeOlderDay(
     ),
     orderedGames: games,
     gameEventNames: gameEventNames,
+    gameEventIds: gameEventIds,
     pinnedIds: const <String>[],
     hasMore: older.hasMore,
   );
@@ -1280,6 +1305,7 @@ SmartAggregateEvent _buildAggregateEventFromGameRows({
     participatingEvents: participatingEvents,
     orderedGames: orderedGames,
     gameEventNames: gameEventNames,
+    gameEventIds: gameEventIds,
     pinnedIds: const <String>[],
   );
 }
@@ -1306,6 +1332,7 @@ SmartAggregateEvent _createSmartAggregateEvent({
   required List<GroupEventCardModel> participatingEvents,
   required List<GamesTourModel> orderedGames,
   required Map<String, String> gameEventNames,
+  required Map<String, String> gameEventIds,
   required List<String> pinnedIds,
   bool hasMore = false,
 }) {
@@ -1345,6 +1372,7 @@ SmartAggregateEvent _createSmartAggregateEvent({
     pinnedGameIds: pinnedIds,
     events: participatingEvents,
     gameEventNames: gameEventNames,
+    gameEventIds: gameEventIds,
     hasMore: hasMore,
   );
 }
@@ -1400,7 +1428,7 @@ int _effectiveMaxAverageElo(SmartEventRequest request, GameFilter? filter) {
 }
 
 /// Canonical event ordering inside a smart event: average Elo descending.
-/// About / Standings render the sorted [SmartAggregateEvent.events] list
+/// About / Events render the sorted [SmartAggregateEvent.events] list
 /// directly.
 ///
 /// Sort key per event: the stored broadcast average ([GroupEventCardModel

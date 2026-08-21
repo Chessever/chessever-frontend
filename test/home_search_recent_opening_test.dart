@@ -81,15 +81,27 @@ void main() {
 
     await tester.tap(find.byType(TextField));
     await tester.pump();
-    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 350));
 
-    expect(find.text('Find a chess destination'), findsOneWidget);
+    expect(
+      find.text('Search players, tournaments, openings, or ECO codes'),
+      findsOneWidget,
+    );
 
     await tester.enterText(find.byType(TextField), 'Najdorf');
-    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 450));
 
-    final family = find.text('B9');
+    final family = find.text('B90-B99');
     expect(family, findsOneWidget);
+    expect(find.text('B9'), findsNothing);
+    final familyTapTarget = find.ancestor(
+      of: family,
+      matching: find.byType(InkWell),
+    );
+    expect(
+      tester.getSize(familyTapTarget.first).height,
+      greaterThanOrEqualTo(44),
+    );
     await tester.tap(family);
     await tester.pump();
 
@@ -121,12 +133,22 @@ void main() {
       ),
     );
 
+    await tester.pump();
     await tester.tap(find.byType(TextField));
     await tester.pump();
-    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 350));
 
-    expect(find.text('Recent'), findsOneWidget);
+    expect(find.text('Recent searches'), findsOneWidget);
     expect(find.text('Sicilian: Najdorf'), findsOneWidget);
+    final recentTapTarget = find.ancestor(
+      of: find.text('Sicilian: Najdorf'),
+      matching: find.byType(InkWell),
+    );
+    expect(
+      tester.getSize(recentTapTarget.first).height,
+      greaterThanOrEqualTo(48),
+    );
+    expect(recentTapTarget.hitTestable(), findsOneWidget);
     await tester.tap(find.text('Sicilian: Najdorf'));
     await tester.pump();
 

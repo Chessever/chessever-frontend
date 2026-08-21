@@ -39,6 +39,21 @@ void main() {
     expect(composeGamebaseSearchQuery(query: '', filter: filter), 'eco:B9 *');
   });
 
+  test("King's Indian family ORs all four complete ECO decades", () {
+    final filter = GamebaseFilter(eco: GameEcoFilter.forFamily('E6+E7+E8+E9'));
+
+    expect(filter.eco.openingName, "King's Indian");
+    expect(shouldUseExactLibraryGameQuery('', filter), isTrue);
+    expect(buildLibraryExactWhere(filter), {
+      'or': [
+        {'field': 'eco', 'op': 'startsWith', 'value': 'E6'},
+        {'field': 'eco', 'op': 'startsWith', 'value': 'E7'},
+        {'field': 'eco', 'op': 'startsWith', 'value': 'E8'},
+        {'field': 'eco', 'op': 'startsWith', 'value': 'E9'},
+      ],
+    });
+  });
+
   test('eco B90 plus year AND-combines startsWith with date between', () {
     final filter = GamebaseFilter(
       eco: GameEcoFilter.forCode('B90'),

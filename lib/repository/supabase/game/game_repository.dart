@@ -396,8 +396,8 @@ Map<String, dynamic> _gameFilterRpcParams(GameFilter? filter) {
   }
 
   // ECO prefix
-  if (!filter.eco.isAll && (filter.eco.code?.isNotEmpty ?? false)) {
-    params['p_eco'] = filter.eco.code;
+  if (!filter.eco.isAll && !filter.eco.hasMultiplePrefixes) {
+    params['p_eco'] = filter.eco.ecoPrefixes.single;
   }
 
   // Color (white / black side)
@@ -425,6 +425,15 @@ String? _timeControlDbValue(GameTimeControlFilter tc) {
     case GameTimeControlFilter.all:
       return null;
   }
+}
+
+dynamic _applyEcoPrefixes(dynamic query, GameEcoFilter eco) {
+  if (eco.isAll) return query;
+  final prefixes = eco.ecoPrefixes;
+  if (prefixes.length == 1) {
+    return query.ilike('eco', '${prefixes.single}%');
+  }
+  return query.or(prefixes.map((prefix) => 'eco.ilike.$prefix%').join(','));
 }
 
 /// Status values that map to GameResultFilter.draw on the games table. The
@@ -1549,11 +1558,10 @@ class GameRepository extends BaseRepository {
     required DateTime day,
     List<String>? eventTimeControls,
   }) async {
-    final timeControls =
-        (eventTimeControls ?? const <String>[])
-            .map((value) => value.trim())
-            .where((value) => value.isNotEmpty)
-            .toList(growable: false);
+    final timeControls = (eventTimeControls ?? const <String>[])
+        .map((value) => value.trim())
+        .where((value) => value.isNotEmpty)
+        .toList(growable: false);
     if (timeControls.isEmpty) return null;
 
     final cacheKey =
@@ -1567,24 +1575,22 @@ class GameRepository extends BaseRepository {
 
     final bounds = smartEventDayUtcBounds(day);
     final roundRows = await _readAllRows(
-      (from, to) =>
-          supabase
-              .from('rounds')
-              .select('tour_id')
-              .gte('starts_at', bounds.startIso)
-              .lt('starts_at', bounds.endIso)
-              .order('id', ascending: true)
-              .range(from, to),
+      (from, to) => supabase
+          .from('rounds')
+          .select('tour_id')
+          .gte('starts_at', bounds.startIso)
+          .lt('starts_at', bounds.endIso)
+          .order('id', ascending: true)
+          .range(from, to),
       label: 'smart-event rounds on ${formatSmartEventDay(day)}',
     );
 
-    final dayTourIds =
-        roundRows
-            .map((row) => row['tour_id'] as String?)
-            .whereType<String>()
-            .where((id) => id.isNotEmpty)
-            .toSet()
-            .toList(growable: false);
+    final dayTourIds = roundRows
+        .map((row) => row['tour_id'] as String?)
+        .whereType<String>()
+        .where((id) => id.isNotEmpty)
+        .toSet()
+        .toList(growable: false);
 
     if (dayTourIds.isEmpty) {
       return _cacheSmartEventTourIds(cacheKey, const <String>[], now);
@@ -1735,33 +1741,37 @@ class GameRepository extends BaseRepository {
 
     for (final chunk in chunks) {
       if (remaining <= 0) break;
-      final chunkRows = await _readAllRows((from, to) {
-        dynamic gamesQuery = supabase
-            .from('games')
-            .select(
-              '$_smartEventDaySelectColumns,\nrounds!games_round_id_fkey!inner(starts_at)',
-            )
-            .eq('game_day', formatSmartEventDay(day));
+      final chunkRows = await _readAllRows(
+        (from, to) {
+          dynamic gamesQuery = supabase
+              .from('games')
+              .select(
+                '$_smartEventDaySelectColumns,\nrounds!games_round_id_fkey!inner(starts_at)',
+              )
+              .eq('game_day', formatSmartEventDay(day));
 
-        if (chunk != null) {
-          gamesQuery = gamesQuery.inFilter('tour_id', chunk);
-        }
+          if (chunk != null) {
+            gamesQuery = gamesQuery.inFilter('tour_id', chunk);
+          }
 
-        gamesQuery = _applyCurrentSmartEventPredicates(
-          gamesQuery,
-          liveOnly: liveOnly,
-          completedOnly: completedOnly,
-          minGameAverageElo: minGameAverageElo,
-          searchQuery: searchQuery,
-          extraFilter: extraFilter,
-        );
+          gamesQuery = _applyCurrentSmartEventPredicates(
+            gamesQuery,
+            liveOnly: liveOnly,
+            completedOnly: completedOnly,
+            minGameAverageElo: minGameAverageElo,
+            searchQuery: searchQuery,
+            extraFilter: extraFilter,
+          );
 
-        return gamesQuery
-            .order('last_move_time', ascending: false, nullsFirst: false)
-            .order('player_max_rating', ascending: false, nullsFirst: false)
-            .order('id', ascending: true)
-            .range(from, to);
-      }, label: label, cap: remaining);
+          return gamesQuery
+              .order('last_move_time', ascending: false, nullsFirst: false)
+              .order('player_max_rating', ascending: false, nullsFirst: false)
+              .order('id', ascending: true)
+              .range(from, to);
+        },
+        label: label,
+        cap: remaining,
+      );
 
       for (final row in chunkRows) {
         final id = row is Map ? row['id'] as String? : null;
@@ -1890,9 +1900,7 @@ class GameRepository extends BaseRepository {
       if (completedOnly) {
         games =
             games
-                .where(
-                  (game) => smartEventGameStatusIsCompleted(game.status),
-                )
+                .where((game) => smartEventGameStatusIsCompleted(game.status))
                 .toList();
       }
 
@@ -1907,12 +1915,10 @@ class GameRepository extends BaseRepository {
       }
       if (maxGameAverageElo != null) {
         games =
-            games
-                .where((game) {
-                  final avg = gameStructuredAverageRating(game);
-                  return avg > 0 && avg <= maxGameAverageElo;
-                })
-                .toList();
+            games.where((game) {
+              final avg = gameStructuredAverageRating(game);
+              return avg > 0 && avg <= maxGameAverageElo;
+            }).toList();
       }
 
       final result = _deduplicateGames(games);
@@ -2638,8 +2644,10 @@ class GameRepository extends BaseRepository {
     if (pending.isEmpty) return games;
 
     try {
-      final rows =
-          await supabase.from('games').select('id,pgn').inFilter('id', pending);
+      final rows = await supabase
+          .from('games')
+          .select('id,pgn')
+          .inFilter('id', pending);
       final pgnById = <String, String>{};
       for (final row in rows as List) {
         final id = row['id'] as String?;
@@ -2648,12 +2656,10 @@ class GameRepository extends BaseRepository {
       }
       if (pgnById.isEmpty) return games;
 
-      return games
-          .map((game) {
-            final pgn = pgnById[game.id];
-            return pgn == null ? game : game.copyWith(pgn: pgn);
-          })
-          .toList();
+      return games.map((game) {
+        final pgn = pgnById[game.id];
+        return pgn == null ? game : game.copyWith(pgn: pgn);
+      }).toList();
     } catch (e) {
       // A clock that is 30 minutes low beats an empty list — fall back to the
       // uncorrected rows rather than failing the whole page.
@@ -2716,9 +2722,7 @@ class GameRepository extends BaseRepository {
     }
 
     // ECO prefix
-    if (!filter.eco.isAll && (filter.eco.code?.isNotEmpty ?? false)) {
-      query = query.ilike('eco', '${filter.eco.code}%');
-    }
+    query = _applyEcoPrefixes(query, filter.eco);
 
     // Color — which side the favourited player is on
     if (filter.color != GameColorFilter.all && fideIds.isNotEmpty) {
@@ -2772,9 +2776,7 @@ class GameRepository extends BaseRepository {
       query = query.lte('player_max_rating', filter.maxRating);
     }
 
-    if (!filter.eco.isAll && (filter.eco.code?.isNotEmpty ?? false)) {
-      query = query.ilike('eco', '${filter.eco.code}%');
-    }
+    query = _applyEcoPrefixes(query, filter.eco);
 
     // Color — which side the player from `countryCode` is on
     if (filter.color != GameColorFilter.all) {
@@ -2823,9 +2825,7 @@ class GameRepository extends BaseRepository {
         query = query.eq('tours.group_broadcasts.time_control', tcDb);
       }
 
-      if (!filter.eco.isAll && (filter.eco.code?.isNotEmpty ?? false)) {
-        query = query.ilike('eco', '${filter.eco.code}%');
-      }
+      query = _applyEcoPrefixes(query, filter.eco);
 
       if (filter.minYear != GameFilter.defaultMinYear) {
         query = query.or(_yearLowerBoundFilter(filter.minYear));
@@ -2920,7 +2920,8 @@ int _compareCurrentSmartGames(Games a, Games b) {
 }
 
 DateTime _currentSmartGameDay(Games game) {
-  final raw = game.gameDay ?? game.lastMoveTime ?? game.dateStart ?? DateTime(0);
+  final raw =
+      game.gameDay ?? game.lastMoveTime ?? game.dateStart ?? DateTime(0);
   return DateTime(raw.year, raw.month, raw.day);
 }
 

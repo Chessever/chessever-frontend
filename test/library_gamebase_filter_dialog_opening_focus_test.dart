@@ -186,4 +186,34 @@ void main() {
     expect(find.text('B9'), findsWidgets);
     expect(find.text('Sicilian: Najdorf'), findsWidgets);
   });
+
+  testWidgets("King's Indian selects the complete E60-E99 family", (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(390, 1200));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    await tester.pumpWidget(const _LibraryGamebaseFilterHarness());
+    await tester.pumpAndSettle();
+
+    final openingHeader = find.text('All Openings').first;
+    await tester.ensureVisible(openingHeader);
+    await tester.tap(openingHeader);
+    await _pumpPastExpandAndDelayedFocus(tester);
+    await tester.tap(find.byType(TextField));
+    await tester.enterText(find.byType(TextField), "King's Indian");
+    await tester.pump();
+
+    final family = find.byKey(const ValueKey('eco-family-E6+E7+E8+E9'));
+    expect(family, findsOneWidget);
+    expect(find.text('E60-E99 · 40 codes'), findsOneWidget);
+
+    await tester.ensureVisible(family);
+    await tester.tap(family);
+    await tester.pumpAndSettle();
+
+    expect(find.text('E60-E99'), findsWidgets);
+    expect(find.text("King's Indian"), findsWidgets);
+    expect(find.textContaining('E6+E7+E8+E9'), findsNothing);
+  });
 }

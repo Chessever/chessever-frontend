@@ -36,67 +36,16 @@ class PlayerProfileResolvedEventCard extends ConsumerWidget {
       child: Column(
         crossAxisAlignment: crossAxisAlignment,
         children: [
-          _ResolvedEventCardFade(
-            fallbackCard: fallbackCard,
-            resolvedCard: resolvedCard,
+          EventCard(
+            key: ValueKey(displayCard.id),
+            tourEventCardModel: displayCard,
             heroTagSuffix: heroTagSuffix,
+            forceCompactLayout: true,
             trailingWidget: trailingWidget,
           ),
           statsRow,
         ],
       ),
-    );
-  }
-}
-
-class _ResolvedEventCardFade extends StatelessWidget {
-  const _ResolvedEventCardFade({
-    required this.fallbackCard,
-    required this.resolvedCard,
-    required this.heroTagSuffix,
-    required this.trailingWidget,
-  });
-
-  final GroupEventCardModel fallbackCard;
-  final GroupEventCardModel? resolvedCard;
-  final String heroTagSuffix;
-  final Widget? trailingWidget;
-
-  @override
-  Widget build(BuildContext context) {
-    final resolved = resolvedCard;
-
-    return Stack(
-      fit: StackFit.passthrough,
-      children: [
-        EventCard(
-          key: ValueKey('fallback_${fallbackCard.id}'),
-          tourEventCardModel: fallbackCard,
-          heroTagSuffix: heroTagSuffix,
-          forceCompactLayout: true,
-          trailingWidget: trailingWidget,
-        ),
-        if (resolved != null)
-          Positioned.fill(
-            child: IgnorePointer(
-              child: TweenAnimationBuilder<double>(
-                key: ValueKey('resolved_${resolved.id}'),
-                tween: Tween<double>(begin: 0, end: 1),
-                duration: const Duration(milliseconds: 260),
-                curve: Curves.easeOutCubic,
-                builder: (context, opacity, child) {
-                  return Opacity(opacity: opacity, child: child);
-                },
-                child: EventCard(
-                  tourEventCardModel: resolved,
-                  heroTagSuffix: heroTagSuffix,
-                  forceCompactLayout: true,
-                  trailingWidget: trailingWidget,
-                ),
-              ),
-            ),
-          ),
-      ],
     );
   }
 }

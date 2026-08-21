@@ -11,14 +11,12 @@ void main() {
 
     await tester.pumpWidget(
       MaterialApp(
-        builder: (context, child) =>
-            DismissKeyboard(child: child ?? const SizedBox.shrink()),
+        builder:
+            (context, child) =>
+                DismissKeyboard(child: child ?? const SizedBox.shrink()),
         home: Scaffold(
           body: Column(
-            children: [
-              TextField(focusNode: focusNode),
-              const Text('outside'),
-            ],
+            children: [TextField(focusNode: focusNode), const Text('outside')],
           ),
         ),
       ),
@@ -48,16 +46,14 @@ void main() {
 
     await tester.pumpWidget(
       MaterialApp(
-        builder: (context, child) =>
-            DismissKeyboard(child: child ?? const SizedBox.shrink()),
+        builder:
+            (context, child) =>
+                DismissKeyboard(child: child ?? const SizedBox.shrink()),
         home: Scaffold(
           body: Column(
             children: [
               TextField(focusNode: focusNode),
-              TextButton(
-                onPressed: () => taps++,
-                child: const Text('Action'),
-              ),
+              TextButton(onPressed: () => taps++, child: const Text('Action')),
             ],
           ),
         ),
@@ -71,6 +67,46 @@ void main() {
     await tester.tap(find.text('Action'));
     await tester.pump();
     expect(focusNode.hasFocus, isFalse);
+    expect(taps, 1);
+  });
+
+  testWidgets('an exclusion keeps focus while its control receives the tap', (
+    tester,
+  ) async {
+    final focusNode = FocusNode();
+    addTearDown(focusNode.dispose);
+    var taps = 0;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        builder:
+            (context, child) =>
+                DismissKeyboard(child: child ?? const SizedBox.shrink()),
+        home: Scaffold(
+          body: Column(
+            children: [
+              TextField(focusNode: focusNode),
+              KeyboardDismissExclusion(
+                focusNode: focusNode,
+                child: TextButton(
+                  onPressed: () => taps++,
+                  child: const Text('Search result'),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.byType(TextField));
+    await tester.pump();
+    expect(focusNode.hasFocus, isTrue);
+
+    await tester.tap(find.text('Search result'));
+    await tester.pump();
+
+    expect(focusNode.hasFocus, isTrue);
     expect(taps, 1);
   });
 }

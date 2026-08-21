@@ -68,7 +68,12 @@ class RecentSearchEntry {
       kind: RecentSearchKind.opening,
       targetId: code,
       title: eco.openingName ?? code,
-      subtitle: family == null ? code : '$code · ${code}0–${code}9',
+      subtitle:
+          family == null
+              ? code
+              : family.codePrefixes.length == 1
+              ? '$code · ${family.rangeLabel}'
+              : family.rangeLabel,
     );
   }
 

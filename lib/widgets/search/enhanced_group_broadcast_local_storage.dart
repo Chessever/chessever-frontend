@@ -1,9 +1,13 @@
+import 'dart:isolate';
+
 import 'package:chessever2/repository/local_storage/group_broadcast/group_broadcast_local_storage.dart';
 import 'package:chessever2/repository/supabase/game/games.dart';
+import 'package:chessever2/repository/supabase/group_broadcast/group_broadcast.dart';
 import 'package:chessever2/screens/group_event/model/tour_event_card_model.dart';
 import 'package:chessever2/utils/player_name_search.dart';
 import 'package:chessever2/widgets/search/search_result_model.dart';
 import 'package:chessever2/widgets/search/search_scorer.dart';
+import 'package:flutter/foundation.dart';
 
 class EnhancedSearchResult {
   final List<SearchResult> tournamentResults;
@@ -35,10 +39,77 @@ class EnhancedSearchResult {
   bool get hasPlayers => playerResults.isNotEmpty;
 }
 
+@immutable
+class TournamentSearchScore {
+  const TournamentSearchScore({
+    required this.index,
+    required this.score,
+    required this.matchedText,
+  });
+
+  final int index;
+  final double score;
+  final String matchedText;
+}
+
+/// Runs the existing tournament matcher unchanged on a helper isolate.
+///
+/// Only the fields used by [bestFlexibleEventSearchMatch] cross the isolate
+/// boundary. Event-model construction and navigation data stay on the main
+/// isolate, avoiding a second serialization pass over the full objects.
+@visibleForTesting
+Future<List<TournamentSearchScore>> scoreTournamentBroadcastsInBackground({
+  required String query,
+  required List<GroupBroadcast> broadcasts,
+}) async {
+  final payload = <Map<String, Object?>>[
+    for (var index = 0; index < broadcasts.length; index++)
+      {
+        'index': index,
+        'name': broadcasts[index].name,
+        'aliases': broadcasts[index].search,
+      },
+  ];
+  final hits = await Isolate.run(
+    () => _scoreTournamentPayload(query.toLowerCase().trim(), payload),
+    debugName: 'home-search-tournament-scorer',
+  );
+  return hits
+      .map(
+        (hit) => TournamentSearchScore(
+          index: hit['index']! as int,
+          score: hit['score']! as double,
+          matchedText: hit['matchedText']! as String,
+        ),
+      )
+      .toList(growable: false);
+}
+
+List<Map<String, Object?>> _scoreTournamentPayload(
+  String query,
+  List<Map<String, Object?>> payload,
+) {
+  final hits = <Map<String, Object?>>[];
+  for (final item in payload) {
+    final match = bestFlexibleEventSearchMatch(
+      query: query,
+      name: item['name']! as String,
+      aliases: (item['aliases']! as List).cast<String>(),
+    );
+    if (match.score <= 10) continue;
+    hits.add({
+      'index': item['index']! as int,
+      'score': match.score,
+      'matchedText': match.matchedText,
+    });
+  }
+  return hits;
+}
+
 extension GroupBroadcastLocalStorageSearch on GroupBroadcastLocalStorage {
   /// Tournament-only variant of [searchWithScoring]. The combined search
   /// provider discards local player results (they lack FIDE data), so this
-  /// skips the per-player-term scoring sweep entirely — that sweep is
+  /// skips the per-player-term scoring sweep entirely. That sweep is
   /// Levenshtein-heavy and runs on the UI isolate.
   Future<EnhancedSearchResult> searchTournamentsWithScoring(
     String query, [
@@ -48,28 +119,25 @@ extension GroupBroadcastLocalStorageSearch on GroupBroadcastLocalStorage {
       if (query.isEmpty) return EnhancedSearchResult.empty();
       final broadcasts = await getGroupBroadcasts();
 
-      final queryLower = query.toLowerCase().trim();
+      final scores = await scoreTournamentBroadcastsInBackground(
+        query: query,
+        broadcasts: broadcasts,
+      );
       final tournamentResults = <SearchResult>[];
 
-      for (final gb in broadcasts) {
-        final tournamentMatch = bestFlexibleEventSearchMatch(
-          query: queryLower,
-          name: gb.name,
-          aliases: gb.search,
-        );
-        if (tournamentMatch.score > 10.0) {
-          tournamentResults.add(
-            SearchResult(
-              tournament: GroupEventCardModel.fromGroupBroadcast(
-                gb,
-                liveBroadcastId ?? [],
-              ),
-              score: tournamentMatch.score,
-              matchedText: tournamentMatch.matchedText,
-              type: SearchResultType.tournament,
+      for (final hit in scores) {
+        final gb = broadcasts[hit.index];
+        tournamentResults.add(
+          SearchResult(
+            tournament: GroupEventCardModel.fromGroupBroadcast(
+              gb,
+              liveBroadcastId ?? [],
             ),
-          );
-        }
+            score: hit.score,
+            matchedText: hit.matchedText,
+            type: SearchResultType.tournament,
+          ),
+        );
       }
 
       return EnhancedSearchResult(

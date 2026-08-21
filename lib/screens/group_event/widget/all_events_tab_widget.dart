@@ -73,7 +73,7 @@ class _AllEventsTabWidgetState extends ConsumerState<AllEventsTabWidget> {
       );
     }
 
-    final bottomPadding = MediaQuery.of(context).viewPadding.bottom;
+    final bottomPadding = MediaQuery.viewPaddingOf(context).bottom;
     final isTablet = ResponsiveHelper.isTablet;
     final crossAxisCount = ResponsiveHelper.getGridCrossAxisCount(
       phoneCount: 1,

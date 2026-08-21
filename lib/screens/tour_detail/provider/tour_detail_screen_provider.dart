@@ -266,21 +266,13 @@ class _TourDetailScreenNotifier
         return;
       }
 
-      // Persist before mutating UI state. Leaving this screen invalidates
-      // [tourDetailScreenProvider], so a back-tap during the SQLite write
-      // used to drop the pick before it landed on disk.
-      try {
-        await ref
-            .read(tourDetailRepoProvider)
-            .saveSelectedTourId(
-              groupEventId: groupBroadcast.id,
-              tourId: tourId,
-            );
-      } catch (e) {
-        logWarning('Failed to persist selected tour: $e');
-      }
-
-      if (!mounted) return;
+      // This call records the pick synchronously in the app-scoped repository
+      // before its SQLite await. Update the visible selection immediately;
+      // leaving and re-entering while Android storage is still busy will read
+      // that session value instead of the older value still on disk.
+      final persistence = ref
+          .read(tourDetailRepoProvider)
+          .saveSelectedTourId(groupEventId: groupBroadcast.id, tourId: tourId);
 
       final updatedViewModel = createViewModelFromExisting(
         currentState,
@@ -288,6 +280,12 @@ class _TourDetailScreenNotifier
         _liveTourIdsForTours(_currentLiveTourIds, currentState.tours),
       );
       setDataState(updatedViewModel);
+
+      try {
+        await persistence;
+      } catch (e) {
+        logWarning('Failed to persist selected tour: $e');
+      }
     } catch (e, st) {
       setErrorState(e, st);
     }

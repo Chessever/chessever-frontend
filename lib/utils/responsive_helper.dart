@@ -18,11 +18,18 @@ class ResponsiveHelper {
   static late DeviceType _deviceType;
   static late Orientation _orientation;
 
+  /// Reads only the two aspects it needs.
+  ///
+  /// `MediaQuery.of` subscribes the calling element to *every* aspect of the
+  /// MediaQueryData, `viewInsets` included — so every screen that called this
+  /// in its build method rebuilt on each frame of the software keyboard
+  /// sliding in or out. `sizeOf`/`orientationOf` subscribe to one aspect each,
+  /// and neither of them changes while the keyboard animates.
   static void init(BuildContext context) {
-    final size = MediaQuery.of(context).size;
+    final size = MediaQuery.sizeOf(context);
     _screenWidth = size.width;
     _screenHeight = size.height;
-    _orientation = MediaQuery.of(context).orientation;
+    _orientation = MediaQuery.orientationOf(context);
 
     // Calculate scale factors
     _scaleWidth = _screenWidth / baseWidth;

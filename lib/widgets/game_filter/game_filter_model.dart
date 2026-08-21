@@ -152,7 +152,7 @@ extension GameTournamentTypeFilterX on GameTournamentTypeFilter {
 class GameEcoFilter {
   const GameEcoFilter({this.code});
 
-  /// A specific ECO code (e.g. B90), a safe family prefix (e.g. B9), or null.
+  /// A specific ECO code (B90), a family id (B9 or E6+E7+E8+E9), or null.
   final String? code;
 
   /// Factory for "all openings" filter
@@ -187,6 +187,17 @@ class GameEcoFilter {
 
   bool get isFamily => EcoOpenings.getFamily(code) != null;
 
+  /// Exact ECO prefixes represented by this filter. Single codes and the old
+  /// one-decade families remain one-element lists; broad families safely use
+  /// several prefixes with OR semantics.
+  List<String> get ecoPrefixes {
+    if (isAll) return const [];
+    final family = EcoOpenings.getFamily(code);
+    return family?.codePrefixes ?? [code!];
+  }
+
+  bool get hasMultiplePrefixes => ecoPrefixes.length > 1;
+
   String? get openingName => EcoOpenings.getFilterName(code);
 
   /// Get the category letter (A, B, C, D, E) or null
@@ -194,13 +205,24 @@ class GameEcoFilter {
 
   /// Display text for the filter
   String get displayText =>
-      isUnknownEco ? unknownEcoLabel : (code ?? 'All Openings');
+      isUnknownEco
+          ? unknownEcoLabel
+          : (_familyDisplayText ?? code ?? 'All Openings');
+
+  String? get _familyDisplayText {
+    final family = EcoOpenings.getFamily(code);
+    if (family == null) return null;
+    return family.codePrefixes.length == 1
+        ? family.codePrefix
+        : family.rangeLabel;
+  }
 
   /// Check if a game's ECO code matches this filter
   bool matches(String? eco) {
     if (isAll) return true;
     if (eco == null || eco.isEmpty) return false;
-    return eco.toUpperCase().startsWith(code!);
+    final normalized = eco.toUpperCase();
+    return ecoPrefixes.any(normalized.startsWith);
   }
 
   @override

@@ -25,6 +25,7 @@ import 'package:chessever2/widgets/generic_error_widget.dart';
 import 'package:chessever2/widgets/alert_dialog/alert_modal.dart';
 import 'package:chessever2/widgets/search/enhanced_rounded_search_bar.dart';
 import 'package:chessever2/widgets/skeleton_widget.dart';
+import 'package:chessever2/widgets/stable_height_slot.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
@@ -46,6 +47,33 @@ final _mappedName = {
 final selectedGroupCategoryProvider = StateProvider<GroupEventCategory>(
   (ref) => GroupEventCategory.forYou,
 );
+
+final groupEventSearchTabControllerProvider =
+    Provider<GroupEventSearchTabController>(GroupEventSearchTabController.new);
+
+class GroupEventSearchTabController {
+  GroupEventSearchTabController(this._ref);
+
+  final Ref _ref;
+  GroupEventCategory _categoryBeforeSearch = GroupEventCategory.forYou;
+
+  void showSearch() {
+    final currentCategory = _ref.read(selectedGroupCategoryProvider);
+    if (currentCategory != GroupEventCategory.search) {
+      _categoryBeforeSearch = currentCategory;
+    }
+    _ref.read(selectedGroupCategoryProvider.notifier).state =
+        GroupEventCategory.search;
+  }
+
+  void restorePreviousTab() {
+    if (_ref.read(selectedGroupCategoryProvider) != GroupEventCategory.search) {
+      return;
+    }
+    _ref.read(selectedGroupCategoryProvider.notifier).state =
+        _categoryBeforeSearch;
+  }
+}
 
 class GroupEventScreen extends HookConsumerWidget {
   const GroupEventScreen({super.key});
@@ -96,14 +124,13 @@ class GroupEventScreen extends HookConsumerWidget {
     final forYouScrollController = useScrollController();
     final searchScrollController = useScrollController();
     final isAnimating = useRef(false);
-    final isSearching = useState(false);
     final focusNode = useFocusNode();
 
-    useEffect(() {
-      void onFocus() => isSearching.value = focusNode.hasFocus;
-      focusNode.addListener(onFocus);
-      return () => focusNode.removeListener(onFocus);
-    }, [focusNode]);
+    // No `isSearching` state here on purpose. Mirroring the focus node into a
+    // hook rebuilt this entire screen — four tabs, their lists and the
+    // PageView — on the frame the keyboard came up, right as the search field
+    // started its morph. The avatar now collapses from inside the search bar,
+    // which listens to the focus node itself.
 
     useEffect(() {
       if (!focusNode.hasFocus && searchController.text != searchQuery) {
@@ -223,157 +250,138 @@ class GroupEventScreen extends HookConsumerWidget {
             crossAxisAlignment: CrossAxisAlignment.center,
             mainAxisSize: MainAxisSize.min,
             children: [
-              SizedBox(height: 24.h + MediaQuery.of(context).viewPadding.top),
+              SizedBox(height: 24.h + MediaQuery.viewPaddingOf(context).top),
               Padding(
                 padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
-                child: AnimatedSwitcher(
-                  duration: const Duration(milliseconds: 300),
-                  switchInCurve: Curves.easeOut,
-                  switchOutCurve: Curves.easeIn,
-                  transitionBuilder:
-                      (Widget child, Animation<double> animation) =>
-                          FadeTransition(
-                            opacity: animation,
-                            child: SizeTransition(
-                              sizeFactor: animation,
-                              axis: Axis.horizontal,
-                              child: child,
-                            ),
-                          ),
-                  child: SizedBox(
-                    width: double.infinity,
-                    key: const ValueKey('search_bar'),
-                    child: EnhancedRoundedSearchBar(
-                      focusNode: focusNode,
-                      controller: searchController,
-                      textFieldKey: e2eKey(E2eIds.eventsSearchField),
-                      filterButtonKey: e2eKey(E2eIds.eventsFilterButton),
-                      hintText: 'Search',
-                      rotatingHints: const [
-                        'player',
-                        'tournament',
-                        'openings',
-                        'FIDE country',
-                      ],
-                      showProfile: !isSearching.value,
-                      filterBadgeCount: filterBadgeCount,
-                      onChanged: (value) {
-                        // Tab switch is instant; the query that drives the
-                        // search fan-out (network + local scoring) is
-                        // debounced so keystrokes never trigger heavy work.
-                        final trimmed = value.trim();
-                        final previousQuery = ref.read(searchTabQueryProvider);
-                        searchTabDebounce.value?.cancel();
-                        if (trimmed.isNotEmpty) {
-                          ref
-                              .read(selectedGroupCategoryProvider.notifier)
-                              .state = GroupEventCategory.search;
-                          if (previousQuery.isEmpty) {
-                            // First keystroke must apply instantly: the search
-                            // tab is only rendered while the query is
-                            // non-empty (sub-2-char queries short-circuit in
-                            // the provider, so this is cheap).
-                            ref.read(searchTabQueryProvider.notifier).state =
-                                trimmed;
-                          } else {
-                            searchTabDebounce.value = Timer(
-                              const Duration(milliseconds: 300),
-                              () {
-                                ref
-                                    .read(searchTabQueryProvider.notifier)
-                                    .state = trimmed;
-                              },
-                            );
-                          }
-                        } else {
-                          ref.read(searchTabQueryProvider.notifier).state = '';
-                          if (previousQuery.isNotEmpty) {
-                            // Only switch tabs when user actively clears a
-                            // non-empty search (not on tapping an empty field)
-                            searchAnimatedEventIds.clear();
-                            ref
-                                .read(selectedGroupCategoryProvider.notifier)
-                                .state = GroupEventCategory.current;
-                            // ignore: unused_result
-                            ref.refresh(groupEventScreenProvider);
-                          }
-                        }
-                      },
-                      onTournamentSelected:
-                          (t) => ref
-                              .read(groupEventScreenProvider.notifier)
-                              .onSelectTournament(context: context, id: t.id),
-                      onPlayerSelected: (player) {
-                        FocusScope.of(context).unfocus();
-                        HapticFeedbackService.buttonPress();
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder:
-                                (_) => PlayerProfileScreen(
-                                  fideId: player.fideId,
-                                  playerName: player.name,
-                                  title: player.title,
-                                  federation: player.fed,
-                                  rating: player.rating,
-                                ),
-                          ),
-                        );
-                      },
-                      onOpeningSelected: (opening) {
-                        FocusScope.of(context).unfocus();
-                        HapticFeedbackService.buttonPress();
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder:
-                                (_) => SmartEventScreen(
-                                  request: SmartEventRequest.forOpening(
-                                    opening,
-                                  ),
-                                ),
-                          ),
-                        );
-                      },
-                      onFilterTap: () {
+                // Plain SizedBox, not an AnimatedSwitcher: the switcher's child
+                // key never changed, so it never transitioned — it only added a
+                // Stack for the search bar's own morph to relayout through
+                // every frame.
+                child: SizedBox(
+                  width: double.infinity,
+                  child: EnhancedRoundedSearchBar(
+                    focusNode: focusNode,
+                    controller: searchController,
+                    textFieldKey: e2eKey(E2eIds.eventsSearchField),
+                    filterButtonKey: e2eKey(E2eIds.eventsFilterButton),
+                    hintText: 'Search',
+                    rotatingHints: const [
+                      'player',
+                      'tournament',
+                      'openings',
+                      'FIDE country',
+                    ],
+                    filterBadgeCount: filterBadgeCount,
+                    onChanged: (value) {
+                      // Tab switch is instant; the query that drives the
+                      // search fan-out (network + local scoring) is
+                      // debounced so keystrokes never trigger heavy work.
+                      final trimmed = value.trim();
+                      final previousQuery = ref.read(searchTabQueryProvider);
+                      searchTabDebounce.value?.cancel();
+                      if (trimmed.isNotEmpty) {
                         ref
-                            .read(filterPopupProvider.notifier)
-                            .setState(appliedFilterState);
-
-                        showAlertModal<void>(
-                          context: context,
-                          horizontalPadding: 0,
-                          child: FilterPopup(
-                            onApplyFilters: (filterState) {
-                              ref
-                                  .read(eventAppliedFilterProvider.notifier)
-                                  .state = filterState;
-                              ref.invalidate(forYouEventsProvider);
+                            .read(groupEventSearchTabControllerProvider)
+                            .showSearch();
+                        if (previousQuery.isEmpty) {
+                          // First keystroke must apply instantly: the search
+                          // tab is only rendered while the query is
+                          // non-empty (sub-2-char queries short-circuit in
+                          // the provider, so this is cheap).
+                          ref.read(searchTabQueryProvider.notifier).state =
+                              trimmed;
+                        } else {
+                          searchTabDebounce.value = Timer(
+                            const Duration(milliseconds: 300),
+                            () {
+                              ref.read(searchTabQueryProvider.notifier).state =
+                                  trimmed;
                             },
-                            onResetFilters: () {
-                              ref
-                                  .read(eventAppliedFilterProvider.notifier)
-                                  .state = defaultFilterPopupState;
-                              ref.invalidate(forYouEventsProvider);
-                            },
-                          ),
-                        );
-                      },
-                      onProfileTap:
-                          () => Scaffold.maybeOf(context)?.openDrawer(),
-                      onClearSearchField: () {
-                        // ignore: unused_result
-                        ref.refresh(groupEventScreenProvider);
-                        // Clear search tab state and switch back if on search tab
-                        ref.read(searchTabQueryProvider.notifier).state = '';
-                        searchAnimatedEventIds.clear();
-                        if (selectedTourEvent == GroupEventCategory.search) {
-                          ref
-                              .read(selectedGroupCategoryProvider.notifier)
-                              .state = GroupEventCategory.current;
+                          );
                         }
-                      },
-                    ),
+                      } else {
+                        ref.read(searchTabQueryProvider.notifier).state = '';
+                        if (previousQuery.isNotEmpty) {
+                          // Only switch tabs when user actively clears a
+                          // non-empty search (not on tapping an empty field)
+                          searchAnimatedEventIds.clear();
+                          ref
+                              .read(groupEventSearchTabControllerProvider)
+                              .restorePreviousTab();
+                          // ignore: unused_result
+                          ref.refresh(groupEventScreenProvider);
+                        }
+                      }
+                    },
+                    onTournamentSelected:
+                        (t) => ref
+                            .read(groupEventScreenProvider.notifier)
+                            .onSelectTournament(context: context, id: t.id),
+                    onPlayerSelected: (player) {
+                      FocusScope.of(context).unfocus();
+                      HapticFeedbackService.buttonPress();
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder:
+                              (_) => PlayerProfileScreen(
+                                fideId: player.fideId,
+                                playerName: player.name,
+                                title: player.title,
+                                federation: player.fed,
+                                rating: player.rating,
+                              ),
+                        ),
+                      );
+                    },
+                    onOpeningSelected: (opening) {
+                      FocusScope.of(context).unfocus();
+                      HapticFeedbackService.buttonPress();
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder:
+                              (_) => SmartEventScreen(
+                                request: SmartEventRequest.forOpening(opening),
+                              ),
+                        ),
+                      );
+                    },
+                    onFilterTap: () {
+                      ref
+                          .read(filterPopupProvider.notifier)
+                          .setState(appliedFilterState);
+
+                      showAlertModal<void>(
+                        context: context,
+                        horizontalPadding: 0,
+                        child: FilterPopup(
+                          onApplyFilters: (filterState) {
+                            ref
+                                .read(eventAppliedFilterProvider.notifier)
+                                .state = filterState;
+                            ref.invalidate(forYouEventsProvider);
+                          },
+                          onResetFilters: () {
+                            ref
+                                .read(eventAppliedFilterProvider.notifier)
+                                .state = defaultFilterPopupState;
+                            ref.invalidate(forYouEventsProvider);
+                          },
+                        ),
+                      );
+                    },
+                    onProfileTap: () => Scaffold.maybeOf(context)?.openDrawer(),
+                    onClearSearchField: () {
+                      // ignore: unused_result
+                      ref.refresh(groupEventScreenProvider);
+                      // Clear search tab state and switch back if on search tab
+                      ref.read(searchTabQueryProvider.notifier).state = '';
+                      searchAnimatedEventIds.clear();
+                      ref
+                          .read(groupEventSearchTabControllerProvider)
+                          .restorePreviousTab();
+                    },
                   ),
                 ),
               ),
@@ -429,178 +437,185 @@ class GroupEventScreen extends HookConsumerWidget {
 
               SizedBox(height: 12.h),
               Expanded(
-                child: PageView.builder(
-                  controller: pageController,
-                  itemCount: visibleCategories.length,
-                  onPageChanged: (index) {
-                    if (!isAnimating.value &&
-                        index < visibleCategories.length) {
-                      final newCategory = visibleCategories[index];
-                      ref.read(selectedGroupCategoryProvider.notifier).state =
-                          newCategory;
-                    }
-                  },
-                  itemBuilder: (context, index) {
-                    if (index >= visibleCategories.length) {
-                      return const SizedBox.shrink();
-                    }
-                    final currentCategory = visibleCategories[index];
-                    final isPast = currentCategory == GroupEventCategory.past;
-                    final isCurrent =
-                        currentCategory == GroupEventCategory.current;
-                    final isForYou =
-                        currentCategory == GroupEventCategory.forYou;
-                    final isSearch =
-                        currentCategory == GroupEventCategory.search;
-                    final scrollController =
-                        isPast
-                            ? pastScrollController
-                            : isCurrent
-                            ? currentScrollController
-                            : isForYou
-                            ? forYouScrollController
-                            : isSearch
-                            ? searchScrollController
-                            : null;
+                child: StableHeightSlot(
+                  child: PageView.builder(
+                    controller: pageController,
+                    itemCount: visibleCategories.length,
+                    onPageChanged: (index) {
+                      if (!isAnimating.value &&
+                          index < visibleCategories.length) {
+                        final newCategory = visibleCategories[index];
+                        ref.read(selectedGroupCategoryProvider.notifier).state =
+                            newCategory;
+                      }
+                    },
+                    itemBuilder: (context, index) {
+                      if (index >= visibleCategories.length) {
+                        return const SizedBox.shrink();
+                      }
+                      final currentCategory = visibleCategories[index];
+                      final isPast = currentCategory == GroupEventCategory.past;
+                      final isCurrent =
+                          currentCategory == GroupEventCategory.current;
+                      final isForYou =
+                          currentCategory == GroupEventCategory.forYou;
+                      final isSearch =
+                          currentCategory == GroupEventCategory.search;
+                      final scrollController =
+                          isPast
+                              ? pastScrollController
+                              : isCurrent
+                              ? currentScrollController
+                              : isForYou
+                              ? forYouScrollController
+                              : isSearch
+                              ? searchScrollController
+                              : null;
 
-                    // Only load data for the currently selected tab. Heavy
-                    // tabs keep their provider caches, not their widget trees.
-                    if (currentCategory != selectedTourEvent) {
-                      return const SizedBox.shrink();
-                    }
+                      // Only load data for the currently selected tab. Heavy
+                      // tabs keep their provider caches, not their widget trees.
+                      if (currentCategory != selectedTourEvent) {
+                        return const SizedBox.shrink();
+                      }
 
-                    // Special handling for "Search" tab - show search results
-                    if (isSearch) {
-                      return SearchResultsWidget(
-                        scrollController: searchScrollController,
-                        searchQuery: searchQuery,
-                      );
-                    }
+                      // Special handling for "Search" tab - show search results
+                      if (isSearch) {
+                        return SearchResultsWidget(
+                          scrollController: searchScrollController,
+                          searchQuery: searchQuery,
+                        );
+                      }
 
-                    // Special handling for "For You" tab - show games instead of events
-                    if (isForYou) {
-                      return ForYouGamesWidget(
-                        scrollController: forYouScrollController,
-                      );
-                    }
+                      // Special handling for "For You" tab - show games instead of events
+                      if (isForYou) {
+                        return ForYouGamesWidget(
+                          scrollController: forYouScrollController,
+                        );
+                      }
 
-                    return ref
-                        .watch(groupEventScreenProvider)
-                        .when(
-                          data: (filteredEvents) {
-                            final isLoadingMore =
-                                isPast &&
-                                ref
-                                    .read(groupEventScreenProvider.notifier)
-                                    .isFetchingMore;
+                      return ref
+                          .watch(groupEventScreenProvider)
+                          .when(
+                            data: (filteredEvents) {
+                              final isLoadingMore =
+                                  isPast &&
+                                  ref
+                                      .read(groupEventScreenProvider.notifier)
+                                      .isFetchingMore;
 
-                            // Get favorites from unified favorites system (Supabase + local cache)
-                            final favoritesAsync = ref.watch(
-                              favoriteEventsProvider,
-                            );
-                            final favoriteEvents =
-                                favoritesAsync.valueOrNull ?? [];
+                              // Get favorites from unified favorites system (Supabase + local cache)
+                              final favoritesAsync = ref.watch(
+                                favoriteEventsProvider,
+                              );
+                              final favoriteEvents =
+                                  favoritesAsync.valueOrNull ?? [];
 
-                            // Extract event IDs from favorites
-                            final allFavorites =
-                                favoriteEvents
-                                    .map((e) => e.eventId)
-                                    .where((id) => id.isNotEmpty)
-                                    .toList();
+                              // Extract event IDs from favorites
+                              final allFavorites =
+                                  favoriteEvents
+                                      .map((e) => e.eventId)
+                                      .where((id) => id.isNotEmpty)
+                                      .toList();
 
-                            // Build timestamp map for sorting within groups
-                            final favoriteTimestamps = <String, DateTime>{};
-                            for (final fav in favoriteEvents) {
-                              favoriteTimestamps[fav.eventId] = fav.createdAt;
-                            }
+                              // Build timestamp map for sorting within groups
+                              final favoriteTimestamps = <String, DateTime>{};
+                              for (final fav in favoriteEvents) {
+                                favoriteTimestamps[fav.eventId] = fav.createdAt;
+                              }
 
-                            final isSearching =
-                                searchController.text.trim().isNotEmpty;
+                              final isSearching =
+                                  searchController.text.trim().isNotEmpty;
 
-                            // Get cached favorite player data (populated by event cards as they render)
-                            final cachedEventFavoritePlayers = ref.watch(
-                              eventFavoritePlayersCacheProvider,
-                            );
+                              // Get cached favorite player data (populated by event cards as they render)
+                              final cachedEventFavoritePlayers = ref.watch(
+                                eventFavoritePlayersCacheProvider,
+                              );
 
-                            // Disable favorite prioritization for past events
-                            final shouldApplyFavoriteSorting =
-                                currentCategory != GroupEventCategory.past;
+                              // Disable favorite prioritization for past events
+                              final shouldApplyFavoriteSorting =
+                                  currentCategory != GroupEventCategory.past;
 
-                            final finalEvents =
-                                isSearching || !shouldApplyFavoriteSorting
-                                    ? filteredEvents
-                                    : ref
-                                        .read(tournamentSortingServiceProvider)
-                                        .sortBasedOnFavorite(
-                                          tours: filteredEvents,
-                                          favorites: allFavorites,
-                                          eventFavoritePlayersMap:
-                                              cachedEventFavoritePlayers,
-                                          favoriteTimestamps:
-                                              favoriteTimestamps,
-                                        );
-                            final smartData =
-                                isCurrent
-                                    ? visibleSmartEventCardData(
-                                      SmartEventCardData.fromState(
-                                        filter: appliedFilterState,
-                                        events: finalEvents,
-                                        source: SmartEventSource.current,
-                                      ),
-                                      dismissedSmartEventCardKeys,
-                                    )
-                                    : null;
-
-                            return RefreshIndicator(
-                              onRefresh:
-                                  ref.read(homeScreenProvider).onPullRefresh,
-                              color: context.colors.textSecondary,
-                              backgroundColor: context.colors.surface,
-                              displacement: 60.h,
-                              strokeWidth: 3.w,
-                              child: AllEventsTabWidget(
-                                filteredEvents: finalEvents,
-                                smartData: smartData,
-                                onSelect:
-                                    (tourEventCardModel) => ref
-                                        .read(groupEventScreenProvider.notifier)
-                                        .onSelectTournament(
-                                          context: context,
-                                          id: tourEventCardModel.id,
+                              final finalEvents =
+                                  isSearching || !shouldApplyFavoriteSorting
+                                      ? filteredEvents
+                                      : ref
+                                          .read(
+                                            tournamentSortingServiceProvider,
+                                          )
+                                          .sortBasedOnFavorite(
+                                            tours: filteredEvents,
+                                            favorites: allFavorites,
+                                            eventFavoritePlayersMap:
+                                                cachedEventFavoritePlayers,
+                                            favoriteTimestamps:
+                                                favoriteTimestamps,
+                                          );
+                              final smartData =
+                                  isCurrent
+                                      ? visibleSmartEventCardData(
+                                        SmartEventCardData.fromState(
+                                          filter: appliedFilterState,
+                                          events: finalEvents,
+                                          source: SmartEventSource.current,
                                         ),
-                                isLoadingMore: isLoadingMore,
-                                scrollController: scrollController,
-                              ),
-                            );
-                          },
-                          loading:
-                              () => SkeletonWidget(
+                                        dismissedSmartEventCardKeys,
+                                      )
+                                      : null;
+
+                              return RefreshIndicator(
+                                onRefresh:
+                                    ref.read(homeScreenProvider).onPullRefresh,
+                                color: context.colors.textSecondary,
+                                backgroundColor: context.colors.surface,
+                                displacement: 60.h,
+                                strokeWidth: 3.w,
                                 child: AllEventsTabWidget(
-                                  onSelect: (_) {},
-                                  filteredEvents: List.generate(
-                                    10,
-                                    (index) => GroupEventCardModel(
-                                      id: 'tour_001',
-                                      title: 'World Chess Championship 2025',
-                                      dates: 'Mar 15 - 25,2025',
-                                      timeUntilStart: 'Starts in 8 months',
-                                      tourEventCategory:
-                                          TourEventCategory.values[Random()
-                                              .nextInt(
-                                                TourEventCategory.values.length,
-                                              )],
-                                      maxAvgElo: 0,
-                                      timeControl: 'Standard',
-                                      endDate: null,
-                                      startDate: null,
+                                  filteredEvents: finalEvents,
+                                  smartData: smartData,
+                                  onSelect:
+                                      (tourEventCardModel) => ref
+                                          .read(
+                                            groupEventScreenProvider.notifier,
+                                          )
+                                          .onSelectTournament(
+                                            context: context,
+                                            id: tourEventCardModel.id,
+                                          ),
+                                  isLoadingMore: isLoadingMore,
+                                  scrollController: scrollController,
+                                ),
+                              );
+                            },
+                            loading:
+                                () => SkeletonWidget(
+                                  child: AllEventsTabWidget(
+                                    onSelect: (_) {},
+                                    filteredEvents: List.generate(
+                                      10,
+                                      (index) => GroupEventCardModel(
+                                        id: 'tour_001',
+                                        title: 'World Chess Championship 2025',
+                                        dates: 'Mar 15 - 25,2025',
+                                        timeUntilStart: 'Starts in 8 months',
+                                        tourEventCategory:
+                                            TourEventCategory
+                                                .values[Random().nextInt(
+                                              TourEventCategory.values.length,
+                                            )],
+                                        maxAvgElo: 0,
+                                        timeControl: 'Standard',
+                                        endDate: null,
+                                        startDate: null,
+                                      ),
                                     ),
                                   ),
                                 ),
-                              ),
-                          error:
-                              (error, stackTrace) => const GenericErrorWidget(),
-                        );
-                  },
+                            error:
+                                (error, stackTrace) =>
+                                    const GenericErrorWidget(),
+                          );
+                    },
+                  ),
                 ),
               ),
             ],

@@ -604,6 +604,9 @@ class _EventsListContent extends ConsumerWidget {
           final event = filteredEvents[eventIndex];
 
           return Padding(
+            key: ValueKey(
+              'player-event-${event.canonicalKey ?? event.broadcastSlug ?? event.tourId}',
+            ),
             padding: EdgeInsets.only(bottom: 12.h),
             child: _PlayerEventCard(
               playerEventData: event,
@@ -911,77 +914,65 @@ class _PlayerEventCard extends ConsumerWidget {
     final fallbackCard = buildPlayerEventFallbackCard(playerEventData);
 
     return PlayerProfileResolvedEventCard(
-          request: request,
-          fallbackCard: fallbackCard,
-          heroTagSuffix: 'player-profile-$index',
-          onTap:
-              (displayCard) => _navigateToTournament(context, ref, displayCard),
-          statsRow: Container(
-            margin: EdgeInsets.only(top: 1.h),
-            padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 8.h),
-            decoration: BoxDecoration(
-              color: context.colors.surface,
-              borderRadius: BorderRadius.only(
-                bottomLeft: Radius.circular(8.br),
-                bottomRight: Radius.circular(8.br),
-              ),
-            ),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      request: request,
+      fallbackCard: fallbackCard,
+      heroTagSuffix: 'player-profile-$index',
+      onTap: (displayCard) => _navigateToTournament(context, ref, displayCard),
+      statsRow: Container(
+        margin: EdgeInsets.only(top: 1.h),
+        padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 8.h),
+        decoration: BoxDecoration(
+          color: context.colors.surface,
+          borderRadius: BorderRadius.only(
+            bottomLeft: Radius.circular(8.br),
+            bottomRight: Radius.circular(8.br),
+          ),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Row(
               children: [
-                Row(
-                  children: [
-                    Icon(
-                      Icons.sports_esports_outlined,
-                      size: 14.sp,
-                      color: context.colors.textPrimary.withValues(alpha: 0.5),
-                    ),
-                    SizedBox(width: 4.w),
-                    Text(
-                      '${playerEventData.gamesPlayed} ${playerEventData.gamesPlayed == 1 ? 'game' : 'games'}',
-                      style: AppTypography.textXsRegular.copyWith(
-                        color: context.colors.textPrimary.withValues(
-                          alpha: 0.5,
-                        ),
-                      ),
-                    ),
-                  ],
+                Icon(
+                  Icons.sports_esports_outlined,
+                  size: 14.sp,
+                  color: context.colors.textPrimary.withValues(alpha: 0.5),
                 ),
-                if (playerEventData.score != null)
-                  Container(
-                    padding: EdgeInsets.symmetric(
-                      horizontal: 8.w,
-                      vertical: 3.h,
-                    ),
-                    decoration: BoxDecoration(
-                      color: _getScoreColor(
-                        context,
-                        playerEventData.score!,
-                        playerEventData.gamesPlayed,
-                      ).withValues(alpha: 0.2),
-                      borderRadius: BorderRadius.circular(4.br),
-                    ),
-                    child: Text(
-                      '${playerEventData.score!.toStringAsFixed(1)}/${playerEventData.gamesPlayed}',
-                      style: AppTypography.textXsBold.copyWith(
-                        color: _getScoreColor(
-                          context,
-                          playerEventData.score!,
-                          playerEventData.gamesPlayed,
-                        ),
-                      ),
-                    ),
+                SizedBox(width: 4.w),
+                Text(
+                  '${playerEventData.gamesPlayed} ${playerEventData.gamesPlayed == 1 ? 'game' : 'games'}',
+                  style: AppTypography.textXsRegular.copyWith(
+                    color: context.colors.textPrimary.withValues(alpha: 0.5),
                   ),
+                ),
               ],
             ),
-          ),
-        )
-        .animate()
-        .fadeIn(
-          duration: 200.ms,
-          delay: Duration(milliseconds: (index % 10) * 50),
-        )
-        .slideY(begin: 0.02, end: 0);
+            if (playerEventData.score != null)
+              Container(
+                padding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 3.h),
+                decoration: BoxDecoration(
+                  color: _getScoreColor(
+                    context,
+                    playerEventData.score!,
+                    playerEventData.gamesPlayed,
+                  ).withValues(alpha: 0.2),
+                  borderRadius: BorderRadius.circular(4.br),
+                ),
+                child: Text(
+                  '${playerEventData.score!.toStringAsFixed(1)}/${playerEventData.gamesPlayed}',
+                  style: AppTypography.textXsBold.copyWith(
+                    color: _getScoreColor(
+                      context,
+                      playerEventData.score!,
+                      playerEventData.gamesPlayed,
+                    ),
+                  ),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
   }
 
   Future<void> _navigateToTournament(

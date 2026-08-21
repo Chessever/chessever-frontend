@@ -429,12 +429,12 @@ final playerGamesDataKeyProvider = FutureProvider.family
           final pid = await ref.watch(twicPlayerIdProvider(playerKey).future);
           if (pid != null && pid.isNotEmpty) {
             try {
-              return _getTwicGamesViaPlayerEndpoint(ref, pid);
+              return await _getTwicGamesViaPlayerEndpoint(ref, pid);
             } on DioException catch (e) {
               if (e.response?.statusCode != 404) rethrow;
             }
           }
-          return _getTwicGamesFromGamebase(ref, playerKey);
+          return await _getTwicGamesFromGamebase(ref, playerKey);
         }
 
         final gameRepo = ref.read(gameRepositoryProvider);
@@ -1310,18 +1310,16 @@ class PlayerAnalytics {
       Map<String, Map<String, dynamic>> map,
     ) {
       final stats =
-          map.values
-              .map((data) {
-                return OpeningStatistic(
-                  eco: data['eco'] as String,
-                  openingName: data['openingName'] as String?,
-                  count: data['count'] as int,
-                  wins: data['wins'] as int,
-                  draws: data['draws'] as int,
-                  losses: data['losses'] as int,
-                );
-              })
-              .toList();
+          map.values.map((data) {
+            return OpeningStatistic(
+              eco: data['eco'] as String,
+              openingName: data['openingName'] as String?,
+              count: data['count'] as int,
+              wins: data['wins'] as int,
+              draws: data['draws'] as int,
+              losses: data['losses'] as int,
+            );
+          }).toList();
 
       stats.sort(_byRealOpeningsFirstThenCount);
       return stats;
@@ -1394,7 +1392,7 @@ final playerEventsKeyProvider = FutureProvider.family
     ) async {
       try {
         if (playerKey.source == PlayerProfileDataSource.twic) {
-          return _getTwicPlayerEvents(ref, playerKey);
+          return await _getTwicPlayerEvents(ref, playerKey);
         }
 
         final supabase = Supabase.instance.client;
@@ -1463,21 +1461,70 @@ PlayerEventData playerEventDataFromGamebaseEvent(GamebaseEventSearchItem item) {
   );
 }
 
-/// Merge events that share a canonical [PlayerEventData.tourId] (e.g. every
-/// "Round N: ..." pairing of one broadcast collapses to a single event).
+/// Merge rows that identify the same event through any canonical identity.
+///
+/// Gamebase can ingest one real event from multiple sources. Those rows may
+/// have different raw event names and canonical keys while still sharing a
+/// broadcast slug or resolving to the same normalized parent-event slug (for
+/// example the early and late Titled Tuesday sessions for one date).
 /// Sums games/score, widens the date span, keeps the richest metadata.
 /// Insertion order of first appearance is preserved.
 List<PlayerEventData> mergePlayerEventsByCanonical(
   Iterable<PlayerEventData> events,
 ) {
-  final byKey = <String, PlayerEventData>{};
-  for (final e in events) {
-    final existing = byKey[e.tourId];
+  final source = events.toList(growable: false);
+  if (source.length < 2) return source;
+
+  // Union rows through every identity alias, then aggregate each connected
+  // component. This handles mixed-source chains without an O(n²) comparison
+  // across a player's potentially large event history.
+  final parents = List<int>.generate(source.length, (index) => index);
+  final aliasOwner = <String, int>{};
+
+  int findRoot(int index) {
+    var root = index;
+    while (parents[root] != root) {
+      root = parents[root];
+    }
+    while (parents[index] != index) {
+      final next = parents[index];
+      parents[index] = root;
+      index = next;
+    }
+    return root;
+  }
+
+  void join(int first, int second) {
+    final firstRoot = findRoot(first);
+    final secondRoot = findRoot(second);
+    if (firstRoot == secondRoot) return;
+    // The earliest row remains the root so output ordering stays stable.
+    if (firstRoot < secondRoot) {
+      parents[secondRoot] = firstRoot;
+    } else {
+      parents[firstRoot] = secondRoot;
+    }
+  }
+
+  for (var index = 0; index < source.length; index++) {
+    final aliases = _playerEventIdentityAliases(source[index]);
+    for (final alias in aliases) {
+      final previous = aliasOwner[alias];
+      if (previous != null) join(index, previous);
+      aliasOwner[alias] = index;
+    }
+  }
+
+  final byRoot = <int, PlayerEventData>{};
+  for (var index = 0; index < source.length; index++) {
+    final e = source[index];
+    final root = findRoot(index);
+    final existing = byRoot[root];
     if (existing == null) {
-      byKey[e.tourId] = e;
+      byRoot[root] = e;
       continue;
     }
-    byKey[e.tourId] = PlayerEventData(
+    byRoot[root] = PlayerEventData(
       tourId: existing.tourId,
       tourName: existing.tourName,
       tourSlug: existing.tourSlug,
@@ -1497,7 +1544,41 @@ List<PlayerEventData> mergePlayerEventsByCanonical(
       maxElo: _largerInt(existing.maxElo, e.maxElo),
     );
   }
-  return byKey.values.toList(growable: false);
+  return byRoot.values.toList(growable: false);
+}
+
+Set<String> _playerEventIdentityAliases(PlayerEventData event) {
+  final aliases = <String>{};
+
+  void add(String namespace, String? value) {
+    final normalized = value
+        ?.trim()
+        .toLowerCase()
+        .replaceAll(RegExp(r'[^\p{L}\p{N}]+', unicode: true), '-')
+        .replaceAll(RegExp(r'^-+|-+$'), '');
+    if (normalized != null && normalized.isNotEmpty) {
+      aliases.add('$namespace:$normalized');
+    }
+  }
+
+  add('canonical', event.canonicalKey);
+  add('broadcast', event.broadcastSlug);
+  add('broadcast', broadcastSlugFromSite(event.site));
+  add('title', event.tourId);
+  add('title', event.tourName);
+  add('title', event.tourSlug);
+
+  // These include the daily parent-event identity for source labels such as
+  // "2026 Titled Tuesday Blitz July 28 Early" and "... Late".
+  for (final name in [event.tourName, event.tourSlug, event.tourId]) {
+    final value = name?.trim();
+    if (value == null || value.isEmpty) continue;
+    for (final candidate in eventNameToBroadcastSlugCandidates(value)) {
+      add('broadcast', candidate);
+    }
+  }
+
+  return aliases;
 }
 
 DateTime? _earlierDate(DateTime? a, DateTime? b) {
@@ -3145,7 +3226,7 @@ class PlayerProfileGamesNotifier
 
     if (pid != null && pid.isNotEmpty) {
       try {
-        return _fetchViaPlayerGamesEndpointPage(
+        return await _fetchViaPlayerGamesEndpointPage(
           repo,
           pid,
           pageNumber: pageNumber,

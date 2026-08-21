@@ -449,7 +449,7 @@ class _LibraryGamebaseFilterDialogState
     }
     if (!_eco.isAll) {
       activeChipWidgets.add(
-        buildChip('ECO: ${_eco.code}', () {
+        buildChip('ECO: ${_eco.displayText}', () {
           setState(() => _eco = GameEcoFilter.all);
         }),
       );

@@ -12,9 +12,6 @@ import 'package:chessever2/screens/group_event/providers/group_event_screen_prov
 import 'package:chessever2/screens/group_event/widget/filter_popup/filter_popup_provider.dart';
 import 'package:chessever2/screens/group_event/widget/filter_popup/filter_popup_state.dart';
 import 'package:chessever2/utils/event_time_control.dart';
-import 'package:chessever2/screens/group_event/smart_event/smart_event_standings_provider.dart';
-import 'package:chessever2/screens/player_profile/player_profile_screen.dart';
-import 'package:chessever2/screens/standings/player_standing_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_list_view_mode_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_provider.dart';
@@ -36,7 +33,6 @@ import 'package:chessever2/utils/time_utils.dart';
 import 'package:chessever2/widgets/auth/auth_upgrade_sheet.dart';
 import 'package:chessever2/widgets/alert_dialog/alert_modal.dart';
 import 'package:chessever2/widgets/event_card/event_card.dart';
-import 'package:chessever2/widgets/figma_player_card.dart';
 import 'package:chessever2/widgets/fluid_shimmer_painter.dart';
 import 'package:chessever2/widgets/game_filter/game_filter_dialog.dart';
 import 'package:chessever2/widgets/game_filter/game_filter_model.dart';
@@ -49,14 +45,14 @@ import 'package:chessever2/widgets/segmented_switcher.dart';
 import 'package:chessever2/widgets/skeleton_widget.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
-import 'package:intl/intl.dart';
+
+const smartEventTabLabels = <String>['About', 'Games', 'Events'];
 
 /// Full event view for generated level games — an aggregate of every matching
 /// game across broadcasts, not just currently-running events. Renders the
-/// familiar About / Games / Standings tabbed shell. Games paginate one day
+/// familiar About / Games / Events tabbed shell. Games paginate one day
 /// at a time ([smartAggregateEventRepositoryProvider]) so first paint is the
 /// newest day rather than a multi-thousand-row fetch.
 class SmartEventScreen extends ConsumerStatefulWidget {
@@ -69,7 +65,7 @@ class SmartEventScreen extends ConsumerStatefulWidget {
 }
 
 class _SmartEventScreenState extends ConsumerState<SmartEventScreen> {
-  static const _tabs = ['About', 'Games', 'Standings'];
+  static const _tabs = smartEventTabLabels;
   static const _validTiers = <String>{'GM', 'IM', 'FM', 'CM', 'All'};
 
   // Default to Games because this surface is opened from a generated games card.
@@ -78,7 +74,7 @@ class _SmartEventScreenState extends ConsumerState<SmartEventScreen> {
 
   // Search lives on the screen (not the Games tab) so the field can sit
   // pinned above the tab switcher like the regular event view, and so the
-  // one query drives both the Games and Standings tabs.
+  // one query drives both the Games and Events tabs.
   final TextEditingController _searchController = TextEditingController();
   final FocusNode _searchFocusNode = FocusNode();
   String _query = '';
@@ -139,7 +135,7 @@ class _SmartEventScreenState extends ConsumerState<SmartEventScreen> {
   /// the dialog's criteria overrides ([SmartEventRequest
   /// .withGameFilterOverrides]) and the tier dropdown ([SmartEventRequest
   /// .withTierSelection]) so naming, caption, Elo floor and favorite
-  /// identity all follow the overridden config. The Games / Standings tabs
+  /// identity all follow the overridden config. The Games / Events tabs
   /// load through [SmartEventRequest.withNeutralEloRange] and carry the
   /// selected tier threshold in the query filter instead, so any tier —
   /// including ones BELOW the saved floor — can actually fetch its games.
@@ -254,7 +250,7 @@ class _SmartEventScreenState extends ConsumerState<SmartEventScreen> {
       // list — including the tier threshold picked in the app bar dropdown —
       // so the red indicator mirrors the smart event's full active config.
       currentFilter: _mergeTierIntoFilter(_filter, _tier) ?? _filter,
-      hintText: 'Search games',
+      hintText: _index == 2 ? 'Search events' : 'Search games',
       onChanged: (value) {
         // Debounce: every committed query is a server-side search across ALL
         // games of the included events, so don't fire one per keystroke.
@@ -271,27 +267,31 @@ class _SmartEventScreenState extends ConsumerState<SmartEventScreen> {
         });
       },
       onFilterTap: _openFilterDialog,
-      trailing: GestureDetector(
-        onTap: () => ref.read(gamesListViewModeSwitcher).toggleViewMode(),
-        child: Container(
-          decoration: BoxDecoration(
-            color: context.colors.background,
-            borderRadius: BorderRadius.circular(12.br),
-            border: Border.all(color: context.colors.surfaceRecessed),
-          ),
-          child: Center(
-            child: SvgPicture.asset(
-              SvgAsset.chase_grid,
-              width: 20.sp,
-              height: 20.sp,
-              colorFilter: ColorFilter.mode(
-                context.colors.textSecondary,
-                BlendMode.srcIn,
-              ),
-            ),
-          ),
-        ),
-      ),
+      trailing:
+          _index == 1
+              ? GestureDetector(
+                onTap:
+                    () => ref.read(gamesListViewModeSwitcher).toggleViewMode(),
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: context.colors.background,
+                    borderRadius: BorderRadius.circular(12.br),
+                    border: Border.all(color: context.colors.surfaceRecessed),
+                  ),
+                  child: Center(
+                    child: SvgPicture.asset(
+                      SvgAsset.chase_grid,
+                      width: 20.sp,
+                      height: 20.sp,
+                      colorFilter: ColorFilter.mode(
+                        context.colors.textSecondary,
+                        BlendMode.srcIn,
+                      ),
+                    ),
+                  ),
+                ),
+              )
+              : null,
     );
   }
 
@@ -305,7 +305,7 @@ class _SmartEventScreenState extends ConsumerState<SmartEventScreen> {
       // Level mirrors the app bar tier dropdown — seed it from the current
       // tier so both override surfaces present one config.
       currentFilter: _filter.copyWith(minRating: _tierFloor(_tier)),
-      showSortSection: true,
+      showSortSection: _index == 1,
       // Color filters by a target player's color; this aggregate has no
       // target player, so the section would be inert.
       showColorFilter: false,
@@ -397,7 +397,7 @@ class _SmartEventScreenState extends ConsumerState<SmartEventScreen> {
                         children: const [
                           _AboutTab(),
                           _GamesTab(),
-                          _StandingsTab(),
+                          _EventsTab(),
                         ],
                       ),
                     ),
@@ -415,7 +415,7 @@ class _SmartEventScreenState extends ConsumerState<SmartEventScreen> {
 /// Carries the screen's tier filter, the dialog filter and the active tab
 /// index down to the app bar and tab content. The dropdown writes through
 /// [onTierChanged], the Games tab's filter dialog through [onFilterChanged];
-/// the Games/Standings tabs read [tier] + [filter] to filter what they
+/// the Games/Events tabs read [tier] + [filter] to filter what they
 /// render. The app bar hides the dropdown when [tabIndex] is 0 (About) since
 /// the About tab summarizes the saved aggregate, not a filtered view.
 class _SmartTierFilterScope extends InheritedWidget {
@@ -436,8 +436,8 @@ class _SmartTierFilterScope extends InheritedWidget {
   final int tabIndex;
 
   /// Committed (debounced) text of the screen-level search field. The Games
-  /// tab keys its server query on it; the Standings tab narrows player rows
-  /// by name with it.
+  /// tab keys its server query on it; the Events tab uses the same query to
+  /// narrow its event cards.
   final String searchQuery;
 
   static _SmartTierFilterScope of(BuildContext context) {
@@ -457,7 +457,7 @@ class _SmartTierFilterScope extends InheritedWidget {
 }
 
 /// Mirrors the regular event view's pinned search bar: hidden on About
-/// (page 0), fully shown on Games/Standings (page 1+), with height and
+/// (page 0), fully shown on Games/Events (page 1+), with height and
 /// opacity following the swipe progress between them.
 class _PinnedSearchFilterBar extends StatelessWidget {
   const _PinnedSearchFilterBar({
@@ -718,7 +718,7 @@ class _AppBar extends ConsumerWidget {
 /// name — since the About tab summarizes the aggregate that was actually
 /// saved, not a filtered slice.
 ///
-/// Games / Standings tabs: the stadium-chip dropdown, which writes the
+/// Games / Events tabs: the stadium-chip dropdown, which writes the
 /// selected tier into [_SmartTierFilterScope] so the visible games / events
 /// re-filter without leaving the screen.
 class _AppBarTitle extends StatelessWidget {
@@ -1308,10 +1308,6 @@ class _GamesTabState extends ConsumerState<_GamesTab>
   /// spinner or a false empty state.
   SmartAggregateEvent? _lastLoadedEvent;
 
-  /// Track collapsed state for date sections — mirrors the Countrymen /
-  /// Favorites games tabs.
-  final Set<String> _collapsedDates = {};
-
   // Keep rendering while backgrounded so the OS app-switcher snapshot is not
   // blank. Route coverage still removes the tab from active provider work.
   bool get _isActiveOnScreen => _routeIsCurrent;
@@ -1457,17 +1453,6 @@ class _GamesTabState extends ConsumerState<_GamesTab>
     );
   }
 
-  void _toggleDateSection(String dateKey) {
-    HapticFeedback.lightImpact();
-    setState(() {
-      if (_collapsedDates.contains(dateKey)) {
-        _collapsedDates.remove(dateKey);
-      } else {
-        _collapsedDates.add(dateKey);
-      }
-    });
-  }
-
   /// The server-bound filter: the dialog filter tightened by the selected
   /// tier threshold (see [_mergeTierIntoFilter]).
   GameFilter? _dataFilterForTier(String tier) =>
@@ -1507,7 +1492,11 @@ class _GamesTabState extends ConsumerState<_GamesTab>
       // the Favorites / Countrymen games tabs.
       final gridColumns =
           ResponsiveHelper.isTablet && ResponsiveHelper.isLandscape ? 4 : 2;
-      final rows = _buildDayRows(games, gridColumns: isGrid ? gridColumns : 1);
+      final rows = _buildEventRows(
+        event,
+        games,
+        gridColumns: isGrid ? gridColumns : 1,
+      );
       return NotificationListener<ScrollNotification>(
         onNotification: _handleScrollNotification,
         child: RefreshIndicator(
@@ -1576,15 +1565,15 @@ class _GamesTabState extends ConsumerState<_GamesTab>
                 return const SizedBox(height: 24);
               }
               final row = rows[i];
-              if (row.header != null) {
-                final header = row.header!;
+              if (row.event != null) {
                 return Padding(
-                  padding: EdgeInsets.only(bottom: 12.h),
-                  child: _DateHeader(
-                    dateLabel: _formatDateHeader(header.dateKey),
-                    gameCount: header.gameCount,
-                    isExpanded: !_collapsedDates.contains(header.dateKey),
-                    onToggle: () => _toggleDateSection(header.dateKey),
+                  padding: EdgeInsets.only(
+                    top: row.isFirstSection ? 0 : 16.h,
+                    bottom: 12.h,
+                  ),
+                  child: _SmartIncludedEventCard(
+                    event: row.event!,
+                    heroTagSuffix: 'smart_games_${request.scopeId}',
                   ),
                 );
               }
@@ -1794,76 +1783,46 @@ class _GamesTabState extends ConsumerState<_GamesTab>
     );
   }
 
-  /// Group games by day and flatten into header + game rows, honoring the
-  /// collapsed state. Games arrive pre-sorted (day desc, pinned, avg Elo).
-  /// With [gridColumns] > 1 each section's games are chunked into grid rows.
-  List<_GameListRow> _buildDayRows(
+  /// Flatten event + game groups into virtualized rows. The aggregate owns
+  /// the exact game-to-event IDs; the caller's filtered/sorted game order is
+  /// preserved within each event.
+  List<_SmartGameListRow> _buildEventRows(
+    SmartAggregateEvent event,
     List<GamesTourModel> games, {
     int gridColumns = 1,
   }) {
-    final gamesByDate = <String, List<GamesTourModel>>{};
-    for (final game in games) {
-      final dateKey = DateFormat('yyyy-MM-dd').format(_gameDay(game));
-      gamesByDate.putIfAbsent(dateKey, () => []).add(game);
-    }
-    final sortedKeys =
-        gamesByDate.keys.toList()..sort((a, b) => b.compareTo(a));
-
-    final rows = <_GameListRow>[];
-    for (final dateKey in sortedKeys) {
-      final dateGames = gamesByDate[dateKey]!;
+    final groups = groupSmartEventGames(event: event, visibleGames: games);
+    final rows = <_SmartGameListRow>[];
+    for (var groupIndex = 0; groupIndex < groups.length; groupIndex++) {
+      final group = groups[groupIndex];
       rows.add(
-        _GameListRow.header(
-          _DateHeaderData(dateKey: dateKey, gameCount: dateGames.length),
-        ),
+        _SmartGameListRow.event(group.event, isFirstSection: groupIndex == 0),
       );
-      if (_collapsedDates.contains(dateKey)) continue;
       if (gridColumns > 1) {
-        for (var i = 0; i < dateGames.length; i += gridColumns) {
+        for (var i = 0; i < group.games.length; i += gridColumns) {
           final end =
-              i + gridColumns < dateGames.length
+              i + gridColumns < group.games.length
                   ? i + gridColumns
-                  : dateGames.length;
+                  : group.games.length;
           rows.add(
-            _GameListRow.grid(
-              dateGames.sublist(i, end),
-              isLastInSection: end == dateGames.length,
+            _SmartGameListRow.grid(
+              group.games.sublist(i, end),
+              isLastInSection: end == group.games.length,
             ),
           );
         }
         continue;
       }
-      for (var i = 0; i < dateGames.length; i++) {
+      for (var i = 0; i < group.games.length; i++) {
         rows.add(
-          _GameListRow.game(
-            dateGames[i],
-            isLastInSection: i == dateGames.length - 1,
+          _SmartGameListRow.game(
+            group.games[i],
+            isLastInSection: i == group.games.length - 1,
           ),
         );
       }
     }
     return rows;
-  }
-
-  DateTime _gameDay(GamesTourModel game) {
-    final raw = game.gameDay ?? game.bucketDate ?? DateTime.now();
-    return DateTime(raw.year, raw.month, raw.day);
-  }
-
-  String _formatDateHeader(String dateKey) {
-    final date = DateTime.parse(dateKey);
-    final now = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day);
-    final yesterday = today.subtract(const Duration(days: 1));
-    final gameDate = DateTime(date.year, date.month, date.day);
-
-    if (gameDate == today) {
-      return 'Today';
-    } else if (gameDate == yesterday) {
-      return 'Yesterday';
-    } else {
-      return DateFormat('EEEE, MMM d').format(date);
-    }
   }
 
   int _compareBySortCriterion(
@@ -1894,114 +1853,65 @@ class _GamesTabState extends ConsumerState<_GamesTab>
   }
 }
 
-class _DateHeaderData {
-  const _DateHeaderData({required this.dateKey, required this.gameCount});
-
-  final String dateKey;
-  final int gameCount;
-}
-
-class _GameListRow {
-  const _GameListRow._({
-    this.header,
+class _SmartGameListRow {
+  const _SmartGameListRow._({
+    this.event,
     this.game,
     this.gridGames,
     this.isLastInSection = false,
+    this.isFirstSection = false,
   });
 
-  factory _GameListRow.header(_DateHeaderData value) =>
-      _GameListRow._(header: value);
+  factory _SmartGameListRow.event(
+    GroupEventCardModel value, {
+    required bool isFirstSection,
+  }) => _SmartGameListRow._(event: value, isFirstSection: isFirstSection);
 
-  factory _GameListRow.game(
+  factory _SmartGameListRow.game(
     GamesTourModel value, {
     required bool isLastInSection,
-  }) => _GameListRow._(game: value, isLastInSection: isLastInSection);
+  }) => _SmartGameListRow._(game: value, isLastInSection: isLastInSection);
 
-  factory _GameListRow.grid(
+  factory _SmartGameListRow.grid(
     List<GamesTourModel> value, {
     required bool isLastInSection,
-  }) => _GameListRow._(gridGames: value, isLastInSection: isLastInSection);
+  }) => _SmartGameListRow._(gridGames: value, isLastInSection: isLastInSection);
 
-  final _DateHeaderData? header;
+  final GroupEventCardModel? event;
   final GamesTourModel? game;
 
   /// One grid row of boards (chessBoardGrid mode); null in list modes.
   final List<GamesTourModel>? gridGames;
   final bool isLastInSection;
+  final bool isFirstSection;
 }
 
-/// Date section header — identical to the Countrymen / Favorites games tabs.
-class _DateHeader extends StatelessWidget {
-  final String dateLabel;
-  final int gameCount;
-  final bool isExpanded;
-  final VoidCallback? onToggle;
-
-  const _DateHeader({
-    required this.dateLabel,
-    required this.gameCount,
-    required this.isExpanded,
-    this.onToggle,
+class _SmartIncludedEventCard extends ConsumerWidget {
+  const _SmartIncludedEventCard({
+    required this.event,
+    required this.heroTagSuffix,
   });
 
+  final GroupEventCardModel event;
+  final String heroTagSuffix;
+
   @override
-  Widget build(BuildContext context) {
-    return InkWell(
-      onTap: onToggle,
-      borderRadius: BorderRadius.circular(12.br),
-      child: Container(
-        padding: EdgeInsets.symmetric(horizontal: 16.sp, vertical: 14.sp),
-        decoration: BoxDecoration(
-          color: context.colors.surfaceRecessed,
-          borderRadius: BorderRadius.circular(12.br),
-          border: Border.all(
-            color: context.colors.textPrimary.withValues(alpha: 0.1),
-          ),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.1),
-              blurRadius: 4,
-              offset: const Offset(0, 2),
-            ),
-          ],
-        ),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: [
-            Container(
-              width: 4.w,
-              height: 20.h,
-              decoration: BoxDecoration(
-                color: kPrimaryColor,
-                borderRadius: BorderRadius.circular(2),
-              ),
-            ),
-            SizedBox(width: 12.w),
-            Expanded(
-              child: Text(
-                '$dateLabel • $gameCount ${gameCount == 1 ? 'game' : 'games'}',
-                style: TextStyle(
-                  color: context.colors.textPrimary,
-                  fontSize: 16.sp,
-                  fontWeight: FontWeight.w600,
-                ),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
-            ),
-            if (onToggle != null) ...[
-              SizedBox(width: 12.w),
-              Icon(
-                isExpanded
-                    ? Icons.keyboard_arrow_up_rounded
-                    : Icons.keyboard_arrow_down_rounded,
-                color: context.colors.textPrimary.withValues(alpha: 0.5),
-                size: 20.sp,
-              ),
-            ],
-          ],
-        ),
-      ),
+  Widget build(BuildContext context, WidgetRef ref) {
+    final card = EventCard(
+      tourEventCardModel: event,
+      showHeartIndicator: true,
+      favoritePlayersSource: EventFavoritePlayersSource.cacheOnly,
+      heroTagSuffix: heroTagSuffix,
+      onTap:
+          () => ref
+              .read(groupEventScreenProvider.notifier)
+              .onSelectTournament(context: context, id: event.id),
+    );
+
+    if (!ResponsiveHelper.isTablet) return card;
+    return AspectRatio(
+      aspectRatio: ResponsiveHelper.isLandscape ? 1.4 : 1.2,
+      child: card,
     );
   }
 }
@@ -2230,21 +2140,17 @@ class _MetaRow extends StatelessWidget {
   }
 }
 
-/// Standings grouped by included event: each section renders the event card
-/// followed by that event's live standings — the same ranked list the user
-/// would see inside the event's own Standings tab.
-class _StandingsTab extends ConsumerStatefulWidget {
-  const _StandingsTab();
+/// Included events for the smart collection, using the same event card
+/// treatment that heads each section in the Games tab.
+class _EventsTab extends ConsumerStatefulWidget {
+  const _EventsTab();
 
   @override
-  ConsumerState<_StandingsTab> createState() => _StandingsTabState();
+  ConsumerState<_EventsTab> createState() => _EventsTabState();
 }
 
-class _StandingsTabState extends ConsumerState<_StandingsTab>
+class _EventsTabState extends ConsumerState<_EventsTab>
     with AutomaticKeepAliveClientMixin, ScrollToTopListenerMixin {
-  // Same keep-alive rationale as the Games tab: offscreen disposal would
-  // kill the autoDispose aggregate + per-event standings providers and the
-  // collapsed-section state.
   @override
   bool get wantKeepAlive => true;
 
@@ -2261,43 +2167,32 @@ class _StandingsTabState extends ConsumerState<_StandingsTab>
     super.dispose();
   }
 
-  final Set<String> _collapsedEventIds = {};
-
-  void _toggleEventSection(String eventId) {
-    HapticFeedback.lightImpact();
-    setState(() {
-      if (_collapsedEventIds.contains(eventId)) {
-        _collapsedEventIds.remove(eventId);
-      } else {
-        _collapsedEventIds.add(eventId);
-      }
-    });
-  }
-
   @override
   Widget build(BuildContext context) {
     super.build(context);
     final request = _SmartEventRequestScope.of(context);
-    final tier = _SmartTierFilterScope.of(context).tier;
-    // Neutral Elo range: the tier dropdown classifies per game below, and any
-    // tier — including ones below the saved floor — must find its games.
-    final query = SmartEventGamesQuery(request: request.withNeutralEloRange());
+    final scope = _SmartTierFilterScope.of(context);
+    if (scope.tabIndex != 2) return const SizedBox.shrink();
+    final query = SmartEventGamesQuery(
+      request: request.withNeutralEloRange(),
+      filter: _mergeTierIntoFilter(scope.filter, scope.tier),
+      searchQuery: scope.searchQuery,
+    );
     final async = ref.watch(smartAggregateEventRepositoryProvider(query));
     return async.when(
-      // Same query key for the screen's lifetime — only reloads (refresh /
-      // invalidate) can interrupt it, and those should keep the standings
-      // on screen rather than flash a spinner.
       skipLoadingOnRefresh: true,
       skipLoadingOnReload: true,
       data: (event) {
         if (event.events.isEmpty) {
-          return const _EmptyState();
+          return _EmptyState(
+            message:
+                scope.searchQuery.isNotEmpty ||
+                        scope.filter.hasActiveFilters ||
+                        scope.tier != 'All'
+                    ? 'No events match your filters'
+                    : 'No events right now',
+          );
         }
-        final visibleEvents = _filterEventsByTier(event, tier);
-        if (visibleEvents.isEmpty) {
-          return const _EmptyState(message: 'No games match this level');
-        }
-        final rows = _buildRows(visibleEvents, request.scopeId);
         final horizontalPadding = ResponsiveHelper.adaptive(
           phone: 16.sp,
           tablet: 24.sp,
@@ -2307,20 +2202,33 @@ class _StandingsTabState extends ConsumerState<_StandingsTab>
             constraints: BoxConstraints(
               maxWidth: ResponsiveHelper.contentMaxWidth,
             ),
-            child: ListView.builder(
-              controller: _scrollController,
-              scrollCacheExtent: kListScrollCacheExtent,
-              padding: EdgeInsets.fromLTRB(
-                horizontalPadding,
-                8.sp,
-                horizontalPadding,
-                24.sp,
+            child: RefreshIndicator(
+              color: kPrimaryColor,
+              backgroundColor: context.colors.surface,
+              onRefresh: () async {
+                ref.invalidate(smartEventResolvedEventsProvider);
+                ref.invalidate(smartAggregateEventRepositoryProvider);
+              },
+              child: ListView.separated(
+                controller: _scrollController,
+                scrollCacheExtent: kListScrollCacheExtent,
+                padding: EdgeInsets.fromLTRB(
+                  horizontalPadding,
+                  8.sp,
+                  horizontalPadding,
+                  24.sp,
+                ),
+                physics: const AlwaysScrollableScrollPhysics(
+                  parent: BouncingScrollPhysics(),
+                ),
+                itemCount: event.events.length,
+                separatorBuilder: (_, __) => SizedBox(height: 16.h),
+                itemBuilder:
+                    (context, i) => _SmartIncludedEventCard(
+                      event: event.events[i],
+                      heroTagSuffix: 'smart_events_${request.scopeId}',
+                    ),
               ),
-              physics: const AlwaysScrollableScrollPhysics(
-                parent: BouncingScrollPhysics(),
-              ),
-              itemCount: rows.length,
-              itemBuilder: (context, i) => rows[i],
             ),
           ),
         );
@@ -2333,213 +2241,6 @@ class _StandingsTabState extends ConsumerState<_StandingsTab>
                   smartAggregateEventRepositoryProvider(query),
                 ),
           ),
-    );
-  }
-
-  /// Keeps only events that contain at least one game whose average Elo
-  /// clears the selected tier threshold. Classification is per-game, not
-  /// per-event: a CM-rated event that happens to include one GM-level game
-  /// still shows up under the GM filter.
-  List<GroupEventCardModel> _filterEventsByTier(
-    SmartAggregateEvent event,
-    String tier,
-  ) {
-    if (tier == 'All') return event.events;
-    final qualifyingEventNames = <String>{
-      for (final game in event.games)
-        if (_gameMatchesTier(game, tier))
-          if (event.gameEventNames[game.gameId] case final name?) name,
-    };
-    if (qualifyingEventNames.isEmpty) return const <GroupEventCardModel>[];
-    return event.events
-        .where((e) => qualifyingEventNames.contains(e.title))
-        .toList(growable: false);
-  }
-
-  /// Flattened section rows so the outer list stays virtualized even when an
-  /// expanded event carries a long standings table.
-  List<Widget> _buildRows(List<GroupEventCardModel> events, String scopeId) {
-    final rows = <Widget>[];
-    for (final includedEvent in events) {
-      final isExpanded = !_collapsedEventIds.contains(includedEvent.id);
-      rows.add(
-        Padding(
-          padding: EdgeInsets.only(bottom: isExpanded ? 8.h : 12.h),
-          child: _StandingsEventHeaderCard(
-            event: includedEvent,
-            scopeId: scopeId,
-            isExpanded: isExpanded,
-            onToggle: () => _toggleEventSection(includedEvent.id),
-          ),
-        ),
-      );
-      if (!isExpanded) continue;
-      rows.addAll(_buildStandingsRows(includedEvent));
-      rows.add(SizedBox(height: 16.h));
-    }
-    return rows;
-  }
-
-  List<Widget> _buildStandingsRows(GroupEventCardModel event) {
-    final standingsAsync = ref.watch(smartEventStandingsProvider(event.id));
-    // Same pinned search field as the Games tab — here it narrows the
-    // player rows by name, like the regular event view's standings search.
-    final query =
-        _SmartTierFilterScope.of(context).searchQuery.trim().toLowerCase();
-    return standingsAsync.when(
-      skipLoadingOnRefresh: true,
-      skipLoadingOnReload: true,
-      data: (standings) {
-        if (standings.isEmpty) {
-          return [_StandingsSectionStatus(message: 'No standings yet')];
-        }
-        final visible =
-            query.isEmpty
-                ? standings
-                : standings
-                    .where((p) => p.name.toLowerCase().contains(query))
-                    .toList(growable: false);
-        if (visible.isEmpty) {
-          return [_StandingsSectionStatus(message: 'No matching players')];
-        }
-        return [
-          const FigmaStandingsHeader(showScore: true),
-          SizedBox(height: 8.sp),
-          ...visible.map(
-            (player) => FigmaPlayerCard(
-              key: ValueKey(
-                'smart_standing_${event.id}_'
-                '${player.fideId ?? player.gamebasePlayerId ?? player.name}',
-              ),
-              player: player,
-              rank: player.overallRank,
-              isFavorite: false,
-              showFavoriteButton: false,
-              onTap: () => _openPlayerProfile(context, player),
-            ),
-          ),
-        ];
-      },
-      loading:
-          () => [
-            Padding(
-              padding: EdgeInsets.symmetric(vertical: 24.h),
-              child: Center(
-                child: SizedBox(
-                  width: 24.w,
-                  height: 24.h,
-                  child: CircularProgressIndicator(
-                    color: context.colors.textPrimary,
-                    strokeWidth: 2,
-                  ),
-                ),
-              ),
-            ),
-          ],
-      error:
-          (_, __) => [
-            _StandingsSectionStatus(message: 'Standings unavailable'),
-          ],
-    );
-  }
-
-  void _openPlayerProfile(BuildContext context, PlayerStandingModel player) {
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder:
-            (_) => PlayerProfileScreen(
-              fideId: player.fideId,
-              playerName: player.name,
-              title:
-                  (player.title == null || player.title!.isEmpty)
-                      ? null
-                      : player.title,
-              federation:
-                  player.countryCode.isEmpty ? null : player.countryCode,
-              rating: player.score > 0 ? player.score : null,
-              gamebasePlayerId: player.gamebasePlayerId,
-            ),
-      ),
-    );
-  }
-}
-
-/// Event card heading a standings section. Tapping it (or the chevron badge)
-/// collapses or expands the standings underneath.
-class _StandingsEventHeaderCard extends StatelessWidget {
-  const _StandingsEventHeaderCard({
-    required this.event,
-    required this.scopeId,
-    required this.isExpanded,
-    required this.onToggle,
-  });
-
-  final GroupEventCardModel event;
-  final String scopeId;
-  final bool isExpanded;
-  final VoidCallback onToggle;
-
-  @override
-  Widget build(BuildContext context) {
-    return Stack(
-      clipBehavior: Clip.none,
-      children: [
-        EventCard(
-          tourEventCardModel: event,
-          forceCompactLayout: true,
-          heroTagSuffix: 'smart_standings_$scopeId',
-          onTap: onToggle,
-        ),
-        Positioned(
-          top: -6,
-          right: -6,
-          child: Material(
-            color: context.colors.surface,
-            shape: const CircleBorder(),
-            elevation: 2,
-            child: InkWell(
-              customBorder: const CircleBorder(),
-              onTap: onToggle,
-              child: Tooltip(
-                message: isExpanded ? 'Hide standings' : 'Show standings',
-                child: SizedBox(
-                  width: 28.sp,
-                  height: 28.sp,
-                  child: Icon(
-                    isExpanded
-                        ? Icons.keyboard_arrow_up_rounded
-                        : Icons.keyboard_arrow_down_rounded,
-                    size: 19.sp,
-                    color: context.colors.textPrimary.withValues(alpha: 0.7),
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _StandingsSectionStatus extends StatelessWidget {
-  const _StandingsSectionStatus({required this.message});
-
-  final String message;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: EdgeInsets.symmetric(vertical: 16.h),
-      child: Center(
-        child: Text(
-          message,
-          style: AppTypography.textSmMedium.copyWith(
-            color: context.colors.textPrimaryMuted,
-          ),
-        ),
-      ),
     );
   }
 }

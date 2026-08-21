@@ -39,7 +39,7 @@ class TourLoadingWidget extends StatelessWidget {
         left: 20.sp,
         right: 20.sp,
         top: 12.sp,
-        bottom: MediaQuery.of(context).viewPadding.bottom,
+        bottom: MediaQuery.viewPaddingOf(context).bottom,
       ),
       shrinkWrap: true,
       itemCount: gamesTourModelList.length,

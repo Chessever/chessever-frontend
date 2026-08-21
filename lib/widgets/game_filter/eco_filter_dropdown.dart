@@ -123,7 +123,7 @@ class _EcoFilterDropdownState extends State<EcoFilterDropdown>
     if (query.isEmpty) return const <EcoOpeningFamily>[];
     return EcoOpenings.families
         .where((family) {
-          return family.codePrefix.toLowerCase().contains(query) ||
+          return family.id.toLowerCase().contains(query) ||
               family.name.toLowerCase().contains(query);
         })
         .toList(growable: false);
@@ -378,9 +378,9 @@ class _EcoFilterDropdownState extends State<EcoFilterDropdown>
 
   Widget _buildFamilyItem(EcoOpeningFamily family) {
     final color = _getCategoryColor(family.codePrefix[0]);
-    final isSelected = widget.value.code == family.codePrefix;
-    final rangeStart = '${family.codePrefix}0';
-    final rangeEnd = '${family.codePrefix}9';
+    final isSelected = widget.value.code == family.id;
+    final rangeStart = family.rangeStart;
+    final rangeEnd = family.rangeEnd;
 
     return Semantics(
       button: true,
@@ -389,8 +389,8 @@ class _EcoFilterDropdownState extends State<EcoFilterDropdown>
           'Select ${family.name} family, $rangeStart through $rangeEnd, '
           '${family.codeCount} ECO codes',
       child: GestureDetector(
-        key: ValueKey('eco-family-${family.codePrefix}'),
-        onTap: () => _selectItem(GameEcoFilter.forFamily(family.codePrefix)),
+        key: ValueKey('eco-family-${family.id}'),
+        onTap: () => _selectItem(GameEcoFilter.forFamily(family.id)),
         behavior: HitTestBehavior.opaque,
         child: Container(
           constraints: BoxConstraints(minHeight: 48.h),
@@ -409,7 +409,9 @@ class _EcoFilterDropdownState extends State<EcoFilterDropdown>
               SizedBox(
                 width: 42.w,
                 child: Text(
-                  family.codePrefix,
+                  family.codePrefixes.length == 1
+                      ? family.codePrefix
+                      : '${family.codePrefix}–${family.codePrefixes.last}',
                   textAlign: TextAlign.left,
                   style: AppTypography.textSmBold.copyWith(color: color),
                 ),
@@ -430,7 +432,7 @@ class _EcoFilterDropdownState extends State<EcoFilterDropdown>
                     ),
                     SizedBox(height: 2.h),
                     Text(
-                      '$rangeStart-$rangeEnd · ${family.codeCount} codes',
+                      '${family.rangeLabel} · ${family.codeCount} codes',
                       style: AppTypography.textXsRegular.copyWith(
                         color: context.colors.textSecondary,
                       ),

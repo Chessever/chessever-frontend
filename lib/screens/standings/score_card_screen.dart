@@ -27,6 +27,7 @@ import 'package:chessever2/utils/png_asset.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/federation_flag.dart';
 import 'package:heroine/heroine.dart';
+import 'package:smooth_sheets/smooth_sheets.dart';
 import 'package:skeletonizer/skeletonizer.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -38,6 +39,7 @@ import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_mode
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_screen_provider.dart';
 import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
+import 'package:chessever2/screens/chessboard/widgets/smooth_sheet_config.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrapper/game_card_wrapper_provider.dart';
 import 'package:chessever2/providers/favorite_players_provider.dart';
 import 'package:chessever2/utils/favorite_constants.dart';
@@ -2152,13 +2154,27 @@ Future<void> showOpponentScoreCardSheet({
   required BuildContext context,
   required PlayerStandingModel player,
 }) {
-  return showModalBottomSheet<void>(
-    context: context,
-    useSafeArea: true,
-    isScrollControlled: true,
-    backgroundColor: Colors.transparent,
-    barrierColor: Colors.black.withValues(alpha: 0.6),
-    builder: (_) => _OpponentScoreCardSheet(player: player),
+  // [MotionSheetRoute] rather than `showModalBottomSheet`: the card is heavy
+  // enough that the first frame of it used to outlast a curve-driven
+  // transition, which left the sheet appearing at its resting place instead of
+  // travelling there. The spring route holds the slide until that frame is
+  // done and translates the sheet in and out instead of resizing it.
+  return Navigator.of(context).push(
+    MotionSheetRoute<void>(
+      builder: (_) => _OpponentScoreCardSheet(player: player),
+      barrierColor: Colors.black.withValues(alpha: 0.6),
+      barrierLabel: 'Close player card',
+      // Keep the card clear of the status bar. It still reaches the bottom
+      // edge, so nothing is inset away from the home indicator.
+      viewportPadding: EdgeInsets.only(
+        top: MediaQuery.viewPaddingOf(context).top,
+      ),
+      // Let a slow drag give up once roughly a third of the card is gone,
+      // instead of holding on until it is nearly off-screen.
+      swipeDismissSensitivity: const SwipeDismissSensitivity(
+        dismissalOffset: SheetOffset(0.7),
+      ),
+    ),
   );
 }
 
@@ -2175,48 +2191,59 @@ class _OpponentScoreCardSheet extends StatefulWidget {
 class _OpponentScoreCardSheetState extends State<_OpponentScoreCardSheet> {
   late PlayerStandingModel _player = widget.player;
 
-  /// Resting height of the sheet, as a fraction of the (already safe-area
+  /// Resting height of the sheet, as a fraction of the (already status-bar
   /// reduced) space the route gives it. Keeps it clear of the top edge on
   /// every inset instead of overflowing on devices whose bars eat more.
   static const double _restingSize = 0.94;
 
-  /// How far a drag can pull the sheet down before it is treated as a
-  /// dismissal. `BottomSheet` closes the route as soon as a
-  /// [DraggableScrollableNotification] reports the minimum extent (that is
-  /// what `shouldCloseOnMinExtent` is for), so this doubles as the travel the
-  /// sheet follows the finger through.
-  static const double _dismissSize = 0.45;
-
-  /// The controller [DraggableScrollableSheet] hands to the card's scroll
-  /// view. Held so a nested opponent swap can reset the list to the top.
+  /// The sheet-aware controller driving the card's scroll view. Held so a
+  /// nested opponent swap can reset the list to the top.
   ScrollController? _scrollController;
 
   @override
   Widget build(BuildContext context) {
+    final media = MediaQuery.of(context);
+    // The route insets its viewport by the status bar already, so the resting
+    // height is measured against what is left of the screen.
+    final restingHeight =
+        (media.size.height - media.viewPadding.top) * _restingSize;
+
     // The card scrolls internally, and a plain fixed-height sheet loses every
     // downward drag to it: the inner Scrollable is deeper in the hit-test
     // path, so it wins the gesture arena and the sheet never moves.
-    // DraggableScrollableSheet owns that scroll position instead, which is
-    // what makes the two gestures share one drag the way iOS does — the list
-    // scrolls while it has somewhere to go, and once it is parked at the top
-    // the same, uninterrupted drag pulls the sheet down. On release `snap`
-    // leaves exactly two outcomes: settle back to [_restingSize], or carry on
-    // to [_dismissSize] and close. A flick down always closes; a slow drag
-    // closes past the halfway point between the two.
-    return DraggableScrollableSheet(
-      initialChildSize: _restingSize,
-      minChildSize: _dismissSize,
-      maxChildSize: _restingSize,
-      snap: true,
-      // The route positions this by its desired size, so the sheet must stay
-      // as tall as the current extent rather than filling the screen. Filling
-      // it would park an invisible sheet over the strip of barrier above the
-      // card, where a tap is meant to dismiss.
-      expand: false,
-      builder: (context, scrollController) {
-        _scrollController = scrollController;
-        return _buildSheetBody(context, scrollController);
-      },
+    // `scrollConfiguration` hands the card a sheet-aware scroll position
+    // instead, which is what makes the two gestures share one drag the way iOS
+    // does — the list scrolls while it has somewhere to go, and once it is
+    // parked at the top the same, uninterrupted drag carries the sheet (and
+    // then the route) down with the finger.
+    return Sheet(
+      scrollConfiguration: const SheetScrollConfiguration(),
+      decoration: MaterialSheetDecoration(
+        size: SheetSize.stretch,
+        color: context.colors.background,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20.br)),
+        clipBehavior: Clip.antiAlias,
+      ),
+      child: SizedBox(
+        height: restingHeight,
+        // The card is expensive to paint, so keep it on its own layer: the
+        // slide then re-composites it rather than repainting it per frame.
+        child: RepaintBoundary(
+          child: MediaQuery.removePadding(
+            context: context,
+            // The status bar is already paid for by the route's viewport
+            // padding; leaving it in would inset the card a second time.
+            removeTop: true,
+            child: Builder(
+              builder: (context) {
+                final scrollController = PrimaryScrollController.of(context);
+                _scrollController = scrollController;
+                return _buildSheetBody(context, scrollController);
+              },
+            ),
+          ),
+        ),
+      ),
     );
   }
 
@@ -2237,38 +2264,34 @@ class _OpponentScoreCardSheetState extends State<_OpponentScoreCardSheet> {
     BuildContext context,
     ScrollController scrollController,
   ) {
-    return ClipRRect(
-      borderRadius: BorderRadius.vertical(top: Radius.circular(20.br)),
-      child: ColoredBox(
-        color: context.colors.background,
-        child: Column(
-          children: [
-            Padding(
-              padding: EdgeInsets.symmetric(vertical: 8.h),
-              child: Container(
-                width: 40.w,
-                height: 4.h,
-                decoration: BoxDecoration(
-                  color: context.colors.textPrimary.withValues(alpha: 0.22),
-                  borderRadius: BorderRadius.circular(2.br),
-                ),
-              ),
+    // The rounded top and the fill come from the sheet's decoration, so this
+    // is only the grabber and the card itself.
+    return Column(
+      children: [
+        Padding(
+          padding: EdgeInsets.symmetric(vertical: 8.h),
+          child: Container(
+            width: 40.w,
+            height: 4.h,
+            decoration: BoxDecoration(
+              color: context.colors.textPrimary.withValues(alpha: 0.22),
+              borderRadius: BorderRadius.circular(2.br),
             ),
-            Expanded(
-              child: _ScoreCardPage(
-                player: _player,
-                // Neighbour-page guards: the sheet never arms the screenshot
-                // nudge or the share coachmark, both of which belong to the
-                // card underneath it.
-                isActive: false,
-                isSheet: true,
-                scrollController: scrollController,
-                onOpponentSelected: _showOpponent,
-              ),
-            ),
-          ],
+          ),
         ),
-      ),
+        Expanded(
+          child: _ScoreCardPage(
+            player: _player,
+            // Neighbour-page guards: the sheet never arms the screenshot
+            // nudge or the share coachmark, both of which belong to the
+            // card underneath it.
+            isActive: false,
+            isSheet: true,
+            scrollController: scrollController,
+            onOpponentSelected: _showOpponent,
+          ),
+        ),
+      ],
     );
   }
 }

@@ -893,9 +893,15 @@ class LibraryRepository extends BaseRepository {
       query = query.or('time_control.is.null,time_control.eq.$tc');
     }
 
-    final ecoCode = filter.eco.code;
-    if (!filter.eco.isAll && ecoCode != null && ecoCode.isNotEmpty) {
-      query = query.ilike('eco', '$ecoCode%');
+    if (!filter.eco.isAll) {
+      final prefixes = filter.eco.ecoPrefixes;
+      if (prefixes.length == 1) {
+        query = query.ilike('eco', '${prefixes.single}%');
+      } else {
+        query = query.or(
+          prefixes.map((prefix) => 'eco.ilike.$prefix%').join(','),
+        );
+      }
     }
 
     // "Level" tier = max(white,black) >= minRating (client cardElo).

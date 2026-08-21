@@ -66,7 +66,9 @@ class BottomNavBar extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final selectedItem = ref.watch(selectedBottomNavBarItemProvider);
-    final bottomPadding = MediaQuery.of(context).viewPadding.bottom;
+    // Aspect-specific: `MediaQuery.of` subscribes this bar to viewInsets too,
+    // so it rebuilt on every frame of the software keyboard sliding in.
+    final bottomPadding = MediaQuery.viewPaddingOf(context).bottom;
 
     return Container(
       padding: EdgeInsets.only(top: 0, bottom: bottomPadding),
@@ -95,7 +97,7 @@ class BottomNavBar extends ConsumerWidget {
               BottomNavBarItem.library => e2eKey(E2eIds.navLibrary),
             },
             width:
-                MediaQuery.of(context).size.width /
+                MediaQuery.sizeOf(context).width /
                 BottomNavBarItem.values.length,
             isSelected: selectedItem == BottomNavBarItem.values[index],
             onTap: () {

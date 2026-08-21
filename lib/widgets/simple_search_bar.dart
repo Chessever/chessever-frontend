@@ -6,7 +6,7 @@ import 'package:chessever2/utils/svg_asset.dart';
 import 'package:chessever2/widgets/svg_widget.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/theme/app_colors.dart';
-import 'package:chessever2/theme/app_theme.dart';
+import 'package:chessever2/widgets/search/search_motion.dart';
 import 'package:motor/motor.dart';
 
 class SimpleSearchBar extends StatefulWidget {
@@ -158,19 +158,14 @@ class _SimpleSearchBarState extends State<SimpleSearchBar> {
     if (hints == null || hints.isEmpty) return null;
     // Empty string during fade-out lets SpringHintWord spring the last word
     // away instead of popping it off in a single frame.
-    final word =
-        _cycleFadingOut ? '' : hints[_hintIndex % hints.length];
+    final word = _cycleFadingOut ? '' : hints[_hintIndex % hints.length];
     final prefix = widget.hintText.isEmpty ? '' : '${widget.hintText} ';
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        if (prefix.isNotEmpty)
-          Text(prefix, style: AppTypography.textMdRegular),
+        if (prefix.isNotEmpty) Text(prefix, style: AppTypography.textMdRegular),
         Flexible(
-          child: SpringHintWord(
-            word: word,
-            style: AppTypography.textMdRegular,
-          ),
+          child: SpringHintWord(word: word, style: AppTypography.textMdRegular),
         ),
       ],
     );
@@ -184,18 +179,19 @@ class _SimpleSearchBarState extends State<SimpleSearchBar> {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          AnimatedRotation(
-            turns: widget.focusNode.hasFocus ? 0.25 : 0,
-            duration: const Duration(milliseconds: 300),
-            child: SvgWidget(
-              SvgAsset.searchIcon,
-              height: 20.h,
-              width: 20.w,
-              colorFilter: ColorFilter.mode(
-                widget.focusNode.hasFocus ? kPrimaryColor : Colors.grey[400]!,
-                BlendMode.srcIn,
-              ),
-            ),
+          // Tint only. The magnifier used to spin a quarter turn on focus,
+          // which is decorative motion competing with the field morph — and a
+          // rotating glyph is the one thing in this row the eye cannot help
+          // tracking. The colour lift says "focused" without the pirouette.
+          _FocusTint(
+            focusNode: widget.focusNode,
+            builder:
+                (context, color) => SvgWidget(
+                  SvgAsset.searchIcon,
+                  height: 20.h,
+                  width: 20.w,
+                  colorFilter: ColorFilter.mode(color, BlendMode.srcIn),
+                ),
           ),
           SizedBox(width: 8.w),
           Expanded(
@@ -220,27 +216,31 @@ class _SimpleSearchBarState extends State<SimpleSearchBar> {
           // contains text. Scoped to a ListenableBuilder so toggling it
           // doesn't rebuild the TextField and cause IME / focus churn.
           ListenableBuilder(
-            listenable: Listenable.merge([
-              widget.controller,
-              widget.focusNode,
-            ]),
+            listenable: Listenable.merge([widget.controller, widget.focusNode]),
             builder: (context, _) {
-              final visible = widget.focusNode.hasFocus ||
+              final visible =
+                  widget.focusNode.hasFocus ||
                   widget.controller.text.isNotEmpty;
-              if (!visible) return const SizedBox.shrink();
-              return GestureDetector(
-                onTap: widget.onCloseTap,
-                child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 300),
-                  padding: EdgeInsets.all(4.sp),
-                  decoration: BoxDecoration(
-                    color: context.colors.surfaceRecessed,
-                    shape: BoxShape.circle,
-                  ),
-                  child: Icon(
-                    Icons.close,
-                    size: 16.ic,
-                    color: context.colors.textPrimary,
+              // Grows out of the field edge on the same spring as the morph
+              // instead of appearing in a single frame. Width and scale come
+              // off one value so the button fills its slot exactly and is
+              // never clipped mid-travel.
+              return SqueezeSlot(
+                open: visible,
+                motion: SearchMotion.accent,
+                child: GestureDetector(
+                  onTap: widget.onCloseTap,
+                  child: Container(
+                    padding: EdgeInsets.all(4.sp),
+                    decoration: BoxDecoration(
+                      color: context.colors.surfaceRecessed,
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(
+                      Icons.close,
+                      size: 16.ic,
+                      color: context.colors.textPrimary,
+                    ),
                   ),
                 ),
               );
@@ -252,8 +252,7 @@ class _SimpleSearchBarState extends State<SimpleSearchBar> {
             GestureDetector(
               key: widget.filterButtonKey,
               onTap: widget.onOpenFilter,
-              child: AnimatedContainer(
-                duration: const Duration(milliseconds: 300),
+              child: Container(
                 padding: EdgeInsets.all(8.sp),
                 decoration: BoxDecoration(
                   color: context.colors.surfaceRecessed,
@@ -262,19 +261,30 @@ class _SimpleSearchBarState extends State<SimpleSearchBar> {
                 child: Stack(
                   clipBehavior: Clip.none,
                   children: [
-                    SvgWidget(
-                      SvgAsset.listFilterIcon,
-                      height: 20.h,
-                      width: 20.w,
-                      colorFilter: ColorFilter.mode(
-                        widget.filterBadgeCount > 0
-                            ? context.colors.textPrimary
-                            : widget.focusNode.hasFocus
-                            ? kPrimaryColor
-                            : Colors.grey[400]!,
-                        BlendMode.srcIn,
+                    if (widget.filterBadgeCount > 0)
+                      SvgWidget(
+                        SvgAsset.listFilterIcon,
+                        height: 20.h,
+                        width: 20.w,
+                        colorFilter: ColorFilter.mode(
+                          context.colors.textPrimary,
+                          BlendMode.srcIn,
+                        ),
+                      )
+                    else
+                      _FocusTint(
+                        focusNode: widget.focusNode,
+                        builder:
+                            (context, color) => SvgWidget(
+                              SvgAsset.listFilterIcon,
+                              height: 20.h,
+                              width: 20.w,
+                              colorFilter: ColorFilter.mode(
+                                color,
+                                BlendMode.srcIn,
+                              ),
+                            ),
                       ),
-                    ),
                     if (widget.filterBadgeCount > 0)
                       Positioned(
                         right: -4.w,
@@ -307,6 +317,38 @@ class _SimpleSearchBarState extends State<SimpleSearchBar> {
           ],
         ],
       ),
+    );
+  }
+}
+
+/// Lifts an icon from its resting tint to the brand tint while the field holds
+/// focus, on [SearchMotion.accent].
+///
+/// Listening to the focus node here rather than reading `hasFocus` during the
+/// parent's build is what lets [SimpleSearchBar] stay built across a focus
+/// change — rebuilding the row would rebuild the [TextField] and churn the IME.
+class _FocusTint extends StatelessWidget {
+  const _FocusTint({required this.focusNode, required this.builder});
+
+  final FocusNode focusNode;
+  final Widget Function(BuildContext context, Color color) builder;
+
+  @override
+  Widget build(BuildContext context) {
+    final resting = context.colors.iconSecondary;
+    final active = context.colors.brand;
+    return ListenableBuilder(
+      listenable: focusNode,
+      builder:
+          (context, _) => ParkedMotionBuilder(
+            value: focusNode.hasFocus ? 1.0 : 0.0,
+            motion: SearchMotion.accent,
+            builder:
+                (context, t, __) => builder(
+                  context,
+                  Color.lerp(resting, active, t.clamp(0.0, 1.0))!,
+                ),
+          ),
     );
   }
 }

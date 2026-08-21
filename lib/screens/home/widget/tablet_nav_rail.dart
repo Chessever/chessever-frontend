@@ -4,8 +4,6 @@ import 'package:chessever2/screens/home/widget/bottom_nav_bar.dart';
 import 'package:chessever2/services/analytics/analytics_service.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
-import 'package:chessever2/utils/responsive_helper.dart';
-import 'package:chessever2/utils/svg_asset.dart';
 import 'package:chessever2/widgets/svg_widget.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -22,7 +20,7 @@ class TabletNavRail extends ConsumerWidget {
     final selectedItem = ref.watch(selectedBottomNavBarItemProvider);
 
     // Get orientation from MediaQuery for reliable updates
-    final orientation = MediaQuery.of(context).orientation;
+    final orientation = MediaQuery.orientationOf(context);
     final isLandscape = orientation == Orientation.landscape;
 
     // Wider rail in landscape for better touch targets
@@ -127,14 +125,15 @@ class _NavRailItem extends StatelessWidget {
     final title = namesBottomNavBarIcons[item]!;
 
     // Get orientation from MediaQuery for reliable updates
-    final orientation = MediaQuery.of(context).orientation;
+    final orientation = MediaQuery.orientationOf(context);
     final isLandscape = orientation == Orientation.landscape;
 
     // Use fixed pixel sizes for tablet to avoid ResponsiveHelper timing issues
     final iconSize = isLandscape ? 28.0 : 24.0;
-    final iconColor = isSelected
-        ? kPrimaryColor
-        : context.isLightTheme
+    final iconColor =
+        isSelected
+            ? kPrimaryColor
+            : context.isLightTheme
             ? context.colors.textTertiary
             : context.colors.textPrimaryMuted;
     final verticalPadding = isLandscape ? 16.0 : 12.0;
@@ -159,9 +158,10 @@ class _NavRailItem extends StatelessWidget {
                 vertical: 8.0,
               ),
               decoration: BoxDecoration(
-                color: isSelected
-                    ? kPrimaryColor.withValues(alpha: 0.15)
-                    : Colors.transparent,
+                color:
+                    isSelected
+                        ? kPrimaryColor.withValues(alpha: 0.15)
+                        : Colors.transparent,
                 borderRadius: BorderRadius.circular(16.0),
               ),
               child: SvgWidget(
@@ -181,9 +181,10 @@ class _NavRailItem extends StatelessWidget {
               style: TextStyle(
                 fontSize: 11.0,
                 fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400,
-                color: isSelected
-                    ? kPrimaryColor
-                    : context.isLightTheme
+                color:
+                    isSelected
+                        ? kPrimaryColor
+                        : context.isLightTheme
                         ? context.colors.textTertiary
                         : context.colors.textPrimaryMuted,
               ),

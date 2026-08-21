@@ -5,6 +5,7 @@ library;
 import 'dart:math' as math;
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:flutter/material.dart';
+import 'package:motor/motor.dart';
 import 'package:smooth_sheets/smooth_sheets.dart';
 
 /// Collection of spring curve presets optimized for different sheet interactions
@@ -190,6 +191,112 @@ class SpringModalSheetRoute<T> extends ModalSheetRoute<T> {
          transitionDuration:
              transitionDuration ?? const Duration(milliseconds: 450),
        );
+}
+
+/// Modal sheet route whose slide is driven by a real spring simulation rather
+/// than by a [Curve] sampled over a fixed duration, and whose entrance is held
+/// back until its content has been built once.
+///
+/// Two problems with the curve-driven version ([SpringModalSheetRoute], and
+/// Material's own `showModalBottomSheet`) are fixed here:
+///
+///  * **The entrance was skipped on heavy sheets.** A route starts its
+///    transition clock the moment it is pushed, but the frame that follows the
+///    push is the frame that builds the sheet's whole subtree. If that build
+///    takes longer than the transition, the first frame the user actually sees
+///    is already at (or near) the resting position, so the sheet appears to
+///    jump into place instead of sliding. [didPush] parks the sheet off-screen
+///    for that frame and starts the spring from a post-frame callback, so the
+///    motion always begins on a frame with nothing left to build.
+///  * **The exit was back-loaded.** Spring-shaped curves spend most of their
+///    travel in the first fraction of the timeline; played in reverse that
+///    becomes a pause followed by a drop. A simulation is asked for each
+///    direction separately ([createSimulation]), so the exit accelerates away
+///    from rest exactly like the entrance accelerates towards it.
+class MotionSheetRoute<T> extends ModalSheetRoute<T> {
+  MotionSheetRoute({
+    required super.builder,
+    super.barrierColor,
+    super.barrierLabel,
+    super.barrierDismissible,
+    super.swipeDismissible = true,
+    super.viewportPadding,
+    super.swipeDismissSensitivity,
+    this.entranceMotion = const CupertinoMotion.smooth(
+      duration: Duration(milliseconds: 400),
+      snapToEnd: true,
+    ),
+    this.exitMotion = const CupertinoMotion.smooth(
+      duration: Duration(milliseconds: 320),
+      snapToEnd: true,
+    ),
+  }) : super(
+         // The simulation carries all of the easing, so the curve has to map
+         // it 1:1. It doubles as the curve smooth_sheets falls back to while a
+         // swipe is in progress, where linear is exactly what tracks a finger.
+         transitionCurve: Curves.linear,
+         // Ignored while a simulation drives the controller, but smooth_sheets
+         // still reads it to time the snap-back after a released swipe that
+         // did not dismiss.
+         transitionDuration: const Duration(milliseconds: 300),
+       );
+
+  /// Spring that carries the sheet up on push. Critically damped by default:
+  /// a tall sheet that overshoots its rest position lifts its bottom edge off
+  /// the screen and flashes the barrier underneath it.
+  final Motion entranceMotion;
+
+  /// Spring that carries the sheet back down on pop. Shorter than
+  /// [entranceMotion] so a dismissal feels decided rather than reluctant.
+  final Motion exitMotion;
+
+  /// Set between [didPush] and the post-frame callback that releases the
+  /// entrance, so a route popped inside that window never starts moving up.
+  bool _entrancePending = false;
+
+  @override
+  Simulation createSimulation({required bool forward}) {
+    // Always start from where the sheet currently is: a pop can arrive
+    // mid-entrance, or with the sheet already dragged part of the way down.
+    final motion = forward ? entranceMotion : exitMotion;
+    return motion.createSimulation(
+      start: controller!.value,
+      end: forward ? 1.0 : 0.0,
+    );
+  }
+
+  @override
+  TickerFuture didPush() {
+    final transition = controller!;
+    final future = super.didPush();
+    // Freeze the spring that `super.didPush()` just started. `canceled: false`
+    // completes `future` normally (the navigator only uses it to mark the push
+    // finished) and leaves the status alone, so the route is not mistaken for
+    // a dismissed one while it waits.
+    transition.stop(canceled: false);
+    _entrancePending = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!_entrancePending) {
+        return;
+      }
+      _entrancePending = false;
+      if (transition.isCompleted || transition.isAnimating) {
+        return;
+      }
+      transition.animateWith(createSimulation(forward: true));
+    });
+    // The push already schedules the frame whose end releases the entrance,
+    // but ask for one anyway: a sheet parked off-screen behind a transparent
+    // barrier would block taps while showing nothing.
+    WidgetsBinding.instance.ensureVisualUpdate();
+    return future;
+  }
+
+  @override
+  bool didPop(T? result) {
+    _entrancePending = false;
+    return super.didPop(result);
+  }
 }
 
 /// Page route for nested sheet navigation

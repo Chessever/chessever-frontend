@@ -130,15 +130,26 @@ Map<String, dynamic>? buildLibraryExactWhere(
     });
   }
   if (!filter.eco.isAll) {
-    final code = filter.eco.code!;
-    if (code == GameEcoFilter.unknownEcoCode) {
+    final prefixes = filter.eco.ecoPrefixes;
+    if (filter.eco.isUnknownEco) {
       expressions.add({
         'field': 'eco',
         'op': 'eq',
         'value': GameEcoFilter.unknownEcoCode,
       });
+    } else if (prefixes.length == 1) {
+      expressions.add({
+        'field': 'eco',
+        'op': 'startsWith',
+        'value': prefixes.single,
+      });
     } else {
-      expressions.add({'field': 'eco', 'op': 'startsWith', 'value': code});
+      expressions.add({
+        'or': [
+          for (final prefix in prefixes)
+            {'field': 'eco', 'op': 'startsWith', 'value': prefix},
+        ],
+      });
     }
   }
   if (_hasYearFilter(filter)) {
@@ -185,6 +196,13 @@ String composeGamebaseSearchQuery({
 
 @visibleForTesting
 bool shouldUseExactLibraryGameQuery(String query, GamebaseFilter filter) {
+  // Multi-prefix families cannot be expressed faithfully by the GET search
+  // endpoint's single `eco:` token. The POST endpoint supports an explicit OR
+  // tree and accepts `q`, so correctness wins for these broad parent filters.
+  if (filter.eco.hasMultiplePrefixes && filter.colorApiValue == null) {
+    return true;
+  }
+
   // If there's a free-text query, use globalSearch (indexed tsvector).
   if (query.trim().isNotEmpty) return false;
 

@@ -5,7 +5,7 @@ import 'package:chessever2/screens/group_event/providers/group_event_screen_prov
     show filterBroadcastsByPopupState;
 import 'package:chessever2/screens/group_event/smart_event/smart_aggregate_event_provider.dart';
 import 'package:chessever2/screens/group_event/smart_event/smart_event_screen.dart'
-    show smartGameMatchesTierForTest;
+    show smartEventTabLabels, smartGameMatchesTierForTest;
 import 'package:chessever2/screens/group_event/widget/filter_popup/filter_popup_state.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/widgets/game_filter/game_filter_model.dart'
@@ -54,10 +54,11 @@ GroupEventCardModel _event({
   required String id,
   required DateTime start,
   required DateTime end,
+  String? title,
 }) {
   return GroupEventCardModel(
     id: id,
-    title: 'Event $id',
+    title: title ?? 'Event $id',
     dates: 'Jun 1 - 2, 2026',
     maxAvgElo: 2600,
     timeUntilStart: '',
@@ -128,6 +129,53 @@ Map<String, dynamic> _favoriteEventMetadataRow(GroupEventCardModel event) {
 }
 
 void main() {
+  test('smart event tabs expose Events instead of Standings', () {
+    expect(smartEventTabLabels, ['About', 'Games', 'Events']);
+  });
+
+  test('smart games group under their exact source event IDs', () {
+    final start = DateTime.utc(2026, 8, 21);
+    final end = DateTime.utc(2026, 8, 22);
+    final eventA = _event(
+      id: 'event-a',
+      title: 'Shared title',
+      start: start,
+      end: end,
+    );
+    final eventB = _event(
+      id: 'event-b',
+      title: 'Shared title',
+      start: start,
+      end: end,
+    );
+    final gameA1 = _game(id: 'a-1', whiteRating: 2500, blackRating: 2500);
+    final gameA2 = _game(id: 'a-2', whiteRating: 2600, blackRating: 2600);
+    final gameB = _game(id: 'b-1', whiteRating: 2700, blackRating: 2700);
+    final aggregate = SmartAggregateEvent.empty.copyWith(
+      events: [eventB, eventA],
+      games: [gameA2, gameB, gameA1],
+      gameEventNames: const {
+        'a-1': 'Shared title',
+        'a-2': 'Shared title',
+        'b-1': 'Shared title',
+      },
+      gameEventIds: const {
+        'a-1': 'event-a',
+        'a-2': 'event-a',
+        'b-1': 'event-b',
+      },
+    );
+
+    final groups = groupSmartEventGames(
+      event: aggregate,
+      visibleGames: [gameA2, gameB, gameA1],
+    );
+
+    expect(groups.map((group) => group.event.id), ['event-b', 'event-a']);
+    expect(groups[0].games.map((game) => game.gameId), ['b-1']);
+    expect(groups[1].games.map((game) => game.gameId), ['a-2', 'a-1']);
+  });
+
   test('opening search creates a global family smart-event request', () {
     final request = SmartEventRequest.forOpening(GameEcoFilter.forFamily('B9'));
 
@@ -216,6 +264,31 @@ void main() {
       expect(request.criteriaKey, endsWith(':eco=B9'));
       expect(metadata['ecoCode'], 'B9');
       expect(SmartEventRequest.fromFavoriteEvent(favorite).eco.code, 'B9');
+    });
+
+    test("complete King's Indian family survives saved-event restoration", () {
+      final request = SmartEventRequest.forOpening(
+        GameEcoFilter.forFamily('E6+E7+E8+E9'),
+      );
+      final metadata = request.toFavoriteMetadata();
+      final favorite = FavoriteEvent(
+        id: 'favorite-kings-indian',
+        userId: 'user-1',
+        eventId: request.favoriteEventId,
+        eventName: request.displayName,
+        metadata: metadata,
+        createdAt: DateTime.utc(2026, 8, 21),
+        updatedAt: DateTime.utc(2026, 8, 21),
+      );
+
+      final restored = SmartEventRequest.fromFavoriteEvent(favorite);
+
+      expect(request.displayName, "King's Indian");
+      expect(request.caption, "From your King's Indian opening filter");
+      expect(metadata['ecoCode'], 'E6+E7+E8+E9');
+      expect(restored.eco.code, 'E6+E7+E8+E9');
+      expect(restored.eco.ecoPrefixes, ['E6', 'E7', 'E8', 'E9']);
+      expect(restored.seedGameFilter().eco, restored.eco);
     });
 
     test('opening criteria reach queries that do not pass a tab filter', () {

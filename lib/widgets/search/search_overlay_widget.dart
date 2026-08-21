@@ -7,6 +7,7 @@ import 'package:chessever2/screens/group_event/providers/group_event_screen_prov
 import 'package:chessever2/screens/group_event/providers/supabase_combined_search_provider.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
+import 'package:chessever2/utils/eco_openings.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/user_error_message.dart';
 import 'package:chessever2/widgets/game_filter/game_filter_model.dart';
@@ -21,27 +22,42 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 class SearchOverlay extends ConsumerWidget {
   const SearchOverlay({
     super.key,
+    required this.query,
     required this.onTournamentTap,
     this.onPlayerTap,
     this.onOpeningTap,
+    this.debugOnResultsBuild,
   });
 
+  /// Kept for compatibility with the established search-bar API. Search work
+  /// and result labels use the debounced provider value so raw typing never
+  /// rebuilds the populated result tree.
+  final String query;
   final ValueChanged<GroupEventCardModel> onTournamentTap;
   final ValueChanged<SearchPlayer>? onPlayerTap;
   final ValueChanged<GameEcoFilter>? onOpeningTap;
 
+  @visibleForTesting
+  final VoidCallback? debugOnResultsBuild;
+
+  /// Deliberately built from values the software keyboard does not move.
+  ///
+  /// `MediaQuery.of` subscribes to the whole [MediaQueryData], so reading
+  /// `viewInsets.bottom` here rebuilt this entire panel — Consumers, ListViews
+  /// and all — on every frame of the keyboard slide, at exactly the moment the
+  /// panel was also unrolling. `sizeOf`/`paddingOf` subscribe to one aspect
+  /// each, and neither ticks while the keyboard animates.
   double _computeMaxHeight(BuildContext context) {
-    final mq = MediaQuery.of(context);
-    final available =
-        mq.size.height - mq.padding.top - mq.viewInsets.bottom - 120.h;
-    final cap = mq.size.height * 0.48;
+    final screenHeight = MediaQuery.sizeOf(context).height;
+    final available = screenHeight - MediaQuery.paddingOf(context).top - 120.h;
+    final cap = screenHeight * 0.39;
     return available.clamp(120.h, cap);
   }
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final debouncedQuery = ref.watch(debouncedSearchQueryProvider).trim();
     final maxHeight = _computeMaxHeight(context);
-    final currentQuery = ref.watch(searchQueryProvider).trim();
 
     return Container(
       decoration: BoxDecoration(
@@ -56,161 +72,349 @@ class SearchOverlay extends ConsumerWidget {
         child: ConstrainedBox(
           constraints: BoxConstraints(maxHeight: maxHeight),
           child:
-              currentQuery.isEmpty
-                  ? _buildRecentSearches(context, ref, maxHeight)
-                  : _buildQueryResults(context, ref, currentQuery, maxHeight),
+              debouncedQuery.isEmpty
+                  ? _buildBeforeFirstSearch(context, ref, maxHeight)
+                  : _buildDebouncedResults(
+                    context,
+                    ref,
+                    debouncedQuery,
+                    maxHeight,
+                  ),
         ),
       ),
     );
   }
 
-  Widget _buildQueryResults(
+  Widget _buildBeforeFirstSearch(
     BuildContext context,
     WidgetRef ref,
-    String currentQuery,
     double maxHeight,
   ) {
-    final debouncedQuery = ref.watch(debouncedSearchQueryProvider).trim();
-    final openings = searchOpeningSuggestions(currentQuery);
-    final isWaiting = debouncedQuery != currentQuery;
+    // This small branch is the only part of the overlay that listens to raw
+    // keystrokes. Once a debounced query exists, populated results stay fully
+    // detached from per-character updates.
+    return Consumer(
+      builder: (context, ref, _) {
+        final rawQuery = ref.watch(searchQueryProvider).trim();
+        if (rawQuery.isNotEmpty) return _buildLoadingState(context, maxHeight);
+        return _buildRecentSearches(context, ref, maxHeight);
+      },
+    );
+  }
 
-    if (isWaiting || debouncedQuery.isEmpty) {
-      if (openings.isEmpty) return _buildLoadingState(maxHeight);
-      return _buildSearchResults(
-        context,
-        query: currentQuery,
-        openings: openings,
-        isRemoteLoading: true,
-      );
-    }
+  Widget _buildDebouncedResults(
+    BuildContext context,
+    WidgetRef ref,
+    String debouncedQuery,
+    double maxHeight,
+  ) {
+    // Preserve the established in-between typing state without letting raw
+    // keystrokes rebuild the populated result tree underneath it.
+    return Consumer(
+      builder: (context, ref, _) {
+        final rawQuery = ref.watch(searchQueryProvider).trim();
+        if (rawQuery.isEmpty) {
+          return _buildRecentSearches(context, ref, maxHeight);
+        }
+        if (rawQuery != debouncedQuery) {
+          return _buildLoadingState(context, maxHeight);
+        }
 
-    return ref
-        .watch(supabaseCombinedSearchProvider(debouncedQuery))
-        .when(
-          loading:
-              () =>
-                  openings.isEmpty
-                      ? _buildLoadingState(maxHeight)
-                      : _buildSearchResults(
-                        context,
-                        query: currentQuery,
-                        openings: openings,
-                        isRemoteLoading: true,
-                      ),
-          error:
-              (error, _) =>
-                  openings.isEmpty
-                      ? _buildErrorState(
-                        context,
-                        userFacingError(error),
-                        maxHeight,
-                      )
-                      : _buildSearchResults(
-                        context,
-                        query: currentQuery,
-                        openings: openings,
-                        remoteMessage: 'Events and players are unavailable',
-                      ),
-          data: (searchResult) {
-            if (searchResult.isEmpty && openings.isEmpty) {
-              return _buildEmptyState(context, currentQuery, maxHeight);
-            }
-            return _buildSearchResults(
-              context,
-              query: currentQuery,
-              openings: openings,
-              searchResult: searchResult,
+        final openings = searchOpeningSuggestions(debouncedQuery);
+        return ref
+            .watch(supabaseCombinedSearchProvider(debouncedQuery))
+            .when(
+              loading:
+                  () =>
+                      openings.isEmpty
+                          ? _buildLoadingState(context, maxHeight)
+                          : _buildSearchResults(
+                            context,
+                            query: debouncedQuery,
+                            searchResult: EnhancedSearchResult.empty(),
+                            openings: openings,
+                            remoteLoading: true,
+                          ),
+              error:
+                  (error, _) =>
+                      openings.isEmpty
+                          ? _buildErrorState(
+                            context,
+                            userFacingError(error),
+                            maxHeight,
+                          )
+                          : _buildSearchResults(
+                            context,
+                            query: debouncedQuery,
+                            searchResult: EnhancedSearchResult.empty(),
+                            openings: openings,
+                            remoteMessage: 'Events and players unavailable',
+                          ),
+              data: (searchResult) {
+                if (searchResult.isEmpty && openings.isEmpty) {
+                  return _buildEmptyState(context, debouncedQuery, maxHeight);
+                }
+                return _buildSearchResults(
+                  context,
+                  query: debouncedQuery,
+                  searchResult: searchResult,
+                  openings: openings,
+                );
+              },
             );
-          },
-        );
+      },
+    );
   }
 
   Widget _buildSearchResults(
     BuildContext context, {
     required String query,
+    required EnhancedSearchResult searchResult,
     required List<OpeningSearchSuggestion> openings,
-    EnhancedSearchResult? searchResult,
-    bool isRemoteLoading = false,
+    bool remoteLoading = false,
     String? remoteMessage,
   }) {
-    final tournaments =
-        searchResult?.tournamentResults ?? const <SearchResult>[];
-    final players =
-        searchResult?.playerResults
-            .where((result) => result.player != null)
-            .toList(growable: false) ??
-        const <SearchResult>[];
-    final total = openings.length + tournaments.length + players.length;
+    debugOnResultsBuild?.call();
+    final hasTournaments = searchResult.tournamentResults.isNotEmpty;
+    final hasPlayers = searchResult.playerResults.isNotEmpty;
 
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        _buildResultsHeader(context, query, total, isRemoteLoading),
-        Flexible(
-          child: ListView(
-            padding: EdgeInsets.only(bottom: 8.h),
-            children: [
-              if (openings.isNotEmpty) ...[
-                _buildSectionLabel(
-                  context,
-                  icon: Icons.menu_book_outlined,
-                  label: 'Openings',
-                  count: openings.length,
-                ),
-                ...openings.map(
-                  (opening) => _OpeningResultRow(
-                    suggestion: opening,
-                    onTap: () => onOpeningTap?.call(opening.filter),
-                  ),
-                ),
-              ],
-              if (tournaments.isNotEmpty) ...[
-                _buildSectionLabel(
-                  context,
-                  icon: Icons.emoji_events_outlined,
-                  label: 'Events',
-                  count: tournaments.length,
-                ),
-                ...tournaments.map(
-                  (result) => SearchResultTile(
-                    result: result,
-                    onTap: () => onTournamentTap(result.tournament),
-                    isPlayerResult: false,
-                    isFullWidth: true,
-                  ),
-                ),
-              ],
-              if (players.isNotEmpty) ...[
-                _buildSectionLabel(
-                  context,
-                  icon: Icons.person_outline,
-                  label: 'Players',
-                  count: players.length,
-                ),
-                ...players.map(
-                  (result) => SearchResultTile(
-                    result: result,
-                    onTap: () => onPlayerTap?.call(result.player!),
-                    isPlayerResult: true,
-                    isFullWidth: true,
-                  ),
-                ),
-              ],
-              if (remoteMessage != null)
-                Padding(
-                  padding: EdgeInsets.fromLTRB(16.w, 10.h, 16.w, 8.h),
-                  child: Text(
-                    remoteMessage,
-                    style: TextStyle(
-                      color: context.colors.textSecondary,
-                      fontSize: 11.sp,
+        _buildHeader(context, query, searchResult, openings.length),
+        if (openings.isNotEmpty) _buildOpeningStrip(context, openings),
+        if (hasTournaments || hasPlayers)
+          Flexible(
+            child:
+                hasTournaments && hasPlayers
+                    ? _buildTwoColumnLayout(context, searchResult)
+                    : _buildSingleColumnLayout(
+                      context,
+                      searchResult,
+                      hasTournaments,
                     ),
+          )
+        else if (remoteLoading)
+          Padding(
+            padding: EdgeInsets.symmetric(vertical: 12.h),
+            child: SizedBox.square(
+              dimension: 18.ic,
+              child: const CircularProgressIndicator(strokeWidth: 2),
+            ),
+          )
+        else if (remoteMessage != null)
+          Padding(
+            padding: EdgeInsets.fromLTRB(12.w, 4.h, 12.w, 10.h),
+            child: Text(
+              remoteMessage,
+              style: TextStyle(
+                color: context.colors.textSecondary,
+                fontSize: 11.sp,
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+
+  Widget _buildOpeningStrip(
+    BuildContext context,
+    List<OpeningSearchSuggestion> openings,
+  ) {
+    return SizedBox(
+      height: math.max(78.h, 80),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: EdgeInsets.fromLTRB(12.w, 7.h, 12.w, 3.h),
+            child: Row(
+              children: [
+                Icon(Icons.menu_book_outlined, size: 15.ic, color: kDarkBlue),
+                SizedBox(width: 7.w),
+                Text(
+                  'Openings (${openings.length})',
+                  style: TextStyle(
+                    color: context.colors.textPrimary,
+                    fontSize: 12.sp,
+                    fontWeight: FontWeight.w600,
                   ),
                 ),
-            ],
+              ],
+            ),
+          ),
+          Expanded(
+            child: ListView.separated(
+              scrollDirection: Axis.horizontal,
+              padding: EdgeInsets.symmetric(horizontal: 8.w),
+              itemCount: openings.length,
+              separatorBuilder: (_, __) => SizedBox(width: 5.w),
+              itemBuilder: (context, index) {
+                final opening = openings[index];
+                return _OpeningResultTile(
+                  suggestion: opening,
+                  onTap: () => onOpeningTap?.call(opening.filter),
+                );
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTwoColumnLayout(
+    BuildContext context,
+    EnhancedSearchResult searchResult,
+  ) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Flexible(
+          child: _buildResultColumn(
+            context: context,
+            title: 'Events',
+            results: searchResult.tournamentResults,
+            icon: Icons.emoji_events,
+          ),
+        ),
+        Container(
+          width: 1,
+          color: context.colors.divider,
+          margin: EdgeInsets.symmetric(vertical: 8.h),
+        ),
+        Flexible(
+          child: _buildResultColumn(
+            context: context,
+            title: 'Players',
+            results: searchResult.playerResults,
+            icon: Icons.person,
+            isPlayerSection: true,
           ),
         ),
       ],
+    );
+  }
+
+  Widget _buildSingleColumnLayout(
+    BuildContext context,
+    EnhancedSearchResult searchResult,
+    bool hasTournaments,
+  ) {
+    return _buildResultColumn(
+      context: context,
+      title: hasTournaments ? 'Events' : 'Players',
+      results:
+          hasTournaments
+              ? searchResult.tournamentResults
+              : searchResult.playerResults,
+      icon: hasTournaments ? Icons.emoji_events : Icons.person,
+      isFullWidth: true,
+      isPlayerSection: !hasTournaments,
+    );
+  }
+
+  Widget _buildResultColumn({
+    required BuildContext context,
+    required String title,
+    required List<SearchResult> results,
+    required IconData icon,
+    bool isFullWidth = false,
+    bool isPlayerSection = false,
+  }) {
+    final filteredResults =
+        isPlayerSection
+            ? results.where((result) => result.player != null).toList()
+            : results;
+
+    if (filteredResults.isEmpty) {
+      return Center(
+        child: Text(
+          'No $title found',
+          style: TextStyle(
+            color: context.colors.textSecondary,
+            fontSize: 12.sp,
+          ),
+        ),
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Padding(
+          padding: EdgeInsets.all(12.sp),
+          child: Row(
+            children: [
+              Icon(icon, size: 16.ic, color: kDarkBlue),
+              SizedBox(width: 8.w),
+              Text(
+                '$title (${filteredResults.length})',
+                style: TextStyle(
+                  color: context.colors.textPrimary,
+                  fontSize: 12.sp,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
+        ),
+        Flexible(
+          child: ListView.builder(
+            shrinkWrap: true,
+            padding: EdgeInsets.zero,
+            itemCount: filteredResults.length,
+            itemBuilder: (context, index) {
+              final result = filteredResults[index];
+              return SearchResultTile(
+                result: result,
+                onTap:
+                    isPlayerSection
+                        ? () => onPlayerTap?.call(result.player!)
+                        : () => onTournamentTap(result.tournament),
+                isPlayerResult: isPlayerSection,
+                isFullWidth: isFullWidth,
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildHeader(
+    BuildContext context,
+    String query,
+    EnhancedSearchResult searchResult,
+    int openingCount,
+  ) {
+    final totalResults = searchResult.totalResults + openingCount;
+    return Container(
+      padding: EdgeInsets.all(8.sp),
+      decoration: BoxDecoration(
+        border: Border(
+          bottom: BorderSide(
+            color: context.colors.textPrimary.withValues(alpha: 0.1),
+          ),
+        ),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.search, size: 16.ic, color: kDarkBlue),
+          SizedBox(width: 8.w),
+          Expanded(
+            child: Text(
+              '$totalResults result${totalResults == 1 ? '' : 's'} for "$query"',
+              style: TextStyle(
+                color: context.colors.textPrimary,
+                fontSize: 12.sp,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -222,69 +426,75 @@ class SearchOverlay extends ConsumerWidget {
     return ref
         .watch(recentSearchesProvider)
         .when(
-          loading:
-              () => _buildLoadingState(
-                maxHeight,
-                label: 'Loading recent searches',
-              ),
+          // The resting panel has ONE height whatever the storage read is
+          // doing. A taller spinner block here changed the panel's height on
+          // the same frames it was unrolling, so the reveal and a shrink
+          // animation fought each other — the single most visible stutter in
+          // the old morph. The read is local and pre-warmed when the bar
+          // mounts, so there is nothing worth showing a spinner for anyway.
+          loading: () => _buildRecentEmptyState(context, maxHeight),
           error: (_, __) => _buildRecentEmptyState(context, maxHeight),
           data: (entries) {
             if (entries.isEmpty) {
               return _buildRecentEmptyState(context, maxHeight);
             }
-            return Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Padding(
-                  padding: EdgeInsets.fromLTRB(14.w, 6.h, 6.w, 6.h),
-                  child: Row(
-                    children: [
-                      Icon(
-                        Icons.history,
-                        size: 18.ic,
-                        color: context.colors.textSecondary,
-                      ),
-                      SizedBox(width: 8.w),
-                      Expanded(
-                        child: Text(
-                          'Recent',
-                          style: TextStyle(
-                            color: context.colors.textPrimary,
-                            fontSize: 13.sp,
-                            fontWeight: FontWeight.w600,
+            final recentHeight = math.min(
+              maxHeight,
+              56.0 + math.min(entries.length, 3) * 48.0,
+            );
+            return SizedBox(
+              height: recentHeight,
+              child: Column(
+                children: [
+                  Padding(
+                    padding: EdgeInsets.fromLTRB(12.w, 4.h, 4.w, 4.h),
+                    child: Row(
+                      children: [
+                        Icon(Icons.history, size: 16.ic, color: kDarkBlue),
+                        SizedBox(width: 8.w),
+                        Expanded(
+                          child: Text(
+                            'Recent searches',
+                            style: TextStyle(
+                              color: context.colors.textPrimary,
+                              fontSize: 12.sp,
+                              fontWeight: FontWeight.w600,
+                            ),
                           ),
                         ),
-                      ),
-                      TextButton(
-                        onPressed:
-                            () => unawaited(
-                              ref.read(recentSearchesProvider.notifier).clear(),
-                            ),
-                        child: const Text('Clear'),
-                      ),
-                    ],
+                        TextButton(
+                          onPressed:
+                              () => unawaited(
+                                ref
+                                    .read(recentSearchesProvider.notifier)
+                                    .clear(),
+                              ),
+                          child: const Text('Clear'),
+                        ),
+                      ],
+                    ),
                   ),
-                ),
-                Flexible(
-                  child: ListView.builder(
-                    padding: EdgeInsets.only(bottom: 8.h),
-                    itemCount: entries.length,
-                    itemBuilder: (context, index) {
-                      final entry = entries[index];
-                      return _RecentSearchRow(
-                        entry: entry,
-                        onTap: () => _openRecent(entry),
-                        onRemove:
-                            () => unawaited(
-                              ref
-                                  .read(recentSearchesProvider.notifier)
-                                  .remove(entry),
-                            ),
-                      );
-                    },
+                  Expanded(
+                    child: ListView.builder(
+                      padding: EdgeInsets.zero,
+                      itemCount: entries.length,
+                      itemBuilder: (context, index) {
+                        final entry = entries[index];
+                        return _RecentSearchTile(
+                          entry: entry,
+                          onTap: () => _openRecent(entry),
+                          onRemove:
+                              () => unawaited(
+                                ref
+                                    .read(recentSearchesProvider.notifier)
+                                    .remove(entry),
+                              ),
+                        );
+                      },
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             );
           },
         );
@@ -304,91 +514,25 @@ class SearchOverlay extends ConsumerWidget {
     }
   }
 
-  Widget _buildResultsHeader(
+  Widget _buildLoadingState(
     BuildContext context,
-    String query,
-    int total,
-    bool isLoading,
-  ) {
-    final suffix = isLoading ? ' · searching events and players' : '';
-    return Container(
-      padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 10.h),
-      decoration: BoxDecoration(
-        border: Border(
-          bottom: BorderSide(
-            color: context.colors.textPrimary.withValues(alpha: 0.1),
-          ),
-        ),
-      ),
-      child: Row(
-        children: [
-          Icon(Icons.search, size: 17.ic, color: context.colors.textSecondary),
-          SizedBox(width: 8.w),
-          Expanded(
-            child: Text(
-              '$total result${total == 1 ? '' : 's'} for “$query”$suffix',
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                color: context.colors.textPrimary,
-                fontSize: 12.sp,
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-          ),
-          if (isLoading)
-            SizedBox.square(
-              dimension: 14.ic,
-              child: CircularProgressIndicator(
-                strokeWidth: 1.5,
-                color: context.colors.textSecondary,
-              ),
-            ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildSectionLabel(
-    BuildContext context, {
-    required IconData icon,
-    required String label,
-    required int count,
+    double maxHeight, {
+    String label = 'Searching...',
   }) {
-    return Padding(
-      padding: EdgeInsets.fromLTRB(14.w, 12.h, 14.w, 5.h),
-      child: Row(
-        children: [
-          Icon(icon, size: 16.ic, color: context.colors.textSecondary),
-          SizedBox(width: 8.w),
-          Text(
-            '$label ($count)',
-            style: TextStyle(
-              color: context.colors.textPrimary,
-              fontSize: 12.sp,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildLoadingState(double maxHeight, {String label = 'Searching'}) {
     return SizedBox(
-      height: math.min(maxHeight, 152.h),
+      height: math.min(maxHeight, 200.h),
       child: Center(
         child: Column(
-          mainAxisSize: MainAxisSize.min,
+          mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            const SizedBox.square(
-              dimension: 22,
-              child: CircularProgressIndicator(strokeWidth: 2),
-            ),
-            SizedBox(height: 12.h),
+            const CircularProgressIndicator(strokeWidth: 2),
+            SizedBox(height: 16.h),
             Text(
               label,
-              style: TextStyle(color: kBoardLightGrey, fontSize: 12.sp),
+              style: TextStyle(
+                color: context.colors.textSecondary,
+                fontSize: 12.sp,
+              ),
             ),
           ],
         ),
@@ -398,43 +542,15 @@ class SearchOverlay extends ConsumerWidget {
 
   Widget _buildRecentEmptyState(BuildContext context, double maxHeight) {
     return SizedBox(
-      height: math.min(maxHeight, 130.h),
-      child: Padding(
-        padding: EdgeInsets.symmetric(horizontal: 20.w),
-        child: Row(
-          children: [
-            Icon(
-              Icons.search,
-              size: 24.ic,
-              color: context.colors.textSecondary,
-            ),
-            SizedBox(width: 14.w),
-            Expanded(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Find a chess destination',
-                    style: TextStyle(
-                      color: context.colors.textPrimary,
-                      fontSize: 14.sp,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  SizedBox(height: 4.h),
-                  Text(
-                    'Search events, players, opening names, or ECO codes.',
-                    style: TextStyle(
-                      color: context.colors.textSecondary,
-                      fontSize: 12.sp,
-                      height: 1.3,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
+      height: math.min(maxHeight, 118.h),
+      child: Center(
+        child: Text(
+          'Search players, tournaments, openings, or ECO codes',
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            color: context.colors.textSecondary,
+            fontSize: 12.sp,
+          ),
         ),
       ),
     );
@@ -446,29 +562,30 @@ class SearchOverlay extends ConsumerWidget {
     double maxHeight,
   ) {
     return SizedBox(
-      height: math.min(maxHeight, 180.h),
-      child: Padding(
-        padding: EdgeInsets.symmetric(horizontal: 20.w),
+      height: math.min(maxHeight, 200.h),
+      child: Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.error_outline, size: 32.ic, color: kRedColor),
-            SizedBox(height: 10.h),
+            Icon(Icons.error_outline, size: 48.ic, color: kRedColor),
+            SizedBox(height: 16.h),
             Text(
               'Search failed',
               style: TextStyle(
                 color: context.colors.textPrimary,
-                fontSize: 15.sp,
-                fontWeight: FontWeight.w600,
+                fontSize: 16.sp,
+                fontWeight: FontWeight.w500,
               ),
             ),
-            SizedBox(height: 6.h),
+            SizedBox(height: 8.h),
             Text(
               error,
               maxLines: 2,
-              overflow: TextOverflow.ellipsis,
               textAlign: TextAlign.center,
-              style: TextStyle(color: kBoardLightGrey, fontSize: 12.sp),
+              style: TextStyle(
+                color: context.colors.textSecondary,
+                fontSize: 12.sp,
+              ),
             ),
           ],
         ),
@@ -482,31 +599,33 @@ class SearchOverlay extends ConsumerWidget {
     double maxHeight,
   ) {
     return SizedBox(
-      height: math.min(maxHeight, 160.h),
+      height: math.min(maxHeight, 200.h),
       child: Center(
         child: Column(
-          mainAxisSize: MainAxisSize.min,
+          mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Icon(
               Icons.search_off,
-              size: 32.ic,
-              color: context.colors.textSecondary,
+              size: 48.ic,
+              color: context.colors.iconSecondary,
             ),
-            SizedBox(height: 10.h),
+            SizedBox(height: 16.h),
             Text(
-              'No results for “$query”',
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
+              'No results found',
               style: TextStyle(
                 color: context.colors.textPrimary,
-                fontSize: 14.sp,
-                fontWeight: FontWeight.w600,
+                fontSize: 16.sp,
+                fontWeight: FontWeight.w500,
               ),
             ),
-            SizedBox(height: 4.h),
+            SizedBox(height: 8.h),
             Text(
-              'Try a player, event, opening name, or ECO code.',
-              style: TextStyle(color: kBoardLightGrey, fontSize: 12.sp),
+              'Try different keywords for "$query"',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: context.colors.textSecondary,
+                fontSize: 12.sp,
+              ),
             ),
           ],
         ),
@@ -515,73 +634,57 @@ class SearchOverlay extends ConsumerWidget {
   }
 }
 
-class _OpeningResultRow extends StatelessWidget {
-  const _OpeningResultRow({required this.suggestion, required this.onTap});
+class _OpeningResultTile extends StatelessWidget {
+  const _OpeningResultTile({required this.suggestion, required this.onTap});
 
   final OpeningSearchSuggestion suggestion;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    final code = suggestion.filter.code!;
+    final codeLabel =
+        EcoOpenings.getFamily(suggestion.filter.code)?.rangeLabel ??
+        suggestion.filter.displayText;
     return Semantics(
       button: true,
-      label: 'Open ${suggestion.title} smart event, ECO $code',
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: onTap,
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(minHeight: 52),
-            child: Padding(
-              padding: EdgeInsets.symmetric(horizontal: 14.w, vertical: 8.h),
-              child: Row(
-                children: [
-                  SizedBox(
-                    width: 40.w,
-                    child: Text(
-                      code,
-                      style: TextStyle(
-                        color: context.colors.textPrimary,
-                        fontSize: 13.sp,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                  ),
-                  Expanded(
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          suggestion.title,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            color: context.colors.textPrimary,
-                            fontSize: 13.sp,
-                            fontWeight: FontWeight.w500,
-                          ),
-                        ),
-                        SizedBox(height: 2.h),
-                        Text(
-                          suggestion.subtitle,
-                          style: TextStyle(
-                            color: context.colors.textSecondary,
-                            fontSize: 11.sp,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  Icon(
-                    Icons.chevron_right,
-                    size: 19.ic,
-                    color: context.colors.textSecondary,
-                  ),
-                ],
-              ),
+      label: 'Open ${suggestion.title} smart event, ECO $codeLabel',
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(8.br),
+        child: Container(
+          width: 184.w,
+          constraints: const BoxConstraints(minHeight: 44),
+          padding: EdgeInsets.symmetric(horizontal: 9.w, vertical: 5.h),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(8.br),
+            border: Border.all(
+              color: context.colors.textPrimary.withValues(alpha: 0.1),
             ),
+          ),
+          child: Row(
+            children: [
+              Text(
+                codeLabel,
+                style: TextStyle(
+                  color: kDarkBlue,
+                  fontSize: 12.sp,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              SizedBox(width: 8.w),
+              Expanded(
+                child: Text(
+                  suggestion.title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: context.colors.textPrimary,
+                    fontSize: 11.sp,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ),
+            ],
           ),
         ),
       ),
@@ -589,8 +692,8 @@ class _OpeningResultRow extends StatelessWidget {
   }
 }
 
-class _RecentSearchRow extends StatelessWidget {
-  const _RecentSearchRow({
+class _RecentSearchTile extends StatelessWidget {
+  const _RecentSearchTile({
     required this.entry,
     required this.onTap,
     required this.onRemove,
@@ -606,75 +709,54 @@ class _RecentSearchRow extends StatelessWidget {
     RecentSearchKind.opening => Icons.menu_book_outlined,
   };
 
-  String get _semanticKind => switch (entry.kind) {
-    RecentSearchKind.tournament => 'event',
-    RecentSearchKind.player => 'player',
-    RecentSearchKind.opening => 'opening smart event',
-  };
-
   @override
   Widget build(BuildContext context) {
-    return Semantics(
-      button: true,
-      label: 'Open recent $_semanticKind ${entry.title}',
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: onTap,
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(minHeight: 52),
-            child: Padding(
-              padding: EdgeInsets.only(left: 14.w, right: 4.w),
-              child: Row(
-                children: [
-                  Icon(_icon, size: 19.ic, color: context.colors.textSecondary),
-                  SizedBox(width: 12.w),
-                  Expanded(
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          entry.title,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            color: context.colors.textPrimary,
-                            fontSize: 13.sp,
-                            fontWeight: FontWeight.w500,
-                          ),
-                        ),
-                        if (entry.subtitle.isNotEmpty) ...[
-                          SizedBox(height: 2.h),
-                          Text(
-                            entry.subtitle,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              color: context.colors.textSecondary,
-                              fontSize: 11.sp,
-                            ),
-                          ),
-                        ],
-                      ],
-                    ),
-                  ),
-                  Tooltip(
-                    message: 'Remove from recent searches',
-                    child: IconButton(
-                      onPressed: onRemove,
-                      icon: const Icon(Icons.close),
-                      iconSize: 18.ic,
-                      color: context.colors.textSecondary,
-                      constraints: const BoxConstraints(
-                        minWidth: 44,
-                        minHeight: 44,
+    return InkWell(
+      onTap: onTap,
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(minHeight: 48),
+        child: Padding(
+          padding: EdgeInsets.only(left: 12.w, right: 2.w),
+          child: Row(
+            children: [
+              Icon(_icon, size: 17.ic, color: kDarkBlue),
+              SizedBox(width: 10.w),
+              Expanded(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      entry.title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: context.colors.textPrimary,
+                        fontSize: 12.sp,
+                        fontWeight: FontWeight.w500,
                       ),
                     ),
-                  ),
-                ],
+                    if (entry.subtitle.isNotEmpty)
+                      Text(
+                        entry.subtitle,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: context.colors.textSecondary,
+                          fontSize: 10.sp,
+                        ),
+                      ),
+                  ],
+                ),
               ),
-            ),
+              IconButton(
+                tooltip: 'Remove from recent searches',
+                onPressed: onRemove,
+                icon: const Icon(Icons.close),
+                iconSize: 17.ic,
+                color: context.colors.textSecondary,
+              ),
+            ],
           ),
         ),
       ),

@@ -47,11 +47,23 @@ class EcoOpeningFamily {
     required this.codePrefix,
     required this.name,
     required this.codeCount,
+    this.additionalCodePrefixes = const [],
   });
 
   final String codePrefix;
   final String name;
   final int codeCount;
+  final List<String> additionalCodePrefixes;
+
+  List<String> get codePrefixes => [codePrefix, ...additionalCodePrefixes];
+
+  String get id => codePrefixes.join('+');
+
+  String get rangeStart => '${codePrefixes.first}0';
+
+  String get rangeEnd => '${codePrefixes.last}9';
+
+  String get rangeLabel => '$rangeStart-$rangeEnd';
 }
 
 /// ECO Categories with comprehensive descriptions
@@ -723,6 +735,19 @@ class EcoOpenings {
         ),
       );
     }
+
+    // Some canonical parent openings span several complete ECO decades. They
+    // cannot be represented by the old one-prefix model, but each decade is
+    // still an exact, safe prefix. Keep these explicit so a family choice
+    // never absorbs a neighbouring opening by inference.
+    result.add(
+      const EcoOpeningFamily(
+        codePrefix: 'E6',
+        additionalCodePrefixes: ['E7', 'E8', 'E9'],
+        name: "King's Indian",
+        codeCount: 40,
+      ),
+    );
     result.sort((left, right) => left.codePrefix.compareTo(right.codePrefix));
     return List<EcoOpeningFamily>.unmodifiable(result);
   }
@@ -731,9 +756,9 @@ class EcoOpenings {
   /// for mixed decades that cannot be bulk-selected without false matches.
   static EcoOpeningFamily? getFamily(String? codePrefix) {
     final normalized = codePrefix?.trim().toUpperCase();
-    if (normalized == null || normalized.length != 2) return null;
+    if (normalized == null || normalized.isEmpty) return null;
     for (final family in families) {
-      if (family.codePrefix == normalized) return family;
+      if (family.id == normalized) return family;
     }
     return null;
   }

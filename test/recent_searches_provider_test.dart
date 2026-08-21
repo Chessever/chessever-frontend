@@ -95,6 +95,19 @@ void main() {
     },
   );
 
+  test("complete King's Indian family persists without exposing its id", () {
+    final entry = RecentSearchEntry.opening(
+      GameEcoFilter.forFamily('E6+E7+E8+E9'),
+    );
+    final restored = RecentSearchEntry.fromJson(entry.toJson()).toOpening();
+
+    expect(entry.targetId, 'E6+E7+E8+E9');
+    expect(entry.title, "King's Indian");
+    expect(entry.subtitle, 'E60-E99');
+    expect(restored?.code, 'E6+E7+E8+E9');
+    expect(restored?.ecoPrefixes, ['E6', 'E7', 'E8', 'E9']);
+  });
+
   test('corrupt stored history does not prevent new entries', () async {
     final notifier = RecentSearchesNotifier(
       _MemoryRecentSearchStorage('{broken json'),
