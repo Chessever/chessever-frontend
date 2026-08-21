@@ -91,5 +91,58 @@ void main() {
 
       expect(findScoreCardPlayerIndex(players, selected), 0);
     });
+
+    test('opponent tap reuses the event standings entry', () {
+      final players = [
+        player(name: 'Pourkashiyan, Atousa', fideId: 12501049),
+        player(name: 'Displayed Differently', fideId: 2012782),
+      ];
+
+      final target = scoreCardOpponentTarget(
+        players: players,
+        name: 'Yip, Carissa',
+        fideId: 2012782,
+        countryCode: 'USA',
+        title: 'GM',
+        rating: 2504,
+      );
+
+      expect(target, same(players[1]));
+    });
+
+    test('opponent tap falls back to the game row when off the standings', () {
+      final target = scoreCardOpponentTarget(
+        players: const [],
+        name: 'Pourkashiyan, Atousa',
+        fideId: 12501049,
+        gamebasePlayerId: 'player-42',
+        countryCode: 'USA',
+        title: 'WGM',
+        rating: 2308,
+        team: 'Team A',
+      );
+
+      expect(target.name, 'Pourkashiyan, Atousa');
+      expect(target.fideId, 12501049);
+      expect(target.gamebasePlayerId, 'player-42');
+      expect(target.countryCode, 'USA');
+      expect(target.title, 'WGM');
+      expect(target.score, 2308);
+      expect(target.team, 'Team A');
+    });
+
+    test('opponent tap matches on name when no fide id is available', () {
+      final players = [player(name: 'Carlsen, Magnus')];
+
+      final target = scoreCardOpponentTarget(
+        players: players,
+        name: '  carlsen, magnus ',
+        countryCode: 'NOR',
+        title: 'GM',
+        rating: 2839,
+      );
+
+      expect(target, same(players.first));
+    });
   });
 }

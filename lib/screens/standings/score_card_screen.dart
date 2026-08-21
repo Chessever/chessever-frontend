@@ -117,6 +117,41 @@ int findScoreCardPlayerIndex(
   );
 }
 
+/// Resolves the standings entry for a tapped opponent so the opened card
+/// carries the event's score, rating change and rank instead of only the row's
+/// PGN data. Falls back to a model built from the game row when the opponent is
+/// not part of the current standings (TWIC events, partially hydrated lists).
+PlayerStandingModel scoreCardOpponentTarget({
+  required List<PlayerStandingModel> players,
+  required String name,
+  required String countryCode,
+  required String? title,
+  required int rating,
+  int? fideId,
+  String? gamebasePlayerId,
+  String? team,
+}) {
+  final fallback = PlayerStandingModel(
+    countryCode: countryCode,
+    title: title == null || title.isEmpty ? null : title,
+    name: name,
+    score: rating,
+    scoreChange: 0,
+    matchScore: null,
+    fideId: fideId,
+    gamebasePlayerId: gamebasePlayerId,
+    team: team,
+  );
+  final matchingIndex = findScoreCardPlayerIndex(players, fallback);
+  if (matchingIndex >= 0) return players[matchingIndex];
+
+  final normalizedName = name.trim().toLowerCase();
+  for (final player in players) {
+    if (player.name.trim().toLowerCase() == normalizedName) return player;
+  }
+  return fallback;
+}
+
 PlayerStandingModel? adjacentScoreCardPlayerForSwipe({
   required List<PlayerStandingModel> players,
   required PlayerStandingModel selectedPlayer,
@@ -280,7 +315,12 @@ class _ScoreCardScreenState extends ConsumerState<ScoreCardScreen> {
 /// A single player's scorecard page. Rendered directly (single-player contexts)
 /// or as one page inside [ScoreCardScreen]'s PageView.
 class _ScoreCardPage extends ConsumerWidget {
-  const _ScoreCardPage({required this.player, this.isActive = true});
+  const _ScoreCardPage({
+    required this.player,
+    this.isActive = true,
+    this.isSheet = false,
+    this.onOpponentSelected,
+  });
 
   /// The standings player this page renders. In the PageView this is the
   /// per-index player; swipe navigation is driven by the parent PageView, not
@@ -291,6 +331,16 @@ class _ScoreCardPage extends ConsumerWidget {
   /// (which the PageView pre-builds) must not arm the screenshot-share nudge,
   /// or a single screenshot would trigger multiple nudges.
   final bool isActive;
+
+  /// Whether this page is rendered inside [showOpponentScoreCardSheet]. The
+  /// sheet owns its own dismissal affordance, so the app bar closes instead of
+  /// popping back.
+  final bool isSheet;
+
+  /// Called when an opponent's name is tapped. Null on the root screen, where
+  /// the tap opens the opponent's card in a bottom sheet; the sheet passes a
+  /// handler so a nested tap swaps its card in place instead of stacking.
+  final ValueChanged<PlayerStandingModel>? onOpponentSelected;
 
   double? _extractRatingFromPGN(String? pgn, bool isWhite) {
     if (pgn == null || pgn.isEmpty) return null;
@@ -836,7 +886,9 @@ class _ScoreCardPage extends ConsumerWidget {
             child: CustomScrollView(
               slivers: [
                 _SliverScoreboardAppBar(
+                  player: player,
                   coachmarkEnabled: isActive,
+                  isSheet: isSheet,
                   onSharePerformance: sharePlayerProfile,
                 ),
                 SliverToBoxAdapter(
@@ -1074,6 +1126,12 @@ class _ScoreCardPage extends ConsumerWidget {
                           index: index,
                           isFirst: index == 0,
                           isLast: index == playerGames.length - 1,
+                          onPlayerTap:
+                              () => _openOpponentCard(
+                                context: context,
+                                ref: ref,
+                                opponent: opponent,
+                              ),
                           onTap: () {
                             final navigation = scoreCardGameNavigationContext(
                               hasEventContext: hasEventContext,
@@ -1120,6 +1178,36 @@ class _ScoreCardPage extends ConsumerWidget {
       onShare: sharePlayerProfile,
       child: scoreCardScaffold,
     );
+  }
+
+  /// Opens the tapped opponent's performance card. On the root screen that is
+  /// a bottom sheet stacked over the current player (whose selection stays
+  /// untouched); inside the sheet it swaps the sheet's card in place.
+  void _openOpponentCard({
+    required BuildContext context,
+    required WidgetRef ref,
+    required PlayerCard opponent,
+  }) {
+    final standings =
+        ref.read(playerTourScreenProvider).valueOrNull ??
+        const <PlayerStandingModel>[];
+    final target = scoreCardOpponentTarget(
+      players: standings,
+      name: opponent.name,
+      countryCode: opponent.countryCode,
+      title: opponent.title,
+      rating: opponent.rating,
+      fideId: opponent.fideId,
+      gamebasePlayerId: opponent.gamebasePlayerId,
+      team: opponent.team,
+    );
+
+    final swapInPlace = onOpponentSelected;
+    if (swapInPlace != null) {
+      swapInPlace(target);
+      return;
+    }
+    showOpponentScoreCardSheet(context: context, player: target);
   }
 
   (double?, int?) _parseScoreValues(String scoreText) {
@@ -1669,11 +1757,18 @@ class _PlayerAvatarTile extends StatelessWidget {
 
 class _SliverScoreboardAppBar extends ConsumerStatefulWidget {
   const _SliverScoreboardAppBar({
+    required this.player,
     required this.coachmarkEnabled,
     required this.onSharePerformance,
+    this.isSheet = false,
   });
 
+  /// The player this app bar belongs to. Passed explicitly rather than read
+  /// from [selectedPlayerProvider] so an opponent card opened in a sheet keeps
+  /// its own header while the underlying screen stays on the selected player.
+  final PlayerStandingModel player;
   final bool coachmarkEnabled;
+  final bool isSheet;
   final Future<void> Function() onSharePerformance;
 
   @override
@@ -1709,72 +1804,69 @@ class _SliverScoreboardAppBarState
     final allowed = await requireFullAuthGuard(context);
     if (!allowed) return;
 
-    final selectedPlayer = ref.read(selectedPlayerProvider);
+    final selectedPlayer = widget.player;
 
-    if (selectedPlayer != null) {
-      try {
-        final player = await ref.read(
-          backfilledStandingPlayerProvider(selectedPlayer).future,
+    try {
+      final player = await ref.read(
+        backfilledStandingPlayerProvider(selectedPlayer).future,
+      );
+
+      // Check if adding (not removing) and enforce limit
+      final stored = ref
+          .read(favoritePlayersProviderNew)
+          .maybeWhen(
+            data:
+                (players) => storedFavoriteFor(
+                  players,
+                  fideId: player.fideId?.toString(),
+                  name: player.name,
+                  countryCode: player.countryCode,
+                ),
+            orElse: () => null,
+          );
+      if (stored == null) {
+        if (!mounted) return;
+        final canAdd = await canAddMoreFavorites(context, ref);
+        if (!canAdd) return;
+      }
+
+      final isNowFavorite = await ref
+          .read(favoritePlayersProviderNew.notifier)
+          .toggleFavorite(
+            fideId: player.fideId?.toString(),
+            // Removal matches on the stored `player_name`, so unfollowing
+            // has to name the row that actually exists: the profile screen
+            // writes the raw profile name and this screen writes the
+            // backfilled standings name.
+            playerName: stored?.playerName ?? player.name,
+            countryCode: player.countryCode,
+            rating: player.score,
+            title: player.title,
+          );
+      if (isNowFavorite) {
+        _animationController.forward().then(
+          (_) => _animationController.reverse(),
         );
-
-        // Check if adding (not removing) and enforce limit
-        final stored = ref
-            .read(favoritePlayersProviderNew)
-            .maybeWhen(
-              data:
-                  (players) => storedFavoriteFor(
-                    players,
-                    fideId: player.fideId?.toString(),
-                    name: player.name,
-                    countryCode: player.countryCode,
-                  ),
-              orElse: () => null,
-            );
-        if (stored == null) {
-          if (!mounted) return;
-          final canAdd = await canAddMoreFavorites(context, ref);
-          if (!canAdd) return;
-        }
-
-        final isNowFavorite = await ref
-            .read(favoritePlayersProviderNew.notifier)
-            .toggleFavorite(
-              fideId: player.fideId?.toString(),
-              // Removal matches on the stored `player_name`, so unfollowing
-              // has to name the row that actually exists: the profile screen
-              // writes the raw profile name and this screen writes the
-              // backfilled standings name.
-              playerName: stored?.playerName ?? player.name,
-              countryCode: player.countryCode,
-              rating: player.score,
-              title: player.title,
-            );
-        if (isNowFavorite) {
-          _animationController.forward().then(
-            (_) => _animationController.reverse(),
-          );
-        }
-      } on FavoriteLimitExceededException {
-        if (mounted) {
-          await showPremiumPaywallSheet(context: context);
-        }
-      } catch (e) {
-        debugPrint('Error toggling favorite: $e');
-        if (mounted) {
-          showAppSnack(
-            context,
-            'Failed to update favorite. Please try again.',
-            tone: AppSnackTone.danger,
-          );
-        }
+      }
+    } on FavoriteLimitExceededException {
+      if (mounted) {
+        await showPremiumPaywallSheet(context: context);
+      }
+    } catch (e) {
+      debugPrint('Error toggling favorite: $e');
+      if (mounted) {
+        showAppSnack(
+          context,
+          'Failed to update favorite. Please try again.',
+          tone: AppSnackTone.danger,
+        );
       }
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    final selectedPlayer = ref.watch(selectedPlayerProvider);
-    if (selectedPlayer == null) return const SliverAppBar();
+    final selectedPlayer = widget.player;
     final backfilledPlayerAsync = ref.watch(
       backfilledStandingPlayerProvider(selectedPlayer),
     );
@@ -1814,7 +1906,9 @@ class _SliverScoreboardAppBarState
       centerTitle: false,
       leading: IconButton(
         icon: Icon(
-          Icons.arrow_back_ios_new_outlined,
+          widget.isSheet
+              ? Icons.close_rounded
+              : Icons.arrow_back_ios_new_outlined,
           color: context.colors.textPrimary,
           size: 22.ic,
         ),
@@ -1969,6 +2063,96 @@ class _RatingDisplay extends ConsumerWidget {
                               color: context.colors.textPrimary,
                             ),
                   ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Opens [player]'s performance card as a bottom sheet over the card that is
+/// already on screen. Used when an opponent's name is tapped in a scorecard
+/// row: [selectedPlayerProvider] is deliberately left alone so dismissing the
+/// sheet returns to the original player with its swipe position intact.
+Future<void> showOpponentScoreCardSheet({
+  required BuildContext context,
+  required PlayerStandingModel player,
+}) {
+  return showModalBottomSheet<void>(
+    context: context,
+    useSafeArea: true,
+    isScrollControlled: true,
+    backgroundColor: Colors.transparent,
+    barrierColor: Colors.black.withValues(alpha: 0.6),
+    builder: (_) => _OpponentScoreCardSheet(player: player),
+  );
+}
+
+class _OpponentScoreCardSheet extends StatefulWidget {
+  const _OpponentScoreCardSheet({required this.player});
+
+  final PlayerStandingModel player;
+
+  @override
+  State<_OpponentScoreCardSheet> createState() =>
+      _OpponentScoreCardSheetState();
+}
+
+class _OpponentScoreCardSheetState extends State<_OpponentScoreCardSheet> {
+  late PlayerStandingModel _player = widget.player;
+
+  @override
+  Widget build(BuildContext context) {
+    // The card scrolls internally, so the sheet cannot be dragged from its
+    // body; it gets a fixed height plus a grab handle and a close button.
+    // Sizing off the incoming constraints (already safe-area reduced) keeps
+    // the sheet short of the top edge on every inset, instead of overflowing
+    // on devices whose bars eat more than the screen-fraction assumed.
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final available =
+            constraints.maxHeight.isFinite
+                ? constraints.maxHeight
+                : MediaQuery.sizeOf(context).height;
+        return SizedBox(
+          height: available * 0.94,
+          child: _buildSheetBody(context),
+        );
+      },
+    );
+  }
+
+  Widget _buildSheetBody(BuildContext context) {
+    return ClipRRect(
+      borderRadius: BorderRadius.vertical(top: Radius.circular(20.br)),
+      child: ColoredBox(
+        color: context.colors.background,
+        child: Column(
+          children: [
+            Padding(
+              padding: EdgeInsets.symmetric(vertical: 8.h),
+              child: Container(
+                width: 40.w,
+                height: 4.h,
+                decoration: BoxDecoration(
+                  color: context.colors.textPrimary.withValues(alpha: 0.22),
+                  borderRadius: BorderRadius.circular(2.br),
+                ),
+              ),
+            ),
+            Expanded(
+              child: _ScoreCardPage(
+                player: _player,
+                // Neighbour-page guards: the sheet never arms the screenshot
+                // nudge or the share coachmark, both of which belong to the
+                // card underneath it.
+                isActive: false,
+                isSheet: true,
+                // Tapping another opponent inside the sheet swaps this card
+                // in place instead of stacking a second sheet on top.
+                onOpponentSelected: (next) => setState(() => _player = next),
+              ),
             ),
           ],
         ),

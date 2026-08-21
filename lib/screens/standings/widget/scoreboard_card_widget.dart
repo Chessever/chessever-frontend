@@ -23,6 +23,10 @@ class ScoreboardCardWidget extends ConsumerWidget {
   final int index;
   final bool isFirst;
   final bool isLast;
+
+  /// Tap handler for the opponent's title/name text only. When null the name
+  /// behaves like the rest of the row and opens the game.
+  final VoidCallback? onPlayerTap;
   final VoidCallback onTap;
 
   const ScoreboardCardWidget({
@@ -38,6 +42,7 @@ class ScoreboardCardWidget extends ConsumerWidget {
     required this.index,
     required this.isFirst,
     required this.isLast,
+    this.onPlayerTap,
     required this.onTap,
   });
 
@@ -96,25 +101,42 @@ class ScoreboardCardWidget extends ConsumerWidget {
               SizedBox(width: 10.w),
             ],
             Expanded(
-              child: RichText(
-                overflow: TextOverflow.ellipsis,
-                maxLines: 1,
-                text: TextSpan(
-                  children: [
-                    if (title != null && title!.isNotEmpty)
-                      TextSpan(
-                        text: '$title ',
-                        style: AppTypography.textMdBold.copyWith(
-                          color: context.colors.titleAccent,
-                        ),
-                      ),
-                    TextSpan(
-                      text: name,
-                      style: AppTypography.textMdBold.copyWith(
-                        color: context.colors.textPrimary,
+              // The name column is left-aligned so its gesture only covers the
+              // glyphs: the empty space after a short name still belongs to the
+              // row and opens the game.
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: Semantics(
+                  button: onPlayerTap != null,
+                  label:
+                      onPlayerTap == null
+                          ? null
+                          : 'Open performance card for $name',
+                  child: GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: onPlayerTap,
+                    child: RichText(
+                      overflow: TextOverflow.ellipsis,
+                      maxLines: 1,
+                      text: TextSpan(
+                        children: [
+                          if (title != null && title!.isNotEmpty)
+                            TextSpan(
+                              text: '$title ',
+                              style: AppTypography.textMdBold.copyWith(
+                                color: context.colors.titleAccent,
+                              ),
+                            ),
+                          TextSpan(
+                            text: name,
+                            style: AppTypography.textMdBold.copyWith(
+                              color: context.colors.textPrimary,
+                            ),
+                          ),
+                        ],
                       ),
                     ),
-                  ],
+                  ),
                 ),
               ),
             ),
