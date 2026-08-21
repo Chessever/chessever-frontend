@@ -13,6 +13,7 @@ import 'package:chessever2/screens/group_event/providers/live_group_broadcast_id
 import 'package:chessever2/screens/group_event/widget/filter_popup/filter_popup_state.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/utils/event_time_control.dart';
+import 'package:chessever2/utils/eco_openings.dart';
 import 'package:chessever2/widgets/game_filter/game_filter_model.dart';
 import 'package:chessever2/widgets/game_filter/rating_tier_filter.dart';
 import 'package:flutter/foundation.dart';
@@ -39,13 +40,37 @@ class SmartEventRequest {
     required this.countPlural,
     required List<GroupEventCardModel> events,
     Set<String> formatsAndStates = const {},
+    GameEcoFilter? eco,
     this.savedAt,
   }) : events = List<GroupEventCardModel>.unmodifiable(events),
+       eco = eco ?? GameEcoFilter.all,
        formatsAndStates = Set<String>.unmodifiable(
          formatsAndStates
              .map((value) => value.trim().toLowerCase())
              .where((value) => value.isNotEmpty),
        );
+
+  /// Creates a global opening smart event directly from search.
+  ///
+  /// No source event IDs are required: the aggregate providers already apply
+  /// ECO criteria to the shared game index and derive the event list from the
+  /// matching games.
+  factory SmartEventRequest.forOpening(GameEcoFilter eco) {
+    assert(!eco.isAll, 'Opening smart events require an ECO code or family');
+    final label = _smartEventEcoLabel(eco) ?? eco.code!;
+    return SmartEventRequest(
+      source: SmartEventSource.forYou,
+      tierLabel: label,
+      titleSuffix: '',
+      minElo: kFilterMinElo.round(),
+      maxElo: kFilterMaxElo.round(),
+      caption: 'From your ${eco.code} opening filter',
+      countSingular: 'event',
+      countPlural: 'events',
+      events: const [],
+      eco: eco,
+    );
+  }
 
   final SmartEventSource source;
   final String tierLabel;
@@ -62,6 +87,7 @@ class SmartEventRequest {
   /// seeds from these via [seedGameFilter] so they arrive pre-selected, and
   /// overrides flow back through [withGameFilterOverrides].
   final Set<String> formatsAndStates;
+  final GameEcoFilter eco;
   final DateTime? savedAt;
 
   static const _timeControlCriteria = {'standard', 'rapid', 'blitz'};
@@ -95,7 +121,7 @@ class SmartEventRequest {
               _ => GameTimeControlFilter.all,
             };
 
-    return GameFilter(live: live, timeControl: timeControl);
+    return GameFilter(live: live, timeControl: timeControl, eco: eco);
   }
 
   /// The request re-keyed to the in-event dialog's overrides of its
@@ -132,14 +158,18 @@ class SmartEventRequest {
       }
     }
 
-    if (setEquals(updated, formatsAndStates)) return this;
-    return _withFormatsAndStates(updated);
+    final updatedEco = filter.eco != seed.eco ? filter.eco : eco;
+    if (setEquals(updated, formatsAndStates) && updatedEco == eco) return this;
+    return _withCriteria(updated, updatedEco);
   }
 
   /// Rebuilds the request around a new criteria set, re-deriving the name
   /// and caption exactly like [SmartEventCardData.fromState] /
   /// [withTierSelection] so all three produce identical labels.
-  SmartEventRequest _withFormatsAndStates(Set<String> newFormatsAndStates) {
+  SmartEventRequest _withCriteria(
+    Set<String> newFormatsAndStates,
+    GameEcoFilter newEco,
+  ) {
     final eloFull =
         hasEloRange ? RatingTierFilter.labelForMinRating(minElo) : null;
     final eloPart = eloFull?.split(' ').first;
@@ -149,17 +179,20 @@ class SmartEventRequest {
         rawFormat == null || (eloPart != null && rawFormat == 'Filtered')
             ? null
             : rawFormat;
-    final combined = [eloPart, formatPart].whereType<String>().join(' ').trim();
+    final ecoPart = _smartEventEcoLabel(newEco);
+    final combined =
+        [eloPart, formatPart, ecoPart].whereType<String>().join(' ').trim();
 
     final captionSegments = <String>[
       if (hasEloRange) '$minElo+',
       if (formatPart != null) formatPart,
+      if (ecoPart != null) ecoPart,
     ];
 
     return SmartEventRequest(
       source: source,
       tierLabel: combined.isEmpty ? 'All' : combined,
-      titleSuffix: titleSuffix,
+      titleSuffix: newEco.isAll ? 'Games' : '',
       minElo: minElo,
       maxElo: maxElo,
       caption:
@@ -170,6 +203,7 @@ class SmartEventRequest {
       countPlural: countPlural,
       events: events,
       formatsAndStates: newFormatsAndStates,
+      eco: newEco,
       savedAt: savedAt,
     );
   }
@@ -190,11 +224,14 @@ class SmartEventRequest {
         rawFormat == null || (eloPart != null && rawFormat == 'Filtered')
             ? null
             : rawFormat;
-    final combined = [eloPart, formatPart].whereType<String>().join(' ').trim();
+    final ecoPart = _smartEventEcoLabel(eco);
+    final combined =
+        [eloPart, formatPart, ecoPart].whereType<String>().join(' ').trim();
 
     final captionSegments = <String>[
       if (floor != null) '$newMinElo+',
       if (formatPart != null) formatPart,
+      if (ecoPart != null) ecoPart,
     ];
 
     return SmartEventRequest(
@@ -211,6 +248,7 @@ class SmartEventRequest {
       countPlural: countPlural,
       events: events,
       formatsAndStates: formatsAndStates,
+      eco: eco,
       savedAt: savedAt,
     );
   }
@@ -230,12 +268,12 @@ class SmartEventRequest {
   /// saved-favorite identity, accent color). Deliberately excludes the
   /// resolved event set and the source tab: a smart event IS its criteria;
   /// the events matching them are recomputed from the server at view time.
-  SmartEventCriteria get criteria =>
-      SmartEventCriteria(
-        minElo: minElo,
-        maxElo: maxElo,
-        formatsAndStates: formatsAndStates,
-      );
+  SmartEventCriteria get criteria => SmartEventCriteria(
+    minElo: minElo,
+    maxElo: maxElo,
+    formatsAndStates: formatsAndStates,
+    eco: eco,
+  );
 
   /// Stable string form of [criteria].
   String get criteriaKey => criteria.key;
@@ -262,6 +300,7 @@ class SmartEventRequest {
       countPlural: countPlural,
       events: newEvents,
       formatsAndStates: formatsAndStates,
+      eco: eco,
       savedAt: savedAt,
     );
   }
@@ -283,6 +322,7 @@ class SmartEventRequest {
       countPlural: countPlural,
       events: events,
       formatsAndStates: formatsAndStates,
+      eco: eco,
       savedAt: savedAt,
     );
   }
@@ -309,6 +349,7 @@ class SmartEventRequest {
       'countSingular': countSingular,
       'countPlural': countPlural,
       'formatsAndStates': (formatsAndStates.toList(growable: false)..sort()),
+      if (!eco.isAll) 'ecoCode': eco.code,
       'savedAt': (savedAt ?? DateTime.now()).toIso8601String(),
       'events': encodeSmartEventsForMetadata(events),
     };
@@ -360,6 +401,7 @@ class SmartEventRequest {
           favorite.eventName,
         ),
       ),
+      eco: _ecoFilterFromMetadata(metadata['ecoCode'] ?? metadata['eco']),
       savedAt: _dateFromMetadata(metadata['savedAt']) ?? favorite.createdAt,
     );
   }
@@ -377,6 +419,7 @@ class SmartEventRequest {
         countSingular != other.countSingular ||
         countPlural != other.countPlural ||
         savedAt != other.savedAt ||
+        eco != other.eco ||
         !setEquals(formatsAndStates, other.formatsAndStates) ||
         events.length != other.events.length) {
       return false;
@@ -398,6 +441,7 @@ class SmartEventRequest {
     countSingular,
     countPlural,
     savedAt,
+    eco,
     Object.hashAllUnordered(formatsAndStates),
     Object.hashAll(events),
   );
@@ -421,7 +465,11 @@ class SmartEventCardData {
     required SmartEventSource source,
   }) {
     if (events.isEmpty) return null;
-    if (filter.formatsAndStates.isEmpty && !filter.hasEloFilter) return null;
+    if (filter.formatsAndStates.isEmpty &&
+        !filter.hasEloFilter &&
+        filter.eco.isAll) {
+      return null;
+    }
 
     final minElo = filter.minElo ?? kFilterMinElo.round();
     final maxElo = filter.maxElo ?? kFilterMaxElo.round();
@@ -440,13 +488,16 @@ class SmartEventCardData {
         rawFormat == null || (eloPart != null && rawFormat == 'Filtered')
             ? null
             : rawFormat;
+    final ecoPart = _smartEventEcoLabel(filter.eco);
 
-    final combined = [eloPart, formatPart].whereType<String>().join(' ').trim();
+    final combined =
+        [eloPart, formatPart, ecoPart].whereType<String>().join(' ').trim();
     final tierLabel = combined.isEmpty ? 'All' : combined;
 
     final captionSegments = <String>[
       if (filter.hasEloFilter) '$minElo+',
       if (formatPart != null) formatPart,
+      if (ecoPart != null) ecoPart,
     ];
     final caption =
         captionSegments.isEmpty
@@ -461,7 +512,7 @@ class SmartEventCardData {
       request: SmartEventRequest(
         source: source,
         tierLabel: tierLabel,
-        titleSuffix: 'Games',
+        titleSuffix: filter.eco.isAll ? 'Games' : '',
         minElo: minElo,
         maxElo: maxElo,
         caption: caption,
@@ -469,6 +520,7 @@ class SmartEventCardData {
         countPlural: 'events',
         events: events,
         formatsAndStates: filter.formatsAndStates,
+        eco: filter.eco,
       ),
       eventCount: events.length,
       avgElo: avgElo,
@@ -515,6 +567,16 @@ String? _labelForFormatsAndStates(Set<String> formatsAndStates) {
   return 'Filtered';
 }
 
+String? _smartEventEcoLabel(GameEcoFilter eco) {
+  if (eco.isAll) return null;
+  return EcoOpenings.getFilterName(eco.code) ?? eco.code;
+}
+
+GameEcoFilter _ecoFilterFromMetadata(Object? raw) {
+  final code = raw?.toString().trim() ?? '';
+  return code.isEmpty ? GameEcoFilter.all : GameEcoFilter.forCode(code);
+}
+
 @immutable
 class SmartEventGamesQuery {
   const SmartEventGamesQuery({
@@ -555,7 +617,9 @@ class SmartEventCriteria {
     required this.minElo,
     required this.maxElo,
     required Set<String> formatsAndStates,
-  }) : formatsAndStates = Set<String>.unmodifiable(
+    GameEcoFilter? eco,
+  }) : eco = eco ?? GameEcoFilter.all,
+       formatsAndStates = Set<String>.unmodifiable(
          formatsAndStates
              .map((value) => value.trim().toLowerCase())
              .where((value) => value.isNotEmpty),
@@ -564,10 +628,14 @@ class SmartEventCriteria {
   final int minElo;
   final int maxElo;
   final Set<String> formatsAndStates;
+  final GameEcoFilter eco;
 
   String get key {
     final criteria = formatsAndStates.toList(growable: false)..sort();
-    return '$minElo-$maxElo:${criteria.join('|')}';
+    final base = '$minElo-$maxElo:${criteria.join('|')}';
+    // Preserve every pre-ECO identity byte-for-byte. Only opening smart
+    // events add a suffix, so legacy favorites continue resolving unchanged.
+    return eco.isAll ? base : '$base:eco=${eco.code}';
   }
 
   /// Projects only event-level criteria onto the home tabs' filter state.
@@ -578,6 +646,7 @@ class SmartEventCriteria {
     return FilterPopupState(
       formatsAndStates: formatsAndStates,
       eloRange: const RangeValues(kFilterMinElo, kFilterMaxElo),
+      eco: eco,
     );
   }
 
@@ -587,12 +656,17 @@ class SmartEventCriteria {
         other is SmartEventCriteria &&
             other.minElo == minElo &&
             other.maxElo == maxElo &&
+            other.eco == eco &&
             setEquals(other.formatsAndStates, formatsAndStates);
   }
 
   @override
-  int get hashCode =>
-      Object.hash(minElo, maxElo, Object.hashAllUnordered(formatsAndStates));
+  int get hashCode => Object.hash(
+    minElo,
+    maxElo,
+    eco,
+    Object.hashAllUnordered(formatsAndStates),
+  );
 }
 
 /// What a smart-event games fetch counts as one of its games.
@@ -630,8 +704,7 @@ SmartEventFetchScope smartEventFetchScopeFor(SmartEventGamesQuery query) {
   final filterLive = query.filter?.live ?? GameLiveFilter.all;
   final hasLive = formats.contains('live') || filterLive == GameLiveFilter.live;
   final hasCompleted =
-      formats.contains('completed') ||
-      filterLive == GameLiveFilter.completed;
+      formats.contains('completed') || filterLive == GameLiveFilter.completed;
   final liveOnly = hasLive && !hasCompleted;
   final completedOnly = hasCompleted && !hasLive;
 
@@ -693,7 +766,8 @@ final smartEventResolvedEventsProvider = FutureProvider.autoDispose
       }
 
       final broadcasts =
-          await ref.read(groupBroadcastRepositoryProvider)
+          await ref
+              .read(groupBroadcastRepositoryProvider)
               .getCurrentGroupBroadcasts();
       final matching = filterBroadcastsByPopupState(
         broadcasts,
@@ -701,8 +775,10 @@ final smartEventResolvedEventsProvider = FutureProvider.autoDispose
         liveIds: liveIds,
       );
       return matching
-          .map((broadcast) =>
-              GroupEventCardModel.fromGroupBroadcast(broadcast, liveIds))
+          .map(
+            (broadcast) =>
+                GroupEventCardModel.fromGroupBroadcast(broadcast, liveIds),
+          )
           .toList(growable: false);
     });
 
@@ -967,7 +1043,10 @@ class SmartAggregateEventNotifier
     try {
       final repository = _ref.read(gameRepositoryProvider);
       final scope = smartEventFetchScopeFor(_query);
-      final extraFilter = _residualSmartEventFilter(_query.filter);
+      final extraFilter = _residualSmartEventFilter(
+        _query.filter,
+        requestEco: _query.request.eco,
+      );
       final search =
           _query.normalizedSearchQuery.isEmpty
               ? null
@@ -1033,10 +1112,7 @@ class SmartAggregateEventNotifier
                   : dayEvent;
           if (!mounted) return;
           state = AsyncValue.data(
-            merged.copyWith(
-              hasMore: page.hasMore,
-              isLoadingMore: false,
-            ),
+            merged.copyWith(hasMore: page.hasMore, isLoadingMore: false),
           );
           return;
         }
@@ -1062,10 +1138,7 @@ class SmartAggregateEventNotifier
         state = const AsyncValue.data(SmartAggregateEvent.empty);
       } else if (current != null) {
         state = AsyncValue.data(
-          current.copyWith(
-            hasMore: _nextDay != null,
-            isLoadingMore: false,
-          ),
+          current.copyWith(hasMore: _nextDay != null, isLoadingMore: false),
         );
       }
     } catch (error, stackTrace) {
@@ -1086,16 +1159,30 @@ class SmartAggregateEventNotifier
 /// Filters that are not already expressed as day-query scope (live / time
 /// control / rating floor). Passing those through again would either double
 /// apply or take the slow inner-join-on-broadcasts path.
-GameFilter? _residualSmartEventFilter(GameFilter? filter) {
-  if (filter == null) return null;
-  final residual = filter.copyWith(
+GameFilter? _residualSmartEventFilter(
+  GameFilter? filter, {
+  required GameEcoFilter requestEco,
+}) {
+  if (filter == null && requestEco.isAll) return null;
+  final base = filter ?? GameFilter();
+  final residual = base.copyWith(
     live: GameLiveFilter.all,
     timeControl: GameTimeControlFilter.all,
     minRating: GameFilter.defaultMinRating,
     maxRating: GameFilter.absoluteMaxRating,
+    // ECO is generating criteria, not merely a Games-tab view control.
+    // Carry it even in consumers such as Standings that intentionally omit
+    // the rest of the local filter object.
+    eco: base.eco.isAll ? requestEco : base.eco,
   );
   return residual.hasActiveFilters ? residual : null;
 }
+
+@visibleForTesting
+GameFilter? smartEventResidualFilterForTest(
+  GameFilter? filter, {
+  GameEcoFilter requestEco = GameEcoFilter.all,
+}) => _residualSmartEventFilter(filter, requestEco: requestEco);
 
 SmartAggregateEvent _mergeOlderDay(
   SmartAggregateEvent newer,
@@ -1167,10 +1254,7 @@ SmartAggregateEvent _buildAggregateEventFromGameRows({
 
     final eventId = game.groupBroadcastId ?? game.tourId;
     gameEventIds[gameModel.gameId] = eventId;
-    eventsById.putIfAbsent(
-      eventId,
-      () => _eventCardFromGame(game, liveIds),
-    );
+    eventsById.putIfAbsent(eventId, () => _eventCardFromGame(game, liveIds));
   }
 
   final orderedGames = _sortSmartGames(
@@ -1435,7 +1519,8 @@ DateTime _smartGameDay(GamesTourModel game) {
   // `game_day` is the pagination cursor and the desktop section key. Prefer
   // it over lastMoveTime so a game that finished the next morning still
   // sits on the round it was played.
-  final raw = game.gameDay ?? game.bucketDate ?? game.lastMoveTime ?? DateTime(0);
+  final raw =
+      game.gameDay ?? game.bucketDate ?? game.lastMoveTime ?? DateTime(0);
   return DateTime(raw.year, raw.month, raw.day);
 }
 

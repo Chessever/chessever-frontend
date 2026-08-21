@@ -9,7 +9,7 @@ import 'package:chessever2/screens/group_event/smart_event/smart_event_screen.da
 import 'package:chessever2/screens/group_event/widget/filter_popup/filter_popup_state.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/widgets/game_filter/game_filter_model.dart'
-    show GameFilter;
+    show GameEcoFilter, GameFilter, GameLiveFilter, GameTimeControlFilter;
 import 'package:flutter/material.dart' show RangeValues;
 import 'package:flutter_test/flutter_test.dart';
 
@@ -90,6 +90,7 @@ SmartEventRequest _request({
   int minElo = 2500,
   int maxElo = 3200,
   Set<String> formatsAndStates = const {},
+  GameEcoFilter? eco,
   List<GroupEventCardModel> events = const [],
   DateTime? savedAt,
 }) {
@@ -104,6 +105,7 @@ SmartEventRequest _request({
     countPlural: 'events',
     events: events,
     formatsAndStates: formatsAndStates,
+    eco: eco,
     savedAt: savedAt,
   );
 }
@@ -126,6 +128,17 @@ Map<String, dynamic> _favoriteEventMetadataRow(GroupEventCardModel event) {
 }
 
 void main() {
+  test('opening search creates a global family smart-event request', () {
+    final request = SmartEventRequest.forOpening(GameEcoFilter.forFamily('B9'));
+
+    expect(request.displayName, 'Sicilian: Najdorf');
+    expect(request.eco.code, 'B9');
+    expect(request.events, isEmpty);
+    expect(request.minElo, 0);
+    expect(request.maxElo, 3200);
+    expect(request.seedGameFilter().eco.code, 'B9');
+  });
+
   group('criteria-keyed identity', () {
     test('favoriteEventId is independent of the resolved event set', () {
       final eventA = _event(
@@ -164,6 +177,57 @@ void main() {
         _request(formatsAndStates: {'blitz'}).favoriteEventId,
         isNot(_request(formatsAndStates: {'rapid'}).favoriteEventId),
       );
+      expect(
+        _request(eco: GameEcoFilter.forFamily('B9')).favoriteEventId,
+        isNot(_request().favoriteEventId),
+      );
+      expect(
+        _request(eco: GameEcoFilter.forFamily('B9')).favoriteEventId,
+        isNot(_request(eco: GameEcoFilter.forCode('B90')).favoriteEventId),
+      );
+    });
+
+    test('non-opening criteria keep their exact legacy v2 key', () {
+      expect(_request().criteriaKey, '2500-3200:');
+      expect(
+        _request(formatsAndStates: {'blitz'}).criteriaKey,
+        '2500-3200:blitz',
+      );
+    });
+
+    test('opening criteria seed, serialize, and restore the ECO prefix', () {
+      final request = _request(
+        minElo: 0,
+        maxElo: 3200,
+        eco: GameEcoFilter.forFamily('B9'),
+      );
+      final metadata = request.toFavoriteMetadata();
+      final favorite = FavoriteEvent(
+        id: 'favorite-eco',
+        userId: 'user-1',
+        eventId: request.favoriteEventId,
+        eventName: request.displayName,
+        metadata: metadata,
+        createdAt: DateTime.utc(2026, 8, 21),
+        updatedAt: DateTime.utc(2026, 8, 21),
+      );
+
+      expect(request.seedGameFilter().eco.code, 'B9');
+      expect(request.criteriaKey, endsWith(':eco=B9'));
+      expect(metadata['ecoCode'], 'B9');
+      expect(SmartEventRequest.fromFavoriteEvent(favorite).eco.code, 'B9');
+    });
+
+    test('opening criteria reach queries that do not pass a tab filter', () {
+      final residual = smartEventResidualFilterForTest(
+        null,
+        requestEco: GameEcoFilter.forFamily('B9'),
+      );
+
+      expect(residual, isNotNull);
+      expect(residual!.eco.code, 'B9');
+      expect(residual.live, GameLiveFilter.all);
+      expect(residual.timeControl, GameTimeControlFilter.all);
     });
 
     test('legacy v1 rows parse to the same criteriaKey as fresh requests', () {
@@ -227,6 +291,29 @@ void main() {
   });
 
   group('filterBroadcastsByPopupState (smart event resolver semantics)', () {
+    test('an opening-only home filter creates an opening smart event', () {
+      final data = SmartEventCardData.fromState(
+        filter: FilterPopupState(
+          formatsAndStates: const {},
+          eloRange: const RangeValues(kFilterMinElo, kFilterMaxElo),
+          eco: GameEcoFilter.forFamily('B9'),
+        ),
+        events: [
+          _event(
+            id: 'event-a',
+            start: DateTime.utc(2026, 8, 21),
+            end: DateTime.utc(2026, 8, 22),
+          ),
+        ],
+        source: SmartEventSource.forYou,
+      );
+
+      expect(data, isNotNull);
+      expect(data!.request.eco.code, 'B9');
+      expect(data.request.displayName, 'Sicilian: Najdorf');
+      expect(data.request.seedGameFilter().eco.code, 'B9');
+    });
+
     test('elo floor keeps qualifying and null-rated broadcasts', () {
       final filtered = filterBroadcastsByPopupState(
         [
@@ -322,21 +409,24 @@ void main() {
       expect(filtered.map((b) => b.id), ['unknown', 'blitz']);
     });
 
-    test('Live+Completed together is every event, not an empty intersection', () {
-      final filtered = filterBroadcastsByPopupState(
-        [
-          _broadcast(id: 'live-one', maxAvgElo: 2600),
-          _broadcast(id: 'finished', maxAvgElo: 2600),
-        ],
-        const FilterPopupState(
-          formatsAndStates: {'live', 'completed'},
-          eloRange: RangeValues(kFilterMinElo, kFilterMaxElo),
-        ),
-        liveIds: const ['live-one'],
-      );
+    test(
+      'Live+Completed together is every event, not an empty intersection',
+      () {
+        final filtered = filterBroadcastsByPopupState(
+          [
+            _broadcast(id: 'live-one', maxAvgElo: 2600),
+            _broadcast(id: 'finished', maxAvgElo: 2600),
+          ],
+          const FilterPopupState(
+            formatsAndStates: {'live', 'completed'},
+            eloRange: RangeValues(kFilterMinElo, kFilterMaxElo),
+          ),
+          liveIds: const ['live-one'],
+        );
 
-      expect(filtered.map((b) => b.id), ['live-one', 'finished']);
-    });
+        expect(filtered.map((b) => b.id), ['live-one', 'finished']);
+      },
+    );
 
     test('event membership ignores Elo because rating belongs to games', () {
       final criteria = SmartEventCriteria(
@@ -773,25 +863,28 @@ void main() {
       expect(scope.eventTimeControls, contains('bullet'));
     });
 
-    test('Completed + Classical + IM compose without dropping any dimension', () {
-      final scope = smartEventFetchScopeFor(
-        SmartEventGamesQuery(
-          request: _request(
-            minElo: 2400,
-            maxElo: 3200,
-            formatsAndStates: const {'completed', 'standard'},
+    test(
+      'Completed + Classical + IM compose without dropping any dimension',
+      () {
+        final scope = smartEventFetchScopeFor(
+          SmartEventGamesQuery(
+            request: _request(
+              minElo: 2400,
+              maxElo: 3200,
+              formatsAndStates: const {'completed', 'standard'},
+            ),
           ),
-        ),
-      );
+        );
 
-      expect(scope.liveOnly, isFalse);
-      expect(scope.completedOnly, isTrue);
-      expect(scope.minGameAverageElo, 2400);
-      expect(
-        scope.eventTimeControls,
-        containsAll(<String>['standard', 'classical']),
-      );
-    });
+        expect(scope.liveOnly, isFalse);
+        expect(scope.completedOnly, isTrue);
+        expect(scope.minGameAverageElo, 2400);
+        expect(
+          scope.eventTimeControls,
+          containsAll(<String>['standard', 'classical']),
+        );
+      },
+    );
 
     test('every status × time-control × level combination composes', () {
       const statuses = <Set<String>>[
@@ -825,11 +918,7 @@ void main() {
             );
             final hasLive = status.contains('live');
             final hasCompleted = status.contains('completed');
-            expect(
-              scope.liveOnly,
-              hasLive && !hasCompleted,
-              reason: label,
-            );
+            expect(scope.liveOnly, hasLive && !hasCompleted, reason: label);
             expect(
               scope.completedOnly,
               hasCompleted && !hasLive,
@@ -872,27 +961,27 @@ void main() {
 
   group('smart event day grouping', () {
     test('buckets by game_day even when lastMoveTime is the next morning', () {
-      final sorted = sortSmartGamesForTest(
-        [
-          _game(
-            id: 'aug11-finished-late',
-            whiteRating: 2600,
-            blackRating: 2600,
-            gameDay: DateTime(2026, 8, 11),
-            lastMoveTime: DateTime(2026, 8, 12, 2),
-          ),
-          _game(
-            id: 'aug12',
-            whiteRating: 2550,
-            blackRating: 2550,
-            gameDay: DateTime(2026, 8, 12),
-            lastMoveTime: DateTime(2026, 8, 12, 18),
-          ),
-        ],
-        pinnedIds: const [],
-      );
+      final sorted = sortSmartGamesForTest([
+        _game(
+          id: 'aug11-finished-late',
+          whiteRating: 2600,
+          blackRating: 2600,
+          gameDay: DateTime(2026, 8, 11),
+          lastMoveTime: DateTime(2026, 8, 12, 2),
+        ),
+        _game(
+          id: 'aug12',
+          whiteRating: 2550,
+          blackRating: 2550,
+          gameDay: DateTime(2026, 8, 12),
+          lastMoveTime: DateTime(2026, 8, 12, 18),
+        ),
+      ], pinnedIds: const []);
 
-      expect(sorted.map((game) => game.gameId), ['aug12', 'aug11-finished-late']);
+      expect(sorted.map((game) => game.gameId), [
+        'aug12',
+        'aug11-finished-late',
+      ]);
     });
   });
 }

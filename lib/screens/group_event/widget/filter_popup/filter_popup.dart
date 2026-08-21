@@ -7,6 +7,7 @@ import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/widgets/game_filter/rating_tier_filter.dart';
+import 'package:chessever2/widgets/game_filter/eco_filter_dropdown.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 class FilterPopup extends ConsumerWidget {
@@ -166,6 +167,22 @@ class FilterPopup extends ConsumerWidget {
                         ),
                       );
                     },
+                  ),
+                  SizedBox(height: 20.h),
+                  Text(
+                    'Opening',
+                    style: AppTypography.textSmMedium.copyWith(
+                      color: context.colors.textPrimary,
+                      letterSpacing: 0.3,
+                    ),
+                  ),
+                  SizedBox(height: 8.h),
+                  EcoFilterDropdown(
+                    value: filterState.eco,
+                    onChanged:
+                        (value) => ref
+                            .read(filterPopupProvider.notifier)
+                            .setEco(value),
                   ),
                   SizedBox(height: 20.h),
                   Text(

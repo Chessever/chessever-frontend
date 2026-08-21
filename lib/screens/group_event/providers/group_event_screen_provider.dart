@@ -164,6 +164,9 @@ class _GroupEventScreenController
     if (appliedFilter.hasEloFilter) {
       return true;
     }
+    if (!appliedFilter.eco.isAll) {
+      return true;
+    }
     return false;
   }
 

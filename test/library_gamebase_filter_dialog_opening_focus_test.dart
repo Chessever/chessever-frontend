@@ -13,8 +13,9 @@ class _LibraryGamebaseFilterHarness extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       theme: AppTheme.darkTheme,
-      builder: (context, child) =>
-          DismissKeyboard(child: child ?? const SizedBox.shrink()),
+      builder:
+          (context, child) =>
+              DismissKeyboard(child: child ?? const SizedBox.shrink()),
       home: Builder(
         builder: (context) {
           ResponsiveHelper.init(context);
@@ -38,8 +39,9 @@ class _LibraryGamebaseFilterRouteHarness extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       theme: AppTheme.darkTheme,
-      builder: (context, child) =>
-          DismissKeyboard(child: child ?? const SizedBox.shrink()),
+      builder:
+          (context, child) =>
+              DismissKeyboard(child: child ?? const SizedBox.shrink()),
       home: Builder(
         builder: (context) {
           ResponsiveHelper.init(context);
@@ -78,51 +80,50 @@ Future<void> _pumpPastExpandAndDelayedFocus(WidgetTester tester) async {
 }
 
 void main() {
-  testWidgets(
-    'Opening search does not take focus until the field is tapped',
-    (tester) async {
-      await tester.binding.setSurfaceSize(const Size(390, 844));
-      addTearDown(() => tester.binding.setSurfaceSize(null));
+  testWidgets('Opening search does not take focus until the field is tapped', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(390, 844));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
 
-      await tester.pumpWidget(const _LibraryGamebaseFilterHarness());
-      await tester.pumpAndSettle();
+    await tester.pumpWidget(const _LibraryGamebaseFilterHarness());
+    await tester.pumpAndSettle();
 
-      expect(find.byType(LibraryGamebaseFilterDialog), findsOneWidget);
-      expect(find.byType(EcoFilterDropdown), findsOneWidget);
-      expect(find.byType(TextField), findsOneWidget);
-      expect(_openingSearchHasFocus(tester), isFalse);
+    expect(find.byType(LibraryGamebaseFilterDialog), findsOneWidget);
+    expect(find.byType(EcoFilterDropdown), findsOneWidget);
+    expect(find.byType(TextField), findsOneWidget);
+    expect(_openingSearchHasFocus(tester), isFalse);
 
-      final openingHeader = find.text('All Openings').first;
-      await tester.ensureVisible(openingHeader);
-      await tester.tap(openingHeader);
-      await _pumpPastExpandAndDelayedFocus(tester);
+    final openingHeader = find.text('All Openings').first;
+    await tester.ensureVisible(openingHeader);
+    await tester.tap(openingHeader);
+    await _pumpPastExpandAndDelayedFocus(tester);
 
-      expect(find.text('Search'), findsOneWidget);
-      expect(_openingSearchHasFocus(tester), isFalse);
+    expect(find.text('Search'), findsOneWidget);
+    expect(_openingSearchHasFocus(tester), isFalse);
 
-      await tester.tap(find.text('A00'));
-      await tester.pumpAndSettle();
-      expect(find.text('A00'), findsWidgets);
-      expect(find.byType(TextField), findsOneWidget);
-      expect(_openingSearchHasFocus(tester), isFalse);
+    await tester.tap(find.text('A00'));
+    await tester.pumpAndSettle();
+    expect(find.text('A00'), findsWidgets);
+    expect(find.byType(TextField), findsOneWidget);
+    expect(_openingSearchHasFocus(tester), isFalse);
 
-      await tester.tap(find.text('A00').first);
-      await _pumpPastExpandAndDelayedFocus(tester);
-      expect(_openingSearchHasFocus(tester), isFalse);
+    await tester.tap(find.text('A00').first);
+    await _pumpPastExpandAndDelayedFocus(tester);
+    expect(_openingSearchHasFocus(tester), isFalse);
 
-      await tester.tap(find.byType(TextField));
-      await tester.pump();
-      expect(_openingSearchHasFocus(tester), isTrue);
+    await tester.tap(find.byType(TextField));
+    await tester.pump();
+    expect(_openingSearchHasFocus(tester), isTrue);
 
-      await tester.enterText(find.byType(TextField), 'Sicilian');
-      expect(_openingSearch(tester).controller!.text, 'Sicilian');
-      expect(_openingSearchHasFocus(tester), isTrue);
+    await tester.enterText(find.byType(TextField), 'Sicilian');
+    expect(_openingSearch(tester).controller!.text, 'Sicilian');
+    expect(_openingSearchHasFocus(tester), isTrue);
 
-      await tester.tap(find.text('Filters'));
-      await tester.pump();
-      expect(_openingSearchHasFocus(tester), isFalse);
-    },
-  );
+    await tester.tap(find.text('Filters'));
+    await tester.pump();
+    expect(_openingSearchHasFocus(tester), isFalse);
+  });
 
   testWidgets(
     'Opening search does not steal focus when the filter dialog route opens',
@@ -156,4 +157,33 @@ void main() {
       expect(_openingSearchHasFocus(tester), isFalse);
     },
   );
+
+  testWidgets('Najdorf search offers one B90-B99 family choice', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(390, 844));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    await tester.pumpWidget(const _LibraryGamebaseFilterHarness());
+    await tester.pumpAndSettle();
+
+    final openingHeader = find.text('All Openings').first;
+    await tester.ensureVisible(openingHeader);
+    await tester.tap(openingHeader);
+    await _pumpPastExpandAndDelayedFocus(tester);
+    await tester.tap(find.byType(TextField));
+    await tester.enterText(find.byType(TextField), 'Najdorf');
+    await tester.pump();
+
+    final family = find.byKey(const ValueKey('eco-family-B9'));
+    expect(family, findsOneWidget);
+    expect(find.text('B90-B99 · 10 codes'), findsOneWidget);
+    expect(find.text('B90'), findsOneWidget);
+
+    await tester.tap(family);
+    await tester.pumpAndSettle();
+
+    expect(find.text('B9'), findsWidgets);
+    expect(find.text('Sicilian: Najdorf'), findsWidgets);
+  });
 }

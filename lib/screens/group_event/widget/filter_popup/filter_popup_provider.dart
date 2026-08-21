@@ -1,6 +1,7 @@
 import 'package:chessever2/screens/group_event/widget/filter_popup/filter_popup_state.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:chessever2/widgets/game_filter/game_filter_model.dart';
 
 const defaultFilterPopupState = FilterPopupState(
   formatsAndStates: <String>{},
@@ -46,6 +47,10 @@ class _FilterPopupController extends StateNotifier<FilterPopupState> {
         kFilterMaxElo,
       ),
     );
+  }
+
+  void setEco(GameEcoFilter eco) {
+    state = state.copyWith(eco: eco);
   }
 
   void setState(FilterPopupState newState) {

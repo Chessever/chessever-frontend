@@ -1,5 +1,6 @@
 import 'package:chessever2/repository/gamebase/search/gamebase_search_models.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
+import 'package:chessever2/utils/eco_openings.dart';
 import 'package:flutter/foundation.dart';
 
 /// Result filter options for chess games
@@ -147,11 +148,11 @@ extension GameTournamentTypeFilterX on GameTournamentTypeFilter {
   }
 }
 
-/// ECO opening filter - supports individual ECO codes (A00-E99)
+/// ECO opening filter - supports individual codes and safe family prefixes.
 class GameEcoFilter {
   const GameEcoFilter({this.code});
 
-  /// The specific ECO code (e.g., "B90", "C89") or null for all openings
+  /// A specific ECO code (e.g. B90), a safe family prefix (e.g. B9), or null.
   final String? code;
 
   /// Factory for "all openings" filter
@@ -168,10 +169,25 @@ class GameEcoFilter {
 
   /// Create a filter for a specific ECO code
   factory GameEcoFilter.forCode(String code) =>
-      GameEcoFilter(code: code.toUpperCase());
+      GameEcoFilter(code: code.trim().toUpperCase());
+
+  /// Create a bulk filter for a parent family backed by one ECO prefix.
+  /// Invalid/mixed prefixes are rejected so a family can never over-select.
+  factory GameEcoFilter.forFamily(String codePrefix) {
+    final normalized = codePrefix.trim().toUpperCase();
+    assert(
+      EcoOpenings.getFamily(normalized) != null,
+      '$normalized is not a safe ECO family prefix',
+    );
+    return GameEcoFilter(code: normalized);
+  }
 
   /// Whether this filter shows all openings
   bool get isAll => code == null;
+
+  bool get isFamily => EcoOpenings.getFamily(code) != null;
+
+  String? get openingName => EcoOpenings.getFilterName(code);
 
   /// Get the category letter (A, B, C, D, E) or null
   String? get categoryLetter => code?.isNotEmpty == true ? code![0] : null;

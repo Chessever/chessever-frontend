@@ -6,8 +6,9 @@ import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/game_filter/game_filter_model.dart';
 import 'package:flutter/material.dart';
 
-/// Searchable ECO filter dropdown with all 500 individual ECO codes
-/// Allows filtering by ECO code or opening name
+/// Searchable ECO filter dropdown with individual codes plus safe parent
+/// families. Family choices reuse the same prefix contract as single codes,
+/// so existing callers and query paths remain compatible.
 class EcoFilterDropdown extends StatefulWidget {
   const EcoFilterDropdown({
     super.key,
@@ -117,6 +118,17 @@ class _EcoFilterDropdownState extends State<EcoFilterDropdown>
     }).toList();
   }
 
+  List<EcoOpeningFamily> _getFilteredFamilies() {
+    final query = _searchQuery.toLowerCase().trim();
+    if (query.isEmpty) return const <EcoOpeningFamily>[];
+    return EcoOpenings.families
+        .where((family) {
+          return family.codePrefix.toLowerCase().contains(query) ||
+              family.name.toLowerCase().contains(query);
+        })
+        .toList(growable: false);
+  }
+
   Map<String, List<MapEntry<String, String>>> _groupByCategory(
     List<MapEntry<String, String>> entries,
   ) {
@@ -140,7 +152,10 @@ class _EcoFilterDropdownState extends State<EcoFilterDropdown>
             duration: const Duration(milliseconds: 200),
             padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 14.h),
             decoration: BoxDecoration(
-              color: _isExpanded ? context.colors.textPrimary : context.colors.surface,
+              color:
+                  _isExpanded
+                      ? context.colors.textPrimary
+                      : context.colors.surface,
               borderRadius:
                   _isExpanded
                       ? BorderRadius.vertical(top: Radius.circular(12.br))
@@ -171,14 +186,18 @@ class _EcoFilterDropdownState extends State<EcoFilterDropdown>
                       Text(
                         widget.value.displayText,
                         style: AppTypography.textSmMedium.copyWith(
-                          color: _isExpanded ? kBlackColor : context.colors.textPrimary,
+                          color:
+                              _isExpanded
+                                  ? kBlackColor
+                                  : context.colors.textPrimary,
                           fontWeight: FontWeight.w600,
                         ),
                       ),
-                      if (!widget.value.isAll && !widget.value.isUnknownEco) ...[
+                      if (!widget.value.isAll &&
+                          !widget.value.isUnknownEco) ...[
                         SizedBox(height: 2.h),
                         Text(
-                          EcoOpenings.getOpeningName(widget.value.code) ?? '',
+                          widget.value.openingName ?? '',
                           style: AppTypography.textXsRegular.copyWith(
                             color:
                                 _isExpanded
@@ -248,7 +267,9 @@ class _EcoFilterDropdownState extends State<EcoFilterDropdown>
       padding: EdgeInsets.fromLTRB(12.w, 8.h, 12.w, 8.h),
       decoration: BoxDecoration(
         border: Border(
-          bottom: BorderSide(color: context.colors.divider.withValues(alpha: 0.5)),
+          bottom: BorderSide(
+            color: context.colors.divider.withValues(alpha: 0.5),
+          ),
         ),
       ),
       child: TextField(
@@ -257,7 +278,9 @@ class _EcoFilterDropdownState extends State<EcoFilterDropdown>
         autofocus: false,
         onTapOutside: (_) => _searchFocusNode.unfocus(),
         onChanged: (value) => setState(() => _searchQuery = value),
-        style: AppTypography.textSmMedium.copyWith(color: context.colors.textPrimary),
+        style: AppTypography.textSmMedium.copyWith(
+          color: context.colors.textPrimary,
+        ),
         decoration: InputDecoration(
           hintText: 'Search',
           hintStyle: AppTypography.textSmRegular.copyWith(
@@ -293,8 +316,9 @@ class _EcoFilterDropdownState extends State<EcoFilterDropdown>
 
   Widget _buildOptionsList() {
     final filtered = _getFilteredOpenings();
+    final families = _getFilteredFamilies();
 
-    if (filtered.isEmpty) {
+    if (filtered.isEmpty && families.isEmpty) {
       return Padding(
         padding: EdgeInsets.all(20.sp),
         child: Text(
@@ -321,12 +345,104 @@ class _EcoFilterDropdownState extends State<EcoFilterDropdown>
           // "All Openings" option at top
           if (_searchQuery.isEmpty) _buildAllOpeningsOption(),
 
+          // Parent families only appear in response to a search. This keeps
+          // the familiar 500-code browser compact while making a query such
+          // as "Najdorf" offer one safe B90-B99 bulk choice first.
+          if (families.isNotEmpty) ...[
+            _buildFamilySectionHeader(),
+            ...families.map(_buildFamilyItem),
+          ],
+
           // Grouped by category
           for (final category in categories) ...[
             _buildCategoryHeader(category, grouped[category]!.length),
             ...grouped[category]!.map(_buildOpeningItem),
           ],
         ],
+      ),
+    );
+  }
+
+  Widget _buildFamilySectionHeader() {
+    return Container(
+      alignment: Alignment.centerLeft,
+      padding: EdgeInsets.fromLTRB(16.w, 10.h, 16.w, 6.h),
+      child: Text(
+        'Opening families',
+        style: AppTypography.textXsMedium.copyWith(
+          color: context.colors.textSecondary,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildFamilyItem(EcoOpeningFamily family) {
+    final color = _getCategoryColor(family.codePrefix[0]);
+    final isSelected = widget.value.code == family.codePrefix;
+    final rangeStart = '${family.codePrefix}0';
+    final rangeEnd = '${family.codePrefix}9';
+
+    return Semantics(
+      button: true,
+      selected: isSelected,
+      label:
+          'Select ${family.name} family, $rangeStart through $rangeEnd, '
+          '${family.codeCount} ECO codes',
+      child: GestureDetector(
+        key: ValueKey('eco-family-${family.codePrefix}'),
+        onTap: () => _selectItem(GameEcoFilter.forFamily(family.codePrefix)),
+        behavior: HitTestBehavior.opaque,
+        child: Container(
+          constraints: BoxConstraints(minHeight: 48.h),
+          padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 9.h),
+          decoration: BoxDecoration(
+            color: isSelected ? color.withValues(alpha: 0.08) : null,
+            border: Border(
+              bottom: BorderSide(
+                color: context.colors.divider.withValues(alpha: 0.3),
+                width: 0.5,
+              ),
+            ),
+          ),
+          child: Row(
+            children: [
+              SizedBox(
+                width: 42.w,
+                child: Text(
+                  family.codePrefix,
+                  textAlign: TextAlign.left,
+                  style: AppTypography.textSmBold.copyWith(color: color),
+                ),
+              ),
+              SizedBox(width: 10.w),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      family.name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: AppTypography.textSmMedium.copyWith(
+                        color: context.colors.textPrimary,
+                      ),
+                    ),
+                    SizedBox(height: 2.h),
+                    Text(
+                      '$rangeStart-$rangeEnd · ${family.codeCount} codes',
+                      style: AppTypography.textXsRegular.copyWith(
+                        color: context.colors.textSecondary,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              if (isSelected)
+                Icon(Icons.check_rounded, size: 18.ic, color: color),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -340,9 +456,14 @@ class _EcoFilterDropdownState extends State<EcoFilterDropdown>
       child: Container(
         padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 12.h),
         decoration: BoxDecoration(
-          color: isSelected ? context.colors.textPrimary.withValues(alpha: 0.05) : null,
+          color:
+              isSelected
+                  ? context.colors.textPrimary.withValues(alpha: 0.05)
+                  : null,
           border: Border(
-            bottom: BorderSide(color: context.colors.divider.withValues(alpha: 0.5)),
+            bottom: BorderSide(
+              color: context.colors.divider.withValues(alpha: 0.5),
+            ),
           ),
         ),
         child: Row(
@@ -371,7 +492,11 @@ class _EcoFilterDropdownState extends State<EcoFilterDropdown>
               ),
             ),
             if (isSelected)
-              Icon(Icons.check_rounded, size: 18.ic, color: context.colors.textPrimary),
+              Icon(
+                Icons.check_rounded,
+                size: 18.ic,
+                color: context.colors.textPrimary,
+              ),
           ],
         ),
       ),
@@ -484,7 +609,9 @@ class _EcoFilterDropdownState extends State<EcoFilterDropdown>
               child: Text(
                 name,
                 style: AppTypography.textSmRegular.copyWith(
-                  color: context.colors.textPrimary.withValues(alpha: isSelected ? 1.0 : 0.85),
+                  color: context.colors.textPrimary.withValues(
+                    alpha: isSelected ? 1.0 : 0.85,
+                  ),
                   fontWeight: isSelected ? FontWeight.w500 : FontWeight.w400,
                 ),
                 maxLines: 2,

@@ -23,12 +23,20 @@ void main() {
     expect(shouldUseExactLibraryGameQuery('', filter), isTrue);
 
     final where = buildLibraryExactWhere(filter);
-    expect(where, {
+    expect(where, {'field': 'eco', 'op': 'startsWith', 'value': 'C45'});
+    expect(where.toString(), isNot(contains('%')));
+  });
+
+  test('Najdorf family uses the same safe startsWith contract for B9', () {
+    final filter = GamebaseFilter(eco: GameEcoFilter.forFamily('B9'));
+
+    expect(filter.eco.openingName, 'Sicilian: Najdorf');
+    expect(buildLibraryExactWhere(filter), {
       'field': 'eco',
       'op': 'startsWith',
-      'value': 'C45',
+      'value': 'B9',
     });
-    expect(where.toString(), isNot(contains('%')));
+    expect(composeGamebaseSearchQuery(query: '', filter: filter), 'eco:B9 *');
   });
 
   test('eco B90 plus year AND-combines startsWith with date between', () {
@@ -47,10 +55,7 @@ void main() {
         {
           'field': 'date',
           'op': 'between',
-          'values': [
-            '2020-01-01T00:00:00.000Z',
-            '2020-12-31T23:59:59.999Z',
-          ],
+          'values': ['2020-01-01T00:00:00.000Z', '2020-12-31T23:59:59.999Z'],
         },
       ],
     });
@@ -89,10 +94,7 @@ void main() {
   test('eco-only compose is eco:C45 *', () {
     final filter = GamebaseFilter(eco: GameEcoFilter.forCode('C45'));
 
-    expect(
-      composeGamebaseSearchQuery(query: '', filter: filter),
-      'eco:C45 *',
-    );
+    expect(composeGamebaseSearchQuery(query: '', filter: filter), 'eco:C45 *');
   });
 
   test('color still forces GET even when eco is set', () {
@@ -102,10 +104,7 @@ void main() {
     );
 
     expect(shouldUseExactLibraryGameQuery('', filter), isFalse);
-    expect(
-      composeGamebaseSearchQuery(query: '', filter: filter),
-      'eco:C45 *',
-    );
+    expect(composeGamebaseSearchQuery(query: '', filter: filter), 'eco:C45 *');
   });
 
   test('eco where values are prefix-matchable and never ilike B90%', () {

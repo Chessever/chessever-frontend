@@ -36,6 +36,24 @@ class EcoCategory {
   final String characteristics;
 }
 
+/// A parent opening whose complete ECO range can be represented by one
+/// two-character prefix (for example B9 = B90-B99, the Najdorf family).
+///
+/// Keeping families prefix-backed is important: every existing game query
+/// already understands ECO prefixes, so selecting a family needs no new API
+/// shape or database migration.
+class EcoOpeningFamily {
+  const EcoOpeningFamily({
+    required this.codePrefix,
+    required this.name,
+    required this.codeCount,
+  });
+
+  final String codePrefix;
+  final String name;
+  final int codeCount;
+}
+
 /// ECO Categories with comprehensive descriptions
 class EcoOpenings {
   EcoOpenings._();
@@ -672,6 +690,60 @@ class EcoOpenings {
     'E98': 'King\'s Indian: Mar del Plata',
     'E99': 'King\'s Indian: Mar del Plata',
   };
+
+  /// Parent families that occupy one complete ECO decade. The list is
+  /// derived from the canonical map so it cannot drift when codes are fixed
+  /// or expanded. A family is offered only when every code under the prefix
+  /// shares the same parent name; this prevents a bulk choice from silently
+  /// including an unrelated opening.
+  static final List<EcoOpeningFamily> families = _buildFamilies();
+
+  static List<EcoOpeningFamily> _buildFamilies() {
+    final byPrefix = <String, List<MapEntry<String, String>>>{};
+    for (final entry in codeToName.entries) {
+      if (entry.key.length < 3) continue;
+      final prefix = entry.key.substring(0, 2);
+      byPrefix.putIfAbsent(prefix, () => []).add(entry);
+    }
+
+    final result = <EcoOpeningFamily>[];
+    for (final group in byPrefix.entries) {
+      final parentNames =
+          group.value.map((entry) {
+            // Comma suffixes are child variations inside the same parent, e.g.
+            // "Sicilian: Najdorf, Poisoned Pawn".
+            return entry.value.split(',').first.trim();
+          }).toSet();
+      if (group.value.length < 2 || parentNames.length != 1) continue;
+      result.add(
+        EcoOpeningFamily(
+          codePrefix: group.key,
+          name: parentNames.single,
+          codeCount: group.value.length,
+        ),
+      );
+    }
+    result.sort((left, right) => left.codePrefix.compareTo(right.codePrefix));
+    return List<EcoOpeningFamily>.unmodifiable(result);
+  }
+
+  /// Finds a safe prefix-backed family, or null for a single ECO code and
+  /// for mixed decades that cannot be bulk-selected without false matches.
+  static EcoOpeningFamily? getFamily(String? codePrefix) {
+    final normalized = codePrefix?.trim().toUpperCase();
+    if (normalized == null || normalized.length != 2) return null;
+    for (final family in families) {
+      if (family.codePrefix == normalized) return family;
+    }
+    return null;
+  }
+
+  /// Human label for either an individual code or a safe parent family.
+  static String? getFilterName(String? ecoCode) {
+    if (ecoCode == null || ecoCode.trim().isEmpty) return null;
+    final normalized = ecoCode.trim().toUpperCase();
+    return getFamily(normalized)?.name ?? getOpeningName(normalized);
+  }
 
   /// Get opening name for an ECO code
   static String? getOpeningName(String? ecoCode) {

@@ -153,14 +153,15 @@ class _SmartEventScreenState extends ConsumerState<SmartEventScreen> {
 
   /// Whether the user diverged from the criteria this smart event was
   /// generated from — the dimensions a smart event is keyed on (tier
-  /// threshold, live/completed state, time control). Result / year /
+  /// threshold, live/completed state, time control, opening). Result / year /
   /// OTB-online / sort tweaks are view-only narrowing and never dirty the
   /// config.
   bool get _isConfigDirty {
     final seed = _baselineRequest.seedGameFilter();
     return _tier != _initialTier(_baselineRequest) ||
         _filter.live != seed.live ||
-        _filter.timeControl != seed.timeControl;
+        _filter.timeControl != seed.timeControl ||
+        _filter.eco != seed.eco;
   }
 
   // Overrides stay local until the user confirms them on the way out (back
@@ -187,6 +188,7 @@ class _SmartEventScreenState extends ConsumerState<SmartEventScreen> {
     final filter = ref.read(eventAppliedFilterProvider);
     ref.read(eventAppliedFilterProvider.notifier).state = filter.copyWith(
       formatsAndStates: updated.formatsAndStates,
+      eco: updated.eco,
       eloRange: RangeValues(
         updated.minElo
             .toDouble()
@@ -1528,7 +1530,8 @@ class _GamesTabState extends ConsumerState<_GamesTab>
             itemCount:
                 games.isEmpty
                     ? 1
-                    : rows.length + (event.hasMore || event.isLoadingMore ? 1 : 0),
+                    : rows.length +
+                        (event.hasMore || event.isLoadingMore ? 1 : 0),
             itemBuilder: (context, i) {
               if (games.isEmpty) {
                 final hasNarrowingControls =
@@ -1738,8 +1741,7 @@ class _GamesTabState extends ConsumerState<_GamesTab>
     final bucket = timeControlBucketFor(game.timeControl);
     if (bucket == null) return true;
     return switch (filter) {
-      GameTimeControlFilter.classical =>
-        bucket == TimeControlBucket.classical,
+      GameTimeControlFilter.classical => bucket == TimeControlBucket.classical,
       GameTimeControlFilter.rapid => bucket == TimeControlBucket.rapid,
       GameTimeControlFilter.blitz => bucket == TimeControlBucket.blitz,
       GameTimeControlFilter.all => true,
@@ -2541,4 +2543,3 @@ class _StandingsSectionStatus extends StatelessWidget {
     );
   }
 }
-
