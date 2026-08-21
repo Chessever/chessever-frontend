@@ -289,7 +289,14 @@ class FavoritePlayersNotifierNew extends AsyncNotifier<List<FavoritePlayer>> {
 
   /// Refresh favorites from Supabase
   Future<void> refresh() async {
-    state = const AsyncValue.loading();
+    // Keep the current list attached to the loading state. A bare
+    // `AsyncValue.loading()` drops the data, and every heart in the app then
+    // paints "not followed" for the length of the round trip — the
+    // `skipLoadingOnRefresh` flags consumers pass only spare them when the
+    // loading state still carries the previous value.
+    state = const AsyncValue<List<FavoritePlayer>>.loading().copyWithPrevious(
+      state,
+    );
     state = await AsyncValue.guard(
       () => _loadFavorites(preferCacheFirst: false),
     );

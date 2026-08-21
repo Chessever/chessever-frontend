@@ -29,6 +29,7 @@ import 'package:chessever2/widgets/federation_flag.dart';
 import 'package:heroine/heroine.dart';
 import 'package:skeletonizer/skeletonizer.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/repository/supabase/game/game_repository.dart';
@@ -320,6 +321,7 @@ class _ScoreCardPage extends ConsumerWidget {
     this.isActive = true,
     this.isSheet = false,
     this.onOpponentSelected,
+    this.scrollController,
   });
 
   /// The standings player this page renders. In the PageView this is the
@@ -341,6 +343,12 @@ class _ScoreCardPage extends ConsumerWidget {
   /// the tap opens the opponent's card in a bottom sheet; the sheet passes a
   /// handler so a nested tap swaps its card in place instead of stacking.
   final ValueChanged<PlayerStandingModel>? onOpponentSelected;
+
+  /// Controller for this page's vertical scroll view. The opponent sheet
+  /// passes the controller [DraggableScrollableSheet] hands out so sheet and
+  /// list share one gesture chain: with the list at the top a downward drag
+  /// pulls the sheet down (and dismisses it), anywhere else it scrolls.
+  final ScrollController? scrollController;
 
   double? _extractRatingFromPGN(String? pgn, bool isWhite) {
     if (pgn == null || pgn.isEmpty) return null;
@@ -884,6 +892,7 @@ class _ScoreCardPage extends ConsumerWidget {
             // Horizontal swipe between players is owned by the parent PageView
             // (see [ScoreCardScreen]); this page only scrolls vertically.
             child: CustomScrollView(
+              controller: scrollController,
               slivers: [
                 _SliverScoreboardAppBar(
                   player: player,
@@ -1782,6 +1791,14 @@ class _SliverScoreboardAppBarState
   late AnimationController _animationController;
   late Animation<double> _scaleAnimation;
 
+  /// Optimistic heart. Following a player is a Supabase round trip wrapped in
+  /// a RevenueCat check and a full list refresh, so a heart painted straight
+  /// from [favoritePlayersProviderNew] stays dead under the finger for the
+  /// better part of a second. The tap sets this at once; it is dropped as
+  /// soon as the provider agrees (see [build]) and reverted if the write is
+  /// refused or fails.
+  bool? _optimisticFavorite;
+
   @override
   void initState() {
     super.initState();
@@ -1800,11 +1817,57 @@ class _SliverScoreboardAppBarState
     super.dispose();
   }
 
-  Future<void> _toggleFavorite() async {
-    final allowed = await requireFullAuthGuard(context);
-    if (!allowed) return;
-
+  /// The favourite state the provider currently knows about, read the same
+  /// way [build] paints it so a tap always toggles away from what is on
+  /// screen.
+  bool _storedFavorite() {
     final selectedPlayer = widget.player;
+    final player =
+        ref.read(backfilledStandingPlayerProvider(selectedPlayer)).valueOrNull ??
+        selectedPlayer;
+    return ref
+            .read(favoritePlayersProviderNew)
+            .maybeWhen(
+              data:
+                  (players) => storedFavoriteFor(
+                    players,
+                    fideId: player.fideId?.toString(),
+                    name: player.name,
+                    countryCode: player.countryCode,
+                  ),
+              orElse: () => null,
+              skipLoadingOnRefresh: true,
+              skipLoadingOnReload: true,
+            ) !=
+        null;
+  }
+
+  /// Hands the heart back to the provider after a refused or failed write.
+  void _revertOptimisticFavorite() {
+    _optimisticFavorite = null;
+    if (mounted) setState(() {});
+  }
+
+  Future<void> _toggleFavorite() async {
+    final selectedPlayer = widget.player;
+    final wasFavorite = _optimisticFavorite ?? _storedFavorite();
+    final nowFavorite = !wasFavorite;
+
+    // Paint and buzz first, write after: everything below this point is
+    // network work, and none of it should hold the heart hostage.
+    setState(() => _optimisticFavorite = nowFavorite);
+    HapticFeedback.lightImpact();
+    if (nowFavorite) {
+      _animationController.forward().then(
+        (_) => _animationController.reverse(),
+      );
+    }
+
+    final allowed = await requireFullAuthGuard(context);
+    if (!allowed) {
+      _revertOptimisticFavorite();
+      return;
+    }
 
     try {
       final player = await ref.read(
@@ -1827,7 +1890,10 @@ class _SliverScoreboardAppBarState
       if (stored == null) {
         if (!mounted) return;
         final canAdd = await canAddMoreFavorites(context, ref);
-        if (!canAdd) return;
+        if (!canAdd) {
+          _revertOptimisticFavorite();
+          return;
+        }
       }
 
       final isNowFavorite = await ref
@@ -1843,16 +1909,17 @@ class _SliverScoreboardAppBarState
             rating: player.score,
             title: player.title,
           );
-      if (isNowFavorite) {
-        _animationController.forward().then(
-          (_) => _animationController.reverse(),
-        );
-      }
+      if (!mounted) return;
+      // The write is authoritative; hold the heart on what it reports until
+      // the provider echoes the same value.
+      setState(() => _optimisticFavorite = isNowFavorite);
     } on FavoriteLimitExceededException {
+      _revertOptimisticFavorite();
       if (mounted) {
         await showPremiumPaywallSheet(context: context);
       }
     } catch (e) {
+      _revertOptimisticFavorite();
       debugPrint('Error toggling favorite: $e');
       if (mounted) {
         showAppSnack(
@@ -1877,7 +1944,7 @@ class _SliverScoreboardAppBarState
         .getValidCountryCode(player.countryCode);
 
     final favoritesAsync = ref.watch(favoritePlayersProviderNew);
-    final isFavorite = favoritesAsync.maybeWhen(
+    final storedFavorite = favoritesAsync.maybeWhen(
       data:
           (players) =>
               storedFavoriteFor(
@@ -1891,6 +1958,12 @@ class _SliverScoreboardAppBarState
       skipLoadingOnRefresh: true,
       skipLoadingOnReload: true,
     );
+    // Once the provider agrees with the optimistic flip, drop the override so
+    // a change made elsewhere (favourites tab, player profile) shows up here.
+    // Clearing it during build paints nothing new — both values are equal —
+    // so this needs no extra frame.
+    if (_optimisticFavorite == storedFavorite) _optimisticFavorite = null;
+    final isFavorite = _optimisticFavorite ?? storedFavorite;
 
     final headerRow = _PlayerHeaderRow(
       countryCode: validCountryCode,
@@ -2102,28 +2175,68 @@ class _OpponentScoreCardSheet extends StatefulWidget {
 class _OpponentScoreCardSheetState extends State<_OpponentScoreCardSheet> {
   late PlayerStandingModel _player = widget.player;
 
+  /// Resting height of the sheet, as a fraction of the (already safe-area
+  /// reduced) space the route gives it. Keeps it clear of the top edge on
+  /// every inset instead of overflowing on devices whose bars eat more.
+  static const double _restingSize = 0.94;
+
+  /// How far a drag can pull the sheet down before it is treated as a
+  /// dismissal. `BottomSheet` closes the route as soon as a
+  /// [DraggableScrollableNotification] reports the minimum extent (that is
+  /// what `shouldCloseOnMinExtent` is for), so this doubles as the travel the
+  /// sheet follows the finger through.
+  static const double _dismissSize = 0.45;
+
+  /// The controller [DraggableScrollableSheet] hands to the card's scroll
+  /// view. Held so a nested opponent swap can reset the list to the top.
+  ScrollController? _scrollController;
+
   @override
   Widget build(BuildContext context) {
-    // The card scrolls internally, so the sheet cannot be dragged from its
-    // body; it gets a fixed height plus a grab handle and a close button.
-    // Sizing off the incoming constraints (already safe-area reduced) keeps
-    // the sheet short of the top edge on every inset, instead of overflowing
-    // on devices whose bars eat more than the screen-fraction assumed.
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final available =
-            constraints.maxHeight.isFinite
-                ? constraints.maxHeight
-                : MediaQuery.sizeOf(context).height;
-        return SizedBox(
-          height: available * 0.94,
-          child: _buildSheetBody(context),
-        );
+    // The card scrolls internally, and a plain fixed-height sheet loses every
+    // downward drag to it: the inner Scrollable is deeper in the hit-test
+    // path, so it wins the gesture arena and the sheet never moves.
+    // DraggableScrollableSheet owns that scroll position instead, which is
+    // what makes the two gestures share one drag the way iOS does — the list
+    // scrolls while it has somewhere to go, and once it is parked at the top
+    // the same, uninterrupted drag pulls the sheet down. On release `snap`
+    // leaves exactly two outcomes: settle back to [_restingSize], or carry on
+    // to [_dismissSize] and close. A flick down always closes; a slow drag
+    // closes past the halfway point between the two.
+    return DraggableScrollableSheet(
+      initialChildSize: _restingSize,
+      minChildSize: _dismissSize,
+      maxChildSize: _restingSize,
+      snap: true,
+      // The route positions this by its desired size, so the sheet must stay
+      // as tall as the current extent rather than filling the screen. Filling
+      // it would park an invisible sheet over the strip of barrier above the
+      // card, where a tap is meant to dismiss.
+      expand: false,
+      builder: (context, scrollController) {
+        _scrollController = scrollController;
+        return _buildSheetBody(context, scrollController);
       },
     );
   }
 
-  Widget _buildSheetBody(BuildContext context) {
+  /// Swaps the card in place when an opponent is tapped inside the sheet,
+  /// instead of stacking a second sheet on top. The new card starts at its
+  /// own top; keeping the previous offset would drop the reader into the
+  /// middle of a stranger's game list.
+  void _showOpponent(PlayerStandingModel next) {
+    setState(() => _player = next);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final controller = _scrollController;
+      if (!mounted || controller == null || !controller.hasClients) return;
+      if (controller.offset != 0) controller.jumpTo(0);
+    });
+  }
+
+  Widget _buildSheetBody(
+    BuildContext context,
+    ScrollController scrollController,
+  ) {
     return ClipRRect(
       borderRadius: BorderRadius.vertical(top: Radius.circular(20.br)),
       child: ColoredBox(
@@ -2149,9 +2262,8 @@ class _OpponentScoreCardSheetState extends State<_OpponentScoreCardSheet> {
                 // card underneath it.
                 isActive: false,
                 isSheet: true,
-                // Tapping another opponent inside the sheet swaps this card
-                // in place instead of stacking a second sheet on top.
-                onOpponentSelected: (next) => setState(() => _player = next),
+                scrollController: scrollController,
+                onOpponentSelected: _showOpponent,
               ),
             ),
           ],
