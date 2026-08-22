@@ -220,21 +220,21 @@ class SearchOverlay extends ConsumerWidget {
     List<OpeningSearchSuggestion> openings,
   ) {
     return SizedBox(
-      height: math.max(84.h, 86),
+      height: math.max(108.h, 112),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Padding(
-            padding: EdgeInsets.fromLTRB(10.w, 4.h, 10.w, 2.h),
+            padding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 4.h),
             child: Row(
               children: [
-                Icon(Icons.menu_book_outlined, size: 14.ic, color: kDarkBlue),
-                SizedBox(width: 6.w),
+                Icon(Icons.menu_book_outlined, size: 16.ic, color: kDarkBlue),
+                SizedBox(width: 8.w),
                 Text(
                   'Openings (${openings.length})',
                   style: TextStyle(
                     color: context.colors.textPrimary,
-                    fontSize: 11.sp,
+                    fontSize: 12.sp,
                     fontWeight: FontWeight.w600,
                   ),
                 ),
@@ -244,9 +244,9 @@ class SearchOverlay extends ConsumerWidget {
           Expanded(
             child: ListView.separated(
               scrollDirection: Axis.horizontal,
-              padding: EdgeInsets.symmetric(horizontal: 7.w),
+              padding: EdgeInsets.symmetric(horizontal: 8.w),
               itemCount: openings.length,
-              separatorBuilder: (_, __) => SizedBox(width: 4.w),
+              separatorBuilder: (_, __) => SizedBox(width: 8.w),
               itemBuilder: (context, index) {
                 final opening = openings[index];
                 return _OpeningResultTile(
@@ -658,9 +658,9 @@ class _OpeningResultTile extends StatelessWidget {
         onTap: onTap,
         borderRadius: BorderRadius.circular(8.br),
         child: Container(
-          width: math.max(148.w, 166),
-          height: math.max(60.h, 64),
-          padding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 4.h),
+          width: 200,
+          height: 84,
+          padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 8.h),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(8.br),
             border: Border.all(
@@ -672,14 +672,14 @@ class _OpeningResultTile extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               SizedBox(
-                height: math.max(16.h, 18),
+                height: 20,
                 child: Row(
                   children: [
                     Text(
                       codeLabel,
                       style: TextStyle(
                         color: kDarkBlue,
-                        fontSize: 11.sp,
+                        fontSize: 12,
                         fontWeight: FontWeight.w700,
                       ),
                     ),
@@ -689,12 +689,12 @@ class _OpeningResultTile extends StatelessWidget {
                         '(All)',
                         style: TextStyle(
                           color: context.colors.brand,
-                          fontSize: 8.5.sp,
+                          fontSize: 10,
                           fontWeight: FontWeight.w600,
                         ),
                       ),
                     ],
-                    SizedBox(width: 6.w),
+                    SizedBox(width: 8.w),
                     Expanded(
                       child: Text(
                         suggestion.title,
@@ -702,7 +702,7 @@ class _OpeningResultTile extends StatelessWidget {
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
                           color: context.colors.textPrimary,
-                          fontSize: 10.5.sp,
+                          fontSize: 12,
                           fontWeight: FontWeight.w600,
                         ),
                       ),
@@ -720,9 +720,9 @@ class _OpeningResultTile extends StatelessWidget {
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
                       color: context.colors.textSecondary,
-                      fontSize: 9.sp,
+                      fontSize: 11,
                       fontWeight: FontWeight.w400,
-                      height: 1.12,
+                      height: 1.25,
                     ),
                   ),
                 ),
