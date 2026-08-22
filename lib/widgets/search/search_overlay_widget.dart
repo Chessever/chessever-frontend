@@ -659,7 +659,7 @@ class _OpeningResultTile extends StatelessWidget {
         borderRadius: BorderRadius.circular(8.br),
         child: Container(
           width: math.max(148.w, 166),
-          constraints: const BoxConstraints(minHeight: 44),
+          height: math.max(60.h, 64),
           padding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 4.h),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(8.br),
@@ -668,55 +668,63 @@ class _OpeningResultTile extends StatelessWidget {
             ),
           ),
           child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
+            mainAxisAlignment: MainAxisAlignment.start,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Row(
-                children: [
-                  Text(
-                    codeLabel,
-                    style: TextStyle(
-                      color: kDarkBlue,
-                      fontSize: 11.sp,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                  if (showsAll) ...[
-                    SizedBox(width: 4.w),
+              SizedBox(
+                height: math.max(16.h, 18),
+                child: Row(
+                  children: [
                     Text(
-                      '(All)',
+                      codeLabel,
                       style: TextStyle(
-                        color: context.colors.textSecondary,
-                        fontSize: 8.5.sp,
-                        fontWeight: FontWeight.w600,
+                        color: kDarkBlue,
+                        fontSize: 11.sp,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    if (showsAll) ...[
+                      SizedBox(width: 4.w),
+                      Text(
+                        '(All)',
+                        style: TextStyle(
+                          color: context.colors.brand,
+                          fontSize: 8.5.sp,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                    SizedBox(width: 6.w),
+                    Expanded(
+                      child: Text(
+                        suggestion.title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: context.colors.textPrimary,
+                          fontSize: 10.5.sp,
+                          fontWeight: FontWeight.w600,
+                        ),
                       ),
                     ),
                   ],
-                  SizedBox(width: 6.w),
-                  Expanded(
-                    child: Text(
-                      suggestion.title,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        color: context.colors.textPrimary,
-                        fontSize: 10.5.sp,
-                        fontWeight: FontWeight.w600,
-                      ),
+                ),
+              ),
+              SizedBox(height: 4.h),
+              Expanded(
+                child: Align(
+                  alignment: Alignment.topLeft,
+                  child: Text(
+                    suggestion.subtitle,
+                    maxLines: 3,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: context.colors.textSecondary,
+                      fontSize: 9.sp,
+                      fontWeight: FontWeight.w400,
+                      height: 1.12,
                     ),
                   ),
-                ],
-              ),
-              SizedBox(height: 2.h),
-              Text(
-                suggestion.subtitle,
-                maxLines: 3,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  color: context.colors.textSecondary,
-                  fontSize: 9.sp,
-                  fontWeight: FontWeight.w400,
-                  height: 1.12,
                 ),
               ),
             ],

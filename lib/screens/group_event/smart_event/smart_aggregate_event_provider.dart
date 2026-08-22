@@ -94,15 +94,23 @@ class SmartEventOpeningExplanation {
     required this.codeLabel,
     required this.title,
     required this.scope,
-    this.classificationNote,
     this.moves,
   });
 
   final String codeLabel;
   final String title;
   final String scope;
-  final String? classificationNote;
   final String? moves;
+}
+
+String formatOpeningMovePath(List<String> moves) {
+  final numberedMoves = <String>[];
+  for (var index = 0; index < moves.length; index += 2) {
+    final moveNumber = index ~/ 2 + 1;
+    final blackMove = index + 1 < moves.length ? ' ${moves[index + 1]}' : '';
+    numberedMoves.add('$moveNumber. ${moves[index]}$blackMove');
+  }
+  return numberedMoves.join(' ');
 }
 
 @immutable
@@ -192,17 +200,16 @@ class SmartEventRequest {
         contextualTitle.isNotEmpty
             ? contextualTitle
             : family?.name ?? eco.openingName ?? eco.displayText;
-    final moves = openingContext?.movePath.join(' ').trim();
+    final moves = formatOpeningMovePath(
+      openingContext?.movePath ?? const <String>[],
+    );
 
     if (family != null) {
       return SmartEventOpeningExplanation(
         codeLabel: codeLabel,
         title: title,
-        scope:
-            'Includes all ${family.codeCount} ECO codes from '
-            '${family.rangeStart} through ${family.rangeEnd}, inclusive. '
-            'Every indexed main line and subvariant in this family is included.',
-        moves: moves?.isNotEmpty == true ? moves : null,
+        scope: 'All $codeLabel variations.',
+        moves: moves.isNotEmpty ? moves : null,
       );
     }
 
@@ -211,16 +218,10 @@ class SmartEventRequest {
       codeLabel: codeLabel,
       title: title,
       scope:
-          'Includes every indexed game classified as ECO $codeLabel, '
-          'including transpositions under that code.',
-      classificationNote:
           namedLine
-              ? 'You selected this named line, but ECO $codeLabel can also '
-                  'contain sibling named variations. Those games are included '
-                  'because matching is based on the ECO classification.'
-              : 'All indexed named variations classified under ECO '
-                  '$codeLabel are included.',
-      moves: moves?.isNotEmpty == true ? moves : null,
+              ? '$codeLabel games, including related variations.'
+              : 'All $codeLabel variations.',
+      moves: moves.isNotEmpty ? moves : null,
     );
   }
 

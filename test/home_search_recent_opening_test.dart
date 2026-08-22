@@ -201,6 +201,10 @@ void main() {
       find.descendant(of: parentTile, matching: find.text('(All)')),
       findsOneWidget,
     );
+    final allLabel = tester.widget<Text>(
+      find.descendant(of: parentTile, matching: find.text('(All)')),
+    );
+    expect(allLabel.style?.color, kPrimaryColor);
 
     final hierarchy = find.text(
       'Wing gambit › Marshall variation › Carlsbad variation',
@@ -224,6 +228,12 @@ void main() {
     );
     expect(tester.getSize(leafTile).width, lessThanOrEqualTo(230));
     expect(tester.getSize(leafTile).height, inInclusiveRange(44, 70));
+    final parentSubtitleOffset =
+        tester.getTopLeft(find.text('Wing gambit')).dy -
+        tester.getTopLeft(parentTile).dy;
+    final leafSubtitleOffset =
+        tester.getTopLeft(hierarchy).dy - tester.getTopLeft(leafTile).dy;
+    expect(leafSubtitleOffset, closeTo(parentSubtitleOffset, 0.1));
     expect(
       find.descendant(of: leafTile, matching: find.text('(All)')),
       findsNothing,

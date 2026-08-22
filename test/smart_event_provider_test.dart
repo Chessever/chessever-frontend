@@ -226,8 +226,7 @@ void main() {
     expect(request.maxElo, 3200);
     expect(request.seedGameFilter().eco.code, 'B9');
     expect(request.openingExplanation?.codeLabel, 'B90-B99');
-    expect(request.openingExplanation?.scope, contains('all 10 ECO codes'));
-    expect(request.openingExplanation?.scope, contains('main line'));
+    expect(request.openingExplanation?.scope, 'All B90-B99 variations.');
   });
 
   test('named-line smart events explain and persist their ECO scope', () {
@@ -239,13 +238,9 @@ void main() {
 
     expect(request.eco.code, 'B06');
     expect(explanation.title, contains('Gurgenidze variation'));
-    expect(explanation.scope, contains('classified as ECO B06'));
-    expect(
-      explanation.classificationNote,
-      contains('sibling named variations'),
-    );
-    expect(explanation.classificationNote, contains('ECO classification'));
-    expect(explanation.moves, isNotEmpty);
+    expect(explanation.scope, 'B06 games, including related variations.');
+    expect(explanation.moves, startsWith('1. e4'));
+    expect(explanation.moves, contains('2. d4'));
 
     final metadata = request.toFavoriteMetadata();
     final restored = SmartEventRequest.fromFavoriteEvent(
@@ -263,6 +258,10 @@ void main() {
     expect(restored.openingContext, request.openingContext);
     expect(restored.openingExplanation?.title, explanation.title);
     expect(restored.openingExplanation?.moves, explanation.moves);
+  });
+
+  test('opening move paths use standard numbered chess notation', () {
+    expect(formatOpeningMovePath(const ['e4', 'c5', 'Nf3']), '1. e4 c5 2. Nf3');
   });
 
   group('criteria-keyed identity', () {

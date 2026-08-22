@@ -2234,40 +2234,27 @@ class _AboutTabState extends ConsumerState<_AboutTab>
                     height: 1.4,
                   ),
                 ),
-                if (opening.classificationNote case final note?) ...[
-                  SizedBox(height: 7.h),
-                  Text(
-                    note,
-                    key: const ValueKey('smart-opening-classification-note'),
-                    style: AppTypography.textXsRegular.copyWith(
-                      color: context.colors.textSecondary,
-                      height: 1.35,
-                    ),
-                  ),
-                ],
                 if (opening.moves case final moves?) ...[
-                  SizedBox(height: 9.h),
+                  SizedBox(height: 8.h),
                   Text(
                     'Selected line',
                     style: AppTypography.textXxsMedium.copyWith(
                       color: context.colors.textSecondary,
                     ),
                   ),
-                  SizedBox(height: 3.h),
+                  SizedBox(height: 4.h),
                   Text(
                     moves,
                     key: const ValueKey('smart-opening-moves'),
-                    style: AppTypography.textXsMedium.copyWith(
+                    style: AppTypography.textSmMedium.copyWith(
                       color: context.colors.textPrimary,
-                      height: 1.35,
+                      height: 1.4,
                     ),
                   ),
                 ],
               ] else
                 Text(
-                  'This database gathers the strongest games from every '
-                  'ongoing broadcast into one place, so you never have to '
-                  'switch between tournaments.',
+                  'Strong games from ongoing broadcasts, gathered in one place.',
                   style: AppTypography.textSmRegular.copyWith(
                     color: context.colors.textPrimary,
                     height: 1.4,
