@@ -427,13 +427,14 @@ String? _timeControlDbValue(GameTimeControlFilter tc) {
   }
 }
 
-dynamic _applyEcoPrefixes(dynamic query, GameEcoFilter eco) {
+@visibleForTesting
+dynamic applyEcoFilterToSupabaseQuery(dynamic query, GameEcoFilter eco) {
   if (eco.isAll) return query;
-  final prefixes = eco.ecoPrefixes;
-  if (prefixes.length == 1) {
-    return query.ilike('eco', '${prefixes.single}%');
+  final codes = eco.exactEcoCodes;
+  if (codes.length == 1) {
+    return query.eq('eco', codes.single);
   }
-  return query.or(prefixes.map((prefix) => 'eco.ilike.$prefix%').join(','));
+  return query.inFilter('eco', codes);
 }
 
 /// Status values that map to GameResultFilter.draw on the games table. The
@@ -2722,7 +2723,7 @@ class GameRepository extends BaseRepository {
     }
 
     // ECO prefix
-    query = _applyEcoPrefixes(query, filter.eco);
+    query = applyEcoFilterToSupabaseQuery(query, filter.eco);
 
     // Color — which side the favourited player is on
     if (filter.color != GameColorFilter.all && fideIds.isNotEmpty) {
@@ -2776,7 +2777,7 @@ class GameRepository extends BaseRepository {
       query = query.lte('player_max_rating', filter.maxRating);
     }
 
-    query = _applyEcoPrefixes(query, filter.eco);
+    query = applyEcoFilterToSupabaseQuery(query, filter.eco);
 
     // Color — which side the player from `countryCode` is on
     if (filter.color != GameColorFilter.all) {
@@ -2825,7 +2826,7 @@ class GameRepository extends BaseRepository {
         query = query.eq('tours.group_broadcasts.time_control', tcDb);
       }
 
-      query = _applyEcoPrefixes(query, filter.eco);
+      query = applyEcoFilterToSupabaseQuery(query, filter.eco);
 
       if (filter.minYear != GameFilter.defaultMinYear) {
         query = query.or(_yearLowerBoundFilter(filter.minYear));

@@ -1,7 +1,7 @@
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
-import 'package:chessever2/widgets/game_filter/game_filter_model.dart';
 import 'package:chessever2/widgets/search/enhanced_rounded_search_bar.dart';
+import 'package:chessever2/widgets/search/opening_search_suggestion.dart';
 import 'package:chessever2/widgets/search/recent_searches_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -24,7 +24,7 @@ class _MemoryStorage implements RecentSearchStorage {
 class _SearchHarness extends StatefulWidget {
   const _SearchHarness({required this.onOpeningSelected});
 
-  final ValueChanged<GameEcoFilter> onOpeningSelected;
+  final ValueChanged<OpeningSearchSelection> onOpeningSelected;
 
   @override
   State<_SearchHarness> createState() => _SearchHarnessState();
@@ -62,7 +62,7 @@ void main() {
   ) async {
     await tester.binding.setSurfaceSize(const Size(320, 700));
     addTearDown(() => tester.binding.setSurfaceSize(null));
-    GameEcoFilter? selectedOpening;
+    OpeningSearchSelection? selectedOpening;
 
     await tester.pumpWidget(
       ProviderScope(
@@ -91,8 +91,15 @@ void main() {
     await tester.enterText(find.byType(TextField), 'Najdorf');
     await tester.pump(const Duration(milliseconds: 450));
 
+    expect(find.text('B20-B99'), findsNothing);
+    final horizontalResults = find.byWidgetPredicate(
+      (widget) =>
+          widget is ListView && widget.scrollDirection == Axis.horizontal,
+    );
+    expect(horizontalResults, findsOneWidget);
     final family = find.text('B90-B99');
     expect(family, findsOneWidget);
+    expect(find.textContaining('Najdorf · 10 ECO codes'), findsOneWidget);
     expect(find.text('B9'), findsNothing);
     final familyTapTarget = find.ancestor(
       of: family,
@@ -102,11 +109,125 @@ void main() {
       tester.getSize(familyTapTarget.first).height,
       greaterThanOrEqualTo(44),
     );
-    await tester.tap(family);
+    tester
+        .widget<InkWell>(find.byKey(const ValueKey('opening-result-B9')))
+        .onTap
+        ?.call();
     await tester.pump();
 
-    expect(selectedOpening?.code, 'B9');
-    expect(selectedOpening?.isFamily, isTrue);
+    expect(selectedOpening?.filter.code, 'B9');
+    expect(selectedOpening?.filter.isFamily, isTrue);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('named subvariant search renders useful grey child text', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(390, 844));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    OpeningSearchSelection? selectedOpening;
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          recentSearchStorageProvider.overrideWithValue(_MemoryStorage()),
+        ],
+        child: MaterialApp(
+          theme: AppTheme.darkTheme,
+          home: _SearchHarness(
+            onOpeningSelected: (opening) => selectedOpening = opening,
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.tap(find.byType(TextField));
+    await tester.enterText(find.byType(TextField), 'Gurgen');
+    await tester.pump(const Duration(milliseconds: 450));
+
+    expect(find.text('B20-B99'), findsNothing);
+    expect(find.text('Robatsch defence'), findsOneWidget);
+    final subvariant = find.text('Gurgenidze variation');
+    expect(subvariant, findsOneWidget);
+
+    final tile = find.ancestor(of: subvariant, matching: find.byType(InkWell));
+    final tileSize = tester.getSize(tile);
+    expect(tileSize.width, lessThanOrEqualTo(230));
+    expect(tileSize.height, inInclusiveRange(44, 70));
+    final title = find.descendant(
+      of: tile,
+      matching: find.text('Robatsch defence'),
+    );
+    final titleWidget = tester.widget<Text>(title);
+    final subvariantWidget = tester.widget<Text>(subvariant);
+    expect(subvariantWidget.style?.color, isNot(titleWidget.style?.color));
+
+    tester.widget<InkWell>(tile).onTap?.call();
+    await tester.pump();
+    expect(selectedOpening?.filter.code, 'B06');
+    expect(selectedOpening?.filter.isFamily, isFalse);
+    expect(selectedOpening?.hierarchyLabel, contains('Gurgenidze variation'));
+    expect(selectedOpening?.isAggregate, isFalse);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('a deep hierarchy fits inside the compact opening card', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(390, 844));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          recentSearchStorageProvider.overrideWithValue(_MemoryStorage()),
+        ],
+        child: MaterialApp(
+          theme: AppTheme.darkTheme,
+          home: _SearchHarness(onOpeningSelected: (_) {}),
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.tap(find.byType(TextField));
+    await tester.enterText(find.byType(TextField), 'Sicilian Wing');
+    await tester.pump(const Duration(milliseconds: 450));
+
+    final parentTile = find.ancestor(
+      of: find.text('Wing gambit'),
+      matching: find.byType(InkWell),
+    );
+    expect(
+      find.descendant(of: parentTile, matching: find.text('(All)')),
+      findsOneWidget,
+    );
+
+    final hierarchy = find.text(
+      'Wing gambit › Marshall variation › Carlsbad variation',
+    );
+    final horizontalList = find.byWidgetPredicate(
+      (widget) =>
+          widget is ListView && widget.scrollDirection == Axis.horizontal,
+    );
+    await tester.scrollUntilVisible(
+      hierarchy,
+      180,
+      scrollable: find.descendant(
+        of: horizontalList,
+        matching: find.byType(Scrollable),
+      ),
+    );
+
+    final leafTile = find.ancestor(
+      of: hierarchy,
+      matching: find.byType(InkWell),
+    );
+    expect(tester.getSize(leafTile).width, lessThanOrEqualTo(230));
+    expect(tester.getSize(leafTile).height, inInclusiveRange(44, 70));
+    expect(
+      find.descendant(of: leafTile, matching: find.text('(All)')),
+      findsNothing,
+    );
     expect(tester.takeException(), isNull);
   });
 
@@ -115,7 +236,7 @@ void main() {
   ) async {
     await tester.binding.setSurfaceSize(const Size(390, 844));
     addTearDown(() => tester.binding.setSurfaceSize(null));
-    GameEcoFilter? selectedOpening;
+    OpeningSearchSelection? selectedOpening;
     final storage = _MemoryStorage(
       '[{"kind":"opening","targetId":"B9",'
       '"title":"Sicilian: Najdorf","subtitle":"B9 · B90–B99"}]',
@@ -152,8 +273,8 @@ void main() {
     await tester.tap(find.text('Sicilian: Najdorf'));
     await tester.pump();
 
-    expect(selectedOpening?.code, 'B9');
-    expect(selectedOpening?.isFamily, isTrue);
+    expect(selectedOpening?.filter.code, 'B9');
+    expect(selectedOpening?.filter.isFamily, isTrue);
     expect(tester.takeException(), isNull);
   });
 }

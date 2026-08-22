@@ -4,6 +4,8 @@
 // each containing 100 codes (00-99). This utility provides detailed information
 // about each category and individual opening codes.
 
+part 'eco_opening_catalog_data.g.dart';
+
 /// Represents detailed information about an ECO opening
 class EcoOpening {
   const EcoOpening({
@@ -17,6 +19,78 @@ class EcoOpening {
   final String name;
   final String? moves;
   final bool isMainLine;
+}
+
+/// One source row from the 365Chess catalog. Range rows (for example
+/// `B20-B99`) are selectable parents; exact rows provide every searchable
+/// named subvariant and its move path.
+class EcoOpeningRecord {
+  const EcoOpeningRecord({
+    required this.code,
+    required this.name,
+    required this.moves,
+  });
+
+  final String code;
+  final String name;
+  final String moves;
+
+  bool get isRange => code.contains('-');
+}
+
+/// A validated, inclusive range within one ECO category.
+class EcoCodeRange {
+  const EcoCodeRange({required this.start, required this.end});
+
+  final String start;
+  final String end;
+
+  int get startNumber => int.parse(start.substring(1));
+  int get endNumber => int.parse(end.substring(1));
+  int get codeCount => endNumber - startNumber + 1;
+  String get label => '$start-$end';
+
+  bool contains(String code) {
+    final normalized = code.trim().toUpperCase();
+    if (!RegExp(r'^[A-E][0-9]{2}$').hasMatch(normalized) ||
+        normalized[0] != start[0]) {
+      return false;
+    }
+    final number = int.parse(normalized.substring(1));
+    return number >= startNumber && number <= endNumber;
+  }
+
+  /// Smallest exact prefix cover understood by all existing PostgREST query
+  /// paths. Whole decades become `B2`; partial edges stay exact (`D40`).
+  List<String> get codePrefixes {
+    final prefixes = <String>[];
+    var number = startNumber;
+    while (number <= endNumber) {
+      if (number % 10 == 0 && number + 9 <= endNumber) {
+        prefixes.add('${start[0]}${number ~/ 10}');
+        number += 10;
+      } else {
+        prefixes.add('${start[0]}${number.toString().padLeft(2, '0')}');
+        number++;
+      }
+    }
+    return List<String>.unmodifiable(prefixes);
+  }
+
+  static EcoCodeRange? tryParse(String raw) {
+    final normalized = raw.trim().toUpperCase().replaceAll('–', '-');
+    final match = RegExp(
+      r'^([A-E][0-9]{2})-([A-E][0-9]{2})$',
+    ).firstMatch(normalized);
+    if (match == null) return null;
+    final start = match.group(1)!;
+    final end = match.group(2)!;
+    if (start[0] != end[0] ||
+        int.parse(start.substring(1)) > int.parse(end.substring(1))) {
+      return null;
+    }
+    return EcoCodeRange(start: start, end: end);
+  }
 }
 
 /// Represents an ECO category (A, B, C, D, or E)
@@ -36,34 +110,37 @@ class EcoCategory {
   final String characteristics;
 }
 
-/// A parent opening whose complete ECO range can be represented by one
-/// two-character prefix (for example B9 = B90-B99, the Najdorf family).
+/// A selectable parent opening backed by an exact inclusive ECO range.
 ///
-/// Keeping families prefix-backed is important: every existing game query
-/// already understands ECO prefixes, so selecting a family needs no new API
-/// shape or database migration.
+/// [codePrefixes] is the minimal query-safe cover of that range. This keeps
+/// the existing prefix contract while allowing source ranges such as D30-D42,
+/// not just decade-aligned parents such as B90-B99.
 class EcoOpeningFamily {
   const EcoOpeningFamily({
-    required this.codePrefix,
+    required this.id,
     required this.name,
+    required this.rangeStart,
+    required this.rangeEnd,
+    required this.codePrefixes,
     required this.codeCount,
-    this.additionalCodePrefixes = const [],
+    this.moves,
   });
 
-  final String codePrefix;
+  final String id;
   final String name;
+  final String rangeStart;
+  final String rangeEnd;
+  final List<String> codePrefixes;
   final int codeCount;
-  final List<String> additionalCodePrefixes;
-
-  List<String> get codePrefixes => [codePrefix, ...additionalCodePrefixes];
-
-  String get id => codePrefixes.join('+');
-
-  String get rangeStart => '${codePrefixes.first}0';
-
-  String get rangeEnd => '${codePrefixes.last}9';
+  final String? moves;
 
   String get rangeLabel => '$rangeStart-$rangeEnd';
+
+  /// Retained for category-color callers and legacy two-character families.
+  String get codePrefix => codePrefixes.first;
+
+  bool containsCode(String code) =>
+      EcoCodeRange(start: rangeStart, end: rangeEnd).contains(code);
 }
 
 /// ECO Categories with comprehensive descriptions
@@ -165,8 +242,7 @@ class EcoOpenings {
     return categories[ecoCode[0].toUpperCase()];
   }
 
-  /// Comprehensive ECO code to opening name mapping
-  /// This covers the major openings - a subset of the full 500 codes
+  /// Curated one-label-per-code display fallback for all 500 exact ECO codes.
   static const Map<String, String> codeToName = {
     // A00-A09: Irregular & Flank Openings
     'A00': 'Irregular Openings',
@@ -703,12 +779,53 @@ class EcoOpenings {
     'E99': 'King\'s Indian: Mar del Plata',
   };
 
-  /// Parent families that occupy one complete ECO decade. The list is
-  /// derived from the canonical map so it cannot drift when codes are fixed
-  /// or expanded. A family is offered only when every code under the prefix
-  /// shares the same parent name; this prevents a bulk choice from silently
-  /// including an unrelated opening.
+  /// Every source row, including all named move-level variants and the
+  /// explicit parent ranges supplied by the catalog.
+  static const List<EcoOpeningRecord> catalog = _ecoOpeningCatalog;
+
+  static final List<EcoOpeningRecord> exactCatalog = List.unmodifiable(
+    catalog.where((record) => !record.isRange),
+  );
+
+  static final List<EcoOpeningRecord> rangeCatalog = List.unmodifiable(
+    catalog.where((record) => record.isRange),
+  );
+
+  static final Map<String, List<EcoOpeningRecord>> recordsByCode =
+      _buildRecordsByCode();
+
+  static final Map<String, List<EcoOpeningRecord>> _recordsByMovePath =
+      _buildRecordsByMovePath();
+
+  /// Selectable parents from both sources of truth:
+  ///
+  /// * explicit CSV ranges such as B20-B99 and D30-D42;
+  /// * safe decade parents derived from the curated 500-code display map,
+  ///   such as B9 / B90-B99 for the Najdorf family.
   static final List<EcoOpeningFamily> families = _buildFamilies();
+
+  static Map<String, List<EcoOpeningRecord>> _buildRecordsByCode() {
+    final result = <String, List<EcoOpeningRecord>>{};
+    for (final record in exactCatalog) {
+      result.putIfAbsent(record.code, () => []).add(record);
+    }
+    return Map.unmodifiable({
+      for (final entry in result.entries)
+        entry.key: List<EcoOpeningRecord>.unmodifiable(entry.value),
+    });
+  }
+
+  static Map<String, List<EcoOpeningRecord>> _buildRecordsByMovePath() {
+    final result = <String, List<EcoOpeningRecord>>{};
+    for (final record in exactCatalog) {
+      final key = movePathKey(moveTokens(record.moves));
+      result.putIfAbsent(key, () => []).add(record);
+    }
+    return Map.unmodifiable({
+      for (final entry in result.entries)
+        entry.key: List<EcoOpeningRecord>.unmodifiable(entry.value),
+    });
+  }
 
   static List<EcoOpeningFamily> _buildFamilies() {
     final byPrefix = <String, List<MapEntry<String, String>>>{};
@@ -727,40 +844,234 @@ class EcoOpenings {
             return entry.value.split(',').first.trim();
           }).toSet();
       if (group.value.length < 2 || parentNames.length != 1) continue;
+      final range = EcoCodeRange(start: '${group.key}0', end: '${group.key}9');
       result.add(
         EcoOpeningFamily(
-          codePrefix: group.key,
+          id: group.key,
           name: parentNames.single,
+          rangeStart: range.start,
+          rangeEnd: range.end,
+          codePrefixes: List.unmodifiable([group.key]),
           codeCount: group.value.length,
+          moves: _representativeMoves(range, parentNames.single),
         ),
       );
     }
 
-    // Some canonical parent openings span several complete ECO decades. They
-    // cannot be represented by the old one-prefix model, but each decade is
-    // still an exact, safe prefix. Keep these explicit so a family choice
-    // never absorbs a neighbouring opening by inference.
+    // Preserve this shipped ID for recent searches and saved smart events.
+    // The matching CSV range below enriches it with the authoritative move
+    // path rather than creating a duplicate E60-E99 destination.
+    const kingIndianRange = EcoCodeRange(start: 'E60', end: 'E99');
     result.add(
-      const EcoOpeningFamily(
-        codePrefix: 'E6',
-        additionalCodePrefixes: ['E7', 'E8', 'E9'],
+      EcoOpeningFamily(
+        id: 'E6+E7+E8+E9',
         name: "King's Indian",
-        codeCount: 40,
+        rangeStart: kingIndianRange.start,
+        rangeEnd: kingIndianRange.end,
+        codePrefixes: kingIndianRange.codePrefixes,
+        codeCount: kingIndianRange.codeCount,
+        moves: _representativeMoves(kingIndianRange, "King's Indian"),
       ),
     );
-    result.sort((left, right) => left.codePrefix.compareTo(right.codePrefix));
+
+    for (final record in rangeCatalog) {
+      final range = EcoCodeRange.tryParse(record.code);
+      if (range == null) continue;
+      final existingIndex = result.indexWhere(
+        (family) =>
+            family.rangeStart == range.start && family.rangeEnd == range.end,
+      );
+      if (existingIndex >= 0) {
+        final existing = result[existingIndex];
+        result[existingIndex] = EcoOpeningFamily(
+          id: existing.id,
+          name: existing.name,
+          rangeStart: range.start,
+          rangeEnd: range.end,
+          codePrefixes: range.codePrefixes,
+          codeCount: range.codeCount,
+          moves: record.moves,
+        );
+      } else {
+        result.add(
+          EcoOpeningFamily(
+            id: range.label,
+            name: record.name,
+            rangeStart: range.start,
+            rangeEnd: range.end,
+            codePrefixes: range.codePrefixes,
+            codeCount: range.codeCount,
+            moves: record.moves,
+          ),
+        );
+      }
+    }
+
+    result.sort(compareFamiliesParentFirst);
     return List<EcoOpeningFamily>.unmodifiable(result);
   }
 
-  /// Finds a safe prefix-backed family, or null for a single ECO code and
-  /// for mixed decades that cannot be bulk-selected without false matches.
-  static EcoOpeningFamily? getFamily(String? codePrefix) {
-    final normalized = codePrefix?.trim().toUpperCase();
+  static String? _representativeMoves(EcoCodeRange range, String familyName) {
+    final normalizedFamily = _simpleNameTokens(familyName);
+    EcoOpeningRecord? best;
+    var bestNameScore = -1;
+    for (final record in exactCatalog) {
+      if (!range.contains(record.code)) continue;
+      final recordName = _simpleNameTokens(record.name);
+      final nameScore = _commonPrefixLength(normalizedFamily, recordName);
+      if (best == null ||
+          nameScore > bestNameScore ||
+          (nameScore == bestNameScore &&
+              moveTokens(record.moves).length <
+                  moveTokens(best.moves).length)) {
+        best = record;
+        bestNameScore = nameScore;
+      }
+    }
+    return best?.moves;
+  }
+
+  static List<String> _simpleNameTokens(String value) => value
+      .toLowerCase()
+      .replaceAll('defence', 'defense')
+      .split(RegExp(r'[^a-z0-9]+'))
+      .where((token) => token.isNotEmpty)
+      .toList(growable: false);
+
+  static int _commonPrefixLength(List<String> left, List<String> right) {
+    final limit = left.length < right.length ? left.length : right.length;
+    var count = 0;
+    while (count < limit && left[count] == right[count]) {
+      count++;
+    }
+    return count;
+  }
+
+  static int compareFamiliesParentFirst(
+    EcoOpeningFamily left,
+    EcoOpeningFamily right,
+  ) {
+    final category = left.rangeStart[0].compareTo(right.rangeStart[0]);
+    if (category != 0) return category;
+    final start = int.parse(
+      left.rangeStart.substring(1),
+    ).compareTo(int.parse(right.rangeStart.substring(1)));
+    if (start != 0) return start;
+    final widerFirst = right.codeCount.compareTo(left.codeCount);
+    if (widerFirst != 0) return widerFirst;
+    return left.name.compareTo(right.name);
+  }
+
+  /// Finds a safe range-backed family by its persisted ID or visible range.
+  static EcoOpeningFamily? getFamily(String? familyId) {
+    final normalized = familyId?.trim().toUpperCase().replaceAll('–', '-');
     if (normalized == null || normalized.isEmpty) return null;
     for (final family in families) {
-      if (family.id == normalized) return family;
+      if (family.id == normalized || family.rangeLabel == normalized) {
+        return family;
+      }
     }
     return null;
+  }
+
+  static int variantCountForCode(String code) =>
+      recordsByCode[code.trim().toUpperCase()]?.length ?? 0;
+
+  static EcoOpeningRecord? canonicalRecordForCode(String code) {
+    final records = recordsByCode[code.trim().toUpperCase()];
+    if (records == null || records.isEmpty) return null;
+    return records.reduce((left, right) {
+      final leftDepth = moveTokens(left.moves).length;
+      final rightDepth = moveTokens(right.moves).length;
+      if (leftDepth != rightDepth) return leftDepth < rightDepth ? left : right;
+      return left.name.length <= right.name.length ? left : right;
+    });
+  }
+
+  static List<EcoOpeningFamily> familiesForCode(String code, {String? moves}) {
+    final movePath = moves == null ? null : moveTokens(moves);
+    final result = families
+        .where((family) {
+          if (!family.containsCode(code)) return false;
+          if (movePath == null || family.moves == null) return true;
+          return isMovePrefix(moveTokens(family.moves!), movePath);
+        })
+        .toList(growable: false);
+    result.sort((left, right) {
+      final depth = moveTokens(
+        left.moves ?? '',
+      ).length.compareTo(moveTokens(right.moves ?? '').length);
+      if (depth != 0) return depth;
+      return right.codeCount.compareTo(left.codeCount);
+    });
+    return result;
+  }
+
+  /// The most specific canonical move ancestors of [record], one per ECO
+  /// destination and ordered root-first. This is the programmatic tree used
+  /// by both the horizontal home results and the vertical filter browser.
+  static List<EcoOpeningRecord> ancestorRecords(EcoOpeningRecord record) {
+    final descendantMoves = moveTokens(record.moves);
+    final descendantName = _simpleNameTokens(record.name);
+    final byCode = <String, EcoOpeningRecord>{};
+    final scores = <String, int>{};
+    for (var depth = 1; depth < descendantMoves.length; depth++) {
+      final candidates =
+          _recordsByMovePath[movePathKey(descendantMoves.take(depth))];
+      if (candidates == null) continue;
+      for (final candidate in candidates) {
+        final nameScore = _commonPrefixLength(
+          _simpleNameTokens(candidate.name),
+          descendantName,
+        );
+        if (nameScore == 0) continue;
+        final existing = byCode[candidate.code];
+        final existingDepth =
+            existing == null ? -1 : moveTokens(existing.moves).length;
+        final candidateDepth = moveTokens(candidate.moves).length;
+        if (nameScore > (scores[candidate.code] ?? -1) ||
+            (nameScore == scores[candidate.code] &&
+                candidateDepth > existingDepth)) {
+          scores[candidate.code] = nameScore;
+          byCode[candidate.code] = candidate;
+        }
+      }
+    }
+    final result = byCode.values.toList(growable: false);
+    result.sort(
+      (left, right) =>
+          compareMovePaths(moveTokens(left.moves), moveTokens(right.moves)),
+    );
+    return result;
+  }
+
+  static List<String> moveTokens(String moves) => moves
+      .trim()
+      .split(RegExp(r'\s+'))
+      .where(
+        (token) => token.isNotEmpty && !RegExp(r'^\d+\.{1,3}$').hasMatch(token),
+      )
+      .toList(growable: false);
+
+  static String movePathKey(Iterable<String> tokens) => tokens.join('\u0001');
+
+  static bool isMovePrefix(List<String> prefix, List<String> path) {
+    if (prefix.length > path.length) return false;
+    for (var index = 0; index < prefix.length; index++) {
+      if (prefix[index] != path[index]) return false;
+    }
+    return true;
+  }
+
+  static int compareMovePaths(List<String> left, List<String> right) {
+    final limit = left.length < right.length ? left.length : right.length;
+    for (var index = 0; index < limit; index++) {
+      final order = left[index].toLowerCase().compareTo(
+        right[index].toLowerCase(),
+      );
+      if (order != 0) return order;
+    }
+    return left.length.compareTo(right.length);
   }
 
   /// Human label for either an individual code or a safe parent family.

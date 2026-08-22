@@ -45,8 +45,10 @@ import 'package:chessever2/widgets/segmented_switcher.dart';
 import 'package:chessever2/widgets/skeleton_widget.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:intl/intl.dart';
 
 const smartEventTabLabels = <String>['About', 'Games', 'Events'];
 
@@ -268,7 +270,7 @@ class _SmartEventScreenState extends ConsumerState<SmartEventScreen> {
       },
       onFilterTap: _openFilterDialog,
       trailing:
-          _index == 1
+          _index != 0
               ? GestureDetector(
                 onTap:
                     () => ref.read(gamesListViewModeSwitcher).toggleViewMode(),
@@ -1308,6 +1310,10 @@ class _GamesTabState extends ConsumerState<_GamesTab>
   /// spinner or a false empty state.
   SmartAggregateEvent? _lastLoadedEvent;
 
+  /// Track collapsed state for chronological date sections — mirrors the
+  /// Countrymen / Favorites games tabs.
+  final Set<String> _collapsedDates = {};
+
   @override
   void initState() {
     super.initState();
@@ -1449,6 +1455,17 @@ class _GamesTabState extends ConsumerState<_GamesTab>
     );
   }
 
+  void _toggleDateSection(String dateKey) {
+    HapticFeedback.lightImpact();
+    setState(() {
+      if (_collapsedDates.contains(dateKey)) {
+        _collapsedDates.remove(dateKey);
+      } else {
+        _collapsedDates.add(dateKey);
+      }
+    });
+  }
+
   /// The server-bound filter: the dialog filter tightened by the selected
   /// tier threshold (see [_mergeTierIntoFilter]).
   GameFilter? _dataFilterForTier(String tier) =>
@@ -1490,11 +1507,7 @@ class _GamesTabState extends ConsumerState<_GamesTab>
       // the Favorites / Countrymen games tabs.
       final gridColumns =
           ResponsiveHelper.isTablet && ResponsiveHelper.isLandscape ? 4 : 2;
-      final rows = _buildEventRows(
-        event,
-        games,
-        gridColumns: isGrid ? gridColumns : 1,
-      );
+      final rows = _buildDayRows(games, gridColumns: isGrid ? gridColumns : 1);
       return NotificationListener<ScrollNotification>(
         onNotification: _handleScrollNotification,
         child: RefreshIndicator(
@@ -1563,15 +1576,15 @@ class _GamesTabState extends ConsumerState<_GamesTab>
                 return const SizedBox(height: 24);
               }
               final row = rows[i];
-              if (row.event != null) {
+              if (row.header != null) {
+                final header = row.header!;
                 return Padding(
-                  padding: EdgeInsets.only(
-                    top: row.isFirstSection ? 0 : 16.h,
-                    bottom: 12.h,
-                  ),
-                  child: _SmartIncludedEventCard(
-                    event: row.event!,
-                    heroTagSuffix: 'smart_games_${request.scopeId}',
+                  padding: EdgeInsets.only(bottom: 12.h),
+                  child: _DateHeader(
+                    dateLabel: _formatDateHeader(header.dateKey),
+                    gameCount: header.gameCount,
+                    isExpanded: !_collapsedDates.contains(header.dateKey),
+                    onToggle: () => _toggleDateSection(header.dateKey),
                   ),
                 );
               }
@@ -1786,46 +1799,76 @@ class _GamesTabState extends ConsumerState<_GamesTab>
     );
   }
 
-  /// Flatten event + game groups into virtualized rows. The aggregate owns
-  /// the exact game-to-event IDs; the caller's filtered/sorted game order is
-  /// preserved within each event.
-  List<_SmartGameListRow> _buildEventRows(
-    SmartAggregateEvent event,
+  /// Group games by day and flatten into header + game rows, honoring the
+  /// collapsed state. Games arrive pre-sorted (day desc, pinned, avg Elo).
+  /// With [gridColumns] > 1 each section's games are chunked into grid rows.
+  List<_GameListRow> _buildDayRows(
     List<GamesTourModel> games, {
     int gridColumns = 1,
   }) {
-    final groups = groupSmartEventGames(event: event, visibleGames: games);
-    final rows = <_SmartGameListRow>[];
-    for (var groupIndex = 0; groupIndex < groups.length; groupIndex++) {
-      final group = groups[groupIndex];
+    final gamesByDate = <String, List<GamesTourModel>>{};
+    for (final game in games) {
+      final dateKey = DateFormat('yyyy-MM-dd').format(_gameDay(game));
+      gamesByDate.putIfAbsent(dateKey, () => []).add(game);
+    }
+    final sortedKeys =
+        gamesByDate.keys.toList()..sort((a, b) => b.compareTo(a));
+
+    final rows = <_GameListRow>[];
+    for (final dateKey in sortedKeys) {
+      final dateGames = gamesByDate[dateKey]!;
       rows.add(
-        _SmartGameListRow.event(group.event, isFirstSection: groupIndex == 0),
+        _GameListRow.header(
+          _DateHeaderData(dateKey: dateKey, gameCount: dateGames.length),
+        ),
       );
+      if (_collapsedDates.contains(dateKey)) continue;
       if (gridColumns > 1) {
-        for (var i = 0; i < group.games.length; i += gridColumns) {
+        for (var i = 0; i < dateGames.length; i += gridColumns) {
           final end =
-              i + gridColumns < group.games.length
+              i + gridColumns < dateGames.length
                   ? i + gridColumns
-                  : group.games.length;
+                  : dateGames.length;
           rows.add(
-            _SmartGameListRow.grid(
-              group.games.sublist(i, end),
-              isLastInSection: end == group.games.length,
+            _GameListRow.grid(
+              dateGames.sublist(i, end),
+              isLastInSection: end == dateGames.length,
             ),
           );
         }
         continue;
       }
-      for (var i = 0; i < group.games.length; i++) {
+      for (var i = 0; i < dateGames.length; i++) {
         rows.add(
-          _SmartGameListRow.game(
-            group.games[i],
-            isLastInSection: i == group.games.length - 1,
+          _GameListRow.game(
+            dateGames[i],
+            isLastInSection: i == dateGames.length - 1,
           ),
         );
       }
     }
     return rows;
+  }
+
+  DateTime _gameDay(GamesTourModel game) {
+    final raw = game.gameDay ?? game.bucketDate ?? DateTime.now();
+    return DateTime(raw.year, raw.month, raw.day);
+  }
+
+  String _formatDateHeader(String dateKey) {
+    final date = DateTime.parse(dateKey);
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final yesterday = today.subtract(const Duration(days: 1));
+    final gameDate = DateTime(date.year, date.month, date.day);
+
+    if (gameDate == today) {
+      return 'Today';
+    } else if (gameDate == yesterday) {
+      return 'Yesterday';
+    } else {
+      return DateFormat('EEEE, MMM d').format(date);
+    }
   }
 
   int _compareBySortCriterion(
@@ -1856,37 +1899,185 @@ class _GamesTabState extends ConsumerState<_GamesTab>
   }
 }
 
-class _SmartGameListRow {
-  const _SmartGameListRow._({
-    this.event,
+class _DateHeaderData {
+  const _DateHeaderData({required this.dateKey, required this.gameCount});
+
+  final String dateKey;
+  final int gameCount;
+}
+
+class _GameListRow {
+  const _GameListRow._({
+    this.header,
     this.game,
     this.gridGames,
     this.isLastInSection = false,
-    this.isFirstSection = false,
   });
 
-  factory _SmartGameListRow.event(
-    GroupEventCardModel value, {
-    required bool isFirstSection,
-  }) => _SmartGameListRow._(event: value, isFirstSection: isFirstSection);
+  factory _GameListRow.header(_DateHeaderData value) =>
+      _GameListRow._(header: value);
 
-  factory _SmartGameListRow.game(
+  factory _GameListRow.game(
     GamesTourModel value, {
     required bool isLastInSection,
-  }) => _SmartGameListRow._(game: value, isLastInSection: isLastInSection);
+  }) => _GameListRow._(game: value, isLastInSection: isLastInSection);
 
-  factory _SmartGameListRow.grid(
+  factory _GameListRow.grid(
     List<GamesTourModel> value, {
     required bool isLastInSection,
-  }) => _SmartGameListRow._(gridGames: value, isLastInSection: isLastInSection);
+  }) => _GameListRow._(gridGames: value, isLastInSection: isLastInSection);
 
-  final GroupEventCardModel? event;
+  final _DateHeaderData? header;
   final GamesTourModel? game;
 
   /// One grid row of boards (chessBoardGrid mode); null in list modes.
   final List<GamesTourModel>? gridGames;
   final bool isLastInSection;
+}
+
+class _EventGameListRow {
+  const _EventGameListRow._({
+    this.event,
+    this.game,
+    this.gridGames,
+    this.isFirstSection = false,
+    this.isLastInSection = false,
+  });
+
+  factory _EventGameListRow.event(
+    GroupEventCardModel value, {
+    required bool isFirstSection,
+  }) => _EventGameListRow._(event: value, isFirstSection: isFirstSection);
+
+  factory _EventGameListRow.game(
+    GamesTourModel value, {
+    required bool isLastInSection,
+  }) => _EventGameListRow._(game: value, isLastInSection: isLastInSection);
+
+  factory _EventGameListRow.grid(
+    List<GamesTourModel> value, {
+    required bool isLastInSection,
+  }) => _EventGameListRow._(gridGames: value, isLastInSection: isLastInSection);
+
+  final GroupEventCardModel? event;
+  final GamesTourModel? game;
+  final List<GamesTourModel>? gridGames;
   final bool isFirstSection;
+  final bool isLastInSection;
+}
+
+List<_EventGameListRow> _buildEventGameRows(
+  SmartAggregateEvent event, {
+  required int gridColumns,
+}) {
+  final groups = groupSmartEventGames(event: event, visibleGames: event.games);
+  final rows = <_EventGameListRow>[];
+  for (var groupIndex = 0; groupIndex < groups.length; groupIndex++) {
+    final group = groups[groupIndex];
+    rows.add(
+      _EventGameListRow.event(group.event, isFirstSection: groupIndex == 0),
+    );
+    if (gridColumns > 1) {
+      for (var i = 0; i < group.games.length; i += gridColumns) {
+        final end =
+            i + gridColumns < group.games.length
+                ? i + gridColumns
+                : group.games.length;
+        rows.add(
+          _EventGameListRow.grid(
+            group.games.sublist(i, end),
+            isLastInSection: end == group.games.length,
+          ),
+        );
+      }
+      continue;
+    }
+    for (var i = 0; i < group.games.length; i++) {
+      rows.add(
+        _EventGameListRow.game(
+          group.games[i],
+          isLastInSection: i == group.games.length - 1,
+        ),
+      );
+    }
+  }
+  return rows;
+}
+
+/// Date section header — identical to the Countrymen / Favorites games tabs.
+class _DateHeader extends StatelessWidget {
+  const _DateHeader({
+    required this.dateLabel,
+    required this.gameCount,
+    required this.isExpanded,
+    this.onToggle,
+  });
+
+  final String dateLabel;
+  final int gameCount;
+  final bool isExpanded;
+  final VoidCallback? onToggle;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onToggle,
+      borderRadius: BorderRadius.circular(12.br),
+      child: Container(
+        padding: EdgeInsets.symmetric(horizontal: 16.sp, vertical: 14.sp),
+        decoration: BoxDecoration(
+          color: context.colors.surfaceRecessed,
+          borderRadius: BorderRadius.circular(12.br),
+          border: Border.all(
+            color: context.colors.textPrimary.withValues(alpha: 0.1),
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.1),
+              blurRadius: 4,
+              offset: const Offset(0, 2),
+            ),
+          ],
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            Container(
+              width: 4.w,
+              height: 20.h,
+              decoration: BoxDecoration(
+                color: kPrimaryColor,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            SizedBox(width: 12.w),
+            Expanded(
+              child: Text(
+                '$dateLabel • $gameCount ${gameCount == 1 ? 'game' : 'games'}',
+                style: TextStyle(
+                  color: context.colors.textPrimary,
+                  fontSize: 16.sp,
+                  fontWeight: FontWeight.w600,
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            if (onToggle != null) ...[
+              SizedBox(width: 12.w),
+              Icon(
+                isExpanded
+                    ? Icons.keyboard_arrow_up_rounded
+                    : Icons.keyboard_arrow_down_rounded,
+                color: context.colors.textPrimary.withValues(alpha: 0.5),
+                size: 20.sp,
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
 }
 
 class _SmartIncludedEventCard extends ConsumerWidget {
@@ -1985,19 +2176,15 @@ class _AboutTabState extends ConsumerState<_AboutTab>
       return const Center(child: CircularProgressIndicator());
     }
 
-    if (event.events.isEmpty) {
-      final hasNarrowingControls =
-          scope.searchQuery.isNotEmpty ||
-          scope.filter.hasActiveFilters ||
-          scope.tier != 'All';
-      return _EmptyState(
-        message:
-            hasNarrowingControls
-                ? 'No tournaments match your filters'
-                : 'No games right now',
-      );
-    }
-
+    final hasNarrowingControls =
+        scope.searchQuery.isNotEmpty ||
+        scope.filter.hasActiveFilters ||
+        scope.tier != 'All';
+    final emptyMessage =
+        hasNarrowingControls
+            ? 'No tournaments match your filters'
+            : 'No games right now';
+    final opening = request.openingExplanation;
     final dateSpan = TimeUtils.formatDateRange(event.dateStart, event.dateEnd);
 
     return ListView(
@@ -2014,15 +2201,78 @@ class _AboutTabState extends ConsumerState<_AboutTab>
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
-                'This database gathers the strongest games from every '
-                'ongoing broadcast into one place, so you never have to '
-                'switch between tournaments.',
-                style: AppTypography.textSmRegular.copyWith(
-                  color: context.colors.textPrimary,
-                  height: 1.4,
+              if (opening != null) ...[
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      opening.codeLabel,
+                      key: const ValueKey('smart-opening-scope-code'),
+                      style: AppTypography.textSmBold.copyWith(
+                        color: kDarkBlue,
+                      ),
+                    ),
+                    SizedBox(width: 10.w),
+                    Expanded(
+                      child: Text(
+                        opening.title,
+                        key: const ValueKey('smart-opening-scope-title'),
+                        style: AppTypography.textSmBold.copyWith(
+                          color: context.colors.textPrimary,
+                          height: 1.3,
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
-              ),
+                SizedBox(height: 8.h),
+                Text(
+                  opening.scope,
+                  key: const ValueKey('smart-opening-scope-summary'),
+                  style: AppTypography.textSmRegular.copyWith(
+                    color: context.colors.textSecondary,
+                    height: 1.4,
+                  ),
+                ),
+                if (opening.classificationNote case final note?) ...[
+                  SizedBox(height: 7.h),
+                  Text(
+                    note,
+                    key: const ValueKey('smart-opening-classification-note'),
+                    style: AppTypography.textXsRegular.copyWith(
+                      color: context.colors.textSecondary,
+                      height: 1.35,
+                    ),
+                  ),
+                ],
+                if (opening.moves case final moves?) ...[
+                  SizedBox(height: 9.h),
+                  Text(
+                    'Selected line',
+                    style: AppTypography.textXxsMedium.copyWith(
+                      color: context.colors.textSecondary,
+                    ),
+                  ),
+                  SizedBox(height: 3.h),
+                  Text(
+                    moves,
+                    key: const ValueKey('smart-opening-moves'),
+                    style: AppTypography.textXsMedium.copyWith(
+                      color: context.colors.textPrimary,
+                      height: 1.35,
+                    ),
+                  ),
+                ],
+              ] else
+                Text(
+                  'This database gathers the strongest games from every '
+                  'ongoing broadcast into one place, so you never have to '
+                  'switch between tournaments.',
+                  style: AppTypography.textSmRegular.copyWith(
+                    color: context.colors.textPrimary,
+                    height: 1.4,
+                  ),
+                ),
               SizedBox(height: 16.h),
               Wrap(
                 spacing: 10.w,
@@ -2051,31 +2301,43 @@ class _AboutTabState extends ConsumerState<_AboutTab>
             ],
           ),
         ),
-        SizedBox(height: 20.h),
-        Text(
-          'Included tournaments',
-          style: AppTypography.textSmBold.copyWith(
-            color: context.colors.textPrimary,
-          ),
-        ),
-        SizedBox(height: 10.h),
-        ...event.events.map(
-          (includedEvent) => Padding(
-            padding: EdgeInsets.only(bottom: 8.h),
-            child: EventCard(
-              tourEventCardModel: includedEvent,
-              forceCompactLayout: true,
-              heroTagSuffix: 'smart_about_${request.scopeId}',
-              onTap:
-                  () => ref
-                      .read(groupEventScreenProvider.notifier)
-                      .onSelectTournament(
-                        context: context,
-                        id: includedEvent.id,
-                      ),
+        if (event.events.isEmpty) ...[
+          SizedBox(height: 24.h),
+          Center(
+            child: Text(
+              emptyMessage,
+              style: AppTypography.textSmRegular.copyWith(
+                color: context.colors.textSecondary,
+              ),
             ),
           ),
-        ),
+        ] else ...[
+          SizedBox(height: 20.h),
+          Text(
+            'Included tournaments',
+            style: AppTypography.textSmBold.copyWith(
+              color: context.colors.textPrimary,
+            ),
+          ),
+          SizedBox(height: 10.h),
+          ...event.events.map(
+            (includedEvent) => Padding(
+              padding: EdgeInsets.only(bottom: 8.h),
+              child: EventCard(
+                tourEventCardModel: includedEvent,
+                forceCompactLayout: true,
+                heroTagSuffix: 'smart_about_${request.scopeId}',
+                onTap:
+                    () => ref
+                        .read(groupEventScreenProvider.notifier)
+                        .onSelectTournament(
+                          context: context,
+                          id: includedEvent.id,
+                        ),
+              ),
+            ),
+          ),
+        ],
       ],
     );
   }
@@ -2143,8 +2405,8 @@ class _MetaRow extends StatelessWidget {
   }
 }
 
-/// Included events for the smart collection, using the same event card
-/// treatment that heads each section in the Games tab.
+/// Chronological event sections for the smart collection. Each event card is
+/// immediately followed by the games fetched for that exact event ID.
 class _EventsTab extends ConsumerStatefulWidget {
   const _EventsTab();
 
@@ -2158,6 +2420,7 @@ class _EventsTabState extends ConsumerState<_EventsTab>
   bool get wantKeepAlive => true;
 
   final ScrollController _scrollController = ScrollController();
+  SmartAggregateEvent? _lastLoadedEvent;
 
   @override
   void onScrollToTopRequested() {
@@ -2170,37 +2433,136 @@ class _EventsTabState extends ConsumerState<_EventsTab>
     super.dispose();
   }
 
+  bool _handleScrollNotification(ScrollNotification notification) {
+    if (notification.metrics.axis != Axis.vertical) return false;
+    if (notification.metrics.extentAfter <= 420) _requestOlderDays();
+    return false;
+  }
+
+  void _requestOlderDays() {
+    if (!mounted) return;
+    final request = _SmartEventRequestScope.of(context);
+    final scope = _SmartTierFilterScope.of(context);
+    final query = SmartEventGamesQuery(
+      request: request.withNeutralEloRange(),
+      filter: _mergeTierIntoFilter(scope.filter, scope.tier),
+      searchQuery: scope.searchQuery,
+    );
+    ref.read(smartAggregateEventRepositoryProvider(query).notifier).loadMore();
+  }
+
+  Future<bool> _guardGameOpen(BuildContext context) async {
+    if (ref.read(subscriptionProvider).isSubscribed) return true;
+    if (!context.mounted) return false;
+    return await showPremiumPaywallSheet(context: context);
+  }
+
+  Widget _buildGridGame({
+    required GamesTourModel game,
+    required List<GamesTourModel> games,
+    required GamesScreenModel gamesData,
+    required LiveGamesBatchKey? liveBatchKey,
+    required bool streamEnabled,
+  }) {
+    final gameIndex = games.indexWhere((item) => item.gameId == game.gameId);
+    final safeIndex = gameIndex < 0 ? 0 : gameIndex;
+    return GridGameCardWrapperWidget(
+      key: ValueKey('smart_event_grouped_grid_${game.gameId}'),
+      game: game,
+      orderedGames: games,
+      gameIndex: safeIndex,
+      pinnedIds: gamesData.pinnedGamedIs,
+      liveBatchKey: liveBatchKey,
+      allowStockfishFallback: true,
+      streamEnabled: streamEnabled,
+      viewSource: ChessboardView.smartEvent,
+      onPinToggle:
+          (updated) async => await ref
+              .read(gamesTourScreenProvider.notifier)
+              .togglePinGame(updated.gameId, sourceTourId: updated.tourId),
+      onChangedWithLiveGames: (updatedGames) async {
+        final allowed = await _guardGameOpen(context);
+        if (!allowed || !mounted) return;
+        ref
+            .read(gameCardWrapperProvider)
+            .navigateToChessBoard(
+              context: context,
+              orderedGames: updatedGames,
+              gameIndex: safeIndex,
+              onReturnFromChessboard: (_) {},
+              viewSource: ChessboardView.smartEvent,
+            );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     super.build(context);
     final request = _SmartEventRequestScope.of(context);
     final scope = _SmartTierFilterScope.of(context);
-    if (scope.tabIndex != 2) return const SizedBox.shrink();
     final query = SmartEventGamesQuery(
       request: request.withNeutralEloRange(),
       filter: _mergeTierIntoFilter(scope.filter, scope.tier),
       searchQuery: scope.searchQuery,
     );
     final async = ref.watch(smartAggregateEventRepositoryProvider(query));
-    return async.when(
-      skipLoadingOnRefresh: true,
-      skipLoadingOnReload: true,
-      data: (event) {
-        if (event.events.isEmpty) {
-          return _EmptyState(
-            message:
-                scope.searchQuery.isNotEmpty ||
-                        scope.filter.hasActiveFilters ||
-                        scope.tier != 'All'
-                    ? 'No events match your filters'
-                    : 'No events right now',
-          );
-        }
-        final horizontalPadding = ResponsiveHelper.adaptive(
-          phone: 16.sp,
-          tablet: 24.sp,
-        );
-        return Center(
+    final streamEnabled =
+        scope.tabIndex == 2 && (ModalRoute.of(context)?.isCurrent ?? true);
+
+    if (async.hasValue) _lastLoadedEvent = async.requireValue;
+    final event =
+        async.valueOrNull ?? (async.isLoading ? _lastLoadedEvent : null);
+
+    Widget content;
+    if (event == null) {
+      content =
+          async.hasError
+              ? GenericErrorWidget(
+                key: const ValueKey('smart_events_error'),
+                onRetry:
+                    () => ref.invalidate(
+                      smartAggregateEventRepositoryProvider(query),
+                    ),
+              )
+              : const _GamesShimmerList(key: ValueKey('smart_events_loading'));
+    } else if (event.games.isEmpty) {
+      content = _EmptyState(
+        key: const ValueKey('smart_events_empty'),
+        message:
+            scope.searchQuery.isNotEmpty ||
+                    scope.filter.hasActiveFilters ||
+                    scope.tier != 'All'
+                ? 'No events match your filters'
+                : 'No events right now',
+      );
+    } else {
+      final games = event.games;
+      final gamesData = GamesScreenModel(
+        gamesTourModels: games,
+        pinnedGamedIs: event.pinnedGameIds,
+      );
+      final liveBatchKeyByGameId = liveBatchKeysForGames(
+        games: games,
+        scopePrefix: 'smart_event_events:${request.scopeId}',
+      );
+      final viewMode = ref.watch(gamesListViewModeProvider);
+      final isGrid = viewMode == GamesListViewMode.chessBoardGrid;
+      final gridColumns =
+          ResponsiveHelper.isTablet && ResponsiveHelper.isLandscape ? 4 : 2;
+      final rows = _buildEventGameRows(
+        event,
+        gridColumns: isGrid ? gridColumns : 1,
+      );
+      final horizontalPadding = ResponsiveHelper.adaptive(
+        phone: 16.sp,
+        tablet: 24.sp,
+      );
+
+      content = NotificationListener<ScrollNotification>(
+        key: const ValueKey('smart_events_data'),
+        onNotification: _handleScrollNotification,
+        child: Center(
           child: ConstrainedBox(
             constraints: BoxConstraints(
               maxWidth: ResponsiveHelper.contentMaxWidth,
@@ -2212,7 +2574,10 @@ class _EventsTabState extends ConsumerState<_EventsTab>
                 ref.invalidate(smartEventResolvedEventsProvider);
                 ref.invalidate(smartAggregateEventRepositoryProvider);
               },
-              child: ListView.separated(
+              child: ListView.builder(
+                key: PageStorageKey<String>(
+                  'smart_event_events_${request.scopeId}',
+                ),
                 controller: _scrollController,
                 scrollCacheExtent: kListScrollCacheExtent,
                 padding: EdgeInsets.fromLTRB(
@@ -2224,26 +2589,112 @@ class _EventsTabState extends ConsumerState<_EventsTab>
                 physics: const AlwaysScrollableScrollPhysics(
                   parent: BouncingScrollPhysics(),
                 ),
-                itemCount: event.events.length,
-                separatorBuilder: (_, __) => SizedBox(height: 16.h),
-                itemBuilder:
-                    (context, i) => _SmartIncludedEventCard(
-                      event: event.events[i],
-                      heroTagSuffix: 'smart_events_${request.scopeId}',
+                itemCount:
+                    rows.length +
+                    (event.hasMore || event.isLoadingMore ? 1 : 0),
+                itemBuilder: (context, index) {
+                  if (index >= rows.length) {
+                    if (!event.isLoadingMore) {
+                      return const SizedBox(height: 24);
+                    }
+                    return Padding(
+                      padding: EdgeInsets.symmetric(vertical: 16.h),
+                      child: const Center(
+                        child: SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        ),
+                      ),
+                    );
+                  }
+
+                  final row = rows[index];
+                  if (row.event != null) {
+                    return Padding(
+                      padding: EdgeInsets.only(
+                        top: row.isFirstSection ? 0 : 16.h,
+                        bottom: 12.h,
+                      ),
+                      child: _SmartIncludedEventCard(
+                        event: row.event!,
+                        heroTagSuffix: 'smart_events_${request.scopeId}',
+                      ),
+                    );
+                  }
+                  if (row.gridGames != null) {
+                    final rowGames = row.gridGames!;
+                    return Padding(
+                      padding: EdgeInsets.only(
+                        bottom: row.isLastInSection ? 16.h : 12.h,
+                      ),
+                      child: Row(
+                        children: [
+                          for (
+                            var column = 0;
+                            column < gridColumns;
+                            column++
+                          ) ...[
+                            if (column > 0) SizedBox(width: 12.sp),
+                            Expanded(
+                              child:
+                                  column < rowGames.length
+                                      ? _buildGridGame(
+                                        game: rowGames[column],
+                                        games: games,
+                                        gamesData: gamesData,
+                                        liveBatchKey:
+                                            liveBatchKeyByGameId[rowGames[column]
+                                                .gameId],
+                                        streamEnabled: streamEnabled,
+                                      )
+                                      : const SizedBox.shrink(),
+                            ),
+                          ],
+                        ],
+                      ),
+                    );
+                  }
+
+                  final game = row.game!;
+                  final gameIndex = games.indexWhere(
+                    (item) => item.gameId == game.gameId,
+                  );
+                  return Padding(
+                    padding: EdgeInsets.only(
+                      bottom: row.isLastInSection ? 16.h : 12.h,
                     ),
+                    child: GameCardWrapperWidget(
+                      key: ValueKey('smart_event_grouped_${game.gameId}'),
+                      game: game,
+                      gamesData: gamesData,
+                      gameIndex: gameIndex < 0 ? 0 : gameIndex,
+                      isChessBoardVisible:
+                          viewMode == GamesListViewMode.chessBoard,
+                      viewSource: ChessboardView.smartEvent,
+                      onReturnFromChessboard: (_) {},
+                      liveBatchKey: liveBatchKeyByGameId[game.gameId],
+                      allowStockfishFallback: true,
+                      streamEnabled: streamEnabled,
+                      onBeforeOpen: () => _guardGameOpen(context),
+                    ),
+                  );
+                },
               ),
             ),
           ),
-        );
-      },
-      loading: () => const Center(child: CircularProgressIndicator()),
-      error:
-          (e, _) => GenericErrorWidget(
-            onRetry:
-                () => ref.invalidate(
-                  smartAggregateEventRepositoryProvider(query),
-                ),
-          ),
+        ),
+      );
+    }
+
+    return TickerMode(
+      enabled: streamEnabled,
+      child: AnimatedSwitcher(
+        duration: const Duration(milliseconds: 250),
+        switchInCurve: Curves.easeOut,
+        switchOutCurve: Curves.easeIn,
+        child: content,
+      ),
     );
   }
 }

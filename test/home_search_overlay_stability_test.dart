@@ -5,6 +5,7 @@ import 'package:chessever2/widgets/search/enhanced_rounded_search_bar.dart';
 import 'package:chessever2/widgets/search/recent_searches_provider.dart';
 import 'package:chessever2/widgets/search/search_overlay_widget.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
@@ -242,7 +243,7 @@ void main() {
 
     final field = tester.widget<TextField>(find.byType(TextField));
     expect(field.focusNode?.hasFocus, isTrue);
-    expect(find.text("King's Indian"), findsOneWidget);
+    expect(find.text("King's Indian"), findsWidgets);
     expect(find.text('E60-E99'), findsOneWidget);
     expect(find.textContaining('E6+E7+E8+E9'), findsNothing);
 
@@ -250,5 +251,71 @@ void main() {
     await tester.pump();
 
     expect(field.focusNode?.hasFocus, isFalse);
+  });
+
+  testWidgets('clear suffix explicitly hides a stubborn iOS keyboard', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(390, 844));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    await tester.pumpWidget(_app(_MemoryStorage(null)));
+    await tester.pump();
+    await tester.tap(find.byType(TextField));
+    await tester.pump(const Duration(milliseconds: 350));
+
+    final field = tester.widget<TextField>(find.byType(TextField));
+    expect(field.focusNode?.hasFocus, isTrue);
+    expect(tester.testTextInput.isVisible, isTrue);
+
+    // Model the iOS race from the device report: the global pointer-down
+    // handler clears the framework client, but the native keyboard remains
+    // first responder until it receives an explicit TextInput.hide.
+    var platformKeyboardVisible = true;
+    var orphanedNativeInputView = false;
+    final platformCalls = <String>[];
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+      SystemChannels.textInput,
+      (call) async {
+        platformCalls.add(call.method);
+        if (call.method == 'TextInput.clearClient' && platformKeyboardVisible) {
+          orphanedNativeInputView = true;
+        } else if (call.method == 'TextInput.hide' &&
+            !orphanedNativeInputView) {
+          platformKeyboardVisible = false;
+        }
+        return null;
+      },
+    );
+    addTearDown(tester.testTextInput.register);
+
+    final clearButton = find.descendant(
+      of: find.byKey(const ValueKey('simple-search-field-surface')),
+      matching: find.byIcon(Icons.close),
+    );
+    expect(clearButton, findsOneWidget);
+    final clearGesture = find.ancestor(
+      of: clearButton,
+      matching: find.byType(GestureDetector),
+    );
+    expect(clearGesture, findsOneWidget);
+    final clearRect = tester.getRect(clearGesture);
+    await tester.tapAt(Offset(clearRect.left + 2, clearRect.center.dy));
+    await tester.pump();
+
+    expect(field.focusNode?.hasFocus, isFalse);
+    expect(platformCalls, contains('TextInput.clearClient'));
+    expect(
+      platformCalls.indexOf('TextInput.hide'),
+      lessThan(platformCalls.indexOf('TextInput.clearClient')),
+      reason: 'The native keyboard must resign before its client is cleared.',
+    );
+    expect(
+      platformKeyboardVisible,
+      isFalse,
+      reason:
+          'Losing Flutter focus is insufficient when iOS keeps its native '
+          'text input view first responder.',
+    );
   });
 }

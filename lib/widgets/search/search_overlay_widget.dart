@@ -7,10 +7,8 @@ import 'package:chessever2/screens/group_event/providers/group_event_screen_prov
 import 'package:chessever2/screens/group_event/providers/supabase_combined_search_provider.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
-import 'package:chessever2/utils/eco_openings.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/user_error_message.dart';
-import 'package:chessever2/widgets/game_filter/game_filter_model.dart';
 import 'package:chessever2/widgets/search/enhanced_group_broadcast_local_storage.dart';
 import 'package:chessever2/widgets/search/opening_search_suggestion.dart';
 import 'package:chessever2/widgets/search/recent_searches_provider.dart';
@@ -35,7 +33,7 @@ class SearchOverlay extends ConsumerWidget {
   final String query;
   final ValueChanged<GroupEventCardModel> onTournamentTap;
   final ValueChanged<SearchPlayer>? onPlayerTap;
-  final ValueChanged<GameEcoFilter>? onOpeningTap;
+  final ValueChanged<OpeningSearchSelection>? onOpeningTap;
 
   @visibleForTesting
   final VoidCallback? debugOnResultsBuild;
@@ -222,21 +220,21 @@ class SearchOverlay extends ConsumerWidget {
     List<OpeningSearchSuggestion> openings,
   ) {
     return SizedBox(
-      height: math.max(78.h, 80),
+      height: math.max(84.h, 86),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Padding(
-            padding: EdgeInsets.fromLTRB(12.w, 7.h, 12.w, 3.h),
+            padding: EdgeInsets.fromLTRB(10.w, 4.h, 10.w, 2.h),
             child: Row(
               children: [
-                Icon(Icons.menu_book_outlined, size: 15.ic, color: kDarkBlue),
-                SizedBox(width: 7.w),
+                Icon(Icons.menu_book_outlined, size: 14.ic, color: kDarkBlue),
+                SizedBox(width: 6.w),
                 Text(
                   'Openings (${openings.length})',
                   style: TextStyle(
                     color: context.colors.textPrimary,
-                    fontSize: 12.sp,
+                    fontSize: 11.sp,
                     fontWeight: FontWeight.w600,
                   ),
                 ),
@@ -246,14 +244,16 @@ class SearchOverlay extends ConsumerWidget {
           Expanded(
             child: ListView.separated(
               scrollDirection: Axis.horizontal,
-              padding: EdgeInsets.symmetric(horizontal: 8.w),
+              padding: EdgeInsets.symmetric(horizontal: 7.w),
               itemCount: openings.length,
-              separatorBuilder: (_, __) => SizedBox(width: 5.w),
+              separatorBuilder: (_, __) => SizedBox(width: 4.w),
               itemBuilder: (context, index) {
                 final opening = openings[index];
                 return _OpeningResultTile(
                   suggestion: opening,
-                  onTap: () => onOpeningTap?.call(opening.filter),
+                  showsAll:
+                      opening.isAggregate || openings.any(opening.isParentOf),
+                  onTap: () => onOpeningTap?.call(opening.selection),
                 );
               },
             ),
@@ -509,7 +509,7 @@ class SearchOverlay extends ConsumerWidget {
         final player = entry.toPlayer();
         if (player != null) onPlayerTap?.call(player);
       case RecentSearchKind.opening:
-        final opening = entry.toOpening();
+        final opening = entry.toOpeningSelection();
         if (opening != null) onOpeningTap?.call(opening);
     }
   }
@@ -635,53 +635,88 @@ class SearchOverlay extends ConsumerWidget {
 }
 
 class _OpeningResultTile extends StatelessWidget {
-  const _OpeningResultTile({required this.suggestion, required this.onTap});
+  const _OpeningResultTile({
+    required this.suggestion,
+    required this.showsAll,
+    required this.onTap,
+  });
 
   final OpeningSearchSuggestion suggestion;
+  final bool showsAll;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    final codeLabel =
-        EcoOpenings.getFamily(suggestion.filter.code)?.rangeLabel ??
-        suggestion.filter.displayText;
+    final codeLabel = suggestion.codeLabel;
     return Semantics(
       button: true,
-      label: 'Open ${suggestion.title} smart event, ECO $codeLabel',
+      label:
+          'Open ${suggestion.fullTitle} smart event, ECO $codeLabel'
+          '${showsAll ? ', all child variations' : ''}',
       child: InkWell(
+        key: ValueKey('opening-result-${suggestion.id}'),
         onTap: onTap,
         borderRadius: BorderRadius.circular(8.br),
         child: Container(
-          width: 184.w,
+          width: math.max(148.w, 166),
           constraints: const BoxConstraints(minHeight: 44),
-          padding: EdgeInsets.symmetric(horizontal: 9.w, vertical: 5.h),
+          padding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 4.h),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(8.br),
             border: Border.all(
               color: context.colors.textPrimary.withValues(alpha: 0.1),
             ),
           ),
-          child: Row(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
-                codeLabel,
-                style: TextStyle(
-                  color: kDarkBlue,
-                  fontSize: 12.sp,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-              SizedBox(width: 8.w),
-              Expanded(
-                child: Text(
-                  suggestion.title,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    color: context.colors.textPrimary,
-                    fontSize: 11.sp,
-                    fontWeight: FontWeight.w500,
+              Row(
+                children: [
+                  Text(
+                    codeLabel,
+                    style: TextStyle(
+                      color: kDarkBlue,
+                      fontSize: 11.sp,
+                      fontWeight: FontWeight.w700,
+                    ),
                   ),
+                  if (showsAll) ...[
+                    SizedBox(width: 4.w),
+                    Text(
+                      '(All)',
+                      style: TextStyle(
+                        color: context.colors.textSecondary,
+                        fontSize: 8.5.sp,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                  SizedBox(width: 6.w),
+                  Expanded(
+                    child: Text(
+                      suggestion.title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: context.colors.textPrimary,
+                        fontSize: 10.5.sp,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              SizedBox(height: 2.h),
+              Text(
+                suggestion.subtitle,
+                maxLines: 3,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: context.colors.textSecondary,
+                  fontSize: 9.sp,
+                  fontWeight: FontWeight.w400,
+                  height: 1.12,
                 ),
               ),
             ],

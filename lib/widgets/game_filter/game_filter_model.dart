@@ -152,7 +152,8 @@ extension GameTournamentTypeFilterX on GameTournamentTypeFilter {
 class GameEcoFilter {
   const GameEcoFilter({this.code});
 
-  /// A specific ECO code (B90), a family id (B9 or E6+E7+E8+E9), or null.
+  /// A specific ECO code (B90), a family ID/range (B9, D30-D42, or
+  /// E6+E7+E8+E9), or null.
   final String? code;
 
   /// Factory for "all openings" filter
@@ -167,19 +168,22 @@ class GameEcoFilter {
 
   bool get isUnknownEco => code == unknownEcoCode;
 
-  /// Create a filter for a specific ECO code
-  factory GameEcoFilter.forCode(String code) =>
-      GameEcoFilter(code: code.trim().toUpperCase());
-
-  /// Create a bulk filter for a parent family backed by one ECO prefix.
-  /// Invalid/mixed prefixes are rejected so a family can never over-select.
-  factory GameEcoFilter.forFamily(String codePrefix) {
-    final normalized = codePrefix.trim().toUpperCase();
-    assert(
-      EcoOpenings.getFamily(normalized) != null,
-      '$normalized is not a safe ECO family prefix',
+  /// Create a filter for a specific ECO code. A persisted visible range is
+  /// canonicalized to its stable family ID for backward-compatible equality.
+  factory GameEcoFilter.forCode(String code) {
+    final normalized = code.trim().toUpperCase().replaceAll('–', '-');
+    return GameEcoFilter(
+      code: EcoOpenings.getFamily(normalized)?.id ?? normalized,
     );
-    return GameEcoFilter(code: normalized);
+  }
+
+  /// Create a bulk filter for a parent family backed by an exact prefix cover.
+  /// Unknown ranges are rejected so a family can never over-select.
+  factory GameEcoFilter.forFamily(String codePrefix) {
+    final normalized = codePrefix.trim().toUpperCase().replaceAll('–', '-');
+    final family = EcoOpenings.getFamily(normalized);
+    assert(family != null, '$normalized is not a safe ECO family prefix');
+    return GameEcoFilter(code: family?.id ?? normalized);
   }
 
   /// Whether this filter shows all openings
@@ -194,6 +198,24 @@ class GameEcoFilter {
     if (isAll) return const [];
     final family = EcoOpenings.getFamily(code);
     return family?.codePrefixes ?? [code!];
+  }
+
+  /// Every exact three-character ECO code represented by this selection.
+  ///
+  /// Supabase stores normalized ECO values (`B97`, not a longer opening
+  /// string), so its query path can use equality / `IN` rather than `ILIKE`.
+  /// That lets PostgreSQL use the ordinary B-tree ECO index for exact codes,
+  /// full families, and irregular inclusive ranges alike.
+  List<String> get exactEcoCodes {
+    if (isAll) return const [];
+    final family = EcoOpenings.getFamily(code);
+    if (family == null) return [code!];
+
+    final range = EcoCodeRange(start: family.rangeStart, end: family.rangeEnd);
+    return List<String>.unmodifiable([
+      for (var number = range.startNumber; number <= range.endNumber; number++)
+        '${family.rangeStart[0]}${number.toString().padLeft(2, '0')}',
+    ]);
   }
 
   bool get hasMultiplePrefixes => ecoPrefixes.length > 1;

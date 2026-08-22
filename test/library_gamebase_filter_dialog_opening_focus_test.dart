@@ -177,8 +177,17 @@ void main() {
 
     final family = find.byKey(const ValueKey('eco-family-B9'));
     expect(family, findsOneWidget);
-    expect(find.text('B90-B99 · 10 codes'), findsOneWidget);
-    expect(find.text('B90'), findsOneWidget);
+    expect(
+      find.descendant(of: family, matching: find.text('B90-B99')),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(
+        of: family,
+        matching: find.text('Najdorf · 10 ECO codes'),
+      ),
+      findsOneWidget,
+    );
 
     await tester.tap(family);
     await tester.pumpAndSettle();
@@ -206,7 +215,14 @@ void main() {
 
     final family = find.byKey(const ValueKey('eco-family-E6+E7+E8+E9'));
     expect(family, findsOneWidget);
-    expect(find.text('E60-E99 · 40 codes'), findsOneWidget);
+    expect(
+      find.descendant(of: family, matching: find.text('E60-E99')),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(of: family, matching: find.text('40 ECO codes')),
+      findsOneWidget,
+    );
 
     await tester.ensureVisible(family);
     await tester.tap(family);

@@ -16,6 +16,7 @@ import 'package:chessever2/utils/event_time_control.dart';
 import 'package:chessever2/utils/eco_openings.dart';
 import 'package:chessever2/widgets/game_filter/game_filter_model.dart';
 import 'package:chessever2/widgets/game_filter/rating_tier_filter.dart';
+import 'package:chessever2/widgets/search/opening_search_suggestion.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart' show RangeValues;
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -25,6 +26,83 @@ enum SmartEventSource { forYou, current }
 bool isSmartFavoriteEvent(FavoriteEvent favorite) {
   return favorite.metadata['type'] == 'smart_event' ||
       favorite.eventId.startsWith('smart_event:');
+}
+
+@immutable
+class SmartEventOpeningContext {
+  SmartEventOpeningContext({
+    required String hierarchyLabel,
+    required List<String> movePath,
+    required this.isAggregate,
+  }) : hierarchyLabel = hierarchyLabel.trim(),
+       movePath = List<String>.unmodifiable(
+         movePath.map((move) => move.trim()).where((move) => move.isNotEmpty),
+       );
+
+  factory SmartEventOpeningContext.fromSelection(
+    OpeningSearchSelection selection,
+  ) {
+    return SmartEventOpeningContext(
+      hierarchyLabel: selection.hierarchyLabel,
+      movePath: selection.movePath,
+      isAggregate: selection.isAggregate,
+    );
+  }
+
+  static SmartEventOpeningContext? fromMetadata(Object? raw) {
+    if (raw is! Map) return null;
+    final hierarchyLabel = raw['hierarchyLabel']?.toString().trim() ?? '';
+    if (hierarchyLabel.isEmpty) return null;
+    final rawMoves = raw['movePath'];
+    final rawAggregate = raw['isAggregate'];
+    return SmartEventOpeningContext(
+      hierarchyLabel: hierarchyLabel,
+      movePath:
+          rawMoves is List
+              ? rawMoves.map((move) => move.toString()).toList(growable: false)
+              : const [],
+      isAggregate: rawAggregate is bool ? rawAggregate : true,
+    );
+  }
+
+  final String hierarchyLabel;
+  final List<String> movePath;
+  final bool isAggregate;
+
+  Map<String, dynamic> toMetadata() => {
+    'hierarchyLabel': hierarchyLabel,
+    'movePath': movePath,
+    'isAggregate': isAggregate,
+  };
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is SmartEventOpeningContext &&
+          other.hierarchyLabel == hierarchyLabel &&
+          other.isAggregate == isAggregate &&
+          listEquals(other.movePath, movePath);
+
+  @override
+  int get hashCode =>
+      Object.hash(hierarchyLabel, isAggregate, Object.hashAll(movePath));
+}
+
+@immutable
+class SmartEventOpeningExplanation {
+  const SmartEventOpeningExplanation({
+    required this.codeLabel,
+    required this.title,
+    required this.scope,
+    this.classificationNote,
+    this.moves,
+  });
+
+  final String codeLabel;
+  final String title;
+  final String scope;
+  final String? classificationNote;
+  final String? moves;
 }
 
 @immutable
@@ -41,6 +119,7 @@ class SmartEventRequest {
     required List<GroupEventCardModel> events,
     Set<String> formatsAndStates = const {},
     GameEcoFilter? eco,
+    this.openingContext,
     this.savedAt,
   }) : events = List<GroupEventCardModel>.unmodifiable(events),
        eco = eco ?? GameEcoFilter.all,
@@ -55,7 +134,10 @@ class SmartEventRequest {
   /// No source event IDs are required: the aggregate providers already apply
   /// ECO criteria to the shared game index and derive the event list from the
   /// matching games.
-  factory SmartEventRequest.forOpening(GameEcoFilter eco) {
+  factory SmartEventRequest.forOpening(
+    GameEcoFilter eco, {
+    SmartEventOpeningContext? openingContext,
+  }) {
     assert(!eco.isAll, 'Opening smart events require an ECO code or family');
     final label = _smartEventEcoLabel(eco) ?? eco.code!;
     return SmartEventRequest(
@@ -69,6 +151,16 @@ class SmartEventRequest {
       countPlural: 'events',
       events: const [],
       eco: eco,
+      openingContext: openingContext,
+    );
+  }
+
+  factory SmartEventRequest.forOpeningSelection(
+    OpeningSearchSelection selection,
+  ) {
+    return SmartEventRequest.forOpening(
+      selection.filter,
+      openingContext: SmartEventOpeningContext.fromSelection(selection),
     );
   }
 
@@ -88,7 +180,49 @@ class SmartEventRequest {
   /// overrides flow back through [withGameFilterOverrides].
   final Set<String> formatsAndStates;
   final GameEcoFilter eco;
+  final SmartEventOpeningContext? openingContext;
   final DateTime? savedAt;
+
+  SmartEventOpeningExplanation? get openingExplanation {
+    if (eco.isAll) return null;
+    final family = EcoOpenings.getFamily(eco.code);
+    final codeLabel = family?.rangeLabel ?? eco.displayText;
+    final contextualTitle = openingContext?.hierarchyLabel.trim() ?? '';
+    final title =
+        contextualTitle.isNotEmpty
+            ? contextualTitle
+            : family?.name ?? eco.openingName ?? eco.displayText;
+    final moves = openingContext?.movePath.join(' ').trim();
+
+    if (family != null) {
+      return SmartEventOpeningExplanation(
+        codeLabel: codeLabel,
+        title: title,
+        scope:
+            'Includes all ${family.codeCount} ECO codes from '
+            '${family.rangeStart} through ${family.rangeEnd}, inclusive. '
+            'Every indexed main line and subvariant in this family is included.',
+        moves: moves?.isNotEmpty == true ? moves : null,
+      );
+    }
+
+    final namedLine = openingContext?.isAggregate == false;
+    return SmartEventOpeningExplanation(
+      codeLabel: codeLabel,
+      title: title,
+      scope:
+          'Includes every indexed game classified as ECO $codeLabel, '
+          'including transpositions under that code.',
+      classificationNote:
+          namedLine
+              ? 'You selected this named line, but ECO $codeLabel can also '
+                  'contain sibling named variations. Those games are included '
+                  'because matching is based on the ECO classification.'
+              : 'All indexed named variations classified under ECO '
+                  '$codeLabel are included.',
+      moves: moves?.isNotEmpty == true ? moves : null,
+    );
+  }
 
   static const _timeControlCriteria = {'standard', 'rapid', 'blitz'};
   static const _stateCriteria = {'live', 'completed'};
@@ -204,6 +338,7 @@ class SmartEventRequest {
       events: events,
       formatsAndStates: newFormatsAndStates,
       eco: newEco,
+      openingContext: newEco == eco ? openingContext : null,
       savedAt: savedAt,
     );
   }
@@ -249,6 +384,7 @@ class SmartEventRequest {
       events: events,
       formatsAndStates: formatsAndStates,
       eco: eco,
+      openingContext: openingContext,
       savedAt: savedAt,
     );
   }
@@ -301,6 +437,7 @@ class SmartEventRequest {
       events: newEvents,
       formatsAndStates: formatsAndStates,
       eco: eco,
+      openingContext: openingContext,
       savedAt: savedAt,
     );
   }
@@ -323,6 +460,7 @@ class SmartEventRequest {
       events: events,
       formatsAndStates: formatsAndStates,
       eco: eco,
+      openingContext: openingContext,
       savedAt: savedAt,
     );
   }
@@ -350,6 +488,8 @@ class SmartEventRequest {
       'countPlural': countPlural,
       'formatsAndStates': (formatsAndStates.toList(growable: false)..sort()),
       if (!eco.isAll) 'ecoCode': eco.code,
+      if (openingContext != null)
+        'openingContext': openingContext!.toMetadata(),
       'savedAt': (savedAt ?? DateTime.now()).toIso8601String(),
       'events': encodeSmartEventsForMetadata(events),
     };
@@ -402,6 +542,9 @@ class SmartEventRequest {
         ),
       ),
       eco: _ecoFilterFromMetadata(metadata['ecoCode'] ?? metadata['eco']),
+      openingContext: SmartEventOpeningContext.fromMetadata(
+        metadata['openingContext'],
+      ),
       savedAt: _dateFromMetadata(metadata['savedAt']) ?? favorite.createdAt,
     );
   }
@@ -420,6 +563,7 @@ class SmartEventRequest {
         countPlural != other.countPlural ||
         savedAt != other.savedAt ||
         eco != other.eco ||
+        openingContext != other.openingContext ||
         !setEquals(formatsAndStates, other.formatsAndStates) ||
         events.length != other.events.length) {
       return false;
@@ -442,6 +586,7 @@ class SmartEventRequest {
     countPlural,
     savedAt,
     eco,
+    openingContext,
     Object.hashAllUnordered(formatsAndStates),
     Object.hashAll(events),
   );
@@ -879,8 +1024,13 @@ class SmartEventGameGroup {
   final List<GamesTourModel> games;
 }
 
-/// Groups the currently visible game slice beneath its source event while
-/// preserving both the event order and the game order chosen by the caller.
+/// Groups the currently visible game slice beneath its source event.
+///
+/// Events are chronological (newest start datetime first). When two events
+/// start at the same instant, the event's displayed average Elo is the
+/// tie-breaker, descending. Games retain the chronological order supplied by
+/// the aggregate query, so appending an older `game_day` page never reshuffles
+/// games inside a group.
 List<SmartEventGameGroup> groupSmartEventGames({
   required SmartAggregateEvent event,
   required Iterable<GamesTourModel> visibleGames,
@@ -898,6 +1048,32 @@ List<SmartEventGameGroup> groupSmartEventGames({
     if (games == null || games.isEmpty) continue;
     groups.add(SmartEventGameGroup(event: includedEvent, games: games));
   }
+
+  DateTime eventDate(SmartEventGameGroup group) {
+    return group.event.startDate ??
+        group.event.endDate ??
+        DateTime.fromMillisecondsSinceEpoch(0);
+  }
+
+  int eventAverageElo(SmartEventGameGroup group) {
+    if (group.event.maxAvgElo > 0) return group.event.maxAvgElo;
+    final ratings = group.games
+        .map(smartGameAverageElo)
+        .where((rating) => rating > 0)
+        .toList(growable: false);
+    if (ratings.isEmpty) return 0;
+    return (ratings.reduce((a, b) => a + b) / ratings.length).round();
+  }
+
+  groups.sort((a, b) {
+    final byDate = eventDate(b).compareTo(eventDate(a));
+    if (byDate != 0) return byDate;
+    final byElo = eventAverageElo(b).compareTo(eventAverageElo(a));
+    if (byElo != 0) return byElo;
+    final byTitle = a.event.title.compareTo(b.event.title);
+    if (byTitle != 0) return byTitle;
+    return a.event.id.compareTo(b.event.id);
+  });
   return groups;
 }
 

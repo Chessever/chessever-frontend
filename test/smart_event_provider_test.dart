@@ -10,6 +10,7 @@ import 'package:chessever2/screens/group_event/widget/filter_popup/filter_popup_
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/widgets/game_filter/game_filter_model.dart'
     show GameEcoFilter, GameFilter, GameLiveFilter, GameTimeControlFilter;
+import 'package:chessever2/widgets/search/opening_search_suggestion.dart';
 import 'package:flutter/material.dart' show RangeValues;
 import 'package:flutter_test/flutter_test.dart';
 
@@ -55,12 +56,13 @@ GroupEventCardModel _event({
   required DateTime start,
   required DateTime end,
   String? title,
+  int maxAvgElo = 2600,
 }) {
   return GroupEventCardModel(
     id: id,
     title: title ?? 'Event $id',
     dates: 'Jun 1 - 2, 2026',
-    maxAvgElo: 2600,
+    maxAvgElo: maxAvgElo,
     timeUntilStart: '',
     tourEventCategory: TourEventCategory.ongoing,
     timeControl: 'Standard',
@@ -133,20 +135,20 @@ void main() {
     expect(smartEventTabLabels, ['About', 'Games', 'Events']);
   });
 
-  test('smart games group under their exact source event IDs', () {
-    final start = DateTime.utc(2026, 8, 21);
-    final end = DateTime.utc(2026, 8, 22);
+  test('smart event groups use exact IDs and newest event datetime first', () {
+    final olderStart = DateTime.utc(2026, 8, 20, 10);
+    final newerStart = DateTime.utc(2026, 8, 21, 10);
     final eventA = _event(
       id: 'event-a',
       title: 'Shared title',
-      start: start,
-      end: end,
+      start: newerStart,
+      end: newerStart.add(const Duration(hours: 8)),
     );
     final eventB = _event(
       id: 'event-b',
       title: 'Shared title',
-      start: start,
-      end: end,
+      start: olderStart,
+      end: olderStart.add(const Duration(hours: 8)),
     );
     final gameA1 = _game(id: 'a-1', whiteRating: 2500, blackRating: 2500);
     final gameA2 = _game(id: 'a-2', whiteRating: 2600, blackRating: 2600);
@@ -171,9 +173,47 @@ void main() {
       visibleGames: [gameA2, gameB, gameA1],
     );
 
-    expect(groups.map((group) => group.event.id), ['event-b', 'event-a']);
-    expect(groups[0].games.map((game) => game.gameId), ['b-1']);
-    expect(groups[1].games.map((game) => game.gameId), ['a-2', 'a-1']);
+    expect(groups.map((group) => group.event.id), ['event-a', 'event-b']);
+    expect(groups[0].games.map((game) => game.gameId), ['a-2', 'a-1']);
+    expect(groups[1].games.map((game) => game.gameId), ['b-1']);
+  });
+
+  test('event average Elo breaks equal-datetime grouping ties', () {
+    final start = DateTime.utc(2026, 8, 21, 10);
+    final lower = _event(
+      id: 'lower',
+      start: start,
+      end: start.add(const Duration(hours: 8)),
+      maxAvgElo: 2450,
+    );
+    final higher = _event(
+      id: 'higher',
+      start: start,
+      end: start.add(const Duration(hours: 8)),
+      maxAvgElo: 2750,
+    );
+    final lowerGame = _game(
+      id: 'lower-game',
+      whiteRating: 2450,
+      blackRating: 2450,
+    );
+    final higherGame = _game(
+      id: 'higher-game',
+      whiteRating: 2750,
+      blackRating: 2750,
+    );
+    final aggregate = SmartAggregateEvent.empty.copyWith(
+      events: [lower, higher],
+      games: [lowerGame, higherGame],
+      gameEventIds: const {'lower-game': 'lower', 'higher-game': 'higher'},
+    );
+
+    final groups = groupSmartEventGames(
+      event: aggregate,
+      visibleGames: aggregate.games,
+    );
+
+    expect(groups.map((group) => group.event.id), ['higher', 'lower']);
   });
 
   test('opening search creates a global family smart-event request', () {
@@ -185,6 +225,44 @@ void main() {
     expect(request.minElo, 0);
     expect(request.maxElo, 3200);
     expect(request.seedGameFilter().eco.code, 'B9');
+    expect(request.openingExplanation?.codeLabel, 'B90-B99');
+    expect(request.openingExplanation?.scope, contains('all 10 ECO codes'));
+    expect(request.openingExplanation?.scope, contains('main line'));
+  });
+
+  test('named-line smart events explain and persist their ECO scope', () {
+    final suggestion = searchOpeningSuggestions(
+      'Gurgen',
+    ).firstWhere((result) => result.subtitle == 'Gurgenidze variation');
+    final request = SmartEventRequest.forOpeningSelection(suggestion.selection);
+    final explanation = request.openingExplanation!;
+
+    expect(request.eco.code, 'B06');
+    expect(explanation.title, contains('Gurgenidze variation'));
+    expect(explanation.scope, contains('classified as ECO B06'));
+    expect(
+      explanation.classificationNote,
+      contains('sibling named variations'),
+    );
+    expect(explanation.classificationNote, contains('ECO classification'));
+    expect(explanation.moves, isNotEmpty);
+
+    final metadata = request.toFavoriteMetadata();
+    final restored = SmartEventRequest.fromFavoriteEvent(
+      FavoriteEvent(
+        id: 'favorite-gurgenidze',
+        userId: 'user-1',
+        eventId: request.favoriteEventId,
+        eventName: request.displayName,
+        metadata: metadata,
+        createdAt: DateTime.utc(2026, 8, 22),
+        updatedAt: DateTime.utc(2026, 8, 22),
+      ),
+    );
+
+    expect(restored.openingContext, request.openingContext);
+    expect(restored.openingExplanation?.title, explanation.title);
+    expect(restored.openingExplanation?.moves, explanation.moves);
   });
 
   group('criteria-keyed identity', () {

@@ -342,7 +342,9 @@ class GroupEventScreen extends HookConsumerWidget {
                         MaterialPageRoute(
                           builder:
                               (_) => SmartEventScreen(
-                                request: SmartEventRequest.forOpening(opening),
+                                request: SmartEventRequest.forOpeningSelection(
+                                  opening,
+                                ),
                               ),
                         ),
                       );

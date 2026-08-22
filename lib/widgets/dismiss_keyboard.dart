@@ -1,5 +1,8 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
+import 'package:flutter/services.dart';
 
 final Set<_RenderKeyboardDismissExclusion> _keyboardDismissExclusions = {};
 
@@ -18,22 +21,48 @@ class DismissKeyboard extends StatelessWidget {
   Widget build(BuildContext context) {
     return Listener(
       behavior: HitTestBehavior.translucent,
-      onPointerDown: dismissKeyboardIfPointerOutsideFocus,
+      onPointerDown:
+          (event) => dismissKeyboardIfPointerOutsideFocus(
+            event,
+            keyboardVisible: MediaQuery.viewInsetsOf(context).bottom > 0,
+          ),
       child: child,
     );
   }
 }
 
 /// Unfocuses the current leaf focus when [event] is outside that widget.
-/// No-ops when nothing editable is focused, so tapping a field to open
-/// the keyboard is not cancelled by the same pointer down.
-void dismissKeyboardIfPointerOutsideFocus(PointerDownEvent event) {
+/// When no editable still owns focus, [keyboardVisible] enables the recovery
+/// path for an orphaned native keyboard occupying the viewport.
+void dismissKeyboardIfPointerOutsideFocus(
+  PointerDownEvent event, {
+  bool keyboardVisible = false,
+}) {
   final focus = FocusManager.instance.primaryFocus;
-  if (focus == null || !focus.hasFocus) return;
-  if (focus is FocusScopeNode) return;
+  if (focus == null || !focus.hasFocus || focus is FocusScopeNode) {
+    // Recovery path for the iOS state where Flutter has already released its
+    // editable focus but the native keyboard is still occupying the viewport.
+    if (keyboardVisible) dismissSoftwareKeyboard();
+    return;
+  }
   if (_pointerHitsFocusedEditable(focus, event.position)) return;
   if (_pointerHitsKeyboardDismissExclusion(event.position)) return;
-  focus.unfocus();
+  dismissSoftwareKeyboard(focusNode: focus);
+}
+
+/// Tells the platform to hide its native input view before Flutter clears the
+/// active text client by unfocusing it.
+///
+/// The explicit ordering matters on iOS: clearing a still-first-responder
+/// client can leave the keyboard visible after framework focus has already
+/// moved away. Sending `TextInput.hide` first also makes this safe to call as
+/// a recovery backstop when the supplied node has already lost focus.
+void dismissSoftwareKeyboard({FocusNode? focusNode}) {
+  unawaited(SystemChannels.textInput.invokeMethod<void>('TextInput.hide'));
+  final focus = focusNode ?? FocusManager.instance.primaryFocus;
+  if (focus != null && focus.hasFocus && focus is! FocusScopeNode) {
+    focus.unfocus();
+  }
 }
 
 bool _pointerHitsKeyboardDismissExclusion(Offset globalPosition) {
@@ -92,10 +121,7 @@ class KeyboardDismissExclusion extends SingleChildRenderObjectWidget {
   }
 
   @override
-  void updateRenderObject(
-    BuildContext context,
-    RenderObject renderObject,
-  ) {
+  void updateRenderObject(BuildContext context, RenderObject renderObject) {
     (renderObject as _RenderKeyboardDismissExclusion).focusNode = focusNode;
   }
 }

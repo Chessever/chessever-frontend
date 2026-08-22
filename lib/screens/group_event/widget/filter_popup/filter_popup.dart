@@ -36,7 +36,7 @@ class FilterPopup extends ConsumerWidget {
 
     return Container(
       width: dialogWidth,
-      constraints: BoxConstraints(maxHeight: 500.h),
+      constraints: BoxConstraints(maxHeight: 600.h),
       decoration: BoxDecoration(
         color: context.colors.surface,
         borderRadius: BorderRadius.circular(16.br),

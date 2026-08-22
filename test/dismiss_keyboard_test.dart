@@ -1,5 +1,6 @@
 import 'package:chessever2/widgets/dismiss_keyboard.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
@@ -108,5 +109,37 @@ void main() {
 
     expect(focusNode.hasFocus, isTrue);
     expect(taps, 1);
+  });
+
+  testWidgets('outside tap hides an orphaned visible iOS keyboard', (
+    tester,
+  ) async {
+    tester.view.viewInsets = const FakeViewPadding(bottom: 300);
+    addTearDown(tester.view.resetViewInsets);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        builder:
+            (context, child) =>
+                DismissKeyboard(child: child ?? const SizedBox.shrink()),
+        home: const Scaffold(body: Text('outside')),
+      ),
+    );
+
+    final platformCalls = <String>[];
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+      SystemChannels.textInput,
+      (call) async {
+        platformCalls.add(call.method);
+        return null;
+      },
+    );
+    addTearDown(tester.testTextInput.register);
+
+    expect(find.byType(EditableText), findsNothing);
+    await tester.tap(find.text('outside'));
+    await tester.pump();
+
+    expect(platformCalls, contains('TextInput.hide'));
   });
 }

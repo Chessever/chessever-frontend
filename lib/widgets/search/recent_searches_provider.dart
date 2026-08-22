@@ -6,6 +6,7 @@ import 'package:chessever2/repository/supabase/game/games.dart';
 import 'package:chessever2/screens/group_event/model/tour_event_card_model.dart';
 import 'package:chessever2/utils/eco_openings.dart';
 import 'package:chessever2/widgets/game_filter/game_filter_model.dart';
+import 'package:chessever2/widgets/search/opening_search_suggestion.dart';
 import 'package:flutter/foundation.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
@@ -62,18 +63,33 @@ class RecentSearchEntry {
   }
 
   factory RecentSearchEntry.opening(GameEcoFilter eco) {
+    return RecentSearchEntry.openingSelection(
+      OpeningSearchSelection.forFilter(eco),
+    );
+  }
+
+  factory RecentSearchEntry.openingSelection(OpeningSearchSelection opening) {
+    final eco = opening.filter;
     final code = eco.code!;
     final family = EcoOpenings.getFamily(code);
     return RecentSearchEntry(
       kind: RecentSearchKind.opening,
       targetId: code,
-      title: eco.openingName ?? code,
+      title:
+          opening.hierarchyLabel.isEmpty
+              ? eco.openingName ?? code
+              : opening.hierarchyLabel,
       subtitle:
           family == null
               ? code
               : family.codePrefixes.length == 1
               ? '$code · ${family.rangeLabel}'
               : family.rangeLabel,
+      data: {
+        'hierarchyLabel': opening.hierarchyLabel,
+        'movePath': opening.movePath,
+        'isAggregate': opening.isAggregate,
+      },
     );
   }
 
@@ -153,11 +169,35 @@ class RecentSearchEntry {
   }
 
   GameEcoFilter? toOpening() {
+    return toOpeningSelection()?.filter;
+  }
+
+  OpeningSearchSelection? toOpeningSelection() {
     if (kind != RecentSearchKind.opening) return null;
     final code = targetId.toUpperCase();
-    return EcoOpenings.getFamily(code) == null
-        ? GameEcoFilter.forCode(code)
-        : GameEcoFilter.forFamily(code);
+    final filter =
+        EcoOpenings.getFamily(code) == null
+            ? GameEcoFilter.forCode(code)
+            : GameEcoFilter.forFamily(code);
+    final fallback = OpeningSearchSelection.forFilter(filter);
+    final rawMoves = data['movePath'];
+    final rawAggregate = data['isAggregate'];
+    final moves =
+        rawMoves is List
+            ? rawMoves
+                .map((value) => value.toString().trim())
+                .where((value) => value.isNotEmpty)
+                .toList(growable: false)
+            : fallback.movePath;
+    return OpeningSearchSelection(
+      filter: filter,
+      hierarchyLabel:
+          data['hierarchyLabel']?.toString().trim().isNotEmpty == true
+              ? data['hierarchyLabel'].toString().trim()
+              : fallback.hierarchyLabel,
+      movePath: moves,
+      isAggregate: rawAggregate is bool ? rawAggregate : fallback.isAggregate,
+    );
   }
 
   static int? _readInt(Object? value) {

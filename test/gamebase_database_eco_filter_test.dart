@@ -54,6 +54,19 @@ void main() {
     });
   });
 
+  test('an irregular CSV range compiles to a lossless OR tree', () {
+    final filter = GamebaseFilter(eco: GameEcoFilter.forFamily('D30-D42'));
+
+    expect(buildLibraryExactWhere(filter), {
+      'or': [
+        {'field': 'eco', 'op': 'startsWith', 'value': 'D3'},
+        {'field': 'eco', 'op': 'startsWith', 'value': 'D40'},
+        {'field': 'eco', 'op': 'startsWith', 'value': 'D41'},
+        {'field': 'eco', 'op': 'startsWith', 'value': 'D42'},
+      ],
+    });
+  });
+
   test('eco B90 plus year AND-combines startsWith with date between', () {
     final filter = GamebaseFilter(
       eco: GameEcoFilter.forCode('B90'),

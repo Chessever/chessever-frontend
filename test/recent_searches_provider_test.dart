@@ -1,6 +1,7 @@
 import 'package:chessever2/repository/supabase/game/games.dart';
 import 'package:chessever2/screens/group_event/model/tour_event_card_model.dart';
 import 'package:chessever2/widgets/game_filter/game_filter_model.dart';
+import 'package:chessever2/widgets/search/opening_search_suggestion.dart';
 import 'package:chessever2/widgets/search/recent_searches_provider.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -106,6 +107,25 @@ void main() {
     expect(entry.subtitle, 'E60-E99');
     expect(restored?.code, 'E6+E7+E8+E9');
     expect(restored?.ecoPrefixes, ['E6', 'E7', 'E8', 'E9']);
+  });
+
+  test('a recent named line keeps its hierarchy and move context', () {
+    final entry = RecentSearchEntry.openingSelection(
+      OpeningSearchSelection(
+        filter: GameEcoFilter.forCode('B06'),
+        hierarchyLabel: 'Robatsch defence › Gurgenidze variation',
+        movePath: const ['e4', 'g6', 'd4', 'Bg7'],
+        isAggregate: false,
+      ),
+    );
+
+    final restored =
+        RecentSearchEntry.fromJson(entry.toJson()).toOpeningSelection();
+
+    expect(restored?.filter.code, 'B06');
+    expect(restored?.hierarchyLabel, 'Robatsch defence › Gurgenidze variation');
+    expect(restored?.movePath, ['e4', 'g6', 'd4', 'Bg7']);
+    expect(restored?.isAggregate, isFalse);
   });
 
   test('corrupt stored history does not prevent new entries', () async {

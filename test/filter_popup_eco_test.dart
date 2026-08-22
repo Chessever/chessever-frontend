@@ -29,6 +29,27 @@ class _HomeFilterHarness extends StatelessWidget {
 }
 
 void main() {
+  testWidgets('home popup shows its actions without scrolling on a phone', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(390, 844));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: const _HomeFilterHarness(),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final applyButton = find.widgetWithText(ElevatedButton, 'Apply Filters');
+    expect(applyButton, findsOneWidget);
+    expect(tester.getRect(applyButton).bottom, lessThanOrEqualTo(844));
+  });
+
   testWidgets('home popup selects the Najdorf family without overflow', (
     tester,
   ) async {
@@ -104,7 +125,8 @@ void main() {
 
     final family = find.byKey(const ValueKey('eco-family-E6+E7+E8+E9'));
     expect(family, findsOneWidget);
-    expect(find.text('E60-E99 · 40 codes'), findsOneWidget);
+    expect(find.text('E60-E99'), findsOneWidget);
+    expect(find.text('40 ECO codes'), findsOneWidget);
     tester.widget<GestureDetector>(family).onTap?.call();
     await tester.pumpAndSettle();
 
@@ -112,4 +134,123 @@ void main() {
     expect(selected.isFamily, isTrue);
     expect(selected.ecoPrefixes, ['E6', 'E7', 'E8', 'E9']);
   });
+
+  testWidgets('home popup exposes a deep variant as an exact-code scope', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(390, 1200));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: const _HomeFilterHarness(),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('All Openings').first);
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.drag(
+      find.byType(SingleChildScrollView).first,
+      const Offset(0, -180),
+    );
+    await tester.pump();
+    await tester.enterText(find.byType(TextField), 'Poisoned pawn');
+    await tester.pump();
+
+    final exactCode = find.byWidgetPredicate(
+      (widget) =>
+          widget is GestureDetector &&
+          widget.key is ValueKey<String> &&
+          ((widget.key! as ValueKey<String>).value).startsWith('eco-line-B97:'),
+    );
+    final openingList = find.descendant(
+      of: find.byType(EcoFilterDropdown),
+      matching: find.byType(Scrollable),
+    );
+    final scrollable = tester.state<ScrollableState>(openingList.last);
+    for (
+      var attempt = 0;
+      attempt < 6 && exactCode.evaluate().isEmpty;
+      attempt++
+    ) {
+      scrollable.position.jumpTo(
+        (scrollable.position.pixels + 180).clamp(
+          0,
+          scrollable.position.maxScrollExtent,
+        ),
+      );
+      await tester.pump();
+    }
+    expect(exactCode, findsOneWidget);
+    expect(
+      find.descendant(of: exactCode, matching: find.textContaining('Sicilian')),
+      findsWidgets,
+    );
+    expect(
+      find.descendant(of: exactCode, matching: find.textContaining('Najdorf')),
+      findsWidgets,
+    );
+    expect(
+      find.descendant(
+        of: exactCode,
+        matching: find.textContaining('Poisoned pawn'),
+      ),
+      findsWidgets,
+    );
+    tester.widget<GestureDetector>(exactCode).onTap?.call();
+    await tester.pumpAndSettle();
+
+    final selected = container.read(filterPopupProvider).eco;
+    expect(selected.code, 'B97');
+    expect(selected.isFamily, isFalse);
+  });
+
+  testWidgets(
+    'home popup exposes Gurgenidze CSV leaves without ancestor noise',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(390, 1200));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: container,
+          child: const _HomeFilterHarness(),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('All Openings').first);
+      await tester.pump(const Duration(milliseconds: 400));
+      await tester.drag(
+        find.byType(SingleChildScrollView).first,
+        const Offset(0, -180),
+      );
+      await tester.pump();
+      await tester.enterText(find.byType(TextField), 'Gurgen');
+      await tester.pump();
+
+      expect(find.text('B20-B99'), findsNothing);
+      expect(find.text('Gurgenidze variation'), findsWidgets);
+      expect(find.text('Gurgenidze counter-attack'), findsOneWidget);
+      expect(find.text('Gurgenidze system'), findsOneWidget);
+
+      final counterAttack = find.ancestor(
+        of: find.text('Gurgenidze counter-attack'),
+        matching: find.byType(GestureDetector),
+      );
+      tester.widget<GestureDetector>(counterAttack).onTap?.call();
+      await tester.pumpAndSettle();
+
+      final selected = container.read(filterPopupProvider).eco;
+      expect(selected.code, 'B15');
+      expect(selected.isFamily, isFalse);
+      expect(tester.takeException(), isNull);
+    },
+  );
 }

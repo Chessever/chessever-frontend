@@ -5,8 +5,8 @@ import 'package:chessever2/screens/group_event/model/tour_event_card_model.dart'
 import 'package:chessever2/screens/group_event/providers/group_event_screen_provider.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
-import 'package:chessever2/widgets/game_filter/game_filter_model.dart';
 import 'package:chessever2/widgets/dismiss_keyboard.dart';
+import 'package:chessever2/widgets/search/opening_search_suggestion.dart';
 import 'package:chessever2/widgets/search/recent_searches_provider.dart';
 import 'package:chessever2/widgets/search/search_motion.dart';
 import 'package:chessever2/widgets/search/search_overlay_widget.dart';
@@ -45,7 +45,7 @@ class EnhancedRoundedSearchBar extends ConsumerStatefulWidget {
   final String hintText;
   final bool autofocus;
   final ValueChanged<SearchPlayer>? onPlayerSelected;
-  final ValueChanged<GameEcoFilter>? onOpeningSelected;
+  final ValueChanged<OpeningSearchSelection>? onOpeningSelected;
   final VoidCallback? onFilterTap;
   final VoidCallback? onProfileTap;
 
@@ -190,9 +190,9 @@ class _EnhancedRoundedSearchBarState
   }
 
   void _hideOverlay() {
-    if (_effectiveNode.hasFocus) {
-      _effectiveNode.unfocus();
-    } else {
+    final wasFocused = _effectiveNode.hasFocus;
+    dismissSoftwareKeyboard(focusNode: _effectiveNode);
+    if (!wasFocused) {
       _collapse();
     }
   }
@@ -227,11 +227,11 @@ class _EnhancedRoundedSearchBarState
     widget.onPlayerSelected?.call(player);
   }
 
-  void _onOpeningSelected(GameEcoFilter opening) {
+  void _onOpeningSelected(OpeningSearchSelection opening) {
     unawaited(
       ref
           .read(recentSearchesProvider.notifier)
-          .record(RecentSearchEntry.opening(opening)),
+          .record(RecentSearchEntry.openingSelection(opening)),
     );
     _hideOverlay();
     widget.onOpeningSelected?.call(opening);

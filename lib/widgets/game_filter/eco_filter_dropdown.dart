@@ -4,11 +4,12 @@ import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/eco_openings.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/game_filter/game_filter_model.dart';
+import 'package:chessever2/widgets/search/opening_search_suggestion.dart';
 import 'package:flutter/material.dart';
 
-/// Searchable ECO filter dropdown with individual codes plus safe parent
-/// families. Family choices reuse the same prefix contract as single codes,
-/// so existing callers and query paths remain compatible.
+/// Searchable ECO filter dropdown with exact codes, safe parent ranges, and
+/// all named subvariants from the generated catalog. Every choice reuses the
+/// existing ECO-prefix query contract.
 class EcoFilterDropdown extends StatefulWidget {
   const EcoFilterDropdown({
     super.key,
@@ -103,41 +104,10 @@ class _EcoFilterDropdownState extends State<EcoFilterDropdown>
     return _categoryColors[letter.toUpperCase()] ?? context.colors.textPrimary;
   }
 
-  List<MapEntry<String, String>> _getFilteredOpenings() {
-    final query = _searchQuery.toLowerCase().trim();
-    final entries = EcoOpenings.codeToName.entries.toList();
-
-    if (query.isEmpty) {
-      return entries;
-    }
-
-    return entries.where((entry) {
-      final code = entry.key.toLowerCase();
-      final name = entry.value.toLowerCase();
-      return code.contains(query) || name.contains(query);
-    }).toList();
-  }
-
-  List<EcoOpeningFamily> _getFilteredFamilies() {
-    final query = _searchQuery.toLowerCase().trim();
-    if (query.isEmpty) return const <EcoOpeningFamily>[];
-    return EcoOpenings.families
-        .where((family) {
-          return family.id.toLowerCase().contains(query) ||
-              family.name.toLowerCase().contains(query);
-        })
-        .toList(growable: false);
-  }
-
-  Map<String, List<MapEntry<String, String>>> _groupByCategory(
-    List<MapEntry<String, String>> entries,
-  ) {
-    final grouped = <String, List<MapEntry<String, String>>>{};
-    for (final entry in entries) {
-      final category = entry.key[0];
-      grouped.putIfAbsent(category, () => []).add(entry);
-    }
-    return grouped;
+  List<OpeningSearchSuggestion> _getOpeningSuggestions() {
+    final query = _searchQuery.trim();
+    if (query.isEmpty) return browseOpeningSuggestions();
+    return searchOpeningSuggestions(query);
   }
 
   @override
@@ -315,14 +285,20 @@ class _EcoFilterDropdownState extends State<EcoFilterDropdown>
   }
 
   Widget _buildOptionsList() {
-    final filtered = _getFilteredOpenings();
-    final families = _getFilteredFamilies();
+    final suggestions = _getOpeningSuggestions();
 
-    if (filtered.isEmpty && families.isEmpty) {
+    if (suggestions.isEmpty) {
+      final typedCharacters =
+          _searchQuery.replaceAll(RegExp(r'\s+'), '').length;
+      final needsMoreCharacters =
+          _searchQuery.trim().isNotEmpty &&
+          typedCharacters < minimumOpeningSearchCharacters;
       return Padding(
         padding: EdgeInsets.all(20.sp),
         child: Text(
-          'No openings found',
+          needsMoreCharacters
+              ? 'Type at least $minimumOpeningSearchCharacters letters'
+              : 'No openings found',
           style: AppTypography.textSmRegular.copyWith(
             color: context.colors.textSecondary,
           ),
@@ -330,8 +306,14 @@ class _EcoFilterDropdownState extends State<EcoFilterDropdown>
       );
     }
 
-    final grouped = _groupByCategory(filtered);
+    final grouped = <String, List<OpeningSearchSuggestion>>{};
+    for (final suggestion in suggestions) {
+      final category = suggestion.filter.categoryLetter;
+      if (category == null) continue;
+      grouped.putIfAbsent(category, () => []).add(suggestion);
+    }
     final categories = grouped.keys.toList()..sort();
+    final isBrowsing = _searchQuery.trim().isEmpty;
 
     return Scrollbar(
       controller: _scrollController,
@@ -343,108 +325,21 @@ class _EcoFilterDropdownState extends State<EcoFilterDropdown>
         padding: EdgeInsets.zero,
         children: [
           // "All Openings" option at top
-          if (_searchQuery.isEmpty) _buildAllOpeningsOption(),
+          if (isBrowsing) _buildAllOpeningsOption(),
 
-          // Parent families only appear in response to a search. This keeps
-          // the familiar 500-code browser compact while making a query such
-          // as "Najdorf" offer one safe B90-B99 bulk choice first.
-          if (families.isNotEmpty) ...[
-            _buildFamilySectionHeader(),
-            ...families.map(_buildFamilyItem),
-          ],
-
-          // Grouped by category
-          for (final category in categories) ...[
-            _buildCategoryHeader(category, grouped[category]!.length),
-            ...grouped[category]!.map(_buildOpeningItem),
-          ],
+          if (isBrowsing)
+            // Families and exact-code summaries share one parent-first
+            // sequence inside each ECO category.
+            for (final category in categories) ...[
+              _buildCategoryHeader(category, grouped[category]!.length),
+              ...grouped[category]!.map(_buildSuggestionItem),
+            ]
+          else
+            // Search order is global relevance plus ancestry. Regrouping it
+            // alphabetically by A-E would bury a strong E-family hit below
+            // incidental A-code aliases.
+            ...suggestions.map(_buildSuggestionItem),
         ],
-      ),
-    );
-  }
-
-  Widget _buildFamilySectionHeader() {
-    return Container(
-      alignment: Alignment.centerLeft,
-      padding: EdgeInsets.fromLTRB(16.w, 10.h, 16.w, 6.h),
-      child: Text(
-        'Opening families',
-        style: AppTypography.textXsMedium.copyWith(
-          color: context.colors.textSecondary,
-        ),
-      ),
-    );
-  }
-
-  Widget _buildFamilyItem(EcoOpeningFamily family) {
-    final color = _getCategoryColor(family.codePrefix[0]);
-    final isSelected = widget.value.code == family.id;
-    final rangeStart = family.rangeStart;
-    final rangeEnd = family.rangeEnd;
-
-    return Semantics(
-      button: true,
-      selected: isSelected,
-      label:
-          'Select ${family.name} family, $rangeStart through $rangeEnd, '
-          '${family.codeCount} ECO codes',
-      child: GestureDetector(
-        key: ValueKey('eco-family-${family.id}'),
-        onTap: () => _selectItem(GameEcoFilter.forFamily(family.id)),
-        behavior: HitTestBehavior.opaque,
-        child: Container(
-          constraints: BoxConstraints(minHeight: 48.h),
-          padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 9.h),
-          decoration: BoxDecoration(
-            color: isSelected ? color.withValues(alpha: 0.08) : null,
-            border: Border(
-              bottom: BorderSide(
-                color: context.colors.divider.withValues(alpha: 0.3),
-                width: 0.5,
-              ),
-            ),
-          ),
-          child: Row(
-            children: [
-              SizedBox(
-                width: 42.w,
-                child: Text(
-                  family.codePrefixes.length == 1
-                      ? family.codePrefix
-                      : '${family.codePrefix}–${family.codePrefixes.last}',
-                  textAlign: TextAlign.left,
-                  style: AppTypography.textSmBold.copyWith(color: color),
-                ),
-              ),
-              SizedBox(width: 10.w),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      family.name,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: AppTypography.textSmMedium.copyWith(
-                        color: context.colors.textPrimary,
-                      ),
-                    ),
-                    SizedBox(height: 2.h),
-                    Text(
-                      '${family.rangeLabel} · ${family.codeCount} codes',
-                      style: AppTypography.textXsRegular.copyWith(
-                        color: context.colors.textSecondary,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              if (isSelected)
-                Icon(Icons.check_rounded, size: 18.ic, color: color),
-            ],
-          ),
-        ),
       ),
     );
   }
@@ -557,75 +452,110 @@ class _EcoFilterDropdownState extends State<EcoFilterDropdown>
     );
   }
 
-  Widget _buildOpeningItem(MapEntry<String, String> entry) {
-    final code = entry.key;
-    final name = entry.value;
-    final color = _getCategoryColor(code[0]);
-    final isSelected = widget.value.code == code;
+  Widget _buildSuggestionItem(OpeningSearchSuggestion suggestion) {
+    final code = suggestion.filter.code!;
+    final color = _getCategoryColor(suggestion.filter.categoryLetter);
+    final isSelected = widget.value == suggestion.filter;
+    final hierarchyDepth = suggestion.hierarchyLabel.split(' › ').length - 1;
+    final visibleDepth = hierarchyDepth > 2 ? 2 : hierarchyDepth;
 
-    return GestureDetector(
-      onTap: () => _selectItem(GameEcoFilter.forCode(code)),
-      behavior: HitTestBehavior.opaque,
-      child: Container(
-        padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 10.h),
-        decoration: BoxDecoration(
-          color: isSelected ? color.withValues(alpha: 0.08) : null,
-          border: Border(
-            bottom: BorderSide(
-              color: context.colors.divider.withValues(alpha: 0.3),
-              width: 0.5,
+    return Semantics(
+      button: true,
+      selected: isSelected,
+      label: 'Select ${suggestion.fullTitle}, ECO ${suggestion.codeLabel}',
+      child: GestureDetector(
+        key: ValueKey(
+          suggestion.isFamily
+              ? 'eco-family-$code'
+              : suggestion.isAggregate
+              ? 'eco-code-$code'
+              : 'eco-line-${suggestion.id}',
+        ),
+        onTap: () => _selectItem(suggestion.filter),
+        behavior: HitTestBehavior.opaque,
+        child: Container(
+          constraints: BoxConstraints(minHeight: 54.h),
+          padding: EdgeInsets.fromLTRB(
+            16.w + visibleDepth * 6.w,
+            8.h,
+            16.w,
+            8.h,
+          ),
+          decoration: BoxDecoration(
+            color: isSelected ? color.withValues(alpha: 0.08) : null,
+            border: Border(
+              bottom: BorderSide(
+                color: context.colors.divider.withValues(alpha: 0.3),
+                width: 0.5,
+              ),
             ),
           ),
-        ),
-        child: Row(
-          children: [
-            // ECO Code badge
-            Container(
-              width: 40.w,
-              height: 26.h,
-              decoration: BoxDecoration(
-                color:
-                    isSelected
-                        ? color.withValues(alpha: 0.2)
-                        : color.withValues(alpha: 0.1),
-                borderRadius: BorderRadius.circular(4.br),
-                border: Border.all(
-                  color: color.withValues(alpha: isSelected ? 0.4 : 0.2),
-                  width: 0.5,
+          child: Row(
+            children: [
+              Container(
+                width: 62.w,
+                constraints: const BoxConstraints(minHeight: 26),
+                padding: EdgeInsets.symmetric(horizontal: 4.w, vertical: 4.h),
+                decoration: BoxDecoration(
+                  color:
+                      isSelected
+                          ? color.withValues(alpha: 0.2)
+                          : color.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(4.br),
+                  border: Border.all(
+                    color: color.withValues(alpha: isSelected ? 0.4 : 0.2),
+                    width: 0.5,
+                  ),
                 ),
-              ),
-              child: Center(
+                alignment: Alignment.center,
                 child: Text(
-                  code,
+                  suggestion.codeLabel,
+                  maxLines: 1,
+                  overflow: TextOverflow.fade,
+                  softWrap: false,
                   style: AppTypography.textXsBold.copyWith(
                     color: color,
-                    fontSize: 11.f,
-                    letterSpacing: 0.3,
+                    fontSize: 10.f,
+                    letterSpacing: 0.1,
                   ),
                 ),
               ),
-            ),
-            SizedBox(width: 12.w),
-            // Opening name
-            Expanded(
-              child: Text(
-                name,
-                style: AppTypography.textSmRegular.copyWith(
-                  color: context.colors.textPrimary.withValues(
-                    alpha: isSelected ? 1.0 : 0.85,
-                  ),
-                  fontWeight: isSelected ? FontWeight.w500 : FontWeight.w400,
+              SizedBox(width: 10.w),
+              Expanded(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      suggestion.title,
+                      style: AppTypography.textSmRegular.copyWith(
+                        color: context.colors.textPrimary.withValues(
+                          alpha: isSelected ? 1.0 : 0.9,
+                        ),
+                        fontWeight:
+                            isSelected ? FontWeight.w600 : FontWeight.w500,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    SizedBox(height: 2.h),
+                    Text(
+                      suggestion.subtitle,
+                      style: AppTypography.textXsRegular.copyWith(
+                        color: context.colors.textSecondary,
+                      ),
+                      maxLines: 3,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
                 ),
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
               ),
-            ),
-            // Check mark if selected
-            if (isSelected) ...[
-              SizedBox(width: 8.w),
-              Icon(Icons.check_rounded, size: 16.ic, color: color),
+              if (isSelected) ...[
+                SizedBox(width: 8.w),
+                Icon(Icons.check_rounded, size: 16.ic, color: color),
+              ],
             ],
-          ],
+          ),
         ),
       ),
     );
