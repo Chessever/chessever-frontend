@@ -120,13 +120,11 @@ flutter build ipa --release --flavor chessevertest -t lib/main_test.dart \
 
 ### Shorebird must stay off for this flavor
 
-`shorebird.yaml` declares a single `app_id`
-(`b14b4d03-902e-48ec-96be-f138b5e7d02e`) with no per-flavor mapping. A
-`shorebird release` from the test workflow would therefore register the build
-against the **production** Shorebird app, putting test code in the patch stream
-production installs pull from. Use plain `flutter build` here. If test builds
-ever need patching, add a `flavors:` block to `shorebird.yaml` with a separate
-app id first.
+`shorebird.yaml` maps only the `production` flavor to the production Shorebird
+app. The `chessevertest` flavor is intentionally absent, so a Shorebird release
+for it fails instead of putting test code in the patch stream production
+installs pull from. Use plain `flutter build` here. If test builds ever need
+patching, add `chessevertest` with a separate Shorebird app id first.
 
 Production remains the `default-flavor`, backed by Android's `production`
 flavor and the iOS `production` scheme. Existing production CI commands that

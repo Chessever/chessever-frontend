@@ -7,6 +7,11 @@
 # It is not a secret and can be shared publicly.
 app_id: b14b4d03-902e-48ec-96be-f138b5e7d02e
 
+# Production releases use Shorebird. The test flavor is intentionally omitted
+# so it cannot publish into the production patch stream.
+flavors:
+  production: b14b4d03-902e-48ec-96be-f138b5e7d02e
+
 # auto_update controls if Shorebird should automatically update in the background on launch.
 # If auto_update: false, you will need to use package:shorebird_code_push to trigger updates.
 # https://pub.dev/packages/shorebird_code_push
