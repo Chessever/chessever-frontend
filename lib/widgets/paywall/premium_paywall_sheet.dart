@@ -110,6 +110,19 @@ class _PaywallContent extends HookConsumerWidget {
     final selectedPlan = useState<PlanType>(PlanType.annual);
     final isLoading = useState(false);
 
+    // Self-heal: offerings are fetched once when SubscriptionNotifier is
+    // built, which normally happens on the first frame — BEFORE the
+    // fire-and-forget `Purchases.configure` has finished. Losing that race
+    // (or hitting one transient Play Billing / StoreKit error) used to leave
+    // `products` empty for the whole session, so the paywall showed skeleton
+    // prices forever and Continue did nothing. Retry every time it opens.
+    useEffect(() {
+      if (subscriptionState.products.isEmpty) {
+        unawaited(ref.read(subscriptionProvider.notifier).loadProducts());
+      }
+      return null;
+    }, const []);
+
     // Single source of truth for "subscription activated → close paywall +
     // celebrate". Covers every activation path: direct purchase, restore,
     // offer-code redemption (iOS native sheet), Play Store deferred-return,
@@ -136,6 +149,24 @@ class _PaywallContent extends HookConsumerWidget {
       } else if (package.packageType == PackageType.annual) {
         annualPackage = package;
       }
+    }
+
+    // Sentry CHESSEVER-1GT: tapping X crashed with "Null check operator used
+    // on a null value" — 95 events / 19 users since 2026-05-30, still firing on
+    // 34.7.3+3344. `Navigator.maybeOf` was NOT the fix: maybeOf only returns
+    // null when no Navigator ancestor exists, it does not survive a DEFUNCT
+    // element. It walks ancestors via findRootAncestorStateOfType, which reads
+    // StatefulElement.state (`_state!`), and that throws once hostContext's
+    // widget is gone — which happens whenever the screen underneath is disposed
+    // while the paywall is open. Check mounted first, and fall back to the
+    // sheet's own context, which is valid for as long as the sheet is on screen.
+    void closePaywall([bool result = false]) {
+      final ctx =
+          hostContext.mounted
+              ? hostContext
+              : (context.mounted ? context : null);
+      if (ctx == null) return;
+      Navigator.maybeOf(ctx, rootNavigator: true)?.pop(result);
     }
 
     Future<void> handlePurchase() async {
@@ -233,14 +264,7 @@ class _PaywallContent extends HookConsumerWidget {
           Align(
             alignment: Alignment.centerRight,
             child: GestureDetector(
-              onTap:
-                  // maybeOf (not of): once the host route is gone, Navigator.of
-                  // does `navigator!` on null → "Null check operator used on a
-                  // null value" in the tap callback (Sentry CHESSEVER-1GT).
-                  () => Navigator.maybeOf(
-                    hostContext,
-                    rootNavigator: true,
-                  )?.pop(false),
+              onTap: closePaywall,
               child: Container(
                 padding: EdgeInsets.all(8.sp),
                 decoration: BoxDecoration(
@@ -286,6 +310,14 @@ class _PaywallContent extends HookConsumerWidget {
             selectedPlan: selectedPlan,
             monthlyPackage: monthlyPackage,
             annualPackage: annualPackage,
+            productsError: subscriptionState.productsError,
+            isRetrying: subscriptionState.isLoadingProducts,
+            onRetry:
+                () => unawaited(
+                  ref
+                      .read(subscriptionProvider.notifier)
+                      .loadProducts(force: true),
+                ),
           ),
           SizedBox(height: 24.h),
           // CTA Button
@@ -294,6 +326,9 @@ class _PaywallContent extends HookConsumerWidget {
             monthlyPackage: monthlyPackage,
             annualPackage: annualPackage,
             isLoading: isLoading.value || subscriptionState.isLoading,
+            // A live-looking CTA that silently returns (handlePurchase bails
+            // on a null package) is worse than a visibly inert one.
+            isEnabled: monthlyPackage != null && annualPackage != null,
             onTap: handlePurchase,
           ),
           SizedBox(height: 12.h),
@@ -429,11 +464,17 @@ class _PricingSection extends HookWidget {
     required this.selectedPlan,
     required this.monthlyPackage,
     required this.annualPackage,
+    required this.productsError,
+    required this.isRetrying,
+    required this.onRetry,
   });
 
   final ValueNotifier<PlanType> selectedPlan;
   final Package? monthlyPackage;
   final Package? annualPackage;
+  final String? productsError;
+  final bool isRetrying;
+  final VoidCallback onRetry;
 
   @override
   Widget build(BuildContext context) {
@@ -471,9 +512,20 @@ class _PricingSection extends HookWidget {
     // Don't render pricing cards if packages aren't loaded
     final hasPackages = monthlyPackage != null && annualPackage != null;
 
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
+    // Only surface the failure once retries are exhausted. While a fetch is
+    // still in flight the skeleton is honest — it really is loading.
+    final showError = !hasPackages && productsError != null && !isRetrying;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
+        if (showError) ...[
+          _ProductsErrorRow(message: productsError!, onRetry: onRetry),
+          SizedBox(height: 12.h),
+        ],
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
         // Monthly card
         Expanded(
           child: _PricingCard(
@@ -505,6 +557,46 @@ class _PricingSection extends HookWidget {
             isLoading: !hasPackages,
             onTap:
                 hasPackages ? () => selectedPlan.value = PlanType.annual : null,
+          ),
+        ),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+/// Shown when offerings could not be loaded after retries. Replaces an
+/// otherwise-permanent shimmer with something the user can act on.
+class _ProductsErrorRow extends StatelessWidget {
+  const _ProductsErrorRow({required this.message, required this.onRetry});
+
+  final String message;
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Expanded(
+          child: Text(
+            message,
+            style: AppTypography.textSmMedium.copyWith(
+              color: context.colors.textPrimary.withValues(alpha: 0.6),
+            ),
+          ),
+        ),
+        SizedBox(width: 12.w),
+        GestureDetector(
+          onTap: onRetry,
+          behavior: HitTestBehavior.opaque,
+          child: Padding(
+            // 44dp minimum tap target.
+            padding: EdgeInsets.symmetric(vertical: 12.h, horizontal: 4.w),
+            child: Text(
+              'Try again',
+              style: AppTypography.textSmBold.copyWith(color: kPrimaryColor),
+            ),
           ),
         ),
       ],
@@ -743,6 +835,7 @@ class _PurchaseButton extends HookWidget {
     required this.monthlyPackage,
     required this.annualPackage,
     required this.isLoading,
+    required this.isEnabled,
     required this.onTap,
   });
 
@@ -750,6 +843,7 @@ class _PurchaseButton extends HookWidget {
   final Package? monthlyPackage;
   final Package? annualPackage;
   final bool isLoading;
+  final bool isEnabled;
   final VoidCallback onTap;
 
   @override
@@ -806,17 +900,25 @@ class _PurchaseButton extends HookWidget {
       buttonText = 'Continue';
     }
 
+    final isTappable = isEnabled && !isLoading;
+
     return GestureDetector(
-      onTapDown: (_) => isPressed.value = true,
-      onTapUp: (_) {
-        isPressed.value = false;
-        if (!isLoading) onTap();
-      },
-      onTapCancel: () => isPressed.value = false,
+      onTapDown: isTappable ? (_) => isPressed.value = true : null,
+      onTapUp:
+          isTappable
+              ? (_) {
+                isPressed.value = false;
+                onTap();
+              }
+              : null,
+      onTapCancel: isTappable ? () => isPressed.value = false : null,
       child: AnimatedScale(
         scale: isPressed.value ? 0.97 : 1.0,
         duration: const Duration(milliseconds: 100),
-        child: Container(
+        child: Opacity(
+          // Reads as "not ready yet" instead of inviting a tap that no-ops.
+          opacity: isEnabled ? 1.0 : 0.4,
+          child: Container(
           width: double.infinity,
           height: 54.h,
           decoration: BoxDecoration(
@@ -826,13 +928,16 @@ class _PurchaseButton extends HookWidget {
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
             ),
-            boxShadow: [
-              BoxShadow(
-                color: kPrimaryColor.withValues(alpha: 0.4),
-                blurRadius: 25,
-                offset: const Offset(0, 8),
-              ),
-            ],
+            boxShadow:
+                isEnabled
+                    ? [
+                      BoxShadow(
+                        color: kPrimaryColor.withValues(alpha: 0.4),
+                        blurRadius: 25,
+                        offset: const Offset(0, 8),
+                      ),
+                    ]
+                    : null,
           ),
           child: Center(
             child:
@@ -859,6 +964,7 @@ class _PurchaseButton extends HookWidget {
                         ),
                       ),
                     ),
+          ),
           ),
         ),
       ),

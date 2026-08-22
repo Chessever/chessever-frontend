@@ -6,15 +6,20 @@ import 'package:chessever2/services/appsflyer_service.dart';
 import 'package:flutter/foundation.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:purchases_flutter/purchases_flutter.dart'
-    show CustomerInfo, Package, SubscriptionOption;
+    show CustomerInfo, Package, PackageType, SubscriptionOption;
 
 final subscriptionProvider =
     StateNotifierProvider<SubscriptionNotifier, SubscriptionState>((ref) {
       final notifier = SubscriptionNotifier();
       // Register global callback for app resume sync
       RevenueCatService().onAppResumeCallback = notifier.syncAndRefresh;
+      // `Purchases.configure` runs unawaited during startup, so this notifier
+      // is usually built BEFORE the SDK is ready and its first offerings fetch
+      // no-ops. Re-run it the moment configure lands.
+      RevenueCatService().onSdkStateChanged = notifier.onSdkStateChanged;
       ref.onDispose(() {
         RevenueCatService().onAppResumeCallback = null;
+        RevenueCatService().onSdkStateChanged = null;
         // Note: notifier.dispose() is called automatically by StateNotifier
       });
       return notifier;
@@ -24,6 +29,9 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
   final _revenueCat = RevenueCatService();
   Timer? _periodicSyncTimer;
   Timer? _expirationTimer;
+
+  /// In-flight offerings fetch, so concurrent callers share one request.
+  Future<void>? _productsFetch;
 
   /// How often to sync with RevenueCat when app stays open (1 hour)
   static const _periodicSyncInterval = Duration(hours: 1);
@@ -53,8 +61,92 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
     _revenueCat.setCustomerInfoListener((customerInfo) {
       _updateStateFromCustomerInfo(customerInfo);
     });
+    // The SDK may already be ready if this notifier is built late (e.g. the
+    // paywall is the first thing to read it). Cover that case too.
+    if (_revenueCat.isSdkReady) onSdkStateChanged();
     _initialize();
     _startPeriodicSync();
+  }
+
+  /// Called when `Purchases.configure` completes. Loads the offerings the
+  /// constructor could not.
+  void onSdkStateChanged() {
+    if (state.products.isNotEmpty) return;
+    unawaited(_reloadProductsAfterCurrentFetch());
+  }
+
+  Future<void> _reloadProductsAfterCurrentFetch() async {
+    // Configuration can finish in the same turn as the constructor's initial
+    // not-configured fetch. Let that no-op unwind, then start a real request.
+    final inFlight = _productsFetch;
+    if (inFlight != null) await inFlight;
+    if (!mounted || state.products.isNotEmpty) return;
+    await loadProducts(force: true);
+  }
+
+  /// Fetch offerings into state. Safe to call repeatedly — concurrent calls
+  /// collapse onto the in-flight fetch so a burst of paywall opens does not
+  /// stampede the store.
+  Future<void> loadProducts({bool force = false}) async {
+    if (!force && state.products.isNotEmpty) return;
+
+    final inFlight = _productsFetch;
+    if (inFlight != null) return inFlight;
+
+    final fetch = _doLoadProducts();
+    _productsFetch = fetch;
+    try {
+      await fetch;
+    } finally {
+      _productsFetch = null;
+    }
+  }
+
+  Future<void> _doLoadProducts() async {
+    state = state.copyWith(
+      isLoadingProducts: true,
+      clearProductsError: true,
+    );
+    final result = await _revenueCat.fetchProducts();
+    if (!mounted) return;
+
+    switch (result.status) {
+      case OfferingsFetchStatus.success:
+        final hasMonthly = result.packages.any(
+          (package) => package.packageType == PackageType.monthly,
+        );
+        final hasAnnual = result.packages.any(
+          (package) => package.packageType == PackageType.annual,
+        );
+        final hasCompleteCatalog = hasMonthly && hasAnnual;
+        state = state.copyWith(
+          products: result.packages,
+          isLoadingProducts: false,
+          productsError:
+              hasCompleteCatalog
+                  ? null
+                  : 'Some subscription plans are unavailable. Please try again.',
+          clearProductsError: hasCompleteCatalog,
+        );
+      case OfferingsFetchStatus.notConfigured:
+        // Not an error the user can act on — configure is still in flight and
+        // [onSdkStateChanged] will call us back. Keep the skeleton, no error.
+        state = state.copyWith(
+          isLoadingProducts: false,
+          clearProductsError: true,
+        );
+      case OfferingsFetchStatus.empty:
+        state = state.copyWith(
+          isLoadingProducts: false,
+          productsError: 'No subscription plans are available right now.',
+        );
+      case OfferingsFetchStatus.failure:
+        state = state.copyWith(
+          isLoadingProducts: false,
+          productsError:
+              "Couldn't load plans. Check your connection and try again.",
+        );
+    }
   }
 
   @override
@@ -105,19 +197,28 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
     }
   }
 
-  Future<void> _initialize() async {
+  Future<void> _initialize({bool force = false}) async {
     state = state.copyWith(isLoading: true);
 
     try {
-      // Fetch products and customer info in parallel (2 API calls, not 3)
+      // Offerings load on their own track (see [loadProducts]) so a failed
+      // or not-yet-configured products fetch can retry without stomping the
+      // entitlement state — and vice versa.
+      unawaited(loadProducts(force: force));
+
+      // Bounded: a hung call here must never strand `isLoading`. Both
+      // futures already swallow their own errors and return null, so the
+      // outer timeout is a last-resort backstop, not the primary guard.
       final results = await Future.wait([
-        _revenueCat.getProducts(),
         _revenueCat.getCustomerInfo(),
         _revenueCat.getBackendEntitlement(),
-      ]);
-      final products = results[0] as List<Package>;
-      final customerInfo = results[1] as CustomerInfo?;
-      final backendEntitlement = results[2] as BackendEntitlementSnapshot?;
+      ]).timeout(
+        const Duration(seconds: 12),
+        onTimeout: () => <Object?>[null, null],
+      );
+      final customerInfo = results[0] as CustomerInfo?;
+      final backendEntitlement = results[1] as BackendEntitlementSnapshot?;
+      if (!mounted) return;
 
       final localSnapshot = _readLocalSnapshot(customerInfo);
 
@@ -133,7 +234,6 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
 
       state = state.copyWith(
         isSubscribed: merged.isSubscribed,
-        products: products,
         isLoading: false,
         expirationDate: merged.expirationDate,
         managementUrl: localSnapshot.managementUrl,
@@ -154,19 +254,28 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
   }
 
   /// Refresh subscription status (call after auth changes)
-  Future<void> refresh() async {
+  Future<void> refresh({bool force = true}) async {
     state = state.copyWith(isLoading: true, error: null);
 
     try {
-      // Fetch products and customer info in parallel (2 API calls, not 3)
+      // Offerings load on their own track (see [loadProducts]) so a failed
+      // or not-yet-configured products fetch can retry without stomping the
+      // entitlement state — and vice versa.
+      unawaited(loadProducts(force: force));
+
+      // Bounded: a hung call here must never strand `isLoading`. Both
+      // futures already swallow their own errors and return null, so the
+      // outer timeout is a last-resort backstop, not the primary guard.
       final results = await Future.wait([
-        _revenueCat.getProducts(),
         _revenueCat.getCustomerInfo(),
         _revenueCat.getBackendEntitlement(),
-      ]);
-      final products = results[0] as List<Package>;
-      final customerInfo = results[1] as CustomerInfo?;
-      final backendEntitlement = results[2] as BackendEntitlementSnapshot?;
+      ]).timeout(
+        const Duration(seconds: 12),
+        onTimeout: () => <Object?>[null, null],
+      );
+      final customerInfo = results[0] as CustomerInfo?;
+      final backendEntitlement = results[1] as BackendEntitlementSnapshot?;
+      if (!mounted) return;
 
       final localSnapshot = _readLocalSnapshot(customerInfo);
 
@@ -182,7 +291,6 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
 
       state = state.copyWith(
         isSubscribed: merged.isSubscribed,
-        products: products,
         isLoading: false,
         expirationDate: merged.expirationDate,
         managementUrl: localSnapshot.managementUrl,
@@ -207,9 +315,7 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
 
     final activeEntitlements = customerInfo.entitlements.active;
     final isSubscribed =
-        activeEntitlements.containsKey(
-          RevenueCatService.premiumEntitlement,
-        ) ||
+        activeEntitlements.containsKey(RevenueCatService.premiumEntitlement) ||
         activeEntitlements.isNotEmpty;
 
     DateTime? expirationDate;
@@ -224,8 +330,9 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
       willRenew = entitlement.willRenew;
       provider = 'revenuecat';
       if (entitlement.billingIssueDetectedAt != null) {
-        billingIssueDetectedAt =
-            DateTime.tryParse(entitlement.billingIssueDetectedAt!);
+        billingIssueDetectedAt = DateTime.tryParse(
+          entitlement.billingIssueDetectedAt!,
+        );
       }
     }
 
@@ -274,8 +381,9 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
       willRenew = entitlement.willRenew;
       activeProductId = entitlement.productIdentifier;
       if (entitlement.billingIssueDetectedAt != null) {
-        billingIssueDetectedAt =
-            DateTime.tryParse(entitlement.billingIssueDetectedAt!);
+        billingIssueDetectedAt = DateTime.tryParse(
+          entitlement.billingIssueDetectedAt!,
+        );
       }
     }
 
@@ -379,14 +487,16 @@ class SubscriptionNotifier extends StateNotifier<SubscriptionState> {
         expirationDate: backendEntitlement.expiresAt,
         willRenew: backendEntitlement.willRenew,
         provider: backendEntitlement.provider,
-        inBillingGracePeriod: stripeAuthoritative
-            ? backendEntitlement.inBillingGracePeriod
-            : (state.inBillingGracePeriod ||
-                backendEntitlement.inBillingGracePeriod),
-        billingIssueDetectedAt: stripeAuthoritative
-            ? backendEntitlement.billingIssueDetectedAt
-            : (state.billingIssueDetectedAt ??
-                backendEntitlement.billingIssueDetectedAt),
+        inBillingGracePeriod:
+            stripeAuthoritative
+                ? backendEntitlement.inBillingGracePeriod
+                : (state.inBillingGracePeriod ||
+                    backendEntitlement.inBillingGracePeriod),
+        billingIssueDetectedAt:
+            stripeAuthoritative
+                ? backendEntitlement.billingIssueDetectedAt
+                : (state.billingIssueDetectedAt ??
+                    backendEntitlement.billingIssueDetectedAt),
       );
       if (backendEntitlement.expiresAt != null) {
         _scheduleExpirationCheck();
@@ -615,6 +725,17 @@ class SubscriptionState {
   final bool isSubscribed;
   final bool isLoading;
   final List<Package> products;
+
+  /// True while an offerings fetch is in flight. Distinct from [isLoading],
+  /// which covers entitlement/customer-info work.
+  final bool isLoadingProducts;
+
+  /// Set when the last offerings fetch failed in a way the user should be
+  /// told about. Null when products loaded, or while a retry is pending.
+  /// The paywall renders a retry affordance on this instead of shimmering
+  /// forever.
+  final String? productsError;
+
   final String? error;
   final DateTime? expirationDate;
   final String? managementUrl;
@@ -640,6 +761,8 @@ class SubscriptionState {
     this.isSubscribed = false,
     this.isLoading = false,
     this.products = const [],
+    this.isLoadingProducts = false,
+    this.productsError,
     this.error,
     this.expirationDate,
     this.managementUrl,
@@ -653,6 +776,9 @@ class SubscriptionState {
     bool? isSubscribed,
     bool? isLoading,
     List<Package>? products,
+    bool? isLoadingProducts,
+    String? productsError,
+    bool clearProductsError = false,
     String? error,
     DateTime? expirationDate,
     String? managementUrl,
@@ -665,13 +791,15 @@ class SubscriptionState {
       isSubscribed: isSubscribed ?? this.isSubscribed,
       isLoading: isLoading ?? this.isLoading,
       products: products ?? this.products,
+      isLoadingProducts: isLoadingProducts ?? this.isLoadingProducts,
+      productsError:
+          clearProductsError ? null : (productsError ?? this.productsError),
       error: error,
       expirationDate: expirationDate ?? this.expirationDate,
       managementUrl: managementUrl ?? this.managementUrl,
       provider: provider ?? this.provider,
       willRenew: willRenew ?? this.willRenew,
-      inBillingGracePeriod:
-          inBillingGracePeriod ?? this.inBillingGracePeriod,
+      inBillingGracePeriod: inBillingGracePeriod ?? this.inBillingGracePeriod,
       billingIssueDetectedAt:
           billingIssueDetectedAt ?? this.billingIssueDetectedAt,
     );
@@ -708,13 +836,13 @@ class _LocalEntitlementSnapshot {
   });
 
   const _LocalEntitlementSnapshot.empty()
-      : isSubscribed = false,
-        expirationDate = null,
-        willRenew = true,
-        provider = null,
-        managementUrl = null,
-        inBillingGracePeriod = false,
-        billingIssueDetectedAt = null;
+    : isSubscribed = false,
+      expirationDate = null,
+      willRenew = true,
+      provider = null,
+      managementUrl = null,
+      inBillingGracePeriod = false,
+      billingIssueDetectedAt = null;
 
   final bool isSubscribed;
   final DateTime? expirationDate;

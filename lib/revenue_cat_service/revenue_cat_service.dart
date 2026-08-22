@@ -1,7 +1,10 @@
+import 'dart:async';
+
 import 'package:chessever2/services/push_notifications_service.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:purchases_flutter/purchases_flutter.dart';
+import 'package:sentry_flutter/sentry_flutter.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 /// Result of a purchase attempt
@@ -26,6 +29,51 @@ class PurchaseAttemptResult {
       PurchaseAttemptResult(success: false, errorMessage: message);
 }
 
+/// Outcome of an offerings fetch. The paywall must distinguish these: only
+/// [OfferingsFetchStatus.empty] means "there is genuinely nothing to sell".
+enum OfferingsFetchStatus {
+  /// Packages were returned.
+  success,
+
+  /// `Purchases.configure` has not completed yet. Transient — retry when
+  /// [RevenueCatService.onSdkStateChanged] fires.
+  notConfigured,
+
+  /// The store was reachable but returned no current offering / no packages.
+  empty,
+
+  /// Every attempt threw (offline, store outage, SDK error).
+  failure,
+}
+
+@immutable
+class OfferingsFetch {
+  const OfferingsFetch._(this.status, this.packages, this.errorMessage);
+
+  const OfferingsFetch.success(List<Package> packages)
+    : this._(OfferingsFetchStatus.success, packages, null);
+
+  const OfferingsFetch.notConfigured()
+    : this._(OfferingsFetchStatus.notConfigured, const [], null);
+
+  const OfferingsFetch.empty()
+    : this._(OfferingsFetchStatus.empty, const [], null);
+
+  const OfferingsFetch.failure(String? errorMessage)
+    : this._(OfferingsFetchStatus.failure, const [], errorMessage);
+
+  final OfferingsFetchStatus status;
+  final List<Package> packages;
+  final String? errorMessage;
+
+  bool get isSuccess => status == OfferingsFetchStatus.success;
+
+  /// True when retrying later could plausibly succeed.
+  bool get isRetryable =>
+      status == OfferingsFetchStatus.notConfigured ||
+      status == OfferingsFetchStatus.failure;
+}
+
 class RevenueCatService {
   static final RevenueCatService _instance = RevenueCatService._internal();
   factory RevenueCatService() => _instance;
@@ -39,17 +87,43 @@ class RevenueCatService {
   /// without a RevenueCat key; every SDK call must no-op until this is true.
   bool _sdkReady = false;
   bool get isSdkReady => _sdkReady;
+  Object? _sdkConfigurationError;
 
   void Function(CustomerInfo)? _pendingCustomerInfoListener;
+
+  /// Invoked once [markSdkReady] runs. `Purchases.configure` is kicked off
+  /// fire-and-forget during startup, so every provider that reads the SDK on
+  /// the first frame loses the race and sees an unconfigured SDK. Subscribers
+  /// use this to re-run whatever they gave up on.
+  void Function()? onSdkStateChanged;
 
   /// Mark the Purchases SDK as configured. Call once after successful
   /// `Purchases.configure` in app startup.
   void markSdkReady() {
     _sdkReady = true;
+    _sdkConfigurationError = null;
     final pending = _pendingCustomerInfoListener;
     if (pending != null) {
       _pendingCustomerInfoListener = null;
       Purchases.addCustomerInfoUpdateListener(pending);
+    }
+    try {
+      onSdkStateChanged?.call();
+    } catch (e) {
+      debugPrint('RevenueCatService: SDK state callback failed: $e');
+    }
+  }
+
+  /// Record a configuration failure so callers see a terminal error instead
+  /// of treating the SDK as if startup were still in progress. A late success
+  /// clears this through [markSdkReady].
+  void markSdkConfigurationFailed(Object error) {
+    _sdkReady = false;
+    _sdkConfigurationError = error;
+    try {
+      onSdkStateChanged?.call();
+    } catch (callbackError) {
+      debugPrint('RevenueCatService: SDK state callback failed: $callbackError');
     }
   }
 
@@ -148,10 +222,21 @@ class RevenueCatService {
     if (session == null) return null;
 
     try {
-      final response = await Supabase.instance.client.functions.invoke(
-        'entitlement',
-        method: HttpMethod.get,
-      );
+      // HARD TIMEOUT — do not remove.
+      //
+      // This call used to sit inside the same `Future.wait` as the offerings
+      // fetch in SubscriptionNotifier._initialize. With no timeout, a hung
+      // Edge Function meant `Future.wait` never resolved, so the already-
+      // fetched packages were never written to state and the paywall
+      // shimmered forever. Regions with poor Supabase connectivity hit this
+      // reliably — see Sentry CHESSEVER-XM (521s from India, Retry-After:
+      // 120) and CHESSEVER-15J (connection timeouts to the same host).
+      //
+      // The load is now decoupled, but this call must still be bounded: it
+      // gates the entitlement state the whole subscription UI reads.
+      final response = await Supabase.instance.client.functions
+          .invoke('entitlement', method: HttpMethod.get)
+          .timeout(const Duration(seconds: 8));
       if (response.status != 200 || response.data is! Map) {
         debugPrint(
           'Backend entitlement returned ${response.status}: ${response.data}',
@@ -167,30 +252,135 @@ class RevenueCatService {
     }
   }
 
-  /// Get available products/packages
-  Future<List<Package>> getProducts() async {
-    if (!_sdkReady) return [];
-    try {
-      final offerings = await Purchases.getOfferings();
-      if (offerings.current != null) {
-        debugPrint('📦 Current offering: ${offerings.current!.identifier}');
-        debugPrint(
-          '📦 Available packages: ${offerings.current!.availablePackages.length}',
-        );
-        for (final pkg in offerings.current!.availablePackages) {
-          debugPrint(
-            '  - ${pkg.packageType}: ${pkg.storeProduct.identifier} @ ${pkg.storeProduct.priceString}',
+  /// Fetch the current offering's packages.
+  ///
+  /// Retries with backoff: a single transient failure here used to strand the
+  /// paywall on skeleton prices for the whole session, because nothing
+  /// re-fetched offerings afterwards. Returns [OfferingsFetch.notConfigured]
+  /// when the SDK has not been configured yet — that is a *temporary* state
+  /// during startup, not an empty catalog, and callers must retry on
+  /// [onSdkStateChanged] rather than treat it as "no products exist".
+  Future<OfferingsFetch> fetchProducts({
+    int attempts = 3,
+    Duration requestTimeout = const Duration(seconds: 5),
+  }) async {
+    if (!_sdkReady) {
+      final configurationError = _sdkConfigurationError;
+      return configurationError == null
+          ? const OfferingsFetch.notConfigured()
+          : OfferingsFetch.failure(
+            'RevenueCat configuration failed: $configurationError',
           );
-        }
-        return offerings.current!.availablePackages;
-      }
-      debugPrint('⚠️ No current offering found');
-      return [];
-    } catch (e) {
-      debugPrint('Error getting products: $e');
-      return [];
     }
+
+    Object? lastError;
+    StackTrace? lastStackTrace;
+
+    for (var attempt = 1; attempt <= attempts; attempt++) {
+      try {
+        final offerings = await Purchases.getOfferings().timeout(requestTimeout);
+        final current = offerings.current;
+        if (current != null && current.availablePackages.isNotEmpty) {
+          debugPrint('📦 Current offering: ${current.identifier}');
+          debugPrint(
+            '📦 Available packages: ${current.availablePackages.length}',
+          );
+          for (final pkg in current.availablePackages) {
+            debugPrint(
+              '  - ${pkg.packageType}: ${pkg.storeProduct.identifier} @ ${pkg.storeProduct.priceString}',
+            );
+          }
+          return OfferingsFetch.success(current.availablePackages);
+        }
+        // Reachable but empty. Two very different causes, so keep them
+        // distinguishable — this is the branch a device lands in when the
+        // STORE returns no products for that particular account (wrong
+        // storefront/region, app not installed from Play, sandbox account)
+        // even though RevenueCat itself answered fine.
+        final hasOffering = current != null;
+        debugPrint(
+          hasOffering
+              ? '⚠️ Current offering "${current.identifier}" has no packages '
+                  '— the store returned no products for this account'
+              : '⚠️ No current offering returned by RevenueCat',
+        );
+        unawaited(
+          Sentry.captureMessage(
+            hasOffering
+                ? 'Offering resolved but store returned no products'
+                : 'RevenueCat returned no current offering',
+            level: SentryLevel.error,
+            withScope: (scope) {
+              scope.setTag('rc_offerings_error', 'empty');
+              scope.setTag('rc_has_current_offering', '$hasOffering');
+              if (hasOffering) {
+                scope.setTag('rc_offering_id', current.identifier);
+              }
+            },
+          ),
+        );
+        return const OfferingsFetch.empty();
+      } catch (e, stackTrace) {
+        lastError = e;
+        lastStackTrace = stackTrace;
+        debugPrint('Error getting products (attempt $attempt/$attempts): $e');
+        // A timed-out method-channel request is still running natively. Do not
+        // overlap it with more StoreKit / Play Billing calls.
+        if (e is TimeoutException) break;
+        if (attempt < attempts) {
+          await Future<void>.delayed(Duration(milliseconds: 400 * attempt));
+        }
+      }
+    }
+
+    // Every attempt failed. Surface it — this path is what customers see as a
+    // paywall that never loads, and it was previously invisible in production.
+    if (lastError != null) {
+      final code = _storeErrorCode(lastError);
+      unawaited(
+        Sentry.captureException(
+          lastError,
+          stackTrace: lastStackTrace,
+          withScope: (scope) {
+            scope.setTag('rc_offerings_error', code);
+            scope.setTag('rc_sdk_ready', '$_sdkReady');
+          },
+        ),
+      );
+      return OfferingsFetch.failure('$code: $lastError');
+    }
+    return const OfferingsFetch.failure(null);
   }
+
+  /// Best-effort extraction of the underlying store/SDK error code.
+  ///
+  /// Every one of these reaches Dart as the same generic `PlatformException`,
+  /// so without the code they are indistinguishable in Sentry — yet they mean
+  /// completely different things and have different fixes:
+  ///
+  /// * `STORE_PROBLEM` / `BILLING_UNAVAILABLE` — Play Billing could not bind:
+  ///   app not installed from Play (sideloaded), stale Play Store, no Play
+  ///   account. Device-side, not ours.
+  /// * `CONFIGURATION_ERROR` — SDK key / bundle id / package name mismatch.
+  /// * `PRODUCT_NOT_AVAILABLE_FOR_PURCHASE` — store returned no product for
+  ///   this account's storefront or region.
+  /// * `NETWORK_ERROR` — transient; the retry above usually absorbs it.
+  static String _storeErrorCode(Object error) {
+    if (error is PlatformException) {
+      final details = error.details;
+      if (details is Map) {
+        final readable = details['readableErrorCode'];
+        if (readable is String && readable.isNotEmpty) return readable;
+      }
+      return error.code;
+    }
+    if (error is PurchasesErrorCode) return error.name;
+    return error.runtimeType.toString();
+  }
+
+  /// Back-compat wrapper. Prefer [fetchProducts] — it distinguishes "not
+  /// configured yet" and "fetch failed" from "the catalog is empty".
+  Future<List<Package>> getProducts() async => (await fetchProducts()).packages;
 
   /// Purchase subscription with proper error handling
   Future<PurchaseAttemptResult> purchaseSubscription(Package package) async {

@@ -536,18 +536,33 @@ Future<void> _initializeRevenueCat() async {
       }
     } catch (_) {}
 
-    await Purchases.configure(
-      PurchasesConfiguration(apiKey)..appUserID = bootUserId,
-    );
-    RevenueCatService().markSdkReady();
-    debugPrint(
-      '✅ RevenueCat initialized for ${Platform.isIOS ? 'iOS' : 'Android'} '
-      '(appUserID=${bootUserId ?? 'anonymous'})',
-    );
+    final configuration = () async {
+      await Purchases.configure(
+        PurchasesConfiguration(apiKey)..appUserID = bootUserId,
+      );
+      RevenueCatService().markSdkReady();
+      debugPrint(
+        '✅ RevenueCat initialized for ${Platform.isIOS ? 'iOS' : 'Android'} '
+        '(appUserID=${bootUserId ?? 'anonymous'})',
+      );
 
-    // Sync purchases at app startup (non-blocking)
-    unawaited(RevenueCatService().syncPurchases());
+      // Sync purchases at app startup (non-blocking)
+      unawaited(RevenueCatService().syncPurchases());
+    }();
+    await configuration.timeout(
+      const Duration(seconds: 8),
+      onTimeout: () {
+        final error = TimeoutException(
+          'RevenueCat configuration did not finish within 8 seconds',
+        );
+        RevenueCatService().markSdkConfigurationFailed(error);
+        debugPrint('❌ $error');
+        // Do not cancel [configuration]. If the native SDK finishes late, its
+        // success path above marks the SDK ready and reloads offerings.
+      },
+    );
   } catch (e, st) {
+    RevenueCatService().markSdkConfigurationFailed(e);
     debugPrint('❌ Error initializing RevenueCat: $e');
     if (kDebugMode) {
       debugPrintStack(stackTrace: st);
