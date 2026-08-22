@@ -97,7 +97,7 @@ void main() {
           widget is ListView && widget.scrollDirection == Axis.horizontal,
     );
     expect(horizontalResults, findsOneWidget);
-    final family = find.text('B90-B99');
+    final family = find.textContaining('B90-B99', findRichText: true);
     expect(family, findsOneWidget);
     expect(find.textContaining('Najdorf · 10 ECO codes'), findsOneWidget);
     expect(find.text('B9'), findsNothing);
@@ -146,7 +146,13 @@ void main() {
     await tester.pump(const Duration(milliseconds: 450));
 
     expect(find.text('B20-B99'), findsNothing);
-    expect(find.text('Robatsch defence'), findsOneWidget);
+    final title = find.byWidgetPredicate(
+      (widget) =>
+          widget is Text &&
+          (widget.textSpan?.toPlainText().contains('Robatsch defence') ??
+              false),
+    );
+    expect(title, findsOneWidget);
     final subvariant = find.text('Gurgenidze variation');
     expect(subvariant, findsOneWidget);
 
@@ -154,10 +160,6 @@ void main() {
     final tileSize = tester.getSize(tile);
     expect(tileSize.width, 230);
     expect(tileSize.height, inInclusiveRange(92, 108));
-    final title = find.descendant(
-      of: tile,
-      matching: find.text('Robatsch defence'),
-    );
     final titleWidget = tester.widget<Text>(title);
     final subvariantWidget = tester.widget<Text>(subvariant);
     expect(titleWidget.style?.fontSize, 12);
@@ -201,9 +203,9 @@ void main() {
       of: find.text('Wing gambit'),
       matching: find.byType(InkWell),
     );
-    expect(
-      find.descendant(of: parentTile, matching: find.text('(All)')),
-      findsOneWidget,
+    final parentMainText = find.descendant(
+      of: parentTile,
+      matching: find.byKey(const ValueKey('opening-all-star')),
     );
     expect(
       find.descendant(
@@ -212,10 +214,14 @@ void main() {
       ),
       findsOneWidget,
     );
-    final allLabel = tester.widget<Text>(
-      find.descendant(of: parentTile, matching: find.text('(All)')),
+    final parentTextWidget = tester.widget<Text>(parentMainText);
+    final parentSpan = parentTextWidget.textSpan! as TextSpan;
+    final allSpan = parentSpan.children!.whereType<TextSpan>().singleWhere(
+      (span) => span.text?.contains('★ All') ?? false,
     );
-    expect(allLabel.style?.color, kPrimaryColor);
+    expect(parentTextWidget.style?.fontSize, 12);
+    expect(allSpan.style?.fontSize, isNull);
+    expect(allSpan.style?.color, kPrimaryColor);
 
     final hierarchy = find.text(
       'Wing gambit › Marshall variation › Carlsbad variation',
@@ -245,10 +251,6 @@ void main() {
     final leafSubtitleOffset =
         tester.getTopLeft(hierarchy).dy - tester.getTopLeft(leafTile).dy;
     expect(leafSubtitleOffset, closeTo(parentSubtitleOffset, 0.1));
-    expect(
-      find.descendant(of: leafTile, matching: find.text('(All)')),
-      findsNothing,
-    );
     expect(
       find.descendant(
         of: leafTile,

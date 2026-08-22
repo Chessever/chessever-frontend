@@ -673,58 +673,42 @@ class _OpeningResultTile extends StatelessWidget {
             children: [
               SizedBox(
                 height: math.max(30.h, 34),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Padding(
-                      padding: EdgeInsets.only(top: 1.h),
-                      child: Text(
-                        codeLabel,
-                        style: TextStyle(
+                child: Text.rich(
+                  TextSpan(
+                    children: [
+                      TextSpan(
+                        text: codeLabel,
+                        style: const TextStyle(
                           color: kDarkBlue,
-                          fontSize: 12,
                           fontWeight: FontWeight.w700,
                         ),
                       ),
-                    ),
-                    if (showsAll) ...[
-                      SizedBox(width: 4.w),
-                      Padding(
-                        padding: EdgeInsets.only(top: 2.h),
-                        child: Icon(
-                          Icons.star_rounded,
-                          key: const ValueKey('opening-all-star'),
-                          size: 10.ic,
-                          color: context.colors.brand,
-                        ),
-                      ),
-                      SizedBox(width: 2.w),
-                      Padding(
-                        padding: EdgeInsets.only(top: 1.h),
-                        child: Text(
-                          '(All)',
+                      if (showsAll)
+                        TextSpan(
+                          text: '  ★ All',
                           style: TextStyle(
                             color: context.colors.brand,
-                            fontSize: 10,
-                            fontWeight: FontWeight.w600,
+                            fontWeight: FontWeight.w700,
                           ),
                         ),
-                      ),
-                    ],
-                    SizedBox(width: 6.w),
-                    Expanded(
-                      child: Text(
-                        suggestion.title,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
+                      TextSpan(
+                        text: '  ${suggestion.title}',
                         style: TextStyle(
                           color: context.colors.textPrimary,
-                          fontSize: 12,
                           fontWeight: FontWeight.w600,
                         ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
+                  key: showsAll ? const ValueKey('opening-all-star') : null,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: context.colors.textPrimary,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    height: 1.2,
+                  ),
                 ),
               ),
               SizedBox(height: 4.h),
