@@ -102,13 +102,22 @@ void main() {
     expect(find.text('Search'), findsOneWidget);
     expect(_openingSearchHasFocus(tester), isFalse);
 
-    await tester.tap(find.text('A00'));
+    await tester.tap(find.byKey(const ValueKey('eco-category-A')));
     await tester.pumpAndSettle();
-    expect(find.text('A00'), findsWidgets);
+    final firstOpening = find.byWidgetPredicate(
+      (widget) =>
+          widget is GestureDetector &&
+          widget.key is ValueKey<String> &&
+          ((widget.key! as ValueKey<String>).value.startsWith('eco-family-') ||
+              (widget.key! as ValueKey<String>).value.startsWith('eco-code-')),
+    );
+    expect(firstOpening, findsWidgets);
+    tester.widget<GestureDetector>(firstOpening.first).onTap?.call();
+    await tester.pumpAndSettle();
     expect(find.byType(TextField), findsOneWidget);
     expect(_openingSearchHasFocus(tester), isFalse);
 
-    await tester.tap(find.text('A00').first);
+    await tester.tap(find.byKey(const ValueKey('eco-dropdown-header')));
     await _pumpPastExpandAndDelayedFocus(tester);
     expect(_openingSearchHasFocus(tester), isFalse);
 
@@ -182,12 +191,11 @@ void main() {
       findsOneWidget,
     );
     expect(
-      find.descendant(
-        of: family,
-        matching: find.text('Najdorf · 10 ECO codes'),
-      ),
+      find.descendant(of: family, matching: find.text('Najdorf')),
       findsOneWidget,
     );
+    expect(find.textContaining('indexed'), findsNothing);
+    expect(find.textContaining('ECO codes'), findsNothing);
 
     await tester.tap(family);
     await tester.pumpAndSettle();
@@ -219,10 +227,8 @@ void main() {
       find.descendant(of: family, matching: find.text('E60-E99')),
       findsOneWidget,
     );
-    expect(
-      find.descendant(of: family, matching: find.text('40 ECO codes')),
-      findsOneWidget,
-    );
+    expect(find.textContaining('indexed'), findsNothing);
+    expect(find.textContaining('ECO codes'), findsNothing);
 
     await tester.ensureVisible(family);
     await tester.tap(family);

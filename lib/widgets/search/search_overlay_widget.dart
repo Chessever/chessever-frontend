@@ -220,12 +220,12 @@ class SearchOverlay extends ConsumerWidget {
     List<OpeningSearchSuggestion> openings,
   ) {
     return SizedBox(
-      height: math.max(108.h, 112),
+      height: math.max(132.h, 136),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Padding(
-            padding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 4.h),
+            padding: EdgeInsets.all(12.sp),
             child: Row(
               children: [
                 Icon(Icons.menu_book_outlined, size: 16.ic, color: kDarkBlue),
@@ -244,7 +244,7 @@ class SearchOverlay extends ConsumerWidget {
           Expanded(
             child: ListView.separated(
               scrollDirection: Axis.horizontal,
-              padding: EdgeInsets.symmetric(horizontal: 8.w),
+              padding: EdgeInsets.symmetric(horizontal: 4.w),
               itemCount: openings.length,
               separatorBuilder: (_, __) => SizedBox(width: 8.w),
               itemBuilder: (context, index) {
@@ -658,8 +658,8 @@ class _OpeningResultTile extends StatelessWidget {
         onTap: onTap,
         borderRadius: BorderRadius.circular(8.br),
         child: Container(
-          width: 200,
-          height: 84,
+          width: 230,
+          height: 100,
           padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 8.h),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(8.br),
@@ -672,33 +672,50 @@ class _OpeningResultTile extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               SizedBox(
-                height: 20,
+                height: math.max(30.h, 34),
                 child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      codeLabel,
-                      style: TextStyle(
-                        color: kDarkBlue,
-                        fontSize: 12,
-                        fontWeight: FontWeight.w700,
+                    Padding(
+                      padding: EdgeInsets.only(top: 1.h),
+                      child: Text(
+                        codeLabel,
+                        style: TextStyle(
+                          color: kDarkBlue,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                        ),
                       ),
                     ),
                     if (showsAll) ...[
                       SizedBox(width: 4.w),
-                      Text(
-                        '(All)',
-                        style: TextStyle(
+                      Padding(
+                        padding: EdgeInsets.only(top: 2.h),
+                        child: Icon(
+                          Icons.star_rounded,
+                          key: const ValueKey('opening-all-star'),
+                          size: 10.ic,
                           color: context.colors.brand,
-                          fontSize: 10,
-                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      SizedBox(width: 2.w),
+                      Padding(
+                        padding: EdgeInsets.only(top: 1.h),
+                        child: Text(
+                          '(All)',
+                          style: TextStyle(
+                            color: context.colors.brand,
+                            fontSize: 10,
+                            fontWeight: FontWeight.w600,
+                          ),
                         ),
                       ),
                     ],
-                    SizedBox(width: 8.w),
+                    SizedBox(width: 6.w),
                     Expanded(
                       child: Text(
                         suggestion.title,
-                        maxLines: 1,
+                        maxLines: 2,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
                           color: context.colors.textPrimary,
@@ -720,9 +737,9 @@ class _OpeningResultTile extends StatelessWidget {
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
                       color: context.colors.textSecondary,
-                      fontSize: 11,
+                      fontSize: 12,
                       fontWeight: FontWeight.w400,
-                      height: 1.25,
+                      height: 1.2,
                     ),
                   ),
                 ),

@@ -7,9 +7,177 @@ import 'package:chessever2/widgets/game_filter/game_filter_model.dart';
 import 'package:chessever2/widgets/search/opening_search_suggestion.dart';
 import 'package:flutter/material.dart';
 
-/// Searchable ECO filter dropdown with exact codes, safe parent ranges, and
-/// all named subvariants from the generated catalog. Every choice reuses the
-/// existing ECO-prefix query contract.
+class _EcoBrowseNode {
+  _EcoBrowseNode({
+    required this.suggestion,
+    required this.depth,
+    required this.ancestorIds,
+  });
+
+  final OpeningSearchSuggestion suggestion;
+  final int depth;
+  final List<String> ancestorIds;
+  final List<_EcoBrowseNode> children = <_EcoBrowseNode>[];
+}
+
+Map<String, List<_EcoBrowseNode>> _buildEcoBrowseTree(
+  List<OpeningSearchSuggestion> suggestions,
+) {
+  final grouped = <String, List<OpeningSearchSuggestion>>{};
+  for (final suggestion in suggestions) {
+    final category = suggestion.filter.categoryLetter;
+    if (category != null) {
+      grouped.putIfAbsent(category, () => []).add(suggestion);
+    }
+  }
+
+  final result = <String, List<_EcoBrowseNode>>{};
+  for (final entry in grouped.entries) {
+    final nodesById = <String, _EcoBrowseNode>{};
+    final parentById = <String, OpeningSearchSuggestion?>{};
+    final uniqueSuggestions = <OpeningSearchSuggestion>[];
+    final seenIds = <String>{};
+    for (final suggestion in entry.value) {
+      if (seenIds.add(suggestion.id)) uniqueSuggestions.add(suggestion);
+    }
+
+    for (final suggestion in uniqueSuggestions) {
+      OpeningSearchSuggestion? nearestParent;
+      for (final candidate in uniqueSuggestions) {
+        if (!candidate.isFamily || candidate.id == suggestion.id) continue;
+        final parentCodes = candidate.filter.exactEcoCodes;
+        final childCodes = suggestion.filter.exactEcoCodes;
+        if (parentCodes.length <= childCodes.length ||
+            !childCodes.every(parentCodes.contains)) {
+          continue;
+        }
+        final moveCompatible =
+            candidate.movePath.isEmpty ||
+            suggestion.movePath.isEmpty ||
+            EcoOpenings.isMovePrefix(candidate.movePath, suggestion.movePath);
+        if (suggestion.isFamily && !moveCompatible) continue;
+        if (nearestParent == null ||
+            _compareParentCandidates(
+                  candidate,
+                  nearestParent,
+                  child: suggestion,
+                ) <
+                0) {
+          nearestParent = candidate;
+        }
+      }
+      parentById[suggestion.id] = nearestParent;
+    }
+
+    List<String> ancestorsFor(OpeningSearchSuggestion suggestion) {
+      final ancestors = <String>[];
+      var parent = parentById[suggestion.id];
+      final visited = <String>{suggestion.id};
+      while (parent != null && visited.add(parent.id)) {
+        ancestors.insert(0, parent.id);
+        parent = parentById[parent.id];
+      }
+      return ancestors;
+    }
+
+    for (final suggestion in uniqueSuggestions) {
+      final ancestors = ancestorsFor(suggestion);
+      nodesById[suggestion.id] = _EcoBrowseNode(
+        suggestion: suggestion,
+        depth: ancestors.length,
+        ancestorIds: ancestors,
+      );
+    }
+
+    final roots = <_EcoBrowseNode>[];
+    for (final suggestion in uniqueSuggestions) {
+      final node = nodesById[suggestion.id]!;
+      final parent = parentById[suggestion.id];
+      if (parent == null) {
+        roots.add(node);
+      } else {
+        nodesById[parent.id]?.children.add(node);
+      }
+    }
+    _sortBrowseNodes(roots);
+    result[entry.key] = roots;
+  }
+  return result;
+}
+
+int _compareParentCandidates(
+  OpeningSearchSuggestion left,
+  OpeningSearchSuggestion right, {
+  required OpeningSearchSuggestion child,
+}) {
+  bool moveCompatible(OpeningSearchSuggestion candidate) =>
+      candidate.movePath.isEmpty ||
+      child.movePath.isEmpty ||
+      EcoOpenings.isMovePrefix(candidate.movePath, child.movePath);
+
+  final leftCompatible = moveCompatible(left);
+  final rightCompatible = moveCompatible(right);
+  if (leftCompatible != rightCompatible) return leftCompatible ? -1 : 1;
+  final scopeSize = left.filter.exactEcoCodes.length.compareTo(
+    right.filter.exactEcoCodes.length,
+  );
+  final moveDepth = right.movePath.length.compareTo(left.movePath.length);
+  if (child.isFamily) {
+    if (scopeSize != 0) return scopeSize;
+    if (moveDepth != 0) return moveDepth;
+  } else {
+    if (moveDepth != 0) return moveDepth;
+    if (scopeSize != 0) return scopeSize;
+  }
+  return _compareBrowseSuggestions(left, right);
+}
+
+void _sortBrowseNodes(List<_EcoBrowseNode> nodes) {
+  nodes.sort(
+    (left, right) =>
+        _compareBrowseSuggestions(left.suggestion, right.suggestion),
+  );
+  for (final node in nodes) {
+    _sortBrowseNodes(node.children);
+  }
+}
+
+int _compareBrowseSuggestions(
+  OpeningSearchSuggestion left,
+  OpeningSearchSuggestion right,
+) {
+  int startOf(OpeningSearchSuggestion suggestion) {
+    final family = EcoOpenings.getFamily(suggestion.filter.code);
+    final code = family?.rangeStart ?? suggestion.filter.code!;
+    return int.parse(code.substring(1));
+  }
+
+  int endOf(OpeningSearchSuggestion suggestion) {
+    final family = EcoOpenings.getFamily(suggestion.filter.code);
+    final code = family?.rangeEnd ?? suggestion.filter.code!;
+    return int.parse(code.substring(1));
+  }
+
+  final start = startOf(left).compareTo(startOf(right));
+  if (start != 0) return start;
+  if (left.isFamily != right.isFamily) return left.isFamily ? -1 : 1;
+  if (left.isFamily && right.isFamily) {
+    final widerFirst = right.filter.exactEcoCodes.length.compareTo(
+      left.filter.exactEcoCodes.length,
+    );
+    if (widerFirst != 0) return widerFirst;
+  }
+  final end = endOf(left).compareTo(endOf(right));
+  if (end != 0) return end;
+  final name = left.fullTitle.toLowerCase().compareTo(
+    right.fullTitle.toLowerCase(),
+  );
+  if (name != 0) return name;
+  return left.id.compareTo(right.id);
+}
+
+/// Searchable opening filter with parent families, exact ECO choices, and
+/// named variations.
 class EcoFilterDropdown extends StatefulWidget {
   const EcoFilterDropdown({
     super.key,
@@ -39,6 +207,9 @@ class _EcoFilterDropdownState extends State<EcoFilterDropdown>
     skipTraversal: true,
   );
   final ScrollController _scrollController = ScrollController();
+  late final Map<String, List<_EcoBrowseNode>> _browseRoots;
+  final Set<String> _expandedCategories = <String>{};
+  final Set<String> _expandedBrowseNodes = <String>{};
 
   // Category colors
   static const Map<String, Color> _categoryColors = {
@@ -52,6 +223,8 @@ class _EcoFilterDropdownState extends State<EcoFilterDropdown>
   @override
   void initState() {
     super.initState();
+    _browseRoots = _buildEcoBrowseTree(browseOpeningSuggestions());
+    _resetBrowseDisclosure(widget.value);
     _animationController = AnimationController(
       duration: const Duration(milliseconds: 250),
       vsync: this,
@@ -63,6 +236,14 @@ class _EcoFilterDropdownState extends State<EcoFilterDropdown>
     _rotationAnimation = Tween<double>(begin: 0, end: 0.5).animate(
       CurvedAnimation(parent: _animationController, curve: Curves.easeInOut),
     );
+  }
+
+  @override
+  void didUpdateWidget(covariant EcoFilterDropdown oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.value != widget.value && !_isExpanded) {
+      _resetBrowseDisclosure(widget.value);
+    }
   }
 
   @override
@@ -78,6 +259,7 @@ class _EcoFilterDropdownState extends State<EcoFilterDropdown>
     setState(() {
       _isExpanded = !_isExpanded;
       if (_isExpanded) {
+        _resetBrowseDisclosure(widget.value);
         _animationController.forward();
         // Keep the search field focusable so an explicit tap can type,
         // but do not request the keyboard just because Opening expanded.
@@ -96,7 +278,54 @@ class _EcoFilterDropdownState extends State<EcoFilterDropdown>
 
   void _selectItem(GameEcoFilter item) {
     widget.onChanged(item);
+    _resetBrowseDisclosure(item);
     _toggleExpanded();
+  }
+
+  void _resetBrowseDisclosure(GameEcoFilter filter) {
+    _expandedCategories.clear();
+    _expandedBrowseNodes.clear();
+    if (filter.isAll || filter.isUnknownEco) return;
+
+    final category = filter.categoryLetter;
+    if (category == null) return;
+    _expandedCategories.add(category);
+
+    final selected = _findBrowseNode(
+      _browseRoots[category] ?? const <_EcoBrowseNode>[],
+      filter,
+    );
+    if (selected != null) {
+      _expandedBrowseNodes.addAll(selected.ancestorIds);
+    }
+  }
+
+  _EcoBrowseNode? _findBrowseNode(
+    List<_EcoBrowseNode> nodes,
+    GameEcoFilter filter,
+  ) {
+    for (final node in nodes) {
+      if (node.suggestion.filter == filter) return node;
+      final match = _findBrowseNode(node.children, filter);
+      if (match != null) return match;
+    }
+    return null;
+  }
+
+  void _toggleCategory(String category) {
+    setState(() {
+      if (!_expandedCategories.add(category)) {
+        _expandedCategories.remove(category);
+      }
+    });
+  }
+
+  void _toggleBrowseNode(String id) {
+    setState(() {
+      if (!_expandedBrowseNodes.add(id)) {
+        _expandedBrowseNodes.remove(id);
+      }
+    });
   }
 
   Color _getCategoryColor(String? letter) {
@@ -117,6 +346,7 @@ class _EcoFilterDropdownState extends State<EcoFilterDropdown>
       children: [
         // Header (collapsed state)
         GestureDetector(
+          key: const ValueKey('eco-dropdown-header'),
           onTap: _toggleExpanded,
           child: AnimatedContainer(
             duration: const Duration(milliseconds: 200),
@@ -264,14 +494,18 @@ class _EcoFilterDropdownState extends State<EcoFilterDropdown>
           prefixIconConstraints: BoxConstraints(minWidth: 36.w),
           suffixIcon:
               _searchQuery.isNotEmpty
-                  ? GestureDetector(
-                    onTap: () {
+                  ? IconButton(
+                    tooltip: 'Clear opening search',
+                    onPressed: () {
                       _searchController.clear();
                       setState(() => _searchQuery = '');
+                      if (_scrollController.hasClients) {
+                        _scrollController.jumpTo(0);
+                      }
                     },
-                    child: Icon(
+                    icon: Icon(
                       Icons.close_rounded,
-                      size: 16.ic,
+                      size: 18.ic,
                       color: context.colors.textSecondary,
                     ),
                   )
@@ -285,9 +519,13 @@ class _EcoFilterDropdownState extends State<EcoFilterDropdown>
   }
 
   Widget _buildOptionsList() {
-    final suggestions = _getOpeningSuggestions();
+    final isBrowsing = _searchQuery.trim().isEmpty;
+    final suggestions =
+        isBrowsing
+            ? const <OpeningSearchSuggestion>[]
+            : _getOpeningSuggestions();
 
-    if (suggestions.isEmpty) {
+    if (!isBrowsing && suggestions.isEmpty) {
       final typedCharacters =
           _searchQuery.replaceAll(RegExp(r'\s+'), '').length;
       final needsMoreCharacters =
@@ -312,36 +550,73 @@ class _EcoFilterDropdownState extends State<EcoFilterDropdown>
       if (category == null) continue;
       grouped.putIfAbsent(category, () => []).add(suggestion);
     }
-    final categories = grouped.keys.toList()..sort();
-    final isBrowsing = _searchQuery.trim().isEmpty;
+    final availableCategories = isBrowsing ? _browseRoots.keys : grouped.keys;
+    final categories = <String>[
+      for (final category in const ['A', 'B', 'C', 'D', 'E'])
+        if (availableCategories.contains(category)) category,
+    ];
 
     return Scrollbar(
       controller: _scrollController,
       thumbVisibility: true,
       radius: Radius.circular(4.br),
-      child: ListView(
+      child: SingleChildScrollView(
         controller: _scrollController,
-        shrinkWrap: true,
         padding: EdgeInsets.zero,
-        children: [
-          // "All Openings" option at top
-          if (isBrowsing) _buildAllOpeningsOption(),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // "All Openings" option at top
+            if (isBrowsing) _buildAllOpeningsOption(),
 
-          if (isBrowsing)
-            // Families and exact-code summaries share one parent-first
-            // sequence inside each ECO category.
-            for (final category in categories) ...[
-              _buildCategoryHeader(category, grouped[category]!.length),
-              ...grouped[category]!.map(_buildSuggestionItem),
-            ]
-          else
-            // Search order is global relevance plus ancestry. Regrouping it
-            // alphabetically by A-E would bury a strong E-family hit below
-            // incidental A-code aliases.
-            ...suggestions.map(_buildSuggestionItem),
-        ],
+            if (isBrowsing)
+              // Families and exact-code summaries share one parent-first
+              // sequence inside each ECO category.
+              for (final category in categories) ...[
+                _buildCategoryHeader(
+                  category,
+                  isExpanded: _expandedCategories.contains(category),
+                ),
+                if (_expandedCategories.contains(category))
+                  for (final node in _visibleBrowseNodes(category))
+                    _buildSuggestionItem(
+                      node.suggestion,
+                      treeDepth: node.depth,
+                      hasChildren: node.children.isNotEmpty,
+                      isExpanded: _expandedBrowseNodes.contains(
+                        node.suggestion.id,
+                      ),
+                      onToggle:
+                          node.children.isEmpty
+                              ? null
+                              : () => _toggleBrowseNode(node.suggestion.id),
+                    ),
+              ]
+            else
+              // Search order is global relevance plus ancestry. Regrouping it
+              // alphabetically by A-E would bury a strong E-family hit below
+              // incidental A-code aliases.
+              ...suggestions.map(_buildSuggestionItem),
+          ],
+        ),
       ),
     );
+  }
+
+  List<_EcoBrowseNode> _visibleBrowseNodes(String category) {
+    final visible = <_EcoBrowseNode>[];
+
+    void append(List<_EcoBrowseNode> nodes) {
+      for (final node in nodes) {
+        visible.add(node);
+        if (_expandedBrowseNodes.contains(node.suggestion.id)) {
+          append(node.children);
+        }
+      }
+    }
+
+    append(_browseRoots[category] ?? const <_EcoBrowseNode>[]);
+    return visible;
   }
 
   Widget _buildAllOpeningsOption() {
@@ -400,64 +675,89 @@ class _EcoFilterDropdownState extends State<EcoFilterDropdown>
     );
   }
 
-  Widget _buildCategoryHeader(String category, int count) {
+  Widget _buildCategoryHeader(String category, {required bool isExpanded}) {
     final color = _getCategoryColor(category);
     final categoryInfo = EcoOpenings.getCategory(category);
 
-    return Container(
-      padding: EdgeInsets.fromLTRB(16.w, 12.h, 16.w, 6.h),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.05),
-        border: Border(
-          bottom: BorderSide(color: color.withValues(alpha: 0.15)),
-        ),
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 22.w,
-            height: 22.w,
-            decoration: BoxDecoration(
-              color: color.withValues(alpha: 0.15),
-              borderRadius: BorderRadius.circular(4.br),
+    return Semantics(
+      button: true,
+      expanded: isExpanded,
+      label:
+          '${isExpanded ? 'Collapse' : 'Expand'} ECO $category, '
+          '${categoryInfo?.name ?? ''}',
+      child: InkWell(
+        key: ValueKey('eco-category-$category'),
+        onTap: () => _toggleCategory(category),
+        child: Container(
+          constraints: const BoxConstraints(minHeight: 48),
+          padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 8.h),
+          decoration: BoxDecoration(
+            color: color.withValues(alpha: 0.05),
+            border: Border(
+              bottom: BorderSide(color: color.withValues(alpha: 0.15)),
             ),
-            child: Center(
-              child: Text(
-                category,
-                style: AppTypography.textSmBold.copyWith(
-                  color: color,
-                  fontSize: 12.f,
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 24.w,
+                height: 24.w,
+                decoration: BoxDecoration(
+                  color: color.withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(4.br),
+                ),
+                alignment: Alignment.center,
+                child: Text(
+                  category,
+                  style: AppTypography.textSmBold.copyWith(
+                    color: color,
+                    fontSize: 12.f,
+                  ),
                 ),
               ),
-            ),
-          ),
-          SizedBox(width: 10.w),
-          Expanded(
-            child: Text(
-              categoryInfo?.name ?? '',
-              style: AppTypography.textXsMedium.copyWith(
-                color: color,
-                letterSpacing: 0.3,
+              SizedBox(width: 12.w),
+              Expanded(
+                child: Text(
+                  categoryInfo?.name ?? '',
+                  style: AppTypography.textSmMedium.copyWith(color: color),
+                ),
               ),
-            ),
+              AnimatedRotation(
+                turns: isExpanded ? 0.5 : 0,
+                duration: const Duration(milliseconds: 180),
+                curve: Curves.easeOutCubic,
+                child: Icon(
+                  Icons.keyboard_arrow_down_rounded,
+                  size: 20.ic,
+                  color: color,
+                ),
+              ),
+            ],
           ),
-          Text(
-            '$count',
-            style: AppTypography.textXsRegular.copyWith(
-              color: color.withValues(alpha: 0.7),
-            ),
-          ),
-        ],
+        ),
       ),
     );
   }
 
-  Widget _buildSuggestionItem(OpeningSearchSuggestion suggestion) {
+  Widget _buildSuggestionItem(
+    OpeningSearchSuggestion suggestion, {
+    int? treeDepth,
+    bool hasChildren = false,
+    bool isExpanded = false,
+    VoidCallback? onToggle,
+  }) {
     final code = suggestion.filter.code!;
     final color = _getCategoryColor(suggestion.filter.categoryLetter);
     final isSelected = widget.value == suggestion.filter;
     final hierarchyDepth = suggestion.hierarchyLabel.split(' › ').length - 1;
-    final visibleDepth = hierarchyDepth > 2 ? 2 : hierarchyDepth;
+    final depth = treeDepth ?? hierarchyDepth;
+    final visibleDepth = depth > 3 ? 3 : depth;
+    final hierarchyParts = suggestion.hierarchyLabel.split(' › ');
+    final displayTitle = hierarchyParts.last;
+    final supportingText =
+        hierarchyParts.length > 1
+            ? hierarchyParts.take(hierarchyParts.length - 1).join(' › ')
+            : '';
 
     return Semantics(
       button: true,
@@ -527,7 +827,7 @@ class _EcoFilterDropdownState extends State<EcoFilterDropdown>
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      suggestion.title,
+                      displayTitle,
                       style: AppTypography.textSmRegular.copyWith(
                         color: context.colors.textPrimary.withValues(
                           alpha: isSelected ? 1.0 : 0.9,
@@ -538,21 +838,48 @@ class _EcoFilterDropdownState extends State<EcoFilterDropdown>
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
-                    SizedBox(height: 2.h),
-                    Text(
-                      suggestion.subtitle,
-                      style: AppTypography.textXsRegular.copyWith(
-                        color: context.colors.textSecondary,
+                    if (supportingText.isNotEmpty) ...[
+                      SizedBox(height: 2.h),
+                      Text(
+                        supportingText,
+                        style: AppTypography.textXsRegular.copyWith(
+                          color: context.colors.textSecondary,
+                        ),
+                        maxLines: 3,
+                        overflow: TextOverflow.ellipsis,
                       ),
-                      maxLines: 3,
-                      overflow: TextOverflow.ellipsis,
-                    ),
+                    ],
                   ],
                 ),
               ),
               if (isSelected) ...[
                 SizedBox(width: 8.w),
                 Icon(Icons.check_rounded, size: 16.ic, color: color),
+              ],
+              if (hasChildren) ...[
+                SizedBox(width: 4.w),
+                IconButton(
+                  key: ValueKey('eco-expand-${suggestion.id}'),
+                  onPressed: onToggle,
+                  tooltip:
+                      '${isExpanded ? 'Collapse' : 'Expand'} '
+                      '${suggestion.fullTitle}',
+                  constraints: const BoxConstraints.tightFor(
+                    width: 48,
+                    height: 48,
+                  ),
+                  padding: EdgeInsets.zero,
+                  icon: AnimatedRotation(
+                    turns: isExpanded ? 0.5 : 0,
+                    duration: const Duration(milliseconds: 180),
+                    curve: Curves.easeOutCubic,
+                    child: Icon(
+                      Icons.keyboard_arrow_down_rounded,
+                      size: 20.ic,
+                      color: color,
+                    ),
+                  ),
+                ),
               ],
             ],
           ),

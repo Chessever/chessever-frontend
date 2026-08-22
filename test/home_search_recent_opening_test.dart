@@ -1,5 +1,3 @@
-import 'dart:math' as math;
-
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/search/enhanced_rounded_search_bar.dart';
@@ -154,17 +152,18 @@ void main() {
 
     final tile = find.ancestor(of: subvariant, matching: find.byType(InkWell));
     final tileSize = tester.getSize(tile);
-    expect(tileSize.width, 200);
-    expect(tileSize.height, inInclusiveRange(84, 96));
+    expect(tileSize.width, 230);
+    expect(tileSize.height, inInclusiveRange(92, 108));
     final title = find.descendant(
       of: tile,
       matching: find.text('Robatsch defence'),
     );
     final titleWidget = tester.widget<Text>(title);
     final subvariantWidget = tester.widget<Text>(subvariant);
-    expect(titleWidget.style?.fontSize, greaterThanOrEqualTo(12));
-    expect(subvariantWidget.style?.fontSize, greaterThanOrEqualTo(11));
-    expect(subvariantWidget.style?.height, greaterThanOrEqualTo(1.25));
+    expect(titleWidget.style?.fontSize, 12);
+    expect(titleWidget.maxLines, 2);
+    expect(subvariantWidget.style?.fontSize, 12);
+    expect(subvariantWidget.maxLines, 3);
     expect(subvariantWidget.style?.color, isNot(titleWidget.style?.color));
 
     tester.widget<InkWell>(tile).onTap?.call();
@@ -206,6 +205,13 @@ void main() {
       find.descendant(of: parentTile, matching: find.text('(All)')),
       findsOneWidget,
     );
+    expect(
+      find.descendant(
+        of: parentTile,
+        matching: find.byKey(const ValueKey('opening-all-star')),
+      ),
+      findsOneWidget,
+    );
     final allLabel = tester.widget<Text>(
       find.descendant(of: parentTile, matching: find.text('(All)')),
     );
@@ -218,26 +224,21 @@ void main() {
       (widget) =>
           widget is ListView && widget.scrollDirection == Axis.horizontal,
     );
-    final horizontalScrollable = find.descendant(
-      of: horizontalList,
-      matching: find.byType(Scrollable),
+    await tester.scrollUntilVisible(
+      hierarchy,
+      180,
+      scrollable: find.descendant(
+        of: horizontalList,
+        matching: find.byType(Scrollable),
+      ),
     );
-    final scrollPosition =
-        tester.state<ScrollableState>(horizontalScrollable).position;
-    while (hierarchy.evaluate().isEmpty &&
-        scrollPosition.pixels < scrollPosition.maxScrollExtent) {
-      scrollPosition.jumpTo(
-        math.min(scrollPosition.pixels + 180, scrollPosition.maxScrollExtent),
-      );
-      await tester.pump();
-    }
 
     final leafTile = find.ancestor(
       of: hierarchy,
       matching: find.byType(InkWell),
     );
-    expect(tester.getSize(leafTile).width, 200);
-    expect(tester.getSize(leafTile).height, inInclusiveRange(84, 96));
+    expect(tester.getSize(leafTile).width, 230);
+    expect(tester.getSize(leafTile).height, inInclusiveRange(92, 108));
     final parentSubtitleOffset =
         tester.getTopLeft(find.text('Wing gambit')).dy -
         tester.getTopLeft(parentTile).dy;
@@ -246,6 +247,13 @@ void main() {
     expect(leafSubtitleOffset, closeTo(parentSubtitleOffset, 0.1));
     expect(
       find.descendant(of: leafTile, matching: find.text('(All)')),
+      findsNothing,
+    );
+    expect(
+      find.descendant(
+        of: leafTile,
+        matching: find.byKey(const ValueKey('opening-all-star')),
+      ),
       findsNothing,
     );
     expect(tester.takeException(), isNull);
