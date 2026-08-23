@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:chessever2/chat/chat_api.dart';
 import 'package:chessever2/chat/botvinnik_provider.dart';
+import 'package:chessever2/chat/botvinnik_icon.dart';
 import 'package:chessever2/repository/supabase/group_broadcast/group_broadcast.dart';
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_mode_provider.dart';
 import 'package:flutter/material.dart';
@@ -395,8 +396,7 @@ class _EmptyChat extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(
-              Icons.auto_awesome_rounded,
+            BotvinnikIcon(
               size: 44,
               color: Theme.of(context).colorScheme.primary,
             ),
