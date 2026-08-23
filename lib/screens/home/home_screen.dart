@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 import 'package:chessever2/e2e/e2e_config.dart';
+import 'package:chessever2/chat/chat_screen.dart';
 import 'package:chessever2/e2e/e2e_ids.dart';
 import 'package:chessever2/repository/authentication/auth_repository.dart';
 import 'package:chessever2/screens/authentication/auth_screen_provider.dart';
@@ -209,6 +210,17 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     },
   );
 
+  Widget? get _chatButton {
+    final user = Supabase.instance.client.auth.currentUser;
+    if (user == null || user.isAnonymous) return null;
+    return FloatingActionButton.small(
+      heroTag: 'chessever-chat',
+      tooltip: 'Ask ChessEver',
+      onPressed: () => ChatScreen.show(context),
+      child: const Icon(Icons.auto_awesome_rounded),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     // Listen for favorite signals (must be in build method)
@@ -221,6 +233,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         resizeToAvoidBottomInset: false,
         drawerScrimColor: context.colors.scrim,
         drawer: HamburgerMenu(callbacks: _menuCallbacks),
+        floatingActionButton: _chatButton,
         body: BillingIssueGate(
           child: Row(
             children: [
@@ -247,6 +260,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       resizeToAvoidBottomInset: false,
       drawerScrimColor: context.colors.scrim,
       drawer: HamburgerMenu(callbacks: _menuCallbacks),
+      floatingActionButton: _chatButton,
       bottomNavigationBar: BottomNavBar(),
       body: BillingIssueGate(
         child: KeyedSubtree(

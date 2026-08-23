@@ -1,0 +1,250 @@
+import 'dart:async';
+import 'dart:convert';
+
+import 'package:http/http.dart' as http;
+import 'package:supabase_flutter/supabase_flutter.dart';
+
+class ChatApiException implements Exception {
+  const ChatApiException(this.message, {this.statusCode});
+
+  final String message;
+  final int? statusCode;
+
+  @override
+  String toString() => message;
+}
+
+class ChatConversation {
+  const ChatConversation({
+    required this.id,
+    required this.title,
+    required this.locale,
+    required this.updatedAt,
+  });
+
+  factory ChatConversation.fromJson(Map<String, dynamic> json) {
+    return ChatConversation(
+      id: json['id'] as String,
+      title: json['title'] as String? ?? 'New chat',
+      locale: json['locale'] as String? ?? 'en',
+      updatedAt:
+          DateTime.tryParse(json['updated_at'] as String? ?? '') ??
+          DateTime.fromMillisecondsSinceEpoch(0),
+    );
+  }
+
+  final String id;
+  final String title;
+  final String locale;
+  final DateTime updatedAt;
+}
+
+class ChatReference {
+  const ChatReference({
+    required this.type,
+    required this.id,
+    required this.label,
+  });
+
+  factory ChatReference.fromJson(Map<String, dynamic> json) {
+    return ChatReference(
+      type: json['type'] as String? ?? 'tournament',
+      id: json['id'] as String? ?? '',
+      label: json['label'] as String? ?? '',
+    );
+  }
+
+  final String type;
+  final String id;
+  final String label;
+}
+
+class ChatMessage {
+  const ChatMessage({
+    required this.id,
+    required this.role,
+    required this.content,
+    this.references = const [],
+  });
+
+  factory ChatMessage.fromJson(Map<String, dynamic> json) {
+    final rawReferences = json['citations'] as List<dynamic>? ?? const [];
+    return ChatMessage(
+      id: json['id'] as String,
+      role: json['role'] as String,
+      content: json['content'] as String? ?? '',
+      references:
+          rawReferences
+              .whereType<Map<String, dynamic>>()
+              .map(ChatReference.fromJson)
+              .toList(),
+    );
+  }
+
+  final String id;
+  final String role;
+  final String content;
+  final List<ChatReference> references;
+
+  ChatMessage copyWith({
+    String? id,
+    String? content,
+    List<ChatReference>? references,
+  }) {
+    return ChatMessage(
+      id: id ?? this.id,
+      role: role,
+      content: content ?? this.content,
+      references: references ?? this.references,
+    );
+  }
+}
+
+class ChatStreamEvent {
+  const ChatStreamEvent(this.type, this.data);
+
+  final String type;
+  final Map<String, dynamic> data;
+}
+
+class ChatApi {
+  ChatApi({http.Client? client}) : _client = client ?? http.Client();
+
+  static const baseUrl = String.fromEnvironment(
+    'CHAT_API_BASE_URL',
+    defaultValue: 'https://chessever-chat-test.young-sun-69a8.workers.dev',
+  );
+  static const enabled = bool.fromEnvironment(
+    'CHATBOT_ENABLED',
+    defaultValue: true,
+  );
+
+  final http.Client _client;
+
+  String get _token {
+    final user = Supabase.instance.client.auth.currentUser;
+    final session = Supabase.instance.client.auth.currentSession;
+    if (user == null || user.isAnonymous || session == null) {
+      throw const ChatApiException(
+        'Sign in to use ChessEver Chat',
+        statusCode: 401,
+      );
+    }
+    return session.accessToken;
+  }
+
+  Uri _uri(String path) {
+    if (!enabled || baseUrl.trim().isEmpty) {
+      throw const ChatApiException(
+        'ChessEver Chat is not enabled in this test build.',
+      );
+    }
+    return Uri.parse('${baseUrl.replaceFirst(RegExp(r'/$'), '')}$path');
+  }
+
+  Map<String, String> get _headers => {
+    'authorization': 'Bearer $_token',
+    'content-type': 'application/json',
+  };
+
+  Future<Map<String, dynamic>> _json(http.Response response) async {
+    final decoded =
+        response.body.isEmpty
+            ? <String, dynamic>{}
+            : jsonDecode(response.body) as Map<String, dynamic>;
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw ChatApiException(
+        decoded['message'] as String? ??
+            decoded['error'] as String? ??
+            'Chat request failed',
+        statusCode: response.statusCode,
+      );
+    }
+    return decoded;
+  }
+
+  Future<List<ChatConversation>> conversations() async {
+    final response = await _client.get(
+      _uri('/v1/chat/conversations'),
+      headers: _headers,
+    );
+    final json = await _json(response);
+    return (json['conversations'] as List<dynamic>? ?? const [])
+        .whereType<Map<String, dynamic>>()
+        .map(ChatConversation.fromJson)
+        .toList();
+  }
+
+  Future<ChatConversation> createConversation({required String locale}) async {
+    final response = await _client.post(
+      _uri('/v1/chat/conversations'),
+      headers: _headers,
+      body: jsonEncode({'locale': locale}),
+    );
+    final json = await _json(response);
+    return ChatConversation.fromJson(
+      json['conversation'] as Map<String, dynamic>,
+    );
+  }
+
+  Future<void> deleteConversation(String id) async {
+    final response = await _client.delete(
+      _uri('/v1/chat/conversations/$id'),
+      headers: _headers,
+    );
+    if (response.statusCode != 204) await _json(response);
+  }
+
+  Future<List<ChatMessage>> messages(String conversationId) async {
+    final response = await _client.get(
+      _uri('/v1/chat/conversations/$conversationId/messages'),
+      headers: _headers,
+    );
+    final json = await _json(response);
+    return (json['messages'] as List<dynamic>? ?? const [])
+        .whereType<Map<String, dynamic>>()
+        .map(ChatMessage.fromJson)
+        .toList();
+  }
+
+  Stream<ChatStreamEvent> send({
+    required String conversationId,
+    required String content,
+    required String locale,
+    required String timezone,
+  }) async* {
+    final request = http.Request(
+      'POST',
+      _uri('/v1/chat/conversations/$conversationId/messages'),
+    );
+    request.headers.addAll(_headers);
+    request.body = jsonEncode({
+      'content': content,
+      'locale': locale,
+      'timezone': timezone,
+    });
+    final response = await _client.send(request);
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      final body = await response.stream.bytesToString();
+      final decoded =
+          body.isEmpty
+              ? <String, dynamic>{}
+              : jsonDecode(body) as Map<String, dynamic>;
+      throw ChatApiException(
+        decoded['message'] as String? ??
+            decoded['error'] as String? ??
+            'Chat request failed',
+        statusCode: response.statusCode,
+      );
+    }
+    await for (final line in response.stream
+        .transform(utf8.decoder)
+        .transform(const LineSplitter())) {
+      if (line.trim().isEmpty) continue;
+      final data = jsonDecode(line) as Map<String, dynamic>;
+      yield ChatStreamEvent(data['type'] as String? ?? 'error', data);
+    }
+  }
+
+  void close() => _client.close();
+}
