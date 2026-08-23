@@ -1,9 +1,12 @@
 import 'dart:async';
 
 import 'package:chessever2/chat/chat_api.dart';
+import 'package:chessever2/repository/supabase/group_broadcast/group_broadcast.dart';
+import 'package:chessever2/screens/tour_detail/provider/tour_detail_mode_provider.dart';
 import 'package:flutter/material.dart';
+import 'package:hooks_riverpod/hooks_riverpod.dart';
 
-class ChatScreen extends StatefulWidget {
+class ChatScreen extends ConsumerStatefulWidget {
   const ChatScreen({super.key});
 
   static Future<void> show(BuildContext context) async {
@@ -50,10 +53,10 @@ class ChatScreen extends StatefulWidget {
   }
 
   @override
-  State<ChatScreen> createState() => _ChatScreenState();
+  ConsumerState<ChatScreen> createState() => _ChatScreenState();
 }
 
-class _ChatScreenState extends State<ChatScreen> {
+class _ChatScreenState extends ConsumerState<ChatScreen> {
   final ChatApi _api = ChatApi();
   final TextEditingController _controller = TextEditingController();
   final ScrollController _scrollController = ScrollController();
@@ -261,6 +264,24 @@ class _ChatScreenState extends State<ChatScreen> {
     });
   }
 
+  void _openReference(ChatReference reference) {
+    if (reference.id.isEmpty ||
+        (reference.type != 'event' && reference.type != 'tournament')) {
+      return;
+    }
+
+    final broadcast = GroupBroadcast(
+      id: reference.id,
+      createdAt: DateTime.now(),
+      name: reference.label,
+      search: [reference.id, reference.label],
+    );
+    ref.read(selectedBroadcastModelProvider.notifier).state = broadcast;
+    ref.read(selectedTourModeProvider.notifier).state =
+        TournamentDetailScreenMode.games;
+    Navigator.of(context).pushNamed('/tournament_detail_screen');
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -321,6 +342,7 @@ class _ChatScreenState extends State<ChatScreen> {
                             message: _messages[index],
                             isStreaming:
                                 _sending && index == _messages.length - 1,
+                            onReferencePressed: _openReference,
                           ),
                     ),
           ),
@@ -401,10 +423,15 @@ class _EmptyChat extends StatelessWidget {
 }
 
 class _MessageBubble extends StatelessWidget {
-  const _MessageBubble({required this.message, required this.isStreaming});
+  const _MessageBubble({
+    required this.message,
+    required this.isStreaming,
+    required this.onReferencePressed,
+  });
 
   final ChatMessage message;
   final bool isStreaming;
+  final ValueChanged<ChatReference> onReferencePressed;
 
   @override
   Widget build(BuildContext context) {
@@ -448,7 +475,7 @@ class _MessageBubble extends StatelessWidget {
                               size: 16,
                             ),
                             label: Text(reference.label),
-                            onPressed: () {},
+                            onPressed: () => onReferencePressed(reference),
                           ),
                         )
                         .toList(),
