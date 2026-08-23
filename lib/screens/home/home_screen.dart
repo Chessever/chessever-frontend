@@ -3,7 +3,6 @@ import 'dart:io';
 import 'package:chessever2/e2e/e2e_config.dart';
 import 'package:chessever2/chat/chat_screen.dart';
 import 'package:chessever2/chat/botvinnik_provider.dart';
-import 'package:chessever2/chat/botvinnik_icon.dart';
 import 'package:chessever2/chat/chat_api.dart';
 import 'package:chessever2/e2e/e2e_ids.dart';
 import 'package:chessever2/repository/authentication/auth_repository.dart';
@@ -223,7 +222,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       heroTag: 'botvinnik',
       tooltip: 'Ask Botvinnik',
       onPressed: () => ChatScreen.show(context),
-      child: const BotvinnikIcon(),
+      child: const Icon(Icons.auto_awesome_rounded),
     );
   }
 
