@@ -107,12 +107,28 @@ class ChatStreamEvent {
   final Map<String, dynamic> data;
 }
 
+const _productionChatApiBaseUrl =
+    'https://chessever-chat.young-sun-69a8.workers.dev';
+const _testChatApiBaseUrl =
+    'https://chessever-chat-test.young-sun-69a8.workers.dev';
+
+String resolveChatApiBaseUrl({
+  required String configuredUrl,
+  required String supabaseUrl,
+}) {
+  final configured = configuredUrl.trim();
+  if (configured.isNotEmpty) return configured;
+  return supabaseUrl.contains('odmekzlfunfocvedqusl')
+      ? _testChatApiBaseUrl
+      : _productionChatApiBaseUrl;
+}
+
 class ChatApi {
   ChatApi({http.Client? client}) : _client = client ?? http.Client();
 
-  static const baseUrl = String.fromEnvironment(
-    'CHAT_API_BASE_URL',
-    defaultValue: 'https://chessever-chat-test.young-sun-69a8.workers.dev',
+  static final baseUrl = resolveChatApiBaseUrl(
+    configuredUrl: const String.fromEnvironment('CHAT_API_BASE_URL'),
+    supabaseUrl: const String.fromEnvironment('SUPABASE_URL'),
   );
   static const enabled = bool.fromEnvironment(
     'CHATBOT_ENABLED',
@@ -136,7 +152,7 @@ class ChatApi {
   Uri _uri(String path) {
     if (!enabled || baseUrl.trim().isEmpty) {
       throw const ChatApiException(
-        'ChessEver Chat is not enabled in this test build.',
+        'ChessEver Chat is not enabled in this build.',
       );
     }
     return Uri.parse('${baseUrl.replaceFirst(RegExp(r'/$'), '')}$path');

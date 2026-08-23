@@ -2,6 +2,33 @@ import 'package:chessever2/chat/chat_api.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  test('selects the chat deployment that matches the Supabase environment', () {
+    expect(
+      resolveChatApiBaseUrl(
+        configuredUrl: '',
+        supabaseUrl: 'https://odmekzlfunfocvedqusl.supabase.co',
+      ),
+      'https://chessever-chat-test.young-sun-69a8.workers.dev',
+    );
+    expect(
+      resolveChatApiBaseUrl(
+        configuredUrl: '',
+        supabaseUrl: 'https://oelbsuggrzyqwzmvidju.supabase.co',
+      ),
+      'https://chessever-chat.young-sun-69a8.workers.dev',
+    );
+  });
+
+  test('allows an explicit chat API endpoint override', () {
+    expect(
+      resolveChatApiBaseUrl(
+        configuredUrl: 'https://preview.example.workers.dev',
+        supabaseUrl: 'https://oelbsuggrzyqwzmvidju.supabase.co',
+      ),
+      'https://preview.example.workers.dev',
+    );
+  });
+
   test('parses a conversation returned by the chat API', () {
     final conversation = ChatConversation.fromJson({
       'id': 'conversation-1',
