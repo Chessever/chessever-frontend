@@ -71,4 +71,15 @@ void main() {
     expect(quota.remaining, 47);
     expect(quota.isPremium, isTrue);
   });
+
+  test('creates a compact conversation title from the first question', () {
+    expect(
+      chatTitleFromQuestion('  Which   events were played last month?  '),
+      'Which events were played last month?',
+    );
+
+    final longTitle = chatTitleFromQuestion(List.filled(80, 'ख').join());
+    expect(longTitle.runes.length, 60);
+    expect(longTitle, endsWith('…'));
+  });
 }

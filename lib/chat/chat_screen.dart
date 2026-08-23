@@ -199,6 +199,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         final assistant = messages.last;
         switch (event.type) {
           case 'start':
+            _useQuestionAsTitle(selected.id, content);
+            _readQuota(event.data);
+            break;
           case 'done':
             _readQuota(event.data);
             break;
@@ -249,6 +252,21 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     ref
         .read(botvinnikQuotaProvider.notifier)
         .setQuota(ChatQuotaStatus.fromJson(quota));
+  }
+
+  void _useQuestionAsTitle(String conversationId, String question) {
+    final index = _conversations.indexWhere(
+      (conversation) => conversation.id == conversationId,
+    );
+    if (index == -1 || _conversations[index].title != 'New chat') return;
+
+    final renamed = _conversations[index].copyWith(
+      title: chatTitleFromQuestion(question),
+    );
+    final conversations = [..._conversations];
+    conversations[index] = renamed;
+    _conversations = conversations;
+    if (_selected?.id == conversationId) _selected = renamed;
   }
 
   void _scrollToEnd() {

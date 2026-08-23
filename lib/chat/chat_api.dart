@@ -37,6 +37,22 @@ class ChatConversation {
   final String title;
   final String locale;
   final DateTime updatedAt;
+
+  ChatConversation copyWith({String? title}) {
+    return ChatConversation(
+      id: id,
+      title: title ?? this.title,
+      locale: locale,
+      updatedAt: updatedAt,
+    );
+  }
+}
+
+String chatTitleFromQuestion(String question) {
+  final normalized = question.trim().replaceAll(RegExp(r'\s+'), ' ');
+  final codePoints = normalized.runes.toList();
+  if (codePoints.length <= 60) return normalized;
+  return '${String.fromCharCodes(codePoints.take(59))}…';
 }
 
 class ChatReference {
