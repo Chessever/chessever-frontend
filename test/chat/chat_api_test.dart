@@ -56,4 +56,19 @@ void main() {
     expect(message.references.single.type, 'game');
     expect(message.references.single.id, 'game-1');
   });
+
+  test('parses the authenticated daily quota', () {
+    final quota = ChatQuotaStatus.fromJson({
+      'limit': 50,
+      'used': 3,
+      'remaining': 47,
+      'isPremium': true,
+      'resetsAt': '2026-08-24T00:00:00.000Z',
+    });
+
+    expect(quota.limit, 50);
+    expect(quota.used, 3);
+    expect(quota.remaining, 47);
+    expect(quota.isPremium, isTrue);
+  });
 }

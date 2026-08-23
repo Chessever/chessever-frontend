@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:chessever2/chat/chat_api.dart';
+import 'package:chessever2/chat/botvinnik_provider.dart';
 import 'package:chessever2/repository/supabase/group_broadcast/group_broadcast.dart';
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_mode_provider.dart';
 import 'package:flutter/material.dart';
@@ -20,7 +21,7 @@ class ChatScreen extends ConsumerStatefulWidget {
     await showGeneralDialog<void>(
       context: context,
       barrierDismissible: true,
-      barrierLabel: 'Close ChessEver Chat',
+      barrierLabel: 'Close Botvinnik',
       barrierColor: Colors.black38,
       transitionDuration: const Duration(milliseconds: 220),
       pageBuilder: (context, animation, secondaryAnimation) {
@@ -67,8 +68,6 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   String? _error;
   bool _loading = true;
   bool _sending = false;
-  int? _remaining;
-  int? _limit;
 
   Locale get _locale => Localizations.localeOf(context);
 
@@ -247,8 +246,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   void _readQuota(Map<String, dynamic> data) {
     final quota = data['quota'] as Map<String, dynamic>?;
     if (quota == null) return;
-    _remaining = quota['remaining'] as int?;
-    _limit = quota['limit'] as int?;
+    ref
+        .read(botvinnikQuotaProvider.notifier)
+        .setQuota(ChatQuotaStatus.fromJson(quota));
   }
 
   void _scrollToEnd() {
@@ -284,6 +284,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final quota = ref.watch(botvinnikQuotaProvider);
     return Scaffold(
       key: _scaffoldKey,
       drawer: _ConversationDrawer(
@@ -292,6 +293,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         onNew: _newConversation,
         onSelect: _select,
         onDelete: _delete,
+        quota: quota,
       ),
       appBar: AppBar(
         leading: IconButton(
@@ -299,15 +301,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           icon: const Icon(Icons.menu_rounded),
           onPressed: () => _scaffoldKey.currentState?.openDrawer(),
         ),
-        title: Text(_selected?.title ?? 'ChessEver Chat'),
+        title: const Text('Botvinnik'),
         actions: [
-          if (_remaining != null && _limit != null)
-            Center(
-              child: Padding(
-                padding: const EdgeInsets.only(right: 12),
-                child: Text('$_remaining / $_limit left'),
-              ),
-            ),
           IconButton(
             tooltip: 'Close',
             onPressed: () => Navigator.of(context).maybePop(),
@@ -407,7 +402,7 @@ class _EmptyChat extends StatelessWidget {
             ),
             const SizedBox(height: 16),
             Text(
-              'Ask ChessEver',
+              'Ask Botvinnik',
               style: Theme.of(context).textTheme.headlineSmall,
             ),
             const SizedBox(height: 8),
@@ -488,13 +483,14 @@ class _MessageBubble extends StatelessWidget {
   }
 }
 
-class _ConversationDrawer extends StatelessWidget {
+class _ConversationDrawer extends ConsumerWidget {
   const _ConversationDrawer({
     required this.conversations,
     required this.selectedId,
     required this.onNew,
     required this.onSelect,
     required this.onDelete,
+    required this.quota,
   });
 
   final List<ChatConversation> conversations;
@@ -502,9 +498,10 @@ class _ConversationDrawer extends StatelessWidget {
   final Future<void> Function() onNew;
   final Future<void> Function(ChatConversation) onSelect;
   final Future<void> Function(ChatConversation) onDelete;
+  final AsyncValue<ChatQuotaStatus?> quota;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     return Drawer(
       child: SafeArea(
         child: Column(
@@ -513,6 +510,29 @@ class _ConversationDrawer extends StatelessWidget {
               leading: const Icon(Icons.add_comment_rounded),
               title: const Text('New chat'),
               onTap: onNew,
+            ),
+            ListTile(
+              leading: const Icon(Icons.data_usage_rounded),
+              title: const Text('Daily questions'),
+              subtitle: Text(
+                quota.when(
+                  data:
+                      (value) =>
+                          value == null
+                              ? 'Sign in to view quota'
+                              : '${value.remaining} of ${value.limit} remaining',
+                  loading: () => 'Loading…',
+                  error: (error, stack) => 'Unavailable',
+                ),
+              ),
+              trailing: IconButton(
+                tooltip: 'Refresh question count',
+                onPressed:
+                    () => unawaited(
+                      ref.read(botvinnikQuotaProvider.notifier).refresh(),
+                    ),
+                icon: const Icon(Icons.refresh_rounded),
+              ),
             ),
             const Divider(),
             Expanded(

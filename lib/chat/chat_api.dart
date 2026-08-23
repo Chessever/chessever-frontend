@@ -107,6 +107,32 @@ class ChatStreamEvent {
   final Map<String, dynamic> data;
 }
 
+class ChatQuotaStatus {
+  const ChatQuotaStatus({
+    required this.limit,
+    required this.used,
+    required this.remaining,
+    required this.isPremium,
+    required this.resetsAt,
+  });
+
+  factory ChatQuotaStatus.fromJson(Map<String, dynamic> json) {
+    return ChatQuotaStatus(
+      limit: json['limit'] as int? ?? 0,
+      used: json['used'] as int? ?? 0,
+      remaining: json['remaining'] as int? ?? 0,
+      isPremium: json['isPremium'] as bool? ?? false,
+      resetsAt: DateTime.tryParse(json['resetsAt'] as String? ?? ''),
+    );
+  }
+
+  final int limit;
+  final int used;
+  final int remaining;
+  final bool isPremium;
+  final DateTime? resetsAt;
+}
+
 const _productionChatApiBaseUrl =
     'https://chessever-chat.young-sun-69a8.workers.dev';
 const _testChatApiBaseUrl =
@@ -130,7 +156,7 @@ class ChatApi {
     configuredUrl: const String.fromEnvironment('CHAT_API_BASE_URL'),
     supabaseUrl: const String.fromEnvironment('SUPABASE_URL'),
   );
-  static const enabled = bool.fromEnvironment(
+  static const buildEnabled = bool.fromEnvironment(
     'CHATBOT_ENABLED',
     defaultValue: true,
   );
@@ -141,19 +167,14 @@ class ChatApi {
     final user = Supabase.instance.client.auth.currentUser;
     final session = Supabase.instance.client.auth.currentSession;
     if (user == null || user.isAnonymous || session == null) {
-      throw const ChatApiException(
-        'Sign in to use ChessEver Chat',
-        statusCode: 401,
-      );
+      throw const ChatApiException('Sign in to use Botvinnik', statusCode: 401);
     }
     return session.accessToken;
   }
 
   Uri _uri(String path) {
-    if (!enabled || baseUrl.trim().isEmpty) {
-      throw const ChatApiException(
-        'ChessEver Chat is not enabled in this build.',
-      );
+    if (!buildEnabled || baseUrl.trim().isEmpty) {
+      throw const ChatApiException('Botvinnik is not enabled in this build.');
     }
     return Uri.parse('${baseUrl.replaceFirst(RegExp(r'/$'), '')}$path');
   }
@@ -189,6 +210,15 @@ class ChatApi {
         .whereType<Map<String, dynamic>>()
         .map(ChatConversation.fromJson)
         .toList();
+  }
+
+  Future<ChatQuotaStatus> quota() async {
+    final response = await _client.get(
+      _uri('/v1/chat/quota'),
+      headers: _headers,
+    );
+    final json = await _json(response);
+    return ChatQuotaStatus.fromJson(json['quota'] as Map<String, dynamic>);
   }
 
   Future<ChatConversation> createConversation({required String locale}) async {
