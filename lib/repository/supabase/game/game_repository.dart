@@ -651,13 +651,17 @@ class GameRepository extends BaseRepository {
     r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$',
     caseSensitive: false,
   );
+  static final _namespacedCanonicalIdPattern = RegExp(
+    r'^[A-Za-z0-9][A-Za-z0-9._-]*:[^\s/?#]+$',
+  );
 
-  /// Resolves a game from either a Supabase UUID or a Lichess short ID.
-  /// UUID  → queries games.id
-  /// Other → queries games.lichess_id (e.g. "4uVwSr9q")
+  /// Resolves a game from a canonical database ID or a Lichess short ID.
+  /// UUID / namespaced ID → queries games.id
+  /// Other                → queries games.lichess_id (e.g. "4uVwSr9q")
   Future<Games> getGameByAnyId(String id) async {
     final trimmed = id.trim();
-    if (_uuidPattern.hasMatch(trimmed)) {
+    if (_uuidPattern.hasMatch(trimmed) ||
+        _namespacedCanonicalIdPattern.hasMatch(trimmed)) {
       return getGameById(trimmed);
     }
     return getGameByLichessId(trimmed);

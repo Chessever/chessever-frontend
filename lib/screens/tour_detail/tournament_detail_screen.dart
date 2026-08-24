@@ -397,11 +397,23 @@ class _TournamentDetailViewState extends ConsumerState<TournamentDetailScreen>
     TournamentDetailScreenMode selectedTourMode,
     List<TournamentDetailScreenMode> visibleModes,
   ) {
+    final writerLabel = ref.watch(
+      selectedBroadcastWriterAttributionProvider,
+    );
     return Column(
       children: [
         selectedTourMode == TournamentDetailScreenMode.games
             ? const GamesAppBarWidget()
             : _TourDetailDropDownAppBar(data: data),
+        Padding(
+          padding: EdgeInsets.only(top: 2.h),
+          child: Text(
+            writerLabel,
+            style: AppTypography.textXsRegular.copyWith(
+              color: context.colors.textPrimary.withValues(alpha: 0.52),
+            ),
+          ),
+        ),
         SizedBox(height: 8.h),
         _PinnedEventSearchBar(
           pageController: pageController,

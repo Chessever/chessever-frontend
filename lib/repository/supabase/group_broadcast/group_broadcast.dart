@@ -1,4 +1,7 @@
 class GroupBroadcast {
+  static const String lichessDataHubWriter = 'lichess_data_hub';
+  static const String chesseverDirectWriter = 'chessever_direct';
+
   final String id;
   final DateTime createdAt;
   final String name;
@@ -7,6 +10,7 @@ class GroupBroadcast {
   final DateTime? dateStart;
   final DateTime? dateEnd;
   final String? timeControl;
+  final String broadcastWriter;
 
   GroupBroadcast({
     required this.id,
@@ -17,7 +21,8 @@ class GroupBroadcast {
     this.dateStart,
     this.dateEnd,
     this.timeControl,
-  });
+    String? broadcastWriter,
+  }) : broadcastWriter = normalizeBroadcastWriter(broadcastWriter);
 
   factory GroupBroadcast.fromJson(Map<String, dynamic> json) => GroupBroadcast(
     id: json['id'] as String,
@@ -34,7 +39,18 @@ class GroupBroadcast {
             ? null
             : DateTime.parse(json['date_end'] as String),
     timeControl: json['time_control'] as String?,
+    broadcastWriter: json['broadcast_writer']?.toString(),
   );
+
+  static String normalizeBroadcastWriter(Object? value) =>
+      value == chesseverDirectWriter
+          ? chesseverDirectWriter
+          : lichessDataHubWriter;
+
+  String get writerAttributionLabel =>
+      broadcastWriter == chesseverDirectWriter
+          ? 'Powered by ChessEver'
+          : 'Powered by Lichess';
 
   Map<String, dynamic> toJson() => {
     'id': id,
@@ -45,6 +61,7 @@ class GroupBroadcast {
     'date_start': dateStart?.toIso8601String(),
     'date_end': dateEnd?.toIso8601String(),
     'time_control': timeControl,
+    'broadcast_writer': broadcastWriter,
   };
 
   @override

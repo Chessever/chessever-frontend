@@ -56,7 +56,9 @@ final Map<int, GameMoveClassification> _classificationByNag = {
 
 /// The `$240`–`$247` code carrying [classification], or null when unclassified.
 int? chesseverClassificationNag(GameMoveClassification? classification) =>
-    classification == null ? null : kChesseverClassificationNags[classification];
+    classification == null
+        ? null
+        : kChesseverClassificationNags[classification];
 
 /// Inverse of [chesseverClassificationNag].
 GameMoveClassification? classificationForChesseverNag(int nag) =>
@@ -224,14 +226,13 @@ ChessGame mergeGameReportAnnotationsForExport(
         final existingNags = move.nags ?? const <int>[];
         // Strip both what the report displaces (imported $1–$6) and any earlier
         // ChessEver code, so a re-run never stacks two classifications.
-        final nags =
-            existingNags
-                .where(
-                  (nag) =>
-                      !_moveVerdictNags.contains(nag) &&
-                      !_classificationByNag.containsKey(nag),
-                )
-                .toList(growable: true);
+        final nags = existingNags
+            .where(
+              (nag) =>
+                  !_moveVerdictNags.contains(nag) &&
+                  !_classificationByNag.containsKey(nag),
+            )
+            .toList(growable: true);
         if (reportNag != null && !nags.contains(reportNag)) {
           nags.add(reportNag);
         }
@@ -332,17 +333,15 @@ ChessGame mergeUserMoveNagsForExport(
         firstBadgedQualityNag(userNags) ?? 0,
       );
       final userOverridesVerdict = userNags.any(_moveVerdictNags.contains);
-      final next =
-          existingNags
-              .where(
-                (nag) =>
-                    !userNags.contains(nag) &&
-                    !(userOverridesVerdict &&
-                        (_moveVerdictNags.contains(nag) ||
-                            _classificationByNag.containsKey(nag))),
-              )
-              .toList(growable: true)
-            ..addAll(userNags);
+      final next = existingNags
+        .where(
+          (nag) =>
+              !userNags.contains(nag) &&
+              !(userOverridesVerdict &&
+                  (_moveVerdictNags.contains(nag) ||
+                      _classificationByNag.containsKey(nag))),
+        )
+        .toList(growable: true)..addAll(userNags);
       final chesseverNag = chesseverClassificationNag(badgedClassification);
       if (chesseverNag != null && !next.contains(chesseverNag)) {
         next.add(chesseverNag);
@@ -469,6 +468,9 @@ final _uuidPattern = RegExp(
   caseSensitive: false,
 );
 final _lichessShortIdPattern = RegExp(r'^[A-Za-z0-9]{8}$');
+final _namespacedCanonicalIdPattern = RegExp(
+  r'^[A-Za-z0-9][A-Za-z0-9._-]*:[^\s/?#]+$',
+);
 
 /// Broadcast game URLs keep the game id as the last segment:
 /// `lichess.org/broadcast/{tourSlug}/{roundSlug}/{roundId}/{gameId}`.
@@ -532,7 +534,8 @@ String? _trimmedValidFen(String? fen) {
 bool _isResolvableSharedGameId(String id) {
   final trimmed = id.trim();
   return _uuidPattern.hasMatch(trimmed) ||
-      _lichessShortIdPattern.hasMatch(trimmed);
+      _lichessShortIdPattern.hasMatch(trimmed) ||
+      _namespacedCanonicalIdPattern.hasMatch(trimmed);
 }
 
 bool isGamebaseBackedSource(GameSource source) {
@@ -595,7 +598,8 @@ String? buildGameShareUrl({
     return null;
   }
 
-  final uri = Uri.parse('https://chessever.com/games/$linkableId');
+  final encodedId = Uri.encodeComponent(linkableId);
+  final uri = Uri.parse('https://chessever.com/games/$encodedId');
   final queryParams = <String, String>{};
   if (isGamebaseDeepLink) {
     queryParams[kGamebaseShareSourceParam] = kGamebaseShareSourceValue;
