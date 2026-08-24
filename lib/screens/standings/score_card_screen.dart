@@ -87,6 +87,8 @@ final scoreCardPlayerProfileDataSourceProvider =
 
 enum ScoreCardSwipeDirection { previous, next }
 
+const scoreCardPlayerProfileButtonLabel = 'View Full Profile';
+
 /// The score card always hands the board an already-filtered player-game list.
 /// Event context still controls player-detail behavior, while the independent
 /// list policy prevents background hydration from replacing that player list
@@ -1640,7 +1642,7 @@ class _ProfileNavigationButtonState extends State<_ProfileNavigationButton> {
                   ),
                   SizedBox(width: 7.w),
                   Text(
-                    'Open Player Profile',
+                    scoreCardPlayerProfileButtonLabel,
                     style: AppTypography.textSmBold.copyWith(
                       color: context.colors.textPrimary.withValues(alpha: 0.75),
                     ),

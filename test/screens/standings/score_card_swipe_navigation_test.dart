@@ -20,6 +20,12 @@ void main() {
     );
   }
 
+  group('score card profile action', () {
+    test('describes the destination as the full player profile', () {
+      expect(scoreCardPlayerProfileButtonLabel, 'View Full Profile');
+    });
+  });
+
   group('score card swipe navigation', () {
     test('event player games keep their filtered board navigation list', () {
       final context = scoreCardGameNavigationContext(hasEventContext: true);
