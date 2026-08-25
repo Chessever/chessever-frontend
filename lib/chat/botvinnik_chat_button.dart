@@ -1,3 +1,4 @@
+import 'package:chessever2/chat/botvinnik_icon.dart';
 import 'package:chessever2/chat/botvinnik_provider.dart';
 import 'package:chessever2/chat/chat_api.dart';
 import 'package:chessever2/chat/chat_screen.dart';
@@ -31,6 +32,7 @@ class BotvinnikChatButton extends ConsumerWidget {
     return FloatingActionButton.small(
       heroTag: heroTag,
       tooltip: 'Ask Botvinnik',
+      backgroundColor: Colors.black,
       onPressed:
           () => ChatScreen.show(
             context,
@@ -39,7 +41,7 @@ class BotvinnikChatButton extends ConsumerWidget {
             createNewConversationOnOpen: createNewConversationOnOpen,
             onConversationChanged: onConversationChanged,
           ),
-      child: const Icon(Icons.auto_awesome_rounded),
+      child: const BotvinnikIcon(size: 36),
     );
   }
 }

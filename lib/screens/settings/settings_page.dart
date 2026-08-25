@@ -1,3 +1,4 @@
+import 'package:chessever2/chat/botvinnik_icon.dart';
 import 'package:chessever2/e2e/e2e_ids.dart';
 import 'package:chessever2/screens/settings/widgets/board_settings_body.dart';
 import 'package:chessever2/screens/settings/widgets/botvinnik_settings_body.dart';
@@ -136,11 +137,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                 // SizedBox(height: 14.h),
                 _CollapsibleSection(
                   title: 'Botvinnik',
-                  leading: Icon(
-                    Icons.auto_awesome_rounded,
-                    color: context.colors.iconPrimary,
-                    size: 22.ic,
-                  ),
+                  leading: BotvinnikIcon(size: 24.ic),
                   expanded: _expanded == SettingsSection.botvinnik,
                   onTap: () => _toggle(SettingsSection.botvinnik),
                   child: BotvinnikSettingsBody(trackPersist: _trackPersist),

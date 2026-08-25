@@ -113,6 +113,16 @@ void main() {
     },
   );
 
+  test('only permits secure external chat source links', () {
+    expect(
+      safeChatSourceUri('https://handbook.fide.com/chapter/D0201')?.host,
+      'handbook.fide.com',
+    );
+    expect(safeChatSourceUri('http://example.com'), isNull);
+    expect(safeChatSourceUri('javascript:alert(1)'), isNull);
+    expect(safeChatSourceUri('not a url'), isNull);
+  });
+
   test('uses tournament-specific empty chat suggestions', () {
     final suggestions = chatSuggestionsForScreen('tournament');
 

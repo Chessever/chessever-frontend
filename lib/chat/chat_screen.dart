@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:chessever2/chat/botvinnik_icon.dart';
 import 'package:chessever2/chat/chat_api.dart';
 import 'package:chessever2/chat/botvinnik_provider.dart';
 import 'package:chessever2/services/deep_link_service.dart';
@@ -7,6 +8,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:package_info_plus/package_info_plus.dart';
+import 'package:url_launcher/url_launcher.dart';
+
+Uri? safeChatSourceUri(String? href) {
+  if (href == null) return null;
+  final uri = Uri.tryParse(href.trim());
+  if (uri == null || uri.scheme != 'https' || uri.host.isEmpty) return null;
+  return uri;
+}
 
 class ChatScreen extends ConsumerStatefulWidget {
   const ChatScreen({
@@ -479,7 +488,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         titleSpacing: 4,
         title: const Row(
           children: [
-            _BotAvatar(size: 40),
+            BotvinnikIcon(size: 40),
             SizedBox(width: 10),
             Expanded(
               child: Column(
@@ -596,44 +605,6 @@ String normalizeChatMarkdown(String source) {
         return line.replaceAll(breakTag, isTableRow ? '; ' : '\n');
       })
       .join('\n');
-}
-
-class _BotAvatar extends StatelessWidget {
-  const _BotAvatar({required this.size});
-
-  final double size;
-
-  @override
-  Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-    return Container(
-      width: size,
-      height: size,
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [colorScheme.primary, colorScheme.tertiary],
-        ),
-        shape: BoxShape.circle,
-        boxShadow:
-            size > 48
-                ? [
-                  BoxShadow(
-                    color: colorScheme.primary.withValues(alpha: 0.22),
-                    blurRadius: 20,
-                    offset: const Offset(0, 8),
-                  ),
-                ]
-                : null,
-      ),
-      child: Icon(
-        Icons.auto_awesome_rounded,
-        size: size * 0.52,
-        color: colorScheme.onPrimary,
-      ),
-    );
-  }
 }
 
 class _OnlineDot extends StatelessWidget {
@@ -761,8 +732,8 @@ class _EmptyChat extends StatelessWidget {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const _BotAvatar(size: 76),
-              const SizedBox(height: 20),
+              const BotvinnikAnimatedIcon(size: 76),
+              const SizedBox(height: 10),
               Text(
                 'How can I help?',
                 style: Theme.of(context).textTheme.headlineSmall?.copyWith(
@@ -945,6 +916,12 @@ class _MessageBubble extends StatelessWidget {
               data: normalizeChatMarkdown(message.content),
               selectable: true,
               softLineBreak: true,
+              onTapLink: (text, href, title) {
+                final uri = safeChatSourceUri(href);
+                if (uri != null) {
+                  unawaited(launchUrl(uri, mode: LaunchMode.platformDefault));
+                }
+              },
               styleSheet: MarkdownStyleSheet.fromTheme(
                 Theme.of(context),
               ).copyWith(
@@ -1157,7 +1134,7 @@ class _ConversationDrawer extends ConsumerWidget {
               padding: EdgeInsets.fromLTRB(18, 18, 18, 14),
               child: Row(
                 children: [
-                  _BotAvatar(size: 38),
+                  BotvinnikIcon(size: 38),
                   SizedBox(width: 10),
                   Text(
                     'Botvinnik',
