@@ -49,6 +49,7 @@ import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:sentry_flutter/sentry_flutter.dart';
 import 'package:chessever2/repository/local_storage/local_storage_repository.dart';
+import 'package:chessever2/repository/gamebase/memorial_player_local_search.dart';
 import 'package:chessever2/repository/local_storage/onboarding/onboarding_repository.dart';
 import 'package:chessever2/repository/local_storage/sesions_manager/session_manager.dart';
 import 'package:chessever2/repository/local_storage/supabase_safe_storage.dart';
@@ -272,6 +273,13 @@ Future<void> runChessEver(AppFlavor flavor) async {
         widgetsBinding = SentryWidgetsFlutterBinding.ensureInitialized();
       }
       _e2eStartupLog('binding initialized: ${widgetsBinding.runtimeType}');
+
+      // Warm the small reviewed Memorial index only after first paint. Its JSON
+      // parse runs in a worker isolate and never enters the normal network
+      // search path.
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        unawaited(warmBundledMemorialPlayerCatalog());
+      });
 
       // Image cache headroom: dense game-card lists (flags, avatars, board
       // snapshots) across deep navigation stacks thrash the default 100MB

@@ -404,6 +404,9 @@ class SearchPlayer {
   final String? gameId;
   final String? roundId;
   final bool isWhitePlayer;
+  final String? gamebasePlayerId;
+  final String? memorialSourceIdentity;
+  final String? memorialRouteId;
 
   const SearchPlayer({
     required this.id,
@@ -417,6 +420,9 @@ class SearchPlayer {
     this.gameId,
     this.roundId,
     this.isWhitePlayer = true,
+    this.gamebasePlayerId,
+    this.memorialSourceIdentity,
+    this.memorialRouteId,
   });
 
   // Create from your existing Player model
@@ -479,6 +485,9 @@ class SearchPlayer {
       gameId: json['gameId']?.toString(),
       roundId: json['roundId']?.toString(),
       isWhitePlayer: json['isWhitePlayer'] ?? true,
+      gamebasePlayerId: json['gamebasePlayerId']?.toString(),
+      memorialSourceIdentity: json['memorialSourceIdentity']?.toString(),
+      memorialRouteId: json['memorialRouteId']?.toString(),
     );
   }
 
@@ -495,6 +504,9 @@ class SearchPlayer {
       'game_id': gameId,
       'round_id': roundId,
       'is_white_player': isWhitePlayer,
+      'gamebasePlayerId': gamebasePlayerId,
+      'memorialSourceIdentity': memorialSourceIdentity,
+      'memorialRouteId': memorialRouteId,
     };
   }
 
@@ -510,6 +522,9 @@ class SearchPlayer {
     String? gameId,
     String? roundId,
     bool? isWhitePlayer,
+    String? gamebasePlayerId,
+    String? memorialSourceIdentity,
+    String? memorialRouteId,
   }) {
     return SearchPlayer(
       id: id ?? this.id,
@@ -523,6 +538,10 @@ class SearchPlayer {
       gameId: gameId ?? this.gameId,
       roundId: roundId ?? this.roundId,
       isWhitePlayer: isWhitePlayer ?? this.isWhitePlayer,
+      gamebasePlayerId: gamebasePlayerId ?? this.gamebasePlayerId,
+      memorialSourceIdentity:
+          memorialSourceIdentity ?? this.memorialSourceIdentity,
+      memorialRouteId: memorialRouteId ?? this.memorialRouteId,
     );
   }
 

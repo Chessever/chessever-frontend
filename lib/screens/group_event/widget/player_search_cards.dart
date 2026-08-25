@@ -1,13 +1,13 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:chessever2/repository/supabase/game/games.dart'
     show SearchPlayer;
+import 'package:chessever2/repository/gamebase/memorial_player.dart';
 import 'package:chessever2/screens/group_event/group_event_screen.dart'
     show searchTabQueryProvider;
 import 'package:chessever2/screens/group_event/providers/supabase_combined_search_provider.dart';
 import 'package:chessever2/screens/player_profile/player_profile_screen.dart';
 import 'package:chessever2/services/fide_photo_service.dart';
 import 'package:chessever2/theme/app_colors.dart';
-import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/country_utils.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
@@ -44,16 +44,22 @@ final topSearchedPlayersProvider = Provider.autoDispose<List<SearchPlayer>>((
         _lastTopPlayers = const [];
         return [];
       }
-      // Return top players from search results (already sorted by relevance + ELO)
-      // Deduplicate by name to avoid showing same player multiple times
+      // Return top players from search results (already sorted by relevance +
+      // Elo). Different people with the same display name must remain distinct.
       final seen = <String>{};
       final uniquePlayers = <SearchPlayer>[];
       for (final result in results.playerResults) {
         if (result.player == null) continue;
-        final normalizedName = result.player!.name.toLowerCase().trim();
-        if (!seen.contains(normalizedName)) {
-          seen.add(normalizedName);
-          uniquePlayers.add(result.player!);
+        final player = result.player!;
+        final identity =
+            player.fideId != null && player.fideId! > 0
+                ? 'fide:${player.fideId}'
+                : (player.memorialSourceIdentity?.trim().isNotEmpty ?? false)
+                ? 'memorial:${player.memorialSourceIdentity!.trim().toLowerCase()}'
+                : 'name:${player.name.toLowerCase().trim()}';
+        if (!seen.contains(identity)) {
+          seen.add(identity);
+          uniquePlayers.add(player);
           if (uniquePlayers.length >= _maxPlayerCards) break;
         }
       }
@@ -166,6 +172,9 @@ class _PlayerSearchCard extends ConsumerWidget {
               title: player.title,
               federation: player.fed,
               rating: player.rating,
+              gamebasePlayerId: player.gamebasePlayerId,
+              memorialSourceIdentity: player.memorialSourceIdentity,
+              memorialRouteId: player.memorialRouteId,
             ),
       ),
     );
@@ -182,10 +191,7 @@ class _PlayerSearchCard extends ConsumerWidget {
         height: isCompact ? 108.sp : 120.sp,
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(12.br),
-          border: Border.all(
-            color: context.colors.divider,
-            width: 1,
-          ),
+          border: Border.all(color: context.colors.divider, width: 1),
         ),
         child: ClipRRect(
           borderRadius: BorderRadius.circular(12.br),
@@ -254,7 +260,10 @@ class _PlayerSearchCard extends ConsumerWidget {
                       style: (isCompact
                               ? AppTypography.textMdBold
                               : AppTypography.textLgBold)
-                          .copyWith(color: context.colors.textPrimary, letterSpacing: 0.3),
+                          .copyWith(
+                            color: context.colors.textPrimary,
+                            letterSpacing: 0.3,
+                          ),
                       maxLines: isCompact ? 1 : 2,
                       overflow: TextOverflow.ellipsis,
                     ),
@@ -267,10 +276,12 @@ class _PlayerSearchCard extends ConsumerWidget {
                           ClipRRect(
                             borderRadius: BorderRadius.circular(2.br),
                             child: CountryFlag.fromCountryCode(
-countryCode,
-  theme: ImageTheme(width: isCompact ? 14.sp : 16.sp,
-                              height: isCompact ? 10.sp : 12.sp,),
-),
+                              countryCode,
+                              theme: ImageTheme(
+                                width: isCompact ? 14.sp : 16.sp,
+                                height: isCompact ? 10.sp : 12.sp,
+                              ),
+                            ),
                           ),
                           SizedBox(width: 5.sp),
                         ],
@@ -278,7 +289,9 @@ countryCode,
                           child: Text(
                             _buildSubtitle(),
                             style: AppTypography.textXsRegular.copyWith(
-                              color: context.colors.textPrimary.withValues(alpha: 0.7),
+                              color: context.colors.textPrimary.withValues(
+                                alpha: 0.7,
+                              ),
                               fontSize: isCompact ? 10.sp : 11.sp,
                             ),
                             maxLines: 1,
@@ -345,10 +358,9 @@ class _FlagBackground extends StatelessWidget {
         child: FittedBox(
           fit: BoxFit.cover,
           child: CountryFlag.fromCountryCode(
-countryCode,
-  theme: ImageTheme(width: 300,
-            height: 200,),
-),
+            countryCode,
+            theme: ImageTheme(width: 300, height: 200),
+          ),
         ),
       ),
     );
@@ -356,11 +368,19 @@ countryCode,
 }
 
 /// Provider to cache player photo URLs
-final _searchPlayerPhotoUrlProvider = FutureProvider.family
-    .autoDispose<String?, int?>((ref, fideId) async {
-      if (fideId == null) return null;
-      return FidePhotoService.getPhotoUrlOrNull(fideId.toString());
-    });
+final _searchPlayerPhotoUrlProvider = FutureProvider.family.autoDispose<
+  String?,
+  ({int? fideId, String playerName, String? memorialSourceIdentity})
+>((ref, request) async {
+  final memorialUrl = memorialPlayerPhotoUrl(
+    playerName: request.playerName,
+    sourceIdentity: request.memorialSourceIdentity,
+  );
+  final fideId = request.fideId;
+  if (fideId == null) return memorialUrl;
+  return await FidePhotoService.getPhotoUrlOrNull(fideId.toString()) ??
+      memorialUrl;
+});
 
 /// Player photo overlay positioned on the right side of the card
 class _PlayerPhotoOverlay extends ConsumerWidget {
@@ -372,7 +392,11 @@ class _PlayerPhotoOverlay extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final photoUrlAsync = ref.watch(
-      _searchPlayerPhotoUrlProvider(player.fideId),
+      _searchPlayerPhotoUrlProvider((
+        fideId: player.fideId,
+        playerName: player.name,
+        memorialSourceIdentity: player.memorialSourceIdentity,
+      )),
     );
 
     return Positioned(
@@ -401,7 +425,8 @@ class _PlayerPhotoOverlay extends ConsumerWidget {
               child: CachedNetworkImage(
                 imageUrl: photoUrl,
                 fit: BoxFit.cover,
-                memCacheWidth: (200 * MediaQuery.devicePixelRatioOf(context)).toInt(),
+                memCacheWidth:
+                    (200 * MediaQuery.devicePixelRatioOf(context)).toInt(),
                 placeholder: (_, _) => _buildPlaceholder(context),
                 errorWidget: (_, _, _) => _buildPlaceholder(context),
               ),

@@ -1,4 +1,5 @@
 import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
+import 'package:chessever2/repository/gamebase/memorial_player.dart';
 import 'package:chessever2/screens/player_profile/player_profile_data_source.dart';
 import 'package:chessever2/screens/player_profile/provider/player_profile_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
@@ -53,6 +54,7 @@ class PlayerAboutTab extends ConsumerStatefulWidget {
     this.fallbackRating,
     this.dataSource = PlayerProfileDataSource.supabase,
     this.gamebasePlayerId,
+    this.memorialSourceIdentity,
     this.onOpenGames,
   });
 
@@ -63,6 +65,7 @@ class PlayerAboutTab extends ConsumerStatefulWidget {
   final int? fallbackRating;
   final PlayerProfileDataSource dataSource;
   final String? gamebasePlayerId;
+  final String? memorialSourceIdentity;
   final PlayerGamesOpenCallback? onOpenGames;
 
   @override
@@ -103,6 +106,7 @@ class _PlayerAboutTabState extends ConsumerState<PlayerAboutTab>
     playerName: widget.playerName,
     source: widget.dataSource,
     gamebasePlayerId: widget.gamebasePlayerId,
+    memorialSourceIdentity: widget.memorialSourceIdentity,
   );
 
   void _triggerFilterFlash() {
@@ -245,6 +249,7 @@ class _PlayerAboutTabState extends ConsumerState<PlayerAboutTab>
               fallbackRating: widget.fallbackRating,
               dataSource: widget.dataSource,
               gamebasePlayerId: widget.gamebasePlayerId,
+              memorialSourceIdentity: widget.memorialSourceIdentity,
               onOpenGames: widget.onOpenGames,
             ),
 
@@ -907,6 +912,7 @@ class _PlayerHeaderSection extends ConsumerStatefulWidget {
     this.fallbackRating,
     required this.dataSource,
     this.gamebasePlayerId,
+    this.memorialSourceIdentity,
     this.onOpenGames,
   });
 
@@ -918,6 +924,7 @@ class _PlayerHeaderSection extends ConsumerStatefulWidget {
   final int? fallbackRating;
   final PlayerProfileDataSource dataSource;
   final String? gamebasePlayerId;
+  final String? memorialSourceIdentity;
   final PlayerGamesOpenCallback? onOpenGames;
 
   @override
@@ -931,12 +938,31 @@ class _PlayerHeaderSectionState extends ConsumerState<_PlayerHeaderSection> {
   @override
   void initState() {
     super.initState();
-    // Only fetch photo if fideId is available
-    if (widget.fideId != null) {
-      _photoFuture = FidePhotoService.getPhotoUrlOrNull(
-        widget.fideId.toString(),
-      );
+    _configurePhotoFuture();
+  }
+
+  @override
+  void didUpdateWidget(covariant _PlayerHeaderSection oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.fideId != widget.fideId ||
+        oldWidget.playerName != widget.playerName ||
+        oldWidget.memorialSourceIdentity != widget.memorialSourceIdentity) {
+      _configurePhotoFuture();
     }
+  }
+
+  void _configurePhotoFuture() {
+    final memorialUrl = memorialPlayerPhotoUrl(
+      playerName: widget.playerName,
+      sourceIdentity: widget.memorialSourceIdentity,
+    );
+    final fideId = widget.fideId;
+    _photoFuture =
+        fideId == null
+            ? Future<String?>.value(memorialUrl)
+            : (() async =>
+                await FidePhotoService.getPhotoUrlOrNull(fideId.toString()) ??
+                memorialUrl)();
   }
 
   @override
@@ -971,6 +997,7 @@ class _PlayerHeaderSectionState extends ConsumerState<_PlayerHeaderSection> {
       playerName: widget.playerName,
       source: widget.dataSource,
       gamebasePlayerId: widget.gamebasePlayerId,
+      memorialSourceIdentity: widget.memorialSourceIdentity,
     );
     final gamesState = ref.watch(playerProfileGamesKeyProvider(playerKey));
     final currentTimeControl = gamesState.filter.timeControl;
@@ -1469,9 +1496,7 @@ class _OverallStatsSection extends StatelessWidget {
                       if (resultStats.draws > 0)
                         Expanded(
                           flex: resultStats.draws,
-                          child: Container(
-                            color: context.colors.textSecondary,
-                          ),
+                          child: Container(color: context.colors.textSecondary),
                         ),
                       if (resultStats.losses > 0)
                         Expanded(

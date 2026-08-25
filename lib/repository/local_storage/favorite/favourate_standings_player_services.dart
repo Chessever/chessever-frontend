@@ -209,6 +209,9 @@ class FavoriteStandingsPlayerService {
             json['fide_id'] != null
                 ? int.tryParse(json['fide_id'] as String)
                 : null,
+        gamebasePlayerId: metadata?['gamebasePlayerId'] as String?,
+        memorialSourceIdentity: metadata?['memorialSourceIdentity'] as String?,
+        memorialRouteId: metadata?['memorialRouteId'] as String?,
       );
     } catch (e) {
       debugPrint('[FavoriteStandings] Error parsing player: $e');

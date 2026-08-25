@@ -26,12 +26,14 @@ class PlayerEventsTab extends ConsumerStatefulWidget {
     required this.playerName,
     this.dataSource = PlayerProfileDataSource.supabase,
     this.gamebasePlayerId,
+    this.memorialSourceIdentity,
   });
 
   final int? fideId;
   final String playerName;
   final PlayerProfileDataSource dataSource;
   final String? gamebasePlayerId;
+  final String? memorialSourceIdentity;
 
   @override
   ConsumerState<PlayerEventsTab> createState() => _PlayerEventsTabState();
@@ -58,7 +60,8 @@ class _PlayerEventsTabState extends ConsumerState<PlayerEventsTab>
 
   String get _scrollStorageKey =>
       'player_events:${widget.dataSource.name}:${widget.fideId ?? ''}:'
-      '${widget.gamebasePlayerId ?? ''}:${widget.playerName}';
+      '${widget.gamebasePlayerId ?? ''}:'
+      '${widget.memorialSourceIdentity ?? ''}:${widget.playerName}';
 
   @override
   bool get wantKeepAlive => true;
@@ -69,6 +72,7 @@ class _PlayerEventsTabState extends ConsumerState<PlayerEventsTab>
     playerName: widget.playerName,
     source: widget.dataSource,
     gamebasePlayerId: widget.gamebasePlayerId,
+    memorialSourceIdentity: widget.memorialSourceIdentity,
   );
 
   bool get _isTwic => widget.dataSource == PlayerProfileDataSource.twic;
@@ -90,6 +94,7 @@ class _PlayerEventsTabState extends ConsumerState<PlayerEventsTab>
       playerName: oldWidget.playerName,
       source: oldWidget.dataSource,
       gamebasePlayerId: oldWidget.gamebasePlayerId,
+      memorialSourceIdentity: oldWidget.memorialSourceIdentity,
     );
     if (oldKey != _playerKey && _isTwic) {
       _loadTwicEvents(reset: true);

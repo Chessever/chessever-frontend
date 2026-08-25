@@ -54,12 +54,14 @@ class PlayerGamesTab extends ConsumerStatefulWidget {
     required this.playerName,
     this.dataSource = PlayerProfileDataSource.supabase,
     this.gamebasePlayerId,
+    this.memorialSourceIdentity,
   });
 
   final int? fideId;
   final String playerName;
   final PlayerProfileDataSource dataSource;
   final String? gamebasePlayerId;
+  final String? memorialSourceIdentity;
 
   @override
   ConsumerState<PlayerGamesTab> createState() => _PlayerGamesTabState();
@@ -125,7 +127,8 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
 
   String get _scrollStorageKey =>
       'player_games:${widget.dataSource.name}:${widget.fideId ?? ''}:'
-      '${widget.gamebasePlayerId ?? ''}:${widget.playerName}';
+      '${widget.gamebasePlayerId ?? ''}:'
+      '${widget.memorialSourceIdentity ?? ''}:${widget.playerName}';
 
   @override
   bool get wantKeepAlive => true;
@@ -193,6 +196,7 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
     playerName: widget.playerName,
     source: widget.dataSource,
     gamebasePlayerId: widget.gamebasePlayerId,
+    memorialSourceIdentity: widget.memorialSourceIdentity,
   );
 
   @override
