@@ -1,8 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 import 'package:chessever2/e2e/e2e_config.dart';
-import 'package:chessever2/chat/chat_screen.dart';
-import 'package:chessever2/chat/botvinnik_provider.dart';
+import 'package:chessever2/chat/botvinnik_chat_button.dart';
 import 'package:chessever2/chat/chat_api.dart';
 import 'package:chessever2/e2e/e2e_ids.dart';
 import 'package:chessever2/repository/authentication/auth_repository.dart';
@@ -46,6 +45,12 @@ class HomeScreen extends ConsumerStatefulWidget {
 class _HomeScreenState extends ConsumerState<HomeScreen> {
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
   static const int _favoritePromptThreshold = 5;
+  String? _botvinnikConversationId;
+
+  void _rememberBotvinnikConversation(String conversationId) {
+    if (!mounted || _botvinnikConversationId == conversationId) return;
+    setState(() => _botvinnikConversationId = conversationId);
+  }
 
   @override
   void initState() {
@@ -212,17 +217,13 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     },
   );
 
-  Widget? get _chatButton {
-    final user = Supabase.instance.client.auth.currentUser;
-    final enabled = ref.watch(botvinnikEnabledProvider).valueOrNull ?? true;
-    if (!ChatApi.buildEnabled || !enabled || user == null || user.isAnonymous) {
-      return null;
-    }
-    return FloatingActionButton.small(
+  Widget get _chatButton {
+    return BotvinnikChatButton(
       heroTag: 'botvinnik',
-      tooltip: 'Ask Botvinnik',
-      onPressed: () => ChatScreen.show(context),
-      child: const Icon(Icons.auto_awesome_rounded),
+      initialConversationId: _botvinnikConversationId,
+      createNewConversationOnOpen: _botvinnikConversationId == null,
+      onConversationChanged: _rememberBotvinnikConversation,
+      screenContext: const ChatScreenContext(screen: 'home'),
     );
   }
 

@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -33,10 +34,22 @@ class ChatConversation {
     );
   }
 
+  factory ChatConversation.draft({required String locale}) {
+    final timestamp = DateTime.now();
+    return ChatConversation(
+      id: 'local-draft-${timestamp.microsecondsSinceEpoch}',
+      title: 'New chat',
+      locale: locale,
+      updatedAt: timestamp,
+    );
+  }
+
   final String id;
   final String title;
   final String locale;
   final DateTime updatedAt;
+
+  bool get isDraft => id.startsWith('local-draft-');
 
   ChatConversation copyWith({String? title}) {
     return ChatConversation(
@@ -60,6 +73,7 @@ class ChatReference {
     required this.type,
     required this.id,
     required this.label,
+    this.tourId,
   });
 
   factory ChatReference.fromJson(Map<String, dynamic> json) {
@@ -67,12 +81,14 @@ class ChatReference {
       type: json['type'] as String? ?? 'tournament',
       id: json['id'] as String? ?? '',
       label: json['label'] as String? ?? '',
+      tourId: json['tourId'] as String?,
     );
   }
 
   final String type;
   final String id;
   final String label;
+  final String? tourId;
 }
 
 class ChatMessage {
@@ -81,6 +97,7 @@ class ChatMessage {
     required this.role,
     required this.content,
     this.references = const [],
+    this.feedback,
   });
 
   factory ChatMessage.fromJson(Map<String, dynamic> json) {
@@ -89,6 +106,10 @@ class ChatMessage {
       id: json['id'] as String,
       role: json['role'] as String,
       content: json['content'] as String? ?? '',
+      feedback:
+          json['feedback'] == 'like' || json['feedback'] == 'dislike'
+              ? json['feedback'] as String
+              : null,
       references:
           rawReferences
               .whereType<Map<String, dynamic>>()
@@ -101,6 +122,7 @@ class ChatMessage {
   final String role;
   final String content;
   final List<ChatReference> references;
+  final String? feedback;
 
   ChatMessage copyWith({
     String? id,
@@ -112,6 +134,17 @@ class ChatMessage {
       role: role,
       content: content ?? this.content,
       references: references ?? this.references,
+      feedback: feedback,
+    );
+  }
+
+  ChatMessage withFeedback(String? value) {
+    return ChatMessage(
+      id: id,
+      role: role,
+      content: content,
+      references: references,
+      feedback: value,
     );
   }
 }
@@ -121,6 +154,118 @@ class ChatStreamEvent {
 
   final String type;
   final Map<String, dynamic> data;
+}
+
+class ChatClientContext {
+  const ChatClientContext({
+    required this.platform,
+    required this.surface,
+    required this.formFactor,
+    this.appVersion,
+    this.buildNumber,
+  });
+
+  factory ChatClientContext.current({
+    required double viewportWidth,
+    required double shortestSide,
+    String? appVersion,
+    String? buildNumber,
+  }) {
+    final platform = currentChatPlatform();
+    final surface = chatSurfaceForPlatform(platform);
+    return ChatClientContext(
+      platform: platform,
+      surface: surface,
+      formFactor: chatFormFactor(
+        surface: surface,
+        viewportWidth: viewportWidth,
+        shortestSide: shortestSide,
+      ),
+      appVersion: appVersion,
+      buildNumber: buildNumber,
+    );
+  }
+
+  final String platform;
+  final String surface;
+  final String formFactor;
+  final String? appVersion;
+  final String? buildNumber;
+
+  Map<String, dynamic> toJson() => {
+    'schemaVersion': 1,
+    'platform': platform,
+    'surface': surface,
+    'formFactor': formFactor,
+    if (appVersion != null) 'appVersion': appVersion,
+    if (buildNumber != null) 'buildNumber': buildNumber,
+    'capabilities': const ['app-help-v1', 'event-navigation-v1'],
+  };
+}
+
+class ChatScreenContext {
+  const ChatScreenContext({
+    required this.screen,
+    this.eventId,
+    this.eventName,
+    this.tournamentId,
+    this.tournamentName,
+    this.roundId,
+    this.roundName,
+    this.gameId,
+    this.gameLabel,
+  });
+
+  final String screen;
+  final String? eventId;
+  final String? eventName;
+  final String? tournamentId;
+  final String? tournamentName;
+  final String? roundId;
+  final String? roundName;
+  final String? gameId;
+  final String? gameLabel;
+
+  Map<String, dynamic> toJson() => {
+    'schemaVersion': 1,
+    'screen': screen,
+    if (eventId != null) 'eventId': eventId,
+    if (eventName != null) 'eventName': eventName,
+    if (tournamentId != null) 'tournamentId': tournamentId,
+    if (tournamentName != null) 'tournamentName': tournamentName,
+    if (roundId != null) 'roundId': roundId,
+    if (roundName != null) 'roundName': roundName,
+    if (gameId != null) 'gameId': gameId,
+    if (gameLabel != null) 'gameLabel': gameLabel,
+  };
+}
+
+String currentChatPlatform() {
+  if (kIsWeb) return 'web';
+  return switch (defaultTargetPlatform) {
+    TargetPlatform.iOS => 'ios',
+    TargetPlatform.android => 'android',
+    TargetPlatform.macOS => 'macos',
+    TargetPlatform.windows => 'windows',
+    TargetPlatform.linux => 'linux',
+    TargetPlatform.fuchsia => 'unknown',
+  };
+}
+
+String chatSurfaceForPlatform(String platform) {
+  if (platform == 'web') return 'web';
+  if (platform == 'ios' || platform == 'android') return 'mobile';
+  return 'desktop';
+}
+
+String chatFormFactor({
+  required String surface,
+  required double viewportWidth,
+  required double shortestSide,
+}) {
+  if (surface == 'desktop') return 'desktop';
+  if (surface == 'web' && viewportWidth >= 1024) return 'desktop';
+  return shortestSide >= 600 ? 'tablet' : 'phone';
 }
 
 class ChatQuotaStatus {
@@ -237,11 +382,14 @@ class ChatApi {
     return ChatQuotaStatus.fromJson(json['quota'] as Map<String, dynamic>);
   }
 
-  Future<ChatConversation> createConversation({required String locale}) async {
+  Future<ChatConversation> createConversation({
+    required String locale,
+    String? title,
+  }) async {
     final response = await _client.post(
       _uri('/v1/chat/conversations'),
       headers: _headers,
-      body: jsonEncode({'locale': locale}),
+      body: jsonEncode({'locale': locale, if (title != null) 'title': title}),
     );
     final json = await _json(response);
     return ChatConversation.fromJson(
@@ -269,11 +417,29 @@ class ChatApi {
         .toList();
   }
 
+  Future<ChatMessage> setMessageFeedback({
+    required String conversationId,
+    required String messageId,
+    required String? feedback,
+  }) async {
+    final response = await _client.patch(
+      _uri(
+        '/v1/chat/conversations/$conversationId/messages/$messageId/feedback',
+      ),
+      headers: _headers,
+      body: jsonEncode({'feedback': feedback}),
+    );
+    final json = await _json(response);
+    return ChatMessage.fromJson(json['message'] as Map<String, dynamic>);
+  }
+
   Stream<ChatStreamEvent> send({
     required String conversationId,
     required String content,
     required String locale,
     required String timezone,
+    required ChatClientContext clientContext,
+    ChatScreenContext? screenContext,
   }) async* {
     final request = http.Request(
       'POST',
@@ -284,6 +450,8 @@ class ChatApi {
       'content': content,
       'locale': locale,
       'timezone': timezone,
+      'clientContext': clientContext.toJson(),
+      if (screenContext != null) 'screenContext': screenContext.toJson(),
     });
     final response = await _client.send(request);
     if (response.statusCode < 200 || response.statusCode >= 300) {

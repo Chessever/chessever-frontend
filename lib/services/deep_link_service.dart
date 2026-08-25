@@ -159,6 +159,52 @@ class DeepLinkService {
     _routerRef = null;
   }
 
+  /// Opens an in-app game reference through the same resolver used by shared
+  /// game links, preserving round/tournament swipe context where available.
+  bool openGameFromApp(String gameId) {
+    final navigatorKey = _routerNavigatorKey;
+    final ref = _routerRef;
+    final normalizedId = gameId.trim();
+    if (navigatorKey == null || ref == null || normalizedId.isEmpty) {
+      return false;
+    }
+    unawaited(
+      _navigateToGame(
+        normalizedId,
+        navigatorKey,
+        ref,
+        preserveCurrentRoute: true,
+      ),
+    );
+    return true;
+  }
+
+  /// Opens an event reference above the current route so Back returns to the
+  /// chat that initiated the navigation.
+  bool openEventFromApp({String? eventId, String? tourId, String? roundId}) {
+    final navigatorKey = _routerNavigatorKey;
+    final ref = _routerRef;
+    final normalizedEventId = eventId?.trim();
+    final normalizedTourId = tourId?.trim();
+    final normalizedRoundId = roundId?.trim();
+    final hasIdentifier =
+        (normalizedEventId?.isNotEmpty ?? false) ||
+        (normalizedTourId?.isNotEmpty ?? false) ||
+        (normalizedRoundId?.isNotEmpty ?? false);
+    if (navigatorKey == null || ref == null || !hasIdentifier) return false;
+    unawaited(
+      _navigateToEvent(
+        normalizedEventId,
+        navigatorKey,
+        ref,
+        tourId: normalizedTourId,
+        roundId: normalizedRoundId,
+        preserveCurrentRoute: true,
+      ),
+    );
+    return true;
+  }
+
   /// Completer that resolves when the app navigates past the splash screen.
   /// Prevents deep link navigation from racing with splash screen navigation.
   static Completer<void> _appReadyCompleter = Completer<void>();
@@ -660,6 +706,7 @@ class DeepLinkService {
     WidgetRef ref, {
     String? initialFen,
     bool preferGamebase = false,
+    bool preserveCurrentRoute = false,
   }) async {
     // Guard: Prevent concurrent navigation
     if (_isNavigating) {
@@ -833,31 +880,33 @@ class DeepLinkService {
 
       final navigator = navigatorKey.currentState;
       if (navigator != null) {
-        navigator.pushAndRemoveUntil(
-          MaterialPageRoute(
-            builder:
-                (_) => _DeepLinkedChessBoardRoute(
-                  initialGame: gameTourModel,
-                  initialGameId: resolvedGameId,
-                  viewSource: ref.read(chessboardViewFromProviderNew),
-                  initialFen: initialFen,
-                  roundGamesFuture: roundGamesFuture,
-                  onRoundGamesError: (error, stackTrace) {
-                    debugPrint(
-                      'DeepLinkService: Failed to load round games for swipe context: $error',
-                    );
-                    _captureDeepLinkException(
-                      error,
-                      stackTrace,
-                      stage: 'load_round_games_for_swipe_context',
-                      extras: {'gameId': gameId, 'roundId': game.roundId},
-                      captureAsException: false,
-                    );
-                  },
-                ),
-          ),
-          (route) => route.isFirst,
+        final route = MaterialPageRoute(
+          builder:
+              (_) => _DeepLinkedChessBoardRoute(
+                initialGame: gameTourModel,
+                initialGameId: resolvedGameId,
+                viewSource: ref.read(chessboardViewFromProviderNew),
+                initialFen: initialFen,
+                roundGamesFuture: roundGamesFuture,
+                onRoundGamesError: (error, stackTrace) {
+                  debugPrint(
+                    'DeepLinkService: Failed to load round games for swipe context: $error',
+                  );
+                  _captureDeepLinkException(
+                    error,
+                    stackTrace,
+                    stage: 'load_round_games_for_swipe_context',
+                    extras: {'gameId': gameId, 'roundId': game.roundId},
+                    captureAsException: false,
+                  );
+                },
+              ),
         );
+        if (preserveCurrentRoute) {
+          navigator.push(route);
+        } else {
+          navigator.pushAndRemoveUntil(route, (route) => route.isFirst);
+        }
       }
     } catch (e, stackTrace) {
       debugPrint('DeepLinkService: Failed to load game: $e');
@@ -878,13 +927,17 @@ class DeepLinkService {
         captureAsException: !expected,
       );
       _addBreadcrumb(
-        'game deep link failed; routing home',
+        preserveCurrentRoute
+            ? 'in-app game reference failed'
+            : 'game deep link failed; routing home',
         data: {'gameId': gameId},
       );
-      navigatorKey.currentState?.pushNamedAndRemoveUntil(
-        '/home_screen',
-        (route) => false,
-      );
+      if (!preserveCurrentRoute) {
+        navigatorKey.currentState?.pushNamedAndRemoveUntil(
+          '/home_screen',
+          (route) => false,
+        );
+      }
     } finally {
       _isNavigating = false;
     }
@@ -1146,6 +1199,7 @@ class DeepLinkService {
     String? roundId,
     String? tourId,
     String? tab,
+    bool preserveCurrentRoute = false,
   }) async {
     if (_isNavigating) {
       debugPrint('DeepLinkService: Navigation already in progress, ignoring');
@@ -1217,16 +1271,18 @@ class DeepLinkService {
             'tourId': tourId,
           },
         );
-        _navigateToHome(
-          navigatorKey,
-          reason: 'event_route_context_unresolved',
-          extras: {
-            'groupBroadcastId': groupBroadcastId,
-            'roundId': roundId,
-            'tourId': tourId,
-          },
-          report: false, // captured above as an exception
-        );
+        if (!preserveCurrentRoute) {
+          _navigateToHome(
+            navigatorKey,
+            reason: 'event_route_context_unresolved',
+            extras: {
+              'groupBroadcastId': groupBroadcastId,
+              'roundId': roundId,
+              'tourId': tourId,
+            },
+            report: false, // captured above as an exception
+          );
+        }
         return;
       }
 
@@ -1255,10 +1311,14 @@ class DeepLinkService {
         'DeepLinkService: Event loaded, navigating to tournament detail',
       );
 
-      navigatorKey.currentState?.pushNamedAndRemoveUntil(
-        '/tournament_detail_screen',
-        (route) => route.isFirst,
-      );
+      if (preserveCurrentRoute) {
+        navigatorKey.currentState?.pushNamed('/tournament_detail_screen');
+      } else {
+        navigatorKey.currentState?.pushNamedAndRemoveUntil(
+          '/tournament_detail_screen',
+          (route) => route.isFirst,
+        );
+      }
     } catch (e, stackTrace) {
       debugPrint('DeepLinkService: Failed to load event: $e');
       // A slow/offline network makes the 10s fetch timeout (or socket failure)
@@ -1281,10 +1341,12 @@ class DeepLinkService {
         },
         captureAsException: !expected,
       );
-      navigatorKey.currentState?.pushNamedAndRemoveUntil(
-        '/home_screen',
-        (route) => false,
-      );
+      if (!preserveCurrentRoute) {
+        navigatorKey.currentState?.pushNamedAndRemoveUntil(
+          '/home_screen',
+          (route) => false,
+        );
+      }
     } finally {
       _isNavigating = false;
     }
@@ -1806,6 +1868,7 @@ class DeepLinkService {
         id: cleanRoundId,
         userSelected: true,
       );
+      ref.read(pendingRoundNavigationProvider.notifier).state = cleanRoundId;
     }
   }
 

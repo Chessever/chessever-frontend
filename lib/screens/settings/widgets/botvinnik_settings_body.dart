@@ -71,7 +71,7 @@ class BotvinnikSettingsBody extends ConsumerWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'Daily questions',
+                      'Daily messages',
                       style: AppTypography.textMdMedium.copyWith(
                         color: context.colors.textPrimary,
                         fontSize: 13.f,
@@ -80,17 +80,17 @@ class BotvinnikSettingsBody extends ConsumerWidget {
                     SizedBox(height: 4.h),
                     Text(
                       user == null || user.isAnonymous
-                          ? 'Sign in to view your question allowance.'
+                          ? 'Sign in to view your message allowance.'
                           : quota.when(
                             data:
                                 (value) =>
                                     value == null
-                                        ? 'Question allowance unavailable.'
+                                        ? 'Message allowance unavailable.'
                                         : '${value.remaining} of ${value.limit} remaining today${value.isPremium ? ' · Pro' : ''}',
-                            loading: () => 'Loading question allowance…',
+                            loading: () => 'Loading message allowance…',
                             error:
                                 (error, stack) =>
-                                    'Question allowance unavailable.',
+                                    'Message allowance unavailable.',
                           ),
                       style: AppTypography.textSmRegular.copyWith(
                         color: context.colors.textSecondary,
