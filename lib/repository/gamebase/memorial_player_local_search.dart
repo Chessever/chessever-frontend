@@ -62,6 +62,23 @@ Future<List<MemorialPlayerSearchMatch>> searchBundledMemorialPlayers({
   );
 }
 
+/// Resolves one reviewed Memorial identity from the already-cached catalog.
+/// This is intentionally local-only so opening a historical profile never
+/// adds latency to the existing regular-player lookup path.
+Future<MemorialPlayer?> findBundledMemorialPlayerBySourceIdentity(
+  String sourceIdentity,
+) async {
+  final identity = sourceIdentity.trim().toLowerCase();
+  if (identity.isEmpty) return null;
+  final index = await _loadCatalog();
+  for (final entry in index) {
+    if (entry.player.sourceIdentity.trim().toLowerCase() == identity) {
+      return entry.player;
+    }
+  }
+  return null;
+}
+
 @visibleForTesting
 int get bundledMemorialCatalogLoadCount => _catalogLoadCount;
 

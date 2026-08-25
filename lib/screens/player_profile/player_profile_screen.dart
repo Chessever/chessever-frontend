@@ -11,6 +11,7 @@ import 'package:chessever2/screens/gamebase/models/models.dart';
 import 'package:chessever2/screens/player_profile/player_profile_data_source.dart';
 import 'package:chessever2/screens/player_profile/provider/player_profile_provider.dart';
 import 'package:chessever2/screens/player_profile/tabs/player_about_tab.dart';
+import 'package:chessever2/screens/player_profile/tabs/memorial_player_about_tab.dart';
 import 'package:chessever2/screens/player_profile/utils/player_profile_share_utils.dart';
 import 'package:chessever2/screens/player_profile/widgets/player_profile_share_image_card.dart';
 import 'package:chessever2/screens/player_profile/widgets/save_to_library_sheet.dart';
@@ -59,6 +60,15 @@ const playerProfileTabNames = {
   PlayerProfileTab.games: 'Games',
   PlayerProfileTab.events: 'Events',
 };
+
+@visibleForTesting
+List<PlayerProfileTab> playerProfileTabsFor({required bool isMemorial}) =>
+    isMemorial
+        ? const <PlayerProfileTab>[
+          PlayerProfileTab.about,
+          PlayerProfileTab.games,
+        ]
+        : PlayerProfileTab.values;
 
 /// Provider for selected tab
 final selectedPlayerProfileTabProvider =
@@ -124,6 +134,17 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
   String? _currentGamebasePlayerId;
   int? _gamesTabCueCount;
 
+  bool get _isMemorial =>
+      widget.memorialSourceIdentity?.trim().isNotEmpty == true;
+
+  List<PlayerProfileTab> get _availableTabs =>
+      playerProfileTabsFor(isMemorial: _isMemorial);
+
+  int _tabIndex(PlayerProfileTab tab) {
+    final index = _availableTabs.indexOf(tab);
+    return index < 0 ? 0 : index;
+  }
+
   bool _showHeaderExtras = true;
   double _scrollAccumulator = 0.0;
   static const _scrollCollapseThreshold = 40.0;
@@ -159,9 +180,16 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
   void initState() {
     super.initState();
     _currentGamebasePlayerId = _normalizePlayerId(widget.gamebasePlayerId);
-    final initialTab = ref.read(selectedPlayerProfileTabProvider);
+    final requestedTab = ref.read(selectedPlayerProfileTabProvider);
+    final initialTab =
+        _availableTabs.contains(requestedTab)
+            ? requestedTab
+            : PlayerProfileTab.about;
+    if (initialTab != requestedTab) {
+      ref.read(selectedPlayerProfileTabProvider.notifier).state = initialTab;
+    }
     _pageController = PageController(
-      initialPage: PlayerProfileTab.values.indexOf(initialTab),
+      initialPage: _availableTabs.indexOf(initialTab),
     );
 
     _favoriteAnimationController = AnimationController(
@@ -191,7 +219,7 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
 
   void _handleTabSelection(int index) {
     HapticFeedbackService.buttonPress();
-    final nextTab = PlayerProfileTab.values[index];
+    final nextTab = _availableTabs[index];
     final currentTab = ref.read(selectedPlayerProfileTabProvider);
     if (nextTab == currentTab) {
       _scrollToTopBus.request();
@@ -209,9 +237,9 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
   }
 
   void _handlePageChanged(int index) {
-    final nextTab = PlayerProfileTab.values[index];
+    final nextTab = _availableTabs[index];
     final currentTab = ref.read(selectedPlayerProfileTabProvider);
-    if (PlayerProfileTab.values.indexOf(currentTab) != index) {
+    if (_availableTabs.indexOf(currentTab) != index) {
       ref.read(selectedPlayerProfileTabProvider.notifier).state = nextTab;
     }
     if (nextTab == PlayerProfileTab.games && _gamesTabCueCount != null) {
@@ -696,7 +724,7 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
     final hasActiveFilter = gamesState.hasActiveFilters;
 
     var isTwicStatsLoading = false;
-    if (selectedTab == PlayerProfileTab.about) {
+    if (!_isMemorial && selectedTab == PlayerProfileTab.about) {
       final allGamesStats = ref.watch(
         twicPlayerStatsProvider(
           TwicPlayerStatsRequest(
@@ -940,7 +968,7 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
       tablet: 32.sp,
     );
 
-    final tabOptions = PlayerProfileTab.values
+    final tabOptions = _availableTabs
         .map((tab) {
           if (tab == PlayerProfileTab.games &&
               selectedTab != PlayerProfileTab.games &&
@@ -958,8 +986,8 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
         backgroundColor: context.colors.popup,
         selectedBackgroundColor: context.colors.popup,
         options: tabOptions,
-        initialSelection: PlayerProfileTab.values.indexOf(selectedTab),
-        currentSelection: PlayerProfileTab.values.indexOf(selectedTab),
+        initialSelection: _tabIndex(selectedTab),
+        currentSelection: _tabIndex(selectedTab),
         onSelectionChanged: _handleTabSelection,
         notifyOnReselect: true,
       ),
@@ -1039,11 +1067,17 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
       bus: _scrollToTopBus,
       child: PageView.builder(
         controller: _pageController,
-        itemCount: PlayerProfileTab.values.length,
+        itemCount: _availableTabs.length,
         onPageChanged: _handlePageChanged,
         itemBuilder: (context, index) {
-          switch (PlayerProfileTab.values[index]) {
+          switch (_availableTabs[index]) {
             case PlayerProfileTab.about:
+              if (_isMemorial) {
+                return MemorialPlayerAboutTab(
+                  sourceIdentity: widget.memorialSourceIdentity!.trim(),
+                  playerName: widget.playerName,
+                );
+              }
               return PlayerAboutTab(
                 fideId: widget.fideId,
                 playerName: widget.playerName,
@@ -1171,9 +1205,7 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
                       knownTotalCount: knownTotalCount,
                       onSelectSpecific: () {
                         _handleTabSelection(
-                          PlayerProfileTab.values.indexOf(
-                            PlayerProfileTab.games,
-                          ),
+                          _availableTabs.indexOf(PlayerProfileTab.games),
                         );
                         ref
                             .read(

@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:chessever2/repository/gamebase/gamebase_repository.dart';
+import 'package:chessever2/repository/gamebase/memorial_player_about.dart';
 import 'package:chessever2/repository/gamebase/search/gamebase_search_models_extra.dart';
 import 'package:chessever2/repository/supabase/chess_player/chess_player_repository.dart';
 import 'package:chessever2/repository/supabase/game/game_repository.dart';
@@ -25,6 +26,11 @@ import 'package:chessever2/utils/twic_player_enrichment.dart';
 
 final playerGamesSelectionModeProvider =
     StateProvider.family<bool, PlayerProfileKey>((ref, key) => false);
+
+final memorialPlayerOverviewProvider = FutureProvider.family.autoDispose<
+  MemorialPlayerOverview?,
+  String
+>((ref, sourceIdentity) => loadBundledMemorialPlayerOverview(sourceIdentity));
 
 /// Key to identify a player - can use either fideId OR playerName
 /// This allows viewing player profiles even without a FIDE ID

@@ -1,7 +1,9 @@
 import 'package:chessever2/providers/favorite_players_provider.dart';
 import 'package:chessever2/repository/favorites/models/favorite_player.dart';
 import 'package:chessever2/repository/gamebase/memorial_player.dart';
+import 'package:chessever2/repository/gamebase/memorial_player_about.dart';
 import 'package:chessever2/repository/gamebase/memorial_player_local_search.dart';
+import 'package:chessever2/screens/player_profile/player_profile_screen.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 FavoritePlayer favorite({
@@ -138,5 +140,47 @@ void main() {
         expect(results.single.player.hasGames, isTrue);
       },
     );
+  });
+
+  group('Bundled Memorial overview', () {
+    test('loads authored biography for a no-FIDE identity', () async {
+      final overview = await loadBundledMemorialPlayerOverview(
+        'memorial:memorial-e03cdf6af47b368c',
+      );
+
+      expect(overview, isNotNull);
+      expect(overview!.player.name, 'Tal, Mikhail');
+      expect(overview.player.birthDate, '1936-11-09');
+      expect(overview.player.deathDate, '1992-06-28');
+      expect(
+        overview.about?.summary.join(' '),
+        contains('World Chess Champion'),
+      );
+      expect(overview.about?.achievements, isNotEmpty);
+    });
+
+    test('loads authored biography for a numeric identity', () async {
+      final overview = await loadBundledMemorialPlayerOverview('2000016');
+
+      expect(overview, isNotNull);
+      expect(overview!.player.name, 'Fischer, Robert James');
+      expect(
+        overview.about?.summary.join(' '),
+        contains('eleventh World Chess Champion'),
+      );
+    });
+  });
+
+  group('Memorial profile tabs', () {
+    test('memorial profiles omit Events but keep Overview and Games', () {
+      expect(playerProfileTabsFor(isMemorial: true), const <PlayerProfileTab>[
+        PlayerProfileTab.about,
+        PlayerProfileTab.games,
+      ]);
+    });
+
+    test('regular profiles retain all existing tabs', () {
+      expect(playerProfileTabsFor(isMemorial: false), PlayerProfileTab.values);
+    });
   });
 }

@@ -7,11 +7,16 @@ class MemorialPlayer {
     required this.name,
     required this.fed,
     required this.ratingClassical,
+    this.ratingRapid = 0,
+    this.ratingBlitz = 0,
     required this.hasGames,
     required this.sourceBacked,
     this.aliases = const [],
     this.title,
     this.fideId,
+    this.fideIdStatus,
+    this.birthDate,
+    this.deathDate,
     this.gamebasePlayerId,
   });
 
@@ -23,7 +28,12 @@ class MemorialPlayer {
   final String? title;
   final String fed;
   final String? fideId;
+  final String? fideIdStatus;
   final int ratingClassical;
+  final int ratingRapid;
+  final int ratingBlitz;
+  final String? birthDate;
+  final String? deathDate;
   final bool hasGames;
   final bool sourceBacked;
   final List<String> aliases;
@@ -40,7 +50,12 @@ class MemorialPlayer {
       title: json['title']?.toString(),
       fed: json['fed']?.toString() ?? '',
       fideId: json['fideId']?.toString(),
+      fideIdStatus: json['fideIdStatus']?.toString(),
       ratingClassical: (json['ratingClassical'] as num?)?.toInt() ?? 0,
+      ratingRapid: (json['ratingRapid'] as num?)?.toInt() ?? 0,
+      ratingBlitz: (json['ratingBlitz'] as num?)?.toInt() ?? 0,
+      birthDate: json['birthDate']?.toString(),
+      deathDate: json['deathDate']?.toString(),
       hasGames: json['hasGames'] == true,
       sourceBacked: json['sourceBacked'] == true,
       aliases: (json['aliases'] as List<dynamic>? ?? const <dynamic>[])
