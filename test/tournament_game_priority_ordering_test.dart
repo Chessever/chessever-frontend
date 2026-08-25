@@ -680,50 +680,62 @@ void main() {
       expect(snapshot, <String>{'live-a', 'live-b'});
     });
 
-    test('freezes order when a live board finishes after activation', () {
-      final activationGames = <GamesTourModel>[
-        _game('board-1', boardNr: 1, status: GameStatus.whiteWins),
-        _game('board-2', boardNr: 2), // live at snapshot
-        _game('board-3', boardNr: 3), // live at snapshot
-        _game('board-4', boardNr: 4, status: GameStatus.draw),
-      ];
-      final priorityOrdered = sortTournamentRoundGamesByPriority(
-        games: activationGames,
-      );
-      final snapshot = liveGameIdsForFocusSnapshot(priorityOrdered);
-      final atActivation = applyLiveFocusOrder(
-        games: priorityOrdered,
-        liveGameIdsAtSnapshot: snapshot,
-      );
+    test(
+      'returns each finished board to normal order while live focus stays on',
+      () {
+        final atActivation = applyCurrentLiveFocusOrder(
+          games: sortTournamentRoundGamesByPriority(
+            games: <GamesTourModel>[
+              _game('board-1', boardNr: 1, status: GameStatus.whiteWins),
+              _game('board-2', boardNr: 2),
+              _game('board-3', boardNr: 3),
+              _game('board-4', boardNr: 4, status: GameStatus.draw),
+            ],
+          ),
+        );
 
-      // Board 2 finishes while focus stays on — same frozen snapshot.
-      final afterStatusChange = applyLiveFocusOrder(
-        games: sortTournamentRoundGamesByPriority(
-          games: <GamesTourModel>[
-            _game('board-1', boardNr: 1, status: GameStatus.whiteWins),
-            _game('board-2', boardNr: 2, status: GameStatus.blackWins),
-            _game('board-3', boardNr: 3),
-            _game('board-4', boardNr: 4, status: GameStatus.draw),
-          ],
-        ),
-        liveGameIdsAtSnapshot: snapshot,
-      );
+        final afterBoard2Finishes = applyCurrentLiveFocusOrder(
+          games: sortTournamentRoundGamesByPriority(
+            games: <GamesTourModel>[
+              _game('board-1', boardNr: 1, status: GameStatus.whiteWins),
+              _game('board-2', boardNr: 2, status: GameStatus.blackWins),
+              _game('board-3', boardNr: 3),
+              _game('board-4', boardNr: 4, status: GameStatus.draw),
+            ],
+          ),
+        );
 
-      expect(atActivation.map((g) => g.gameId), <String>[
-        'board-2',
-        'board-3',
-        'board-1',
-        'board-4',
-      ]);
-      expect(afterStatusChange.map((g) => g.gameId), <String>[
-        'board-2',
-        'board-3',
-        'board-1',
-        'board-4',
-      ]);
-      // Content updates still flow through the frozen id order.
-      expect(afterStatusChange[0].gameStatus, GameStatus.blackWins);
-    });
+        final afterAllFinish = applyCurrentLiveFocusOrder(
+          games: sortTournamentRoundGamesByPriority(
+            games: <GamesTourModel>[
+              _game('board-1', boardNr: 1, status: GameStatus.whiteWins),
+              _game('board-2', boardNr: 2, status: GameStatus.blackWins),
+              _game('board-3', boardNr: 3, status: GameStatus.draw),
+              _game('board-4', boardNr: 4, status: GameStatus.draw),
+            ],
+          ),
+        );
+
+        expect(atActivation.map((g) => g.gameId), <String>[
+          'board-2',
+          'board-3',
+          'board-1',
+          'board-4',
+        ]);
+        expect(afterBoard2Finishes.map((g) => g.gameId), <String>[
+          'board-3',
+          'board-1',
+          'board-2',
+          'board-4',
+        ]);
+        expect(afterAllFinish.map((g) => g.gameId), <String>[
+          'board-1',
+          'board-2',
+          'board-3',
+          'board-4',
+        ]);
+      },
+    );
 
     test('re-activation takes a fresh live snapshot', () {
       final firstSnapshot = liveGameIdsForFocusSnapshot(<GamesTourModel>[

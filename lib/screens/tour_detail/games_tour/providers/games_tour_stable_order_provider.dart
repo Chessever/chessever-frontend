@@ -267,12 +267,8 @@ int _priorityForGame(
   return 2;
 }
 
-/// Snapshot-based "Focus on live games" ordering.
-///
-/// Boards whose ids were live at activation ([liveGameIdsAtSnapshot]) bubble
-/// above the rest while preserving relative order within each group. Callers
-/// freeze [liveGameIdsAtSnapshot] for the whole focus session so later status
-/// changes do not reshuffle; a new snapshot is only taken on re-activation.
+/// Partitions one already-normalized round into live boards followed by the
+/// remaining boards while preserving relative order inside both groups.
 ///
 /// All boards remain present — this never filters finished games out.
 List<GamesTourModel> applyLiveFocusOrder({
@@ -296,6 +292,21 @@ List<GamesTourModel> applyLiveFocusOrder({
     return List<GamesTourModel>.of(games, growable: false);
   }
   return <GamesTourModel>[...live, ...rest];
+}
+
+/// Applies live-first priority from the models' current effective statuses.
+///
+/// Re-running this on each game-status update makes a newly finished board
+/// leave the live tier and return to its normal priority/board position. Once
+/// every board is finished, the input's normal order is returned unchanged.
+List<GamesTourModel> applyCurrentLiveFocusOrder({
+  required Iterable<GamesTourModel> games,
+}) {
+  final orderedGames = List<GamesTourModel>.of(games, growable: false);
+  return applyLiveFocusOrder(
+    games: orderedGames,
+    liveGameIdsAtSnapshot: liveGameIdsForFocusSnapshot(orderedGames),
+  );
 }
 
 /// Game ids treated as live for a focus-mode snapshot.

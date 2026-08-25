@@ -14,18 +14,8 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 // family on `deactivate` so leaving the event resets the preference.
 //
 // Note: `GameDisplayMode.hideFinishedGames` is the "Focus on live games"
-// mode. It no longer filters finished boards out — it only freezes a
-// live-first snapshot order via [liveFocusSnapshotProvider].
-final gameDisplayModeProvider =
-    StateProvider.family<GameDisplayMode, String>(
-      (ref, tourId) => GameDisplayMode.all,
-    );
-
-/// Frozen set of board ids that were live when "Focus on live games" was
-/// activated for this tour. `null` means focus mode is off (normal order).
-///
-/// While non-null, the Games tab partitions each round as live-snapshot first
-/// then the rest, without re-evaluating liveness on stream updates. Cleared
-/// on "Show all games" and when the tournament detail screen deactivates.
-final liveFocusSnapshotProvider =
-    StateProvider.family<Set<String>?, String>((ref, tourId) => null);
+// mode. It does not filter finished boards out — it continuously prioritizes
+// boards whose current effective status is live.
+final gameDisplayModeProvider = StateProvider.family<GameDisplayMode, String>(
+  (ref, tourId) => GameDisplayMode.all,
+);

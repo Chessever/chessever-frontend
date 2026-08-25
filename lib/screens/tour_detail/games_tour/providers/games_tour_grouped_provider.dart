@@ -2,7 +2,6 @@ import 'package:chessever2/repository/supabase/game/games.dart';
 import 'package:chessever2/screens/gamebase/event_view/gamebase_virtual_event_id.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_app_bar_view_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
-import 'package:chessever2/screens/tour_detail/games_tour/providers/game_display_mode_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_app_bar_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_pin_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_provider.dart';
@@ -429,12 +428,6 @@ final gamesTourGroupedProvider = Provider.autoDispose<GroupedGamesData>((ref) {
   final hadGroupedGamesBeforeOrdering = gamesByRound.values.any(
     (games) => games.isNotEmpty,
   );
-  // Frozen live-id snapshot for "Focus on live games". Null when mode is off.
-  // Partition is applied after stable priority order so pins/board numbers
-  // still decide relative order inside each live / non-live group, and status
-  // stream updates never reshuffle while the snapshot is held.
-  final liveFocusSnapshot =
-      tourId == null ? null : ref.watch(liveFocusSnapshotProvider(tourId));
   for (final roundId in gamesByRound.keys.toList(growable: false)) {
     final roundGames = gamesByRound[roundId]!;
     final newestBoardsFirst =
@@ -453,13 +446,13 @@ final gamesTourGroupedProvider = Provider.autoDispose<GroupedGamesData>((ref) {
       countrymanGameIds: countrymanPriorityIds,
       newestBoardsFirst: newestBoardsFirst,
     );
+    // Focus mode is continuously derived from current effective statuses.
+    // Stable priority/board order remains the baseline, so every board returns
+    // to its normal slot as soon as it finishes.
     gamesByRound[roundId] =
-        liveFocusSnapshot == null
-            ? ordered
-            : applyLiveFocusOrder(
-              games: ordered,
-              liveGameIdsAtSnapshot: liveFocusSnapshot,
-            );
+        displayMode == GameDisplayMode.hideFinishedGames
+            ? applyCurrentLiveFocusOrder(games: ordered)
+            : ordered;
   }
 
   final playedRounds =
@@ -573,8 +566,7 @@ List<GamesTourModel> sortTournamentRoundGamesByBoard(
 
 bool _shouldIncludeGame(GameDisplayMode mode, GamesTourModel game) {
   switch (mode) {
-    // Focus-on-live is sort-only (see liveFocusSnapshotProvider); never drop
-    // finished boards from the Games list.
+    // Focus-on-live is sort-only; never drop finished boards from the list.
     case GameDisplayMode.hideFinishedGames:
       return true;
     case GameDisplayMode.showfinishedGame:
