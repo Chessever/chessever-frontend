@@ -402,7 +402,9 @@ class _CountrymenCombinedGamesScreenState
       showFormatFilter: false,
     );
     if (result != null && mounted) {
-      ref.read(countrymenCombinedGamesProvider.notifier).applyFilter(result);
+      await ref
+          .read(countrymenCombinedGamesProvider.notifier)
+          .applyFilter(result);
     }
   }
 
@@ -486,6 +488,12 @@ class _CountrymenCombinedGamesScreenState
     }
 
     if (state.games.isEmpty) {
+      if (state.filter.hasActiveFilters) {
+        return SliverFillRemaining(
+          hasScrollBody: false,
+          child: _buildNoFilterResultsState(),
+        );
+      }
       if (state.isSearching) {
         return SliverFillRemaining(
           hasScrollBody: false,

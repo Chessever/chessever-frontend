@@ -160,7 +160,16 @@ class _GameFilterDialogState extends State<GameFilterDialog> {
                                 v == GameLiveFilter.all ? 'All' : v.displayText,
                         onTap: (v) {
                           HapticFeedbackService.selection();
-                          setState(() => _live = v);
+                          setState(() {
+                            _live = v;
+                            if (v == GameLiveFilter.live) {
+                              _result = GameResultFilter.all;
+                              _yearRange = RangeValues(
+                                GameFilter.defaultMinYear.toDouble(),
+                                DateTime.now().year.toDouble(),
+                              );
+                            }
+                          });
                         },
                       ),
                       SizedBox(height: 20.h),
@@ -213,11 +222,24 @@ class _GameFilterDialogState extends State<GameFilterDialog> {
                       label:
                           (v) =>
                               v == GameResultFilter.all ? 'All' : v.displayText,
+                      isEnabled:
+                          (v) =>
+                              _live != GameLiveFilter.live ||
+                              v == GameResultFilter.all,
                       onTap: (v) {
                         HapticFeedbackService.selection();
                         setState(() => _result = v);
                       },
                     ),
+                    if (_live == GameLiveFilter.live) ...[
+                      SizedBox(height: 8.h),
+                      Text(
+                        'Live games have no final result.',
+                        style: AppTypography.textXsMedium.copyWith(
+                          color: context.colors.textSecondary,
+                        ),
+                      ),
+                    ],
                     SizedBox(height: 20.h),
 
                     // 5. Color (box grid) — hidden in database/My-Likes
@@ -265,14 +287,37 @@ class _GameFilterDialogState extends State<GameFilterDialog> {
                     if (widget.showYearFilter) ...[
                       _sectionLabel('Year'),
                       SizedBox(height: 8.h),
-                      _rangeSliderCard(
-                        values: _yearRange,
-                        min: GameFilter.absoluteMinYear.toDouble(),
-                        max: DateTime.now().year.toDouble(),
-                        divisions:
-                            DateTime.now().year - GameFilter.absoluteMinYear,
-                        onChanged: (v) => setState(() => _yearRange = v),
+                      KeyedSubtree(
+                        key: const ValueKey('game-filter-year-control'),
+                        child: IgnorePointer(
+                          key: const ValueKey(
+                            'game-filter-year-ignore-pointer',
+                          ),
+                          ignoring: _live == GameLiveFilter.live,
+                          child: AnimatedOpacity(
+                            duration: const Duration(milliseconds: 150),
+                            opacity: _live == GameLiveFilter.live ? 0.55 : 1,
+                            child: _rangeSliderCard(
+                              values: _yearRange,
+                              min: GameFilter.absoluteMinYear.toDouble(),
+                              max: DateTime.now().year.toDouble(),
+                              divisions:
+                                  DateTime.now().year -
+                                  GameFilter.absoluteMinYear,
+                              onChanged: (v) => setState(() => _yearRange = v),
+                            ),
+                          ),
+                        ),
                       ),
+                      if (_live == GameLiveFilter.live) ...[
+                        SizedBox(height: 8.h),
+                        Text(
+                          'Live games are always from today.',
+                          style: AppTypography.textXsMedium.copyWith(
+                            color: context.colors.textSecondary,
+                          ),
+                        ),
+                      ],
                       SizedBox(height: 12.h),
                     ],
                   ],
@@ -505,8 +550,7 @@ class _GameFilterDialogState extends State<GameFilterDialog> {
         ),
         SizedBox(height: 8.h),
         _adaptiveChipLayout(
-          measureLabels:
-              GamebaseSortField.values.map(_sortFieldLabel).toList(),
+          measureLabels: GamebaseSortField.values.map(_sortFieldLabel).toList(),
           extraPerChip: widget.showSortDirection ? 4.w + 12.ic : 0,
           chipsBuilder:
               (expanded) =>
@@ -640,6 +684,7 @@ class _GameFilterDialogState extends State<GameFilterDialog> {
     required T selected,
     required String Function(T) label,
     required ValueChanged<T> onTap,
+    bool Function(T)? isEnabled,
   }) {
     return _adaptiveChipLayout(
       measureLabels: values.map(label).toList(),
@@ -647,33 +692,41 @@ class _GameFilterDialogState extends State<GameFilterDialog> {
           (expanded) =>
               values.map((v) {
                 final isSelected = v == selected;
-                return GestureDetector(
-                  onTap: () => onTap(v),
-                  child: AnimatedContainer(
-                    duration: const Duration(milliseconds: 150),
-                    padding: EdgeInsets.symmetric(
-                      horizontal: 14.w,
-                      vertical: 10.h,
-                    ),
-                    // Equal-width grid cells center their label; row chips
-                    // hug their content as before.
-                    alignment: expanded ? Alignment.center : null,
-                    decoration: BoxDecoration(
-                      color:
-                          isSelected
-                              ? kPrimaryColor
-                              : context.colors.surfaceRecessed,
-                      borderRadius: BorderRadius.circular(8.br),
-                    ),
-                    child: Text(
-                      label(v),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: AppTypography.textXsMedium.copyWith(
+                final enabled = isEnabled?.call(v) ?? true;
+                return Semantics(
+                  button: true,
+                  enabled: enabled,
+                  selected: isSelected,
+                  child: GestureDetector(
+                    onTap: enabled ? () => onTap(v) : null,
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 150),
+                      padding: EdgeInsets.symmetric(
+                        horizontal: 14.w,
+                        vertical: 10.h,
+                      ),
+                      // Equal-width grid cells center their label; row chips
+                      // hug their content as before.
+                      alignment: expanded ? Alignment.center : null,
+                      decoration: BoxDecoration(
                         color:
                             isSelected
-                                ? kBlackColor
-                                : context.colors.textPrimary,
+                                ? kPrimaryColor
+                                : context.colors.surfaceRecessed,
+                        borderRadius: BorderRadius.circular(8.br),
+                      ),
+                      child: Text(
+                        label(v),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: AppTypography.textXsMedium.copyWith(
+                          color:
+                              isSelected
+                                  ? kBlackColor
+                                  : enabled
+                                  ? context.colors.textPrimary
+                                  : context.colors.textSecondary,
+                        ),
                       ),
                     ),
                   ),

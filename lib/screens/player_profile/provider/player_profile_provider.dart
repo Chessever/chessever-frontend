@@ -388,7 +388,7 @@ final playerGamesDataProvider = FutureProvider.family
                 .where((game) => !_isVariantEvent(game.tourSlug))
                 .toList();
 
-                allGames.sort(comparePlayerProfileGamesNewestFirst);
+        allGames.sort(comparePlayerProfileGamesNewestFirst);
 
         return allGames;
       } catch (e) {
@@ -469,7 +469,7 @@ final playerGamesDataKeyProvider = FutureProvider.family.autoDispose<
             .where((game) => !_isVariantEvent(game.tourSlug))
             .toList();
 
-        allGames.sort(comparePlayerProfileGamesNewestFirst);
+    allGames.sort(comparePlayerProfileGamesNewestFirst);
 
     return allGames;
   } catch (e) {
@@ -855,7 +855,8 @@ Future<List<GamesTourModel>> _getTwicGamesViaDedicatedEndpoint(
         .read(chessPlayerRepositoryProvider)
         .getPlayersByFideIds(fideIds);
     games = enrichGamesWithChessPlayers(games, playersByFideId);
-  }  games.sort(comparePlayerProfileGamesNewestFirst);
+  }
+  games.sort(comparePlayerProfileGamesNewestFirst);
 
   return games;
 }
@@ -1070,7 +1071,8 @@ Future<List<GamesTourModel>> _getTwicGamesFromGamebase(
         .read(chessPlayerRepositoryProvider)
         .getPlayersByFideIds(fideIds);
     games = enrichGamesWithChessPlayers(games, playersByFideId);
-  }  games.sort(comparePlayerProfileGamesNewestFirst);
+  }
+  games.sort(comparePlayerProfileGamesNewestFirst);
 
   return games;
 }
@@ -3226,7 +3228,7 @@ class PlayerProfileGamesNotifier
         totalCount = page.hasMore ? null : allGames.length;
       }
 
-            allGames.sort(comparePlayerProfileGamesNewestFirst);
+      allGames.sort(comparePlayerProfileGamesNewestFirst);
 
       if (!mounted || token != _loadToken) return;
       state = state.copyWith(
@@ -3836,7 +3838,8 @@ class PlayerProfileGamesNotifier
       }
       if (!mounted || token != _loadToken) return;
 
-      final merged = _mergeGames(state.allGames, pageGames);      merged.sort(comparePlayerProfileGamesNewestFirst);
+      final merged = _mergeGames(state.allGames, pageGames);
+      merged.sort(comparePlayerProfileGamesNewestFirst);
       state = state.copyWith(
         allGames: merged,
         isLoadingMore: false,

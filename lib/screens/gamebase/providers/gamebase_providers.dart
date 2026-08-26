@@ -271,8 +271,7 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
     // Desktop board explorer always sends the line the board just pumped in.
     // `_queryMoves` is that line. Never fall back to an empty tree path after
     // a rebuild miss — that is exactly "No move statistics" past ply 20.
-    final exploredMoves =
-        _queryFromInitial ? _queryMoves : const <String>[];
+    final exploredMoves = _queryFromInitial ? _queryMoves : const <String>[];
 
     if (kDebugMode &&
         _queryFromInitial &&

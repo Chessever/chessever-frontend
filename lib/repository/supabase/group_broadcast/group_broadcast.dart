@@ -47,10 +47,10 @@ class GroupBroadcast {
           ? chesseverDirectWriter
           : lichessDataHubWriter;
 
-  String get writerAttributionLabel =>
-      broadcastWriter == chesseverDirectWriter
-          ? 'Powered by ChessEver'
-          : 'Powered by Lichess';
+  String get writerAttributionBrand =>
+      broadcastWriter == chesseverDirectWriter ? 'ChessEver' : 'Lichess';
+
+  String get writerAttributionLabel => 'Powered by $writerAttributionBrand';
 
   Map<String, dynamic> toJson() => {
     'id': id,

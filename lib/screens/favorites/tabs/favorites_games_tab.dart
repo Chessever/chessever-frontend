@@ -475,8 +475,10 @@ class _FavoritesGamesTabState extends ConsumerState<FavoritesGamesTab>
             ),
           ),
 
-          // Filter chips (only show when not searching)
-          if (favorites.length > 1 && !state.isSearching)
+          // Favorite-player chips.
+          // Player selection and text search are independent AND filters, so
+          // keep the player chips available while a search is active.
+          if (favorites.length > 1)
             SliverToBoxAdapter(child: _buildFilterChips(state, favorites)),
 
           // Content
@@ -674,7 +676,9 @@ class _FavoritesGamesTabState extends ConsumerState<FavoritesGamesTab>
       showFormatFilter: false,
     );
     if (result != null && mounted) {
-      ref.read(favoritesCombinedGamesProvider.notifier).applyFilter(result);
+      await ref
+          .read(favoritesCombinedGamesProvider.notifier)
+          .applyFilter(result);
     }
   }
 
@@ -834,6 +838,12 @@ class _FavoritesGamesTabState extends ConsumerState<FavoritesGamesTab>
     }
 
     if (state.games.isEmpty) {
+      if (state.filter.hasActiveFilters) {
+        return SliverFillRemaining(
+          hasScrollBody: false,
+          child: _buildNoFilterResultsState(),
+        );
+      }
       if (state.isSearching) {
         // The Games search matched no game from a followed player. Offer the
         // matching players themselves, so the search still leads somewhere.

@@ -41,6 +41,14 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
+/// Success-path tournament-detail chrome: title/dropdown, search, tab switcher.
+/// Widget tests scope writer-attribution assertions to this column so About
+/// footer copy cannot satisfy them.
+@visibleForTesting
+const tournamentDetailSuccessAppBarKey = ValueKey<String>(
+  'tournament-detail-success-appbar',
+);
+
 class TournamentDetailScreen extends ConsumerStatefulWidget {
   const TournamentDetailScreen({super.key});
 
@@ -396,23 +404,12 @@ class _TournamentDetailViewState extends ConsumerState<TournamentDetailScreen>
     TournamentDetailScreenMode selectedTourMode,
     List<TournamentDetailScreenMode> visibleModes,
   ) {
-    final writerLabel = ref.watch(
-      selectedBroadcastWriterAttributionProvider,
-    );
     return Column(
+      key: tournamentDetailSuccessAppBarKey,
       children: [
         selectedTourMode == TournamentDetailScreenMode.games
             ? const GamesAppBarWidget()
             : _TourDetailDropDownAppBar(data: data),
-        Padding(
-          padding: EdgeInsets.only(top: 2.h),
-          child: Text(
-            writerLabel,
-            style: AppTypography.textXsRegular.copyWith(
-              color: context.colors.textPrimary.withValues(alpha: 0.52),
-            ),
-          ),
-        ),
         SizedBox(height: 8.h),
         _PinnedEventSearchBar(
           pageController: pageController,
