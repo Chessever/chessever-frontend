@@ -13,10 +13,12 @@ class MemorialPlayerAboutTab extends ConsumerStatefulWidget {
     super.key,
     required this.sourceIdentity,
     required this.playerName,
+    required this.playerKey,
   });
 
   final String sourceIdentity;
   final String playerName;
+  final PlayerProfileKey playerKey;
 
   @override
   ConsumerState<MemorialPlayerAboutTab> createState() =>
@@ -47,6 +49,14 @@ class _MemorialPlayerAboutTabState extends ConsumerState<MemorialPlayerAboutTab>
     final overview = ref.watch(
       memorialPlayerOverviewProvider(widget.sourceIdentity),
     );
+    final analytics = ref.watch(
+      twicPlayerStatsProvider(
+        TwicPlayerStatsRequest(
+          playerKey: widget.playerKey,
+          scope: TwicStatsScope.allGames,
+        ),
+      ),
+    );
     return overview.when(
       data:
           (data) =>
@@ -58,6 +68,8 @@ class _MemorialPlayerAboutTabState extends ConsumerState<MemorialPlayerAboutTab>
                     controller: _scrollController,
                     overview: data,
                     fallbackName: widget.playerName,
+                    analytics: analytics.valueOrNull,
+                    analyticsLoading: analytics.isLoading,
                   ),
       loading:
           () => const _AboutStatus(
@@ -77,11 +89,15 @@ class _AboutContent extends StatelessWidget {
     required this.controller,
     required this.overview,
     required this.fallbackName,
+    required this.analytics,
+    required this.analyticsLoading,
   });
 
   final ScrollController controller;
   final MemorialPlayerOverview overview;
   final String fallbackName;
+  final PlayerAnalytics? analytics;
+  final bool analyticsLoading;
 
   @override
   Widget build(BuildContext context) {
@@ -118,6 +134,10 @@ class _AboutContent extends StatelessWidget {
         32,
       ),
       children: [
+        if (analytics != null || analyticsLoading) ...[
+          _PerformanceSummary(analytics: analytics, loading: analyticsLoading),
+          const SizedBox(height: 14),
+        ],
         Container(
           padding: const EdgeInsets.fromLTRB(20, 20, 20, 24),
           decoration: BoxDecoration(
@@ -182,6 +202,78 @@ class _AboutContent extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+class _PerformanceSummary extends StatelessWidget {
+  const _PerformanceSummary({required this.analytics, required this.loading});
+
+  final PlayerAnalytics? analytics;
+  final bool loading;
+
+  @override
+  Widget build(BuildContext context) {
+    final value = analytics;
+    if (value == null && loading) {
+      return Container(
+        height: 104,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: context.colors.surface,
+          borderRadius: BorderRadius.circular(14),
+        ),
+        child: const SizedBox(
+          width: 18,
+          height: 18,
+          child: CircularProgressIndicator(strokeWidth: 1.5),
+        ),
+      );
+    }
+    if (value == null) return const SizedBox.shrink();
+
+    final stats = value.resultStats;
+    final topOpening =
+        value.openingStats.isEmpty ? null : value.openingStats.first;
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: context.colors.surface,
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Chess record',
+            style: AppTypography.textLgBold.copyWith(
+              color: context.colors.textPrimary,
+            ),
+          ),
+          const SizedBox(height: 18),
+          Wrap(
+            spacing: 28,
+            runSpacing: 18,
+            children: [
+              _LifeFact(label: 'Games', value: stats.totalGames.toString()),
+              _LifeFact(label: 'Wins', value: stats.wins.toString()),
+              _LifeFact(label: 'Draws', value: stats.draws.toString()),
+              _LifeFact(label: 'Losses', value: stats.losses.toString()),
+              if (value.avgOpponentRating > 0)
+                _LifeFact(
+                  label: 'Average opponent',
+                  value: value.avgOpponentRating.toString(),
+                ),
+              if (topOpening != null)
+                _LifeFact(
+                  label: 'Most played opening',
+                  value: topOpening.eco,
+                  detail: topOpening.openingName,
+                ),
+            ],
+          ),
+        ],
+      ),
     );
   }
 }

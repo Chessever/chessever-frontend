@@ -2934,13 +2934,13 @@ final twicPlayerStatsProvider = FutureProvider.family.autoDispose<
   }
 
   final memorialIdentity = playerKey.memorialSourceIdentity?.trim();
-  if (memorialIdentity != null && memorialIdentity.isNotEmpty) {
-    return fallbackFromLoadedGames();
-  }
-
-  var playerId = await ref.watch(twicPlayerIdProvider(playerKey).future);
-  if (playerId == null || playerId.isEmpty) {
-    return fallbackFromLoadedGames();
+  final isMemorial = memorialIdentity != null && memorialIdentity.isNotEmpty;
+  String? playerId;
+  if (!isMemorial) {
+    playerId = await ref.watch(twicPlayerIdProvider(playerKey).future);
+    if (playerId == null || playerId.isEmpty) {
+      return fallbackFromLoadedGames();
+    }
   }
 
   final filterSnapshot = ref.watch(
@@ -2984,20 +2984,44 @@ final twicPlayerStatsProvider = FutureProvider.family.autoDispose<
   final repo = ref.read(gamebaseRepositoryProvider);
   Map<String, dynamic> response;
   try {
-    response = await repo.getPlayerStats(
-      playerId: playerId,
-      q: searchQuery.isNotEmpty ? searchQuery : null,
-      color: color,
-      timeControl: timeControl,
-      outcome: outcome,
-      eco: request.scope == TwicStatsScope.filteredIgnoringEco ? null : eco,
-      dateFrom: _yearMinToDateFrom(effectiveFilter),
-      dateTo: _yearMaxToExclusiveDateTo(effectiveFilter),
-      ratingFrom: ratingFrom,
-      ratingTo: ratingTo,
-      isOnline: _onlineToApi(effectiveFilter.online),
-    );
+    response =
+        isMemorial
+            ? await repo.getMemorialPlayerStats(
+              sourceIdentity: memorialIdentity,
+              q: searchQuery.isNotEmpty ? searchQuery : null,
+              color: color,
+              timeControl: timeControl,
+              outcome: outcome,
+              eco:
+                  request.scope == TwicStatsScope.filteredIgnoringEco
+                      ? null
+                      : eco,
+              dateFrom: _yearMinToDateFrom(effectiveFilter),
+              dateTo: _yearMaxToExclusiveDateTo(effectiveFilter),
+              ratingFrom: ratingFrom,
+              ratingTo: ratingTo,
+              isOnline: _onlineToApi(effectiveFilter.online),
+            )
+            : await repo.getPlayerStats(
+              playerId: playerId!,
+              q: searchQuery.isNotEmpty ? searchQuery : null,
+              color: color,
+              timeControl: timeControl,
+              outcome: outcome,
+              eco:
+                  request.scope == TwicStatsScope.filteredIgnoringEco
+                      ? null
+                      : eco,
+              dateFrom: _yearMinToDateFrom(effectiveFilter),
+              dateTo: _yearMaxToExclusiveDateTo(effectiveFilter),
+              ratingFrom: ratingFrom,
+              ratingTo: ratingTo,
+              isOnline: _onlineToApi(effectiveFilter.online),
+            );
   } on DioException catch (e) {
+    if (isMemorial) {
+      return fallbackFromLoadedGames();
+    }
     if (e.response?.statusCode == 404) {
       final refreshedId = await _resolveTwicPlayerId(
         ref,

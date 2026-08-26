@@ -1,5 +1,6 @@
 import 'package:chessever2/providers/board_settings_provider_new.dart';
 import 'package:chessever2/repository/gamebase/gamebase_repository.dart';
+import 'package:chessever2/repository/gamebase/memorial_tree_scope.dart';
 import 'package:chessever2/repository/gamebase/search/gamebase_search_models.dart';
 import 'package:chessever2/screens/gamebase/models/models.dart';
 import 'package:chessever2/screens/gamebase/services/player_opening_tree.dart';
@@ -1445,6 +1446,8 @@ class PlayerOpeningTreeBuildController
 
   final Ref _ref;
   final String _playerId;
+  String? get _memorialSourceIdentity =>
+      memorialSourceIdentityFromTreeScope(_playerId);
   int _generation = 0;
 
   void start({bool force = false}) {
@@ -1478,11 +1481,19 @@ class PlayerOpeningTreeBuildController
   Future<void> _run(int generation) async {
     try {
       final repository = _ref.read(gamebaseRepositoryProvider);
-      final buildResponse = await repository.startPlayerOpeningTreeBuild(
-        playerId: _playerId,
-        maxPly: _maxPly,
-        forceRebuild: false,
-      );
+      final memorialSourceIdentity = _memorialSourceIdentity;
+      final buildResponse =
+          memorialSourceIdentity == null
+              ? await repository.startPlayerOpeningTreeBuild(
+                playerId: _playerId,
+                maxPly: _maxPly,
+                forceRebuild: false,
+              )
+              : await repository.startMemorialOpeningTreeBuild(
+                sourceIdentity: memorialSourceIdentity,
+                maxPly: _maxPly,
+                forceRebuild: false,
+              );
       if (!mounted || generation != _generation) return;
 
       final buildData = _responseData(buildResponse);
@@ -1503,10 +1514,16 @@ class PlayerOpeningTreeBuildController
           );
         }
 
-        final statusResponse = await repository.getPlayerOpeningTreeStatus(
-          playerId: _playerId,
-          treeId: treeId,
-        );
+        final statusResponse =
+            memorialSourceIdentity == null
+                ? await repository.getPlayerOpeningTreeStatus(
+                  playerId: _playerId,
+                  treeId: treeId,
+                )
+                : await repository.getMemorialOpeningTreeStatus(
+                  sourceIdentity: memorialSourceIdentity,
+                  treeId: treeId,
+                );
         if (!mounted || generation != _generation) return;
 
         final statusData = _responseData(statusResponse);
@@ -1526,10 +1543,16 @@ class PlayerOpeningTreeBuildController
             status == 'ready' ||
             status == 'done';
         if (treeIsReady) {
-          final treeResponse = await repository.getPlayerOpeningTree(
-            playerId: _playerId,
-            treeId: treeId,
-          );
+          final treeResponse =
+              memorialSourceIdentity == null
+                  ? await repository.getPlayerOpeningTree(
+                    playerId: _playerId,
+                    treeId: treeId,
+                  )
+                  : await repository.getMemorialOpeningTree(
+                    sourceIdentity: memorialSourceIdentity,
+                    treeId: treeId,
+                  );
           if (!mounted || generation != _generation) return;
           if (treeResponse != null) {
             _completeFromTreeResponse(treeId, treeResponse);

@@ -3,6 +3,7 @@ import 'package:chessever2/repository/favorites/models/favorite_player.dart';
 import 'package:chessever2/repository/gamebase/memorial_player.dart';
 import 'package:chessever2/repository/gamebase/memorial_player_about.dart';
 import 'package:chessever2/repository/gamebase/memorial_player_local_search.dart';
+import 'package:chessever2/repository/gamebase/memorial_tree_scope.dart';
 import 'package:chessever2/screens/player_profile/player_profile_screen.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -31,6 +32,18 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   group('Memorial player identity', () {
+    test('opening-tree scope round-trips without pretending to be a UUID', () {
+      const sourceIdentity = 'memorial:memorial-e03cdf6af47b368c';
+      final scope = memorialTreeScopeKey(sourceIdentity);
+
+      expect(scope, 'memorial-source:memorial%3Amemorial-e03cdf6af47b368c');
+      expect(memorialSourceIdentityFromTreeScope(scope), sourceIdentity);
+      expect(
+        memorialSourceIdentityFromTreeScope('ordinary-player-uuid'),
+        isNull,
+      );
+    });
+
     test('same common name does not merge distinct no-ID identities', () {
       final ordinaryIvanov = favorite(id: 'ordinary', name: 'Ivanov, Igor');
       final memorialIvanov = favorite(
@@ -128,6 +141,16 @@ void main() {
         expect(bundledMemorialCatalogLoadCount, 1);
       },
     );
+
+    test('ships the latest canonical Memorial catalog entry', () async {
+      final results = await searchBundledMemorialPlayers(
+        query: 'Ahmet Can Yurtseven',
+      );
+
+      expect(results, isNotEmpty);
+      expect(results.first.player.sourceIdentity, '6300081');
+      expect(results.first.player.hasGames, isTrue);
+    });
 
     test(
       'canonicalizes duplicate catalog rows by reviewed source identity',

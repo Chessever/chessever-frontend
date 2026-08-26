@@ -20,6 +20,7 @@ import 'package:chessever2/screens/player_profile/tabs/player_games_tab.dart';
 import 'package:chessever2/screens/standings/providers/player_utils_provider.dart';
 import 'package:chessever2/services/fide_photo_service.dart';
 import 'package:chessever2/repository/gamebase/memorial_player.dart';
+import 'package:chessever2/repository/gamebase/memorial_tree_scope.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
@@ -351,7 +352,10 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
   }
 
   GamebasePlayer _buildExplorerFallbackPlayer(String id) {
-    final cached = ref.read(playerByIdProvider(id)).valueOrNull;
+    final cached =
+        memorialSourceIdentityFromTreeScope(id) == null
+            ? ref.read(playerByIdProvider(id)).valueOrNull
+            : null;
     if (cached != null) return cached;
 
     final activePlayerKey = PlayerProfileKey(
@@ -407,10 +411,16 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
     if (!hasPremium || !mounted) return;
 
     HapticFeedbackService.buttonPress();
+    final memorialIdentity = widget.memorialSourceIdentity?.trim();
     final uuid = _resolveGamebasePlayerId();
-    if (uuid == null) return;
+    final explorerScope =
+        uuid ??
+        (memorialIdentity != null && memorialIdentity.isNotEmpty
+            ? memorialTreeScopeKey(memorialIdentity)
+            : null);
+    if (explorerScope == null) return;
 
-    final initialPlayer = _buildExplorerFallbackPlayer(uuid);
+    final initialPlayer = _buildExplorerFallbackPlayer(explorerScope);
     if (!mounted) return;
 
     // Map player profile filters → explorer filters (time control + rating only).
@@ -439,7 +449,9 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
     );
 
     // Warm/update cache in background without blocking navigation.
-    unawaited(ref.read(playerByIdProvider(uuid).future));
+    if (uuid != null) {
+      unawaited(ref.read(playerByIdProvider(uuid).future));
+    }
   }
 
   Future<void> _toggleFavorite() async {
@@ -647,7 +659,9 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
   @override
   Widget build(BuildContext context) {
     final selectedTab = ref.watch(selectedPlayerProfileTabProvider);
-    final hasPlayerExplorer = _resolveGamebasePlayerId() != null;
+    final hasPlayerExplorer =
+        _resolveGamebasePlayerId() != null ||
+        widget.memorialSourceIdentity?.trim().isNotEmpty == true;
 
     final activePlayerKey = PlayerProfileKey(
       fideId: widget.fideId,
@@ -970,6 +984,9 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
 
     final tabOptions = _availableTabs
         .map((tab) {
+          if (_isMemorial && tab == PlayerProfileTab.about) {
+            return 'Overview';
+          }
           if (tab == PlayerProfileTab.games &&
               selectedTab != PlayerProfileTab.games &&
               _gamesTabCueCount != null &&
@@ -1076,6 +1093,13 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
                 return MemorialPlayerAboutTab(
                   sourceIdentity: widget.memorialSourceIdentity!.trim(),
                   playerName: widget.playerName,
+                  playerKey: PlayerProfileKey(
+                    fideId: widget.fideId,
+                    playerName: widget.playerName,
+                    source: PlayerProfileDataSource.twic,
+                    gamebasePlayerId: _currentGamebasePlayerId,
+                    memorialSourceIdentity: widget.memorialSourceIdentity,
+                  ),
                 );
               }
               return PlayerAboutTab(
