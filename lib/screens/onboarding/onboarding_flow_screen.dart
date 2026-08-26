@@ -6,6 +6,7 @@ import 'package:chessever2/providers/country_dropdown_provider.dart';
 import 'package:chessever2/providers/guest_session_provider.dart';
 import 'package:chessever2/repository/authentication/auth_repository.dart';
 import 'package:chessever2/repository/local_storage/onboarding/onboarding_repository.dart';
+import 'package:chessever2/screens/onboarding/notification_permission_step.dart';
 import 'package:chessever2/screens/onboarding/player_selection_screen.dart';
 import 'package:chessever2/utils/user_error_message.dart';
 import 'package:chessever2/services/analytics/analytics_service.dart';
@@ -49,8 +50,9 @@ class OnboardingFlowScreen extends HookConsumerWidget {
     final user = Supabase.instance.client.auth.currentUser;
     final isAuthenticated = user != null && user.isAnonymous != true;
 
-    // Always 4 pages - final page content differs based on auth status
-    const totalPages = 4;
+    // Favorites are followed by notification context before the native prompt.
+    // The final page content differs based on auth status.
+    const totalPages = 5;
 
     useEffect(() {
       ref.read(countryDropdownProvider);
@@ -118,16 +120,6 @@ class OnboardingFlowScreen extends HookConsumerWidget {
                       // ATT status notDetermined.
                       await AttPromptService.instance.ensurePrompted(context);
 
-                      // Ask for notifications on direct auth path too.
-                      // Some users sign in from the first page and skip the last step.
-                      if (!E2eConfig.suppressInterruptivePrompts) {
-                        if (!context.mounted) return;
-                        unawaited(
-                          PushNotificationsService.instance
-                              .requestPermissionIfNotGranted(),
-                        );
-                      }
-
                       // Mark onboarding as seen before navigating to auth
                       try {
                         await ref
@@ -183,7 +175,16 @@ class OnboardingFlowScreen extends HookConsumerWidget {
                       },
                     ),
                   ),
-                  // 4th page: Different content based on auth status
+                  NotificationPermissionStep(
+                    onContinue: () async {
+                      if (!E2eConfig.suppressInterruptivePrompts) {
+                        await PushNotificationsService.instance
+                            .requestPermissionIfNotGranted();
+                      }
+                      if (context.mounted) await goToPage(4);
+                    },
+                  ),
+                  // 5th page: Different content based on auth status
                   if (isAuthenticated)
                     _AuthenticatedUserStep(
                       user: user,
@@ -196,13 +197,6 @@ class OnboardingFlowScreen extends HookConsumerWidget {
                       topPadding: topPadding,
                       bottomPadding: bottomPadding,
                       onSignIn: () async {
-                        if (!E2eConfig.suppressInterruptivePrompts) {
-                          unawaited(
-                            PushNotificationsService.instance
-                                .requestPermissionIfNotGranted(),
-                          );
-                        }
-
                         try {
                           await ref
                               .read(onboardingRepositoryProvider)
@@ -253,13 +247,8 @@ class OnboardingFlowScreen extends HookConsumerWidget {
 /// it does for a signed-in free account. The guest clock started here drives
 /// the day-7 prompt and the day-28 requirement in `GuestSessionGateListener`.
 Future<void> continueAsGuest(BuildContext context, WidgetRef ref) async {
-  // Mirror the sign-in path: guests must still be attributable and reachable.
+  // Mirror the sign-in path: guests must still be attributable.
   await AttPromptService.instance.ensurePrompted(context);
-  if (!E2eConfig.suppressInterruptivePrompts) {
-    unawaited(
-      PushNotificationsService.instance.requestPermissionIfNotGranted(),
-    );
-  }
 
   try {
     await ref.read(authStateProvider.notifier).signInAnonymously();
