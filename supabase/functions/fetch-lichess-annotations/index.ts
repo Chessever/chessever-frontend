@@ -7,10 +7,36 @@ const USER_AGENT = "chessever.com";
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers":
-    "authorization, x-client-info, apikey, content-type",
+    "authorization, x-client-info, apikey, content-type, " +
+    "x-lichess-annotations-refresh-token",
 };
 
 type AnnotationPayload = { name: string; comment: string };
+
+/// Whether the caller may bypass the cache.
+///
+/// This endpoint is reachable without a session (gateway verification is off
+/// project-wide), so an unauthenticated `force_refresh=true` would let anyone
+/// make us call Lichess on every request, spending our LICHESS_API_TOKEN's
+/// rate limit at will. Mirrors the fide-photo function's refresh gate.
+///
+/// Fails closed: with no secret configured, nobody may force a refresh.
+///
+/// Withholding this costs correctness nothing. A cached row is only returned
+/// when its `moves_signature` matches the caller's, so a game whose moves have
+/// changed is re-fetched regardless of this flag.
+function hasRefreshPermission(req: Request): boolean {
+  const expected = Deno.env.get("LICHESS_ANNOTATIONS_REFRESH_TOKEN") ?? "";
+  if (!expected) return false;
+
+  const headerToken =
+    req.headers.get("x-lichess-annotations-refresh-token") ?? "";
+  const authorization = req.headers.get("authorization") ?? "";
+  const [scheme, bearer] = authorization.split(" ");
+
+  return headerToken === expected ||
+    (scheme?.toLowerCase() === "bearer" && bearer === expected);
+}
 
 function buildSignature(moves: string[]): string {
   return `${moves.length}:${moves.join("|")}`;
@@ -148,6 +174,16 @@ Deno.serve(async (req: Request) => {
           moves = payload.moves.map((move) => String(move));
         }
       }
+    }
+
+    // Downgrade rather than reject: the app never asks for a refresh, so a 403
+    // here could only ever break a caller without protecting anything extra.
+    // Ignoring the flag already removes the abuse — no Lichess call is made.
+    if (forceRefresh && !hasRefreshPermission(req)) {
+      console.warn(
+        `Ignoring unauthorized force_refresh for game_id=${gameId ?? "unknown"}`,
+      );
+      forceRefresh = false;
     }
 
     // Try to extract roundId and gameId from site_url if not provided
