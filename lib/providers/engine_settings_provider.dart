@@ -188,6 +188,8 @@ EngineLinesView engineLinesViewFromIndex(int? index) {
 class EngineSettings {
   const EngineSettings({
     this.showEngineGauge = true,
+    this.showEngineGaugeOnBoard = true,
+    this.showEngineGaugeInGrid = true,
     this.showDepthOverlay = true,
     this.showPvArrows = true,
     this.showEngineAnalysis = true,
@@ -208,6 +210,15 @@ class EngineSettings {
                : (maxArrowsOnBoard > 4 ? 4 : maxArrowsOnBoard);
 
   final bool showEngineGauge;
+  final bool showEngineGaugeOnBoard;
+  final bool showEngineGaugeInGrid;
+
+  bool get shouldShowEngineGaugeOnBoard =>
+      showEngineGauge && showEngineGaugeOnBoard;
+
+  bool get shouldShowEngineGaugeInGrid =>
+      showEngineGauge && showEngineGaugeInGrid;
+
   final bool showDepthOverlay;
   final bool showPvArrows;
   final bool
@@ -332,6 +343,8 @@ class EngineSettings {
 
   EngineSettings copyWith({
     bool? showEngineGauge,
+    bool? showEngineGaugeOnBoard,
+    bool? showEngineGaugeInGrid,
     bool? showDepthOverlay,
     bool? showPvArrows,
     bool? showEngineAnalysis,
@@ -342,6 +355,10 @@ class EngineSettings {
   }) {
     return EngineSettings(
       showEngineGauge: showEngineGauge ?? this.showEngineGauge,
+      showEngineGaugeOnBoard:
+          showEngineGaugeOnBoard ?? this.showEngineGaugeOnBoard,
+      showEngineGaugeInGrid:
+          showEngineGaugeInGrid ?? this.showEngineGaugeInGrid,
       showDepthOverlay: showDepthOverlay ?? this.showDepthOverlay,
       showPvArrows: showPvArrows ?? this.showPvArrows,
       showEngineAnalysis: showEngineAnalysis ?? this.showEngineAnalysis,
@@ -427,6 +444,20 @@ class EngineSettings {
   }
 }
 
+EngineSettings applyCachedEngineGaugeSurfaceSettings(
+  EngineSettings settings,
+  Map<String, dynamic> cache,
+) {
+  return settings.copyWith(
+    showEngineGaugeOnBoard:
+        cache['showEngineGaugeOnBoard'] as bool? ??
+        settings.showEngineGaugeOnBoard,
+    showEngineGaugeInGrid:
+        cache['showEngineGaugeInGrid'] as bool? ??
+        settings.showEngineGaugeInGrid,
+  );
+}
+
 /// Resolved Stockfish parameters for on-board analysis (eval bar + engine lines).
 ///
 /// Built only from [EngineSettings] so tests and the board provider share one
@@ -471,10 +502,16 @@ class EngineSettingsNotifierNew extends AsyncNotifier<EngineSettings> {
 
   Future<EngineSettings> _loadSettings() async {
     try {
+      final cachedSettings = await _getCachedSettingsMap();
       final userId = _supabase.auth.currentUser?.id;
       if (userId == null) {
-        debugPrint('[EngineSettings] No user logged in, returning defaults');
-        return const EngineSettings();
+        debugPrint(
+          '[EngineSettings] No user logged in, returning local settings',
+        );
+        return applyCachedEngineGaugeSurfaceSettings(
+          const EngineSettings(),
+          cachedSettings,
+        );
       }
 
       // Fetch from Supabase (source of truth)
@@ -489,32 +526,41 @@ class EngineSettingsNotifierNew extends AsyncNotifier<EngineSettings> {
         debugPrint(
           '[EngineSettings] No settings found in Supabase, creating defaults',
         );
-        // Save defaults to Supabase (upsert handles race conditions)
+        final settings = applyCachedEngineGaugeSurfaceSettings(
+          const EngineSettings(),
+          cachedSettings,
+        );
+        // Save defaults to Supabase (upsert handles race conditions). Surface
+        // choices stay device-local and are written only to the local cache.
         try {
-          await _saveToSupabase(const EngineSettings(), userId);
+          await _saveToSupabase(settings, userId);
         } catch (e) {
           // Ignore duplicate errors - another process may have created it
           debugPrint(
             '[EngineSettings] Info: ${e.toString().contains('duplicate') ? 'Settings already exist' : 'Error creating defaults: $e'}',
           );
         }
-        return const EngineSettings();
+        await _cacheSettings(settings);
+        return settings;
       }
 
       final model = EngineSettingsModel.fromSupabase(response);
       // engine_lines_view_index is not part of the dart_mappable model; read it
       // directly to avoid regenerating the mapper for a single field.
-      final settings = EngineSettings(
-        showEngineGauge: model.showEngineGauge,
-        showDepthOverlay: model.showDepthOverlay,
-        showPvArrows: model.showPvArrows,
-        showEngineAnalysis: model.showEngineAnalysis,
-        searchTimeIndex: model.searchTimeIndex,
-        engineLinesView: engineLinesViewFromIndex(
-          response['engine_lines_view_index'] as int?,
+      final settings = applyCachedEngineGaugeSurfaceSettings(
+        EngineSettings(
+          showEngineGauge: model.showEngineGauge,
+          showDepthOverlay: model.showDepthOverlay,
+          showPvArrows: model.showPvArrows,
+          showEngineAnalysis: model.showEngineAnalysis,
+          searchTimeIndex: model.searchTimeIndex,
+          engineLinesView: engineLinesViewFromIndex(
+            response['engine_lines_view_index'] as int?,
+          ),
+          principalVariationIndex: model.principalVariationIndex,
+          maxArrowsOnBoard: model.maxArrowsOnBoard,
         ),
-        principalVariationIndex: model.principalVariationIndex,
-        maxArrowsOnBoard: model.maxArrowsOnBoard,
+        cachedSettings,
       );
 
       // Cache locally
@@ -531,10 +577,27 @@ class EngineSettingsNotifierNew extends AsyncNotifier<EngineSettings> {
     }
   }
 
-  /// Toggle engine gauge visibility
+  /// Toggle evaluation bar visibility across all surfaces without changing the
+  /// saved per-surface choices.
   Future<void> toggleEngineGauge(bool value) async {
     final currentState = state.valueOrNull ?? const EngineSettings();
     final newSettings = currentState.copyWith(showEngineGauge: value);
+    state = AsyncValue.data(newSettings);
+    await _persist(newSettings);
+  }
+
+  /// Toggle evaluation bar visibility on opened boards.
+  Future<void> toggleEngineGaugeOnBoard(bool value) async {
+    final currentState = state.valueOrNull ?? const EngineSettings();
+    final newSettings = currentState.copyWith(showEngineGaugeOnBoard: value);
+    state = AsyncValue.data(newSettings);
+    await _persist(newSettings);
+  }
+
+  /// Toggle evaluation bar visibility in game grids.
+  Future<void> toggleEngineGaugeInGrid(bool value) async {
+    final currentState = state.valueOrNull ?? const EngineSettings();
+    final newSettings = currentState.copyWith(showEngineGaugeInGrid: value);
     state = AsyncValue.data(newSettings);
     await _persist(newSettings);
   }
@@ -722,6 +785,8 @@ class EngineSettingsNotifierNew extends AsyncNotifier<EngineSettings> {
       final db = AppDatabase.instance;
       final json = jsonEncode({
         'showEngineGauge': settings.showEngineGauge,
+        'showEngineGaugeOnBoard': settings.showEngineGaugeOnBoard,
+        'showEngineGaugeInGrid': settings.showEngineGaugeInGrid,
         'showDepthOverlay': settings.showDepthOverlay,
         'showPvArrows': settings.showPvArrows,
         'showEngineAnalysis': settings.showEngineAnalysis,
@@ -734,6 +799,18 @@ class EngineSettingsNotifierNew extends AsyncNotifier<EngineSettings> {
       debugPrint('[EngineSettings] Cached settings locally');
     } catch (e) {
       debugPrint('[EngineSettings] Error caching settings: $e');
+    }
+  }
+
+  Future<Map<String, dynamic>> _getCachedSettingsMap() async {
+    try {
+      final db = AppDatabase.instance;
+      final json = await db.getString(_cacheKey);
+      if (json == null) return const {};
+      return jsonDecode(json) as Map<String, dynamic>;
+    } catch (e) {
+      debugPrint('[EngineSettings] Error reading cached settings map: $e');
+      return const {};
     }
   }
 
@@ -760,6 +837,8 @@ class EngineSettingsNotifierNew extends AsyncNotifier<EngineSettings> {
 
       final settings = EngineSettings(
         showEngineGauge: map['showEngineGauge'] as bool? ?? true,
+        showEngineGaugeOnBoard: map['showEngineGaugeOnBoard'] as bool? ?? true,
+        showEngineGaugeInGrid: map['showEngineGaugeInGrid'] as bool? ?? true,
         showDepthOverlay: map['showDepthOverlay'] as bool? ?? true,
         showPvArrows: map['showPvArrows'] as bool? ?? true,
         showEngineAnalysis: map['showEngineAnalysis'] as bool? ?? true,

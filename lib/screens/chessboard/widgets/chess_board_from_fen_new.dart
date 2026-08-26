@@ -70,7 +70,7 @@ final _gamebaseFinalFenProvider = FutureProvider.autoDispose
 
 bool _shouldShowEvalBar(WidgetRef ref) {
   final settings = ref.watch(engineSettingsProviderNew).valueOrNull;
-  return settings?.showEngineGauge ?? true;
+  return settings?.shouldShowEngineGaugeInGrid ?? true;
 }
 
 bool _hideFinishedSpoilers(WidgetRef ref, GamesTourModel game) {

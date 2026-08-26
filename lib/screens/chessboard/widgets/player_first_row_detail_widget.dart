@@ -455,7 +455,7 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
       // Check if engine gauge is enabled in settings
       final showEvalBarInSettings =
           (engineSettings?.showEngineAnalysis ?? true) &&
-          (engineSettings?.showEngineGauge ?? true);
+          (engineSettings?.shouldShowEngineGaugeOnBoard ?? true);
 
       // We only show the gauge area if:
       // 1. The finished-game result is allowed to be shown

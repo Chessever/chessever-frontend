@@ -6685,7 +6685,7 @@ class _GameSelectorCard extends ConsumerWidget {
     // only when the engine gauge setting is on, the game has started, and the
     // event isn't hiding evaluations through No Spoilers.
     final showEngineGauge =
-        ref.watch(engineSettingsProviderNew).valueOrNull?.showEngineGauge ??
+        ref.watch(engineSettingsProviderNew).valueOrNull?.shouldShowEngineGaugeOnBoard ??
         true;
     var hideEventEvaluation = false;
     if (liveGame.source == GameSource.supabase) {
@@ -8188,7 +8188,7 @@ class _TabletBoardWithSidebar extends ConsumerWidget {
     // PERF: Use .select() to only rebuild when showEngineGauge changes
     final engineGaugeEnabled = ref.watch(
       engineSettingsProviderNew.select(
-        (s) => s.valueOrNull?.showEngineGauge ?? true,
+        (s) => s.valueOrNull?.shouldShowEngineGaugeOnBoard ?? true,
       ),
     );
     // .select() narrows to the derived "hide spoilers" flag (Riverpod best
@@ -8284,7 +8284,7 @@ class _BoardWithSidebar extends ConsumerWidget {
     // PERF: Use .select() to only rebuild when showEngineGauge changes
     final engineGaugeEnabled = ref.watch(
       engineSettingsProviderNew.select(
-        (s) => s.valueOrNull?.showEngineGauge ?? true,
+        (s) => s.valueOrNull?.shouldShowEngineGaugeOnBoard ?? true,
       ),
     );
     // .select() narrows to the derived "hide spoilers" flag (Riverpod best
