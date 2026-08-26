@@ -5,3 +5,16 @@ project_id = "chessever-frontend"
 # verification disabled and enforce the stream token inside the function.
 [functions.onesignal-dispatch]
 verify_jwt = false
+
+# Player photos are requested during onboarding, before the user has a session,
+# so the client can only present the anon key. This project rejects legacy
+# JWT-format anon keys at the Functions gateway (UNAUTHORIZED_LEGACY_JWT), so
+# gateway verification would 401 every pre-auth request and new users would
+# never see a player photo. The function is a public read: it accepts only a
+# numeric fide_id, returns only public storage URLs, gates force_refresh behind
+# a separate secret, and rate-limits per IP in fide_photo_guard.ts.
+#
+# NEVER set this to true. The same applies to every other function in this
+# project — verification is enforced inside the function, not at the gateway.
+[functions.fetch-fide-photo-webp]
+verify_jwt = false
