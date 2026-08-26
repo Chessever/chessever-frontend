@@ -18,3 +18,14 @@ verify_jwt = false
 # project — verification is enforced inside the function, not at the gateway.
 [functions.fetch-fide-photo-webp]
 verify_jwt = false
+
+# Same legacy-anon-key problem as the photo function: any caller without a
+# session presents the anon key and the gateway answers 401, so move
+# annotations were unavailable to guests and on every pre-auth path. Gateway
+# verification bought nothing here anyway — the app offers anonymous sign-in,
+# so a session JWT is trivially obtainable by anyone.
+#
+# Source was recovered with `supabase functions download` (it had never been
+# committed) and deployed byte-for-byte, so this is a gateway change only.
+[functions.fetch-lichess-annotations]
+verify_jwt = false
