@@ -356,6 +356,12 @@ class _CenterContent extends ConsumerWidget {
       );
     }
 
+    // No Spoilers also hides live evaluation. Keep a neutral live-state marker
+    // so the card still communicates that moves and clocks are updating.
+    if (hideSpoilers) {
+      return Center(child: StatusText(status: 'LIVE', color: kPrimaryColor));
+    }
+
     // If engine gauge is disabled, show "LIVE" indicator instead of progress bar
     if (!showEngineGauge) {
       return Center(child: StatusText(status: 'LIVE', color: kPrimaryColor));

@@ -85,6 +85,15 @@ bool _hideFinishedSpoilers(WidgetRef ref, GamesTourModel game) {
   return spoilerState.isLoading || spoilerState.enabled;
 }
 
+bool _hideEventEvaluation(WidgetRef ref, GamesTourModel game) {
+  if (game.source != GameSource.supabase) return false;
+  final spoilerState = ref.watch(eventNoSpoilersProvider(game.tourId));
+  return shouldHideEventEvaluation(
+    isBroadcastGame: true,
+    spoilerState: spoilerState,
+  );
+}
+
 /// Whether board/grid game cards should reserve the side eval bar and mount
 /// [EvaluationBarWidgetForGames] on the first frame.
 ///
@@ -95,7 +104,7 @@ bool _hideFinishedSpoilers(WidgetRef ref, GamesTourModel game) {
 /// Ongoing games still require a started position so upcoming boards stay bar-free.
 bool _shouldShowEvalBarForGame(WidgetRef ref, GamesTourModel game) {
   if (!_shouldShowEvalBar(ref)) return false;
-  if (_hideFinishedSpoilers(ref, game)) return false;
+  if (_hideEventEvaluation(ref, game)) return false;
   if (game.gameStatus.isFinished) return true;
   return game.hasStarted;
 }

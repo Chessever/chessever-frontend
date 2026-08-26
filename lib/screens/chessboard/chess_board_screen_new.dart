@@ -6683,18 +6683,20 @@ class _GameSelectorCard extends ConsumerWidget {
     // Eval bar — wired exactly like the games grid card
     // (`_ChessBoardWithEvaluation`): a thin gauge on the board's left, shown
     // only when the engine gauge setting is on, the game has started, and the
-    // event isn't hiding finished-game spoilers.
+    // event isn't hiding evaluations through No Spoilers.
     final showEngineGauge =
         ref.watch(engineSettingsProviderNew).valueOrNull?.showEngineGauge ??
         true;
-    var hideFinishedSpoilers = false;
-    if (liveGame.gameStatus.isFinished &&
-        liveGame.source == GameSource.supabase) {
+    var hideEventEvaluation = false;
+    if (liveGame.source == GameSource.supabase) {
       final spoiler = ref.watch(eventNoSpoilersProvider(liveGame.tourId));
-      hideFinishedSpoilers = spoiler.isLoading || spoiler.enabled;
+      hideEventEvaluation = shouldHideEventEvaluation(
+        isBroadcastGame: true,
+        spoilerState: spoiler,
+      );
     }
     final showEvalBar =
-        showEngineGauge && liveGame.hasStarted && !hideFinishedSpoilers;
+        showEngineGauge && liveGame.hasStarted && !hideEventEvaluation;
 
     // Player rows are the exact game grid-card rows
     // (PlayerFirstRowDetailWidget in gridView): federation flag, title, full
@@ -8192,17 +8194,20 @@ class _TabletBoardWithSidebar extends ConsumerWidget {
     // .select() narrows to the derived "hide spoilers" flag (Riverpod best
     // practice — same pattern as the game card; avoids rebuilding the board
     // sidebar when unrelated EventNoSpoilersState fields change).
-    final hideSpoilers = ref.watch(
-      eventNoSpoilersProvider(
-        game.tourId,
-      ).select((s) => s.isLoading || s.enabled),
+    final hideEventEvaluation = ref.watch(
+      eventNoSpoilersProvider(game.tourId).select(
+        (state) => shouldHideEventEvaluation(
+          isBroadcastGame: game.source == GameSource.supabase,
+          spoilerState: state,
+        ),
+      ),
     );
     final showEngineGauge =
         engineGaugeEnabled &&
         // Engine toggle (bottom-nav laptop) gates the eval bar too: turning the
         // engine off in the game view hides the bar, not just the PV cards.
         state.showEngineAnalysis &&
-        !(hideSpoilers && game.gameStatus.isFinished);
+        !hideEventEvaluation;
 
     final effectiveEvalWidth = showEngineGauge ? evalBarWidth : 0.0;
 
@@ -8285,17 +8290,20 @@ class _BoardWithSidebar extends ConsumerWidget {
     // .select() narrows to the derived "hide spoilers" flag (Riverpod best
     // practice — same pattern as the game card; avoids rebuilding the board
     // sidebar when unrelated EventNoSpoilersState fields change).
-    final hideSpoilers = ref.watch(
-      eventNoSpoilersProvider(
-        game.tourId,
-      ).select((s) => s.isLoading || s.enabled),
+    final hideEventEvaluation = ref.watch(
+      eventNoSpoilersProvider(game.tourId).select(
+        (state) => shouldHideEventEvaluation(
+          isBroadcastGame: game.source == GameSource.supabase,
+          spoilerState: state,
+        ),
+      ),
     );
     final showEngineGauge =
         engineGaugeEnabled &&
         // Engine toggle (bottom-nav laptop) gates the eval bar too: turning the
         // engine off in the game view hides the bar, not just the PV cards.
         state.showEngineAnalysis &&
-        !(hideSpoilers && game.gameStatus.isFinished);
+        !hideEventEvaluation;
 
     return LayoutBuilder(
       builder: (context, constraints) {
