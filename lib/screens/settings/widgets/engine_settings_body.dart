@@ -54,49 +54,51 @@ class EngineSettingsBody extends ConsumerWidget {
         SettingCard(
           child: Column(
             children: [
-              Row(
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Evaluation Bar',
-                          style: AppTypography.textMdMedium.copyWith(
-                            color: context.colors.textPrimary,
-                            fontSize: 13.f,
+              MergeSemantics(
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Evaluation Bar',
+                            style: AppTypography.textMdMedium.copyWith(
+                              color: context.colors.textPrimary,
+                              fontSize: 13.f,
+                            ),
                           ),
-                        ),
-                        SizedBox(height: 4.h),
-                        Text(
-                          'Display evaluation bars across game views.',
-                          style: AppTypography.textSmRegular.copyWith(
-                            color: context.colors.textSecondary,
-                            fontSize: 11.f,
+                          SizedBox(height: 4.h),
+                          Text(
+                            'Display evaluation bars across game views.',
+                            style: AppTypography.textSmRegular.copyWith(
+                              color: context.colors.textSecondary,
+                              fontSize: 11.f,
+                            ),
                           ),
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
-                  ),
-                  Switch.adaptive(
-                    value: settings.showEngineGauge,
-                    thumbColor: const WidgetStatePropertyAll(kPrimaryColor),
-                    trackColor: WidgetStateProperty.resolveWith(
-                      (states) => states.contains(WidgetState.selected)
-                          ? kPrimaryColor.withValues(alpha: 0.35)
-                          : context.colors.divider.withValues(alpha: 0.5),
+                    Switch.adaptive(
+                      key: const ValueKey('evaluation-bar-master-switch'),
+                      value: settings.showEngineGauge,
+                      thumbColor: const WidgetStatePropertyAll(kPrimaryColor),
+                      trackColor: WidgetStateProperty.resolveWith(
+                        (states) =>
+                            states.contains(WidgetState.selected)
+                                ? kPrimaryColor.withValues(alpha: 0.35)
+                                : context.colors.divider.withValues(alpha: 0.5),
+                      ),
+                      onChanged: (value) {
+                        trackPersist(notifier.toggleEngineGauge(value));
+                      },
                     ),
-                    onChanged: (value) {
-                      trackPersist(notifier.toggleEngineGauge(value));
-                    },
-                  ),
-                ],
+                  ],
+                ),
               ),
-              Divider(
-                height: 20.h,
-                color: context.colors.divider.withValues(alpha: 0.35),
-              ),
+              SizedBox(height: 14.h),
               _EvaluationSurfaceSwitch(
+                switchKey: const ValueKey('evaluation-bar-board-switch'),
                 label: 'Board View',
                 value: settings.showEngineGaugeOnBoard,
                 enabled: settings.showEngineGauge,
@@ -106,6 +108,7 @@ class EngineSettingsBody extends ConsumerWidget {
               ),
               SizedBox(height: 8.h),
               _EvaluationSurfaceSwitch(
+                switchKey: const ValueKey('evaluation-bar-grid-switch'),
                 label: 'Grid View',
                 value: settings.showEngineGaugeInGrid,
                 enabled: settings.showEngineGauge,
@@ -495,12 +498,14 @@ class _EngineLinesToggle extends StatelessWidget {
 
 class _EvaluationSurfaceSwitch extends StatelessWidget {
   const _EvaluationSurfaceSwitch({
+    required this.switchKey,
     required this.label,
     required this.value,
     required this.enabled,
     required this.onChanged,
   });
 
+  final Key switchKey;
   final String label;
   final bool value;
   final bool enabled;
@@ -508,37 +513,47 @@ class _EvaluationSurfaceSwitch extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final textColor = enabled
-        ? context.colors.textPrimary
-        : context.colors.textSecondary.withValues(alpha: 0.6);
-    return Padding(
-      padding: EdgeInsets.only(left: 8.sp),
-      child: Row(
-        children: [
-          Expanded(
-            child: Text(
-              label,
-              style: AppTypography.textSmMedium.copyWith(
-                color: textColor,
-                fontSize: 12.f,
+    final textColor =
+        enabled
+            ? context.colors.textPrimary
+            : context.colors.textSecondary.withValues(alpha: 0.6);
+    return MergeSemantics(
+      child: Padding(
+        padding: EdgeInsets.only(left: 8.sp),
+        child: Row(
+          children: [
+            Expanded(
+              child: Text(
+                label,
+                style: AppTypography.textSmMedium.copyWith(
+                  color: textColor,
+                  fontSize: 12.f,
+                ),
               ),
             ),
-          ),
-          Switch.adaptive(
-            value: value,
-            thumbColor: WidgetStateProperty.resolveWith(
-              (states) => states.contains(WidgetState.selected)
-                  ? kPrimaryColor
-                  : context.colors.textSecondary.withValues(alpha: 0.6),
+            Switch.adaptive(
+              key: switchKey,
+              value: value,
+              thumbColor: WidgetStateProperty.resolveWith((states) {
+                if (states.contains(WidgetState.disabled)) {
+                  return context.colors.textSecondary.withValues(alpha: 0.35);
+                }
+                return states.contains(WidgetState.selected)
+                    ? kPrimaryColor
+                    : context.colors.textSecondary.withValues(alpha: 0.6);
+              }),
+              trackColor: WidgetStateProperty.resolveWith((states) {
+                if (states.contains(WidgetState.disabled)) {
+                  return context.colors.divider.withValues(alpha: 0.3);
+                }
+                return states.contains(WidgetState.selected)
+                    ? kPrimaryColor.withValues(alpha: 0.35)
+                    : context.colors.divider.withValues(alpha: 0.5);
+              }),
+              onChanged: enabled ? onChanged : null,
             ),
-            trackColor: WidgetStateProperty.resolveWith(
-              (states) => states.contains(WidgetState.selected)
-                  ? kPrimaryColor.withValues(alpha: 0.35)
-                  : context.colors.divider.withValues(alpha: 0.5),
-            ),
-            onChanged: enabled ? onChanged : null,
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }

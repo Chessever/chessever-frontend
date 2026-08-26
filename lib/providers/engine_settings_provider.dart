@@ -591,7 +591,10 @@ class EngineSettingsNotifierNew extends AsyncNotifier<EngineSettings> {
     final currentState = state.valueOrNull ?? const EngineSettings();
     final newSettings = currentState.copyWith(showEngineGaugeOnBoard: value);
     state = AsyncValue.data(newSettings);
-    await _persist(newSettings);
+    // Surface preferences are intentionally device-local. Sending the full
+    // settings object to Supabase here would update unrelated synced fields
+    // with a potentially stale snapshot.
+    await _cacheSettings(newSettings);
   }
 
   /// Toggle evaluation bar visibility in game grids.
@@ -599,7 +602,8 @@ class EngineSettingsNotifierNew extends AsyncNotifier<EngineSettings> {
     final currentState = state.valueOrNull ?? const EngineSettings();
     final newSettings = currentState.copyWith(showEngineGaugeInGrid: value);
     state = AsyncValue.data(newSettings);
-    await _persist(newSettings);
+    // Keep this local for the same reason as the board-surface preference.
+    await _cacheSettings(newSettings);
   }
 
   /// Toggle depth overlay visibility
@@ -816,14 +820,11 @@ class EngineSettingsNotifierNew extends AsyncNotifier<EngineSettings> {
 
   Future<EngineSettings> _getCachedSettings() async {
     try {
-      final db = AppDatabase.instance;
-      final json = await db.getString(_cacheKey);
-      if (json == null) {
+      final map = await _getCachedSettingsMap();
+      if (map.isEmpty) {
         debugPrint('[EngineSettings] No cached settings, using defaults');
         return const EngineSettings();
       }
-
-      final map = jsonDecode(json) as Map<String, dynamic>;
 
       // Check if cache has all required fields - if not, it's stale
       // and we should return defaults (which triggers fresh Supabase fetch)
@@ -831,7 +832,7 @@ class EngineSettingsNotifierNew extends AsyncNotifier<EngineSettings> {
         debugPrint(
           '[EngineSettings] Cache is stale (missing fields), clearing and using defaults',
         );
-        await db.remove(_cacheKey);
+        await AppDatabase.instance.remove(_cacheKey);
         return const EngineSettings();
       }
 

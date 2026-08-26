@@ -6685,7 +6685,10 @@ class _GameSelectorCard extends ConsumerWidget {
     // only when the engine gauge setting is on, the game has started, and the
     // event isn't hiding evaluations through No Spoilers.
     final showEngineGauge =
-        ref.watch(engineSettingsProviderNew).valueOrNull?.shouldShowEngineGaugeOnBoard ??
+        ref
+            .watch(engineSettingsProviderNew)
+            .valueOrNull
+            ?.shouldShowEngineGaugeInGrid ??
         true;
     var hideEventEvaluation = false;
     if (liveGame.source == GameSource.supabase) {
@@ -8194,14 +8197,16 @@ class _TabletBoardWithSidebar extends ConsumerWidget {
     // .select() narrows to the derived "hide spoilers" flag (Riverpod best
     // practice — same pattern as the game card; avoids rebuilding the board
     // sidebar when unrelated EventNoSpoilersState fields change).
-    final hideEventEvaluation = ref.watch(
-      eventNoSpoilersProvider(game.tourId).select(
-        (state) => shouldHideEventEvaluation(
-          isBroadcastGame: game.source == GameSource.supabase,
-          spoilerState: state,
-        ),
-      ),
-    );
+    final hideEventEvaluation =
+        game.source == GameSource.supabase &&
+        ref.watch(
+          eventNoSpoilersProvider(game.tourId).select(
+            (state) => shouldHideEventEvaluation(
+              isBroadcastGame: true,
+              spoilerState: state,
+            ),
+          ),
+        );
     final showEngineGauge =
         engineGaugeEnabled &&
         // Engine toggle (bottom-nav laptop) gates the eval bar too: turning the
@@ -8290,14 +8295,16 @@ class _BoardWithSidebar extends ConsumerWidget {
     // .select() narrows to the derived "hide spoilers" flag (Riverpod best
     // practice — same pattern as the game card; avoids rebuilding the board
     // sidebar when unrelated EventNoSpoilersState fields change).
-    final hideEventEvaluation = ref.watch(
-      eventNoSpoilersProvider(game.tourId).select(
-        (state) => shouldHideEventEvaluation(
-          isBroadcastGame: game.source == GameSource.supabase,
-          spoilerState: state,
-        ),
-      ),
-    );
+    final hideEventEvaluation =
+        game.source == GameSource.supabase &&
+        ref.watch(
+          eventNoSpoilersProvider(game.tourId).select(
+            (state) => shouldHideEventEvaluation(
+              isBroadcastGame: true,
+              spoilerState: state,
+            ),
+          ),
+        );
     final showEngineGauge =
         engineGaugeEnabled &&
         // Engine toggle (bottom-nav laptop) gates the eval bar too: turning the

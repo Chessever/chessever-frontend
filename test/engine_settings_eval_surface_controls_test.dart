@@ -38,10 +38,30 @@ void main() {
     expect(find.text('Board View'), findsOneWidget);
     expect(find.text('Grid View'), findsOneWidget);
 
-    final switches = tester.widgetList<Switch>(find.byType(Switch)).toList();
-    expect(switches[0].value, isTrue);
-    expect(switches[1].value, isTrue);
-    expect(switches[2].value, isTrue);
+    expect(
+      tester
+          .widget<Switch>(
+            find.byKey(const ValueKey('evaluation-bar-master-switch')),
+          )
+          .value,
+      isTrue,
+    );
+    expect(
+      tester
+          .widget<Switch>(
+            find.byKey(const ValueKey('evaluation-bar-board-switch')),
+          )
+          .value,
+      isTrue,
+    );
+    expect(
+      tester
+          .widget<Switch>(
+            find.byKey(const ValueKey('evaluation-bar-grid-switch')),
+          )
+          .value,
+      isTrue,
+    );
   });
 
   testWidgets('master off keeps child choices on but disables their controls', (
@@ -73,17 +93,74 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    final switches = tester.widgetList<Switch>(find.byType(Switch)).toList();
-    expect(switches[0].value, isFalse);
-    expect(switches[1].value, isTrue);
-    expect(switches[1].onChanged, isNull);
-    expect(switches[2].value, isTrue);
-    expect(switches[2].onChanged, isNull);
+    final master = tester.widget<Switch>(
+      find.byKey(const ValueKey('evaluation-bar-master-switch')),
+    );
+    final board = tester.widget<Switch>(
+      find.byKey(const ValueKey('evaluation-bar-board-switch')),
+    );
+    final grid = tester.widget<Switch>(
+      find.byKey(const ValueKey('evaluation-bar-grid-switch')),
+    );
+    expect(master.value, isFalse);
+    expect(board.value, isTrue);
+    expect(board.onChanged, isNull);
+    expect(grid.value, isTrue);
+    expect(grid.onChanged, isNull);
+  });
+
+  testWidgets('board and grid switches update independently', (tester) async {
+    late _FakeEngineSettingsNotifier notifier;
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          engineSettingsProviderNew.overrideWith(
+            () =>
+                notifier = _FakeEngineSettingsNotifier(const EngineSettings()),
+          ),
+        ],
+        child: MaterialApp(
+          theme: ThemeData.dark().copyWith(extensions: const [AppColors.dark]),
+          home: Builder(
+            builder: (context) {
+              ResponsiveHelper.init(context);
+              return Scaffold(
+                body: SingleChildScrollView(
+                  child: EngineSettingsBody(trackPersist: (_) {}),
+                ),
+              );
+            },
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const ValueKey('evaluation-bar-board-switch')));
+    await tester.pump();
+
+    expect(notifier.state.requireValue.showEngineGaugeOnBoard, isFalse);
+    expect(notifier.state.requireValue.showEngineGaugeInGrid, isTrue);
+    expect(
+      tester
+          .widget<Switch>(
+            find.byKey(const ValueKey('evaluation-bar-board-switch')),
+          )
+          .value,
+      isFalse,
+    );
+    expect(
+      tester
+          .widget<Switch>(
+            find.byKey(const ValueKey('evaluation-bar-grid-switch')),
+          )
+          .value,
+      isTrue,
+    );
   });
 }
 
-class _FakeEngineSettingsNotifier extends AsyncNotifier<EngineSettings>
-    implements EngineSettingsNotifierNew {
+class _FakeEngineSettingsNotifier extends EngineSettingsNotifierNew {
   _FakeEngineSettingsNotifier(this.settings);
 
   final EngineSettings settings;
@@ -92,5 +169,23 @@ class _FakeEngineSettingsNotifier extends AsyncNotifier<EngineSettings>
   Future<EngineSettings> build() async => settings;
 
   @override
-  dynamic noSuchMethod(Invocation invocation) => null;
+  Future<void> toggleEngineGauge(bool value) async {
+    state = AsyncValue.data(
+      state.requireValue.copyWith(showEngineGauge: value),
+    );
+  }
+
+  @override
+  Future<void> toggleEngineGaugeOnBoard(bool value) async {
+    state = AsyncValue.data(
+      state.requireValue.copyWith(showEngineGaugeOnBoard: value),
+    );
+  }
+
+  @override
+  Future<void> toggleEngineGaugeInGrid(bool value) async {
+    state = AsyncValue.data(
+      state.requireValue.copyWith(showEngineGaugeInGrid: value),
+    );
+  }
 }
