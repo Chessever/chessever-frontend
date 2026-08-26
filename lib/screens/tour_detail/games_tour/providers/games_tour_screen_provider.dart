@@ -11,7 +11,6 @@ import 'package:chessever2/screens/tour_detail/games_tour/providers/games_pin_pr
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_priority_matching.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_app_bar_provider.dart';
-import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_stable_order_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/knockout_stage_round_resolver.dart';
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_mode_provider.dart';
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_screen_provider.dart';
@@ -246,8 +245,8 @@ class GamesTourScreenProvider
       }
 
       // During search / finished-only filter mode, re-apply only filters that
-      // still hide rows. Focus-on-live (hideFinishedGames) is sort-only with a
-      // frozen snapshot — never re-snapshot or re-filter on status stream ticks.
+      // still hide rows. Focus-on-live ordering is derived by the grouped
+      // provider from each status update and never filters rows.
       if (current?.isSearchMode == true) {
         final displayMode = current?.gameDisplayMode;
         if (displayMode == GameDisplayMode.showfinishedGame) {
@@ -270,7 +269,7 @@ class GamesTourScreenProvider
             showFinishedGames();
           }
         }
-        // Text search and focus-on-live keep the current results / snapshot.
+        // Text search keeps its current results.
         return;
       }
       _recompute();
@@ -534,8 +533,6 @@ class GamesTourScreenProvider
     final sortedGames = _sortGamesForFilters(finishedGames, pinnedIds);
     final models = _mapGamesToModels(sortedGames);
 
-    // Finished-only is a real filter; clear any live-focus snapshot.
-    ref.read(liveFocusSnapshotProvider(tourId).notifier).state = null;
     ref.read(gameDisplayModeProvider(tourId).notifier).state =
         GameDisplayMode.showfinishedGame;
 
@@ -549,10 +546,9 @@ class GamesTourScreenProvider
     );
   }
 
-  /// Activates "Focus on live games": keep every board visible and freeze a
-  /// live-first order from the current liveness snapshot. Re-calling after
-  /// deactivate+reactivate takes a fresh snapshot; while active, stream
-  /// status updates do not re-snapshot (see liveFocusSnapshotProvider).
+  /// Activates "Focus on live games": every board stays visible, boards that
+  /// are currently live lead, and each board returns to its normal order as
+  /// soon as it finishes.
   Future<void> hideFinishedGames() async {
     if (aboutTourModel == null) return;
 
@@ -562,10 +558,7 @@ class GamesTourScreenProvider
     // Full membership — focus mode must not drop finished boards.
     final sortedGames = _sortGamesForFilters(allGames, pinnedIds);
     final models = _mapGamesToModels(sortedGames);
-    final liveSnapshot = liveGameIdsForFocusSnapshot(models);
 
-    ref.read(liveFocusSnapshotProvider(tourId).notifier).state =
-        Set<String>.unmodifiable(liveSnapshot);
     ref.read(gameDisplayModeProvider(tourId).notifier).state =
         GameDisplayMode.hideFinishedGames;
 
@@ -588,8 +581,8 @@ class GamesTourScreenProvider
     final sortedGames = _sortGamesForFilters(allGames, pinnedIds);
     final models = _mapGamesToModels(sortedGames);
 
-    ref.read(liveFocusSnapshotProvider(tourId).notifier).state = null;
-    ref.read(gameDisplayModeProvider(tourId).notifier).state = GameDisplayMode.all;
+    ref.read(gameDisplayModeProvider(tourId).notifier).state =
+        GameDisplayMode.all;
 
     state = AsyncValue.data(
       GamesScreenModel(

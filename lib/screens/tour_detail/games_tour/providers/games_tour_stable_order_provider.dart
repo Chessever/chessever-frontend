@@ -267,14 +267,15 @@ int _priorityForGame(
   return 2;
 }
 
-/// Snapshot-based "Focus on live games" ordering.
+/// Partitions one already-ordered round into live boards followed by the rest.
 ///
-/// Boards whose ids were live at activation ([liveGameIdsAtSnapshot]) bubble
-/// above the rest while preserving relative order within each group. Callers
-/// freeze [liveGameIdsAtSnapshot] for the whole focus session so later status
-/// changes do not reshuffle; a new snapshot is only taken on re-activation.
+/// Relative order is preserved inside both groups, so whatever the caller's
+/// baseline ordering decided (pins, favourites, countrymen, board number) still
+/// holds within each tier. All boards remain present — this never filters
+/// finished games out.
 ///
-/// All boards remain present — this never filters finished games out.
+/// Prefer [applyCurrentLiveFocusOrder] for display: passing a live set captured
+/// at some earlier moment is what made finished boards stay pinned at the top.
 List<GamesTourModel> applyLiveFocusOrder({
   required Iterable<GamesTourModel> games,
   required Set<String> liveGameIdsAtSnapshot,
@@ -298,10 +299,29 @@ List<GamesTourModel> applyLiveFocusOrder({
   return <GamesTourModel>[...live, ...rest];
 }
 
-/// Game ids treated as live for a focus-mode snapshot.
+/// Live-first ordering derived from the boards' *current* status.
 ///
-/// Uses [GamesTourModel.effectiveGameStatus] so clock-flagged boards that the
-/// UI already treats as finished are not snapped as live.
+/// This is the display path for "Focus on live games". It reads liveness off
+/// the rows it is handed, and the grouped provider re-runs it on every Supabase
+/// games update, so a board that has just finished leaves the live tier on the
+/// same tick and drops back to its normal favourite / countryman / board-number
+/// slot. Once every board is finished there is nothing to promote and the
+/// baseline order is returned untouched.
+List<GamesTourModel> applyCurrentLiveFocusOrder({
+  required Iterable<GamesTourModel> games,
+}) {
+  final orderedGames = List<GamesTourModel>.of(games, growable: false);
+  return applyLiveFocusOrder(
+    games: orderedGames,
+    liveGameIdsAtSnapshot: liveGameIdsForFocusSnapshot(orderedGames),
+  );
+}
+
+/// Game ids treated as live.
+///
+/// Uses [GamesTourModel.effectiveGameStatus] rather than the raw `status`
+/// column so a clock-flagged board the UI already shows as finished is not
+/// counted as live while the DB write catches up.
 Set<String> liveGameIdsForFocusSnapshot(Iterable<GamesTourModel> games) {
   return <String>{
     for (final game in games)
