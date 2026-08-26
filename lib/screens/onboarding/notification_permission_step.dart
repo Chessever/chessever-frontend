@@ -33,14 +33,9 @@ class NotificationStepPlayer {
     return name.contains(',') ? parts.first : parts.last;
   }
 
-  String get initials {
-    final parts = name.trim().split(RegExp(r'[\s,]+'))
-      ..removeWhere((part) => part.isEmpty);
-    if (parts.isEmpty) return '?';
-    if (parts.length == 1) return parts.first.characters.first.toUpperCase();
-    return (parts.first.characters.first + parts.last.characters.first)
-        .toUpperCase();
-  }
+  /// Delegates to the app-wide helper so "Carlsen, Magnus" reads `MC` here
+  /// exactly as it does everywhere else — given name first, then surname.
+  String get initials => getPlayerInitials(name);
 }
 
 /// The step between picking favourites and the native permission dialog.
@@ -235,7 +230,11 @@ class _FavoritesCluster extends StatelessWidget {
                   ),
                 ),
                 child: ClipOval(
+                  // Keyed by player: the selection upstream can still change,
+                  // and without this the resolved photo state would be matched
+                  // by slot index and stick to whoever lands in that slot.
                   child: _FidePhotoAvatar(
+                    key: ValueKey<String>(shown[i].fideId),
                     player: shown[i],
                     size: diameter - ring * 2,
                   ),
@@ -254,7 +253,7 @@ class _FavoritesCluster extends StatelessWidget {
 /// immediately and the photo crossfades in if one exists, so the cluster is
 /// never blank while the lookup is in flight and never gaps when it fails.
 class _FidePhotoAvatar extends StatefulWidget {
-  const _FidePhotoAvatar({required this.player, required this.size});
+  const _FidePhotoAvatar({required this.player, required this.size, super.key});
 
   final NotificationStepPlayer player;
   final double size;
@@ -269,10 +268,28 @@ class _FidePhotoAvatarState extends State<_FidePhotoAvatar> {
   @override
   void initState() {
     super.initState();
+    _resolvePhoto();
+  }
+
+  @override
+  void didUpdateWidget(_FidePhotoAvatar oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // Belt and braces alongside the ValueKey: if this element is ever reused
+    // for a different player, drop the stale photo before resolving the new
+    // one rather than showing the previous player's face.
+    if (oldWidget.player.fideId != widget.player.fideId) {
+      _photoUrl = null;
+      _resolvePhoto();
+    }
+  }
+
+  void _resolvePhoto() {
     final fideId = widget.player.fideId;
     if (fideId.isEmpty) return;
     FidePhotoService.getPhotoUrlOrNull(fideId).then((url) {
-      if (!mounted || url == null) return;
+      // Guard the id too: a slow response for the previous player must not
+      // land on the current one.
+      if (!mounted || url == null || widget.player.fideId != fideId) return;
       setState(() => _photoUrl = url);
     });
   }
