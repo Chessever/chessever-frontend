@@ -1,5 +1,4 @@
 import 'package:flutter/foundation.dart';
-import 'package:http/http.dart' as http;
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 /// Service for fetching FIDE player photos from Supabase storage.
@@ -10,17 +9,26 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 ///
 /// Caching strategy:
 /// - Positive URLs are cached for the session.
-/// - "Confirmed absent" (edge function returned no URL, or image was a
-///   too-small placeholder) is cached permanently for the session.
-/// - Transient failures (HTTP exception, non-200, HEAD validation error)
-///   are backed off briefly then retried, so a single network blip does not
-///   disable photos for the rest of the session.
+/// - "Confirmed absent" (the edge function reported no photo) is cached for
+///   the session, because that answer already carries the function's own TTL.
+/// - Transient failures (network exception, non-200) are backed off briefly
+///   then retried, so a single blip does not disable photos for the session.
+/// - Concurrent lookups for the same player share one request.
+///
+/// **Placeholder rejection is the edge function's job, not this client's.**
+/// The function validates the *source* bytes from FIDE against a 5KB floor
+/// before it ever uploads, and re-checks the stored file's size on a storage
+/// hit. What it hands back is a Supabase render-CDN URL for a 300x300 WebP —
+/// a re-encoded, downscaled derivative whose byte size has no fixed relation
+/// to that floor. Re-applying a source-sized threshold to it here rejected
+/// perfectly good headshots, and because a rejection was recorded as
+/// "confirmed absent" the player then showed initials for the rest of the
+/// session with no retry. `PlayerInitialsAvatar` still does pixel-level
+/// black/placeholder detection on the decoded image, and falls back to
+/// initials on any load error, so a bad or missing file degrades correctly
+/// without this layer guessing from a byte count.
 class FidePhotoService {
   FidePhotoService._();
-
-  /// Minimum file size in bytes for a valid photo (5KB).
-  /// Placeholder/default images from FIDE are typically smaller.
-  static const int _minValidPhotoSize = 5000;
 
   /// How long to wait before retrying after a transient failure.
   static const Duration _transientRetryBackoff = Duration(minutes: 2);
@@ -28,18 +36,25 @@ class FidePhotoService {
   /// Positive cache: fideId -> resolved URL.
   static final Map<String, String> _urlCache = {};
 
-  /// Confirmed-absent: edge function said no photo, or the image was a
-  /// known placeholder (below [_minValidPhotoSize]). Persists for the session.
+  /// Confirmed-absent: the edge function reported no photo for this player.
+  /// Persists for the session.
   static final Set<String> _confirmedAbsent = {};
 
   /// Transient-failure timestamps. Entries expire after [_transientRetryBackoff].
   static final Map<String, DateTime> _transientFailures = {};
 
+  /// Lookups currently in flight, keyed by fideId.
+  ///
+  /// Several widgets routinely ask for the same player at once — a scorecard
+  /// header beside a list row, or three avatars in the onboarding cluster.
+  /// Without this each one invoked the edge function separately, multiplying
+  /// cold starts and pushing the function's own per-IP rate limit toward the
+  /// point where it starts answering from its degraded path.
+  static final Map<String, Future<String?>> _inFlight = {};
+
   /// Fetches or retrieves a cached FIDE profile photo URL.
   ///
   /// Returns null if no valid photo exists for the player.
-  /// Only returns a URL when the edge function confirms a photo exists
-  /// AND the image file size is above the minimum threshold.
   static Future<String?> getPhotoUrl(
     String fideId, {
     bool forceRefresh = false,
@@ -55,8 +70,23 @@ class FidePhotoService {
           DateTime.now().difference(lastFailure) < _transientRetryBackoff) {
         return null;
       }
+      final pending = _inFlight[fideId];
+      if (pending != null) return pending;
     }
 
+    final request = _resolvePhotoUrl(fideId, forceRefresh: forceRefresh);
+    _inFlight[fideId] = request;
+    try {
+      return await request;
+    } finally {
+      _inFlight.remove(fideId);
+    }
+  }
+
+  static Future<String?> _resolvePhotoUrl(
+    String fideId, {
+    required bool forceRefresh,
+  }) async {
     try {
       final response = await Supabase.instance.client.functions.invoke(
         'fetch-fide-photo-webp',
@@ -72,28 +102,22 @@ class FidePhotoService {
         final url = data['url'] as String?;
 
         if (url == null || url.isEmpty) {
-          _markConfirmedAbsent(fideId);
+          // The function distinguishes "this player has no photo" from "we
+          // could not reach FIDE just now". Only the former is an answer.
+          if (data['transient'] == true) {
+            debugPrint(
+              'FIDE photo unavailable for $fideId '
+              '(transient: ${data['reason']}); will retry',
+            );
+            _transientFailures[fideId] = DateTime.now();
+          } else {
+            _markConfirmedAbsent(fideId);
+          }
           return null;
         }
 
-        final validity = await _checkPhotoValidity(url);
-        switch (validity) {
-          case _PhotoValidity.valid:
-            _markResolved(fideId, url);
-            return url;
-          case _PhotoValidity.tooSmall:
-            debugPrint(
-              'FIDE photo for $fideId rejected: too small (likely placeholder)',
-            );
-            _markConfirmedAbsent(fideId);
-            return null;
-          case _PhotoValidity.unknown:
-            // HEAD failed or content-length missing. Trust the URL and let the
-            // widget-level pixel validation catch real placeholders. Do not
-            // poison the cache on a transient HEAD failure.
-            _markResolved(fideId, url);
-            return url;
-        }
+        _markResolved(fideId, url);
+        return url;
       }
 
       // Non-200 from edge function: transient. Log, back off briefly, retry later.
@@ -116,25 +140,6 @@ class FidePhotoService {
     _urlCache.remove(fideId);
     _confirmedAbsent.add(fideId);
     _transientFailures.remove(fideId);
-  }
-
-  /// Classifies a photo URL by HEAD request. Network errors collapse to
-  /// [unknown] so transient issues never turn into permanent absences.
-  static Future<_PhotoValidity> _checkPhotoValidity(String url) async {
-    try {
-      final response = await http.head(Uri.parse(url));
-      if (response.statusCode != 200) return _PhotoValidity.unknown;
-
-      final contentLength = response.headers['content-length'];
-      if (contentLength == null) return _PhotoValidity.unknown;
-
-      final size = int.tryParse(contentLength) ?? 0;
-      if (size < _minValidPhotoSize) return _PhotoValidity.tooSmall;
-      return _PhotoValidity.valid;
-    } catch (e) {
-      debugPrint('Failed to validate photo URL: $e');
-      return _PhotoValidity.unknown;
-    }
   }
 
   /// Returns the photo URL or null if fideId is null/empty.
@@ -161,5 +166,3 @@ class FidePhotoService {
     _transientFailures.remove(fideId);
   }
 }
-
-enum _PhotoValidity { valid, tooSmall, unknown }
