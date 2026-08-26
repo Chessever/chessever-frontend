@@ -661,7 +661,10 @@ class _ExplorerGameCardState extends ConsumerState<ExplorerGameCard> {
     // reserved whenever the gauge is on, so a card entering or leaving the
     // viewport swaps only the bar's contents — the board never resizes.
     final showEvalBar =
-        ref.watch(engineSettingsProviderNew).valueOrNull?.showEngineGauge ??
+        ref
+            .watch(engineSettingsProviderNew)
+            .valueOrNull
+            ?.shouldShowEngineGaugeInGrid ??
         true;
     final status = widget.game.gameStatus;
     final finished = status.isFinished;
