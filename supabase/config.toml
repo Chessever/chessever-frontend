@@ -29,3 +29,13 @@ verify_jwt = false
 # committed) and deployed byte-for-byte, so this is a gateway change only.
 [functions.fetch-lichess-annotations]
 verify_jwt = false
+
+# RevenueCat posts here with its own shared secret in the `authorization`
+# header, which the function checks itself. Gateway JWT verification would try
+# to parse that secret as a JWT and reject the request before the function ran,
+# so every store purchase would stop granting entitlement. Keep this false.
+#
+# This repo is the only valid source for this function; another repo contains an
+# older fork of it that must not be deployed.
+[functions.revenuecat-webhook]
+verify_jwt = false
