@@ -14,6 +14,7 @@ import 'package:chessever2/screens/group_event/model/tour_event_card_model.dart'
 import 'package:chessever2/screens/library/utils/gamebase_pgn_builder.dart';
 import 'package:chessever2/screens/player_profile/player_profile_data_source.dart';
 import 'package:chessever2/screens/player_profile/player_profile_metadata.dart';
+import 'package:chessever2/screens/player_profile/utils/player_game_recency.dart';
 import 'package:chessever2/screens/player_profile/utils/twic_event_identity.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/utils/chess_title_utils.dart';
@@ -387,13 +388,7 @@ final playerGamesDataProvider = FutureProvider.family
                 .where((game) => !_isVariantEvent(game.tourSlug))
                 .toList();
 
-        // Sort by date descending
-        final epochFallback = DateTime.fromMillisecondsSinceEpoch(0);
-        allGames.sort((a, b) {
-          final aTime = a.lastMoveTime ?? epochFallback;
-          final bTime = b.lastMoveTime ?? epochFallback;
-          return bTime.compareTo(aTime);
-        });
+                allGames.sort(comparePlayerProfileGamesNewestFirst);
 
         return allGames;
       } catch (e) {
@@ -474,13 +469,7 @@ final playerGamesDataKeyProvider = FutureProvider.family.autoDispose<
             .where((game) => !_isVariantEvent(game.tourSlug))
             .toList();
 
-    // Sort by date descending
-    final epochFallback = DateTime.fromMillisecondsSinceEpoch(0);
-    allGames.sort((a, b) {
-      final aTime = a.lastMoveTime ?? epochFallback;
-      final bTime = b.lastMoveTime ?? epochFallback;
-      return bTime.compareTo(aTime);
-    });
+        allGames.sort(comparePlayerProfileGamesNewestFirst);
 
     return allGames;
   } catch (e) {
@@ -838,11 +827,14 @@ Future<List<GamesTourModel>> _getTwicGamesViaDedicatedEndpoint(
           whiteClockCentiseconds: 0,
           blackClockCentiseconds: 0,
           gameStatus: GameStatus.fromString(result),
-          roundId: 'twic_profile',
-          roundSlug:
-              (eco != null && eco.trim().isNotEmpty)
-                  ? eco.trim()
-                  : (timeControl ?? ''),
+          roundId: playerProfileRoundLabel(row, fallback: 'twic_profile'),
+          roundSlug: playerProfileRoundLabel(
+            row,
+            fallback:
+                (eco != null && eco.trim().isNotEmpty)
+                    ? eco.trim()
+                    : (timeControl ?? ''),
+          ),
           tourId: tourId.isNotEmpty ? tourId : canonicalEvent,
           tourSlug: canonicalEvent,
           pgn: pgn,
@@ -863,14 +855,7 @@ Future<List<GamesTourModel>> _getTwicGamesViaDedicatedEndpoint(
         .read(chessPlayerRepositoryProvider)
         .getPlayersByFideIds(fideIds);
     games = enrichGamesWithChessPlayers(games, playersByFideId);
-  }
-
-  final epochFallback = DateTime.fromMillisecondsSinceEpoch(0);
-  games.sort((a, b) {
-    final aTime = a.lastMoveTime ?? epochFallback;
-    final bTime = b.lastMoveTime ?? epochFallback;
-    return bTime.compareTo(aTime);
-  });
+  }  games.sort(comparePlayerProfileGamesNewestFirst);
 
   return games;
 }
@@ -1057,11 +1042,14 @@ Future<List<GamesTourModel>> _getTwicGamesFromGamebase(
           whiteClockCentiseconds: 0,
           blackClockCentiseconds: 0,
           gameStatus: GameStatus.fromString(result),
-          roundId: 'twic_profile',
-          roundSlug:
-              (eco != null && eco.trim().isNotEmpty)
-                  ? eco.trim()
-                  : (timeControl ?? ''),
+          roundId: playerProfileRoundLabel(row, fallback: 'twic_profile'),
+          roundSlug: playerProfileRoundLabel(
+            row,
+            fallback:
+                (eco != null && eco.trim().isNotEmpty)
+                    ? eco.trim()
+                    : (timeControl ?? ''),
+          ),
           tourId: tourId.isNotEmpty ? tourId : canonicalEvent,
           tourSlug: canonicalEvent,
           pgn: pgn,
@@ -1082,14 +1070,7 @@ Future<List<GamesTourModel>> _getTwicGamesFromGamebase(
         .read(chessPlayerRepositoryProvider)
         .getPlayersByFideIds(fideIds);
     games = enrichGamesWithChessPlayers(games, playersByFideId);
-  }
-
-  final epochFallback = DateTime.fromMillisecondsSinceEpoch(0);
-  games.sort((a, b) {
-    final aTime = a.lastMoveTime ?? epochFallback;
-    final bTime = b.lastMoveTime ?? epochFallback;
-    return bTime.compareTo(aTime);
-  });
+  }  games.sort(comparePlayerProfileGamesNewestFirst);
 
   return games;
 }
@@ -3221,13 +3202,7 @@ class PlayerProfileGamesNotifier
         totalCount = page.hasMore ? null : allGames.length;
       }
 
-      // Sort by date descending
-      final epochFallback = DateTime.fromMillisecondsSinceEpoch(0);
-      allGames.sort((a, b) {
-        final aTime = a.lastMoveTime ?? epochFallback;
-        final bTime = b.lastMoveTime ?? epochFallback;
-        return bTime.compareTo(aTime);
-      });
+            allGames.sort(comparePlayerProfileGamesNewestFirst);
 
       if (!mounted || token != _loadToken) return;
       state = state.copyWith(
@@ -3720,11 +3695,14 @@ class PlayerProfileGamesNotifier
       whiteClockCentiseconds: 0,
       blackClockCentiseconds: 0,
       gameStatus: GameStatus.fromString(result),
-      roundId: 'twic_profile',
-      roundSlug:
-          (eco != null && eco.trim().isNotEmpty)
-              ? eco.trim()
-              : (timeControl ?? ''),
+      roundId: playerProfileRoundLabel(row, fallback: 'twic_profile'),
+      roundSlug: playerProfileRoundLabel(
+        row,
+        fallback:
+            (eco != null && eco.trim().isNotEmpty)
+                ? eco.trim()
+                : (timeControl ?? ''),
+      ),
       tourId: canonicalTourId.isNotEmpty ? canonicalTourId : canonicalEvent,
       tourSlug: canonicalEvent,
       lastMove: rowLastMove,
@@ -3834,13 +3812,7 @@ class PlayerProfileGamesNotifier
       }
       if (!mounted || token != _loadToken) return;
 
-      final merged = _mergeGames(state.allGames, pageGames);
-      final epochFallback = DateTime.fromMillisecondsSinceEpoch(0);
-      merged.sort((a, b) {
-        final aTime = a.lastMoveTime ?? epochFallback;
-        final bTime = b.lastMoveTime ?? epochFallback;
-        return bTime.compareTo(aTime);
-      });
+      final merged = _mergeGames(state.allGames, pageGames);      merged.sort(comparePlayerProfileGamesNewestFirst);
       state = state.copyWith(
         allGames: merged,
         isLoadingMore: false,
