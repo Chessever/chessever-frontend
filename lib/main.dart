@@ -69,7 +69,6 @@ import 'services/push_notifications_service.dart';
 import 'theme/app_theme.dart';
 import 'package:chessever2/repository/authentication/auth_repository.dart';
 import 'package:chessever2/providers/app_resume_signal_provider.dart';
-import 'package:chessever2/providers/notification_permission_prompt_provider.dart';
 import 'package:chessever2/providers/push_token_sync_provider.dart';
 
 final RouteObserver<ModalRoute<void>> routeObserver =
@@ -1167,7 +1166,6 @@ class MyApp extends HookConsumerWidget {
     const themeMode = ThemeMode.dark;
     final locale = ref.watch(localeProvider);
     ref.watch(pushTokenSyncProvider);
-    ref.watch(notificationPermissionPromptProvider);
 
     // Listen to auth state changes to set AppsFlyer Customer User ID and
     // ensure the install/launch event fires. startSdk is idempotent — for
