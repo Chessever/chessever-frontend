@@ -1,19 +1,117 @@
 import 'dart:async';
 
+import 'package:chessever2/e2e/e2e_ids.dart';
+import 'package:chessever2/main.dart' show routeObserver;
 import 'package:chessever2/providers/country_dropdown_provider.dart';
 import 'package:chessever2/repository/supabase/game/game_repository.dart';
 import 'package:chessever2/repository/supabase/game/games.dart';
 import 'package:chessever2/screens/countrymen/provider/countrymen_combined_games_provider.dart';
 import 'package:chessever2/screens/favorites/favorite_players_provider.dart';
 import 'package:chessever2/screens/favorites/player_games/provider/favorites_combined_games_provider.dart';
+import 'package:chessever2/screens/favorites/tabs/favorites_games_tab.dart';
 import 'package:chessever2/screens/standings/player_standing_model.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/providers/games_list_view_mode_provider.dart';
+import 'package:chessever2/theme/app_theme.dart';
+import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/game_filter/game_filter_model.dart';
 import 'package:country_picker/country_picker.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 void main() {
   group('Favorites Games public lifecycle', () {
+    testWidgets(
+      'filter Apply survives its modal route and immediately shows the badge',
+      (tester) async {
+        await tester.binding.setSurfaceSize(const Size(390, 844));
+        addTearDown(() => tester.binding.setSurfaceSize(null));
+
+        final repository = _RecordingGameRepository(favoriteDates: const []);
+        final createdNotifiers = <FavoritesCombinedGamesNotifier>[];
+        final container = ProviderContainer(
+          overrides: [
+            gameRepositoryProvider.overrideWithValue(repository),
+            favoritePlayersNotifierProvider.overrideWith(
+              _TestFavoritePlayersNotifier.new,
+            ),
+            gamesListViewModeProvider.overrideWithValue(
+              GamesListViewMode.gamesCard,
+            ),
+            favoritesCombinedGamesProvider.overrideWith((ref) {
+              final notifier = FavoritesCombinedGamesNotifier(ref);
+              createdNotifiers.add(notifier);
+              return notifier;
+            }),
+          ],
+        );
+        addTearDown(container.dispose);
+
+        await tester.pumpWidget(
+          UncontrolledProviderScope(
+            container: container,
+            child: MaterialApp(
+              theme: AppTheme.darkTheme,
+              navigatorObservers: [routeObserver],
+              home: Builder(
+                builder: (context) {
+                  ResponsiveHelper.init(context);
+                  return const Scaffold(body: FavoritesGamesTab());
+                },
+              ),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        expect(createdNotifiers, hasLength(1));
+        const filterButtonKey = ValueKey<String>(
+          E2eIds.favoritesGamesFilterButton,
+        );
+        await tester.tap(find.byKey(filterButtonKey));
+        await tester.pumpAndSettle();
+
+        final whiteWins = find.text('1-0');
+        await tester.ensureVisible(whiteWins);
+        await tester.tap(whiteWins);
+
+        final pendingFilteredDates = Completer<List<DateTime>>();
+        addTearDown(() {
+          if (!pendingFilteredDates.isCompleted) {
+            pendingFilteredDates.complete(const []);
+          }
+        });
+        repository.nextFavoriteDates = pendingFilteredDates;
+        await tester.tap(find.text('Apply Filters'));
+        await tester.pump();
+        await tester.pump();
+
+        expect(createdNotifiers, hasLength(1));
+        expect(
+          container.read(favoritesCombinedGamesProvider).filter.result,
+          GameResultFilter.whiteWins,
+        );
+        expect(
+          container.read(favoritesCombinedGamesProvider).isLoading,
+          isTrue,
+        );
+        expect(
+          repository.favoriteDateFilters.last.result,
+          GameResultFilter.whiteWins,
+        );
+        expect(
+          find.descendant(
+            of: find.byKey(filterButtonKey),
+            matching: find.text('1'),
+          ),
+          findsOneWidget,
+        );
+
+        pendingFilteredDates.complete(const []);
+        await tester.pumpAndSettle();
+      },
+    );
+
     test('player chips compose with an active text search', () async {
       final repository = _RecordingGameRepository();
       final harness = await _favoritesHarness(repository);
@@ -310,14 +408,20 @@ class _CountrySearchCall {
 }
 
 class _RecordingGameRepository implements GameRepository {
-  _RecordingGameRepository({List<Games>? countryDayGames})
-    : countryDayGames = countryDayGames ?? [_game('country-day')];
+  _RecordingGameRepository({
+    List<DateTime>? favoriteDates,
+    List<Games>? countryDayGames,
+  }) : favoriteDates = favoriteDates ?? [DateTime.utc(2026, 8, 26)],
+       countryDayGames = countryDayGames ?? [_game('country-day')];
 
+  final List<DateTime> favoriteDates;
   final List<Games> countryDayGames;
+  final List<GameFilter> favoriteDateFilters = [];
   final List<_FavoriteSearchCall> favoriteSearchCalls = [];
   final List<_CountrySearchCall> countrySearchCalls = [];
   final Map<String, Completer<List<Games>>> controlledFavoriteSearches = {};
   final Map<String, Completer<List<Games>>> controlledCountrySearches = {};
+  Completer<List<DateTime>>? nextFavoriteDates;
 
   @override
   Future<List<DateTime>> getDistinctDatesForFavorites({
@@ -325,7 +429,12 @@ class _RecordingGameRepository implements GameRepository {
     GameFilter? filter,
     int limit = 30,
     int offset = 0,
-  }) async => [DateTime.utc(2026, 8, 26)];
+  }) {
+    favoriteDateFilters.add(filter ?? GameFilter());
+    final controlled = nextFavoriteDates;
+    nextFavoriteDates = null;
+    return controlled?.future ?? Future.value(favoriteDates);
+  }
 
   @override
   Future<List<Games>> getGamesByFideIdsAndDate({

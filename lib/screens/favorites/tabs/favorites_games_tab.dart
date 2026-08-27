@@ -81,7 +81,8 @@ class _FavoritesGamesTabState extends ConsumerState<FavoritesGamesTab>
 
   String get _liveCardsPauseReason => 'favorites_games_scroll_$hashCode';
   // Keep rendering while backgrounded so the OS app-switcher snapshot is not
-  // blank. Route coverage still removes the tab from active provider work.
+  // blank. Route coverage removes the expensive card tree while the provider
+  // watches stay alive long enough for modal results to update this tab.
   bool get _isActiveOnScreen => _routeIsCurrent;
 
   /// Track expanded state for date sections
@@ -409,14 +410,24 @@ class _FavoritesGamesTabState extends ConsumerState<FavoritesGamesTab>
     });
 
     final selectedMode = ref.watch(selectedFavoritesModeProvider);
-    if (selectedMode != FavoritesScreenMode.games || !_isActiveOnScreen) {
+    if (selectedMode != FavoritesScreenMode.games) {
       return const SizedBox.shrink();
     }
 
+    // A filter dialog is a route, so RouteAware marks this tab as covered while
+    // the modal is open. Keep both auto-dispose inputs watched during that
+    // interval: otherwise Apply writes to a short-lived replacement notifier
+    // and the visible tab rebuilds from the default filter (no results change,
+    // no badge). The expensive widget tree can still stay out of the covered
+    // route.
     final state = ref.watch(favoritesCombinedGamesProvider);
+    final favoritesState = ref.watch(favoritePlayersNotifierProvider);
+    if (!_isActiveOnScreen) {
+      return const SizedBox.shrink();
+    }
+
     final viewMode = ref.watch(gamesListViewModeProvider);
     // Watch the notifier provider for optimistic updates when favorites change
-    final favoritesState = ref.watch(favoritePlayersNotifierProvider);
     final playerModels = favoritesState.valueOrNull?.players ?? [];
 
     // Convert PlayerStandingModel to FavoritePlayer for chip display

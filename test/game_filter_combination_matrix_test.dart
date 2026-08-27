@@ -38,6 +38,39 @@ void main() {
     });
   });
 
+  group('Favorites badge accounting', () {
+    test('every visible filter dimension contributes to the badge', () {
+      final currentYear = DateTime.now().year;
+      final singleDimensionFilters = <GameFilter>[
+        GameFilter(result: GameResultFilter.whiteWins),
+        GameFilter(color: GameColorFilter.white),
+        GameFilter(timeControl: GameTimeControlFilter.rapid),
+        GameFilter(live: GameLiveFilter.completed),
+        GameFilter(minRating: 2200),
+        GameFilter(minYear: currentYear),
+      ];
+
+      for (final filter in singleDimensionFilters) {
+        expect(filter.hasActiveFilters, isTrue);
+        expect(filter.activeFilterCount, 1);
+      }
+    });
+
+    test('combined visible dimensions produce the complete badge count', () {
+      final filter = GameFilter(
+        result: GameResultFilter.whiteWins,
+        color: GameColorFilter.white,
+        timeControl: GameTimeControlFilter.rapid,
+        live: GameLiveFilter.completed,
+        minRating: 2200,
+        minYear: DateTime.now().year,
+      );
+
+      expect(filter.hasActiveFilters, isTrue);
+      expect(filter.activeFilterCount, 6);
+    });
+  });
+
   group('server-filtered state is not filtered a second time locally', () {
     final serverMatch = _game(
       id: 'server-match',
