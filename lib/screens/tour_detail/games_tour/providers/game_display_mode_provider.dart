@@ -15,8 +15,9 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 //
 // Note: `GameDisplayMode.hideFinishedGames` is the "Focus on live games"
 // mode. It does not filter finished boards out — it continuously prioritises
-// boards whose current effective status is live, so each board returns to its
-// normal slot the moment it finishes.
+// boards whose current effective status is live. A just-finished board is
+// held in that live tier for a short score-overlay window, then returns to
+// its normal slot.
 final gameDisplayModeProvider = StateProvider.family<GameDisplayMode, String>(
   (ref, tourId) => GameDisplayMode.all,
 );

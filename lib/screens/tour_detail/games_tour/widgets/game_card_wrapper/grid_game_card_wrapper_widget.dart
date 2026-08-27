@@ -7,6 +7,8 @@ import 'package:chessever2/screens/player_profile/player_profile_data_source.dar
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrapper/live_game_card_provider.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/widgets/games_tour_content_provider.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/widgets/live_focus_finish_overlay.dart';
 import 'package:dartchess/dartchess.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -34,6 +36,9 @@ class GridGameCardWrapperWidget extends ConsumerWidget {
   /// to pin into (Favorites, Countrymen).
   final bool showPin;
 
+  /// Side mapping for the finish-score overlay on team boards.
+  final MatchComparison comparison;
+
   const GridGameCardWrapperWidget({
     super.key,
     required this.game,
@@ -49,6 +54,7 @@ class GridGameCardWrapperWidget extends ConsumerWidget {
     this.viewSource = ChessboardView.tour,
     this.playerProfileDataSource = PlayerProfileDataSource.supabase,
     this.showPin = true,
+    this.comparison = MatchComparison.sameOrder,
   });
 
   @override
@@ -86,19 +92,23 @@ class GridGameCardWrapperWidget extends ConsumerWidget {
       return games;
     }
 
-    return GridChessBoardFromFENNew(
-      key: ValueKey('grid_game_${liveGame.gameId}'),
-      gamesTourModel: liveGame,
-      onChanged: () => onChangedWithLiveGames(getUpdatedGamesList()),
-      pinnedIds: pinnedIds,
-      onPinToggle: onPinToggle,
-      fixedBottomSide: fixedBottomSide,
-      allowStockfishFallback: effectiveAllowStockfishFallback,
-      liveBatchKey: effectiveLiveBatchKey,
-      scoreCardViewSource: viewSource,
-      scoreCardGamesContext: getUpdatedGamesList(),
-      playerProfileDataSource: playerProfileDataSource,
-      showPin: showPin,
+    return LiveFocusFinishLayer(
+      game: liveGame,
+      comparison: comparison,
+      child: GridChessBoardFromFENNew(
+        key: ValueKey('grid_game_${liveGame.gameId}'),
+        gamesTourModel: liveGame,
+        onChanged: () => onChangedWithLiveGames(getUpdatedGamesList()),
+        pinnedIds: pinnedIds,
+        onPinToggle: onPinToggle,
+        fixedBottomSide: fixedBottomSide,
+        allowStockfishFallback: effectiveAllowStockfishFallback,
+        liveBatchKey: effectiveLiveBatchKey,
+        scoreCardViewSource: viewSource,
+        scoreCardGamesContext: getUpdatedGamesList(),
+        playerProfileDataSource: playerProfileDataSource,
+        showPin: showPin,
+      ),
     );
   }
 }

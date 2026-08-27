@@ -9,6 +9,7 @@ import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrap
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrapper/game_card_wrapper_widget.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrapper/grid_game_card_wrapper_widget.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrapper/live_game_card_provider.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/widgets/games_tour_content_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/round_header_widget.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/match_header_widget.dart';
@@ -239,7 +240,10 @@ class GamesListView extends ConsumerWidget {
                     rowContent = SizedBox(width: itemWidth, child: rowContent);
                   }
                 }
-                return rowContent;
+                return KeyedSubtree(
+                  key: ValueKey<String>('games-row-${lookup.game1.gameId}'),
+                  child: rowContent,
+                );
               }
 
               return const SizedBox.shrink();
@@ -338,6 +342,10 @@ class GamesListView extends ConsumerWidget {
       liveBatchKey: liveBatchKeyByGameId[game.gameId],
       orderedGames: orderedGamesList,
       gameIndex: globalIndex,
+      comparison:
+          fixedBottomSide == Side.black
+              ? MatchComparison.oppositeOrder
+              : MatchComparison.sameOrder,
       onChangedWithLiveGames:
           (updatedGames) => ref
               .read(gameCardWrapperProvider)
