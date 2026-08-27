@@ -14,12 +14,11 @@ void main() {
       ]);
     });
 
-    test('individual knockouts insert Bracket before Standings', () {
+    test('individual knockouts hide Standings', () {
       expect(knockoutTournamentDetailModes, const [
         TournamentDetailScreenMode.about,
         TournamentDetailScreenMode.games,
         TournamentDetailScreenMode.bracket,
-        TournamentDetailScreenMode.standings,
       ]);
     });
 
@@ -45,7 +44,7 @@ void main() {
           knockoutTournamentDetailModes,
           TournamentDetailScreenMode.standings,
         ),
-        3,
+        1,
       );
       expect(
         tournamentDetailModeForPage(knockoutTournamentDetailModes, 2),
@@ -299,7 +298,7 @@ void main() {
       );
     });
 
-    test('search visibility interpolates around Bracket', () {
+    test('search visibility fades from Games into Bracket', () {
       expect(
         tournamentDetailSearchVisibility(knockoutTournamentDetailModes, 1),
         1,
@@ -311,14 +310,6 @@ void main() {
       expect(
         tournamentDetailSearchVisibility(knockoutTournamentDetailModes, 2),
         0,
-      );
-      expect(
-        tournamentDetailSearchVisibility(knockoutTournamentDetailModes, 2.5),
-        0.5,
-      );
-      expect(
-        tournamentDetailSearchVisibility(knockoutTournamentDetailModes, 3),
-        1,
       );
     });
 
