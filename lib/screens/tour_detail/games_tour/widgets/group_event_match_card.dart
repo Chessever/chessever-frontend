@@ -397,6 +397,7 @@ class GroupEventMatchCard extends ConsumerWidget {
       liveBatchKey: liveBatchKeyByGameId[matchWithComparison.game.gameId],
       orderedGames: fullGamesList,
       gameIndex: gameIndex,
+      comparison: matchWithComparison.comparison,
       fixedBottomSide: teamOneBottomSide(matchWithComparison.comparison),
       onChangedWithLiveGames:
           (updatedGames) => ref

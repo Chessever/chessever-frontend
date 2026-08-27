@@ -9,6 +9,7 @@ import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card.dart
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrapper/game_card_wrapper_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrapper/live_game_card_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/games_tour_content_provider.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/widgets/live_focus_finish_overlay.dart';
 import 'package:dartchess/dartchess.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -141,35 +142,39 @@ class GameCardWrapperWidget extends ConsumerWidget {
     // event section), so without this a single live tick repaints the whole
     // section. One cheap compositing layer, big win on live-heavy lists.
     return RepaintBoundary(
-      child:
-          isChessBoardVisible
-              ? ChessBoardFromFENNew(
-                key: ValueKey(keyValue),
-                gamesTourModel: liveGame,
-                onChanged: navigateToGame,
-                pinnedIds: gamesData.pinnedGamedIs,
-                onPinToggle: handlePinToggle,
-                fixedBottomSide: fixedBottomSide,
-                allowStockfishFallback: effectiveAllowStockfishFallback,
-                liveBatchKey: effectiveLiveBatchKey,
-                scoreCardViewSource: viewSource,
-                scoreCardGamesContext: getUpdatedGamesList(),
-                playerProfileDataSource: playerProfileDataSource,
-              )
-              : GameCard(
-                key: ValueKey(keyValue),
-                matchComparison: MatchWithComparison(
-                  game: liveGame,
-                  comparison: comparison,
+      child: LiveFocusFinishLayer(
+        game: liveGame,
+        comparison: comparison,
+        child:
+            isChessBoardVisible
+                ? ChessBoardFromFENNew(
+                  key: ValueKey(keyValue),
+                  gamesTourModel: liveGame,
+                  onChanged: navigateToGame,
+                  pinnedIds: gamesData.pinnedGamedIs,
+                  onPinToggle: handlePinToggle,
+                  fixedBottomSide: fixedBottomSide,
+                  allowStockfishFallback: effectiveAllowStockfishFallback,
+                  liveBatchKey: effectiveLiveBatchKey,
+                  scoreCardViewSource: viewSource,
+                  scoreCardGamesContext: getUpdatedGamesList(),
+                  playerProfileDataSource: playerProfileDataSource,
+                )
+                : GameCard(
+                  key: ValueKey(keyValue),
+                  matchComparison: MatchWithComparison(
+                    game: liveGame,
+                    comparison: comparison,
+                  ),
+                  pinnedIds: gamesData.pinnedGamedIs,
+                  onPinToggle: handlePinToggle,
+                  onShare: (game) => showGameShareOverlay(context, ref, game),
+                  allowStockfishFallback: effectiveAllowStockfishFallback,
+                  footerDetail: footerDetail,
+                  showPin: showPin,
+                  onTap: navigateToGame,
                 ),
-                pinnedIds: gamesData.pinnedGamedIs,
-                onPinToggle: handlePinToggle,
-                onShare: (game) => showGameShareOverlay(context, ref, game),
-                allowStockfishFallback: effectiveAllowStockfishFallback,
-                footerDetail: footerDetail,
-                showPin: showPin,
-                onTap: navigateToGame,
-              ),
+      ),
     );
   }
 }

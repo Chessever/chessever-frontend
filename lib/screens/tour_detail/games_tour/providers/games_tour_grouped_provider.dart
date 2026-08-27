@@ -7,6 +7,7 @@ import 'package:chessever2/screens/tour_detail/games_tour/providers/games_pin_pr
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_screen_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_stable_order_provider.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/providers/live_focus_finish_hold_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/lichess_pairings_fallback_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/knockout_tournament_state_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/knockout_stage_round_resolver.dart';
@@ -428,6 +429,12 @@ final gamesTourGroupedProvider = Provider.autoDispose<GroupedGamesData>((ref) {
   final hadGroupedGamesBeforeOrdering = gamesByRound.values.any(
     (games) => games.isNotEmpty,
   );
+  final heldFinishedGameIds = _heldFinishedIdsForLiveFocus(
+    ref: ref,
+    tourId: tourId,
+    displayMode: displayMode,
+    gamesByRound: gamesByRound,
+  );
   for (final roundId in gamesByRound.keys.toList(growable: false)) {
     final roundGames = gamesByRound[roundId]!;
     final newestBoardsFirst =
@@ -448,12 +455,15 @@ final gamesTourGroupedProvider = Provider.autoDispose<GroupedGamesData>((ref) {
     );
     // "Focus on live games" is derived here, on every rebuild, from the boards'
     // current effective status — this provider watches `gamesTourProvider`, so
-    // each Supabase games update re-runs the partition. Stable priority order
-    // stays the baseline, which is what returns a finished board to its normal
-    // slot instead of leaving it stranded at the top.
+    // each Supabase games update re-runs the partition. Just-finished boards
+    // stay in the live tier for the score-overlay hold, then drop back to the
+    // stable priority slot.
     gamesByRound[roundId] =
         displayMode == GameDisplayMode.hideFinishedGames
-            ? applyCurrentLiveFocusOrder(games: ordered)
+            ? applyCurrentLiveFocusOrder(
+              games: ordered,
+              heldFinishedGameIds: heldFinishedGameIds,
+            )
             : ordered;
   }
 
@@ -564,6 +574,26 @@ List<GamesTourModel> sortTournamentRoundGamesByBoard(
   Iterable<GamesTourModel> games,
 ) {
   return sortTournamentRoundGamesByPriority(games: games);
+}
+
+Set<String> _heldFinishedIdsForLiveFocus({
+  required Ref ref,
+  required String? tourId,
+  required GameDisplayMode displayMode,
+  required Map<String, List<GamesTourModel>> gamesByRound,
+}) {
+  if (tourId == null || displayMode != GameDisplayMode.hideFinishedGames) {
+    return const <String>{};
+  }
+  ref.watch(liveFocusFinishHoldProvider(tourId));
+  final finishedIds = <String>{
+    for (final games in gamesByRound.values)
+      for (final game in games)
+        if (game.effectiveGameStatus.isFinished) game.gameId,
+  };
+  return ref
+      .read(liveFocusFinishHoldProvider(tourId).notifier)
+      .ingestFinishedIds(finishedIds);
 }
 
 bool _shouldIncludeGame(GameDisplayMode mode, GamesTourModel game) {

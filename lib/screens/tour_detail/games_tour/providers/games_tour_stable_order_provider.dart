@@ -303,17 +303,21 @@ List<GamesTourModel> applyLiveFocusOrder({
 ///
 /// This is the display path for "Focus on live games". It reads liveness off
 /// the rows it is handed, and the grouped provider re-runs it on every Supabase
-/// games update, so a board that has just finished leaves the live tier on the
-/// same tick and drops back to its normal favourite / countryman / board-number
-/// slot. Once every board is finished there is nothing to promote and the
-/// baseline order is returned untouched.
+/// games update, so a board that has just finished leaves the live tier —
+/// unless it is in [heldFinishedGameIds], which keeps it in the live group for
+/// the short score-overlay window. Once every board is finished (and no holds
+/// remain) the baseline order is returned untouched.
 List<GamesTourModel> applyCurrentLiveFocusOrder({
   required Iterable<GamesTourModel> games,
+  Set<String> heldFinishedGameIds = const <String>{},
 }) {
   final orderedGames = List<GamesTourModel>.of(games, growable: false);
   return applyLiveFocusOrder(
     games: orderedGames,
-    liveGameIdsAtSnapshot: liveGameIdsForFocusSnapshot(orderedGames),
+    liveGameIdsAtSnapshot: <String>{
+      ...liveGameIdsForFocusSnapshot(orderedGames),
+      ...heldFinishedGameIds,
+    },
   );
 }
 

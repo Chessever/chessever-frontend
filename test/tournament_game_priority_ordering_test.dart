@@ -742,6 +742,27 @@ void main() {
       },
     );
 
+    test('held just-finished board stays in the live tier until release', () {
+      final afterBoard2Finishes = applyCurrentLiveFocusOrder(
+        games: sortTournamentRoundGamesByPriority(
+          games: <GamesTourModel>[
+            _game('board-1', boardNr: 1, status: GameStatus.whiteWins),
+            _game('board-2', boardNr: 2, status: GameStatus.blackWins),
+            _game('board-3', boardNr: 3),
+            _game('board-4', boardNr: 4, status: GameStatus.draw),
+          ],
+        ),
+        heldFinishedGameIds: const <String>{'board-2'},
+      );
+
+      expect(afterBoard2Finishes.map((g) => g.gameId), <String>[
+        'board-2',
+        'board-3',
+        'board-1',
+        'board-4',
+      ]);
+    });
+
     test('re-activation takes a fresh live snapshot', () {
       final firstSnapshot = liveGameIdsForFocusSnapshot(<GamesTourModel>[
         _game('a', boardNr: 1),

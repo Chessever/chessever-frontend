@@ -5,6 +5,7 @@ import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card.dart
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrapper/game_card_wrapper_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrapper/live_game_card_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/games_tour_content_provider.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/widgets/live_focus_finish_overlay.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
@@ -108,27 +109,31 @@ class _GroupEventGameCardTile extends ConsumerWidget {
       return updatedGames;
     }
 
-    return GameCard(
-      // Use actual comparison to maintain team positions.
-      matchComparison: liveMatch,
-      onPinToggle: (game) async {
-        await ref
-            .read(gamesTourScreenProvider.notifier)
-            .togglePinGame(game.gameId, sourceTourId: game.tourId);
-      },
-      pinnedIds: gamesData.pinnedGamedIs,
-      allowStockfishFallback: allowStockfishFallback,
-      onTap: () {
-        ref
-            .read(gameCardWrapperProvider)
-            .navigateToChessBoard(
-              context: context,
-              orderedGames: buildUpdatedGamesList(),
-              gameIndex: gameIndex,
-              onReturnFromChessboard: onReturnFromChessboard,
-              listPolicy: boardNavigationListPolicyForGamesData(gamesData),
-            );
-      },
+    return LiveFocusFinishLayer(
+      game: liveGame,
+      comparison: match.comparison,
+      child: GameCard(
+        // Use actual comparison to maintain team positions.
+        matchComparison: liveMatch,
+        onPinToggle: (game) async {
+          await ref
+              .read(gamesTourScreenProvider.notifier)
+              .togglePinGame(game.gameId, sourceTourId: game.tourId);
+        },
+        pinnedIds: gamesData.pinnedGamedIs,
+        allowStockfishFallback: allowStockfishFallback,
+        onTap: () {
+          ref
+              .read(gameCardWrapperProvider)
+              .navigateToChessBoard(
+                context: context,
+                orderedGames: buildUpdatedGamesList(),
+                gameIndex: gameIndex,
+                onReturnFromChessboard: onReturnFromChessboard,
+                listPolicy: boardNavigationListPolicyForGamesData(gamesData),
+              );
+        },
+      ),
     );
   }
 }
