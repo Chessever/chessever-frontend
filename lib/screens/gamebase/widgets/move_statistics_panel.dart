@@ -1,4 +1,5 @@
 import 'dart:ui' show ImageFilter;
+
 import 'package:chessever2/providers/board_settings_provider_new.dart';
 import 'package:chessever2/revenue_cat_service/subscribe_state.dart';
 import 'package:chessever2/utils/app_typography.dart';
@@ -20,6 +21,7 @@ import '../../../utils/responsive_helper.dart';
 import '../models/models.dart';
 import '../providers/explorer_game_focus_provider.dart';
 import '../providers/gamebase_explorer_state.dart';
+
 import 'package:motor/motor.dart';
 
 import '../providers/gamebase_providers.dart';
@@ -34,10 +36,11 @@ const CupertinoMotion _kExplorerSmoothMotion = CupertinoMotion.smooth(
 );
 final Curve _kExplorerSmoothCurve = _kExplorerSmoothMotion.toCurve;
 
-const double _kMoveColumnWidth = 74;
-const double _kGamesColumnWidth = 84;
-const double _kLastColumnWidth = 56;
-const double _kColumnGap = 6;
+const int _kMoveColumnFlex = 2;
+const int _kResultsColumnFlex = 4;
+const int _kGamesColumnFlex = 3;
+const int _kLastColumnFlex = 2;
+const double _kColumnGap = 4;
 
 /// Free users see explorer aggregates up to and including the 10th full move
 /// (ply 20). `currentMoveNumber` is `ply + 1`, so anything above 20 means the
@@ -206,73 +209,168 @@ class _ViewPositionGamesButton extends StatelessWidget {
   }
 }
 
-/// Tappable column header. Cycles ascending -> descending -> unsorted, the
-/// same three states the desktop header cycles through. Touch has no hover,
-/// so the idle affordance is a permanently dimmed sort glyph rather than the
-/// desktop's hover-revealed one.
-class _SortHeader extends StatelessWidget {
-  const _SortHeader({
+/// Compact Explorer header. The filter sits before the data columns and the
+/// selected sort is communicated by color and a quiet underline, not glyphs.
+class ExplorerMovesHeader extends StatelessWidget {
+  const ExplorerMovesHeader({
+    required this.sort,
+    required this.onSort,
+    this.onFilter,
+    required this.hasActiveFilters,
+    super.key,
+  });
+
+  final ExplorerMoveSort sort;
+  final ValueChanged<ExplorerMoveSortField> onSort;
+  final VoidCallback? onFilter;
+  final bool hasActiveFilters;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Expanded(
+          flex: _kMoveColumnFlex,
+          child:
+              onFilter == null
+                  ? const SizedBox(height: 44)
+                  : Tooltip(
+                    message: 'Explorer filters',
+                    child: Semantics(
+                      button: true,
+                      label: 'Explorer filters',
+                      child: IconButton(
+                        key: const ValueKey<String>(
+                          'opening_explorer_filter_button',
+                        ),
+                        onPressed: onFilter,
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints(
+                          minWidth: 44,
+                          minHeight: 44,
+                        ),
+                        icon: Stack(
+                          clipBehavior: Clip.none,
+                          children: [
+                            Icon(
+                              Icons.tune_rounded,
+                              size: 20.ic,
+                              color: context.colors.textSecondary,
+                            ),
+                            if (hasActiveFilters)
+                              Positioned(
+                                top: -2,
+                                right: -2,
+                                child: Container(
+                                  width: 7.sp,
+                                  height: 7.sp,
+                                  decoration: BoxDecoration(
+                                    color: context.colors.textPrimary,
+                                    shape: BoxShape.circle,
+                                  ),
+                                ),
+                              ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+        ),
+        SizedBox(width: _kColumnGap.sp),
+        Expanded(
+          flex: _kResultsColumnFlex,
+          child: _ExplorerSortHeader(
+            label:
+                sort.field == ExplorerMoveSortField.score
+                    ? (sort.resultSide == ExplorerResultSortSide.black
+                        ? 'Results B'
+                        : 'Results W')
+                    : 'Results',
+            field: ExplorerMoveSortField.score,
+            align: TextAlign.center,
+            active: sort.field == ExplorerMoveSortField.score,
+            onSort: onSort,
+          ),
+        ),
+        SizedBox(width: _kColumnGap.sp),
+        Expanded(
+          flex: _kGamesColumnFlex,
+          child: _ExplorerSortHeader(
+            label: 'Games',
+            field: ExplorerMoveSortField.games,
+            align: TextAlign.right,
+            active: sort.field == ExplorerMoveSortField.games,
+            onSort: onSort,
+          ),
+        ),
+        SizedBox(width: _kColumnGap.sp),
+        Expanded(
+          flex: _kLastColumnFlex,
+          child: _ExplorerSortHeader(
+            label: 'Last',
+            field: ExplorerMoveSortField.last,
+            align: TextAlign.right,
+            active: sort.field == ExplorerMoveSortField.last,
+            onSort: onSort,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _ExplorerSortHeader extends StatelessWidget {
+  const _ExplorerSortHeader({
     required this.label,
     required this.field,
     required this.align,
-    required this.sort,
+    required this.active,
     required this.onSort,
-    this.color,
   });
 
   final String label;
   final ExplorerMoveSortField field;
   final TextAlign align;
-  final ExplorerMoveSort? sort;
+  final bool active;
   final ValueChanged<ExplorerMoveSortField> onSort;
-  final Color? color;
 
   @override
   Widget build(BuildContext context) {
-    final active = sort?.field == field;
-    final ascending = sort?.ascending ?? true;
-    final rightAligned = align == TextAlign.right;
+    final alignment = switch (align) {
+      TextAlign.right => Alignment.centerRight,
+      TextAlign.center => Alignment.center,
+      _ => Alignment.centerLeft,
+    };
 
-    final children = <Widget>[
-      Flexible(
-        child: Text(
-          label,
-          textAlign: align,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: TextStyle(
-            color:
-                active
-                    ? context.colors.textPrimary
-                    : (color ?? context.colors.textSecondary),
-            fontSize: 11.f,
-            fontWeight: active ? FontWeight.w700 : FontWeight.w600,
+    return Semantics(
+      key: ValueKey<String>('opening_explorer_sort_${field.name}'),
+      button: true,
+      selected: active,
+      label: 'Sort by $label',
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: () => onSort(field),
+          borderRadius: BorderRadius.circular(6.br),
+          child: Container(
+            alignment: alignment,
+            constraints: const BoxConstraints(minHeight: 44),
+            child: Text(
+              label,
+              textAlign: align,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color:
+                    active
+                        ? context.colors.textPrimary
+                        : context.colors.textSecondary,
+                fontSize: 11.f,
+                fontWeight: active ? FontWeight.w700 : FontWeight.w600,
+              ),
+            ),
           ),
         ),
-      ),
-      SizedBox(width: 2.sp),
-      Icon(
-        active
-            ? (ascending
-                ? Icons.arrow_upward_rounded
-                : Icons.arrow_downward_rounded)
-            : Icons.unfold_more_rounded,
-        size: 11.ic,
-        color:
-            active
-                ? kPrimaryColor
-                : context.colors.textSecondary.withValues(alpha: 0.45),
-      ),
-    ];
-
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: () => onSort(field),
-      child: Row(
-        mainAxisAlignment:
-            rightAligned ? MainAxisAlignment.end : MainAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
-        children: rightAligned ? children.reversed.toList() : children,
       ),
     );
   }
@@ -330,10 +428,7 @@ void _syncExplorerHeaderMode({
   // Prefer content-space (no layout read). Same list as the page grid.
   final double delta;
   if (pageAnchor != null && pageAnchor.isFinite) {
-    delta = explorerGamesPinDelta(
-      pixels: position.pixels,
-      anchor: pageAnchor,
-    );
+    delta = explorerGamesPinDelta(pixels: position.pixels, anchor: pageAnchor);
   } else {
     return;
   }
@@ -368,6 +463,8 @@ class MoveStatisticsPanel extends HookConsumerWidget {
   const MoveStatisticsPanel({
     super.key,
     this.onMove,
+    this.onFilter,
+    this.hasActiveFilters = false,
     this.listBottomPadding,
     this.gamesPageHeight,
   });
@@ -377,6 +474,12 @@ class MoveStatisticsPanel extends HookConsumerWidget {
   /// embedding the panel in the chess board screen so taps play on the user's
   /// game rather than diverging into the explorer's standalone exploration.
   final void Function(String uci)? onMove;
+
+  /// Opens the filters for this Explorer panel. It intentionally lives beside
+  /// the move columns rather than in the shared Board app bar.
+  final VoidCallback? onFilter;
+
+  final bool hasActiveFilters;
 
   /// Extra scroll padding under the move/games list so the last rows clear a
   /// floating bottom nav (board `extendBody` / translucent bar). When null,
@@ -398,11 +501,13 @@ class MoveStatisticsPanel extends HookConsumerWidget {
     final state = ref.watch(gamebaseExplorerProvider);
     final hasStaleData = state.moveAggregates.isNotEmpty;
 
-    // Column ordering is view state: it survives navigation between positions
-    // (like desktop) but never leaves this panel.
-    final sort = useState<ExplorerMoveSort?>(null);
-    void cycleSort(ExplorerMoveSortField field) {
-      sort.value = ExplorerMoveSort.cycle(sort.value, field);
+    // The Explorer opens in its most useful order: most played first. Tapping
+    // another named column switches to that column's single predictable order.
+    final sort = useState<ExplorerMoveSort>(
+      defaultExplorerMoveSort(ExplorerMoveSortField.games),
+    );
+    void selectSort(ExplorerMoveSortField field) {
+      sort.value = nextExplorerMoveSort(sort.value, field);
     }
 
     // Collapse the move-column header once inline game cards reach the top.
@@ -549,10 +654,11 @@ class MoveStatisticsPanel extends HookConsumerWidget {
     final isSubscribed = ref.watch(
       subscriptionProvider.select((s) => s.isSubscribed),
     );
+    final effectiveMoveNumber =
+        ref.read(gamebaseExplorerProvider.notifier).effectiveMoveNumber;
     // Mirror `requirePremiumGuard`: bypass in debug so engineers can exercise
     // deep positions without a live RevenueCat subscription.
-    final pastFreeLimit =
-        state.currentMoveNumber > kFreeExplorerMoveNumberLimit;
+    final pastFreeLimit = effectiveMoveNumber > kFreeExplorerMoveNumberLimit;
     final showGate = pastFreeLimit && !isSubscribed && !kDebugMode;
     // True when the current position is the last free step — the next ply
     // would land past move 10. Used to paywall *before* navigating into the
@@ -561,7 +667,7 @@ class MoveStatisticsPanel extends HookConsumerWidget {
     final nextStepCrossesLimit =
         !isSubscribed &&
         !kDebugMode &&
-        state.currentMoveNumber >= kFreeExplorerMoveNumberLimit;
+        effectiveMoveNumber >= kFreeExplorerMoveNumberLimit;
 
     // First load (or a position change that cleared the table) shows the same
     // header+rows scaffold with shimmering skeleton rows instead of a centered
@@ -579,14 +685,37 @@ class MoveStatisticsPanel extends HookConsumerWidget {
         state.totalGames <= kExplorerInlineGamesLimit;
     final pagesGames = showInlineGames && pageMetrics != null;
 
+    final movesHeader = ExplorerMovesHeader(
+      key: const ValueKey<String>('explorer_header_moves'),
+      sort: sort.value,
+      onSort: selectSort,
+      onFilter: onFilter,
+      hasActiveFilters: hasActiveFilters,
+    );
+
+    Widget withMovesHeader(Widget body) {
+      return Column(
+        children: [
+          Padding(
+            padding: EdgeInsets.symmetric(horizontal: 12.sp, vertical: 6.sp),
+            child: movesHeader,
+          ),
+          Divider(color: context.colors.divider, height: 1),
+          Expanded(child: body),
+        ],
+      );
+    }
+
     if (state.error != null && !showGate) {
-      return Center(
-        child: Padding(
-          padding: EdgeInsets.all(16.sp),
-          child: Text(
-            state.error!,
-            style: TextStyle(color: kRedColor, fontSize: 14.f),
-            textAlign: TextAlign.center,
+      return withMovesHeader(
+        Center(
+          child: Padding(
+            padding: EdgeInsets.all(16.sp),
+            child: Text(
+              state.error!,
+              style: TextStyle(color: kRedColor, fontSize: 14.f),
+              textAlign: TextAlign.center,
+            ),
           ),
         ),
       );
@@ -611,17 +740,19 @@ class MoveStatisticsPanel extends HookConsumerWidget {
       // "No games match this position".
       final pliesFromFen = _explorerPliesFromFen(state.currentFen);
       final pastIndexedWindow =
-          state.currentMoveNumber > kExplorerIndexedAggregateMoveNumberLimit ||
+          effectiveMoveNumber > kExplorerIndexedAggregateMoveNumberLimit ||
           state.exploredMoves.length >=
               kExplorerIndexedAggregateMoveNumberLimit ||
           pliesFromFen >= kExplorerIndexedAggregateMoveNumberLimit;
 
       if (!pastIndexedWindow) {
-        return const _ExplorerEmpty(
-          title: 'No games match this position',
-          message:
-              'No master/online games are indexed for the position on the '
-              'board.',
+        return withMovesHeader(
+          const _ExplorerEmpty(
+            title: 'No games match this position',
+            message:
+                'No master/online games are indexed for the position on the '
+                'board.',
+          ),
         );
       }
 
@@ -631,87 +762,36 @@ class MoveStatisticsPanel extends HookConsumerWidget {
         fenPositionHasGamesProvider(state.currentFen),
       );
 
-      return hasFenGames.maybeWhen(
-        data:
-            (hasGames) =>
-                hasGames
-                    ? _ExplorerEmpty(
-                      title: 'No move statistics for this position',
-                      message:
-                          'Move statistics need the full line from the start. '
-                          'Games that reached this position are still available.',
-                      action: _ViewPositionGamesButton(
-                        fen: state.currentFen,
-                        filters: state.filters,
+      return withMovesHeader(
+        hasFenGames.maybeWhen(
+          data:
+              (hasGames) =>
+                  hasGames
+                      ? _ExplorerEmpty(
+                        title: 'No move statistics for this position',
+                        message:
+                            'Move statistics need the full line from the start. '
+                            'Games that reached this position are still available.',
+                        action: _ViewPositionGamesButton(
+                          fen: state.currentFen,
+                          filters: state.filters,
+                        ),
+                      )
+                      : const _ExplorerEmpty(
+                        title: 'No games match this position',
+                        message:
+                            'No master/online games are indexed for the position '
+                            'on the board.',
                       ),
-                    )
-                    : const _ExplorerEmpty(
-                      title: 'No games match this position',
-                      message:
-                          'No master/online games are indexed for the position '
-                          'on the board.',
-                    ),
-        // While the check is in flight, say nothing we might have to retract.
-        orElse:
-            () => const _ExplorerEmpty(
-              title: 'No move statistics for this position',
-              message: 'Checking for games that reached it…',
-            ),
+          // While the check is in flight, say nothing we might have to retract.
+          orElse:
+              () => const _ExplorerEmpty(
+                title: 'No move statistics for this position',
+                message: 'Checking for games that reached it…',
+              ),
+        ),
       );
     }
-
-    final movesHeader = Row(
-      key: const ValueKey<String>('explorer_header_moves'),
-      children: [
-        SizedBox(
-          width: _kMoveColumnWidth.w,
-          child: _SortHeader(
-            label: 'Move',
-            field: ExplorerMoveSortField.move,
-            align: TextAlign.left,
-            sort: sort.value,
-            onSort: cycleSort,
-          ),
-        ),
-        SizedBox(width: _kColumnGap.sp),
-        Expanded(
-          child: _SortHeader(
-            label: 'Score',
-            field: ExplorerMoveSortField.score,
-            align: TextAlign.center,
-            sort: sort.value,
-            onSort: cycleSort,
-          ),
-        ),
-        SizedBox(width: _kColumnGap.sp),
-        SizedBox(
-          width: _kGamesColumnWidth.w,
-          child: Semantics(
-            label: 'Sort by games',
-            button: true,
-            child: _SortHeader(
-              label: '',
-              field: ExplorerMoveSortField.games,
-              align: TextAlign.right,
-              sort: sort.value,
-              onSort: cycleSort,
-              color: kPrimaryColor,
-            ),
-          ),
-        ),
-        SizedBox(width: _kColumnGap.sp),
-        SizedBox(
-          width: _kLastColumnWidth.w,
-          child: _SortHeader(
-            label: 'Last',
-            field: ExplorerMoveSortField.last,
-            align: TextAlign.right,
-            sort: sort.value,
-            onSort: cycleSort,
-          ),
-        ),
-      ],
-    );
 
     final Widget mainContent = Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1027,8 +1107,8 @@ class _MoveStatisticsSummaryRow extends StatelessWidget {
       padding: EdgeInsets.symmetric(horizontal: 12.sp, vertical: 10.sp),
       child: Row(
         children: [
-          SizedBox(
-            width: _kMoveColumnWidth.w,
+          Expanded(
+            flex: _kMoveColumnFlex,
             child: Row(
               children: [
                 Text(
@@ -1056,6 +1136,7 @@ class _MoveStatisticsSummaryRow extends StatelessWidget {
           ),
           SizedBox(width: _kColumnGap.sp),
           Expanded(
+            flex: _kResultsColumnFlex,
             child: _StatisticsBar(
               whiteRate: summary.whiteRate,
               drawRate: summary.drawRate,
@@ -1063,8 +1144,8 @@ class _MoveStatisticsSummaryRow extends StatelessWidget {
             ),
           ),
           SizedBox(width: _kColumnGap.sp),
-          SizedBox(
-            width: _kGamesColumnWidth.w,
+          Expanded(
+            flex: _kGamesColumnFlex,
             child: Align(
               alignment: Alignment.centerRight,
               child: Tooltip(
@@ -1125,8 +1206,8 @@ class _MoveStatisticsSummaryRow extends StatelessWidget {
             ),
           ),
           SizedBox(width: _kColumnGap.sp),
-          SizedBox(
-            width: _kLastColumnWidth.w,
+          Expanded(
+            flex: _kLastColumnFlex,
             child: Text(
               _formatLastPlayed(summary.lastPlayed),
               textAlign: TextAlign.right,
@@ -1152,8 +1233,8 @@ class _MoveStatisticsPlaceholderRow extends StatelessWidget {
       padding: EdgeInsets.symmetric(horizontal: 12.sp, vertical: 10.sp),
       child: Row(
         children: [
-          SizedBox(
-            width: _kMoveColumnWidth.w,
+          Expanded(
+            flex: _kMoveColumnFlex,
             child: Row(
               children: [
                 Container(
@@ -1187,21 +1268,25 @@ class _MoveStatisticsPlaceholderRow extends StatelessWidget {
             ),
           ),
           SizedBox(width: _kColumnGap.sp),
-          Container(
-            width: _kGamesColumnWidth.w,
-            height: 12.h,
-            decoration: BoxDecoration(
-              color: context.colors.textSecondary.withValues(alpha: 0.15),
-              borderRadius: BorderRadius.circular(2.br),
+          Expanded(
+            flex: _kGamesColumnFlex,
+            child: Container(
+              height: 12.h,
+              decoration: BoxDecoration(
+                color: context.colors.textSecondary.withValues(alpha: 0.15),
+                borderRadius: BorderRadius.circular(2.br),
+              ),
             ),
           ),
           SizedBox(width: _kColumnGap.sp),
-          Container(
-            width: _kLastColumnWidth.w,
-            height: 12.h,
-            decoration: BoxDecoration(
-              color: context.colors.textSecondary.withValues(alpha: 0.15),
-              borderRadius: BorderRadius.circular(2.br),
+          Expanded(
+            flex: _kLastColumnFlex,
+            child: Container(
+              height: 12.h,
+              decoration: BoxDecoration(
+                color: context.colors.textSecondary.withValues(alpha: 0.15),
+                borderRadius: BorderRadius.circular(2.br),
+              ),
             ),
           ),
         ],
@@ -1228,8 +1313,8 @@ class _MoveStatisticsSkeletonRow extends StatelessWidget {
       padding: EdgeInsets.symmetric(horizontal: 12.sp, vertical: 10.sp),
       child: Row(
         children: [
-          SizedBox(
-            width: _kMoveColumnWidth.w,
+          Expanded(
+            flex: _kMoveColumnFlex,
             child: Row(
               children: [
                 Text(
@@ -1255,8 +1340,8 @@ class _MoveStatisticsSkeletonRow extends StatelessWidget {
             ),
           ),
           SizedBox(width: _kColumnGap.sp),
-          SizedBox(
-            width: _kGamesColumnWidth.w,
+          Expanded(
+            flex: _kGamesColumnFlex,
             child: Text(
               counts[seed % counts.length],
               textAlign: TextAlign.right,
@@ -1264,8 +1349,8 @@ class _MoveStatisticsSkeletonRow extends StatelessWidget {
             ),
           ),
           SizedBox(width: _kColumnGap.sp),
-          SizedBox(
-            width: _kLastColumnWidth.w,
+          Expanded(
+            flex: _kLastColumnFlex,
             child: Text(
               '2024',
               textAlign: TextAlign.right,
@@ -1344,8 +1429,8 @@ class _MoveStatisticsRow extends ConsumerWidget {
         child: Row(
           children: [
             // Move name
-            SizedBox(
-              width: _kMoveColumnWidth.w,
+            Expanded(
+              flex: _kMoveColumnFlex,
               child: Row(
                 children: [
                   Text(
@@ -1384,6 +1469,7 @@ class _MoveStatisticsRow extends ConsumerWidget {
             SizedBox(width: _kColumnGap.sp),
             // Statistics bar
             Expanded(
+              flex: _kResultsColumnFlex,
               child: _StatisticsBar(
                 whiteRate: aggregate.whiteWinRate,
                 drawRate: aggregate.drawRate,
@@ -1391,8 +1477,8 @@ class _MoveStatisticsRow extends ConsumerWidget {
               ),
             ),
             SizedBox(width: _kColumnGap.sp),
-            SizedBox(
-              width: _kGamesColumnWidth.w,
+            Expanded(
+              flex: _kGamesColumnFlex,
               child: Align(
                 alignment: Alignment.centerRight,
                 child: Tooltip(
@@ -1453,8 +1539,8 @@ class _MoveStatisticsRow extends ConsumerWidget {
               ),
             ),
             SizedBox(width: _kColumnGap.sp),
-            SizedBox(
-              width: _kLastColumnWidth.w,
+            Expanded(
+              flex: _kLastColumnFlex,
               child: Text(
                 _formatLastPlayed(aggregate.lastPlayed),
                 textAlign: TextAlign.right,

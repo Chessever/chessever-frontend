@@ -3,6 +3,7 @@ import 'dart:math' as math;
 
 import 'package:chessever2/e2e/e2e_ids.dart';
 import 'package:chessever2/revenue_cat_service/subscribe_state.dart';
+import 'package:chessever2/screens/board_editor/board_editor_screen.dart';
 import 'package:chessever2/screens/chessboard/notation/notation_pointer.dart';
 import 'package:chessever2/screens/chessboard/notation/notation_token_builder.dart';
 import 'package:chessever2/screens/chessboard/notation/notation_tree.dart';
@@ -17,6 +18,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:share_plus/share_plus.dart';
 
 import 'package:chessever2/providers/board_settings_provider_new.dart';
 import 'package:chessever2/providers/engine_settings_provider.dart';
@@ -29,6 +31,7 @@ import 'package:chessever2/screens/chessboard/widgets/chess_board_bottom_nav_bar
 import 'package:chessever2/screens/chessboard/widgets/evaluation_bar_widget.dart';
 import 'package:chessever2/screens/chessboard/widgets/switch_views_tutorial_overlay.dart';
 import 'package:chessever2/screens/gamebase/providers/explorer_eval_provider.dart';
+import 'package:chessever2/screens/gamebase/utils/board_workspace_coachmarks.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/screens/gamebase/services/player_opening_tree.dart';
 import 'package:chessever2/theme/app_colors.dart';
@@ -42,8 +45,10 @@ import 'package:chessever2/screens/gamebase/providers/explorer_game_focus_provid
 import 'package:chessever2/screens/gamebase/providers/gamebase_providers.dart';
 import 'package:chessever2/screens/gamebase/providers/gamebase_explorer_state.dart';
 import 'package:chessever2/screens/gamebase/widgets/widgets.dart';
+import 'package:chessever2/screens/gamebase/widgets/board_workspace_controls.dart';
 import 'package:chessever2/screens/gamebase/models/models.dart';
 import 'package:chessever2/main.dart' show routeObserver;
+import 'package:chessever2/widgets/app_snack.dart';
 import 'package:chessever2/widgets/auth/auth_upgrade_sheet.dart';
 import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
 
@@ -54,6 +59,7 @@ class GamebaseExplorerScreen extends ConsumerStatefulWidget {
     super.key,
     this.initialPlayer,
     this.initialFilters,
+    this.enableWorkspaceCoachmarks = true,
   });
 
   /// Creates an isolated explorer scope so other mounted routes (for example
@@ -63,6 +69,7 @@ class GamebaseExplorerScreen extends ConsumerStatefulWidget {
     Key? key,
     GamebasePlayer? initialPlayer,
     GamebaseFilters? initialFilters,
+    bool enableWorkspaceCoachmarks = true,
   }) {
     return ProviderScope(
       overrides: [
@@ -75,6 +82,7 @@ class GamebaseExplorerScreen extends ConsumerStatefulWidget {
         key: key,
         initialPlayer: initialPlayer,
         initialFilters: initialFilters,
+        enableWorkspaceCoachmarks: enableWorkspaceCoachmarks,
       ),
     );
   }
@@ -84,6 +92,10 @@ class GamebaseExplorerScreen extends ConsumerStatefulWidget {
 
   /// Optional filters to pre-apply (e.g. time control, rating from player profile).
   final GamebaseFilters? initialFilters;
+
+  /// Test and embedding escape hatch. Normal Board entries teach the shared
+  /// views and Editor once; focused widget tests can disable the persistence IO.
+  final bool enableWorkspaceCoachmarks;
 
   @override
   ConsumerState<GamebaseExplorerScreen> createState() =>
@@ -97,6 +109,8 @@ class _GamebaseExplorerScreenState extends ConsumerState<GamebaseExplorerScreen>
   bool _appIsResumed = true;
   Timer? _backwardLongPressTimer;
   Timer? _forwardLongPressTimer;
+  final GlobalKey<TooltipState> _viewsCoachmarkKey = GlobalKey<TooltipState>();
+  final GlobalKey<TooltipState> _editorCoachmarkKey = GlobalKey<TooltipState>();
 
   void _resetExplorerState({bool fetch = false, bool preserveScope = true}) {
     final notifier = ref.read(gamebaseExplorerProvider.notifier);
@@ -226,13 +240,36 @@ class _GamebaseExplorerScreenState extends ConsumerState<GamebaseExplorerScreen>
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
 
-      // Always start fresh; preserve player scope when present.
+      // A fresh Board entry starts in Explorer. Returning from Board Editor
+      // keeps this screen alive, so the current workspace is not reset.
+      ref.read(explorerPageIndexProvider.notifier).state =
+          boardWorkspaceDefaultPage;
       _resetExplorerState(fetch: true);
+      if (widget.enableWorkspaceCoachmarks) {
+        unawaited(_showWorkspaceCoachmarks());
+      }
     });
+  }
+
+  Future<void> _showWorkspaceCoachmarks() async {
+    await showBoardWorkspaceCoachmarks(
+      viewsTracker: boardWorkspaceViewsCoachmarkTracker,
+      editorTracker: boardWorkspaceEditorCoachmarkTracker,
+      isEligible: () => mounted && _routeActive,
+      showViews:
+          () =>
+              _viewsCoachmarkKey.currentState?.ensureTooltipVisible() ?? false,
+      showEditor: () {
+        Tooltip.dismissAllToolTips();
+        return _editorCoachmarkKey.currentState?.ensureTooltipVisible() ??
+            false;
+      },
+    );
   }
 
   @override
   void dispose() {
+    Tooltip.dismissAllToolTips();
     WidgetsBinding.instance.removeObserver(this);
     routeObserver.unsubscribe(this);
     _stopLongPressBackward();
@@ -344,7 +381,7 @@ class _GamebaseExplorerScreenState extends ConsumerState<GamebaseExplorerScreen>
     if (kDebugMode) return false;
     if (ref.read(subscriptionProvider).isSubscribed) return false;
     final currentMoveNumber =
-        ref.read(gamebaseExplorerProvider).currentMoveNumber;
+        ref.read(gamebaseExplorerProvider.notifier).effectiveMoveNumber;
     return currentMoveNumber >= kFreeExplorerMoveNumberLimit;
   }
 
@@ -557,7 +594,12 @@ class _GamebaseExplorerScreenState extends ConsumerState<GamebaseExplorerScreen>
                 child: Column(
                   children: [
                     if (showEngineAnalysis) const _ExplorerEngineLines(),
-                    const Expanded(child: _ExplorerBottomPanels()),
+                    Expanded(
+                      child: _ExplorerBottomPanels(
+                        onFilter: () => _showFilterSheet(context),
+                        hasActiveFilters: _shouldShowClearFilters(state),
+                      ),
+                    ),
                   ],
                 ),
               ),
@@ -636,7 +678,12 @@ class _GamebaseExplorerScreenState extends ConsumerState<GamebaseExplorerScreen>
                 child: Column(
                   children: [
                     if (showEngineAnalysis) const _ExplorerEngineLines(),
-                    const Expanded(child: _ExplorerBottomPanels()),
+                    Expanded(
+                      child: _ExplorerBottomPanels(
+                        onFilter: () => _showFilterSheet(context),
+                        hasActiveFilters: _shouldShowClearFilters(state),
+                      ),
+                    ),
                   ],
                 ),
               ),
@@ -701,7 +748,12 @@ class _GamebaseExplorerScreenState extends ConsumerState<GamebaseExplorerScreen>
                   child: Column(
                     children: [
                       if (showEngineAnalysis) const _ExplorerEngineLines(),
-                      const Expanded(child: _ExplorerBottomPanels()),
+                      Expanded(
+                        child: _ExplorerBottomPanels(
+                          onFilter: () => _showFilterSheet(context),
+                          hasActiveFilters: _shouldShowClearFilters(state),
+                        ),
+                      ),
                     ],
                   ),
                 ),
@@ -714,7 +766,6 @@ class _GamebaseExplorerScreenState extends ConsumerState<GamebaseExplorerScreen>
   }
 
   PreferredSizeWidget _buildAppBar(BuildContext context) {
-    final state = ref.watch(gamebaseExplorerProvider);
     final currentPage = ref.watch(explorerPageIndexProvider);
 
     return AppBar(
@@ -726,79 +777,154 @@ class _GamebaseExplorerScreenState extends ConsumerState<GamebaseExplorerScreen>
         icon: Icon(Icons.arrow_back, size: 24.ic),
         onPressed: () => Navigator.of(context).pop(),
       ),
-      title: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          if (state.filters.selectedPlayers.isNotEmpty)
-            Expanded(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    state.filters.selectedPlayers.first.titleAndName,
-                    style: TextStyle(
-                      color: context.colors.textPrimary,
-                      fontSize: 15.f,
-                      fontWeight: FontWeight.w600,
-                      letterSpacing: -0.2,
-                    ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  _ExplorerSegmentedTitle(currentPage: currentPage),
-                ],
-              ),
-            )
-          else
-            _ExplorerSegmentedTitle(currentPage: currentPage, isLarge: true),
-        ],
+      title: Tooltip(
+        key: _viewsCoachmarkKey,
+        message: boardWorkspaceViewsCoachmarkMessage,
+        triggerMode: TooltipTriggerMode.manual,
+        preferBelow: true,
+        showDuration: const Duration(seconds: 5),
+        padding: EdgeInsets.symmetric(horizontal: 16.sp, vertical: 12.sp),
+        decoration: BoxDecoration(
+          color: const Color(0xFF08080A),
+          borderRadius: BorderRadius.circular(16.br),
+          border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+        ),
+        textStyle: AppTypography.textSmMedium.copyWith(
+          color: Colors.white.withValues(alpha: 0.94),
+        ),
+        child: _ExplorerSegmentedTitle(currentPage: currentPage, isLarge: true),
       ),
-      // Three actions, evenly spaced: Reset, Filters (with active dot when
-      // filters are applied), Save. The dot on the filter icon is enough to
-      // signal "filters active" — no separate clear-filters button is needed
-      // since Reset wipes the same state.
       actions: [
-        IconButton(
-          icon: Icon(Icons.restart_alt, size: 24.ic),
-          onPressed:
-              () => _resetExplorerState(fetch: true, preserveScope: true),
-          tooltip: 'Reset explorer',
-        ),
-        IconButton(
-          icon: Stack(
-            clipBehavior: Clip.none,
-            children: [
-              Icon(Icons.tune, size: 24.ic),
-              if (_shouldShowClearFilters(state))
-                Positioned(
-                  top: -2,
-                  right: -2,
-                  child: Container(
-                    width: 8.sp,
-                    height: 8.sp,
-                    decoration: const BoxDecoration(
-                      color: kPrimaryColor,
-                      shape: BoxShape.circle,
-                    ),
-                  ),
-                ),
-            ],
-          ),
-          onPressed: () => _showFilterSheet(context),
-          tooltip: 'Filters',
-        ),
         IconButton(
           key: e2eKey(E2eIds.openingExplorerSaveButton),
           icon: Icon(
             Icons.save_outlined,
-            size: 24.ic,
+            size: 22.ic,
             semanticLabel: 'Save analysis',
           ),
           onPressed: () => _openAnalysisAndSave(context),
           tooltip: 'Save analysis',
         ),
+        Tooltip(
+          key: _editorCoachmarkKey,
+          message: boardWorkspaceEditorCoachmarkMessage,
+          triggerMode: TooltipTriggerMode.manual,
+          preferBelow: true,
+          showDuration: const Duration(seconds: 6),
+          padding: EdgeInsets.symmetric(horizontal: 16.sp, vertical: 12.sp),
+          decoration: BoxDecoration(
+            color: const Color(0xFF08080A),
+            borderRadius: BorderRadius.circular(16.br),
+            border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+          ),
+          textStyle: AppTypography.textSmMedium.copyWith(
+            color: Colors.white.withValues(alpha: 0.94),
+          ),
+          child: IconButton(
+            key: const ValueKey<String>('opening_explorer_board_editor'),
+            onPressed: _openBoardEditor,
+            tooltip: 'Board Editor',
+            icon: const ExplorerBoardEditorIcon(),
+          ),
+        ),
+        PopupMenuButton<ExplorerBoardMenuAction>(
+          key: const ValueKey<String>('opening_explorer_more_menu'),
+          tooltip: 'More board actions',
+          icon: Icon(Icons.more_vert, size: 22.ic),
+          onSelected: _handleBoardMenuAction,
+          itemBuilder:
+              (context) => [
+                for (final item in explorerBoardMenuItems)
+                  PopupMenuItem<ExplorerBoardMenuAction>(
+                    value: item.action,
+                    child: Row(
+                      children: [
+                        Icon(
+                          item.icon,
+                          color: context.colors.textPrimary,
+                          size: 20.ic,
+                        ),
+                        SizedBox(width: 10.sp),
+                        Text(item.label),
+                      ],
+                    ),
+                  ),
+              ],
+        ),
       ],
+    );
+  }
+
+  Future<void> _handleBoardMenuAction(ExplorerBoardMenuAction action) async {
+    switch (action) {
+      case ExplorerBoardMenuAction.copyPgn:
+        await _copyExplorerPgn();
+      case ExplorerBoardMenuAction.boardSettings:
+        final allowed = await requireFullAuthGuard(context);
+        if (!allowed || !mounted) return;
+        await Navigator.of(
+          context,
+        ).push(SettingsPage.route(initiallyExpanded: SettingsSection.board));
+      case ExplorerBoardMenuAction.share:
+        await _shareExplorerPgn();
+    }
+  }
+
+  String? _currentExplorerPgn() {
+    final game = ref.read(gamebaseExplorerProvider).game;
+    if (game == null) return null;
+    final pgn = exportGameToPgn(game).trim();
+    return pgn.isEmpty ? null : pgn;
+  }
+
+  Future<void> _copyExplorerPgn() async {
+    final pgn = _currentExplorerPgn();
+    if (pgn == null) {
+      if (mounted) showAppSnack(context, 'No PGN to copy');
+      return;
+    }
+    await Clipboard.setData(ClipboardData(text: pgn));
+    if (!mounted) return;
+    HapticFeedback.lightImpact();
+    showAppSnack(context, 'PGN copied');
+  }
+
+  Future<void> _shareExplorerPgn() async {
+    final pgn = _currentExplorerPgn();
+    if (pgn == null) {
+      if (mounted) showAppSnack(context, 'No analysis to share');
+      return;
+    }
+    final box = context.findRenderObject() as RenderBox?;
+    final origin =
+        box == null
+            ? const Rect.fromLTWH(0, 0, 1, 1)
+            : box.localToGlobal(Offset.zero) & box.size;
+    await Share.share(
+      pgn,
+      subject: 'ChessEver analysis',
+      sharePositionOrigin: origin,
+    );
+  }
+
+  Future<void> _openBoardEditor() async {
+    final notifier = ref.read(gamebaseExplorerProvider.notifier);
+    final currentFen = ref.read(gamebaseExplorerProvider).currentFen;
+    final minimumMoveNumber = notifier.effectiveMoveNumber;
+    final editedFen = await Navigator.of(context).push<String>(
+      MaterialPageRoute(
+        builder:
+            (_) => BoardEditorScreen(
+              initialFen: currentFen,
+              returnFenOnDone: true,
+            ),
+      ),
+    );
+    if (!mounted || editedFen == null || editedFen.trim().isEmpty) return;
+    notifier.setPosition(
+      editedFen,
+      startingFen: editedFen,
+      minimumMoveNumber: minimumMoveNumber,
     );
   }
 
@@ -1060,7 +1186,9 @@ class _GamebaseChessBoardState extends ConsumerState<_GamebaseChessBoard> {
                     if (!kDebugMode &&
                         !ref.read(subscriptionProvider).isSubscribed) {
                       final currentMoveNumber =
-                          ref.read(gamebaseExplorerProvider).currentMoveNumber;
+                          ref
+                              .read(gamebaseExplorerProvider.notifier)
+                              .effectiveMoveNumber;
                       if (currentMoveNumber >= kFreeExplorerMoveNumberLimit) {
                         if (!context.mounted) return;
                         final unlocked = await requirePremiumGuard(
@@ -1916,92 +2044,96 @@ class _PlayerSearchResults extends ConsumerWidget {
 
     return Container(
       constraints: BoxConstraints(maxHeight: 200.h),
+      clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(
         color: context.colors.surface,
         borderRadius: BorderRadius.circular(8.br),
         border: Border.all(color: context.colors.divider),
       ),
-      child: results.when(
-        data: (players) {
-          if (players.isEmpty) {
-            return Padding(
-              padding: EdgeInsets.all(12.sp),
-              child: Text(
-                'No players found',
-                style: TextStyle(
-                  color: context.colors.textSecondary,
-                  fontSize: 12.f,
-                ),
-              ),
-            );
-          }
-          return ListView.separated(
-            shrinkWrap: true,
-            itemCount: players.length,
-            separatorBuilder:
-                (_, __) => Divider(height: 1, color: context.colors.divider),
-            itemBuilder: (context, index) {
-              final player = players[index];
-              return ListTile(
-                dense: true,
-                onTap: () => onPlayerSelected(player),
-                title: Text(
-                  player.titleAndName,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    color: context.colors.textPrimary,
-                    fontSize: 13.f,
-                  ),
-                ),
-                subtitle: Text(
-                  '${player.fed}${player.highestRating != null ? ' • ${player.highestRating}' : ''}',
+      child: Material(
+        color: Colors.transparent,
+        child: results.when(
+          data: (players) {
+            if (players.isEmpty) {
+              return Padding(
+                padding: EdgeInsets.all(12.sp),
+                child: Text(
+                  'No players found',
                   style: TextStyle(
                     color: context.colors.textSecondary,
-                    fontSize: 11.f,
+                    fontSize: 12.f,
                   ),
-                ),
-                trailing: Icon(
-                  Icons.add_rounded,
-                  size: 18.sp,
-                  color: kPrimaryColor,
                 ),
               );
-            },
-          );
-        },
-        loading:
-            () => Padding(
-              padding: EdgeInsets.all(12.sp),
-              child: Row(
-                children: [
-                  SizedBox(
-                    width: 16.sp,
-                    height: 16.sp,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      color: kPrimaryColor,
+            }
+            return ListView.separated(
+              shrinkWrap: true,
+              itemCount: players.length,
+              separatorBuilder:
+                  (_, __) => Divider(height: 1, color: context.colors.divider),
+              itemBuilder: (context, index) {
+                final player = players[index];
+                return ListTile(
+                  dense: true,
+                  onTap: () => onPlayerSelected(player),
+                  title: Text(
+                    player.titleAndName,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: context.colors.textPrimary,
+                      fontSize: 13.f,
                     ),
                   ),
-                  SizedBox(width: 10.sp),
-                  Text(
-                    'Searching...',
+                  subtitle: Text(
+                    '${player.fed}${player.highestRating != null ? ' • ${player.highestRating}' : ''}',
                     style: TextStyle(
                       color: context.colors.textSecondary,
-                      fontSize: 12.f,
+                      fontSize: 11.f,
                     ),
                   ),
-                ],
+                  trailing: Icon(
+                    Icons.add_rounded,
+                    size: 18.sp,
+                    color: kPrimaryColor,
+                  ),
+                );
+              },
+            );
+          },
+          loading:
+              () => Padding(
+                padding: EdgeInsets.all(12.sp),
+                child: Row(
+                  children: [
+                    SizedBox(
+                      width: 16.sp,
+                      height: 16.sp,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: kPrimaryColor,
+                      ),
+                    ),
+                    SizedBox(width: 10.sp),
+                    Text(
+                      'Searching...',
+                      style: TextStyle(
+                        color: context.colors.textSecondary,
+                        fontSize: 12.f,
+                      ),
+                    ),
+                  ],
+                ),
               ),
-            ),
-        error:
-            (_, __) => Padding(
-              padding: EdgeInsets.all(12.sp),
-              child: Text(
-                'Search failed',
-                style: TextStyle(color: kRedColor, fontSize: 12.f),
+          error:
+              (_, __) => Padding(
+                padding: EdgeInsets.all(12.sp),
+                child: Text(
+                  'Search failed',
+                  style: TextStyle(color: kRedColor, fontSize: 12.f),
+                ),
               ),
-            ),
+        ),
       ),
     );
   }
@@ -2182,7 +2314,7 @@ class _ExplorerEngineLinesState extends ConsumerState<_ExplorerEngineLines> {
       if (!_uciRegex.hasMatch(firstUci)) return;
       if (!kDebugMode && !ref.read(subscriptionProvider).isSubscribed) {
         final currentMoveNumber =
-            ref.read(gamebaseExplorerProvider).currentMoveNumber;
+            ref.read(gamebaseExplorerProvider.notifier).effectiveMoveNumber;
         if (currentMoveNumber >= kFreeExplorerMoveNumberLimit) {
           if (!context.mounted) return;
           final unlocked = await requirePremiumGuard(context, ref);
@@ -2340,9 +2472,7 @@ class _EngineLinePlaceholder extends StatelessWidget {
   }
 }
 
-// AppBar segmented title that toggles between Explorer (page 0) and Notation
-// (page 1). Tap-to-cycle, with the inactive label dimmed and a pair of
-// growing/shrinking dots in between for visual continuity with the swipe.
+// App-bar control for the two views of one shared Board workspace.
 class _ExplorerSegmentedTitle extends ConsumerWidget {
   const _ExplorerSegmentedTitle({
     required this.currentPage,
@@ -2354,91 +2484,11 @@ class _ExplorerSegmentedTitle extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    return GestureDetector(
-      onTap: () {
-        ref.read(explorerPageIndexProvider.notifier).state =
-            (currentPage + 1) % 2;
-      },
-      behavior: HitTestBehavior.opaque,
-      child: Semantics(
-        label:
-            currentPage == 0
-                ? 'Opening Explorer: Moves view. Tap to switch to notation.'
-                : 'Opening Explorer: Notation view. Tap to switch to moves.',
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            _SegmentLabel(
-              label: 'Explorer',
-              isActive: currentPage == 0,
-              isLarge: isLarge,
-            ),
-            SizedBox(width: 8.sp),
-            _ExplorerPageDot(isSelected: currentPage == 0),
-            SizedBox(width: 4.sp),
-            _ExplorerPageDot(isSelected: currentPage == 1),
-            SizedBox(width: 8.sp),
-            _SegmentLabel(
-              label: 'Notation',
-              isActive: currentPage == 1,
-              isLarge: isLarge,
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _SegmentLabel extends StatelessWidget {
-  const _SegmentLabel({
-    required this.label,
-    required this.isActive,
-    required this.isLarge,
-  });
-
-  final String label;
-  final bool isActive;
-  final bool isLarge;
-
-  @override
-  Widget build(BuildContext context) {
-    return AnimatedDefaultTextStyle(
-      duration: const Duration(milliseconds: 200),
-      style: TextStyle(
-        color:
-            isActive
-                ? context.colors.textPrimary
-                : context.colors.textSecondary.withValues(alpha: 0.7),
-        fontSize: isLarge ? 17.f : 13.f,
-        // Constant weight prevents layout shift as the active label changes.
-        fontWeight: FontWeight.w600,
-        letterSpacing: -0.2,
-      ),
-      child: Text(label),
-    );
-  }
-}
-
-class _ExplorerPageDot extends StatelessWidget {
-  const _ExplorerPageDot({required this.isSelected});
-
-  final bool isSelected;
-
-  @override
-  Widget build(BuildContext context) {
-    return AnimatedContainer(
-      duration: const Duration(milliseconds: 180),
-      curve: Curves.easeOutCubic,
-      width: isSelected ? 12.sp : 4.sp,
-      height: 4.sp,
-      decoration: BoxDecoration(
-        color:
-            isSelected
-                ? context.colors.textPrimary.withValues(alpha: 0.92)
-                : context.colors.textSecondary.withValues(alpha: 0.65),
-        borderRadius: BorderRadius.circular(999.br),
-      ),
+    return ExplorerViewToggle(
+      currentPage: currentPage,
+      compact: !isLarge,
+      onSelected:
+          (value) => ref.read(explorerPageIndexProvider.notifier).state = value,
     );
   }
 }
@@ -2454,7 +2504,13 @@ class _ExplorerNotationView extends ConsumerStatefulWidget {
 }
 
 class _ExplorerBottomPanels extends ConsumerStatefulWidget {
-  const _ExplorerBottomPanels();
+  const _ExplorerBottomPanels({
+    required this.onFilter,
+    required this.hasActiveFilters,
+  });
+
+  final VoidCallback onFilter;
+  final bool hasActiveFilters;
 
   @override
   ConsumerState<_ExplorerBottomPanels> createState() =>
@@ -2475,7 +2531,6 @@ class _ExplorerBottomPanelsState extends ConsumerState<_ExplorerBottomPanels>
   late Animation<double> _swipeScaleAnimation;
   late Animation<double> _swipeMoveAnimation;
   int _currentPageIndex = 0;
-  bool _hasCheckedWalkthrough = false;
   bool _showTutorialOverlay = false;
   OverlayEntry? _tutorialEntry;
 
@@ -2486,12 +2541,8 @@ class _ExplorerBottomPanelsState extends ConsumerState<_ExplorerBottomPanels>
     _currentPageIndex = initialPage;
     _pageController = PageController(initialPage: initialPage);
     _setupSwipeAnimation();
-
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted || _hasCheckedWalkthrough) return;
-      _hasCheckedWalkthrough = true;
-      _checkAndShowWalkthrough();
-    });
+    // The old swipe overlay is superseded by the one-time app-bar coachmarks,
+    // which teach both the Explorer/Notation switch and Board Editor.
   }
 
   @override
@@ -2566,6 +2617,9 @@ class _ExplorerBottomPanelsState extends ConsumerState<_ExplorerBottomPanels>
     });
   }
 
+  // Kept for backward compatibility with the existing walkthrough storage and
+  // overlay implementation; the app-bar coachmarks are now the active path.
+  // ignore: unused_element
   Future<void> _checkAndShowWalkthrough() async {
     final prefs = ref.read(sharedPreferencesRepository);
     final now = DateTime.now();
@@ -2680,8 +2734,10 @@ class _ExplorerBottomPanelsState extends ConsumerState<_ExplorerBottomPanels>
         ref.read(explorerPageIndexProvider.notifier).state = page;
       },
       children: [
-        const MoveStatisticsPanel(
-          key: PageStorageKey<String>('opening-explorer-moves-panel'),
+        MoveStatisticsPanel(
+          key: const PageStorageKey<String>('opening-explorer-moves-panel'),
+          onFilter: widget.onFilter,
+          hasActiveFilters: widget.hasActiveFilters,
         ),
         _ExplorerNotationView(
           key: const PageStorageKey<String>('opening-explorer-notation-panel'),

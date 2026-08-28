@@ -55,8 +55,7 @@ void main() {
           navId: E2eIds.navLibrary,
           expectedRoot: E2eIds.libraryRoot,
         );
-        await expectVisible($, E2eIds.libraryOpeningExplorerButton);
-        await expectVisible($, E2eIds.libraryBoardEditorButton);
+        await expectVisible($, E2eIds.libraryBoardButton);
         await expectVisible($, E2eIds.libraryCreateFolderButton);
         await tapBottomNavRoot(
           $,
@@ -86,15 +85,8 @@ void main() {
 
         await openDrawerDestination(
           $,
-          drawerItemId: E2eIds.drawerOpeningExplorer,
+          drawerItemId: E2eIds.drawerBoard,
           expectedRoot: E2eIds.openingExplorerRoot,
-        );
-        await popRoute($);
-
-        await openDrawerDestination(
-          $,
-          drawerItemId: E2eIds.drawerAnalysisBoard,
-          expectedRoot: E2eIds.boardEditorRoot,
         );
         await popRoute($);
 

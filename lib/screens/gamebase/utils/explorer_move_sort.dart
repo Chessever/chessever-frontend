@@ -4,13 +4,20 @@ import 'package:dartchess/dartchess.dart';
 /// Column the opening-explorer move table can be ordered by.
 enum ExplorerMoveSortField { move, score, games, last }
 
+enum ExplorerResultSortSide { white, black }
+
 class ExplorerMoveSort {
-  const ExplorerMoveSort({required this.field, required this.ascending});
+  const ExplorerMoveSort({
+    required this.field,
+    required this.ascending,
+    this.resultSide,
+  });
 
   final ExplorerMoveSortField field;
   final bool ascending;
+  final ExplorerResultSortSide? resultSide;
 
-  /// Header tap cycle: unsorted -> ascending -> descending -> unsorted.
+  /// Header tap cycle retained for legacy callers that still expose direction.
   static ExplorerMoveSort? cycle(
     ExplorerMoveSort? current,
     ExplorerMoveSortField field,
@@ -23,6 +30,38 @@ class ExplorerMoveSort {
     }
     return null;
   }
+}
+
+/// Explorer headers use one predictable, useful direction per column so the
+/// active column can be shown without ambiguous arrow glyphs.
+ExplorerMoveSort defaultExplorerMoveSort(ExplorerMoveSortField field) {
+  return ExplorerMoveSort(
+    field: field,
+    ascending: field == ExplorerMoveSortField.move,
+    resultSide:
+        field == ExplorerMoveSortField.score
+            ? ExplorerResultSortSide.white
+            : null,
+  );
+}
+
+ExplorerMoveSort nextExplorerMoveSort(
+  ExplorerMoveSort current,
+  ExplorerMoveSortField field,
+) {
+  if (field != ExplorerMoveSortField.score) {
+    return defaultExplorerMoveSort(field);
+  }
+  final side =
+      current.field == ExplorerMoveSortField.score &&
+              current.resultSide == ExplorerResultSortSide.white
+          ? ExplorerResultSortSide.black
+          : ExplorerResultSortSide.white;
+  return ExplorerMoveSort(
+    field: ExplorerMoveSortField.score,
+    ascending: false,
+    resultSide: side,
+  );
 }
 
 /// Orders [aggs] for display. A null [sort] keeps the backend order (most
@@ -55,9 +94,12 @@ List<MoveAggregate> applyExplorerMoveSort(
     });
   }
 
-  double scoreFor(MoveAggregate a) {
+  double resultRateFor(MoveAggregate a) {
     if (a.total <= 0) return 0;
-    return (a.white + a.draws * 0.5) / a.total;
+    return (sort.resultSide == ExplorerResultSortSide.black
+            ? a.black
+            : a.white) /
+        a.total;
   }
 
   int cmp(MoveAggregate a, MoveAggregate b) {
@@ -67,7 +109,7 @@ List<MoveAggregate> applyExplorerMoveSort(
         c = sanFor(a).toLowerCase().compareTo(sanFor(b).toLowerCase());
         break;
       case ExplorerMoveSortField.score:
-        c = scoreFor(a).compareTo(scoreFor(b));
+        c = resultRateFor(a).compareTo(resultRateFor(b));
         break;
       case ExplorerMoveSortField.games:
         c = a.total.compareTo(b.total);
