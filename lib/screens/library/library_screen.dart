@@ -315,10 +315,10 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
         builder: (context, value, child) {
           final clamped = value.clamp(0.0, 1.0);
           // One canonical Board entry plus Add. The budget must be the exact
-          // sum of the children's units (44.w button + 8.w gap + 36.h square
-          // Add tile) — width and height scale differently per device, so a
-          // flat 88.w under-budgets and overflows by a few pixels.
-          final buttonsFullWidth = 44.w + 8.w + 36.h;
+          // sum of the children's units (two 36.h square tiles + 8.w gap) —
+          // width and height scale differently per device, so a flat 80.w
+          // under-budgets and overflows by a few pixels.
+          final buttonsFullWidth = 36.h + 8.w + 36.h;
           final buttonsMaxWidth = buttonsFullWidth * (1 - clamped);
           final gapWidth = (8.w * (1 - clamped)).clamp(0.0, 8.w);
           final opacity = (1 - clamped).clamp(0.0, 1.0);
@@ -347,7 +347,6 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                                   ),
                                 ),
                                 SizedBox(width: 8.w),
-                                // CSS: 36x36, bg #262626, radius 10px
                                 KeyedSubtree(
                                   key: e2eKey(E2eIds.libraryCreateFolderButton),
                                   child: _PlusButton(onTap: _handlePlusButton),
@@ -668,42 +667,24 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
   }
 }
 
-/// Opens the shared Board workspace in its default Explorer view.
-class _BoardButton extends StatelessWidget {
+/// The one header action tile. Board and Add both render through this so the
+/// two sit on the same surface, radius and square — a bare icon beside a
+/// filled tile reads as an unfinished pair.
+/// CSS: 36x36, bg #262626, radius 10px.
+class _HeaderIconButton extends StatelessWidget {
   final VoidCallback onTap;
+  final Widget icon;
+  final String? tooltip;
 
-  const _BoardButton({required this.onTap});
+  const _HeaderIconButton({
+    required this.onTap,
+    required this.icon,
+    this.tooltip,
+  });
 
   @override
   Widget build(BuildContext context) {
-    return IconButton(
-      onPressed: onTap,
-      tooltip: 'Open Board',
-      padding: EdgeInsets.all(10.sp),
-      // Material 3's default padded tap-target inflates the button to a
-      // fixed 48px, which busts the animated header budget (44.w). The
-      // 44.w constraint already satisfies the 44pt minimum touch size.
-      style: IconButton.styleFrom(
-        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-      ),
-      constraints: BoxConstraints(minWidth: 44.w, minHeight: 44.h),
-      icon: BoardNavigationIcon(
-        size: 20.sp,
-        semanticsLabel: 'Open Board',
-      ),
-    );
-  }
-}
-
-/// CSS: 36x36, bg #262626, radius 10px, white plus icon
-class _PlusButton extends StatelessWidget {
-  final VoidCallback onTap;
-
-  const _PlusButton({required this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
+    final button = GestureDetector(
       onTap: onTap,
       child: Container(
         width: 36.h,
@@ -712,14 +693,43 @@ class _PlusButton extends StatelessWidget {
           color: context.colors.surfaceRecessed,
           borderRadius: BorderRadius.circular(10.br),
         ),
-        child: Center(
-          child: Icon(
-            Icons.add,
-            size: 20.sp,
-            color: context.colors.textPrimary,
-          ),
-        ),
+        child: Center(child: icon),
       ),
+    );
+
+    final message = tooltip;
+    if (message == null) return button;
+    return Tooltip(message: message, child: button);
+  }
+}
+
+/// Opens the shared Board workspace in its default Explorer view.
+class _BoardButton extends StatelessWidget {
+  final VoidCallback onTap;
+
+  const _BoardButton({required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return _HeaderIconButton(
+      onTap: onTap,
+      tooltip: 'Open Board',
+      icon: BoardNavigationIcon(size: 20.sp, semanticsLabel: 'Open Board'),
+    );
+  }
+}
+
+/// White plus icon on the shared header tile.
+class _PlusButton extends StatelessWidget {
+  final VoidCallback onTap;
+
+  const _PlusButton({required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return _HeaderIconButton(
+      onTap: onTap,
+      icon: Icon(Icons.add, size: 20.sp, color: context.colors.textPrimary),
     );
   }
 }
