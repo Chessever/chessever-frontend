@@ -1341,6 +1341,7 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
                           entry.games[j],
                           gameIdToIndex[entry.games[j].gameId] ?? 0,
                           games,
+                          isSelectionMode: isSelectionMode,
                         )
                         : const SizedBox.shrink(),
               ),
@@ -1351,36 +1352,46 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
     }
 
     if (entry is _PlayerBoardGameEntry) {
+      Widget boardCard = BoardGameCardWrapperWidget(
+        key: ValueKey('player_board_game_${entry.game.gameId}'),
+        game: entry.game,
+        orderedGames: games,
+        gameIndex: entry.gameIndex,
+        viewSource: ChessboardView.playerProfile,
+        playerProfileDataSource: widget.dataSource,
+        allowStockfishFallback: true,
+        streamEnabled: true,
+        onChangedWithLiveGames: (updatedGames) async {
+          final hasPremium = await requirePremiumGuard(context, ref);
+          if (!hasPremium) return;
+          if (!mounted) return;
+
+          ref
+              .read(gameCardWrapperProvider)
+              .navigateToChessBoard(
+                context: context,
+                orderedGames: updatedGames,
+                gameIndex: entry.gameIndex,
+                onReturnFromChessboard: (_) {},
+                viewSource: ChessboardView.playerProfile,
+                playerProfileDataSource: widget.dataSource,
+              );
+        },
+        pinnedIds: const [],
+        onPinToggle: (_) {},
+      );
+
+      if (isSelectionMode) {
+        boardCard = _buildSelectableCardWrapper(
+          boardCard,
+          isSelected: _selectedGameIds.contains(entry.game.gameId),
+          onTap: () => _toggleGameSelection(entry.game.gameId),
+        );
+      }
+
       return Padding(
         padding: EdgeInsets.only(bottom: entry.isLast ? 0 : 12.h),
-        child: BoardGameCardWrapperWidget(
-          key: ValueKey('player_board_game_${entry.game.gameId}'),
-          game: entry.game,
-          orderedGames: games,
-          gameIndex: entry.gameIndex,
-          viewSource: ChessboardView.playerProfile,
-          playerProfileDataSource: widget.dataSource,
-          allowStockfishFallback: true,
-          streamEnabled: true,
-          onChangedWithLiveGames: (updatedGames) async {
-            final hasPremium = await requirePremiumGuard(context, ref);
-            if (!hasPremium) return;
-            if (!mounted) return;
-
-            ref
-                .read(gameCardWrapperProvider)
-                .navigateToChessBoard(
-                  context: context,
-                  orderedGames: updatedGames,
-                  gameIndex: entry.gameIndex,
-                  onReturnFromChessboard: (_) {},
-                  viewSource: ChessboardView.playerProfile,
-                  playerProfileDataSource: widget.dataSource,
-                );
-          },
-          pinnedIds: const [],
-          onPinToggle: (_) {},
-        ),
+        child: boardCard,
       );
     }
 
@@ -1437,9 +1448,10 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
   Widget _buildGridGame(
     GamesTourModel game,
     int gameIndex,
-    List<GamesTourModel> allGames,
-  ) {
-    return GridGameCardWrapperWidget(
+    List<GamesTourModel> allGames, {
+    required bool isSelectionMode,
+  }) {
+    final Widget gridCard = GridGameCardWrapperWidget(
       key: ValueKey('player_grid_game_${game.gameId}'),
       game: game,
       orderedGames: allGames,
@@ -1468,9 +1480,26 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
       pinnedIds: const [],
       onPinToggle: (_) {},
     );
+
+    if (!isSelectionMode) return gridCard;
+
+    // Same corner overhang as the full-width card: the 12px gutter between the
+    // two columns (and the sliver's side padding on the outer edge) absorbs it,
+    // so the badge never covers the cell's own player row.
+    return _buildSelectableCardWrapper(
+      gridCard,
+      isSelected: _selectedGameIds.contains(game.gameId),
+      onTap: () => _toggleGameSelection(game.gameId),
+      cornerRadius: 12,
+    );
   }
 
-  Widget _buildSelectableCardWrapper(Widget child, {required bool isSelected}) {
+  Widget _buildSelectableCardWrapper(
+    Widget child, {
+    required bool isSelected,
+    VoidCallback? onTap,
+    double cornerRadius = 14,
+  }) {
     return Stack(
       clipBehavior: Clip.none,
       children: [
@@ -1478,7 +1507,7 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
           duration: const Duration(milliseconds: 160),
           curve: Curves.easeOutCubic,
           decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(14.br),
+            borderRadius: BorderRadius.circular(cornerRadius.br),
             border: Border.all(
               color:
                   isSelected
@@ -1500,6 +1529,18 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
           ),
           child: child,
         ),
+        // Board and grid cards own their tap/long-press (navigate, context
+        // menu). In selection mode that has to become "toggle this game", so an
+        // opaque layer takes every gesture before the card sees it.
+        if (onTap != null)
+          Positioned.fill(
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: onTap,
+              onLongPress: onTap,
+              child: const SizedBox.expand(),
+            ),
+          ),
         Positioned(
           top: -6.h,
           right: -6.w,
