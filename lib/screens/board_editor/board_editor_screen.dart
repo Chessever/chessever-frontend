@@ -653,14 +653,17 @@ class _BoardEditorScreenState extends ConsumerState<BoardEditorScreen> {
             child: Container(
               key: e2eKey(E2eIds.boardEditorDoneButton),
               padding: EdgeInsets.symmetric(horizontal: 14.w, vertical: 8.h),
+              // The one primary action here, so it wears the app's primary
+              // button: brand fill with inkOnAccent, same as Apply in the
+              // game filter dialog. Not an inverted white slab.
               decoration: BoxDecoration(
-                color: context.colors.textPrimary,
-                borderRadius: BorderRadius.circular(8.br),
+                color: kPrimaryColor,
+                borderRadius: BorderRadius.circular(10.br),
               ),
               child: Text(
                 'Analyze',
-                style: AppTypography.textSmMedium.copyWith(
-                  color: context.colors.background,
+                style: AppTypography.textSmBold.copyWith(
+                  color: context.colors.inkOnAccent,
                 ),
               ),
             ),
@@ -926,6 +929,9 @@ class _TopControls extends StatelessWidget {
   }
 }
 
+/// Secondary action: a recessed trough with a hairline, the same surface the
+/// Explorer uses for every non-primary control. It used to be a solid white
+/// slab, which outweighed Analyze and belonged to no other screen.
 class _SmallButton extends StatelessWidget {
   final String label;
   final VoidCallback onTap;
@@ -939,13 +945,14 @@ class _SmallButton extends StatelessWidget {
       child: Container(
         padding: EdgeInsets.symmetric(horizontal: 14.w, vertical: 8.h),
         decoration: BoxDecoration(
-          color: context.colors.textPrimary,
-          borderRadius: BorderRadius.circular(8.br),
+          color: context.colors.surfaceRecessed,
+          borderRadius: BorderRadius.circular(10.br),
+          border: Border.all(color: context.colors.divider),
         ),
         child: Text(
           label,
           style: AppTypography.textSmMedium.copyWith(
-            color: context.colors.background,
+            color: context.colors.textPrimary,
           ),
         ),
       ),
@@ -1408,6 +1415,8 @@ class _ActionRow extends StatelessWidget {
   }
 }
 
+/// Same secondary treatment as [_SmallButton]. The 24.br pill it used to be
+/// was a radius no other control in the app uses.
 class _ActionButton extends StatelessWidget {
   final String label;
   final VoidCallback onTap;
@@ -1421,14 +1430,15 @@ class _ActionButton extends StatelessWidget {
       child: Container(
         padding: EdgeInsets.symmetric(vertical: 12.h),
         decoration: BoxDecoration(
-          color: context.colors.textPrimary,
-          borderRadius: BorderRadius.circular(24.br),
+          color: context.colors.surfaceRecessed,
+          borderRadius: BorderRadius.circular(10.br),
+          border: Border.all(color: context.colors.divider),
         ),
         child: Center(
           child: Text(
             label,
             style: AppTypography.textSmMedium.copyWith(
-              color: context.colors.background,
+              color: context.colors.textPrimary,
             ),
           ),
         ),
