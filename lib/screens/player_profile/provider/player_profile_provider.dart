@@ -1628,6 +1628,160 @@ int? _largerInt(int? a, int? b) {
   return a > b ? a : b;
 }
 
+/// Builds an exact memorial event history from rows returned by the memorial
+/// games endpoint. Memorial profiles deliberately do not resolve through the
+/// mutable UUID player index, so their Events tab must preserve the same
+/// source identity as Games and Stats.
+List<PlayerEventData> buildMemorialPlayerEventsFromRows(
+  Iterable<Map<String, dynamic>> rows,
+) {
+  final byIdentity = <String, _MemorialEventAccumulator>{};
+
+  for (final row in rows) {
+    final rawEvent = _trimmedTwicRowString(row, 'event');
+    final canonicalEvent = _trimmedTwicRowString(row, 'canonicalEvent');
+    final title = canonicalEvent ?? rawEvent;
+    if (title == null || title.isEmpty) continue;
+
+    final date = _parsePlayerEventDateTime(row['date']);
+    final canonicalKey = _trimmedTwicRowString(row, 'canonicalKey');
+    final site = _trimmedTwicRowString(row, 'site');
+    final broadcastSlug =
+        _trimmedTwicRowString(row, 'broadcastSlug') ??
+        broadcastSlugFromSite(site);
+    final fallbackYear = date?.year.toString() ?? 'undated';
+    final normalizedTitle = title
+        .toLowerCase()
+        .replaceAll(RegExp(r'[^\p{L}\p{N}]+', unicode: true), '-')
+        .replaceAll(RegExp(r'^-+|-+$'), '');
+    final normalizedCanonicalKey = canonicalKey
+        ?.toLowerCase()
+        .replaceAll(RegExp(r'[^\p{L}\p{N}]+', unicode: true), '-')
+        .replaceAll(RegExp(r'^-+|-+$'), '');
+    final normalizedRawEvent = rawEvent
+        ?.toLowerCase()
+        .replaceAll(RegExp(r'[^\p{L}\p{N}]+', unicode: true), '-')
+        .replaceAll(RegExp(r'^-+|-+$'), '');
+    final hasStrongCanonicalKey =
+        canonicalKey != null &&
+        (broadcastSlug != null ||
+            (normalizedCanonicalKey != null &&
+                normalizedCanonicalKey != normalizedTitle &&
+                normalizedCanonicalKey != normalizedRawEvent));
+    final identity =
+        hasStrongCanonicalKey
+            ? 'canonical:$canonicalKey'
+            : broadcastSlug != null
+            ? 'broadcast:$broadcastSlug'
+            : 'title:$normalizedTitle:$fallbackYear';
+
+    final accumulator = byIdentity.putIfAbsent(
+      identity,
+      () => _MemorialEventAccumulator(
+        title: title,
+        canonicalKey: canonicalKey,
+        broadcastSlug: broadcastSlug,
+        site: site,
+      ),
+    );
+    accumulator.add(row, date: date);
+  }
+
+  final events = byIdentity.values
+      .map((accumulator) => accumulator.toEvent())
+      .toList(growable: false);
+  events.sort((a, b) {
+    final aDate = a.endDate ?? a.startDate ?? DateTime(1900);
+    final bDate = b.endDate ?? b.startDate ?? DateTime(1900);
+    return bDate.compareTo(aDate);
+  });
+  return events;
+}
+
+class _MemorialEventAccumulator {
+  _MemorialEventAccumulator({
+    required this.title,
+    this.canonicalKey,
+    this.broadcastSlug,
+    this.site,
+  });
+
+  final String title;
+  final String? canonicalKey;
+  final String? broadcastSlug;
+  final String? site;
+  final Map<String, int> _timeControls = <String, int>{};
+  int games = 0;
+  double score = 0;
+  int scoredGames = 0;
+  DateTime? startDate;
+  DateTime? endDate;
+  int ratingTotal = 0;
+  int ratingCount = 0;
+  int? maxElo;
+
+  void add(Map<String, dynamic> row, {required DateTime? date}) {
+    games += 1;
+    switch (_trimmedTwicRowString(row, 'outcome')?.toLowerCase()) {
+      case 'win':
+        score += 1;
+        scoredGames += 1;
+        break;
+      case 'draw':
+        score += 0.5;
+        scoredGames += 1;
+        break;
+      case 'loss':
+        scoredGames += 1;
+        break;
+    }
+    startDate = _earlierDate(startDate, date);
+    endDate = _laterDate(endDate, date);
+
+    final timeControl = _trimmedTwicRowString(row, 'timeControl');
+    if (timeControl != null) {
+      _timeControls.update(
+        timeControl,
+        (count) => count + 1,
+        ifAbsent: () => 1,
+      );
+    }
+
+    for (final key in const <String>['whiteElo', 'blackElo']) {
+      final rating = _parsePlayerEventInt(row[key]);
+      if (rating == null || rating <= 0) continue;
+      ratingTotal += rating;
+      ratingCount += 1;
+      maxElo = _largerInt(maxElo, rating);
+    }
+  }
+
+  PlayerEventData toEvent() {
+    final dominantTimeControl =
+        _timeControls.entries.isEmpty
+            ? null
+            : (_timeControls.entries.toList()
+                  ..sort((a, b) => b.value.compareTo(a.value)))
+                .first
+                .key;
+    return PlayerEventData(
+      tourId: title,
+      tourName: title,
+      tourSlug: title,
+      canonicalKey: canonicalKey,
+      broadcastSlug: broadcastSlug,
+      gamesPlayed: games,
+      score: scoredGames == games ? score : null,
+      startDate: startDate,
+      endDate: endDate,
+      site: site,
+      dominantTimeControl: dominantTimeControl,
+      avgElo: ratingCount == 0 ? null : ratingTotal ~/ ratingCount,
+      maxElo: maxElo,
+    );
+  }
+}
+
 class _PlayerEventBroadcastMeta {
   const _PlayerEventBroadcastMeta({
     this.startDate,
@@ -1882,6 +2036,27 @@ final playerEventCardProvider = FutureProvider.autoDispose
 final playerProfileDataKeyProvider = FutureProvider.family
     .autoDispose<PlayerProfileData?, PlayerProfileKey>((ref, playerKey) async {
       if (playerKey.source == PlayerProfileDataSource.twic) {
+        final memorialIdentity = playerKey.memorialSourceIdentity?.trim();
+        if (memorialIdentity != null && memorialIdentity.isNotEmpty) {
+          final overview = await ref.watch(
+            memorialPlayerOverviewProvider(memorialIdentity).future,
+          );
+          final player = overview?.player;
+          if (player == null) return null;
+          final fideId = int.tryParse(player.fideId?.trim() ?? '') ?? 0;
+          return PlayerProfileData(
+            fideId: fideId,
+            name: player.name,
+            title: ChessTitleUtils.normalize(player.title),
+            federation: player.fed,
+            classicalRating:
+                player.ratingClassical > 0 ? player.ratingClassical : null,
+            rapidRating: player.ratingRapid > 0 ? player.ratingRapid : null,
+            blitzRating: player.ratingBlitz > 0 ? player.ratingBlitz : null,
+            birthday: player.birthDate,
+          );
+        }
+
         final repo = ref.read(gamebaseRepositoryProvider);
         final playerId = await _resolveTwicPlayerId(ref, playerKey);
 

@@ -11,6 +11,7 @@ import 'package:chessever2/repository/supabase/group_broadcast/group_tour_reposi
 import 'package:chessever2/repository/supabase/round/round_repository.dart';
 import 'package:chessever2/repository/supabase/tour/tour_repository.dart';
 import 'package:chessever2/repository/gamebase/gamebase_repository.dart';
+import 'package:chessever2/repository/gamebase/memorial_player_local_search.dart';
 import 'package:chessever2/repository/library/library_repository.dart';
 import 'package:chessever2/repository/library/models/library_folder.dart';
 import 'package:chessever2/screens/chessboard/chess_board_screen_new.dart';
@@ -263,7 +264,7 @@ class DeepLinkService {
       String? broadcastId;
       int? playerFideId;
       String? teamName;
-      int? profileFideId;
+      String? profileRouteId;
 
       // Universal link: https://chessever.com/games/<id>
       if (uri.pathSegments.length >= 2 && uri.pathSegments[0] == 'games') {
@@ -304,9 +305,11 @@ class DeepLinkService {
 
       // Player profile: https://chessever.com/player/<fideId>, plus the
       // canonical SEO form https://chessever.com/player/<name-slug>/<fideId>.
-      // The FIDE id is always the last segment.
+      // The immutable player identity is always the last segment. It is a FIDE
+      // id for current profiles and a reviewed route id for Memorial profiles.
       if (uri.pathSegments.length >= 2 && uri.pathSegments[0] == 'player') {
-        profileFideId = int.tryParse(uri.pathSegments.last);
+        profileRouteId = uri.pathSegments.last.trim();
+        if (profileRouteId.isEmpty) profileRouteId = null;
       }
 
       // Custom scheme: com.chessever.app://games/<id>
@@ -317,10 +320,11 @@ class DeepLinkService {
       }
 
       // Custom scheme: com.chessever.app://player/<fideId>
-      if (profileFideId == null &&
+      if (profileRouteId == null &&
           uri.host == 'player' &&
           uri.pathSegments.isNotEmpty) {
-        profileFideId = int.tryParse(uri.pathSegments.last);
+        profileRouteId = uri.pathSegments.last.trim();
+        if (profileRouteId.isEmpty) profileRouteId = null;
       }
 
       // Custom scheme: com.chessever.app://books/<shareToken>
@@ -450,12 +454,12 @@ class DeepLinkService {
           data: {'broadcastId': _maskedValue(broadcastId), 'tab': eventTab},
         );
         _navigateToEvent(broadcastId, navigatorKey, ref, tab: eventTab);
-      } else if (profileFideId != null) {
+      } else if (profileRouteId != null) {
         _addBreadcrumb(
           'routing to player profile',
-          data: {'fideId': profileFideId.toString()},
+          data: {'routeId': profileRouteId},
         );
-        _navigateToPlayerProfile(profileFideId, navigatorKey, ref);
+        _navigateToPlayerProfile(profileRouteId, navigatorKey, ref);
       } else {
         _addBreadcrumb(
           'deep link ignored',
@@ -1580,13 +1584,12 @@ class DeepLinkService {
   }
 
   /// Opens a player's overall profile from a shared link
-  /// `chessever.com/player/<fideId>` (or the canonical
-  /// `/player/<name-slug>/<fideId>` SEO form). Resolves the player's name,
-  /// title, federation and rating by FIDE id so the profile screen has its
-  /// required identity, then pushes the screen. Falls back to home if the
-  /// player can't be resolved.
+  /// `chessever.com/player/<identity>` (or the canonical
+  /// `/player/<name-slug>/<identity>` SEO form). Numeric identities resolve a
+  /// current FIDE player. Reviewed Memorial route ids resolve locally so a
+  /// share link cannot drift to a namesake or a recycled identity.
   Future<void> _navigateToPlayerProfile(
-    int fideId,
+    String routeId,
     GlobalKey<NavigatorState> navigatorKey,
     WidgetRef ref,
   ) async {
@@ -1620,6 +1623,39 @@ class DeepLinkService {
         navigatorKey.currentState?.pushNamedAndRemoveUntil(
           '/auth_screen',
           (route) => false,
+        );
+        return;
+      }
+
+      final memorial = await findBundledMemorialPlayerByRouteId(routeId);
+      if (memorial != null) {
+        navigatorKey.currentState?.push(
+          MaterialPageRoute(
+            builder:
+                (_) => PlayerProfileScreen(
+                  fideId: int.tryParse(memorial.fideId ?? ''),
+                  playerName: memorial.name,
+                  title: memorial.title,
+                  federation: memorial.fed,
+                  rating:
+                      memorial.ratingClassical > 0
+                          ? memorial.ratingClassical
+                          : null,
+                  gamebasePlayerId: memorial.gamebasePlayerId,
+                  memorialSourceIdentity: memorial.sourceIdentity,
+                  memorialRouteId: memorial.routeId,
+                ),
+          ),
+        );
+        return;
+      }
+
+      final fideId = int.tryParse(routeId);
+      if (fideId == null || fideId <= 0) {
+        _navigateToHome(
+          navigatorKey,
+          reason: 'player_profile_not_found',
+          extras: {'routeId': routeId},
         );
         return;
       }
@@ -1658,7 +1694,7 @@ class DeepLinkService {
         e,
         stackTrace,
         stage: 'navigate_to_player_profile',
-        extras: {'fideId': fideId.toString()},
+        extras: {'routeId': routeId},
       );
       navigatorKey.currentState?.pushNamedAndRemoveUntil(
         '/home_screen',

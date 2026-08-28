@@ -11,7 +11,6 @@ import 'package:chessever2/screens/gamebase/models/models.dart';
 import 'package:chessever2/screens/player_profile/player_profile_data_source.dart';
 import 'package:chessever2/screens/player_profile/provider/player_profile_provider.dart';
 import 'package:chessever2/screens/player_profile/tabs/player_about_tab.dart';
-import 'package:chessever2/screens/player_profile/tabs/memorial_player_about_tab.dart';
 import 'package:chessever2/screens/player_profile/utils/player_profile_share_utils.dart';
 import 'package:chessever2/screens/player_profile/widgets/player_profile_share_image_card.dart';
 import 'package:chessever2/screens/player_profile/widgets/save_to_library_sheet.dart';
@@ -64,12 +63,7 @@ const playerProfileTabNames = {
 
 @visibleForTesting
 List<PlayerProfileTab> playerProfileTabsFor({required bool isMemorial}) =>
-    isMemorial
-        ? const <PlayerProfileTab>[
-          PlayerProfileTab.about,
-          PlayerProfileTab.games,
-        ]
-        : PlayerProfileTab.values;
+    PlayerProfileTab.values;
 
 /// Provider for selected tab
 final selectedPlayerProfileTabProvider =
@@ -328,6 +322,7 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
 
   /// Resolve the gamebase player UUID from constructor or TWIC summary.
   String? _resolveGamebasePlayerId() {
+    if (_isMemorial) return null;
     if (_currentGamebasePlayerId != null) return _currentGamebasePlayerId;
     final twicLookupKey = PlayerProfileKey(
       fideId: widget.fideId,
@@ -368,7 +363,9 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
     final activeProfile =
         ref.read(playerProfileDataKeyProvider(activePlayerKey)).valueOrNull;
     final fallbackChessPlayer =
-        ref.read(chessPlayerByFideIdProvider(widget.fideId)).valueOrNull;
+        _isMemorial
+            ? null
+            : ref.read(chessPlayerByFideIdProvider(widget.fideId)).valueOrNull;
 
     final name =
         (activeProfile?.name.trim().isNotEmpty ?? false)
@@ -384,7 +381,10 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
                 ? widget.federation!.trim()
                 : (fallbackChessPlayer?.country?.trim() ?? ''));
 
-    final fideId = widget.fideId?.toString() ?? '';
+    final fideId =
+        (activeProfile?.fideId ?? 0) > 0
+            ? activeProfile!.fideId.toString()
+            : (widget.fideId?.toString() ?? '');
 
     final title =
         (activeProfile?.title?.trim().isNotEmpty ?? false)
@@ -530,57 +530,76 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
       gamebasePlayerId: _currentGamebasePlayerId,
       memorialSourceIdentity: widget.memorialSourceIdentity,
     );
-    final gamesState = ref.read(playerProfileGamesKeyProvider(playerKey));
-    final activeProfile =
-        ref.read(playerProfileDataKeyProvider(playerKey)).valueOrNull;
-
-    // Overall analytics for the About-page-style card: prefer the backend
-    // all-games stats (same source as the About tab), fall back to computing
-    // from whatever games are already loaded locally.
-    final twicStats =
-        ref
-            .read(
-              twicPlayerStatsProvider(
-                TwicPlayerStatsRequest(
-                  playerKey: playerKey,
-                  scope: TwicStatsScope.allGames,
-                ),
-              ),
-            )
-            .valueOrNull;
-    final analytics =
-        twicStats ??
-        PlayerAnalytics.fromGames(
-          gamesState.allGames,
-          widget.fideId,
-          widget.playerName,
-        );
-
-    final nameParts = effectiveName.split(',');
-    final initials =
-        nameParts.length > 1
-            ? '${nameParts[0].trim().isNotEmpty ? nameParts[0].trim()[0] : ''}'
-                '${nameParts[1].trim().isNotEmpty ? nameParts[1].trim()[0] : ''}'
-            : effectiveName.trim().isNotEmpty
-            ? effectiveName.trim().substring(
-              0,
-              math.min(2, effectiveName.trim().length),
-            )
-            : '';
-
-    final standardRating = activeProfile?.classicalRating ?? widget.rating;
-    final memorialPhotoUrl = memorialPlayerPhotoUrl(
-      playerName: widget.playerName,
-      sourceIdentity: widget.memorialSourceIdentity,
-    );
-    final photoFuture =
-        (() async =>
-            await FidePhotoService.getPhotoUrlOrNull(
-              widget.fideId?.toString(),
-            ) ??
-            memorialPhotoUrl)();
 
     try {
+      final activeProfile = await ref.read(
+        playerProfileDataKeyProvider(playerKey).future,
+      );
+      final memorialIdentity = widget.memorialSourceIdentity?.trim();
+      final memorialOverview =
+          memorialIdentity?.isNotEmpty == true
+              ? await ref.read(
+                memorialPlayerOverviewProvider(memorialIdentity!).future,
+              )
+              : null;
+      final shareName =
+          activeProfile?.name.trim().isNotEmpty == true
+              ? activeProfile!.name
+              : effectiveName;
+      final displayShareName = formatPlayerDisplayName(shareName);
+      final shareTitle = activeProfile?.title ?? effectiveTitle;
+      final shareFederation =
+          activeProfile?.federation ?? effectiveFederation ?? '';
+      final shareFideId =
+          (activeProfile?.fideId ?? 0) > 0
+              ? activeProfile!.fideId
+              : widget.fideId;
+
+      PlayerAnalytics? analytics;
+      try {
+        analytics = await ref.read(
+          twicPlayerStatsProvider(
+            TwicPlayerStatsRequest(
+              playerKey: playerKey,
+              scope: TwicStatsScope.allGames,
+            ),
+          ).future,
+        );
+      } catch (_) {}
+      if (analytics == null) {
+        final allGames = await ref.read(
+          playerGamesDataKeyProvider(playerKey).future,
+        );
+        analytics = PlayerAnalytics.fromGames(allGames, shareFideId, shareName);
+      }
+
+      final nameParts = shareName.split(',');
+      final initials =
+          nameParts.length > 1
+              ? '${nameParts[0].trim().isNotEmpty ? nameParts[0].trim()[0] : ''}'
+                  '${nameParts[1].trim().isNotEmpty ? nameParts[1].trim()[0] : ''}'
+              : shareName.trim().isNotEmpty
+              ? shareName.trim().substring(
+                0,
+                math.min(2, shareName.trim().length),
+              )
+              : '';
+      final standardRating = activeProfile?.classicalRating ?? widget.rating;
+      final memorialPhotoUrl = memorialPlayerPhotoUrl(
+        playerName: shareName,
+        sourceIdentity: memorialIdentity,
+      );
+      final photoFuture =
+          memorialIdentity?.isNotEmpty == true
+              ? Future<String?>.value(memorialPhotoUrl)
+              : FidePhotoService.getPhotoUrlOrNull(shareFideId?.toString());
+      final birthYear = memorialOverview?.player.birthDate?.split('-').first;
+      final deathYear = memorialOverview?.player.deathDate?.split('-').first;
+      final lifespan =
+          birthYear?.isNotEmpty == true && deathYear?.isNotEmpty == true
+              ? '$birthYear - $deathYear'
+              : null;
+      if (!mounted) return;
       final logicalWidth = math.min(MediaQuery.of(context).size.width, 430.0);
 
       // Warm the player photo into the image cache before the snapshot so the
@@ -600,16 +619,18 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
         pixelRatio: 3.0,
         child: PlayerProfileShareImageCard(
           width: logicalWidth,
-          playerName: effectiveName,
-          title: effectiveTitle,
-          countryCode: effectiveFederation ?? '',
-          fideId: widget.fideId,
+          playerName: displayShareName,
+          title: shareTitle,
+          countryCode: shareFederation,
+          fideId: shareFideId,
           photoFuture: photoFuture,
           initials: initials,
           standardRating: standardRating,
           rapidRating: activeProfile?.rapidRating,
           blitzRating: activeProfile?.blitzRating,
           analytics: analytics,
+          isMemorial: memorialOverview != null,
+          lifespan: lifespan,
         ),
       );
       if (imageBytes == null) {
@@ -622,7 +643,12 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
       await file.writeAsBytes(imageBytes);
       if (!mounted) return;
 
-      final shareUrl = buildPlayerProfileShareUrl(widget.fideId);
+      final shareUrl = buildPlayerProfileShareUrl(
+        shareFideId,
+        playerName: displayShareName,
+        memorialRouteId:
+            widget.memorialRouteId ?? memorialOverview?.player.routeId,
+      );
       await showShareImagePreview(
         context,
         imageBytes: imageBytes,
@@ -630,7 +656,7 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
           await shareFilesWithText(
             [XFile(file.path, mimeType: 'image/png')],
             text: shareUrl,
-            subject: effectiveName,
+            subject: displayShareName,
             sharePositionOrigin: const Rect.fromLTWH(0, 0, 1, 1),
           );
         },
@@ -640,7 +666,7 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
                 : () async {
                   await Share.share(
                     shareUrl,
-                    subject: effectiveName,
+                    subject: displayShareName,
                     sharePositionOrigin: const Rect.fromLTWH(0, 0, 1, 1),
                   );
                 },
@@ -675,7 +701,9 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
     );
     final activeProfile = activeProfileAsync.valueOrNull;
     final fallbackChessPlayer =
-        ref.watch(chessPlayerByFideIdProvider(widget.fideId)).valueOrNull;
+        _isMemorial
+            ? null
+            : ref.watch(chessPlayerByFideIdProvider(widget.fideId)).valueOrNull;
     final effectiveName =
         (activeProfile?.name.trim().isNotEmpty ?? false)
             ? activeProfile!.name
@@ -738,7 +766,7 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
     final hasActiveFilter = gamesState.hasActiveFilters;
 
     var isTwicStatsLoading = false;
-    if (!_isMemorial && selectedTab == PlayerProfileTab.about) {
+    if (selectedTab == PlayerProfileTab.about) {
       final allGamesStats = ref.watch(
         twicPlayerStatsProvider(
           TwicPlayerStatsRequest(
@@ -984,9 +1012,6 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
 
     final tabOptions = _availableTabs
         .map((tab) {
-          if (_isMemorial && tab == PlayerProfileTab.about) {
-            return 'Overview';
-          }
           if (tab == PlayerProfileTab.games &&
               selectedTab != PlayerProfileTab.games &&
               _gamesTabCueCount != null &&
@@ -1089,19 +1114,6 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
         itemBuilder: (context, index) {
           switch (_availableTabs[index]) {
             case PlayerProfileTab.about:
-              if (_isMemorial) {
-                return MemorialPlayerAboutTab(
-                  sourceIdentity: widget.memorialSourceIdentity!.trim(),
-                  playerName: widget.playerName,
-                  playerKey: PlayerProfileKey(
-                    fideId: widget.fideId,
-                    playerName: widget.playerName,
-                    source: PlayerProfileDataSource.twic,
-                    gamebasePlayerId: _currentGamebasePlayerId,
-                    memorialSourceIdentity: widget.memorialSourceIdentity,
-                  ),
-                );
-              }
               return PlayerAboutTab(
                 fideId: widget.fideId,
                 playerName: widget.playerName,

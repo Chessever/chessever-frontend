@@ -30,6 +30,8 @@ class PlayerProfileShareImageCard extends StatelessWidget {
     required this.rapidRating,
     required this.blitzRating,
     required this.analytics,
+    this.isMemorial = false,
+    this.lifespan,
   });
 
   final double width;
@@ -43,6 +45,8 @@ class PlayerProfileShareImageCard extends StatelessWidget {
   final int? rapidRating;
   final int? blitzRating;
   final PlayerAnalytics? analytics;
+  final bool isMemorial;
+  final String? lifespan;
 
   // Deterministic dark brand palette (independent of the active app theme).
   static const _bg = Color(0xFF0A0B0D);
@@ -137,71 +141,38 @@ class PlayerProfileShareImageCard extends StatelessWidget {
     return sorted.take(_maxOpenings).toList(growable: false);
   }
 
-  // ── Hero: brand mark + player identity over a cyan glow ────────────────────
+  // ── Hero: brand mark + player identity ────────────────────────────────────
   Widget _buildHero() {
-    return ClipRect(
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [Color.alphaBlend(_cyan.withValues(alpha: 0.13), _bg), _bg],
-          ),
-        ),
-        child: Stack(
-          children: [
-            // Soft cyan glow bleeding from behind the avatar.
-            Positioned(
-              left: -60,
-              top: 40,
-              child: _GlowBlob(color: _cyan, size: 240, opacity: 0.20),
-            ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(_padH, 22, _padH, 20),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // Brand mark + wordmark
-                  Row(
-                    children: [
-                      _logoBadge(26),
-                      const SizedBox(width: 9),
-                      Text(
-                        'ChessEver',
-                        style: AppTypography.textSmBold.copyWith(
-                          color: _textHi,
-                          fontSize: 15,
-                          letterSpacing: 0.2,
-                        ),
-                      ),
-                      const Spacer(),
-                      Text(
-                        'PLAYER PROFILE',
-                        style: AppTypography.textXxsBold.copyWith(
-                          color: _textLo,
-                          fontSize: 10,
-                          letterSpacing: 1.4,
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 18),
-                  _buildPlayerIdentity(),
-                  const SizedBox(height: 14),
-                  // Cyan kicker accent under the identity block.
-                  Container(
-                    width: 38,
-                    height: 3,
-                    decoration: BoxDecoration(
-                      color: _cyan,
-                      borderRadius: BorderRadius.circular(2),
-                    ),
-                  ),
-                ],
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(_padH, 22, _padH, 20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              _logoBadge(26),
+              const SizedBox(width: 9),
+              Text(
+                'ChessEver',
+                style: AppTypography.textSmBold.copyWith(
+                  color: _textHi,
+                  fontSize: 15,
+                  letterSpacing: 0.2,
+                ),
               ),
-            ),
-          ],
-        ),
+              const Spacer(),
+              Text(
+                isMemorial ? 'Memorial profile' : 'Player profile',
+                style: AppTypography.textXsMedium.copyWith(
+                  color: _textLo,
+                  fontSize: 11,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 18),
+          _buildPlayerIdentity(),
+        ],
       ),
     );
   }
@@ -238,8 +209,6 @@ class PlayerProfileShareImageCard extends StatelessWidget {
             mainAxisSize: MainAxisSize.min,
             children: [
               RichText(
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
                 text: TextSpan(
                   children: [
                     if (titleText.isNotEmpty)
@@ -292,12 +261,22 @@ class PlayerProfileShareImageCard extends StatelessWidget {
               if (fideId != null) ...[
                 const SizedBox(height: 6),
                 Text(
-                  'FIDE ID $fideId',
+                  '${isMemorial ? 'Historical FIDE ID' : 'FIDE ID'} $fideId',
                   style: AppTypography.textXxsMedium.copyWith(
                     color: _textLo,
                     fontSize: 11,
                     letterSpacing: 0.4,
                     fontFeatures: const [FontFeature.tabularFigures()],
+                  ),
+                ),
+              ],
+              if (lifespan?.trim().isNotEmpty == true) ...[
+                const SizedBox(height: 5),
+                Text(
+                  lifespan!.trim(),
+                  style: AppTypography.textXxsMedium.copyWith(
+                    color: _textLo,
+                    fontSize: 11,
                   ),
                 ),
               ],
@@ -315,30 +294,29 @@ class PlayerProfileShareImageCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: _surface,
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: _hairline, width: 1),
       ),
       child: Row(
         children: [
           Expanded(
             child: _RatingSegment(
               icon: PngAsset.classicalIcon,
-              label: 'Classical',
+              label: isMemorial ? 'Peak classical' : 'Classical',
               rating: standardRating,
             ),
           ),
-          _segDivider(),
+          const SizedBox(width: 2),
           Expanded(
             child: _RatingSegment(
               icon: PngAsset.rapidIcon,
-              label: 'Rapid',
+              label: isMemorial ? 'Peak rapid' : 'Rapid',
               rating: rapidRating,
             ),
           ),
-          _segDivider(),
+          const SizedBox(width: 2),
           Expanded(
             child: _RatingSegment(
               icon: PngAsset.blitzIcon,
-              label: 'Blitz',
+              label: isMemorial ? 'Peak blitz' : 'Blitz',
               rating: blitzRating,
             ),
           ),
@@ -346,8 +324,6 @@ class PlayerProfileShareImageCard extends StatelessWidget {
       ),
     );
   }
-
-  Widget _segDivider() => Container(width: 1, height: 30, color: _hairline);
 
   // ── Headline stats: Win rate / Games / Avg opponent ────────────────────────
   Widget _buildHeadlineStats() {
@@ -360,25 +336,24 @@ class PlayerProfileShareImageCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: _surface,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: _hairline, width: 1),
       ),
       child: Row(
         children: [
           Expanded(
             child: _HeadlineStat(
-              label: 'WIN RATE',
+              label: 'Win rate',
               value: winRateText,
               valueColor: _win,
             ),
           ),
-          _statDivider(),
+          const SizedBox(width: 2),
           Expanded(
-            child: _HeadlineStat(label: 'GAMES', value: '${stats.totalGames}'),
+            child: _HeadlineStat(label: 'Games', value: '${stats.totalGames}'),
           ),
-          _statDivider(),
+          const SizedBox(width: 2),
           Expanded(
             child: _HeadlineStat(
-              label: 'AVG OPPONENT',
+              label: 'Avg opponent',
               value: avgOpponent > 0 ? '$avgOpponent' : '-',
             ),
           ),
@@ -386,8 +361,6 @@ class PlayerProfileShareImageCard extends StatelessWidget {
       ),
     );
   }
-
-  Widget _statDivider() => Container(width: 1, height: 42, color: _hairline);
 
   // ── Results: W/D/L ratio bar + counts + colour split ───────────────────────
   Widget _buildResults() {
@@ -397,7 +370,7 @@ class PlayerProfileShareImageCard extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        _sectionLabel('RECORD'),
+        _sectionLabel('Record'),
         const SizedBox(height: 8),
         Container(
           padding: const EdgeInsets.fromLTRB(14, 14, 14, 12),
@@ -506,7 +479,7 @@ class PlayerProfileShareImageCard extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        _sectionLabel('RECENT FORM'),
+        _sectionLabel('Recent form'),
         const SizedBox(height: 8),
         Container(
           height: 52,
@@ -541,7 +514,7 @@ class PlayerProfileShareImageCard extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        _sectionLabel('MOST PLAYED OPENINGS'),
+        _sectionLabel('Most played openings'),
         const SizedBox(height: 8),
         ClipRRect(
           borderRadius: BorderRadius.circular(14),
@@ -567,11 +540,7 @@ class PlayerProfileShareImageCard extends StatelessWidget {
       padding: const EdgeInsets.only(left: 4),
       child: Text(
         text,
-        style: AppTypography.textXxsBold.copyWith(
-          color: _textLo,
-          fontSize: 10.5,
-          letterSpacing: 1.4,
-        ),
+        style: AppTypography.textXsBold.copyWith(color: _textLo, fontSize: 11),
       ),
     );
   }
@@ -622,58 +591,13 @@ class PlayerProfileShareImageCard extends StatelessWidget {
   }
 
   Widget _logoBadge(double size) {
-    return Container(
-      width: size,
-      height: size,
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(size * 0.28),
-        boxShadow: [
-          BoxShadow(
-            color: _cyan.withValues(alpha: 0.35),
-            blurRadius: 14,
-            spreadRadius: -4,
-          ),
-        ],
-      ),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(size * 0.28),
-        child: Image.asset(
-          PngAsset.newAppLogo,
-          width: size,
-          height: size,
-          fit: BoxFit.cover,
-        ),
-      ),
-    );
-  }
-}
-
-class _GlowBlob extends StatelessWidget {
-  const _GlowBlob({
-    required this.color,
-    required this.size,
-    required this.opacity,
-  });
-
-  final Color color;
-  final double size;
-  final double opacity;
-
-  @override
-  Widget build(BuildContext context) {
-    return IgnorePointer(
-      child: Container(
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(size * 0.28),
+      child: Image.asset(
+        PngAsset.newAppLogo,
         width: size,
         height: size,
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          gradient: RadialGradient(
-            colors: [
-              color.withValues(alpha: opacity),
-              color.withValues(alpha: 0.0),
-            ],
-          ),
-        ),
+        fit: BoxFit.cover,
       ),
     );
   }
@@ -702,7 +626,6 @@ class _HeadlineStat extends StatelessWidget {
           style: AppTypography.textXxsBold.copyWith(
             color: PlayerProfileShareImageCard._textLo,
             fontSize: 10,
-            letterSpacing: 0.8,
           ),
         ),
         const SizedBox(height: 7),

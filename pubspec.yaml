@@ -16,7 +16,7 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
 # In Windows, build-name is used as the major, minor, and patch parts
 # of the product and file versions while build-number is used as the build suffix.
-version: 34.8.5+3378
+version: 34.8.6+3379
 environment:
   sdk: ^3.7.2
 
@@ -237,6 +237,7 @@ flutter:
     - assets/app_icon.png
     - assets/data/memorial-player-catalog.json
     - assets/data/memorial-player-about.json
+    - assets/data/memorial-player-history.json
     # .env is gitignored, so declaring it here breaks any build from a fresh
     # clone or CI checkout. main.dart already loads it opportunistically in
     # debug and falls back to --dart-define values when it isn't bundled.

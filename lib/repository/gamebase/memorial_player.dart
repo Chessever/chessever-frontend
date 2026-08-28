@@ -77,6 +77,12 @@ String? memorialPlayerPhotoUrl({
   final identity = sourceIdentity?.trim();
   if (identity == null || identity.isEmpty) return null;
 
+  final slug = memorialPlayerSlug(playerName);
+  if (slug.isEmpty) return null;
+  return 'https://chessever.com/images/memorial/players/$slug.webp';
+}
+
+String memorialPlayerSlug(String playerName) {
   final commaParts = playerName.split(',');
   var naturalName = playerName;
   if (commaParts.length > 1) {
@@ -116,6 +122,5 @@ String? memorialPlayerPhotoUrl({
   slug = slug
       .replaceAll(RegExp(r'[^a-z0-9]+'), '-')
       .replaceAll(RegExp(r'^-+|-+$'), '');
-  if (slug.isEmpty) return null;
-  return 'https://chessever.com/images/memorial/players/$slug.webp';
+  return slug;
 }

@@ -1,5 +1,6 @@
 import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
 import 'package:chessever2/repository/gamebase/memorial_player.dart';
+import 'package:chessever2/screens/player_profile/tabs/memorial_player_about_tab.dart';
 import 'package:chessever2/screens/player_profile/player_profile_data_source.dart';
 import 'package:chessever2/screens/player_profile/provider/player_profile_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
@@ -139,6 +140,11 @@ class _PlayerAboutTabState extends ConsumerState<PlayerAboutTab>
     final profileDataAsync = ref.watch(
       playerProfileDataKeyProvider(_playerKey),
     );
+    final memorialIdentity = widget.memorialSourceIdentity?.trim();
+    final memorialOverviewAsync =
+        memorialIdentity?.isNotEmpty == true
+            ? ref.watch(memorialPlayerOverviewProvider(memorialIdentity!))
+            : null;
     final canUseTwicStats = widget.dataSource == PlayerProfileDataSource.twic;
     // Supabase path still uses prefetched games for analytics; TWIC uses backend stats.
     final gamesAsync =
@@ -198,6 +204,9 @@ class _PlayerAboutTabState extends ConsumerState<PlayerAboutTab>
       onRefresh: () async {
         ref.invalidate(playerProfileDataKeyProvider(_playerKey));
         ref.invalidate(playerGamesDataKeyProvider(_playerKey));
+        if (memorialIdentity?.isNotEmpty == true) {
+          ref.invalidate(memorialPlayerOverviewProvider(memorialIdentity!));
+        }
         if (canUseTwicStats) {
           ref.invalidate(
             twicPlayerStatsProvider(
@@ -254,6 +263,32 @@ class _PlayerAboutTabState extends ConsumerState<PlayerAboutTab>
             ),
 
             SizedBox(height: 24.h),
+
+            if (memorialOverviewAsync != null) ...[
+              memorialOverviewAsync.when(
+                data:
+                    (overview) =>
+                        overview == null
+                            ? const _MemorialKnowledgeState(
+                              message:
+                                  'Historical profile details are unavailable.',
+                            )
+                            : MemorialPlayerKnowledge(
+                              overview: overview,
+                              fallbackName: widget.playerName,
+                            ),
+                loading:
+                    () => const _MemorialKnowledgeState(
+                      message: 'Loading historical profile...',
+                      loading: true,
+                    ),
+                error:
+                    (_, _) => const _MemorialKnowledgeState(
+                      message: 'Historical profile details are unavailable.',
+                    ),
+              ),
+              SizedBox(height: 24.h),
+            ],
 
             // Analytics section
             canUseTwicStats
@@ -536,7 +571,7 @@ class _PlayerAboutTabState extends ConsumerState<PlayerAboutTab>
           ),
         ],
       ),
-    ).animate().fadeIn(duration: 300.ms);
+    );
   }
 
   Widget _buildNoGamesForFilterMessage(GameFilter filter) {
@@ -585,7 +620,7 @@ class _PlayerAboutTabState extends ConsumerState<PlayerAboutTab>
           ),
         ],
       ),
-    ).animate().fadeIn(duration: 300.ms);
+    );
   }
 
   Widget _buildLoadingAnalytics() {
@@ -901,6 +936,46 @@ class _FilterActiveBanner extends StatelessWidget {
   }
 }
 
+class _MemorialKnowledgeState extends StatelessWidget {
+  const _MemorialKnowledgeState({required this.message, this.loading = false});
+
+  final String message;
+  final bool loading;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: context.colors.surface,
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          if (loading) ...[
+            const SizedBox(
+              width: 16,
+              height: 16,
+              child: CircularProgressIndicator(strokeWidth: 1.5),
+            ),
+            const SizedBox(width: 10),
+          ],
+          Flexible(
+            child: Text(
+              message,
+              style: AppTypography.textSmRegular.copyWith(
+                color: context.colors.textSecondary,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 /// Player header with photo and rating cards
 class _PlayerHeaderSection extends ConsumerStatefulWidget {
   const _PlayerHeaderSection({
@@ -956,6 +1031,10 @@ class _PlayerHeaderSectionState extends ConsumerState<_PlayerHeaderSection> {
       playerName: widget.playerName,
       sourceIdentity: widget.memorialSourceIdentity,
     );
+    if (widget.memorialSourceIdentity?.trim().isNotEmpty == true) {
+      _photoFuture = Future<String?>.value(memorialUrl);
+      return;
+    }
     final fideId = widget.fideId;
     _photoFuture =
         fideId == null
@@ -990,6 +1069,11 @@ class _PlayerHeaderSectionState extends ConsumerState<_PlayerHeaderSection> {
         widget.profileData?.classicalRating ?? widget.fallbackRating;
     final rapidRating = widget.profileData?.rapidRating;
     final blitzRating = widget.profileData?.blitzRating;
+    final isMemorial = widget.memorialSourceIdentity?.trim().isNotEmpty == true;
+    final displayFideId =
+        (widget.profileData?.fideId ?? 0) > 0
+            ? widget.profileData!.fideId
+            : widget.fideId;
 
     // Get current time control filter to show selected state
     final playerKey = PlayerProfileKey(
@@ -1019,7 +1103,7 @@ class _PlayerHeaderSectionState extends ConsumerState<_PlayerHeaderSection> {
                   Expanded(
                     child: _RatingCard(
                       icon: PngAsset.classicalIcon,
-                      label: 'Classical',
+                      label: isMemorial ? 'Peak classical' : 'Classical',
                       rating: classicalRating,
                       isSelected:
                           currentTimeControl == GameTimeControlFilter.classical,
@@ -1044,7 +1128,7 @@ class _PlayerHeaderSectionState extends ConsumerState<_PlayerHeaderSection> {
                   Expanded(
                     child: _RatingCard(
                       icon: PngAsset.rapidIcon,
-                      label: 'Rapid',
+                      label: isMemorial ? 'Peak rapid' : 'Rapid',
                       rating: rapidRating,
                       isSelected:
                           currentTimeControl == GameTimeControlFilter.rapid,
@@ -1068,7 +1152,7 @@ class _PlayerHeaderSectionState extends ConsumerState<_PlayerHeaderSection> {
                   Expanded(
                     child: _RatingCard(
                       icon: PngAsset.blitzIcon,
-                      label: 'Blitz',
+                      label: isMemorial ? 'Peak blitz' : 'Blitz',
                       rating: blitzRating,
                       isSelected:
                           currentTimeControl == GameTimeControlFilter.blitz,
@@ -1150,14 +1234,14 @@ class _PlayerHeaderSectionState extends ConsumerState<_PlayerHeaderSection> {
                 child: Column(
                   children: [
                     Text(
-                      widget.fideId?.toString() ?? '-',
+                      displayFideId?.toString() ?? 'Not assigned',
                       style: AppTypography.textSmBold.copyWith(
                         color: context.colors.textPrimary,
                         fontFamily: 'monospace',
                       ),
                     ),
                     Text(
-                      'FIDE ID',
+                      isMemorial ? 'Historical FIDE ID' : 'FIDE ID',
                       style: AppTypography.textXsRegular.copyWith(
                         color: context.colors.textPrimary.withValues(
                           alpha: 0.5,
@@ -1171,7 +1255,7 @@ class _PlayerHeaderSectionState extends ConsumerState<_PlayerHeaderSection> {
           ),
         ),
       ],
-    ).animate().fadeIn(duration: 300.ms).slideY(begin: -0.02, end: 0);
+    );
   }
 
   Widget _buildAvatar(String initials, String effectiveTitle) {
@@ -1233,142 +1317,72 @@ class _RatingCard extends StatefulWidget {
 }
 
 class _RatingCardState extends State<_RatingCard> {
-  double _pressScale = 1.0;
-
-  void _onTapDown(TapDownDetails _) {
-    if (widget.onTap != null) {
-      setState(() => _pressScale = 0.92);
-    }
-  }
-
-  void _onTapUp(TapUpDetails _) {
-    setState(() => _pressScale = 1.0);
-  }
-
-  void _onTapCancel() {
-    setState(() => _pressScale = 1.0);
-  }
-
   @override
   Widget build(BuildContext context) {
-    // Use motor for all animated properties
-    return GestureDetector(
-      onTapDown: widget.onTap != null ? _onTapDown : null,
-      onTapUp: widget.onTap != null ? _onTapUp : null,
-      onTapCancel: widget.onTap != null ? _onTapCancel : null,
-      onTap: widget.onTap,
+    return Semantics(
+      button: widget.onTap != null,
+      selected: widget.isSelected,
+      label: '${widget.label} rating ${widget.rating ?? 'not recorded'}',
       child: SingleMotionBuilder(
         motion: const CupertinoMotion.snappy(),
-        value: _pressScale,
-        builder: (context, pressScale, _) {
-          return SingleMotionBuilder(
-            // Bouncy spring for selection - like a chess piece settling
-            motion: const CupertinoMotion.bouncy(),
-            value: widget.isSelected ? 1.0 : 0.0,
-            builder: (context, selectProgress, _) {
-              // Interpolate colors based on selection progress
-              final bgColor =
-                  Color.lerp(
-                    context.colors.surface,
-                    kPrimaryColor.withValues(alpha: 0.18),
-                    selectProgress,
-                  )!;
-              final borderColor =
-                  Color.lerp(
-                    Colors.transparent,
-                    kPrimaryColor,
-                    selectProgress,
-                  )!;
-              final labelColor =
-                  Color.lerp(
-                    context.colors.textPrimaryMuted,
-                    kPrimaryColor,
-                    selectProgress,
-                  )!;
-              final ratingColor =
-                  Color.lerp(
-                    context.colors.textPrimary,
-                    kPrimaryColor,
-                    selectProgress,
-                  )!;
+        value: widget.isSelected ? 1.0 : 0.0,
+        builder: (context, selectProgress, _) {
+          final bgColor =
+              Color.lerp(
+                context.colors.surface,
+                context.colors.surfaceRecessed,
+                selectProgress,
+              )!;
+          final borderColor =
+              Color.lerp(
+                Colors.transparent,
+                context.colors.textPrimary.withValues(alpha: 0.22),
+                selectProgress,
+              )!;
+          final labelColor =
+              Color.lerp(
+                context.colors.textPrimaryMuted,
+                context.colors.textPrimary,
+                selectProgress,
+              )!;
 
-              // Subtle scale bump when selected
-              final selectScale = 1.0 + (selectProgress * 0.03);
-              final combinedScale = pressScale * selectScale;
-
-              // Border width animates
-              final borderWidth = 1.0 + (selectProgress * 0.5);
-
-              return Transform.scale(
-                scale: combinedScale,
-                child: Container(
-                  padding: EdgeInsets.symmetric(
-                    horizontal: 8.sp,
-                    vertical: 10.sp,
+          return InkWell(
+            onTap: widget.onTap,
+            borderRadius: BorderRadius.circular(10.br),
+            child: Container(
+              padding: EdgeInsets.symmetric(horizontal: 7.sp, vertical: 9.sp),
+              height: 110.w,
+              decoration: BoxDecoration(
+                color: bgColor,
+                borderRadius: BorderRadius.circular(10.br),
+                border: Border.all(color: borderColor),
+              ),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Image.asset(widget.icon, width: 20.w, height: 20.h),
+                  SizedBox(height: 5.h),
+                  Text(
+                    widget.label,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    textAlign: TextAlign.center,
+                    style: AppTypography.textXsMedium.copyWith(
+                      color: labelColor,
+                      fontSize: 10.sp,
+                      height: 1.1,
+                    ),
                   ),
-                  height: 110.w,
-                  decoration: BoxDecoration(
-                    color: bgColor,
-                    borderRadius: BorderRadius.circular(10.br),
-                    border: Border.all(color: borderColor, width: borderWidth),
-                    // Subtle glow when selected
-                    boxShadow:
-                        selectProgress > 0.5
-                            ? [
-                              BoxShadow(
-                                color: kPrimaryColor.withValues(
-                                  alpha: 0.2 * selectProgress,
-                                ),
-                                blurRadius: 12 * selectProgress,
-                                spreadRadius: 0,
-                              ),
-                            ]
-                            : null,
+                  SizedBox(height: 4.h),
+                  Text(
+                    widget.rating?.toString() ?? '-',
+                    style: AppTypography.textLgBold.copyWith(
+                      color: context.colors.textPrimary,
+                    ),
                   ),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      // Icon with color filter when selected
-                      ColorFiltered(
-                        colorFilter:
-                            selectProgress > 0.5
-                                ? ColorFilter.mode(
-                                  kPrimaryColor.withValues(
-                                    alpha: selectProgress * 0.3,
-                                  ),
-                                  BlendMode.srcATop,
-                                )
-                                : const ColorFilter.mode(
-                                  Colors.transparent,
-                                  BlendMode.dst,
-                                ),
-                        child: Image.asset(
-                          widget.icon,
-                          width: 20.w,
-                          height: 20.h,
-                        ),
-                      ),
-                      SizedBox(height: 6.h),
-                      Text(
-                        widget.label,
-                        style: AppTypography.textXsMedium.copyWith(
-                          color: labelColor,
-                          fontSize: 10.sp,
-                        ),
-                      ),
-                      SizedBox(height: 4.h),
-                      Text(
-                        widget.rating?.toString() ?? '-',
-                        style: AppTypography.textLgBold.copyWith(
-                          color: ratingColor,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              );
-            },
+                ],
+              ),
+            ),
           );
         },
       ),
@@ -1566,7 +1580,7 @@ class _OverallStatsSection extends StatelessWidget {
           ),
         ),
       ],
-    ).animate().fadeIn(duration: 300.ms, delay: 100.ms);
+    );
   }
 }
 
@@ -1864,7 +1878,7 @@ class _ColorPerformanceSection extends StatelessWidget {
           ],
         ),
       ],
-    ).animate().fadeIn(duration: 300.ms, delay: 200.ms);
+    );
   }
 }
 
@@ -2189,7 +2203,7 @@ class _RecentFormSectionState extends State<_RecentFormSection> {
           ),
         ),
       ],
-    ).animate().fadeIn(duration: 300.ms, delay: 300.ms);
+    );
   }
 }
 
@@ -2726,7 +2740,7 @@ class _OpeningRepertoireSectionState
           ),
         ),
       ],
-    ).animate().fadeIn(duration: 300.ms, delay: 400.ms);
+    );
   }
 
   Widget _buildFilterChip(_OpeningRepertoireFilter filter, String label) {

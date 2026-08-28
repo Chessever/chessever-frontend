@@ -79,6 +79,21 @@ Future<MemorialPlayer?> findBundledMemorialPlayerBySourceIdentity(
   return null;
 }
 
+/// Resolves the immutable public route identity used by memorial share links.
+Future<MemorialPlayer?> findBundledMemorialPlayerByRouteId(
+  String routeId,
+) async {
+  final identity = routeId.trim().toLowerCase();
+  if (identity.isEmpty) return null;
+  final index = await _loadCatalog();
+  for (final entry in index) {
+    if (entry.player.routeId.trim().toLowerCase() == identity) {
+      return entry.player;
+    }
+  }
+  return null;
+}
+
 @visibleForTesting
 int get bundledMemorialCatalogLoadCount => _catalogLoadCount;
 

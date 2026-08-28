@@ -29491,5 +29491,54 @@
         }
       ]
     }
+  },
+  {
+    "routeId": "6300081",
+    "about": {
+      "summary": [
+        "FM/FT Ahmet Can Yurtseven (28 June 1960-July 2026) was a Turkish chess player, trainer, writer, and translator. He learned chess from his father, became Istanbul champion as a teenager, and won the Turkish Chess Championship in 1984.",
+        "Yurtseven represented Türkiye on board one at the 1984 Thessaloniki Chess Olympiad and returned for the 1986 Olympiad. After his competitive career, he remained active in Turkish chess as a coach and FIDE Trainer, helping to develop younger generations of players."
+      ],
+      "achievements": [
+        {
+          "year": "1977",
+          "label": "Won the Istanbul Chess Championship at age seventeen."
+        },
+        {
+          "year": "1984",
+          "label": "Won the Turkish Chess Championship."
+        },
+        {
+          "year": "1984",
+          "label": "Represented Türkiye on board one at the Thessaloniki Chess Olympiad."
+        },
+        {
+          "year": "January 1984",
+          "label": "Peak Classical rating: 2375"
+        },
+        {
+          "year": "2009",
+          "label": "Received the FIDE Trainer title."
+        }
+      ],
+      "sources": [
+        {
+          "label": "Turkish Chess Federation memorial notice",
+          "url": "https://tsf.org.tr/guncel-haberler/19229-bassagligi2323"
+        },
+        {
+          "label": "Turkish Chess Championship winners",
+          "url": "https://en.wikipedia.org/wiki/Turkish_Chess_Championship"
+        },
+        {
+          "label": "OlimpBase FIDE rating history",
+          "url": "https://www.olimpbase.org/~sennari/Elo/player/Y/Yurtseven,%20Can.html"
+        },
+        {
+          "label": "OlimpBase 1984 Turkey team record",
+          "url": "https://www.olimpbase.org/1984/1984tur.html"
+        }
+      ]
+    }
   }
 ]
