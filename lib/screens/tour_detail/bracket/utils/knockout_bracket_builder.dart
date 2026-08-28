@@ -6,6 +6,7 @@ import 'package:chessever2/repository/supabase/tour/tour.dart';
 import 'package:chessever2/screens/tour_detail/bracket/models/knockout_bracket.dart';
 import 'package:chessever2/screens/tour_detail/bracket/utils/bracket_game_result.dart';
 import 'package:chessever2/screens/tour_detail/bracket/utils/knockout_stage_parser.dart';
+import 'package:chessever2/utils/broadcast_custom_scoring.dart';
 
 KnockoutBracket buildKnockoutBracket({
   required Tour selectedTour,
@@ -456,26 +457,40 @@ _MatchBuildResult _buildMatches(
 
       final whiteId = registry.idFor(game.players![0]);
       final participant1IsWhite = whiteId == participant1.id;
+      double standardWhitePoints;
+      double standardBlackPoints;
       switch (result) {
         case BracketGameResult.whiteWin:
-          if (participant1IsWhite) {
-            participant1Score += 1;
-          } else {
-            participant2Score += 1;
-          }
+          standardWhitePoints = 1;
+          standardBlackPoints = 0;
+          break;
         case BracketGameResult.blackWin:
-          if (participant1IsWhite) {
-            participant2Score += 1;
-          } else {
-            participant1Score += 1;
-          }
+          standardWhitePoints = 0;
+          standardBlackPoints = 1;
+          break;
         case BracketGameResult.draw:
-          participant1Score += 0.5;
-          participant2Score += 0.5;
+          standardWhitePoints = 0.5;
+          standardBlackPoints = 0.5;
+          break;
         case BracketGameResult.doubleForfeit:
+          standardWhitePoints = 0;
+          standardBlackPoints = 0;
           break;
         case BracketGameResult.undecided:
-          break;
+          continue;
+      }
+      final points = aggregateBroadcastResultPoints(
+        standardWhitePoints: standardWhitePoints,
+        standardBlackPoints: standardBlackPoints,
+        whiteCustomPoints: game.players![0].customPoints,
+        blackCustomPoints: game.players![1].customPoints,
+      );
+      if (participant1IsWhite) {
+        participant1Score += points.white;
+        participant2Score += points.black;
+      } else {
+        participant1Score += points.black;
+        participant2Score += points.white;
       }
     }
 

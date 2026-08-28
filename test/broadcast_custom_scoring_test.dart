@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:chessever2/repository/supabase/game/games.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/utils/knockout_match_detector.dart';
 import 'package:chessever2/utils/broadcast_custom_scoring.dart';
 
 void main() {
@@ -86,6 +87,59 @@ void main() {
     });
   });
 
+  group('custom-aware aggregate match points', () {
+    test('uses adapted points when one side differs from standard scoring', () {
+      final points = aggregateBroadcastResultPoints(
+        standardWhitePoints: 1,
+        standardBlackPoints: 0,
+        whiteCustomPoints: 6,
+        blackCustomPoints: 0,
+      );
+
+      expect(points.white, 6);
+      expect(points.black, 0);
+    });
+
+    test('treats zero-only custom fields as absent source defaults', () {
+      final points = aggregateBroadcastResultPoints(
+        standardWhitePoints: 1,
+        standardBlackPoints: 0,
+        whiteCustomPoints: 0,
+        blackCustomPoints: 0,
+      );
+
+      expect(points.white, 1);
+      expect(points.black, 0);
+    });
+  });
+
+  group('aggregate Games match headers', () {
+    test('sums adapted points across alternating colours', () {
+      final games = [
+        _game(
+          status: GameStatus.whiteWins,
+          whiteName: 'Caruana, Fabiano',
+          blackName: 'Praggnanandhaa R',
+          whiteCustomPoints: 6,
+          blackCustomPoints: 0,
+        ),
+        _game(
+          status: GameStatus.draw,
+          whiteName: 'Praggnanandhaa R',
+          blackName: 'Caruana, Fabiano',
+          whiteCustomPoints: 3,
+          blackCustomPoints: 3,
+        ),
+      ];
+
+      final match = KnockoutMatchDetector.createMatchHeader('final', games);
+
+      expect(match.player1, 'Caruana, Fabiano');
+      expect(match.player1Score, 9);
+      expect(match.player2Score, 3);
+    });
+  });
+
   group('broadcast standings score resolution', () {
     test('preserves custom source score and updates played count', () {
       final resolved = resolveBroadcastStandingScore(
@@ -129,6 +183,8 @@ void main() {
 GamesTourModel _game({
   required GameStatus status,
   String roundSlug = 'round-4',
+  String whiteName = 'Carlsen, Magnus',
+  String blackName = 'Gukesh D',
   double? whiteCustomPoints,
   double? blackCustomPoints,
 }) {
@@ -136,7 +192,7 @@ GamesTourModel _game({
     gameId: 'game-1',
     source: GameSource.supabase,
     whitePlayer: PlayerCard(
-      name: 'Carlsen, Magnus',
+      name: whiteName,
       federation: 'NOR',
       title: 'GM',
       rating: 2840,
@@ -145,7 +201,7 @@ GamesTourModel _game({
       customPoints: whiteCustomPoints,
     ),
     blackPlayer: PlayerCard(
-      name: 'Gukesh D',
+      name: blackName,
       federation: 'IND',
       title: 'GM',
       rating: 2732,
