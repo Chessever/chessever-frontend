@@ -1503,31 +1503,39 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
     return Stack(
       clipBehavior: Clip.none,
       children: [
-        AnimatedContainer(
-          duration: const Duration(milliseconds: 160),
-          curve: Curves.easeOutCubic,
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(cornerRadius.br),
-            border: Border.all(
-              color:
-                  isSelected
-                      ? kPrimaryColor.withValues(alpha: 0.85)
-                      : Colors.transparent,
-              width: 1.6,
+        // The card is laid out untouched. Selection chrome is painted OVER it,
+        // never around it: a `Border` on a parent inflates the box by its width
+        // and re-lays the card out, which cost grid cells 1.2px and tripped a
+        // RenderFlex overflow on their fixed-width board row.
+        child,
+        Positioned.fill(
+          child: IgnorePointer(
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 160),
+              curve: Curves.easeOutCubic,
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(cornerRadius.br),
+                border: Border.all(
+                  color:
+                      isSelected
+                          ? kPrimaryColor.withValues(alpha: 0.85)
+                          : Colors.transparent,
+                  width: 1.6,
+                ),
+                boxShadow:
+                    isSelected
+                        ? [
+                          BoxShadow(
+                            color: kPrimaryColor.withValues(alpha: 0.22),
+                            blurRadius: 18,
+                            spreadRadius: 0.5,
+                            offset: const Offset(0, 2),
+                          ),
+                        ]
+                        : null,
+              ),
             ),
-            boxShadow:
-                isSelected
-                    ? [
-                      BoxShadow(
-                        color: kPrimaryColor.withValues(alpha: 0.22),
-                        blurRadius: 18,
-                        spreadRadius: 0.5,
-                        offset: const Offset(0, 2),
-                      ),
-                    ]
-                    : null,
           ),
-          child: child,
         ),
         // Board and grid cards own their tap/long-press (navigate, context
         // menu). In selection mode that has to become "toggle this game", so an

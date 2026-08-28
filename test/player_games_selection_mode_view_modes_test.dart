@@ -95,6 +95,30 @@ void main() {
           'opens the chessboard or its context menu',
     );
   });
+
+  test('selection chrome is painted over the card, never around it', () {
+    final wrapper = _between(
+      source,
+      'Widget _buildSelectableCardWrapper(',
+      'Widget _buildPaginationFooter(',
+    );
+
+    expect(
+      wrapper,
+      isNot(contains('child: child')),
+      reason:
+          'a decorated parent with a Border inflates the card by the border '
+          'width and re-lays it out; grid cells have a fixed-width board row, '
+          'so that overflowed the RenderFlex by 1.2px',
+    );
+    expect(
+      wrapper,
+      contains('IgnorePointer'),
+      reason:
+          'the border/glow layer sits above the card, so it must not eat the '
+          'gestures meant for the selection overlay underneath it',
+    );
+  });
 }
 
 String _between(String source, String start, String end) {
