@@ -355,18 +355,41 @@ class _ExplorerSortHeader extends StatelessWidget {
           child: Container(
             alignment: alignment,
             constraints: const BoxConstraints(minHeight: 44),
-            child: Text(
-              label,
-              textAlign: align,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                color:
-                    active
-                        ? context.colors.textPrimary
-                        : context.colors.textSecondary,
-                fontSize: 11.f,
-                fontWeight: active ? FontWeight.w700 : FontWeight.w600,
+            // The underline slot is always reserved (transparent when
+            // inactive) so toggling the sort never shifts the label.
+            child: IntrinsicWidth(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text(
+                    label,
+                    textAlign: align,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color:
+                          active
+                              ? context.colors.textPrimary
+                              : context.colors.textSecondary,
+                      fontSize: 11.f,
+                      fontWeight: active ? FontWeight.w700 : FontWeight.w600,
+                    ),
+                  ),
+                  SizedBox(height: 3.sp),
+                  AnimatedContainer(
+                    duration: const Duration(milliseconds: 180),
+                    curve: Curves.easeOutCubic,
+                    height: 2,
+                    decoration: BoxDecoration(
+                      color:
+                          active
+                              ? context.colors.textPrimary
+                              : Colors.transparent,
+                      borderRadius: BorderRadius.circular(1),
+                    ),
+                  ),
+                ],
               ),
             ),
           ),

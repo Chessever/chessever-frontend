@@ -12,6 +12,7 @@ import 'package:chessever2/screens/library/widgets/gamebase_search_game_card.dar
 import 'package:chessever2/screens/library/widgets/library_gamebase_filter_dialog.dart';
 import 'package:chessever2/screens/library/widgets/library_search_bar.dart';
 import 'package:chessever2/screens/library/widgets/twic_player_search_cards.dart';
+import 'package:chessever2/screens/gamebase/gamebase_explorer_screen.dart';
 import 'package:chessever2/screens/player_profile/player_profile_data_source.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
@@ -20,6 +21,7 @@ import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/time_utils.dart';
 import 'package:chessever2/widgets/app_snack.dart';
+import 'package:chessever2/widgets/board_navigation_icon.dart';
 import 'package:chessever2/widgets/screen_wrapper.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -284,6 +286,27 @@ class _TwicContentsScreenState extends ConsumerState<TwicContentsScreen> {
               style: AppTypography.textMdMedium.copyWith(
                 fontWeight: FontWeight.w600,
                 color: context.colors.textPrimary,
+              ),
+            ),
+          ),
+          // Same Board entry the user databases carry in their header.
+          Align(
+            alignment: Alignment.centerRight,
+            child: IconButton(
+              key: const ValueKey<String>('twic_database_board_button'),
+              onPressed: () {
+                HapticFeedbackService.medium();
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => GamebaseExplorerScreen.scoped(),
+                  ),
+                );
+              },
+              tooltip: 'Open Board',
+              constraints: BoxConstraints(minWidth: 44.w, minHeight: 44.h),
+              icon: BoardNavigationIcon(
+                size: 20.sp,
+                semanticsLabel: 'Open Board',
               ),
             ),
           ),

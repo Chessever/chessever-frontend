@@ -45,17 +45,20 @@ class ExplorerBoardEditorIcon extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Material glyphs (save_outlined, more_vert at 22.ic) keep ~2-3px of
+    // built-in padding inside their viewbox, so their drawn content reads at
+    // ~18pt. The checkerboard paints full-bleed; matching the drawn area to
+    // the neighbours' optical size keeps the three header icons even.
     return SizedBox(
       width: 24.ic,
       height: 24.ic,
       child: Stack(
-        clipBehavior: Clip.none,
         children: [
           Positioned(
-            left: 1.sp,
-            top: 1.sp,
-            width: 20.ic,
-            height: 20.ic,
+            left: 2.5.ic,
+            top: 2.5.ic,
+            width: 17.ic,
+            height: 17.ic,
             child: CustomPaint(
               key: const ValueKey<String>(
                 'opening_explorer_editor_checkerboard',
@@ -66,15 +69,15 @@ class ExplorerBoardEditorIcon extends StatelessWidget {
             ),
           ),
           Positioned(
-            right: -2.sp,
-            bottom: -2.sp,
+            right: 0,
+            bottom: 0,
             child: Container(
-              padding: EdgeInsets.all(1.5.sp),
+              padding: EdgeInsets.all(1.2.sp),
               decoration: BoxDecoration(
                 color: context.colors.surface,
                 shape: BoxShape.circle,
               ),
-              child: Icon(Icons.edit_rounded, size: 10.ic),
+              child: Icon(Icons.edit_rounded, size: 9.ic),
             ),
           ),
         ],

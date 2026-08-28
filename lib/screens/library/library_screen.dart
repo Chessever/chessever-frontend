@@ -314,8 +314,12 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
         value: _isSearchFocused ? 1.0 : 0.0,
         builder: (context, value, child) {
           final clamped = value.clamp(0.0, 1.0);
-          // One canonical Board entry plus Add: 44 + 8 gap + 36.
-          final buttonsMaxWidth = 88.w * (1 - clamped);
+          // One canonical Board entry plus Add. The budget must be the exact
+          // sum of the children's units (44.w button + 8.w gap + 36.h square
+          // Add tile) — width and height scale differently per device, so a
+          // flat 88.w under-budgets and overflows by a few pixels.
+          final buttonsFullWidth = 44.w + 8.w + 36.h;
+          final buttonsMaxWidth = buttonsFullWidth * (1 - clamped);
           final gapWidth = (8.w * (1 - clamped)).clamp(0.0, 8.w);
           final opacity = (1 - clamped).clamp(0.0, 1.0);
 
@@ -676,6 +680,12 @@ class _BoardButton extends StatelessWidget {
       onPressed: onTap,
       tooltip: 'Open Board',
       padding: EdgeInsets.all(10.sp),
+      // Material 3's default padded tap-target inflates the button to a
+      // fixed 48px, which busts the animated header budget (44.w). The
+      // 44.w constraint already satisfies the 44pt minimum touch size.
+      style: IconButton.styleFrom(
+        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+      ),
       constraints: BoxConstraints(minWidth: 44.w, minHeight: 44.h),
       icon: BoardNavigationIcon(
         size: 20.sp,
