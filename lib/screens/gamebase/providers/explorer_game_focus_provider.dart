@@ -178,7 +178,7 @@ final explorerFocusedGameProvider = StateNotifierProvider.autoDispose<
     notifier.onExplorerPositionChanged(next.currentFen);
   });
   return notifier;
-});
+}, dependencies: [gamebaseExplorerProvider]);
 
 /// True while the explorer move list has scrolled so the inline games section
 /// is pinned under the sticky header. Board chrome expands the games surface
@@ -193,8 +193,7 @@ bool shouldExpandExplorerGamesOverPv({
   required bool pageVisible,
   required bool explorerPanelVisible,
   required bool gamesPinned,
-}) =>
-    pageVisible && explorerPanelVisible && gamesPinned;
+}) => pageVisible && explorerPanelVisible && gamesPinned;
 
 /// Resolved bottom-nav arrow callbacks + enable flags for the board chrome.
 ///

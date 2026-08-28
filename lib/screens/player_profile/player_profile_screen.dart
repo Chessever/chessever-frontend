@@ -629,7 +629,10 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
           rapidRating: activeProfile?.rapidRating,
           blitzRating: activeProfile?.blitzRating,
           analytics: analytics,
-          isMemorial: memorialOverview != null,
+          // The immutable identity is authoritative. Rich local biography
+          // data is optional and must not make a Memorial share card silently
+          // fall back to the live-player labels when that asset is missing.
+          isMemorial: memorialIdentity?.isNotEmpty == true,
           lifespan: lifespan,
         ),
       );

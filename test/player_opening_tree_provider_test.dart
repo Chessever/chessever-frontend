@@ -1,4 +1,5 @@
 import 'package:chessever2/repository/gamebase/gamebase_repository.dart';
+import 'package:chessever2/repository/gamebase/memorial_tree_scope.dart';
 import 'package:chessever2/screens/gamebase/models/models.dart';
 import 'package:chessever2/screens/gamebase/providers/gamebase_providers.dart';
 import 'package:chessever2/screens/gamebase/services/player_opening_tree.dart';
@@ -19,6 +20,10 @@ class _FakeGamebaseRepository extends GamebaseRepository {
   int buildCalls = 0;
   int statusCalls = 0;
   int treeCalls = 0;
+  int memorialBuildCalls = 0;
+  int memorialStatusCalls = 0;
+  int memorialTreeCalls = 0;
+  String? memorialSourceIdentity;
 
   @override
   Future<GamebaseResponse> getMoveAggregates({
@@ -81,6 +86,43 @@ class _FakeGamebaseRepository extends GamebaseRepository {
   }) async {
     treeCalls += 1;
     if (treeFails) return null;
+    return {'status': 'success', 'data': _snapshotJson()};
+  }
+
+  @override
+  Future<Map<String, dynamic>> startMemorialOpeningTreeBuild({
+    required String sourceIdentity,
+    int maxPly = 24,
+    bool forceRebuild = false,
+  }) async {
+    memorialBuildCalls += 1;
+    memorialSourceIdentity = sourceIdentity;
+    return {
+      'status': 'success',
+      'data': {'treeId': 'memorial-tree-1', 'status': 'building'},
+    };
+  }
+
+  @override
+  Future<Map<String, dynamic>> getMemorialOpeningTreeStatus({
+    required String sourceIdentity,
+    required String treeId,
+  }) async {
+    memorialStatusCalls += 1;
+    memorialSourceIdentity = sourceIdentity;
+    return {
+      'status': 'success',
+      'data': {'status': 'complete'},
+    };
+  }
+
+  @override
+  Future<Map<String, dynamic>?> getMemorialOpeningTree({
+    required String sourceIdentity,
+    required String treeId,
+  }) async {
+    memorialTreeCalls += 1;
+    memorialSourceIdentity = sourceIdentity;
     return {'status': 'success', 'data': _snapshotJson()};
   }
 }
@@ -159,6 +201,33 @@ void main() {
     final state = container.read(gamebaseExplorerProvider);
     expect(state.error, contains('boom'));
     expect(repo.aggregateCalls, 0);
+  });
+
+  test('Memorial Build Tree uses only the source-identity endpoints', () async {
+    final repo = _FakeGamebaseRepository();
+    final container = ProviderContainer(
+      overrides: [gamebaseRepositoryProvider.overrideWithValue(repo)],
+    );
+    addTearDown(container.dispose);
+    const sourceIdentity = 'memorial:memorial-e03cdf6af47b368c';
+    final scopeKey = memorialTreeScopeKey(sourceIdentity);
+    final treeSub = container.listen(
+      playerOpeningTreeProvider(scopeKey),
+      (_, _) {},
+      fireImmediately: true,
+    );
+    addTearDown(treeSub.close);
+
+    container.read(playerOpeningTreeProvider(scopeKey).notifier).start();
+    await _waitForTree(container, scopeKey);
+
+    expect(repo.memorialSourceIdentity, sourceIdentity);
+    expect(repo.memorialBuildCalls, 1);
+    expect(repo.memorialStatusCalls, 1);
+    expect(repo.memorialTreeCalls, 1);
+    expect(repo.buildCalls, 0);
+    expect(repo.statusCalls, 0);
+    expect(repo.treeCalls, 0);
   });
 
   test('unscoped explorer still uses aggregate API', () async {
