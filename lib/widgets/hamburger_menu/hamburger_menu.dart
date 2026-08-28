@@ -14,6 +14,7 @@ import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/svg_asset.dart';
 import 'package:chessever2/widgets/auth/auth_upgrade_sheet.dart';
+import 'package:chessever2/widgets/board_navigation_icon.dart';
 import 'package:chessever2/widgets/alert_dialog/alert_modal.dart';
 import 'package:chessever2/widgets/hamburger_menu/hamburger_menu_dialogs.dart';
 import 'package:chessever2/widgets/paywall/manage_subscription_sheet.dart';
@@ -162,13 +163,9 @@ class HamburgerMenu extends HookConsumerWidget {
                       // dark theme renders the asset unchanged.
                       _MenuItem(
                         key: e2eKey(E2eIds.drawerBoard),
-                        customIcon: SvgWidget(
-                          SvgAsset.analysisBoard,
+                        customIcon: BoardNavigationIcon(
+                          size: 20.sp,
                           semanticsLabel: 'Board Icon',
-                          height: 20.h,
-                          width: 20.w,
-                          // Keep the multi-colour checkerboard artwork intact.
-                          preserveOriginalColors: true,
                         ),
                         icon: Icons.grid_view_rounded,
                         title: 'Board',

@@ -53,9 +53,8 @@ class E2eIds {
   static const onboardingNotNowButton = 'e2e_onboarding_not_now_button';
   static const librarySearchField = 'e2e_library_search_field';
   static const libraryFilterButton = 'e2e_library_filter_button';
-  static const libraryOpeningExplorerButton =
-      'e2e_library_opening_explorer_button';
-  static const libraryBoardEditorButton = 'e2e_library_board_editor_button';
+  static const libraryBoardButton = 'e2e_library_board_button';
+  static const databaseBoardButton = 'e2e_database_board_button';
   static const libraryCreateFolderButton = 'e2e_library_create_folder_button';
   static const boardEditorDoneButton = 'e2e_board_editor_done_button';
   static const openingExplorerSaveButton = 'e2e_opening_explorer_save_button';

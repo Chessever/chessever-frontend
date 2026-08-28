@@ -6,6 +6,7 @@ import 'package:chessever2/repository/library/library_repository.dart';
 import 'package:chessever2/repository/library/models/library_folder.dart';
 import 'package:chessever2/repository/library/models/saved_analysis.dart';
 import 'package:chessever2/screens/chessboard/models/like_tag.dart';
+import 'package:chessever2/screens/gamebase/gamebase_explorer_screen.dart';
 import 'package:chessever2/screens/library/pgn_import_preview_screen.dart';
 import 'package:chessever2/screens/library/providers/book_games_paginated_provider.dart';
 import 'package:chessever2/screens/library/providers/folder_filter_provider.dart';
@@ -29,6 +30,7 @@ import 'package:chessever2/utils/user_error_message.dart';
 import 'package:chessever2/revenue_cat_service/subscribe_state.dart';
 import 'package:chessever2/widgets/alert_dialog/alert_modal.dart';
 import 'package:chessever2/widgets/app_snack.dart';
+import 'package:chessever2/widgets/board_navigation_icon.dart';
 import 'package:chessever2/widgets/game_filter/game_filter.dart';
 import 'package:chessever2/widgets/game_filter/game_search_filter_bar.dart';
 import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
@@ -145,6 +147,13 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
     _searchController.clear();
     _searchFocusNode.unfocus();
     ref.read(folderFilterProvider(_folderFilterKey).notifier).clearSearch();
+  }
+
+  void _openBoard() {
+    HapticFeedbackService.medium();
+    Navigator.of(
+      context,
+    ).push(MaterialPageRoute(builder: (_) => GamebaseExplorerScreen.scoped()));
   }
 
   void _toggleTagFilter(String tag) {
@@ -683,6 +692,19 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
             ),
           ),
           SizedBox(width: 4.w),
+          if (_isDatabase)
+            IconButton(
+              key: e2eKey(E2eIds.databaseBoardButton),
+              onPressed: _openBoard,
+              tooltip: 'Open Board',
+              visualDensity: VisualDensity.compact,
+              padding: EdgeInsets.symmetric(horizontal: 6.w),
+              constraints: BoxConstraints(minWidth: 32.w, minHeight: 32.h),
+              icon: BoardNavigationIcon(
+                size: 20.sp,
+                semanticsLabel: 'Open Board',
+              ),
+            ),
           if (showExport)
             IconButton(
               onPressed: _handleExportPgn,

@@ -55,8 +55,7 @@ void main() {
           navId: E2eIds.navLibrary,
           expectedRoot: E2eIds.libraryRoot,
         );
-        await expectVisible($, E2eIds.libraryOpeningExplorerButton);
-        await expectVisible($, E2eIds.libraryBoardEditorButton);
+        await expectVisible($, E2eIds.libraryBoardButton);
         await expectVisible($, E2eIds.libraryCreateFolderButton);
         await tapBottomNavRoot(
           $,
