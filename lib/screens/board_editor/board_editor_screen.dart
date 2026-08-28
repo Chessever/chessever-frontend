@@ -652,7 +652,12 @@ class _BoardEditorScreenState extends ConsumerState<BoardEditorScreen> {
             onTap: _onDone,
             child: Container(
               key: e2eKey(E2eIds.boardEditorDoneButton),
-              padding: EdgeInsets.symmetric(horizontal: 14.w, vertical: 8.h),
+              // 6.h + the 22.h line box of textSmBold + 6.h = 34.h, which is
+              // ExplorerViewToggle's compact height — the size the Board
+              // workspace uses for a control living in a header. At 8.h it
+              // came out 38 and stood a full 12 taller than the title beside
+              // it, which is what read as oversized.
+              padding: EdgeInsets.symmetric(horizontal: 14.w, vertical: 6.h),
               // The one primary action here, so it wears the app's primary
               // button: brand fill with inkOnAccent, same as Apply in the
               // game filter dialog. Not an inverted white slab.
@@ -668,7 +673,10 @@ class _BoardEditorScreenState extends ConsumerState<BoardEditorScreen> {
               ),
             ),
           ),
-          SizedBox(width: 4.w),
+          // 8.w here + the row's own 8.w puts the button's right edge 16.w from
+          // the screen, the same gutter _TopControls and _ActionRow use. At
+          // 4.w it hung 4 further right than every row beneath it.
+          SizedBox(width: 8.w),
         ],
       ),
     );
