@@ -63,6 +63,17 @@ const int kExplorerInlineGamesLimit = 10;
 /// alone past this depth.
 const int kExplorerIndexedAggregateMoveNumberLimit = 21;
 
+/// First four fields of the standard chess starting position.
+const String _kStandardStartingFenFields =
+    'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq -';
+
+/// Whether [fen] is the standard starting position (counters ignored).
+bool _isStandardStartingFen(String fen) {
+  final fields = fen.trim().split(RegExp(r'\s+'));
+  if (fields.length < 4) return false;
+  return fields.take(4).join(' ') == _kStandardStartingFenFields;
+}
+
 /// Played plies implied by a 6-field FEN (fullmove + side to move).
 ///
 /// Used when the explorer tree was dropped and `currentMoveNumber` is no
@@ -761,8 +772,20 @@ class MoveStatisticsPanel extends HookConsumerWidget {
       // empty, `currentMoveNumber` collapses to 1 and the old check treated a
       // deep midgame as "inside the indexed window", permanently claiming
       // "No games match this position".
+      //
+      // A session that starts from an arbitrary FEN (Board Editor, pasted
+      // FEN, deep link) is a special case of the same lie: the aggregate
+      // endpoint anchors on the ply the FEN *claims* (its fullmove counter),
+      // and an edited position claims move 1 whatever its real depth. Empty
+      // aggregates are therefore never authoritative for a custom-start
+      // board, at any apparent depth — always ask the FEN-keyed endpoint
+      // before claiming there is nothing here.
+      final startingFen = state.game?.startingFen.trim() ?? '';
+      final startsFromCustomFen =
+          startingFen.isNotEmpty && !_isStandardStartingFen(startingFen);
       final pliesFromFen = _explorerPliesFromFen(state.currentFen);
       final pastIndexedWindow =
+          startsFromCustomFen ||
           effectiveMoveNumber > kExplorerIndexedAggregateMoveNumberLimit ||
           state.exploredMoves.length >=
               kExplorerIndexedAggregateMoveNumberLimit ||
@@ -1282,6 +1305,7 @@ class _MoveStatisticsPlaceholderRow extends StatelessWidget {
           ),
           SizedBox(width: _kColumnGap.sp),
           Expanded(
+            flex: _kResultsColumnFlex,
             child: Container(
               height: 14.h,
               decoration: BoxDecoration(
@@ -1354,6 +1378,7 @@ class _MoveStatisticsSkeletonRow extends StatelessWidget {
           ),
           SizedBox(width: _kColumnGap.sp),
           Expanded(
+            flex: _kResultsColumnFlex,
             child: Container(
               height: 14.h,
               decoration: BoxDecoration(
