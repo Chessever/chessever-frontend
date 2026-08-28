@@ -31,6 +31,7 @@ import 'package:chessever2/screens/chessboard/widgets/chess_board_bottom_nav_bar
 import 'package:chessever2/screens/chessboard/widgets/evaluation_bar_widget.dart';
 import 'package:chessever2/screens/chessboard/widgets/switch_views_tutorial_overlay.dart';
 import 'package:chessever2/screens/gamebase/providers/explorer_eval_provider.dart';
+import 'package:chessever2/screens/gamebase/utils/board_workspace_coachmarks.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/screens/gamebase/services/player_opening_tree.dart';
 import 'package:chessever2/theme/app_colors.dart';
@@ -51,6 +52,12 @@ import 'package:chessever2/widgets/auth/auth_upgrade_sheet.dart';
 import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
 
 enum ExplorerBoardMenuAction { copyPgn, boardSettings, share }
+
+const int boardWorkspaceDefaultPage = 0;
+const String boardWorkspaceViewsCoachmarkMessage =
+    'One board, two views\nSwitch between Explorer and Notation anytime.';
+const String boardWorkspaceEditorCoachmarkMessage =
+    'Edit any position\nSet up a position, then continue here.';
 
 class ExplorerBoardMenuItem {
   const ExplorerBoardMenuItem({
@@ -176,6 +183,7 @@ class GamebaseExplorerScreen extends ConsumerStatefulWidget {
     super.key,
     this.initialPlayer,
     this.initialFilters,
+    this.enableWorkspaceCoachmarks = true,
   });
 
   /// Creates an isolated explorer scope so other mounted routes (for example
@@ -185,6 +193,7 @@ class GamebaseExplorerScreen extends ConsumerStatefulWidget {
     Key? key,
     GamebasePlayer? initialPlayer,
     GamebaseFilters? initialFilters,
+    bool enableWorkspaceCoachmarks = true,
   }) {
     return ProviderScope(
       overrides: [
@@ -197,6 +206,7 @@ class GamebaseExplorerScreen extends ConsumerStatefulWidget {
         key: key,
         initialPlayer: initialPlayer,
         initialFilters: initialFilters,
+        enableWorkspaceCoachmarks: enableWorkspaceCoachmarks,
       ),
     );
   }
@@ -206,6 +216,10 @@ class GamebaseExplorerScreen extends ConsumerStatefulWidget {
 
   /// Optional filters to pre-apply (e.g. time control, rating from player profile).
   final GamebaseFilters? initialFilters;
+
+  /// Test and embedding escape hatch. Normal Board entries teach the shared
+  /// views and Editor once; focused widget tests can disable the persistence IO.
+  final bool enableWorkspaceCoachmarks;
 
   @override
   ConsumerState<GamebaseExplorerScreen> createState() =>
@@ -219,6 +233,8 @@ class _GamebaseExplorerScreenState extends ConsumerState<GamebaseExplorerScreen>
   bool _appIsResumed = true;
   Timer? _backwardLongPressTimer;
   Timer? _forwardLongPressTimer;
+  final GlobalKey<TooltipState> _viewsCoachmarkKey = GlobalKey<TooltipState>();
+  final GlobalKey<TooltipState> _editorCoachmarkKey = GlobalKey<TooltipState>();
 
   void _resetExplorerState({bool fetch = false, bool preserveScope = true}) {
     final notifier = ref.read(gamebaseExplorerProvider.notifier);
@@ -348,13 +364,34 @@ class _GamebaseExplorerScreenState extends ConsumerState<GamebaseExplorerScreen>
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
 
-      // Always start fresh; preserve player scope when present.
+      // A fresh Board entry starts in Explorer. Returning from Board Editor
+      // keeps this screen alive, so the current workspace is not reset.
+      ref.read(explorerPageIndexProvider.notifier).state =
+          boardWorkspaceDefaultPage;
       _resetExplorerState(fetch: true);
+      if (widget.enableWorkspaceCoachmarks) {
+        unawaited(_showWorkspaceCoachmarks());
+      }
     });
+  }
+
+  Future<void> _showWorkspaceCoachmarks() async {
+    await showBoardWorkspaceCoachmarks(
+      viewsTracker: boardWorkspaceViewsCoachmarkTracker,
+      editorTracker: boardWorkspaceEditorCoachmarkTracker,
+      isEligible: () => mounted && _routeActive,
+      showViews:
+          () => _viewsCoachmarkKey.currentState?.ensureTooltipVisible() ?? false,
+      showEditor: () {
+        Tooltip.dismissAllToolTips();
+        return _editorCoachmarkKey.currentState?.ensureTooltipVisible() ?? false;
+      },
+    );
   }
 
   @override
   void dispose() {
+    Tooltip.dismissAllToolTips();
     WidgetsBinding.instance.removeObserver(this);
     routeObserver.unsubscribe(this);
     _stopLongPressBackward();
@@ -862,7 +899,26 @@ class _GamebaseExplorerScreenState extends ConsumerState<GamebaseExplorerScreen>
         icon: Icon(Icons.arrow_back, size: 24.ic),
         onPressed: () => Navigator.of(context).pop(),
       ),
-      title: _ExplorerSegmentedTitle(currentPage: currentPage, isLarge: true),
+      title: Tooltip(
+        key: _viewsCoachmarkKey,
+        message: boardWorkspaceViewsCoachmarkMessage,
+        triggerMode: TooltipTriggerMode.manual,
+        preferBelow: true,
+        showDuration: const Duration(seconds: 5),
+        padding: EdgeInsets.symmetric(horizontal: 16.sp, vertical: 12.sp),
+        decoration: BoxDecoration(
+          color: const Color(0xFF08080A),
+          borderRadius: BorderRadius.circular(16.br),
+          border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+        ),
+        textStyle: AppTypography.textSmMedium.copyWith(
+          color: Colors.white.withValues(alpha: 0.94),
+        ),
+        child: _ExplorerSegmentedTitle(
+          currentPage: currentPage,
+          isLarge: true,
+        ),
+      ),
       actions: [
         IconButton(
           key: e2eKey(E2eIds.openingExplorerSaveButton),
@@ -874,11 +930,27 @@ class _GamebaseExplorerScreenState extends ConsumerState<GamebaseExplorerScreen>
           onPressed: () => _openAnalysisAndSave(context),
           tooltip: 'Save analysis',
         ),
-        IconButton(
-          key: const ValueKey<String>('opening_explorer_board_editor'),
-          onPressed: _openBoardEditor,
-          tooltip: 'Board Editor',
-          icon: const ExplorerBoardEditorIcon(),
+        Tooltip(
+          key: _editorCoachmarkKey,
+          message: boardWorkspaceEditorCoachmarkMessage,
+          triggerMode: TooltipTriggerMode.manual,
+          preferBelow: true,
+          showDuration: const Duration(seconds: 6),
+          padding: EdgeInsets.symmetric(horizontal: 16.sp, vertical: 12.sp),
+          decoration: BoxDecoration(
+            color: const Color(0xFF08080A),
+            borderRadius: BorderRadius.circular(16.br),
+            border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+          ),
+          textStyle: AppTypography.textSmMedium.copyWith(
+            color: Colors.white.withValues(alpha: 0.94),
+          ),
+          child: IconButton(
+            key: const ValueKey<String>('opening_explorer_board_editor'),
+            onPressed: _openBoardEditor,
+            tooltip: 'Board Editor',
+            icon: const ExplorerBoardEditorIcon(),
+          ),
         ),
         PopupMenuButton<ExplorerBoardMenuAction>(
           key: const ValueKey<String>('opening_explorer_more_menu'),
@@ -2686,7 +2758,6 @@ class _ExplorerBottomPanelsState extends ConsumerState<_ExplorerBottomPanels>
   late Animation<double> _swipeScaleAnimation;
   late Animation<double> _swipeMoveAnimation;
   int _currentPageIndex = 0;
-  bool _hasCheckedWalkthrough = false;
   bool _showTutorialOverlay = false;
   OverlayEntry? _tutorialEntry;
 
@@ -2697,12 +2768,8 @@ class _ExplorerBottomPanelsState extends ConsumerState<_ExplorerBottomPanels>
     _currentPageIndex = initialPage;
     _pageController = PageController(initialPage: initialPage);
     _setupSwipeAnimation();
-
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted || _hasCheckedWalkthrough) return;
-      _hasCheckedWalkthrough = true;
-      _checkAndShowWalkthrough();
-    });
+    // The old swipe overlay is superseded by the one-time app-bar coachmarks,
+    // which teach both the Explorer/Notation switch and Board Editor.
   }
 
   @override
@@ -2777,6 +2844,9 @@ class _ExplorerBottomPanelsState extends ConsumerState<_ExplorerBottomPanels>
     });
   }
 
+  // Kept for backward compatibility with the existing walkthrough storage and
+  // overlay implementation; the app-bar coachmarks are now the active path.
+  // ignore: unused_element
   Future<void> _checkAndShowWalkthrough() async {
     final prefs = ref.read(sharedPreferencesRepository);
     final now = DateTime.now();

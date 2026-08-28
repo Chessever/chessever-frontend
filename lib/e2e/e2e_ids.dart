@@ -19,8 +19,7 @@ class E2eIds {
 
   static const drawerSettings = 'e2e_drawer_settings';
   static const drawerPlayers = 'e2e_drawer_players';
-  static const drawerOpeningExplorer = 'e2e_drawer_opening_explorer';
-  static const drawerAnalysisBoard = 'e2e_drawer_analysis_board';
+  static const drawerBoard = 'e2e_drawer_board';
   static const drawerPremium = 'e2e_drawer_premium';
   static const drawerLogout = 'e2e_drawer_logout';
 

@@ -31,8 +31,7 @@ import 'package:flutter_animate/flutter_animate.dart';
 /// Handler for hamburger menu callbacks
 class HamburgerMenuCallbacks {
   final VoidCallback onPlayersPressed;
-  final VoidCallback onAnalysisBoardPressed;
-  final VoidCallback onOpeningExplorerPressed;
+  final VoidCallback onBoardPressed;
   final VoidCallback onFavoritesPressed;
   final VoidCallback onSupportPressed;
   final VoidCallback onPremiumPressed;
@@ -40,8 +39,7 @@ class HamburgerMenuCallbacks {
 
   const HamburgerMenuCallbacks({
     required this.onPlayersPressed,
-    required this.onAnalysisBoardPressed,
-    required this.onOpeningExplorerPressed,
+    required this.onBoardPressed,
     required this.onFavoritesPressed,
     required this.onSupportPressed,
     required this.onPremiumPressed,
@@ -163,6 +161,29 @@ class HamburgerMenu extends HookConsumerWidget {
                       // recolour to `iconPrimary` only when the theme is light;
                       // dark theme renders the asset unchanged.
                       _MenuItem(
+                        key: e2eKey(E2eIds.drawerBoard),
+                        customIcon: SvgWidget(
+                          SvgAsset.analysisBoard,
+                          semanticsLabel: 'Board Icon',
+                          height: 20.h,
+                          width: 20.w,
+                          // Keep the multi-colour checkerboard artwork intact.
+                          preserveOriginalColors: true,
+                        ),
+                        icon: Icons.grid_view_rounded,
+                        title: 'Board',
+                        textStyle: AppTypography.textSmMedium.copyWith(
+                          color: context.colors.iconPrimary,
+                          height: 1.0,
+                          letterSpacing: -0.14,
+                        ),
+                        onPressed: () {
+                          Navigator.of(context).pop();
+                          callbacks.onBoardPressed();
+                        },
+                        showChevron: true,
+                      ),
+                      _MenuItem(
                         icon: Icons.leaderboard_outlined,
                         title: 'Rankings',
                         textStyle: AppTypography.textSmRegular.copyWith(
@@ -195,58 +216,7 @@ class HamburgerMenu extends HookConsumerWidget {
                         },
                         showChevron: true,
                       ),
-                      _MenuItem(
-                        key: e2eKey(E2eIds.drawerOpeningExplorer),
-                        customIcon: SvgWidget(
-                          SvgAsset.openingExplorer,
-                          semanticsLabel: 'Explorer Icon',
-                          height: 20.h,
-                          width: 20.w,
-                          colorFilter:
-                              context.isLightTheme
-                                  ? ColorFilter.mode(
-                                    context.colors.iconPrimary,
-                                    BlendMode.srcIn,
-                                  )
-                                  : null,
-                        ),
-                        icon: Icons.explore_outlined,
-                        title: 'Explorer',
-                        textStyle: AppTypography.textSmMedium.copyWith(
-                          color: context.colors.iconPrimary,
-                          height: 1.0,
-                          letterSpacing: -0.14,
-                        ),
-                        onPressed: () {
-                          Navigator.of(context).pop();
-                          callbacks.onOpeningExplorerPressed();
-                        },
-                        showChevron: true,
-                      ),
-                      _MenuItem(
-                        key: e2eKey(E2eIds.drawerAnalysisBoard),
-                        customIcon: SvgWidget(
-                          SvgAsset.analysisBoard,
-                          semanticsLabel: 'Analysis Board Icon',
-                          height: 20.h,
-                          width: 20.w,
-                          // Multi-colour mini-chessboard artwork — must keep
-                          // its baked white/grey/dark squares in both themes.
-                          // Tinting collapses it into a single solid blob.
-                          preserveOriginalColors: true,
-                        ),
-                        icon: Icons.grid_view_rounded,
-                        title: 'Board',
-                        textStyle: AppTypography.textSmRegular.copyWith(
-                          color: context.colors.iconPrimary,
-                          height: 20.h / 14.h,
-                        ),
-                        onPressed: () {
-                          Navigator.of(context).pop();
-                          callbacks.onAnalysisBoardPressed();
-                        },
-                        showChevron: true,
-                      ),
+
                       _MenuItem(
                         key: e2eKey(E2eIds.drawerSettings),
                         customIcon: SvgWidget(

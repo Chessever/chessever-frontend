@@ -86,15 +86,8 @@ void main() {
 
         await openDrawerDestination(
           $,
-          drawerItemId: E2eIds.drawerOpeningExplorer,
+          drawerItemId: E2eIds.drawerBoard,
           expectedRoot: E2eIds.openingExplorerRoot,
-        );
-        await popRoute($);
-
-        await openDrawerDestination(
-          $,
-          drawerItemId: E2eIds.drawerAnalysisBoard,
-          expectedRoot: E2eIds.boardEditorRoot,
         );
         await popRoute($);
 

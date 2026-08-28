@@ -19,6 +19,12 @@ Widget _app(Widget child) {
 
 void main() {
   group('shared Explorer and Notation board workspace', () {
+    test('Board opens in Explorer and teaches both advanced controls', () {
+      expect(boardWorkspaceDefaultPage, 0);
+      expect(boardWorkspaceViewsCoachmarkMessage, contains('Explorer and Notation'));
+      expect(boardWorkspaceEditorCoachmarkMessage, contains('Edit any position'));
+    });
+
     testWidgets(
       'toggle exposes two clear independently tappable active states',
       (tester) async {
