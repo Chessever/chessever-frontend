@@ -171,7 +171,7 @@ void main() {
       );
     });
 
-    test('score is white win-rate including half a point per draw', () {
+    test('score sorts by White win percentage', () {
       expect(
         _order(
           const ExplorerMoveSort(

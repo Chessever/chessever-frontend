@@ -173,7 +173,7 @@ Future<void> _pumpExplorer(
 }
 
 Future<void> _openFilters(WidgetTester tester) async {
-  await tester.tap(find.byTooltip('Filters'));
+  await tester.tap(find.byTooltip('Explorer filters'));
   await tester.pumpAndSettle();
 }
 

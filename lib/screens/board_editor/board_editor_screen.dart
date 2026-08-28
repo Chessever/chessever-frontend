@@ -22,7 +22,18 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:motor/motor.dart';
 
 class BoardEditorScreen extends ConsumerStatefulWidget {
-  const BoardEditorScreen({super.key});
+  const BoardEditorScreen({
+    super.key,
+    this.initialFen,
+    this.returnFenOnDone = false,
+  });
+
+  /// Optional position supplied by a parent Board workspace.
+  final String? initialFen;
+
+  /// When true, Analyze returns the edited FEN instead of opening another
+  /// analysis-board route. This keeps Explorer and Notation on one board.
+  final bool returnFenOnDone;
 
   @override
   ConsumerState<BoardEditorScreen> createState() => _BoardEditorScreenState();
@@ -33,6 +44,17 @@ class _BoardEditorScreenState extends ConsumerState<BoardEditorScreen> {
   String? _analysisPgnStartFen;
   String _analysisWhiteName = 'White';
   String _analysisBlackName = 'Black';
+
+  @override
+  void initState() {
+    super.initState();
+    final initialFen = widget.initialFen?.trim();
+    if (initialFen == null || initialFen.isEmpty) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      ref.read(boardEditorProvider.notifier).loadFen(initialFen);
+    });
+  }
 
   String _fenPositionKey(String fen) =>
       fen.trim().split(RegExp(r'\s+')).take(4).join(' ');
@@ -83,6 +105,11 @@ class _BoardEditorScreenState extends ConsumerState<BoardEditorScreen> {
     }
 
     final fen = editorState.fullFen;
+    if (widget.returnFenOnDone) {
+      Navigator.of(context).pop(fen);
+      return;
+    }
+
     final timestamp = DateTime.now().millisecondsSinceEpoch;
     final usePgnOverride =
         _analysisPgnOverride != null &&
