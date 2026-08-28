@@ -1,6 +1,6 @@
 import 'package:chessever2/screens/board_editor/board_editor_screen.dart';
-import 'package:chessever2/screens/gamebase/gamebase_explorer_screen.dart';
 import 'package:chessever2/screens/gamebase/utils/explorer_move_sort.dart';
+import 'package:chessever2/screens/gamebase/widgets/board_workspace_controls.dart';
 import 'package:chessever2/screens/gamebase/widgets/move_statistics_panel.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:flutter/material.dart';
@@ -21,8 +21,14 @@ void main() {
   group('shared Explorer and Notation board workspace', () {
     test('Board opens in Explorer and teaches both advanced controls', () {
       expect(boardWorkspaceDefaultPage, 0);
-      expect(boardWorkspaceViewsCoachmarkMessage, contains('Explorer and Notation'));
-      expect(boardWorkspaceEditorCoachmarkMessage, contains('Edit any position'));
+      expect(
+        boardWorkspaceViewsCoachmarkMessage,
+        contains('Explorer and Notation'),
+      );
+      expect(
+        boardWorkspaceEditorCoachmarkMessage,
+        contains('Edit any position'),
+      );
     });
 
     testWidgets(
@@ -32,11 +38,10 @@ void main() {
         await tester.pumpWidget(
           _app(
             StatefulBuilder(
-              builder:
-                  (context, setState) => ExplorerViewToggle(
-                    currentPage: selected,
-                    onSelected: (value) => setState(() => selected = value),
-                  ),
+              builder: (context, setState) => ExplorerViewToggle(
+                currentPage: selected,
+                onSelected: (value) => setState(() => selected = value),
+              ),
             ),
           ),
         );
@@ -125,6 +130,26 @@ void main() {
       await tester.tap(find.text('Last'));
       await tester.pump();
       expect(selectedField, ExplorerMoveSortField.last);
+    });
+
+    testWidgets('embedded Explorer omits an unavailable filter action', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        _app(
+          ExplorerMovesHeader(
+            sort: defaultExplorerMoveSort(ExplorerMoveSortField.games),
+            onSort: (_) {},
+            hasActiveFilters: false,
+          ),
+        ),
+      );
+
+      expect(
+        find.byKey(const ValueKey('opening_explorer_filter_button')),
+        findsNothing,
+      );
+      expect(find.text('Games'), findsOneWidget);
     });
 
     testWidgets('Board Editor action uses a chessboard-shaped icon', (

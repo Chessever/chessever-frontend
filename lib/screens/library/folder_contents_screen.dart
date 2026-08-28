@@ -699,7 +699,7 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
               tooltip: 'Open Board',
               visualDensity: VisualDensity.compact,
               padding: EdgeInsets.symmetric(horizontal: 6.w),
-              constraints: BoxConstraints(minWidth: 32.w, minHeight: 32.h),
+              constraints: BoxConstraints(minWidth: 44.w, minHeight: 44.h),
               icon: BoardNavigationIcon(
                 size: 20.sp,
                 semanticsLabel: 'Open Board',

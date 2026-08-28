@@ -55,17 +55,46 @@ class _FakeRepo extends GamebaseRepository {
         );
       }
     }
-    return GamebaseResponse(status: 'success', data: GamebaseData(moves: legal));
+    return GamebaseResponse(
+      status: 'success',
+      data: GamebaseData(moves: legal),
+    );
   }
 }
 
 /// A real 30-ply line, so the walked positions sit well past the ply-20
 /// indexed boundary.
 const _line = <String>[
-  'e2e4', 'c7c5', 'g1f3', 'd7d6', 'd2d4', 'c5d4', 'f3d4', 'g8f6',
-  'b1c3', 'a7a6', 'c1g5', 'e7e6', 'f2f4', 'f8e7', 'd1f3', 'd8c7',
-  'e1c1', 'b8d7', 'g2g4', 'b7b5', 'g5f6', 'd7f6', 'g4g5', 'f6d7',
-  'f4f5', 'd7c5', 'f5f6', 'g7f6', 'g5f6', 'e7f8',
+  'e2e4',
+  'c7c5',
+  'g1f3',
+  'd7d6',
+  'd2d4',
+  'c5d4',
+  'f3d4',
+  'g8f6',
+  'b1c3',
+  'a7a6',
+  'c1g5',
+  'e7e6',
+  'f2f4',
+  'f8e7',
+  'd1f3',
+  'd8c7',
+  'e1c1',
+  'b8d7',
+  'g2g4',
+  'b7b5',
+  'g5f6',
+  'd7f6',
+  'g4g5',
+  'f6d7',
+  'f4f5',
+  'd7c5',
+  'f5f6',
+  'g7f6',
+  'g5f6',
+  'e7f8',
 ];
 
 /// FEN reached after the first [plies] moves of [_line].
@@ -92,6 +121,24 @@ String _fenAfter(int plies) {
 }
 
 void main() {
+  test('Board Editor preserves the original Explorer access depth', () {
+    final harness = _harness(_FakeRepo());
+    final notifier = harness.container.read(gamebaseExplorerProvider.notifier);
+    final deepFen = _fenAfter(24);
+
+    notifier.setPosition(deepFen, startingFen: deepFen);
+    expect(notifier.effectiveMoveNumber, 25);
+
+    final editedParts = deepFen.split(' ');
+    final editedFen = '${editedParts.take(4).join(' ')} 0 1';
+    notifier.setPosition(
+      editedFen,
+      startingFen: editedFen,
+      minimumMoveNumber: notifier.effectiveMoveNumber,
+    );
+
+    expect(notifier.effectiveMoveNumber, 25);
+  });
 
   group('fen-keyed existence check', () {
     test('reports games when the FEN endpoint has them', () async {
@@ -126,9 +173,7 @@ void main() {
       addTearDown(container.dispose);
 
       expect(
-        await container.read(
-          fenPositionHasGamesProvider(_fenAfter(24)).future,
-        ),
+        await container.read(fenPositionHasGamesProvider(_fenAfter(24)).future),
         isFalse,
       );
     });
@@ -140,7 +185,10 @@ void main() {
       );
       addTearDown(container.dispose);
 
-      expect(await container.read(fenPositionHasGamesProvider('').future), isFalse);
+      expect(
+        await container.read(fenPositionHasGamesProvider('').future),
+        isFalse,
+      );
       expect(repo.fenCalls, 0);
     });
   });
@@ -229,7 +277,6 @@ void main() {
       expect(next.ascending, isTrue);
     });
   });
-
 
   test(
     'a deep position change never leaves the table settled-but-empty',
@@ -459,12 +506,12 @@ final _sortFixture = <MoveAggregate>[
   ), // score 0.00
 ];
 
-List<String> _order(ExplorerMoveSort? sort) => applyExplorerMoveSort(
-  _sortFixture,
-  sort,
-  Chess.initial.fen,
-).map((a) => a.uci).toList();
-
+List<String> _order(ExplorerMoveSort? sort) =>
+    applyExplorerMoveSort(
+      _sortFixture,
+      sort,
+      Chess.initial.fen,
+    ).map((a) => a.uci).toList();
 
 /// Aggregates come back empty while the FEN-keyed endpoint still has games —
 /// the state a transposition (or any position past the aggregate window)

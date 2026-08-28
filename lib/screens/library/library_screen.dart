@@ -314,8 +314,8 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
         value: _isSearchFocused ? 1.0 : 0.0,
         builder: (context, value, child) {
           final clamped = value.clamp(0.0, 1.0);
-          // One canonical Board entry plus Add: 32 + 8 gap + 36.
-          final buttonsMaxWidth = 76.w * (1 - clamped);
+          // One canonical Board entry plus Add: 44 + 8 gap + 36.
+          final buttonsMaxWidth = 88.w * (1 - clamped);
           final gapWidth = (8.w * (1 - clamped)).clamp(0.0, 8.w);
           final opacity = (1 - clamped).clamp(0.0, 1.0);
 
@@ -664,7 +664,6 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
   }
 }
 
-/// CSS: 32x32, bg #1D1D1D, border 0.1px #444444, radius 4px
 /// Opens the shared Board workspace in its default Explorer view.
 class _BoardButton extends StatelessWidget {
   final VoidCallback onTap;
@@ -673,29 +672,14 @@ class _BoardButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Tooltip(
-      message: 'Open Board',
-      child: Semantics(
-        button: true,
-        label: 'Open Board',
-        child: GestureDetector(
-          onTap: onTap,
-          child: Container(
-            width: 32.h,
-            height: 32.h,
-            decoration: BoxDecoration(
-              color: context.colors.surface,
-              borderRadius: BorderRadius.circular(4.br),
-              border: Border.all(color: context.colors.divider, width: 0.1),
-            ),
-            child: Center(
-              child: BoardNavigationIcon(
-                size: 20.sp,
-                semanticsLabel: 'Board',
-              ),
-            ),
-          ),
-        ),
+    return IconButton(
+      onPressed: onTap,
+      tooltip: 'Open Board',
+      padding: EdgeInsets.all(10.sp),
+      constraints: BoxConstraints(minWidth: 44.w, minHeight: 44.h),
+      icon: BoardNavigationIcon(
+        size: 20.sp,
+        semanticsLabel: 'Open Board',
       ),
     );
   }

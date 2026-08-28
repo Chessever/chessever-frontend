@@ -45,136 +45,12 @@ import 'package:chessever2/screens/gamebase/providers/explorer_game_focus_provid
 import 'package:chessever2/screens/gamebase/providers/gamebase_providers.dart';
 import 'package:chessever2/screens/gamebase/providers/gamebase_explorer_state.dart';
 import 'package:chessever2/screens/gamebase/widgets/widgets.dart';
+import 'package:chessever2/screens/gamebase/widgets/board_workspace_controls.dart';
 import 'package:chessever2/screens/gamebase/models/models.dart';
 import 'package:chessever2/main.dart' show routeObserver;
 import 'package:chessever2/widgets/app_snack.dart';
 import 'package:chessever2/widgets/auth/auth_upgrade_sheet.dart';
 import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
-
-enum ExplorerBoardMenuAction { copyPgn, boardSettings, share }
-
-const int boardWorkspaceDefaultPage = 0;
-const String boardWorkspaceViewsCoachmarkMessage =
-    'One board, two views\nSwitch between Explorer and Notation anytime.';
-const String boardWorkspaceEditorCoachmarkMessage =
-    'Edit any position\nSet up a position, then continue here.';
-
-class ExplorerBoardMenuItem {
-  const ExplorerBoardMenuItem({
-    required this.action,
-    required this.label,
-    required this.icon,
-  });
-
-  final ExplorerBoardMenuAction action;
-  final String label;
-  final IconData icon;
-}
-
-const explorerBoardMenuItems = <ExplorerBoardMenuItem>[
-  ExplorerBoardMenuItem(
-    action: ExplorerBoardMenuAction.copyPgn,
-    label: 'Copy PGN',
-    icon: Icons.copy_rounded,
-  ),
-  ExplorerBoardMenuItem(
-    action: ExplorerBoardMenuAction.boardSettings,
-    label: 'Board Settings',
-    icon: Icons.settings_outlined,
-  ),
-  ExplorerBoardMenuItem(
-    action: ExplorerBoardMenuAction.share,
-    label: 'Share',
-    icon: Icons.share_outlined,
-  ),
-];
-
-class ExplorerBoardEditorIcon extends StatelessWidget {
-  const ExplorerBoardEditorIcon({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      width: 24.ic,
-      height: 24.ic,
-      child: Stack(
-        clipBehavior: Clip.none,
-        children: [
-          Positioned(
-            left: 1.sp,
-            top: 1.sp,
-            width: 20.ic,
-            height: 20.ic,
-            child: CustomPaint(
-              key: const ValueKey<String>(
-                'opening_explorer_editor_checkerboard',
-              ),
-              painter: _ExplorerCheckerboardPainter(
-                color: context.colors.textPrimary,
-              ),
-            ),
-          ),
-          Positioned(
-            right: -2.sp,
-            bottom: -2.sp,
-            child: Container(
-              padding: EdgeInsets.all(1.5.sp),
-              decoration: BoxDecoration(
-                color: context.colors.surface,
-                shape: BoxShape.circle,
-              ),
-              child: Icon(Icons.edit_rounded, size: 10.ic),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _ExplorerCheckerboardPainter extends CustomPainter {
-  const _ExplorerCheckerboardPainter({required this.color});
-
-  final Color color;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final squareWidth = size.width / 8;
-    final squareHeight = size.height / 8;
-    final squarePaint = Paint()..color = color.withValues(alpha: 0.72);
-    for (var rank = 0; rank < 8; rank++) {
-      for (var file = 0; file < 8; file++) {
-        if ((rank + file).isEven) continue;
-        canvas.drawRect(
-          Rect.fromLTWH(
-            file * squareWidth,
-            rank * squareHeight,
-            squareWidth,
-            squareHeight,
-          ),
-          squarePaint,
-        );
-      }
-    }
-    final borderPaint =
-        Paint()
-          ..color = color
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = 1.2;
-    canvas.drawRRect(
-      RRect.fromRectAndRadius(
-        Offset.zero & size,
-        const Radius.circular(1.5),
-      ),
-      borderPaint,
-    );
-  }
-
-  @override
-  bool shouldRepaint(covariant _ExplorerCheckerboardPainter oldDelegate) {
-    return oldDelegate.color != color;
-  }
-}
 
 /// Main screen for exploring the Gamebase opening database.
 /// Displays a chess board, move statistics, and navigation controls.
@@ -381,10 +257,12 @@ class _GamebaseExplorerScreenState extends ConsumerState<GamebaseExplorerScreen>
       editorTracker: boardWorkspaceEditorCoachmarkTracker,
       isEligible: () => mounted && _routeActive,
       showViews:
-          () => _viewsCoachmarkKey.currentState?.ensureTooltipVisible() ?? false,
+          () =>
+              _viewsCoachmarkKey.currentState?.ensureTooltipVisible() ?? false,
       showEditor: () {
         Tooltip.dismissAllToolTips();
-        return _editorCoachmarkKey.currentState?.ensureTooltipVisible() ?? false;
+        return _editorCoachmarkKey.currentState?.ensureTooltipVisible() ??
+            false;
       },
     );
   }
@@ -503,7 +381,7 @@ class _GamebaseExplorerScreenState extends ConsumerState<GamebaseExplorerScreen>
     if (kDebugMode) return false;
     if (ref.read(subscriptionProvider).isSubscribed) return false;
     final currentMoveNumber =
-        ref.read(gamebaseExplorerProvider).currentMoveNumber;
+        ref.read(gamebaseExplorerProvider.notifier).effectiveMoveNumber;
     return currentMoveNumber >= kFreeExplorerMoveNumberLimit;
   }
 
@@ -914,10 +792,7 @@ class _GamebaseExplorerScreenState extends ConsumerState<GamebaseExplorerScreen>
         textStyle: AppTypography.textSmMedium.copyWith(
           color: Colors.white.withValues(alpha: 0.94),
         ),
-        child: _ExplorerSegmentedTitle(
-          currentPage: currentPage,
-          isLarge: true,
-        ),
+        child: _ExplorerSegmentedTitle(currentPage: currentPage, isLarge: true),
       ),
       actions: [
         IconButton(
@@ -1033,7 +908,9 @@ class _GamebaseExplorerScreenState extends ConsumerState<GamebaseExplorerScreen>
   }
 
   Future<void> _openBoardEditor() async {
+    final notifier = ref.read(gamebaseExplorerProvider.notifier);
     final currentFen = ref.read(gamebaseExplorerProvider).currentFen;
+    final minimumMoveNumber = notifier.effectiveMoveNumber;
     final editedFen = await Navigator.of(context).push<String>(
       MaterialPageRoute(
         builder:
@@ -1044,9 +921,11 @@ class _GamebaseExplorerScreenState extends ConsumerState<GamebaseExplorerScreen>
       ),
     );
     if (!mounted || editedFen == null || editedFen.trim().isEmpty) return;
-    ref
-        .read(gamebaseExplorerProvider.notifier)
-        .setPosition(editedFen, startingFen: editedFen);
+    notifier.setPosition(
+      editedFen,
+      startingFen: editedFen,
+      minimumMoveNumber: minimumMoveNumber,
+    );
   }
 
   void _openAnalysisAndSave(BuildContext context) {
@@ -1307,7 +1186,9 @@ class _GamebaseChessBoardState extends ConsumerState<_GamebaseChessBoard> {
                     if (!kDebugMode &&
                         !ref.read(subscriptionProvider).isSubscribed) {
                       final currentMoveNumber =
-                          ref.read(gamebaseExplorerProvider).currentMoveNumber;
+                          ref
+                              .read(gamebaseExplorerProvider.notifier)
+                              .effectiveMoveNumber;
                       if (currentMoveNumber >= kFreeExplorerMoveNumberLimit) {
                         if (!context.mounted) return;
                         final unlocked = await requirePremiumGuard(
@@ -2163,92 +2044,96 @@ class _PlayerSearchResults extends ConsumerWidget {
 
     return Container(
       constraints: BoxConstraints(maxHeight: 200.h),
+      clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(
         color: context.colors.surface,
         borderRadius: BorderRadius.circular(8.br),
         border: Border.all(color: context.colors.divider),
       ),
-      child: results.when(
-        data: (players) {
-          if (players.isEmpty) {
-            return Padding(
-              padding: EdgeInsets.all(12.sp),
-              child: Text(
-                'No players found',
-                style: TextStyle(
-                  color: context.colors.textSecondary,
-                  fontSize: 12.f,
-                ),
-              ),
-            );
-          }
-          return ListView.separated(
-            shrinkWrap: true,
-            itemCount: players.length,
-            separatorBuilder:
-                (_, __) => Divider(height: 1, color: context.colors.divider),
-            itemBuilder: (context, index) {
-              final player = players[index];
-              return ListTile(
-                dense: true,
-                onTap: () => onPlayerSelected(player),
-                title: Text(
-                  player.titleAndName,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    color: context.colors.textPrimary,
-                    fontSize: 13.f,
-                  ),
-                ),
-                subtitle: Text(
-                  '${player.fed}${player.highestRating != null ? ' • ${player.highestRating}' : ''}',
+      child: Material(
+        color: Colors.transparent,
+        child: results.when(
+          data: (players) {
+            if (players.isEmpty) {
+              return Padding(
+                padding: EdgeInsets.all(12.sp),
+                child: Text(
+                  'No players found',
                   style: TextStyle(
                     color: context.colors.textSecondary,
-                    fontSize: 11.f,
+                    fontSize: 12.f,
                   ),
-                ),
-                trailing: Icon(
-                  Icons.add_rounded,
-                  size: 18.sp,
-                  color: kPrimaryColor,
                 ),
               );
-            },
-          );
-        },
-        loading:
-            () => Padding(
-              padding: EdgeInsets.all(12.sp),
-              child: Row(
-                children: [
-                  SizedBox(
-                    width: 16.sp,
-                    height: 16.sp,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      color: kPrimaryColor,
+            }
+            return ListView.separated(
+              shrinkWrap: true,
+              itemCount: players.length,
+              separatorBuilder:
+                  (_, __) => Divider(height: 1, color: context.colors.divider),
+              itemBuilder: (context, index) {
+                final player = players[index];
+                return ListTile(
+                  dense: true,
+                  onTap: () => onPlayerSelected(player),
+                  title: Text(
+                    player.titleAndName,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: context.colors.textPrimary,
+                      fontSize: 13.f,
                     ),
                   ),
-                  SizedBox(width: 10.sp),
-                  Text(
-                    'Searching...',
+                  subtitle: Text(
+                    '${player.fed}${player.highestRating != null ? ' • ${player.highestRating}' : ''}',
                     style: TextStyle(
                       color: context.colors.textSecondary,
-                      fontSize: 12.f,
+                      fontSize: 11.f,
                     ),
                   ),
-                ],
+                  trailing: Icon(
+                    Icons.add_rounded,
+                    size: 18.sp,
+                    color: kPrimaryColor,
+                  ),
+                );
+              },
+            );
+          },
+          loading:
+              () => Padding(
+                padding: EdgeInsets.all(12.sp),
+                child: Row(
+                  children: [
+                    SizedBox(
+                      width: 16.sp,
+                      height: 16.sp,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: kPrimaryColor,
+                      ),
+                    ),
+                    SizedBox(width: 10.sp),
+                    Text(
+                      'Searching...',
+                      style: TextStyle(
+                        color: context.colors.textSecondary,
+                        fontSize: 12.f,
+                      ),
+                    ),
+                  ],
+                ),
               ),
-            ),
-        error:
-            (_, __) => Padding(
-              padding: EdgeInsets.all(12.sp),
-              child: Text(
-                'Search failed',
-                style: TextStyle(color: kRedColor, fontSize: 12.f),
+          error:
+              (_, __) => Padding(
+                padding: EdgeInsets.all(12.sp),
+                child: Text(
+                  'Search failed',
+                  style: TextStyle(color: kRedColor, fontSize: 12.f),
+                ),
               ),
-            ),
+        ),
       ),
     );
   }
@@ -2429,7 +2314,7 @@ class _ExplorerEngineLinesState extends ConsumerState<_ExplorerEngineLines> {
       if (!_uciRegex.hasMatch(firstUci)) return;
       if (!kDebugMode && !ref.read(subscriptionProvider).isSubscribed) {
         final currentMoveNumber =
-            ref.read(gamebaseExplorerProvider).currentMoveNumber;
+            ref.read(gamebaseExplorerProvider.notifier).effectiveMoveNumber;
         if (currentMoveNumber >= kFreeExplorerMoveNumberLimit) {
           if (!context.mounted) return;
           final unlocked = await requirePremiumGuard(context, ref);
@@ -2604,118 +2489,6 @@ class _ExplorerSegmentedTitle extends ConsumerWidget {
       compact: !isLarge,
       onSelected:
           (value) => ref.read(explorerPageIndexProvider.notifier).state = value,
-    );
-  }
-}
-
-class ExplorerViewToggle extends StatelessWidget {
-  const ExplorerViewToggle({
-    required this.currentPage,
-    required this.onSelected,
-    this.compact = false,
-    super.key,
-  });
-
-  final int currentPage;
-  final ValueChanged<int> onSelected;
-  final bool compact;
-
-  @override
-  Widget build(BuildContext context) {
-    return Semantics(
-      label: 'Board workspace view',
-      child: Container(
-        height: compact ? 34.sp : 38.sp,
-        constraints: BoxConstraints(maxWidth: compact ? 150.w : 176.w),
-        padding: EdgeInsets.all(3.sp),
-        decoration: BoxDecoration(
-          color: context.colors.surfaceRecessed,
-          borderRadius: BorderRadius.circular(12.br),
-          border: Border.all(color: context.colors.divider),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Expanded(
-              child: _ExplorerViewTab(
-                label: 'Explorer',
-                selected: currentPage == 0,
-                onTap: () => onSelected(0),
-                compact: compact,
-              ),
-            ),
-            SizedBox(width: 3.sp),
-            Expanded(
-              child: _ExplorerViewTab(
-                label: 'Notation',
-                selected: currentPage == 1,
-                onTap: () => onSelected(1),
-                compact: compact,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _ExplorerViewTab extends StatelessWidget {
-  const _ExplorerViewTab({
-    required this.label,
-    required this.selected,
-    required this.onTap,
-    required this.compact,
-  });
-
-  final String label;
-  final bool selected;
-  final VoidCallback onTap;
-  final bool compact;
-
-  @override
-  Widget build(BuildContext context) {
-    return Semantics(
-      key: ValueKey<String>('opening_explorer_tab_${label.toLowerCase()}'),
-      selected: selected,
-      button: true,
-      label: '$label view',
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: onTap,
-          borderRadius: BorderRadius.circular(9.br),
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 180),
-            curve: Curves.easeOutCubic,
-            alignment: Alignment.center,
-            decoration: BoxDecoration(
-              color:
-                  selected
-                      ? kPrimaryColor.withValues(alpha: 0.13)
-                      : Colors.transparent,
-              borderRadius: BorderRadius.circular(9.br),
-              border: Border(
-                bottom: BorderSide(
-                  color: selected ? kPrimaryColor : Colors.transparent,
-                  width: 2,
-                ),
-              ),
-            ),
-            child: Text(
-              label,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                color: selected ? kPrimaryColor : context.colors.textSecondary,
-                fontSize: compact ? 11.f : 13.f,
-                fontWeight: FontWeight.w600,
-                letterSpacing: -0.2,
-              ),
-            ),
-          ),
-        ),
-      ),
     );
   }
 }

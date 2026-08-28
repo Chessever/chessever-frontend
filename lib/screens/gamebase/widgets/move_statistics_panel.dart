@@ -1,4 +1,5 @@
 import 'dart:ui' show ImageFilter;
+
 import 'package:chessever2/providers/board_settings_provider_new.dart';
 import 'package:chessever2/revenue_cat_service/subscribe_state.dart';
 import 'package:chessever2/utils/app_typography.dart';
@@ -20,6 +21,7 @@ import '../../../utils/responsive_helper.dart';
 import '../models/models.dart';
 import '../providers/explorer_game_focus_provider.dart';
 import '../providers/gamebase_explorer_state.dart';
+
 import 'package:motor/motor.dart';
 
 import '../providers/gamebase_providers.dart';
@@ -213,14 +215,14 @@ class ExplorerMovesHeader extends StatelessWidget {
   const ExplorerMovesHeader({
     required this.sort,
     required this.onSort,
-    required this.onFilter,
+    this.onFilter,
     required this.hasActiveFilters,
     super.key,
   });
 
   final ExplorerMoveSort sort;
   final ValueChanged<ExplorerMoveSortField> onSort;
-  final VoidCallback onFilter;
+  final VoidCallback? onFilter;
   final bool hasActiveFilters;
 
   @override
@@ -229,42 +231,50 @@ class ExplorerMovesHeader extends StatelessWidget {
       children: [
         Expanded(
           flex: _kMoveColumnFlex,
-          child: Tooltip(
-            message: 'Explorer filters',
-            child: Semantics(
-              button: true,
-              label: 'Explorer filters',
-              child: IconButton(
-                key: const ValueKey<String>('opening_explorer_filter_button'),
-                onPressed: onFilter,
-                padding: EdgeInsets.zero,
-                constraints: const BoxConstraints(minWidth: 44, minHeight: 44),
-                icon: Stack(
-                  clipBehavior: Clip.none,
-                  children: [
-                    Icon(
-                      Icons.tune_rounded,
-                      size: 20.ic,
-                      color: context.colors.textSecondary,
-                    ),
-                    if (hasActiveFilters)
-                      Positioned(
-                        top: -2,
-                        right: -2,
-                        child: Container(
-                          width: 7.sp,
-                          height: 7.sp,
-                          decoration: const BoxDecoration(
-                            color: kPrimaryColor,
-                            shape: BoxShape.circle,
-                          ),
+          child:
+              onFilter == null
+                  ? const SizedBox(height: 44)
+                  : Tooltip(
+                    message: 'Explorer filters',
+                    child: Semantics(
+                      button: true,
+                      label: 'Explorer filters',
+                      child: IconButton(
+                        key: const ValueKey<String>(
+                          'opening_explorer_filter_button',
+                        ),
+                        onPressed: onFilter,
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints(
+                          minWidth: 44,
+                          minHeight: 44,
+                        ),
+                        icon: Stack(
+                          clipBehavior: Clip.none,
+                          children: [
+                            Icon(
+                              Icons.tune_rounded,
+                              size: 20.ic,
+                              color: context.colors.textSecondary,
+                            ),
+                            if (hasActiveFilters)
+                              Positioned(
+                                top: -2,
+                                right: -2,
+                                child: Container(
+                                  width: 7.sp,
+                                  height: 7.sp,
+                                  decoration: BoxDecoration(
+                                    color: context.colors.textPrimary,
+                                    shape: BoxShape.circle,
+                                  ),
+                                ),
+                              ),
+                          ],
                         ),
                       ),
-                  ],
-                ),
-              ),
-            ),
-          ),
+                    ),
+                  ),
         ),
         SizedBox(width: _kColumnGap.sp),
         Expanded(
@@ -345,21 +355,16 @@ class _ExplorerSortHeader extends StatelessWidget {
           child: Container(
             alignment: alignment,
             constraints: const BoxConstraints(minHeight: 44),
-            decoration: BoxDecoration(
-              border: Border(
-                bottom: BorderSide(
-                  color: active ? kPrimaryColor : Colors.transparent,
-                  width: 2,
-                ),
-              ),
-            ),
             child: Text(
               label,
               textAlign: align,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: TextStyle(
-                color: active ? kPrimaryColor : context.colors.textSecondary,
+                color:
+                    active
+                        ? context.colors.textPrimary
+                        : context.colors.textSecondary,
                 fontSize: 11.f,
                 fontWeight: active ? FontWeight.w700 : FontWeight.w600,
               ),
@@ -649,10 +654,11 @@ class MoveStatisticsPanel extends HookConsumerWidget {
     final isSubscribed = ref.watch(
       subscriptionProvider.select((s) => s.isSubscribed),
     );
+    final effectiveMoveNumber =
+        ref.read(gamebaseExplorerProvider.notifier).effectiveMoveNumber;
     // Mirror `requirePremiumGuard`: bypass in debug so engineers can exercise
     // deep positions without a live RevenueCat subscription.
-    final pastFreeLimit =
-        state.currentMoveNumber > kFreeExplorerMoveNumberLimit;
+    final pastFreeLimit = effectiveMoveNumber > kFreeExplorerMoveNumberLimit;
     final showGate = pastFreeLimit && !isSubscribed && !kDebugMode;
     // True when the current position is the last free step — the next ply
     // would land past move 10. Used to paywall *before* navigating into the
@@ -661,7 +667,7 @@ class MoveStatisticsPanel extends HookConsumerWidget {
     final nextStepCrossesLimit =
         !isSubscribed &&
         !kDebugMode &&
-        state.currentMoveNumber >= kFreeExplorerMoveNumberLimit;
+        effectiveMoveNumber >= kFreeExplorerMoveNumberLimit;
 
     // First load (or a position change that cleared the table) shows the same
     // header+rows scaffold with shimmering skeleton rows instead of a centered
@@ -683,7 +689,7 @@ class MoveStatisticsPanel extends HookConsumerWidget {
       key: const ValueKey<String>('explorer_header_moves'),
       sort: sort.value,
       onSort: selectSort,
-      onFilter: onFilter ?? () {},
+      onFilter: onFilter,
       hasActiveFilters: hasActiveFilters,
     );
 
@@ -734,7 +740,7 @@ class MoveStatisticsPanel extends HookConsumerWidget {
       // "No games match this position".
       final pliesFromFen = _explorerPliesFromFen(state.currentFen);
       final pastIndexedWindow =
-          state.currentMoveNumber > kExplorerIndexedAggregateMoveNumberLimit ||
+          effectiveMoveNumber > kExplorerIndexedAggregateMoveNumberLimit ||
           state.exploredMoves.length >=
               kExplorerIndexedAggregateMoveNumberLimit ||
           pliesFromFen >= kExplorerIndexedAggregateMoveNumberLimit;
