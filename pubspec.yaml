@@ -29,7 +29,6 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
-  flutter_markdown_plus: ^1.0.12
   flutter_localizations:
     sdk: flutter
 

@@ -22,7 +22,7 @@ import 'package:motor/motor.dart';
 import 'package:scrollable_positioned_list/scrollable_positioned_list.dart';
 
 /// Scroll to a specific round from widget context (ensures correct ProviderScope)
-void scrollToRoundFromTournamentContext(WidgetRef ref, String roundId) {
+void _scrollToRoundFromWidget(WidgetRef ref, String roundId) {
   final scopeId = ref.read(gamesTourScrollScopeProvider);
   final scrollNotifier = ref.read(gamesTourScrollProvider(scopeId).notifier);
   final controller = scrollNotifier.scrollController;
@@ -150,7 +150,7 @@ class CategoryDropdown extends ConsumerWidget {
               // Select the round in the provider
               ref.read(gamesAppBarProvider.notifier).select(round);
               // Also trigger scroll directly from widget context (has correct scope)
-              scrollToRoundFromTournamentContext(ref, round.id);
+              _scrollToRoundFromWidget(ref, round.id);
             },
           );
         },
@@ -379,6 +379,7 @@ class _CategoryDropdownContent extends HookConsumerWidget {
       isOpen.addListener(removeOverlay);
     });
   }
+
 }
 
 /// Stadium-shaped chip button that triggers the dropdown
@@ -875,9 +876,7 @@ class _DropdownOverlay extends ConsumerWidget {
                       color: context.colors.surface,
                       borderRadius: BorderRadius.circular(16.br),
                       border: Border.all(
-                        color: context.colors.textPrimary.withValues(
-                          alpha: 0.08,
-                        ),
+                        color: context.colors.textPrimary.withValues(alpha: 0.08),
                         width: 1.0,
                       ),
                     ),
@@ -1616,10 +1615,7 @@ class _CategoryRow extends StatelessWidget {
                           groupName: groupName,
                         ),
                         style: AppTypography.textSmMedium.copyWith(
-                          color:
-                              isSelected
-                                  ? kPrimaryColor
-                                  : context.colors.textPrimary,
+                          color: isSelected ? kPrimaryColor : context.colors.textPrimary,
                           fontWeight:
                               isSelected ? FontWeight.w600 : FontWeight.w500,
                         ),
@@ -1649,9 +1645,7 @@ class _CategoryRow extends StatelessWidget {
                       color:
                           isExpanded
                               ? context.colors.textPrimary
-                              : context.colors.textPrimary.withValues(
-                                alpha: 0.5,
-                              ),
+                              : context.colors.textPrimary.withValues(alpha: 0.5),
                     ),
                   ),
                 ),
@@ -1662,6 +1656,7 @@ class _CategoryRow extends StatelessWidget {
       ),
     );
   }
+
 }
 
 /// Round row (can be nested under a category)
@@ -1733,9 +1728,7 @@ class _RoundRow extends StatelessWidget {
                         color:
                             isSelected
                                 ? kPrimaryColor
-                                : context.colors.textPrimary.withValues(
-                                  alpha: 0.85,
-                                ),
+                                : context.colors.textPrimary.withValues(alpha: 0.85),
                         fontWeight:
                             isSelected ? FontWeight.w500 : FontWeight.w400,
                       ),
@@ -1748,9 +1741,7 @@ class _RoundRow extends StatelessWidget {
                           color:
                               isSelected
                                   ? kPrimaryColor.withValues(alpha: 0.7)
-                                  : context.colors.textPrimary.withValues(
-                                    alpha: 0.5,
-                                  ),
+                                  : context.colors.textPrimary.withValues(alpha: 0.5),
                           fontSize: 10.sp,
                         ),
                         maxLines: 1,

@@ -32,10 +32,6 @@ const int kPublishedRoundMissingSnapshotTolerance = 5;
 final userSelectedRoundProvider =
     StateProvider<({String id, bool userSelected})?>((ref) => null);
 
-/// A round opened from an external/in-app reference. The tournament screen
-/// consumes this once its scoped games list and scroll controller are ready.
-final pendingRoundNavigationProvider = StateProvider<String?>((ref) => null);
-
 /// Testable projections for the two upstream snapshots that own Games-tab
 /// round cards. Keeping these seams public also prevents this provider from
 /// reaching around its selected tour when the screen republishes state.
