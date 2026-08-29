@@ -1,21 +1,14 @@
 import 'dart:math' as math;
-import 'dart:io' show Platform;
 
 import 'package:chessever2/previews/preview_support.dart';
-import 'package:chessever2/repository/authentication/auth_repository.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
-import 'package:chessever2/utils/svg_asset.dart';
-import 'package:chessever2/utils/user_error_message.dart';
-import 'package:chessever2/widgets/app_snack.dart';
-import 'package:chessever2/widgets/auth_button.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/widget_previews.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
-import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:motor/motor.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -26,7 +19,6 @@ Future<bool> showAuthUpgradeSheet({
   String? title,
   String? message,
   String? dismissLabel,
-  bool completeSignInInSheet = false,
 }) async {
   await showModalBottomSheet<void>(
     context: context,
@@ -39,7 +31,6 @@ Future<bool> showAuthUpgradeSheet({
           title: title,
           message: message,
           dismissLabel: dismissLabel,
-          completeSignInInSheet: completeSignInInSheet,
         ),
   );
 
@@ -50,11 +41,10 @@ Future<bool> showAuthUpgradeSheet({
 /// Kept as the single decision point for "does this action need an account?".
 ///
 /// A guest (anonymous session) is a normal free account: same favorites, same
-/// boards and same settings. Free features are not blocked here; account
-/// creation is asked for on a schedule instead — see
-/// `GuestSessionGateListener` (day 7 soft prompt, day 28 required).
-/// Premium checkout is the one exception and owns its account requirement in
-/// `showPremiumPaywallSheet`, where the purchase can resume after sign-in.
+/// boards, same settings, same paywall. Nothing in the app is withheld from
+/// them, so this always allows the action through. Account creation is asked
+/// for on a schedule instead — see `GuestSessionGateListener` (day 7 soft
+/// prompt, day 28 required). Do not re-add per-feature guest blocks here.
 Future<bool> requireFullAuthGuard(BuildContext context) async {
   return true;
 }
@@ -65,14 +55,12 @@ class _AuthUpgradeSheet extends HookWidget {
     this.title,
     this.message,
     this.dismissLabel,
-    this.completeSignInInSheet = false,
   });
 
   final BuildContext hostContext;
   final String? title;
   final String? message;
   final String? dismissLabel;
-  final bool completeSignInInSheet;
 
   @override
   Widget build(BuildContext context) {
@@ -95,7 +83,6 @@ class _AuthUpgradeSheet extends HookWidget {
             title: title,
             message: message,
             dismissLabel: dismissLabel,
-            completeSignInInSheet: completeSignInInSheet,
           ),
         );
       },
@@ -103,14 +90,13 @@ class _AuthUpgradeSheet extends HookWidget {
   }
 }
 
-class _AuthUpgradePage extends HookConsumerWidget {
+class _AuthUpgradePage extends HookWidget {
   const _AuthUpgradePage({
     required this.hostContext,
     this.scrollController,
     this.title,
     this.message,
     this.dismissLabel,
-    this.completeSignInInSheet = false,
   });
 
   final BuildContext hostContext;
@@ -118,35 +104,13 @@ class _AuthUpgradePage extends HookConsumerWidget {
   final String? title;
   final String? message;
   final String? dismissLabel;
-  final bool completeSignInInSheet;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final isSigningIn = useState(false);
-
+  Widget build(BuildContext context) {
     Future<void> startAuthFlow() async {
       Navigator.of(hostContext).pop(); // Close sheet first
       // Use host context so navigation happens on app navigator
       Navigator.of(hostContext).pushNamed('/auth_screen');
-    }
-
-    Future<void> signIn(Future<void> Function() signInMethod) async {
-      final messenger = ScaffoldMessenger.of(context);
-      isSigningIn.value = true;
-      try {
-        await signInMethod();
-        if (context.mounted) Navigator.of(context).pop();
-      } catch (error) {
-        showAppSnackOn(
-          messenger,
-          userFacingError(
-            error,
-            fallback: 'Could not sign in. Please try again.',
-          ),
-          tone: AppSnackTone.danger,
-        );
-        if (context.mounted) isSigningIn.value = false;
-      }
     }
 
     return Stack(
@@ -232,48 +196,10 @@ class _AuthUpgradePage extends HookConsumerWidget {
                 ),
               ),
               SizedBox(height: 20.h),
-              if (completeSignInInSheet)
-                AbsorbPointer(
-                  absorbing: isSigningIn.value,
-                  child: AnimatedOpacity(
-                    opacity: isSigningIn.value ? 0.55 : 1,
-                    duration: const Duration(milliseconds: 150),
-                    child: Column(
-                      children: [
-                        if (Platform.isIOS) ...[
-                          AuthButton(
-                            signInTitle: 'Continue with Apple',
-                            svgIconPath: SvgAsset.appleIcon,
-                            onPressed:
-                                () => signIn(
-                                  () =>
-                                      ref
-                                          .read(authStateProvider.notifier)
-                                          .signInWithApple(),
-                                ),
-                          ),
-                          SizedBox(height: 12.h),
-                        ],
-                        AuthButton(
-                          signInTitle: 'Continue with Google',
-                          svgIconPath: SvgAsset.googleIcon,
-                          onPressed:
-                              () => signIn(
-                                () =>
-                                    ref
-                                        .read(authStateProvider.notifier)
-                                        .signInWithGoogle(),
-                              ),
-                        ),
-                      ],
-                    ),
-                  ),
-                )
-              else
-                _PrimaryButton(
-                  label: 'Create free account',
-                  onTap: startAuthFlow,
-                ),
+              _PrimaryButton(
+                label: 'Create free account',
+                onTap: startAuthFlow,
+              ),
               if (dismissLabel != null) ...[
                 SizedBox(height: 4.h),
                 _DismissButton(
@@ -469,10 +395,15 @@ class _FeatureItem extends StatelessWidget {
 }
 
 class _PrimaryButton extends HookWidget {
-  const _PrimaryButton({required this.label, required this.onTap});
+  const _PrimaryButton({
+    required this.label,
+    required this.onTap,
+    this.isLoading = false,
+  });
 
   final String label;
   final VoidCallback onTap;
+  final bool isLoading;
 
   @override
   Widget build(BuildContext context) {
@@ -482,7 +413,7 @@ class _PrimaryButton extends HookWidget {
       onTapDown: (_) => isPressed.value = true,
       onTapUp: (_) {
         isPressed.value = false;
-        onTap();
+        if (!isLoading) onTap();
       },
       onTapCancel: () => isPressed.value = false,
       child: AnimatedScale(
@@ -505,14 +436,24 @@ class _PrimaryButton extends HookWidget {
             ],
           ),
           child: Center(
-            child: Text(
-              label,
-              style: AppTypography.textMdMedium.copyWith(
-                // Cyan→indigo gradient is bright in both themes,
-                // so the label is always white for contrast.
-                color: Colors.white,
-              ),
-            ),
+            child:
+                isLoading
+                    ? SizedBox(
+                      width: 18.w,
+                      height: 18.h,
+                      child: const CircularProgressIndicator(
+                        strokeWidth: 2,
+                        valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                      ),
+                    )
+                    : Text(
+                      label,
+                      style: AppTypography.textMdMedium.copyWith(
+                        // Cyan→indigo gradient is bright in both themes,
+                        // so the label is always white for contrast.
+                        color: Colors.white,
+                      ),
+                    ),
           ),
         ),
       ),

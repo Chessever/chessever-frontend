@@ -1,8 +1,6 @@
 import 'dart:async';
 import 'dart:io';
 import 'package:chessever2/e2e/e2e_config.dart';
-import 'package:chessever2/chat/botvinnik_chat_button.dart';
-import 'package:chessever2/chat/chat_api.dart';
 import 'package:chessever2/e2e/e2e_ids.dart';
 import 'package:chessever2/repository/authentication/auth_repository.dart';
 import 'package:chessever2/screens/authentication/auth_screen_provider.dart';
@@ -11,6 +9,7 @@ import 'package:chessever2/screens/library/library_screen.dart';
 import 'package:chessever2/screens/favorites/favorites_tab_screen.dart';
 import 'package:chessever2/screens/favorites/provider/favorites_mode_provider.dart';
 import 'package:chessever2/screens/gamebase/gamebase_explorer_screen.dart';
+import 'package:chessever2/screens/premium/premium_screen.dart';
 import 'package:chessever2/providers/favorite_events_provider.dart';
 import 'package:chessever2/providers/favorite_players_provider.dart';
 import 'package:chessever2/repository/favorites/models/favorite_event.dart';
@@ -21,7 +20,6 @@ import 'package:chessever2/widgets/alert_dialog/alert_modal.dart';
 import 'package:chessever2/widgets/hamburger_menu/hamburger_menu.dart';
 import 'package:chessever2/widgets/auth/auth_upgrade_sheet.dart';
 import 'package:chessever2/widgets/paywall/billing_issue_sheet.dart';
-import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
 import 'package:chessever2/widgets/shorebird_update_dialog.dart';
 import 'package:chessever2/services/att_prompt_service.dart';
 import 'package:chessever2/services/review_prompt_service.dart';
@@ -44,12 +42,6 @@ class HomeScreen extends ConsumerStatefulWidget {
 class _HomeScreenState extends ConsumerState<HomeScreen> {
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
   static const int _favoritePromptThreshold = 5;
-  String? _botvinnikConversationId;
-
-  void _rememberBotvinnikConversation(String conversationId) {
-    if (!mounted || _botvinnikConversationId == conversationId) return;
-    setState(() => _botvinnikConversationId = conversationId);
-  }
 
   @override
   void initState() {
@@ -177,8 +169,14 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     onSupportPressed: () {
       // Handle support action
     },
-    onPremiumPressed: () async {
-      await showPremiumPaywallSheet(context: context);
+    onPremiumPressed: () {
+      showModalBottomSheet(
+        context: context,
+        backgroundColor: Colors.transparent,
+        isScrollControlled: true,
+        constraints: ResponsiveHelper.bottomSheetConstraints,
+        builder: (_) => const PremiumScreen(),
+      );
     },
     onLogoutPressed: () async {
       final user = Supabase.instance.client.auth.currentUser;
@@ -205,17 +203,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     },
   );
 
-  Widget get _chatButton {
-    return BotvinnikChatButton(
-      heroTag: 'botvinnik',
-      initialConversationId: _botvinnikConversationId,
-      createNewConversationOnOpen: _botvinnikConversationId == null,
-      onConversationChanged: _rememberBotvinnikConversation,
-      screenContext: const ChatScreenContext(screen: 'home'),
-      iconOnly: true,
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     // Listen for favorite signals (must be in build method)
@@ -228,7 +215,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         resizeToAvoidBottomInset: false,
         drawerScrimColor: context.colors.scrim,
         drawer: HamburgerMenu(callbacks: _menuCallbacks),
-        floatingActionButton: _chatButton,
         body: BillingIssueGate(
           child: Row(
             children: [
@@ -255,7 +241,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       resizeToAvoidBottomInset: false,
       drawerScrimColor: context.colors.scrim,
       drawer: HamburgerMenu(callbacks: _menuCallbacks),
-      floatingActionButton: _chatButton,
       bottomNavigationBar: BottomNavBar(),
       body: BillingIssueGate(
         child: KeyedSubtree(
