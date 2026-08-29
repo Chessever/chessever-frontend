@@ -12,7 +12,6 @@ import 'package:chessever2/screens/board_editor/board_editor_screen.dart';
 import 'package:chessever2/screens/favorites/favorites_tab_screen.dart';
 import 'package:chessever2/screens/favorites/provider/favorites_mode_provider.dart';
 import 'package:chessever2/screens/gamebase/gamebase_explorer_screen.dart';
-import 'package:chessever2/screens/premium/premium_screen.dart';
 import 'package:chessever2/providers/favorite_events_provider.dart';
 import 'package:chessever2/providers/favorite_players_provider.dart';
 import 'package:chessever2/repository/favorites/models/favorite_event.dart';
@@ -23,6 +22,7 @@ import 'package:chessever2/widgets/alert_dialog/alert_modal.dart';
 import 'package:chessever2/widgets/hamburger_menu/hamburger_menu.dart';
 import 'package:chessever2/widgets/auth/auth_upgrade_sheet.dart';
 import 'package:chessever2/widgets/paywall/billing_issue_sheet.dart';
+import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
 import 'package:chessever2/widgets/shorebird_update_dialog.dart';
 import 'package:chessever2/services/att_prompt_service.dart';
 import 'package:chessever2/services/review_prompt_service.dart';
@@ -183,14 +183,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     onSupportPressed: () {
       // Handle support action
     },
-    onPremiumPressed: () {
-      showModalBottomSheet(
-        context: context,
-        backgroundColor: Colors.transparent,
-        isScrollControlled: true,
-        constraints: ResponsiveHelper.bottomSheetConstraints,
-        builder: (_) => const PremiumScreen(),
-      );
+    onPremiumPressed: () async {
+      await showPremiumPaywallSheet(context: context);
     },
     onLogoutPressed: () async {
       final user = Supabase.instance.client.auth.currentUser;
