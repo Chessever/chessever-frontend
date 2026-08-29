@@ -738,16 +738,17 @@ void _initializePostStartupServices(WidgetRef ref) {
   WidgetsBinding.instance.addObserver(
     LifecycleEventHandler(
       onAppExit: () async {
-        StockfishSingleton().markAppBackgrounded();
-        // Fully dispose the engine on background to free native resources.
-        // On Android this prevents the OS from aggressively killing the app
-        // due to background native thread activity. The engine will lazily
-        // reinitialize on the next evaluatePosition() call after resume.
+        // Keep the Android process-global Stockfish instance alive and only
+        // stop its work. Disposing/recreating package:stockfish in one Android
+        // process can leave native pipe readers crossing engine generations and
+        // terminate the process with SIGABRT. Other platforms retain disposal.
         //
         // IMPORTANT: Skip this in debug mode to prevent hot-restarts from
         // triggering native FFI teardowns that crash the VM (Service disappeared).
         if (!kDebugMode) {
-          await StockfishSingleton().disposeAsync();
+          await StockfishSingleton().handleAppBackgrounded();
+        } else {
+          StockfishSingleton().markAppBackgrounded();
         }
       },
       onAppResume: () async {

@@ -94,6 +94,43 @@ void main() {
     });
   });
 
+  group('native engine restart policy', () {
+    test('keeps the process-global engine alive on Android', () {
+      expect(
+        stockfishNativeRestartAllowed(isAndroid: true),
+        isFalse,
+        reason:
+            'package:stockfish uses process-global native pipes and must not be '
+            'disposed/recreated inside one Android process',
+      );
+    });
+
+    test('allows the established dispose/recreate lifecycle elsewhere', () {
+      expect(stockfishNativeRestartAllowed(isAndroid: false), isTrue);
+    });
+
+    test('Android backgrounding cancels queued work without a native restart', () async {
+      final stockfish = StockfishSingleton();
+      stockfish.markAppForegrounded();
+      final queued = stockfish.debugEnqueueQueuedEvaluationForTest(fen: fen);
+
+      await stockfish.handleAppBackgrounded(isAndroidOverride: true);
+
+      expect(stockfish.appIsForeground, isFalse);
+      expect((await queued).isCancelled, isTrue);
+    });
+
+    test('Android recovery cancels work without recreating native state', () async {
+      final stockfish = StockfishSingleton();
+      final queued = stockfish.debugEnqueueQueuedEvaluationForTest(fen: fen);
+
+      await stockfish.forceRecovery(isAndroidOverride: true);
+
+      expect((await queued).isCancelled, isTrue);
+      expect(stockfish.debugNativeEngineQuarantined, isFalse);
+    });
+  });
+
   group('bestmove detection', () {
     test('matches with and without leading whitespace', () {
       expect(

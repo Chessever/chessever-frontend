@@ -50,6 +50,15 @@ import 'package:chessever2/providers/engine_settings_provider.dart';
 /// relaunch the app.
 const bool kEnableStockfishInDebug = false;
 
+/// `package:stockfish` owns process-global native pipes and a process-global
+/// C++ engine entry point. Re-entering that native runtime after quit is not a
+/// supported Android lifecycle: leaked stdout isolates can keep reading from
+/// the replacement pipes and the native process can terminate with SIGABRT.
+/// Keep one Android engine for the process lifetime; other platforms retain the
+/// established dispose/recreate path.
+@visibleForTesting
+bool stockfishNativeRestartAllowed({required bool isAndroid}) => !isAndroid;
+
 // Cache for native FFI pointers to avoid expensive lookups during teardown/hot-restart
 DynamicLibrary? _nativeStockfishLib;
 int Function(Pointer<Utf8>)? _nativeWriteFn;
@@ -227,6 +236,8 @@ class StockfishSingleton {
   // Android's native Stockfish library requires strict single-instance management
   Completer<void>? _instanceLock;
   Completer<void>? _disposeCompleter;
+  Completer<void>? _recoveryCompleter;
+  bool _nativeEngineQuarantined = false;
   DateTime? _lastDisposeTime; // Track when engine was last disposed
   static const Duration _androidMinDisposalWait = Duration(milliseconds: 800);
   static const Duration _iosMinDisposalWait = Duration(milliseconds: 100);
@@ -290,6 +301,20 @@ class StockfishSingleton {
     // Empty/cancelled result in debug is expected for board analysis. Do not
     // "fix" empty PVs by enabling the engine here — see kEnableStockfishInDebug.
     if (kDebugMode && !kEnableStockfishInDebug && !allowInDebug) {
+      return EnhancedCloudEval(
+        fen: fen,
+        knodes: 0,
+        depth: 0,
+        pvs: [Pv(moves: '', cp: 0, mate: 0)],
+        isCancelled: true,
+        requestedMultiPv: multiPV,
+      );
+    }
+
+    if (_nativeEngineQuarantined) {
+      debugPrint(
+        '🛑 STOCKFISH: Native engine quarantined until process restart',
+      );
       return EnhancedCloudEval(
         fen: fen,
         knodes: 0,
@@ -570,6 +595,7 @@ class StockfishSingleton {
     // (Game Review). Default false keeps hot restart working. See
     // [kEnableStockfishInDebug].
     if (kDebugMode && !kEnableStockfishInDebug && !allowInDebug) return;
+    if (_nativeEngineQuarantined) return;
     if (!_appIsForeground) return;
     if (_engine != null && _engine!.state.value == StockfishState.ready) return;
 
@@ -589,6 +615,28 @@ class StockfishSingleton {
 
   void markAppBackgrounded() {
     _appIsForeground = false;
+  }
+
+  /// Stops active work when the app leaves the foreground without restarting
+  /// the process-global Android native engine.
+  ///
+  /// `package:stockfish` reuses global pipes, a global stdout buffer and the
+  /// C++ `main` entry point. Its Dart cleanup can leave a blocking stdout
+  /// isolate alive if `quitok` shares a pipe read with other output; creating a
+  /// replacement engine then redirects that old isolate onto the new global
+  /// pipes. Keep the Android engine instance for the process lifetime and only
+  /// make it idle. Platforms with a re-entrant native lifecycle keep the
+  /// established dispose path.
+  Future<void> handleAppBackgrounded({
+    @visibleForTesting bool? isAndroidOverride,
+  }) async {
+    markAppBackgrounded();
+    final isAndroid = isAndroidOverride ?? _isAndroid;
+    if (stockfishNativeRestartAllowed(isAndroid: isAndroid)) {
+      await disposeAsync();
+      return;
+    }
+    await cancelAllEvaluations();
   }
 
   void markAppForegrounded() {
@@ -1661,6 +1709,16 @@ class StockfishSingleton {
   }
 
   Future<void> _ensureEngineReady() async {
+    if (_nativeEngineQuarantined) {
+      throw StateError('Stockfish native engine is quarantined');
+    }
+    final engineState = _engine?.state.value;
+    if (!stockfishNativeRestartAllowed(isAndroid: _isAndroid) &&
+        (engineState == StockfishState.error ||
+            engineState == StockfishState.disposed)) {
+      await _quarantineAndroidEngine('terminal native state');
+      throw StateError('Stockfish native engine entered $engineState');
+    }
     final activeDispose = _disposeCompleter;
     if (activeDispose != null) {
       debugPrint('🔒 STOCKFISH: Waiting for in-flight disposal...');
@@ -1929,6 +1987,8 @@ class StockfishSingleton {
     // Don't call _engine!.dispose() (which also sends quit via the Dart
     // wrapper and can throw). The FFI quit above is sufficient.
     _engine = null;
+    _nativeEngineQuarantined = false;
+    _recoveryCompleter = null;
     _lastDisposeTime = DateTime.now();
     _evaluationCache.clear();
   }
@@ -1985,6 +2045,8 @@ class StockfishSingleton {
       _lastDisposeTime = DateTime.now();
     }
     _evaluationCache.clear();
+    _nativeEngineQuarantined = false;
+    _recoveryCompleter = null;
     debugPrint('🧹 STOCKFISH: Singleton disposed');
   }
 
@@ -2121,6 +2183,11 @@ class StockfishSingleton {
   Future<void> _resetEngineAfterFailure() async {
     debugPrint('🔄 STOCKFISH: Resetting engine after failure...');
 
+    if (_isAndroid) {
+      await _quarantineAndroidEngine('engine failure');
+      return;
+    }
+
     // Cancel subscription first
     try {
       await _currentSubscription?.cancel();
@@ -2139,43 +2206,97 @@ class StockfishSingleton {
     debugPrint('✅ STOCKFISH: Engine reset complete');
   }
 
-  /// Force recovery of the Stockfish engine when it's stuck or unresponsive.
-  /// This will cancel all evaluations, dispose the current engine, and reinitialize.
-  /// Use this when the engine is not responding and needs a hard reset.
-  Future<void> forceRecovery() async {
-    debugPrint('🔧 STOCKFISH: Force recovery initiated...');
-
-    // Cancel everything first
-    await cancelAllEvaluations();
-
-    // Force dispose with proper timing
-    if (_engine != null) {
-      await _safeDisposeEngine();
+  /// Recovers the engine without ever re-entering package:stockfish's
+  /// process-global Android native runtime. A healthy Android engine is idled
+  /// and kept; an unresponsive one is quarantined until the process restarts.
+  /// Other platforms retain the established dispose/recreate behavior.
+  Future<void> forceRecovery({
+    @visibleForTesting bool? isAndroidOverride,
+  }) async {
+    final activeRecovery = _recoveryCompleter;
+    if (activeRecovery != null) {
+      await activeRecovery.future;
+      return;
     }
 
-    // Clear initialization state
-    _isInitializing = false;
-    if (_initCompleter != null && !_initCompleter!.isCompleted) {
-      _initCompleter!.completeError(StateError('Force recovery'));
-    }
-    _initCompleter = null;
+    final recoveryCompleter = Completer<void>();
+    _recoveryCompleter = recoveryCompleter;
+    try {
+      debugPrint('🔧 STOCKFISH: Force recovery initiated...');
+      await cancelAllEvaluations();
 
-    // Release instance lock if held
-    if (_instanceLock != null && !_instanceLock!.isCompleted) {
-      _instanceLock!.complete();
-    }
-    _instanceLock = null;
+      final isAndroid = isAndroidOverride ?? _isAndroid;
+      if (!stockfishNativeRestartAllowed(isAndroid: isAndroid)) {
+        final engine = _engine;
+        if (engine == null) {
+          debugPrint('✅ STOCKFISH: No Android native engine to recover');
+        } else {
+          final idle = await _forceEngineIdle();
+          final responsive = idle && await _pingEngineInputThread();
+          if (responsive) {
+            _previousJobCompleted = true;
+            _staleBestmovePending = false;
+            debugPrint(
+              '✅ STOCKFISH: Android engine recovered in place without restart',
+            );
+          } else {
+            await _quarantineAndroidEngine('unresponsive recovery');
+          }
+        }
+        recoveryCompleter.complete();
+        return;
+      }
 
-    // Extra wait time on Android to ensure native cleanup
-    if (_isAndroid) {
-      debugPrint('⏳ STOCKFISH: Extra recovery wait for Android...');
-      await Future.delayed(const Duration(milliseconds: 500));
-    }
+      if (_engine != null) {
+        await _safeDisposeEngine();
+      }
 
+      _isInitializing = false;
+      if (_initCompleter != null && !_initCompleter!.isCompleted) {
+        _initCompleter!.completeError(StateError('Force recovery'));
+      }
+      _initCompleter = null;
+
+      if (_instanceLock != null && !_instanceLock!.isCompleted) {
+        _instanceLock!.complete();
+      }
+      _instanceLock = null;
+
+      debugPrint(
+        '✅ STOCKFISH: Force recovery complete, engine will reinitialize on next request',
+      );
+      recoveryCompleter.complete();
+    } catch (error, stackTrace) {
+      if (!recoveryCompleter.isCompleted) {
+        recoveryCompleter.completeError(error, stackTrace);
+      }
+      rethrow;
+    } finally {
+      if (identical(_recoveryCompleter, recoveryCompleter)) {
+        _recoveryCompleter = null;
+      }
+    }
+  }
+
+  Future<void> _quarantineAndroidEngine(String reason) async {
+    _nativeEngineQuarantined = true;
+    _queueGeneration++;
+    _completeQueuedJobsAsCancelled(reason: 'android quarantine');
+    try {
+      await _currentSubscription?.cancel();
+    } catch (_) {}
+    _currentSubscription = null;
+    await _detachEngineMonitor();
+    _isProcessing = false;
+    _previousJobCompleted = false;
     debugPrint(
-      '✅ STOCKFISH: Force recovery complete, engine will reinitialize on next request',
+      '🛑 STOCKFISH: Android native engine quarantined until process restart '
+      '($reason)',
     );
   }
+
+  @visibleForTesting
+  bool get debugNativeEngineQuarantined => _nativeEngineQuarantined;
 
   /// Check if the engine is currently in a healthy state
   bool get isEngineHealthy {
