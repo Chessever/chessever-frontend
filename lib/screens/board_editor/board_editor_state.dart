@@ -289,9 +289,13 @@ class BoardEditorNotifier extends StateNotifier<BoardEditorState> {
     );
   }
 
-  // Any board mutation invalidates the en-passant target and the
-  // halfmove/fullmove counters parsed from a pasted FEN — they describe
-  // a specific move history that no longer applies.
+  // Any board mutation invalidates the en-passant target and the halfmove
+  // clock parsed from a pasted FEN — they describe a specific move history
+  // that no longer applies. The fullmove counter survives: the gamebase
+  // aggregate endpoints anchor on the ply the FEN claims, so resetting it to
+  // 1 turns every edited deep position into an unanswerable "move 1" query.
+  // Lichess's editor keeps the move counter through edits for the same
+  // reason.
   BoardEditorState _withBoardMutation({
     required Pieces pieces,
     bool clearDragSquare = false,
@@ -300,7 +304,6 @@ class BoardEditorNotifier extends StateNotifier<BoardEditorState> {
       pieces: pieces,
       epSquare: () => null,
       halfmoves: 0,
-      fullmoves: 1,
       selectedDragSquare: clearDragSquare ? () => null : null,
     );
   }

@@ -2,9 +2,13 @@ import 'dart:async';
 
 import 'package:chessever2/e2e/e2e_ids.dart';
 import 'package:chessever2/main.dart' show routeObserver;
+import 'package:chessever2/providers/favorite_players_provider.dart';
 import 'package:chessever2/repository/favorites/models/favorite_player.dart';
 import 'package:chessever2/screens/favorites/favorite_players_provider.dart';
 import 'package:chessever2/screens/favorites/provider/favorites_mode_provider.dart';
+import 'package:chessever2/screens/favorites/widgets/favorite_player_search_suggestion.dart';
+import 'package:chessever2/screens/player_profile/player_profile_screen.dart';
+import 'package:chessever2/screens/standings/player_standing_model.dart';
 import 'package:chessever2/screens/favorites/player_games/provider/favorites_combined_games_provider.dart';
 import 'package:chessever2/screens/library/widgets/add_to_folder_sheet.dart';
 import 'package:chessever2/screens/library/widgets/live_gamebase_search_game_card.dart';
@@ -22,10 +26,16 @@ import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/scroll_cache.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/foreground_task_scheduler.dart';
+import 'package:chessever2/utils/favorite_constants.dart';
+import 'package:chessever2/utils/user_error_message.dart';
+import 'package:chessever2/utils/favorite_limit_guard.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/svg_asset.dart';
 import 'package:chessever2/widgets/federation_flag.dart';
 import 'package:chessever2/widgets/game_filter/game_filter.dart';
+import 'package:chessever2/widgets/app_snack.dart';
+import 'package:chessever2/widgets/auth/auth_upgrade_sheet.dart';
+import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
@@ -71,7 +81,8 @@ class _FavoritesGamesTabState extends ConsumerState<FavoritesGamesTab>
 
   String get _liveCardsPauseReason => 'favorites_games_scroll_$hashCode';
   // Keep rendering while backgrounded so the OS app-switcher snapshot is not
-  // blank. Route coverage still removes the tab from active provider work.
+  // blank. Route coverage removes the expensive card tree while the provider
+  // watches stay alive long enough for modal results to update this tab.
   bool get _isActiveOnScreen => _routeIsCurrent;
 
   /// Track expanded state for date sections
@@ -399,14 +410,24 @@ class _FavoritesGamesTabState extends ConsumerState<FavoritesGamesTab>
     });
 
     final selectedMode = ref.watch(selectedFavoritesModeProvider);
-    if (selectedMode != FavoritesScreenMode.games || !_isActiveOnScreen) {
+    if (selectedMode != FavoritesScreenMode.games) {
       return const SizedBox.shrink();
     }
 
+    // A filter dialog is a route, so RouteAware marks this tab as covered while
+    // the modal is open. Keep both auto-dispose inputs watched during that
+    // interval: otherwise Apply writes to a short-lived replacement notifier
+    // and the visible tab rebuilds from the default filter (no results change,
+    // no badge). The expensive widget tree can still stay out of the covered
+    // route.
     final state = ref.watch(favoritesCombinedGamesProvider);
+    final favoritesState = ref.watch(favoritePlayersNotifierProvider);
+    if (!_isActiveOnScreen) {
+      return const SizedBox.shrink();
+    }
+
     final viewMode = ref.watch(gamesListViewModeProvider);
     // Watch the notifier provider for optimistic updates when favorites change
-    final favoritesState = ref.watch(favoritePlayersNotifierProvider);
     final playerModels = favoritesState.valueOrNull?.players ?? [];
 
     // Convert PlayerStandingModel to FavoritePlayer for chip display
@@ -465,8 +486,10 @@ class _FavoritesGamesTabState extends ConsumerState<FavoritesGamesTab>
             ),
           ),
 
-          // Filter chips (only show when not searching)
-          if (favorites.length > 1 && !state.isSearching)
+          // Favorite-player chips.
+          // Player selection and text search are independent AND filters, so
+          // keep the player chips available while a search is active.
+          if (favorites.length > 1)
             SliverToBoxAdapter(child: _buildFilterChips(state, favorites)),
 
           // Content
@@ -664,7 +687,9 @@ class _FavoritesGamesTabState extends ConsumerState<FavoritesGamesTab>
       showFormatFilter: false,
     );
     if (result != null && mounted) {
-      ref.read(favoritesCombinedGamesProvider.notifier).applyFilter(result);
+      await ref
+          .read(favoritesCombinedGamesProvider.notifier)
+          .applyFilter(result);
     }
   }
 
@@ -824,10 +849,23 @@ class _FavoritesGamesTabState extends ConsumerState<FavoritesGamesTab>
     }
 
     if (state.games.isEmpty) {
-      if (state.isSearching) {
+      if (state.filter.hasActiveFilters) {
         return SliverFillRemaining(
           hasScrollBody: false,
-          child: _buildNoSearchResultsState(),
+          child: _buildNoFilterResultsState(),
+        );
+      }
+      if (state.isSearching) {
+        // The Games search matched no game from a followed player. Offer the
+        // matching players themselves, so the search still leads somewhere.
+        return SliverToBoxAdapter(
+          child: FavoritePlayerSearchSuggestion(
+            query: state.searchQuery,
+            favorites: favorites.map(_asStandingModel).toList(growable: false),
+            surface: FavoritePlayerSearchSurface.games,
+            onAdd: _addFavoritePlayer,
+            onOpenPlayer: _openPlayer,
+          ),
         );
       }
       return SliverFillRemaining(
@@ -1255,34 +1293,68 @@ class _FavoritesGamesTabState extends ConsumerState<FavoritesGamesTab>
     ).animate().fadeIn(duration: 300.ms).scale(begin: const Offset(0.95, 0.95));
   }
 
-  Widget _buildNoSearchResultsState() {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(
-            Icons.search_off_outlined,
-            size: 56.sp,
-            color: context.colors.textPrimary.withValues(alpha: 0.4),
-          ),
-          SizedBox(height: 12.h),
-          Text(
-            'No results',
-            style: AppTypography.textMdMedium.copyWith(
-              color: context.colors.textPrimary.withValues(alpha: 0.85),
+  /// The followed players, in the shape the shared suggestion widget compares
+  /// against, so a player already followed is never offered again.
+  PlayerStandingModel _asStandingModel(FavoritePlayer player) {
+    return PlayerStandingModel(
+      countryCode: _extractFederation(player) ?? '',
+      title: player.metadata['title']?.toString(),
+      name: player.playerName,
+      score: (player.metadata['rating'] as num?)?.toInt() ?? 0,
+      scoreChange: 0,
+      matchScore: null,
+      fideId: int.tryParse(player.fideId ?? ''),
+    );
+  }
+
+  /// Adds a player surfaced by the global-search fallback. Same gates as every
+  /// other add: a full account first, then the free-tier limit.
+  Future<void> _addFavoritePlayer(PlayerStandingModel player) async {
+    final allowed = await requireFullAuthGuard(context);
+    if (!allowed || !mounted) return;
+
+    final canAdd = await canAddMoreFavorites(context, ref);
+    if (!canAdd || !mounted) return;
+
+    HapticFeedbackService.medium();
+    try {
+      await ref
+          .read(favoritePlayersProviderNew.notifier)
+          .addFavorite(
+            fideId: player.fideId?.toString(),
+            playerName: player.name,
+            countryCode: player.countryCode,
+            rating: player.score,
+            title: player.title,
+          );
+    } on FavoriteLimitExceededException {
+      if (mounted) await showPremiumPaywallSheet(context: context);
+    } catch (error) {
+      if (mounted) {
+        showAppSnack(
+          context,
+          userFacingError(error),
+          tone: AppSnackTone.danger,
+        );
+      }
+    }
+  }
+
+  void _openPlayer(PlayerStandingModel player) {
+    _searchFocusNode.unfocus();
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder:
+            (context) => PlayerProfileScreen(
+              fideId: player.fideId,
+              playerName: player.name,
+              title: player.title,
+              federation: player.countryCode,
+              rating: player.score,
             ),
-          ),
-          SizedBox(height: 6.h),
-          Text(
-            'Try a different filter',
-            style: AppTypography.textSmRegular.copyWith(
-              color: context.colors.textPrimary.withValues(alpha: 0.55),
-            ),
-            textAlign: TextAlign.center,
-          ),
-        ],
       ),
-    ).animate().fadeIn(duration: 300.ms);
+    );
   }
 
   Widget _buildNoFilterResultsState() {

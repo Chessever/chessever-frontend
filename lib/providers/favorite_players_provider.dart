@@ -17,6 +17,35 @@ final favoritePlayersProviderNew =
       FavoritePlayersNotifierNew.new,
     );
 
+bool favoritePlayerMatchesIdentity(
+  FavoritePlayer favorite, {
+  String? fideId,
+  required String playerName,
+  String? memorialSourceIdentity,
+}) {
+  final requestedMemorialIdentity = memorialSourceIdentity?.trim();
+  if (requestedMemorialIdentity != null &&
+      requestedMemorialIdentity.isNotEmpty) {
+    final storedMemorialIdentity =
+        favorite.metadata['memorialSourceIdentity']?.toString().trim();
+    if (storedMemorialIdentity != null && storedMemorialIdentity.isNotEmpty) {
+      return storedMemorialIdentity.toLowerCase() ==
+          requestedMemorialIdentity.toLowerCase();
+    }
+    final normalizedFideId = fideId?.trim();
+    return normalizedFideId != null &&
+        normalizedFideId.isNotEmpty &&
+        favorite.fideId == normalizedFideId;
+  }
+
+  final normalizedFideId = fideId?.trim();
+  if (normalizedFideId != null && normalizedFideId.isNotEmpty) {
+    return favorite.fideId == normalizedFideId;
+  }
+  return favorite.playerName == playerName &&
+      favorite.metadata['memorialSourceIdentity'] == null;
+}
+
 class FavoritePlayersNotifierNew extends AsyncNotifier<List<FavoritePlayer>> {
   static const String _cacheKeyPrefix = 'cached_favorite_players_';
 
@@ -146,6 +175,9 @@ class FavoritePlayersNotifierNew extends AsyncNotifier<List<FavoritePlayer>> {
     String? countryCode,
     int? rating,
     String? title,
+    String? gamebasePlayerId,
+    String? memorialSourceIdentity,
+    String? memorialRouteId,
   }) async {
     try {
       final userId = _supabase.auth.currentUser?.id;
@@ -195,6 +227,10 @@ class FavoritePlayersNotifierNew extends AsyncNotifier<List<FavoritePlayer>> {
         if (countryCode != null) 'countryCode': countryCode,
         if (rating != null) 'rating': rating,
         if (title != null) 'title': title,
+        if (gamebasePlayerId != null) 'gamebasePlayerId': gamebasePlayerId,
+        if (memorialSourceIdentity != null)
+          'memorialSourceIdentity': memorialSourceIdentity,
+        if (memorialRouteId != null) 'memorialRouteId': memorialRouteId,
       };
 
       // Insert to Supabase (upsert prevents duplicates by player_name as fallback)
@@ -226,19 +262,49 @@ class FavoritePlayersNotifierNew extends AsyncNotifier<List<FavoritePlayer>> {
   }
 
   /// Remove player from favorites
-  Future<void> removeFavorite(String playerName) async {
+  Future<void> removeFavorite(
+    String playerName, {
+    String? fideId,
+    String? memorialSourceIdentity,
+  }) async {
     try {
       final userId = _supabase.auth.currentUser?.id;
       if (userId == null) {
         throw Exception('User must be logged in to remove favorites');
       }
 
-      // Delete from Supabase
-      await _supabase
-          .from('user_favorite_players')
-          .delete()
-          .eq('user_id', userId)
-          .eq('player_name', playerName);
+      final currentPlayers = state.valueOrNull ?? const <FavoritePlayer>[];
+      FavoritePlayer? matchedFavorite;
+      for (final favorite in currentPlayers) {
+        if (favoritePlayerMatchesIdentity(
+          favorite,
+          fideId: fideId,
+          playerName: playerName,
+          memorialSourceIdentity: memorialSourceIdentity,
+        )) {
+          matchedFavorite = favorite;
+          break;
+        }
+      }
+
+      if (matchedFavorite != null) {
+        await _supabase
+            .from('user_favorite_players')
+            .delete()
+            .eq('user_id', userId)
+            .eq('id', matchedFavorite.id);
+      } else if ((fideId?.trim().isNotEmpty ?? false) ||
+          (memorialSourceIdentity?.trim().isNotEmpty ?? false)) {
+        // An identity-scoped removal must never degrade to deleting every row
+        // with the same display name.
+        return;
+      } else {
+        await _supabase
+            .from('user_favorite_players')
+            .delete()
+            .eq('user_id', userId)
+            .eq('player_name', playerName);
+      }
 
       debugPrint('[FavoritePlayers] Removed player $playerName from Supabase');
 
@@ -261,12 +327,30 @@ class FavoritePlayersNotifierNew extends AsyncNotifier<List<FavoritePlayer>> {
     String? countryCode,
     int? rating,
     String? title,
+    String? gamebasePlayerId,
+    String? memorialSourceIdentity,
+    String? memorialRouteId,
   }) async {
     final currentState = state.valueOrNull ?? [];
-    final isFavorited = currentState.any((p) => p.playerName == playerName);
+    FavoritePlayer? favorite;
+    for (final candidate in currentState) {
+      if (favoritePlayerMatchesIdentity(
+        candidate,
+        fideId: fideId,
+        playerName: playerName,
+        memorialSourceIdentity: memorialSourceIdentity,
+      )) {
+        favorite = candidate;
+        break;
+      }
+    }
 
-    if (isFavorited) {
-      await removeFavorite(playerName);
+    if (favorite != null) {
+      await removeFavorite(
+        playerName,
+        fideId: fideId,
+        memorialSourceIdentity: memorialSourceIdentity,
+      );
       return false;
     } else {
       await addFavorite(
@@ -275,6 +359,9 @@ class FavoritePlayersNotifierNew extends AsyncNotifier<List<FavoritePlayer>> {
         countryCode: countryCode,
         rating: rating,
         title: title,
+        gamebasePlayerId: gamebasePlayerId,
+        memorialSourceIdentity: memorialSourceIdentity,
+        memorialRouteId: memorialRouteId,
       );
       return true;
     }

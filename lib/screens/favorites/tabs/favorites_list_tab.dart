@@ -2,14 +2,18 @@ import 'dart:async';
 
 import 'package:chessever2/providers/favorite_players_provider.dart';
 import 'package:chessever2/screens/favorites/favorite_players_provider.dart';
+import 'package:chessever2/screens/favorites/widgets/favorite_player_search_suggestion.dart';
 import 'package:chessever2/screens/standings/player_standing_model.dart';
 import 'package:chessever2/screens/player_profile/player_profile_screen.dart';
+import 'package:chessever2/utils/favorite_constants.dart';
+import 'package:chessever2/utils/favorite_limit_guard.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/scroll_cache.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/tablet_safe_menu.dart';
 import 'package:chessever2/utils/user_error_message.dart';
 import 'package:chessever2/widgets/alert_dialog/alert_modal.dart';
+import 'package:chessever2/widgets/app_snack.dart';
 import 'package:chessever2/widgets/figma_player_card.dart';
 import 'package:chessever2/widgets/scroll_to_top_bus.dart';
 import 'package:chessever2/widgets/scroll_to_top_button.dart';
@@ -21,6 +25,7 @@ import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/widgets/auth/auth_upgrade_sheet.dart';
+import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
 
 class FavoritesListTab extends ConsumerStatefulWidget {
   const FavoritesListTab({super.key});
@@ -37,6 +42,7 @@ class _FavoritesListTabState extends ConsumerState<FavoritesListTab>
   void onScrollToTopRequested() {
     animateScrollControllerToTop(_scrollController);
   }
+
   final TextEditingController _searchController = TextEditingController();
   final FocusNode _focusNode = FocusNode();
 
@@ -66,11 +72,11 @@ class _FavoritesListTabState extends ConsumerState<FavoritesListTab>
         ref
             .watch(favoritePlayersNotifierProvider)
             .when(
-              data: (_) {
+              data: (favoritesState) {
                 final filteredPlayers = ref.read(
                   filteredFavoritePlayersProvider(_searchController.text),
                 );
-                return _buildContent(filteredPlayers);
+                return _buildContent(filteredPlayers, favoritesState.players);
               },
               loading:
                   () => Center(
@@ -90,7 +96,10 @@ class _FavoritesListTabState extends ConsumerState<FavoritesListTab>
     );
   }
 
-  Widget _buildContent(List<PlayerStandingModel> filteredPlayers) {
+  Widget _buildContent(
+    List<PlayerStandingModel> filteredPlayers,
+    List<PlayerStandingModel> allFavorites,
+  ) {
     return Center(
       child: ConstrainedBox(
         constraints: BoxConstraints(maxWidth: ResponsiveHelper.contentMaxWidth),
@@ -132,7 +141,7 @@ class _FavoritesListTabState extends ConsumerState<FavoritesListTab>
               ),
 
               // Content
-              _buildPlayersSliver(filteredPlayers),
+              _buildPlayersSliver(filteredPlayers, allFavorites),
 
               // Bottom padding
               SliverToBoxAdapter(child: SizedBox(height: 24.h)),
@@ -143,14 +152,22 @@ class _FavoritesListTabState extends ConsumerState<FavoritesListTab>
     );
   }
 
-  Widget _buildPlayersSliver(List<PlayerStandingModel> players) {
+  Widget _buildPlayersSliver(
+    List<PlayerStandingModel> players,
+    List<PlayerStandingModel> allFavorites,
+  ) {
     if (players.isEmpty) {
       if (_searchController.text.isNotEmpty) {
-        return SliverFillRemaining(
-          hasScrollBody: false,
-          child: _buildEmptyState(
-            'No players found',
-            'No favorites match "${_searchController.text}"',
+        // A Favorites search only ever matches the few players already
+        // followed, so a miss is the clearest signal of who the user wants.
+        // Offer them from the global database instead of a dead end.
+        return SliverToBoxAdapter(
+          child: FavoritePlayerSearchSuggestion(
+            query: _searchController.text,
+            favorites: allFavorites,
+            surface: FavoritePlayerSearchSurface.favorites,
+            onAdd: _addFavoritePlayer,
+            onOpenPlayer: _openPlayer,
           ),
         );
       }
@@ -182,22 +199,7 @@ class _FavoritesListTabState extends ConsumerState<FavoritesListTab>
             rank: index + 1,
             isFavorite: true,
             showFavoriteButton: true,
-            onTap: () {
-              FocusScope.of(context).unfocus();
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder:
-                      (context) => PlayerProfileScreen(
-                        fideId: player.fideId,
-                        playerName: player.name,
-                        title: player.title,
-                        federation: player.countryCode,
-                        rating: player.score,
-                      ),
-                ),
-              );
-            },
+            onTap: () => _openPlayer(player),
             onToggleFavorite: () => _removeFavoritePlayer(player),
             onLongPress: (details) {
               _showContextMenu(context, details.globalPosition, player);
@@ -283,7 +285,67 @@ class _FavoritesListTabState extends ConsumerState<FavoritesListTab>
 
     await ref
         .read(favoritePlayersProviderNew.notifier)
-        .removeFavorite(player.name);
+        .removeFavorite(
+          player.name,
+          fideId: player.fideId?.toString(),
+          memorialSourceIdentity: player.memorialSourceIdentity,
+        );
+  }
+
+  /// Adds a player surfaced by the global-search fallback.
+  ///
+  /// Same gates as every other add: a full account first, then the free-tier
+  /// limit. The notifier enforces the limit too, so the paywall still opens if
+  /// the count changed between the check and the write.
+  Future<void> _addFavoritePlayer(PlayerStandingModel player) async {
+    final allowed = await requireFullAuthGuard(context);
+    if (!allowed || !mounted) return;
+
+    final canAdd = await canAddMoreFavorites(context, ref);
+    if (!canAdd || !mounted) return;
+
+    HapticFeedbackService.medium();
+    try {
+      await ref
+          .read(favoritePlayersProviderNew.notifier)
+          .addFavorite(
+            fideId: player.fideId?.toString(),
+            playerName: player.name,
+            countryCode: player.countryCode,
+            rating: player.score,
+            title: player.title,
+          );
+    } on FavoriteLimitExceededException {
+      if (mounted) await showPremiumPaywallSheet(context: context);
+    } catch (error) {
+      if (mounted) {
+        showAppSnack(
+          context,
+          userFacingError(error),
+          tone: AppSnackTone.danger,
+        );
+      }
+    }
+  }
+
+  void _openPlayer(PlayerStandingModel player) {
+    FocusScope.of(context).unfocus();
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder:
+            (context) => PlayerProfileScreen(
+              fideId: player.fideId,
+              playerName: player.name,
+              title: player.title,
+              federation: player.countryCode,
+              rating: player.score,
+              gamebasePlayerId: player.gamebasePlayerId,
+              memorialSourceIdentity: player.memorialSourceIdentity,
+              memorialRouteId: player.memorialRouteId,
+            ),
+      ),
+    );
   }
 
   Future<void> _showContextMenu(

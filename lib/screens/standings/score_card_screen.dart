@@ -1640,7 +1640,7 @@ class _ProfileNavigationButtonState extends State<_ProfileNavigationButton> {
                   ),
                   SizedBox(width: 7.w),
                   Text(
-                    'Open Player Profile',
+                    'View Full Profile',
                     style: AppTypography.textSmBold.copyWith(
                       color: context.colors.textPrimary.withValues(alpha: 0.75),
                     ),

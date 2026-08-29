@@ -1,5 +1,11 @@
+import 'dart:convert';
+
+import 'package:chessever2/repository/gamebase/memorial_player_local_search.dart';
+import 'package:chessever2/repository/supabase/game/games.dart';
+import 'package:chessever2/screens/group_event/model/tour_event_card_model.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/widgets/game_filter/game_filter_model.dart';
 import 'package:chessever2/widgets/search/enhanced_rounded_search_bar.dart';
 import 'package:chessever2/widgets/search/opening_search_suggestion.dart';
 import 'package:chessever2/widgets/search/recent_searches_provider.dart';
@@ -22,9 +28,15 @@ class _MemoryStorage implements RecentSearchStorage {
 }
 
 class _SearchHarness extends StatefulWidget {
-  const _SearchHarness({required this.onOpeningSelected});
+  const _SearchHarness({
+    required this.onOpeningSelected,
+    this.onPlayerSelected,
+    this.onTournamentSelected,
+  });
 
   final ValueChanged<OpeningSearchSelection> onOpeningSelected;
+  final ValueChanged<SearchPlayer>? onPlayerSelected;
+  final ValueChanged<GroupEventCardModel>? onTournamentSelected;
 
   @override
   State<_SearchHarness> createState() => _SearchHarnessState();
@@ -50,6 +62,8 @@ class _SearchHarnessState extends State<_SearchHarness> {
           showProfile: false,
           showFilter: false,
           onOpeningSelected: widget.onOpeningSelected,
+          onPlayerSelected: widget.onPlayerSelected,
+          onTournamentSelected: widget.onTournamentSelected,
         ),
       ),
     );
@@ -307,4 +321,271 @@ void main() {
     expect(selectedOpening?.filter.isFamily, isTrue);
     expect(tester.takeException(), isNull);
   });
+
+  testWidgets(
+    'a recent tournament tap emits the complete live result payload',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(390, 844));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      final live = GroupEventCardModel(
+        id: 'cal_event_mikhail_tal_memorial',
+        title: 'Mikhail Tal Memorial',
+        dates: 'Nov 5–12',
+        maxAvgElo: 2765,
+        timeUntilStart: 'Starts in 2 days',
+        tourEventCategory: TourEventCategory.upcoming,
+        timeControl: 'Rapid',
+        startDate: DateTime.utc(2026, 11, 5, 12, 30),
+        endDate: DateTime.utc(2026, 11, 12, 18, 45),
+        location: 'Riga, Latvia',
+        searchTerms: const ['mikhail tal memorial', 'riga', 'rapid'],
+        eventSource: EventSource.communityEvent,
+        isMajorUpcoming: true,
+      );
+      GroupEventCardModel? selectedTournament;
+      final storage = _MemoryStorage(
+        jsonEncode([RecentSearchEntry.tournament(live).toJson()]),
+      );
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [recentSearchStorageProvider.overrideWithValue(storage)],
+          child: MaterialApp(
+            theme: AppTheme.darkTheme,
+            home: _SearchHarness(
+              onOpeningSelected: (_) {},
+              onTournamentSelected: (event) => selectedTournament = event,
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.tap(find.byType(TextField));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 350));
+      await tester.tap(find.text(live.title));
+      await tester.pump();
+
+      expect(selectedTournament?.id, live.id);
+      expect(selectedTournament?.title, live.title);
+      expect(selectedTournament?.dates, live.dates);
+      expect(selectedTournament?.maxAvgElo, live.maxAvgElo);
+      expect(selectedTournament?.timeUntilStart, live.timeUntilStart);
+      expect(selectedTournament?.tourEventCategory, live.tourEventCategory);
+      expect(selectedTournament?.timeControl, live.timeControl);
+      expect(selectedTournament?.startDate, live.startDate);
+      expect(selectedTournament?.endDate, live.endDate);
+      expect(selectedTournament?.location, live.location);
+      expect(selectedTournament?.searchTerms, live.searchTerms);
+      expect(selectedTournament?.eventSource, live.eventSource);
+      expect(selectedTournament?.isMajorUpcoming, live.isMajorUpcoming);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets('a recent player tap emits the complete live result payload', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(390, 844));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    const live = SearchPlayer(
+      id: 'event-42_700070_game-8',
+      name: 'Judit Polgar',
+      title: 'GM',
+      rating: 2735,
+      fideId: 700070,
+      fed: 'HUN',
+      tournamentId: 'event-42',
+      tournamentName: 'Legends Match',
+      gameId: 'game-8',
+      roundId: 'round-3',
+      isWhitePlayer: false,
+      gamebasePlayerId: 'gamebase-judit-polgar',
+    );
+    SearchPlayer? selectedPlayer;
+    final storage = _MemoryStorage(
+      jsonEncode([RecentSearchEntry.player(live).toJson()]),
+    );
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [recentSearchStorageProvider.overrideWithValue(storage)],
+        child: MaterialApp(
+          theme: AppTheme.darkTheme,
+          home: _SearchHarness(
+            onOpeningSelected: (_) {},
+            onPlayerSelected: (player) => selectedPlayer = player,
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.tap(find.byType(TextField));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 350));
+    final recentTapTarget = find.ancestor(
+      of: find.text(live.name),
+      matching: find.byType(InkWell),
+    );
+    final onTap = tester.widget<InkWell>(recentTapTarget.first).onTap;
+    expect(onTap, isNotNull);
+    await tester.runAsync(() async {
+      onTap!.call();
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+    });
+    await tester.pump();
+    await tester.pump();
+
+    expect(selectedPlayer?.id, live.id);
+    expect(selectedPlayer?.name, live.name);
+    expect(selectedPlayer?.title, live.title);
+    expect(selectedPlayer?.rating, live.rating);
+    expect(selectedPlayer?.fideId, live.fideId);
+    expect(selectedPlayer?.fed, live.fed);
+    expect(selectedPlayer?.tournamentId, live.tournamentId);
+    expect(selectedPlayer?.tournamentName, live.tournamentName);
+    expect(selectedPlayer?.gameId, live.gameId);
+    expect(selectedPlayer?.roundId, live.roundId);
+    expect(selectedPlayer?.isWhitePlayer, live.isWhitePlayer);
+    expect(selectedPlayer?.gamebasePlayerId, live.gamebasePlayerId);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets(
+    'recent remove and clear controls update history without opening',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(390, 844));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      final event = GroupEventCardModel(
+        id: 'event-to-remove',
+        title: 'Event to remove',
+        dates: 'Sep 10–12',
+        maxAvgElo: 2500,
+        timeUntilStart: '',
+        tourEventCategory: TourEventCategory.upcoming,
+        timeControl: 'Standard',
+        endDate: DateTime.utc(2026, 9, 12),
+        startDate: DateTime.utc(2026, 9, 10),
+      );
+      final opening = OpeningSearchSelection(
+        filter: GameEcoFilter.forCode('B06'),
+        hierarchyLabel: 'Modern Defense',
+        movePath: const ['e4', 'g6'],
+        isAggregate: false,
+      );
+      final storage = _MemoryStorage(
+        jsonEncode([
+          RecentSearchEntry.tournament(event).toJson(),
+          RecentSearchEntry.openingSelection(opening).toJson(),
+        ]),
+      );
+      var opened = false;
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [recentSearchStorageProvider.overrideWithValue(storage)],
+          child: MaterialApp(
+            theme: AppTheme.darkTheme,
+            home: _SearchHarness(
+              onOpeningSelected: (_) => opened = true,
+              onPlayerSelected: (_) => opened = true,
+              onTournamentSelected: (_) => opened = true,
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.tap(find.byType(TextField));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 350));
+
+      final removeButtons = find.byTooltip('Remove from recent searches');
+      expect(removeButtons, findsNWidgets(2));
+      expect(
+        tester.getSize(removeButtons.first).height,
+        greaterThanOrEqualTo(44),
+      );
+      await tester.tap(removeButtons.first);
+      await tester.pump();
+      await tester.pump();
+
+      expect(opened, isFalse);
+      expect(find.text(event.title), findsNothing);
+      expect(find.text('Modern Defense'), findsOneWidget);
+      expect(storage.value, isNot(contains('event-to-remove')));
+
+      final clearButton = find.widgetWithText(TextButton, 'Clear');
+      expect(clearButton, findsOneWidget);
+      expect(tester.getSize(clearButton).height, greaterThanOrEqualTo(44));
+      await tester.tap(clearButton);
+      await tester.pump();
+      await tester.pump();
+
+      expect(opened, isFalse);
+      expect(find.text('Recent searches'), findsNothing);
+      expect(
+        find.text('Search players, tournaments, openings, or ECO codes'),
+        findsOneWidget,
+      );
+      expect(storage.value, '[]');
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'a legacy Memorial recent result restores its exact player before opening',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(390, 844));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      SearchPlayer? selectedPlayer;
+      await tester.runAsync(warmBundledMemorialPlayerCatalog);
+      final storage = _MemoryStorage(
+        '[{"kind":"player","targetId":"name:tal, mikhail",'
+        '"title":"Tal, Mikhail","subtitle":"GM · 2705 · LAT",'
+        '"data":{"id":"memorial:memorial-e03cdf6af47b368c",'
+        '"title":"GM","rating":2705,"fed":"LAT"}}]',
+      );
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [recentSearchStorageProvider.overrideWithValue(storage)],
+          child: MaterialApp(
+            theme: AppTheme.darkTheme,
+            home: _SearchHarness(
+              onOpeningSelected: (_) {},
+              onPlayerSelected: (player) {
+                selectedPlayer = player;
+              },
+            ),
+          ),
+        ),
+      );
+
+      await tester.pump();
+      await tester.tap(find.byType(TextField));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 350));
+      expect(find.text('Tal, Mikhail').hitTestable(), findsOneWidget);
+      final recentTapTarget = find.ancestor(
+        of: find.text('Tal, Mikhail'),
+        matching: find.byType(InkWell),
+      );
+      final onTap = tester.widget<InkWell>(recentTapTarget.first).onTap;
+      expect(onTap, isNotNull);
+      await tester.runAsync(() async {
+        onTap!.call();
+        await Future<void>.delayed(const Duration(milliseconds: 20));
+      });
+      await tester.pump();
+      await tester.pump();
+
+      expect(
+        selectedPlayer?.memorialSourceIdentity,
+        'memorial:memorial-e03cdf6af47b368c',
+      );
+      expect(selectedPlayer?.memorialRouteId, 'memorial-e03cdf6af47b368c');
+      expect(selectedPlayer?.fideId, isNull);
+      expect(tester.takeException(), isNull);
+    },
+  );
 }

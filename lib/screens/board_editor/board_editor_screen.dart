@@ -22,7 +22,18 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:motor/motor.dart';
 
 class BoardEditorScreen extends ConsumerStatefulWidget {
-  const BoardEditorScreen({super.key});
+  const BoardEditorScreen({
+    super.key,
+    this.initialFen,
+    this.returnFenOnDone = false,
+  });
+
+  /// Optional position supplied by a parent Board workspace.
+  final String? initialFen;
+
+  /// When true, Analyze returns the edited FEN instead of opening another
+  /// analysis-board route. This keeps Explorer and Notation on one board.
+  final bool returnFenOnDone;
 
   @override
   ConsumerState<BoardEditorScreen> createState() => _BoardEditorScreenState();
@@ -33,6 +44,17 @@ class _BoardEditorScreenState extends ConsumerState<BoardEditorScreen> {
   String? _analysisPgnStartFen;
   String _analysisWhiteName = 'White';
   String _analysisBlackName = 'Black';
+
+  @override
+  void initState() {
+    super.initState();
+    final initialFen = widget.initialFen?.trim();
+    if (initialFen == null || initialFen.isEmpty) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      ref.read(boardEditorProvider.notifier).loadFen(initialFen);
+    });
+  }
 
   String _fenPositionKey(String fen) =>
       fen.trim().split(RegExp(r'\s+')).take(4).join(' ');
@@ -83,6 +105,11 @@ class _BoardEditorScreenState extends ConsumerState<BoardEditorScreen> {
     }
 
     final fen = editorState.fullFen;
+    if (widget.returnFenOnDone) {
+      Navigator.of(context).pop(fen);
+      return;
+    }
+
     final timestamp = DateTime.now().millisecondsSinceEpoch;
     final usePgnOverride =
         _analysisPgnOverride != null &&
@@ -625,20 +652,31 @@ class _BoardEditorScreenState extends ConsumerState<BoardEditorScreen> {
             onTap: _onDone,
             child: Container(
               key: e2eKey(E2eIds.boardEditorDoneButton),
-              padding: EdgeInsets.symmetric(horizontal: 14.w, vertical: 8.h),
+              // 6.h + the 22.h line box of textSmBold + 6.h = 34.h, which is
+              // ExplorerViewToggle's compact height — the size the Board
+              // workspace uses for a control living in a header. At 8.h it
+              // came out 38 and stood a full 12 taller than the title beside
+              // it, which is what read as oversized.
+              padding: EdgeInsets.symmetric(horizontal: 14.w, vertical: 6.h),
+              // The one primary action here, so it wears the app's primary
+              // button: brand fill with inkOnAccent, same as Apply in the
+              // game filter dialog. Not an inverted white slab.
               decoration: BoxDecoration(
-                color: context.colors.textPrimary,
-                borderRadius: BorderRadius.circular(8.br),
+                color: kPrimaryColor,
+                borderRadius: BorderRadius.circular(10.br),
               ),
               child: Text(
                 'Analyze',
-                style: AppTypography.textSmMedium.copyWith(
-                  color: context.colors.background,
+                style: AppTypography.textSmBold.copyWith(
+                  color: context.colors.inkOnAccent,
                 ),
               ),
             ),
           ),
-          SizedBox(width: 4.w),
+          // 8.w here + the row's own 8.w puts the button's right edge 16.w from
+          // the screen, the same gutter _TopControls and _ActionRow use. At
+          // 4.w it hung 4 further right than every row beneath it.
+          SizedBox(width: 8.w),
         ],
       ),
     );
@@ -899,6 +937,9 @@ class _TopControls extends StatelessWidget {
   }
 }
 
+/// Secondary action: a recessed trough with a hairline, the same surface the
+/// Explorer uses for every non-primary control. It used to be a solid white
+/// slab, which outweighed Analyze and belonged to no other screen.
 class _SmallButton extends StatelessWidget {
   final String label;
   final VoidCallback onTap;
@@ -912,13 +953,14 @@ class _SmallButton extends StatelessWidget {
       child: Container(
         padding: EdgeInsets.symmetric(horizontal: 14.w, vertical: 8.h),
         decoration: BoxDecoration(
-          color: context.colors.textPrimary,
-          borderRadius: BorderRadius.circular(8.br),
+          color: context.colors.surfaceRecessed,
+          borderRadius: BorderRadius.circular(10.br),
+          border: Border.all(color: context.colors.divider),
         ),
         child: Text(
           label,
           style: AppTypography.textSmMedium.copyWith(
-            color: context.colors.background,
+            color: context.colors.textPrimary,
           ),
         ),
       ),
@@ -1381,6 +1423,8 @@ class _ActionRow extends StatelessWidget {
   }
 }
 
+/// Same secondary treatment as [_SmallButton]. The 24.br pill it used to be
+/// was a radius no other control in the app uses.
 class _ActionButton extends StatelessWidget {
   final String label;
   final VoidCallback onTap;
@@ -1394,14 +1438,15 @@ class _ActionButton extends StatelessWidget {
       child: Container(
         padding: EdgeInsets.symmetric(vertical: 12.h),
         decoration: BoxDecoration(
-          color: context.colors.textPrimary,
-          borderRadius: BorderRadius.circular(24.br),
+          color: context.colors.surfaceRecessed,
+          borderRadius: BorderRadius.circular(10.br),
+          border: Border.all(color: context.colors.divider),
         ),
         child: Center(
           child: Text(
             label,
             style: AppTypography.textSmMedium.copyWith(
-              color: context.colors.background,
+              color: context.colors.textPrimary,
             ),
           ),
         ),

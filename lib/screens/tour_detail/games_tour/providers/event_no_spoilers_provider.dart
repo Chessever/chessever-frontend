@@ -15,6 +15,15 @@ class EventNoSpoilersState {
   }
 }
 
+/// No Spoilers hides evaluation for every live-broadcast position, including
+/// ongoing games. Archive games are outside the event-scoped preference.
+bool shouldHideEventEvaluation({
+  required bool isBroadcastGame,
+  required EventNoSpoilersState spoilerState,
+}) {
+  return isBroadcastGame && (spoilerState.isLoading || spoilerState.enabled);
+}
+
 final eventNoSpoilersProvider = StateNotifierProvider.family<
   EventNoSpoilersController,
   EventNoSpoilersState,

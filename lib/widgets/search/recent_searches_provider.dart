@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:chessever2/repository/gamebase/memorial_player_local_search.dart';
 import 'package:chessever2/repository/sqlite/app_database.dart';
 import 'package:chessever2/repository/supabase/game/games.dart';
 import 'package:chessever2/screens/group_event/model/tour_event_card_model.dart';
@@ -32,18 +33,29 @@ class RecentSearchEntry {
       title: tournament.title,
       subtitle: tournament.dates,
       data: {
+        'maxAvgElo': tournament.maxAvgElo,
+        'timeUntilStart': tournament.timeUntilStart,
+        'tourEventCategory': tournament.tourEventCategory.name,
         'timeControl': tournament.timeControl,
+        'endDate': tournament.endDate?.toIso8601String(),
+        'startDate': tournament.startDate?.toIso8601String(),
+        'location': tournament.location,
+        'searchTerms': tournament.searchTerms,
         'eventSource': tournament.eventSource.name,
+        'isMajorUpcoming': tournament.isMajorUpcoming,
       },
     );
   }
 
   factory RecentSearchEntry.player(SearchPlayer player) {
     final fideId = player.fideId;
+    final memorialRouteId = player.memorialRouteId?.trim();
     return RecentSearchEntry(
       kind: RecentSearchKind.player,
       targetId:
-          fideId != null && fideId > 0
+          memorialRouteId?.isNotEmpty == true
+              ? 'memorial:$memorialRouteId'
+              : fideId != null && fideId > 0
               ? 'fide:$fideId'
               : 'name:${player.name.trim().toLowerCase()}',
       title: player.name,
@@ -58,6 +70,14 @@ class RecentSearchEntry {
         'rating': player.rating,
         'fideId': player.fideId,
         'fed': player.fed,
+        'tournamentId': player.tournamentId,
+        'tournamentName': player.tournamentName,
+        'gameId': player.gameId,
+        'roundId': player.roundId,
+        'isWhitePlayer': player.isWhitePlayer,
+        'gamebasePlayerId': player.gamebasePlayerId,
+        'memorialSourceIdentity': player.memorialSourceIdentity,
+        'memorialRouteId': player.memorialRouteId,
       },
     );
   }
@@ -123,7 +143,13 @@ class RecentSearchEntry {
   final String subtitle;
   final Map<String, dynamic> data;
 
-  String get identity => '${kind.name}:$targetId';
+  String get identity {
+    if (kind == RecentSearchKind.player) {
+      final routeId = _storedMemorialRouteId(data);
+      if (routeId != null) return '${kind.name}:memorial:$routeId';
+    }
+    return '${kind.name}:$targetId';
+  }
 
   Map<String, dynamic> toJson() => {
     'kind': kind.name,
@@ -140,17 +166,25 @@ class RecentSearchEntry {
       (item) => item.name == sourceName,
       orElse: () => EventSource.lichessBroadcast,
     );
+    final categoryName = data['tourEventCategory']?.toString();
+    final category = TourEventCategory.values.firstWhere(
+      (item) => item.name == categoryName,
+      orElse: () => TourEventCategory.completed,
+    );
     return GroupEventCardModel(
       id: targetId,
       title: title,
       dates: subtitle,
-      maxAvgElo: 0,
-      timeUntilStart: '',
-      tourEventCategory: TourEventCategory.completed,
+      maxAvgElo: _readInt(data['maxAvgElo']) ?? 0,
+      timeUntilStart: data['timeUntilStart']?.toString() ?? '',
+      tourEventCategory: category,
       timeControl: data['timeControl']?.toString() ?? '',
-      endDate: null,
-      startDate: null,
+      endDate: _readDateTime(data['endDate']),
+      startDate: _readDateTime(data['startDate']),
+      location: _readNullableString(data['location']),
+      searchTerms: _readStringList(data['searchTerms']),
       eventSource: source,
+      isMajorUpcoming: _readBool(data['isMajorUpcoming'], fallback: false),
     );
   }
 
@@ -162,9 +196,17 @@ class RecentSearchEntry {
       title: data['title']?.toString(),
       rating: _readInt(data['rating']),
       fideId: _readInt(data['fideId']),
-      fed: data['fed']?.toString(),
-      tournamentId: '',
-      tournamentName: '',
+      fed: _readNullableString(data['fed']),
+      tournamentId: data['tournamentId']?.toString() ?? '',
+      tournamentName: data['tournamentName']?.toString() ?? '',
+      gameId: _readNullableString(data['gameId']),
+      roundId: _readNullableString(data['roundId']),
+      isWhitePlayer: _readBool(data['isWhitePlayer'], fallback: true),
+      gamebasePlayerId: _readNullableString(data['gamebasePlayerId']),
+      memorialSourceIdentity: _readNullableString(
+        data['memorialSourceIdentity'],
+      ),
+      memorialRouteId: _readNullableString(data['memorialRouteId']),
     );
   }
 
@@ -204,6 +246,90 @@ class RecentSearchEntry {
     if (value == null) return null;
     return int.tryParse(value.toString());
   }
+
+  static DateTime? _readDateTime(Object? value) {
+    if (value == null) return null;
+    return DateTime.tryParse(value.toString());
+  }
+
+  static String? _readNullableString(Object? value) {
+    return value?.toString();
+  }
+
+  static List<String> _readStringList(Object? value) {
+    if (value is! List) return const [];
+    return value.map((item) => item.toString()).toList(growable: false);
+  }
+
+  static bool _readBool(Object? value, {required bool fallback}) {
+    if (value is bool) return value;
+    switch (value?.toString().toLowerCase()) {
+      case 'true':
+        return true;
+      case 'false':
+        return false;
+      default:
+        return fallback;
+    }
+  }
+}
+
+/// Restores the immutable Memorial identity before a recent-search result is
+/// opened. Entries written before Memorial metadata was persisted still carry
+/// the reviewed `memorial:<routeId>` profile key in `data.id`, which is enough
+/// to hydrate the exact bundled player instead of falling back to a name query.
+Future<SearchPlayer?> resolveRecentSearchPlayer(RecentSearchEntry entry) async {
+  final restored = entry.toPlayer();
+  if (restored == null ||
+      restored.memorialSourceIdentity?.trim().isNotEmpty == true) {
+    return restored;
+  }
+
+  final routeId = _storedMemorialRouteId(entry.data);
+  if (routeId == null) return restored;
+  final memorial = await findBundledMemorialPlayerByRouteId(routeId);
+  if (memorial == null) {
+    // Keep the entry on the Memorial data plane even if optional bundled
+    // catalog enrichment is unavailable. Public numeric routes use that
+    // number as their source identity; reviewed non-numeric routes use the
+    // namespaced source identity consumed by the Memorial endpoints.
+    final inferredSourceIdentity =
+        int.tryParse(routeId) != null ? routeId : 'memorial:$routeId';
+    return restored.copyWith(
+      memorialSourceIdentity: inferredSourceIdentity,
+      memorialRouteId: routeId,
+    );
+  }
+
+  return SearchPlayer(
+    id: memorial.profileKey,
+    name: memorial.name,
+    title: memorial.title,
+    rating:
+        memorial.ratingClassical > 0
+            ? memorial.ratingClassical
+            : restored.rating,
+    fideId: int.tryParse(memorial.fideId ?? ''),
+    fed: memorial.fed.isNotEmpty ? memorial.fed : restored.fed,
+    tournamentId: restored.tournamentId,
+    tournamentName: restored.tournamentName,
+    gameId: restored.gameId,
+    roundId: restored.roundId,
+    isWhitePlayer: restored.isWhitePlayer,
+    gamebasePlayerId: memorial.gamebasePlayerId,
+    memorialSourceIdentity: memorial.sourceIdentity,
+    memorialRouteId: memorial.routeId,
+  );
+}
+
+String? _storedMemorialRouteId(Map<String, dynamic> data) {
+  final explicit = data['memorialRouteId']?.toString().trim();
+  if (explicit?.isNotEmpty == true) return explicit;
+  final profileKey = data['id']?.toString().trim();
+  const prefix = 'memorial:';
+  if (profileKey == null || !profileKey.startsWith(prefix)) return null;
+  final routeId = profileKey.substring(prefix.length).trim();
+  return routeId.isEmpty ? null : routeId;
 }
 
 abstract class RecentSearchStorage {

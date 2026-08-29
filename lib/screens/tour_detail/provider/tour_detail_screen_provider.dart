@@ -15,8 +15,17 @@ import 'package:chessever2/screens/tour_detail/provider/tour_detail_mode_provide
 import 'package:chessever2/screens/tour_detail/provider/tour_category_ordering.dart';
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_repo_provider.dart';
 import 'package:chessever2/screens/tour_detail/provider/tour_selection_logic.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+
+/// Seeds [tourDetailScreenProvider] with already-resolved data for widget tests.
+@visibleForTesting
+Override tourDetailScreenProviderOverride(TourDetailViewModel viewModel) {
+  return tourDetailScreenProvider.overrideWith(
+    (ref) => _TourDetailScreenNotifier.seeded(ref: ref, viewModel: viewModel),
+  );
+}
 
 final tourDetailScreenProvider = StateNotifierProvider<
   _TourDetailScreenNotifier,
@@ -67,6 +76,21 @@ class _TourDetailScreenNotifier
         search: [],
       ),
       super(const AsyncValue.loading());
+
+  /// Seeds already-resolved tournament-detail state. Skips network load so
+  /// widget tests can pump the real success chrome and About tab.
+  _TourDetailScreenNotifier.seeded({
+    required this.ref,
+    required TourDetailViewModel viewModel,
+  }) : groupBroadcast = GroupBroadcast(
+         id:
+             viewModel.aboutTourModel.groupBroadcastId ??
+             viewModel.aboutTourModel.id,
+         createdAt: DateTime.now(),
+         name: viewModel.aboutTourModel.name,
+         search: const [],
+       ),
+       super(AsyncValue.data(viewModel));
 
   final Ref ref;
   final GroupBroadcast groupBroadcast;

@@ -161,7 +161,9 @@ Future<void> _pumpExplorer(
         home: Builder(
           builder: (context) {
             ResponsiveHelper.init(context);
-            return const GamebaseExplorerScreen();
+            return const GamebaseExplorerScreen(
+              enableWorkspaceCoachmarks: false,
+            );
           },
         ),
       ),
@@ -173,8 +175,17 @@ Future<void> _pumpExplorer(
 }
 
 Future<void> _openFilters(WidgetTester tester) async {
-  await tester.tap(find.byTooltip('Filters'));
+  await tester.tap(find.byTooltip('Explorer filters'));
   await tester.pumpAndSettle();
+}
+
+Future<void> _disposeExplorer(
+  WidgetTester tester,
+  ProviderContainer container,
+) async {
+  await tester.pumpWidget(const MaterialApp(home: SizedBox.shrink()));
+  container.dispose();
+  await tester.pump();
 }
 
 void main() {
@@ -182,35 +193,37 @@ void main() {
     'unsubscribed users see a locked player field and applied filters drop player state',
     (tester) async {
       final container = _createContainer(isSubscribed: false);
-      addTearDown(container.dispose);
+      try {
+        await _pumpExplorer(tester, container);
 
-      await _pumpExplorer(tester, container);
+        final magnus = _magnus();
+        container
+            .read(gamebaseExplorerProvider.notifier)
+            .updateFilters(
+              GamebaseFilters(
+                playerIds: [magnus.id],
+                selectedPlayers: [magnus],
+                playerColor: GamebasePlayerColor.white,
+              ),
+            );
+        await tester.pumpAndSettle();
 
-      final magnus = _magnus();
-      container
-          .read(gamebaseExplorerProvider.notifier)
-          .updateFilters(
-            GamebaseFilters(
-              playerIds: [magnus.id],
-              selectedPlayers: [magnus],
-              playerColor: GamebasePlayerColor.white,
-            ),
-          );
-      await tester.pumpAndSettle();
+        await _openFilters(tester);
 
-      await _openFilters(tester);
+        final playerField = tester.widget<TextField>(find.byType(TextField));
+        expect(playerField.readOnly, isTrue);
 
-      final playerField = tester.widget<TextField>(find.byType(TextField));
-      expect(playerField.readOnly, isTrue);
+        await tester.ensureVisible(find.text('Apply'));
+        await tester.tap(find.text('Apply'));
+        await tester.pumpAndSettle();
 
-      await tester.ensureVisible(find.text('Apply'));
-      await tester.tap(find.text('Apply'));
-      await tester.pumpAndSettle();
-
-      final filters = container.read(gamebaseExplorerProvider).filters;
-      expect(filters.playerIds, isEmpty);
-      expect(filters.selectedPlayers, isEmpty);
-      expect(filters.playerColor, isNull);
+        final filters = container.read(gamebaseExplorerProvider).filters;
+        expect(filters.playerIds, isEmpty);
+        expect(filters.selectedPlayers, isEmpty);
+        expect(filters.playerColor, isNull);
+      } finally {
+        await _disposeExplorer(tester, container);
+      }
     },
   );
 
@@ -218,30 +231,34 @@ void main() {
     'subscribed users can search and apply a player filter from the explorer sheet',
     (tester) async {
       final container = _createContainer(isSubscribed: true);
-      addTearDown(container.dispose);
+      try {
+        await _pumpExplorer(tester, container);
+        await _openFilters(tester);
 
-      await _pumpExplorer(tester, container);
-      await _openFilters(tester);
+        final playerField = tester.widget<TextField>(find.byType(TextField));
+        expect(playerField.readOnly, isFalse);
 
-      final playerField = tester.widget<TextField>(find.byType(TextField));
-      expect(playerField.readOnly, isFalse);
+        await tester.enterText(find.byType(TextField), 'Magn');
+        await tester.pumpAndSettle();
 
-      await tester.enterText(find.byType(TextField), 'Magn');
-      await tester.pumpAndSettle();
+        expect(find.text('GM Magnus Carlsen'), findsOneWidget);
 
-      expect(find.text('GM Magnus Carlsen'), findsOneWidget);
+        await tester.tap(find.text('GM Magnus Carlsen'));
+        await tester.pumpAndSettle();
 
-      await tester.tap(find.text('GM Magnus Carlsen'));
-      await tester.pumpAndSettle();
+        await tester.ensureVisible(find.text('Apply'));
+        await tester.tap(find.text('Apply'));
+        await tester.pumpAndSettle();
 
-      await tester.ensureVisible(find.text('Apply'));
-      await tester.tap(find.text('Apply'));
-      await tester.pumpAndSettle();
-
-      final filters = container.read(gamebaseExplorerProvider).filters;
-      expect(filters.playerIds, ['player-1']);
-      expect(filters.selectedPlayers.map((player) => player.id), ['player-1']);
-      expect(filters.playerColor, isNull);
+        final filters = container.read(gamebaseExplorerProvider).filters;
+        expect(filters.playerIds, ['player-1']);
+        expect(filters.selectedPlayers.map((player) => player.id), [
+          'player-1',
+        ]);
+        expect(filters.playerColor, isNull);
+      } finally {
+        await _disposeExplorer(tester, container);
+      }
     },
   );
 }

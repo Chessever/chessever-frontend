@@ -14,20 +14,21 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  final providerOverrides = <Override>[
-    engineSettingsProviderNew.overrideWith(_TestEngineSettingsNotifier.new),
-    eventNoSpoilersProvider.overrideWith(
-      (ref, tourId) =>
-          _TestEventNoSpoilersController(ref: ref, tourId: tourId),
-    ),
-  ];
-
   Future<void> pumpCompactRow(
     WidgetTester tester, {
     required String whiteName,
     required String blackName,
     double maxWidth = 168,
     bool compactName = true,
+    EngineSettings engineSettings = const EngineSettings(
+      showEngineAnalysis: false,
+    ),
+    EventNoSpoilersState spoilerState = const EventNoSpoilersState(
+      enabled: false,
+      isLoading: false,
+    ),
+    GameSource source = GameSource.gamebase,
+    bool hasStarted = false,
   }) async {
     tester.view.devicePixelRatio = 1;
     tester.view.physicalSize = const Size(400, 800);
@@ -36,7 +37,7 @@ void main() {
 
     final game = GamesTourModel(
       gameId: 'compact-name-test',
-      source: GameSource.gamebase,
+      source: source,
       whitePlayer: _player(whiteName),
       blackPlayer: _player(blackName),
       whiteTimeDisplay: '--:--',
@@ -46,12 +47,28 @@ void main() {
       gameStatus: GameStatus.ongoing,
       roundId: 'r1',
       tourId: 't1',
-      fen: 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
+      fen:
+          hasStarted
+              ? 'rnbqkbnr/pppp1ppp/8/4p3/4P3/8/PPPP1PPP/RNBQKBNR w KQkq - 0 2'
+              : 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
+      lastMove: hasStarted ? 'e7e5' : null,
     );
 
     await tester.pumpWidget(
       ProviderScope(
-        overrides: providerOverrides,
+        key: UniqueKey(),
+        overrides: [
+          engineSettingsProviderNew.overrideWith(
+            () => _TestEngineSettingsNotifier(engineSettings),
+          ),
+          eventNoSpoilersProvider.overrideWith(
+            (ref, tourId) => _TestEventNoSpoilersController(
+              ref: ref,
+              tourId: tourId,
+              loadedState: spoilerState,
+            ),
+          ),
+        ],
         child: MaterialApp(
           home: Builder(
             builder: (context) {
@@ -77,7 +94,8 @@ void main() {
         ),
       ),
     );
-    // One frame is enough to run LayoutBuilder + TextPainter measure path.
+    // The second frame applies the overridden async settings and spoiler state.
+    await tester.pump();
     await tester.pump();
   }
 
@@ -201,6 +219,83 @@ void main() {
       );
     },
   );
+
+  testWidgets('grid rows follow Grid View rather than Board View', (
+    tester,
+  ) async {
+    await pumpCompactRow(
+      tester,
+      whiteName: 'Carlsen, Magnus',
+      blackName: 'Nakamura, Hikaru',
+      hasStarted: true,
+      engineSettings: const EngineSettings(
+        showEngineAnalysis: true,
+        showEngineGaugeOnBoard: true,
+        showEngineGaugeInGrid: false,
+      ),
+    );
+    final withoutGridGauge =
+        tester
+            .getSize(find.byKey(const ValueKey('player-row-evaluation-space')))
+            .width;
+
+    await pumpCompactRow(
+      tester,
+      whiteName: 'Carlsen, Magnus',
+      blackName: 'Nakamura, Hikaru',
+      hasStarted: true,
+      engineSettings: const EngineSettings(
+        showEngineAnalysis: true,
+        showEngineGaugeOnBoard: false,
+        showEngineGaugeInGrid: true,
+      ),
+    );
+    final withGridGauge =
+        tester
+            .getSize(find.byKey(const ValueKey('player-row-evaluation-space')))
+            .width;
+
+    expect(withoutGridGauge, 0);
+    expect(withGridGauge, greaterThan(0));
+  });
+
+  testWidgets('No Spoilers removes live evaluation space from grid rows', (
+    tester,
+  ) async {
+    const settings = EngineSettings(
+      showEngineAnalysis: true,
+      showEngineGaugeInGrid: true,
+    );
+    await pumpCompactRow(
+      tester,
+      whiteName: 'Carlsen, Magnus',
+      blackName: 'Nakamura, Hikaru',
+      hasStarted: true,
+      source: GameSource.supabase,
+      engineSettings: settings,
+    );
+    final visibleGaugeWidth =
+        tester
+            .getSize(find.byKey(const ValueKey('player-row-evaluation-space')))
+            .width;
+
+    await pumpCompactRow(
+      tester,
+      whiteName: 'Carlsen, Magnus',
+      blackName: 'Nakamura, Hikaru',
+      hasStarted: true,
+      source: GameSource.supabase,
+      engineSettings: settings,
+      spoilerState: const EventNoSpoilersState(enabled: true, isLoading: false),
+    );
+    final hiddenGaugeWidth =
+        tester
+            .getSize(find.byKey(const ValueKey('player-row-evaluation-space')))
+            .width;
+
+    expect(visibleGaugeWidth, greaterThan(0));
+    expect(hiddenGaugeWidth, 0);
+  });
 }
 
 PlayerCard _player(String name) {
@@ -215,16 +310,25 @@ PlayerCard _player(String name) {
 }
 
 class _TestEventNoSpoilersController extends EventNoSpoilersController {
-  _TestEventNoSpoilersController({required super.ref, required super.tourId});
+  _TestEventNoSpoilersController({
+    required super.ref,
+    required super.tourId,
+    required this.loadedState,
+  });
+
+  final EventNoSpoilersState loadedState;
 
   @override
   Future<void> load() async {
-    state = const EventNoSpoilersState(enabled: false, isLoading: false);
+    state = loadedState;
   }
 }
 
 class _TestEngineSettingsNotifier extends EngineSettingsNotifierNew {
+  _TestEngineSettingsNotifier(this.settings);
+
+  final EngineSettings settings;
+
   @override
-  Future<EngineSettings> build() async =>
-      const EngineSettings(showEngineAnalysis: false);
+  Future<EngineSettings> build() async => settings;
 }

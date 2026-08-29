@@ -5,3 +5,37 @@ project_id = "chessever-frontend"
 # verification disabled and enforce the stream token inside the function.
 [functions.onesignal-dispatch]
 verify_jwt = false
+
+# Player photos are requested during onboarding, before the user has a session,
+# so the client can only present the anon key. This project rejects legacy
+# JWT-format anon keys at the Functions gateway (UNAUTHORIZED_LEGACY_JWT), so
+# gateway verification would 401 every pre-auth request and new users would
+# never see a player photo. The function is a public read: it accepts only a
+# numeric fide_id, returns only public storage URLs, gates force_refresh behind
+# a separate secret, and rate-limits per IP in fide_photo_guard.ts.
+#
+# NEVER set this to true. The same applies to every other function in this
+# project — verification is enforced inside the function, not at the gateway.
+[functions.fetch-fide-photo-webp]
+verify_jwt = false
+
+# Same legacy-anon-key problem as the photo function: any caller without a
+# session presents the anon key and the gateway answers 401, so move
+# annotations were unavailable to guests and on every pre-auth path. Gateway
+# verification bought nothing here anyway — the app offers anonymous sign-in,
+# so a session JWT is trivially obtainable by anyone.
+#
+# Source was recovered with `supabase functions download` (it had never been
+# committed) and deployed byte-for-byte, so this is a gateway change only.
+[functions.fetch-lichess-annotations]
+verify_jwt = false
+
+# RevenueCat posts here with its own shared secret in the `authorization`
+# header, which the function checks itself. Gateway JWT verification would try
+# to parse that secret as a JWT and reject the request before the function ran,
+# so every store purchase would stop granting entitlement. Keep this false.
+#
+# This repo is the only valid source for this function; another repo contains an
+# older fork of it that must not be deployed.
+[functions.revenuecat-webhook]
+verify_jwt = false

@@ -19,8 +19,7 @@ class E2eIds {
 
   static const drawerSettings = 'e2e_drawer_settings';
   static const drawerPlayers = 'e2e_drawer_players';
-  static const drawerOpeningExplorer = 'e2e_drawer_opening_explorer';
-  static const drawerAnalysisBoard = 'e2e_drawer_analysis_board';
+  static const drawerBoard = 'e2e_drawer_board';
   static const drawerPremium = 'e2e_drawer_premium';
   static const drawerLogout = 'e2e_drawer_logout';
 
@@ -54,9 +53,8 @@ class E2eIds {
   static const onboardingNotNowButton = 'e2e_onboarding_not_now_button';
   static const librarySearchField = 'e2e_library_search_field';
   static const libraryFilterButton = 'e2e_library_filter_button';
-  static const libraryOpeningExplorerButton =
-      'e2e_library_opening_explorer_button';
-  static const libraryBoardEditorButton = 'e2e_library_board_editor_button';
+  static const libraryBoardButton = 'e2e_library_board_button';
+  static const databaseBoardButton = 'e2e_database_board_button';
   static const libraryCreateFolderButton = 'e2e_library_create_folder_button';
   static const boardEditorDoneButton = 'e2e_board_editor_done_button';
   static const openingExplorerSaveButton = 'e2e_opening_explorer_save_button';

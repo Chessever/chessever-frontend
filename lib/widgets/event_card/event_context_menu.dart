@@ -1,6 +1,7 @@
 import 'package:chessever2/repository/supabase/game/game_repository.dart';
 import 'package:chessever2/repository/supabase/group_broadcast/group_tour_repository.dart';
 import 'package:chessever2/screens/group_event/model/tour_event_card_model.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/providers/event_no_spoilers_provider.dart';
 import 'package:chessever2/services/analytics/analytics_service.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
@@ -15,7 +16,17 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:share_plus/share_plus.dart';
 
 /// Actions available from the event card long-press context menu.
-enum EventContextAction { share, copyPgn }
+enum EventContextAction { noSpoilers, share, copyPgn }
+
+String eventNoSpoilersMenuLabel(bool enabled) =>
+    enabled ? 'Turn off No Spoilers' : 'Turn on No Spoilers';
+
+/// A mixed grouped event is treated as not fully protected: one action turns
+/// No Spoilers on for every child tour. Only an all-on event toggles off.
+bool eventNoSpoilersNextEnabled(Iterable<EventNoSpoilersState> states) {
+  final values = states.toList(growable: false);
+  return values.isEmpty || !values.every((state) => state.enabled);
+}
 
 /// URL query parameter that selects a sub-tab of the broadcast/event page.
 /// The web frontend and the in-app deep link handler both read `?tab=<value>`
@@ -97,8 +108,15 @@ Future<void> showEventContextMenu({
   required Offset globalPosition,
 }) async {
   if (!canShowFor(model)) return;
+  final overlayContext = Overlay.of(context).context;
 
-  final overlay = Overlay.of(context).context.findRenderObject() as RenderBox;
+  final tourIds = await _eventTourIds(ref, model);
+  final spoilerStates = await _eventNoSpoilersStates(ref, tourIds);
+  final noSpoilersEnabled =
+      spoilerStates.isNotEmpty && spoilerStates.every((state) => state.enabled);
+  if (!context.mounted || !overlayContext.mounted) return;
+
+  final overlay = overlayContext.findRenderObject() as RenderBox;
   final position = RelativeRect.fromRect(
     globalPosition & const Size(40, 40),
     Offset.zero & overlay.size,
@@ -110,11 +128,25 @@ Future<void> showEventContextMenu({
     color: context.colors.surface,
     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12.br)),
     constraints: BoxConstraints.tightFor(width: 176.w),
-    items: _buildMenuItems(),
+    items: _buildMenuItems(
+      canToggleNoSpoilers: tourIds.isNotEmpty,
+      noSpoilersEnabled: noSpoilersEnabled,
+    ),
   );
 
   if (action == null || !context.mounted) return;
   switch (action) {
+    case EventContextAction.noSpoilers:
+      final enabled = eventNoSpoilersNextEnabled(spoilerStates);
+      await Future.wait(
+        tourIds.map(
+          (tourId) => ref
+              .read(eventNoSpoilersProvider(tourId).notifier)
+              .setEnabled(enabled),
+        ),
+      );
+      HapticFeedbackService.success();
+      break;
     case EventContextAction.share:
       await _shareEvent(context: context, ref: ref, model: model);
       break;
@@ -130,8 +162,20 @@ bool canShowFor(GroupEventCardModel model) {
   return model.eventSource != EventSource.communityEvent;
 }
 
-List<PopupMenuEntry<EventContextAction>> _buildMenuItems() {
+List<PopupMenuEntry<EventContextAction>> _buildMenuItems({
+  required bool canToggleNoSpoilers,
+  required bool noSpoilersEnabled,
+}) {
   return [
+    if (canToggleNoSpoilers)
+      _menuItem(
+        value: EventContextAction.noSpoilers,
+        label: eventNoSpoilersMenuLabel(noSpoilersEnabled),
+        icon:
+            noSpoilersEnabled
+                ? Icons.visibility_off_outlined
+                : Icons.visibility_outlined,
+      ),
     _menuItem(
       value: EventContextAction.share,
       label: 'Share',
@@ -142,6 +186,34 @@ List<PopupMenuEntry<EventContextAction>> _buildMenuItems() {
       label: 'Copy PGN',
       icon: Icons.copy,
     ),
+  ];
+}
+
+Future<List<String>> _eventTourIds(
+  WidgetRef ref,
+  GroupEventCardModel model,
+) async {
+  try {
+    final ids = await ref
+        .read(groupBroadcastRepositoryProvider)
+        .getTourIdsForGroupBroadcast(model.id);
+    return ids.where((id) => id.isNotEmpty).toSet().toList(growable: false);
+  } catch (_) {
+    return const <String>[];
+  }
+}
+
+Future<List<EventNoSpoilersState>> _eventNoSpoilersStates(
+  WidgetRef ref,
+  List<String> tourIds,
+) async {
+  await Future.wait(
+    tourIds.map(
+      (tourId) => ref.read(eventNoSpoilersProvider(tourId).notifier).load(),
+    ),
+  );
+  return [
+    for (final tourId in tourIds) ref.read(eventNoSpoilersProvider(tourId)),
   ];
 }
 

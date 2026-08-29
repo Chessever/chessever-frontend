@@ -8,7 +8,6 @@ import 'package:chessever2/repository/authentication/auth_repository.dart';
 import 'package:chessever2/screens/authentication/auth_screen_provider.dart';
 import 'package:chessever2/screens/calendar/calendar_screen.dart';
 import 'package:chessever2/screens/library/library_screen.dart';
-import 'package:chessever2/screens/board_editor/board_editor_screen.dart';
 import 'package:chessever2/screens/favorites/favorites_tab_screen.dart';
 import 'package:chessever2/screens/favorites/provider/favorites_mode_provider.dart';
 import 'package:chessever2/screens/gamebase/gamebase_explorer_screen.dart';
@@ -157,12 +156,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       // Navigate to players screen
       Navigator.pushNamed(context, '/player_list_screen');
     },
-    onAnalysisBoardPressed: () {
-      Navigator.of(
-        context,
-      ).push(MaterialPageRoute(builder: (_) => const BoardEditorScreen()));
-    },
-    onOpeningExplorerPressed: () async {
+    onBoardPressed: () async {
       final allowed = await requireFullAuthGuard(context);
       if (!allowed) return;
       if (!mounted) return;

@@ -1,6 +1,5 @@
 import 'dart:async';
 
-import 'package:chessever2/e2e/e2e_config.dart';
 import 'package:chessever2/e2e/e2e_ids.dart';
 import 'package:chessever2/providers/country_dropdown_provider.dart';
 import 'package:chessever2/widgets/player_initials_avatar.dart';
@@ -22,7 +21,6 @@ import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/country_utils.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/screen_wrapper.dart';
-import 'package:chessever2/services/push_notifications_service.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -397,13 +395,6 @@ class PlayerSelectionContent extends HookConsumerWidget {
 }
 
 Future<void> markOnboardingComplete(BuildContext context, WidgetRef ref) async {
-  // Request notification permission on last page of onboarding (fire and forget)
-  if (!E2eConfig.suppressInterruptivePrompts) {
-    unawaited(
-      PushNotificationsService.instance.requestPermissionIfNotGranted(),
-    );
-  }
-
   try {
     final user = Supabase.instance.client.auth.currentUser;
     if (user == null) {

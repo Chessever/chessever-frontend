@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:chessever2/repository/gamebase/gamebase_repository.dart';
+import 'package:chessever2/repository/gamebase/memorial_player_about.dart';
 import 'package:chessever2/repository/gamebase/search/gamebase_search_models_extra.dart';
 import 'package:chessever2/repository/supabase/chess_player/chess_player_repository.dart';
 import 'package:chessever2/repository/supabase/game/game_repository.dart';
@@ -13,6 +14,7 @@ import 'package:chessever2/screens/group_event/model/tour_event_card_model.dart'
 import 'package:chessever2/screens/library/utils/gamebase_pgn_builder.dart';
 import 'package:chessever2/screens/player_profile/player_profile_data_source.dart';
 import 'package:chessever2/screens/player_profile/player_profile_metadata.dart';
+import 'package:chessever2/screens/player_profile/utils/player_game_recency.dart';
 import 'package:chessever2/screens/player_profile/utils/twic_event_identity.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/utils/chess_title_utils.dart';
@@ -26,6 +28,11 @@ import 'package:chessever2/utils/twic_player_enrichment.dart';
 final playerGamesSelectionModeProvider =
     StateProvider.family<bool, PlayerProfileKey>((ref, key) => false);
 
+final memorialPlayerOverviewProvider = FutureProvider.family.autoDispose<
+  MemorialPlayerOverview?,
+  String
+>((ref, sourceIdentity) => loadBundledMemorialPlayerOverview(sourceIdentity));
+
 /// Key to identify a player - can use either fideId OR playerName
 /// This allows viewing player profiles even without a FIDE ID
 class PlayerProfileKey {
@@ -33,12 +40,14 @@ class PlayerProfileKey {
   final String playerName;
   final PlayerProfileDataSource source;
   final String? gamebasePlayerId;
+  final String? memorialSourceIdentity;
 
   const PlayerProfileKey({
     this.fideId,
     required this.playerName,
     this.source = PlayerProfileDataSource.supabase,
     this.gamebasePlayerId,
+    this.memorialSourceIdentity,
   });
 
   /// Whether this player has a valid FIDE ID
@@ -51,18 +60,20 @@ class PlayerProfileKey {
           fideId == other.fideId &&
           playerName == other.playerName &&
           source == other.source &&
-          gamebasePlayerId == other.gamebasePlayerId;
+          gamebasePlayerId == other.gamebasePlayerId &&
+          memorialSourceIdentity == other.memorialSourceIdentity;
 
   @override
   int get hashCode =>
       fideId.hashCode ^
       playerName.hashCode ^
       source.hashCode ^
-      gamebasePlayerId.hashCode;
+      gamebasePlayerId.hashCode ^
+      memorialSourceIdentity.hashCode;
 
   @override
   String toString() =>
-      'PlayerProfileKey(fideId: $fideId, name: $playerName, source: $source, gamebasePlayerId: $gamebasePlayerId)';
+      'PlayerProfileKey(fideId: $fideId, name: $playerName, source: $source, gamebasePlayerId: $gamebasePlayerId, memorialSourceIdentity: $memorialSourceIdentity)';
 }
 
 /// Model for comprehensive player profile data
@@ -377,13 +388,7 @@ final playerGamesDataProvider = FutureProvider.family
                 .where((game) => !_isVariantEvent(game.tourSlug))
                 .toList();
 
-        // Sort by date descending
-        final epochFallback = DateTime.fromMillisecondsSinceEpoch(0);
-        allGames.sort((a, b) {
-          final aTime = a.lastMoveTime ?? epochFallback;
-          final bTime = b.lastMoveTime ?? epochFallback;
-          return bTime.compareTo(aTime);
-        });
+        allGames.sort(comparePlayerProfileGamesNewestFirst);
 
         return allGames;
       } catch (e) {
@@ -419,59 +424,59 @@ bool _isVariantEvent(String? tourSlug) {
 }
 
 /// Provider to fetch games for a player using PlayerProfileKey (supports both fideId and name lookup)
-final playerGamesDataKeyProvider = FutureProvider.family
-    .autoDispose<List<GamesTourModel>, PlayerProfileKey>((
-      ref,
-      playerKey,
-    ) async {
-      try {
-        if (playerKey.source == PlayerProfileDataSource.twic) {
-          final pid = await ref.watch(twicPlayerIdProvider(playerKey).future);
-          if (pid != null && pid.isNotEmpty) {
-            try {
-              return await _getTwicGamesViaPlayerEndpoint(ref, pid);
-            } on DioException catch (e) {
-              if (e.response?.statusCode != 404) rethrow;
-            }
-          }
-          return await _getTwicGamesFromGamebase(ref, playerKey);
+final playerGamesDataKeyProvider = FutureProvider.family.autoDispose<
+  List<GamesTourModel>,
+  PlayerProfileKey
+>((ref, playerKey) async {
+  try {
+    if (playerKey.source == PlayerProfileDataSource.twic) {
+      final pid = await ref.watch(twicPlayerIdProvider(playerKey).future);
+      if (pid != null && pid.isNotEmpty) {
+        try {
+          return await _getTwicGamesViaDedicatedEndpoint(ref, playerId: pid);
+        } on DioException catch (e) {
+          if (e.response?.statusCode != 404) rethrow;
         }
-
-        final gameRepo = ref.read(gameRepositoryProvider);
-        List<Games> games;
-
-        if (playerKey.hasFideId) {
-          games = await gameRepo.getGamesByFideId(
-            playerKey.fideId.toString(),
-            limit: 500,
-          );
-        } else {
-          games = await gameRepo.getGamesByPlayerName(
-            playerKey.playerName,
-            limit: 500,
-          );
-        }
-
-        final allGames =
-            games
-                .map((game) => GamesTourModel.fromGame(game))
-                .where((game) => !_isVariantEvent(game.tourSlug))
-                .toList();
-
-        // Sort by date descending
-        final epochFallback = DateTime.fromMillisecondsSinceEpoch(0);
-        allGames.sort((a, b) {
-          final aTime = a.lastMoveTime ?? epochFallback;
-          final bTime = b.lastMoveTime ?? epochFallback;
-          return bTime.compareTo(aTime);
-        });
-
-        return allGames;
-      } catch (e) {
-        debugPrint('[playerGamesDataKeyProvider] Error: $e');
-        return [];
       }
-    });
+      final memorialIdentity = playerKey.memorialSourceIdentity?.trim();
+      if (memorialIdentity != null && memorialIdentity.isNotEmpty) {
+        return await _getTwicGamesViaDedicatedEndpoint(
+          ref,
+          memorialSourceIdentity: memorialIdentity,
+        );
+      }
+      return await _getTwicGamesFromGamebase(ref, playerKey);
+    }
+
+    final gameRepo = ref.read(gameRepositoryProvider);
+    List<Games> games;
+
+    if (playerKey.hasFideId) {
+      games = await gameRepo.getGamesByFideId(
+        playerKey.fideId.toString(),
+        limit: 500,
+      );
+    } else {
+      games = await gameRepo.getGamesByPlayerName(
+        playerKey.playerName,
+        limit: 500,
+      );
+    }
+
+    final allGames =
+        games
+            .map((game) => GamesTourModel.fromGame(game))
+            .where((game) => !_isVariantEvent(game.tourSlug))
+            .toList();
+
+    allGames.sort(comparePlayerProfileGamesNewestFirst);
+
+    return allGames;
+  } catch (e) {
+    debugPrint('[playerGamesDataKeyProvider] Error: $e');
+    return [];
+  }
+});
 
 String _normalizeGamebaseName(String name) {
   return name
@@ -587,6 +592,12 @@ Future<String?> _resolveTwicPlayerId(
   PlayerProfileKey playerKey, {
   bool preferProvidedId = true,
 }) async {
+  final memorialIdentity = playerKey.memorialSourceIdentity?.trim();
+  if (memorialIdentity != null && memorialIdentity.isNotEmpty) {
+    // Memorial profiles must stay on the reviewed source-identity endpoint.
+    // A name-matched UUID may belong to a living namesake or reused FIDE row.
+    return null;
+  }
   final repo = ref.read(gamebaseRepositoryProvider);
 
   final providedId = playerKey.gamebasePlayerId?.trim();
@@ -638,25 +649,39 @@ final twicProfileSummaryProvider = FutureProvider.family
       final repo = ref.read(gamebaseRepositoryProvider);
 
       try {
-        final playerId = await ref.watch(
-          twicPlayerIdProvider(playerKey).future,
-        );
-        if (playerId == null || playerId.isEmpty) return null;
+        final memorialIdentity = playerKey.memorialSourceIdentity?.trim();
+        final playerId =
+            memorialIdentity != null && memorialIdentity.isNotEmpty
+                ? null
+                : await ref.watch(twicPlayerIdProvider(playerKey).future);
+        if ((playerId == null || playerId.isEmpty) &&
+            (memorialIdentity == null || memorialIdentity.isEmpty)) {
+          return null;
+        }
 
         int? totalGames;
 
         try {
-          final gamesResponse = await repo.getPlayerGames(
-            playerId: playerId,
-            pageNumber: 0,
-            pageSize: 1,
-          );
+          final gamesResponse =
+              memorialIdentity != null && memorialIdentity.isNotEmpty
+                  ? await repo.getMemorialPlayerGames(
+                    sourceIdentity: memorialIdentity,
+                    pageNumber: 0,
+                    pageSize: 1,
+                  )
+                  : await repo.getPlayerGames(
+                    playerId: playerId!,
+                    pageNumber: 0,
+                    pageSize: 1,
+                  );
           totalGames = extractTwicPlayerGamesTotalCount(gamesResponse);
         } catch (_) {
           // Fall through to stats.
         }
 
-        if (totalGames == null || totalGames <= 0) {
+        if ((totalGames == null || totalGames <= 0) &&
+            playerId != null &&
+            playerId.isNotEmpty) {
           final statsResponse = await repo.getPlayerStats(playerId: playerId);
           final data = statsResponse['data'];
           if (data is! Map) return null;
@@ -666,23 +691,25 @@ final twicProfileSummaryProvider = FutureProvider.family
           totalGames = (totals['games'] as num?)?.toInt() ?? 0;
         }
 
-        if (totalGames <= 0) return null;
+        if ((totalGames ?? 0) <= 0) return null;
 
         int totalEvents = 0;
-        try {
-          final eventsResponse = await repo.getPlayerEvents(
-            playerId: playerId,
-            pageNumber: 0,
-            pageSize: 1,
-          );
-          totalEvents = eventsResponse.metadata.totalCount ?? 0;
-        } catch (_) {
-          // Best-effort; banner falls back to '--' when zero.
+        if (playerId != null && playerId.isNotEmpty) {
+          try {
+            final eventsResponse = await repo.getPlayerEvents(
+              playerId: playerId,
+              pageNumber: 0,
+              pageSize: 1,
+            );
+            totalEvents = eventsResponse.metadata.totalCount ?? 0;
+          } catch (_) {
+            // Best-effort; banner falls back to '--' when zero.
+          }
         }
 
         return TwicProfileSummary(
-          gamebasePlayerId: playerId,
-          totalGames: totalGames,
+          gamebasePlayerId: playerId ?? '',
+          totalGames: totalGames!,
           totalEvents: totalEvents,
         );
       } catch (_) {
@@ -693,20 +720,28 @@ final twicProfileSummaryProvider = FutureProvider.family
 /// Fetch TWIC games via the dedicated player-games endpoint (unfiltered).
 /// Used by [playerGamesDataKeyProvider] for base analytics when
 /// [gamebasePlayerId] is available — avoids the globalSearch path entirely.
-Future<List<GamesTourModel>> _getTwicGamesViaPlayerEndpoint(
-  Ref ref,
-  String playerId,
-) async {
+Future<List<GamesTourModel>> _getTwicGamesViaDedicatedEndpoint(
+  Ref ref, {
+  String? playerId,
+  String? memorialSourceIdentity,
+}) async {
   final repo = ref.read(gamebaseRepositoryProvider);
   final allRows = <Map<String, dynamic>>[];
 
   var page = 0;
   while (true) {
-    final response = await repo.getPlayerGames(
-      playerId: playerId,
-      pageNumber: page,
-      pageSize: 100,
-    );
+    final response =
+        playerId != null && playerId.isNotEmpty
+            ? await repo.getPlayerGames(
+              playerId: playerId,
+              pageNumber: page,
+              pageSize: 100,
+            )
+            : await repo.getMemorialPlayerGames(
+              sourceIdentity: memorialSourceIdentity!,
+              pageNumber: page,
+              pageSize: 100,
+            );
 
     final data = response['data'];
     if (data is List) {
@@ -792,11 +827,14 @@ Future<List<GamesTourModel>> _getTwicGamesViaPlayerEndpoint(
           whiteClockCentiseconds: 0,
           blackClockCentiseconds: 0,
           gameStatus: GameStatus.fromString(result),
-          roundId: 'twic_profile',
-          roundSlug:
-              (eco != null && eco.trim().isNotEmpty)
-                  ? eco.trim()
-                  : (timeControl ?? ''),
+          roundId: playerProfileRoundLabel(row, fallback: 'twic_profile'),
+          roundSlug: playerProfileRoundLabel(
+            row,
+            fallback:
+                (eco != null && eco.trim().isNotEmpty)
+                    ? eco.trim()
+                    : (timeControl ?? ''),
+          ),
           tourId: tourId.isNotEmpty ? tourId : canonicalEvent,
           tourSlug: canonicalEvent,
           pgn: pgn,
@@ -818,13 +856,7 @@ Future<List<GamesTourModel>> _getTwicGamesViaPlayerEndpoint(
         .getPlayersByFideIds(fideIds);
     games = enrichGamesWithChessPlayers(games, playersByFideId);
   }
-
-  final epochFallback = DateTime.fromMillisecondsSinceEpoch(0);
-  games.sort((a, b) {
-    final aTime = a.lastMoveTime ?? epochFallback;
-    final bTime = b.lastMoveTime ?? epochFallback;
-    return bTime.compareTo(aTime);
-  });
+  games.sort(comparePlayerProfileGamesNewestFirst);
 
   return games;
 }
@@ -1011,11 +1043,14 @@ Future<List<GamesTourModel>> _getTwicGamesFromGamebase(
           whiteClockCentiseconds: 0,
           blackClockCentiseconds: 0,
           gameStatus: GameStatus.fromString(result),
-          roundId: 'twic_profile',
-          roundSlug:
-              (eco != null && eco.trim().isNotEmpty)
-                  ? eco.trim()
-                  : (timeControl ?? ''),
+          roundId: playerProfileRoundLabel(row, fallback: 'twic_profile'),
+          roundSlug: playerProfileRoundLabel(
+            row,
+            fallback:
+                (eco != null && eco.trim().isNotEmpty)
+                    ? eco.trim()
+                    : (timeControl ?? ''),
+          ),
           tourId: tourId.isNotEmpty ? tourId : canonicalEvent,
           tourSlug: canonicalEvent,
           pgn: pgn,
@@ -1037,13 +1072,7 @@ Future<List<GamesTourModel>> _getTwicGamesFromGamebase(
         .getPlayersByFideIds(fideIds);
     games = enrichGamesWithChessPlayers(games, playersByFideId);
   }
-
-  final epochFallback = DateTime.fromMillisecondsSinceEpoch(0);
-  games.sort((a, b) {
-    final aTime = a.lastMoveTime ?? epochFallback;
-    final bTime = b.lastMoveTime ?? epochFallback;
-    return bTime.compareTo(aTime);
-  });
+  games.sort(comparePlayerProfileGamesNewestFirst);
 
   return games;
 }
@@ -1599,6 +1628,160 @@ int? _largerInt(int? a, int? b) {
   return a > b ? a : b;
 }
 
+/// Builds an exact memorial event history from rows returned by the memorial
+/// games endpoint. Memorial profiles deliberately do not resolve through the
+/// mutable UUID player index, so their Events tab must preserve the same
+/// source identity as Games and Stats.
+List<PlayerEventData> buildMemorialPlayerEventsFromRows(
+  Iterable<Map<String, dynamic>> rows,
+) {
+  final byIdentity = <String, _MemorialEventAccumulator>{};
+
+  for (final row in rows) {
+    final rawEvent = _trimmedTwicRowString(row, 'event');
+    final canonicalEvent = _trimmedTwicRowString(row, 'canonicalEvent');
+    final title = canonicalEvent ?? rawEvent;
+    if (title == null || title.isEmpty) continue;
+
+    final date = _parsePlayerEventDateTime(row['date']);
+    final canonicalKey = _trimmedTwicRowString(row, 'canonicalKey');
+    final site = _trimmedTwicRowString(row, 'site');
+    final broadcastSlug =
+        _trimmedTwicRowString(row, 'broadcastSlug') ??
+        broadcastSlugFromSite(site);
+    final fallbackYear = date?.year.toString() ?? 'undated';
+    final normalizedTitle = title
+        .toLowerCase()
+        .replaceAll(RegExp(r'[^\p{L}\p{N}]+', unicode: true), '-')
+        .replaceAll(RegExp(r'^-+|-+$'), '');
+    final normalizedCanonicalKey = canonicalKey
+        ?.toLowerCase()
+        .replaceAll(RegExp(r'[^\p{L}\p{N}]+', unicode: true), '-')
+        .replaceAll(RegExp(r'^-+|-+$'), '');
+    final normalizedRawEvent = rawEvent
+        ?.toLowerCase()
+        .replaceAll(RegExp(r'[^\p{L}\p{N}]+', unicode: true), '-')
+        .replaceAll(RegExp(r'^-+|-+$'), '');
+    final hasStrongCanonicalKey =
+        canonicalKey != null &&
+        (broadcastSlug != null ||
+            (normalizedCanonicalKey != null &&
+                normalizedCanonicalKey != normalizedTitle &&
+                normalizedCanonicalKey != normalizedRawEvent));
+    final identity =
+        hasStrongCanonicalKey
+            ? 'canonical:$canonicalKey'
+            : broadcastSlug != null
+            ? 'broadcast:$broadcastSlug'
+            : 'title:$normalizedTitle:$fallbackYear';
+
+    final accumulator = byIdentity.putIfAbsent(
+      identity,
+      () => _MemorialEventAccumulator(
+        title: title,
+        canonicalKey: canonicalKey,
+        broadcastSlug: broadcastSlug,
+        site: site,
+      ),
+    );
+    accumulator.add(row, date: date);
+  }
+
+  final events = byIdentity.values
+      .map((accumulator) => accumulator.toEvent())
+      .toList(growable: false);
+  events.sort((a, b) {
+    final aDate = a.endDate ?? a.startDate ?? DateTime(1900);
+    final bDate = b.endDate ?? b.startDate ?? DateTime(1900);
+    return bDate.compareTo(aDate);
+  });
+  return events;
+}
+
+class _MemorialEventAccumulator {
+  _MemorialEventAccumulator({
+    required this.title,
+    this.canonicalKey,
+    this.broadcastSlug,
+    this.site,
+  });
+
+  final String title;
+  final String? canonicalKey;
+  final String? broadcastSlug;
+  final String? site;
+  final Map<String, int> _timeControls = <String, int>{};
+  int games = 0;
+  double score = 0;
+  int scoredGames = 0;
+  DateTime? startDate;
+  DateTime? endDate;
+  int ratingTotal = 0;
+  int ratingCount = 0;
+  int? maxElo;
+
+  void add(Map<String, dynamic> row, {required DateTime? date}) {
+    games += 1;
+    switch (_trimmedTwicRowString(row, 'outcome')?.toLowerCase()) {
+      case 'win':
+        score += 1;
+        scoredGames += 1;
+        break;
+      case 'draw':
+        score += 0.5;
+        scoredGames += 1;
+        break;
+      case 'loss':
+        scoredGames += 1;
+        break;
+    }
+    startDate = _earlierDate(startDate, date);
+    endDate = _laterDate(endDate, date);
+
+    final timeControl = _trimmedTwicRowString(row, 'timeControl');
+    if (timeControl != null) {
+      _timeControls.update(
+        timeControl,
+        (count) => count + 1,
+        ifAbsent: () => 1,
+      );
+    }
+
+    for (final key in const <String>['whiteElo', 'blackElo']) {
+      final rating = _parsePlayerEventInt(row[key]);
+      if (rating == null || rating <= 0) continue;
+      ratingTotal += rating;
+      ratingCount += 1;
+      maxElo = _largerInt(maxElo, rating);
+    }
+  }
+
+  PlayerEventData toEvent() {
+    final dominantTimeControl =
+        _timeControls.entries.isEmpty
+            ? null
+            : (_timeControls.entries.toList()
+                  ..sort((a, b) => b.value.compareTo(a.value)))
+                .first
+                .key;
+    return PlayerEventData(
+      tourId: title,
+      tourName: title,
+      tourSlug: title,
+      canonicalKey: canonicalKey,
+      broadcastSlug: broadcastSlug,
+      gamesPlayed: games,
+      score: scoredGames == games ? score : null,
+      startDate: startDate,
+      endDate: endDate,
+      site: site,
+      dominantTimeControl: dominantTimeControl,
+      avgElo: ratingCount == 0 ? null : ratingTotal ~/ ratingCount,
+      maxElo: maxElo,
+    );
+  }
+}
+
 class _PlayerEventBroadcastMeta {
   const _PlayerEventBroadcastMeta({
     this.startDate,
@@ -1853,6 +2036,27 @@ final playerEventCardProvider = FutureProvider.autoDispose
 final playerProfileDataKeyProvider = FutureProvider.family
     .autoDispose<PlayerProfileData?, PlayerProfileKey>((ref, playerKey) async {
       if (playerKey.source == PlayerProfileDataSource.twic) {
+        final memorialIdentity = playerKey.memorialSourceIdentity?.trim();
+        if (memorialIdentity != null && memorialIdentity.isNotEmpty) {
+          final overview = await ref.watch(
+            memorialPlayerOverviewProvider(memorialIdentity).future,
+          );
+          final player = overview?.player;
+          if (player == null) return null;
+          final fideId = int.tryParse(player.fideId?.trim() ?? '') ?? 0;
+          return PlayerProfileData(
+            fideId: fideId,
+            name: player.name,
+            title: ChessTitleUtils.normalize(player.title),
+            federation: player.fed,
+            classicalRating:
+                player.ratingClassical > 0 ? player.ratingClassical : null,
+            rapidRating: player.ratingRapid > 0 ? player.ratingRapid : null,
+            blitzRating: player.ratingBlitz > 0 ? player.ratingBlitz : null,
+            birthday: player.birthDate,
+          );
+        }
+
         final repo = ref.read(gamebaseRepositoryProvider);
         final playerId = await _resolveTwicPlayerId(ref, playerKey);
 
@@ -2858,10 +3062,21 @@ final twicPlayerStatsProvider = FutureProvider.family.autoDispose<
 
   Future<PlayerAnalytics?> fallbackFromLoadedGames() async {
     final gamesState = ref.read(playerProfileGamesKeyProvider(playerKey));
-    if (gamesState.allGames.isEmpty) return null;
-    if (gamesState.hasMorePages) return null;
+    var allGames = gamesState.allGames;
+    final memorialIdentity = playerKey.memorialSourceIdentity?.trim();
+    final needsCompleteMemorialSet =
+        memorialIdentity != null &&
+        memorialIdentity.isNotEmpty &&
+        (gamesState.hasMorePages ||
+            (gamesState.totalCount != null &&
+                allGames.length < gamesState.totalCount!));
+    if (needsCompleteMemorialSet) {
+      allGames = await ref.watch(playerGamesDataKeyProvider(playerKey).future);
+    }
+    if (allGames.isEmpty) return null;
+    if (gamesState.hasMorePages && !needsCompleteMemorialSet) return null;
     final totalCount = gamesState.totalCount;
-    if (totalCount != null && gamesState.allGames.length < totalCount) {
+    if (totalCount != null && allGames.length < totalCount) {
       return null;
     }
 
@@ -2876,13 +3091,13 @@ final twicPlayerStatsProvider = FutureProvider.family.autoDispose<
     final filteredGames =
         playerProfileHasStructuredFilters(filter)
             ? GameFilterHelper.applyFilter(
-              gamesState.allGames,
+              allGames,
               effectiveFilter,
               targetFideId: playerKey.fideId,
               playerNameQuery:
                   playerKey.hasFideId ? null : playerKey.playerName,
             )
-            : gamesState.allGames;
+            : allGames;
 
     return ref.read(
       playerAnalyticsProvider(
@@ -2895,8 +3110,15 @@ final twicPlayerStatsProvider = FutureProvider.family.autoDispose<
     );
   }
 
-  var playerId = await ref.watch(twicPlayerIdProvider(playerKey).future);
-  if (playerId == null || playerId.isEmpty) return null;
+  final memorialIdentity = playerKey.memorialSourceIdentity?.trim();
+  final isMemorial = memorialIdentity != null && memorialIdentity.isNotEmpty;
+  String? playerId;
+  if (!isMemorial) {
+    playerId = await ref.watch(twicPlayerIdProvider(playerKey).future);
+    if (playerId == null || playerId.isEmpty) {
+      return fallbackFromLoadedGames();
+    }
+  }
 
   final filterSnapshot = ref.watch(
     playerProfileGamesKeyProvider(playerKey).select(
@@ -2939,20 +3161,44 @@ final twicPlayerStatsProvider = FutureProvider.family.autoDispose<
   final repo = ref.read(gamebaseRepositoryProvider);
   Map<String, dynamic> response;
   try {
-    response = await repo.getPlayerStats(
-      playerId: playerId,
-      q: searchQuery.isNotEmpty ? searchQuery : null,
-      color: color,
-      timeControl: timeControl,
-      outcome: outcome,
-      eco: request.scope == TwicStatsScope.filteredIgnoringEco ? null : eco,
-      dateFrom: _yearMinToDateFrom(effectiveFilter),
-      dateTo: _yearMaxToExclusiveDateTo(effectiveFilter),
-      ratingFrom: ratingFrom,
-      ratingTo: ratingTo,
-      isOnline: _onlineToApi(effectiveFilter.online),
-    );
+    response =
+        isMemorial
+            ? await repo.getMemorialPlayerStats(
+              sourceIdentity: memorialIdentity,
+              q: searchQuery.isNotEmpty ? searchQuery : null,
+              color: color,
+              timeControl: timeControl,
+              outcome: outcome,
+              eco:
+                  request.scope == TwicStatsScope.filteredIgnoringEco
+                      ? null
+                      : eco,
+              dateFrom: _yearMinToDateFrom(effectiveFilter),
+              dateTo: _yearMaxToExclusiveDateTo(effectiveFilter),
+              ratingFrom: ratingFrom,
+              ratingTo: ratingTo,
+              isOnline: _onlineToApi(effectiveFilter.online),
+            )
+            : await repo.getPlayerStats(
+              playerId: playerId!,
+              q: searchQuery.isNotEmpty ? searchQuery : null,
+              color: color,
+              timeControl: timeControl,
+              outcome: outcome,
+              eco:
+                  request.scope == TwicStatsScope.filteredIgnoringEco
+                      ? null
+                      : eco,
+              dateFrom: _yearMinToDateFrom(effectiveFilter),
+              dateTo: _yearMaxToExclusiveDateTo(effectiveFilter),
+              ratingFrom: ratingFrom,
+              ratingTo: ratingTo,
+              isOnline: _onlineToApi(effectiveFilter.online),
+            );
   } on DioException catch (e) {
+    if (isMemorial) {
+      return fallbackFromLoadedGames();
+    }
     if (e.response?.statusCode == 404) {
       final refreshedId = await _resolveTwicPlayerId(
         ref,
@@ -3157,13 +3403,7 @@ class PlayerProfileGamesNotifier
         totalCount = page.hasMore ? null : allGames.length;
       }
 
-      // Sort by date descending
-      final epochFallback = DateTime.fromMillisecondsSinceEpoch(0);
-      allGames.sort((a, b) {
-        final aTime = a.lastMoveTime ?? epochFallback;
-        final bTime = b.lastMoveTime ?? epochFallback;
-        return bTime.compareTo(aTime);
-      });
+      allGames.sort(comparePlayerProfileGamesNewestFirst);
 
       if (!mounted || token != _loadToken) return;
       state = state.copyWith(
@@ -3222,13 +3462,22 @@ class PlayerProfileGamesNotifier
     required int pageSize,
   }) async {
     final repo = _ref.read(gamebaseRepositoryProvider);
+    final memorialIdentity = _playerKey.memorialSourceIdentity?.trim();
+    if (memorialIdentity != null && memorialIdentity.isNotEmpty) {
+      return _fetchViaDedicatedGamesEndpointPage(
+        repo,
+        memorialSourceIdentity: memorialIdentity,
+        pageNumber: pageNumber,
+        pageSize: pageSize,
+      );
+    }
     final pid = await _ref.read(twicPlayerIdProvider(_playerKey).future);
 
     if (pid != null && pid.isNotEmpty) {
       try {
-        return await _fetchViaPlayerGamesEndpointPage(
+        return await _fetchViaDedicatedGamesEndpointPage(
           repo,
-          pid,
+          playerId: pid,
           pageNumber: pageNumber,
           pageSize: pageSize,
         );
@@ -3241,9 +3490,9 @@ class PlayerProfileGamesNotifier
         );
         if (refreshed != null && refreshed.isNotEmpty && refreshed != pid) {
           _ref.invalidate(twicPlayerIdProvider(_playerKey));
-          return _fetchViaPlayerGamesEndpointPage(
+          return _fetchViaDedicatedGamesEndpointPage(
             repo,
-            refreshed,
+            playerId: refreshed,
             pageNumber: pageNumber,
             pageSize: pageSize,
           );
@@ -3258,9 +3507,10 @@ class PlayerProfileGamesNotifier
   }
 
   /// Path A: Has gamebasePlayerId → GET /api/player/{id}/games with filters.
-  Future<_TwicGamesPageResult> _fetchViaPlayerGamesEndpointPage(
-    GamebaseRepository repo,
-    String playerId, {
+  Future<_TwicGamesPageResult> _fetchViaDedicatedGamesEndpointPage(
+    GamebaseRepository repo, {
+    String? playerId,
+    String? memorialSourceIdentity,
     required int pageNumber,
     required int pageSize,
   }) async {
@@ -3287,8 +3537,7 @@ class PlayerProfileGamesNotifier
             ? effectiveFilter.maxRating
             : null;
 
-    final response = await repo.getPlayerGames(
-      playerId: playerId,
+    final requestArguments = (
       q: state.searchQuery.trim().isNotEmpty ? state.searchQuery.trim() : null,
       color: color,
       timeControl: timeControl,
@@ -3304,6 +3553,42 @@ class PlayerProfileGamesNotifier
       pageNumber: pageNumber,
       pageSize: pageSize,
     );
+    final response =
+        playerId != null && playerId.isNotEmpty
+            ? await repo.getPlayerGames(
+              playerId: playerId,
+              q: requestArguments.q,
+              color: requestArguments.color,
+              timeControl: requestArguments.timeControl,
+              outcome: requestArguments.outcome,
+              eco: requestArguments.eco,
+              opening: requestArguments.opening,
+              variation: requestArguments.variation,
+              dateFrom: requestArguments.dateFrom,
+              dateTo: requestArguments.dateTo,
+              ratingFrom: requestArguments.ratingFrom,
+              ratingTo: requestArguments.ratingTo,
+              isOnline: requestArguments.isOnline,
+              pageNumber: requestArguments.pageNumber,
+              pageSize: requestArguments.pageSize,
+            )
+            : await repo.getMemorialPlayerGames(
+              sourceIdentity: memorialSourceIdentity!,
+              q: requestArguments.q,
+              color: requestArguments.color,
+              timeControl: requestArguments.timeControl,
+              outcome: requestArguments.outcome,
+              eco: requestArguments.eco,
+              opening: requestArguments.opening,
+              variation: requestArguments.variation,
+              dateFrom: requestArguments.dateFrom,
+              dateTo: requestArguments.dateTo,
+              ratingFrom: requestArguments.ratingFrom,
+              ratingTo: requestArguments.ratingTo,
+              isOnline: requestArguments.isOnline,
+              pageNumber: requestArguments.pageNumber,
+              pageSize: requestArguments.pageSize,
+            );
 
     final rows = <Map<String, dynamic>>[];
     final data = response['data'];
@@ -3611,11 +3896,14 @@ class PlayerProfileGamesNotifier
       whiteClockCentiseconds: 0,
       blackClockCentiseconds: 0,
       gameStatus: GameStatus.fromString(result),
-      roundId: 'twic_profile',
-      roundSlug:
-          (eco != null && eco.trim().isNotEmpty)
-              ? eco.trim()
-              : (timeControl ?? ''),
+      roundId: playerProfileRoundLabel(row, fallback: 'twic_profile'),
+      roundSlug: playerProfileRoundLabel(
+        row,
+        fallback:
+            (eco != null && eco.trim().isNotEmpty)
+                ? eco.trim()
+                : (timeControl ?? ''),
+      ),
       tourId: canonicalTourId.isNotEmpty ? canonicalTourId : canonicalEvent,
       tourSlug: canonicalEvent,
       lastMove: rowLastMove,
@@ -3726,12 +4014,7 @@ class PlayerProfileGamesNotifier
       if (!mounted || token != _loadToken) return;
 
       final merged = _mergeGames(state.allGames, pageGames);
-      final epochFallback = DateTime.fromMillisecondsSinceEpoch(0);
-      merged.sort((a, b) {
-        final aTime = a.lastMoveTime ?? epochFallback;
-        final bTime = b.lastMoveTime ?? epochFallback;
-        return bTime.compareTo(aTime);
-      });
+      merged.sort(comparePlayerProfileGamesNewestFirst);
       state = state.copyWith(
         allGames: merged,
         isLoadingMore: false,

@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:chessever2/providers/country_dropdown_provider.dart';
+import 'package:chessever2/repository/favorites/models/favorite_player.dart';
 import 'package:chessever2/repository/supabase/chess_player/chess_player_repository.dart';
 import 'package:chessever2/providers/favorite_players_provider.dart';
 import 'package:chessever2/screens/favorites/rankings/ranking_filter_controls.dart';
@@ -26,6 +27,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:chessever2/repository/gamebase/gamebase_repository.dart';
+import 'package:chessever2/repository/gamebase/memorial_player.dart';
 
 // --- Provider ---
 
@@ -163,15 +166,31 @@ class CountrymenPlayersNotifier extends StateNotifier<CountrymenPlayersState> {
 
     try {
       final fetchRankings = _ref.read(countryRankingsFetcherProvider);
-      final players = await retryTransientRead(
-        () => fetchRankings(
-          countryCode: countryCode,
-          filters: requestedFilters,
-          searchQuery: requestedSearch,
-          limit: _pageSize,
-          offset: offset,
+      final results = await Future.wait<dynamic>([
+        retryTransientRead(
+          () => fetchRankings(
+            countryCode: countryCode,
+            filters: requestedFilters,
+            searchQuery: requestedSearch,
+            limit: _pageSize,
+            offset: offset,
+          ),
         ),
-      );
+        if (requestedSearch.isNotEmpty && isInitial)
+          _ref
+              .read(gamebaseRepositoryProvider)
+              .getMemorialPlayers(
+                name: requestedSearch,
+                federation: countryCode,
+                includeWithoutGames: true,
+                pageSize: _pageSize,
+              )
+              .catchError((_) => <MemorialPlayer>[])
+        else
+          Future.value(<MemorialPlayer>[]),
+      ]);
+      final players = results[0] as List<ChessPlayer>;
+      final memorialPlayers = results[1] as List<MemorialPlayer>;
 
       if (!mounted || generation != _requestGeneration) return;
 
@@ -189,8 +208,56 @@ class CountrymenPlayersNotifier extends StateNotifier<CountrymenPlayersState> {
                 ),
               )
               .toList();
+      final byIdentity = <String, PlayerStandingModel>{};
+      String identityKey(PlayerStandingModel player) {
+        if (player.fideId != null && player.fideId! > 0) {
+          return 'fide:${player.fideId}';
+        }
+        final memorialIdentity = player.memorialSourceIdentity?.trim();
+        if (memorialIdentity != null && memorialIdentity.isNotEmpty) {
+          return 'memorial:${memorialIdentity.toLowerCase()}';
+        }
+        final normalized =
+            player.name
+                .toLowerCase()
+                .replaceAll(',', ' ')
+                .replaceAll(RegExp(r'\s+'), ' ')
+                .trim();
+        return 'name:$normalized';
+      }
+
+      for (final player in playerModels) {
+        byIdentity[identityKey(player)] = player;
+      }
+      for (final memorial in memorialPlayers) {
+        final memorialModel = PlayerStandingModel(
+          name: memorial.name,
+          countryCode: _fideFedToCountryCode(memorial.fed),
+          score: memorial.ratingClassical,
+          scoreChange: 0,
+          matchScore: null,
+          title: memorial.title,
+          fideId: int.tryParse(memorial.fideId ?? ''),
+          gamebasePlayerId: memorial.gamebasePlayerId,
+          memorialSourceIdentity: memorial.sourceIdentity,
+          memorialRouteId: memorial.routeId,
+        );
+        final key = identityKey(memorialModel);
+        final existing = byIdentity[key];
+        byIdentity[key] =
+            existing == null
+                ? memorialModel
+                : existing.copyWith(
+                  gamebasePlayerId: memorial.gamebasePlayerId,
+                  memorialSourceIdentity: memorial.sourceIdentity,
+                  memorialRouteId: memorial.routeId,
+                );
+      }
+      final mergedPlayerModels = byIdentity.values.toList(growable: false);
       final allPlayers =
-          isInitial ? playerModels : [...state.players, ...playerModels];
+          isInitial
+              ? mergedPlayerModels
+              : [...state.players, ...mergedPlayerModels];
       final inactiveIds = <int>{
         if (!isInitial) ...state.inactivePlayerIds,
         ...players.where((player) => player.isInactive).map((p) => p.fideid),
@@ -360,13 +427,7 @@ class _CountrymenPlayersTabState extends ConsumerState<CountrymenPlayersTab>
     final state = ref.watch(countrymenPlayersProvider);
     // Watch favoritePlayersProviderNew for up-to-date state
     final favoritesAsync = ref.watch(favoritePlayersProviderNew);
-    final favoriteIds =
-        favoritesAsync.valueOrNull
-            ?.map((p) => int.tryParse(p.fideId ?? ''))
-            .where((id) => id != null)
-            .cast<int>()
-            .toSet() ??
-        <int>{};
+    final favorites = favoritesAsync.valueOrNull ?? const [];
 
     final horizontalPadding = ResponsiveHelper.adaptive(
       phone: 16.w,
@@ -441,7 +502,7 @@ class _CountrymenPlayersTabState extends ConsumerState<CountrymenPlayersTab>
             ),
           ),
           // Content
-          _buildContentSliver(state, favoriteIds),
+          _buildContentSliver(state, favorites),
           // Bottom padding
           SliverToBoxAdapter(child: SizedBox(height: 24.h)),
         ],
@@ -475,7 +536,7 @@ class _CountrymenPlayersTabState extends ConsumerState<CountrymenPlayersTab>
 
   Widget _buildContentSliver(
     CountrymenPlayersState state,
-    Set<int> favoriteIds,
+    List<FavoritePlayer> favorites,
   ) {
     if (state.isLoading && state.players.isEmpty) {
       return SliverFillRemaining(
@@ -504,12 +565,12 @@ class _CountrymenPlayersTabState extends ConsumerState<CountrymenPlayersTab>
       );
     }
 
-    return _buildPlayersSliver(state, favoriteIds);
+    return _buildPlayersSliver(state, favorites);
   }
 
   Widget _buildPlayersSliver(
     CountrymenPlayersState state,
-    Set<int> favoriteIds,
+    List<FavoritePlayer> favorites,
   ) {
     final players = state.players;
     final showLoadingIndicator =
@@ -565,7 +626,14 @@ class _CountrymenPlayersTabState extends ConsumerState<CountrymenPlayersTab>
           }
 
           final player = players[index];
-          final isFavorite = favoriteIds.contains(player.fideId);
+          final isFavorite = favorites.any(
+            (favorite) => favoritePlayerMatchesIdentity(
+              favorite,
+              fideId: player.fideId?.toString(),
+              playerName: player.name,
+              memorialSourceIdentity: player.memorialSourceIdentity,
+            ),
+          );
 
           return FigmaPlayerCard(
             player: player,
@@ -597,6 +665,9 @@ class _CountrymenPlayersTabState extends ConsumerState<CountrymenPlayersTab>
               title: player.title,
               federation: player.countryCode,
               rating: player.score,
+              gamebasePlayerId: player.gamebasePlayerId,
+              memorialSourceIdentity: player.memorialSourceIdentity,
+              memorialRouteId: player.memorialRouteId,
             ),
       ),
     );
@@ -620,7 +691,11 @@ class _CountrymenPlayersTabState extends ConsumerState<CountrymenPlayersTab>
         if (currentlyFavorite) {
           await ref
               .read(favoritePlayersProviderNew.notifier)
-              .removeFavorite(player.name);
+              .removeFavorite(
+                player.name,
+                fideId: player.fideId?.toString(),
+                memorialSourceIdentity: player.memorialSourceIdentity,
+              );
         } else {
           await ref
               .read(favoritePlayersProviderNew.notifier)
@@ -630,6 +705,9 @@ class _CountrymenPlayersTabState extends ConsumerState<CountrymenPlayersTab>
                 countryCode: player.countryCode,
                 rating: player.score,
                 title: player.title,
+                gamebasePlayerId: player.gamebasePlayerId,
+                memorialSourceIdentity: player.memorialSourceIdentity,
+                memorialRouteId: player.memorialRouteId,
               );
         }
       } on FavoriteLimitExceededException {

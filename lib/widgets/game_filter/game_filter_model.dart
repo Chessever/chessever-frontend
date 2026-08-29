@@ -299,19 +299,28 @@ class GameFilter {
   static const int absoluteMaxRating = 3500;
 
   GameFilter({
-    this.result = GameResultFilter.all,
+    GameResultFilter result = GameResultFilter.all,
     this.color = GameColorFilter.all,
     this.timeControl = GameTimeControlFilter.all,
     this.online = GameOnlineFilter.all,
-    this.live = GameLiveFilter.all,
+    GameLiveFilter live = GameLiveFilter.all,
     GameEcoFilter? eco,
-    this.minYear = defaultMinYear,
+    int minYear = defaultMinYear,
     int? maxYear,
     this.minRating = defaultMinRating,
     this.maxRating = absoluteMaxRating,
     List<GameSortCriterion>? sorts,
-  }) : eco = eco ?? GameEcoFilter.all,
-       maxYear = maxYear ?? DateTime.now().year,
+  }) : result = live == GameLiveFilter.live ? GameResultFilter.all : result,
+       live = live,
+       eco = eco ?? GameEcoFilter.all,
+       minYear =
+           live == GameLiveFilter.live && minYear > DateTime.now().year
+               ? DateTime.now().year
+               : minYear,
+       maxYear =
+           live == GameLiveFilter.live
+               ? DateTime.now().year
+               : (maxYear ?? DateTime.now().year),
        sorts = sorts ?? const [];
 
   final GameResultFilter result;

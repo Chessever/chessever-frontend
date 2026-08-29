@@ -18,6 +18,8 @@ import 'package:chessever2/screens/player_profile/tabs/player_events_tab.dart';
 import 'package:chessever2/screens/player_profile/tabs/player_games_tab.dart';
 import 'package:chessever2/screens/standings/providers/player_utils_provider.dart';
 import 'package:chessever2/services/fide_photo_service.dart';
+import 'package:chessever2/repository/gamebase/memorial_player.dart';
+import 'package:chessever2/repository/gamebase/memorial_tree_scope.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
@@ -59,6 +61,10 @@ const playerProfileTabNames = {
   PlayerProfileTab.events: 'Events',
 };
 
+@visibleForTesting
+List<PlayerProfileTab> playerProfileTabsFor({required bool isMemorial}) =>
+    PlayerProfileTab.values;
+
 /// Provider for selected tab
 final selectedPlayerProfileTabProvider =
     StateProvider.autoDispose<PlayerProfileTab>(
@@ -76,6 +82,8 @@ class PlayerProfileScreen extends ConsumerStatefulWidget {
     this.federation,
     this.rating,
     this.gamebasePlayerId,
+    this.memorialSourceIdentity,
+    this.memorialRouteId,
   });
 
   /// FIDE ID - can be null for players without official FIDE registration
@@ -85,6 +93,8 @@ class PlayerProfileScreen extends ConsumerStatefulWidget {
   final String? federation;
   final int? rating;
   final String? gamebasePlayerId;
+  final String? memorialSourceIdentity;
+  final String? memorialRouteId;
 
   /// Create from SearchPlayer model
   factory PlayerProfileScreen.fromSearchPlayer(SearchPlayer player) {
@@ -94,6 +104,9 @@ class PlayerProfileScreen extends ConsumerStatefulWidget {
       title: player.title,
       federation: player.fed,
       rating: player.rating,
+      gamebasePlayerId: player.gamebasePlayerId,
+      memorialSourceIdentity: player.memorialSourceIdentity,
+      memorialRouteId: player.memorialRouteId,
     );
   }
 
@@ -115,6 +128,17 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
   static const _source = PlayerProfileDataSource.twic;
   String? _currentGamebasePlayerId;
   int? _gamesTabCueCount;
+
+  bool get _isMemorial =>
+      widget.memorialSourceIdentity?.trim().isNotEmpty == true;
+
+  List<PlayerProfileTab> get _availableTabs =>
+      playerProfileTabsFor(isMemorial: _isMemorial);
+
+  int _tabIndex(PlayerProfileTab tab) {
+    final index = _availableTabs.indexOf(tab);
+    return index < 0 ? 0 : index;
+  }
 
   bool _showHeaderExtras = true;
   double _scrollAccumulator = 0.0;
@@ -151,9 +175,16 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
   void initState() {
     super.initState();
     _currentGamebasePlayerId = _normalizePlayerId(widget.gamebasePlayerId);
-    final initialTab = ref.read(selectedPlayerProfileTabProvider);
+    final requestedTab = ref.read(selectedPlayerProfileTabProvider);
+    final initialTab =
+        _availableTabs.contains(requestedTab)
+            ? requestedTab
+            : PlayerProfileTab.about;
+    if (initialTab != requestedTab) {
+      ref.read(selectedPlayerProfileTabProvider.notifier).state = initialTab;
+    }
     _pageController = PageController(
-      initialPage: PlayerProfileTab.values.indexOf(initialTab),
+      initialPage: _availableTabs.indexOf(initialTab),
     );
 
     _favoriteAnimationController = AnimationController(
@@ -183,7 +214,7 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
 
   void _handleTabSelection(int index) {
     HapticFeedbackService.buttonPress();
-    final nextTab = PlayerProfileTab.values[index];
+    final nextTab = _availableTabs[index];
     final currentTab = ref.read(selectedPlayerProfileTabProvider);
     if (nextTab == currentTab) {
       _scrollToTopBus.request();
@@ -201,9 +232,9 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
   }
 
   void _handlePageChanged(int index) {
-    final nextTab = PlayerProfileTab.values[index];
+    final nextTab = _availableTabs[index];
     final currentTab = ref.read(selectedPlayerProfileTabProvider);
-    if (PlayerProfileTab.values.indexOf(currentTab) != index) {
+    if (_availableTabs.indexOf(currentTab) != index) {
       ref.read(selectedPlayerProfileTabProvider.notifier).state = nextTab;
     }
     if (nextTab == PlayerProfileTab.games && _gamesTabCueCount != null) {
@@ -236,6 +267,7 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
       playerName: widget.playerName,
       source: _source,
       gamebasePlayerId: _currentGamebasePlayerId,
+      memorialSourceIdentity: widget.memorialSourceIdentity,
     );
     final currentState = ref.read(playerProfileGamesKeyProvider(playerKey));
     final notifier = ref.read(
@@ -290,12 +322,14 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
 
   /// Resolve the gamebase player UUID from constructor or TWIC summary.
   String? _resolveGamebasePlayerId() {
+    if (_isMemorial) return null;
     if (_currentGamebasePlayerId != null) return _currentGamebasePlayerId;
     final twicLookupKey = PlayerProfileKey(
       fideId: widget.fideId,
       playerName: widget.playerName,
       source: PlayerProfileDataSource.twic,
       gamebasePlayerId: _currentGamebasePlayerId,
+      memorialSourceIdentity: widget.memorialSourceIdentity,
     );
     return ref
         .read(twicProfileSummaryProvider(twicLookupKey))
@@ -313,7 +347,10 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
   }
 
   GamebasePlayer _buildExplorerFallbackPlayer(String id) {
-    final cached = ref.read(playerByIdProvider(id)).valueOrNull;
+    final cached =
+        memorialSourceIdentityFromTreeScope(id) == null
+            ? ref.read(playerByIdProvider(id)).valueOrNull
+            : null;
     if (cached != null) return cached;
 
     final activePlayerKey = PlayerProfileKey(
@@ -321,11 +358,14 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
       playerName: widget.playerName,
       source: _source,
       gamebasePlayerId: _currentGamebasePlayerId,
+      memorialSourceIdentity: widget.memorialSourceIdentity,
     );
     final activeProfile =
         ref.read(playerProfileDataKeyProvider(activePlayerKey)).valueOrNull;
     final fallbackChessPlayer =
-        ref.read(chessPlayerByFideIdProvider(widget.fideId)).valueOrNull;
+        _isMemorial
+            ? null
+            : ref.read(chessPlayerByFideIdProvider(widget.fideId)).valueOrNull;
 
     final name =
         (activeProfile?.name.trim().isNotEmpty ?? false)
@@ -341,7 +381,10 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
                 ? widget.federation!.trim()
                 : (fallbackChessPlayer?.country?.trim() ?? ''));
 
-    final fideId = widget.fideId?.toString() ?? '';
+    final fideId =
+        (activeProfile?.fideId ?? 0) > 0
+            ? activeProfile!.fideId.toString()
+            : (widget.fideId?.toString() ?? '');
 
     final title =
         (activeProfile?.title?.trim().isNotEmpty ?? false)
@@ -368,10 +411,16 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
     if (!hasPremium || !mounted) return;
 
     HapticFeedbackService.buttonPress();
+    final memorialIdentity = widget.memorialSourceIdentity?.trim();
     final uuid = _resolveGamebasePlayerId();
-    if (uuid == null) return;
+    final explorerScope =
+        uuid ??
+        (memorialIdentity != null && memorialIdentity.isNotEmpty
+            ? memorialTreeScopeKey(memorialIdentity)
+            : null);
+    if (explorerScope == null) return;
 
-    final initialPlayer = _buildExplorerFallbackPlayer(uuid);
+    final initialPlayer = _buildExplorerFallbackPlayer(explorerScope);
     if (!mounted) return;
 
     // Map player profile filters → explorer filters (time control + rating only).
@@ -380,6 +429,7 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
       playerName: widget.playerName,
       source: _source,
       gamebasePlayerId: _currentGamebasePlayerId,
+      memorialSourceIdentity: widget.memorialSourceIdentity,
     );
     final gameFilter =
         ref.read(playerProfileGamesKeyProvider(playerKey)).filter;
@@ -399,7 +449,9 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
     );
 
     // Warm/update cache in background without blocking navigation.
-    unawaited(ref.read(playerByIdProvider(uuid).future));
+    if (uuid != null) {
+      unawaited(ref.read(playerByIdProvider(uuid).future));
+    }
   }
 
   Future<void> _toggleFavorite() async {
@@ -411,7 +463,15 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
     final currentlyFavorited = ref
         .read(favoritePlayersProviderNew)
         .maybeWhen(
-          data: (players) => players.any((p) => p.fideId == fideIdStr),
+          data:
+              (players) => players.any(
+                (player) => favoritePlayerMatchesIdentity(
+                  player,
+                  fideId: fideIdStr,
+                  playerName: widget.playerName,
+                  memorialSourceIdentity: widget.memorialSourceIdentity,
+                ),
+              ),
           orElse: () => false,
         );
     if (!currentlyFavorited) {
@@ -431,6 +491,9 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
             countryCode: widget.federation,
             rating: widget.rating,
             title: widget.title,
+            gamebasePlayerId: widget.gamebasePlayerId,
+            memorialSourceIdentity: widget.memorialSourceIdentity,
+            memorialRouteId: widget.memorialRouteId,
           );
       if (isNowFavorite) {
         _favoriteAnimationController.forward().then(
@@ -465,51 +528,78 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
       playerName: widget.playerName,
       source: _source,
       gamebasePlayerId: _currentGamebasePlayerId,
-    );
-    final gamesState = ref.read(playerProfileGamesKeyProvider(playerKey));
-    final activeProfile =
-        ref.read(playerProfileDataKeyProvider(playerKey)).valueOrNull;
-
-    // Overall analytics for the About-page-style card: prefer the backend
-    // all-games stats (same source as the About tab), fall back to computing
-    // from whatever games are already loaded locally.
-    final twicStats =
-        ref
-            .read(
-              twicPlayerStatsProvider(
-                TwicPlayerStatsRequest(
-                  playerKey: playerKey,
-                  scope: TwicStatsScope.allGames,
-                ),
-              ),
-            )
-            .valueOrNull;
-    final analytics =
-        twicStats ??
-        PlayerAnalytics.fromGames(
-          gamesState.allGames,
-          widget.fideId,
-          widget.playerName,
-        );
-
-    final nameParts = effectiveName.split(',');
-    final initials =
-        nameParts.length > 1
-            ? '${nameParts[0].trim().isNotEmpty ? nameParts[0].trim()[0] : ''}'
-                '${nameParts[1].trim().isNotEmpty ? nameParts[1].trim()[0] : ''}'
-            : effectiveName.trim().isNotEmpty
-            ? effectiveName.trim().substring(
-              0,
-              math.min(2, effectiveName.trim().length),
-            )
-            : '';
-
-    final standardRating = activeProfile?.classicalRating ?? widget.rating;
-    final photoFuture = FidePhotoService.getPhotoUrlOrNull(
-      widget.fideId?.toString(),
+      memorialSourceIdentity: widget.memorialSourceIdentity,
     );
 
     try {
+      final activeProfile = await ref.read(
+        playerProfileDataKeyProvider(playerKey).future,
+      );
+      final memorialIdentity = widget.memorialSourceIdentity?.trim();
+      final memorialOverview =
+          memorialIdentity?.isNotEmpty == true
+              ? await ref.read(
+                memorialPlayerOverviewProvider(memorialIdentity!).future,
+              )
+              : null;
+      final shareName =
+          activeProfile?.name.trim().isNotEmpty == true
+              ? activeProfile!.name
+              : effectiveName;
+      final displayShareName = formatPlayerDisplayName(shareName);
+      final shareTitle = activeProfile?.title ?? effectiveTitle;
+      final shareFederation =
+          activeProfile?.federation ?? effectiveFederation ?? '';
+      final shareFideId =
+          (activeProfile?.fideId ?? 0) > 0
+              ? activeProfile!.fideId
+              : widget.fideId;
+
+      PlayerAnalytics? analytics;
+      try {
+        analytics = await ref.read(
+          twicPlayerStatsProvider(
+            TwicPlayerStatsRequest(
+              playerKey: playerKey,
+              scope: TwicStatsScope.allGames,
+            ),
+          ).future,
+        );
+      } catch (_) {}
+      if (analytics == null) {
+        final allGames = await ref.read(
+          playerGamesDataKeyProvider(playerKey).future,
+        );
+        analytics = PlayerAnalytics.fromGames(allGames, shareFideId, shareName);
+      }
+
+      final nameParts = shareName.split(',');
+      final initials =
+          nameParts.length > 1
+              ? '${nameParts[0].trim().isNotEmpty ? nameParts[0].trim()[0] : ''}'
+                  '${nameParts[1].trim().isNotEmpty ? nameParts[1].trim()[0] : ''}'
+              : shareName.trim().isNotEmpty
+              ? shareName.trim().substring(
+                0,
+                math.min(2, shareName.trim().length),
+              )
+              : '';
+      final standardRating = activeProfile?.classicalRating ?? widget.rating;
+      final memorialPhotoUrl = memorialPlayerPhotoUrl(
+        playerName: shareName,
+        sourceIdentity: memorialIdentity,
+      );
+      final photoFuture =
+          memorialIdentity?.isNotEmpty == true
+              ? Future<String?>.value(memorialPhotoUrl)
+              : FidePhotoService.getPhotoUrlOrNull(shareFideId?.toString());
+      final birthYear = memorialOverview?.player.birthDate?.split('-').first;
+      final deathYear = memorialOverview?.player.deathDate?.split('-').first;
+      final lifespan =
+          birthYear?.isNotEmpty == true && deathYear?.isNotEmpty == true
+              ? '$birthYear - $deathYear'
+              : null;
+      if (!mounted) return;
       final logicalWidth = math.min(MediaQuery.of(context).size.width, 430.0);
 
       // Warm the player photo into the image cache before the snapshot so the
@@ -529,16 +619,21 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
         pixelRatio: 3.0,
         child: PlayerProfileShareImageCard(
           width: logicalWidth,
-          playerName: effectiveName,
-          title: effectiveTitle,
-          countryCode: effectiveFederation ?? '',
-          fideId: widget.fideId,
+          playerName: displayShareName,
+          title: shareTitle,
+          countryCode: shareFederation,
+          fideId: shareFideId,
           photoFuture: photoFuture,
           initials: initials,
           standardRating: standardRating,
           rapidRating: activeProfile?.rapidRating,
           blitzRating: activeProfile?.blitzRating,
           analytics: analytics,
+          // The immutable identity is authoritative. Rich local biography
+          // data is optional and must not make a Memorial share card silently
+          // fall back to the live-player labels when that asset is missing.
+          isMemorial: memorialIdentity?.isNotEmpty == true,
+          lifespan: lifespan,
         ),
       );
       if (imageBytes == null) {
@@ -551,7 +646,12 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
       await file.writeAsBytes(imageBytes);
       if (!mounted) return;
 
-      final shareUrl = buildPlayerProfileShareUrl(widget.fideId);
+      final shareUrl = buildPlayerProfileShareUrl(
+        shareFideId,
+        playerName: displayShareName,
+        memorialRouteId:
+            widget.memorialRouteId ?? memorialOverview?.player.routeId,
+      );
       await showShareImagePreview(
         context,
         imageBytes: imageBytes,
@@ -559,7 +659,7 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
           await shareFilesWithText(
             [XFile(file.path, mimeType: 'image/png')],
             text: shareUrl,
-            subject: effectiveName,
+            subject: displayShareName,
             sharePositionOrigin: const Rect.fromLTWH(0, 0, 1, 1),
           );
         },
@@ -569,7 +669,7 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
                 : () async {
                   await Share.share(
                     shareUrl,
-                    subject: effectiveName,
+                    subject: displayShareName,
                     sharePositionOrigin: const Rect.fromLTWH(0, 0, 1, 1),
                   );
                 },
@@ -588,20 +688,25 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
   @override
   Widget build(BuildContext context) {
     final selectedTab = ref.watch(selectedPlayerProfileTabProvider);
-    final hasPlayerExplorer = _resolveGamebasePlayerId() != null;
+    final hasPlayerExplorer =
+        _resolveGamebasePlayerId() != null ||
+        widget.memorialSourceIdentity?.trim().isNotEmpty == true;
 
     final activePlayerKey = PlayerProfileKey(
       fideId: widget.fideId,
       playerName: widget.playerName,
       source: _source,
       gamebasePlayerId: _currentGamebasePlayerId,
+      memorialSourceIdentity: widget.memorialSourceIdentity,
     );
     final activeProfileAsync = ref.watch(
       playerProfileDataKeyProvider(activePlayerKey),
     );
     final activeProfile = activeProfileAsync.valueOrNull;
     final fallbackChessPlayer =
-        ref.watch(chessPlayerByFideIdProvider(widget.fideId)).valueOrNull;
+        _isMemorial
+            ? null
+            : ref.watch(chessPlayerByFideIdProvider(widget.fideId)).valueOrNull;
     final effectiveName =
         (activeProfile?.name.trim().isNotEmpty ?? false)
             ? activeProfile!.name
@@ -629,6 +734,7 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
       playerName: widget.playerName,
       source: PlayerProfileDataSource.twic,
       gamebasePlayerId: _currentGamebasePlayerId,
+      memorialSourceIdentity: widget.memorialSourceIdentity,
     );
     // TWIC summary feeds the games-tab total count and the study-opening row.
     final twicSummaryAsync = ref.watch(
@@ -638,9 +744,17 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
     // Watch favorites to show correct state
     final favoritesAsync = ref.watch(favoritePlayersProviderNew);
     final isFavorite = favoritesAsync.maybeWhen(
-      data:
-          (players) =>
-              players.any((p) => p.fideId == widget.fideId?.toString()),
+      data: (players) {
+        final fideId = widget.fideId?.toString();
+        return players.any(
+          (player) => favoritePlayerMatchesIdentity(
+            player,
+            fideId: fideId,
+            playerName: widget.playerName,
+            memorialSourceIdentity: widget.memorialSourceIdentity,
+          ),
+        );
+      },
       orElse: () => false,
     );
 
@@ -649,6 +763,7 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
       playerName: widget.playerName,
       source: _source,
       gamebasePlayerId: _currentGamebasePlayerId,
+      memorialSourceIdentity: widget.memorialSourceIdentity,
     );
     final gamesState = ref.watch(playerProfileGamesKeyProvider(playerKey));
     final hasActiveFilter = gamesState.hasActiveFilters;
@@ -898,7 +1013,7 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
       tablet: 32.sp,
     );
 
-    final tabOptions = PlayerProfileTab.values
+    final tabOptions = _availableTabs
         .map((tab) {
           if (tab == PlayerProfileTab.games &&
               selectedTab != PlayerProfileTab.games &&
@@ -916,8 +1031,8 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
         backgroundColor: context.colors.popup,
         selectedBackgroundColor: context.colors.popup,
         options: tabOptions,
-        initialSelection: PlayerProfileTab.values.indexOf(selectedTab),
-        currentSelection: PlayerProfileTab.values.indexOf(selectedTab),
+        initialSelection: _tabIndex(selectedTab),
+        currentSelection: _tabIndex(selectedTab),
         onSelectionChanged: _handleTabSelection,
         notifyOnReselect: true,
       ),
@@ -997,10 +1112,10 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
       bus: _scrollToTopBus,
       child: PageView.builder(
         controller: _pageController,
-        itemCount: PlayerProfileTab.values.length,
+        itemCount: _availableTabs.length,
         onPageChanged: _handlePageChanged,
         itemBuilder: (context, index) {
-          switch (PlayerProfileTab.values[index]) {
+          switch (_availableTabs[index]) {
             case PlayerProfileTab.about:
               return PlayerAboutTab(
                 fideId: widget.fideId,
@@ -1010,6 +1125,7 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
                 fallbackRating: widget.rating,
                 dataSource: _source,
                 gamebasePlayerId: _currentGamebasePlayerId,
+                memorialSourceIdentity: widget.memorialSourceIdentity,
                 onOpenGames: _openGames,
               );
             case PlayerProfileTab.games:
@@ -1018,6 +1134,7 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
                 playerName: widget.playerName,
                 dataSource: _source,
                 gamebasePlayerId: _currentGamebasePlayerId,
+                memorialSourceIdentity: widget.memorialSourceIdentity,
               );
             case PlayerProfileTab.events:
               return PlayerEventsTab(
@@ -1025,6 +1142,7 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
                 playerName: widget.playerName,
                 dataSource: _source,
                 gamebasePlayerId: _currentGamebasePlayerId,
+                memorialSourceIdentity: widget.memorialSourceIdentity,
               );
           }
         },
@@ -1126,9 +1244,7 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
                       knownTotalCount: knownTotalCount,
                       onSelectSpecific: () {
                         _handleTabSelection(
-                          PlayerProfileTab.values.indexOf(
-                            PlayerProfileTab.games,
-                          ),
+                          _availableTabs.indexOf(PlayerProfileTab.games),
                         );
                         ref
                             .read(

@@ -43,6 +43,14 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
+/// Success-path tournament-detail chrome: title/dropdown, search, tab switcher.
+/// Widget tests scope writer-attribution assertions to this column so About
+/// footer copy cannot satisfy them.
+@visibleForTesting
+const tournamentDetailSuccessAppBarKey = ValueKey<String>(
+  'tournament-detail-success-appbar',
+);
+
 class TournamentDetailScreen extends ConsumerStatefulWidget {
   const TournamentDetailScreen({super.key});
 
@@ -256,7 +264,6 @@ class _TournamentDetailViewState extends ConsumerState<TournamentDetailScreen>
       ref.invalidate(gamesAppBarProvider);
       ref.invalidate(gamesTourScreenProvider);
       ref.invalidate(gameDisplayModeProvider);
-      ref.invalidate(liveFocusSnapshotProvider);
       ref.invalidate(playerTourScreenProvider);
       ref.invalidate(searchQueryProvider);
       // Scroll provider is scoped per screen; it will dispose with the ProviderScope below.
@@ -462,6 +469,7 @@ class _TournamentDetailViewState extends ConsumerState<TournamentDetailScreen>
     List<TournamentDetailScreenMode> visibleModes,
   ) {
     return Column(
+      key: tournamentDetailSuccessAppBarKey,
       children: [
         selectedTourMode == TournamentDetailScreenMode.games
             ? const GamesAppBarWidget()

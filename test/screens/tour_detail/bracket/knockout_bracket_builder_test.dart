@@ -327,6 +327,38 @@ void main() {
       expect(quarterfinal.winner?.name, 'Alpha');
     });
 
+    test('uses adapted event points for aggregate bracket scores', () {
+      final tour = _tour('gct-final', 'GCT Finals | Finals', day: 1);
+      final bracket = buildKnockoutBracket(
+        selectedTour: tour,
+        siblingTours: const [],
+        roundsByTourId: {
+          'gct-final': [
+            _round('final-1', 'gct-final', 'Finals | Game 1',
+                'finals--game-1', day: 1),
+            _round('final-2', 'gct-final', 'Finals | Game 2',
+                'finals--game-2', day: 2),
+          ],
+        },
+        gamesByTourId: {
+          'gct-final': [
+            _game('g1', 'final-1', 'gct-final', 'Caruana',
+                'Praggnanandhaa', '1-0',
+                whiteCustomPoints: 6, blackCustomPoints: 0),
+            _game('g2', 'final-2', 'gct-final', 'Praggnanandhaa',
+                'Caruana', '1/2-1/2',
+                whiteCustomPoints: 3, blackCustomPoints: 3),
+          ],
+        },
+      );
+
+      final match = bracket.stages.single.matches.single;
+      expect(match.participant1.name, 'Caruana');
+      expect(match.participant1Score, 9);
+      expect(match.participant2Score, 3);
+      expect(match.winner?.name, 'Caruana');
+    });
+
     test('groups Turkish decimal rounds and keeps rematches stage-scoped', () {
       final tour = _tour('turkish', 'Turkish Cup', day: 1);
       final rounds = [
@@ -976,19 +1008,24 @@ Games _game(
   String black,
   String status, {
   int? board,
+  double? whiteCustomPoints,
+  double? blackCustomPoints,
 }) => Games(
   id: id,
   roundId: roundId,
   roundSlug: roundId,
   tourId: tourId,
   tourSlug: tourId,
-  players: [_player(white), _player(black)],
+  players: [
+    _player(white, customPoints: whiteCustomPoints),
+    _player(black, customPoints: blackCustomPoints),
+  ],
   status: status,
   boardNr: board,
   lastMove: status == '*' ? null : 'e2e4',
 );
 
-Player _player(String name) => Player(
+Player _player(String name, {double? customPoints}) => Player(
   name: name,
   title: '',
   rating: 2500,
@@ -996,4 +1033,5 @@ Player _player(String name) => Player(
   fed: 'FIDE',
   clock: 0,
   team: '',
+  customPoints: customPoints,
 );

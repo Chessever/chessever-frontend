@@ -36,21 +36,10 @@ class FavoritesCombinedGamesState {
   bool get isSearching => searchQuery.isNotEmpty;
   bool get isFiltering => selectedFideIds.isNotEmpty;
 
-  List<GamesTourModel> get filteredGames {
-    if (!filter.hasActiveFilters) return games;
-
-    int? targetFideId;
-    if (selectedFideIds.length == 1) {
-      targetFideId = int.tryParse(selectedFideIds.first);
-    }
-
-    return GameFilterHelper.applyFilter(
-      games,
-      filter,
-      playerNameQuery: searchQuery,
-      targetFideId: targetFideId,
-    );
-  }
+  // Favorites queries apply the complete search/filter/player-selection
+  // intersection in Supabase. Applying the filter again here can reject valid
+  // server results because a text query is not necessarily a player name.
+  List<GamesTourModel> get filteredGames => games;
 
   FavoritesCombinedGamesState copyWith({
     List<GamesTourModel>? games,
@@ -92,6 +81,12 @@ class FavoritesCombinedGamesNotifier
   // Cache available dates
   List<DateTime> _availableDates = [];
   bool _hasMoreDates = true;
+  int _requestGeneration = 0;
+
+  int _beginRequest() => ++_requestGeneration;
+
+  bool _isCurrentRequest(int generation) =>
+      mounted && generation == _requestGeneration;
 
   FavoritesCombinedGamesNotifier(this._ref)
     : super(FavoritesCombinedGamesState(isLoading: true)) {
@@ -99,13 +94,17 @@ class FavoritesCombinedGamesNotifier
   }
 
   Future<void> _loadInitialGames() async {
+    final requestGeneration = _beginRequest();
     try {
       _availableDates = [];
       _hasMoreDates = true;
-      await _fetchNextDates(isInitial: true);
+      await _fetchNextDates(
+        isInitial: true,
+        requestGeneration: requestGeneration,
+      );
     } catch (e) {
       debugPrint('[FavoritesGames] Initial load error: $e');
-      if (!mounted) return;
+      if (!_isCurrentRequest(requestGeneration)) return;
       state = state.copyWith(
         isLoading: false,
         error: userFacingError(
@@ -118,24 +117,50 @@ class FavoritesCombinedGamesNotifier
 
   Future<void> loadMoreGames() async {
     if (state.isLoading || !state.hasMore) return;
-    await _fetchNextDates(isInitial: false);
+    await _fetchNextDates(
+      isInitial: false,
+      requestGeneration: _requestGeneration,
+    );
   }
 
   Future<void> refreshGames() async {
+    final requestGeneration = _beginRequest();
     _availableDates = [];
     _hasMoreDates = true;
-    _currentSearchQuery = '';
+    _currentSearchQuery = state.searchQuery.trim();
 
-    final currentFilters = state.selectedFideIds;
+    final favorites =
+        _ref.read(favoritePlayersNotifierProvider).valueOrNull?.players ?? [];
+    final availableFideIds =
+        favorites
+            .where((favorite) => favorite.fideId != null)
+            .map((favorite) => favorite.fideId!.toString())
+            .toSet();
+    final selectedFideIds =
+        state.selectedFideIds.where(availableFideIds.contains).toSet();
     state = FavoritesCombinedGamesState(
       isLoading: true,
-      selectedFideIds: currentFilters,
+      searchQuery: _currentSearchQuery,
+      selectedFideIds: selectedFideIds,
+      filter: state.filter,
     );
-    await _fetchNextDates(isInitial: true);
+
+    if (_currentSearchQuery.isNotEmpty) {
+      await _fetchSearchResults(
+        isInitial: true,
+        requestGeneration: requestGeneration,
+      );
+    } else {
+      await _fetchNextDates(
+        isInitial: true,
+        requestGeneration: requestGeneration,
+      );
+    }
   }
 
   /// Toggle a player filter by FIDE ID
   Future<void> togglePlayerFilter(String fideId) async {
+    final requestGeneration = _beginRequest();
     final currentFilters = Set<String>.from(state.selectedFideIds);
 
     if (currentFilters.contains(fideId)) {
@@ -146,7 +171,6 @@ class FavoritesCombinedGamesNotifier
 
     _availableDates = [];
     _hasMoreDates = true;
-    _currentSearchQuery = '';
 
     state = state.copyWith(
       isLoading: true,
@@ -154,21 +178,30 @@ class FavoritesCombinedGamesNotifier
       seenGameIds: {},
       dateOffset: 0,
       hasMore: true,
-      searchQuery: '',
       selectedFideIds: currentFilters,
       error: null,
     );
 
-    await _fetchNextDates(isInitial: true);
+    if (_currentSearchQuery.isNotEmpty) {
+      await _fetchSearchResults(
+        isInitial: true,
+        requestGeneration: requestGeneration,
+      );
+    } else {
+      await _fetchNextDates(
+        isInitial: true,
+        requestGeneration: requestGeneration,
+      );
+    }
   }
 
   /// Clear all player filters
   Future<void> clearPlayerFilters() async {
     if (state.selectedFideIds.isEmpty) return;
 
+    final requestGeneration = _beginRequest();
     _availableDates = [];
     _hasMoreDates = true;
-    _currentSearchQuery = '';
 
     state = state.copyWith(
       isLoading: true,
@@ -176,61 +209,73 @@ class FavoritesCombinedGamesNotifier
       seenGameIds: {},
       dateOffset: 0,
       hasMore: true,
-      searchQuery: '',
       selectedFideIds: {},
       error: null,
     );
 
-    await _fetchNextDates(isInitial: true);
+    if (_currentSearchQuery.isNotEmpty) {
+      await _fetchSearchResults(
+        isInitial: true,
+        requestGeneration: requestGeneration,
+      );
+    } else {
+      await _fetchNextDates(
+        isInitial: true,
+        requestGeneration: requestGeneration,
+      );
+    }
   }
 
   String _currentSearchQuery = '';
 
-  void updateFilter(GameFilter newFilter) {
-    state = state.copyWith(filter: newFilter);
-  }
-
-  void applyFilter(GameFilter newFilter) {
+  Future<void> applyFilter(GameFilter newFilter) async {
     final filterChanged = newFilter != state.filter;
-    state = state.copyWith(filter: newFilter);
+    if (!filterChanged) return;
 
     // Every filter dimension is now applied server-side, so any change must
     // trigger a fresh refetch — local lists are incomplete. Re-run whichever
     // path is currently active (search vs date pagination) so the filter is
     // respected even when the user has an open search query.
-    if (filterChanged) {
-      _availableDates = [];
-      _hasMoreDates = true;
-      final wasSearching = _currentSearchQuery.isNotEmpty;
-      state = state.copyWith(
-        seenGameIds: {},
-        dateOffset: 0,
-        hasMore: true,
-        isLoading: true,
+    final requestGeneration = _beginRequest();
+    _availableDates = [];
+    _hasMoreDates = true;
+    state = state.copyWith(
+      filter: newFilter,
+      games: [],
+      seenGameIds: {},
+      dateOffset: 0,
+      hasMore: true,
+      isLoading: true,
+      error: null,
+    );
+    if (_currentSearchQuery.isNotEmpty) {
+      await _fetchSearchResults(
+        isInitial: true,
+        requestGeneration: requestGeneration,
       );
-      if (wasSearching) {
-        _fetchSearchResults(isInitial: true);
-      } else {
-        _fetchNextDates(isInitial: true);
-      }
+    } else {
+      await _fetchNextDates(
+        isInitial: true,
+        requestGeneration: requestGeneration,
+      );
     }
   }
 
-  void clearFilter() {
-    state = state.copyWith(filter: GameFilter());
-  }
+  Future<void> clearFilter() => applyFilter(GameFilter.defaultFilter());
 
   /// Search games by player name
   Future<void> searchGames(String query) async {
     final trimmedQuery = query.trim();
-    if (trimmedQuery == _currentSearchQuery) return;
+    if (trimmedQuery == _currentSearchQuery && state.games.isNotEmpty) return;
 
+    final requestGeneration = _beginRequest();
     _currentSearchQuery = trimmedQuery;
     _availableDates = [];
     _hasMoreDates = true;
 
     state = state.copyWith(
       isLoading: true,
+      games: [],
       seenGameIds: {},
       dateOffset: 0,
       hasMore: true,
@@ -239,9 +284,15 @@ class FavoritesCombinedGamesNotifier
     );
 
     if (trimmedQuery.isEmpty) {
-      await _fetchNextDates(isInitial: true);
+      await _fetchNextDates(
+        isInitial: true,
+        requestGeneration: requestGeneration,
+      );
     } else {
-      await _fetchSearchResults(isInitial: true);
+      await _fetchSearchResults(
+        isInitial: true,
+        requestGeneration: requestGeneration,
+      );
     }
   }
 
@@ -249,12 +300,14 @@ class FavoritesCombinedGamesNotifier
   Future<void> clearSearch() async {
     if (_currentSearchQuery.isEmpty && !state.isSearching) return;
 
+    final requestGeneration = _beginRequest();
     _currentSearchQuery = '';
     _availableDates = [];
     _hasMoreDates = true;
 
     state = state.copyWith(
       isLoading: true,
+      games: [],
       seenGameIds: {},
       dateOffset: 0,
       hasMore: true,
@@ -262,32 +315,50 @@ class FavoritesCombinedGamesNotifier
       error: null,
     );
 
-    await _fetchNextDates(isInitial: true);
+    await _fetchNextDates(
+      isInitial: true,
+      requestGeneration: requestGeneration,
+    );
   }
 
   /// Fetch search results
   /// Uses large batch sizes to ensure all matching games can be displayed
   static const int _searchBatchSize = 500;
 
-  Future<void> _fetchSearchResults({required bool isInitial}) async {
-    if (!mounted) return;
+  Future<void> _fetchSearchResults({
+    required bool isInitial,
+    required int requestGeneration,
+  }) async {
+    if (!_isCurrentRequest(requestGeneration)) return;
 
     final favoritesAsync = _ref.read(favoritePlayersNotifierProvider);
     final favorites = favoritesAsync.valueOrNull?.players ?? [];
     final query = _currentSearchQuery;
 
     if (favorites.isEmpty || query.isEmpty) {
-      state = state.copyWith(isLoading: false, hasMore: false);
+      if (_isCurrentRequest(requestGeneration)) {
+        state = state.copyWith(isLoading: false, hasMore: false);
+      }
       return;
     }
 
     try {
       final gameRepo = _ref.read(gameRepositoryProvider);
-      final fideIds =
+      var fideIds =
           favorites
               .where((f) => f.fideId != null)
               .map((f) => f.fideId!.toString())
               .toList();
+      if (state.selectedFideIds.isNotEmpty) {
+        fideIds = fideIds.where(state.selectedFideIds.contains).toList();
+      }
+
+      if (fideIds.isEmpty) {
+        if (_isCurrentRequest(requestGeneration)) {
+          state = state.copyWith(isLoading: false, hasMore: false);
+        }
+        return;
+      }
 
       final games = await retryTransientRead(
         () => gameRepo.searchFavoritesGames(
@@ -299,6 +370,8 @@ class FavoritesCombinedGamesNotifier
           offset: isInitial ? 0 : state.games.length,
         ),
       );
+
+      if (!_isCurrentRequest(requestGeneration)) return;
 
       final newGames = <GamesTourModel>[];
       final seenKeys = Set<String>.from(isInitial ? {} : state.seenGameIds);
@@ -315,8 +388,6 @@ class FavoritesCombinedGamesNotifier
       newGames.sort(_compareByDateDesc);
       final allGames = isInitial ? newGames : [...state.games, ...newGames];
 
-      if (!mounted) return;
-
       state = state.copyWith(
         games: allGames,
         isLoading: false,
@@ -325,7 +396,7 @@ class FavoritesCombinedGamesNotifier
       );
     } catch (e) {
       debugPrint('[FavoritesSearch] Error: $e');
-      if (!mounted) return;
+      if (!_isCurrentRequest(requestGeneration)) return;
       final error = userFacingError(
         e,
         fallback: 'Could not load games. Please try again.',
@@ -340,14 +411,20 @@ class FavoritesCombinedGamesNotifier
   Future<void> loadMoreSearchResults() async {
     if (state.isLoading || !state.hasMore || !state.isSearching) return;
     state = state.copyWith(isLoading: true);
-    await _fetchSearchResults(isInitial: false);
+    await _fetchSearchResults(
+      isInitial: false,
+      requestGeneration: _requestGeneration,
+    );
   }
 
   /// Main method: Fetch games based on current filter state
   /// - Single player filter: Fetch ALL games directly (guaranteed complete)
   /// - Multiple players or no filter: Use date-based pagination
-  Future<void> _fetchNextDates({required bool isInitial}) async {
-    if (!mounted) return;
+  Future<void> _fetchNextDates({
+    required bool isInitial,
+    required int requestGeneration,
+  }) async {
+    if (!_isCurrentRequest(requestGeneration)) return;
 
     state = state.copyWith(isLoading: true, error: null);
 
@@ -356,7 +433,9 @@ class FavoritesCombinedGamesNotifier
       final favorites = favoritesAsync.valueOrNull?.players ?? [];
 
       if (favorites.isEmpty) {
-        state = state.copyWith(isLoading: false, hasMore: false, error: null);
+        if (_isCurrentRequest(requestGeneration)) {
+          state = state.copyWith(isLoading: false, hasMore: false, error: null);
+        }
         return;
       }
 
@@ -374,7 +453,9 @@ class FavoritesCombinedGamesNotifier
       }
 
       if (fideIds.isEmpty) {
-        state = state.copyWith(isLoading: false, hasMore: false);
+        if (_isCurrentRequest(requestGeneration)) {
+          state = state.copyWith(isLoading: false, hasMore: false);
+        }
         return;
       }
 
@@ -390,6 +471,7 @@ class FavoritesCombinedGamesNotifier
             offset: 0,
           ),
         );
+        if (!_isCurrentRequest(requestGeneration)) return;
         _availableDates = dates;
         _hasMoreDates = dates.length >= 30;
         debugPrint('[FavoritesGames] Got ${dates.length} available dates');
@@ -411,6 +493,7 @@ class FavoritesCombinedGamesNotifier
               offset: _availableDates.length,
             ),
           );
+          if (!_isCurrentRequest(requestGeneration)) return;
           _availableDates.addAll(moreDates);
           _hasMoreDates = moreDates.length >= 30;
 
@@ -423,12 +506,15 @@ class FavoritesCombinedGamesNotifier
               fideIds: fideIds,
               isInitial: isInitial,
               dateOffset: dateOffset,
+              requestGeneration: requestGeneration,
             );
             return;
           }
         }
 
-        state = state.copyWith(isLoading: false, hasMore: false);
+        if (_isCurrentRequest(requestGeneration)) {
+          state = state.copyWith(isLoading: false, hasMore: false);
+        }
         return;
       }
 
@@ -437,10 +523,11 @@ class FavoritesCombinedGamesNotifier
         fideIds: fideIds,
         isInitial: isInitial,
         dateOffset: dateOffset,
+        requestGeneration: requestGeneration,
       );
     } catch (e) {
       debugPrint('[FavoritesGames] Fetch error: $e');
-      if (!mounted) return;
+      if (!_isCurrentRequest(requestGeneration)) return;
       final error = userFacingError(
         e,
         fallback: 'Could not load games. Please try again.',
@@ -458,7 +545,9 @@ class FavoritesCombinedGamesNotifier
     required List<String> fideIds,
     required bool isInitial,
     required int dateOffset,
+    required int requestGeneration,
   }) async {
+    if (!_isCurrentRequest(requestGeneration)) return;
     final gameRepo = _ref.read(gameRepositoryProvider);
     final newGames = <GamesTourModel>[];
     final seenKeys = Set<String>.from(isInitial ? {} : state.seenGameIds);
@@ -475,6 +564,7 @@ class FavoritesCombinedGamesNotifier
           filter: state.filter,
         ),
       );
+      if (!_isCurrentRequest(requestGeneration)) return;
 
       debugPrint(
         '[FavoritesGames] Got ${dayGames.length} games for ${date.toString().split(' ')[0]}',
@@ -500,7 +590,7 @@ class FavoritesCombinedGamesNotifier
       '[FavoritesGames] Total games: ${allGames.length}, hasMore: $hasMore',
     );
 
-    if (!mounted) return;
+    if (!_isCurrentRequest(requestGeneration)) return;
 
     state = state.copyWith(
       games: allGames,

@@ -11,6 +11,7 @@ import 'package:chessever2/screens/gamebase/models/models.dart';
 import 'package:chessever2/repository/gamebase/miniatures/miniatures_models.dart';
 import 'package:chessever2/repository/gamebase/search/gamebase_search_models.dart';
 import 'package:chessever2/repository/gamebase/search/gamebase_search_models_extra.dart';
+import 'package:chessever2/repository/gamebase/memorial_player.dart';
 
 part 'gamebase_repository.mapper.dart';
 
@@ -532,6 +533,33 @@ class GamebaseRepository {
     } catch (e) {
       return null;
     }
+  }
+
+  Future<List<MemorialPlayer>> getMemorialPlayers({
+    String? name,
+    String? federation,
+    bool includeWithoutGames = false,
+    int pageNumber = 0,
+    int pageSize = 20,
+  }) async {
+    final response = await _dio.get(
+      '$_baseUrl/api/player/memorial',
+      queryParameters: <String, dynamic>{
+        if (name != null && name.trim().isNotEmpty) 'name': name.trim(),
+        if (federation != null && federation.trim().isNotEmpty)
+          'fed': federation.trim().toUpperCase(),
+        'includeWithoutGames': includeWithoutGames,
+        'pageNumber': pageNumber,
+        'pageSize': pageSize,
+      },
+      options: Options(headers: _headers),
+    );
+    final data = response.data['data'];
+    if (data is! List) return const [];
+    return data
+        .whereType<Map>()
+        .map((row) => MemorialPlayer.fromJson(Map<String, dynamic>.from(row)))
+        .toList(growable: false);
   }
 
   Future<GamebaseGame?> getGameById(String id) async {
@@ -1086,12 +1114,14 @@ class GamebaseRepository {
     bool? isOnline,
     int pageNumber = 0,
     int pageSize = 100,
+    bool includeData = false,
   }) async {
     final queryParams = <String, dynamic>{
       'color': color,
       if (q != null && q.isNotEmpty) 'q': q,
       'pageNumber': pageNumber,
       'pageSize': pageSize,
+      if (includeData) 'includeData': true,
       if (timeControl != null) 'timeControl': timeControl,
       if (outcome != null) 'outcome': outcome,
       if (eco != null) 'eco': eco,
@@ -1119,6 +1149,56 @@ class GamebaseRepository {
       options: Options(headers: _headers),
     );
 
+    return Map<String, dynamic>.from(response.data);
+  }
+
+  Future<Map<String, dynamic>> getMemorialPlayerGames({
+    required String sourceIdentity,
+    String? q,
+    String color = 'all',
+    String? timeControl,
+    String? outcome,
+    String? eco,
+    String? opening,
+    String? variation,
+    String? event,
+    String? site,
+    String? dateFrom,
+    String? dateTo,
+    String? opponentId,
+    int? ratingFrom,
+    int? ratingTo,
+    bool? isOnline,
+    int pageNumber = 0,
+    int pageSize = 100,
+    bool includeData = false,
+  }) async {
+    final queryParams = <String, dynamic>{
+      'color': color,
+      if (q != null && q.isNotEmpty) 'q': q,
+      'pageNumber': pageNumber,
+      'pageSize': pageSize,
+      if (includeData) 'includeData': true,
+      if (timeControl != null) 'timeControl': timeControl,
+      if (outcome != null) 'outcome': outcome,
+      if (eco != null) 'eco': eco,
+      if (opening != null) 'opening': opening,
+      if (variation != null) 'variation': variation,
+      if (event != null) 'event': event,
+      if (site != null) 'site': site,
+      if (dateFrom != null) 'dateFrom': dateFrom,
+      if (dateTo != null) 'dateTo': dateTo,
+      if (opponentId != null) 'opponentId': opponentId,
+      if (ratingFrom != null) 'ratingFrom': ratingFrom,
+      if (ratingTo != null) 'ratingTo': ratingTo,
+      if (isOnline != null) 'isOnline': isOnline,
+    };
+    final response = await _dio.get(
+      '$_baseUrl/api/player/memorial/${Uri.encodeComponent(sourceIdentity)}'
+      '/games',
+      queryParameters: queryParams,
+      options: Options(headers: _headers),
+    );
     return Map<String, dynamic>.from(response.data);
   }
 
@@ -1169,6 +1249,52 @@ class GamebaseRepository {
     return Map<String, dynamic>.from(response.data);
   }
 
+  /// Fetch exact reviewed-source statistics for a Memorial player. This path
+  /// never falls back to a name or mutates the ordinary player stats cache.
+  Future<Map<String, dynamic>> getMemorialPlayerStats({
+    required String sourceIdentity,
+    String? q,
+    String color = 'all',
+    String? timeControl,
+    String? outcome,
+    String? eco,
+    String? opening,
+    String? variation,
+    String? event,
+    String? site,
+    String? dateFrom,
+    String? dateTo,
+    String? opponentId,
+    int? ratingFrom,
+    int? ratingTo,
+    bool? isOnline,
+  }) async {
+    final queryParams = <String, dynamic>{
+      'color': color,
+      if (q != null && q.isNotEmpty) 'q': q,
+      if (timeControl != null) 'timeControl': timeControl,
+      if (outcome != null) 'outcome': outcome,
+      if (eco != null) 'eco': eco,
+      if (opening != null) 'opening': opening,
+      if (variation != null) 'variation': variation,
+      if (event != null) 'event': event,
+      if (site != null) 'site': site,
+      if (dateFrom != null) 'dateFrom': dateFrom,
+      if (dateTo != null) 'dateTo': dateTo,
+      if (opponentId != null) 'opponentId': opponentId,
+      if (ratingFrom != null) 'ratingFrom': ratingFrom,
+      if (ratingTo != null) 'ratingTo': ratingTo,
+      if (isOnline != null) 'isOnline': isOnline,
+    };
+    final response = await _dio.get(
+      '$_baseUrl/api/player/memorial/${Uri.encodeComponent(sourceIdentity)}'
+      '/stats',
+      queryParameters: queryParams,
+      options: Options(headers: _headers),
+    );
+    return Map<String, dynamic>.from(response.data);
+  }
+
   /// Start or reuse a backend-built player opening tree.
   Future<Map<String, dynamic>> startPlayerOpeningTreeBuild({
     required String playerId,
@@ -1177,6 +1303,20 @@ class GamebaseRepository {
   }) async {
     final response = await _dio.post(
       '$_baseUrl/api/player/$playerId/opening-tree/build',
+      data: <String, dynamic>{'maxPly': maxPly, 'forceRebuild': forceRebuild},
+      options: Options(headers: _headers),
+    );
+    return Map<String, dynamic>.from(response.data);
+  }
+
+  Future<Map<String, dynamic>> startMemorialOpeningTreeBuild({
+    required String sourceIdentity,
+    int maxPly = 24,
+    bool forceRebuild = false,
+  }) async {
+    final response = await _dio.post(
+      '$_baseUrl/api/player/memorial/${Uri.encodeComponent(sourceIdentity)}'
+      '/opening-tree/build',
       data: <String, dynamic>{'maxPly': maxPly, 'forceRebuild': forceRebuild},
       options: Options(headers: _headers),
     );
@@ -1196,6 +1336,19 @@ class GamebaseRepository {
     return Map<String, dynamic>.from(response.data);
   }
 
+  Future<Map<String, dynamic>> getMemorialOpeningTreeStatus({
+    required String sourceIdentity,
+    required String treeId,
+  }) async {
+    final response = await _dio.get(
+      '$_baseUrl/api/player/memorial/${Uri.encodeComponent(sourceIdentity)}'
+      '/opening-tree/status',
+      queryParameters: <String, dynamic>{'treeId': treeId},
+      options: Options(headers: _headers),
+    );
+    return Map<String, dynamic>.from(response.data);
+  }
+
   /// Download a ready backend player opening tree.
   ///
   /// Returns `null` when the backend responds with HTTP 202, meaning the tree is
@@ -1207,6 +1360,25 @@ class GamebaseRepository {
     try {
       final response = await _dio.get(
         '$_baseUrl/api/player/$playerId/opening-tree',
+        queryParameters: <String, dynamic>{'treeId': treeId},
+        options: Options(headers: _headers),
+      );
+      if (response.statusCode == 202) return null;
+      return Map<String, dynamic>.from(response.data);
+    } on DioException catch (e) {
+      if (e.response?.statusCode == 202) return null;
+      rethrow;
+    }
+  }
+
+  Future<Map<String, dynamic>?> getMemorialOpeningTree({
+    required String sourceIdentity,
+    required String treeId,
+  }) async {
+    try {
+      final response = await _dio.get(
+        '$_baseUrl/api/player/memorial/${Uri.encodeComponent(sourceIdentity)}'
+        '/opening-tree',
         queryParameters: <String, dynamic>{'treeId': treeId},
         options: Options(headers: _headers),
       );

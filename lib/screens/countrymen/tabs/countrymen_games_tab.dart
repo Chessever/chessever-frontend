@@ -602,7 +602,9 @@ class _CountrymenGamesTabState extends ConsumerState<CountrymenGamesTab>
       showFormatFilter: false,
     );
     if (result != null && mounted) {
-      ref.read(countrymenCombinedGamesProvider.notifier).applyFilter(result);
+      await ref
+          .read(countrymenCombinedGamesProvider.notifier)
+          .applyFilter(result);
     }
   }
 
@@ -626,6 +628,12 @@ class _CountrymenGamesTabState extends ConsumerState<CountrymenGamesTab>
     }
 
     if (state.games.isEmpty) {
+      if (state.filter.hasActiveFilters) {
+        return SliverFillRemaining(
+          hasScrollBody: false,
+          child: _buildNoFilterResultsState(),
+        );
+      }
       if (state.isSearching) {
         return SliverFillRemaining(
           hasScrollBody: false,

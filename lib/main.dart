@@ -49,6 +49,7 @@ import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:sentry_flutter/sentry_flutter.dart';
 import 'package:chessever2/repository/local_storage/local_storage_repository.dart';
+import 'package:chessever2/repository/gamebase/memorial_player_local_search.dart';
 import 'package:chessever2/repository/local_storage/onboarding/onboarding_repository.dart';
 import 'package:chessever2/repository/local_storage/sesions_manager/session_manager.dart';
 import 'package:chessever2/repository/local_storage/supabase_safe_storage.dart';
@@ -68,7 +69,6 @@ import 'services/push_notifications_service.dart';
 import 'theme/app_theme.dart';
 import 'package:chessever2/repository/authentication/auth_repository.dart';
 import 'package:chessever2/providers/app_resume_signal_provider.dart';
-import 'package:chessever2/providers/notification_permission_prompt_provider.dart';
 import 'package:chessever2/providers/push_token_sync_provider.dart';
 
 final RouteObserver<ModalRoute<void>> routeObserver =
@@ -272,6 +272,13 @@ Future<void> runChessEver(AppFlavor flavor) async {
         widgetsBinding = SentryWidgetsFlutterBinding.ensureInitialized();
       }
       _e2eStartupLog('binding initialized: ${widgetsBinding.runtimeType}');
+
+      // Warm the small reviewed Memorial index only after first paint. Its JSON
+      // parse runs in a worker isolate and never enters the normal network
+      // search path.
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        unawaited(warmBundledMemorialPlayerCatalog());
+      });
 
       // Image cache headroom: dense game-card lists (flags, avatars, board
       // snapshots) across deep navigation stacks thrash the default 100MB
@@ -1159,7 +1166,6 @@ class MyApp extends HookConsumerWidget {
     const themeMode = ThemeMode.dark;
     final locale = ref.watch(localeProvider);
     ref.watch(pushTokenSyncProvider);
-    ref.watch(notificationPermissionPromptProvider);
 
     // Listen to auth state changes to set AppsFlyer Customer User ID and
     // ensure the install/launch event fires. startSdk is idempotent — for

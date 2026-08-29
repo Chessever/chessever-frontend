@@ -462,14 +462,17 @@ class SearchOverlay extends ConsumerWidget {
                             ),
                           ),
                         ),
-                        TextButton(
-                          onPressed:
-                              () => unawaited(
-                                ref
-                                    .read(recentSearchesProvider.notifier)
-                                    .clear(),
-                              ),
-                          child: const Text('Clear'),
+                        SizedBox(
+                          height: 48,
+                          child: TextButton(
+                            onPressed:
+                                () => unawaited(
+                                  ref
+                                      .read(recentSearchesProvider.notifier)
+                                      .clear(),
+                                ),
+                            child: const Text('Clear'),
+                          ),
                         ),
                       ],
                     ),
@@ -482,7 +485,7 @@ class SearchOverlay extends ConsumerWidget {
                         final entry = entries[index];
                         return _RecentSearchTile(
                           entry: entry,
-                          onTap: () => _openRecent(entry),
+                          onTap: () => unawaited(_openRecent(entry)),
                           onRemove:
                               () => unawaited(
                                 ref
@@ -500,13 +503,13 @@ class SearchOverlay extends ConsumerWidget {
         );
   }
 
-  void _openRecent(RecentSearchEntry entry) {
+  Future<void> _openRecent(RecentSearchEntry entry) async {
     switch (entry.kind) {
       case RecentSearchKind.tournament:
         final tournament = entry.toTournament();
         if (tournament != null) onTournamentTap(tournament);
       case RecentSearchKind.player:
-        final player = entry.toPlayer();
+        final player = await resolveRecentSearchPlayer(entry);
         if (player != null) onPlayerTap?.call(player);
       case RecentSearchKind.opening:
         final opening = entry.toOpeningSelection();
@@ -793,12 +796,15 @@ class _RecentSearchTile extends StatelessWidget {
                   ],
                 ),
               ),
-              IconButton(
-                tooltip: 'Remove from recent searches',
-                onPressed: onRemove,
-                icon: const Icon(Icons.close),
-                iconSize: 17.ic,
-                color: context.colors.textSecondary,
+              SizedBox.square(
+                dimension: 48,
+                child: IconButton(
+                  tooltip: 'Remove from recent searches',
+                  onPressed: onRemove,
+                  icon: const Icon(Icons.close),
+                  iconSize: 17.ic,
+                  color: context.colors.textSecondary,
+                ),
               ),
             ],
           ),

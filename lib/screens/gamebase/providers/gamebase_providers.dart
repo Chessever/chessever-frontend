@@ -1,5 +1,6 @@
 import 'package:chessever2/providers/board_settings_provider_new.dart';
 import 'package:chessever2/repository/gamebase/gamebase_repository.dart';
+import 'package:chessever2/repository/gamebase/memorial_tree_scope.dart';
 import 'package:chessever2/repository/gamebase/search/gamebase_search_models.dart';
 import 'package:chessever2/screens/gamebase/models/models.dart';
 import 'package:chessever2/screens/gamebase/services/player_opening_tree.dart';
@@ -12,6 +13,7 @@ import 'package:chessever2/screens/chessboard/analysis/chess_game.dart';
 import 'package:chessever2/screens/chessboard/analysis/chess_game_navigator.dart';
 import 'package:flutter/foundation.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+
 import 'dart:async';
 import 'dart:collection';
 
@@ -114,6 +116,18 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
   List<String> _queryMoves = const <String>[];
   bool _queryFromInitial = true;
 
+  /// Ply offset carried when the workspace starts from an arbitrary FEN.
+  ///
+  /// [GamebaseExplorerState.currentMoveNumber] is relative to its local game
+  /// tree. Board Editor intentionally starts a new tree, so without this
+  /// offset a deep edited position would look like move 1 and bypass the
+  /// Explorer depth gate. Keep access depth in the notifier rather than
+  /// encoding fake move counters into the edited FEN.
+  int _accessMoveNumberOffset = 0;
+
+  int get effectiveMoveNumber =>
+      state.currentMoveNumber + _accessMoveNumberOffset;
+
   void _syncQueryMovesFromTree() {
     if (state.game != null && _isInitialFen(state.game!.startingFen)) {
       _queryFromInitial = true;
@@ -180,10 +194,12 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
     final existing = _inFlightAggregateRequests[cacheKey];
     if (existing != null) return existing;
 
-    final timeControlFilter =
-        filters.timeControls.isNotEmpty ? filters.timeControls.first : null;
-    final playerIdFilter =
-        filters.playerIds.isNotEmpty ? filters.playerIds.first : null;
+    final timeControlFilter = filters.timeControls.isNotEmpty
+        ? filters.timeControls.first
+        : null;
+    final playerIdFilter = filters.playerIds.isNotEmpty
+        ? filters.playerIds.first
+        : null;
 
     final colorFilter = filters.playerColor?.name;
     final resultFilter = filters.gameResult?.apiValue;
@@ -259,10 +275,9 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
       state = state.copyWith(
         moveAggregates: localMoves,
         isLoading: localState.progress.isRunning,
-        error:
-            localState.progress.status == PlayerOpeningTreeStatus.error
-                ? localState.progress.error
-                : null,
+        error: localState.progress.status == PlayerOpeningTreeStatus.error
+            ? localState.progress.error
+            : null,
       );
       return;
     }
@@ -270,8 +285,7 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
     // Desktop board explorer always sends the line the board just pumped in.
     // `_queryMoves` is that line. Never fall back to an empty tree path after
     // a rebuild miss — that is exactly "No move statistics" past ply 20.
-    final exploredMoves =
-        _queryFromInitial ? _queryMoves : const <String>[];
+    final exploredMoves = _queryFromInitial ? _queryMoves : const <String>[];
 
     if (kDebugMode &&
         _queryFromInitial &&
@@ -357,15 +371,13 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
     final currentPly = _pliesFromFen(baseFen);
     final nextPositionRequiresReplay =
         currentPly >= _kExactIndexedExplorerMaxPly;
-    final maxPrefetch =
-        nextPositionRequiresReplay
-            ? (playerScoped ? 1 : 0)
-            : (playerScoped ? 4 : 3);
+    final maxPrefetch = nextPositionRequiresReplay
+        ? (playerScoped ? 1 : 0)
+        : (playerScoped ? 4 : 3);
     if (maxPrefetch <= 0) return;
-    final candidates =
-        aggregates.length <= maxPrefetch
-            ? aggregates
-            : aggregates.sublist(0, maxPrefetch);
+    final candidates = aggregates.length <= maxPrefetch
+        ? aggregates
+        : aggregates.sublist(0, maxPrefetch);
 
     for (var i = 0; i < candidates.length; i++) {
       final a = candidates[i];
@@ -478,8 +490,9 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
       final playedMove = NormalMove.fromUci(normalizedUci);
       final currentLine = _lineForPointerInGame(state.game!, state.movePointer);
       final currentMove = _moveForPointerInGame(state.game!, state.movePointer);
-      final currentIndex =
-          state.movePointer.isEmpty ? -1 : state.movePointer.last;
+      final currentIndex = state.movePointer.isEmpty
+          ? -1
+          : state.movePointer.last;
 
       // 1. Check if the move is the next move in the current mainline
       if (currentLine != null && currentIndex < currentLine.length - 1) {
@@ -504,21 +517,19 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
       // 2. Check if the move is an existing variation of the current position
       // For root variations, we check firstMove.variations.
       // For others, we check currentMove.variations.
-      final variationsToSearch =
-          currentIndex == -1
-              ? (state.game!.mainline.isNotEmpty
-                  ? state.game!.mainline.first.variations
-                  : null)
-              : currentMove?.variations;
+      final variationsToSearch = currentIndex == -1
+          ? (state.game!.mainline.isNotEmpty
+                ? state.game!.mainline.first.variations
+                : null)
+          : currentMove?.variations;
 
       if (variationsToSearch != null) {
         for (var i = 0; i < variationsToSearch.length; i++) {
           final variation = variationsToSearch[i];
           if (variation.isNotEmpty && variation[0].uci == normalizedUci) {
-            final newPointer =
-                state.movePointer.isEmpty
-                    ? [0, i, 0]
-                    : [...state.movePointer, i, 0];
+            final newPointer = state.movePointer.isEmpty
+                ? [0, i, 0]
+                : [...state.movePointer, i, 0];
             state = state.copyWith(
               currentFen: normalizeFenForGamebase(variation[0].fen),
               movePointer: newPointer,
@@ -533,17 +544,18 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
       // Create new move/variation
       final position = currentPosition;
       final (newPosition, sanActual) = position.makeSan(playedMove);
-      final movingColor =
-          position.turn == Side.white ? ChessColor.white : ChessColor.black;
-      final nextToMove =
-          newPosition.turn == Side.white ? ChessColor.white : ChessColor.black;
+      final movingColor = position.turn == Side.white
+          ? ChessColor.white
+          : ChessColor.black;
+      final nextToMove = newPosition.turn == Side.white
+          ? ChessColor.white
+          : ChessColor.black;
 
-      final moveNumber =
-          currentMove != null
-              ? (currentMove.turn == ChessColor.black
-                  ? currentMove.num + 1
-                  : currentMove.num)
-              : (movingColor == ChessColor.white ? 1 : 1);
+      final moveNumber = currentMove != null
+          ? (currentMove.turn == ChessColor.black
+                ? currentMove.num + 1
+                : currentMove.num)
+          : (movingColor == ChessColor.white ? 1 : 1);
 
       final newChessMove = ChessMove(
         num: moveNumber,
@@ -771,10 +783,9 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
   void goForward() {
     if (!state.canGoForward) return;
 
-    final nextPointer =
-        state.game != null
-            ? _nextPointerInGame(state.game!, state.movePointer)
-            : null;
+    final nextPointer = state.game != null
+        ? _nextPointerInGame(state.game!, state.movePointer)
+        : null;
 
     if (nextPointer != null) {
       final move = _moveForPointerInGame(state.game!, nextPointer);
@@ -888,6 +899,7 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
   void initializeWithPlayer(GamebasePlayer player) {
     _queryFromInitial = true;
     _queryMoves = const <String>[];
+    _accessMoveNumberOffset = 0;
     state = GamebaseExplorerState(
       currentFen: _kInitialFen,
       game: ChessGame(
@@ -918,6 +930,7 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
     GamebasePlayer player,
     GamebaseFilters filters,
   ) {
+    _accessMoveNumberOffset = 0;
     final compatibleFilters = _treeCompatibleFilters(filters);
     state = GamebaseExplorerState(
       currentFen: _kInitialFen,
@@ -954,6 +967,7 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
     _debounceTimer?.cancel();
     // Invalidate any in-flight response from a previous position.
     _fetchToken++;
+    _accessMoveNumberOffset = 0;
     state = GamebaseExplorerState(
       currentFen: _kInitialFen,
       game: ChessGame(
@@ -977,8 +991,17 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
   }
 
   /// Set position from FEN (for loading a specific position)
-  void setPosition(String fen, {String? startingFen}) {
-    setPositionWithMoves(fen, const <String>[], startingFen: startingFen);
+  void setPosition(
+    String fen, {
+    String? startingFen,
+    int minimumMoveNumber = 1,
+  }) {
+    setPositionWithMoves(
+      fen,
+      const <String>[],
+      startingFen: startingFen,
+      minimumMoveNumber: minimumMoveNumber,
+    );
   }
 
   /// Set position from board FEN and full explored move line (UCI).
@@ -991,6 +1014,7 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
     String fen,
     List<String> moves, {
     String? startingFen,
+    int minimumMoveNumber = 1,
   }) {
     try {
       final normalized = normalizeFenForGamebase(fen);
@@ -1005,16 +1029,29 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
           'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
       // Prefer treating standard starts as initial even if counters differ.
       final fromInitial = _isInitialFen(actualStartingFen);
+      final fenStartingMoveNumber = fromInitial
+          ? 1
+          : _pliesFromFen(actualStartingFen) + 1;
+      final safeFenStartingMoveNumber = fenStartingMoveNumber < 1
+          ? 1
+          : fenStartingMoveNumber;
+      final safeMinimumMoveNumber = minimumMoveNumber < 1
+          ? 1
+          : minimumMoveNumber;
+      final startingMoveNumber =
+          safeMinimumMoveNumber > safeFenStartingMoveNumber
+          ? safeMinimumMoveNumber
+          : safeFenStartingMoveNumber;
+      _accessMoveNumberOffset = startingMoveNumber - 1;
 
       // ═══════════════════════════════════════════════════════════════════
       // CRITICAL: lock the query line BEFORE any tree rebuild logic.
       // Desktop never lets a tree miss clear the lineUcis it just received.
       // ═══════════════════════════════════════════════════════════════════
       _queryFromInitial = fromInitial;
-      _queryMoves =
-          fromInitial
-              ? List<String>.unmodifiable(sanitizedMoves)
-              : const <String>[];
+      _queryMoves = fromInitial
+          ? List<String>.unmodifiable(sanitizedMoves)
+          : const <String>[];
 
       if (kDebugMode) {
         debugPrint(
@@ -1047,11 +1084,11 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
       // reaches it so repetitions resolve to the cursor, not the first pass.
       int? reachedAtPly =
           _positionKeyForComparison(
-                    normalizeFenForGamebase(currentPosition.fen),
-                  ) ==
-                  targetPositionKey
-              ? -1
-              : null;
+                normalizeFenForGamebase(currentPosition.fen),
+              ) ==
+              targetPositionKey
+          ? -1
+          : null;
 
       for (final uci in sanitizedMoves) {
         var move = NormalMove.fromUci(uci);
@@ -1067,8 +1104,9 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
           move = alt;
         }
         final (nextPos, san) = currentPosition.makeSan(move);
-        final nextToMove =
-            nextPos.turn == Side.white ? ChessColor.white : ChessColor.black;
+        final nextToMove = nextPos.turn == Side.white
+            ? ChessColor.white
+            : ChessColor.black;
         fullMainline.add(
           ChessMove(
             num: currentPosition.fullmoves,
@@ -1092,10 +1130,9 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
       // can send trailing plies past the cursor; replaying them all and then
       // dropping the whole path for "mismatch" is exactly what emptied deep
       // aggregates past ply 20 ("No move statistics for this position").
-      final mainline =
-          reachedAtPly != null
-              ? fullMainline.sublist(0, reachedAtPly + 1)
-              : const <ChessMove>[];
+      final mainline = reachedAtPly != null
+          ? fullMainline.sublist(0, reachedAtPly + 1)
+          : const <ChessMove>[];
 
       // When we reached the target from the initial position, the query line is
       // exactly that prefix — not the longer line a stale caller overshot with.
@@ -1124,10 +1161,9 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
           // not, desktop sets deep fen which breaks startsFromInitial. We
           // always keep initial when fromInitial so tree helpers stay sane;
           // fetch uses _queryMoves, not tree.
-          startingFen:
-              fromInitial
-                  ? actualStartingFen
-                  : (pathMatchesTarget ? actualStartingFen : normalized),
+          startingFen: fromInitial
+              ? actualStartingFen
+              : (pathMatchesTarget ? actualStartingFen : normalized),
           metadata: {
             'Event': 'Opening Explorer',
             'Site': 'ChessEver',
@@ -1135,10 +1171,9 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
           },
           mainline: pathMatchesTarget ? mainline : const [],
         ),
-        movePointer:
-            pathMatchesTarget && mainline.isNotEmpty
-                ? [mainline.length - 1]
-                : const [],
+        movePointer: pathMatchesTarget && mainline.isNotEmpty
+            ? [mainline.length - 1]
+            : const [],
       );
       _scheduleFetch();
     } catch (e, st) {
@@ -1171,8 +1206,8 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
     final localPlayerId = _localTreePlayerId(filters);
     final nextFilters =
         localPlayerId != null && isLocalPlayerTreeEnabledFor(localPlayerId)
-            ? _treeCompatibleFilters(filters)
-            : filters;
+        ? _treeCompatibleFilters(filters)
+        : filters;
     state = state.copyWith(filters: nextFilters);
     if (fetch) _scheduleFetch();
   }
@@ -1187,10 +1222,9 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
     state = state.copyWith(
       moveAggregates: localMoves,
       isLoading: localState.progress.isRunning,
-      error:
-          localState.progress.status == PlayerOpeningTreeStatus.error
-              ? localState.progress.error
-              : null,
+      error: localState.progress.status == PlayerOpeningTreeStatus.error
+          ? localState.progress.error
+          : null,
     );
   }
 
@@ -1313,12 +1347,12 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
     required List<String> exploredMoves,
     required GamebaseFilters filters,
   }) {
-    final timeControl =
-        filters.timeControls.isNotEmpty
-            ? filters.timeControls.first.name
-            : 'any';
-    final playerId =
-        filters.playerIds.isNotEmpty ? filters.playerIds.first : 'any';
+    final timeControl = filters.timeControls.isNotEmpty
+        ? filters.timeControls.first.name
+        : 'any';
+    final playerId = filters.playerIds.isNotEmpty
+        ? filters.playerIds.first
+        : 'any';
     final minRating = filters.minRating?.toString() ?? 'any';
     final maxRating = filters.maxRating?.toString() ?? 'any';
 
@@ -1394,10 +1428,11 @@ final fenPositionHasGamesProvider = FutureProvider.autoDispose
       return response.data.isNotEmpty;
     });
 
-final gamebaseExplorerProvider = StateNotifierProvider.autoDispose<
-  GamebaseExplorerNotifier,
-  GamebaseExplorerState
->((ref) => GamebaseExplorerNotifier(ref));
+final gamebaseExplorerProvider =
+    StateNotifierProvider.autoDispose<
+      GamebaseExplorerNotifier,
+      GamebaseExplorerState
+    >((ref) => GamebaseExplorerNotifier(ref));
 
 String? _localTreePlayerId(GamebaseFilters filters) {
   if (filters.playerIds.length != 1) return null;
@@ -1421,8 +1456,9 @@ PlayerOpeningTreeFilterCriteria _localTreeCriteria(
 ) {
   return PlayerOpeningTreeFilterCriteria(
     playerId: playerId,
-    timeControl:
-        filters.timeControls.isNotEmpty ? filters.timeControls.first : null,
+    timeControl: filters.timeControls.isNotEmpty
+        ? filters.timeControls.first
+        : null,
     color: filters.playerColor?.name,
     isOnline: filters.isOnline,
   );
@@ -1445,6 +1481,8 @@ class PlayerOpeningTreeBuildController
 
   final Ref _ref;
   final String _playerId;
+  String? get _memorialSourceIdentity =>
+      memorialSourceIdentityFromTreeScope(_playerId);
   int _generation = 0;
 
   void start({bool force = false}) {
@@ -1478,11 +1516,18 @@ class PlayerOpeningTreeBuildController
   Future<void> _run(int generation) async {
     try {
       final repository = _ref.read(gamebaseRepositoryProvider);
-      final buildResponse = await repository.startPlayerOpeningTreeBuild(
-        playerId: _playerId,
-        maxPly: _maxPly,
-        forceRebuild: false,
-      );
+      final memorialSourceIdentity = _memorialSourceIdentity;
+      final buildResponse = memorialSourceIdentity == null
+          ? await repository.startPlayerOpeningTreeBuild(
+              playerId: _playerId,
+              maxPly: _maxPly,
+              forceRebuild: false,
+            )
+          : await repository.startMemorialOpeningTreeBuild(
+              sourceIdentity: memorialSourceIdentity,
+              maxPly: _maxPly,
+              forceRebuild: false,
+            );
       if (!mounted || generation != _generation) return;
 
       final buildData = _responseData(buildResponse);
@@ -1503,10 +1548,15 @@ class PlayerOpeningTreeBuildController
           );
         }
 
-        final statusResponse = await repository.getPlayerOpeningTreeStatus(
-          playerId: _playerId,
-          treeId: treeId,
-        );
+        final statusResponse = memorialSourceIdentity == null
+            ? await repository.getPlayerOpeningTreeStatus(
+                playerId: _playerId,
+                treeId: treeId,
+              )
+            : await repository.getMemorialOpeningTreeStatus(
+                sourceIdentity: memorialSourceIdentity,
+                treeId: treeId,
+              );
         if (!mounted || generation != _generation) return;
 
         final statusData = _responseData(statusResponse);
@@ -1526,10 +1576,15 @@ class PlayerOpeningTreeBuildController
             status == 'ready' ||
             status == 'done';
         if (treeIsReady) {
-          final treeResponse = await repository.getPlayerOpeningTree(
-            playerId: _playerId,
-            treeId: treeId,
-          );
+          final treeResponse = memorialSourceIdentity == null
+              ? await repository.getPlayerOpeningTree(
+                  playerId: _playerId,
+                  treeId: treeId,
+                )
+              : await repository.getMemorialOpeningTree(
+                  sourceIdentity: memorialSourceIdentity,
+                  treeId: treeId,
+                );
           if (!mounted || generation != _generation) return;
           if (treeResponse != null) {
             _completeFromTreeResponse(treeId, treeResponse);
@@ -1545,10 +1600,9 @@ class PlayerOpeningTreeBuildController
         );
         await Future<void>.delayed(pollInterval);
         final doubledPollInterval = pollInterval * 2;
-        pollInterval =
-            doubledPollInterval > _maxPollInterval
-                ? _maxPollInterval
-                : doubledPollInterval;
+        pollInterval = doubledPollInterval > _maxPollInterval
+            ? _maxPollInterval
+            : doubledPollInterval;
       }
     } catch (e) {
       if (!mounted || generation != _generation) return;

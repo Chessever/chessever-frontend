@@ -87,17 +87,22 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
     // "No spoilers" is keyed by broadcast tour id. Archive sources (gamebase,
     // TWIC, saved) put an event *name* in tourId, so the lookup never applies —
     // waiting on it only delays result/eval-bar padding and causes layout shift
-    // (same short-circuit as board cards in chess_board_from_fen_new).
-    // Ongoing games also skip the lookup (nothing to spoil yet).
+    // (same short-circuit as board cards in chess_board_from_fen_new). Broadcast
+    // games do load it while ongoing because No Spoilers also hides live evals.
     final isArchiveSource = effectiveGameModel.source != GameSource.supabase;
-    final needsSpoilerLookup =
-        !isArchiveSource && effectiveGameModel.gameStatus.isFinished;
+    final needsSpoilerLookup = !isArchiveSource;
     final spoilerState =
         needsSpoilerLookup
             ? ref.watch(eventNoSpoilersProvider(effectiveGameModel.tourId))
             : null;
+    final hideEventEvaluation =
+        spoilerState != null &&
+        shouldHideEventEvaluation(
+          isBroadcastGame: true,
+          spoilerState: spoilerState,
+        );
     final spoilersRevealedForGame =
-        needsSpoilerLookup
+        needsSpoilerLookup && effectiveGameModel.gameStatus.isFinished
             ? ref.watch(
               eventNoSpoilersRevealedGamesProvider.select(
                 (gameIds) => gameIds.contains(effectiveGameModel.gameId),
@@ -451,27 +456,43 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
     final endPadding = boardMargin; // Right margin matches left margin
 
     final engineSettings = ref.watch(engineSettingsProviderNew).valueOrNull;
-    final engineGaugeWidth = useMemoized(() {
-      // Check if engine gauge is enabled in settings
-      final showEvalBarInSettings =
-          (engineSettings?.showEngineAnalysis ?? true) &&
-          (engineSettings?.showEngineGauge ?? true);
+    final engineGaugeWidth = useMemoized(
+      () {
+        final showGaugeForSurface =
+            playerView == PlayerView.boardView
+                ? engineSettings?.shouldShowEngineGaugeOnBoard ?? true
+                : engineSettings?.shouldShowEngineGaugeInGrid ?? true;
+        // The focused board's computer-analysis toggle gates its gauge. Grid and
+        // list cards instead follow their dedicated Grid View preference.
+        final showEvalBarInSettings =
+            showGaugeForSurface &&
+            (playerView != PlayerView.boardView ||
+                (engineSettings?.showEngineAnalysis ?? true));
 
-      // We only show the gauge area if:
-      // 1. The finished-game result is allowed to be shown
-      // 2. The game is ongoing AND started AND gauge is enabled in settings
-      final isFinished =
-          effectiveGameModel.gameStatus.isFinished && revealSpoilers;
-      final effectivelyShowingEvalBar =
-          showEvalBarInSettings &&
-          effectiveGameModel.hasStarted &&
-          effectiveGameModel.gameStatus.isOngoing;
+        // We only show the gauge area if:
+        // 1. The finished-game result is allowed to be shown
+        // 2. The game is ongoing AND started AND gauge is enabled in settings
+        final isFinished =
+            effectiveGameModel.gameStatus.isFinished && revealSpoilers;
+        final effectivelyShowingEvalBar =
+            showEvalBarInSettings &&
+            !hideEventEvaluation &&
+            effectiveGameModel.hasStarted &&
+            effectiveGameModel.gameStatus.isOngoing;
 
-      if (isFinished || effectivelyShowingEvalBar) {
-        return playerView == PlayerView.gridView ? 10.w : 20.w;
-      }
-      return 0.0;
-    }, [engineSettings, effectiveGameModel, playerView, revealSpoilers]);
+        if (isFinished || effectivelyShowingEvalBar) {
+          return playerView == PlayerView.gridView ? 10.w : 20.w;
+        }
+        return 0.0;
+      },
+      [
+        engineSettings,
+        effectiveGameModel,
+        playerView,
+        revealSpoilers,
+        hideEventEvaluation,
+      ],
+    );
 
     // Clock padding - add small horizontal padding to prevent flickering and provide stability
     final clockPadding = playerView == PlayerView.gridView ? 4.w : 6.w;
@@ -749,6 +770,7 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
           SizedBox(width: boardMargin),
           // Game result score - centered in eval bar width
           SizedBox(
+            key: const ValueKey('player-row-evaluation-space'),
             width: engineGaugeWidth,
             child:
                 effectiveGameModel.gameStatus.isFinished && revealSpoilers
