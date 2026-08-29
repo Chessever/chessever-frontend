@@ -1,5 +1,6 @@
 import 'package:chessever2/utils/country_utils.dart';
 import 'package:chessever2/utils/png_asset.dart';
+import 'package:country_flags/country_flags.dart';
 import 'package:country_picker/country_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_country_flags/flutter_country_flags.dart' as fcf;
@@ -127,15 +128,27 @@ class FederationFlag extends StatelessWidget {
     final radius = borderRadius ?? BorderRadius.circular(3);
     return ClipRRect(
       borderRadius: radius,
-      child: fcf.FlutterCountryFlags(
-        country: iso2,
-        width: width,
-        height: height,
-        fit: BoxFit.cover,
-        borderRadius: 0,
-      ),
+      child:
+          iso2 == _kosovoIso2
+              ? CountryFlag.fromCountryCode(
+                iso2,
+                theme: ImageTheme(width: width, height: height),
+              )
+              : fcf.FlutterCountryFlags(
+                country: iso2,
+                width: width,
+                height: height,
+                fit: BoxFit.cover,
+                borderRadius: 0,
+              ),
     );
   }
+
+  /// `flutter_country_flags` bundles `xk.png` but its code resolver never
+  /// reaches the asset: neither its `Country` enum nor its ISO code table
+  /// lists XK, so it paints the grey fallback tile instead. `country_flags`
+  /// renders Kosovo correctly and is already used for event flags.
+  static const _kosovoIso2 = 'XK';
 
   Widget _ukSubdivisionFlag(BuildContext context, String fideCode) {
     final country = _ukSubdivisions[fideCode];
