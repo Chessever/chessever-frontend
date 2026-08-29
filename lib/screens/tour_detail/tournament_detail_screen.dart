@@ -1,5 +1,7 @@
 import 'dart:async';
 
+import 'package:chessever2/chat/botvinnik_chat_button.dart';
+import 'package:chessever2/chat/chat_api.dart';
 import 'package:chessever2/e2e/e2e_ids.dart';
 import 'package:chessever2/main.dart';
 import 'package:chessever2/screens/group_event/providers/group_event_screen_provider.dart';
@@ -66,6 +68,40 @@ class _TournamentDetailViewState extends ConsumerState<TournamentDetailScreen>
   final TournamentDetailLayoutTracker _layoutTracker =
       TournamentDetailLayoutTracker();
   late List<TournamentDetailScreenMode> _renderedModes;
+  String? _botvinnikConversationId;
+  String? _scheduledReferencedRoundId;
+
+  void _rememberBotvinnikConversation(String conversationId) {
+    if (!mounted || _botvinnikConversationId == conversationId) return;
+    setState(() => _botvinnikConversationId = conversationId);
+  }
+
+  void _scheduleReferencedRoundSelection(
+    WidgetRef scopedRef,
+    String? roundId,
+    AsyncValue<GamesAppBarViewModel> roundsAsync,
+  ) {
+    if (roundId == null ||
+        roundId.isEmpty ||
+        _scheduledReferencedRoundId == roundId) {
+      return;
+    }
+    final rounds = roundsAsync.valueOrNull;
+    if (rounds?.selectedId != roundId || rounds?.userSelectedId != true) return;
+    _scheduledReferencedRoundId = roundId;
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final current = scopedRef.read(gamesAppBarProvider).valueOrNull;
+      if (current?.selectedId != roundId || current?.userSelectedId != true) {
+        _scheduledReferencedRoundId = null;
+        return;
+      }
+      scrollToRoundFromTournamentContext(scopedRef, roundId);
+      scopedRef.read(pendingRoundNavigationProvider.notifier).state = null;
+      _scheduledReferencedRoundId = null;
+    });
+  }
 
   @override
   void didPush() {
@@ -223,6 +259,7 @@ class _TournamentDetailViewState extends ConsumerState<TournamentDetailScreen>
       ref.invalidate(selectedTourModeProvider);
       ref.invalidate(gamesTourProvider);
       ref.invalidate(userSelectedRoundProvider);
+      ref.invalidate(pendingRoundNavigationProvider);
       ref.invalidate(tourDetailScreenProvider);
       ref.invalidate(gamesAppBarProvider);
       ref.invalidate(gamesTourScreenProvider);
@@ -256,6 +293,15 @@ class _TournamentDetailViewState extends ConsumerState<TournamentDetailScreen>
         builder: (context, scopedRef, _) {
           final selectedTourMode = scopedRef.watch(selectedTourModeProvider);
           final tourDetailAsync = scopedRef.watch(tourDetailScreenProvider);
+          final roundsAsync = scopedRef.watch(gamesAppBarProvider);
+          final pendingRoundId = scopedRef.watch(
+            pendingRoundNavigationProvider,
+          );
+          _scheduleReferencedRoundSelection(
+            scopedRef,
+            pendingRoundId,
+            roundsAsync,
+          );
           final tourId = tourDetailAsync.valueOrNull?.aboutTourModel.id;
           final previousTourId = _layoutTracker.activeTourId;
           final knockoutState =
@@ -291,10 +337,28 @@ class _TournamentDetailViewState extends ConsumerState<TournamentDetailScreen>
             selectedTourMode,
           );
           final isTeam = layout == TournamentDetailLayout.team;
+          final selectedBroadcast = scopedRef.watch(
+            selectedBroadcastModelProvider,
+          );
+          final selectedTour = tourDetailAsync.valueOrNull?.aboutTourModel;
 
           return ScreenWrapper(
             child: Scaffold(
               key: e2eKey(E2eIds.tournamentDetailRoot),
+              floatingActionButton: BotvinnikChatButton(
+                heroTag: 'botvinnik-tournament',
+                initialConversationId: _botvinnikConversationId,
+                createNewConversationOnOpen: _botvinnikConversationId == null,
+                onConversationChanged: _rememberBotvinnikConversation,
+                screenContext: ChatScreenContext(
+                  screen: 'tournament',
+                  eventId: selectedBroadcast?.id,
+                  eventName: selectedBroadcast?.name,
+                  tournamentId: selectedTour?.id,
+                  tournamentName: selectedTour?.name,
+                ),
+                iconOnly: true,
+              ),
               body: Center(
                 child: ConstrainedBox(
                   constraints: BoxConstraints(

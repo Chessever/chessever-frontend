@@ -5,6 +5,7 @@ class PngAsset {
   static const fideLogo = 'assets/pngs/fide_logo.webp';
   static const newAppLogoCircle = 'assets/pngs/new_app_logo_circle.webp';
   static const newAppLogo = 'assets/pngs/new_app_logo.webp';
+  static const botvinnikIcon = 'assets/pngs/botvinnik_icon.png';
   static const blitzIcon = 'assets/pngs/blitz.png';
   static const classicalIcon = 'assets/pngs/classical.png';
   static const rapidIcon = 'assets/pngs/rapid.png';

@@ -20,6 +20,19 @@ set +a
 : "${GOOGLE_WEB_CLIENT_ID:?}"
 : "${GOOGLE_IOS_CLIENT_ID:?}"
 
+EXPECTED_GOOGLE_WEB_CLIENT_ID="537883311096-2vtod3ffbtcs3bhda8psl3m2muth70hb.apps.googleusercontent.com"
+EXPECTED_GOOGLE_IOS_CLIENT_ID="537883311096-6j22655t8lfk67m6hkhnkguuen90smvh.apps.googleusercontent.com"
+
+if [[ "$GOOGLE_WEB_CLIENT_ID" != "$EXPECTED_GOOGLE_WEB_CLIENT_ID" ]]; then
+  echo "Refusing: GOOGLE_WEB_CLIENT_ID must use the ChessEver Test Firebase project" >&2
+  exit 1
+fi
+
+if [[ "$GOOGLE_IOS_CLIENT_ID" != "$EXPECTED_GOOGLE_IOS_CLIENT_ID" ]]; then
+  echo "Refusing: GOOGLE_IOS_CLIENT_ID must use the ChessEver Test Firebase project" >&2
+  exit 1
+fi
+
 # Refuse production by accident
 case "$SUPABASE_URL" in
   *odmekzlfunfocvedqusl*) ;;
