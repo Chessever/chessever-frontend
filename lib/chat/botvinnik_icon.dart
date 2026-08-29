@@ -1,16 +1,25 @@
 import 'dart:math' as math;
 
-import 'package:chessever2/utils/png_asset.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 
 class BotvinnikIcon extends StatelessWidget {
-  const BotvinnikIcon({required this.size, this.showShadow = false, super.key});
+  static const _asset = 'assets/svgs/botvinnik_icon.svg';
+
+  const BotvinnikIcon({
+    required this.size,
+    this.showShadow = false,
+    this.color,
+    super.key,
+  });
 
   final double size;
   final bool showShadow;
+  final Color? color;
 
   @override
   Widget build(BuildContext context) {
+    final effectiveColor = color ?? Theme.of(context).colorScheme.primary;
     return Container(
       width: size,
       height: size,
@@ -29,12 +38,12 @@ class BotvinnikIcon extends StatelessWidget {
               : null,
       child: ClipRRect(
         borderRadius: BorderRadius.circular(size * 0.2),
-        child: Image.asset(
-          PngAsset.botvinnikIcon,
+        child: SvgPicture.asset(
+          _asset,
           width: size,
           height: size,
           fit: BoxFit.contain,
-          filterQuality: FilterQuality.high,
+          colorFilter: ColorFilter.mode(effectiveColor, BlendMode.modulate),
           excludeFromSemantics: true,
         ),
       ),

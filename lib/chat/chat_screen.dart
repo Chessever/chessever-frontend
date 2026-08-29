@@ -3,11 +3,19 @@ import 'dart:async';
 import 'package:chessever2/chat/botvinnik_icon.dart';
 import 'package:chessever2/chat/chat_api.dart';
 import 'package:chessever2/chat/botvinnik_provider.dart';
+import 'package:chessever2/providers/auth_state_provider.dart';
 import 'package:chessever2/services/deep_link_service.dart';
+import 'package:chessever2/screens/group_event/smart_event/smart_aggregate_event_provider.dart';
+import 'package:chessever2/screens/group_event/smart_event/smart_event_screen.dart';
+import 'package:chessever2/screens/player_profile/player_profile_screen.dart';
+import 'package:chessever2/widgets/game_filter/game_filter_model.dart';
+import 'package:chessever2/widgets/auth/auth_upgrade_sheet.dart';
+import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:package_info_plus/package_info_plus.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 Uri? safeChatSourceUri(String? href) {
@@ -134,6 +142,18 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   }
 
   Future<void> _load() async {
+    final auth = Supabase.instance.client.auth;
+    if (auth.currentUser == null ||
+        auth.currentUser!.isAnonymous ||
+        auth.currentSession == null) {
+      if (mounted) {
+        setState(() {
+          _loading = false;
+          _error = null;
+        });
+      }
+      return;
+    }
     setState(() {
       _loading = true;
       _error = null;
@@ -230,6 +250,20 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   }
 
   Future<void> _send() async {
+    final user = ref.read(currentUserProvider);
+    final quota = ref.read(botvinnikQuotaProvider).valueOrNull;
+    final access = chatComposerAccess(
+      isSignedIn: user != null && !user.isAnonymous,
+      quota: quota,
+    );
+    if (access == ChatComposerAccess.signedOut) {
+      unawaited(_showLogin());
+      return;
+    }
+    if (access == ChatComposerAccess.exhausted) {
+      unawaited(_showUpgrade());
+      return;
+    }
     var selected = _selected;
     final content = _controller.text.trim();
     if (selected == null || content.isEmpty || _sending) return;
@@ -399,6 +433,25 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     unawaited(_send());
   }
 
+  Future<void> _showLogin() async {
+    final signedIn = await showAuthUpgradeSheet(
+      context: context,
+      title: 'Sign in to use Botvinnik',
+      message: 'Sign in or create an account to start chatting.',
+      dismissLabel: 'Not now',
+    );
+    if (!mounted || !signedIn) return;
+    setState(() => _error = null);
+    await ref.read(botvinnikQuotaProvider.notifier).refresh();
+    await _load();
+  }
+
+  Future<void> _showUpgrade() async {
+    await showPremiumPaywallSheet(context: context);
+    if (!mounted) return;
+    await ref.read(botvinnikQuotaProvider.notifier).refresh();
+  }
+
   void _readQuota(Map<String, dynamic> data) {
     final quota = data['quota'] as Map<String, dynamic>?;
     if (quota == null) return;
@@ -454,12 +507,47 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     }
     if (reference.type == 'tournament') {
       DeepLinkService.instance.openEventFromApp(tourId: reference.id);
+      return;
+    }
+    if (reference.type == 'player') {
+      final fideId = int.tryParse(reference.id);
+      Navigator.of(context).push(
+        MaterialPageRoute<void>(
+          builder:
+              (_) => PlayerProfileScreen(
+                fideId: fideId,
+                playerName: reference.label,
+                title: reference.title,
+                federation: reference.federation,
+                rating: reference.rating,
+              ),
+        ),
+      );
+      return;
+    }
+    if (reference.type == 'opening' &&
+        RegExp(r'^[A-E][0-9]{2}$').hasMatch(reference.id.toUpperCase())) {
+      Navigator.of(context).push(
+        MaterialPageRoute<void>(
+          builder:
+              (_) => SmartEventScreen(
+                request: SmartEventRequest.forOpening(
+                  GameEcoFilter.forCode(reference.id),
+                ),
+              ),
+        ),
+      );
     }
   }
 
   @override
   Widget build(BuildContext context) {
     final quota = ref.watch(botvinnikQuotaProvider);
+    final user = ref.watch(currentUserProvider);
+    final composerAccess = chatComposerAccess(
+      isSignedIn: user != null && !user.isAnonymous,
+      quota: quota.valueOrNull,
+    );
     return Scaffold(
       key: _scaffoldKey,
       drawer: _ConversationDrawer(
@@ -570,16 +658,38 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                             ),
                       ),
             ),
-            _ChatComposer(
-              controller: _controller,
-              sending: _sending,
-              onSend: _send,
-            ),
+            switch (composerAccess) {
+              ChatComposerAccess.signedOut => _ChatLoginGate(
+                onSignIn: _showLogin,
+              ),
+              ChatComposerAccess.exhausted => _ChatUpgradeGate(
+                quota: quota.valueOrNull!,
+                onUpgrade: _showUpgrade,
+              ),
+              ChatComposerAccess.enabled => _ChatComposer(
+                controller: _controller,
+                sending: _sending,
+                onSend: _send,
+              ),
+            },
           ],
         ),
       ),
     );
   }
+}
+
+enum ChatComposerAccess { signedOut, enabled, exhausted }
+
+ChatComposerAccess chatComposerAccess({
+  required bool isSignedIn,
+  required ChatQuotaStatus? quota,
+}) {
+  if (!isSignedIn) return ChatComposerAccess.signedOut;
+  if (quota != null && !quota.isPremium && quota.remaining <= 0) {
+    return ChatComposerAccess.exhausted;
+  }
+  return ChatComposerAccess.enabled;
 }
 
 ChatConversation chatConversationForOpen(
@@ -623,7 +733,7 @@ class _OnlineDot extends StatelessWidget {
   }
 }
 
-class _ChatComposer extends StatelessWidget {
+class _ChatComposer extends StatefulWidget {
   const _ChatComposer({
     required this.controller,
     required this.sending,
@@ -633,6 +743,222 @@ class _ChatComposer extends StatelessWidget {
   final TextEditingController controller;
   final bool sending;
   final VoidCallback onSend;
+
+  @override
+  State<_ChatComposer> createState() => _ChatComposerState();
+}
+
+class _ChatLoginGate extends StatelessWidget {
+  const _ChatLoginGate({required this.onSignIn});
+
+  final Future<void> Function() onSignIn;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return Material(
+      color: colorScheme.surface,
+      child: SafeArea(
+        top: false,
+        child: Container(
+          width: double.infinity,
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 14),
+          decoration: BoxDecoration(
+            border: Border(top: BorderSide(color: colorScheme.outlineVariant)),
+          ),
+          child: FilledButton.icon(
+            onPressed: onSignIn,
+            icon: const Icon(Icons.login_rounded),
+            label: const Text('Sign in to chat'),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ChatUpgradeGate extends StatelessWidget {
+  const _ChatUpgradeGate({required this.quota, required this.onUpgrade});
+
+  final ChatQuotaStatus quota;
+  final Future<void> Function() onUpgrade;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final remaining = quota.remaining.clamp(0, quota.limit);
+    return Material(
+      color: colorScheme.surface,
+      child: SafeArea(
+        top: false,
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            border: Border(top: BorderSide(color: colorScheme.outlineVariant)),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(vertical: 5),
+                color: colorScheme.surfaceContainerHighest,
+                alignment: Alignment.center,
+                child: Text(
+                  '$remaining of ${quota.limit} messages left',
+                  style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                    color: colorScheme.onSurfaceVariant,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
+                child: SizedBox(
+                  width: double.infinity,
+                  child: FilledButton.icon(
+                    onPressed: onUpgrade,
+                    icon: const Icon(Icons.workspace_premium_rounded),
+                    label: const Text('Upgrade to continue chatting'),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ChatComposerState extends State<_ChatComposer> {
+  static const _placeholders = <String>[
+    'Your move—ask Botvinnik',
+    '轮到你了——问问博特维尼克',
+    'आपकी चाल—बोटविनिक से पूछें',
+    'Tu jugada—pregúntale a Botvinnik',
+    'حان دورك—اسأل بوتفينيك',
+  ];
+
+  static const _typingDelay = Duration(milliseconds: 70);
+  static const _deletingDelay = Duration(milliseconds: 35);
+  static const _completedPhrasePause = Duration(milliseconds: 1400);
+  static const _betweenPhrasesPause = Duration(milliseconds: 250);
+
+  Timer? _placeholderTimer;
+  int _placeholderIndex = 0;
+  int _visibleCharacterCount = 0;
+  bool _isDeleting = false;
+  bool _hasUserTyped = false;
+  bool? _reduceMotion;
+
+  List<int> get _currentRunes =>
+      _placeholders[_placeholderIndex].runes.toList();
+
+  String get _visiblePlaceholder =>
+      String.fromCharCodes(_currentRunes.take(_visibleCharacterCount));
+
+  @override
+  void initState() {
+    super.initState();
+    _hasUserTyped = widget.controller.text.isNotEmpty;
+    widget.controller.addListener(_onTextChanged);
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final reduceMotion =
+        MediaQuery.maybeOf(context)?.disableAnimations ?? false;
+    if (_reduceMotion == reduceMotion) return;
+
+    _placeholderTimer?.cancel();
+    _reduceMotion = reduceMotion;
+    _placeholderIndex = 0;
+    _isDeleting = false;
+    _visibleCharacterCount =
+        reduceMotion || _hasUserTyped ? _currentRunes.length : 0;
+    if (!reduceMotion && !_hasUserTyped) {
+      _schedulePlaceholderTick(_typingDelay);
+    }
+  }
+
+  @override
+  void didUpdateWidget(covariant _ChatComposer oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.controller == widget.controller) return;
+    oldWidget.controller.removeListener(_onTextChanged);
+    widget.controller.addListener(_onTextChanged);
+    if (widget.controller.text.isNotEmpty) _stopPlaceholderAnimation();
+  }
+
+  void _onTextChanged() {
+    if (_hasUserTyped || widget.controller.text.isEmpty) return;
+    _stopPlaceholderAnimation();
+  }
+
+  void _stopPlaceholderAnimation() {
+    _placeholderTimer?.cancel();
+    if (!mounted) return;
+    setState(() {
+      _hasUserTyped = true;
+      _placeholderIndex = 0;
+      _visibleCharacterCount = _currentRunes.length;
+      _isDeleting = false;
+    });
+  }
+
+  void _schedulePlaceholderTick(Duration delay) {
+    _placeholderTimer = Timer(delay, _updatePlaceholder);
+  }
+
+  void _updatePlaceholder() {
+    if (!mounted || _reduceMotion != false) return;
+    final characterCount = _currentRunes.length;
+
+    if (!_isDeleting && _visibleCharacterCount < characterCount) {
+      setState(() => _visibleCharacterCount++);
+      _schedulePlaceholderTick(
+        _visibleCharacterCount == characterCount
+            ? _completedPhrasePause
+            : _typingDelay,
+      );
+      return;
+    }
+
+    if (!_isDeleting) {
+      _isDeleting = true;
+      _schedulePlaceholderTick(_deletingDelay);
+      return;
+    }
+
+    if (_visibleCharacterCount > 0) {
+      setState(() => _visibleCharacterCount--);
+      _schedulePlaceholderTick(
+        _visibleCharacterCount == 0 ? _betweenPhrasesPause : _deletingDelay,
+      );
+      return;
+    }
+
+    if (_placeholderIndex == _placeholders.length - 1) {
+      setState(() {
+        _placeholderIndex = 0;
+        _visibleCharacterCount = _currentRunes.length;
+        _isDeleting = false;
+      });
+      return;
+    }
+
+    _isDeleting = false;
+    _placeholderIndex++;
+    _schedulePlaceholderTick(_typingDelay);
+  }
+
+  @override
+  void dispose() {
+    _placeholderTimer?.cancel();
+    widget.controller.removeListener(_onTextChanged);
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -658,13 +984,13 @@ class _ChatComposer extends StatelessWidget {
               children: [
                 Expanded(
                   child: TextField(
-                    controller: controller,
+                    controller: widget.controller,
                     minLines: 1,
                     maxLines: 5,
                     maxLength: 2000,
                     textInputAction: TextInputAction.newline,
                     decoration: InputDecoration(
-                      hintText: 'Message Botvinnik…',
+                      hintText: _visiblePlaceholder,
                       hintStyle: TextStyle(color: colorScheme.onSurfaceVariant),
                       counterText: '',
                       border: InputBorder.none,
@@ -678,18 +1004,19 @@ class _ChatComposer extends StatelessWidget {
                 Padding(
                   padding: const EdgeInsets.only(bottom: 3),
                   child: ValueListenableBuilder<TextEditingValue>(
-                    valueListenable: controller,
+                    valueListenable: widget.controller,
                     builder: (context, value, child) {
-                      final canSend = value.text.trim().isNotEmpty && !sending;
+                      final canSend =
+                          value.text.trim().isNotEmpty && !widget.sending;
                       return IconButton.filled(
                         tooltip: 'Send',
-                        onPressed: canSend ? onSend : null,
+                        onPressed: canSend ? widget.onSend : null,
                         style: IconButton.styleFrom(
                           minimumSize: const Size.square(40),
                           maximumSize: const Size.square(40),
                         ),
                         icon:
-                            sending
+                            widget.sending
                                 ? const SizedBox.square(
                                   dimension: 17,
                                   child: CircularProgressIndicator(
@@ -966,12 +1293,12 @@ class _MessageBubble extends StatelessWidget {
                       group
                           .map(
                             (reference) => ActionChip(
-                              avatar: Icon(
-                                reference.type == 'game'
-                                    ? Icons.sports_esports_rounded
-                                    : Icons.emoji_events_rounded,
-                                size: 16,
-                              ),
+                              avatar: Icon(switch (reference.type) {
+                                'game' => Icons.sports_esports_rounded,
+                                'player' => Icons.person_rounded,
+                                'opening' => Icons.auto_stories_rounded,
+                                _ => Icons.emoji_events_rounded,
+                              }, size: 16),
                               label: Text(reference.label),
                               onPressed: () => onReferencePressed(reference),
                               side: BorderSide(
@@ -1174,60 +1501,89 @@ class _ConversationDrawer extends ConsumerWidget {
                   borderRadius: BorderRadius.circular(14),
                   border: Border.all(color: colorScheme.outlineVariant),
                 ),
-                child: Row(
+                child: Column(
                   children: [
-                    Icon(
-                      Icons.bolt_rounded,
-                      color: colorScheme.primary,
-                      size: 20,
-                    ),
-                    const SizedBox(width: 9),
-                    Expanded(
-                      child: quota.when(
-                        data: (value) {
-                          final label =
-                              value == null
-                                  ? 'Sign in to view quota'
-                                  : '${value.remaining} of ${value.limit} messages left';
-                          return Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                'Daily allowance',
-                                style: Theme.of(context).textTheme.labelMedium
-                                    ?.copyWith(fontWeight: FontWeight.w700),
-                              ),
-                              const SizedBox(height: 2),
-                              Text(
-                                label,
-                                style: Theme.of(
-                                  context,
-                                ).textTheme.bodySmall?.copyWith(
-                                  color: colorScheme.onSurfaceVariant,
+                    Row(
+                      children: [
+                        Icon(
+                          Icons.bolt_rounded,
+                          color: colorScheme.primary,
+                          size: 20,
+                        ),
+                        const SizedBox(width: 9),
+                        Expanded(
+                          child: quota.when(
+                            data: (value) {
+                              final label =
+                                  value == null
+                                      ? 'Sign in to view quota'
+                                      : '${value.remaining} of ${value.limit} messages left';
+                              return Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    'Daily allowance',
+                                    style: Theme.of(context)
+                                        .textTheme
+                                        .labelMedium
+                                        ?.copyWith(fontWeight: FontWeight.w700),
+                                  ),
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    label,
+                                    style: Theme.of(
+                                      context,
+                                    ).textTheme.bodySmall?.copyWith(
+                                      color: colorScheme.onSurfaceVariant,
+                                    ),
+                                  ),
+                                ],
+                              );
+                            },
+                            loading:
+                                () => const Text(
+                                  'Loading daily allowance…',
+                                  style: TextStyle(fontSize: 12),
                                 ),
-                              ),
-                            ],
-                          );
-                        },
-                        loading:
-                            () => const Text(
-                              'Loading daily allowance…',
-                              style: TextStyle(fontSize: 12),
-                            ),
-                        error:
-                            (error, stack) => const Text(
-                              'Daily allowance unavailable',
-                              style: TextStyle(fontSize: 12),
-                            ),
-                      ),
-                    ),
-                    IconButton(
-                      tooltip: 'Refresh question count',
-                      onPressed:
-                          () => unawaited(
-                            ref.read(botvinnikQuotaProvider.notifier).refresh(),
+                            error:
+                                (error, stack) => const Text(
+                                  'Daily allowance unavailable',
+                                  style: TextStyle(fontSize: 12),
+                                ),
                           ),
-                      icon: const Icon(Icons.refresh_rounded, size: 19),
+                        ),
+                        IconButton(
+                          tooltip: 'Refresh question count',
+                          onPressed:
+                              () => unawaited(
+                                ref
+                                    .read(botvinnikQuotaProvider.notifier)
+                                    .refresh(),
+                              ),
+                          icon: const Icon(Icons.refresh_rounded, size: 19),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    Divider(height: 1, color: colorScheme.outlineVariant),
+                    const SizedBox(height: 8),
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Icon(
+                          Icons.warning_amber_rounded,
+                          size: 17,
+                          color: colorScheme.tertiary,
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            'Botvinnik can make mistakes. Check important information.',
+                            style: Theme.of(context).textTheme.bodySmall
+                                ?.copyWith(color: colorScheme.onSurfaceVariant),
+                          ),
+                        ),
+                      ],
                     ),
                   ],
                 ),

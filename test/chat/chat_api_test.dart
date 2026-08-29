@@ -3,6 +3,23 @@ import 'package:chessever2/chat/chat_screen.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  test('chat reference retains player navigation metadata', () {
+    final reference = ChatReference.fromJson({
+      'type': 'player',
+      'id': '1503014',
+      'label': 'Carlsen, Magnus',
+      'title': 'GM',
+      'federation': 'NOR',
+      'rating': 2839,
+    });
+
+    expect(reference.type, 'player');
+    expect(reference.id, '1503014');
+    expect(reference.title, 'GM');
+    expect(reference.federation, 'NOR');
+    expect(reference.rating, 2839);
+  });
+
   test('selects the chat deployment that matches the Supabase environment', () {
     expect(
       resolveChatApiBaseUrl(
@@ -225,6 +242,40 @@ void main() {
     expect(quota.used, 3);
     expect(quota.remaining, 47);
     expect(quota.isPremium, isTrue);
+  });
+
+  test('gates the chat composer by authentication and free quota', () {
+    const exhaustedFreeQuota = ChatQuotaStatus(
+      limit: 2,
+      used: 2,
+      remaining: 0,
+      isPremium: false,
+      resetsAt: null,
+    );
+    const exhaustedPremiumQuota = ChatQuotaStatus(
+      limit: 50,
+      used: 50,
+      remaining: 0,
+      isPremium: true,
+      resetsAt: null,
+    );
+
+    expect(
+      chatComposerAccess(isSignedIn: false, quota: null),
+      ChatComposerAccess.signedOut,
+    );
+    expect(
+      chatComposerAccess(isSignedIn: true, quota: exhaustedFreeQuota),
+      ChatComposerAccess.exhausted,
+    );
+    expect(
+      chatComposerAccess(isSignedIn: true, quota: exhaustedPremiumQuota),
+      ChatComposerAccess.enabled,
+    );
+    expect(
+      chatComposerAccess(isSignedIn: true, quota: null),
+      ChatComposerAccess.enabled,
+    );
   });
 
   test('creates a compact conversation title from the first question', () {

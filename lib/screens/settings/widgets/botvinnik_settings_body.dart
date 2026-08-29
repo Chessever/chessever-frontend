@@ -110,6 +110,28 @@ class BotvinnikSettingsBody extends ConsumerWidget {
             ],
           ),
         ),
+        SizedBox(height: 18.h),
+        SettingCard(
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(
+                Icons.warning_amber_rounded,
+                color: Theme.of(context).colorScheme.tertiary,
+              ),
+              SizedBox(width: 12.w),
+              Expanded(
+                child: Text(
+                  'Botvinnik can make mistakes. Check important information.',
+                  style: AppTypography.textSmRegular.copyWith(
+                    color: context.colors.textSecondary,
+                    fontSize: 11.f,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
       ],
     );
   }

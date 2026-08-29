@@ -4,7 +4,6 @@ import 'package:chessever2/chat/chat_api.dart';
 import 'package:chessever2/chat/chat_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 
 class BotvinnikChatButton extends ConsumerWidget {
   const BotvinnikChatButton({
@@ -13,6 +12,7 @@ class BotvinnikChatButton extends ConsumerWidget {
     this.initialConversationId,
     this.createNewConversationOnOpen = false,
     this.onConversationChanged,
+    this.iconOnly = false,
     super.key,
   });
 
@@ -21,27 +21,39 @@ class BotvinnikChatButton extends ConsumerWidget {
   final String? initialConversationId;
   final bool createNewConversationOnOpen;
   final ValueChanged<String>? onConversationChanged;
+  final bool iconOnly;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final user = Supabase.instance.client.auth.currentUser;
     final enabled = ref.watch(botvinnikEnabledProvider).valueOrNull ?? true;
-    if (!ChatApi.buildEnabled || !enabled || user == null || user.isAnonymous) {
+    if (!ChatApi.buildEnabled || !enabled) {
       return const SizedBox.shrink();
     }
-    return FloatingActionButton.small(
-      heroTag: heroTag,
-      tooltip: 'Ask Botvinnik',
-      backgroundColor: Colors.black,
-      onPressed:
-          () => ChatScreen.show(
-            context,
-            screenContext: screenContext,
-            initialConversationId: initialConversationId,
-            createNewConversationOnOpen: createNewConversationOnOpen,
-            onConversationChanged: onConversationChanged,
-          ),
-      child: const BotvinnikIcon(size: 36),
+    final colorScheme = Theme.of(context).colorScheme;
+    return SizedBox.square(
+      dimension: 48,
+      child: FloatingActionButton(
+        heroTag: heroTag,
+        tooltip: 'Ask Botvinnik',
+        backgroundColor:
+            iconOnly ? Colors.transparent : Colors.black.withValues(alpha: 0.5),
+        elevation: iconOnly ? 0 : null,
+        focusElevation: iconOnly ? 0 : null,
+        hoverElevation: iconOnly ? 0 : null,
+        highlightElevation: iconOnly ? 0 : null,
+        onPressed:
+            () => ChatScreen.show(
+              context,
+              screenContext: screenContext,
+              initialConversationId: initialConversationId,
+              createNewConversationOnOpen: createNewConversationOnOpen,
+              onConversationChanged: onConversationChanged,
+            ),
+        child: BotvinnikIcon(
+          size: iconOnly ? 48 : 38,
+          color: colorScheme.primary,
+        ),
+      ),
     );
   }
 }

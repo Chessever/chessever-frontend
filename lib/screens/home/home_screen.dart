@@ -224,6 +224,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       createNewConversationOnOpen: _botvinnikConversationId == null,
       onConversationChanged: _rememberBotvinnikConversation,
       screenContext: const ChatScreenContext(screen: 'home'),
+      iconOnly: true,
     );
   }
 

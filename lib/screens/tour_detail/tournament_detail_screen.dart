@@ -350,6 +350,7 @@ class _TournamentDetailViewState extends ConsumerState<TournamentDetailScreen>
                   tournamentId: selectedTour?.id,
                   tournamentName: selectedTour?.name,
                 ),
+                iconOnly: true,
               ),
               body: Center(
                 child: ConstrainedBox(

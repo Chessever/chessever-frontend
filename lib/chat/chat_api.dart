@@ -74,6 +74,9 @@ class ChatReference {
     required this.id,
     required this.label,
     this.tourId,
+    this.title,
+    this.federation,
+    this.rating,
   });
 
   factory ChatReference.fromJson(Map<String, dynamic> json) {
@@ -82,6 +85,9 @@ class ChatReference {
       id: json['id'] as String? ?? '',
       label: json['label'] as String? ?? '',
       tourId: json['tourId'] as String?,
+      title: json['title'] as String?,
+      federation: json['federation'] as String?,
+      rating: (json['rating'] as num?)?.toInt(),
     );
   }
 
@@ -89,6 +95,9 @@ class ChatReference {
   final String id;
   final String label;
   final String? tourId;
+  final String? title;
+  final String? federation;
+  final int? rating;
 }
 
 class ChatMessage {
