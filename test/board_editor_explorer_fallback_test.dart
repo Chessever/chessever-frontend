@@ -1,9 +1,13 @@
 import 'package:chessever2/repository/gamebase/gamebase_repository.dart';
 import 'package:chessever2/repository/gamebase/search/gamebase_search_models.dart';
+import 'package:chessever2/providers/board_settings_provider_new.dart';
+import 'package:chessever2/providers/engine_settings_provider.dart';
 import 'package:chessever2/screens/board_editor/board_editor_state.dart';
+import 'package:chessever2/screens/gamebase/models/gamebase_game.dart';
 import 'package:chessever2/screens/gamebase/models/models.dart';
 import 'package:chessever2/screens/gamebase/providers/gamebase_providers.dart';
 import 'package:chessever2/screens/gamebase/widgets/move_statistics_panel.dart';
+import 'package:chessever2/screens/library/widgets/library_game_card.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:dartchess/dartchess.dart';
 import 'package:dio/dio.dart';
@@ -16,12 +20,25 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 /// for this no matter how many games actually reached the position.
 const _editorEndgameFen = '8/8/8/4k3/8/4K3/4P3/8 w - - 0 1';
 
+class _TestBoardSettings extends BoardSettingsNotifierNew {
+  @override
+  Future<BoardSettingsNew> build() async => const BoardSettingsNew();
+}
+
+class _TestEngineSettings extends EngineSettingsNotifierNew {
+  @override
+  Future<EngineSettings> build() async =>
+      const EngineSettings(showEngineAnalysis: false);
+}
+
 class _FakeGamebaseRepository extends GamebaseRepository {
   _FakeGamebaseRepository({required this.fenGamesRows})
     : super(Dio(), baseUrl: 'http://localhost', apiKey: 'test');
 
   final List<Map<String, dynamic>> fenGamesRows;
   int fenGamesRequests = 0;
+  int fullGameRequests = 0;
+  int? lastFenNotationPlies;
 
   @override
   Future<GamebaseResponse> getMoveAggregates({
@@ -63,11 +80,23 @@ class _FakeGamebaseRepository extends GamebaseRepository {
     int pageSize = 20,
   }) async {
     fenGamesRequests++;
+    lastFenNotationPlies = notationPlies;
     return GamebaseSearchQueryResponse(
       status: 'success',
       data: fenGamesRows,
-      metadata: const GamebasePaginationMetadata(pageNumber: 0, pageSize: 1),
+      metadata: GamebasePaginationMetadata(
+        pageNumber: pageNumber,
+        pageSize: pageSize,
+        totalCount: fenGamesRows.length,
+        hasMoreValue: false,
+      ),
     );
+  }
+
+  @override
+  Future<GamebaseGameWithPgn?> getGameWithPgn(String id) async {
+    fullGameRequests++;
+    return null;
   }
 }
 
@@ -76,7 +105,11 @@ Future<ProviderContainer> _pumpPanelWithEditorPosition(
   _FakeGamebaseRepository repository,
 ) async {
   final container = ProviderContainer(
-    overrides: [gamebaseRepositoryProvider.overrideWithValue(repository)],
+    overrides: [
+      gamebaseRepositoryProvider.overrideWithValue(repository),
+      boardSettingsProviderNew.overrideWith(_TestBoardSettings.new),
+      engineSettingsProviderNew.overrideWith(_TestEngineSettings.new),
+    ],
   );
 
   await tester.pumpWidget(
@@ -119,11 +152,24 @@ void main() {
   group('Board Editor position in the Explorer panel', () {
     testWidgets(
       'empty aggregates for a custom-start FEN fall back to the FEN-keyed '
-      'games endpoint instead of claiming no games match',
+      'games endpoint and render games directly on a compact panel',
       (tester) async {
+        tester.view.physicalSize = const Size(727, 282);
+        tester.view.devicePixelRatio = 1;
+        addTearDown(tester.view.reset);
+
         final repository = _FakeGamebaseRepository(
           fenGamesRows: const [
-            {'id': 'g1'},
+            {
+              'id': 'g1',
+              'white': 'Position White',
+              'black': 'Position Black',
+              'whiteElo': 2500,
+              'blackElo': 2450,
+              'result': 'W',
+              'date': '2026-08-31T00:00:00.000Z',
+              'continuation': <String>[],
+            },
           ],
         );
         final container = await _pumpPanelWithEditorPosition(
@@ -132,12 +178,13 @@ void main() {
         );
 
         expect(find.text('No games match this position'), findsNothing);
-        expect(
-          find.text('No move statistics for this position'),
-          findsOneWidget,
-        );
-        expect(find.text('View games'), findsOneWidget);
+        expect(find.text('No move statistics for this position'), findsNothing);
+        expect(find.text('View games'), findsNothing);
+        expect(find.byType(LibraryGameCard), findsOneWidget);
         expect(repository.fenGamesRequests, greaterThan(0));
+        expect(repository.lastFenNotationPlies, 0);
+        expect(repository.fullGameRequests, 0);
+        expect(tester.takeException(), isNull);
 
         await _teardownPanel(tester, container);
       },

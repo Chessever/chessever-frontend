@@ -99,18 +99,10 @@ int _explorerPliesFromFen(String fen) {
 /// position does not read as a broken lookup. Collapses to just the text when
 /// the panel is short (the swipe panel can be very short in landscape).
 class _ExplorerEmpty extends StatelessWidget {
-  const _ExplorerEmpty({
-    required this.title,
-    required this.message,
-    this.action,
-  });
+  const _ExplorerEmpty({required this.title, required this.message});
 
   final String title;
   final String message;
-
-  /// Optional affordance rendered under the message. Used to offer the games
-  /// that reached this position when move statistics are unavailable.
-  final Widget? action;
 
   @override
   Widget build(BuildContext context) {
@@ -163,64 +155,12 @@ class _ExplorerEmpty extends StatelessWidget {
                       height: 1.2,
                     ),
                   ),
-                  if (action != null && !ultraCompact) ...[
-                    SizedBox(height: (compact ? 8 : 12).sp),
-                    action!,
-                  ],
                 ],
               ),
             ),
           ),
         );
       },
-    );
-  }
-}
-
-/// Opens the games that reached the board position, via the FEN-keyed
-/// endpoint that answers at depths the aggregate endpoint cannot.
-class _ViewPositionGamesButton extends StatelessWidget {
-  const _ViewPositionGamesButton({required this.fen, required this.filters});
-
-  final String fen;
-  final GamebaseFilters filters;
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: () {
-        showModalBottomSheet<void>(
-          context: context,
-          isScrollControlled: true,
-          backgroundColor: Colors.transparent,
-          builder:
-              (_) => PositionGamesSheet(
-                fen: fen,
-                title: 'Games at this position',
-                filters: filters,
-                useFenEndpoint: true,
-              ),
-        );
-      },
-      child: Padding(
-        padding: EdgeInsets.symmetric(horizontal: 14.sp, vertical: 8.sp),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(Icons.list_alt_rounded, size: 14.ic, color: kPrimaryColor),
-            SizedBox(width: 6.sp),
-            Text(
-              'View games',
-              style: TextStyle(
-                color: kPrimaryColor,
-                fontSize: 12.f,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ],
-        ),
-      ),
     );
   }
 }
@@ -817,40 +757,16 @@ class MoveStatisticsPanel extends HookConsumerWidget {
         );
       }
 
-      // Past the boundary, ask the FEN-keyed endpoint before claiming there
-      // is nothing here, and offer those games when there are.
-      final hasFenGames = ref.watch(
-        fenPositionHasGamesProvider(state.currentFen),
-      );
-
-      return withMovesHeader(
-        hasFenGames.maybeWhen(
-          data:
-              (hasGames) =>
-                  hasGames
-                      ? _ExplorerEmpty(
-                        title: 'No move statistics for this position',
-                        message:
-                            'Move statistics need the full line from the start. '
-                            'Games that reached this position are still available.',
-                        action: _ViewPositionGamesButton(
-                          fen: state.currentFen,
-                          filters: state.filters,
-                        ),
-                      )
-                      : const _ExplorerEmpty(
-                        title: 'No games match this position',
-                        message:
-                            'No master/online games are indexed for the position '
-                            'on the board.',
-                      ),
-          // While the check is in flight, say nothing we might have to retract.
-          orElse:
-              () => const _ExplorerEmpty(
-                title: 'No move statistics for this position',
-                message: 'Checking for games that reached it…',
-              ),
-        ),
+      // A custom/deep FEN needs no intermediary warning or second tap. Render
+      // the complete paginated games list from the exact-FEN endpoint in the
+      // panel immediately. Its request contains the FEN, never a PGN/line.
+      return PositionGamesSheet(
+        key: ValueKey<Object>((state.currentFen, state.filters)),
+        fen: state.currentFen,
+        title: 'Games at this position',
+        filters: state.filters,
+        useFenEndpoint: true,
+        embedded: true,
       );
     }
 
