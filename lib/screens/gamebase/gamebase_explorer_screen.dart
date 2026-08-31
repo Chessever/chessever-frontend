@@ -18,7 +18,6 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
-import 'package:share_plus/share_plus.dart';
 
 import 'package:chessever2/providers/board_settings_provider_new.dart';
 import 'package:chessever2/providers/engine_settings_provider.dart';
@@ -29,9 +28,11 @@ import 'package:chessever2/screens/chessboard/utils/engine_pv_palette.dart';
 import 'package:chessever2/screens/settings/settings_page.dart';
 import 'package:chessever2/screens/chessboard/widgets/chess_board_bottom_nav_bar.dart';
 import 'package:chessever2/screens/chessboard/widgets/evaluation_bar_widget.dart';
+import 'package:chessever2/screens/chessboard/widgets/share_game_screen.dart';
 import 'package:chessever2/screens/chessboard/widgets/switch_views_tutorial_overlay.dart';
 import 'package:chessever2/screens/gamebase/providers/explorer_eval_provider.dart';
 import 'package:chessever2/screens/gamebase/utils/board_workspace_coachmarks.dart';
+import 'package:chessever2/screens/gamebase/utils/explorer_share_utils.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/screens/gamebase/services/player_opening_tree.dart';
 import 'package:chessever2/theme/app_colors.dart';
@@ -866,7 +867,7 @@ class _GamebaseExplorerScreenState extends ConsumerState<GamebaseExplorerScreen>
           context,
         ).push(SettingsPage.route(initiallyExpanded: SettingsSection.board));
       case ExplorerBoardMenuAction.share:
-        await _shareExplorerPgn();
+        await _shareExplorerBoard();
     }
   }
 
@@ -889,21 +890,36 @@ class _GamebaseExplorerScreenState extends ConsumerState<GamebaseExplorerScreen>
     showAppSnack(context, 'PGN copied');
   }
 
-  Future<void> _shareExplorerPgn() async {
-    final pgn = _currentExplorerPgn();
-    if (pgn == null) {
+  Future<void> _shareExplorerBoard() async {
+    final state = ref.read(gamebaseExplorerProvider);
+    final game = state.game;
+    if (game == null) {
       if (mounted) showAppSnack(context, 'No analysis to share');
       return;
     }
-    final box = context.findRenderObject() as RenderBox?;
-    final origin =
-        box == null
-            ? const Rect.fromLTWH(0, 0, 1, 1)
-            : box.localToGlobal(Offset.zero) & box.size;
-    await Share.share(
-      pgn,
-      subject: 'ChessEver analysis',
-      sharePositionOrigin: origin,
+
+    final payload = buildExplorerSharePayload(
+      game: game,
+      movePointer: state.movePointer,
+      currentFen: state.currentFen,
+    );
+    final evalState = ref.read(explorerEvalProvider);
+    final hasCurrentEval =
+        explorerFenPositionKey(evalState.fen) ==
+        explorerFenPositionKey(state.currentFen);
+
+    await pushGameShareScreen(
+      context: context,
+      game: payload.tourGame,
+      shareData: ResolvedGameShareData(
+        pgn: payload.pgn,
+        shareUrl: null,
+        snapshot: payload.snapshot,
+        evaluation: hasCurrentEval ? evalState.evaluation : null,
+        mate: hasCurrentEval ? (evalState.mate ?? 0) : 0,
+        isFlipped: _isFlipped,
+        isAtGameEnd: false,
+      ),
     );
   }
 
