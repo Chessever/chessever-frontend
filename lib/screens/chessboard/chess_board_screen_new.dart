@@ -8746,6 +8746,7 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard>
     required Square square,
     required LichessMoveAnnotation annotation,
   }) {
+    final badgeSize = widget.size / 8 * 0.40;
     return _buildBoardBadge(
       square: square,
       color: annotation.type.color,
@@ -8753,6 +8754,8 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard>
       selfContainedChild: true,
       child: SvgPicture.asset(
         annotation.type.iconAssetPath,
+        width: badgeSize,
+        height: badgeSize,
         fit: BoxFit.contain,
       ),
     );
