@@ -60,13 +60,7 @@ class _TournamentDetailViewState extends ConsumerState<TournamentDetailScreen>
   final TournamentDetailLayoutTracker _layoutTracker =
       TournamentDetailLayoutTracker();
   late List<TournamentDetailScreenMode> _renderedModes;
-  String? _botvinnikConversationId;
   String? _scheduledReferencedRoundId;
-
-  void _rememberBotvinnikConversation(String conversationId) {
-    if (!mounted || _botvinnikConversationId == conversationId) return;
-    setState(() => _botvinnikConversationId = conversationId);
-  }
 
   void _scheduleReferencedRoundSelection(
     WidgetRef scopedRef,
@@ -340,9 +334,6 @@ class _TournamentDetailViewState extends ConsumerState<TournamentDetailScreen>
               key: e2eKey(E2eIds.tournamentDetailRoot),
               floatingActionButton: BotvinnikChatButton(
                 heroTag: 'botvinnik-tournament',
-                initialConversationId: _botvinnikConversationId,
-                createNewConversationOnOpen: _botvinnikConversationId == null,
-                onConversationChanged: _rememberBotvinnikConversation,
                 screenContext: ChatScreenContext(
                   screen: 'tournament',
                   eventId: selectedBroadcast?.id,
