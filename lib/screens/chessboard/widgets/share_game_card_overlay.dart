@@ -20,11 +20,11 @@ import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/screens/library/utils/gamebase_pgn_builder.dart';
-import 'package:chessever2/utils/pgn_export_utils.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/share_card.dart';
 import 'package:chessever2/utils/location_service_provider.dart';
 import 'package:chessever2/widgets/federation_flag.dart';
+import 'package:chessever2/widgets/icons/fen_position_icon.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:chessever2/screens/chessboard/widgets/evaluation_bar_widget.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
@@ -33,6 +33,14 @@ import 'package:chessground/chessground.dart';
 import 'package:dartchess/dartchess.dart';
 import 'package:fast_immutable_collections/fast_immutable_collections.dart';
 import 'package:motor/motor.dart';
+
+const shareGameQuickActionLabels = <String>[
+  'Share Image',
+  'Share GIF',
+  'Copy FEN',
+];
+
+String sharePositionFenForClipboard(String positionFen) => positionFen.trim();
 
 class ShareGameCardOverlay extends StatefulWidget {
   final ChessboardSettings boardSettings;
@@ -609,16 +617,20 @@ class _ShareGameCardOverlayState extends State<ShareGameCardOverlay> {
     };
   }
 
-  Future<void> _copyPgn() async {
+  Future<void> _copyFen() async {
     try {
-      await Clipboard.setData(
-        ClipboardData(text: canonicalizePgnForExport(widget.pgn)),
-      );
+      final fen = sharePositionFenForClipboard(widget.positionFen);
+      if (fen.isEmpty) {
+        _showMessage('No FEN available for this position', isError: true);
+        return;
+      }
+
+      await Clipboard.setData(ClipboardData(text: fen));
       HapticFeedback.lightImpact();
-      _showMessage('PGN copied to clipboard!', isError: false);
+      _showMessage('FEN copied to clipboard!', isError: false);
     } catch (e) {
-      debugPrint('Error copying PGN: $e');
-      _showMessage('Failed to copy PGN', isError: true);
+      debugPrint('Error copying FEN: $e');
+      _showMessage('Failed to copy FEN', isError: true);
     }
   }
 
@@ -722,7 +734,7 @@ class _ShareGameCardOverlayState extends State<ShareGameCardOverlay> {
   }
 
   Widget _buildActionButton({
-    required IconData icon,
+    required Widget icon,
     required String label,
     required VoidCallback onTap,
     bool isPrimary = false,
@@ -748,14 +760,7 @@ class _ShareGameCardOverlayState extends State<ShareGameCardOverlay> {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(
-            icon,
-            size: 18.sp,
-            color:
-                isPrimary
-                    ? context.colors.textPrimary
-                    : context.colors.textPrimary,
-          ),
+          icon,
           SizedBox(width: 8.w),
           Text(
             label,
@@ -792,23 +797,35 @@ class _ShareGameCardOverlayState extends State<ShareGameCardOverlay> {
       child: Row(
         children: [
           _buildActionButton(
-            icon: Icons.image_outlined,
-            label: 'Share Image',
+            icon: Icon(
+              Icons.image_outlined,
+              size: 18.sp,
+              color: context.colors.textPrimary,
+            ),
+            label: shareGameQuickActionLabels[0],
             onTap: _shareImage,
             isPrimary: !_showGifPreview,
           ),
           SizedBox(width: 4.w),
           _buildActionButton(
-            icon: Icons.gif_box_outlined,
-            label: 'Share GIF',
+            icon: Icon(
+              Icons.gif_box_outlined,
+              size: 18.sp,
+              color: context.colors.textPrimary,
+            ),
+            label: shareGameQuickActionLabels[1],
             onTap: _shareGif,
             isPrimary: _showGifPreview,
           ),
           SizedBox(width: 4.w),
           _buildActionButton(
-            icon: Icons.copy_outlined,
-            label: 'Copy PGN',
-            onTap: _copyPgn,
+            icon: FenPositionIcon(
+              key: const ValueKey('share-copy-fen-position-icon'),
+              size: 18.sp,
+              color: context.colors.textPrimary,
+            ),
+            label: shareGameQuickActionLabels[2],
+            onTap: _copyFen,
           ),
         ],
       ),
