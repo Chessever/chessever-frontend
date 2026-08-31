@@ -498,7 +498,7 @@ class _ResultOrEvalBar extends StatelessWidget {
     // Check if engine gauge is enabled in settings
     final showEngineGauge = ref.watch(
       engineSettingsProviderNew.select(
-        (state) => state.valueOrNull?.showEngineGauge ?? true,
+        (state) => state.valueOrNull?.shouldShowEngineGaugeInGrid ?? true,
       ),
     );
 

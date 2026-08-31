@@ -40,17 +40,10 @@ class CountrymenCombinedGamesState {
 
   bool get isSearching => searchQuery.isNotEmpty;
 
-  /// Get filtered games based on current filter settings
-  /// Combines search results with filter settings (AND logic)
-  List<GamesTourModel> get filteredGames {
-    if (!filter.hasActiveFilters) return games;
-    // Pass searchQuery for Color filter to work correctly
-    return GameFilterHelper.applyFilter(
-      games,
-      filter,
-      playerNameQuery: searchQuery,
-    );
-  }
+  // Countrymen queries apply the complete search/filter intersection in
+  // Supabase. A second local pass can treat opening text as a player name and
+  // incorrectly discard valid server results.
+  List<GamesTourModel> get filteredGames => games;
 
   CountrymenCombinedGamesState copyWith({
     List<GamesTourModel>? games,
@@ -96,6 +89,12 @@ class CountrymenCombinedGamesNotifier
   // Cache available dates
   List<DateTime> _availableDates = [];
   bool _hasMoreDates = true;
+  int _requestGeneration = 0;
+
+  int _beginRequest() => ++_requestGeneration;
+
+  bool _isCurrentRequest(int generation) =>
+      mounted && generation == _requestGeneration;
 
   CountrymenCombinedGamesNotifier(this._ref)
     : super(CountrymenCombinedGamesState(isLoading: true)) {
@@ -116,15 +115,18 @@ class CountrymenCombinedGamesNotifier
   }
 
   Future<void> _loadInitialGames() async {
+    final requestGeneration = _beginRequest();
     try {
       final countryState = _ref.read(effectiveCountryProvider);
       final country = countryState.valueOrNull;
 
       if (country == null) {
-        state = state.copyWith(
-          isLoading: false,
-          error: 'Please select a country first',
-        );
+        if (_isCurrentRequest(requestGeneration)) {
+          state = state.copyWith(
+            isLoading: false,
+            error: 'Please select a country first',
+          );
+        }
         return;
       }
 
@@ -133,6 +135,7 @@ class CountrymenCombinedGamesNotifier
 
       debugPrint('[CountrymenGames] Initial load: $countryName ($countryCode)');
 
+      if (!_isCurrentRequest(requestGeneration)) return;
       state = state.copyWith(
         countryCode: countryCode,
         countryName: countryName,
@@ -142,10 +145,13 @@ class CountrymenCombinedGamesNotifier
       _availableDates = [];
       _hasMoreDates = true;
 
-      await _fetchNextDates(isInitial: true);
+      await _fetchNextDates(
+        isInitial: true,
+        requestGeneration: requestGeneration,
+      );
     } catch (e) {
       debugPrint('[CountrymenGames] Initial load error: $e');
-      if (!mounted) return;
+      if (!_isCurrentRequest(requestGeneration)) return;
       state = state.copyWith(
         isLoading: false,
         error: userFacingError(e, fallback: 'Failed to load games.'),
@@ -155,19 +161,26 @@ class CountrymenCombinedGamesNotifier
 
   Future<void> loadMoreGames() async {
     if (state.isLoading || !state.hasMore) return;
-    await _fetchNextDates(isInitial: false);
+    await _fetchNextDates(
+      isInitial: false,
+      requestGeneration: _requestGeneration,
+    );
   }
 
   Future<void> refreshGames() async {
-    // Reset everything
+    final requestGeneration = _beginRequest();
     _availableDates = [];
     _hasMoreDates = true;
-    _currentSearchQuery = '';
+    _currentSearchQuery = state.searchQuery.trim();
+
+    final currentFilter = state.filter;
 
     state = CountrymenCombinedGamesState(
       isLoading: true,
       countryCode: state.countryCode,
       countryName: state.countryName,
+      searchQuery: _currentSearchQuery,
+      filter: currentFilter,
     );
 
     // Re-read country in case it changed
@@ -175,13 +188,24 @@ class CountrymenCombinedGamesNotifier
     final country = countryState.valueOrNull;
 
     if (country != null) {
+      if (!_isCurrentRequest(requestGeneration)) return;
       state = state.copyWith(
         countryCode: country.countryCode,
         countryName: country.name,
       );
     }
 
-    await _fetchNextDates(isInitial: true);
+    if (_currentSearchQuery.isNotEmpty) {
+      await _fetchSearchResults(
+        isInitial: true,
+        requestGeneration: requestGeneration,
+      );
+    } else {
+      await _fetchNextDates(
+        isInitial: true,
+        requestGeneration: requestGeneration,
+      );
+    }
   }
 
   // Current search query for fresh queries
@@ -202,6 +226,7 @@ class CountrymenCombinedGamesNotifier
       return;
     }
 
+    final requestGeneration = _beginRequest();
     _currentSearchQuery = trimmedQuery;
 
     // Reset pagination for new search
@@ -210,6 +235,7 @@ class CountrymenCombinedGamesNotifier
 
     state = state.copyWith(
       isLoading: true,
+      games: [],
       seenGameIds: {},
       loadedDates: [],
       dateOffset: 0,
@@ -218,19 +244,24 @@ class CountrymenCombinedGamesNotifier
       error: null,
     );
 
-    await _fetchSearchResults(isInitial: true);
+    await _fetchSearchResults(
+      isInitial: true,
+      requestGeneration: requestGeneration,
+    );
   }
 
   /// Clear search and go back to normal listing
   Future<void> clearSearch() async {
     if (_currentSearchQuery.isEmpty && !state.isSearching) return;
 
+    final requestGeneration = _beginRequest();
     _currentSearchQuery = '';
     _availableDates = [];
     _hasMoreDates = true;
 
     state = state.copyWith(
       isLoading: true,
+      games: [],
       seenGameIds: {},
       loadedDates: [],
       dateOffset: 0,
@@ -239,21 +270,29 @@ class CountrymenCombinedGamesNotifier
       error: null,
     );
 
-    await _fetchNextDates(isInitial: true);
+    await _fetchNextDates(
+      isInitial: true,
+      requestGeneration: requestGeneration,
+    );
   }
 
   /// Fetch search results from Supabase
   /// Uses large batch sizes to ensure all matching games can be displayed
   static const int _searchBatchSize = 500;
 
-  Future<void> _fetchSearchResults({required bool isInitial}) async {
-    if (!mounted) return;
+  Future<void> _fetchSearchResults({
+    required bool isInitial,
+    required int requestGeneration,
+  }) async {
+    if (!_isCurrentRequest(requestGeneration)) return;
 
     final countryCode = state.countryCode;
     final query = _currentSearchQuery;
 
     if (countryCode == null || countryCode.isEmpty || query.isEmpty) {
-      state = state.copyWith(isLoading: false, hasMore: false);
+      if (_isCurrentRequest(requestGeneration)) {
+        state = state.copyWith(isLoading: false, hasMore: false);
+      }
       return;
     }
 
@@ -275,6 +314,8 @@ class CountrymenCombinedGamesNotifier
         ),
       );
 
+      if (!_isCurrentRequest(requestGeneration)) return;
+
       final newGames = <GamesTourModel>[];
       final seenKeys = Set<String>.from(isInitial ? {} : state.seenGameIds);
 
@@ -290,8 +331,6 @@ class CountrymenCombinedGamesNotifier
       newGames.sort(_compareByDateDesc);
       final allGames = isInitial ? newGames : [...state.games, ...newGames];
 
-      if (!mounted) return;
-
       state = state.copyWith(
         games: allGames,
         isLoading: false,
@@ -300,7 +339,7 @@ class CountrymenCombinedGamesNotifier
       );
     } catch (e) {
       debugPrint('[CountrymenSearch] Error: $e');
-      if (!mounted) return;
+      if (!_isCurrentRequest(requestGeneration)) return;
       final error = userFacingError(e, fallback: 'Failed to load games.');
       state = state.copyWith(
         isLoading: false,
@@ -313,12 +352,18 @@ class CountrymenCombinedGamesNotifier
   Future<void> loadMoreSearchResults() async {
     if (state.isLoading || !state.hasMore || !state.isSearching) return;
     state = state.copyWith(isLoading: true);
-    await _fetchSearchResults(isInitial: false);
+    await _fetchSearchResults(
+      isInitial: false,
+      requestGeneration: _requestGeneration,
+    );
   }
 
   /// Main method: Fetch next batch of dates and their games
-  Future<void> _fetchNextDates({required bool isInitial}) async {
-    if (!mounted) return;
+  Future<void> _fetchNextDates({
+    required bool isInitial,
+    required int requestGeneration,
+  }) async {
+    if (!_isCurrentRequest(requestGeneration)) return;
 
     state = state.copyWith(isLoading: true, error: null);
 
@@ -326,11 +371,13 @@ class CountrymenCombinedGamesNotifier
       final countryCode = state.countryCode;
 
       if (countryCode == null || countryCode.isEmpty) {
-        state = state.copyWith(
-          isLoading: false,
-          hasMore: false,
-          error: 'No country selected',
-        );
+        if (_isCurrentRequest(requestGeneration)) {
+          state = state.copyWith(
+            isLoading: false,
+            hasMore: false,
+            error: 'No country selected',
+          );
+        }
         return;
       }
 
@@ -347,6 +394,7 @@ class CountrymenCombinedGamesNotifier
             offset: 0,
           ),
         );
+        if (!_isCurrentRequest(requestGeneration)) return;
         _availableDates = dates;
         _hasMoreDates = dates.length >= 30;
         debugPrint('[CountrymenGames] Got ${dates.length} available dates');
@@ -368,6 +416,7 @@ class CountrymenCombinedGamesNotifier
               offset: _availableDates.length,
             ),
           );
+          if (!_isCurrentRequest(requestGeneration)) return;
           _availableDates.addAll(moreDates);
           _hasMoreDates = moreDates.length >= 30;
 
@@ -380,12 +429,15 @@ class CountrymenCombinedGamesNotifier
               fideCode: fideCode,
               isInitial: isInitial,
               dateOffset: dateOffset,
+              requestGeneration: requestGeneration,
             );
             return;
           }
         }
 
-        state = state.copyWith(isLoading: false, hasMore: false);
+        if (_isCurrentRequest(requestGeneration)) {
+          state = state.copyWith(isLoading: false, hasMore: false);
+        }
         return;
       }
 
@@ -394,10 +446,11 @@ class CountrymenCombinedGamesNotifier
         fideCode: fideCode,
         isInitial: isInitial,
         dateOffset: dateOffset,
+        requestGeneration: requestGeneration,
       );
     } catch (e) {
       debugPrint('[CountrymenGames] Fetch error: $e');
-      if (!mounted) return;
+      if (!_isCurrentRequest(requestGeneration)) return;
       final error = userFacingError(e, fallback: 'Failed to load games.');
       state = state.copyWith(
         isLoading: false,
@@ -412,7 +465,9 @@ class CountrymenCombinedGamesNotifier
     required String fideCode,
     required bool isInitial,
     required int dateOffset,
+    required int requestGeneration,
   }) async {
+    if (!_isCurrentRequest(requestGeneration)) return;
     final gameRepo = _ref.read(gameRepositoryProvider);
     final newGames = <GamesTourModel>[];
     final seenKeys = Set<String>.from(isInitial ? {} : state.seenGameIds);
@@ -430,6 +485,7 @@ class CountrymenCombinedGamesNotifier
           filter: state.filter,
         ),
       );
+      if (!_isCurrentRequest(requestGeneration)) return;
 
       debugPrint(
         '[CountrymenGames] Got ${dayGames.length} games for ${date.toString().split(' ')[0]}',
@@ -458,7 +514,7 @@ class CountrymenCombinedGamesNotifier
       '[CountrymenGames] Total games: ${allGames.length}, dates loaded: ${loadedDates.length}, hasMore: $hasMore',
     );
 
-    if (!mounted) return;
+    if (!_isCurrentRequest(requestGeneration)) return;
 
     state = state.copyWith(
       games: allGames,
@@ -470,48 +526,9 @@ class CountrymenCombinedGamesNotifier
     );
   }
 
-  /// Generate a dedupe key based on game content, not IDs.
-  /// Uses: sorted player names + date + result
-  String _generateDedupeKey(GamesTourModel game) {
-    // Normalize player names: lowercase, trim, remove extra spaces
-    final white = _normalizePlayerName(game.whitePlayer.name);
-    final black = _normalizePlayerName(game.blackPlayer.name);
-
-    // Sort players alphabetically so Carlsen|Caruana == Caruana|Carlsen
-    // This handles reversed board orientation between sources
-    final players = [white, black]..sort();
-
-    // Use date if available
-    final date =
-        game.lastMoveTime != null
-            ? '${game.lastMoveTime!.year}-${game.lastMoveTime!.month.toString().padLeft(2, '0')}-${game.lastMoveTime!.day.toString().padLeft(2, '0')}'
-            : 'unknown';
-
-    final result = game.gameStatus.displayText;
-
-    return '${players[0]}|${players[1]}|$date|$result';
-  }
-
-  /// Normalize player name for deduplication.
-  /// Handles variations like "Carlsen, Magnus" vs "Magnus Carlsen"
-  String _normalizePlayerName(String name) {
-    // Lowercase and trim
-    var normalized = name.toLowerCase().trim();
-
-    // Remove extra whitespace
-    normalized = normalized.replaceAll(RegExp(r'\s+'), ' ');
-
-    // If name contains comma (e.g., "Carlsen, Magnus"), normalize to "magnus carlsen"
-    if (normalized.contains(',')) {
-      final parts = normalized.split(',').map((p) => p.trim()).toList();
-      if (parts.length == 2) {
-        // Swap order: "Last, First" -> "first last"
-        normalized = '${parts[1]} ${parts[0]}';
-      }
-    }
-
-    return normalized;
-  }
+  /// Database game IDs are the stable identity. Content-based keys collapse
+  /// legitimate rematches and multiple rounds when timestamps are null.
+  String _generateDedupeKey(GamesTourModel game) => game.gameId;
 
   int _compareByDateDesc(GamesTourModel a, GamesTourModel b) {
     final aDayKey = _dayKeyForGame(a);
@@ -558,40 +575,47 @@ class CountrymenCombinedGamesNotifier
     return '$year-$month-$day';
   }
 
-  /// Apply a new filter to the games
-  void applyFilter(GameFilter filter) {
+  /// Apply a new filter to the games.
+  Future<void> applyFilter(GameFilter filter) async {
     debugPrint(
       '[CountrymenGames] Applying filter: result=${filter.result}, color=${filter.color}, timeControl=${filter.timeControl}, eco=${filter.eco.code}',
     );
     final filterChanged = filter != state.filter;
-    state = state.copyWith(filter: filter);
+    if (!filterChanged) return;
 
     // Every filter dimension is now applied server-side, so any change must
     // trigger a fresh refetch — local lists are incomplete. Re-run whichever
     // path is currently active (search vs date pagination) so the filter is
     // respected even when the user has an open search query.
-    if (filterChanged) {
-      _availableDates = [];
-      _hasMoreDates = true;
-      final wasSearching = _currentSearchQuery.isNotEmpty;
-      state = state.copyWith(
-        seenGameIds: {},
-        loadedDates: [],
-        dateOffset: 0,
-        hasMore: true,
-        isLoading: true,
+    final requestGeneration = _beginRequest();
+    _availableDates = [];
+    _hasMoreDates = true;
+    state = state.copyWith(
+      filter: filter,
+      games: [],
+      seenGameIds: {},
+      loadedDates: [],
+      dateOffset: 0,
+      hasMore: true,
+      isLoading: true,
+      error: null,
+    );
+    if (_currentSearchQuery.isNotEmpty) {
+      await _fetchSearchResults(
+        isInitial: true,
+        requestGeneration: requestGeneration,
       );
-      if (wasSearching) {
-        _fetchSearchResults(isInitial: true);
-      } else {
-        _fetchNextDates(isInitial: true);
-      }
+    } else {
+      await _fetchNextDates(
+        isInitial: true,
+        requestGeneration: requestGeneration,
+      );
     }
   }
 
   /// Clear all filters
-  void clearFilter() {
+  Future<void> clearFilter() {
     debugPrint('[CountrymenGames] Clearing filter');
-    state = state.copyWith(filter: GameFilter.defaultFilter());
+    return applyFilter(GameFilter.defaultFilter());
   }
 }

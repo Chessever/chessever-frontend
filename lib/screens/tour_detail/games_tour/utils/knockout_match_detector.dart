@@ -1,4 +1,5 @@
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
+import 'package:chessever2/utils/broadcast_custom_scoring.dart';
 
 /// Utility class to detect and handle knockout tournament formats
 /// where players face each other multiple times in matches
@@ -471,28 +472,36 @@ class KnockoutMatchDetector {
     for (final game in games) {
       final status = game.effectiveGameStatus;
       final isPlayer1White = identities.idFor(game.whitePlayer) == player1Id;
-
+      double standardWhitePoints;
+      double standardBlackPoints;
       switch (status) {
         case GameStatus.whiteWins:
-          if (isPlayer1White) {
-            player1Score += 1.0;
-          } else {
-            player2Score += 1.0;
-          }
+          standardWhitePoints = 1;
+          standardBlackPoints = 0;
           break;
         case GameStatus.blackWins:
-          if (isPlayer1White) {
-            player2Score += 1.0;
-          } else {
-            player1Score += 1.0;
-          }
+          standardWhitePoints = 0;
+          standardBlackPoints = 1;
           break;
         case GameStatus.draw:
-          player1Score += 0.5;
-          player2Score += 0.5;
+          standardWhitePoints = 0.5;
+          standardBlackPoints = 0.5;
           break;
         default:
-          break;
+          continue;
+      }
+      final points = aggregateBroadcastResultPoints(
+        standardWhitePoints: standardWhitePoints,
+        standardBlackPoints: standardBlackPoints,
+        whiteCustomPoints: game.whitePlayer.customPoints,
+        blackCustomPoints: game.blackPlayer.customPoints,
+      );
+      if (isPlayer1White) {
+        player1Score += points.white;
+        player2Score += points.black;
+      } else {
+        player1Score += points.black;
+        player2Score += points.white;
       }
     }
 

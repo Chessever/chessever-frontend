@@ -11,6 +11,7 @@ import 'package:chessever2/screens/chessboard/provider/current_eval_provider.dar
 import 'package:chessever2/screens/chessboard/widgets/chess_board_from_fen_new.dart';
 import 'package:chessever2/screens/chessboard/widgets/evaluation_bar_widget.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/providers/event_no_spoilers_provider.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:flutter/material.dart';
@@ -60,8 +61,12 @@ GamesTourModel _hydratedMiniature() {
 
 class _FakeEngineSettings extends AsyncNotifier<EngineSettings>
     implements EngineSettingsNotifierNew {
+  _FakeEngineSettings([this.settings = const EngineSettings()]);
+
+  final EngineSettings settings;
+
   @override
-  Future<EngineSettings> build() async => const EngineSettings();
+  Future<EngineSettings> build() async => settings;
 
   @override
   dynamic noSuchMethod(Invocation invocation) => null;
@@ -73,6 +78,24 @@ class _FakeBoardSettings extends BoardSettingsNotifierNew {
     const settings = BoardSettingsNew();
     state = const AsyncValue.data(settings);
     return settings;
+  }
+}
+
+class _FakeEventNoSpoilersController extends EventNoSpoilersController {
+  _FakeEventNoSpoilersController({
+    required super.ref,
+    required super.tourId,
+    this.loadedState = const EventNoSpoilersState(
+      enabled: false,
+      isLoading: false,
+    ),
+  });
+
+  final EventNoSpoilersState loadedState;
+
+  @override
+  Future<void> load() async {
+    state = loadedState;
   }
 }
 
@@ -131,6 +154,10 @@ Future<void> _pumpBoardCard(
       overrides: [
         engineSettingsProviderNew.overrideWith(_FakeEngineSettings.new),
         boardSettingsProviderNew.overrideWith(_FakeBoardSettings.new),
+        eventNoSpoilersProvider.overrideWith(
+          (ref, tourId) =>
+              _FakeEventNoSpoilersController(ref: ref, tourId: tourId),
+        ),
         gameCardEvalWithStockfishFallbackProvider.overrideWith(
           (ref, fen) async => _cloudEval(fen, 250),
         ),
@@ -221,6 +248,10 @@ void main() {
           overrides: [
             engineSettingsProviderNew.overrideWith(_FakeEngineSettings.new),
             boardSettingsProviderNew.overrideWith(_FakeBoardSettings.new),
+            eventNoSpoilersProvider.overrideWith(
+              (ref, tourId) =>
+                  _FakeEventNoSpoilersController(ref: ref, tourId: tourId),
+            ),
             gameCardEvalWithStockfishFallbackProvider.overrideWith(
               (ref, fen) async => _cloudEval(fen, 0),
             ),
@@ -284,6 +315,10 @@ void main() {
           overrides: [
             engineSettingsProviderNew.overrideWith(_FakeEngineSettings.new),
             boardSettingsProviderNew.overrideWith(_FakeBoardSettings.new),
+            eventNoSpoilersProvider.overrideWith(
+              (ref, tourId) =>
+                  _FakeEventNoSpoilersController(ref: ref, tourId: tourId),
+            ),
           ],
           child: MaterialApp(
             theme: ThemeData.dark().copyWith(
@@ -316,4 +351,109 @@ void main() {
       expect(find.byType(EvaluationBarWidgetForGames), findsNothing);
     },
   );
+
+  testWidgets('Grid View off hides grid bars while Board View remains on', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          engineSettingsProviderNew.overrideWith(
+            () => _FakeEngineSettings(
+              const EngineSettings(
+                showEngineGaugeOnBoard: true,
+                showEngineGaugeInGrid: false,
+              ),
+            ),
+          ),
+          boardSettingsProviderNew.overrideWith(_FakeBoardSettings.new),
+        ],
+        child: MaterialApp(
+          theme: ThemeData.dark().copyWith(extensions: const [AppColors.dark]),
+          home: Builder(
+            builder: (context) {
+              ResponsiveHelper.init(context);
+              return Scaffold(
+                body: SizedBox(
+                  width: 360,
+                  child: ChessBoardFromFENNew(
+                    gamesTourModel: _hydratedMiniature(),
+                    onChanged: () {},
+                    pinnedIds: const [],
+                    onPinToggle: (_) {},
+                    allowStockfishFallback: false,
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+
+    expect(find.byType(EvaluationBarWidgetForGames), findsNothing);
+  });
+
+  testWidgets('No Spoilers hides the live grid evaluation bar', (tester) async {
+    final live = GamesTourModel(
+      gameId: 'live-no-spoilers',
+      source: GameSource.supabase,
+      whitePlayer: _player('White'),
+      blackPlayer: _player('Black'),
+      whiteTimeDisplay: '1:20',
+      blackTimeDisplay: '1:15',
+      whiteClockCentiseconds: 8000,
+      blackClockCentiseconds: 7500,
+      gameStatus: GameStatus.ongoing,
+      roundId: 'round-live',
+      tourId: 'tour-live',
+      fen: _hydratedFen,
+      lastMove: 'd1f3',
+    );
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          engineSettingsProviderNew.overrideWith(_FakeEngineSettings.new),
+          boardSettingsProviderNew.overrideWith(_FakeBoardSettings.new),
+          eventNoSpoilersProvider.overrideWith(
+            (ref, tourId) => _FakeEventNoSpoilersController(
+              ref: ref,
+              tourId: tourId,
+              loadedState: const EventNoSpoilersState(
+                enabled: true,
+                isLoading: false,
+              ),
+            ),
+          ),
+        ],
+        child: MaterialApp(
+          theme: ThemeData.dark().copyWith(extensions: const [AppColors.dark]),
+          home: Builder(
+            builder: (context) {
+              ResponsiveHelper.init(context);
+              return Scaffold(
+                body: SizedBox(
+                  width: 360,
+                  child: ChessBoardFromFENNew(
+                    gamesTourModel: live,
+                    onChanged: () {},
+                    pinnedIds: const [],
+                    onPinToggle: (_) {},
+                    allowStockfishFallback: false,
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+
+    expect(find.byType(EvaluationBarWidgetForGames), findsNothing);
+  });
 }

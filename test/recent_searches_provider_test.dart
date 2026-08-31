@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:chessever2/repository/supabase/game/games.dart';
 import 'package:chessever2/screens/group_event/model/tour_event_card_model.dart';
 import 'package:chessever2/widgets/game_filter/game_filter_model.dart';
@@ -35,6 +37,8 @@ GroupEventCardModel _event(String id) {
 }
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+
   test('recent destinations deduplicate, move to front, and persist', () async {
     final storage = _MemoryRecentSearchStorage();
     final notifier = RecentSearchesNotifier(storage);
@@ -95,6 +99,213 @@ void main() {
       expect(restoredOpening?.isFamily, isTrue);
     },
   );
+
+  test('recent tournament preserves the complete live navigation payload', () {
+    final live = GroupEventCardModel(
+      id: 'cal_event_mikhail_tal_memorial',
+      title: 'Mikhail Tal Memorial',
+      dates: 'Nov 5–12',
+      maxAvgElo: 2765,
+      timeUntilStart: 'Starts in 2 days',
+      tourEventCategory: TourEventCategory.upcoming,
+      timeControl: 'Rapid',
+      startDate: DateTime.utc(2026, 11, 5, 12, 30),
+      endDate: DateTime.utc(2026, 11, 12, 18, 45),
+      location: 'Riga, Latvia',
+      searchTerms: const ['mikhail tal memorial', 'riga', 'rapid'],
+      eventSource: EventSource.communityEvent,
+      isMajorUpcoming: true,
+    );
+
+    final encoded = jsonEncode(RecentSearchEntry.tournament(live).toJson());
+    final restored =
+        RecentSearchEntry.fromJson(
+          (jsonDecode(encoded) as Map).cast<String, dynamic>(),
+        ).toTournament()!;
+
+    expect(restored.id, live.id);
+    expect(restored.title, live.title);
+    expect(restored.dates, live.dates);
+    expect(restored.maxAvgElo, live.maxAvgElo);
+    expect(restored.timeUntilStart, live.timeUntilStart);
+    expect(restored.tourEventCategory, live.tourEventCategory);
+    expect(restored.timeControl, live.timeControl);
+    expect(restored.startDate, live.startDate);
+    expect(restored.endDate, live.endDate);
+    expect(restored.location, live.location);
+    expect(restored.searchTerms, live.searchTerms);
+    expect(restored.eventSource, live.eventSource);
+    expect(restored.isMajorUpcoming, live.isMajorUpcoming);
+  });
+
+  test('recent player preserves the complete live navigation payload', () {
+    const live = SearchPlayer(
+      id: 'event-42_700070_game-8',
+      name: 'Judit Polgar',
+      title: 'GM',
+      rating: 2735,
+      fideId: 700070,
+      fed: 'HUN',
+      tournamentId: 'event-42',
+      tournamentName: 'Legends Match',
+      gameId: 'game-8',
+      roundId: 'round-3',
+      isWhitePlayer: false,
+      gamebasePlayerId: 'gamebase-judit-polgar',
+    );
+
+    final encoded = jsonEncode(RecentSearchEntry.player(live).toJson());
+    final restored =
+        RecentSearchEntry.fromJson(
+          (jsonDecode(encoded) as Map).cast<String, dynamic>(),
+        ).toPlayer()!;
+
+    expect(restored.id, live.id);
+    expect(restored.name, live.name);
+    expect(restored.title, live.title);
+    expect(restored.rating, live.rating);
+    expect(restored.fideId, live.fideId);
+    expect(restored.fed, live.fed);
+    expect(restored.tournamentId, live.tournamentId);
+    expect(restored.tournamentName, live.tournamentName);
+    expect(restored.gameId, live.gameId);
+    expect(restored.roundId, live.roundId);
+    expect(restored.isWhitePlayer, live.isWhitePlayer);
+    expect(restored.gamebasePlayerId, live.gamebasePlayerId);
+    expect(restored.memorialSourceIdentity, live.memorialSourceIdentity);
+    expect(restored.memorialRouteId, live.memorialRouteId);
+  });
+
+  test('stored Memorial player keeps its exact immutable identity', () {
+    const player = SearchPlayer(
+      id: 'memorial:memorial-e03cdf6af47b368c',
+      name: 'Tal, Mikhail',
+      title: 'GM',
+      rating: 2705,
+      fed: 'LAT',
+      tournamentId: 'memorial',
+      tournamentName: 'Chess Memorial',
+      memorialSourceIdentity: 'memorial:memorial-e03cdf6af47b368c',
+      memorialRouteId: 'memorial-e03cdf6af47b368c',
+    );
+
+    final restored =
+        RecentSearchEntry.fromJson(
+          RecentSearchEntry.player(player).toJson(),
+        ).toPlayer();
+
+    expect(restored?.memorialSourceIdentity, player.memorialSourceIdentity);
+    expect(restored?.memorialRouteId, player.memorialRouteId);
+    expect(restored?.id, player.id);
+  });
+
+  test('legacy stored Memorial player is upgraded before navigation', () async {
+    final legacy = RecentSearchEntry.fromJson({
+      'kind': 'player',
+      'targetId': 'name:tal, mikhail',
+      'title': 'Tal, Mikhail',
+      'subtitle': 'GM · 2705 · LAT',
+      'data': {
+        'id': 'memorial:memorial-e03cdf6af47b368c',
+        'title': 'GM',
+        'rating': 2705,
+        'fed': 'LAT',
+        'tournamentId': 'historical-event',
+        'tournamentName': 'Candidates Reunion',
+        'gameId': 'historical-game',
+        'roundId': 'round-7',
+        'isWhitePlayer': false,
+      },
+    });
+
+    final restored = await resolveRecentSearchPlayer(legacy);
+
+    expect(
+      restored?.memorialSourceIdentity,
+      'memorial:memorial-e03cdf6af47b368c',
+    );
+    expect(restored?.memorialRouteId, 'memorial-e03cdf6af47b368c');
+    expect(restored?.name, 'Tal, Mikhail');
+    expect(restored?.tournamentId, 'historical-event');
+    expect(restored?.tournamentName, 'Candidates Reunion');
+    expect(restored?.gameId, 'historical-game');
+    expect(restored?.roundId, 'round-7');
+    expect(restored?.isWhitePlayer, isFalse);
+  });
+
+  test(
+    'unknown legacy Memorial route never falls back to live search',
+    () async {
+      final legacy = RecentSearchEntry.fromJson({
+        'kind': 'player',
+        'targetId': 'name:historical player',
+        'title': 'Historical Player',
+        'subtitle': 'Chess Memorial',
+        'data': {'id': 'memorial:memorial-reviewed-player'},
+      });
+
+      final restored = await resolveRecentSearchPlayer(legacy);
+
+      expect(restored?.memorialRouteId, 'memorial-reviewed-player');
+      expect(
+        restored?.memorialSourceIdentity,
+        'memorial:memorial-reviewed-player',
+      );
+    },
+  );
+
+  test(
+    'legacy and current Memorial entries deduplicate to one destination',
+    () async {
+      final storage = _MemoryRecentSearchStorage(
+        '[{"kind":"player","targetId":"name:tal, mikhail",'
+        '"title":"Tal, Mikhail","subtitle":"GM · 2705 · LAT",'
+        '"data":{"id":"memorial:memorial-e03cdf6af47b368c",'
+        '"title":"GM","rating":2705,"fed":"LAT"}}]',
+      );
+      final notifier = RecentSearchesNotifier(storage);
+      addTearDown(notifier.dispose);
+
+      await notifier.record(
+        RecentSearchEntry.player(
+          const SearchPlayer(
+            id: 'memorial:memorial-e03cdf6af47b368c',
+            name: 'Tal, Mikhail',
+            title: 'GM',
+            rating: 2705,
+            fed: 'LAT',
+            tournamentId: 'memorial',
+            tournamentName: 'Chess Memorial',
+            memorialSourceIdentity: 'memorial:memorial-e03cdf6af47b368c',
+            memorialRouteId: 'memorial-e03cdf6af47b368c',
+          ),
+        ),
+      );
+
+      expect(notifier.state.asData!.value, hasLength(1));
+      expect(
+        notifier.state.asData!.value.single.targetId,
+        'memorial:memorial-e03cdf6af47b368c',
+      );
+    },
+  );
+
+  test('numeric Memorial identity wins over a recyclable FIDE id', () {
+    final entry = RecentSearchEntry.player(
+      const SearchPlayer(
+        id: 'memorial:2000016',
+        name: 'Fischer, Robert James',
+        fideId: 2000016,
+        tournamentId: 'memorial',
+        tournamentName: 'Chess Memorial',
+        memorialSourceIdentity: '2000016',
+        memorialRouteId: '2000016',
+      ),
+    );
+
+    expect(entry.targetId, 'memorial:2000016');
+    expect(entry.toPlayer()?.memorialSourceIdentity, '2000016');
+  });
 
   test("complete King's Indian family persists without exposing its id", () {
     final entry = RecentSearchEntry.opening(

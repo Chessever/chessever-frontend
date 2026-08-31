@@ -307,7 +307,7 @@ class _CenterContent extends ConsumerWidget {
     // Check if engine gauge is enabled in settings
     final showEngineGauge = ref.watch(
       engineSettingsProviderNew.select(
-        (state) => state.valueOrNull?.showEngineGauge ?? true,
+        (state) => state.valueOrNull?.shouldShowEngineGaugeInGrid ?? true,
       ),
     );
 
@@ -354,6 +354,12 @@ class _CenterContent extends ConsumerWidget {
               isLight ? context.colors.textSecondary : context.colors.surface,
         ),
       );
+    }
+
+    // No Spoilers also hides live evaluation. Keep a neutral live-state marker
+    // so the card still communicates that moves and clocks are updating.
+    if (hideSpoilers) {
+      return Center(child: StatusText(status: 'LIVE', color: kPrimaryColor));
     }
 
     // If engine gauge is disabled, show "LIVE" indicator instead of progress bar

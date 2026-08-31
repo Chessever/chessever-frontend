@@ -590,7 +590,9 @@ class _FavoritesCombinedGamesScreenState
       showFormatFilter: false,
     );
     if (result != null && mounted) {
-      ref.read(favoritesCombinedGamesProvider.notifier).applyFilter(result);
+      await ref
+          .read(favoritesCombinedGamesProvider.notifier)
+          .applyFilter(result);
     }
   }
 
@@ -799,6 +801,12 @@ class _FavoritesCombinedGamesScreenState
     }
 
     if (state.games.isEmpty) {
+      if (state.filter.hasActiveFilters) {
+        return SliverFillRemaining(
+          hasScrollBody: false,
+          child: _buildNoFilterResultsState(),
+        );
+      }
       if (state.isSearching) {
         return SliverFillRemaining(
           hasScrollBody: false,
@@ -813,11 +821,6 @@ class _FavoritesCombinedGamesScreenState
 
     // Apply local favorite player chip filter — composes with search results
     var filteredGames = _filterGames(state.games, favorites);
-
-    // Then apply the game filter (result, color, time control, year, rating)
-    if (state.filter.hasActiveFilters) {
-      filteredGames = GameFilterHelper.applyFilter(filteredGames, state.filter);
-    }
 
     if (filteredGames.isEmpty && _selectedPlayerIds.isNotEmpty) {
       return SliverFillRemaining(

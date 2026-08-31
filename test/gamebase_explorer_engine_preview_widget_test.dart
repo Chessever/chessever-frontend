@@ -152,7 +152,9 @@ Future<void> _pumpExplorer(
         home: Builder(
           builder: (context) {
             ResponsiveHelper.init(context);
-            return const GamebaseExplorerScreen();
+            return const GamebaseExplorerScreen(
+              enableWorkspaceCoachmarks: false,
+            );
           },
         ),
       ),

@@ -15,7 +15,6 @@ import 'package:chessever2/utils/user_error_message.dart';
 import 'package:chessever2/widgets/game_filter/game_filter_model.dart';
 import 'package:chessever2/widgets/scroll_to_top_bus.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_animate/flutter_animate.dart' hide ShimmerEffect;
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 /// Events tab showing tournaments the player has participated in
@@ -26,12 +25,14 @@ class PlayerEventsTab extends ConsumerStatefulWidget {
     required this.playerName,
     this.dataSource = PlayerProfileDataSource.supabase,
     this.gamebasePlayerId,
+    this.memorialSourceIdentity,
   });
 
   final int? fideId;
   final String playerName;
   final PlayerProfileDataSource dataSource;
   final String? gamebasePlayerId;
+  final String? memorialSourceIdentity;
 
   @override
   ConsumerState<PlayerEventsTab> createState() => _PlayerEventsTabState();
@@ -58,7 +59,8 @@ class _PlayerEventsTabState extends ConsumerState<PlayerEventsTab>
 
   String get _scrollStorageKey =>
       'player_events:${widget.dataSource.name}:${widget.fideId ?? ''}:'
-      '${widget.gamebasePlayerId ?? ''}:${widget.playerName}';
+      '${widget.gamebasePlayerId ?? ''}:'
+      '${widget.memorialSourceIdentity ?? ''}:${widget.playerName}';
 
   @override
   bool get wantKeepAlive => true;
@@ -69,6 +71,7 @@ class _PlayerEventsTabState extends ConsumerState<PlayerEventsTab>
     playerName: widget.playerName,
     source: widget.dataSource,
     gamebasePlayerId: widget.gamebasePlayerId,
+    memorialSourceIdentity: widget.memorialSourceIdentity,
   );
 
   bool get _isTwic => widget.dataSource == PlayerProfileDataSource.twic;
@@ -90,6 +93,7 @@ class _PlayerEventsTabState extends ConsumerState<PlayerEventsTab>
       playerName: oldWidget.playerName,
       source: oldWidget.dataSource,
       gamebasePlayerId: oldWidget.gamebasePlayerId,
+      memorialSourceIdentity: oldWidget.memorialSourceIdentity,
     );
     if (oldKey != _playerKey && _isTwic) {
       _loadTwicEvents(reset: true);
@@ -137,6 +141,16 @@ class _PlayerEventsTabState extends ConsumerState<PlayerEventsTab>
     // /api/event expects when an event card is tapped.
     final token = _loadToken;
     final repo = ref.read(gamebaseRepositoryProvider);
+    final memorialIdentity = widget.memorialSourceIdentity?.trim();
+    if (memorialIdentity != null && memorialIdentity.isNotEmpty) {
+      await _loadMemorialEvents(
+        repo: repo,
+        sourceIdentity: memorialIdentity,
+        token: token,
+      );
+      return;
+    }
+
     final playerId = await ref.read(twicPlayerIdProvider(_playerKey).future);
     if (!mounted || token != _loadToken) return;
     if (playerId == null || playerId.isEmpty) {
@@ -187,6 +201,61 @@ class _PlayerEventsTabState extends ConsumerState<PlayerEventsTab>
       talker.handle(e, st);
       if (!mounted || token != _loadToken) return;
       _twicError = userFacingError(e);
+      _twicIsLoading = false;
+      _twicIsLoadingMore = false;
+      setState(() {});
+    }
+  }
+
+  Future<void> _loadMemorialEvents({
+    required GamebaseRepository repo,
+    required String sourceIdentity,
+    required int token,
+  }) async {
+    const pageSize = 100;
+    final rows = <Map<String, dynamic>>[];
+    var page = 0;
+
+    try {
+      while (true) {
+        final response = await repo.getMemorialPlayerGames(
+          sourceIdentity: sourceIdentity,
+          pageNumber: page,
+          pageSize: pageSize,
+        );
+        if (!mounted || token != _loadToken) return;
+
+        final data = response['data'];
+        if (data is List) {
+          for (final item in data.whereType<Map>()) {
+            rows.add(Map<String, dynamic>.from(item));
+          }
+        }
+
+        final metadata = response['metadata'];
+        final hasMore = metadata is Map && metadata['hasMore'] == true;
+        _twicEvents = buildMemorialPlayerEventsFromRows(rows);
+        _twicTotalEvents = _twicEvents.length;
+        _twicNextPage = page + 1;
+        _twicHasMore = hasMore;
+        _twicIsLoading = false;
+        _twicIsLoadingMore = hasMore;
+        setState(() {});
+
+        if (!hasMore || data is! List || data.isEmpty) break;
+        page += 1;
+      }
+
+      if (!mounted || token != _loadToken) return;
+      _twicHasMore = false;
+      _twicIsLoading = false;
+      _twicIsLoadingMore = false;
+      setState(() {});
+    } catch (error, stackTrace) {
+      talker.handle(error, stackTrace);
+      if (!mounted || token != _loadToken) return;
+      _twicError = userFacingError(error);
+      _twicHasMore = false;
       _twicIsLoading = false;
       _twicIsLoadingMore = false;
       setState(() {});
@@ -304,25 +373,10 @@ class _PlayerEventsTabState extends ConsumerState<PlayerEventsTab>
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Container(
-                width: 80.w,
-                height: 80.h,
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                    colors: [
-                      context.colors.textPrimary.withValues(alpha: 0.15),
-                      context.colors.textPrimary.withValues(alpha: 0.05),
-                    ],
-                  ),
-                  borderRadius: BorderRadius.circular(20.br),
-                ),
-                child: Icon(
-                  Icons.emoji_events_outlined,
-                  color: context.colors.textPrimary.withValues(alpha: 0.7),
-                  size: 40.ic,
-                ),
+              Icon(
+                Icons.emoji_events_outlined,
+                color: context.colors.textPrimary.withValues(alpha: 0.7),
+                size: 46.ic,
               ),
               SizedBox(height: 20.h),
               Text(
@@ -346,7 +400,7 @@ class _PlayerEventsTabState extends ConsumerState<PlayerEventsTab>
           ),
         ),
       ),
-    ).animate().fadeIn(duration: 300.ms);
+    );
   }
 
   Widget _buildLoadingState() {
@@ -371,7 +425,7 @@ class _PlayerEventsTabState extends ConsumerState<PlayerEventsTab>
           ),
         ],
       ),
-    ).animate().fadeIn(duration: 300.ms);
+    );
   }
 
   Widget _buildErrorState(String error) {
@@ -385,18 +439,10 @@ class _PlayerEventsTabState extends ConsumerState<PlayerEventsTab>
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Container(
-                width: 64.w,
-                height: 64.h,
-                decoration: BoxDecoration(
-                  color: context.colors.danger.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(16.br),
-                ),
-                child: Icon(
-                  Icons.error_outline_rounded,
-                  color: context.colors.danger,
-                  size: 32.ic,
-                ),
+              Icon(
+                Icons.error_outline_rounded,
+                color: context.colors.danger,
+                size: 38.ic,
               ),
               SizedBox(height: 16.h),
               Text(
@@ -417,8 +463,8 @@ class _PlayerEventsTabState extends ConsumerState<PlayerEventsTab>
                 ),
               ),
               SizedBox(height: 24.h),
-              GestureDetector(
-                onTap: () {
+              TextButton(
+                onPressed: () {
                   HapticFeedbackService.buttonPress();
                   if (_isTwic) {
                     _loadTwicEvents(reset: true);
@@ -426,28 +472,20 @@ class _PlayerEventsTabState extends ConsumerState<PlayerEventsTab>
                     ref.invalidate(playerEventsKeyProvider(_playerKey));
                   }
                 },
-                child: Container(
-                  padding: EdgeInsets.symmetric(
-                    horizontal: 24.w,
-                    vertical: 12.h,
-                  ),
-                  decoration: BoxDecoration(
-                    color: context.colors.textPrimary.withValues(alpha: 0.1),
+                style: TextButton.styleFrom(
+                  foregroundColor: context.colors.textPrimary,
+                  minimumSize: Size(96.w, 44.h),
+                  shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(8.br),
                   ),
-                  child: Text(
-                    'Retry',
-                    style: AppTypography.textSmMedium.copyWith(
-                      color: context.colors.textPrimary,
-                    ),
-                  ),
                 ),
+                child: Text('Retry', style: AppTypography.textSmMedium),
               ),
             ],
           ),
         ),
       ),
-    ).animate().fadeIn(duration: 300.ms);
+    );
   }
 }
 
@@ -655,7 +693,7 @@ class _EventsListContent extends ConsumerWidget {
           ],
         ),
       ),
-    ).animate().fadeIn(duration: 300.ms);
+    );
   }
 }
 
@@ -713,7 +751,7 @@ class _FilterActiveBanner extends StatelessWidget {
           ),
         ],
       ),
-    ).animate().fadeIn(duration: 200.ms).slideY(begin: -0.1, end: 0);
+    );
   }
 }
 
@@ -778,7 +816,7 @@ class _StatsHeader extends StatelessWidget {
         ),
         SizedBox(height: 12.h),
       ],
-    ).animate().fadeIn(duration: 300.ms).slideY(begin: -0.02, end: 0);
+    );
   }
 
   Color _getScoreColor(BuildContext context, double score) {

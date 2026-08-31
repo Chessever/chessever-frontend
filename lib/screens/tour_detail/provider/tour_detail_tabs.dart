@@ -14,7 +14,6 @@ const knockoutTournamentDetailModes = <TournamentDetailScreenMode>[
   TournamentDetailScreenMode.about,
   TournamentDetailScreenMode.games,
   TournamentDetailScreenMode.bracket,
-  TournamentDetailScreenMode.standings,
 ];
 
 const teamTournamentDetailModes = <TournamentDetailScreenMode>[

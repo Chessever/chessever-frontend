@@ -476,6 +476,155 @@ String _yearUpperBoundFilter(int year) {
       'and(game_day.is.null,last_move_time.is.null,date_start.lt.$nextYearDateStr)';
 }
 
+/// Builds the raw PostgREST `or` expression used by the Games search.
+///
+/// `.or()` accepts PostgREST grammar rather than plain values, so user text
+/// must be quoted. Escaping backslashes first keeps an escaped quote from
+/// terminating the value and prevents names such as `Carlsen, Magnus` from
+/// being parsed as an extra filter branch.
+@visibleForTesting
+String buildGameSearchOrFilter(String searchText) {
+  final escaped = searchText
+      .trim()
+      .replaceAll(r'\', r'\\')
+      .replaceAll('"', r'\"')
+      .replaceAll('%', r'\%')
+      .replaceAll('_', r'\_');
+  final pattern = '"%$escaped%"';
+  return 'name.ilike.$pattern,'
+      'eco.ilike.$pattern,'
+      'opening_name.ilike.$pattern';
+}
+
+/// Adds every server-side predicate shared by Favorites date and search
+/// queries. Kept public-for-testing so the complete filter matrix can be
+/// verified without issuing thousands of network requests.
+@visibleForTesting
+dynamic applyFavoritesFilterToSupabaseQuery({
+  required dynamic query,
+  required GameFilter? filter,
+  required List<int> fideIds,
+  required String? timeControlDbValue,
+}) {
+  if (filter == null || !filter.hasActiveFilters) return query;
+
+  switch (filter.live) {
+    case GameLiveFilter.live:
+      query = query.or('status.is.null,status.eq.*');
+      query = query.or(_currentLiveDayFilter());
+      break;
+    case GameLiveFilter.completed:
+      query = query.not('status', 'is', null).neq('status', '*');
+      break;
+    case GameLiveFilter.all:
+      break;
+  }
+
+  switch (filter.result) {
+    case GameResultFilter.whiteWins:
+      query = query.eq('status', '1-0');
+      break;
+    case GameResultFilter.blackWins:
+      query = query.eq('status', '0-1');
+      break;
+    case GameResultFilter.draw:
+      query = query.inFilter('status', _drawStatusValues);
+      break;
+    case GameResultFilter.all:
+      break;
+  }
+
+  if (timeControlDbValue != null) {
+    query = query.eq('tours.group_broadcasts.time_control', timeControlDbValue);
+  }
+
+  if (filter.minRating > GameFilter.defaultMinRating) {
+    query = query.gte('player_max_rating', filter.minRating);
+  }
+  if (filter.maxRating < GameFilter.absoluteMaxRating) {
+    query = query.lte('player_max_rating', filter.maxRating);
+  }
+
+  query = applyEcoFilterToSupabaseQuery(query, filter.eco);
+
+  if (filter.minYear != GameFilter.defaultMinYear) {
+    query = query.or(_yearLowerBoundFilter(filter.minYear));
+  }
+  if (filter.maxYear < DateTime.now().year) {
+    query = query.or(_yearUpperBoundFilter(filter.maxYear));
+  }
+
+  if (filter.color != GameColorFilter.all && fideIds.isNotEmpty) {
+    final idx = filter.color == GameColorFilter.white ? 0 : 1;
+    final ids = fideIds.join(',');
+    query = query.filter('players->$idx->>fideId', 'in', '($ids)');
+  }
+  return query;
+}
+
+/// Countrymen counterpart to [applyFavoritesFilterToSupabaseQuery].
+@visibleForTesting
+dynamic applyCountryFilterToSupabaseQuery({
+  required dynamic query,
+  required GameFilter? filter,
+  required String countryCode,
+  required String? timeControlDbValue,
+}) {
+  if (filter == null || !filter.hasActiveFilters) return query;
+
+  switch (filter.live) {
+    case GameLiveFilter.live:
+      query = query.or('status.is.null,status.eq.*');
+      query = query.or(_currentLiveDayFilter());
+      break;
+    case GameLiveFilter.completed:
+      query = query.not('status', 'is', null).neq('status', '*');
+      break;
+    case GameLiveFilter.all:
+      break;
+  }
+
+  switch (filter.result) {
+    case GameResultFilter.whiteWins:
+      query = query.eq('status', '1-0');
+      break;
+    case GameResultFilter.blackWins:
+      query = query.eq('status', '0-1');
+      break;
+    case GameResultFilter.draw:
+      query = query.inFilter('status', _drawStatusValues);
+      break;
+    case GameResultFilter.all:
+      break;
+  }
+
+  if (timeControlDbValue != null) {
+    query = query.eq('tours.group_broadcasts.time_control', timeControlDbValue);
+  }
+
+  if (filter.minRating > GameFilter.defaultMinRating) {
+    query = query.gte('player_max_rating', filter.minRating);
+  }
+  if (filter.maxRating < GameFilter.absoluteMaxRating) {
+    query = query.lte('player_max_rating', filter.maxRating);
+  }
+
+  query = applyEcoFilterToSupabaseQuery(query, filter.eco);
+
+  if (filter.minYear != GameFilter.defaultMinYear) {
+    query = query.or(_yearLowerBoundFilter(filter.minYear));
+  }
+  if (filter.maxYear < DateTime.now().year) {
+    query = query.or(_yearUpperBoundFilter(filter.maxYear));
+  }
+
+  if (filter.color != GameColorFilter.all) {
+    final idx = filter.color == GameColorFilter.white ? 0 : 1;
+    query = query.eq('players->$idx->>fed', countryCode);
+  }
+  return query;
+}
+
 bool _isSameCalendarDay(DateTime left, DateTime right) {
   return left.year == right.year &&
       left.month == right.month &&
@@ -651,13 +800,17 @@ class GameRepository extends BaseRepository {
     r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$',
     caseSensitive: false,
   );
+  static final _namespacedCanonicalIdPattern = RegExp(
+    r'^[A-Za-z0-9][A-Za-z0-9._-]*:[^\s/?#]+$',
+  );
 
-  /// Resolves a game from either a Supabase UUID or a Lichess short ID.
-  /// UUID  → queries games.id
-  /// Other → queries games.lichess_id (e.g. "4uVwSr9q")
+  /// Resolves a game from a canonical database ID or a Lichess short ID.
+  /// UUID / namespaced ID → queries games.id
+  /// Other                → queries games.lichess_id (e.g. "4uVwSr9q")
   Future<Games> getGameByAnyId(String id) async {
     final trimmed = id.trim();
-    if (_uuidPattern.hasMatch(trimmed)) {
+    if (_uuidPattern.hasMatch(trimmed) ||
+        _namespacedCanonicalIdPattern.hasMatch(trimmed)) {
       return getGameById(trimmed);
     }
     return getGameByLichessId(trimmed);
@@ -1333,22 +1486,16 @@ class GameRepository extends BaseRepository {
         [normalizedCode],
       );
 
-      if (filter != null && filter.minRating > GameFilter.defaultMinRating) {
-        dbQuery = dbQuery.gte('player_max_rating', filter.minRating);
-      }
-
       // Add text search if query provided (searches player names, ECO code, and opening name)
       if (query != null && query.trim().isNotEmpty) {
-        dbQuery = dbQuery.or(
-          'name.ilike.%${query.trim()}%,eco.ilike.%${query.trim()}%,opening_name.ilike.%${query.trim()}%',
-        );
+        dbQuery = dbQuery.or(buildGameSearchOrFilter(query));
       }
 
-      dbQuery = _applyCountryFilterChain(
+      dbQuery = applyCountryFilterToSupabaseQuery(
         query: dbQuery,
         filter: filter,
         countryCode: normalizedCode,
-        tcDb: tcDb,
+        timeControlDbValue: tcDb,
       );
 
       // Order by date_start first to group games by day, then by last_move_time
@@ -1403,16 +1550,14 @@ class GameRepository extends BaseRepository {
 
       // Add text search if query provided (searches player names, ECO code, and opening name)
       if (query != null && query.trim().isNotEmpty) {
-        dbQuery = dbQuery.or(
-          'name.ilike.%${query.trim()}%,eco.ilike.%${query.trim()}%,opening_name.ilike.%${query.trim()}%',
-        );
+        dbQuery = dbQuery.or(buildGameSearchOrFilter(query));
       }
 
-      dbQuery = _applyFavoritesFilterChain(
+      dbQuery = applyFavoritesFilterToSupabaseQuery(
         query: dbQuery,
         filter: filter,
         fideIds: fideIdInts,
-        tcDb: tcDb,
+        timeControlDbValue: tcDb,
       );
 
       // Order and paginate
@@ -2364,7 +2509,7 @@ class GameRepository extends BaseRepository {
   /// Returns dates in descending order (most recent first).
   /// When [filter] is supplied, the same predicates that constrain the games
   /// fetch are applied to the date pagination so users don't page through
-  /// empty days when, e.g. they've selected "Live + 1-0 + Classical".
+  /// empty days when, e.g. they've selected "Completed + 1-0 + Classical".
   Future<List<DateTime>> getDistinctDatesForFavorites({
     required List<String> fideIds,
     GameFilter? filter,
@@ -2458,11 +2603,11 @@ class GameRepository extends BaseRepository {
           .overlaps('player_fide_ids', fideIdInts)
           .or(dayFilter);
 
-      dbQuery = _applyFavoritesFilterChain(
+      dbQuery = applyFavoritesFilterToSupabaseQuery(
         query: dbQuery,
         filter: filter,
         fideIds: fideIdInts,
-        tcDb: tcDb,
+        timeControlDbValue: tcDb,
       );
 
       final response = await dbQuery.order(
@@ -2601,11 +2746,11 @@ class GameRepository extends BaseRepository {
           .or(dayFilter)
           .gte('player_max_rating', effectiveMinElo);
 
-      dbQuery = _applyCountryFilterChain(
+      dbQuery = applyCountryFilterToSupabaseQuery(
         query: dbQuery,
         filter: filter,
         countryCode: normalizedCode,
-        tcDb: tcDb,
+        timeControlDbValue: tcDb,
       );
 
       final response = await dbQuery.order(
@@ -2667,124 +2812,6 @@ class GameRepository extends BaseRepository {
       debugPrint('[GameRepository] 40-move PGN hydration failed: $e');
       return games;
     }
-  }
-
-  /// Adds the server-side filter chain for the favorites-games path.
-  /// Returned builder type is the same as the input so it can keep chaining
-  /// (e.g. `.order(...)` after this call).
-  dynamic _applyFavoritesFilterChain({
-    required dynamic query,
-    required GameFilter? filter,
-    required List<int> fideIds,
-    required String? tcDb,
-  }) {
-    if (filter == null || !filter.hasActiveFilters) return query;
-
-    // Live / completed
-    switch (filter.live) {
-      case GameLiveFilter.live:
-        query = query.or('status.is.null,status.eq.*');
-        query = query.or(_currentLiveDayFilter());
-        break;
-      case GameLiveFilter.completed:
-        query = query.not('status', 'is', null).neq('status', '*');
-        break;
-      case GameLiveFilter.all:
-        break;
-    }
-
-    // Result
-    switch (filter.result) {
-      case GameResultFilter.whiteWins:
-        query = query.eq('status', '1-0');
-        break;
-      case GameResultFilter.blackWins:
-        query = query.eq('status', '0-1');
-        break;
-      case GameResultFilter.draw:
-        query = query.inFilter('status', _drawStatusValues);
-        break;
-      case GameResultFilter.all:
-        break;
-    }
-
-    // Time control via embedded join
-    if (tcDb != null) {
-      query = query.eq('tours.group_broadcasts.time_control', tcDb);
-    }
-
-    // Rating range — date pagination handles year range and ECO already, but
-    // we re-apply rating here so per-day results are also narrowed.
-    if (filter.minRating > GameFilter.defaultMinRating) {
-      query = query.gte('player_max_rating', filter.minRating);
-    }
-    if (filter.maxRating < GameFilter.absoluteMaxRating) {
-      query = query.lte('player_max_rating', filter.maxRating);
-    }
-
-    // ECO prefix
-    query = applyEcoFilterToSupabaseQuery(query, filter.eco);
-
-    // Color — which side the favourited player is on
-    if (filter.color != GameColorFilter.all && fideIds.isNotEmpty) {
-      final idx = filter.color == GameColorFilter.white ? 0 : 1;
-      final ids = fideIds.join(',');
-      query = query.filter('players->$idx->>fideId', 'in', '($ids)');
-    }
-    return query;
-  }
-
-  /// Adds the server-side filter chain for the countrymen-games path.
-  dynamic _applyCountryFilterChain({
-    required dynamic query,
-    required GameFilter? filter,
-    required String countryCode,
-    required String? tcDb,
-  }) {
-    if (filter == null || !filter.hasActiveFilters) return query;
-
-    switch (filter.live) {
-      case GameLiveFilter.live:
-        query = query.or('status.is.null,status.eq.*');
-        query = query.or(_currentLiveDayFilter());
-        break;
-      case GameLiveFilter.completed:
-        query = query.not('status', 'is', null).neq('status', '*');
-        break;
-      case GameLiveFilter.all:
-        break;
-    }
-
-    switch (filter.result) {
-      case GameResultFilter.whiteWins:
-        query = query.eq('status', '1-0');
-        break;
-      case GameResultFilter.blackWins:
-        query = query.eq('status', '0-1');
-        break;
-      case GameResultFilter.draw:
-        query = query.inFilter('status', _drawStatusValues);
-        break;
-      case GameResultFilter.all:
-        break;
-    }
-
-    if (tcDb != null) {
-      query = query.eq('tours.group_broadcasts.time_control', tcDb);
-    }
-
-    if (filter.maxRating < GameFilter.absoluteMaxRating) {
-      query = query.lte('player_max_rating', filter.maxRating);
-    }
-
-    query = applyEcoFilterToSupabaseQuery(query, filter.eco);
-
-    // Color — which side the player from `countryCode` is on
-    if (filter.color != GameColorFilter.all) {
-      final idx = filter.color == GameColorFilter.white ? 0 : 1;
-      query = query.eq('players->$idx->>fed', countryCode);
-    }
-    return query;
   }
 
   dynamic _applySmartEventFilterChain({

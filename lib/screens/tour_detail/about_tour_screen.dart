@@ -20,6 +20,12 @@ import 'package:heroine/heroine.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:skeletonizer/skeletonizer.dart';
 
+String _writerAttributionBrand(WidgetRef ref) {
+  const prefix = 'Powered by ';
+  final label = ref.watch(selectedBroadcastWriterAttributionProvider);
+  return label.startsWith(prefix) ? label.substring(prefix.length) : 'Lichess';
+}
+
 class AboutTourScreen extends ConsumerStatefulWidget {
    AboutTourScreen({super.key});
 
@@ -258,7 +264,7 @@ class _AboutTourScreenState extends ConsumerState<AboutTourScreen>
                           SizedBox(height: 12.h),
                           _InlineLinkRow(
                             prefix: 'Powered by:',
-                            linkLabel: 'Lichess',
+                            linkLabel: _writerAttributionBrand(ref),
                             onTap:
                                 isSkeleton
                                     ? null

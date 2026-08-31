@@ -330,6 +330,10 @@ class GroupEventScreen extends HookConsumerWidget {
                                 title: player.title,
                                 federation: player.fed,
                                 rating: player.rating,
+                                gamebasePlayerId: player.gamebasePlayerId,
+                                memorialSourceIdentity:
+                                    player.memorialSourceIdentity,
+                                memorialRouteId: player.memorialRouteId,
                               ),
                         ),
                       );

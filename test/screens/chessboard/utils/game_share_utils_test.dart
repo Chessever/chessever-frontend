@@ -81,6 +81,28 @@ SavedAnalysisData _savedAnalysisData({String? sourceGameId}) {
 
 void main() {
   group('buildGameShareUrl', () {
+    test('returns an encoded deep link for namespaced canonical games', () {
+      final url = buildGameShareUrl(
+        game: _game(gameId: 'chess.com:14987654321'),
+      );
+
+      expect(
+        url,
+        'https://chessever.com/games/chess.com%3A14987654321?tour=tour-slug&round=A00',
+      );
+    });
+
+    test('preserves multi-part canonical IDs as one encoded path segment', () {
+      final url = buildGameShareUrl(
+        game: _game(gameId: 'chess-results:event:round:board-7'),
+      );
+
+      expect(
+        url,
+        'https://chessever.com/games/chess-results%3Aevent%3Around%3Aboard-7?tour=tour-slug&round=A00',
+      );
+    });
+
     test('returns a deep link for canonical Supabase games', () {
       final url = buildGameShareUrl(game: _game());
 
@@ -90,23 +112,20 @@ void main() {
       );
     });
 
-    test(
-      'returns a deep link for saved analyses with canonical source IDs',
-      () {
-        final url = buildGameShareUrl(
-          game: _game(
-            gameId: 'saved_analysis_1',
-            source: GameSource.savedAnalysis,
-          ),
-          savedAnalysisData: _savedAnalysisData(sourceGameId: _canonicalGameId),
-        );
+    test('returns a deep link for saved analyses with canonical source IDs', () {
+      final url = buildGameShareUrl(
+        game: _game(
+          gameId: 'saved_analysis_1',
+          source: GameSource.savedAnalysis,
+        ),
+        savedAnalysisData: _savedAnalysisData(sourceGameId: _canonicalGameId),
+      );
 
-        expect(
-          url,
-          'https://chessever.com/games/$_canonicalGameId?tour=tour-slug&round=A00',
-        );
-      },
-    );
+      expect(
+        url,
+        'https://chessever.com/games/$_canonicalGameId?tour=tour-slug&round=A00',
+      );
+    });
 
     test(
       'derives a link from the Lichess broadcast Site header for TWIC games',
@@ -154,11 +173,9 @@ void main() {
       expect(url, 'https://chessever.com/games/aBcDeF12');
     });
 
-    test(
-      'falls back to a gamebase deep link for TWIC games whose Site has no '
-      'game id',
-      () {
-        const roundOnlyPgn = '''
+    test('falls back to a gamebase deep link for TWIC games whose Site has no '
+        'game id', () {
+      const roundOnlyPgn = '''
 [Event "Norway Chess 2026"]
 [Site "https://lichess.org/broadcast/norway-chess-2026/round-6/AbCd1234"]
 [White "White"]
@@ -167,20 +184,17 @@ void main() {
 
 *
 ''';
-        expect(
-          buildGameShareUrl(
-            game: _game(source: GameSource.twic, pgn: roundOnlyPgn),
-          ),
-          'https://chessever.com/games/$_canonicalGameId?src=gamebase',
-        );
-      },
-    );
+      expect(
+        buildGameShareUrl(
+          game: _game(source: GameSource.twic, pgn: roundOnlyPgn),
+        ),
+        'https://chessever.com/games/$_canonicalGameId?src=gamebase',
+      );
+    });
 
-    test(
-      'falls back to a gamebase deep link for TWIC/gamebase games with a '
-      'plain-text Site',
-      () {
-        const chessComPgn = '''
+    test('falls back to a gamebase deep link for TWIC/gamebase games with a '
+        'plain-text Site', () {
+      const chessComPgn = '''
 [Event "Titled Tuesday"]
 [Site "chess.com INT"]
 [White "White"]
@@ -189,14 +203,13 @@ void main() {
 
 *
 ''';
-        for (final source in [GameSource.twic, GameSource.gamebase]) {
-          expect(
-            buildGameShareUrl(game: _game(source: source, pgn: chessComPgn)),
-            'https://chessever.com/games/$_canonicalGameId?src=gamebase',
-          );
-        }
-      },
-    );
+      for (final source in [GameSource.twic, GameSource.gamebase]) {
+        expect(
+          buildGameShareUrl(game: _game(source: source, pgn: chessComPgn)),
+          'https://chessever.com/games/$_canonicalGameId?src=gamebase',
+        );
+      }
+    });
 
     test('prefers the Lichess game id over the gamebase uuid', () {
       const broadcastPgn = '''
@@ -502,7 +515,10 @@ void main() {
         ],
       );
 
-      final merged = mergeGameReportAnnotationsForExport(stale, reportFor(game));
+      final merged = mergeGameReportAnnotationsForExport(
+        stale,
+        reportFor(game),
+      );
 
       // One classification per move, never two.
       expect(merged.mainline[0].nags, [3, 240]);
@@ -593,27 +609,30 @@ void main() {
       expect(nagForClassicGlyph('?!'), 6);
     });
 
-    test('resolveGameSharePgn (Copy/Share path) hydrates analysis report', () async {
-      final gameModel = _game(pgn: _headerOnlyPgn);
-      final analysis = ChessGame.fromPgn(
-        'share-hydrate',
-        r'1. e4 e5 2. Nf3 Nc6 *',
-      );
-      final report = reportFor(analysis);
-      final hydrated = mergeGameReportAnnotationsForExport(analysis, report);
+    test(
+      'resolveGameSharePgn (Copy/Share path) hydrates analysis report',
+      () async {
+        final gameModel = _game(pgn: _headerOnlyPgn);
+        final analysis = ChessGame.fromPgn(
+          'share-hydrate',
+          r'1. e4 e5 2. Nf3 Nc6 *',
+        );
+        final report = reportFor(analysis);
+        final hydrated = mergeGameReportAnnotationsForExport(analysis, report);
 
-      final pgn = await resolveGameSharePgn(
-        game: gameModel,
-        analysisGame: hydrated,
-        savedAnalysisData: null,
-      );
+        final pgn = await resolveGameSharePgn(
+          game: gameModel,
+          analysisGame: hydrated,
+          savedAnalysisData: null,
+        );
 
-      expect(pgn, contains('[%eval 0.42]'));
-      expect(pgn, contains(RegExp(r'e4 \$3 \$240\b')));
-      expect(pgn, contains('[%eval -0.31]'));
-      expect(pgn, contains(RegExp(r'e5 \$6 \$244\b')));
-      expect(pgn, isNot(contains('chessever_annotation')));
-    });
+        expect(pgn, contains('[%eval 0.42]'));
+        expect(pgn, contains(RegExp(r'e4 \$3 \$240\b')));
+        expect(pgn, contains('[%eval -0.31]'));
+        expect(pgn, contains(RegExp(r'e5 \$6 \$244\b')));
+        expect(pgn, isNot(contains('chessever_annotation')));
+      },
+    );
 
     test('GIF alias still forwards to the export merge', () {
       final game = ChessGame.fromPgn('alias', r'1. e4 e5 *');
@@ -671,47 +690,53 @@ void main() {
       expect(mergeGameReportAnnotationsForExport(game, report), same(game));
     });
 
-    test('resolveCompletedGameAnalysisReport prefers live then store', () async {
-      final game = ChessGame.fromPgn('store-resolve', '1. e4 e5 *');
-      final store = GameAnalysisReportStore.memory();
-      final live = GameAnalysisReport(
-        fingerprint: gameReportFingerprint(game),
-        positions: const [],
-        moves: const [
-          GameReportMove(
-            ply: 1,
-            san: 'e4',
-            uci: 'e2e4',
-            isWhite: true,
-            classification: GameMoveClassification.mistake,
-            evaluation: GameReportLine(
-              moves: ['e2e4'],
-              depth: 18,
-              centipawns: 10,
+    test(
+      'resolveCompletedGameAnalysisReport prefers live then store',
+      () async {
+        final game = ChessGame.fromPgn('store-resolve', '1. e4 e5 *');
+        final store = GameAnalysisReportStore.memory();
+        final live = GameAnalysisReport(
+          fingerprint: gameReportFingerprint(game),
+          positions: const [],
+          moves: const [
+            GameReportMove(
+              ply: 1,
+              san: 'e4',
+              uci: 'e2e4',
+              isWhite: true,
+              classification: GameMoveClassification.mistake,
+              evaluation: GameReportLine(
+                moves: ['e2e4'],
+                depth: 18,
+                centipawns: 10,
+              ),
             ),
-          ),
-        ],
-        whiteAccuracy: 50,
-        blackAccuracy: 50,
-        generatedAt: DateTime.utc(2026, 7, 30),
-      );
+          ],
+          whiteAccuracy: 50,
+          blackAccuracy: 50,
+          generatedAt: DateTime.utc(2026, 7, 30),
+        );
 
-      final resolvedLive = await resolveCompletedGameAnalysisReport(
-        analysisGame: game,
-        liveReport: live,
-        store: store,
-      );
-      expect(resolvedLive?.moves.first.classification, GameMoveClassification.mistake);
+        final resolvedLive = await resolveCompletedGameAnalysisReport(
+          analysisGame: game,
+          liveReport: live,
+          store: store,
+        );
+        expect(
+          resolvedLive?.moves.first.classification,
+          GameMoveClassification.mistake,
+        );
 
-      await store.save(live);
-      final resolvedDisk = await resolveCompletedGameAnalysisReport(
-        analysisGame: game,
-        liveReport: null,
-        store: store,
-      );
-      expect(resolvedDisk?.fingerprint, gameReportFingerprint(game));
-      expect(resolvedDisk?.moves.first.evaluation.centipawns, 10);
-    });
+        await store.save(live);
+        final resolvedDisk = await resolveCompletedGameAnalysisReport(
+          analysisGame: game,
+          liveReport: null,
+          store: store,
+        );
+        expect(resolvedDisk?.fingerprint, gameReportFingerprint(game));
+        expect(resolvedDisk?.moves.first.evaluation.centipawns, 10);
+      },
+    );
   });
 
   group('buildGameShareSnapshot', () {

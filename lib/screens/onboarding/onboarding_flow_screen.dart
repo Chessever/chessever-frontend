@@ -4,9 +4,12 @@ import 'package:chessever2/e2e/e2e_config.dart';
 import 'package:chessever2/e2e/e2e_ids.dart';
 import 'package:chessever2/providers/country_dropdown_provider.dart';
 import 'package:chessever2/providers/guest_session_provider.dart';
+import 'package:chessever2/screens/players/providers/player_providers.dart';
 import 'package:chessever2/repository/authentication/auth_repository.dart';
 import 'package:chessever2/repository/local_storage/onboarding/onboarding_repository.dart';
+import 'package:chessever2/screens/onboarding/notification_permission_step.dart';
 import 'package:chessever2/screens/onboarding/player_selection_screen.dart';
+import 'package:chessever2/screens/onboarding/widgets/onboarding_ui.dart';
 import 'package:chessever2/utils/user_error_message.dart';
 import 'package:chessever2/services/analytics/analytics_service.dart';
 import 'package:chessever2/services/att_prompt_service.dart';
@@ -22,17 +25,45 @@ import 'package:chessever2/widgets/screen_wrapper.dart';
 import 'package:country_picker/country_picker.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
-import 'package:motor/motor.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-// Premium spring curves for buttery smooth animations
-final Curve _smoothSpring = Motion.smoothSpring().toCurve;
-final Curve _snappySpring = Motion.snappySpring().toCurve;
-final Curve _gentleSpring = Curves.easeOutCubic; // Gentle fallback
+// Premium spring curves for buttery smooth animations. Defined in
+// `widgets/onboarding_ui.dart` so steps in their own files ease identically.
+final Curve _smoothSpring = onboardingSmoothSpring;
+final Curve _gentleSpring = onboardingGentleSpring;
+
+/// The favourites the user picked on the previous step, resolved for display.
+///
+/// `onboardingSelectedFideIdsProvider` holds the selection as ids only, so the
+/// loaded player rows are joined back in here. Rows that have not loaded (or a
+/// selection restored from a previous session whose row is not in this page)
+/// are skipped rather than shown as a blank face — the step degrades to copy.
+List<NotificationStepPlayer> onboardingFavoritePlayers(WidgetRef ref) {
+  final selectedIds = ref.watch(onboardingSelectedFideIdsProvider);
+  if (selectedIds.isEmpty) return const <NotificationStepPlayer>[];
+
+  final loaded = ref.watch(onboardingPlayerProvider).valueOrNull ?? const [];
+  final byFideId = <String, Map<String, dynamic>>{
+    for (final player in loaded)
+      if (player['fideId']?.toString() case final id? when id.isNotEmpty)
+        id: player,
+  };
+
+  return <NotificationStepPlayer>[
+    for (final id in selectedIds)
+      if (byFideId[id] case final player?)
+        if ((player['name'] ?? '').toString().trim() case final name
+            when name.isNotEmpty)
+          NotificationStepPlayer(
+            name: name,
+            fideId: id,
+            title: player['title']?.toString(),
+          ),
+  ];
+}
 
 class OnboardingFlowScreen extends HookConsumerWidget {
   const OnboardingFlowScreen({super.key});
@@ -49,8 +80,10 @@ class OnboardingFlowScreen extends HookConsumerWidget {
     final user = Supabase.instance.client.auth.currentUser;
     final isAuthenticated = user != null && user.isAnonymous != true;
 
-    // Always 4 pages - final page content differs based on auth status
-    const totalPages = 4;
+    // Favorites are followed by the notification-context step, which is the
+    // only place the native permission dialog is raised. The final page's
+    // content still differs based on auth status.
+    const totalPages = 5;
 
     useEffect(() {
       ref.read(countryDropdownProvider);
@@ -118,16 +151,6 @@ class OnboardingFlowScreen extends HookConsumerWidget {
                       // ATT status notDetermined.
                       await AttPromptService.instance.ensurePrompted(context);
 
-                      // Ask for notifications on direct auth path too.
-                      // Some users sign in from the first page and skip the last step.
-                      if (!E2eConfig.suppressInterruptivePrompts) {
-                        if (!context.mounted) return;
-                        unawaited(
-                          PushNotificationsService.instance
-                              .requestPermissionIfNotGranted(),
-                        );
-                      }
-
                       // Mark onboarding as seen before navigating to auth
                       try {
                         await ref
@@ -183,7 +206,19 @@ class OnboardingFlowScreen extends HookConsumerWidget {
                       },
                     ),
                   ),
-                  // 4th page: Different content based on auth status
+                  NotificationPermissionStep(
+                    players: onboardingFavoritePlayers(ref),
+                    topPadding: topPadding,
+                    bottomPadding: bottomPadding,
+                    onContinue: () async {
+                      if (!E2eConfig.suppressInterruptivePrompts) {
+                        await PushNotificationsService.instance
+                            .requestPermissionIfNotGranted();
+                      }
+                      if (context.mounted) await goToPage(4);
+                    },
+                  ),
+                  // 5th page: Different content based on auth status
                   if (isAuthenticated)
                     _AuthenticatedUserStep(
                       user: user,
@@ -196,13 +231,6 @@ class OnboardingFlowScreen extends HookConsumerWidget {
                       topPadding: topPadding,
                       bottomPadding: bottomPadding,
                       onSignIn: () async {
-                        if (!E2eConfig.suppressInterruptivePrompts) {
-                          unawaited(
-                            PushNotificationsService.instance
-                                .requestPermissionIfNotGranted(),
-                          );
-                        }
-
                         try {
                           await ref
                               .read(onboardingRepositoryProvider)
@@ -253,13 +281,9 @@ class OnboardingFlowScreen extends HookConsumerWidget {
 /// it does for a signed-in free account. The guest clock started here drives
 /// the day-7 prompt and the day-28 requirement in `GuestSessionGateListener`.
 Future<void> continueAsGuest(BuildContext context, WidgetRef ref) async {
-  // Mirror the sign-in path: guests must still be attributable and reachable.
+  // Mirror the sign-in path: guests must still be attributable. Notifications
+  // are asked for once, in the post-favorites step.
   await AttPromptService.instance.ensurePrompted(context);
-  if (!E2eConfig.suppressInterruptivePrompts) {
-    unawaited(
-      PushNotificationsService.instance.requestPermissionIfNotGranted(),
-    );
-  }
 
   try {
     await ref.read(authStateProvider.notifier).signInAnonymously();
@@ -404,7 +428,7 @@ class _AuthStep extends HookWidget {
                   SizedBox(height: 12.h),
 
                   // Sign in button (primary)
-                  _PrimaryButton(label: 'Create free account', onTap: onSignIn)
+                  OnboardingPrimaryButton(label: 'Create free account', onTap: onSignIn)
                       .animate(delay: 600.ms)
                       .fadeIn(duration: 400.ms, curve: _smoothSpring)
                       .move(begin: const Offset(0, 30), curve: _smoothSpring),
@@ -866,7 +890,7 @@ class _AuthenticatedUserStep extends HookWidget {
                           SizedBox(height: 24.h),
 
                           // Continue button
-                          _PrimaryButton(
+                          OnboardingPrimaryButton(
                                 label: 'Continue to Chessever',
                                 onTap: onContinue,
                                 buttonKey: e2eKey(
@@ -1344,7 +1368,7 @@ class _WelcomeStep extends HookWidget {
               const Spacer(flex: 2),
 
               // CTA Button
-              _PrimaryButton(label: 'Get Started', onTap: onNext)
+              OnboardingPrimaryButton(label: 'Get Started', onTap: onNext)
                   .animate(delay: 600.ms)
                   .fadeIn(duration: 400.ms, curve: _smoothSpring)
                   .move(begin: const Offset(0, 30), curve: _smoothSpring),
@@ -1467,7 +1491,7 @@ class _CountryStep extends HookConsumerWidget {
               const Spacer(flex: 2),
 
               // CTA Button
-              _PrimaryButton(
+              OnboardingPrimaryButton(
                     label: 'Continue',
                     onTap: countryState.isLoading ? null : onNext,
                     isLoading: countryState.isLoading,
@@ -1608,73 +1632,3 @@ class _CountryCard extends StatelessWidget {
 // PRIMARY BUTTON
 // ════════════════════════════════════════════════════════════════════════════
 
-class _PrimaryButton extends HookWidget {
-  const _PrimaryButton({
-    required this.label,
-    required this.onTap,
-    this.isLoading = false,
-    this.buttonKey,
-  });
-
-  final String label;
-  final VoidCallback? onTap;
-  final bool isLoading;
-  final Key? buttonKey;
-
-  @override
-  Widget build(BuildContext context) {
-    final isPressed = useState(false);
-
-    return GestureDetector(
-      key: buttonKey,
-      onTapDown: (_) => isPressed.value = true,
-      onTapUp: (_) {
-        isPressed.value = false;
-        if (onTap != null) {
-          HapticFeedback.mediumImpact();
-          onTap!();
-        }
-      },
-      onTapCancel: () => isPressed.value = false,
-      child: AnimatedScale(
-        scale: isPressed.value ? 0.96 : 1.0,
-        duration: const Duration(milliseconds: 100),
-        curve: _snappySpring,
-        child: Container(
-          width: double.infinity,
-          height: 52.h,
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(14.br),
-            color:
-                onTap != null
-                    ? context.colors.textPrimary
-                    : context.colors.textPrimary.withValues(alpha: 0.2),
-          ),
-          child: Center(
-            child:
-                isLoading
-                    ? SizedBox(
-                      width: 24.w,
-                      height: 24.h,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: context.colors.textInverse,
-                      ),
-                    )
-                    : Text(
-                      label,
-                      style: AppTypography.textMdMedium.copyWith(
-                        color:
-                            onTap != null
-                                ? context.colors.textInverse
-                                : context.colors.textPrimary.withValues(
-                                  alpha: 0.5,
-                                ),
-                      ),
-                    ),
-          ),
-        ),
-      ),
-    );
-  }
-}

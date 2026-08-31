@@ -8,7 +8,6 @@ import 'package:chessever2/screens/gamebase/gamebase_explorer_screen.dart';
 import 'package:chessever2/screens/library/miniatures_screen.dart';
 import 'package:chessever2/screens/library/pgn_import_preview_screen.dart';
 import 'package:chessever2/screens/library/providers/library_folders_provider.dart';
-import 'package:chessever2/screens/board_editor/board_editor_screen.dart';
 import 'package:chessever2/screens/library/twic_contents_screen.dart';
 import 'package:chessever2/screens/library/widgets/add_to_library_sheet.dart';
 import 'package:chessever2/screens/library/widgets/create_folder_dialog.dart';
@@ -27,8 +26,7 @@ import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/user_error_message.dart';
 import 'package:chessever2/widgets/app_snack.dart';
 import 'package:file_picker/file_picker.dart';
-import 'package:chessever2/utils/svg_asset.dart';
-import 'package:chessever2/widgets/svg_widget.dart';
+import 'package:chessever2/widgets/board_navigation_icon.dart';
 import 'package:chessever2/widgets/skeleton_widget.dart';
 import 'package:chessever2/widgets/screen_wrapper.dart';
 import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
@@ -86,14 +84,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
     );
   }
 
-  void _navigateToEmptyBoard() {
-    HapticFeedback.mediumImpact();
-    Navigator.of(
-      context,
-    ).push(MaterialPageRoute(builder: (_) => const BoardEditorScreen()));
-  }
-
-  void _navigateToOpeningExplorer() {
+  void _navigateToBoard() {
     HapticFeedback.mediumImpact();
     Navigator.of(
       context,
@@ -323,8 +314,12 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
         value: _isSearchFocused ? 1.0 : 0.0,
         builder: (context, value, child) {
           final clamped = value.clamp(0.0, 1.0);
-          // CSS: explorer=32, board=32, plus=36, gaps=8+8, total ~116px + 8px gap
-          final buttonsMaxWidth = (116.w + 8.w) * (1 - clamped);
+          // One canonical Board entry plus Add. The budget must be the exact
+          // sum of the children's units (two 36.h square tiles + 8.w gap) —
+          // width and height scale differently per device, so a flat 80.w
+          // under-budgets and overflows by a few pixels.
+          final buttonsFullWidth = 36.h + 8.w + 36.h;
+          final buttonsMaxWidth = buttonsFullWidth * (1 - clamped);
           final gapWidth = (8.w * (1 - clamped)).clamp(0.0, 8.w);
           final opacity = (1 - clamped).clamp(0.0, 1.0);
 
@@ -345,25 +340,13 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                             ? Row(
                               mainAxisSize: MainAxisSize.min,
                               children: [
-                                // Opening explorer: 32x32
                                 KeyedSubtree(
-                                  key: e2eKey(
-                                    E2eIds.libraryOpeningExplorerButton,
-                                  ),
-                                  child: _OpeningExplorerButton(
-                                    onTap: _navigateToOpeningExplorer,
+                                  key: e2eKey(E2eIds.libraryBoardButton),
+                                  child: _BoardButton(
+                                    onTap: _navigateToBoard,
                                   ),
                                 ),
                                 SizedBox(width: 8.w),
-                                // CSS: 32x32, bg #1D1D1D, border 0.1px #444444, radius 4px
-                                KeyedSubtree(
-                                  key: e2eKey(E2eIds.libraryBoardEditorButton),
-                                  child: _BoardSettingsButton(
-                                    onTap: _navigateToEmptyBoard,
-                                  ),
-                                ),
-                                SizedBox(width: 8.w),
-                                // CSS: 36x36, bg #262626, radius 10px
                                 KeyedSubtree(
                                   key: e2eKey(E2eIds.libraryCreateFolderButton),
                                   child: _PlusButton(onTap: _handlePlusButton),
@@ -684,80 +667,24 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
   }
 }
 
-/// CSS: 32x32, bg #1D1D1D, border 0.1px #444444, radius 4px
-/// Opening explorer button
-class _OpeningExplorerButton extends StatelessWidget {
+/// The one header action tile. Board and Add both render through this so the
+/// two sit on the same surface, radius and square — a bare icon beside a
+/// filled tile reads as an unfinished pair.
+/// CSS: 36x36, bg #262626, radius 10px.
+class _HeaderIconButton extends StatelessWidget {
   final VoidCallback onTap;
+  final Widget icon;
+  final String? tooltip;
 
-  const _OpeningExplorerButton({required this.onTap});
+  const _HeaderIconButton({
+    required this.onTap,
+    required this.icon,
+    this.tooltip,
+  });
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        width: 32.h,
-        height: 32.h,
-        decoration: BoxDecoration(
-          color: context.colors.surface,
-          borderRadius: BorderRadius.circular(4.br),
-          border: Border.all(color: context.colors.divider, width: 0.1),
-        ),
-        child: Center(
-          child: Icon(
-            Icons.explore_outlined,
-            size: 20.sp,
-            color: context.colors.textPrimary,
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-/// CSS: 32x32, bg #1D1D1D, border 0.1px #444444, radius 4px
-/// Contains a 2x2 mini chessboard icon (20x20)
-class _BoardSettingsButton extends StatelessWidget {
-  final VoidCallback onTap;
-
-  const _BoardSettingsButton({required this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        width: 32.h,
-        height: 32.h,
-        decoration: BoxDecoration(
-          color: context.colors.surface,
-          borderRadius: BorderRadius.circular(4.br),
-          border: Border.all(color: context.colors.divider, width: 0.1),
-        ),
-        child: Center(
-          child: SvgWidget(
-            SvgAsset.boardSettings,
-            width: 20.sp,
-            height: 20.sp,
-            // Multi-colour (black + white squares) — keep baked colours so
-            // the icon doesn't collapse into a single solid blob.
-            preserveOriginalColors: true,
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-/// CSS: 36x36, bg #262626, radius 10px, white plus icon
-class _PlusButton extends StatelessWidget {
-  final VoidCallback onTap;
-
-  const _PlusButton({required this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
+    final button = GestureDetector(
       onTap: onTap,
       child: Container(
         width: 36.h,
@@ -766,14 +693,43 @@ class _PlusButton extends StatelessWidget {
           color: context.colors.surfaceRecessed,
           borderRadius: BorderRadius.circular(10.br),
         ),
-        child: Center(
-          child: Icon(
-            Icons.add,
-            size: 20.sp,
-            color: context.colors.textPrimary,
-          ),
-        ),
+        child: Center(child: icon),
       ),
+    );
+
+    final message = tooltip;
+    if (message == null) return button;
+    return Tooltip(message: message, child: button);
+  }
+}
+
+/// Opens the shared Board workspace in its default Explorer view.
+class _BoardButton extends StatelessWidget {
+  final VoidCallback onTap;
+
+  const _BoardButton({required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return _HeaderIconButton(
+      onTap: onTap,
+      tooltip: 'Open Board',
+      icon: BoardNavigationIcon(size: 20.sp, semanticsLabel: 'Open Board'),
+    );
+  }
+}
+
+/// White plus icon on the shared header tile.
+class _PlusButton extends StatelessWidget {
+  final VoidCallback onTap;
+
+  const _PlusButton({required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return _HeaderIconButton(
+      onTap: onTap,
+      icon: Icon(Icons.add, size: 20.sp, color: context.colors.textPrimary),
     );
   }
 }
