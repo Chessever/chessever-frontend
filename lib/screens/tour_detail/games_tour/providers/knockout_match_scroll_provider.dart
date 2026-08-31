@@ -1,3 +1,4 @@
+import 'package:chessever2/repository/supabase/tour/tour.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_list_view_mode_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_screen_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/match_expansion_provider.dart';
@@ -175,12 +176,18 @@ class KnockoutMatchScrollNotifier
     final matches = KnockoutMatchDetector.groupByMatchesAcrossAllRounds(
       referenceGames,
     );
+    final tourDetail = ref.read(tourDetailScreenProvider).valueOrNull;
+    final sourceStandingsByTourId = <String, List<TournamentPlayer>>{
+      for (final tourModel in tourDetail?.tours ?? const [])
+        tourModel.tour.id: tourModel.tour.players,
+    };
 
     final headers =
         matches.entries.map((entry) {
           return KnockoutMatchDetector.createMatchHeader(
             entry.key,
             entry.value,
+            sourceStandingsByTourId: sourceStandingsByTourId,
           );
         }).toList();
 

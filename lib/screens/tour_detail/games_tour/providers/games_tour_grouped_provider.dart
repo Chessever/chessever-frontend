@@ -145,6 +145,9 @@ final gamesTourGroupedProvider = Provider.autoDispose<GroupedGamesData>((ref) {
         matchFormatHeader = KnockoutMatchDetector.createMatchHeader(
           entry.key,
           entry.value,
+          sourceStandingsByTourId: {
+            if (currentTour != null) currentTour.id: currentTour.players,
+          },
         );
       }
     }

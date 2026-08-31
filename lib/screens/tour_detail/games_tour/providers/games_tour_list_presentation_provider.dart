@@ -38,16 +38,11 @@ final gamesTourListPresentationProvider =
       // Knockout matchup cards collapse several source rounds into one stage;
       // order them by the source round start time so the latest matchup is
       // top-most. Only knockout events collapse, so skip the fetch otherwise.
-      final tourId = ref.watch(
-        tourDetailScreenProvider.select(
-          (tourAsync) => tourAsync.valueOrNull?.aboutTourModel.id,
-        ),
-      );
+      final tourDetail = ref.watch(tourDetailScreenProvider).valueOrNull;
+      final tourId = tourDetail?.aboutTourModel.id;
       final roundStartTimesById =
           grouped.isKnockoutTournament && tourId != null
-              ? (ref
-                      .watch(tourRoundStartTimesProvider(tourId))
-                      .valueOrNull ??
+              ? (ref.watch(tourRoundStartTimesProvider(tourId)).valueOrNull ??
                   const <String, DateTime?>{})
               : const <String, DateTime?>{};
       final displayRounds = selectGamesTourDisplayRounds(
@@ -77,6 +72,10 @@ final gamesTourListPresentationProvider =
         isSearchMode: isSearchMode,
         matchFormatHeader: grouped.matchFormatHeader,
         roundStartTimesById: roundStartTimesById,
+        sourceStandingsByTourId: {
+          for (final tourModel in tourDetail?.tours ?? const [])
+            tourModel.tour.id: tourModel.tour.players,
+        },
       );
 
       return GamesTourListPresentation(

@@ -1,3 +1,4 @@
+import 'package:chessever2/repository/supabase/tour/tour.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 
 String formatBroadcastScore(double score) {
@@ -85,6 +86,78 @@ String? boardResultLabelForSide(GamesTourModel game, {required bool isWhite}) {
     black: blackCustomPoints ?? standardBlackPoints,
   );
 }
+
+/// Uses source-authoritative standings as a match aggregate only when the
+/// standings row is scoped to exactly the games in that matchup.
+///
+/// Some broadcasts publish adapted totals in `Tour.players` but omit
+/// per-game `customPoints`. Matching `played` to [completedGames] prevents a
+/// cumulative tournament score from being mistaken for one knockout match.
+({double first, double second})? resolveOfficialMatchScoreFromStandings({
+  required Iterable<TournamentPlayer> standings,
+  required String firstName,
+  required int? firstFideId,
+  required String secondName,
+  required int? secondFideId,
+  required int completedGames,
+}) {
+  if (completedGames <= 0) return null;
+
+  final first = _standingForParticipant(
+    standings,
+    name: firstName,
+    fideId: firstFideId,
+  );
+  final second = _standingForParticipant(
+    standings,
+    name: secondName,
+    fideId: secondFideId,
+  );
+  if (first == null || second == null) return null;
+  if (first.score == null || second.score == null) return null;
+  if (first.played != completedGames || second.played != completedGames) {
+    return null;
+  }
+
+  return (first: first.score!, second: second.score!);
+}
+
+TournamentPlayer? _standingForParticipant(
+  Iterable<TournamentPlayer> standings, {
+  required String name,
+  required int? fideId,
+}) {
+  final rows = standings.toList(growable: false);
+  if (fideId != null && fideId > 0) {
+    final byFideId = rows.where((row) => row.fideId == fideId).toList();
+    if (byFideId.length == 1) return byFideId.single;
+  }
+
+  final normalizedName = _normalizedBroadcastPlayerName(name);
+  if (normalizedName.isEmpty) return null;
+  final byName =
+      rows
+          .where(
+            (row) => _normalizedBroadcastPlayerName(row.name) == normalizedName,
+          )
+          .toList();
+  return byName.length == 1 ? byName.single : null;
+}
+
+String _normalizedBroadcastPlayerName(String name) =>
+    name
+        .trim()
+        .replaceFirst(
+          RegExp(
+            r'^(?:(?:GM|IM|FM|CM|WGM|WIM|WFM|WCM|NM|WNM)\.?\s+)+',
+            caseSensitive: false,
+          ),
+          '',
+        )
+        .toLowerCase()
+        .replaceAll('’', "'")
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
 
 ({double? score, int played}) resolveBroadcastStandingScore({
   required double? sourceScore,

@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:chessever2/repository/supabase/game/games.dart';
+import 'package:chessever2/repository/supabase/tour/tour.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/utils/knockout_match_detector.dart';
 import 'package:chessever2/utils/broadcast_custom_scoring.dart';
@@ -137,6 +138,64 @@ void main() {
       expect(match.player1, 'Caruana, Fabiano');
       expect(match.player1Score, 9);
       expect(match.player2Score, 3);
+    });
+
+    test('falls back to source standings when games omit adapted points', () {
+      final games = [
+        _game(
+          status: GameStatus.whiteWins,
+          whiteName: 'Caruana, Fabiano',
+          blackName: 'Praggnanandhaa R',
+        ),
+        _game(
+          status: GameStatus.draw,
+          whiteName: 'Praggnanandhaa R',
+          blackName: 'Caruana, Fabiano',
+        ),
+      ];
+
+      final match = KnockoutMatchDetector.createMatchHeader(
+        'final',
+        games,
+        sourceStandingsByTourId: {
+          'norway-chess': [
+            TournamentPlayer(name: 'Caruana, Fabiano', played: 2, score: 9),
+            TournamentPlayer(name: 'Praggnanandhaa R', played: 2, score: 3),
+          ],
+        },
+      );
+
+      expect(match.player1Score, 9);
+      expect(match.player2Score, 3);
+    });
+
+    test('rejects cumulative standings from a wider tournament scope', () {
+      final games = [
+        _game(
+          status: GameStatus.whiteWins,
+          whiteName: 'Caruana, Fabiano',
+          blackName: 'Praggnanandhaa R',
+        ),
+        _game(
+          status: GameStatus.draw,
+          whiteName: 'Praggnanandhaa R',
+          blackName: 'Caruana, Fabiano',
+        ),
+      ];
+
+      final match = KnockoutMatchDetector.createMatchHeader(
+        'semifinal',
+        games,
+        sourceStandingsByTourId: {
+          'norway-chess': [
+            TournamentPlayer(name: 'Caruana, Fabiano', played: 4, score: 15),
+            TournamentPlayer(name: 'Praggnanandhaa R', played: 4, score: 9),
+          ],
+        },
+      );
+
+      expect(match.player1Score, 1.5);
+      expect(match.player2Score, 0.5);
     });
   });
 

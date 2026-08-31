@@ -1,3 +1,4 @@
+import 'package:chessever2/repository/supabase/tour/tour.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_app_bar_view_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_list_view_mode_provider.dart';
@@ -120,6 +121,7 @@ GamesTourFlattenedLayout buildGamesTourFlattenedLayout({
   bool isSearchMode = false,
   MatchHeaderModel? matchFormatHeader,
   Map<String, DateTime?> roundStartTimesById = const <String, DateTime?>{},
+  Map<String, List<TournamentPlayer>> sourceStandingsByTourId = const {},
 }) {
   final entries = <GamesTourLayoutEntry>[];
   final orderedGames = <GamesTourModel>[];
@@ -206,6 +208,7 @@ GamesTourFlattenedLayout buildGamesTourFlattenedLayout({
             matchKey,
             chronologicalGames,
             playedAt: matchupRecency(chronologicalGames, roundStartTimesById),
+            sourceStandingsByTourId: sourceStandingsByTourId,
           ),
         ),
       );

@@ -1,5 +1,7 @@
+import 'package:chessever2/repository/supabase/tour/tour.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/utils/knockout_match_detector.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_screen_provider.dart';
+import 'package:chessever2/screens/tour_detail/provider/tour_detail_screen_provider.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
@@ -27,6 +29,12 @@ class MatchSelectorDropdown extends ConsumerWidget {
           .when(
             data: (gamesData) {
               final allGames = gamesData.gamesTourModels;
+              final tourDetail =
+                  ref.watch(tourDetailScreenProvider).valueOrNull;
+              final sourceStandingsByTourId = <String, List<TournamentPlayer>>{
+                for (final tourModel in tourDetail?.tours ?? const [])
+                  tourModel.tour.id: tourModel.tour.players,
+              };
 
               // Group games by matches
               final matchesMap =
@@ -40,6 +48,7 @@ class MatchSelectorDropdown extends ConsumerWidget {
                     return KnockoutMatchDetector.createMatchHeader(
                       matchKey,
                       matchGames,
+                      sourceStandingsByTourId: sourceStandingsByTourId,
                     );
                   }).toList();
 
@@ -223,9 +232,8 @@ class _MatchDropdown extends HookConsumerWidget {
                                     child: Container(
                                       color:
                                           isSelected
-                                              ? context.colors.surface.withValues(
-                                                alpha: 0.5,
-                                              )
+                                              ? context.colors.surface
+                                                  .withValues(alpha: 0.5)
                                               : Colors.transparent,
                                       padding: EdgeInsets.symmetric(
                                         horizontal: 12.w,

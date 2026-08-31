@@ -31,6 +31,10 @@ KnockoutBracket buildKnockoutBracket({
   final selectedIsNamedStage = stageTours.any(
     (tour) => tour.id == selectedTour.id,
   );
+  final sourceStandingsByTourId = <String, List<TournamentPlayer>>{
+    for (final tour in siblingTours) tour.id: tour.players,
+    selectedTour.id: selectedTour.players,
+  };
   final isMultiTour =
       stageTours.length > 1 ||
       stageTours.any((tour) => tour.id != selectedTour.id);
@@ -95,6 +99,7 @@ KnockoutBracket buildKnockoutBracket({
       liveTourIds: liveTourIds,
       liveRoundIds: liveRoundIds,
       allowTourLevelLive: allowTourLevelLive,
+      sourceStandingsByTourId: sourceStandingsByTourId,
     );
     discardedGameEvidence |= matchResult.discardedEvidence;
     final matches = matchResult.matches;
@@ -392,6 +397,7 @@ _MatchBuildResult _buildMatches(
   required Set<String> liveTourIds,
   required Set<String> liveRoundIds,
   required bool allowTourLevelLive,
+  required Map<String, List<TournamentPlayer>> sourceStandingsByTourId,
 }) {
   final roundOrder = <String, int>{
     for (var index = 0; index < seed.rounds.length; index++)
@@ -491,6 +497,33 @@ _MatchBuildResult _buildMatches(
       } else {
         participant1Score += points.black;
         participant2Score += points.white;
+      }
+    }
+
+    final matchTourIds = matchGames.map((game) => game.tourId).toSet();
+    final sourceStandings =
+        matchTourIds.length == 1
+            ? sourceStandingsByTourId[matchTourIds.single]
+            : null;
+    if (sourceStandings != null && sourceStandings.isNotEmpty) {
+      final completedGames =
+          matchGames
+              .where(
+                (game) =>
+                    bracketGameResult(game) != BracketGameResult.undecided,
+              )
+              .length;
+      final officialScore = resolveOfficialMatchScoreFromStandings(
+        standings: sourceStandings,
+        firstName: participant1.name,
+        firstFideId: participant1.fideId,
+        secondName: participant2.name,
+        secondFideId: participant2.fideId,
+        completedGames: completedGames,
+      );
+      if (officialScore != null) {
+        participant1Score = officialScore.first;
+        participant2Score = officialScore.second;
       }
     }
 

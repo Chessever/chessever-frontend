@@ -1,3 +1,4 @@
+import 'package:chessever2/repository/supabase/tour/tour.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/utils/broadcast_custom_scoring.dart';
 
@@ -290,6 +291,7 @@ class KnockoutMatchDetector {
     String matchKey,
     List<GamesTourModel> matchGames, {
     DateTime? playedAt,
+    Map<String, List<TournamentPlayer>> sourceStandingsByTourId = const {},
   }) {
     if (matchGames.isEmpty) {
       throw ArgumentError('Match must have at least one game');
@@ -300,7 +302,31 @@ class KnockoutMatchDetector {
     final player2 = firstGame.blackPlayer.name;
 
     // Calculate match score
-    final score = _calculateMatchScore(matchGames);
+    var score = _calculateMatchScore(matchGames);
+    final matchTourIds = matchGames.map((game) => game.tourId).toSet();
+    final sourceStandings =
+        matchTourIds.length == 1
+            ? sourceStandingsByTourId[matchTourIds.single]
+            : null;
+    if (sourceStandings != null && sourceStandings.isNotEmpty) {
+      final officialScore = resolveOfficialMatchScoreFromStandings(
+        standings: sourceStandings,
+        firstName: player1,
+        firstFideId: firstGame.whitePlayer.fideId,
+        secondName: player2,
+        secondFideId: firstGame.blackPlayer.fideId,
+        completedGames:
+            matchGames
+                .where((game) => game.effectiveGameStatus.isFinished)
+                .length,
+      );
+      if (officialScore != null) {
+        score = (
+          player1Score: officialScore.first,
+          player2Score: officialScore.second,
+        );
+      }
+    }
 
     // Extract base round name (e.g., "Round 1" from "game-1")
     final roundName = _extractBaseRoundName(matchGames);
