@@ -42,6 +42,11 @@ const int _kGamesColumnFlex = 3;
 const int _kLastColumnFlex = 2;
 const double _kColumnGap = 4;
 
+/// Height of the Explorer column header. Deliberately shorter than a row:
+/// the header carries 11pt labels, not data, and a full 44dp band left a
+/// visible gap between the last engine line and the first move.
+const double _kHeaderRowHeight = 34;
+
 /// Free users see explorer aggregates up to and including the 10th full move
 /// (ply 20). `currentMoveNumber` is `ply + 1`, so anything above 20 means the
 /// current position is *past* move 10 and premium is required.
@@ -244,44 +249,54 @@ class ExplorerMovesHeader extends StatelessWidget {
           flex: _kMoveColumnFlex,
           child:
               onFilter == null
-                  ? const SizedBox(height: 44)
-                  : Tooltip(
-                    message: 'Explorer filters',
-                    child: Semantics(
-                      button: true,
-                      label: 'Explorer filters',
-                      child: IconButton(
-                        key: const ValueKey<String>(
-                          'opening_explorer_filter_button',
-                        ),
-                        onPressed: onFilter,
-                        padding: EdgeInsets.zero,
-                        constraints: const BoxConstraints(
-                          minWidth: 44,
-                          minHeight: 44,
-                        ),
-                        icon: Stack(
-                          clipBehavior: Clip.none,
-                          children: [
-                            Icon(
-                              Icons.tune_rounded,
-                              size: 20.ic,
-                              color: context.colors.textSecondary,
-                            ),
-                            if (hasActiveFilters)
-                              Positioned(
-                                top: -2,
-                                right: -2,
-                                child: Container(
-                                  width: 7.sp,
-                                  height: 7.sp,
-                                  decoration: BoxDecoration(
-                                    color: context.colors.textPrimary,
-                                    shape: BoxShape.circle,
+                  ? const SizedBox(height: _kHeaderRowHeight)
+                  : Align(
+                    // The move column reads flush left in every row, so the
+                    // filter anchors to that same edge instead of floating in
+                    // the middle of an otherwise empty column.
+                    alignment: Alignment.centerLeft,
+                    child: Tooltip(
+                      message: 'Explorer filters',
+                      child: Semantics(
+                        button: true,
+                        label: 'Explorer filters',
+                        child: IconButton(
+                          key: const ValueKey<String>(
+                            'opening_explorer_filter_button',
+                          ),
+                          onPressed: onFilter,
+                          padding: EdgeInsets.zero,
+                          // Keeps the 34dp tap box while the glyph itself sits
+                          // on the column's left edge, level with the move text.
+                          alignment: Alignment.centerLeft,
+                          visualDensity: VisualDensity.compact,
+                          constraints: const BoxConstraints(
+                            minWidth: _kHeaderRowHeight,
+                            minHeight: _kHeaderRowHeight,
+                          ),
+                          icon: Stack(
+                            clipBehavior: Clip.none,
+                            children: [
+                              Icon(
+                                Icons.tune_rounded,
+                                size: 18.ic,
+                                color: context.colors.textSecondary,
+                              ),
+                              if (hasActiveFilters)
+                                Positioned(
+                                  top: -2,
+                                  right: -2,
+                                  child: Container(
+                                    width: 6.sp,
+                                    height: 6.sp,
+                                    decoration: BoxDecoration(
+                                      color: context.colors.textPrimary,
+                                      shape: BoxShape.circle,
+                                    ),
                                   ),
                                 ),
-                              ),
-                          ],
+                            ],
+                          ),
                         ),
                       ),
                     ),
@@ -365,7 +380,7 @@ class _ExplorerSortHeader extends StatelessWidget {
           borderRadius: BorderRadius.circular(6.br),
           child: Container(
             alignment: alignment,
-            constraints: const BoxConstraints(minHeight: 44),
+            constraints: const BoxConstraints(minHeight: _kHeaderRowHeight),
             // The underline slot is always reserved (transparent when
             // inactive) so toggling the sort never shifts the label.
             child: IntrinsicWidth(
@@ -387,7 +402,7 @@ class _ExplorerSortHeader extends StatelessWidget {
                       fontWeight: active ? FontWeight.w700 : FontWeight.w600,
                     ),
                   ),
-                  SizedBox(height: 3.sp),
+                  SizedBox(height: 2.sp),
                   AnimatedContainer(
                     duration: const Duration(milliseconds: 180),
                     curve: Curves.easeOutCubic,
@@ -731,7 +746,7 @@ class MoveStatisticsPanel extends HookConsumerWidget {
       return Column(
         children: [
           Padding(
-            padding: EdgeInsets.symmetric(horizontal: 12.sp, vertical: 6.sp),
+            padding: EdgeInsets.symmetric(horizontal: 12.sp, vertical: 2.sp),
             child: movesHeader,
           ),
           Divider(color: context.colors.divider, height: 1),
@@ -860,7 +875,7 @@ class MoveStatisticsPanel extends HookConsumerWidget {
                       Padding(
                         padding: EdgeInsets.symmetric(
                           horizontal: 12.sp,
-                          vertical: 6.sp,
+                          vertical: 2.sp,
                         ),
                         child: movesHeader,
                       ),
