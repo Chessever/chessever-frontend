@@ -1,4 +1,5 @@
 import 'package:chessever2/widgets/federation_flag.dart';
+import 'package:country_flags/country_flags.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_country_flags/flutter_country_flags.dart' as fcf;
 import 'package:flutter_test/flutter_test.dart';
@@ -18,6 +19,15 @@ void main() {
     await pumpFlag(tester, 'CHN');
 
     expect(find.byType(fcf.FlutterCountryFlags), findsOneWidget);
+  });
+
+  testWidgets('renders Kosovo instead of an unknown XX placeholder', (
+    tester,
+  ) async {
+    await pumpFlag(tester, 'KOS');
+
+    expect(find.byType(CountryFlag), findsOneWidget);
+    expect(find.byType(fcf.FlutterCountryFlags), findsNothing);
   });
 
   test('visibility helper distinguishes FIDE from missing federations', () {
