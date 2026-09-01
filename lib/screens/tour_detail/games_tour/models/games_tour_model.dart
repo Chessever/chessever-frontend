@@ -32,6 +32,13 @@ class GamesScreenModel {
   final String? searchQuery;
   final GameDisplayMode gameDisplayMode;
 
+  /// True while [gamesTourModels] is a subset of the tournament's games:
+  /// text search replaces the list with the query's hits and "Show Finished
+  /// Games" drops live boards. Consumers that need full membership (the
+  /// score card above all) must rebuild from the raw tour games instead.
+  bool get isFiltered =>
+      isSearchMode || gameDisplayMode == GameDisplayMode.showfinishedGame;
+
   GamesScreenModel copyWith({
     List<GamesTourModel>? gamesTourModels,
     List<String>? pinnedGamedIs,

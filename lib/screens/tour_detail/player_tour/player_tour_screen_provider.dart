@@ -50,6 +50,31 @@ final mergedTournamentGamesProvider = AutoDisposeProvider<List<GamesTourModel>>(
           .trim();
     }
 
+    // The screen model is a presentation list: text search swaps it for the
+    // query's hits and "Show Finished Games" drops live boards. A score card
+    // opened from one of those rows must still see every game, so rebuild
+    // from the raw tour list whenever the screen list is filtered. Otherwise
+    // the screen list *is* that raw list, already parsed off the main thread,
+    // so reuse it rather than re-parsing every PGN here.
+    List<GamesTourModel> fullTournamentGames() {
+      final screen = gamesTourAsync.valueOrNull;
+      if (screen != null && !screen.isFiltered) {
+        return screen.gamesTourModels;
+      }
+      final rawGames =
+          ref.watch(gamesTourProvider(aboutTourModel.id)).valueOrNull;
+      if (rawGames == null) {
+        return screen?.gamesTourModels ?? const <GamesTourModel>[];
+      }
+      final models = <GamesTourModel>[];
+      for (final game in rawGames) {
+        try {
+          models.add(GamesTourModel.fromGame(game));
+        } catch (_) {}
+      }
+      return models;
+    }
+
     final allGames = <GamesTourModel>[];
 
     if (isPaginationCategory(aboutTourModel.name)) {
@@ -77,10 +102,10 @@ final mergedTournamentGamesProvider = AutoDisposeProvider<List<GamesTourModel>>(
           }
         }
       } else {
-        allGames.addAll(gamesTourAsync.value?.gamesTourModels ?? []);
+        allGames.addAll(fullTournamentGames());
       }
     } else {
-      allGames.addAll(gamesTourAsync.value?.gamesTourModels ?? []);
+      allGames.addAll(fullTournamentGames());
     }
 
     return allGames;
