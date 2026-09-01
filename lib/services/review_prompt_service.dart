@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:chessever2/repository/sqlite/app_database.dart';
 import 'package:chessever2/services/telegram_notification_service.dart';
 import 'package:chessever2/widgets/app_snack.dart';
+import 'package:chessever2/widgets/review_prompt/direct_feedback_dialog.dart';
 import 'package:chessever2/widgets/review_prompt/review_prompt_dialogs.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -47,6 +48,37 @@ class ReviewPromptService {
   final InAppReview _inAppReview = InAppReview.instance;
 
   AppDatabase get _db => AppDatabase.instance;
+
+  /// Opens the deliberate sidebar feedback destination directly. This does
+  /// not participate in review-prompt cooldowns, ratings, or feature surveys.
+  Future<void> showDirectFeedback({required BuildContext context}) async {
+    if (!context.mounted) return;
+    final result = await showDirectFeedbackDialog(context);
+    if (result == null || !context.mounted) return;
+
+    PackageInfo? packageInfo;
+    try {
+      packageInfo = await PackageInfo.fromPlatform();
+    } catch (_) {
+      // Feedback should still be deliverable when package metadata is absent.
+    }
+
+    unawaited(
+      TelegramNotificationService.instance.sendDirectFeedbackNotification(
+        feedback: result.feedback,
+        source: ReviewPromptTrigger.sidebar.name,
+        appVersion:
+            packageInfo == null
+                ? null
+                : '${packageInfo.version} (${packageInfo.buildNumber})',
+        platform: Platform.operatingSystem,
+        pictureBytes: result.picture?.bytes,
+        pictureFileName: result.picture?.fileName,
+      ),
+    );
+    if (!context.mounted) return;
+    _showThanksSnackBar(context);
+  }
 
   /// Increments the session (app-open) counter.
   /// Call once per app launch from the home screen.

@@ -3,6 +3,24 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:http/http.dart' as http;
 
+String buildDirectFeedbackMessage({
+  required String feedback,
+  required String source,
+  String? appVersion,
+  String? platform,
+}) {
+  return (StringBuffer()
+        ..writeln('📣 New App Feedback')
+        ..writeln()
+        ..writeln('Source: $source')
+        ..writeln('Platform: ${platform ?? 'Unknown'}')
+        ..writeln('Version: ${appVersion ?? 'Unknown'}')
+        ..writeln()
+        ..writeln('Message:')
+        ..writeln(feedback))
+      .toString();
+}
+
 /// Service to send notifications to Telegram bot for immediate feedback alerts.
 ///
 /// The bot token and chat ID come from the environment and are never written
@@ -49,6 +67,69 @@ class TelegramNotificationService {
   static String get _chatId => _env('TELEGRAM_FEEDBACK_CHAT_ID');
 
   static const String _baseUrl = 'https://api.telegram.org/bot';
+
+  /// Relay feedback opened deliberately from the sidebar. Unlike the
+  /// engagement review flow, this has no star rating or feature survey.
+  Future<bool> sendDirectFeedbackNotification({
+    required String feedback,
+    required String source,
+    String? appVersion,
+    String? platform,
+    Uint8List? pictureBytes,
+    String? pictureFileName,
+  }) async {
+    final botToken = _botToken;
+    final chatId = _chatId;
+    if (botToken.isEmpty || chatId.isEmpty) {
+      debugPrint(
+        '[Telegram] Not configured — direct feedback was not relayed.',
+      );
+      return false;
+    }
+
+    final message = buildDirectFeedbackMessage(
+      feedback: feedback,
+      source: source,
+      appVersion: appVersion,
+      platform: platform,
+    );
+
+    try {
+      if (pictureBytes != null && pictureBytes.isNotEmpty) {
+        final request =
+            http.MultipartRequest(
+                'POST',
+                Uri.parse('$_baseUrl$botToken/sendDocument'),
+              )
+              ..fields['chat_id'] = chatId
+              ..fields['message_thread_id'] = '19'
+              ..fields['caption'] = message
+              ..files.add(
+                http.MultipartFile.fromBytes(
+                  'document',
+                  pictureBytes,
+                  filename: pictureFileName ?? 'feedback-picture',
+                ),
+              );
+        final response = await request.send();
+        return response.statusCode == 200;
+      }
+
+      final response = await http.post(
+        Uri.parse('$_baseUrl$botToken/sendMessage'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'chat_id': chatId,
+          'message_thread_id': 19,
+          'text': message,
+        }),
+      );
+      return response.statusCode == 200;
+    } catch (e) {
+      debugPrint('[Telegram] Error sending direct feedback: $e');
+      return false;
+    }
+  }
 
   /// Send feedback notification to Telegram
   Future<bool> sendFeedbackNotification({

@@ -259,10 +259,8 @@ class HamburgerMenu extends HookConsumerWidget {
                         ),
                         onPressed: () {
                           Navigator.of(context).pop();
-                          ReviewPromptService.instance.maybePrompt(
+                          ReviewPromptService.instance.showDirectFeedback(
                             context: context,
-                            trigger: ReviewPromptTrigger.sidebar,
-                            force: true,
                           );
                         },
                         showChevron: true,
