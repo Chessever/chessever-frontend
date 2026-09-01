@@ -1,6 +1,8 @@
 import 'package:chessever2/screens/chessboard/game_review/game_review_sheet.dart';
 import 'package:chessever2/screens/chessboard/game_review/game_review_sheet_host.dart';
 import 'package:chessever2/screens/chessboard/view_model/chess_board_state_new.dart';
+import 'package:chessever2/screens/gamebase/gamebase_explorer_screen.dart'
+    show showExplorerFilterSheet;
 import 'package:chessever2/screens/gamebase/providers/gamebase_providers.dart';
 import 'package:chessever2/screens/gamebase/utils/explorer_move_line.dart';
 import 'package:chessever2/screens/gamebase/widgets/move_statistics_panel.dart';
@@ -67,11 +69,10 @@ class BoardOpeningExplorerPanel extends HookConsumerWidget {
           );
         }
         final notifier = ref.read(gamebaseExplorerProvider.notifier);
-        // Unscoped board explorer: drop sticky filters without a premature fetch.
+        // The board uses the same filter scope and sheet as the standalone
+        // explorer. Keep filters when the position changes so every filter/sort
+        // combination remains active while the user plays through the line.
         notifier.disableLocalPlayerTree();
-        if (ref.read(gamebaseExplorerProvider).hasActiveFilters) {
-          notifier.clearFilters(fetch: false);
-        }
         // Desktop: setPositionWithMoves(currentFen, sanitised, startingFen: …)
         notifier.setPositionWithMoves(
           currentFen,
@@ -100,10 +101,16 @@ class BoardOpeningExplorerPanel extends HookConsumerWidget {
     final pagesGames =
         !(ResponsiveHelper.isTablet && ResponsiveHelper.isLandscape);
     final anchorPixels = GameReviewSheetScope.maybeOf(context)?.anchorPixels;
+    final hasActiveFilters = ref.watch(
+      gamebaseExplorerProvider.select((state) => state.hasActiveFilters),
+    );
+    void openFilters() => showExplorerFilterSheet(context);
 
     if (!pagesGames || anchorPixels == null) {
       return MoveStatisticsPanel(
         onMove: onMoveSelected,
+        onFilter: openFilters,
+        hasActiveFilters: hasActiveFilters,
         listBottomPadding: listBottomPadding,
       );
     }
@@ -113,6 +120,8 @@ class BoardOpeningExplorerPanel extends HookConsumerWidget {
       builder: (context, anchor, _) {
         return MoveStatisticsPanel(
           onMove: onMoveSelected,
+          onFilter: openFilters,
+          hasActiveFilters: hasActiveFilters,
           listBottomPadding: listBottomPadding,
           gamesPageHeight:
               anchor == null ? null : anchor + GameReviewSheetExtents.anchorGap,

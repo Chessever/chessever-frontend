@@ -232,6 +232,57 @@ class GamebaseRepository {
     };
   }
 
+  /// Query parameters for the exact-FEN position-search games endpoint.
+  ///
+  /// Kept as a pure builder so the FEN surface is covered by the same complete
+  /// filter/sort matrix as the move-line Opening Explorer surface.
+  @visibleForTesting
+  static Map<String, dynamic> buildFenPositionGamesQueryParameters({
+    required String fen,
+    String? uci,
+    TimeControl? timeControl,
+    String? playerId,
+    String? color,
+    String? result,
+    int? minRating,
+    int? maxRating,
+    int? yearFrom,
+    int? yearTo,
+    GamebaseSortField? sortBy,
+    GamebaseSortDirection? sortDirection,
+    bool? isOnline,
+    int notationPlies = 0,
+    int pageNumber = 0,
+    int pageSize = 20,
+  }) {
+    final normalizedFen = _normalizeFenForLookup(fen);
+    final trimmedPlayerId = playerId?.trim();
+    final trimmedUci = uci?.trim();
+    return <String, dynamic>{
+      'fen': normalizedFen,
+      'pageNumber': pageNumber,
+      'pageSize': pageSize,
+      if (trimmedUci != null && trimmedUci.isNotEmpty) 'uci': trimmedUci,
+      ...buildExplorerQueryFilterFields(
+        timeControl: timeControl,
+        playerId:
+            trimmedPlayerId != null && trimmedPlayerId.isNotEmpty
+                ? trimmedPlayerId
+                : null,
+        color: color,
+        result: result,
+        minRating: minRating,
+        maxRating: maxRating,
+        yearFrom: yearFrom,
+        yearTo: yearTo,
+        isOnline: isOnline,
+      ),
+      if (notationPlies > 0) 'notationPlies': notationPlies,
+      if (sortBy != null) 'sortBy': sortBy.name,
+      if (sortDirection != null) 'sortDirection': sortDirection.name,
+    };
+  }
+
   Future<GamebaseResponse> getMoveAggregates({
     required String fen,
     List<String> moves = const [],
@@ -1497,34 +1548,26 @@ class GamebaseRepository {
     int pageSize = 20,
   }) async {
     try {
-      final normalizedFen = _normalizeFenForLookup(fen);
-      final trimmedPlayerId = playerId?.trim();
-      final trimmedUci = uci?.trim();
       final response = await _dio.get(
         '$_baseUrl/api/game-position/fen/games',
-        queryParameters: {
-          'fen': normalizedFen,
-          'pageNumber': pageNumber,
-          'pageSize': pageSize,
-          if (trimmedUci != null && trimmedUci.isNotEmpty) 'uci': trimmedUci,
-          ...buildExplorerQueryFilterFields(
-            timeControl: timeControl,
-            playerId:
-                trimmedPlayerId != null && trimmedPlayerId.isNotEmpty
-                    ? trimmedPlayerId
-                    : null,
-            color: color,
-            result: result,
-            minRating: minRating,
-            maxRating: maxRating,
-            yearFrom: yearFrom,
-            yearTo: yearTo,
-            isOnline: isOnline,
-          ),
-          if (notationPlies > 0) 'notationPlies': notationPlies,
-          if (sortBy != null) 'sortBy': sortBy.name,
-          if (sortDirection != null) 'sortDirection': sortDirection.name,
-        },
+        queryParameters: buildFenPositionGamesQueryParameters(
+          fen: fen,
+          uci: uci,
+          timeControl: timeControl,
+          playerId: playerId,
+          color: color,
+          result: result,
+          minRating: minRating,
+          maxRating: maxRating,
+          yearFrom: yearFrom,
+          yearTo: yearTo,
+          sortBy: sortBy,
+          sortDirection: sortDirection,
+          isOnline: isOnline,
+          notationPlies: notationPlies,
+          pageNumber: pageNumber,
+          pageSize: pageSize,
+        ),
         options: Options(headers: _headers),
       );
 

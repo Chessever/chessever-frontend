@@ -6,13 +6,13 @@ import 'package:dio/dio.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 /// Start position. Explorer aggregates/games use this until a move is played.
-const _startFen =
-    'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
+const _startFen = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
 
 /// Position after 1.e4. dartchess omits e3 EP (no legal capture), so the
 /// sanitizer keeps `e2e4` only when the 4-field key matches this FEN.
 const _afterE2e4Fen =
     'rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1';
+const _matrixPlayerId = '00000000-0000-4000-8000-000000000001';
 
 const _filterKeys = <String>{
   'timeControl',
@@ -31,6 +31,7 @@ class _AxisValue {
   const _AxisValue({
     required this.axis,
     required this.label,
+    this.playerIds,
     this.timeControls,
     this.minRating,
     this.maxRating,
@@ -43,6 +44,7 @@ class _AxisValue {
 
   final String axis;
   final String label;
+  final List<String>? playerIds;
   final List<TimeControl>? timeControls;
   final int? minRating;
   final int? maxRating;
@@ -89,6 +91,14 @@ const _timeValues = <_AxisValue>[
     axis: 'timeControls',
     label: 'time=blitz',
     timeControls: [TimeControl.blitz],
+  ),
+];
+
+const _playerValues = <_AxisValue>[
+  _AxisValue(
+    axis: 'playerIds',
+    label: 'player=scoped',
+    playerIds: [_matrixPlayerId],
   ),
 ];
 
@@ -141,16 +151,19 @@ const _colorValues = <_AxisValue>[
   _AxisValue(
     axis: 'playerColor',
     label: 'color=white',
+    playerIds: [_matrixPlayerId],
     playerColor: GamebasePlayerColor.white,
   ),
   _AxisValue(
     axis: 'playerColor',
     label: 'color=black',
+    playerIds: [_matrixPlayerId],
     playerColor: GamebasePlayerColor.black,
   ),
 ];
 
 const _allAxes = <List<_AxisValue>>[
+  _playerValues,
   _timeValues,
   _ratingValues,
   _yearValues,
@@ -165,6 +178,7 @@ _Case _caseFrom(
   String fen = _startFen,
   List<String> moves = const <String>[],
 }) {
+  var playerIds = const <String>[];
   var timeControls = const <TimeControl>[];
   int? minRating;
   int? maxRating;
@@ -176,6 +190,7 @@ _Case _caseFrom(
   final parts = <String>[];
 
   for (final value in values) {
+    if (value.playerIds != null) playerIds = value.playerIds!;
     if (value.timeControls != null) timeControls = value.timeControls!;
     if (value.minRating != null) minRating = value.minRating;
     if (value.maxRating != null) maxRating = value.maxRating;
@@ -193,6 +208,7 @@ _Case _caseFrom(
     fen: fen,
     moves: moves,
     filters: GamebaseFilters(
+      playerIds: playerIds,
       timeControls: timeControls,
       minRating: minRating,
       maxRating: maxRating,
@@ -227,36 +243,12 @@ List<_Case> _generateExplorerFilterMatrix() {
   }
 
   cases.addAll([
-    _caseFrom('triple', [
-      _timeValues[0],
-      _ratingValues[2],
-      _yearValues[2],
-    ]),
-    _caseFrom('triple', [
-      _timeValues[1],
-      _isOnlineValues[0],
-      _resultValues[0],
-    ]),
-    _caseFrom('triple', [
-      _timeValues[2],
-      _colorValues[0],
-      _resultValues[2],
-    ]),
-    _caseFrom('triple', [
-      _isOnlineValues[1],
-      _yearValues[2],
-      _colorValues[1],
-    ]),
-    _caseFrom('triple', [
-      _ratingValues[2],
-      _resultValues[1],
-      _colorValues[0],
-    ]),
-    _caseFrom('triple', [
-      _yearValues[0],
-      _ratingValues[0],
-      _isOnlineValues[0],
-    ]),
+    _caseFrom('triple', [_timeValues[0], _ratingValues[2], _yearValues[2]]),
+    _caseFrom('triple', [_timeValues[1], _isOnlineValues[0], _resultValues[0]]),
+    _caseFrom('triple', [_timeValues[2], _colorValues[0], _resultValues[2]]),
+    _caseFrom('triple', [_isOnlineValues[1], _yearValues[2], _colorValues[1]]),
+    _caseFrom('triple', [_ratingValues[2], _resultValues[1], _colorValues[0]]),
+    _caseFrom('triple', [_yearValues[0], _ratingValues[0], _isOnlineValues[0]]),
   ]);
 
   cases.addAll([
@@ -301,7 +293,11 @@ Map<String, dynamic> _aggregatesBody(_Case c) {
   );
 }
 
-Map<String, dynamic> _gamesBody(_Case c) {
+Map<String, dynamic> _gamesBody(
+  _Case c, {
+  GamebaseSortField? sortBy,
+  GamebaseSortDirection? sortDirection,
+}) {
   return GamebaseRepository.buildPositionGamesQueryBody(
     fen: c.fen,
     moves: c.moves,
@@ -315,8 +311,30 @@ Map<String, dynamic> _gamesBody(_Case c) {
     maxRating: c.filters.maxRating,
     yearFrom: c.filters.yearFrom,
     yearTo: c.filters.yearTo,
-    sortBy: c.filters.sortBy,
-    sortDirection: c.filters.sortDirection,
+    sortBy: sortBy ?? c.filters.sortBy,
+    sortDirection: sortDirection ?? c.filters.sortDirection,
+  );
+}
+
+Map<String, dynamic> _fenGamesQuery(
+  _Case c, {
+  GamebaseSortField? sortBy,
+  GamebaseSortDirection? sortDirection,
+}) {
+  return GamebaseRepository.buildFenPositionGamesQueryParameters(
+    fen: c.fen,
+    timeControl:
+        c.filters.timeControls.isNotEmpty ? c.filters.timeControls.first : null,
+    playerId: c.filters.playerIds.isNotEmpty ? c.filters.playerIds.first : null,
+    color: c.filters.playerColor?.name,
+    result: c.filters.gameResult?.apiValue,
+    isOnline: c.filters.isOnline,
+    minRating: c.filters.minRating,
+    maxRating: c.filters.maxRating,
+    yearFrom: c.filters.yearFrom,
+    yearTo: c.filters.yearTo,
+    sortBy: sortBy ?? c.filters.sortBy,
+    sortDirection: sortDirection ?? c.filters.sortDirection,
   );
 }
 
@@ -342,7 +360,11 @@ void _assertFilterFields(_Case c, Map<String, dynamic> body) {
   expect(expected.keys, everyElement(_filterKeys.contains), reason: reason);
 
   for (final entry in expected.entries) {
-    expect(body.containsKey(entry.key), isTrue, reason: '$reason missing ${entry.key}');
+    expect(
+      body.containsKey(entry.key),
+      isTrue,
+      reason: '$reason missing ${entry.key}',
+    );
     expect(body[entry.key], entry.value, reason: '$reason ${entry.key}');
   }
 
@@ -377,18 +399,28 @@ void _assertFilterFields(_Case c, Map<String, dynamic> body) {
 void _assertRequestShapes(_Case c) {
   final aggregates = _aggregatesBody(c);
   final games = _gamesBody(c);
+  final fenGames = _fenGamesQuery(c);
 
   _assertFilterFields(c, aggregates);
   _assertFilterFields(c, games);
+  _assertFilterFields(c, fenGames);
 
   expect(aggregates['fen'], isNotEmpty, reason: c.name);
   expect(games['fen'], isNotEmpty, reason: c.name);
+  expect(fenGames['fen'], isNotEmpty, reason: c.name);
 
   final aggregateFilters = Map<String, dynamic>.from(aggregates)
     ..removeWhere((key, _) => !_filterKeys.contains(key));
   final gameFilters = Map<String, dynamic>.from(games)
     ..removeWhere((key, _) => !_filterKeys.contains(key));
+  final fenGameFilters = Map<String, dynamic>.from(fenGames)
+    ..removeWhere((key, _) => !_filterKeys.contains(key));
   expect(gameFilters, aggregateFilters, reason: '${c.name} AND-combine');
+  expect(
+    fenGameFilters,
+    aggregateFilters,
+    reason: '${c.name} exact-FEN AND-combine',
+  );
 
   if (c.moves.isNotEmpty) {
     expect(aggregates['moves'], c.moves, reason: c.name);
@@ -441,19 +473,13 @@ void main() {
   final moveCombos = cases.where((c) => c.kind == 'filter+moves').toList();
 
   test('explorer filter matrix covers singles, pairs, triples, and e2e4', () {
-    expect(singles.length, 16);
-    expect(pairs.length, 106);
+    expect(singles.length, 17);
+    expect(pairs.length, 122);
     expect(triples.length, greaterThanOrEqualTo(5));
     expect(moveCombos.length, greaterThanOrEqualTo(2));
-    expect(cases.length, 16 + 106 + triples.length + moveCombos.length + 1);
-    expect(
-      triples.every((c) => c.parts.length == 3),
-      isTrue,
-    );
-    expect(
-      moveCombos.every((c) => c.moves.contains('e2e4')),
-      isTrue,
-    );
+    expect(cases.length, 17 + 122 + triples.length + moveCombos.length + 1);
+    expect(triples.every((c) => c.parts.length == 3), isTrue);
+    expect(moveCombos.every((c) => c.moves.contains('e2e4')), isTrue);
   });
 
   test('empty filters omit every filter key', () {
@@ -464,9 +490,11 @@ void main() {
     );
     final aggregates = _aggregatesBody(empty);
     final games = _gamesBody(empty);
+    final fenGames = _fenGamesQuery(empty);
     for (final key in _filterKeys) {
       expect(aggregates.containsKey(key), isFalse, reason: 'aggregates $key');
       expect(games.containsKey(key), isFalse, reason: 'games $key');
+      expect(fenGames.containsKey(key), isFalse, reason: 'fen games $key');
     }
     expect(aggregates.keys.toSet(), {'fen', 'moves'});
     expect(games.containsKey('timeControl'), isFalse);
@@ -475,6 +503,36 @@ void main() {
   for (final c in cases) {
     test(c.name, () => _assertRequestShapes(c));
   }
+
+  test(
+    'opening explorer and position search cross every filter with every sort',
+    () {
+      for (final c in cases) {
+        for (final sortBy in GamebaseSortField.values) {
+          for (final direction in GamebaseSortDirection.values) {
+            final reason = '${c.name} ${sortBy.name} ${direction.name}';
+            final opening = _gamesBody(
+              c,
+              sortBy: sortBy,
+              sortDirection: direction,
+            );
+            final position = _fenGamesQuery(
+              c,
+              sortBy: sortBy,
+              sortDirection: direction,
+            );
+
+            _assertFilterFields(c, opening);
+            _assertFilterFields(c, position);
+            expect(opening['sortBy'], sortBy.name, reason: reason);
+            expect(position['sortBy'], sortBy.name, reason: reason);
+            expect(opening['sortDirection'], direction.name, reason: reason);
+            expect(position['sortDirection'], direction.name, reason: reason);
+          }
+        }
+      }
+    },
+  );
 
   test('getMoveAggregates POSTs the shipped aggregates body', () async {
     final adapter = _CapturingAdapter();
@@ -501,36 +559,73 @@ void main() {
     expect(adapter.lastBody!.containsKey('color'), isFalse);
   });
 
-  test('getPositionGames POSTs filter+e2e4 with the shipped games body', () async {
+  test(
+    'getPositionGames POSTs filter+e2e4 with the shipped games body',
+    () async {
+      final adapter = _CapturingAdapter();
+      final repo = GamebaseRepository(
+        Dio()..httpClientAdapter = adapter,
+        baseUrl: 'http://test',
+        apiKey: 'test',
+      );
+      final c = _caseFrom(
+        'filter+moves',
+        [_resultValues[0], _colorValues[0]],
+        fen: _afterE2e4Fen,
+        moves: const ['e2e4'],
+      );
+      final expected = _gamesBody(c);
+
+      await repo.getPositionGames(
+        fen: c.fen,
+        moves: c.moves,
+        playerId: _matrixPlayerId,
+        color: 'white',
+        result: 'W',
+        sortBy: GamebaseSortField.date,
+        sortDirection: GamebaseSortDirection.desc,
+      );
+
+      expect(adapter.lastRequest?.method, 'POST');
+      expect(adapter.lastRequest?.path, endsWith('/games/query'));
+      expect(adapter.lastBody, expected);
+      expect(adapter.lastBody!['moves'], ['e2e4']);
+      expect(adapter.lastBody!['result'], 'W');
+      expect(adapter.lastBody!['color'], 'white');
+      expect(adapter.lastBody!.containsKey('timeControl'), isFalse);
+    },
+  );
+
+  test('getFenPositionGames GETs the same filters and sort', () async {
     final adapter = _CapturingAdapter();
     final repo = GamebaseRepository(
       Dio()..httpClientAdapter = adapter,
       baseUrl: 'http://test',
       apiKey: 'test',
     );
-    final c = _caseFrom(
-      'filter+moves',
-      [_resultValues[0], _colorValues[0]],
-      fen: _afterE2e4Fen,
-      moves: const ['e2e4'],
+    final c = _caseFrom('triple', [
+      _timeValues[2],
+      _yearValues[2],
+      _isOnlineValues[1],
+    ]);
+    final expected = _fenGamesQuery(
+      c,
+      sortBy: GamebaseSortField.avgElo,
+      sortDirection: GamebaseSortDirection.asc,
     );
-    final expected = _gamesBody(c);
 
-    await repo.getPositionGames(
+    await repo.getFenPositionGames(
       fen: c.fen,
-      moves: c.moves,
-      color: 'white',
-      result: 'W',
-      sortBy: GamebaseSortField.date,
-      sortDirection: GamebaseSortDirection.desc,
+      timeControl: TimeControl.blitz,
+      yearFrom: 2018,
+      yearTo: 2024,
+      isOnline: false,
+      sortBy: GamebaseSortField.avgElo,
+      sortDirection: GamebaseSortDirection.asc,
     );
 
-    expect(adapter.lastRequest?.method, 'POST');
-    expect(adapter.lastRequest?.path, endsWith('/games/query'));
-    expect(adapter.lastBody, expected);
-    expect(adapter.lastBody!['moves'], ['e2e4']);
-    expect(adapter.lastBody!['result'], 'W');
-    expect(adapter.lastBody!['color'], 'white');
-    expect(adapter.lastBody!.containsKey('timeControl'), isFalse);
+    expect(adapter.lastRequest?.method, 'GET');
+    expect(adapter.lastRequest?.path, endsWith('/fen/games'));
+    expect(adapter.lastQuery, expected);
   });
 }

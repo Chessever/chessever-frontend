@@ -1757,6 +1757,46 @@ class GamebasePositionGamesQuery {
     this.notationPlies = 0,
   });
 
+  /// The query the opening explorer asks for a row's games.
+  ///
+  /// `positionGamesProvider` is a family keyed on this object, so the games
+  /// sheet and anything that warms the sheet ahead of a tap have to build a
+  /// field-for-field identical query or they address different cache entries
+  /// and the warm-up silently buys nothing. Both go through here.
+  ///
+  /// [sortBy] / [sortDirection] override [filters] for the sheet's own sort
+  /// control, which changes the order without touching the explorer filters.
+  factory GamebasePositionGamesQuery.fromFilters({
+    required String fen,
+    required GamebaseFilters filters,
+    List<String> moves = const <String>[],
+    String? uci,
+    GamebaseSortField? sortBy,
+    GamebaseSortDirection? sortDirection,
+    int pageNumber = 0,
+    int pageSize = 20,
+  }) {
+    return GamebasePositionGamesQuery(
+      fen: fen,
+      moves: moves,
+      uci: uci,
+      timeControl:
+          filters.timeControls.isNotEmpty ? filters.timeControls.first : null,
+      playerId: filters.playerIds.isNotEmpty ? filters.playerIds.first : null,
+      color: filters.playerColor?.name,
+      result: filters.gameResult?.apiValue,
+      isOnline: filters.isOnline,
+      minRating: filters.minRating,
+      maxRating: filters.maxRating,
+      yearFrom: filters.yearFrom,
+      yearTo: filters.yearTo,
+      sortBy: sortBy ?? filters.sortBy,
+      sortDirection: sortDirection ?? filters.sortDirection,
+      pageNumber: pageNumber,
+      pageSize: pageSize,
+    );
+  }
+
   @override
   bool operator ==(Object other) {
     return other is GamebasePositionGamesQuery &&

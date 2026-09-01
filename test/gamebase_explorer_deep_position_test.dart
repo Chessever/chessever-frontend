@@ -231,6 +231,29 @@ void main() {
       );
     });
 
+    test('Results header orders White score, then Black score', () {
+      final white = defaultExplorerMoveSort(ExplorerMoveSortField.score);
+      expect(white.resultSide, ExplorerResultSortSide.white);
+      expect(white.ascending, isFalse);
+      expect(_order(white), <String>['d2d4', 'a2a3', 'e2e4', 'h2h3']);
+
+      final black = nextExplorerMoveSort(white, ExplorerMoveSortField.score);
+      expect(black.resultSide, ExplorerResultSortSide.black);
+      expect(black.ascending, isFalse);
+      expect(_order(black), <String>['h2h3', 'e2e4', 'a2a3', 'd2d4']);
+    });
+
+    test('Games and Last headers use their shipped descending order', () {
+      expect(
+        _order(defaultExplorerMoveSort(ExplorerMoveSortField.games)),
+        <String>['e2e4', 'd2d4', 'a2a3', 'h2h3'],
+      );
+      expect(
+        _order(defaultExplorerMoveSort(ExplorerMoveSortField.last)),
+        <String>['h2h3', 'd2d4', 'a2a3', 'e2e4'],
+      );
+    });
+
     test('last played', () {
       expect(
         _order(

@@ -14,6 +14,7 @@ final gamesTourStableOrderProvider = Provider.autoDispose
 /// changes, never for clocks, moves, results, or rebuilt model instances.
 class GamesTourStableOrder {
   final Map<String, _StableRoundOrder> _rounds = <String, _StableRoundOrder>{};
+  Set<String> _pinnedGameIds = const <String>{};
   Set<String> _favoriteGameIds = const <String>{};
   Set<String> _countrymanGameIds = const <String>{};
   bool _hasPrioritySnapshot = false;
@@ -43,6 +44,7 @@ class GamesTourStableOrder {
     required Iterable<GamesTourModel> games,
     required Set<String> favoriteGameIds,
     required Set<String> countrymanGameIds,
+    Set<String> pinnedGameIds = const <String>{},
     bool newestBoardsFirst = false,
   }) {
     final currentById = _gamesById(games);
@@ -60,6 +62,7 @@ class GamesTourStableOrder {
     }
 
     final priorityChange = _replacePrioritySnapshot(
+      pinnedGameIds: pinnedGameIds,
       favoriteGameIds: favoriteGameIds,
       countrymanGameIds: countrymanGameIds,
     );
@@ -85,10 +88,12 @@ class GamesTourStableOrder {
   }
 
   ({bool isInitial, Set<String> changedGameIds}) _replacePrioritySnapshot({
+    required Set<String> pinnedGameIds,
     required Set<String> favoriteGameIds,
     required Set<String> countrymanGameIds,
   }) {
     if (_hasPrioritySnapshot &&
+        setEquals(_pinnedGameIds, pinnedGameIds) &&
         setEquals(_favoriteGameIds, favoriteGameIds) &&
         setEquals(_countrymanGameIds, countrymanGameIds)) {
       return (isInitial: false, changedGameIds: const <String>{});
@@ -96,12 +101,15 @@ class GamesTourStableOrder {
 
     final isInitial = !_hasPrioritySnapshot;
     final changedGameIds = <String>{
+      ..._pinnedGameIds.difference(pinnedGameIds),
+      ...pinnedGameIds.difference(_pinnedGameIds),
       ..._favoriteGameIds.difference(favoriteGameIds),
       ...favoriteGameIds.difference(_favoriteGameIds),
       ..._countrymanGameIds.difference(countrymanGameIds),
       ...countrymanGameIds.difference(_countrymanGameIds),
     };
     _hasPrioritySnapshot = true;
+    _pinnedGameIds = Set<String>.unmodifiable(pinnedGameIds);
     _favoriteGameIds = Set<String>.unmodifiable(favoriteGameIds);
     _countrymanGameIds = Set<String>.unmodifiable(countrymanGameIds);
     return (isInitial: isInitial, changedGameIds: changedGameIds);
@@ -129,6 +137,7 @@ class GamesTourStableOrder {
         aBoardNumber: round.boardNumberByGameId[a],
         bGameId: b,
         bBoardNumber: round.boardNumberByGameId[b],
+        pinnedGameIds: _pinnedGameIds,
         favoriteGameIds: _favoriteGameIds,
         countrymanGameIds: _countrymanGameIds,
         newestBoardsFirst: round.newestBoardsFirst,
@@ -147,11 +156,23 @@ List<GamesTourModel> resolveTournamentRoundPresentationOrder({
   required bool isRefreshingAutoPins,
   required Set<String> favoriteGameIds,
   required Set<String> countrymanGameIds,
+  Set<String> pinnedGameIds = const <String>{},
   bool newestBoardsFirst = false,
 }) {
-  if (isSearchMode || !hasResolvedAutoPins || stableOrder == null) {
+  // Search results answer the query, not the pin board: they stay in board
+  // order exactly as before.
+  if (isSearchMode) {
     return sortTournamentRoundGamesByPriority(
       games: games,
+      newestBoardsFirst: newestBoardsFirst,
+    );
+  }
+  if (!hasResolvedAutoPins || stableOrder == null) {
+    // A manual pin is a local, already-resolved fact. It leads the round even
+    // while the favorite/countryman snapshot is still being computed.
+    return sortTournamentRoundGamesByPriority(
+      games: games,
+      pinnedGameIds: pinnedGameIds,
       newestBoardsFirst: newestBoardsFirst,
     );
   }
@@ -163,6 +184,7 @@ List<GamesTourModel> resolveTournamentRoundPresentationOrder({
     games: games,
     favoriteGameIds: favoriteGameIds,
     countrymanGameIds: countrymanGameIds,
+    pinnedGameIds: pinnedGameIds,
     newestBoardsFirst: newestBoardsFirst,
   );
 }
@@ -183,6 +205,7 @@ class _StableRoundOrder {
 
 List<GamesTourModel> sortTournamentRoundGamesByPriority({
   required Iterable<GamesTourModel> games,
+  Set<String> pinnedGameIds = const <String>{},
   Set<String> favoriteGameIds = const <String>{},
   Set<String> countrymanGameIds = const <String>{},
   bool newestBoardsFirst = false,
@@ -192,6 +215,7 @@ List<GamesTourModel> sortTournamentRoundGamesByPriority({
     for (final game in sorted)
       game.gameId: _priorityForGame(
         game.gameId,
+        pinnedGameIds,
         favoriteGameIds,
         countrymanGameIds,
       ),
@@ -219,13 +243,22 @@ int compareTournamentGameOrder({
   required int? bBoardNumber,
   required Set<String> favoriteGameIds,
   required Set<String> countrymanGameIds,
+  Set<String> pinnedGameIds = const <String>{},
   bool newestBoardsFirst = false,
 }) {
   final priorityOrder = _priorityForGame(
     aGameId,
+    pinnedGameIds,
     favoriteGameIds,
     countrymanGameIds,
-  ).compareTo(_priorityForGame(bGameId, favoriteGameIds, countrymanGameIds));
+  ).compareTo(
+    _priorityForGame(
+      bGameId,
+      pinnedGameIds,
+      favoriteGameIds,
+      countrymanGameIds,
+    ),
+  );
   if (priorityOrder != 0) return priorityOrder;
   return compareTournamentBoardAndId(
     aGameId: aGameId,
@@ -259,12 +292,16 @@ int compareTournamentBoardAndId({
 
 int _priorityForGame(
   String gameId,
+  Set<String> pinnedGameIds,
   Set<String> favoriteGameIds,
   Set<String> countrymanGameIds,
 ) {
-  if (favoriteGameIds.contains(gameId)) return 0;
-  if (countrymanGameIds.contains(gameId)) return 1;
-  return 2;
+  // A pin is an explicit instruction from the user, so it outranks every rule
+  // the app applied on its behalf.
+  if (pinnedGameIds.contains(gameId)) return 0;
+  if (favoriteGameIds.contains(gameId)) return 1;
+  if (countrymanGameIds.contains(gameId)) return 2;
+  return 3;
 }
 
 /// Partitions one already-ordered round into live boards followed by the rest.

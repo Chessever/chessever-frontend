@@ -12,6 +12,9 @@ import 'package:motor/motor.dart';
 /// Page grid: `anchor + index * pageExtent`, with bottom padding so
 /// `maxScrollExtent` sits on the last page.
 
+const double _kExplorerGamesPinEnterPx = 8;
+const double _kExplorerGamesPinExitPx = 12;
+
 /// Fixed vertical geometry of one inline explorer game card.
 class ExplorerGameCardGeometry {
   const ExplorerGameCardGeometry._();
@@ -97,8 +100,8 @@ double explorerGamesListBottomPadding({
 bool explorerGamesPinDecision({
   required double delta,
   required bool currentlyInGames,
-  double enterPx = 8,
-  double exitPx = 12,
+  double enterPx = _kExplorerGamesPinEnterPx,
+  double exitPx = _kExplorerGamesPinExitPx,
 }) {
   return currentlyInGames ? delta <= exitPx : delta <= enterPx;
 }
@@ -241,6 +244,13 @@ int? explorerGamesSnapPage({
   if (movingUp) {
     return restingPage == 0 ? null : (restingPage - 1).clamp(0, lastPage);
   }
+
+  // A gentle pull can finish with effectively zero release velocity. Once it
+  // has crossed the same exit band that restores the move-table chrome, it
+  // belongs to ordinary list scrolling too. Rounding the negative page first
+  // would otherwise turn (for example) -0.4 back into card 0 and visibly
+  // spring the one-card strip to the top again.
+  if (pixels < anchor - _kExplorerGamesPinExitPx) return null;
 
   // Released dead: the card the finger actually left on top.
   final nearest = page.round();

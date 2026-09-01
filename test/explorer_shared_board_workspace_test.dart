@@ -38,10 +38,11 @@ void main() {
         await tester.pumpWidget(
           _app(
             StatefulBuilder(
-              builder: (context, setState) => ExplorerViewToggle(
-                currentPage: selected,
-                onSelected: (value) => setState(() => selected = value),
-              ),
+              builder:
+                  (context, setState) => ExplorerViewToggle(
+                    currentPage: selected,
+                    onSelected: (value) => setState(() => selected = value),
+                  ),
             ),
           ),
         );
@@ -126,6 +127,14 @@ void main() {
       );
       await tester.pump();
       expect(filterOpened, isTrue);
+
+      await tester.tap(find.text('Results'));
+      await tester.pump();
+      expect(selectedField, ExplorerMoveSortField.score);
+
+      await tester.tap(find.text('Games'));
+      await tester.pump();
+      expect(selectedField, ExplorerMoveSortField.games);
 
       await tester.tap(find.text('Last'));
       await tester.pump();

@@ -1173,10 +1173,9 @@ void main() {
             'lib/screens/gamebase/widgets/move_statistics_panel.dart',
           ).readAsStringSync();
       expect(explorerSource, isNot(contains('explorer_header_games')));
-      expect(explorerSource, isNot(contains("label: 'Games'")));
       expect(explorerSource, contains('headerInGames.value'));
       expect(explorerSource, contains('SizedBox.shrink'));
-      expect(explorerSource, contains("label: 'Sort by games'"));
+      expect(explorerSource, contains("label: 'Sort by \$label'"));
 
       final boardSource =
           io.File(

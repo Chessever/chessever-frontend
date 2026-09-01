@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:ui' show ImageFilter;
 
 import 'package:chessever2/providers/board_settings_provider_new.dart';
@@ -24,6 +25,7 @@ import '../providers/gamebase_explorer_state.dart';
 
 import 'package:motor/motor.dart';
 
+import '../providers/explorer_games_prefetch.dart';
 import '../providers/gamebase_providers.dart';
 import '../utils/explorer_games_paging.dart';
 import '../utils/explorer_move_sort.dart';
@@ -662,6 +664,44 @@ class MoveStatisticsPanel extends HookConsumerWidget {
     // header+rows scaffold with shimmering skeleton rows instead of a centered
     // spinner — keeps the layout stable and matches the app's shimmer style.
     final showSkeleton = state.isLoading && !hasStaleData && !showGate;
+
+    // Warm the games list behind the visible "Games" chips.
+    //
+    // The sheet a chip opens reads the same `positionGamesProvider` entry, and
+    // that request is slow enough on the backend (player-filtered position
+    // lookups run seconds warm and have been measured past 40s cold) that
+    // starting it on the tap is what leaves the sheet spinning. Starting it
+    // when the table renders turns the usual tap into a cache read.
+    //
+    // Debounced, because stepping through a line rebuilds this panel per ply
+    // and only the position the reader actually stops on is worth warming.
+    final prefetchSignature = showGate || state.isLoading
+        ? null
+        : Object.hash(
+            state.currentFen,
+            state.filters,
+            Object.hashAll(
+              sortedAggregates
+                  .take(kExplorerGamesPrefetchRows)
+                  .map((aggregate) => aggregate.uci),
+            ),
+          );
+    useEffect(() {
+      if (prefetchSignature == null || sortedAggregates.isEmpty) return null;
+      final timer = Timer(const Duration(milliseconds: 350), () {
+        ref
+            .read(explorerGamesPrefetchProvider)
+            .warm(
+              buildExplorerGamesPrefetchQueries(
+                fen: state.currentFen,
+                moves: state.exploredMoves,
+                aggregates: sortedAggregates,
+                filters: state.filters,
+              ),
+            );
+      });
+      return timer.cancel;
+    }, [prefetchSignature]);
 
     // Mirrors the inline-games condition in `_buildListChildren` — the page
     // grid, the bottom reserve and the physics all hinge on the strip really

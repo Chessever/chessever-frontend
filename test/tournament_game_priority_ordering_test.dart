@@ -32,6 +32,107 @@ void main() {
       ]);
     });
 
+    test('a manual pin leads the round, above every auto priority', () {
+      final sorted = sortTournamentRoundGamesByPriority(
+        games: <GamesTourModel>[
+          _game('regular-board-1', boardNr: 1),
+          _game('country-board-2', boardNr: 2),
+          _game('favorite-board-3', boardNr: 3),
+          _game('pinned-board-9', boardNr: 9),
+        ],
+        pinnedGameIds: const <String>{'pinned-board-9'},
+        favoriteGameIds: const <String>{'favorite-board-3'},
+        countrymanGameIds: const <String>{'country-board-2'},
+      );
+
+      expect(sorted.map((game) => game.gameId), <String>[
+        'pinned-board-9',
+        'favorite-board-3',
+        'country-board-2',
+        'regular-board-1',
+      ]);
+    });
+
+    test('pinning promotes a board and unpinning returns it', () {
+      final order = GamesTourStableOrder();
+      List<String> resolve(Set<String> pinnedGameIds) {
+        return order
+            .resolveRound(
+              roundId: 'round-1',
+              games: <GamesTourModel>[
+                _game('board-1', boardNr: 1),
+                _game('board-2', boardNr: 2),
+                _game('board-3', boardNr: 3),
+              ],
+              favoriteGameIds: const <String>{},
+              countrymanGameIds: const <String>{},
+              pinnedGameIds: pinnedGameIds,
+            )
+            .map((game) => game.gameId)
+            .toList();
+      }
+
+      expect(resolve(const <String>{}), <String>[
+        'board-1',
+        'board-2',
+        'board-3',
+      ]);
+      expect(resolve(const <String>{'board-3'}), <String>[
+        'board-3',
+        'board-1',
+        'board-2',
+      ]);
+      expect(resolve(const <String>{}), <String>[
+        'board-1',
+        'board-2',
+        'board-3',
+      ]);
+    });
+
+    test('a manual pin leads before auto pins have resolved', () {
+      final sorted = resolveTournamentRoundPresentationOrder(
+        stableOrder: GamesTourStableOrder(),
+        roundId: 'round-1',
+        games: <GamesTourModel>[
+          _game('board-1', boardNr: 1),
+          _game('pinned-board-7', boardNr: 7),
+        ],
+        isSearchMode: false,
+        hasResolvedAutoPins: false,
+        isRefreshingAutoPins: false,
+        favoriteGameIds: const <String>{},
+        countrymanGameIds: const <String>{},
+        pinnedGameIds: const <String>{'pinned-board-7'},
+      );
+
+      expect(sorted.map((game) => game.gameId), <String>[
+        'pinned-board-7',
+        'board-1',
+      ]);
+    });
+
+    test('search results ignore manual pins', () {
+      final sorted = resolveTournamentRoundPresentationOrder(
+        stableOrder: GamesTourStableOrder(),
+        roundId: 'round-1',
+        games: <GamesTourModel>[
+          _game('board-1', boardNr: 1),
+          _game('pinned-board-7', boardNr: 7),
+        ],
+        isSearchMode: true,
+        hasResolvedAutoPins: true,
+        isRefreshingAutoPins: false,
+        favoriteGameIds: const <String>{},
+        countrymanGameIds: const <String>{},
+        pinnedGameIds: const <String>{'pinned-board-7'},
+      );
+
+      expect(sorted.map((game) => game.gameId), <String>[
+        'board-1',
+        'pinned-board-7',
+      ]);
+    });
+
     test('favorite wins when a game also contains a countryman', () {
       final sorted = sortTournamentRoundGamesByPriority(
         games: <GamesTourModel>[
@@ -414,6 +515,28 @@ void main() {
       expect(pins.effectiveFavoritePriorityIds, isEmpty);
       expect(pins.effectiveCountrymanPriorityIds, <String>{'country'});
       expect(pins.allPins, <String>['manual', 'country']);
+    });
+
+    test('effective manual pins drop ids the user explicitly unpinned', () {
+      const pins = GamesPinState(
+        manualPins: <String>['kept', 'undone'],
+        unpinnedOverrides: <String>['undone'],
+        hasResolvedAutoPins: true,
+      );
+
+      expect(pins.effectiveManualPinIds, <String>{'kept'});
+    });
+
+    test('a manual pin survives an auto-pin disable', () {
+      const pins = GamesPinState(
+        manualPins: <String>['manual'],
+        favoriteAutoPins: <String>['favorite'],
+        autoPinDisabled: true,
+        hasResolvedAutoPins: true,
+      );
+
+      expect(pins.effectiveManualPinIds, <String>{'manual'});
+      expect(pins.effectiveFavoritePriorityIds, isEmpty);
     });
 
     test('per-tournament auto-pin disable suppresses both priority tiers', () {

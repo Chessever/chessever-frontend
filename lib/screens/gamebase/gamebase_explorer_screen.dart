@@ -1010,21 +1010,7 @@ class _GamebaseExplorerScreenState extends ConsumerState<GamebaseExplorerScreen>
   }
 
   void _showFilterSheet(BuildContext context) {
-    final container = ProviderScope.containerOf(context);
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: context.colors.surfaceRecessed,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16.br)),
-      ),
-      constraints: ResponsiveHelper.bottomSheetConstraints,
-      builder:
-          (_) => UncontrolledProviderScope(
-            container: container,
-            child: _FilterSheet(scopedPlayer: widget.initialPlayer),
-          ),
-    );
+    showExplorerFilterSheet(context, scopedPlayer: widget.initialPlayer);
   }
 }
 
@@ -1317,16 +1303,38 @@ class _ExplorerEvalBarState extends ConsumerState<_ExplorerEvalBar> {
 ///
 /// Uses local draft state and only applies changes when the user taps "Apply".
 /// This prevents multiple expensive aggregate requests while toggling controls.
-class _FilterSheet extends ConsumerStatefulWidget {
-  const _FilterSheet({this.scopedPlayer});
+void showExplorerFilterSheet(
+  BuildContext context, {
+  GamebasePlayer? scopedPlayer,
+}) {
+  final container = ProviderScope.containerOf(context);
+  showModalBottomSheet(
+    context: context,
+    isScrollControlled: true,
+    backgroundColor: context.colors.surfaceRecessed,
+    shape: RoundedRectangleBorder(
+      borderRadius: BorderRadius.vertical(top: Radius.circular(16.br)),
+    ),
+    constraints: ResponsiveHelper.bottomSheetConstraints,
+    builder:
+        (_) => UncontrolledProviderScope(
+          container: container,
+          child: ExplorerFilterSheet(scopedPlayer: scopedPlayer),
+        ),
+  );
+}
+
+class ExplorerFilterSheet extends ConsumerStatefulWidget {
+  const ExplorerFilterSheet({super.key, this.scopedPlayer});
 
   final GamebasePlayer? scopedPlayer;
 
   @override
-  ConsumerState<_FilterSheet> createState() => _FilterSheetState();
+  ConsumerState<ExplorerFilterSheet> createState() =>
+      _ExplorerFilterSheetState();
 }
 
-class _FilterSheetState extends ConsumerState<_FilterSheet> {
+class _ExplorerFilterSheetState extends ConsumerState<ExplorerFilterSheet> {
   static const double _yearMin = 1800;
   static double get _yearMax => DateTime.now().year.toDouble();
 
@@ -2742,24 +2750,48 @@ class _ExplorerBottomPanelsState extends ConsumerState<_ExplorerBottomPanels>
       }
     });
 
-    final pageView = PageView(
-      controller: _pageController,
-      onPageChanged: (page) {
-        if (_showTutorialOverlay) return;
-        _currentPageIndex = page;
-        ref.read(explorerPageIndexProvider.notifier).state = page;
+    final pageView = LayoutBuilder(
+      builder: (context, constraints) {
+        // The standalone Board and position-search workspace must use the
+        // same unified move-table + game-card pager as the Explorer under a
+        // regular game. Supplying this viewport height activates the shared
+        // page grid and its bottom reserve, so even one card can scroll all
+        // the way to the panel top. Regular game boards deliberately keep
+        // free scrolling in tablet landscape, so preserve that same branch.
+        final pagesGames =
+            !(ResponsiveHelper.isTablet && ResponsiveHelper.isLandscape);
+        final gamesPageHeight =
+            pagesGames &&
+                    constraints.maxHeight.isFinite &&
+                    constraints.maxHeight > 0
+                ? constraints.maxHeight
+                : null;
+
+        return PageView(
+          controller: _pageController,
+          onPageChanged: (page) {
+            if (_showTutorialOverlay) return;
+            _currentPageIndex = page;
+            ref.read(explorerPageIndexProvider.notifier).state = page;
+          },
+          children: [
+            MoveStatisticsPanel(
+              key: const PageStorageKey<String>(
+                'opening-explorer-moves-panel',
+              ),
+              onFilter: widget.onFilter,
+              hasActiveFilters: widget.hasActiveFilters,
+              gamesPageHeight: gamesPageHeight,
+            ),
+            _ExplorerNotationView(
+              key: const PageStorageKey<String>(
+                'opening-explorer-notation-panel',
+              ),
+              isActive: ref.watch(explorerPageIndexProvider) == 1,
+            ),
+          ],
+        );
       },
-      children: [
-        MoveStatisticsPanel(
-          key: const PageStorageKey<String>('opening-explorer-moves-panel'),
-          onFilter: widget.onFilter,
-          hasActiveFilters: widget.hasActiveFilters,
-        ),
-        _ExplorerNotationView(
-          key: const PageStorageKey<String>('opening-explorer-notation-panel'),
-          isActive: ref.watch(explorerPageIndexProvider) == 1,
-        ),
-      ],
     );
 
     final preview = ref.watch(

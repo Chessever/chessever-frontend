@@ -3,10 +3,10 @@ import 'package:chessever2/repository/gamebase/search/gamebase_search_models.dar
 import 'package:chessever2/providers/board_settings_provider_new.dart';
 import 'package:chessever2/providers/engine_settings_provider.dart';
 import 'package:chessever2/screens/board_editor/board_editor_state.dart';
-import 'package:chessever2/screens/gamebase/models/gamebase_game.dart';
 import 'package:chessever2/screens/gamebase/models/models.dart';
+import 'package:chessever2/screens/gamebase/providers/gamebase_explorer_state.dart';
 import 'package:chessever2/screens/gamebase/providers/gamebase_providers.dart';
-import 'package:chessever2/screens/gamebase/widgets/move_statistics_panel.dart';
+import 'package:chessever2/screens/gamebase/widgets/board_opening_explorer_panel.dart';
 import 'package:chessever2/screens/library/widgets/library_game_card.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:dartchess/dartchess.dart';
@@ -32,10 +32,13 @@ class _TestEngineSettings extends EngineSettingsNotifierNew {
 }
 
 class _FakeGamebaseRepository extends GamebaseRepository {
-  _FakeGamebaseRepository({required this.fenGamesRows})
-    : super(Dio(), baseUrl: 'http://localhost', apiKey: 'test');
+  _FakeGamebaseRepository({
+    required this.fenGamesRows,
+    this.moveAggregates = const <MoveAggregate>[],
+  }) : super(Dio(), baseUrl: 'http://localhost', apiKey: 'test');
 
   final List<Map<String, dynamic>> fenGamesRows;
+  final List<MoveAggregate> moveAggregates;
   int fenGamesRequests = 0;
   int fullGameRequests = 0;
   int? lastFenNotationPlies;
@@ -54,9 +57,9 @@ class _FakeGamebaseRepository extends GamebaseRepository {
     int? yearTo,
     bool? isOnline,
   }) async {
-    return const GamebaseResponse(
+    return GamebaseResponse(
       status: 'success',
-      data: GamebaseData(moves: []),
+      data: GamebaseData(moves: moveAggregates),
     );
   }
 
@@ -102,8 +105,9 @@ class _FakeGamebaseRepository extends GamebaseRepository {
 
 Future<ProviderContainer> _pumpPanelWithEditorPosition(
   WidgetTester tester,
-  _FakeGamebaseRepository repository,
-) async {
+  _FakeGamebaseRepository repository, {
+  GamebaseFilters? initialFilters,
+}) async {
   final container = ProviderContainer(
     overrides: [
       gamebaseRepositoryProvider.overrideWithValue(repository),
@@ -111,6 +115,11 @@ Future<ProviderContainer> _pumpPanelWithEditorPosition(
       engineSettingsProviderNew.overrideWith(_TestEngineSettings.new),
     ],
   );
+  if (initialFilters != null) {
+    container
+        .read(gamebaseExplorerProvider.notifier)
+        .updateFilters(initialFilters, fetch: false);
+  }
 
   await tester.pumpWidget(
     UncontrolledProviderScope(
@@ -119,23 +128,27 @@ Future<ProviderContainer> _pumpPanelWithEditorPosition(
         home: Builder(
           builder: (context) {
             ResponsiveHelper.init(context);
-            return const Scaffold(body: MoveStatisticsPanel());
+            return const Scaffold(
+              body: BoardOpeningExplorerPanel(
+                currentFen: _editorEndgameFen,
+                startingFen: _editorEndgameFen,
+                lineUcis: <String>[],
+                onMoveSelected: _ignoreMove,
+              ),
+            );
           },
         ),
       ),
     ),
   );
 
-  // What the Board workspace does when the editor's Analyze returns a FEN.
-  container
-      .read(gamebaseExplorerProvider.notifier)
-      .setPosition(_editorEndgameFen, startingFen: _editorEndgameFen);
-
   // Debounced fetch (200ms) + the FEN-keyed has-games follow-up.
   await tester.pump(const Duration(milliseconds: 250));
   await tester.pump(const Duration(milliseconds: 50));
   return container;
 }
+
+void _ignoreMove(String _) {}
 
 Future<void> _teardownPanel(
   WidgetTester tester,
@@ -150,6 +163,107 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   group('Board Editor position in the Explorer panel', () {
+    testWidgets('custom-start positions use the regular Explorer move table', (
+      tester,
+    ) async {
+      final repository = _FakeGamebaseRepository(
+        fenGamesRows: const [],
+        moveAggregates: const [
+          MoveAggregate(uci: 'e3d3', white: 10, black: 6, draws: 4, total: 20),
+        ],
+      );
+      final container = await _pumpPanelWithEditorPosition(tester, repository);
+
+      expect(
+        find.byKey(const ValueKey('opening_explorer_sort_games')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const ValueKey('opening_explorer_filter_button')),
+        findsOneWidget,
+      );
+      expect(find.text('Results'), findsOneWidget);
+      expect(find.text('Games'), findsOneWidget);
+      expect(find.text('Last'), findsOneWidget);
+      expect(find.byType(LibraryGameCard), findsNothing);
+      expect(repository.fenGamesRequests, 0);
+
+      await _teardownPanel(tester, container);
+    });
+
+    testWidgets('board explorer keeps active filters when it syncs the FEN', (
+      tester,
+    ) async {
+      const filters = GamebaseFilters(
+        timeControls: [TimeControl.rapid],
+        minRating: 2400,
+        yearFrom: 2020,
+        gameResult: GamebaseGameResult.draw,
+      );
+      final repository = _FakeGamebaseRepository(
+        fenGamesRows: const [],
+        moveAggregates: const [
+          MoveAggregate(uci: 'e3d3', white: 3, black: 2, draws: 5, total: 10),
+        ],
+      );
+      final container = await _pumpPanelWithEditorPosition(
+        tester,
+        repository,
+        initialFilters: filters,
+      );
+
+      expect(container.read(gamebaseExplorerProvider).filters, filters);
+      expect(
+        find.byKey(const ValueKey('opening_explorer_filter_button')),
+        findsOneWidget,
+      );
+
+      await tester.tap(
+        find.byKey(const ValueKey('opening_explorer_sort_last')),
+      );
+      await tester.pump();
+      expect(
+        tester
+            .widget<Semantics>(
+              find.byKey(const ValueKey('opening_explorer_sort_last')),
+            )
+            .properties
+            .selected,
+        isTrue,
+      );
+
+      container
+          .read(gamebaseExplorerProvider.notifier)
+          .updateFilters(
+            filters.copyWith(gameResult: GamebaseGameResult.whiteWins),
+            fetch: false,
+          );
+      await tester.pump();
+      expect(
+        tester
+            .widget<Semantics>(
+              find.byKey(const ValueKey('opening_explorer_sort_last')),
+            )
+            .properties
+            .selected,
+        isTrue,
+      );
+
+      await tester.tap(
+        find.byKey(const ValueKey('opening_explorer_filter_button')),
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(find.text('Filters'), findsOneWidget);
+      expect(find.text('Rapid'), findsOneWidget);
+      expect(find.text('½-½'), findsOneWidget);
+
+      Navigator.of(tester.element(find.text('Filters'))).pop();
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+      await _teardownPanel(tester, container);
+    });
+
     testWidgets(
       'empty aggregates for a custom-start FEN fall back to the FEN-keyed '
       'games endpoint and render games directly on a compact panel',
@@ -181,6 +295,7 @@ void main() {
         expect(find.text('No move statistics for this position'), findsNothing);
         expect(find.text('View games'), findsNothing);
         expect(find.byType(LibraryGameCard), findsOneWidget);
+        expect(find.byTooltip('Close'), findsNothing);
         expect(repository.fenGamesRequests, greaterThan(0));
         expect(repository.lastFenNotationPlies, 0);
         expect(repository.fullGameRequests, 0);

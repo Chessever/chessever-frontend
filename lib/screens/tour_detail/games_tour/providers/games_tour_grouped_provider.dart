@@ -406,9 +406,10 @@ final gamesTourGroupedProvider = Provider.autoDispose<GroupedGamesData>((ref) {
   }
 
   // This is the one final ordering seam for DB games, sibling stages, and
-  // Lichess fallback rows. Manual pins intentionally keep their existing
-  // icon-only behavior. Effective favorite auto-pins lead, countrymen follow
-  // only when enabled, and authoritative board number remains the default.
+  // Lichess fallback rows. A manually pinned board leads its round — the pin
+  // used to draw an icon and nothing else, which read as a dead control.
+  // Effective favorite auto-pins follow, then countrymen when enabled, and
+  // authoritative board number remains the default.
   final allPriorityGamesById = <String, GamesTourModel>{
     if (hasSupplementalPriorityGames) ...{
       for (final game in allGamesScreenModel) game.gameId: game,
@@ -428,6 +429,7 @@ final gamesTourGroupedProvider = Provider.autoDispose<GroupedGamesData>((ref) {
             allPriorityGamesById.values,
           )
           : pinState.effectiveCountrymanPriorityIds;
+  final manualPinnedIds = pinState.effectiveManualPinIds;
   final hadGroupedGamesBeforeOrdering = gamesByRound.values.any(
     (games) => games.isNotEmpty,
   );
@@ -447,6 +449,7 @@ final gamesTourGroupedProvider = Provider.autoDispose<GroupedGamesData>((ref) {
       isRefreshingAutoPins: pinState.isRefreshingAutoPins,
       favoriteGameIds: favoritePriorityIds,
       countrymanGameIds: countrymanPriorityIds,
+      pinnedGameIds: manualPinnedIds,
       newestBoardsFirst: newestBoardsFirst,
     );
     // "Focus on live games" is derived here, on every rebuild, from the boards'

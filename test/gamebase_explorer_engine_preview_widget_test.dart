@@ -1,6 +1,7 @@
 import 'package:chessever2/providers/board_settings_provider_new.dart';
 import 'package:chessever2/providers/engine_settings_provider.dart';
 import 'package:chessever2/repository/gamebase/gamebase_repository.dart';
+import 'package:chessever2/repository/gamebase/search/gamebase_search_models.dart';
 import 'package:chessever2/revenue_cat_service/subscribe_state.dart';
 import 'package:chessever2/screens/chessboard/utils/engine_pv_palette.dart';
 import 'package:chessever2/screens/chessboard/widgets/chess_board_bottom_nav_bar.dart';
@@ -9,6 +10,8 @@ import 'package:chessever2/screens/gamebase/gamebase_explorer_screen.dart';
 import 'package:chessever2/screens/gamebase/models/models.dart';
 import 'package:chessever2/screens/gamebase/providers/explorer_eval_provider.dart';
 import 'package:chessever2/screens/gamebase/providers/gamebase_providers.dart';
+import 'package:chessever2/screens/gamebase/widgets/explorer_game_card.dart';
+import 'package:chessever2/screens/gamebase/widgets/move_statistics_panel.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessground/chessground.dart';
 import 'package:dio/dio.dart';
@@ -36,8 +39,10 @@ const _pvLines = <ExplorerPvLine>[
 ];
 
 class _FakeGamebaseRepository extends GamebaseRepository {
-  _FakeGamebaseRepository()
+  _FakeGamebaseRepository({this.inlineGames = false})
     : super(Dio(), baseUrl: 'http://localhost', apiKey: 'test');
+
+  final bool inlineGames;
 
   @override
   Future<GamebaseResponse> getMoveAggregates({
@@ -53,11 +58,74 @@ class _FakeGamebaseRepository extends GamebaseRepository {
     int? yearTo,
     bool? isOnline,
   }) async {
-    return const GamebaseResponse(
+    return GamebaseResponse(
       status: 'success',
-      data: GamebaseData(moves: []),
+      data: GamebaseData(
+        moves:
+            inlineGames
+                ? const [
+                  MoveAggregate(
+                    uci: 'e2e4',
+                    white: 4,
+                    black: 3,
+                    draws: 2,
+                    total: 9,
+                  ),
+                ]
+                : const [],
+      ),
     );
   }
+
+  @override
+  Future<GamebaseSearchQueryResponse> getPositionGames({
+    required String fen,
+    List<String> moves = const [],
+    String? uci,
+    TimeControl? timeControl,
+    String? playerId,
+    String? color,
+    String? result,
+    int? minRating,
+    int? maxRating,
+    int? yearFrom,
+    int? yearTo,
+    GamebaseSortField? sortBy,
+    GamebaseSortDirection? sortDirection,
+    bool? isOnline,
+    int notationPlies = 0,
+    int pageNumber = 0,
+    int pageSize = 20,
+  }) async {
+    final rows =
+        inlineGames
+            ? <Map<String, dynamic>>[
+              {
+                'id': 'g1',
+                'white': 'Magnus Carlsen',
+                'black': 'Hikaru Nakamura',
+                'result': '1-0',
+                'whiteElo': 2800,
+                'blackElo': 2750,
+                'date': '2024-05-12',
+                'continuation': const ['e2e4'],
+              },
+            ]
+            : const <Map<String, dynamic>>[];
+    return GamebaseSearchQueryResponse(
+      status: 'success',
+      data: rows,
+      metadata: GamebasePaginationMetadata(
+        pageNumber: pageNumber,
+        pageSize: pageSize,
+        totalCount: rows.length,
+        hasMoreValue: false,
+      ),
+    );
+  }
+
+  @override
+  Future<GamebaseGameWithPgn?> getGameWithPgn(String id) async => null;
 }
 
 class _SubscribedNotifier extends SubscriptionNotifier {
@@ -127,10 +195,12 @@ class _FixedExplorerEvalNotifier extends ExplorerEvalNotifier {
   }
 }
 
-ProviderContainer _createContainer() {
+ProviderContainer _createContainer({bool inlineGames = false}) {
   return ProviderContainer(
     overrides: [
-      gamebaseRepositoryProvider.overrideWithValue(_FakeGamebaseRepository()),
+      gamebaseRepositoryProvider.overrideWithValue(
+        _FakeGamebaseRepository(inlineGames: inlineGames),
+      ),
       subscriptionProvider.overrideWith((ref) => _SubscribedNotifier()),
       engineSettingsProviderNew.overrideWith(_CardEngineSettingsNotifier.new),
       boardSettingsProviderNew.overrideWith(_BoardSettingsNotifier.new),
@@ -165,6 +235,69 @@ Future<void> _pumpExplorer(
 }
 
 void main() {
+  testWidgets(
+    'standalone Explorer gives an under-10 games strip the shared paging viewport',
+    (tester) async {
+      tester.view.devicePixelRatio = 1;
+      tester.view.physicalSize = const Size(390, 844);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      addTearDown(tester.view.resetPhysicalSize);
+
+      final container = _createContainer(inlineGames: true);
+      var containerDisposed = false;
+      void disposeContainer() {
+        if (containerDisposed) return;
+        containerDisposed = true;
+        container.dispose();
+      }
+      addTearDown(disposeContainer);
+      await _pumpExplorer(tester, container);
+      await tester.pump(const Duration(milliseconds: 250));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 50));
+
+      expect(container.read(gamebaseExplorerProvider).totalGames, 9);
+      expect(find.byType(ExplorerGamesSection), findsOneWidget);
+      expect(find.byType(ExplorerGameCard), findsOneWidget);
+      final panel = tester.widget<MoveStatisticsPanel>(
+        find.byType(MoveStatisticsPanel),
+      );
+      expect(
+        panel.gamesPageHeight,
+        isNotNull,
+        reason:
+            'the Board/position-search Explorer must reserve the same card '
+            'page as the regular in-game Explorer so the card can reach the top',
+      );
+
+      final panelTop = tester.getTopLeft(find.byType(MoveStatisticsPanel)).dy;
+      expect(
+        tester.getTopLeft(find.byType(ExplorerGameCard)).dy,
+        greaterThan(panelTop),
+      );
+      final moveAndGamesList = find.descendant(
+        of: find.byType(MoveStatisticsPanel),
+        matching: find.byType(ListView),
+      );
+      expect(moveAndGamesList, findsOneWidget);
+      await tester.fling(moveAndGamesList, const Offset(0, -300), 1000);
+      for (var frame = 0; frame < 30; frame++) {
+        await tester.pump(const Duration(milliseconds: 50));
+      }
+      expect(
+        tester.getTopLeft(find.byType(ExplorerGameCard)).dy,
+        closeTo(panelTop, 2),
+        reason:
+            'the first game card must page flush to the top of the shared '
+            'Explorer surface, even when fewer than 10 games remain',
+      );
+
+      await tester.pumpWidget(const SizedBox.shrink());
+      disposeContainer();
+      await tester.pump(const Duration(seconds: 4));
+    },
+  );
+
   testWidgets(
     'Explorer cards use ranked colors and move taps drive locked navigation',
     (tester) async {

@@ -159,7 +159,8 @@ class PositionGamesSheet extends ConsumerStatefulWidget {
   final bool useFenEndpoint;
 
   /// Render as panel content instead of a modal sheet. Fetching, paging,
-  /// sorting, and game opening stay identical in both presentations.
+  /// sorting, and game opening stay identical in both presentations. Embedded
+  /// content has no modal close action, so it cannot pop its host board route.
   final bool embedded;
 
   @override
@@ -212,29 +213,14 @@ class _PositionGamesSheetState extends ConsumerState<PositionGamesSheet> {
     _fetchPage();
   }
 
+  /// Built through the shared factory so the explorer's warm-up addresses the
+  /// exact same `positionGamesProvider` entry this sheet reads.
   GamebasePositionGamesQuery _buildQuery(int pageNumber) {
-    final timeControlFilter =
-        widget.filters.timeControls.isNotEmpty
-            ? widget.filters.timeControls.first
-            : null;
-    final playerIdFilter =
-        widget.filters.playerIds.isNotEmpty
-            ? widget.filters.playerIds.first
-            : null;
-
-    return GamebasePositionGamesQuery(
+    return GamebasePositionGamesQuery.fromFilters(
       fen: widget.fen,
+      filters: widget.filters,
       moves: widget.moves,
       uci: widget.uci,
-      timeControl: timeControlFilter,
-      playerId: playerIdFilter,
-      color: widget.filters.playerColor?.name,
-      result: widget.filters.gameResult?.apiValue,
-      isOnline: widget.filters.isOnline,
-      minRating: widget.filters.minRating,
-      maxRating: widget.filters.maxRating,
-      yearFrom: widget.filters.yearFrom,
-      yearTo: widget.filters.yearTo,
       sortBy: _sortBy,
       sortDirection: _sortDirection,
       pageNumber: pageNumber,
@@ -400,6 +386,8 @@ class _PositionGamesSheetState extends ConsumerState<PositionGamesSheet> {
               title: widget.title,
               countText: _countText,
               onSort: _showSortOptions,
+              onClose:
+                  widget.embedded ? null : () => Navigator.of(context).pop(),
             ),
             Divider(color: context.colors.divider, height: 1),
             Expanded(
@@ -868,11 +856,17 @@ class _PositionGamesFooter extends StatelessWidget {
 }
 
 class _Header extends StatelessWidget {
-  const _Header({required this.title, required this.countText, this.onSort});
+  const _Header({
+    required this.title,
+    required this.countText,
+    this.onSort,
+    this.onClose,
+  });
 
   final String title;
   final String countText;
   final VoidCallback? onSort;
+  final VoidCallback? onClose;
 
   @override
   Widget build(BuildContext context) {
@@ -937,15 +931,16 @@ class _Header extends StatelessWidget {
             ),
             SizedBox(width: 6.w),
           ],
-          IconButton(
-            onPressed: () => Navigator.of(context).pop(),
-            icon: Icon(
-              Icons.close,
-              color: context.colors.textSecondary,
-              size: 22.ic,
+          if (onClose != null)
+            IconButton(
+              onPressed: onClose,
+              icon: Icon(
+                Icons.close,
+                color: context.colors.textSecondary,
+                size: 22.ic,
+              ),
+              tooltip: 'Close',
             ),
-            tooltip: 'Close',
-          ),
         ],
       ),
     );

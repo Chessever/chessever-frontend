@@ -88,6 +88,14 @@ class GamesPinState {
     );
   }
 
+  /// Manual pins that are still in force, i.e. not undone by an explicit
+  /// unpin. These lead the Games tab order.
+  Set<String> get effectiveManualPinIds {
+    if (manualPins.isEmpty) return const <String>{};
+    final overrides = unpinnedOverrides.toSet();
+    return manualPins.where((id) => !overrides.contains(id)).toSet();
+  }
+
   Set<String> get effectiveFavoritePriorityIds =>
       _effectivePriorityIds(favoriteAutoPins);
 
@@ -187,6 +195,11 @@ final gamesPinprovider = StateNotifierProvider.autoDispose
     .family<_GamesPinController, GamesPinState, String>((ref, tourId) {
       return _GamesPinController(ref: ref, tourId: tourId);
     });
+
+/// Upper bound on one auto-pin resolution pass. It reads local preferences,
+/// favorites and the resolved country, none of which may stall the pin
+/// snapshot indefinitely.
+const _autoPinResolveTimeout = Duration(seconds: 8);
 
 class _GamesPinController extends StateNotifier<GamesPinState> {
   _GamesPinController({required this.ref, required this.tourId})
@@ -378,11 +391,31 @@ class _GamesPinController extends StateNotifier<GamesPinState> {
     }
   }
 
+  /// Publishes the manual pin snapshot first, then the auto-pin one.
+  ///
+  /// The two used to resolve in a single `Future.wait`, which meant a failing
+  /// (or, with an unresolvable country, a never-completing) auto-pin lookup
+  /// threw away the manual pin the user had just tapped — the pin appeared to
+  /// do nothing at all. A pin is local, instant and explicit, so it is applied
+  /// on its own and cannot be held hostage by the auto-pin scan.
   Future<void> _loadPinnedGamesOnce() async {
+    final storage = ref.read(pinGameLocalStorage);
+    final relatedTourIds = _getRelatedTourIds();
+
+    // Kicked off first so it still overlaps the manual read, but with its own
+    // failure and time bounds so it can never wedge this pass.
+    final autoPinFuture = Future<AutoPinnedGamesResult?>(
+      () => ref.read(autoPinLogicProvider).getAutoPinnedGames(tourId),
+    ).timeout(_autoPinResolveTimeout, onTimeout: () => null).catchError((
+      Object error,
+      StackTrace stackTrace,
+    ) {
+      debugPrint('Failed to resolve auto pins for $tourId: $error\n$stackTrace');
+      return null;
+    });
+
     try {
-      final storage = ref.read(pinGameLocalStorage);
-      final relatedTourIds = _getRelatedTourIds();
-      final pinResults = await Future.wait<Object?>([
+      final manualResults = await Future.wait([
         Future.wait(
           relatedTourIds.map(
             (relatedTourId) => storage.getPinnedGameIds(relatedTourId),
@@ -393,41 +426,48 @@ class _GamesPinController extends StateNotifier<GamesPinState> {
             (relatedTourId) => storage.getUnpinnedGameIds(relatedTourId),
           ),
         ),
-        ref.read(autoPinLogicProvider).getAutoPinnedGames(tourId),
       ]);
 
       if (!mounted || _reloadPinSnapshot) return;
-      final manualPinLists = pinResults[0]! as List<List<String>>;
-      final unpinnedOverrideLists = pinResults[1]! as List<List<String>>;
-      final autoPinnedGames = pinResults[2]! as AutoPinnedGamesResult;
-
-      final nextState = state.copyWith(
-        manualPins: mergePinListsPreservingOrder(manualPinLists),
-        favoriteAutoPins: autoPinnedGames.favoriteGameIds,
-        countrymanAutoPins: autoPinnedGames.countrymanGameIds,
-        favoritePriorityEnabled: autoPinnedGames.favoritePriorityEnabled,
-        countrymanPriorityEnabled: autoPinnedGames.countrymanPriorityEnabled,
-        favoritePlayersSnapshot: autoPinnedGames.favoritePlayersSnapshot,
-        selectedCountryCode: autoPinnedGames.selectedCountryCode,
-        unpinnedOverrides: mergePinListsPreservingOrder(unpinnedOverrideLists),
-        autoPinDisabled: autoPinnedGames.autoPinDisabled,
-        hasResolvedAutoPins: true,
-        isRefreshingAutoPins: false,
+      _publish(
+        state.copyWith(
+          manualPins: mergePinListsPreservingOrder(manualResults[0]),
+          unpinnedOverrides: mergePinListsPreservingOrder(manualResults[1]),
+        ),
       );
-      if (!_haveSamePinState(state, nextState)) state = nextState;
     } catch (error, stackTrace) {
-      debugPrint('Failed to load pins for $tourId: $error\n$stackTrace');
-      if (mounted &&
-          !_reloadPinSnapshot &&
-          (!state.hasResolvedAutoPins || state.isRefreshingAutoPins)) {
-        // Never leave the Games tab behind a permanent loading state. Existing
-        // pin data remains intact and board-number ordering is the fallback.
-        state = state.copyWith(
-          hasResolvedAutoPins: true,
-          isRefreshingAutoPins: false,
-        );
-      }
+      debugPrint('Failed to load manual pins for $tourId: $error\n$stackTrace');
     }
+
+    final autoPinnedGames = await autoPinFuture;
+    if (!mounted || _reloadPinSnapshot) return;
+
+    // Never leave the Games tab behind a permanent loading state. Whatever pin
+    // data resolved stays intact and board-number ordering is the fallback.
+    _publish(
+      autoPinnedGames == null
+          ? state.copyWith(
+            hasResolvedAutoPins: true,
+            isRefreshingAutoPins: false,
+          )
+          : state.copyWith(
+            favoriteAutoPins: autoPinnedGames.favoriteGameIds,
+            countrymanAutoPins: autoPinnedGames.countrymanGameIds,
+            favoritePriorityEnabled: autoPinnedGames.favoritePriorityEnabled,
+            countrymanPriorityEnabled:
+                autoPinnedGames.countrymanPriorityEnabled,
+            favoritePlayersSnapshot: autoPinnedGames.favoritePlayersSnapshot,
+            selectedCountryCode: autoPinnedGames.selectedCountryCode,
+            autoPinDisabled: autoPinnedGames.autoPinDisabled,
+            hasResolvedAutoPins: true,
+            isRefreshingAutoPins: false,
+          ),
+    );
+  }
+
+  void _publish(GamesPinState nextState) {
+    if (_haveSamePinState(state, nextState)) return;
+    state = nextState;
   }
 
   Future<void> togglePin({
@@ -461,9 +501,29 @@ class _GamesPinController extends StateNotifier<GamesPinState> {
       }
 
       await loadPinnedGames();
-    } catch (e, _) {
-      debugPrint('Failed to toggle pin for $gameId in $sourceTourId: $e');
+    } catch (error, stackTrace) {
+      debugPrint(
+        'Failed to toggle pin for $gameId in $sourceTourId: $error\n$stackTrace',
+      );
     }
+  }
+
+  /// Drops every manual pin for this tour and its related stages.
+  ///
+  /// "Unpin all" used to call a storage method whose body was empty, so manual
+  /// pins survived it.
+  Future<void> clearManualPins() async {
+    try {
+      final storage = ref.read(pinGameLocalStorage);
+      await Future.wait(
+        _getRelatedTourIds().map(
+          (relatedTourId) => storage.clearPinnedGames(relatedTourId),
+        ),
+      );
+    } catch (error, stackTrace) {
+      debugPrint('Failed to clear manual pins for $tourId: $error\n$stackTrace');
+    }
+    await loadPinnedGames();
   }
 
   Future<void> enableAutoPin() async {

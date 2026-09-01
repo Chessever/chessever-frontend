@@ -207,6 +207,18 @@ void main() {
           isNull,
         );
       });
+
+      test('a gentle release above the first card exits the strip', () {
+        expect(pageFor(pixels: anchor - 12, velocity: 0, restingPage: 0), 0);
+        expect(
+          pageFor(pixels: anchor - 13, velocity: 0, restingPage: 0),
+          isNull,
+        );
+        expect(
+          pageFor(pixels: anchor - 80, velocity: 0, restingPage: 0),
+          isNull,
+        );
+      });
     });
 
     test('no grid, no opinion', () {
@@ -541,6 +553,7 @@ void main() {
       WidgetTester tester,
       ExplorerGamesSnapConfig config, {
       double listAnchor = anchor,
+      int stripCardCount = cardCount,
     }) async {
       final controller = ScrollController();
       addTearDown(controller.dispose);
@@ -572,7 +585,7 @@ void main() {
                     padding: const EdgeInsets.only(bottom: viewport - extent),
                     children: [
                       SizedBox(height: listAnchor),
-                      for (var i = 0; i < cardCount; i++)
+                      for (var i = 0; i < stripCardCount; i++)
                         const SizedBox(height: extent),
                     ],
                   ),
@@ -727,6 +740,42 @@ void main() {
       await tester.pumpAndSettle();
       expect(controller.offset, closeTo(0, 2.0));
     });
+
+    testWidgets(
+      'pulling down from one aligned game card returns to the move table',
+      (tester) async {
+        const oneCardAnchor = 400.0;
+        final config =
+            ExplorerGamesSnapConfig()
+              ..update(
+                anchor: oneCardAnchor,
+                pageExtent: extent,
+                pageCount: 1,
+              );
+        final controller = await pumpStrip(
+          tester,
+          config,
+          listAnchor: oneCardAnchor,
+          stripCardCount: 1,
+        );
+
+        controller.jumpTo(oneCardAnchor);
+        await tester.pumpAndSettle();
+        expect(config.restingPage, 0);
+
+        // Match the recording: pull the card down far enough to restore the
+        // move-table chrome, then release gently instead of flinging.
+        await tester.timedDrag(
+          find.byType(ListView),
+          const Offset(0, 80),
+          const Duration(seconds: 2),
+        );
+        await tester.pumpAndSettle();
+
+        expect(controller.offset, closeTo(oneCardAnchor - 80, 2.0));
+        expect(config.restingPage, isNull);
+      },
+    );
 
     testWidgets('the reserve lands the end of the list on the last card', (
       tester,

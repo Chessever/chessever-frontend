@@ -5,7 +5,6 @@ import 'package:chessever2/screens/group_event/model/about_tour_model.dart';
 import 'package:chessever2/screens/group_event/model/tour_detail_view_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_app_bar_view_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
-import 'package:chessever2/repository/local_storage/tournament/games/pin_games_local_storage.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/game_display_mode_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_pin_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_priority_matching.dart';
@@ -448,13 +447,13 @@ class GamesTourScreenProvider
   }
 
   Future<void> unpinAllGames() async {
+    if (aboutTourModel == null) return;
     try {
-      await Future.wait([
-        ref.read(pinGameLocalStorage).clearAllPinnedGames(),
-        ref
-            .read(gamesPinprovider(aboutTourModel!.id).notifier)
-            .disableAutoPin(),
-      ]);
+      final pins = ref.read(gamesPinprovider(aboutTourModel!.id).notifier);
+      // Manual pins and auto-pins are two separate stores; clearing only one
+      // leaves boards pinned after "Unpin all".
+      await pins.clearManualPins();
+      await pins.disableAutoPin();
       // Immediate UI update
       await _recompute(pinnedIdsOverride: const <String>[]);
     } catch (e, st) {

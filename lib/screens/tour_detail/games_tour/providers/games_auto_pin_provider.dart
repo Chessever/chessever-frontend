@@ -140,7 +140,13 @@ class _AutoPinLogController {
       }
     }, fireImmediately: true);
     try {
-      return await completer.future;
+      // The country provider normally answers immediately from cache, but a
+      // location fallback can stall. An unbounded wait here used to block the
+      // whole pin snapshot, so a later manual pin never surfaced.
+      return await completer.future.timeout(
+        const Duration(seconds: 5),
+        onTimeout: () => null,
+      );
     } finally {
       subscription.close();
     }
