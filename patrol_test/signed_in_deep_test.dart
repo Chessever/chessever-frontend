@@ -158,11 +158,9 @@ void main() {
         await expectVisible($, E2eIds.boardEvalBar);
         await expectVisible($, E2eIds.openingExplorerEngineLines);
         await byId($, E2eIds.openingExplorerSaveButton).tap();
-        await expectVisible($, E2eIds.chessBoardRoot);
         await expectVisible($, E2eIds.saveAnalysisSheet);
         await popRoute($);
-        await assertBoardEngineReady($);
-        await popRoute($);
+        await expectVisible($, E2eIds.openingExplorerRoot);
         await popRoute($);
 
         await openSeededFolder($, seed);
