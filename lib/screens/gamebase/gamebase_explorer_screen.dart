@@ -21,13 +21,14 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 import 'package:chessever2/providers/board_settings_provider_new.dart';
 import 'package:chessever2/providers/engine_settings_provider.dart';
-import 'package:chessever2/screens/chessboard/chess_board_screen_new.dart';
 import 'package:chessever2/screens/chessboard/analysis/chess_game_navigator.dart';
 import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
+import 'package:chessever2/screens/chessboard/view_model/chess_board_state_new.dart';
 import 'package:chessever2/screens/chessboard/utils/engine_pv_palette.dart';
 import 'package:chessever2/screens/settings/settings_page.dart';
 import 'package:chessever2/screens/chessboard/widgets/chess_board_bottom_nav_bar.dart';
 import 'package:chessever2/screens/chessboard/widgets/evaluation_bar_widget.dart';
+import 'package:chessever2/screens/chessboard/widgets/save_analysis_sheet.dart';
 import 'package:chessever2/screens/chessboard/widgets/share_game_screen.dart';
 import 'package:chessever2/screens/chessboard/widgets/switch_views_tutorial_overlay.dart';
 import 'package:chessever2/screens/gamebase/providers/explorer_eval_provider.dart';
@@ -803,7 +804,7 @@ class _GamebaseExplorerScreenState extends ConsumerState<GamebaseExplorerScreen>
             size: 22.ic,
             semanticLabel: 'Save analysis',
           ),
-          onPressed: () => _openAnalysisAndSave(context),
+          onPressed: _openAnalysisAndSave,
           tooltip: 'Save analysis',
         ),
         Tooltip(
@@ -944,12 +945,18 @@ class _GamebaseExplorerScreenState extends ConsumerState<GamebaseExplorerScreen>
     );
   }
 
-  void _openAnalysisAndSave(BuildContext context) {
+  /// Opens Save Analysis over the current Explorer/Notation workspace.
+  ///
+  /// The sheet is built on the shared board provider, so the temporary game
+  /// is parsed in place instead of pushing the legacy analysis board and
+  /// leaving the user there after they cancel.
+  Future<void> _openAnalysisAndSave() async {
+    final allowed = await requireFullAuthGuard(context);
+    if (!allowed || !mounted) return;
+
     final state = ref.read(gamebaseExplorerProvider);
     final game = state.game;
     if (game == null) return;
-
-    final timestamp = DateTime.now().millisecondsSinceEpoch;
 
     // Use the notation tree helper to export full PGN with variations
     final pgn = exportGameToPgn(game);
@@ -974,8 +981,11 @@ class _GamebaseExplorerScreenState extends ConsumerState<GamebaseExplorerScreen>
       fideId: null,
     );
 
+    // A fresh identity per save: the sheet updates an existing row when the
+    // source game id already lives in the target database, so a shared id
+    // would silently overwrite an earlier save after the workspace was reset.
     final tourGame = GamesTourModel(
-      gameId: 'explorer_$timestamp',
+      gameId: 'explorer_${DateTime.now().millisecondsSinceEpoch}',
       source: GameSource.openingExplorer,
       whitePlayer: whitePlayer,
       blackPlayer: blackPlayer,
@@ -989,24 +999,53 @@ class _GamebaseExplorerScreenState extends ConsumerState<GamebaseExplorerScreen>
       pgn: pgn,
     );
 
-    ref.read(chessboardViewFromProviderNew.notifier).state =
-        ChessboardView.tour;
-
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder:
-            (_) => ChessBoardScreenNew(
-              currentIndex: 0,
-              games: [tourGame],
-              viewSource: ChessboardView.tour,
-              hideEventInfo: true,
-              showGamebaseButton: false,
-              disableGamebaseOverlayByDefault: true,
-              startAtLastMove: true,
-              showSaveAnalysisOnLoad: true,
-            ),
-      ),
+    final params = ChessBoardProviderParams(
+      game: tourGame,
+      index: 0,
+      startAtLastMove: true,
     );
+    final provider = chessBoardScreenProviderNew(params);
+
+    // The board provider is autoDispose and nothing on this screen watches
+    // it. Hold it through a manual subscription until the sheet closes; the
+    // notifier parses the PGN on construction and the sheet re-reads the same
+    // provider by params in its initState.
+    final loaded = Completer<ChessBoardStateNew?>();
+    final subscription = ref.listenManual<AsyncValue<ChessBoardStateNew>>(
+      provider,
+      (_, next) {
+        if (loaded.isCompleted) return;
+        final boardState = next.valueOrNull;
+        if (boardState != null &&
+            !boardState.isLoadingMoves &&
+            boardState.analysisState.game != null) {
+          loaded.complete(boardState);
+        } else if (next.hasError) {
+          loaded.complete(null);
+        }
+      },
+      fireImmediately: true,
+    );
+
+    try {
+      final boardState = await loaded.future.timeout(
+        const Duration(seconds: 10),
+        onTimeout: () => null,
+      );
+      if (!mounted) return;
+      if (boardState == null) {
+        showAppSnack(context, 'Please wait for the game to load');
+        return;
+      }
+
+      await showSaveAnalysisSheet(
+        context: context,
+        state: boardState,
+        params: params,
+      );
+    } finally {
+      subscription.close();
+    }
   }
 
   void _showFilterSheet(BuildContext context) {
@@ -2776,9 +2815,7 @@ class _ExplorerBottomPanelsState extends ConsumerState<_ExplorerBottomPanels>
           },
           children: [
             MoveStatisticsPanel(
-              key: const PageStorageKey<String>(
-                'opening-explorer-moves-panel',
-              ),
+              key: const PageStorageKey<String>('opening-explorer-moves-panel'),
               onFilter: widget.onFilter,
               hasActiveFilters: widget.hasActiveFilters,
               gamesPageHeight: gamesPageHeight,
