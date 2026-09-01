@@ -144,7 +144,6 @@ class PositionGamesSheet extends ConsumerStatefulWidget {
     this.moves = const <String>[],
     this.filters = const GamebaseFilters(),
     this.useFenEndpoint = false,
-    this.embedded = false,
   });
 
   final String fen;
@@ -157,11 +156,6 @@ class PositionGamesSheet extends ConsumerStatefulWidget {
   /// instead of the move-aggregate endpoint. Used by the pasted-PGN /
   /// FEN-position flow where there is no selected move path.
   final bool useFenEndpoint;
-
-  /// Render as panel content instead of a modal sheet. Fetching, paging,
-  /// sorting, and game opening stay identical in both presentations. Embedded
-  /// content has no modal close action, so it cannot pop its host board route.
-  final bool embedded;
 
   @override
   ConsumerState<PositionGamesSheet> createState() => _PositionGamesSheetState();
@@ -362,23 +356,16 @@ class _PositionGamesSheetState extends ConsumerState<PositionGamesSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final bottomPadding =
-        widget.embedded ? 0.0 : MediaQuery.of(context).padding.bottom;
+    final bottomPadding = MediaQuery.of(context).padding.bottom;
 
     return Container(
       decoration: BoxDecoration(
         color: context.colors.surfaceRecessed,
-        borderRadius:
-            widget.embedded
-                ? BorderRadius.zero
-                : BorderRadius.vertical(top: Radius.circular(16.br)),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16.br)),
       ),
       child: ConstrainedBox(
         constraints:
-            widget.embedded
-                ? const BoxConstraints()
-                : ResponsiveHelper.bottomSheetConstraints ??
-                    const BoxConstraints(),
+            ResponsiveHelper.bottomSheetConstraints ?? const BoxConstraints(),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -386,8 +373,7 @@ class _PositionGamesSheetState extends ConsumerState<PositionGamesSheet> {
               title: widget.title,
               countText: _countText,
               onSort: _showSortOptions,
-              onClose:
-                  widget.embedded ? null : () => Navigator.of(context).pop(),
+              onClose: () => Navigator.of(context).pop(),
             ),
             Divider(color: context.colors.divider, height: 1),
             Expanded(

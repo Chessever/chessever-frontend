@@ -7,6 +7,8 @@ import 'package:chessever2/screens/gamebase/models/models.dart';
 import 'package:chessever2/screens/gamebase/providers/gamebase_explorer_state.dart';
 import 'package:chessever2/screens/gamebase/providers/gamebase_providers.dart';
 import 'package:chessever2/screens/gamebase/widgets/board_opening_explorer_panel.dart';
+import 'package:chessever2/screens/gamebase/widgets/explorer_game_card.dart';
+import 'package:chessever2/screens/gamebase/widgets/position_games_sheet.dart';
 import 'package:chessever2/screens/library/widgets/library_game_card.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:dartchess/dartchess.dart';
@@ -35,9 +37,14 @@ class _FakeGamebaseRepository extends GamebaseRepository {
   _FakeGamebaseRepository({
     required this.fenGamesRows,
     this.moveAggregates = const <MoveAggregate>[],
+    this.fenGamesTotalCount,
   }) : super(Dio(), baseUrl: 'http://localhost', apiKey: 'test');
 
   final List<Map<String, dynamic>> fenGamesRows;
+
+  /// Backend total when it exceeds the returned page — drives the overflow
+  /// link out of the capped strip. Null means "exactly these rows".
+  final int? fenGamesTotalCount;
   final List<MoveAggregate> moveAggregates;
   int fenGamesRequests = 0;
   int fullGameRequests = 0;
@@ -90,8 +97,8 @@ class _FakeGamebaseRepository extends GamebaseRepository {
       metadata: GamebasePaginationMetadata(
         pageNumber: pageNumber,
         pageSize: pageSize,
-        totalCount: fenGamesRows.length,
-        hasMoreValue: false,
+        totalCount: fenGamesTotalCount ?? fenGamesRows.length,
+        hasMoreValue: fenGamesTotalCount != null,
       ),
     );
   }
@@ -266,7 +273,8 @@ void main() {
 
     testWidgets(
       'empty aggregates for a custom-start FEN fall back to the FEN-keyed '
-      'games endpoint and render games directly on a compact panel',
+      'games endpoint and render the same inline games strip as every other '
+      'explorer position',
       (tester) async {
         tester.view.physicalSize = const Size(727, 282);
         tester.view.devicePixelRatio = 1;
@@ -294,12 +302,59 @@ void main() {
         expect(find.text('No games match this position'), findsNothing);
         expect(find.text('No move statistics for this position'), findsNothing);
         expect(find.text('View games'), findsNothing);
-        expect(find.byType(LibraryGameCard), findsOneWidget);
+
+        // The strip is the regular explorer one, card for card. The old
+        // embedded PositionGamesSheet — its own 'Games at this position'
+        // header, its own list, LibraryGameCards — must not come back.
+        expect(find.byType(ExplorerGameCard), findsOneWidget);
+        expect(find.byType(LibraryGameCard), findsNothing);
+        expect(find.byType(PositionGamesSheet), findsNothing);
+        expect(find.text('Games at this position'), findsNothing);
         expect(find.byTooltip('Close'), findsNothing);
+
         expect(repository.fenGamesRequests, greaterThan(0));
-        expect(repository.lastFenNotationPlies, 0);
-        expect(repository.fullGameRequests, 0);
+        // Continuation chips need the preview slice the aggregate-fed strip
+        // also asks for; 0 plies is what the old sheet requested.
+        expect(repository.lastFenNotationPlies, 20);
         expect(tester.takeException(), isNull);
+
+        await _teardownPanel(tester, container);
+      },
+    );
+
+    testWidgets(
+      'a FEN position with more games than the strip holds keeps the rest '
+      'reachable through the full sheet',
+      (tester) async {
+        tester.view.physicalSize = const Size(727, 900);
+        tester.view.devicePixelRatio = 1;
+        addTearDown(tester.view.reset);
+
+        final repository = _FakeGamebaseRepository(
+          fenGamesRows: List.generate(
+            10,
+            (i) => <String, dynamic>{
+              'id': 'g$i',
+              'white': 'White $i',
+              'black': 'Black $i',
+              'whiteElo': 2500,
+              'blackElo': 2450,
+              'result': 'W',
+              'date': '2026-08-31T00:00:00.000Z',
+              'continuation': <String>[],
+            },
+          ),
+          fenGamesTotalCount: 47,
+        );
+        final container = await _pumpPanelWithEditorPosition(
+          tester,
+          repository,
+        );
+
+        // The strip stays capped at 10 like everywhere else, but an exact-FEN
+        // position has no '∑' row, so the remaining 37 need their own way out.
+        expect(find.byType(ExplorerGameCard), findsNWidgets(10));
+        expect(find.text('View all 47 games'), findsOneWidget);
 
         await _teardownPanel(tester, container);
       },

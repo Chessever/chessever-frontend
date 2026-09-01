@@ -94,6 +94,33 @@ int _explorerPliesFromFen(String fen) {
   return base + (turn == 'b' ? 1 : 0);
 }
 
+/// Whether the aggregate endpoint's silence about [state]'s position can be
+/// trusted.
+///
+/// The endpoint anchors on the ply the FEN *claims* (its fullmove counter), so
+/// its answer is only authoritative inside the indexed window. Depth must be
+/// read from the board FEN and the explored line, not from `currentMoveNumber`
+/// alone: when a line-drop leaves the explorer tree empty that collapses to 1
+/// and a deep midgame would be mistaken for the opening.
+///
+/// A session that starts from an arbitrary FEN (Board Editor, pasted FEN, deep
+/// link) is a special case of the same lie — an edited position claims move 1
+/// whatever its real depth — so empty aggregates are never authoritative
+/// there, at any apparent depth.
+bool _isPastIndexedAggregateWindow({
+  required GamebaseExplorerState state,
+  required int effectiveMoveNumber,
+}) {
+  final startingFen = state.game?.startingFen.trim() ?? '';
+  final startsFromCustomFen =
+      startingFen.isNotEmpty && !_isStandardStartingFen(startingFen);
+  return startsFromCustomFen ||
+      effectiveMoveNumber > kExplorerIndexedAggregateMoveNumberLimit ||
+      state.exploredMoves.length >= kExplorerIndexedAggregateMoveNumberLimit ||
+      _explorerPliesFromFen(state.currentFen) >=
+          kExplorerIndexedAggregateMoveNumberLimit;
+}
+
 /// Empty state for the move table.
 ///
 /// Mirrors the desktop explorer's `_ExplorerEmpty`: an icon, a title that
@@ -703,15 +730,37 @@ class MoveStatisticsPanel extends HookConsumerWidget {
       return timer.cancel;
     }, [prefetchSignature]);
 
+    // Empty aggregates do NOT always mean the position is unknown. Move
+    // statistics can only be computed when the client supplies the move line
+    // from the initial position, so past the backend's indexed window they
+    // come back empty for a transposition, for a board opened at a FEN, and
+    // for every position while its deep FEN aggregate index is unavailable —
+    // on positions with hundreds of real games behind them.
+    //
+    // Those positions are answered by the FEN-keyed endpoint instead, and
+    // they render through the *same* inline games strip as everywhere else.
+    // Board Editor / pasted-FEN sessions used to get a parallel embedded
+    // sheet here with its own header, its own list and different cards; the
+    // reader is looking at the same explorer, so they get the same table.
+    final fenOnlyGames =
+        !showGate &&
+        !state.isLoading &&
+        state.moveAggregates.isEmpty &&
+        _isPastIndexedAggregateWindow(
+          state: state,
+          effectiveMoveNumber: effectiveMoveNumber,
+        );
+
     // Mirrors the inline-games condition in `_buildListChildren` — the page
     // grid, the bottom reserve and the physics all hinge on the strip really
     // being there.
     final showInlineGames =
-        !showGate &&
-        !state.isLoading &&
-        sortedAggregates.isNotEmpty &&
-        state.totalGames > 0 &&
-        state.totalGames <= kExplorerInlineGamesLimit;
+        fenOnlyGames ||
+        (!showGate &&
+            !state.isLoading &&
+            sortedAggregates.isNotEmpty &&
+            state.totalGames > 0 &&
+            state.totalGames <= kExplorerInlineGamesLimit);
     final pagesGames = showInlineGames && pageMetrics != null;
 
     final movesHeader = ExplorerMovesHeader(
@@ -750,63 +799,20 @@ class MoveStatisticsPanel extends HookConsumerWidget {
       );
     }
 
-    if (state.moveAggregates.isEmpty && !showGate && !state.isLoading) {
-      // Empty aggregates do NOT always mean the position is unknown. Move
-      // statistics can only be computed when the client supplies the move
-      // line from the initial position, so past the backend's indexed window
-      // they come back empty for a transposition, for a board opened at a
-      // FEN, and for every position while its deep FEN aggregate index is
-      // unavailable — on positions with hundreds of real games behind them.
-      //
-      // Inside the indexed window the aggregate answer IS authoritative, so
-      // only second-guess it past that boundary; that also keeps this from
-      // costing an extra request on ordinary empty openings.
-      //
-      // Depth must be derived from the board FEN (and the explored line), not
-      // only `currentMoveNumber`. When a line-drop leaves the explorer tree
-      // empty, `currentMoveNumber` collapses to 1 and the old check treated a
-      // deep midgame as "inside the indexed window", permanently claiming
-      // "No games match this position".
-      //
-      // A session that starts from an arbitrary FEN (Board Editor, pasted
-      // FEN, deep link) is a special case of the same lie: the aggregate
-      // endpoint anchors on the ply the FEN *claims* (its fullmove counter),
-      // and an edited position claims move 1 whatever its real depth. Empty
-      // aggregates are therefore never authoritative for a custom-start
-      // board, at any apparent depth — always ask the FEN-keyed endpoint
-      // before claiming there is nothing here.
-      final startingFen = state.game?.startingFen.trim() ?? '';
-      final startsFromCustomFen =
-          startingFen.isNotEmpty && !_isStandardStartingFen(startingFen);
-      final pliesFromFen = _explorerPliesFromFen(state.currentFen);
-      final pastIndexedWindow =
-          startsFromCustomFen ||
-          effectiveMoveNumber > kExplorerIndexedAggregateMoveNumberLimit ||
-          state.exploredMoves.length >=
-              kExplorerIndexedAggregateMoveNumberLimit ||
-          pliesFromFen >= kExplorerIndexedAggregateMoveNumberLimit;
-
-      if (!pastIndexedWindow) {
-        return withMovesHeader(
-          const _ExplorerEmpty(
-            title: 'No games match this position',
-            message:
-                'No master/online games are indexed for the position on the '
-                'board.',
-          ),
-        );
-      }
-
-      // A custom/deep FEN needs no intermediary warning or second tap. Render
-      // the complete paginated games list from the exact-FEN endpoint in the
-      // panel immediately. Its request contains the FEN, never a PGN/line.
-      return PositionGamesSheet(
-        key: ValueKey<Object>((state.currentFen, state.filters)),
-        fen: state.currentFen,
-        title: 'Games at this position',
-        filters: state.filters,
-        useFenEndpoint: true,
-        embedded: true,
+    // Inside the indexed window the aggregate answer IS authoritative, so an
+    // empty table there really does mean an unseen position. Past it, the
+    // FEN-keyed strip below answers instead — see `fenOnlyGames`.
+    if (state.moveAggregates.isEmpty &&
+        !showGate &&
+        !state.isLoading &&
+        !fenOnlyGames) {
+      return withMovesHeader(
+        const _ExplorerEmpty(
+          title: 'No games match this position',
+          message:
+              'No master/online games are indexed for the position on the '
+              'board.',
+        ),
       );
     }
 
@@ -946,6 +952,7 @@ class MoveStatisticsPanel extends HookConsumerWidget {
                         nextStepCrossesLimit: nextStepCrossesLimit,
                         gamesSectionKey: gamesSectionKey,
                         showInlineGames: showInlineGames,
+                        fenOnlyGames: fenOnlyGames,
                         gamesBoardSize: pageMetrics?.boardSize,
                         onGamesCardCountChanged: onGamesCardCountChanged,
                         gamesEvalWindow: evalWindow,
@@ -992,6 +999,7 @@ class MoveStatisticsPanel extends HookConsumerWidget {
     required bool showGate,
     required bool nextStepCrossesLimit,
     required bool showInlineGames,
+    bool fenOnlyGames = false,
     GlobalKey? gamesSectionKey,
     double? gamesBoardSize,
     ValueChanged<int>? onGamesCardCountChanged,
@@ -1001,6 +1009,29 @@ class MoveStatisticsPanel extends HookConsumerWidget {
         Divider(color: context.colors.divider, height: 1, indent: 12.sp);
 
     final children = <Widget>[];
+
+    // FEN-only position: there are no move aggregates to tabulate, so the
+    // strip *is* the table. No move rows, no '∑' row, and therefore no
+    // leading divider above the games — anything else would be a second,
+    // different-looking games list, which is exactly what this replaced.
+    if (fenOnlyGames) {
+      children.add(
+        KeyedSubtree(
+          key: gamesSectionKey,
+          child: ExplorerGamesSection(
+            fen: state.currentFen,
+            moves: state.exploredMoves,
+            filters: state.filters,
+            boardSize: gamesBoardSize,
+            onCardCountChanged: onGamesCardCountChanged,
+            evalWindow: gamesEvalWindow,
+            useFenEndpoint: true,
+            emptyMessage: 'No games match this position',
+          ),
+        ),
+      );
+      return children;
+    }
 
     if (aggregates.isEmpty && showGate) {
       for (var i = 0; i < 5; i++) {

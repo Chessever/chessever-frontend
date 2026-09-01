@@ -1737,6 +1737,17 @@ class GamebasePositionGamesQuery {
   /// starting from the queried position. 0 (default) omits it.
   final int notationPlies;
 
+  /// Resolve through `/api/game-position/fen/games` (exact-FEN match) instead
+  /// of the move-aggregate endpoint.
+  ///
+  /// A board opened at an arbitrary FEN (Board Editor, pasted FEN, deep link)
+  /// has no move line from the initial position, so the aggregate endpoint
+  /// anchors on the ply the FEN *claims* and answers empty. Both endpoints
+  /// return the same row shape, so they stay one provider family — keeping
+  /// this a query field rather than a second provider is what lets the inline
+  /// games strip render identically whichever endpoint fed it.
+  final bool useFenEndpoint;
+
   const GamebasePositionGamesQuery({
     required this.fen,
     this.moves = const <String>[],
@@ -1755,6 +1766,7 @@ class GamebasePositionGamesQuery {
     this.pageNumber = 0,
     this.pageSize = 20,
     this.notationPlies = 0,
+    this.useFenEndpoint = false,
   });
 
   /// The query the opening explorer asks for a row's games.
@@ -1775,6 +1787,8 @@ class GamebasePositionGamesQuery {
     GamebaseSortDirection? sortDirection,
     int pageNumber = 0,
     int pageSize = 20,
+    int notationPlies = 0,
+    bool useFenEndpoint = false,
   }) {
     return GamebasePositionGamesQuery(
       fen: fen,
@@ -1794,6 +1808,8 @@ class GamebasePositionGamesQuery {
       sortDirection: sortDirection ?? filters.sortDirection,
       pageNumber: pageNumber,
       pageSize: pageSize,
+      notationPlies: notationPlies,
+      useFenEndpoint: useFenEndpoint,
     );
   }
 
@@ -1816,7 +1832,8 @@ class GamebasePositionGamesQuery {
         other.sortDirection == sortDirection &&
         other.pageNumber == pageNumber &&
         other.pageSize == pageSize &&
-        other.notationPlies == notationPlies;
+        other.notationPlies == notationPlies &&
+        other.useFenEndpoint == useFenEndpoint;
   }
 
   @override
@@ -1838,6 +1855,7 @@ class GamebasePositionGamesQuery {
     pageNumber,
     pageSize,
     notationPlies,
+    useFenEndpoint,
   );
 }
 
@@ -1847,6 +1865,26 @@ final positionGamesProvider = FutureProvider.autoDispose
       query,
     ) async {
       final repository = ref.read(gamebaseRepositoryProvider);
+      if (query.useFenEndpoint) {
+        return repository.getFenPositionGames(
+          fen: query.fen,
+          uci: query.uci,
+          timeControl: query.timeControl,
+          playerId: query.playerId,
+          color: query.color,
+          result: query.result,
+          isOnline: query.isOnline,
+          minRating: query.minRating,
+          maxRating: query.maxRating,
+          yearFrom: query.yearFrom,
+          yearTo: query.yearTo,
+          sortBy: query.sortBy,
+          sortDirection: query.sortDirection,
+          notationPlies: query.notationPlies,
+          pageNumber: query.pageNumber,
+          pageSize: query.pageSize,
+        );
+      }
       return repository.getPositionGames(
         fen: query.fen,
         moves: query.moves,

@@ -43,6 +43,8 @@ class ExplorerGamesSection extends ConsumerStatefulWidget {
     this.boardSize,
     this.onCardCountChanged,
     this.evalWindow,
+    this.useFenEndpoint = false,
+    this.emptyMessage = 'No games found',
   });
 
   /// Current explored position (the continuation anchor).
@@ -67,6 +69,16 @@ class ExplorerGamesSection extends ConsumerStatefulWidget {
   /// draw nothing. Null means no host is tracking visibility, so no card
   /// evaluates — the bar slot is reserved and left empty.
   final ValueListenable<ExplorerGamesEvalWindow>? evalWindow;
+
+  /// Resolve the strip through the exact-FEN endpoint instead of the
+  /// move-aggregate one. Set for boards opened at an arbitrary FEN, where
+  /// there is no move line from the initial position for aggregates to
+  /// anchor on. Everything below this fetch is identical either way — that
+  /// sameness is the point.
+  final bool useFenEndpoint;
+
+  /// Shown when the position resolves to zero games.
+  final String emptyMessage;
 
   @override
   ConsumerState<ExplorerGamesSection> createState() =>
@@ -127,6 +139,7 @@ class _ExplorerGamesSectionState extends ConsumerState<ExplorerGamesSection> {
     pageNumber: 0,
     pageSize: _maxGames,
     notationPlies: _notationPlies,
+    useFenEndpoint: widget.useFenEndpoint,
   );
 
   /// Publishes the rendered card count after the frame that rendered it —
@@ -218,7 +231,7 @@ class _ExplorerGamesSectionState extends ConsumerState<ExplorerGamesSection> {
             final rows = response.data.take(_maxGames).toList(growable: false);
             if (rows.isEmpty) {
               _reportCardCount(0);
-              return const _ExplorerGamesStatusRow(message: 'No games found');
+              return _ExplorerGamesStatusRow(message: widget.emptyMessage);
             }
 
             final games = <GamesTourModel>[];
@@ -248,6 +261,18 @@ class _ExplorerGamesSectionState extends ConsumerState<ExplorerGamesSection> {
             });
             _reportCardCount(games.length);
 
+            // The strip is capped at [_maxGames]. On a move row that cap is
+            // never reached (the panel only inlines games once 10 or fewer
+            // remain), but an exact-FEN position has no '∑' row to fall back
+            // to, so the remainder would simply be unreachable. One quiet
+            // trailing link, below the last card so it never disturbs the
+            // page grid, hands them to the full sheet.
+            final totalCount = response.metadata.totalCount;
+            final hiddenCount =
+                totalCount != null && totalCount > games.length
+                    ? totalCount - games.length
+                    : 0;
+
             return Column(
               children: [
                 for (var i = 0; i < games.length; i++)
@@ -270,11 +295,76 @@ class _ExplorerGamesSectionState extends ConsumerState<ExplorerGamesSection> {
                       evalWindow: widget.evalWindow,
                     ),
                   ),
+                if (hiddenCount > 0)
+                  _ExplorerGamesOverflowRow(
+                    totalCount: totalCount!,
+                    onTap:
+                        () => _openAllGames(
+                          context,
+                          totalCount: totalCount,
+                        ),
+                  ),
               ],
             );
           },
         ),
       ],
+    );
+  }
+
+  void _openAllGames(BuildContext context, {required int totalCount}) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      constraints: BoxConstraints(
+        maxHeight: MediaQuery.of(context).size.height * 0.88,
+      ),
+      builder:
+          (_) => PositionGamesSheet(
+            fen: widget.fen,
+            moves: widget.moves,
+            filters: widget.filters,
+            useFenEndpoint: widget.useFenEndpoint,
+            title: '$totalCount games',
+          ),
+    );
+  }
+}
+
+/// Trailing link out of a capped strip to the full, paginated games sheet.
+class _ExplorerGamesOverflowRow extends StatelessWidget {
+  const _ExplorerGamesOverflowRow({
+    required this.totalCount,
+    required this.onTap,
+  });
+
+  final int totalCount;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        child: Padding(
+          padding: EdgeInsets.symmetric(horizontal: 12.sp, vertical: 14.sp),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Text(
+                'View all $totalCount games',
+                style: TextStyle(
+                  color: context.colors.textSecondary,
+                  fontSize: 12.f,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }
