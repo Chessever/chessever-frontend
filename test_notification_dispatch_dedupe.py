@@ -2,6 +2,10 @@ from pathlib import Path
 
 
 EDGE_FUNCTION = Path("supabase/functions/onesignal-dispatch/index.ts")
+RETRY_POLICY = Path("supabase/functions/onesignal-dispatch/retry_policy.ts")
+ROUND_FAVORITE_CACHE = Path(
+    "supabase/functions/onesignal-dispatch/round_favorite_cache.ts"
+)
 SUPABASE_CONFIG = Path("supabase/config.toml")
 ROUND_START_DEDUPE_MIGRATION = Path(
     "supabase/migrations/20260527232342_grouped_round_start_exact_time_dedupe.sql"
@@ -134,7 +138,7 @@ def test_round_started_waits_for_moves_instead_of_terminally_skipping() -> None:
     assert "function reschedulePending" in source
 
     resched_start = source.index("async function reschedulePending(")
-    resched = source[resched_start:source.index("const MAX_DISPATCH_ATTEMPTS", resched_start)]
+    resched = source[resched_start:source.index("async function markRetry", resched_start)]
     # Every claim bumps attempts; a long wait for the first move must not eat
     # the error-retry budget.
     assert "attempts: 0," in resched
@@ -174,6 +178,7 @@ def test_favorite_map_user_list_is_chunked_not_one_giant_in_query() -> None:
 
     assert map_block.count("chunk(userIds, POSTGREST_IN_QUERY_CHUNK_SIZE)") == 2
     assert map_block.count("fetchAllPages") == 2
+    assert "Round favorite game lookup failed" in map_block
 
 
 def test_game_start_window_lookup_is_chunked_and_fails_loud() -> None:
@@ -305,10 +310,29 @@ def test_a_claimed_batch_is_not_walked_one_item_at_a_time() -> None:
 
 def test_transient_dispatch_errors_retry_instead_of_burning_the_row() -> None:
     source = _source()
+    policy = RETRY_POLICY.read_text(encoding="utf-8")
 
-    assert "if (item.attempts < MAX_DISPATCH_ATTEMPTS)" in source
-    assert "await markRetry(item.id, item.attempts, `${error}`)" in source
+    assert "planDispatchFailure" in source
+    assert 'plan.action === "retry"' in source
+    assert 'plan.action === "skip"' in source
+    assert "transient_retry_expired" in source
+    assert "MAX_DISPATCH_ATTEMPTS" not in source
     assert "function markRetry" in source
+    assert "RETRY_DELAYS_MS" in policy
+    assert "Math.min(jitteredDelayMs, remainingMs)" in policy
+
+
+def test_dispatch_bursts_share_round_favorite_results_and_open_a_transient_circuit() -> None:
+    source = _source()
+    cache = ROUND_FAVORITE_CACHE.read_text(encoding="utf-8")
+
+    assert "new RoundFavoriteCache(resolvePlayerFavoriteMap)" in source
+    assert "roundFavoriteCache.resolve(" in source
+    assert "new TransientFailureCircuit()" in source
+    assert "transientFailureCircuit.trip(" in source
+    assert "transientFailureCircuit.blocked(" in source
+    assert "loadedUserIds" in cache
+    assert "missingUserIds" in cache
 
 
 def test_game_started_is_not_parked_for_two_minutes() -> None:
