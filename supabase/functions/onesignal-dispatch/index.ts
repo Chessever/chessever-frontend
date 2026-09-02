@@ -1,6 +1,12 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import { filterGameStartedPlayerRecipients } from "./player_game_recipients.ts";
+import { RoundFavoriteCache } from "./round_favorite_cache.ts";
+import {
+  planDispatchFailure,
+  retryScopeFromLastError,
+  TransientFailureCircuit,
+} from "./retry_policy.ts";
 
 type OutboxItem = {
   id: string;
@@ -14,6 +20,7 @@ type OutboxItem = {
   attempts: number;
   not_before: string;
   created_at: string;
+  last_error: string | null;
 };
 
 type GameRow = {
@@ -195,6 +202,8 @@ function dispatchGroupKey(item: OutboxItem): string {
 }
 
 async function processClaimedItems(items: OutboxItem[]) {
+  const roundFavoriteCache = new RoundFavoriteCache(resolvePlayerFavoriteMap);
+  const transientFailureCircuit = new TransientFailureCircuit();
   const groups = new Map<string, OutboxItem[]>();
   for (const item of items) {
     const key = dispatchGroupKey(item);
@@ -211,7 +220,13 @@ async function processClaimedItems(items: OutboxItem[]) {
     while (cursor < queue.length) {
       const group = queue[cursor++];
       for (const item of group) {
-        results.push(await processItem(item));
+        results.push(
+          await processItem(
+            item,
+            roundFavoriteCache,
+            transientFailureCircuit,
+          ),
+        );
       }
     }
   }
@@ -221,16 +236,53 @@ async function processClaimedItems(items: OutboxItem[]) {
   return results;
 }
 
-async function processItem(item: OutboxItem) {
+async function processItem(
+  item: OutboxItem,
+  roundFavoriteCache: RoundFavoriteCache,
+  transientFailureCircuit: TransientFailureCircuit,
+) {
   // Skip stale items to prevent sending outdated notifications
   const createdAt = new Date(item.created_at);
-  if (Date.now() - createdAt.getTime() > STALE_THRESHOLD_MS) {
-    await markSkipped(item.id, "stale");
-    return { id: item.id, status: "skipped", reason: "stale" };
+  if (Date.now() - createdAt.getTime() >= STALE_THRESHOLD_MS) {
+    const reason = item.last_error?.startsWith("transient_")
+      ? "transient_retry_expired"
+      : "stale";
+    await markSkipped(item.id, reason);
+    return { id: item.id, status: "skipped", reason };
+  }
+
+  const previousTransientScope = retryScopeFromLastError(item.last_error);
+  const blocked = previousTransientScope
+    ? transientFailureCircuit.blocked(previousTransientScope, Date.now())
+    : null;
+  if (blocked) {
+    const freshnessRemainingMs = Math.max(
+      0,
+      createdAt.getTime() + STALE_THRESHOLD_MS - Date.now(),
+    );
+    if (freshnessRemainingMs === 0) {
+      await markSkipped(item.id, "transient_retry_expired");
+      return {
+        id: item.id,
+        status: "skipped",
+        reason: "transient_retry_expired",
+      };
+    }
+    const delayMs = Math.min(blocked.delayMs, freshnessRemainingMs);
+    await markRetry(
+      item.id,
+      `transient_circuit_open:${blocked.scope}`,
+      delayMs,
+    );
+    return {
+      id: item.id,
+      status: "pending",
+      reason: `transient_circuit_open:${blocked.scope}`,
+    };
   }
 
   try {
-    const context = await buildContext(item);
+    const context = await buildContext(item, roundFavoriteCache);
     if (item.event_type === "round_started") {
       if (!item.round_id) {
         await markSkipped(item.id, "missing_round_id");
@@ -863,17 +915,32 @@ async function processItem(item: OutboxItem) {
       recipients: filteredUserIds.size,
     };
   } catch (error) {
-    // A transient PostgREST hiccup or a OneSignal 5xx used to burn the row
-    // permanently on the first try, so the push simply never arrived. Retry a
-    // few times instead; every board/round push carries a collapse_id, so a
-    // duplicate after a partial send replaces the tray entry rather than
-    // stacking a second one.
-    if (item.attempts < MAX_DISPATCH_ATTEMPTS) {
-      await markRetry(item.id, item.attempts, `${error}`);
-      return { id: item.id, status: "pending", reason: `retry: ${error}` };
+    const nowMs = Date.now();
+    const plan = planDispatchFailure({
+      error,
+      attempts: item.attempts,
+      createdAtMs: createdAt.getTime(),
+      nowMs,
+    });
+    if (plan.action === "retry") {
+      transientFailureCircuit.trip(plan.scope, nowMs + plan.delayMs);
+      await markRetry(
+        item.id,
+        `transient_retry:${plan.scope}: ${error}`,
+        plan.delayMs,
+      );
+      return {
+        id: item.id,
+        status: "pending",
+        reason: `transient_retry:${plan.scope}`,
+      };
+    }
+    if (plan.action === "skip") {
+      await markSkipped(item.id, plan.reason);
+      return { id: item.id, status: "skipped", reason: plan.reason };
     }
     await markFailed(item.id, item.attempts, `${error}`);
-    return { id: item.id, status: "failed", error: `${error}` };
+    return { id: item.id, status: "failed", reason: plan.reason };
   }
 }
 
@@ -908,17 +975,13 @@ async function reschedulePending(id: string, reason: string) {
     .eq("id", id);
 }
 
-const MAX_DISPATCH_ATTEMPTS = 4;
-const RETRY_BACKOFF_MS = 15 * 1000;
-
-async function markRetry(id: string, attempts: number, error: string) {
+async function markRetry(id: string, error: string, delayMs: number) {
   await supabase
     .from("notification_outbox")
     .update({
       status: "pending",
       last_error: error,
-      not_before: new Date(Date.now() + RETRY_BACKOFF_MS * attempts)
-        .toISOString(),
+      not_before: new Date(Date.now() + delayMs).toISOString(),
     })
     .eq("id", id);
 }
@@ -930,7 +993,10 @@ async function markFailed(id: string, attempts: number, error: string) {
     .eq("id", id);
 }
 
-async function buildContext(item: OutboxItem) {
+async function buildContext(
+  item: OutboxItem,
+  roundFavoriteCache: RoundFavoriteCache,
+) {
   let game: GameRow | null = null;
   let round: RoundRow | null = null;
   let tour: TourRow | null = null;
@@ -1043,7 +1109,7 @@ async function buildContext(item: OutboxItem) {
       item.event_type === "game_started") &&
     item.round_id
   ) {
-    playerFavoriteMap = await resolvePlayerFavoriteMap(
+    playerFavoriteMap = await roundFavoriteCache.resolve(
       item.round_id,
       playerUserIds,
     );
@@ -2077,10 +2143,14 @@ async function resolvePlayerFavoriteMap(
   if (playerUserIds.size === 0) return result;
 
   // Get all games in this round to know which players are participating
-  const { data: games } = await supabase
+  const { data: games, error: gamesError } = await supabase
     .from("games")
     .select("id,player_white,player_black,players")
     .eq("round_id", roundId);
+
+  if (gamesError) {
+    throw new Error(`Round favorite game lookup failed: ${gamesError.message}`);
+  }
 
   if (!games || games.length === 0) return result;
 
