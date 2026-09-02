@@ -15,9 +15,14 @@
    <uses-permission android:name="com.google.android.gms.permission.AD_ID" />
 
 
-   <!-- Force-remove read access permissions that plugins might contribute -->
+   <!-- Feedback "Add picture" asks for photo access, then opens the gallery. -->
+   <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
+   <uses-permission android:name="android.permission.READ_MEDIA_VISUAL_USER_SELECTED" />
+   <uses-permission
+       android:name="android.permission.READ_EXTERNAL_STORAGE"
+       android:maxSdkVersion="32" />
+   <!-- Force-remove unused media-read permissions that plugins might contribute -->
    <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" tools:node="remove" />
-   <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" tools:node="remove" />
    <uses-permission android:name="android.permission.READ_MEDIA_AUDIO" tools:node="remove" />
 
    <application
@@ -212,6 +217,14 @@
        <intent>
            <action android:name="android.intent.action.VIEW" />
            <data android:scheme="mailto" />
+       </intent>
+       <!-- Feedback "Add picture" opens the system photo library, not Files. -->
+       <intent>
+           <action android:name="android.provider.action.PICK_IMAGES" />
+       </intent>
+       <intent>
+           <action android:name="android.intent.action.PICK" />
+           <data android:mimeType="image/*" />
        </intent>
        <!-- Required for AppsFlyer install attribution -->
        <package android:name="com.android.vending" />

@@ -14,6 +14,7 @@
 		74858FAF1ED2DC5600515810 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 74858FAE1ED2DC5600515810 /* AppDelegate.swift */; };
 		7A89603BECF8967CDA981345 /* Pods_Runner.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 08C87DC143FCF3649B5DDBF4 /* Pods_Runner.framework */; };
 		8C24C4D42F0A4A949798A101 /* ChessPipController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8C24C4D32F0A4A949798A101 /* ChessPipController.swift */; };
+		8C24C4D62F0B5C119798A201 /* MediaLibraryPicker.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8C24C4D52F0B5C119798A201 /* MediaLibraryPicker.swift */; };
 		97C146FC1CF9000F007C117D /* Main.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 97C146FA1CF9000F007C117D /* Main.storyboard */; };
 		97C146FE1CF9000F007C117D /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 97C146FD1CF9000F007C117D /* Assets.xcassets */; };
 		97C147011CF9000F007C117D /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 97C146FF1CF9000F007C117D /* LaunchScreen.storyboard */; };
@@ -96,6 +97,7 @@
 		7F717C289F49D7607AC883E6 /* Pods-Runner-RunnerUITests.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Runner-RunnerUITests.debug.xcconfig"; path = "Target Support Files/Pods-Runner-RunnerUITests/Pods-Runner-RunnerUITests.debug.xcconfig"; sourceTree = "<group>"; };
 		8A5E29FF397EF1171674A8B5 /* Pods-RunnerTests.profile-chessevertest.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-RunnerTests.profile-chessevertest.xcconfig"; path = "Target Support Files/Pods-RunnerTests/Pods-RunnerTests.profile-chessevertest.xcconfig"; sourceTree = "<group>"; };
 		8C24C4D32F0A4A949798A101 /* ChessPipController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChessPipController.swift; sourceTree = "<group>"; };
+		8C24C4D52F0B5C119798A201 /* MediaLibraryPicker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MediaLibraryPicker.swift; sourceTree = "<group>"; };
 		8F360DCFB32581F71FA70CDA /* Pods-Runner-RunnerUITests.debug-chessevertest.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Runner-RunnerUITests.debug-chessevertest.xcconfig"; path = "Target Support Files/Pods-Runner-RunnerUITests/Pods-Runner-RunnerUITests.debug-chessevertest.xcconfig"; sourceTree = "<group>"; };
 		9740EEB21CF90195004384FC /* Debug.xcconfig */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.xcconfig; name = Debug.xcconfig; path = Flutter/Debug.xcconfig; sourceTree = "<group>"; };
 		9740EEB31CF90195004384FC /* Generated.xcconfig */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.xcconfig; name = Generated.xcconfig; path = Flutter/Generated.xcconfig; sourceTree = "<group>"; };
@@ -240,6 +242,7 @@
 				1498D2331E8E89220040F4C2 /* GeneratedPluginRegistrant.m */,
 				74858FAE1ED2DC5600515810 /* AppDelegate.swift */,
 				8C24C4D32F0A4A949798A101 /* ChessPipController.swift */,
+				8C24C4D52F0B5C119798A201 /* MediaLibraryPicker.swift */,
 				9D4E7F092C3B4D5E6F708192 /* SceneDelegate.swift */,
 				74858FAD1ED2DC5600515810 /* Runner-Bridging-Header.h */,
 			);
@@ -593,6 +596,7 @@
 			files = (
 				74858FAF1ED2DC5600515810 /* AppDelegate.swift in Sources */,
 				8C24C4D42F0A4A949798A101 /* ChessPipController.swift in Sources */,
+				8C24C4D62F0B5C119798A201 /* MediaLibraryPicker.swift in Sources */,
 				9D4E7F0A2C3B4D5E6F708192 /* SceneDelegate.swift in Sources */,
 				1498D2341E8E89220040F4C2 /* GeneratedPluginRegistrant.m in Sources */,
 			);

@@ -1,9 +1,16 @@
 package com.chessEver.app
 
+import android.Manifest
 import android.app.PictureInPictureParams
 import android.content.Context
+import android.content.Intent
 import android.content.pm.PackageManager
+import androidx.core.app.ActivityCompat
+import androidx.core.content.ContextCompat
 import android.content.res.Configuration
+import android.net.Uri
+import android.provider.MediaStore
+import android.provider.OpenableColumns
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Canvas
@@ -44,7 +51,14 @@ import java.time.ZoneOffset
 import kotlin.math.roundToInt
 
 class MainActivity : FlutterActivity() {
+  companion object {
+    private const val PICK_FEEDBACK_IMAGE = 7142
+    private const val REQUEST_FEEDBACK_IMAGE_PERMISSION = 7143
+  }
+
   private var pipChannel: MethodChannel? = null
+  private var mediaPickerChannel: MethodChannel? = null
+  private var pendingFeedbackImageResult: MethodChannel.Result? = null
   private var pipPayload: MutableMap<String, Any?>? = null
   private var pipOverlay: ChessPipOverlayView? = null
   private val mainHandler = Handler(Looper.getMainLooper())
@@ -65,6 +79,16 @@ class MainActivity : FlutterActivity() {
 
   override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
     super.configureFlutterEngine(flutterEngine)
+    mediaPickerChannel = MethodChannel(
+      flutterEngine.dartExecutor.binaryMessenger,
+      "com.chessever/media_picker",
+    )
+    mediaPickerChannel?.setMethodCallHandler { call, result ->
+      when (call.method) {
+        "pickImage" -> pickFeedbackImage(result)
+        else -> result.notImplemented()
+      }
+    }
     pipChannel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "com.chessever/pip")
     pipChannel?.setMethodCallHandler { call, result ->
       when (call.method) {
@@ -154,8 +178,175 @@ class MainActivity : FlutterActivity() {
     removePipOverlay()
     sfxPool?.release()
     sfxPool = null
+    pendingFeedbackImageResult?.success(null)
+    pendingFeedbackImageResult = null
+    mediaPickerChannel?.setMethodCallHandler(null)
     pipChannel?.setMethodCallHandler(null)
     super.onDestroy()
+  }
+
+  @Deprecated("Deprecated in Java")
+  override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+    if (requestCode == PICK_FEEDBACK_IMAGE) {
+      handleFeedbackImageResult(resultCode, data)
+      return
+    }
+    @Suppress("DEPRECATION")
+    super.onActivityResult(requestCode, resultCode, data)
+  }
+
+  override fun onRequestPermissionsResult(
+    requestCode: Int,
+    permissions: Array<out String>,
+    grantResults: IntArray,
+  ) {
+    if (requestCode != REQUEST_FEEDBACK_IMAGE_PERMISSION) {
+      super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+      return
+    }
+    if (hasPhotoAccess()) {
+      launchFeedbackImagePicker()
+    } else {
+      finishFeedbackImageDenied()
+    }
+  }
+
+  private fun pickFeedbackImage(result: MethodChannel.Result) {
+    if (pendingFeedbackImageResult != null) {
+      result.error("BUSY", "A picture picker is already open.", null)
+      return
+    }
+    pendingFeedbackImageResult = result
+    if (hasPhotoAccess()) {
+      launchFeedbackImagePicker()
+      return
+    }
+    ActivityCompat.requestPermissions(
+      this,
+      photoPermissions(),
+      REQUEST_FEEDBACK_IMAGE_PERMISSION,
+    )
+  }
+
+  private fun photoPermissions(): Array<String> {
+    return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+      arrayOf(
+        Manifest.permission.READ_MEDIA_IMAGES,
+        Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED,
+      )
+    } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+      arrayOf(Manifest.permission.READ_MEDIA_IMAGES)
+    } else {
+      arrayOf(Manifest.permission.READ_EXTERNAL_STORAGE)
+    }
+  }
+
+  private fun hasPhotoAccess(): Boolean {
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+      if (ContextCompat.checkSelfPermission(this, Manifest.permission.READ_MEDIA_IMAGES) ==
+        PackageManager.PERMISSION_GRANTED
+      ) {
+        return true
+      }
+      return Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE &&
+        ContextCompat.checkSelfPermission(
+          this,
+          Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED,
+        ) == PackageManager.PERMISSION_GRANTED
+    }
+    return ContextCompat.checkSelfPermission(this, Manifest.permission.READ_EXTERNAL_STORAGE) ==
+      PackageManager.PERMISSION_GRANTED
+  }
+
+  private fun finishFeedbackImageDenied() {
+    val reply = pendingFeedbackImageResult
+    pendingFeedbackImageResult = null
+    reply?.error(
+      "PERMISSION_DENIED",
+      "Photo library permission is required to attach a picture.",
+      null,
+    )
+  }
+
+  private fun launchFeedbackImagePicker() {
+    val photoPicker = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+      Intent(MediaStore.ACTION_PICK_IMAGES).apply { type = "image/*" }
+    } else {
+      galleryPickIntent()
+    }
+    try {
+      @Suppress("DEPRECATION")
+      startActivityForResult(photoPicker, PICK_FEEDBACK_IMAGE)
+    } catch (_: Exception) {
+      try {
+        @Suppress("DEPRECATION")
+        startActivityForResult(galleryPickIntent(), PICK_FEEDBACK_IMAGE)
+      } catch (e: Exception) {
+        val reply = pendingFeedbackImageResult
+        pendingFeedbackImageResult = null
+        reply?.error("PICK_FAILED", "Could not open the photo library.", e.message)
+      }
+    }
+  }
+
+  private fun galleryPickIntent(): Intent {
+    return Intent(Intent.ACTION_PICK, MediaStore.Images.Media.EXTERNAL_CONTENT_URI).apply {
+      type = "image/*"
+    }
+  }
+
+  private fun handleFeedbackImageResult(resultCode: Int, data: Intent?) {
+    val reply = pendingFeedbackImageResult
+    pendingFeedbackImageResult = null
+    if (reply == null) return
+    if (resultCode != RESULT_OK) {
+      reply.success(null)
+      return
+    }
+    val uri = data?.data
+    if (uri == null) {
+      reply.success(null)
+      return
+    }
+    Thread {
+      try {
+        val bytes = contentResolver.openInputStream(uri)?.use { it.readBytes() }
+        if (bytes == null || bytes.isEmpty()) {
+          mainHandler.post {
+            reply.error("READ_FAILED", "Could not read the selected picture.", null)
+          }
+          return@Thread
+        }
+        val payload = hashMapOf<String, Any>(
+          "bytes" to bytes,
+          "fileName" to feedbackImageFileName(uri),
+        )
+        mainHandler.post { reply.success(payload) }
+      } catch (e: Exception) {
+        mainHandler.post {
+          reply.error("READ_FAILED", e.message, null)
+        }
+      }
+    }.start()
+  }
+
+  private fun feedbackImageFileName(uri: Uri): String {
+    contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
+      if (cursor.moveToFirst()) {
+        val index = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+        if (index >= 0) {
+          val name = cursor.getString(index)
+          if (!name.isNullOrBlank()) return name
+        }
+      }
+    }
+    val ext = when (contentResolver.getType(uri)) {
+      "image/png" -> "png"
+      "image/webp" -> "webp"
+      "image/heic", "image/heif" -> "heic"
+      else -> "jpg"
+    }
+    return "photo.$ext"
   }
 
   private fun isCurrentlyInPip(): Boolean {

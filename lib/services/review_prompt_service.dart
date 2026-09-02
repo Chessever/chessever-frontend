@@ -49,12 +49,36 @@ class ReviewPromptService {
 
   AppDatabase get _db => AppDatabase.instance;
 
+  /// Closes the sidebar drawer, then opens the feedback form on a context
+  /// that outlives that route.
+  ///
+  /// The menu used to `Navigator.pop` and immediately pass the drawer's
+  /// context into [showDirectFeedback]. By the time the user hit Send, that
+  /// context was unmounted and the Telegram relay never ran.
+  Future<void> openSidebarDirectFeedback(BuildContext drawerContext) async {
+    final rootContext = Navigator.of(
+      drawerContext,
+      rootNavigator: true,
+    ).context;
+    Navigator.of(drawerContext).pop();
+    await WidgetsBinding.instance.endOfFrame;
+    if (!rootContext.mounted) return;
+    await showDirectFeedback(context: rootContext);
+  }
+
   /// Opens the deliberate sidebar feedback destination directly. This does
   /// not participate in review-prompt cooldowns, ratings, or feature surveys.
   Future<void> showDirectFeedback({required BuildContext context}) async {
     if (!context.mounted) return;
+    // The sidebar drawer that hosts this entry point unmounts as soon as it
+    // closes, so never gate the relay on `context.mounted`: that guard
+    // silently dropped every sidebar report on the floor.
+    final messenger = ScaffoldMessenger.of(context);
     final result = await showDirectFeedbackDialog(context);
-    if (result == null || !context.mounted) return;
+    if (result == null) {
+      debugPrint('[Feedback] direct feedback cancelled');
+      return;
+    }
 
     PackageInfo? packageInfo;
     try {
@@ -63,6 +87,7 @@ class ReviewPromptService {
       // Feedback should still be deliverable when package metadata is absent.
     }
 
+    debugPrint('[Feedback] relaying direct feedback to Telegram');
     unawaited(
       TelegramNotificationService.instance.sendDirectFeedbackNotification(
         feedback: result.feedback,
@@ -76,8 +101,7 @@ class ReviewPromptService {
         pictureFileName: result.picture?.fileName,
       ),
     );
-    if (!context.mounted) return;
-    _showThanksSnackBar(context);
+    _showThanksSnackBarOn(messenger);
   }
 
   /// Increments the session (app-open) counter.
@@ -327,8 +351,12 @@ class ReviewPromptService {
 
   void _showThanksSnackBar(BuildContext context) {
     if (!context.mounted) return;
-    showAppSnack(
-      context,
+    _showThanksSnackBarOn(ScaffoldMessenger.of(context));
+  }
+
+  void _showThanksSnackBarOn(ScaffoldMessengerState messenger) {
+    showAppSnackOn(
+      messenger,
       'ChessEver grows and improves with your feedback. Thank you!',
     );
   }

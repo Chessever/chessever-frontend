@@ -258,9 +258,8 @@ class HamburgerMenu extends HookConsumerWidget {
                           height: 20.h / 14.h,
                         ),
                         onPressed: () {
-                          Navigator.of(context).pop();
-                          ReviewPromptService.instance.showDirectFeedback(
-                            context: context,
+                          ReviewPromptService.instance.openSidebarDirectFeedback(
+                            context,
                           );
                         },
                         showChevron: true,

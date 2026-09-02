@@ -52,6 +52,7 @@ import OneSignalFramework
     GeneratedPluginRegistrant.register(with: engineBridge.pluginRegistry)
     setupAudioSessionChannel(binaryMessenger: engineBridge.applicationRegistrar.messenger())
     setupPipChannel(binaryMessenger: engineBridge.applicationRegistrar.messenger())
+    setupMediaPickerChannel(binaryMessenger: engineBridge.applicationRegistrar.messenger())
   }
 
   private func setupAudioSessionChannel(binaryMessenger: FlutterBinaryMessenger) {
@@ -72,6 +73,10 @@ import OneSignalFramework
 
   private func setupPipChannel(binaryMessenger: FlutterBinaryMessenger) {
     ChessPipController.shared.configure(binaryMessenger: binaryMessenger)
+  }
+
+  private func setupMediaPickerChannel(binaryMessenger: FlutterBinaryMessenger) {
+    MediaLibraryPicker.shared.configure(binaryMessenger: binaryMessenger)
   }
 
   /// Configure audio session for ambient mode - doesn't interrupt other audio

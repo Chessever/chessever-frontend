@@ -21,6 +21,15 @@ String buildDirectFeedbackMessage({
       .toString();
 }
 
+/// Telegram rejects an empty document name and treats a path as the filename.
+/// Keep a real basename with an extension so sendDocument stays valid.
+String documentFileName(String? name) {
+  final base = (name ?? '').trim().split(RegExp(r'[/\\]')).last;
+  if (base.isEmpty) return 'feedback-picture.jpg';
+  if (base.contains('.')) return base;
+  return '$base.jpg';
+}
+
 /// Service to send notifications to Telegram bot for immediate feedback alerts.
 ///
 /// The bot token and chat ID come from the environment and are never written
@@ -68,6 +77,12 @@ class TelegramNotificationService {
 
   static const String _baseUrl = 'https://api.telegram.org/bot';
 
+  /// Forum topic used by the private feedback group.
+  static const int _feedbackThreadId = 19;
+
+  /// Telegram document captions are capped at 1024 characters.
+  static const int _captionLimit = 1024;
+
   /// Relay feedback opened deliberately from the sidebar. Unlike the
   /// engagement review flow, this has no star rating or feature survey.
   Future<bool> sendDirectFeedbackNotification({
@@ -80,6 +95,11 @@ class TelegramNotificationService {
   }) async {
     final botToken = _botToken;
     final chatId = _chatId;
+    final hasPicture = pictureBytes != null && pictureBytes.isNotEmpty;
+    debugPrint(
+      '[Telegram] relaying direct feedback '
+      '(picture: $hasPicture, configured: ${botToken.isNotEmpty && chatId.isNotEmpty})',
+    );
     if (botToken.isEmpty || chatId.isEmpty) {
       debugPrint(
         '[Telegram] Not configured — direct feedback was not relayed.',
@@ -96,39 +116,90 @@ class TelegramNotificationService {
 
     try {
       if (pictureBytes != null && pictureBytes.isNotEmpty) {
-        final request =
-            http.MultipartRequest(
-                'POST',
-                Uri.parse('$_baseUrl$botToken/sendDocument'),
-              )
-              ..fields['chat_id'] = chatId
-              ..fields['message_thread_id'] = '19'
-              ..fields['caption'] = message
-              ..files.add(
-                http.MultipartFile.fromBytes(
-                  'document',
-                  pictureBytes,
-                  filename: pictureFileName ?? 'feedback-picture',
-                ),
-              );
-        final response = await request.send();
-        return response.statusCode == 200;
+        final sentDocument = await _sendDocument(
+          botToken: botToken,
+          chatId: chatId,
+          caption: message,
+          bytes: pictureBytes,
+          fileName: pictureFileName,
+        );
+        if (sentDocument) return true;
+        debugPrint(
+          '[Telegram] sendDocument failed; falling back to text-only sendMessage',
+        );
       }
 
-      final response = await http.post(
-        Uri.parse('$_baseUrl$botToken/sendMessage'),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({
-          'chat_id': chatId,
-          'message_thread_id': 19,
-          'text': message,
-        }),
+      return await _sendText(
+        botToken: botToken,
+        chatId: chatId,
+        message: message,
       );
-      return response.statusCode == 200;
     } catch (e) {
       debugPrint('[Telegram] Error sending direct feedback: $e');
       return false;
     }
+  }
+
+  Future<bool> _sendDocument({
+    required String botToken,
+    required String chatId,
+    required String caption,
+    required Uint8List bytes,
+    String? fileName,
+  }) async {
+    final request =
+        http.MultipartRequest(
+            'POST',
+            Uri.parse('$_baseUrl$botToken/sendDocument'),
+          )
+          ..fields['chat_id'] = chatId
+          ..fields['message_thread_id'] = '$_feedbackThreadId'
+          ..fields['caption'] =
+              caption.length <= _captionLimit
+                  ? caption
+                  : caption.substring(0, _captionLimit)
+          ..files.add(
+            http.MultipartFile.fromBytes(
+              'document',
+              bytes,
+              filename: documentFileName(fileName),
+            ),
+          );
+    final response = await request.send();
+    if (response.statusCode != 200) {
+      debugPrint(
+        '[Telegram] sendDocument failed: ${response.statusCode} '
+        '${await response.stream.bytesToString()}',
+      );
+      return false;
+    }
+    debugPrint('[Telegram] sendDocument succeeded');
+    return true;
+  }
+
+  Future<bool> _sendText({
+    required String botToken,
+    required String chatId,
+    required String message,
+  }) async {
+    final response = await http.post(
+      Uri.parse('$_baseUrl$botToken/sendMessage'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({
+        'chat_id': chatId,
+        'message_thread_id': _feedbackThreadId,
+        'text': message,
+      }),
+    );
+    if (response.statusCode != 200) {
+      debugPrint(
+        '[Telegram] sendMessage failed: ${response.statusCode} '
+        '${response.body}',
+      );
+      return false;
+    }
+    debugPrint('[Telegram] sendMessage succeeded');
+    return true;
   }
 
   /// Send feedback notification to Telegram
@@ -175,7 +246,7 @@ class TelegramNotificationService {
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({
           'chat_id': chatId,
-          'message_thread_id': 19,
+          'message_thread_id': _feedbackThreadId,
           'text': message.toString(),
           'parse_mode': 'Markdown',
         }),

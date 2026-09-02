@@ -63,6 +63,23 @@ void main() {
     expect(find.text('Add picture'), findsOneWidget);
   });
 
+  testWidgets('asks the user to grant photo access when permission is denied', (
+    tester,
+  ) async {
+    await pumpDialog(
+      tester,
+      pickPicture: () async {
+        throw const FeedbackPicturePermissionDeniedException();
+      },
+    );
+
+    await tester.tap(find.text('Add picture'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Allow photo access to attach a picture.'), findsOneWidget);
+    expect(find.text('Open Settings'), findsOneWidget);
+  });
+
   testWidgets('returns feedback and attached picture from the same page', (
     tester,
   ) async {

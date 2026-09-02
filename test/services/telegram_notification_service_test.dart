@@ -79,4 +79,12 @@ void main() {
       expect(sent, isFalse);
     },
   );
+
+  test('documentFileName keeps a basename with an extension', () {
+    expect(documentFileName(null), 'feedback-picture.jpg');
+    expect(documentFileName(''), 'feedback-picture.jpg');
+    expect(documentFileName('board'), 'board.jpg');
+    expect(documentFileName('board.png'), 'board.png');
+    expect(documentFileName('/tmp/IMG_1234.HEIC'), 'IMG_1234.HEIC');
+  });
 }

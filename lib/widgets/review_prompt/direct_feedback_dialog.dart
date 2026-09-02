@@ -1,14 +1,12 @@
-import 'dart:io';
-import 'dart:typed_data';
-
+import 'package:app_settings/app_settings.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/alert_dialog/alert_modal.dart';
-import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 const int _maxPictureBytes = 8 * 1024 * 1024;
 
@@ -28,43 +26,58 @@ class DirectFeedbackResult {
   final FeedbackPicture? picture;
 }
 
-/// Image extensions offered through the iOS document picker.
-const List<String> _pictureExtensions = <String>[
-  'png',
-  'jpg',
-  'jpeg',
-  'heic',
-  'webp',
-];
+/// Native photo-library picker. PHPicker on iOS, the system image picker on
+/// Android — never the Files / document-picker UI.
+const MethodChannel feedbackMediaPickerChannel = MethodChannel(
+  'com.chessever/media_picker',
+);
 
 Future<FeedbackPicture?> pickFeedbackPicture() async {
-  // The vendored file_picker compiles only the document picker on iOS
-  // (see third_party/file_picker/PATCH.md): FileType.image would fail there
-  // with "Unsupported picker type". Ask for image documents instead, which
-  // is the UIDocumentPickerViewController path. Android keeps the gallery
-  // picker, which needs no permission.
-  final result = await FilePicker.platform.pickFiles(
-    type: Platform.isIOS ? FileType.custom : FileType.image,
-    allowedExtensions: Platform.isIOS ? _pictureExtensions : null,
-    allowMultiple: false,
-    withData: true,
-  );
-  if (result == null || result.files.isEmpty) return null;
-  final file = result.files.first;
+  final Object? raw;
+  try {
+    raw = await feedbackMediaPickerChannel.invokeMethod<dynamic>('pickImage');
+  } on PlatformException catch (error) {
+    if (error.code == 'PERMISSION_DENIED') {
+      throw const FeedbackPicturePermissionDeniedException();
+    }
+    throw const FeedbackPictureReadException();
+  }
+  if (raw == null) return null;
+  if (raw is! Map) {
+    throw const FeedbackPictureReadException();
+  }
 
-  final bytes =
-      file.bytes ??
-      (file.path == null ? null : await File(file.path!).readAsBytes());
-  if (bytes == null || bytes.isEmpty) return null;
+  final bytes = _feedbackPictureBytes(raw['bytes']);
+  if (bytes == null || bytes.isEmpty) {
+    throw const FeedbackPictureReadException();
+  }
   if (bytes.length > _maxPictureBytes) {
     throw const FeedbackPictureTooLargeException();
   }
 
-  return FeedbackPicture(bytes: bytes, fileName: file.name);
+  final fileName = raw['fileName'];
+  return FeedbackPicture(
+    bytes: bytes,
+    fileName: fileName is String && fileName.isNotEmpty ? fileName : 'photo.jpg',
+  );
+}
+
+Uint8List? _feedbackPictureBytes(Object? value) {
+  if (value is Uint8List) return value;
+  if (value is List<int>) return Uint8List.fromList(value);
+  return null;
 }
 
 class FeedbackPictureTooLargeException implements Exception {
   const FeedbackPictureTooLargeException();
+}
+
+class FeedbackPictureReadException implements Exception {
+  const FeedbackPictureReadException();
+}
+
+class FeedbackPicturePermissionDeniedException implements Exception {
+  const FeedbackPicturePermissionDeniedException();
 }
 
 Future<DirectFeedbackResult?> showDirectFeedbackDialog(
@@ -93,6 +106,7 @@ class _DirectFeedbackDialogState extends State<DirectFeedbackDialog> {
   final TextEditingController _feedbackController = TextEditingController();
   FeedbackPicture? _picture;
   String? _pictureError;
+  bool _photoPermissionDenied = false;
   bool _canSend = false;
   bool _isPicking = false;
 
@@ -108,6 +122,7 @@ class _DirectFeedbackDialogState extends State<DirectFeedbackDialog> {
     setState(() {
       _isPicking = true;
       _pictureError = null;
+      _photoPermissionDenied = false;
     });
     try {
       final picture = await (widget.pickPicture ?? pickFeedbackPicture)();
@@ -116,6 +131,12 @@ class _DirectFeedbackDialogState extends State<DirectFeedbackDialog> {
     } on FeedbackPictureTooLargeException {
       if (!mounted) return;
       setState(() => _pictureError = 'Choose a picture smaller than 8 MB.');
+    } on FeedbackPicturePermissionDeniedException {
+      if (!mounted) return;
+      setState(() {
+        _pictureError = 'Allow photo access to attach a picture.';
+        _photoPermissionDenied = true;
+      });
     } catch (_) {
       if (!mounted) return;
       setState(() => _pictureError = 'We could not add that picture.');
@@ -129,6 +150,7 @@ class _DirectFeedbackDialogState extends State<DirectFeedbackDialog> {
     setState(() {
       _picture = null;
       _pictureError = null;
+      _photoPermissionDenied = false;
     });
   }
 
@@ -312,6 +334,11 @@ class _DirectFeedbackDialogState extends State<DirectFeedbackDialog> {
                     color: context.colors.danger,
                   ),
                 ),
+                if (_photoPermissionDenied)
+                  TextButton(
+                    onPressed: () => AppSettings.openAppSettings(),
+                    child: const Text('Open Settings'),
+                  ),
               ],
               SizedBox(height: 18.sp),
               SizedBox(
