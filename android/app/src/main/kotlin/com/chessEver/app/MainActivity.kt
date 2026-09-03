@@ -1,12 +1,9 @@
 package com.chessEver.app
 
-import android.Manifest
 import android.app.PictureInPictureParams
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
-import androidx.core.app.ActivityCompat
-import androidx.core.content.ContextCompat
 import android.content.res.Configuration
 import android.net.Uri
 import android.provider.MediaStore
@@ -53,7 +50,6 @@ import kotlin.math.roundToInt
 class MainActivity : FlutterActivity() {
   companion object {
     private const val PICK_FEEDBACK_IMAGE = 7142
-    private const val REQUEST_FEEDBACK_IMAGE_PERMISSION = 7143
   }
 
   private var pipChannel: MethodChannel? = null
@@ -195,102 +191,49 @@ class MainActivity : FlutterActivity() {
     super.onActivityResult(requestCode, resultCode, data)
   }
 
-  override fun onRequestPermissionsResult(
-    requestCode: Int,
-    permissions: Array<out String>,
-    grantResults: IntArray,
-  ) {
-    if (requestCode != REQUEST_FEEDBACK_IMAGE_PERMISSION) {
-      super.onRequestPermissionsResult(requestCode, permissions, grantResults)
-      return
-    }
-    if (hasPhotoAccess()) {
-      launchFeedbackImagePicker()
-    } else {
-      finishFeedbackImageDenied()
-    }
-  }
-
   private fun pickFeedbackImage(result: MethodChannel.Result) {
     if (pendingFeedbackImageResult != null) {
       result.error("BUSY", "A picture picker is already open.", null)
       return
     }
     pendingFeedbackImageResult = result
-    if (hasPhotoAccess()) {
-      launchFeedbackImagePicker()
-      return
-    }
-    ActivityCompat.requestPermissions(
-      this,
-      photoPermissions(),
-      REQUEST_FEEDBACK_IMAGE_PERMISSION,
-    )
+    launchFeedbackImagePicker()
   }
 
-  private fun photoPermissions(): Array<String> {
-    return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-      arrayOf(
-        Manifest.permission.READ_MEDIA_IMAGES,
-        Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED,
-      )
-    } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-      arrayOf(Manifest.permission.READ_MEDIA_IMAGES)
-    } else {
-      arrayOf(Manifest.permission.READ_EXTERNAL_STORAGE)
-    }
-  }
-
-  private fun hasPhotoAccess(): Boolean {
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-      if (ContextCompat.checkSelfPermission(this, Manifest.permission.READ_MEDIA_IMAGES) ==
-        PackageManager.PERMISSION_GRANTED
-      ) {
-        return true
-      }
-      return Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE &&
-        ContextCompat.checkSelfPermission(
-          this,
-          Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED,
-        ) == PackageManager.PERMISSION_GRANTED
-    }
-    return ContextCompat.checkSelfPermission(this, Manifest.permission.READ_EXTERNAL_STORAGE) ==
-      PackageManager.PERMISSION_GRANTED
-  }
-
-  private fun finishFeedbackImageDenied() {
-    val reply = pendingFeedbackImageResult
-    pendingFeedbackImageResult = null
-    reply?.error(
-      "PERMISSION_DENIED",
-      "Photo library permission is required to attach a picture.",
-      null,
-    )
-  }
-
+  // Opens a picker that runs in a system process and returns one scoped URI,
+  // so the app never needs READ_MEDIA_IMAGES / READ_EXTERNAL_STORAGE. Google
+  // Play rejects API 33+ apps that ask for those when a system picker is
+  // enough, which is why neither this code nor the manifest declares one.
   private fun launchFeedbackImagePicker() {
-    val photoPicker = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-      Intent(MediaStore.ACTION_PICK_IMAGES).apply { type = "image/*" }
-    } else {
-      galleryPickIntent()
-    }
-    try {
-      @Suppress("DEPRECATION")
-      startActivityForResult(photoPicker, PICK_FEEDBACK_IMAGE)
-    } catch (_: Exception) {
+    val intents = listOfNotNull(systemPhotoPickerIntent(), openDocumentIntent())
+    for (intent in intents) {
       try {
         @Suppress("DEPRECATION")
-        startActivityForResult(galleryPickIntent(), PICK_FEEDBACK_IMAGE)
-      } catch (e: Exception) {
-        val reply = pendingFeedbackImageResult
-        pendingFeedbackImageResult = null
-        reply?.error("PICK_FAILED", "Could not open the photo library.", e.message)
+        startActivityForResult(intent, PICK_FEEDBACK_IMAGE)
+        return
+      } catch (_: Exception) {
+        // Try the next picker.
       }
     }
+    val reply = pendingFeedbackImageResult
+    pendingFeedbackImageResult = null
+    reply?.error("PICK_FAILED", "Could not open the photo library.", null)
   }
 
-  private fun galleryPickIntent(): Intent {
-    return Intent(Intent.ACTION_PICK, MediaStore.Images.Media.EXTERNAL_CONTENT_URI).apply {
+  // The Android photo picker: shipped with API 33+, and back-ported to API
+  // 30-32 through a Google Play system module, hence the resolve check
+  // instead of a plain SDK_INT gate.
+  private fun systemPhotoPickerIntent(): Intent? {
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return null
+    val intent = Intent(MediaStore.ACTION_PICK_IMAGES).apply { type = "image/*" }
+    return if (intent.resolveActivity(packageManager) != null) intent else null
+  }
+
+  // Storage Access Framework fallback for devices without the photo picker.
+  // Also permission-free: the picked document arrives as a granted URI.
+  private fun openDocumentIntent(): Intent {
+    return Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+      addCategory(Intent.CATEGORY_OPENABLE)
       type = "image/*"
     }
   }

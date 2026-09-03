@@ -15,15 +15,19 @@
    <uses-permission android:name="com.google.android.gms.permission.AD_ID" />
 
 
-   <!-- Feedback "Add picture" asks for photo access, then opens the gallery. -->
-   <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
-   <uses-permission android:name="android.permission.READ_MEDIA_VISUAL_USER_SELECTED" />
-   <uses-permission
-       android:name="android.permission.READ_EXTERNAL_STORAGE"
-       android:maxSdkVersion="32" />
-   <!-- Force-remove unused media-read permissions that plugins might contribute -->
+   <!-- Feedback "Add picture" goes through the Android system photo picker
+        (MediaStore.ACTION_PICK_IMAGES), falling back to the Storage Access
+        Framework on older releases. Both run out-of-process and hand back a
+        single scoped URI, so the app needs NO media-read permission at all.
+        Google Play rejects API 33+ apps that declare the broad media
+        permissions when a system picker suffices (policy strike on 3408), so
+        every one of them is force-removed from the merged manifest here. -->
+   <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" tools:node="remove" />
+   <uses-permission android:name="android.permission.READ_MEDIA_VISUAL_USER_SELECTED" tools:node="remove" />
    <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" tools:node="remove" />
    <uses-permission android:name="android.permission.READ_MEDIA_AUDIO" tools:node="remove" />
+   <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" tools:node="remove" />
+   <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" tools:node="remove" />
 
    <application
        android:label="${appName}"

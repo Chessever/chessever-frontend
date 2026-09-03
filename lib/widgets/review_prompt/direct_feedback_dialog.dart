@@ -26,8 +26,12 @@ class DirectFeedbackResult {
   final FeedbackPicture? picture;
 }
 
-/// Native photo-library picker. PHPicker on iOS, the system image picker on
-/// Android — never the Files / document-picker UI.
+/// Native photo-library picker. PHPicker on iOS, the Android system photo
+/// picker (`MediaStore.ACTION_PICK_IMAGES`) on Android, which falls back to the
+/// Storage Access Framework only on devices too old to ship that picker.
+/// Both run out-of-process and hand back a single scoped item, so Android needs
+/// no `READ_MEDIA_IMAGES` grant — Play rejects that permission when a system
+/// picker is enough.
 const MethodChannel feedbackMediaPickerChannel = MethodChannel(
   'com.chessever/media_picker',
 );
