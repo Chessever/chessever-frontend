@@ -9,6 +9,7 @@ ROUND_START_DEDUPE_MIGRATION = Path(
 PUNCTUALITY_MIGRATION = Path(
     "supabase/migrations/20260815155000_start_alert_punctuality.sql"
 )
+TRANSIENT_HELPER = Path("supabase/functions/onesignal-dispatch/transient.ts")
 
 
 def _source() -> str:
@@ -33,9 +34,20 @@ def test_dispatch_fails_closed_when_vault_token_is_unavailable() -> None:
 
 def test_dispatch_function_keeps_gateway_jwt_verification_disabled() -> None:
     config = SUPABASE_CONFIG.read_text(encoding="utf-8")
-
-    assert "[functions.onesignal-dispatch]" in config
-    assert "verify_jwt = false" in config
+    required = (
+        "onesignal-dispatch",
+        "fetch-fide-photo-webp",
+        "fetch-lichess-annotations",
+        "revenuecat-webhook",
+        "live-activity-refresh",
+    )
+    for name in required:
+        section = f"[functions.{name}]"
+        assert section in config, section
+        after = config.split(section, 1)[1]
+        next_section = after.find("\n[")
+        block = after if next_section < 0 else after[:next_section]
+        assert "verify_jwt = false" in block, name
 
 
 def test_onesignal_targets_every_enabled_device_by_external_id() -> None:
@@ -118,7 +130,8 @@ def test_round_started_requires_actual_move_before_dispatch() -> None:
     # silently until the 1h stale guard eats the row.
     moves_start = source.index("async function hasRoundWithMoves(")
     moves = source[moves_start:source.index("function sameInstant(", moves_start)]
-    assert "throw new Error(`Round move lookup failed: ${error.message}`)" in moves
+    assert '"Round move lookup"' in moves  # runQuery throws `<label> failed: …`
+    assert "runQuery" in moves
     assert "if (error) return false" not in moves
 
 
@@ -185,7 +198,8 @@ def test_game_start_window_lookup_is_chunked_and_fails_loud() -> None:
     win_block = source[win_start:win_end]
 
     assert "chunk(userIds, POSTGREST_IN_QUERY_CHUNK_SIZE)" in win_block
-    assert "Game-start window lookup failed" in win_block
+    assert '"Game-start window lookup"' in win_block  # runQuery fails loud
+    assert "runQuery" in win_block
 
 
 def test_round_event_display_name_omits_redundant_single_open_section() -> None:
@@ -306,9 +320,117 @@ def test_a_claimed_batch_is_not_walked_one_item_at_a_time() -> None:
 def test_transient_dispatch_errors_retry_instead_of_burning_the_row() -> None:
     source = _source()
 
-    assert "if (item.attempts < MAX_DISPATCH_ATTEMPTS)" in source
-    assert "await markRetry(item.id, item.attempts, `${error}`)" in source
+    assert "const transient = isTransientError(error)" in source
+    assert "if (item.attempts < retryBudgetFor(transient))" in source
+    assert "await markRetry(item.id, item.attempts, message, transient)" in source
     assert "function markRetry" in source
+    assert "function retryBudgetFor" in source
+
+
+def test_transient_failures_outlive_a_provider_incident_before_failing() -> None:
+    # 2026-09-01 15:00-16:00 UTC: one HTTP/2 stream failure on the favorite
+    # player name lookup burned 137 game_started + 15 round_started rows. With
+    # heartbeats every 15s the old budget (four claims, 15/30/45s backoff) went
+    # terminal ~2 minutes after the first dropped stream. Transport errors now
+    # get a budget that outlasts a real incident; deterministic ones do not.
+    source = _source()
+
+    assert "const MAX_DISPATCH_ATTEMPTS = 4" in source
+    assert "const MAX_TRANSIENT_ATTEMPTS = 20" in source
+    assert "const TRANSIENT_BACKOFF_CAP_MS = 90 * 1000" in source
+    assert (
+        "return transient ? MAX_TRANSIENT_ATTEMPTS : MAX_DISPATCH_ATTEMPTS"
+        in source
+    )
+    delay_start = source.index("function retryDelayMs(")
+    delay = source[delay_start:source.index("async function markRetry(", delay_start)]
+    assert "if (!transient) return RETRY_BACKOFF_MS * attempts" in delay
+    assert "RETRY_BACKOFF_MS * 2 ** Math.max(0, attempts - 1)" in delay
+    assert "TRANSIENT_BACKOFF_CAP_MS" in delay
+
+
+def test_postgrest_reads_retry_transient_failures_in_process() -> None:
+    # A dropped stream recovers on the very next request (fresh connection),
+    # so every PostgREST read retries sub-second before the outbox ever sees it.
+    source = _source()
+    helper = TRANSIENT_HELPER.read_text(encoding="utf-8")
+
+    assert 'from "./transient.ts"' in source
+    assert "export function isTransientError" in helper
+    assert "export async function withTransientRetry" in helper
+    assert "export async function runQuery" in helper
+    assert "/error sending request/i" in helper
+    assert "/http2 error/i" in helper
+    # Deterministic PostgREST shapes must never be retried as transient.
+    patterns = helper.split("const TRANSIENT_PATTERNS")[1].split("];")[0]
+    assert "PGRST116" not in patterns
+    assert "PGRST1" not in patterns
+
+    pages_start = source.index("async function fetchAllPages<T>(")
+    pages = source[pages_start:]
+    assert "await runQuery(label, () => page(start, to))" in pages
+    assert "throw new Error(`${label} failed: ${error.message}`)" not in pages
+
+
+def test_context_lookups_fail_loud_instead_of_degrading_to_no_recipients() -> None:
+    # buildContext used to discard `error` on the games/rounds/tours reads: a
+    # transport blip there produced a null row, empty recipients and a
+    # "no_recipients" skip the health check never counts.
+    source = _source()
+    ctx_start = source.index("async function buildContext(")
+    ctx = source[ctx_start:source.index("function isCombinedTour(", ctx_start)]
+
+    assert "const { data } = await supabase" not in ctx
+    assert "const { data: groupedTours } = await supabase" not in ctx
+    for label in (
+        "Game lookup",
+        "Round lookup",
+        "Tour lookup",
+        "Group broadcast lookup",
+        "Group sections lookup",
+    ):
+        assert f'"{label}"' in ctx, label
+
+    map_start = source.index("async function resolvePlayerFavoriteMap(")
+    map_block = source[map_start:source.index("function buildEventHeader(", map_start)]
+    assert '"Favorite map round games lookup"' in map_block
+    assert "const { data: games } = await supabase" not in map_block
+
+    dedupe_start = source.index("async function hasSentGroupedRoundStart(")
+    dedupe = source[
+        dedupe_start:source.index("async function hasRoundWithMoves(", dedupe_start)
+    ]
+    assert "if (error) return false" not in dedupe
+    assert '"Grouped round-start dedupe lookup"' in dedupe
+
+
+def test_outbox_state_writes_never_rethrow_into_the_dispatch_loop() -> None:
+    # markSent after a successful send must not throw: the catch would
+    # markRetry and re-send a delivered push. State writes retry in-process,
+    # then log; requeue_stuck_notification_outbox is the backstop.
+    source = _source()
+
+    assert "async function persistOutboxState(" in source
+    for fn in ("markSent", "markSkipped", "reschedulePending", "markRetry", "markFailed"):
+        start = source.index(f"async function {fn}(")
+        block = source[start:source.index("\n}\n", start)]
+        assert "persistOutboxState(" in block, fn
+
+    window_start = source.index("async function recordGameStartWindow(")
+    window = source[window_start:source.index("async function buildContext(", window_start)]
+    assert "try {" in window and "} catch (error) {" in window
+    assert 'await supabase.rpc("record_game_start_window"' not in source
+
+
+def test_persisted_last_error_is_a_trimmed_one_liner() -> None:
+    # `${error}` on a thrown PostgREST object persisted "[object Object]", and
+    # a Deno transport error carries the full request URL (hundreds of uuids).
+    source = _source()
+    catch_start = source.index("const transient = isTransientError(error)")
+    catch = source[catch_start:source.index("async function persistOutboxState(", catch_start)]
+
+    assert "const message = describeError(error)" in catch
+    assert "`${error}`" not in catch
 
 
 def test_game_started_is_not_parked_for_two_minutes() -> None:

@@ -39,3 +39,9 @@ verify_jwt = false
 # older fork of it that must not be deployed.
 [functions.revenuecat-webhook]
 verify_jwt = false
+
+# Called by the data hub with a shared refresh token, not a user JWT. Gateway
+# verification would 401 every clock tick and Live Activities would freeze.
+# NEVER set this to true.
+[functions.live-activity-refresh]
+verify_jwt = false

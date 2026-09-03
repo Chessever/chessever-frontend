@@ -1,6 +1,13 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import { filterGameStartedPlayerRecipients } from "./player_game_recipients.ts";
+import {
+  describeError,
+  isTransientError,
+  type PostgrestResult,
+  runQuery,
+  runQuerySettled,
+} from "./transient.ts";
 
 type OutboxItem = {
   id: string;
@@ -164,18 +171,14 @@ async function resolveDispatchLimit(req: Request): Promise<number> {
 }
 
 async function claimPending(limit: number): Promise<OutboxItem[]> {
-  const { data, error } = await supabase.rpc(
-    "claim_notification_outbox_batch",
-    {
-      p_limit: limit,
-    },
+  // Retrying a claim whose response was lost is safe: the rows it moved to
+  // 'processing' are orphaned, and requeue_stuck_notification_outbox hands
+  // them back within a minute. The retry simply claims the next batch.
+  const data = await runQuery<OutboxItem[]>(
+    "Outbox claim",
+    () => supabase.rpc("claim_notification_outbox_batch", { p_limit: limit }),
   );
-
-  if (error) {
-    throw error;
-  }
-
-  return (data ?? []) as OutboxItem[];
+  return data ?? [];
 }
 
 const STALE_THRESHOLD_MS = 60 * 60 * 1000; // 1 hour
@@ -424,11 +427,7 @@ async function processItem(item: OutboxItem) {
       // TTL = 15 min — comfortably covers the gap between round start
       // and first moves in any standard tournament format.
       if (dedupedPlayerRecipients.length > 0) {
-        await supabase.rpc("record_game_start_window", {
-          p_user_ids: dedupedPlayerRecipients,
-          p_round_id: roundId,
-          p_cooldown_seconds: 900,
-        });
+        await recordGameStartWindow(dedupedPlayerRecipients, roundId);
       }
 
       // Event-only recipients (starred event, no favorites playing)
@@ -847,11 +846,7 @@ async function processItem(item: OutboxItem) {
         (uid) => context.playerUserIds.has(uid),
       );
       if (playerRecipients.length > 0) {
-        await supabase.rpc("record_game_start_window", {
-          p_user_ids: playerRecipients,
-          p_round_id: item.round_id,
-          p_cooldown_seconds: 900, // 15 min covers delay until round_started cron runs
-        });
+        await recordGameStartWindow(playerRecipients, item.round_id);
       }
     }
 
@@ -864,70 +859,172 @@ async function processItem(item: OutboxItem) {
     };
   } catch (error) {
     // A transient PostgREST hiccup or a OneSignal 5xx used to burn the row
-    // permanently on the first try, so the push simply never arrived. Retry a
-    // few times instead; every board/round push carries a collapse_id, so a
-    // duplicate after a partial send replaces the tray entry rather than
-    // stacking a second one.
-    if (item.attempts < MAX_DISPATCH_ATTEMPTS) {
-      await markRetry(item.id, item.attempts, `${error}`);
-      return { id: item.id, status: "pending", reason: `retry: ${error}` };
+    // permanently on the first try, so the push simply never arrived. Retry
+    // instead; every board/round push carries a collapse_id, so a duplicate
+    // after a partial send replaces the tray entry rather than stacking a
+    // second one.
+    //
+    // How long we keep trying depends on what failed. A dropped HTTP/2 stream
+    // or a gateway 503 resolves on the provider's schedule, so it gets a
+    // budget that outlasts a real incident. A bad payload or a query
+    // PostgREST rejects never resolves, so it still fails after four claims.
+    const transient = isTransientError(error);
+    const message = describeError(error);
+    if (item.attempts < retryBudgetFor(transient)) {
+      await markRetry(item.id, item.attempts, message, transient);
+      return {
+        id: item.id,
+        status: "pending",
+        reason: `retry: ${message}`,
+        transient,
+      };
     }
-    await markFailed(item.id, item.attempts, `${error}`);
-    return { id: item.id, status: "failed", error: `${error}` };
+    await markFailed(item.id, item.attempts, message);
+    return { id: item.id, status: "failed", error: message, transient };
+  }
+}
+
+// Outbox state writes are best-effort: they retry a transient failure
+// in-process, then log and move on. Throwing here would re-run the business
+// logic above (and re-send) for a row that was already delivered; a row whose
+// terminal write was lost is parked in 'processing' and handed back by
+// requeue_stuck_notification_outbox instead.
+async function persistOutboxState(
+  label: string,
+  id: string,
+  write: () => PromiseLike<PostgrestResult<unknown>>,
+) {
+  try {
+    await runQuery(label, write);
+  } catch (error) {
+    console.error(
+      `[onesignal-dispatch] ${label} for ${id} could not be persisted: ${
+        describeError(error, 300)
+      }`,
+    );
   }
 }
 
 async function markSent(id: string) {
-  await supabase
-    .from("notification_outbox")
-    .update({ status: "sent", last_error: null })
-    .eq("id", id);
+  await persistOutboxState("Mark sent", id, () =>
+    supabase
+      .from("notification_outbox")
+      .update({ status: "sent", last_error: null })
+      .eq("id", id));
 }
 
 async function markSkipped(id: string, reason: string) {
-  await supabase
-    .from("notification_outbox")
-    .update({ status: "skipped", last_error: reason })
-    .eq("id", id);
+  await persistOutboxState("Mark skipped", id, () =>
+    supabase
+      .from("notification_outbox")
+      .update({ status: "skipped", last_error: reason })
+      .eq("id", id));
 }
 
 async function reschedulePending(id: string, reason: string) {
-  await supabase
-    .from("notification_outbox")
-    .update({
-      status: "pending",
-      last_error: reason,
-      // Waiting is not a failed attempt. Every claim increments attempts, so a
-      // round that sits 10 minutes between its outbox row and its first move
-      // would otherwise exhaust the error-retry budget before it ever tried to
-      // send, and the first transient blip would burn the row.
-      attempts: 0,
-      not_before: new Date(Date.now() + ROUND_START_RETRY_DELAY_MS)
-        .toISOString(),
-    })
-    .eq("id", id);
+  await persistOutboxState("Reschedule pending", id, () =>
+    supabase
+      .from("notification_outbox")
+      .update({
+        status: "pending",
+        last_error: reason,
+        // Waiting is not a failed attempt. Every claim increments attempts, so
+        // a round that sits 10 minutes between its outbox row and its first
+        // move would otherwise exhaust the error-retry budget before it ever
+        // tried to send, and the first transient blip would burn the row.
+        attempts: 0,
+        not_before: new Date(Date.now() + ROUND_START_RETRY_DELAY_MS)
+          .toISOString(),
+      })
+      .eq("id", id));
 }
 
+// Deterministic failures — a bad payload, a OneSignal 4xx, a query PostgREST
+// rejects — do not fix themselves: four claims and the row is failed.
 const MAX_DISPATCH_ATTEMPTS = 4;
 const RETRY_BACKOFF_MS = 15 * 1000;
 
-async function markRetry(id: string, attempts: number, error: string) {
-  await supabase
-    .from("notification_outbox")
-    .update({
-      status: "pending",
-      last_error: error,
-      not_before: new Date(Date.now() + RETRY_BACKOFF_MS * attempts)
-        .toISOString(),
-    })
-    .eq("id", id);
+// Transport and gateway failures fix themselves on the provider's schedule.
+// Heartbeats claim every 15 s, so the old budget (15/30/45 s backoff, four
+// claims) burned a row about two minutes after the first dropped HTTP/2
+// stream — 152 start alerts on 2026-09-01. Twenty claims at a 90 s cap keep a
+// row alive for roughly half an hour, inside the 1 h stale guard, which is the
+// bound a start alert can still be true under.
+const MAX_TRANSIENT_ATTEMPTS = 20;
+const TRANSIENT_BACKOFF_CAP_MS = 90 * 1000;
+
+function retryBudgetFor(transient: boolean): number {
+  return transient ? MAX_TRANSIENT_ATTEMPTS : MAX_DISPATCH_ATTEMPTS;
+}
+
+function retryDelayMs(attempts: number, transient: boolean): number {
+  if (!transient) return RETRY_BACKOFF_MS * attempts;
+  // 15 s, 30 s, 60 s, then 90 s flat.
+  return Math.min(
+    TRANSIENT_BACKOFF_CAP_MS,
+    RETRY_BACKOFF_MS * 2 ** Math.max(0, attempts - 1),
+  );
+}
+
+async function markRetry(
+  id: string,
+  attempts: number,
+  error: string,
+  transient: boolean,
+) {
+  const delayMs = retryDelayMs(attempts, transient);
+  console.warn(
+    `[onesignal-dispatch] ${
+      transient ? "transient" : "dispatch"
+    } failure on ${id} (attempt ${attempts}/${
+      retryBudgetFor(transient)
+    }), retrying in ${delayMs}ms: ${error.slice(0, 300)}`,
+  );
+  await persistOutboxState("Mark retry", id, () =>
+    supabase
+      .from("notification_outbox")
+      .update({
+        status: "pending",
+        last_error: error,
+        not_before: new Date(Date.now() + delayMs).toISOString(),
+      })
+      .eq("id", id));
 }
 
 async function markFailed(id: string, attempts: number, error: string) {
-  await supabase
-    .from("notification_outbox")
-    .update({ status: "failed", attempts, last_error: error })
-    .eq("id", id);
+  console.error(
+    `[onesignal-dispatch] ${id} failed terminally after ${attempts} attempts: ${
+      error.slice(0, 300)
+    }`,
+  );
+  await persistOutboxState("Mark failed", id, () =>
+    supabase
+      .from("notification_outbox")
+      .update({ status: "failed", attempts, last_error: error })
+      .eq("id", id));
+}
+
+// Written after the push went out, so this must never throw: a retry from
+// here would re-send. Lose the window and the worst case is one duplicate
+// board alert, which the per-board collapse_id folds into the same tray entry.
+async function recordGameStartWindow(userIds: string[], roundId: string) {
+  try {
+    await runQuery(
+      "Game-start window record",
+      () =>
+        supabase.rpc("record_game_start_window", {
+          p_user_ids: userIds,
+          p_round_id: roundId,
+          p_cooldown_seconds: 900, // 15 min covers the gap to the round_started cron
+        }),
+    );
+  } catch (error) {
+    console.error(
+      `[onesignal-dispatch] game-start window for round ${roundId} not recorded (${userIds.length} users): ${
+        describeError(error, 300)
+      }`,
+    );
+  }
 }
 
 async function buildContext(item: OutboxItem) {
@@ -938,51 +1035,67 @@ async function buildContext(item: OutboxItem) {
   let groupBroadcastId = item.group_broadcast_id ?? null;
   let groupSectionCount = 0;
 
-  if (item.game_id) {
-    const { data } = await supabase
-      .from("games")
-      .select(
-        "id,tour_id,player_white,player_black,player_fide_ids,fen,players,status,last_move,last_move_time,last_clock_white,last_clock_black",
-      )
-      .eq("id", item.game_id)
-      .maybeSingle();
-    game = (data ?? null) as GameRow | null;
+  // Every lookup here fails loud. They used to discard `error` and carry on
+  // with a null row, so one dropped HTTP/2 stream on the games read turned a
+  // real board into "no_recipients" — a skip the health check never sees.
+  const gameId = item.game_id;
+  if (gameId) {
+    game = await runQuery<GameRow>("Game lookup", () =>
+      supabase
+        .from("games")
+        .select(
+          "id,tour_id,player_white,player_black,player_fide_ids,fen,players,status,last_move,last_move_time,last_clock_white,last_clock_black",
+        )
+        .eq("id", gameId)
+        .maybeSingle());
   }
 
-  if (item.round_id) {
-    const { data } = await supabase
-      .from("rounds")
-      .select("id,tour_id,name,starts_at")
-      .eq("id", item.round_id)
-      .maybeSingle();
-    round = (data ?? null) as RoundRow | null;
+  const roundId = item.round_id;
+  if (roundId) {
+    round = await runQuery<RoundRow>("Round lookup", () =>
+      supabase
+        .from("rounds")
+        .select("id,tour_id,name,starts_at")
+        .eq("id", roundId)
+        .maybeSingle());
   }
 
   const tourId = item.tour_id ?? game?.tour_id ?? round?.tour_id ?? null;
   if (tourId) {
-    const { data } = await supabase
-      .from("tours")
-      .select("id,name,slug,group_broadcast_id")
-      .eq("id", tourId)
-      .maybeSingle();
-    tour = (data ?? null) as TourRow | null;
+    tour = await runQuery<TourRow>("Tour lookup", () =>
+      supabase
+        .from("tours")
+        .select("id,name,slug,group_broadcast_id")
+        .eq("id", tourId)
+        .maybeSingle());
     groupBroadcastId = groupBroadcastId ?? tour?.group_broadcast_id ?? null;
   }
 
   if (groupBroadcastId) {
-    const { data } = await supabase
-      .from("group_broadcasts")
-      .select("name")
-      .eq("id", groupBroadcastId)
-      .maybeSingle();
-    eventName = data?.name ?? null;
+    const broadcastId = groupBroadcastId;
+    const groupBroadcast = await runQuery<{ name: string | null }>(
+      "Group broadcast lookup",
+      () =>
+        supabase
+          .from("group_broadcasts")
+          .select("name")
+          .eq("id", broadcastId)
+          .maybeSingle(),
+    );
+    eventName = groupBroadcast?.name ?? null;
 
-    const { data: groupedTours } = await supabase
-      .from("tours")
-      .select("id,name,slug")
-      .eq("group_broadcast_id", groupBroadcastId);
-    groupSectionCount = ((groupedTours ?? []) as TourRow[])
-      .filter((row) => !isCombinedTour(row)).length;
+    const groupedTours = await runQuery<
+      Pick<TourRow, "id" | "name" | "slug">[]
+    >(
+      "Group sections lookup",
+      () =>
+        supabase
+          .from("tours")
+          .select("id,name,slug")
+          .eq("group_broadcast_id", broadcastId),
+    );
+    groupSectionCount = (groupedTours ?? [])
+      .filter((row) => !isCombinedTour(row as TourRow)).length;
   }
 
   const displayEventName = buildRoundEventDisplayName(
@@ -1102,37 +1215,41 @@ async function hasSentGroupedRoundStart(
   const itemCreatedAt = new Date(item.created_at).getTime();
   const minCreatedAt = new Date(itemCreatedAt - 60 * 60 * 1000).toISOString();
 
-  const { data, error } = await supabase
-    .from("notification_outbox")
-    .select("id,payload")
-    .eq("event_type", "round_started")
-    .eq("group_broadcast_id", groupId)
-    .eq("status", "sent")
-    .neq("id", item.id)
-    .gte("created_at", minCreatedAt)
-    .limit(25);
+  // A failed dedupe read used to answer "not sent yet", which is exactly the
+  // answer that double-sends a grouped round start. Fail loud and retry.
+  const data = await runQuery<
+    Array<{ payload?: Record<string, unknown> | null }>
+  >("Grouped round-start dedupe lookup", () =>
+    supabase
+      .from("notification_outbox")
+      .select("id,payload")
+      .eq("event_type", "round_started")
+      .eq("group_broadcast_id", groupId)
+      .eq("status", "sent")
+      .neq("id", item.id)
+      .gte("created_at", minCreatedAt)
+      .limit(25));
 
-  if (error) return false;
-
-  return ((data ?? []) as Array<{ payload?: Record<string, unknown> | null }>)
+  return (data ?? [])
     .some((row) => sameInstant(row.payload?.starts_at, startsAt));
 }
 
 async function hasRoundWithMoves(roundId: string): Promise<boolean> {
-  const { data, error } = await supabase
-    .from("games")
-    .select("id")
-    .eq("round_id", roundId)
-    .not("last_move_time", "is", null)
-    .limit(1);
-
   // A broken lookup used to be indistinguishable from "no moves yet": the row
   // rescheduled every retry with last_error='round_not_live_yet' until the 1h
   // stale guard skipped it, and nothing in the outbox said the query was at
-  // fault. Fail loud — processItem's catch retries with backoff instead.
-  if (error) {
-    throw new Error(`Round move lookup failed: ${error.message}`);
-  }
+  // fault. Fail loud — runQuery throws `Round move lookup failed: …` once its
+  // in-process retries are spent, and processItem's catch backs off instead.
+  const data = await runQuery<Array<{ id: string }>>(
+    "Round move lookup",
+    () =>
+      supabase
+        .from("games")
+        .select("id")
+        .eq("round_id", roundId)
+        .not("last_move_time", "is", null)
+        .limit(1),
+  );
   return (data ?? []).length > 0;
 }
 
@@ -1159,14 +1276,14 @@ function playerBoardKey(name: string): string {
 }
 
 async function fetchRoundPlayers(roundId: string) {
-  const { data, error } = await supabase
-    .from("games")
-    .select("id,player_white,player_black,player_fide_ids,players")
-    .eq("round_id", roundId);
-
-  if (error) {
-    throw error;
-  }
+  const data = await runQuery<RoundGameRow[]>(
+    "Round players lookup",
+    () =>
+      supabase
+        .from("games")
+        .select("id,player_white,player_black,player_fide_ids,players")
+        .eq("round_id", roundId),
+  );
 
   const playerNames = new Set<string>();
   const fideIds = new Set<string>();
@@ -1319,14 +1436,15 @@ async function resolveRecipients(args: {
           POSTGREST_IN_QUERY_CHUNK_SIZE,
         )
       ) {
-        const { data: mutedData, error } = await supabase
-          .from("user_muted_events")
-          .select("user_id")
-          .eq("group_broadcast_id", args.groupBroadcastId)
-          .in("user_id", batch);
-        if (error) {
-          throw new Error(`Muted event lookup failed: ${error.message}`);
-        }
+        const mutedData = await runQuery<Array<{ user_id: string }>>(
+          "Muted event lookup",
+          () =>
+            supabase
+              .from("user_muted_events")
+              .select("user_id")
+              .eq("group_broadcast_id", args.groupBroadcastId)
+              .in("user_id", batch),
+        );
         for (const row of mutedData ?? []) {
           const uid = row.user_id as string;
           eventUserIds.delete(uid);
@@ -1490,11 +1608,16 @@ async function resolveGameTimeControl(
     // (→ classical). Reading it here is the fix for blitz pushes leaking to
     // users who turned blitz off.
     if (tourId) {
-      const { data: tourData, error: tourError } = await supabase
-        .from("tours")
-        .select("info,group_broadcast_id")
-        .eq("id", tourId)
-        .maybeSingle();
+      // Time control deliberately degrades to "unknown" on a deterministic
+      // error; a transient one is still retried in-process first.
+      const { data: tourData, error: tourError } = await runQuerySettled<
+        { info: unknown; group_broadcast_id: string | null }
+      >("Tour time-control lookup", () =>
+        supabase
+          .from("tours")
+          .select("info,group_broadcast_id")
+          .eq("id", tourId)
+          .maybeSingle());
 
       if (tourError) {
         console.warn(
@@ -1517,11 +1640,14 @@ async function resolveGameTimeControl(
 
     // FALLBACK: the coarse group_broadcasts.time_control bucket.
     for (const broadcastId of broadcastIds) {
-      const { data, error } = await supabase
-        .from("group_broadcasts")
-        .select("time_control")
-        .eq("id", broadcastId)
-        .maybeSingle();
+      const { data, error } = await runQuerySettled<
+        { time_control: string | null }
+      >("Group time-control lookup", () =>
+        supabase
+          .from("group_broadcasts")
+          .select("time_control")
+          .eq("id", broadcastId)
+          .maybeSingle());
 
       if (error) continue;
       const timeControl = normaliseTimeControl(
@@ -1542,18 +1668,19 @@ async function resolveCallToActionRecipients(): Promise<string[]> {
   let from = 0;
 
   while (true) {
-    const { data, error } = await supabase
-      .from("user_notification_preferences")
-      .select("user_id")
-      .eq("push_enabled", true)
-      .eq("call_to_action_alerts", true)
-      .range(from, from + pageSize - 1);
+    const start = from;
+    const data = await runQuery<Array<{ user_id: string | null }>>(
+      "Call-to-action recipient lookup",
+      () =>
+        supabase
+          .from("user_notification_preferences")
+          .select("user_id")
+          .eq("push_enabled", true)
+          .eq("call_to_action_alerts", true)
+          .range(start, start + pageSize - 1),
+    );
 
-    if (error) {
-      throw error;
-    }
-
-    const rows = (data ?? []) as Array<{ user_id: string | null }>;
+    const rows = data ?? [];
     for (const row of rows) {
       if (row.user_id) recipients.add(row.user_id);
     }
@@ -1642,14 +1769,14 @@ async function fetchPreferenceMap(
   const uniqueUserIds = [...new Set(userIds.filter(Boolean))];
 
   for (const batch of chunk(uniqueUserIds, POSTGREST_IN_QUERY_CHUNK_SIZE)) {
-    const { data, error } = await supabase
-      .from("user_notification_preferences")
-      .select(columns)
-      .in("user_id", batch);
-
-    if (error) {
-      throw new Error(`Preference lookup failed: ${error.message}`);
-    }
+    const data = await runQuery<unknown[]>(
+      "Preference lookup",
+      () =>
+        supabase
+          .from("user_notification_preferences")
+          .select(columns)
+          .in("user_id", batch),
+    );
 
     const preferenceRows = (data ?? []) as unknown as Array<
       Record<string, unknown> & { user_id: string }
@@ -1756,20 +1883,23 @@ async function fetchUsersWithActiveGameStartWindow(
   if (userIds.length === 0) return suppressed;
   const nowIso = new Date().toISOString();
   for (const batch of chunk(userIds, POSTGREST_IN_QUERY_CHUNK_SIZE)) {
-    const { data, error } = await supabase
-      .from("notification_user_windows")
-      .select("user_id")
-      .eq("round_id", roundId)
-      .eq("family", "game_start")
-      .gt("expires_at", nowIso)
-      .in("user_id", batch);
-    if (error) {
-      // A failed window read must fail the item (and retry) rather than
-      // treat covered users as uncovered and double-send.
-      throw new Error(`Game-start window lookup failed: ${error.message}`);
-    }
+    // A failed window read must fail the item (and retry) rather than treat
+    // covered users as uncovered and double-send. runQuery throws
+    // `Game-start window lookup failed: …` once its in-process retries are
+    // spent.
+    const data = await runQuery<Array<{ user_id: string }>>(
+      "Game-start window lookup",
+      () =>
+        supabase
+          .from("notification_user_windows")
+          .select("user_id")
+          .eq("round_id", roundId)
+          .eq("family", "game_start")
+          .gt("expires_at", nowIso)
+          .in("user_id", batch),
+    );
     for (const row of data ?? []) {
-      suppressed.add(row.user_id as string);
+      suppressed.add(row.user_id);
     }
   }
   return suppressed;
@@ -1784,25 +1914,31 @@ async function resolveRecursiveBookSubscribers(
   // Traverse up the folder hierarchy to collect all parent folder IDs
   while (currentId) {
     allFolderIds.add(currentId);
-    const { data, error } = await supabase
-      .from("user_folders")
-      .select("parent_id")
-      .eq("id", currentId)
-      .maybeSingle();
-
-    if (error || !data?.parent_id) {
-      currentId = null;
-    } else {
-      currentId = data.parent_id as string;
-    }
+    const lookupId: string = currentId;
+    const folder = await runQuery<{ parent_id: string | null }>(
+      "Folder parent lookup",
+      () =>
+        supabase
+          .from("user_folders")
+          .select("parent_id")
+          .eq("id", lookupId)
+          .maybeSingle(),
+    );
+    const parentId: string | null = folder?.parent_id ?? null;
+    // A parent we have already visited means a cycle; stop rather than spin.
+    currentId = parentId && !allFolderIds.has(parentId) ? parentId : null;
   }
 
-  const { data: subs } = await supabase
-    .from("book_subscriptions")
-    .select("subscriber_id")
-    .in("folder_id", Array.from(allFolderIds));
+  const subs = await runQuery<Array<{ subscriber_id: string }>>(
+    "Book subscription lookup",
+    () =>
+      supabase
+        .from("book_subscriptions")
+        .select("subscriber_id")
+        .in("folder_id", Array.from(allFolderIds)),
+  );
 
-  return [...new Set((subs ?? []).map((s) => s.subscriber_id as string))];
+  return [...new Set((subs ?? []).map((s) => s.subscriber_id))];
 }
 
 async function filterBookUpdateRecipients(
@@ -2077,10 +2213,16 @@ async function resolvePlayerFavoriteMap(
   if (playerUserIds.size === 0) return result;
 
   // Get all games in this round to know which players are participating
-  const { data: games } = await supabase
-    .from("games")
-    .select("id,player_white,player_black,players")
-    .eq("round_id", roundId);
+  const games = await runQuery<
+    Pick<RoundGameRow, "id" | "player_white" | "player_black" | "players">[]
+  >(
+    "Favorite map round games lookup",
+    () =>
+      supabase
+        .from("games")
+        .select("id,player_white,player_black,players")
+        .eq("round_id", roundId),
+  );
 
   if (!games || games.length === 0) return result;
 
@@ -2088,7 +2230,7 @@ async function resolvePlayerFavoriteMap(
   const roundPlayerNames = new Set<string>();
   const fideIdToName = new Map<string, string>();
 
-  for (const g of games as RoundGameRow[]) {
+  for (const g of games) {
     if (g.player_white) {
       roundPlayerNames.add(g.player_white);
     }
@@ -2313,6 +2455,10 @@ function isGameOverStatus(status: string | null) {
   return trimmed !== "*" && trimmed !== "ongoing";
 }
 
+// Deliberately NOT wrapped in an in-process retry: a request that died after
+// OneSignal accepted it would be re-sent seconds later. A 5xx/429 or a dropped
+// stream here classifies as transient in processItem's catch and takes the
+// long outbox backoff instead, where the collapse_id folds any duplicate.
 async function sendOneSignalPayload(
   payload: Record<string, unknown>,
 ): Promise<number | null> {
@@ -2478,18 +2624,18 @@ async function fetchLegacySubscriptionFallback(
 ): Promise<string[]> {
   const subscriptionIds = new Set<string>();
   for (const batch of chunk(userIds, POSTGREST_IN_QUERY_CHUNK_SIZE)) {
-    const { data, error } = await supabase
-      .from("user_push_tokens")
-      .select("subscription_id")
-      .eq("provider", "onesignal")
-      .eq("opted_in", true)
-      .in("user_id", batch);
-
-    if (error) {
-      throw new Error(`Legacy push token lookup failed: ${error.message}`);
-    }
+    const data = await runQuery<Array<{ subscription_id: string | null }>>(
+      "Legacy push token lookup",
+      () =>
+        supabase
+          .from("user_push_tokens")
+          .select("subscription_id")
+          .eq("provider", "onesignal")
+          .eq("opted_in", true)
+          .in("user_id", batch),
+    );
     for (const row of data ?? []) {
-      const subscriptionId = row.subscription_id as string | null;
+      const subscriptionId = row.subscription_id;
       if (subscriptionId) subscriptionIds.add(subscriptionId);
     }
   }
@@ -2511,17 +2657,17 @@ const POSTGREST_PAGE_SIZE = 1000;
 // page with a stable ORDER BY, or an arbitrary subset of users is dropped.
 async function fetchAllPages<T>(
   label: string,
-  page: (
-    from: number,
-    to: number,
-  ) => PromiseLike<{ data: T[] | null; error: { message: string } | null }>,
+  page: (from: number, to: number) => PromiseLike<PostgrestResult<T[]>>,
 ): Promise<T[]> {
   const rows: T[] = [];
   let from = 0;
   while (true) {
-    const { data, error } = await page(from, from + POSTGREST_PAGE_SIZE - 1);
-    if (error) throw new Error(`${label} failed: ${error.message}`);
-    const batch = data ?? [];
+    // Each page is its own request on the pooled connection, so each page
+    // gets its own in-process retry: a stream reset on page 3 of 5 re-fetches
+    // page 3, not the whole lookup, and never reaches the outbox retry.
+    const start = from;
+    const to = from + POSTGREST_PAGE_SIZE - 1;
+    const batch = (await runQuery(label, () => page(start, to))) ?? [];
     rows.push(...batch);
     if (batch.length < POSTGREST_PAGE_SIZE) return rows;
     from += POSTGREST_PAGE_SIZE;
