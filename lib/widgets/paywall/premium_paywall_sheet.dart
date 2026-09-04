@@ -16,13 +16,47 @@ import 'package:flutter/services.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:purchases_flutter/purchases_flutter.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 
-/// Show the premium paywall sheet.
-/// Returns `true` if the user successfully subscribed.
+/// Show the premium paywall sheet, upgrading guests to a full account first.
+/// Returns `true` if the user already has Premium or successfully subscribes.
 Future<bool> showPremiumPaywallSheet({required BuildContext context}) async {
-  // Sync purchases when paywall opens (user might have subscribed externally)
-  unawaited(RevenueCatService().syncPurchases());
+  final initialUser = Supabase.instance.client.auth.currentUser;
+  if (initialUser == null || initialUser.isAnonymous) {
+    final authenticated = await showAuthUpgradeSheet(
+      context: context,
+      title: 'Sign in to get Premium',
+      message:
+          'Choose an account so your subscription can be restored on every device.',
+      completeSignInInSheet: true,
+    );
+    if (!authenticated || !context.mounted) return false;
+
+    final authenticatedUser = Supabase.instance.client.auth.currentUser;
+    if (authenticatedUser == null || authenticatedUser.isAnonymous) {
+      return false;
+    }
+
+    // Guest sessions are already identified to RevenueCat by their Supabase
+    // uid. Switch to the upgraded account before opening checkout so the
+    // purchase is never attached to the temporary guest identity.
+    if (initialUser?.isAnonymous == true) {
+      await RevenueCatService().logOut();
+    }
+    await RevenueCatService().logIn(authenticatedUser.id);
+  }
+  // Refresh the newly authenticated RevenueCat customer before offering a
+  // purchase. The direct CustomerInfo check covers App Store / Play Store;
+  // isSubscribed also checks the shared backend entitlement used by Stripe.
+  final revenueCat = RevenueCatService();
+  final customerInfo = await revenueCat.syncPurchases();
+  final hasStoreEntitlement =
+      customerInfo?.entitlements.active.isNotEmpty == true;
+  final hasActiveSubscription =
+      hasStoreEntitlement || await revenueCat.isSubscribed();
+  if (hasActiveSubscription) return true;
+  if (!context.mounted) return false;
 
   // AppsFlyer funnel: paywall view counts as checkout intent.
   unawaited(AppsflyerService.instance.logInitiatedCheckout());
