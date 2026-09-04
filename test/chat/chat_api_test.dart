@@ -96,6 +96,21 @@ void main() {
     });
   });
 
+  test('builds current player screen metadata', () {
+    const context = ChatScreenContext(
+      screen: 'player',
+      playerId: '1503014',
+      playerName: 'Viswanathan Anand',
+    );
+
+    expect(context.toJson(), {
+      'schemaVersion': 1,
+      'screen': 'player',
+      'playerId': '1503014',
+      'playerName': 'Viswanathan Anand',
+    });
+  });
+
   test('restores the tournament conversation when it is still available', () {
     final conversations = [
       ChatConversation(

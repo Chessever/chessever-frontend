@@ -3,6 +3,8 @@ import 'dart:io' as io;
 import 'dart:math' as math;
 
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:chessever2/chat/botvinnik_chat_button.dart';
+import 'package:chessever2/chat/chat_api.dart';
 import 'package:chessever2/e2e/e2e_ids.dart';
 import 'package:chessever2/repository/supabase/game/games.dart';
 import 'package:chessever2/providers/favorite_players_provider.dart';
@@ -804,6 +806,18 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
     final scaffold = Scaffold(
       key: e2eKey(E2eIds.playerProfileRoot),
       backgroundColor: context.colors.background,
+      floatingActionButton: BotvinnikChatButton(
+        heroTag: 'botvinnik-player',
+        screenContext: ChatScreenContext(
+          screen: 'player',
+          playerId:
+              widget.fideId?.toString() ??
+              _resolveGamebasePlayerId() ??
+              widget.memorialRouteId,
+          playerName: effectiveName,
+        ),
+        iconOnly: true,
+      ),
       body: Center(
         child: ConstrainedBox(
           constraints: BoxConstraints(
