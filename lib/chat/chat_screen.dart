@@ -10,8 +10,10 @@ import 'package:chessever2/screens/group_event/smart_event/smart_event_screen.da
 import 'package:chessever2/screens/player_profile/player_profile_screen.dart';
 import 'package:chessever2/widgets/game_filter/game_filter_model.dart';
 import 'package:chessever2/widgets/auth/auth_upgrade_sheet.dart';
+import 'package:chessever2/widgets/app_snack.dart';
 import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:package_info_plus/package_info_plus.dart';
@@ -189,7 +191,10 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     } on ChatApiException catch (error) {
       if (mounted) setState(() => _error = error.message);
     } finally {
-      if (mounted) setState(() => _loading = false);
+      if (mounted) {
+        setState(() => _loading = false);
+        _scrollToEnd(animate: false);
+      }
     }
   }
 
@@ -221,6 +226,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       if (!conversation.isDraft) {
         widget.onConversationChanged?.call(conversation.id);
       }
+      _scrollToEnd(animate: false);
       Navigator.of(context).maybePop();
     } on ChatApiException catch (error) {
       if (mounted) setState(() => _error = error.message);
@@ -475,12 +481,17 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     if (_selected?.id == conversationId) _selected = renamed;
   }
 
-  void _scrollToEnd() {
+  void _scrollToEnd({bool animate = true}) {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!_scrollController.hasClients) return;
+      final end = _scrollController.position.maxScrollExtent;
+      if (!animate) {
+        _scrollController.jumpTo(end);
+        return;
+      }
       unawaited(
         _scrollController.animateTo(
-          _scrollController.position.maxScrollExtent,
+          end,
           duration: const Duration(milliseconds: 220),
           curve: Curves.easeOut,
         ),
@@ -583,7 +594,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Text('Botvinnik'),
+                  Text('Botvinnik (Beta)'),
                   SizedBox(height: 1),
                   Row(
                     children: [
@@ -1231,46 +1242,51 @@ class _MessageBubble extends StatelessWidget {
               ],
             )
           else if (isUser)
-            SelectableText(
-              message.content,
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                color: colorScheme.onPrimaryContainer,
-                height: 1.4,
+            _CopyableMessageContent(
+              text: message.content,
+              child: Text(
+                message.content,
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  color: colorScheme.onPrimaryContainer,
+                  height: 1.4,
+                ),
               ),
             )
           else
-            MarkdownBody(
-              data: normalizeChatMarkdown(message.content),
-              selectable: true,
-              softLineBreak: true,
-              onTapLink: (text, href, title) {
-                final uri = safeChatSourceUri(href);
-                if (uri != null) {
-                  unawaited(launchUrl(uri, mode: LaunchMode.platformDefault));
-                }
-              },
-              styleSheet: MarkdownStyleSheet.fromTheme(
-                Theme.of(context),
-              ).copyWith(
-                p: Theme.of(
-                  context,
-                ).textTheme.bodyMedium?.copyWith(height: 1.45),
-                h1: Theme.of(
-                  context,
-                ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
-                h2: Theme.of(
-                  context,
-                ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
-                h3: Theme.of(
-                  context,
-                ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
-                blockSpacing: 12,
-                tableCellsPadding: const EdgeInsets.symmetric(
-                  horizontal: 8,
-                  vertical: 6,
-                ),
-                tableBorder: TableBorder.all(
-                  color: Theme.of(context).colorScheme.outlineVariant,
+            _CopyableMessageContent(
+              text: message.content,
+              child: MarkdownBody(
+                data: normalizeChatMarkdown(message.content),
+                softLineBreak: true,
+                onTapLink: (text, href, title) {
+                  final uri = safeChatSourceUri(href);
+                  if (uri != null) {
+                    unawaited(launchUrl(uri, mode: LaunchMode.platformDefault));
+                  }
+                },
+                styleSheet: MarkdownStyleSheet.fromTheme(
+                  Theme.of(context),
+                ).copyWith(
+                  p: Theme.of(
+                    context,
+                  ).textTheme.bodyMedium?.copyWith(height: 1.45),
+                  h1: Theme.of(
+                    context,
+                  ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
+                  h2: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w700,
+                  ),
+                  h3: Theme.of(
+                    context,
+                  ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
+                  blockSpacing: 12,
+                  tableCellsPadding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 6,
+                  ),
+                  tableBorder: TableBorder.all(
+                    color: Theme.of(context).colorScheme.outlineVariant,
+                  ),
                 ),
               ),
             ),
@@ -1357,6 +1373,40 @@ class _MessageBubble extends StatelessWidget {
                     ),
                 ],
               ),
+    );
+  }
+}
+
+class _CopyableMessageContent extends StatelessWidget {
+  const _CopyableMessageContent({required this.text, required this.child});
+
+  final String text;
+  final Widget child;
+
+  Future<void> _copyMessage(BuildContext context) async {
+    final messenger = ScaffoldMessenger.maybeOf(context);
+    ContextMenuController.removeAny();
+    await Clipboard.setData(ClipboardData(text: text));
+    await HapticFeedback.lightImpact();
+    if (messenger == null || !messenger.mounted) return;
+    showAppSnackOn(messenger, 'Message copied', tone: AppSnackTone.success);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SelectionArea(
+      contextMenuBuilder: (context, selectableRegionState) {
+        return AdaptiveTextSelectionToolbar.buttonItems(
+          anchors: selectableRegionState.contextMenuAnchors,
+          buttonItems: [
+            ContextMenuButtonItem(
+              label: 'Copy message',
+              onPressed: () => unawaited(_copyMessage(context)),
+            ),
+          ],
+        );
+      },
+      child: child,
     );
   }
 }

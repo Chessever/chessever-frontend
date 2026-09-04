@@ -44,12 +44,6 @@ class HomeScreen extends ConsumerStatefulWidget {
 class _HomeScreenState extends ConsumerState<HomeScreen> {
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
   static const int _favoritePromptThreshold = 5;
-  String? _botvinnikConversationId;
-
-  void _rememberBotvinnikConversation(String conversationId) {
-    if (!mounted || _botvinnikConversationId == conversationId) return;
-    setState(() => _botvinnikConversationId = conversationId);
-  }
 
   @override
   void initState() {
@@ -208,9 +202,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   Widget get _chatButton {
     return BotvinnikChatButton(
       heroTag: 'botvinnik',
-      initialConversationId: _botvinnikConversationId,
-      createNewConversationOnOpen: _botvinnikConversationId == null,
-      onConversationChanged: _rememberBotvinnikConversation,
       screenContext: const ChatScreenContext(screen: 'home'),
       iconOnly: true,
     );

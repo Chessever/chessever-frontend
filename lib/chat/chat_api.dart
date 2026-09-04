@@ -223,6 +223,8 @@ class ChatScreenContext {
     this.roundName,
     this.gameId,
     this.gameLabel,
+    this.playerId,
+    this.playerName,
   });
 
   final String screen;
@@ -234,6 +236,8 @@ class ChatScreenContext {
   final String? roundName;
   final String? gameId;
   final String? gameLabel;
+  final String? playerId;
+  final String? playerName;
 
   Map<String, dynamic> toJson() => {
     'schemaVersion': 1,
@@ -246,6 +250,8 @@ class ChatScreenContext {
     if (roundName != null) 'roundName': roundName,
     if (gameId != null) 'gameId': gameId,
     if (gameLabel != null) 'gameLabel': gameLabel,
+    if (playerId != null) 'playerId': playerId,
+    if (playerName != null) 'playerName': playerName,
   };
 }
 
