@@ -594,7 +594,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Text('Botvinnik'),
+                  Text('Botvinnik (Beta)'),
                   SizedBox(height: 1),
                   Row(
                     children: [
