@@ -40,17 +40,27 @@ final botvinnikQuotaProvider =
     );
 
 class BotvinnikQuotaNotifier extends AsyncNotifier<ChatQuotaStatus?> {
+  Timer? _resetTimer;
+  int _generation = 0;
   @override
   Future<ChatQuotaStatus?> build() async {
+    _resetTimer?.cancel();
+    ref.onDispose(() {
+      _generation++;
+      _resetTimer?.cancel();
+    });
     final user = ref.watch(currentUserProvider);
     if (user == null || user.isAnonymous) return null;
     return _fetch();
   }
 
   Future<ChatQuotaStatus> _fetch() async {
+    final generation = _generation;
     final api = ChatApi();
     try {
-      return await api.quota();
+      final quota = await api.quota();
+      if (generation == _generation) _scheduleReset(quota);
+      return quota;
     } finally {
       api.close();
     }
@@ -68,5 +78,18 @@ class BotvinnikQuotaNotifier extends AsyncNotifier<ChatQuotaStatus?> {
 
   void setQuota(ChatQuotaStatus quota) {
     state = AsyncData(quota);
+    _scheduleReset(quota);
+  }
+
+  void _scheduleReset(ChatQuotaStatus quota) {
+    _resetTimer?.cancel();
+    final resetsAt = quota.resetsAt;
+    if (quota.limit <= 0 || quota.remaining > 0 || resetsAt == null) return;
+    final delay =
+        resetsAt.difference(DateTime.now()) + const Duration(seconds: 1);
+    _resetTimer = Timer(
+      delay.isNegative ? const Duration(seconds: 30) : delay,
+      () => unawaited(refresh()),
+    );
   }
 }

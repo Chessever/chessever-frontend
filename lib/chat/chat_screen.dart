@@ -267,6 +267,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       return;
     }
     if (access == ChatComposerAccess.exhausted) {
+      return;
+    }
+    if (access == ChatComposerAccess.upgradeRequired) {
       unawaited(_showUpgrade());
       return;
     }
@@ -365,8 +368,16 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       if (mounted) setState(() => _messages = refreshed);
     } on ChatApiException catch (error) {
       if (!mounted) return;
+      if (error.quota != null) {
+        ref.read(botvinnikQuotaProvider.notifier).setQuota(error.quota!);
+      } else {
+        unawaited(ref.read(botvinnikQuotaProvider.notifier).refresh());
+      }
       setState(() {
-        _error = error.message;
+        _error =
+            error.quota != null && error.quota!.remaining <= 0
+                ? null
+                : error.message;
         if (_messages.isNotEmpty && _messages.last.content.isEmpty) {
           _messages = _messages.sublist(0, _messages.length - 1);
         }
@@ -567,7 +578,6 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         onNew: _newConversation,
         onSelect: _select,
         onDelete: _delete,
-        quota: quota,
       ),
       appBar: AppBar(
         toolbarHeight: 72,
@@ -673,8 +683,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
               ChatComposerAccess.signedOut => _ChatLoginGate(
                 onSignIn: _showLogin,
               ),
-              ChatComposerAccess.exhausted => _ChatUpgradeGate(
-                quota: quota.valueOrNull!,
+              ChatComposerAccess.exhausted => const _ChatDailyLimitNotice(),
+              ChatComposerAccess.upgradeRequired => _ChatUpgradeGate(
                 onUpgrade: _showUpgrade,
               ),
               ChatComposerAccess.enabled => _ChatComposer(
@@ -690,14 +700,17 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   }
 }
 
-enum ChatComposerAccess { signedOut, enabled, exhausted }
+enum ChatComposerAccess { signedOut, enabled, upgradeRequired, exhausted }
 
 ChatComposerAccess chatComposerAccess({
   required bool isSignedIn,
   required ChatQuotaStatus? quota,
 }) {
   if (!isSignedIn) return ChatComposerAccess.signedOut;
-  if (quota != null && !quota.isPremium && quota.remaining <= 0) {
+  if (quota != null && quota.remaining <= 0) {
+    if (!quota.isPremium && quota.limit <= 0) {
+      return ChatComposerAccess.upgradeRequired;
+    }
     return ChatComposerAccess.exhausted;
   }
   return ChatComposerAccess.enabled;
@@ -726,6 +739,115 @@ String normalizeChatMarkdown(String source) {
         return line.replaceAll(breakTag, isTableRow ? '; ' : '\n');
       })
       .join('\n');
+}
+
+class IntegratedChatReferences {
+  const IntegratedChatReferences({
+    required this.markdown,
+    required this.linkedReferences,
+  });
+
+  final String markdown;
+  final List<ChatReference> linkedReferences;
+}
+
+List<(int, int)> _markdownProtectedRanges(String source) {
+  final patterns = [
+    RegExp(r'```[\s\S]*?```'),
+    RegExp(r'`[^`\n]*`'),
+    RegExp(r'!?\[[^\]]*\]\([^\n)]*\)'),
+  ];
+  return [
+    for (final pattern in patterns)
+      for (final match in pattern.allMatches(source)) (match.start, match.end),
+  ];
+}
+
+String _chatReferenceHref(ChatReference reference) =>
+    Uri(
+      scheme: 'chessever',
+      host: 'reference',
+      queryParameters: {'type': reference.type, 'id': reference.id},
+    ).toString();
+
+ChatReference? chatReferenceForHref(
+  String? href,
+  List<ChatReference> references,
+) {
+  if (href == null) return null;
+  final uri = Uri.tryParse(href);
+  if (uri == null || uri.scheme != 'chessever' || uri.host != 'reference') {
+    return null;
+  }
+  final type = uri.queryParameters['type'];
+  final id = uri.queryParameters['id'];
+  for (final reference in references) {
+    if (reference.type == type && reference.id == id) return reference;
+  }
+  return null;
+}
+
+List<String> _chatReferenceAliases(ChatReference reference) {
+  final label = reference.label.trim();
+  final aliases = <String>{if (label.isNotEmpty) label};
+  if (reference.type == 'game') {
+    final players = label.split(
+      RegExp(r'\s+(?:vs\.?|[-–—])\s+', caseSensitive: false),
+    );
+    if (players.length == 2 && players.every((player) => player.isNotEmpty)) {
+      for (final separator in [' vs ', ' - ', ' – ', ' — ']) {
+        aliases.add('${players[0]}$separator${players[1]}');
+      }
+    }
+  }
+  return aliases.toList()
+    ..sort((left, right) => right.length.compareTo(left.length));
+}
+
+IntegratedChatReferences integrateChatReferences(
+  String source,
+  List<ChatReference> references,
+) {
+  var markdown = source;
+  final linked = <ChatReference>[];
+  final unique = <String, ChatReference>{};
+  for (final reference in references) {
+    unique.putIfAbsent('${reference.type}:${reference.id}', () => reference);
+  }
+  final candidates =
+      unique.values.toList()..sort(
+        (left, right) => right.label.length.compareTo(left.label.length),
+      );
+
+  for (final reference in candidates) {
+    final protected = _markdownProtectedRanges(markdown);
+    RegExpMatch? selected;
+    for (final alias in _chatReferenceAliases(reference)) {
+      final matcher = RegExp(RegExp.escape(alias), caseSensitive: false);
+      for (final match in matcher.allMatches(markdown)) {
+        final overlaps = protected.any(
+          (range) => match.start < range.$2 && match.end > range.$1,
+        );
+        if (!overlaps && (selected == null || match.start < selected.start)) {
+          selected = match;
+        }
+      }
+    }
+    if (selected == null) continue;
+    final matchedLabel = selected.group(0)!;
+    final escapedLabel = matchedLabel.replaceAllMapped(
+      RegExp(r'[\\\[\]]'),
+      (match) => '\\${match.group(0)}',
+    );
+    markdown = markdown.replaceRange(
+      selected.start,
+      selected.end,
+      '[$escapedLabel](${_chatReferenceHref(reference)})',
+    );
+    linked.add(reference);
+  }
+
+  return IntegratedChatReferences(markdown: markdown, linkedReferences: linked);
 }
 
 class _OnlineDot extends StatelessWidget {
@@ -788,16 +910,43 @@ class _ChatLoginGate extends StatelessWidget {
   }
 }
 
-class _ChatUpgradeGate extends StatelessWidget {
-  const _ChatUpgradeGate({required this.quota, required this.onUpgrade});
+class _ChatDailyLimitNotice extends StatelessWidget {
+  const _ChatDailyLimitNotice();
 
-  final ChatQuotaStatus quota;
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    return SafeArea(
+      top: false,
+      child: Semantics(
+        liveRegion: true,
+        child: Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: colors.surfaceContainerHighest,
+            border: Border(top: BorderSide(color: colors.outlineVariant)),
+          ),
+          child: Row(
+            children: [
+              Icon(Icons.warning_amber_rounded, color: colors.tertiary),
+              const SizedBox(width: 12),
+              const Expanded(child: Text(chatDailyLimitMessage)),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ChatUpgradeGate extends StatelessWidget {
+  const _ChatUpgradeGate({required this.onUpgrade});
   final Future<void> Function() onUpgrade;
 
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-    final remaining = quota.remaining.clamp(0, quota.limit);
     return Material(
       color: colorScheme.surface,
       child: SafeArea(
@@ -815,7 +964,7 @@ class _ChatUpgradeGate extends StatelessWidget {
                 color: colorScheme.surfaceContainerHighest,
                 alignment: Alignment.center,
                 child: Text(
-                  '$remaining of ${quota.limit} messages left',
+                  'Botvinnik is available with Premium.',
                   style: Theme.of(context).textTheme.labelSmall?.copyWith(
                     color: colorScheme.onSurfaceVariant,
                     fontWeight: FontWeight.w600,
@@ -1195,7 +1344,11 @@ class _MessageBubble extends StatelessWidget {
   Widget build(BuildContext context) {
     final isUser = message.role == 'user';
     final colorScheme = Theme.of(context).colorScheme;
-    final referenceGroups = structureChatReferences(message.references);
+    final linkedContent =
+        integrateChatReferences(
+          normalizeChatMarkdown(message.content),
+          message.references,
+        ).markdown;
     final bubble = Container(
       constraints: BoxConstraints(maxWidth: isUser ? 420 : double.infinity),
       padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 12),
@@ -1256,9 +1409,17 @@ class _MessageBubble extends StatelessWidget {
             _CopyableMessageContent(
               text: message.content,
               child: MarkdownBody(
-                data: normalizeChatMarkdown(message.content),
+                data: linkedContent,
                 softLineBreak: true,
                 onTapLink: (text, href, title) {
+                  final reference = chatReferenceForHref(
+                    href,
+                    message.references,
+                  );
+                  if (reference != null) {
+                    onReferencePressed(reference);
+                    return;
+                  }
                   final uri = safeChatSourceUri(href);
                   if (uri != null) {
                     unawaited(launchUrl(uri, mode: LaunchMode.platformDefault));
@@ -1290,43 +1451,6 @@ class _MessageBubble extends StatelessWidget {
                 ),
               ),
             ),
-          if (referenceGroups.isNotEmpty) ...[
-            const SizedBox(height: 12),
-            Text(
-              'Related',
-              style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                color: colorScheme.onSurfaceVariant,
-              ),
-            ),
-            const SizedBox(height: 6),
-            ...referenceGroups.map(
-              (group) => Padding(
-                padding: const EdgeInsets.only(bottom: 7),
-                child: Wrap(
-                  spacing: 6,
-                  runSpacing: 6,
-                  children:
-                      group
-                          .map(
-                            (reference) => ActionChip(
-                              avatar: Icon(switch (reference.type) {
-                                'game' => Icons.sports_esports_rounded,
-                                'player' => Icons.person_rounded,
-                                'opening' => Icons.auto_stories_rounded,
-                                _ => Icons.emoji_events_rounded,
-                              }, size: 16),
-                              label: Text(reference.label),
-                              onPressed: () => onReferencePressed(reference),
-                              side: BorderSide(
-                                color: colorScheme.outlineVariant,
-                              ),
-                            ),
-                          )
-                          .toList(),
-                ),
-              ),
-            ),
-          ],
         ],
       ),
     );
@@ -1488,7 +1612,6 @@ class _ConversationDrawer extends ConsumerWidget {
     required this.onNew,
     required this.onSelect,
     required this.onDelete,
-    required this.quota,
   });
 
   final List<ChatConversation> conversations;
@@ -1496,7 +1619,6 @@ class _ConversationDrawer extends ConsumerWidget {
   final Future<void> Function() onNew;
   final Future<void> Function(ChatConversation) onSelect;
   final Future<void> Function(ChatConversation) onDelete;
-  final AsyncValue<ChatQuotaStatus?> quota;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -1553,70 +1675,6 @@ class _ConversationDrawer extends ConsumerWidget {
                 ),
                 child: Column(
                   children: [
-                    Row(
-                      children: [
-                        Icon(
-                          Icons.bolt_rounded,
-                          color: colorScheme.primary,
-                          size: 20,
-                        ),
-                        const SizedBox(width: 9),
-                        Expanded(
-                          child: quota.when(
-                            data: (value) {
-                              final label =
-                                  value == null
-                                      ? 'Sign in to view quota'
-                                      : '${value.remaining} of ${value.limit} messages left';
-                              return Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    'Daily allowance',
-                                    style: Theme.of(context)
-                                        .textTheme
-                                        .labelMedium
-                                        ?.copyWith(fontWeight: FontWeight.w700),
-                                  ),
-                                  const SizedBox(height: 2),
-                                  Text(
-                                    label,
-                                    style: Theme.of(
-                                      context,
-                                    ).textTheme.bodySmall?.copyWith(
-                                      color: colorScheme.onSurfaceVariant,
-                                    ),
-                                  ),
-                                ],
-                              );
-                            },
-                            loading:
-                                () => const Text(
-                                  'Loading daily allowance…',
-                                  style: TextStyle(fontSize: 12),
-                                ),
-                            error:
-                                (error, stack) => const Text(
-                                  'Daily allowance unavailable',
-                                  style: TextStyle(fontSize: 12),
-                                ),
-                          ),
-                        ),
-                        IconButton(
-                          tooltip: 'Refresh question count',
-                          onPressed:
-                              () => unawaited(
-                                ref
-                                    .read(botvinnikQuotaProvider.notifier)
-                                    .refresh(),
-                              ),
-                          icon: const Icon(Icons.refresh_rounded, size: 19),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 8),
-                    Divider(height: 1, color: colorScheme.outlineVariant),
-                    const SizedBox(height: 8),
                     Row(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [

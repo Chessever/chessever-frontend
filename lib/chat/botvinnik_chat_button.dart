@@ -29,8 +29,7 @@ class BotvinnikChatButton extends ConsumerWidget {
       child: FloatingActionButton(
         heroTag: heroTag,
         tooltip: 'Ask Botvinnik',
-        backgroundColor:
-            iconOnly ? Colors.transparent : Colors.black.withValues(alpha: 0.5),
+        backgroundColor: Colors.black.withValues(alpha: 0.24),
         elevation: iconOnly ? 0 : null,
         focusElevation: iconOnly ? 0 : null,
         hoverElevation: iconOnly ? 0 : null,

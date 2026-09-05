@@ -1,5 +1,6 @@
 import 'package:chessever2/repository/sqlite/app_database.dart';
 import 'package:flutter/foundation.dart';
+import 'package:chessever2/services/native_push_permission.dart';
 import 'package:onesignal_flutter/onesignal_flutter.dart';
 import 'package:purchases_flutter/purchases_flutter.dart';
 import 'package:chessever2/revenue_cat_service/revenue_cat_service.dart';
@@ -95,12 +96,13 @@ class PushNotificationsService {
       _forwardSubscriptionIdToRevenueCat(state.current.id);
     });
 
-    if (_pendingUserId != null && _pendingUserId!.isNotEmpty) {
-      OneSignal.login(_pendingUserId!);
-      _pendingUserId = null;
+    _initialized = true;
+    final pendingUserId = _pendingUserId;
+    _pendingUserId = null;
+    if (pendingUserId != null && pendingUserId.isNotEmpty) {
+      await loginUser(pendingUserId);
     }
 
-    _initialized = true;
     debugPrint('[PushNotifications] OneSignal initialized.');
   }
 
@@ -143,30 +145,16 @@ class PushNotificationsService {
   /// Whether OS-level notification permission is currently granted.
   bool get hasPermission => _initialized && OneSignal.Notifications.permission;
 
-  /// Robustly resolve whether the OS currently allows notifications.
-  ///
-  /// `OneSignal.Notifications.permission` is a Dart-side cache that starts as
-  /// `false` and is hydrated from native by `lifecycleInit()` — a call that
-  /// `OneSignal.initialize()` fires but does NOT await. Reading the cache right
-  /// after init can therefore return a stale `false` even when notifications are
-  /// granted. This is exactly what bit Android upgrades: an existing grant is
-  /// carried forward by the OS, but the cache hasn't caught up yet.
-  ///
-  /// `canRequest()` is a fresh native round-trip on the same MethodChannel as the
-  /// pending `OneSignal#permission` hydration call. Method channels are FIFO, so
-  /// once `canRequest()` resolves the cache has been populated — we re-read it.
-  Future<bool> _isPermissionGranted() async {
-    if (OneSignal.Notifications.permission) return true;
-    // Force/await a native hop; the permission cache hydration lands before this
-    // resolves (same channel, enqueued earlier during initialize()).
-    await OneSignal.Notifications.canRequest();
-    return OneSignal.Notifications.permission;
-  }
+  // Query the native SDK directly. The Dart cache may still contain its
+  // initial false value, and canRequest() does not itself refresh permission.
+  Future<bool> _isPermissionGranted() => readNativePushPermission();
 
   /// Live OS notification-permission state, read reliably (see [_isPermissionGranted]).
   Future<bool> isPermissionGranted() async {
     await _waitForInitializeIfPending();
-    if (!_initialized) return false;
+    if (!_initialized) {
+      throw StateError("Push notifications are not initialized");
+    }
     return _isPermissionGranted();
   }
 
@@ -228,9 +216,8 @@ class PushNotificationsService {
     await _waitForInitializeIfPending();
     if (!_initialized) return;
 
-    // Reliable read — hydrates the SDK permission cache via a native hop, so an
-    // already-granted device (e.g. Android upgrade carrying the grant forward) is
-    // never misread as denied.
+    // Read the native permission instead of the SDK's startup cache. A failed
+    // read propagates without saving a denial or opting the device out.
     if (await _isPermissionGranted()) {
       await _persistLocalEnabled(true);
       await _persistPromptedOnce();
@@ -272,26 +259,19 @@ class PushNotificationsService {
     }
 
     OneSignal.login(userId);
-    final enabled = await _loadLocalEnabled();
-    await _syncPreferenceToSupabase(enabled);
+    try {
+      // Login must not copy a stale/missing local flag over the account setting.
+      // A failed permission read leaves the existing setting untouched.
+      final enabled = await _isPermissionGranted();
+      await setPushEnabled(enabled);
+    } catch (error) {
+      debugPrint('[PushNotifications] Login permission sync failed: $error');
+    }
   }
 
   Future<void> logoutUser() async {
     if (!_initialized) return;
     OneSignal.logout();
-  }
-
-  Future<bool> _loadLocalEnabled() async {
-    return await _loadLocalEnabledNullable() ?? false;
-  }
-
-  Future<bool?> _loadLocalEnabledNullable() async {
-    try {
-      final db = AppDatabase.instance;
-      return await db.getBool(_notificationsEnabledKey);
-    } catch (_) {
-      return null;
-    }
   }
 
   Future<void> _persistLocalEnabled(bool enabled) async {
