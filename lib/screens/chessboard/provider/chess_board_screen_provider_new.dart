@@ -123,6 +123,9 @@ final currentlyVisiblePageIndexProvider = StateProvider<int>((ref) {
   return 0;
 });
 
+/// Temporary per-game annotation suppression; never persisted.
+final clearAnalysisSuppressedProvider = StateProvider.family<bool, String>((ref, gameId) => false);
+
 /// Allows provider tests to disable best-effort SQLite persistence during
 /// disposal. Production keeps this enabled; tests run without platform plugin
 /// channels and should not start an unawaited database open after completion.
@@ -2121,6 +2124,7 @@ class ChessBoardScreenNotifierNew
   }
 
   Future<void> clearUserAnalysis() async {
+    ref.read(clearAnalysisSuppressedProvider(game.gameId).notifier).state = true;
     if (_isEditingBlockedByPreview(reason: 'clear analysis')) {
       return;
     }

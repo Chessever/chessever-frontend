@@ -821,28 +821,6 @@ Color getAnalysisLastMoveHighlightColor(ChessBoardStateNew state) {
 // custom dual-color last-move tint is gone — the board now highlights the last
 // move natively via colorScheme.lastMove (kLastMoveHighlightColor).
 
-bool _gameHasCustomVariations(ChessGame? game) {
-  if (game == null) return false;
-  bool found = false;
-
-  void visit(List<ChessMove> moves) {
-    for (final move in moves) {
-      final variations = move.variations ?? const <ChessLine>[];
-      if (variations.isNotEmpty) {
-        found = true;
-        return;
-      }
-      for (final variation in variations) {
-        if (found) return;
-        visit(variation);
-      }
-    }
-  }
-
-  visit(game.mainline);
-  return found;
-}
-
 Future<bool?> _showAnalysisConfirmationDialog({
   required BuildContext context,
   required String title,
@@ -4640,20 +4618,6 @@ class _AppBarState extends ConsumerState<_AppBar> {
                         game: widget.game,
                         index: widget.currentGameIndex,
                       );
-                      final boardState = ref.read(
-                        chessBoardScreenProviderNew(params),
-                      );
-                      final analysisGame =
-                          boardState.valueOrNull?.analysisState.game;
-                      final hasCustomAnalysis = _gameHasCustomVariations(
-                        analysisGame,
-                      );
-
-                      if (!hasCustomAnalysis) {
-                        showAppSnack(context, 'No custom analysis to clear');
-                        return;
-                      }
-
                       HapticFeedback.selectionClick();
                       final confirmed =
                           await _showAnalysisConfirmationDialog(
@@ -4761,20 +4725,6 @@ class _AppBarState extends ConsumerState<_AppBar> {
                         game: widget.game,
                         index: widget.currentGameIndex,
                       );
-                      final boardState = ref.read(
-                        chessBoardScreenProviderNew(params),
-                      );
-                      final analysisGame =
-                          boardState.valueOrNull?.analysisState.game;
-                      final hasCustomAnalysis = _gameHasCustomVariations(
-                        analysisGame,
-                      );
-
-                      if (!hasCustomAnalysis) {
-                        showAppSnack(context, 'No custom analysis to clear');
-                        return;
-                      }
-
                       HapticFeedback.selectionClick();
                       final confirmed =
                           await _showAnalysisConfirmationDialog(
@@ -11073,6 +11023,9 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
         (s) => s.valueOrNull?.rawPgnMode ?? false,
       ),
     );
+    final clearAnalysisSuppressed = ref.watch(
+      clearAnalysisSuppressedProvider(widget.game.gameId),
+    );
 
     if (_lastSignature != signature) {
       _moveKeys.clear();
@@ -11143,7 +11096,9 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
 
     // Raw PGN: drop Lichess/auto glyphs, keep report classification icons.
     final effectiveLichessAnnotations =
-        rawPgnMode ? reportAnnotations : moveAnnotations;
+        rawPgnMode || clearAnalysisSuppressed
+            ? const <int, LichessMoveAnnotation>{}
+            : moveAnnotations;
 
     final pointerMap = <String, NotationMoveNode>{};
     final tokens = buildNotationTokens(
@@ -11184,6 +11139,8 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
           sheet.target.value = params;
           return;
         }
+
+        ref.read(clearAnalysisSuppressedProvider(widget.game.gameId).notifier).state = false;
 
         // Fresh generate: run analysis first (silent). requestAnalysis awaits
         // the full Stockfish pass (or returns immediately on cache hit). Open
