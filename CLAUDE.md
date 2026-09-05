@@ -81,3 +81,47 @@ We **purposefully deactivate local Stockfish in debug mode** because its native 
 - The gotcha is worst where logic awaits `ScaffoldFeatureController.closed` (the My Likes export gate): with `persist: true` that future never completes and the flow hangs silently.
 - Tone carries the meaning: `neutral` for confirmations, `danger` for genuine failures, `success` for completed work. The capsule is black in both themes — do not recolour the surface per message.
 - Regression cover lives in `test/app_snack_test.dart` (auto-dismiss, action close, 44dp tap target).
+
+## Edge Functions: NEVER deploy with `verify_jwt` enabled
+
+**Rule: every ChessEver Edge Function ships with `verify_jwt = false`. No exceptions on the list below.** Gateway JWT verification is not our auth boundary and never was — each function authenticates its own callers, and turning the gateway check on does not add security, it only makes the function unreachable.
+
+Two independent reasons it breaks things, both silent:
+
+1. **Third-party callers have no Supabase JWT.** Stripe, RevenueCat, GitHub and our own stream pipeline sign their requests their own way (HMAC signature, or a shared secret in a header). With the gateway check on, Supabase answers `401 UNAUTHORIZED_NO_AUTH_HEADER` **before the function body runs**, so nothing is logged and the provider just queues retries.
+2. **Our own apps' keys are rejected too.** This project migrated to ES256 JWT signing keys on 2026-08-04. The Functions gateway now rejects the legacy anon key with `401 UNAUTHORIZED_LEGACY_JWT` (the REST API still accepts it, which is why this hid for weeks). Any function called before sign-in — onboarding photos, annotations — became unreachable for every new user.
+
+These must be `false`, whichever repo owns them:
+
+```
+stripe-webhook             revenuecat-webhook        revenuecat-sync
+onesignal-dispatch         github-webhook            fetch-fide-photo-webp
+fetch-lichess-annotations  stripe-checkout           stripe-portal
+entitlement
+```
+
+### How to deploy
+
+```bash
+supabase functions deploy <slug> --project-ref oelbsuggrzyqwzmvidju --no-verify-jwt
+```
+
+`supabase/config.toml` in this repo already pins `verify_jwt = false` per function and the CLI honours it (precedence: `--flag` > config > remote). Do not delete those blocks; add one for every new function.
+
+**The `--no-verify-jwt` flag matters because config.toml does not cover every deploy path.** The Supabase MCP `deploy_edge_function` tool, the dashboard, and the Management API all ignore this file and send `verify_jwt` explicitly, **defaulting to `true`**. The MCP tool's own description even instructs the agent to enable it. If you deploy by any of those routes, you will silently re-create the outage.
+
+### After ANY deploy, by any route
+
+```bash
+chessever_frontend_desktop_oss/scripts/check_edge_function_auth.sh    # must exit 0
+```
+
+It asserts every flag against intent and probes each endpoint from outside. Read the **body**, not the status code: a healthy `revenuecat-webhook` answers 401 from its own auth check, identical to a gateway rejection. Only the gateway says `UNAUTHORIZED_NO_AUTH_HEADER`.
+
+### Before deploying a function that exists in more than one repo
+
+```bash
+chessever_frontend_desktop_oss/scripts/which_repo_owns_function.sh <slug>
+```
+
+`onesignal-dispatch`, `fetch-fide-photo-webp` and `revenuecat-webhook` have stale copies in other repos. Deploying from the wrong one rolls production back — it happened on 2026-08-26 and reverted an auth check to a version that accepted any request with no token header. This repo is the source of truth for the notification, RevenueCat and photo functions.
