@@ -42,23 +42,34 @@ class NotificationPermissionNotifier extends StateNotifier<AsyncValue<bool>>
   }
 
   Future<void> refresh() async {
-    final granted = await _service.isPermissionGranted();
-    _set(granted);
+    try {
+      final granted = await _service.isPermissionGranted();
+      _set(granted);
+    } catch (error, stack) {
+      // Unavailable permission is not a denial; do not sync false to the account.
+      if (mounted) state = AsyncValue.error(error, stack);
+    }
   }
 
   /// Master toggle tap handler. We never set permission from code — we hand the
   /// user to native controls and then reflect whatever they chose.
   Future<void> handleMasterToggle() async {
-    final granted = await _service.isPermissionGranted();
-    if (!granted && await _service.canRequestPermission()) {
-      // Never prompted before: show the native system permission dialog.
-      await _service.requestPermissionWithDialog();
-    } else {
-      // Already granted (only the OS can revoke) or the prompt is no longer
-      // available: open the phone's notification settings for this app.
-      await AppSettings.openAppSettings(type: AppSettingsType.notification);
+    try {
+      final granted = await _service.isPermissionGranted();
+      if (!granted && await _service.canRequestPermission()) {
+        // Never prompted before: show the native system permission dialog.
+        await _service.requestPermissionWithDialog();
+      } else {
+        // Already granted (only the OS can revoke) or the prompt is no longer
+        // available: open the phone's notification settings for this app.
+        await AppSettings.openAppSettings(type: AppSettingsType.notification);
+      }
+      await refresh();
+    } catch (error, stack) {
+      // A tap before SDK readiness (or a native/settings failure) must not
+      // escape the UI callback or overwrite the account's permission flag.
+      if (mounted) state = AsyncValue.error(error, stack);
     }
-    await refresh();
   }
 
   void _set(bool granted) {
