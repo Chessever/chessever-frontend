@@ -741,6 +741,115 @@ String normalizeChatMarkdown(String source) {
       .join('\n');
 }
 
+class IntegratedChatReferences {
+  const IntegratedChatReferences({
+    required this.markdown,
+    required this.linkedReferences,
+  });
+
+  final String markdown;
+  final List<ChatReference> linkedReferences;
+}
+
+List<(int, int)> _markdownProtectedRanges(String source) {
+  final patterns = [
+    RegExp(r'```[\s\S]*?```'),
+    RegExp(r'`[^`\n]*`'),
+    RegExp(r'!?\[[^\]]*\]\([^\n)]*\)'),
+  ];
+  return [
+    for (final pattern in patterns)
+      for (final match in pattern.allMatches(source)) (match.start, match.end),
+  ];
+}
+
+String _chatReferenceHref(ChatReference reference) =>
+    Uri(
+      scheme: 'chessever',
+      host: 'reference',
+      queryParameters: {'type': reference.type, 'id': reference.id},
+    ).toString();
+
+ChatReference? chatReferenceForHref(
+  String? href,
+  List<ChatReference> references,
+) {
+  if (href == null) return null;
+  final uri = Uri.tryParse(href);
+  if (uri == null || uri.scheme != 'chessever' || uri.host != 'reference') {
+    return null;
+  }
+  final type = uri.queryParameters['type'];
+  final id = uri.queryParameters['id'];
+  for (final reference in references) {
+    if (reference.type == type && reference.id == id) return reference;
+  }
+  return null;
+}
+
+List<String> _chatReferenceAliases(ChatReference reference) {
+  final label = reference.label.trim();
+  final aliases = <String>{if (label.isNotEmpty) label};
+  if (reference.type == 'game') {
+    final players = label.split(
+      RegExp(r'\s+(?:vs\.?|[-–—])\s+', caseSensitive: false),
+    );
+    if (players.length == 2 && players.every((player) => player.isNotEmpty)) {
+      for (final separator in [' vs ', ' - ', ' – ', ' — ']) {
+        aliases.add('${players[0]}$separator${players[1]}');
+      }
+    }
+  }
+  return aliases.toList()
+    ..sort((left, right) => right.length.compareTo(left.length));
+}
+
+IntegratedChatReferences integrateChatReferences(
+  String source,
+  List<ChatReference> references,
+) {
+  var markdown = source;
+  final linked = <ChatReference>[];
+  final unique = <String, ChatReference>{};
+  for (final reference in references) {
+    unique.putIfAbsent('${reference.type}:${reference.id}', () => reference);
+  }
+  final candidates =
+      unique.values.toList()..sort(
+        (left, right) => right.label.length.compareTo(left.label.length),
+      );
+
+  for (final reference in candidates) {
+    final protected = _markdownProtectedRanges(markdown);
+    RegExpMatch? selected;
+    for (final alias in _chatReferenceAliases(reference)) {
+      final matcher = RegExp(RegExp.escape(alias), caseSensitive: false);
+      for (final match in matcher.allMatches(markdown)) {
+        final overlaps = protected.any(
+          (range) => match.start < range.$2 && match.end > range.$1,
+        );
+        if (!overlaps && (selected == null || match.start < selected.start)) {
+          selected = match;
+        }
+      }
+    }
+    if (selected == null) continue;
+    final matchedLabel = selected.group(0)!;
+    final escapedLabel = matchedLabel.replaceAllMapped(
+      RegExp(r'[\\\[\]]'),
+      (match) => '\\${match.group(0)}',
+    );
+    markdown = markdown.replaceRange(
+      selected.start,
+      selected.end,
+      '[$escapedLabel](${_chatReferenceHref(reference)})',
+    );
+    linked.add(reference);
+  }
+
+  return IntegratedChatReferences(markdown: markdown, linkedReferences: linked);
+}
+
 class _OnlineDot extends StatelessWidget {
   const _OnlineDot();
 
@@ -1235,7 +1344,11 @@ class _MessageBubble extends StatelessWidget {
   Widget build(BuildContext context) {
     final isUser = message.role == 'user';
     final colorScheme = Theme.of(context).colorScheme;
-    final referenceGroups = structureChatReferences(message.references);
+    final linkedContent =
+        integrateChatReferences(
+          normalizeChatMarkdown(message.content),
+          message.references,
+        ).markdown;
     final bubble = Container(
       constraints: BoxConstraints(maxWidth: isUser ? 420 : double.infinity),
       padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 12),
@@ -1296,9 +1409,17 @@ class _MessageBubble extends StatelessWidget {
             _CopyableMessageContent(
               text: message.content,
               child: MarkdownBody(
-                data: normalizeChatMarkdown(message.content),
+                data: linkedContent,
                 softLineBreak: true,
                 onTapLink: (text, href, title) {
+                  final reference = chatReferenceForHref(
+                    href,
+                    message.references,
+                  );
+                  if (reference != null) {
+                    onReferencePressed(reference);
+                    return;
+                  }
                   final uri = safeChatSourceUri(href);
                   if (uri != null) {
                     unawaited(launchUrl(uri, mode: LaunchMode.platformDefault));
@@ -1330,43 +1451,6 @@ class _MessageBubble extends StatelessWidget {
                 ),
               ),
             ),
-          if (referenceGroups.isNotEmpty) ...[
-            const SizedBox(height: 12),
-            Text(
-              'Related',
-              style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                color: colorScheme.onSurfaceVariant,
-              ),
-            ),
-            const SizedBox(height: 6),
-            ...referenceGroups.map(
-              (group) => Padding(
-                padding: const EdgeInsets.only(bottom: 7),
-                child: Wrap(
-                  spacing: 6,
-                  runSpacing: 6,
-                  children:
-                      group
-                          .map(
-                            (reference) => ActionChip(
-                              avatar: Icon(switch (reference.type) {
-                                'game' => Icons.sports_esports_rounded,
-                                'player' => Icons.person_rounded,
-                                'opening' => Icons.auto_stories_rounded,
-                                _ => Icons.emoji_events_rounded,
-                              }, size: 16),
-                              label: Text(reference.label),
-                              onPressed: () => onReferencePressed(reference),
-                              side: BorderSide(
-                                color: colorScheme.outlineVariant,
-                              ),
-                            ),
-                          )
-                          .toList(),
-                ),
-              ),
-            ),
-          ],
         ],
       ),
     );

@@ -198,6 +198,69 @@ void main() {
     );
   });
 
+  test('integrates verified tournament and game references into prose', () {
+    const references = [
+      ChatReference(
+        type: 'tournament',
+        id: 'tour-7',
+        label: 'Norway Chess 2026',
+      ),
+      ChatReference(
+        type: 'round',
+        id: 'round-4',
+        label: 'Round 4',
+        tourId: 'tour-7',
+      ),
+      ChatReference(type: 'game', id: 'game/9', label: 'White vs Black'),
+      ChatReference(type: 'event', id: 'unused', label: 'Unused Event'),
+    ];
+
+    final result = integrateChatReferences(
+      'Norway Chess 2026 was won in Round 4. White – Black decided it.',
+      references,
+    );
+
+    expect(
+      result.markdown,
+      '[Norway Chess 2026](chessever://reference?type=tournament&id=tour-7) '
+      'was won in '
+      '[Round 4](chessever://reference?type=round&id=round-4). '
+      '[White – Black](chessever://reference?type=game&id=game%2F9) '
+      'decided it.',
+    );
+    expect(
+      result.linkedReferences.map((reference) => reference.id),
+      unorderedEquals(['tour-7', 'round-4', 'game/9']),
+    );
+    expect(
+      chatReferenceForHref(
+        'chessever://reference?type=game&id=game%2F9',
+        references,
+      )?.id,
+      'game/9',
+    );
+  });
+
+  test('does not replace labels already inside markdown links or code', () {
+    const references = [
+      ChatReference(
+        type: 'tournament',
+        id: 'tour-7',
+        label: 'Norway Chess 2026',
+      ),
+    ];
+    final result = integrateChatReferences(
+      '[Norway Chess 2026](https://example.com) and `Norway Chess 2026`',
+      references,
+    );
+
+    expect(
+      result.markdown,
+      '[Norway Chess 2026](https://example.com) and `Norway Chess 2026`',
+    );
+    expect(result.linkedReferences, isEmpty);
+  });
+
   test('parses a conversation returned by the chat API', () {
     final conversation = ChatConversation.fromJson({
       'id': 'conversation-1',
