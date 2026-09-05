@@ -19,9 +19,10 @@ void main() {
         container.read(provider).showSourceAnnotations(rawPgn: true),
         isFalse,
       );
-      controller.clear();
+      controller.clear(hiddenVariationIds: const {'1-0'});
       expect(container.read(provider).showReport(rawPgn: false), isFalse);
-      expect(container.read(provider).hideVariations, isTrue);
+      expect(container.read(provider).sourceHidden, isTrue);
+      expect(container.read(provider).hiddenVariationIds, {'1-0'});
       expect(controller.isCurrentRequest(request), isFalse);
       expect(
         container.read(provider).showSourceAnnotations(rawPgn: false),
@@ -29,7 +30,10 @@ void main() {
       );
       controller.requestReport();
       expect(container.read(provider).showReport(rawPgn: true), isTrue);
-      expect(container.read(provider).hideVariations, isTrue);
+      // Generate after Clear reveals the report but never restores the branches
+      // or source glyphs that Clear hid.
+      expect(container.read(provider).sourceHidden, isTrue);
+      expect(container.read(provider).hiddenVariationIds, {'1-0'});
     },
   );
 
@@ -51,7 +55,8 @@ void main() {
       await container.pump();
       expect(container.read(provider).showReport(rawPgn: false), isTrue);
       expect(container.read(provider).showReport(rawPgn: true), isFalse);
-      expect(container.read(provider).hideVariations, isFalse);
+      expect(container.read(provider).sourceHidden, isFalse);
+      expect(container.read(provider).hiddenVariationIds, isEmpty);
     },
   );
 }

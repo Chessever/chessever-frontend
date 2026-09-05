@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:chessever2/screens/chessboard/provider/analysis_view_session.dart';
+import 'package:chessever2/screens/chessboard/notation/notation_tree.dart';
 
 import 'package:chessever2/providers/engine_settings_provider.dart';
 import 'package:chessever2/repository/gamebase/gamebase_repository.dart';
@@ -204,6 +205,14 @@ void main() {
     expect(game.pgn, pgn);
     expect(container.read(view).cleared, isTrue);
     expect(container.read(view).showReport(rawPgn: false), isFalse);
+    // The pre-existing "1... c5" branch is what Clear hides; its id matches the
+    // notation tree so the move list and fork picker drop exactly that line.
+    final branchId =
+        NotationTreeBuilder.build(originalTree!).mainline
+            .expand((node) => node.variations)
+            .single
+            .id;
+    expect(container.read(view).hiddenVariationIds, {branchId});
   });
 
   group('Live FEN placeholder initialization', () {

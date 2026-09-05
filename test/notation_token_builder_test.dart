@@ -49,7 +49,8 @@ List<NotationDisplayToken> _buildTokens(
   Map<String, String> variationComments = const {},
   Set<String> collapsedVariationIds = const {},
   Set<String> expandedVariationIds = const {},
-  bool hideVariations = false,
+  Set<String> forcedOpenIds = const {},
+  Set<String> hiddenVariationIds = const {},
   bool rawPgnMode = false,
 }) {
   final pointerMap = <String, NotationMoveNode>{};
@@ -58,12 +59,12 @@ List<NotationDisplayToken> _buildTokens(
     depth: 0,
     startingPly: tree.startingPly,
     pointerMap: pointerMap,
-    forcedOpenIds: const {},
+    forcedOpenIds: forcedOpenIds,
     variationComments: variationComments,
     lichessAnnotations: lichessAnnotations,
     collapsedVariationIds: collapsedVariationIds,
     expandedVariationIds: expandedVariationIds,
-    hideVariations: hideVariations,
+    hiddenVariationIds: hiddenVariationIds,
     rawPgnMode: rawPgnMode,
   );
 }
@@ -841,7 +842,7 @@ void main() {
       final tree = _treeFromSans(['e4', 'e5'], variation: variation);
       final tokens = _buildTokens(
         tree,
-        hideVariations: true,
+        hiddenVariationIds: {tree.mainline.first.variations.first.id},
         rawPgnMode: true,
         lichessAnnotations: {
           0: LichessMoveAnnotation(
@@ -859,6 +860,37 @@ void main() {
       expect(tree.mainline.first.move.comments, isNull);
       expect(tree.mainline.first.variations.first.moves.first.move.comments, ['branch note']);
     });
-  });
 
+    test('branches added after Clear keep rendering', () {
+      // Only ids captured at Clear time are hidden; a branch the user plays
+      // afterwards gets a new id and must still show.
+      final variation = <ChessMove>[_move('c5')];
+      final tree = _treeFromSans(['e4', 'e5'], variation: variation);
+      final tokens = _buildTokens(
+        tree,
+        hiddenVariationIds: const {'9-9'},
+      );
+      expect(
+        tokens.where((t) => t.type == NotationTokenType.openParen),
+        hasLength(1),
+      );
+      expect(tokens.map((t) => t.text), contains('c5'));
+    });
+
+    test('a hidden branch the cursor sits in still renders', () {
+      final variation = <ChessMove>[_move('c5')];
+      final tree = _treeFromSans(['e4', 'e5'], variation: variation);
+      final id = tree.mainline.first.variations.first.id;
+      final tokens = _buildTokens(
+        tree,
+        hiddenVariationIds: {id},
+        forcedOpenIds: {id},
+      );
+      expect(
+        tokens.where((t) => t.type == NotationTokenType.openParen),
+        hasLength(1),
+      );
+      expect(tokens.map((t) => t.text), contains('c5'));
+    });
+  });
 }

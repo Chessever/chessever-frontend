@@ -2125,7 +2125,18 @@ class ChessBoardScreenNotifierNew
     // This action is a view-only overlay. Do not rewrite the navigator, PGN,
     // comments, report state, or persistence; leaving the board disposes the
     // autoDispose provider and restores the normal view on the next visit.
-    ref.read(analysisViewSessionProvider(game.gameId).notifier).clear();
+    // Snapshot the branches that exist right now: they hide for this visit,
+    // while any branch the user plays afterwards is appended under a fresh id
+    // and stays visible.
+    final tree = state.value?.analysisState.game;
+    ref
+        .read(analysisViewSessionProvider(game.gameId).notifier)
+        .clear(
+          hiddenVariationIds:
+              tree == null
+                  ? const <String>{}
+                  : NotationTreeBuilder.variationIds(tree),
+        );
     _exitPvPreviewIfActive();
     // Return from a custom branch without replacing/persisting the game tree.
     final pointer = state.value?.analysisState.movePointer;

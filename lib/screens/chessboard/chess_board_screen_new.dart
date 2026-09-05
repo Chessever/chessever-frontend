@@ -2766,8 +2766,11 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
     // Keep the visit policy alive even if a refresh temporarily replaces the
     // board/notation with a loading surface. It still disposes on route exit.
     if (widget.games.isNotEmpty) {
-      final game = widget.games[_currentPageIndex.clamp(0, widget.games.length - 1)];
-      ref.watch(analysisViewSessionProvider(game.gameId));
+      final game =
+          widget.games[_currentPageIndex.clamp(0, widget.games.length - 1)];
+      // listen, not watch: holds the autoDispose session for the visit without
+      // rebuilding the whole screen on every Clear / Generate.
+      ref.listen(analysisViewSessionProvider(game.gameId), (_, __) {});
     }
     Widget withLikeFlightScope(Widget child) {
       return ProviderScope(
@@ -11096,23 +11099,29 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
       _schedulePointerScroll(pointerForScroll, pointerForHighlightId);
     }
 
-    // Fork picker: when the selected move has several playable next moves
-    // (own continuation + variation heads), surface them as tappable options
-    // pinned below the notation instead of silently following the main line.
-    final nextMoveOptions = nextMoveOptionsAt(
-      navigatorState.game,
-      pointerCandidate,
-    );
-    final showNextMovePanel =
-        nextMoveOptions.length > 1 && !widget.state.isPvPreviewActive &&
-        !viewSession.hideVariations;
-
     final forcedOpenIds = <String>{};
     _collectVariationAncestors(
       pointerForHighlightId,
       tree.mainline,
       forcedOpenIds,
     );
+
+    // Fork picker: when the selected move has several playable next moves
+    // (own continuation + variation heads), surface them as tappable options
+    // pinned below the notation instead of silently following the main line.
+    // Branches hidden by Clear stay out of the picker unless the cursor is
+    // already inside them.
+    final nextMoveOptions =
+        nextMoveOptionsAt(navigatorState.game, pointerCandidate).where((
+          option,
+        ) {
+          final variationId = _variationIdForPointer(option.pointer);
+          return variationId == null ||
+              !viewSession.hiddenVariationIds.contains(variationId) ||
+              forcedOpenIds.contains(variationId);
+        }).toList();
+    final showNextMovePanel =
+        nextMoveOptions.length > 1 && !widget.state.isPvPreviewActive;
 
     // Explicit Generate Report overrides Raw PGN for this visit only.
     final effectiveLichessAnnotations =
@@ -11133,7 +11142,7 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
       expandedVariationIds: _expandedVariationIds,
       autoCollapseDepth: _autoCollapseDepth,
       rawPgnMode: effectiveRawPgnMode,
-      hideVariations: viewSession.hideVariations,
+      hiddenVariationIds: viewSession.hiddenVariationIds,
     );
 
     final currentNode =
@@ -12758,6 +12767,14 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
     } else {
       _scrollController.jumpTo(clampedOffset);
     }
+  }
+
+  /// Id of the variation that owns [pointer], or null for a mainline move.
+  /// Pointers alternate move index / variation index, so dropping the last
+  /// move index leaves the variation's own path.
+  String? _variationIdForPointer(ChessMovePointer pointer) {
+    if (pointer.length < 3) return null;
+    return NotationPointer.encode(pointer.sublist(0, pointer.length - 1));
   }
 
   bool _collectVariationAncestors(
