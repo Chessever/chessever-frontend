@@ -17,6 +17,7 @@ import 'package:chessever2/screens/chessboard/analysis/chess_game.dart';
 import 'package:chessever2/screens/chessboard/analysis/chess_game_navigator.dart';
 import 'package:chessever2/screens/chessboard/game_review/classification_style.dart';
 import 'package:chessever2/screens/chessboard/game_review/game_analysis_report.dart';
+import 'package:chessever2/screens/chessboard/provider/analysis_view_session.dart';
 import 'package:chessever2/screens/chessboard/game_review/game_review_provider.dart';
 import 'package:chessever2/screens/chessboard/game_review/game_review_sheet.dart';
 import 'package:chessever2/screens/chessboard/game_review/game_review_sheet_host.dart';
@@ -820,28 +821,6 @@ Color getAnalysisLastMoveHighlightColor(ChessBoardStateNew state) {
 // chessground v10 removed squareHighlights from the interactive board, so the
 // custom dual-color last-move tint is gone — the board now highlights the last
 // move natively via colorScheme.lastMove (kLastMoveHighlightColor).
-
-bool _gameHasCustomVariations(ChessGame? game) {
-  if (game == null) return false;
-  bool found = false;
-
-  void visit(List<ChessMove> moves) {
-    for (final move in moves) {
-      final variations = move.variations ?? const <ChessLine>[];
-      if (variations.isNotEmpty) {
-        found = true;
-        return;
-      }
-      for (final variation in variations) {
-        if (found) return;
-        visit(variation);
-      }
-    }
-  }
-
-  visit(game.mainline);
-  return found;
-}
 
 Future<bool?> _showAnalysisConfirmationDialog({
   required BuildContext context,
@@ -2784,6 +2763,15 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
 
   @override
   Widget build(BuildContext context) {
+    // Keep the visit policy alive even if a refresh temporarily replaces the
+    // board/notation with a loading surface. It still disposes on route exit.
+    if (widget.games.isNotEmpty) {
+      final game =
+          widget.games[_currentPageIndex.clamp(0, widget.games.length - 1)];
+      // listen, not watch: holds the autoDispose session for the visit without
+      // rebuilding the whole screen on every Clear / Generate.
+      ref.listen(analysisViewSessionProvider(game.gameId), (_, __) {});
+    }
     Widget withLikeFlightScope(Widget child) {
       return ProviderScope(
         overrides: [
@@ -4640,36 +4628,23 @@ class _AppBarState extends ConsumerState<_AppBar> {
                         game: widget.game,
                         index: widget.currentGameIndex,
                       );
-                      final boardState = ref.read(
-                        chessBoardScreenProviderNew(params),
-                      );
-                      final analysisGame =
-                          boardState.valueOrNull?.analysisState.game;
-                      final hasCustomAnalysis = _gameHasCustomVariations(
-                        analysisGame,
-                      );
-
-                      if (!hasCustomAnalysis) {
-                        showAppSnack(context, 'No custom analysis to clear');
-                        return;
-                      }
-
                       HapticFeedback.selectionClick();
                       final confirmed =
                           await _showAnalysisConfirmationDialog(
                             context: context,
                             title: 'Clear analysis?',
                             message:
-                                'This will remove every custom branch, including nested subvariants. This action cannot be undone.',
+                                'Temporarily hide all analysis and variations for this visit. Saved analysis is kept. Reopen the game to restore it, or tap Generate Report to show a report.',
                             confirmLabel: 'Clear',
                             confirmColor: kRedColor,
                           ) ??
                           false;
-                      if (!confirmed) return;
+                      if (!confirmed || !context.mounted) return;
                       HapticFeedback.heavyImpact();
                       final notifier = ref.read(
                         chessBoardScreenProviderNew(params).notifier,
                       );
+                      GameReviewSheetScope.maybeOf(context)?.target.value = null;
                       await notifier.clearUserAnalysis();
                     }
                   },
@@ -4761,36 +4736,23 @@ class _AppBarState extends ConsumerState<_AppBar> {
                         game: widget.game,
                         index: widget.currentGameIndex,
                       );
-                      final boardState = ref.read(
-                        chessBoardScreenProviderNew(params),
-                      );
-                      final analysisGame =
-                          boardState.valueOrNull?.analysisState.game;
-                      final hasCustomAnalysis = _gameHasCustomVariations(
-                        analysisGame,
-                      );
-
-                      if (!hasCustomAnalysis) {
-                        showAppSnack(context, 'No custom analysis to clear');
-                        return;
-                      }
-
                       HapticFeedback.selectionClick();
                       final confirmed =
                           await _showAnalysisConfirmationDialog(
                             context: context,
                             title: 'Clear analysis?',
                             message:
-                                'This will remove every custom branch, including nested subvariants. This action cannot be undone.',
+                                'Temporarily hide all analysis and variations for this visit. Saved analysis is kept. Reopen the game to restore it, or tap Generate Report to show a report.',
                             confirmLabel: 'Clear',
                             confirmColor: kRedColor,
                           ) ??
                           false;
-                      if (!confirmed) return;
+                      if (!confirmed || !context.mounted) return;
                       HapticFeedback.heavyImpact();
                       final notifier = ref.read(
                         chessBoardScreenProviderNew(params).notifier,
                       );
+                      GameReviewSheetScope.maybeOf(context)?.target.value = null;
                       await notifier.clearUserAnalysis();
                     }
                   },
@@ -7514,6 +7476,7 @@ class _AnalysisGameBody extends ConsumerWidget {
     // card-focus arrows remain usable (no slide-hide).
     final explorerVisible = ref.watch(boardExplorerPanelVisibleProvider);
     final gamesPinned = ref.watch(explorerInlineGamesPinnedProvider);
+    final viewSession = ref.watch(analysisViewSessionProvider(game.gameId));
     final expandGamesOverPv = shouldExpandExplorerGamesOverPv(
       pageVisible: index == currentPageIndex,
       explorerPanelVisible: explorerVisible,
@@ -7536,7 +7499,7 @@ class _AnalysisGameBody extends ConsumerWidget {
         // When games pin we collapse PV with a height/opacity ease so the
         // analysis panel grows into that space without a layout jump.
         final showPv =
-            state.isAnalysisMode &&
+            !viewSession.cleared && state.isAnalysisMode &&
             state.showEngineAnalysis &&
             state.showPrincipalVariations;
         // Tablet right-column / portrait put a gap under PV; fold it into the
@@ -8171,6 +8134,7 @@ class _TabletBoardWithSidebar extends ConsumerWidget {
           ),
         );
     final showEngineGauge =
+        !ref.watch(analysisViewSessionProvider(game.gameId)).cleared &&
         engineGaugeEnabled &&
         // Engine toggle (bottom-nav laptop) gates the eval bar too: turning the
         // engine off in the game view hides the bar, not just the PV cards.
@@ -8269,6 +8233,7 @@ class _BoardWithSidebar extends ConsumerWidget {
           ),
         );
     final showEngineGauge =
+        !ref.watch(analysisViewSessionProvider(game.gameId)).cleared &&
         engineGaugeEnabled &&
         // Engine toggle (bottom-nav laptop) gates the eval bar too: turning the
         // engine off in the game view hides the bar, not just the PV cards.
@@ -9778,6 +9743,10 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard>
       game: widget.game,
       index: widget.index,
     );
+    final viewSession = ref.watch(analysisViewSessionProvider(widget.game.gameId));
+    final rawPgnMode = ref.watch(boardSettingsProviderNew.select((s) => s.valueOrNull?.rawPgnMode ?? true));
+    final showSourceAnnotations = viewSession.showSourceAnnotations(rawPgn: rawPgnMode);
+    final showReportAnnotations = viewSession.showReport(rawPgn: rawPgnMode);
     final boardShareBoundaryKey = ref.watch(boardShareBoundaryKeyProvider);
     final notifier = ref.read(chessBoardScreenProviderNew(params).notifier);
     // chessground v10: the board's tap-selection is cleared via the controller
@@ -9834,7 +9803,8 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard>
     final boardAnnotation =
         (() {
           if (analysisGame == null ||
-              widget.chessBoardState.isPvPreviewActive) {
+              widget.chessBoardState.isPvPreviewActive ||
+              !showReportAnnotations) {
             return null;
           }
           final mainlineSans =
@@ -9906,6 +9876,7 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard>
               currentMoveIndex >= 0
                   ? reportAnnotations[currentMoveIndex]
                   : null;
+          if (!showSourceAnnotations) return reportVerdict;
           final userNags = userNagsForMovePointer(
             annotationMovePointer,
             widget.chessBoardState.moveNags,
@@ -9961,6 +9932,7 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard>
               annotation: boardAnnotation,
             );
           }
+          if (!showSourceAnnotations) return null;
           // Path B: any other NAG ($7, $10, $13–$22, $32, $36, $40, $44, $132,
           // $138, $140, $146) → render the literal Unicode glyph in a circular
           // badge. This is what fixes "exclamation symbols don't show on the
@@ -10000,13 +9972,14 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard>
     // to parent widgets during piece animations and drag operations
 
     final pvShapes =
-        (widget.chessBoardState.showEngineAnalysis &&
+        (!viewSession.cleared && widget.chessBoardState.showEngineAnalysis &&
                 widget.chessBoardState.showPrincipalVariations &&
                 showPvArrows)
             ? (widget.chessBoardState.shapes ?? const ISet<Shape>.empty())
             : const ISet<Shape>.empty();
 
-    final annotationShapes = _extractAnnotationShapes(activeMove);
+    final annotationShapes = showSourceAnnotations
+        ? _extractAnnotationShapes(activeMove) : const <Shape>[];
     // chessground v10 takes a plain Set<Shape> (was ISet<Shape>).
     final allShapes = <Shape>{...pvShapes, ...annotationShapes};
     final androidPipRecoveryEpoch = ref.watch(
@@ -11070,9 +11043,11 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
     );
     final rawPgnMode = ref.watch(
       boardSettingsProviderNew.select(
-        (s) => s.valueOrNull?.rawPgnMode ?? false,
+        (s) => s.valueOrNull?.rawPgnMode ?? true,
       ),
     );
+    final viewSession = ref.watch(analysisViewSessionProvider(widget.game.gameId));
+    final effectiveRawPgnMode = !viewSession.showSourceAnnotations(rawPgn: rawPgnMode);
 
     if (_lastSignature != signature) {
       _moveKeys.clear();
@@ -11124,16 +11099,6 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
       _schedulePointerScroll(pointerForScroll, pointerForHighlightId);
     }
 
-    // Fork picker: when the selected move has several playable next moves
-    // (own continuation + variation heads), surface them as tappable options
-    // pinned below the notation instead of silently following the main line.
-    final nextMoveOptions = nextMoveOptionsAt(
-      navigatorState.game,
-      pointerCandidate,
-    );
-    final showNextMovePanel =
-        nextMoveOptions.length > 1 && !widget.state.isPvPreviewActive;
-
     final forcedOpenIds = <String>{};
     _collectVariationAncestors(
       pointerForHighlightId,
@@ -11141,9 +11106,28 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
       forcedOpenIds,
     );
 
-    // Raw PGN: drop Lichess/auto glyphs, keep report classification icons.
+    // Fork picker: when the selected move has several playable next moves
+    // (own continuation + variation heads), surface them as tappable options
+    // pinned below the notation instead of silently following the main line.
+    // Branches hidden by Clear stay out of the picker unless the cursor is
+    // already inside them.
+    final nextMoveOptions =
+        nextMoveOptionsAt(navigatorState.game, pointerCandidate).where((
+          option,
+        ) {
+          final variationId = _variationIdForPointer(option.pointer);
+          return variationId == null ||
+              !viewSession.hiddenVariationIds.contains(variationId) ||
+              forcedOpenIds.contains(variationId);
+        }).toList();
+    final showNextMovePanel =
+        nextMoveOptions.length > 1 && !widget.state.isPvPreviewActive;
+
+    // Explicit Generate Report overrides Raw PGN for this visit only.
     final effectiveLichessAnnotations =
-        rawPgnMode ? reportAnnotations : moveAnnotations;
+        !viewSession.showReport(rawPgn: rawPgnMode)
+            ? const <int, LichessMoveAnnotation>{}
+            : effectiveRawPgnMode ? reportAnnotations : moveAnnotations;
 
     final pointerMap = <String, NotationMoveNode>{};
     final tokens = buildNotationTokens(
@@ -11157,7 +11141,8 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
       collapsedVariationIds: _collapsedVariationIds,
       expandedVariationIds: _expandedVariationIds,
       autoCollapseDepth: _autoCollapseDepth,
-      rawPgnMode: rawPgnMode,
+      rawPgnMode: effectiveRawPgnMode,
+      hiddenVariationIds: viewSession.hiddenVariationIds,
     );
 
     final currentNode =
@@ -11172,6 +11157,8 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
       final sheet = GameReviewSheetScope.maybeOf(context);
       if (sheet == null) return;
       unawaited(() async {
+        final viewController = ref.read(analysisViewSessionProvider(widget.game.gameId).notifier);
+        final request = viewController.requestReport();
         final alreadyRunning =
             reviewController.reviewState.reportState.isRunning;
         reviewController.reveal();
@@ -11180,7 +11167,7 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
         // that was the original bug (second tap killed generation).
         if (alreadyRunning) {
           await notifier.setGameReviewVisible(true);
-          if (!mounted || !context.mounted) return;
+          if (!mounted || !context.mounted || !viewController.isCurrentRequest(request)) return;
           sheet.target.value = params;
           return;
         }
@@ -11190,9 +11177,9 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
         // the sheet only after that path returns so the board is not blocked
         // by an open review sheet for the entire run.
         await reviewController.requestAnalysis(context);
-        if (!mounted || !context.mounted) return;
+        if (!mounted || !context.mounted || !viewController.isCurrentRequest(request)) return;
         await notifier.setGameReviewVisible(true);
-        if (!mounted) return;
+        if (!mounted || !viewController.isCurrentRequest(request)) return;
         sheet.target.value = params;
       }());
     }
@@ -11207,7 +11194,7 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
       useFigurine: useFigurine,
       pieceAssets: pieceAssets,
       pointerMap: pointerMap,
-      rawPgnMode: rawPgnMode,
+      rawPgnMode: effectiveRawPgnMode,
       reportedMoveCount: reportedMoveCount,
     );
 
@@ -11554,8 +11541,8 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
         tailPointerId != null &&
         pointerId == tailPointerId;
 
-    // Raw PGN mode hides PGN NAGs and non-report Lichess glyphs, but keeps the
-    // whole-game report classification icons (engine verdict after analysis).
+    // Source glyphs stay hidden in clean/raw views. The caller supplies report
+    // icons only when the visit policy permits them (including explicit Generate).
     // Quality NAGs ($1–$7) win over Lichess classifications; evaluation /
     // observation NAGs do not suppress Lichess markers.
     final resolvedAnnotation = _resolveLichessAnnotation(
@@ -12780,6 +12767,14 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
     } else {
       _scrollController.jumpTo(clampedOffset);
     }
+  }
+
+  /// Id of the variation that owns [pointer], or null for a mainline move.
+  /// Pointers alternate move index / variation index, so dropping the last
+  /// move index leaves the variation's own path.
+  String? _variationIdForPointer(ChessMovePointer pointer) {
+    if (pointer.length < 3) return null;
+    return NotationPointer.encode(pointer.sublist(0, pointer.length - 1));
   }
 
   bool _collectVariationAncestors(

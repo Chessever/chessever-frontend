@@ -293,6 +293,7 @@ List<NotationDisplayToken> buildNotationTokens(
   required Set<String> expandedVariationIds,
   int autoCollapseDepth = 3,
   bool rawPgnMode = false,
+  Set<String> hiddenVariationIds = const <String>{},
 }) {
   final tokens = <NotationDisplayToken>[];
   // A parsed variation belongs to the last common move in the game tree, but
@@ -438,11 +439,15 @@ List<NotationDisplayToken> buildNotationTokens(
       if (i == moves.length - 1) ...node.variations,
     ];
     for (final variation in variationsToRender) {
+      final forcedOpen = forcedOpenIds.contains(variation.id);
+      // A cleared visit hides the branches that existed at Clear time, except
+      // the one the cursor is inside. Branches played afterwards carry new
+      // ids and render normally.
+      if (hiddenVariationIds.contains(variation.id) && !forcedOpen) continue;
       final defaultCollapsed = shouldCollapseByDefault(
         variation,
         autoCollapseDepth: autoCollapseDepth,
       );
-      final forcedOpen = forcedOpenIds.contains(variation.id);
       final manuallyCollapsed = collapsedVariationIds.contains(variation.id);
       final manuallyExpanded = expandedVariationIds.contains(variation.id);
       final variationHeroTagBase =
@@ -515,6 +520,7 @@ List<NotationDisplayToken> buildNotationTokens(
             expandedVariationIds: expandedVariationIds,
             autoCollapseDepth: autoCollapseDepth,
             rawPgnMode: rawPgnMode,
+            hiddenVariationIds: hiddenVariationIds,
           ),
         );
       }
