@@ -727,7 +727,7 @@ class PlayerCard {
       rating: player.rating >= 0 ? player.rating : 0,
       countryCode: player.fed.trim(),
       fideId: player.fideId > 0 ? player.fideId : null,
-      team: player.team,
+      team: player.team.trim().isEmpty ? null : player.team.trim(),
       customPoints: player.customPoints,
     );
   }

@@ -1,6 +1,7 @@
 import 'package:chessever2/screens/standings/player_standing_model.dart';
 import 'package:chessever2/screens/standings/team_standings_builder.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
+import 'package:chessever2/utils/team_scoring_rules.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 PlayerCard _card(String name, String team) => PlayerCard(
@@ -18,10 +19,12 @@ GamesTourModel _game({
   required String blackTeam,
   required GameStatus status,
   int board = 1,
+  double? whiteCustomPoints,
+  double? blackCustomPoints,
 }) => GamesTourModel(
   gameId: '$round-$whiteTeam-$blackTeam-$board',
-  whitePlayer: _card('W $board', whiteTeam),
-  blackPlayer: _card('B $board', blackTeam),
+  whitePlayer: _card('W $board', whiteTeam).copyWith(customPoints: whiteCustomPoints),
+  blackPlayer: _card('B $board', blackTeam).copyWith(customPoints: blackCustomPoints),
   whiteTimeDisplay: '',
   blackTimeDisplay: '',
   whiteClockCentiseconds: 0,
@@ -311,5 +314,46 @@ void main() {
       expect(teamMatchesSectionHeading(const <TeamMatch>[]), 'MATCHES');
       expect(teamMatchesHaveRoundInfo(const <TeamMatch>[]), isFalse);
     });
+  });
+
+  test('Lichess customPoints are board points; colour-weighted match is 3 MP', () {
+    const scoring = TeamScoringRules(
+      whiteWin: 3,
+      blackWin: 4,
+      draw: 1,
+      loss: 0,
+      matchWin: 3,
+      matchDraw: 1,
+      matchLoss: 0,
+    );
+    final games = [
+      _game(
+        round: 'r1',
+        whiteTeam: 'A',
+        blackTeam: 'B',
+        status: GameStatus.whiteWins,
+        board: 1,
+        whiteCustomPoints: 3,
+        blackCustomPoints: 0,
+      ),
+      _game(
+        round: 'r1',
+        whiteTeam: 'A',
+        blackTeam: 'B',
+        status: GameStatus.blackWins,
+        board: 2,
+        whiteCustomPoints: 0,
+        blackCustomPoints: 4,
+      ),
+    ];
+    final t = buildTeamStandings(
+      games: games,
+      playerStandings: const [],
+      scoring: scoring,
+    );
+    expect(t.firstWhere((e) => e.teamName == 'A').gamePoints, 3);
+    expect(t.firstWhere((e) => e.teamName == 'B').gamePoints, 4);
+    expect(t.firstWhere((e) => e.teamName == 'B').matchPoints, 3);
+    expect(t.firstWhere((e) => e.teamName == 'A').matchPoints, 0);
   });
 }

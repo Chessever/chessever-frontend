@@ -129,6 +129,7 @@ class _GroupEventGamesTourContentBodyState
             gamesScreenModel: orderedGamesData.copyWith(
               gamesTourModels: roundGames,
             ),
+            roundName: round.name,
           );
 
       final isRoundExpanded = roundExpansionState[round.id] ?? true;

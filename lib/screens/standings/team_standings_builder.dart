@@ -1,6 +1,8 @@
 import 'package:chessever2/screens/standings/player_standing_model.dart';
 import 'package:chessever2/screens/standings/team_standing_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
+import 'package:chessever2/utils/broadcast_custom_scoring.dart';
+import 'package:chessever2/utils/team_scoring_rules.dart';
 
 /// Pure team-standings computation for team events, following the chess
 /// team-event standard:
@@ -20,6 +22,7 @@ import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_mode
 List<TeamStandingModel> buildTeamStandings({
   required List<GamesTourModel> games,
   required List<PlayerStandingModel> playerStandings,
+  TeamScoringRules scoring = TeamScoringRules.standard,
 }) {
   // 1. Group games into matches keyed by (round, unordered team pair).
   final matches = <String, Map<String, _MatchSide>>{};
@@ -41,20 +44,9 @@ List<TeamStandingModel> buildTeamStandings({
     if (!status.isFinished) continue; // ongoing/unknown: no GP, no board count
     wSide.finished++;
     bSide.finished++;
-    switch (status) {
-      case GameStatus.whiteWins:
-        wSide.points += 1.0;
-        break;
-      case GameStatus.blackWins:
-        bSide.points += 1.0;
-        break;
-      case GameStatus.draw:
-        wSide.points += 0.5;
-        bSide.points += 0.5;
-        break;
-      default:
-        break;
-    }
+    final pts = _boardPoints(g, scoring);
+    wSide.points += pts.white;
+    bSide.points += pts.black;
   }
 
   // 2. Fold matches into per-team aggregates.
@@ -79,20 +71,24 @@ List<TeamStandingModel> buildTeamStandings({
     final aAgg = agg[aName]!, bAgg = agg[bName]!;
     if (a.points > b.points) {
       aAgg
-        ..mp += 2
+        ..mp += scoring.matchWin
         ..won += 1;
-      bAgg.lost += 1;
+      bAgg
+        ..mp += scoring.matchLoss
+        ..lost += 1;
     } else if (a.points < b.points) {
       bAgg
-        ..mp += 2
+        ..mp += scoring.matchWin
         ..won += 1;
-      aAgg.lost += 1;
+      aAgg
+        ..mp += scoring.matchLoss
+        ..lost += 1;
     } else {
       aAgg
-        ..mp += 1
+        ..mp += scoring.matchDraw
         ..drawn += 1;
       bAgg
-        ..mp += 1
+        ..mp += scoring.matchDraw
         ..drawn += 1;
     }
   }
@@ -189,6 +185,7 @@ class TeamMatch {
   final int boards;
   final bool complete;
   final List<TeamBoardGame> boardGames;
+  final TeamScoringRules scoring;
 
   const TeamMatch({
     required this.roundId,
@@ -200,6 +197,7 @@ class TeamMatch {
     required this.boards,
     required this.complete,
     required this.boardGames,
+    this.scoring = TeamScoringRules.standard,
   });
 
   TeamMatchResult get result {
@@ -212,10 +210,11 @@ class TeamMatch {
   int get matchPoints {
     switch (result) {
       case TeamMatchResult.win:
-        return 2;
+        return scoring.matchWin;
       case TeamMatchResult.draw:
-        return 1;
+        return scoring.matchDraw;
       case TeamMatchResult.loss:
+        return scoring.matchLoss;
       case TeamMatchResult.ongoing:
         return 0;
     }
@@ -236,6 +235,7 @@ class TeamMatch {
 List<TeamMatch> buildTeamMatches({
   required List<GamesTourModel> games,
   required String teamName,
+  TeamScoringRules scoring = TeamScoringRules.standard,
 }) {
   final target = teamName.trim();
   // Per (round, opponent) side accumulators for this team.
@@ -286,22 +286,9 @@ List<TeamMatch> buildTeamMatches({
     if (!status.isFinished) continue;
     ours.finished++;
     theirs.finished++;
-    double ourPts;
-    switch (status) {
-      case GameStatus.whiteWins:
-        ourPts = isWhiteOurs ? 1.0 : 0.0;
-        break;
-      case GameStatus.blackWins:
-        ourPts = isWhiteOurs ? 0.0 : 1.0;
-        break;
-      case GameStatus.draw:
-        ourPts = 0.5;
-        break;
-      default:
-        ourPts = 0.0;
-    }
-    ours.points += ourPts;
-    theirs.points += 1.0 - ourPts;
+    final pts = _boardPoints(g, scoring);
+    ours.points += isWhiteOurs ? pts.white : pts.black;
+    theirs.points += isWhiteOurs ? pts.black : pts.white;
   }
 
   final matches = <TeamMatch>[];
@@ -321,6 +308,7 @@ List<TeamMatch> buildTeamMatches({
         boards: ours.finished,
         complete: ours.total > 0 && ours.finished == ours.total,
         boardGames: boardGames,
+        scoring: scoring,
       ),
     );
   }
@@ -385,6 +373,42 @@ String _roundLabel(String roundId) {
 
 String _half(double v) =>
     v % 1 == 0 ? v.toInt().toString() : v.toStringAsFixed(1);
+
+/// Lichess stamps `customPoints` on the game; tour `customScoring` is the
+/// fallback when a self-hosted row has not been hydrated yet.
+({double white, double black}) _boardPoints(
+  GamesTourModel g,
+  TeamScoringRules scoring,
+) {
+  final status = g.gameStatus;
+  final standardWhite = standardResultValueForSide(status, isWhite: true);
+  final standardBlack = standardResultValueForSide(status, isWhite: false);
+  if (standardWhite == null || standardBlack == null) {
+    return (white: 0, black: 0);
+  }
+
+  final stamped = aggregateBroadcastResultPoints(
+    standardWhitePoints: standardWhite,
+    standardBlackPoints: standardBlack,
+    whiteCustomPoints: g.whitePlayer.customPoints,
+    blackCustomPoints: g.blackPlayer.customPoints,
+  );
+  if (stamped.white != standardWhite || stamped.black != standardBlack) {
+    return stamped;
+  }
+
+  switch (status) {
+    case GameStatus.whiteWins:
+      return (white: scoring.whiteWin, black: scoring.loss);
+    case GameStatus.blackWins:
+      return (white: scoring.loss, black: scoring.blackWin);
+    case GameStatus.draw:
+      return (white: scoring.draw, black: scoring.draw);
+    case GameStatus.ongoing:
+    case GameStatus.unknown:
+      return (white: 0, black: 0);
+  }
+}
 
 class _TeamAgg {
   double gamePoints = 0;

@@ -57,9 +57,35 @@ MatchComparison matchComparisonForSelectedTeamSide({
 /// board, whether its actual White/Black order matches the stable header.
 /// Compact cards use this comparison to keep Team 1 on the left; board and
 /// grid previews use [teamOneBottomSide] to keep Team 1 at the bottom.
+/// Lichess names a one-match team round `Team A - Team B`. The Games tab
+/// header splits on ` vs `, so we rewrite the hyphen form when player tags
+/// are still empty. A Swiss "Round 5" is not a pairing and is left alone.
+String? pairingTitleFromRoundName(String name) {
+  final trimmed = name.trim();
+  if (trimmed.isEmpty) return null;
+  final hyphen = trimmed.split(RegExp(r'\s+-\s+'));
+  if (hyphen.length == 2 &&
+      hyphen[0].trim().isNotEmpty &&
+      hyphen[1].trim().isNotEmpty) {
+    return '${hyphen[0].trim()} vs ${hyphen[1].trim()}';
+  }
+  final vs = trimmed.split(RegExp(r'\s+vs\.?\s+', caseSensitive: false));
+  if (vs.length == 2 && vs[0].trim().isNotEmpty && vs[1].trim().isNotEmpty) {
+    return '${vs[0].trim()} vs ${vs[1].trim()}';
+  }
+  return null;
+}
+
+String? _teamMatchupLabel(String? team) {
+  final trimmed = team?.trim();
+  if (trimmed == null || trimmed.isEmpty) return null;
+  return trimmed;
+}
+
 Map<String, List<MatchWithComparison>> groupTeamGamesByMatchup({
   required String selectedRoundId,
   required List<GamesTourModel> games,
+  String? fallbackMatchupTitle,
 }) {
   final grouped = <String, List<MatchWithComparison>>{};
   final gamesPerRound = _gamesForTeamRound(
@@ -68,9 +94,12 @@ Map<String, List<MatchWithComparison>> groupTeamGamesByMatchup({
   );
 
   for (final game in gamesPerRound) {
-    final whiteTeam = game.whitePlayer.team ?? game.whitePlayer.countryCode;
-    final blackTeam = game.blackPlayer.team ?? game.blackPlayer.countryCode;
-    final header = '$whiteTeam vs $blackTeam';
+    final whiteTeam = _teamMatchupLabel(game.whitePlayer.team);
+    final blackTeam = _teamMatchupLabel(game.blackPlayer.team);
+    final header =
+        (whiteTeam != null && blackTeam != null)
+            ? '$whiteTeam vs $blackTeam'
+            : (fallbackMatchupTitle ?? '');
     final comparison = _compareAllTeamHeaders(grouped.keys, header);
 
     if (comparison == MatchComparison.sameOrder) {
@@ -166,10 +195,12 @@ class _GamesTourContentProvider {
   Map<String, List<MatchWithComparison>> getGroupHeader({
     required String selectedRoundId,
     required GamesScreenModel gamesScreenModel,
+    String? roundName,
   }) {
     return groupTeamGamesByMatchup(
       selectedRoundId: selectedRoundId,
       games: gamesScreenModel.gamesTourModels,
+      fallbackMatchupTitle: pairingTitleFromRoundName(roundName ?? ''),
     );
   }
 
