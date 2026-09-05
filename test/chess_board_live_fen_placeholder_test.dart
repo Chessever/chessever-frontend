@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:chessever2/screens/chessboard/provider/analysis_view_session.dart';
 
 import 'package:chessever2/providers/engine_settings_provider.dart';
 import 'package:chessever2/repository/gamebase/gamebase_repository.dart';
@@ -177,6 +178,33 @@ class _FakeEngineSettingsNotifier extends AsyncNotifier<EngineSettings>
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+
+  test('clear analysis is temporary and preserves PGN and navigator tree', () async {
+    const pgn = '[Result "*"]\n\n1. e4 \$4 {a hint} e5 (1... c5 {branch}) 2. Nf3 *';
+    final game = _dummyGame(pgn: pgn);
+    final container = _createContainer(gameRepository: _StaticGameRepository(pgn));
+    addTearDown(container.dispose);
+    final params = ChessBoardProviderParams(game: game, index: 0);
+    container.read(currentlyVisiblePageIndexProvider.notifier).state = 99;
+    final boardWatch = container.listen(chessBoardScreenProviderNew(params), (_, __) {});
+    addTearDown(boardWatch.close);
+    final view = analysisViewSessionProvider(game.gameId);
+    final watch = container.listen(view, (_, __) {});
+    addTearDown(watch.close);
+    final notifier = container.read(chessBoardScreenProviderNew(params).notifier);
+    await _waitFor(container, params, () => container.read(chessBoardScreenProviderNew(params)).valueOrNull?.analysisState.game != null);
+    final before = container.read(chessBoardScreenProviderNew(params)).requireValue;
+    final originalTree = before.analysisState.game;
+    await notifier.clearUserAnalysis();
+    final after = container.read(chessBoardScreenProviderNew(params)).requireValue;
+    expect(after.analysisState.game, same(originalTree));
+    expect(after.pgnData, before.pgnData);
+    expect(after.variationComments, before.variationComments);
+    expect(after.moveNags, before.moveNags);
+    expect(game.pgn, pgn);
+    expect(container.read(view).cleared, isTrue);
+    expect(container.read(view).showReport(rawPgn: false), isFalse);
+  });
 
   group('Live FEN placeholder initialization', () {
     test('ongoing game with valid FEN seeds analysisState.position', () {

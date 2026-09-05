@@ -293,6 +293,7 @@ List<NotationDisplayToken> buildNotationTokens(
   required Set<String> expandedVariationIds,
   int autoCollapseDepth = 3,
   bool rawPgnMode = false,
+  bool hideVariations = false,
 }) {
   final tokens = <NotationDisplayToken>[];
   // A parsed variation belongs to the last common move in the game tree, but
@@ -437,6 +438,7 @@ List<NotationDisplayToken> buildNotationTokens(
       if (i > 0) ...moves[i - 1].variations,
       if (i == moves.length - 1) ...node.variations,
     ];
+    if (hideVariations) continue;
     for (final variation in variationsToRender) {
       final defaultCollapsed = shouldCollapseByDefault(
         variation,

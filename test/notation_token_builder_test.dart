@@ -49,6 +49,8 @@ List<NotationDisplayToken> _buildTokens(
   Map<String, String> variationComments = const {},
   Set<String> collapsedVariationIds = const {},
   Set<String> expandedVariationIds = const {},
+  bool hideVariations = false,
+  bool rawPgnMode = false,
 }) {
   final pointerMap = <String, NotationMoveNode>{};
   return buildNotationTokens(
@@ -61,6 +63,8 @@ List<NotationDisplayToken> _buildTokens(
     lichessAnnotations: lichessAnnotations,
     collapsedVariationIds: collapsedVariationIds,
     expandedVariationIds: expandedVariationIds,
+    hideVariations: hideVariations,
+    rawPgnMode: rawPgnMode,
   );
 }
 
@@ -831,4 +835,30 @@ void main() {
       expect(reparsed.mainline.first.variations!.first.first.san, 'c5');
     });
   });
+  group('clean view rendering', () {
+    test('hides branches, comments, and classifications without mutating PGN', () {
+      final variation = <ChessMove>[_move('c5', comments: ['branch note'])];
+      final tree = _treeFromSans(['e4', 'e5'], variation: variation);
+      final tokens = _buildTokens(
+        tree,
+        hideVariations: true,
+        rawPgnMode: true,
+        lichessAnnotations: {
+          0: LichessMoveAnnotation(
+            type: LichessMoveAnnotationType.blunder,
+            comment: 'analysis hint',
+          ),
+        },
+      );
+      expect(tokens.where((t) => t.type == NotationTokenType.openParen), isEmpty);
+      expect(tokens.where((t) => t.type == NotationTokenType.comment), isEmpty);
+      expect(tokens.where((t) => t.type == NotationTokenType.lichessComment), isEmpty);
+      expect(tokens.map((t) => t.text), containsAll(<String>['1. e4', 'e5']));
+      // The source tree remains intact: suppression is presentation-only.
+      expect(tree.mainline.first.variations, isNotEmpty);
+      expect(tree.mainline.first.move.comments, isNull);
+      expect(tree.mainline.first.variations.first.moves.first.move.comments, ['branch note']);
+    });
+  });
+
 }

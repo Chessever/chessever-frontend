@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:math' as math;
+import 'analysis_view_session.dart';
 import 'package:chessever2/providers/board_settings_provider_new.dart';
 import 'package:chessever2/repository/library/library_repository.dart';
 import 'package:chessever2/repository/library/models/saved_analysis.dart';
@@ -122,9 +123,6 @@ final chessBoardAllGamesProvider = StateProvider<List<GamesTourModel>>(
 final currentlyVisiblePageIndexProvider = StateProvider<int>((ref) {
   return 0;
 });
-
-/// Temporary per-game annotation suppression; never persisted.
-final clearAnalysisSuppressedProvider = StateProvider.family<bool, String>((ref, gameId) => false);
 
 /// Allows provider tests to disable best-effort SQLite persistence during
 /// disposal. Production keeps this enabled; tests run without platform plugin
@@ -2124,41 +2122,17 @@ class ChessBoardScreenNotifierNew
   }
 
   Future<void> clearUserAnalysis() async {
-    ref.read(clearAnalysisSuppressedProvider(game.gameId).notifier).state = true;
-    if (_isEditingBlockedByPreview(reason: 'clear analysis')) {
-      return;
-    }
+    // This action is a view-only overlay. Do not rewrite the navigator, PGN,
+    // comments, report state, or persistence; leaving the board disposes the
+    // autoDispose provider and restores the normal view on the next visit.
+    ref.read(analysisViewSessionProvider(game.gameId).notifier).clear();
     _exitPvPreviewIfActive();
-    if (_analysisNavigator == null) return;
-    final currentState = state.value;
-    if (currentState == null) return;
-
-    var basePgn = currentState.pgnData ?? game.pgn;
-    if ((basePgn == null || basePgn.trim().isEmpty) &&
-        (game.fen?.isNotEmpty ?? false)) {
-      basePgn = _buildFenFallbackPgn(game.fen!);
+    // Return from a custom branch without replacing/persisting the game tree.
+    final pointer = state.value?.analysisState.movePointer;
+    if (pointer != null && pointer.length > 1) {
+      await goToMove(pointer.first.toInt());
     }
-    if (basePgn == null || basePgn.trim().isEmpty) {
-      return;
-    }
-
-    final baseGame = _createChessGameFromPgn(basePgn);
-    _analysisNavigator!
-      ..replaceState(
-        ChessGameNavigatorState(game: baseGame, movePointer: const []),
-      )
-      ..goToTail();
-
-    _analysisNavigator!.goToTail();
-
-    // Clear all variation comments
-    if (currentState.variationComments.isNotEmpty) {
-      state = AsyncValue.data(
-        currentState.copyWith(variationComments: const <String, String>{}),
-      );
-    }
-
-    await _persistAnalysisState();
+    await setGameReviewVisible(false);
   }
 
   void playPrincipalVariationMove(AnalysisLine line) {
