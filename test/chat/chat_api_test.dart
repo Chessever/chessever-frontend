@@ -259,7 +259,7 @@ void main() {
     expect(quota.isPremium, isTrue);
   });
 
-  test('gates the chat composer by authentication and free quota', () {
+  test('gates exhausted accounts without offering paid users an upgrade', () {
     const exhaustedFreeQuota = ChatQuotaStatus(
       limit: 2,
       used: 2,
@@ -268,8 +268,8 @@ void main() {
       resetsAt: null,
     );
     const exhaustedPremiumQuota = ChatQuotaStatus(
-      limit: 50,
-      used: 50,
+      limit: 25,
+      used: 25,
       remaining: 0,
       isPremium: true,
       resetsAt: null,
@@ -285,12 +285,42 @@ void main() {
     );
     expect(
       chatComposerAccess(isSignedIn: true, quota: exhaustedPremiumQuota),
-      ChatComposerAccess.enabled,
+      ChatComposerAccess.exhausted,
     );
     expect(
       chatComposerAccess(isSignedIn: true, quota: null),
       ChatComposerAccess.enabled,
     );
+  });
+
+  test('distinguishes upgrade access from an exhausted daily allowance', () {
+    expect(
+      chatComposerAccess(
+        isSignedIn: true,
+        quota: const ChatQuotaStatus(
+          limit: 0,
+          used: 0,
+          remaining: 0,
+          isPremium: false,
+          resetsAt: null,
+        ),
+      ),
+      ChatComposerAccess.upgradeRequired,
+    );
+    expect(
+      chatComposerAccess(
+        isSignedIn: true,
+        quota: const ChatQuotaStatus(
+          limit: 25,
+          used: 24,
+          remaining: 1,
+          isPremium: true,
+          resetsAt: null,
+        ),
+      ),
+      ChatComposerAccess.enabled,
+    );
+    expect(chatDailyLimitMessage, isNot(matches(RegExp(r'\d'))));
   });
 
   test('creates a compact conversation title from the first question', () {

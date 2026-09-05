@@ -6,10 +6,11 @@ import 'package:http/http.dart' as http;
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 class ChatApiException implements Exception {
-  const ChatApiException(this.message, {this.statusCode});
+  const ChatApiException(this.message, {this.statusCode, this.quota});
 
   final String message;
   final int? statusCode;
+  final ChatQuotaStatus? quota;
 
   @override
   String toString() => message;
@@ -283,6 +284,9 @@ String chatFormFactor({
   return shortestSide >= 600 ? 'tablet' : 'phone';
 }
 
+const chatDailyLimitMessage =
+    "You've used all your messages for today. Please try again tomorrow.";
+
 class ChatQuotaStatus {
   const ChatQuotaStatus({
     required this.limit,
@@ -367,10 +371,18 @@ class ChatApi {
             : jsonDecode(response.body) as Map<String, dynamic>;
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw ChatApiException(
-        decoded['message'] as String? ??
-            decoded['error'] as String? ??
-            'Chat request failed',
+        decoded['error'] == 'daily_limit'
+            ? chatDailyLimitMessage
+            : decoded['message'] as String? ??
+                decoded['error'] as String? ??
+                'Chat request failed',
         statusCode: response.statusCode,
+        quota:
+            decoded['quota'] is Map<String, dynamic>
+                ? ChatQuotaStatus.fromJson(
+                  decoded['quota'] as Map<String, dynamic>,
+                )
+                : null,
       );
     }
     return decoded;
@@ -476,10 +488,18 @@ class ChatApi {
               ? <String, dynamic>{}
               : jsonDecode(body) as Map<String, dynamic>;
       throw ChatApiException(
-        decoded['message'] as String? ??
-            decoded['error'] as String? ??
-            'Chat request failed',
+        decoded['error'] == 'daily_limit'
+            ? chatDailyLimitMessage
+            : decoded['message'] as String? ??
+                decoded['error'] as String? ??
+                'Chat request failed',
         statusCode: response.statusCode,
+        quota:
+            decoded['quota'] is Map<String, dynamic>
+                ? ChatQuotaStatus.fromJson(
+                  decoded['quota'] as Map<String, dynamic>,
+                )
+                : null,
       );
     }
     await for (final line in response.stream

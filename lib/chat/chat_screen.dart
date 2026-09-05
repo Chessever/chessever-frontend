@@ -267,6 +267,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       return;
     }
     if (access == ChatComposerAccess.exhausted) {
+      return;
+    }
+    if (access == ChatComposerAccess.upgradeRequired) {
       unawaited(_showUpgrade());
       return;
     }
@@ -365,8 +368,16 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       if (mounted) setState(() => _messages = refreshed);
     } on ChatApiException catch (error) {
       if (!mounted) return;
+      if (error.quota != null) {
+        ref.read(botvinnikQuotaProvider.notifier).setQuota(error.quota!);
+      } else {
+        unawaited(ref.read(botvinnikQuotaProvider.notifier).refresh());
+      }
       setState(() {
-        _error = error.message;
+        _error =
+            error.quota != null && error.quota!.remaining <= 0
+                ? null
+                : error.message;
         if (_messages.isNotEmpty && _messages.last.content.isEmpty) {
           _messages = _messages.sublist(0, _messages.length - 1);
         }
@@ -567,7 +578,6 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         onNew: _newConversation,
         onSelect: _select,
         onDelete: _delete,
-        quota: quota,
       ),
       appBar: AppBar(
         toolbarHeight: 72,
@@ -673,8 +683,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
               ChatComposerAccess.signedOut => _ChatLoginGate(
                 onSignIn: _showLogin,
               ),
-              ChatComposerAccess.exhausted => _ChatUpgradeGate(
-                quota: quota.valueOrNull!,
+              ChatComposerAccess.exhausted => const _ChatDailyLimitNotice(),
+              ChatComposerAccess.upgradeRequired => _ChatUpgradeGate(
                 onUpgrade: _showUpgrade,
               ),
               ChatComposerAccess.enabled => _ChatComposer(
@@ -690,14 +700,17 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   }
 }
 
-enum ChatComposerAccess { signedOut, enabled, exhausted }
+enum ChatComposerAccess { signedOut, enabled, upgradeRequired, exhausted }
 
 ChatComposerAccess chatComposerAccess({
   required bool isSignedIn,
   required ChatQuotaStatus? quota,
 }) {
   if (!isSignedIn) return ChatComposerAccess.signedOut;
-  if (quota != null && !quota.isPremium && quota.remaining <= 0) {
+  if (quota != null && quota.remaining <= 0) {
+    if (!quota.isPremium && quota.limit <= 0) {
+      return ChatComposerAccess.upgradeRequired;
+    }
     return ChatComposerAccess.exhausted;
   }
   return ChatComposerAccess.enabled;
@@ -788,16 +801,43 @@ class _ChatLoginGate extends StatelessWidget {
   }
 }
 
-class _ChatUpgradeGate extends StatelessWidget {
-  const _ChatUpgradeGate({required this.quota, required this.onUpgrade});
+class _ChatDailyLimitNotice extends StatelessWidget {
+  const _ChatDailyLimitNotice();
 
-  final ChatQuotaStatus quota;
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    return SafeArea(
+      top: false,
+      child: Semantics(
+        liveRegion: true,
+        child: Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: colors.surfaceContainerHighest,
+            border: Border(top: BorderSide(color: colors.outlineVariant)),
+          ),
+          child: Row(
+            children: [
+              Icon(Icons.warning_amber_rounded, color: colors.tertiary),
+              const SizedBox(width: 12),
+              const Expanded(child: Text(chatDailyLimitMessage)),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ChatUpgradeGate extends StatelessWidget {
+  const _ChatUpgradeGate({required this.onUpgrade});
   final Future<void> Function() onUpgrade;
 
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-    final remaining = quota.remaining.clamp(0, quota.limit);
     return Material(
       color: colorScheme.surface,
       child: SafeArea(
@@ -815,7 +855,7 @@ class _ChatUpgradeGate extends StatelessWidget {
                 color: colorScheme.surfaceContainerHighest,
                 alignment: Alignment.center,
                 child: Text(
-                  '$remaining of ${quota.limit} messages left',
+                  'Botvinnik is available with Premium.',
                   style: Theme.of(context).textTheme.labelSmall?.copyWith(
                     color: colorScheme.onSurfaceVariant,
                     fontWeight: FontWeight.w600,
@@ -1488,7 +1528,6 @@ class _ConversationDrawer extends ConsumerWidget {
     required this.onNew,
     required this.onSelect,
     required this.onDelete,
-    required this.quota,
   });
 
   final List<ChatConversation> conversations;
@@ -1496,7 +1535,6 @@ class _ConversationDrawer extends ConsumerWidget {
   final Future<void> Function() onNew;
   final Future<void> Function(ChatConversation) onSelect;
   final Future<void> Function(ChatConversation) onDelete;
-  final AsyncValue<ChatQuotaStatus?> quota;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -1553,70 +1591,6 @@ class _ConversationDrawer extends ConsumerWidget {
                 ),
                 child: Column(
                   children: [
-                    Row(
-                      children: [
-                        Icon(
-                          Icons.bolt_rounded,
-                          color: colorScheme.primary,
-                          size: 20,
-                        ),
-                        const SizedBox(width: 9),
-                        Expanded(
-                          child: quota.when(
-                            data: (value) {
-                              final label =
-                                  value == null
-                                      ? 'Sign in to view quota'
-                                      : '${value.remaining} of ${value.limit} messages left';
-                              return Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    'Daily allowance',
-                                    style: Theme.of(context)
-                                        .textTheme
-                                        .labelMedium
-                                        ?.copyWith(fontWeight: FontWeight.w700),
-                                  ),
-                                  const SizedBox(height: 2),
-                                  Text(
-                                    label,
-                                    style: Theme.of(
-                                      context,
-                                    ).textTheme.bodySmall?.copyWith(
-                                      color: colorScheme.onSurfaceVariant,
-                                    ),
-                                  ),
-                                ],
-                              );
-                            },
-                            loading:
-                                () => const Text(
-                                  'Loading daily allowance…',
-                                  style: TextStyle(fontSize: 12),
-                                ),
-                            error:
-                                (error, stack) => const Text(
-                                  'Daily allowance unavailable',
-                                  style: TextStyle(fontSize: 12),
-                                ),
-                          ),
-                        ),
-                        IconButton(
-                          tooltip: 'Refresh question count',
-                          onPressed:
-                              () => unawaited(
-                                ref
-                                    .read(botvinnikQuotaProvider.notifier)
-                                    .refresh(),
-                              ),
-                          icon: const Icon(Icons.refresh_rounded, size: 19),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 8),
-                    Divider(height: 1, color: colorScheme.outlineVariant),
-                    const SizedBox(height: 8),
                     Row(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
