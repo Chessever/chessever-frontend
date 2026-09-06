@@ -309,7 +309,7 @@ class _GamesTourScrollProvider extends StateNotifier<ItemScrollController> {
       if (round.id == roundId) return index;
       index += groupEventRoundListItemCount(
         isExpanded: expansionState[round.id] ?? true,
-        matchupCardCount: _getTeamMatchupCardsInRound(round.id),
+        matchupCardCount: _getTeamMatchupCardsInRound(round.id, round.name),
       );
     }
     return -1;
@@ -423,7 +423,7 @@ class _GamesTourScrollProvider extends StateNotifier<ItemScrollController> {
       if (itemIndex == currentIndex) return round.id; // header
       final itemCount = groupEventRoundListItemCount(
         isExpanded: expansionState[round.id] ?? true,
-        matchupCardCount: _getTeamMatchupCardsInRound(round.id),
+        matchupCardCount: _getTeamMatchupCardsInRound(round.id, round.name),
       );
       currentIndex += itemCount;
       if (itemIndex < currentIndex) return round.id;
@@ -431,7 +431,7 @@ class _GamesTourScrollProvider extends StateNotifier<ItemScrollController> {
     return null;
   }
 
-  int _getTeamMatchupCardsInRound(String roundId) {
+  int _getTeamMatchupCardsInRound(String roundId, String roundName) {
     final roundGames = _getGamesForRound(roundId);
     if (roundGames.isEmpty) return 0;
 
@@ -439,6 +439,7 @@ class _GamesTourScrollProvider extends StateNotifier<ItemScrollController> {
     final grouped = groupTeamGamesByMatchup(
       selectedRoundId: roundId,
       games: roundGames,
+      fallbackMatchupTitle: pairingTitleFromRoundName(roundName),
     );
 
     // Return the number of team matchup cards

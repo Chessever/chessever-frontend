@@ -293,7 +293,7 @@ class BoardSettingsBody extends ConsumerWidget {
                     ),
                     SizedBox(height: 4.h),
                     Text(
-                      'Hide PGN symbols (!, ?, ±) and comments. Game Analysis classification icons still show after a report finishes.',
+                      'Hide symbols, comments, and automatic report annotations. Generate Report shows its analysis for the current visit only.',
                       style: AppTypography.textSmRegular.copyWith(
                         color: context.colors.textSecondary,
                         fontSize: 11.f,

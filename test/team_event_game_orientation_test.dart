@@ -1,5 +1,6 @@
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/games_tour_content_provider.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/widgets/group_event_match_card_provider.dart';
 import 'package:dartchess/dartchess.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -73,6 +74,60 @@ void main() {
       'Team B',
       'Team B',
     ]);
+  });
+
+  test('empty team tags do not invent country matchups', () {
+    final unlabeled = [
+      _game(
+        id: 'board-1',
+        whiteName: 'A One',
+        whiteTeam: '',
+        blackName: 'B One',
+        blackTeam: '',
+      ),
+    ];
+    final grouped = groupTeamGamesByMatchup(
+      selectedRoundId: 'round-1',
+      games: unlabeled,
+      fallbackMatchupTitle: pairingTitleFromRoundName(
+        'FYERS American Gambits - Triveni Continental Kings',
+      ),
+    );
+    expect(grouped.keys, [
+      'FYERS American Gambits vs Triveni Continental Kings',
+    ]);
+  });
+
+  test('pairingTitleFromRoundName only rewrites a two-team title', () {
+    expect(
+      pairingTitleFromRoundName('Triveni Continental Kings - Fyers American Gambits'),
+      'Triveni Continental Kings vs Fyers American Gambits',
+    );
+    expect(pairingTitleFromRoundName('Round 5'), isNull);
+  });
+
+  test('match header uses Lichess customPoints, not 1 / ½', () {
+    final finished = GamesTourModel(
+      gameId: 'board-1',
+      whitePlayer: _card('A One', 'Team A').copyWith(customPoints: 0),
+      blackPlayer: _card('B One', 'Team B').copyWith(customPoints: 4),
+      whiteTimeDisplay: '',
+      blackTimeDisplay: '',
+      whiteClockCentiseconds: 0,
+      blackClockCentiseconds: 0,
+      gameStatus: GameStatus.blackWins,
+      roundId: 'round-1',
+      tourId: 'team-event',
+    );
+    final score = matchScoreForGames(
+      matchList: [
+        MatchWithComparison(
+          game: finished,
+          comparison: MatchComparison.sameOrder,
+        ),
+      ],
+    );
+    expect(score, [0.0, 4.0]);
   });
 
   group('matchComparisonForSelectedTeamSide', () {

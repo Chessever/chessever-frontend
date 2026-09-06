@@ -56,6 +56,26 @@ class NotationTree {
 }
 
 class NotationTreeBuilder {
+  /// Every variation id in [game], in the exact form [build] assigns them.
+  /// Lets a view remember which branches existed at one moment: the navigator
+  /// appends new branches, so ids taken here keep pointing at the same lines.
+  static Set<String> variationIds(ChessGame game) {
+    final ids = <String>{};
+    void visit(ChessLine line, ChessMovePointer prefix) {
+      for (var i = 0; i < line.length; i++) {
+        final pointer = [...prefix, i];
+        final variations = line[i].variations ?? const <ChessLine>[];
+        for (var v = 0; v < variations.length; v++) {
+          ids.add(NotationPointer.variationId(pointer, v));
+          visit(variations[v], [...pointer, v]);
+        }
+      }
+    }
+
+    visit(game.mainline, const []);
+    return ids;
+  }
+
   static NotationTree build(ChessGame game) {
     final startingPly = _startingPly(game.startingFen);
     final mainline = _buildLine(

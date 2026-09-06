@@ -804,13 +804,18 @@ class GameRepository extends BaseRepository {
     r'^[A-Za-z0-9][A-Za-z0-9._-]*:[^\s/?#]+$',
   );
 
+  /// ChessEver Direct fallback game id (`<8-char round id>-<base36 hash>`).
+  /// Lives in `games.id`, so it must resolve there, not via `lichess_id`.
+  static final _directGameIdPattern = RegExp(r'^[A-Za-z0-9]{8}-[A-Za-z0-9]+$');
+
   /// Resolves a game from a canonical database ID or a Lichess short ID.
-  /// UUID / namespaced ID → queries games.id
-  /// Other                → queries games.lichess_id (e.g. "4uVwSr9q")
+  /// UUID / namespaced / Direct ID → queries games.id
+  /// Other                          → queries games.lichess_id (e.g. "4uVwSr9q")
   Future<Games> getGameByAnyId(String id) async {
     final trimmed = id.trim();
     if (_uuidPattern.hasMatch(trimmed) ||
-        _namespacedCanonicalIdPattern.hasMatch(trimmed)) {
+        _namespacedCanonicalIdPattern.hasMatch(trimmed) ||
+        _directGameIdPattern.hasMatch(trimmed)) {
       return getGameById(trimmed);
     }
     return getGameByLichessId(trimmed);

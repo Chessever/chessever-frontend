@@ -112,6 +112,36 @@ void main() {
       );
     });
 
+    test('returns a deep link for ChessEver Direct fallback game ids', () {
+      // `<8-char round id>-<base36 hash>` minted by the broadcasting backend
+      // for self-streamed boards without a stable external id.
+      final url = buildGameShareUrl(
+        game: _game(gameId: 'AbCd1234-1x2y3z'),
+      );
+
+      expect(
+        url,
+        'https://chessever.com/games/AbCd1234-1x2y3z?tour=tour-slug&round=A00',
+      );
+    });
+
+    test('returns a deep link for saved analyses of ChessEver Direct games', () {
+      final url = buildGameShareUrl(
+        game: _game(
+          gameId: 'saved_analysis_1',
+          source: GameSource.savedAnalysis,
+        ),
+        savedAnalysisData: _savedAnalysisData(
+          sourceGameId: 'AbCd1234-1x2y3z',
+        ),
+      );
+
+      expect(
+        url,
+        'https://chessever.com/games/AbCd1234-1x2y3z?tour=tour-slug&round=A00',
+      );
+    });
+
     test('returns a deep link for saved analyses with canonical source IDs', () {
       final url = buildGameShareUrl(
         game: _game(
@@ -275,13 +305,15 @@ void main() {
           ),
           isNull,
         );
+        // `gamebase-1` would now match the ChessEver Direct id shape
+        // (`<8 alnum>-<alnum>`), so the garbage sentinel uses an underscore.
         expect(
           buildGameShareUrl(
             game: _game(
               gameId: 'saved_analysis_1',
               source: GameSource.savedAnalysis,
             ),
-            savedAnalysisData: _savedAnalysisData(sourceGameId: 'gamebase-1'),
+            savedAnalysisData: _savedAnalysisData(sourceGameId: 'gamebase_1'),
           ),
           isNull,
         );

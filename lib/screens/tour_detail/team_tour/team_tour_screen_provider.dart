@@ -1,3 +1,4 @@
+import 'package:chessever2/repository/supabase/tour/tour.dart';
 import 'package:chessever2/screens/standings/standings_builder.dart';
 import 'package:chessever2/screens/standings/team_standing_model.dart';
 import 'package:chessever2/screens/standings/team_standings_builder.dart';
@@ -5,6 +6,7 @@ import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_mode
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_provider.dart';
 import 'package:chessever2/screens/tour_detail/player_tour/player_tour_screen_provider.dart';
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_screen_provider.dart';
+import 'package:chessever2/utils/team_scoring_rules.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 /// Team rows currently expanded to reveal their players. Multiple may be open.
@@ -58,10 +60,23 @@ List<GamesTourModel> _watchTeamGames(Ref ref) {
 
 /// Round-by-round matches for a given team (by name). Powers both the
 /// expandable team standings row and the team score card.
+TourInfo? _selectedTourInfo(Ref ref) {
+  final vm = ref.watch(tourDetailScreenProvider).valueOrNull;
+  if (vm == null) return null;
+  for (final t in vm.tours) {
+    if (t.tour.id == vm.aboutTourModel.id) return t.tour.info;
+  }
+  return null;
+}
+
 final teamMatchesFamilyProvider =
     AutoDisposeProvider.family<List<TeamMatch>, String>((ref, teamName) {
       final games = _watchTeamGames(ref);
-      return buildTeamMatches(games: games, teamName: teamName);
+      return buildTeamMatches(
+        games: games,
+        teamName: teamName,
+        scoring: TeamScoringRules.fromTourInfo(_selectedTourInfo(ref)),
+      );
     });
 
 /// Round-by-round matches for the currently selected team (team score card).
@@ -82,6 +97,10 @@ final teamStandingsProvider =
       final playersAsync = ref.watch(playerTourScreenProvider);
       return playersAsync.whenData((players) {
         final games = _watchTeamGames(ref);
-        return buildTeamStandings(games: games, playerStandings: players);
+        return buildTeamStandings(
+          games: games,
+          playerStandings: players,
+          scoring: TeamScoringRules.fromTourInfo(_selectedTourInfo(ref)),
+        );
       });
     });
