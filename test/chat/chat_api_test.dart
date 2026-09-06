@@ -261,24 +261,74 @@ void main() {
     expect(result.linkedReferences, isEmpty);
   });
 
-  test('links players when the answer uses natural name order', () {
+  test('links player aliases across name order and apostrophe variants', () {
     const references = [
       ChatReference(
         type: 'player',
-        id: '36022106',
-        label: "Maurizzi, Marc'Andria",
+        id: '36083534',
+        label: 'Maurizzi, MarcAndria',
       ),
     ];
+    for (final modelName in ["Marc'Andria Maurizzi", 'Marc’Andria Maurizzi']) {
+      final result = integrateChatReferences(
+        '$modelName leads with 2/2 points.',
+        references,
+      );
+
+      expect(
+        result.markdown,
+        '[$modelName](chessever://reference?type=player&id=36083534) '
+        'leads with 2/2 points.',
+      );
+    }
+  });
+
+  test(
+    'links conservative player punctuation, accent, and initial aliases',
+    () {
+      const references = [
+        ChatReference(
+          type: 'player',
+          id: '1',
+          label: 'Vachier-Lagrave, Maxime',
+        ),
+        ChatReference(type: 'player', id: '2', label: 'Rapport, Richárd'),
+        ChatReference(
+          type: 'player',
+          id: '3',
+          label: 'Chithambaram, Aravindh VR.',
+        ),
+      ];
+      final result = integrateChatReferences(
+        'Maxime\u00a0Vachier Lagrave, Richard Rapport, and '
+        'Aravindh V.R. Chithambaram.',
+        references,
+      );
+
+      expect(
+        result.markdown,
+        '[Maxime\u00a0Vachier Lagrave]'
+        '(chessever://reference?type=player&id=1), '
+        '[Richard Rapport](chessever://reference?type=player&id=2), and '
+        '[Aravindh V.R. Chithambaram]'
+        '(chessever://reference?type=player&id=3).',
+      );
+    },
+  );
+
+  test('links repeated aliases but not substrings of longer names', () {
+    const references = [ChatReference(type: 'player', id: '4', label: 'Ann')];
     final result = integrateChatReferences(
-      "Marc'Andria Maurizzi leads with 2/2 points.",
+      'Anna played Ann. Ann won.',
       references,
     );
 
     expect(
       result.markdown,
-      "[Marc'Andria Maurizzi](chessever://reference?type=player&id=36022106) "
-      'leads with 2/2 points.',
+      'Anna played [Ann](chessever://reference?type=player&id=4). '
+      '[Ann](chessever://reference?type=player&id=4) won.',
     );
+    expect(result.linkedReferences.single.id, '4');
   });
 
   test('parses a conversation returned by the chat API', () {
