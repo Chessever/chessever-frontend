@@ -261,6 +261,26 @@ void main() {
     expect(result.linkedReferences, isEmpty);
   });
 
+  test('links players when the answer uses natural name order', () {
+    const references = [
+      ChatReference(
+        type: 'player',
+        id: '36022106',
+        label: "Maurizzi, Marc'Andria",
+      ),
+    ];
+    final result = integrateChatReferences(
+      "Marc'Andria Maurizzi leads with 2/2 points.",
+      references,
+    );
+
+    expect(
+      result.markdown,
+      "[Marc'Andria Maurizzi](chessever://reference?type=player&id=36022106) "
+      'leads with 2/2 points.',
+    );
+  });
+
   test('parses a conversation returned by the chat API', () {
     final conversation = ChatConversation.fromJson({
       'id': 'conversation-1',
