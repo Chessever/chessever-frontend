@@ -790,6 +790,16 @@ ChatReference? chatReferenceForHref(
 List<String> _chatReferenceAliases(ChatReference reference) {
   final label = reference.label.trim();
   final aliases = <String>{if (label.isNotEmpty) label};
+  if (reference.type == 'player' && label.contains(',')) {
+    final parts = label.split(',').map((part) => part.trim()).toList();
+    final familyName = parts.removeAt(0);
+    if (familyName.isNotEmpty &&
+        parts.isNotEmpty &&
+        parts.every((part) => part.isNotEmpty)) {
+      aliases.add('${parts.join(' ')} $familyName');
+      aliases.add('$familyName ${parts.join(' ')}');
+    }
+  }
   if (reference.type == 'game') {
     final players = label.split(
       RegExp(r'\s+(?:vs\.?|[-–—])\s+', caseSensitive: false),
