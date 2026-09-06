@@ -814,6 +814,108 @@ List<String> _chatReferenceAliases(ChatReference reference) {
     ..sort((left, right) => right.length.compareTo(left.length));
 }
 
+const _chatReferenceApostrophes = "'’ʼ";
+const _chatReferenceHyphens = '-‐‑‒–—';
+const _chatReferenceLatinVariants = <String, String>{
+  'a': 'aàáâãäåāăąǎ',
+  'c': 'cçćĉċč',
+  'd': 'dďđ',
+  'e': 'eèéêëēĕėęě',
+  'g': 'gĝğġģ',
+  'h': 'hĥħ',
+  'i': 'iìíîïĩīĭįı',
+  'j': 'jĵ',
+  'k': 'kķ',
+  'l': 'lĺļľŀł',
+  'n': 'nñńņňŋ',
+  'o': 'oòóôõöøōŏőǒ',
+  'r': 'rŕŗř',
+  's': 'sśŝşšș',
+  't': 'tţťŧț',
+  'u': 'uùúûüũūŭůűųǔ',
+  'w': 'wŵ',
+  'y': 'yýÿŷ',
+  'z': 'zźżž',
+};
+final _chatReferenceWordCharacter = RegExp(r'[A-Za-z0-9À-ÖØ-öø-ÿĀ-ž]');
+
+bool _isChatReferenceWordCharacter(String character) =>
+    _chatReferenceWordCharacter.hasMatch(character);
+
+bool _isChatReferenceUppercaseInitial(String character) =>
+    _isChatReferenceWordCharacter(character) &&
+    character.toUpperCase() == character &&
+    character.toLowerCase() != character;
+
+String _chatReferenceLetterPattern(String character) {
+  final lower = character.toLowerCase();
+  for (final entry in _chatReferenceLatinVariants.entries) {
+    if (entry.value.contains(lower)) return '[${entry.value}]';
+  }
+  return RegExp.escape(character);
+}
+
+String _chatReferenceAliasPattern(String alias) {
+  final characters = alias.split('');
+  final pattern = StringBuffer();
+  for (var index = 0; index < characters.length; index++) {
+    final character = characters[index];
+    if (_chatReferenceApostrophes.contains(character)) continue;
+    if (RegExp(r'\s').hasMatch(character) ||
+        _chatReferenceHyphens.contains(character)) {
+      while (index + 1 < characters.length &&
+          (RegExp(r'\s').hasMatch(characters[index + 1]) ||
+              _chatReferenceHyphens.contains(characters[index + 1]))) {
+        index++;
+      }
+      pattern.write(r'(?:[\s\u00A0]+|[\s\u00A0]*[-‐‑‒–—][\s\u00A0]*)');
+      continue;
+    }
+    if (character == '.') {
+      pattern.write(r'\.?');
+      continue;
+    }
+    pattern.write(_chatReferenceLetterPattern(character));
+    if (_isChatReferenceWordCharacter(character)) {
+      pattern.write(r'[\u0300-\u036f]*');
+    }
+    var nextIndex = index + 1;
+    while (nextIndex < characters.length &&
+        _chatReferenceApostrophes.contains(characters[nextIndex])) {
+      nextIndex++;
+    }
+    if (nextIndex < characters.length &&
+        _isChatReferenceWordCharacter(character) &&
+        _isChatReferenceWordCharacter(characters[nextIndex])) {
+      if (_isChatReferenceUppercaseInitial(character) &&
+          _isChatReferenceUppercaseInitial(characters[nextIndex])) {
+        pattern.write(r"[.'’ʼ\s\u00A0]*");
+      } else {
+        pattern.write(r"['’ʼ]?");
+      }
+    }
+  }
+  return pattern.toString();
+}
+
+bool _hasChatReferenceWordBoundaries(String source, RegExpMatch match) {
+  final startsWithWord = _isChatReferenceWordCharacter(match.group(0)![0]);
+  final endsWithWord = _isChatReferenceWordCharacter(
+    match.group(0)![match.group(0)!.length - 1],
+  );
+  if (startsWithWord &&
+      match.start > 0 &&
+      _isChatReferenceWordCharacter(source[match.start - 1])) {
+    return false;
+  }
+  if (endsWithWord &&
+      match.end < source.length &&
+      _isChatReferenceWordCharacter(source[match.end])) {
+    return false;
+  }
+  return true;
+}
+
 IntegratedChatReferences integrateChatReferences(
   String source,
   List<ChatReference> references,
@@ -830,31 +932,40 @@ IntegratedChatReferences integrateChatReferences(
       );
 
   for (final reference in candidates) {
-    final protected = _markdownProtectedRanges(markdown);
-    RegExpMatch? selected;
-    for (final alias in _chatReferenceAliases(reference)) {
-      final matcher = RegExp(RegExp.escape(alias), caseSensitive: false);
-      for (final match in matcher.allMatches(markdown)) {
-        final overlaps = protected.any(
-          (range) => match.start < range.$2 && match.end > range.$1,
+    var linkedReference = false;
+    while (true) {
+      final protected = _markdownProtectedRanges(markdown);
+      RegExpMatch? selected;
+      for (final alias in _chatReferenceAliases(reference)) {
+        final matcher = RegExp(
+          _chatReferenceAliasPattern(alias),
+          caseSensitive: false,
         );
-        if (!overlaps && (selected == null || match.start < selected.start)) {
-          selected = match;
+        for (final match in matcher.allMatches(markdown)) {
+          final overlaps = protected.any(
+            (range) => match.start < range.$2 && match.end > range.$1,
+          );
+          if (!overlaps &&
+              _hasChatReferenceWordBoundaries(markdown, match) &&
+              (selected == null || match.start < selected.start)) {
+            selected = match;
+          }
         }
       }
+      if (selected == null) break;
+      final matchedLabel = selected.group(0)!;
+      final escapedLabel = matchedLabel.replaceAllMapped(
+        RegExp(r'[\\\[\]]'),
+        (match) => '\\${match.group(0)}',
+      );
+      markdown = markdown.replaceRange(
+        selected.start,
+        selected.end,
+        '[$escapedLabel](${_chatReferenceHref(reference)})',
+      );
+      linkedReference = true;
     }
-    if (selected == null) continue;
-    final matchedLabel = selected.group(0)!;
-    final escapedLabel = matchedLabel.replaceAllMapped(
-      RegExp(r'[\\\[\]]'),
-      (match) => '\\${match.group(0)}',
-    );
-    markdown = markdown.replaceRange(
-      selected.start,
-      selected.end,
-      '[$escapedLabel](${_chatReferenceHref(reference)})',
-    );
-    linked.add(reference);
+    if (linkedReference) linked.add(reference);
   }
 
   return IntegratedChatReferences(markdown: markdown, linkedReferences: linked);
