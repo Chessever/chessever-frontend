@@ -472,6 +472,13 @@ final _namespacedCanonicalIdPattern = RegExp(
   r'^[A-Za-z0-9][A-Za-z0-9._-]*:[^\s/?#]+$',
 );
 
+/// ChessEver Direct fallback game id (`<8-char round id>-<base36 hash>`),
+/// minted by the broadcasting backend (`mintId` in
+/// `apps/api/src/ingest/round.ts`) when a self-streamed board carries no
+/// stable external id. Stored in `games.id`, so it deep-links exactly like a
+/// UUID. The hyphen keeps it disjoint from bare 8-char Lichess ids.
+final _directGameIdPattern = RegExp(r'^[A-Za-z0-9]{8}-[A-Za-z0-9]+$');
+
 /// Broadcast game URLs keep the game id as the last segment:
 /// `lichess.org/broadcast/{tourSlug}/{roundSlug}/{roundId}/{gameId}`.
 /// Also match `chessever.com` — [rebrandPgnLinks] swaps only the host and
@@ -535,7 +542,8 @@ bool _isResolvableSharedGameId(String id) {
   final trimmed = id.trim();
   return _uuidPattern.hasMatch(trimmed) ||
       _lichessShortIdPattern.hasMatch(trimmed) ||
-      _namespacedCanonicalIdPattern.hasMatch(trimmed);
+      _namespacedCanonicalIdPattern.hasMatch(trimmed) ||
+      _directGameIdPattern.hasMatch(trimmed);
 }
 
 bool isGamebaseBackedSource(GameSource source) {
