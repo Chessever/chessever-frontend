@@ -1,7 +1,9 @@
 import 'package:chessever2/repository/library/library_repository.dart';
 import 'package:chessever2/repository/library/models/library_folder.dart';
 import 'package:chessever2/repository/library/models/shared_book_preview.dart';
+import 'package:chessever2/repository/authentication/auth_repository.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 /// Special TWIC book identifier — not a real Supabase folder.
 const kTwicBookId = '__twic__';
@@ -34,10 +36,34 @@ final kMiniaturesFolder = LibraryFolder(
   updatedAt: DateTime(2000),
 );
 
+typedef LibraryFolderStreamFactory = Stream<List<LibraryFolder>> Function();
+
+final libraryFolderAuthenticatedUserIdProvider = Provider.autoDispose<String?>(
+  (ref) {
+    // AuthController is the reactive signal, while the Supabase SDK remains
+    // the session source of truth. During a cancelled/failed account upgrade,
+    // AppAuthState can be `error` even though the existing session is valid.
+    ref.watch(authStateProvider);
+    return Supabase.instance.client.auth.currentUser?.id;
+  },
+);
+
+final libraryFolderStreamFactoryProvider =
+    Provider.autoDispose<LibraryFolderStreamFactory>((ref) {
+      final repository = ref.watch(libraryRepositoryProvider);
+      return repository.subscribeFolders;
+    });
+
 final libraryFoldersStreamProvider =
     StreamProvider.autoDispose<List<LibraryFolder>>((ref) {
-      final repository = ref.watch(libraryRepositoryProvider);
-      return repository.subscribeFolders();
+      // Shared-file intents can reach the PGN preview while Supabase is still
+      // restoring the session. Watching auth makes this provider restart as
+      // soon as the user becomes available instead of keeping the first
+      // unauthenticated stream error for the lifetime of the sheet.
+      final userId = ref.watch(libraryFolderAuthenticatedUserIdProvider);
+      if (userId == null) return const Stream<List<LibraryFolder>>.empty();
+
+      return ref.watch(libraryFolderStreamFactoryProvider)();
     });
 
 /// Analysis count per folder for subtitle display
