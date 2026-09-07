@@ -229,6 +229,8 @@ void main() {
       final engineVisibleBefore = before.showEngineAnalysis;
       final principalVariationsBefore = before.principalVariations;
       final engineShapesBefore = before.shapes;
+      final mainlineSanBefore =
+          before.analysisState.game!.mainline.map((move) => move.san).toList();
 
       await notifier.clearUserAnalysis();
       // Let the navigator's 120 ms evaluation debounce settle while the
@@ -252,6 +254,16 @@ void main() {
         isEmpty,
         reason: 'The custom 1...c5 branch must be removed.',
       );
+      // Only the branch goes. Rebuilding the tree from a PGN string would put
+      // the source game at risk (a live board would rewind to a stale PGN),
+      // so the mainline must come through move-for-move.
+      expect(
+        after.analysisState.game!.mainline.map((move) => move.san).toList(),
+        mainlineSanBefore,
+      );
+      // The reader keeps their place on the mainline instead of being thrown
+      // to the tail, even though the branch they stood in is gone.
+      expect(after.analysisState.movePointer, [0]);
     },
   );
 

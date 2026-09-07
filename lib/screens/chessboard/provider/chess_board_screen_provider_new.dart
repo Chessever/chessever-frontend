@@ -2120,46 +2120,71 @@ class ChessBoardScreenNotifierNew
     await promoteVariationAtPointer(pointer);
   }
 
+  /// Destructive: removes the reader's own analysis work — the variation
+  /// branches they played and their comment/NAG overlays — and persists the
+  /// result. The source game survives untouched: mainline moves keep their
+  /// clock times, evals and broadcast annotations, and live engine evaluation
+  /// keeps running per the engine settings.
+  ///
+  /// The tree is stripped in place rather than rebuilt from a PGN string.
+  /// `pgnData` is overwritten by preview promotion and a saved analysis exports
+  /// its own variations back into `game.pgn`, so re-parsing either one can hand
+  /// back the very work this action exists to delete — and on a live game it
+  /// would rewind the board to a stale PGN.
   Future<void> clearUserAnalysis() async {
-    // Clear only user-authored PGN work. Live engine state and the visit-local
-    // Raw PGN / Generate Report visibility policy are separate concerns.
-    if (_isEditingBlockedByPreview(reason: 'clear analysis')) {
-      return;
-    }
+    // Destructive tree edits exit an open preview rather than refusing to run
+    // (see [deleteVariationAtPointer]); blocking here would make Clear a no-op
+    // whenever the PV preview happens to be open.
     _exitPvPreviewIfActive();
     if (_analysisNavigator == null) return;
     final currentState = state.value;
     if (currentState == null) return;
 
-    var basePgn = currentState.pgnData ?? game.pgn;
-    if ((basePgn == null || basePgn.trim().isEmpty) &&
-        (game.fen?.isNotEmpty ?? false)) {
-      basePgn = _buildFenFallbackPgn(game.fen!);
-    }
-    if (basePgn == null || basePgn.trim().isEmpty) {
-      return;
-    }
-
-    if (currentState.variationComments.isNotEmpty ||
-        currentState.moveNags.isNotEmpty) {
-      state = AsyncValue.data(
-        currentState.copyWith(
-          variationComments: const <String, String>{},
-          moveNags: const <String, List<int>>{},
-        ),
+    var next = _clearVariantSelection(currentState);
+    if (next.variationComments.isNotEmpty || next.moveNags.isNotEmpty) {
+      next = next.copyWith(
+        variationComments: const <String, String>{},
+        moveNags: const <String, List<int>>{},
       );
     }
+    if (!identical(next, currentState)) {
+      state = AsyncValue.data(next);
+    }
 
-    final baseGame = _createChessGameFromPgn(basePgn);
-    _analysisNavigator!
-      ..replaceState(
-        ChessGameNavigatorState(game: baseGame, movePointer: const []),
-      )
-      ..goToTail();
+    final navigatorState = _analysisNavigator!.state;
+    final strippedMainline = _withoutVariations(navigatorState.game.mainline);
+    // Keep the reader where they were standing. A pointer's first entry is
+    // always a mainline index, so clamping to it survives deleting the branch
+    // the pointer was pointing into.
+    final pointer = navigatorState.movePointer;
+    final restoredPointer =
+        pointer.isEmpty || strippedMainline.isEmpty
+            ? const <Number>[]
+            : <Number>[pointer.first.clamp(0, strippedMainline.length - 1)];
 
+    _analysisNavigator!.replaceState(
+      ChessGameNavigatorState(
+        game: navigatorState.game.copyWith(mainline: strippedMainline),
+        movePointer: restoredPointer,
+      ),
+    );
+
+    HapticFeedback.heavyImpact();
+    _syncAnalysisFromNavigator(_analysisNavigator!.state);
+    _updateEvaluation(force: true);
     await _persistAnalysisState();
     await setGameReviewVisible(false);
   }
+
+  /// Drops every variation branch hanging off [line], keeping each move and its
+  /// source metadata (clock, eval, comments, NAGs) exactly as it was. Nested
+  /// branches leave with the branch that holds them, so no recursion is needed.
+  ChessLine _withoutVariations(ChessLine line) => [
+    for (final move in line)
+      move.variations == null
+          ? move
+          : move.copyWith(variations: null, overrideVariations: true),
+  ];
 
   void playPrincipalVariationMove(AnalysisLine line) {
     final wasPreviewActive = state.value?.isPvPreviewActive == true;
