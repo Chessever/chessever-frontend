@@ -2365,7 +2365,10 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
   /// tutorial's demo swipe); dropping an explicit selection through them leaves
   /// the PageView parked on a page the build window never catches up to, which
   /// is what the user sees as the board going dark.
-  Future<void> _handlePageChange(int newIndex, {bool deliberate = false}) async {
+  Future<void> _handlePageChange(
+    int newIndex, {
+    bool deliberate = false,
+  }) async {
     // Expand remap / other programmatic jumps: index + provider sync is owned
     // by didUpdateWidget + _syncExpandedGameProvidersAfterFrame. Must not write
     // providers (or clobber _currentPageIndex) while the tree is building.
@@ -3125,8 +3128,7 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
                                       error:
                                           (e, _) => _GameLoadFailure(
                                             error: e,
-                                            onRetry:
-                                                () => _reloadGameAt(index),
+                                            onRetry: () => _reloadGameAt(index),
                                           ),
                                     );
                                   } catch (e) {
@@ -4644,7 +4646,8 @@ class _AppBarState extends ConsumerState<_AppBar> {
                       final notifier = ref.read(
                         chessBoardScreenProviderNew(params).notifier,
                       );
-                      GameReviewSheetScope.maybeOf(context)?.target.value = null;
+                      GameReviewSheetScope.maybeOf(context)?.target.value =
+                          null;
                       await notifier.clearUserAnalysis();
                     }
                   },
@@ -4752,7 +4755,8 @@ class _AppBarState extends ConsumerState<_AppBar> {
                       final notifier = ref.read(
                         chessBoardScreenProviderNew(params).notifier,
                       );
-                      GameReviewSheetScope.maybeOf(context)?.target.value = null;
+                      GameReviewSheetScope.maybeOf(context)?.target.value =
+                          null;
                       await notifier.clearUserAnalysis();
                     }
                   },
@@ -7476,7 +7480,6 @@ class _AnalysisGameBody extends ConsumerWidget {
     // card-focus arrows remain usable (no slide-hide).
     final explorerVisible = ref.watch(boardExplorerPanelVisibleProvider);
     final gamesPinned = ref.watch(explorerInlineGamesPinnedProvider);
-    final viewSession = ref.watch(analysisViewSessionProvider(game.gameId));
     final expandGamesOverPv = shouldExpandExplorerGamesOverPv(
       pageVisible: index == currentPageIndex,
       explorerPanelVisible: explorerVisible,
@@ -7499,7 +7502,7 @@ class _AnalysisGameBody extends ConsumerWidget {
         // When games pin we collapse PV with a height/opacity ease so the
         // analysis panel grows into that space without a layout jump.
         final showPv =
-            !viewSession.cleared && state.isAnalysisMode &&
+            state.isAnalysisMode &&
             state.showEngineAnalysis &&
             state.showPrincipalVariations;
         // Tablet right-column / portrait put a gap under PV; fold it into the
@@ -7670,7 +7673,9 @@ class _AnalysisGameBody extends ConsumerWidget {
               movesDisplay: movesDisplay,
               gamebaseDisplay: gamebaseDisplay,
               syncWithGamebaseToggle: showGamebaseButton,
-              teachingsEnabled: shouldShowChessBoardTeachingsForGame(state.game),
+              teachingsEnabled: shouldShowChessBoardTeachingsForGame(
+                state.game,
+              ),
             ),
           );
         }
@@ -8134,7 +8139,6 @@ class _TabletBoardWithSidebar extends ConsumerWidget {
           ),
         );
     final showEngineGauge =
-        !ref.watch(analysisViewSessionProvider(game.gameId)).cleared &&
         engineGaugeEnabled &&
         // Engine toggle (bottom-nav laptop) gates the eval bar too: turning the
         // engine off in the game view hides the bar, not just the PV cards.
@@ -8233,7 +8237,6 @@ class _BoardWithSidebar extends ConsumerWidget {
           ),
         );
     final showEngineGauge =
-        !ref.watch(analysisViewSessionProvider(game.gameId)).cleared &&
         engineGaugeEnabled &&
         // Engine toggle (bottom-nav laptop) gates the eval bar too: turning the
         // engine off in the game view hides the bar, not just the PV cards.
@@ -8723,8 +8726,9 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard>
 
     if (widget.index != oldWidget.index) {
       _likeNudgeOfferController?.state = null;
-      _likeNudgeOfferController = ref
-          .read(likeNudgeOfferProvider(widget.index).notifier);
+      _likeNudgeOfferController = ref.read(
+        likeNudgeOfferProvider(widget.index).notifier,
+      );
     }
 
     if (widget.game.gameId != oldWidget.game.gameId) {
@@ -8859,8 +8863,9 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard>
   void initState() {
     super.initState();
     _likeFlightAnchor = ref.read(likeFlightAnchorProvider);
-    _likeNudgeOfferController =
-        ref.read(likeNudgeOfferProvider(widget.index).notifier);
+    _likeNudgeOfferController = ref.read(
+      likeNudgeOfferProvider(widget.index).notifier,
+    );
     final analysisState = widget.chessBoardState.analysisState;
     _wasAtEnd = _isAtGameEnd(analysisState);
     _boardController = ChessboardController(game: _gameDataFor(analysisState));
@@ -9673,9 +9678,7 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard>
           local.dy <= widget.size;
       _lastTapPosition = onBoard ? local : boardCentre;
       _lastTapGlobalPosition =
-          onBoard
-              ? heartGlobalCenter
-              : renderBox.localToGlobal(boardCentre);
+          onBoard ? heartGlobalCenter : renderBox.localToGlobal(boardCentre);
     } else {
       _lastTapPosition = boardCentre;
       _lastTapGlobalPosition = heartGlobalCenter;
@@ -9743,10 +9746,11 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard>
       game: widget.game,
       index: widget.index,
     );
-    final viewSession = ref.watch(analysisViewSessionProvider(widget.game.gameId));
-    final rawPgnMode = ref.watch(boardSettingsProviderNew.select((s) => s.valueOrNull?.rawPgnMode ?? true));
-    final showSourceAnnotations = viewSession.showSourceAnnotations(rawPgn: rawPgnMode);
-    final showReportAnnotations = viewSession.showReport(rawPgn: rawPgnMode);
+    final rawPgnMode = ref.watch(
+      boardSettingsProviderNew.select((s) => s.valueOrNull?.rawPgnMode ?? true),
+    );
+    final showSourceAnnotations = !rawPgnMode;
+    final showReportAnnotations = !rawPgnMode;
     final boardShareBoundaryKey = ref.watch(boardShareBoundaryKeyProvider);
     final notifier = ref.read(chessBoardScreenProviderNew(params).notifier);
     // chessground v10: the board's tap-selection is cleared via the controller
@@ -9972,14 +9976,16 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard>
     // to parent widgets during piece animations and drag operations
 
     final pvShapes =
-        (!viewSession.cleared && widget.chessBoardState.showEngineAnalysis &&
+        (widget.chessBoardState.showEngineAnalysis &&
                 widget.chessBoardState.showPrincipalVariations &&
                 showPvArrows)
             ? (widget.chessBoardState.shapes ?? const ISet<Shape>.empty())
             : const ISet<Shape>.empty();
 
-    final annotationShapes = showSourceAnnotations
-        ? _extractAnnotationShapes(activeMove) : const <Shape>[];
+    final annotationShapes =
+        showSourceAnnotations
+            ? _extractAnnotationShapes(activeMove)
+            : const <Shape>[];
     // chessground v10 takes a plain Set<Shape> (was ISet<Shape>).
     final allShapes = <Shape>{...pvShapes, ...annotationShapes};
     final androidPipRecoveryEpoch = ref.watch(
@@ -11042,12 +11048,9 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
       ),
     );
     final rawPgnMode = ref.watch(
-      boardSettingsProviderNew.select(
-        (s) => s.valueOrNull?.rawPgnMode ?? true,
-      ),
+      boardSettingsProviderNew.select((s) => s.valueOrNull?.rawPgnMode ?? true),
     );
-    final viewSession = ref.watch(analysisViewSessionProvider(widget.game.gameId));
-    final effectiveRawPgnMode = !viewSession.showSourceAnnotations(rawPgn: rawPgnMode);
+    final effectiveRawPgnMode = rawPgnMode;
 
     if (_lastSignature != signature) {
       _moveKeys.clear();
@@ -11112,22 +11115,13 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
     // Branches hidden by Clear stay out of the picker unless the cursor is
     // already inside them.
     final nextMoveOptions =
-        nextMoveOptionsAt(navigatorState.game, pointerCandidate).where((
-          option,
-        ) {
-          final variationId = _variationIdForPointer(option.pointer);
-          return variationId == null ||
-              !viewSession.hiddenVariationIds.contains(variationId) ||
-              forcedOpenIds.contains(variationId);
-        }).toList();
+        nextMoveOptionsAt(navigatorState.game, pointerCandidate).toList();
     final showNextMovePanel =
         nextMoveOptions.length > 1 && !widget.state.isPvPreviewActive;
 
     // Explicit Generate Report overrides Raw PGN for this visit only.
     final effectiveLichessAnnotations =
-        !viewSession.showReport(rawPgn: rawPgnMode)
-            ? const <int, LichessMoveAnnotation>{}
-            : effectiveRawPgnMode ? reportAnnotations : moveAnnotations;
+        effectiveRawPgnMode ? reportAnnotations : moveAnnotations;
 
     final pointerMap = <String, NotationMoveNode>{};
     final tokens = buildNotationTokens(
@@ -11142,7 +11136,7 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
       expandedVariationIds: _expandedVariationIds,
       autoCollapseDepth: _autoCollapseDepth,
       rawPgnMode: effectiveRawPgnMode,
-      hiddenVariationIds: viewSession.hiddenVariationIds,
+      hiddenVariationIds: const <String>{},
     );
 
     final currentNode =
@@ -11157,7 +11151,9 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
       final sheet = GameReviewSheetScope.maybeOf(context);
       if (sheet == null) return;
       unawaited(() async {
-        final viewController = ref.read(analysisViewSessionProvider(widget.game.gameId).notifier);
+        final viewController = ref.read(
+          analysisViewSessionProvider(widget.game.gameId).notifier,
+        );
         final request = viewController.requestReport();
         final alreadyRunning =
             reviewController.reviewState.reportState.isRunning;
@@ -11167,7 +11163,10 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
         // that was the original bug (second tap killed generation).
         if (alreadyRunning) {
           await notifier.setGameReviewVisible(true);
-          if (!mounted || !context.mounted || !viewController.isCurrentRequest(request)) return;
+          if (!mounted ||
+              !context.mounted ||
+              !viewController.isCurrentRequest(request))
+            return;
           sheet.target.value = params;
           return;
         }
@@ -11177,7 +11176,10 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
         // the sheet only after that path returns so the board is not blocked
         // by an open review sheet for the entire run.
         await reviewController.requestAnalysis(context);
-        if (!mounted || !context.mounted || !viewController.isCurrentRequest(request)) return;
+        if (!mounted ||
+            !context.mounted ||
+            !viewController.isCurrentRequest(request))
+          return;
         await notifier.setGameReviewVisible(true);
         if (!mounted || !viewController.isCurrentRequest(request)) return;
         sheet.target.value = params;
@@ -12767,14 +12769,6 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
     } else {
       _scrollController.jumpTo(clampedOffset);
     }
-  }
-
-  /// Id of the variation that owns [pointer], or null for a mainline move.
-  /// Pointers alternate move index / variation index, so dropping the last
-  /// move index leaves the variation's own path.
-  String? _variationIdForPointer(ChessMovePointer pointer) {
-    if (pointer.length < 3) return null;
-    return NotationPointer.encode(pointer.sublist(0, pointer.length - 1));
   }
 
   bool _collectVariationAncestors(
@@ -16282,9 +16276,7 @@ class _EventInfoSheet extends ConsumerWidget {
 
     final locationService = ref.read(locationServiceProvider);
     final urlLauncher = ref.read(urlLauncherProvider);
-    final writerLabel = ref.watch(
-      selectedBroadcastWriterAttributionProvider,
-    );
+    final writerLabel = ref.watch(selectedBroadcastWriterAttributionProvider);
 
     return DraggableScrollableSheet(
       initialChildSize: 0.55,
