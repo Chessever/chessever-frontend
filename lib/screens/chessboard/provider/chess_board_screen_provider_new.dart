@@ -2121,10 +2121,11 @@ class ChessBoardScreenNotifierNew
   }
 
   Future<void> clearUserAnalysis() async {
-    // Clear is destructive for user-authored PGN analysis. Keep the live
-    // engine/evaluation state independent: this only replaces the navigator's
-    // custom tree and clears persisted variation comments.
-    if (_isEditingBlockedByPreview(reason: 'clear analysis')) return;
+    // Clear only user-authored PGN work. Live engine state and the visit-local
+    // Raw PGN / Generate Report visibility policy are separate concerns.
+    if (_isEditingBlockedByPreview(reason: 'clear analysis')) {
+      return;
+    }
     _exitPvPreviewIfActive();
     if (_analysisNavigator == null) return;
     final currentState = state.value;
@@ -2135,33 +2136,27 @@ class ChessBoardScreenNotifierNew
         (game.fen?.isNotEmpty ?? false)) {
       basePgn = _buildFenFallbackPgn(game.fen!);
     }
-    if (basePgn == null || basePgn.trim().isEmpty) return;
+    if (basePgn == null || basePgn.trim().isEmpty) {
+      return;
+    }
 
-    final parsedBaseGame = _createChessGameFromPgn(basePgn);
-    final baseGame = parsedBaseGame.copyWith(
-      mainline:
-          parsedBaseGame.mainline
-              .map(
-                (move) => move.copyWith(
-                  comments: const <String>[],
-                  nags: const <int>[],
-                  variations: const <ChessLine>[],
-                  overrideVariations: true,
-                ),
-              )
-              .toList(),
-    );
+    if (currentState.variationComments.isNotEmpty ||
+        currentState.moveNags.isNotEmpty) {
+      state = AsyncValue.data(
+        currentState.copyWith(
+          variationComments: const <String, String>{},
+          moveNags: const <String, List<int>>{},
+        ),
+      );
+    }
+
+    final baseGame = _createChessGameFromPgn(basePgn);
     _analysisNavigator!
       ..replaceState(
         ChessGameNavigatorState(game: baseGame, movePointer: const []),
       )
       ..goToTail();
 
-    if (currentState.variationComments.isNotEmpty) {
-      state = AsyncValue.data(
-        currentState.copyWith(variationComments: const <String, String>{}),
-      );
-    }
     await _persistAnalysisState();
     await setGameReviewVisible(false);
   }
