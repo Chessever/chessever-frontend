@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:math' as math;
-import 'analysis_view_session.dart';
 import 'package:chessever2/providers/board_settings_provider_new.dart';
 import 'package:chessever2/repository/library/library_repository.dart';
 import 'package:chessever2/repository/library/models/saved_analysis.dart';
@@ -2121,30 +2120,71 @@ class ChessBoardScreenNotifierNew
     await promoteVariationAtPointer(pointer);
   }
 
+  /// Destructive: removes the reader's own analysis work — the variation
+  /// branches they played and their comment/NAG overlays — and persists the
+  /// result. The source game survives untouched: mainline moves keep their
+  /// clock times, evals and broadcast annotations, and live engine evaluation
+  /// keeps running per the engine settings.
+  ///
+  /// The tree is stripped in place rather than rebuilt from a PGN string.
+  /// `pgnData` is overwritten by preview promotion and a saved analysis exports
+  /// its own variations back into `game.pgn`, so re-parsing either one can hand
+  /// back the very work this action exists to delete — and on a live game it
+  /// would rewind the board to a stale PGN.
   Future<void> clearUserAnalysis() async {
-    // This action is a view-only overlay. Do not rewrite the navigator, PGN,
-    // comments, report state, or persistence; leaving the board disposes the
-    // autoDispose provider and restores the normal view on the next visit.
-    // Snapshot the branches that exist right now: they hide for this visit,
-    // while any branch the user plays afterwards is appended under a fresh id
-    // and stays visible.
-    final tree = state.value?.analysisState.game;
-    ref
-        .read(analysisViewSessionProvider(game.gameId).notifier)
-        .clear(
-          hiddenVariationIds:
-              tree == null
-                  ? const <String>{}
-                  : NotationTreeBuilder.variationIds(tree),
-        );
+    // Destructive tree edits exit an open preview rather than refusing to run
+    // (see [deleteVariationAtPointer]); blocking here would make Clear a no-op
+    // whenever the PV preview happens to be open.
     _exitPvPreviewIfActive();
-    // Return from a custom branch without replacing/persisting the game tree.
-    final pointer = state.value?.analysisState.movePointer;
-    if (pointer != null && pointer.length > 1) {
-      await goToMove(pointer.first.toInt());
+    if (_analysisNavigator == null) return;
+    final currentState = state.value;
+    if (currentState == null) return;
+
+    var next = _clearVariantSelection(currentState);
+    if (next.variationComments.isNotEmpty || next.moveNags.isNotEmpty) {
+      next = next.copyWith(
+        variationComments: const <String, String>{},
+        moveNags: const <String, List<int>>{},
+      );
     }
+    if (!identical(next, currentState)) {
+      state = AsyncValue.data(next);
+    }
+
+    final navigatorState = _analysisNavigator!.state;
+    final strippedMainline = _withoutVariations(navigatorState.game.mainline);
+    // Keep the reader where they were standing. A pointer's first entry is
+    // always a mainline index, so clamping to it survives deleting the branch
+    // the pointer was pointing into.
+    final pointer = navigatorState.movePointer;
+    final restoredPointer =
+        pointer.isEmpty || strippedMainline.isEmpty
+            ? const <Number>[]
+            : <Number>[pointer.first.clamp(0, strippedMainline.length - 1)];
+
+    _analysisNavigator!.replaceState(
+      ChessGameNavigatorState(
+        game: navigatorState.game.copyWith(mainline: strippedMainline),
+        movePointer: restoredPointer,
+      ),
+    );
+
+    HapticFeedback.heavyImpact();
+    _syncAnalysisFromNavigator(_analysisNavigator!.state);
+    _updateEvaluation(force: true);
+    await _persistAnalysisState();
     await setGameReviewVisible(false);
   }
+
+  /// Drops every variation branch hanging off [line], keeping each move and its
+  /// source metadata (clock, eval, comments, NAGs) exactly as it was. Nested
+  /// branches leave with the branch that holds them, so no recursion is needed.
+  ChessLine _withoutVariations(ChessLine line) => [
+    for (final move in line)
+      move.variations == null
+          ? move
+          : move.copyWith(variations: null, overrideVariations: true),
+  ];
 
   void playPrincipalVariationMove(AnalysisLine line) {
     final wasPreviewActive = state.value?.isPvPreviewActive == true;

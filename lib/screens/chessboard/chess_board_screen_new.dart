@@ -4634,7 +4634,7 @@ class _AppBarState extends ConsumerState<_AppBar> {
                             context: context,
                             title: 'Clear analysis?',
                             message:
-                                'Temporarily hide all analysis and variations for this visit. Saved analysis is kept. Reopen the game to restore it, or tap Generate Report to show a report.',
+                                'Permanently remove your custom PGN variations, comments, and annotations? Live engine analysis will stay on.',
                             confirmLabel: 'Clear',
                             confirmColor: kRedColor,
                           ) ??
@@ -4742,7 +4742,7 @@ class _AppBarState extends ConsumerState<_AppBar> {
                             context: context,
                             title: 'Clear analysis?',
                             message:
-                                'Temporarily hide all analysis and variations for this visit. Saved analysis is kept. Reopen the game to restore it, or tap Generate Report to show a report.',
+                                'Permanently remove your custom PGN variations, comments, and annotations? Live engine analysis will stay on.',
                             confirmLabel: 'Clear',
                             confirmColor: kRedColor,
                           ) ??
@@ -7476,7 +7476,6 @@ class _AnalysisGameBody extends ConsumerWidget {
     // card-focus arrows remain usable (no slide-hide).
     final explorerVisible = ref.watch(boardExplorerPanelVisibleProvider);
     final gamesPinned = ref.watch(explorerInlineGamesPinnedProvider);
-    final viewSession = ref.watch(analysisViewSessionProvider(game.gameId));
     final expandGamesOverPv = shouldExpandExplorerGamesOverPv(
       pageVisible: index == currentPageIndex,
       explorerPanelVisible: explorerVisible,
@@ -7499,7 +7498,7 @@ class _AnalysisGameBody extends ConsumerWidget {
         // When games pin we collapse PV with a height/opacity ease so the
         // analysis panel grows into that space without a layout jump.
         final showPv =
-            !viewSession.cleared && state.isAnalysisMode &&
+            state.isAnalysisMode &&
             state.showEngineAnalysis &&
             state.showPrincipalVariations;
         // Tablet right-column / portrait put a gap under PV; fold it into the
@@ -8134,7 +8133,6 @@ class _TabletBoardWithSidebar extends ConsumerWidget {
           ),
         );
     final showEngineGauge =
-        !ref.watch(analysisViewSessionProvider(game.gameId)).cleared &&
         engineGaugeEnabled &&
         // Engine toggle (bottom-nav laptop) gates the eval bar too: turning the
         // engine off in the game view hides the bar, not just the PV cards.
@@ -8233,7 +8231,6 @@ class _BoardWithSidebar extends ConsumerWidget {
           ),
         );
     final showEngineGauge =
-        !ref.watch(analysisViewSessionProvider(game.gameId)).cleared &&
         engineGaugeEnabled &&
         // Engine toggle (bottom-nav laptop) gates the eval bar too: turning the
         // engine off in the game view hides the bar, not just the PV cards.
@@ -9972,7 +9969,7 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard>
     // to parent widgets during piece animations and drag operations
 
     final pvShapes =
-        (!viewSession.cleared && widget.chessBoardState.showEngineAnalysis &&
+        (widget.chessBoardState.showEngineAnalysis &&
                 widget.chessBoardState.showPrincipalVariations &&
                 showPvArrows)
             ? (widget.chessBoardState.shapes ?? const ISet<Shape>.empty())
