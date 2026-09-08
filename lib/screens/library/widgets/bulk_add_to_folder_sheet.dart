@@ -12,6 +12,7 @@ import 'package:chessever2/screens/chessboard/widgets/smooth_sheet_config.dart';
 import 'package:chessever2/screens/library/providers/library_folders_provider.dart';
 import 'package:chessever2/screens/library/utils/gamebase_pgn_builder.dart';
 import 'package:chessever2/screens/library/widgets/create_folder_dialog.dart';
+import 'package:chessever2/screens/library/widgets/library_folder_load_error.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
@@ -572,13 +573,11 @@ class _BulkAddToFolderPageState extends ConsumerState<_BulkAddToFolderPage> {
                         ),
                       ),
                   error:
-                      (e, _) => Center(
-                        child: Text(
-                          'Error loading folders',
-                          style: AppTypography.textSmRegular.copyWith(
-                            color: kRedColor,
-                          ),
-                        ),
+                      (e, _) => LibraryFolderLoadError(
+                        onRetry: () {
+                          HapticFeedbackService.light();
+                          ref.invalidate(libraryFoldersStreamProvider);
+                        },
                       ),
                 ),
               ),

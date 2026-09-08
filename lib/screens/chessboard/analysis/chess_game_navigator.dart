@@ -1236,7 +1236,12 @@ class ChessGameNavigator extends StateNotifier<ChessGameNavigatorState> {
       }
     }
 
-    final nextGame = latestGame.copyWith(mainline: newMainline);
+    final nextGame = latestGame.copyWith(
+      mainline: newMainline,
+      analysisCleared: state.game.analysisCleared,
+      analysisBackup: state.game.analysisBackup,
+      overrideAnalysisBackup: true,
+    );
     final nextState = ChessGameNavigatorState(
       game: nextGame,
       movePointer: newPointer,

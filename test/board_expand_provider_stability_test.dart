@@ -2,6 +2,11 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:chessever2/providers/engine_settings_provider.dart';
+import 'package:chessever2/repository/lichess/cloud_eval/cloud_eval.dart';
+import 'package:chessever2/screens/chessboard/analysis/chess_game_navigator.dart';
+import 'package:chessever2/screens/chessboard/analysis/chess_game.dart';
+import 'package:chessever2/screens/chessboard/provider/analysis_view_session.dart';
+import 'package:chessever2/screens/chessboard/provider/current_eval_provider.dart';
 import 'package:chessever2/repository/gamebase/gamebase_repository.dart';
 import 'package:chessever2/repository/local_storage/tournament/games/games_local_storage.dart';
 import 'package:chessever2/repository/supabase/game/game_repository.dart';
@@ -26,9 +31,85 @@ void main() {
     SharedPreferences.setMockInitialValues({});
     await Supabase.initialize(
       url: 'https://placeholder.supabase.co',
-      anonKey: 'placeholder-anon-key',
+      publishableKey: 'placeholder-anon-key',
     );
   });
+
+  for (final pointer in <List<int>>[[], [0], [0, 0, 0]]) {
+    test('clear analysis syncs the whole tree at pointer $pointer', () async {
+      const pgn = '1. e4!! {Comment} e5?? (1... c5! {Branch}) 2. Nf3 *';
+      final game = _boardGame(id: 'clear-$pointer', pgn: pgn);
+      final container = _boardContainer();
+      addTearDown(container.dispose);
+      container.read(currentlyVisiblePageIndexProvider.notifier).state = 99;
+      final params = ChessBoardProviderParams(game: game, index: 0);
+      final provider = chessBoardScreenProviderNew(params);
+      final sub = container.listen(provider, (_, __) {});
+      addTearDown(sub.close);
+      final session = analysisViewSessionProvider(game.gameId);
+      final sessionSub = container.listen(session, (_, __) {});
+      addTearDown(sessionSub.close);
+      final notifier = container.read(provider.notifier);
+      // Initialization parses locally and creates the navigator in a microtask.
+      await Future<void>.delayed(Duration.zero);
+      final snapshot = notifier.navigatorStateSnapshot();
+      expect(snapshot, isNotNull);
+      await notifier.restoreNavigatorState(ChessGameNavigatorState(
+        game: snapshot!.game,
+        movePointer: pointer,
+      ));
+      notifier.setMoveNags({'0': [3], '0-0-0': [4]});
+      final engineEnabled = container.read(provider).requireValue.showEngineAnalysis;
+      await notifier.clearUserAnalysis();
+      final cleared = container.read(provider).requireValue;
+      expect(cleared.analysisState.movePointer, pointer.isEmpty ? [] : [0]);
+      expect(cleared.analysisState.game!.analysisCleared, isTrue);
+      for (final move in cleared.analysisState.game!.mainline) {
+        expect(move.comments, isNull);
+        expect(move.nags, isNull);
+        expect(move.variations, isNull);
+      }
+      expect(cleared.pgnData?.trim(), endsWith('1. e4 e5 2. Nf3 *'));
+      expect(cleared.variationComments, isEmpty);
+      expect(cleared.moveNags, isEmpty);
+      expect(cleared.showEngineAnalysis, engineEnabled);
+      expect(container.read(session).cleared, isTrue);
+      expect(identical(cleared.analysisState.game, notifier.navigatorStateSnapshot()!.game), isTrue);
+      // Simulate persistence/reopening: the restore data travels in the game.
+      await notifier.restoreNavigatorState(ChessGameNavigatorState(
+        game: ChessGame.fromJson(cleared.analysisState.game!.toJson()),
+        movePointer: cleared.analysisState.movePointer,
+      ));
+      await notifier.restoreAnalysis();
+      final restored = container.read(provider).requireValue;
+      expect(restored.analysisState.game!.analysisCleared, isFalse);
+      expect(restored.analysisState.game!.analysisBackup, isNull);
+      expect(restored.analysisState.game!.toJson(), snapshot.game.toJson());
+      expect(restored.moveNags, {'0': [3], '0-0-0': [4]});
+      expect(container.read(session).cleared, isFalse);
+      expect(container.read(session).showReport(rawPgn: true), isFalse);
+      expect(container.read(session).showReport(rawPgn: false), isTrue);
+      await notifier.clearUserAnalysis();
+      await notifier.restoreAnalysis();
+      expect(container.read(provider).requireValue.analysisState.game!.toJson(), snapshot.game.toJson());
+      await notifier.clearUserAnalysis();
+      final live = ChessGameNavigator(
+        container.read(provider).requireValue.analysisState.game!,
+      );
+      live.updateWithLatestGame(
+        ChessGame.fromPgn(game.gameId, pgn.replaceFirst('Nf3 *', 'Nf3 Nc6! *')),
+        goToTail: true,
+      );
+      await notifier.restoreNavigatorState(live.state);
+      live.dispose();
+      await notifier.restoreAnalysis();
+      final afterLiveRestore = container.read(provider).requireValue;
+      expect(afterLiveRestore.analysisState.game!.mainline.map((move) => move.san),
+          ['e4', 'e5', 'Nf3', 'Nc6']);
+      expect(afterLiveRestore.analysisState.game!.mainline.first.nags, contains(3));
+      expect(afterLiveRestore.analysisState.movePointer, [3]);
+    });
+  }
 
   test(
     'ChessBoardProviderParams identity is gameId-only so index remap reuses provider',
@@ -550,6 +631,10 @@ ProviderContainer _boardContainer({GameRepository? gameRepository}) {
         _FakeGameStreamRepository(),
       ),
       chessBoardPersistenceEnabledProvider.overrideWithValue(false),
+      // Forced evaluation after Clear stays pending without device or network I/O.
+      cascadeEvalProviderForBoard.overrideWith(
+        (ref, params) => Completer<CloudEval>().future,
+      ),
     ],
   );
 }

@@ -14,6 +14,7 @@ import 'package:chessever2/screens/chessboard/analysis/chess_game.dart';
 import 'package:chessever2/screens/chessboard/analysis/chess_game_navigator.dart';
 import 'package:chessever2/screens/chessboard/analysis/chess_game_navigator_state_manager.dart';
 import 'package:chessever2/screens/chessboard/provider/board_eval_restart_policy.dart';
+import 'package:chessever2/screens/chessboard/provider/analysis_view_session.dart';
 import 'package:chessever2/screens/chessboard/provider/current_eval_provider.dart';
 import 'package:chessever2/screens/chessboard/provider/game_pgn_stream_provider.dart';
 import 'package:chessever2/screens/chessboard/provider/stockfish_singleton.dart';
@@ -2120,11 +2121,8 @@ class ChessBoardScreenNotifierNew
     await promoteVariationAtPointer(pointer);
   }
 
-  /// Destructive: removes the reader's own analysis work — the variation
-  /// branches they played and their comment/NAG overlays — and persists the
-  /// result. The source game survives untouched: mainline moves keep their
-  /// clock times, evals and broadcast annotations, and live engine evaluation
-  /// keeps running per the engine settings.
+  /// Removes all PGN analysis, including imported annotations and metadata on
+  /// moves, and persists the bare mainline. Live engine settings are unchanged.
   ///
   /// The tree is stripped in place rather than rebuilt from a PGN string.
   /// `pgnData` is overwritten by preview promotion and a saved analysis exports
@@ -2140,6 +2138,8 @@ class ChessBoardScreenNotifierNew
     final currentState = state.value;
     if (currentState == null) return;
 
+    ref.read(analysisViewSessionProvider(game.gameId).notifier).clear();
+
     var next = _clearVariantSelection(currentState);
     if (next.variationComments.isNotEmpty || next.moveNags.isNotEmpty) {
       next = next.copyWith(
@@ -2152,7 +2152,11 @@ class ChessBoardScreenNotifierNew
     }
 
     final navigatorState = _analysisNavigator!.state;
-    final strippedMainline = _withoutVariations(navigatorState.game.mainline);
+    final strippedGame = navigatorState.game.withoutAnalysis(
+      variationComments: currentState.variationComments,
+      moveNags: currentState.moveNags,
+    );
+    final strippedMainline = strippedGame.mainline;
     // Keep the reader where they were standing. A pointer's first entry is
     // always a mainline index, so clamping to it survives deleting the branch
     // the pointer was pointing into.
@@ -2164,27 +2168,66 @@ class ChessBoardScreenNotifierNew
 
     _analysisNavigator!.replaceState(
       ChessGameNavigatorState(
-        game: navigatorState.game.copyWith(mainline: strippedMainline),
+        game: strippedGame,
         movePointer: restoredPointer,
       ),
     );
 
     HapticFeedback.heavyImpact();
     _syncAnalysisFromNavigator(_analysisNavigator!.state);
+    final synced = state.value;
+    if (synced != null) {
+      state = AsyncValue.data(
+        synced.copyWith(pgnData: exportGameToPgn(strippedGame)),
+      );
+    }
     _updateEvaluation(force: true);
     await _persistAnalysisState();
     await setGameReviewVisible(false);
   }
 
-  /// Drops every variation branch hanging off [line], keeping each move and its
-  /// source metadata (clock, eval, comments, NAGs) exactly as it was. Nested
-  /// branches leave with the branch that holds them, so no recursion is needed.
-  ChessLine _withoutVariations(ChessLine line) => [
-    for (final move in line)
-      move.variations == null
-          ? move
-          : move.copyWith(variations: null, overrideVariations: true),
-  ];
+  /// Restores the saved annotations without rewinding a live game's mainline.
+  Future<void> restoreAnalysis() async {
+    _exitPvPreviewIfActive();
+    final navigator = _analysisNavigator;
+    final current = state.valueOrNull;
+    if (navigator == null || current == null) return;
+    final clearedGame = navigator.state.game;
+    final backup = clearedGame.analysisBackup;
+    final original = backup?.game ?? _createChessGameFromPgn(game.pgn ?? '');
+    final restored = ChessGameNavigator(original);
+    // Keep new mainline moves received since Clear. The merge retains the
+    // original annotations for matching moves and appends the new moves.
+    if (clearedGame.mainline.length >= original.mainline.length &&
+        original.mainline.asMap().entries.every(
+          (entry) => clearedGame.mainline[entry.key].uci == entry.value.uci,
+        )) {
+      restored.updateWithLatestGame(clearedGame);
+    }
+    final restoredGame = restored.state.game.copyWith(
+      analysisCleared: false,
+      analysisBackup: null,
+      overrideAnalysisBackup: true,
+    );
+    restored.dispose();
+    final pointer = navigator.state.movePointer;
+    final mainlinePointer = pointer.isEmpty || restoredGame.mainline.isEmpty
+        ? const <int>[]
+        : <int>[pointer.first.clamp(0, restoredGame.mainline.length - 1)];
+    state = AsyncValue.data(_clearVariantSelection(current).copyWith(
+      variationComments: {...?backup?.variationComments, ...current.variationComments},
+      moveNags: {...?backup?.moveNags, ...current.moveNags},
+      pgnData: exportGameToPgn(restoredGame),
+    ));
+    ref.read(analysisViewSessionProvider(game.gameId).notifier).restore();
+    navigator.replaceState(ChessGameNavigatorState(
+      game: restoredGame,
+      movePointer: mainlinePointer,
+    ));
+    _syncAnalysisFromNavigator(navigator.state);
+    _updateEvaluation(force: true);
+    await _persistAnalysisState();
+  }
 
   void playPrincipalVariationMove(AnalysisLine line) {
     final wasPreviewActive = state.value?.isPvPreviewActive == true;
@@ -3894,7 +3937,11 @@ class ChessBoardScreenNotifierNew
   }
 
   Future<void> _persistAnalysisState() async {
-    if (_analysisGame == null || _analysisStateManager == null) return;
+    if (!_persistenceEnabled ||
+        _analysisGame == null ||
+        _analysisStateManager == null) {
+      return;
+    }
 
     try {
       final navigatorState = ref.read(
@@ -7229,6 +7276,7 @@ class ChessBoardScreenNotifierNew
 
     // Already at target position with matching FEN and game is set?
     if (gameAlreadySet &&
+        identical(current.analysisState.game, navigatorState.game) &&
         listEquals(currentPointer, targetPointer) &&
         currentFen == targetFen) {
       // CRITICAL FIX: Even if position matches, verify we aren't stuck in a "dead" evaluating state.

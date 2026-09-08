@@ -29,10 +29,12 @@ class AnalysisViewSession {
   final Set<String> hiddenVariationIds;
   final int revision;
 
-  bool showSourceAnnotations({required bool rawPgn}) =>
-      !cleared && !sourceHidden && !rawPgn;
-  bool showReport({required bool rawPgn}) =>
-      !cleared && (!rawPgn || reportRequested);
+  bool showSourceAnnotations({
+    required bool rawPgn,
+    bool analysisCleared = false,
+  }) => !cleared && !sourceHidden && !analysisCleared && !rawPgn;
+  bool showReport({required bool rawPgn, bool analysisCleared = false}) =>
+      !rawPgn && !cleared && (reportRequested || !analysisCleared);
 }
 
 class AnalysisViewSessionController extends StateNotifier<AnalysisViewSession> {
@@ -55,6 +57,10 @@ class AnalysisViewSessionController extends StateNotifier<AnalysisViewSession> {
       revision: state.revision + 1,
     );
     return state.revision;
+  }
+
+  void restore() {
+    state = AnalysisViewSession(revision: state.revision + 1);
   }
 
   bool isCurrentRequest(int revision) =>

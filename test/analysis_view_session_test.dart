@@ -4,7 +4,7 @@ import 'package:chessever2/screens/chessboard/provider/analysis_view_session.dar
 
 void main() {
   test(
-    'raw mode hides reports until explicit request; clear wins again',
+    'raw mode stays authoritative after report requests and restore',
     () async {
       final container = ProviderContainer();
       addTearDown(container.dispose);
@@ -14,7 +14,7 @@ void main() {
       final controller = container.read(provider.notifier);
       expect(container.read(provider).showReport(rawPgn: true), isFalse);
       final request = controller.requestReport();
-      expect(container.read(provider).showReport(rawPgn: true), isTrue);
+      expect(container.read(provider).showReport(rawPgn: true), isFalse);
       expect(
         container.read(provider).showSourceAnnotations(rawPgn: true),
         isFalse,
@@ -29,11 +29,25 @@ void main() {
         isFalse,
       );
       controller.requestReport();
-      expect(container.read(provider).showReport(rawPgn: true), isTrue);
+      expect(container.read(provider).showReport(rawPgn: true), isFalse);
       // Generate after Clear reveals the report but never restores the branches
       // or source glyphs that Clear hid.
       expect(container.read(provider).sourceHidden, isTrue);
       expect(container.read(provider).hiddenVariationIds, {'1-0'});
+      controller.restore();
+      expect(container.read(provider).cleared, isFalse);
+      expect(container.read(provider).sourceHidden, isFalse);
+      expect(container.read(provider).hiddenVariationIds, isEmpty);
+      expect(container.read(provider).showReport(rawPgn: true), isFalse);
+      expect(
+        container.read(provider).showSourceAnnotations(rawPgn: true),
+        isFalse,
+      );
+      expect(container.read(provider).showReport(rawPgn: false), isTrue);
+      expect(
+        container.read(provider).showSourceAnnotations(rawPgn: false),
+        isTrue,
+      );
     },
   );
 

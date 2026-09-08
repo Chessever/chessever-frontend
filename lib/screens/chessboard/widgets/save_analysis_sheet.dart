@@ -10,6 +10,7 @@ import 'package:chessever2/screens/chessboard/game_review/game_analysis_report.d
 import 'package:chessever2/screens/chessboard/game_review/game_review_provider.dart';
 import 'package:chessever2/screens/chessboard/models/like_tag.dart';
 import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
+import 'package:chessever2/screens/chessboard/provider/analysis_view_session.dart';
 import 'package:chessever2/screens/chessboard/utils/game_share_utils.dart';
 import 'package:chessever2/screens/chessboard/view_model/chess_board_state_new.dart';
 import 'package:chessever2/screens/chessboard/widgets/smooth_sheet_config.dart';
@@ -621,13 +622,22 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
       // and the same game would open bare everywhere else.
       final reportState =
           ref.read(mobileGameReviewProvider(widget.config.params)).reportState;
-      final savedReport = await resolveCompletedGameAnalysisReport(
-        analysisGame: analysisGame,
-        liveReport:
-            reportState.status == GameReportStatus.completed
-                ? reportState.report
-                : null,
+      final viewSession = ref.read(
+        analysisViewSessionProvider(widget.config.params.game.gameId),
       );
+      final analysisCleared = !viewSession.showReport(
+        rawPgn: false,
+        analysisCleared: analysisGame.analysisCleared,
+      );
+      final savedReport = analysisCleared
+          ? null
+          : await resolveCompletedGameAnalysisReport(
+            analysisGame: analysisGame,
+            liveReport:
+                reportState.status == GameReportStatus.completed
+                    ? reportState.report
+                    : null,
+          );
       // The reader's own Annotate glyphs ride along for the same reason: the
       // `move_nags` column travels with the row, but only ChessEver reads it,
       // and a PGN exported out of the library would otherwise lose them.

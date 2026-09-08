@@ -435,8 +435,8 @@ List<NotationDisplayToken> buildNotationTokens(
     }
 
     final variationsToRender = <NotationVariationNode>[
-      if (i > 0) ...moves[i - 1].variations,
-      if (i == moves.length - 1) ...node.variations,
+      if (!rawPgnMode && i > 0) ...moves[i - 1].variations,
+      if (!rawPgnMode && i == moves.length - 1) ...node.variations,
     ];
     for (final variation in variationsToRender) {
       final forcedOpen = forcedOpenIds.contains(variation.id);

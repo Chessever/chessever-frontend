@@ -167,19 +167,35 @@ final boardSettingsProviderNew =
       BoardSettingsNotifierNew.new,
     );
 
+final boardSettingsClientProvider = Provider<SupabaseClient>(
+  (ref) => Supabase.instance.client,
+);
+final boardSettingsCacheProvider = Provider<AppDatabase>(
+  (ref) => AppDatabase.instance,
+);
+
 class BoardSettingsNotifierNew extends AsyncNotifier<BoardSettingsNew> {
   static const String _cacheKey = 'cached_board_settings';
+  Future<void> _pendingSave = Future<void>.value();
 
-  SupabaseClient get _supabase => Supabase.instance.client;
+  SupabaseClient get _supabase => ref.read(boardSettingsClientProvider);
 
   @override
   Future<BoardSettingsNew> build() async {
+    var userId = _supabase.auth.currentUser?.id;
+    final subscription = _supabase.auth.onAuthStateChange.listen((event) {
+      final nextUserId = event.session?.user.id;
+      if (nextUserId == userId) return;
+      userId = nextUserId;
+      ref.invalidateSelf();
+    });
+    ref.onDispose(subscription.cancel);
     return await _loadSettings();
   }
 
   Future<BoardSettingsNew> _loadSettings() async {
+    final userId = _supabase.auth.currentUser?.id;
     try {
-      final userId = _supabase.auth.currentUser?.id;
       if (userId == null) {
         debugPrint('[BoardSettings] No user logged in, returning defaults');
         const settings = BoardSettingsNew();
@@ -243,7 +259,7 @@ class BoardSettingsNotifierNew extends AsyncNotifier<BoardSettingsNew> {
       );
 
       // Cache locally
-      await _cacheSettings(settings);
+      await _cacheSettings(settings, userId);
       await _preloadPieceImages(settings);
 
       debugPrint('[BoardSettings] Fetched settings from Supabase');
@@ -253,7 +269,7 @@ class BoardSettingsNotifierNew extends AsyncNotifier<BoardSettingsNew> {
       debugPrint('[BoardSettings] Stack: $st');
 
       // Fallback to local cache
-      return await _getCachedSettings();
+      return await _getCachedSettings(userId);
     }
   }
 
@@ -439,11 +455,16 @@ class BoardSettingsNotifierNew extends AsyncNotifier<BoardSettingsNew> {
         return;
       }
 
-      // Cache locally first (fast, immediate)
-      await _cacheSettings(settings);
-
-      // Save to Supabase in background (fire-and-forget, non-blocking)
-      unawaited(_saveToSupabase(settings, userId));
+      // Queue before the first await: rapid ON/OFF changes must reach Supabase
+      // in order. The settings page can wait for the real remote save on exit.
+      final save = _pendingSave.then((_) async {
+        await _cacheSettings(settings, userId);
+        // A queued write cannot use the next account's auth session.
+        if (_supabase.auth.currentUser?.id != userId) return;
+        await _saveToSupabase(settings, userId);
+      });
+      _pendingSave = save.catchError((Object _) {});
+      await save;
     } catch (e, st) {
       debugPrint('[BoardSettings] Error persisting settings: $e');
       debugPrint('[BoardSettings] Stack: $st');
@@ -480,9 +501,9 @@ class BoardSettingsNotifierNew extends AsyncNotifier<BoardSettingsNew> {
     }
   }
 
-  Future<void> _cacheSettings(BoardSettingsNew settings) async {
+  Future<void> _cacheSettings(BoardSettingsNew settings, String userId) async {
     try {
-      final db = AppDatabase.instance;
+      final db = ref.read(boardSettingsCacheProvider);
       final json = jsonEncode({
         'boardColorIndex': settings.boardColorIndex,
         'boardThemeIndex': settings.boardThemeIndex,
@@ -496,17 +517,18 @@ class BoardSettingsNotifierNew extends AsyncNotifier<BoardSettingsNew> {
         'rawPgnMode': settings.rawPgnMode,
         'pipModeIndex': settings.pipModeIndex,
       });
-      await db.setString(_cacheKey, json);
+      await db.setString('$_cacheKey:$userId', json);
       debugPrint('[BoardSettings] Cached settings locally');
     } catch (e) {
       debugPrint('[BoardSettings] Error caching settings: $e');
     }
   }
 
-  Future<BoardSettingsNew> _getCachedSettings() async {
+  Future<BoardSettingsNew> _getCachedSettings(String? userId) async {
     try {
-      final db = AppDatabase.instance;
-      final json = await db.getString(_cacheKey);
+      if (userId == null) return const BoardSettingsNew();
+      final db = ref.read(boardSettingsCacheProvider);
+      final json = await db.getString('$_cacheKey:$userId');
       if (json == null) {
         debugPrint('[BoardSettings] No cached settings, using defaults');
         const settings = BoardSettingsNew();
@@ -554,7 +576,9 @@ class BoardSettingsNotifierNew extends AsyncNotifier<BoardSettingsNew> {
   /// Clear cache (useful on sign out)
   Future<void> clearCache() async {
     try {
-      final db = AppDatabase.instance;
+      final db = ref.read(boardSettingsCacheProvider);
+      final userId = _supabase.auth.currentUser?.id;
+      if (userId != null) await db.remove('$_cacheKey:$userId');
       await db.remove(_cacheKey);
       debugPrint('[BoardSettings] Cleared cache');
     } catch (e) {

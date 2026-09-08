@@ -8,6 +8,7 @@ import 'package:chessever2/screens/chessboard/analysis/chess_game.dart';
 import 'package:chessever2/screens/chessboard/widgets/smooth_sheet_config.dart';
 import 'package:chessever2/screens/library/providers/library_folders_provider.dart';
 import 'package:chessever2/screens/library/widgets/create_folder_dialog.dart';
+import 'package:chessever2/screens/library/widgets/library_folder_load_error.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
@@ -67,43 +68,6 @@ Future<bool> showImportPgnToFolderSheet({
 /// at least one game was successfully saved before the sheet was dismissed.
 class _ImportSheetResult {
   bool saved = false;
-}
-
-class ImportPgnFolderLoadError extends StatelessWidget {
-  const ImportPgnFolderLoadError({required this.onRetry, super.key});
-
-  final VoidCallback onRetry;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: EdgeInsets.all(20.sp),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Text(
-            'Couldn’t load your databases',
-            style: AppTypography.textSmMedium.copyWith(color: kRedColor),
-            textAlign: TextAlign.center,
-          ),
-          SizedBox(height: 6.h),
-          Text(
-            'Check your connection and try again.',
-            style: AppTypography.textXsRegular.copyWith(
-              color: context.colors.textPrimary.withValues(alpha: 0.65),
-            ),
-            textAlign: TextAlign.center,
-          ),
-          SizedBox(height: 8.h),
-          TextButton.icon(
-            onPressed: onRetry,
-            icon: const Icon(Icons.refresh),
-            label: const Text('Retry'),
-          ),
-        ],
-      ),
-    );
-  }
 }
 
 class _ImportPgnToFolderSheetShell extends ConsumerWidget {
@@ -477,7 +441,7 @@ class _ImportPgnToFolderPageState
                         ),
                       ),
                   error:
-                      (e, _) => ImportPgnFolderLoadError(
+                      (e, _) => LibraryFolderLoadError(
                         onRetry: () {
                           HapticFeedbackService.light();
                           ref.invalidate(libraryFoldersStreamProvider);

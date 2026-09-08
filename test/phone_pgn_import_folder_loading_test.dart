@@ -1,6 +1,6 @@
 import 'package:chessever2/repository/library/models/library_folder.dart';
 import 'package:chessever2/screens/library/providers/library_folders_provider.dart';
-import 'package:chessever2/screens/library/widgets/import_pgn_to_folder_sheet.dart';
+import 'package:chessever2/screens/library/widgets/library_folder_load_error.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -64,7 +64,7 @@ void main() {
           builder: (context) {
             ResponsiveHelper.init(context);
             return Scaffold(
-              body: ImportPgnFolderLoadError(onRetry: () => retries++),
+              body: LibraryFolderLoadError(onRetry: () => retries++),
             );
           },
         ),

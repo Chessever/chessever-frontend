@@ -1,5 +1,10 @@
+import 'dart:async';
+import 'dart:math';
+
 import 'package:chessever2/repository/library/library_repository.dart';
 import 'package:chessever2/repository/library/models/saved_analysis.dart';
+import 'package:chessever2/screens/library/providers/library_auth_provider.dart';
+import 'package:chessever2/screens/library/providers/library_cloud_changes_provider.dart';
 import 'package:chessever2/widgets/game_filter/game_filter_model.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
@@ -76,13 +81,8 @@ class BookPaginationKey {
   }
 
   @override
-  int get hashCode => Object.hash(
-        folderId,
-        isSubscribed,
-        filter,
-        search,
-        Object.hashAll(tags),
-      );
+  int get hashCode =>
+      Object.hash(folderId, isSubscribed, filter, search, Object.hashAll(tags));
 }
 
 class FolderTagCountsKey {
@@ -107,6 +107,7 @@ class FolderTagCountsKey {
 
 final folderTagCountsProvider = FutureProvider.autoDispose
     .family<Map<String, int>, FolderTagCountsKey>((ref, key) async {
+      ref.watch(libraryCloudRevisionProvider);
       final repo = ref.watch(libraryRepositoryProvider);
       return repo.getTagCountsInFolder(
         folderId: key.folderId,
@@ -127,16 +128,70 @@ final bookGamesPaginatedProvider = AutoDisposeAsyncNotifierProvider.family<
 class BookGamesNotifier
     extends
         AutoDisposeFamilyAsyncNotifier<PaginatedBookState, BookPaginationKey> {
+  int _generation = 0;
+
   @override
   Future<PaginatedBookState> build(BookPaginationKey arg) async {
+    ref.watch(libraryFolderAuthenticatedUserIdProvider);
+    _generation++;
+    ref.onDispose(() => _generation++);
+    ref.listen(libraryCloudRevisionProvider, (previous, next) {
+      if (previous != null &&
+          previous.userId == next.userId &&
+          previous.revision != next.revision) {
+        unawaited(_refreshVisiblePages());
+      }
+    });
     final repo = ref.watch(libraryRepositoryProvider);
     return _loadPage(repo, arg, offset: 0);
+  }
+
+  Future<void> _refreshVisiblePages() async {
+    final current = state.valueOrNull;
+    if (current == null || state.isLoading) {
+      ref.invalidateSelf();
+      return;
+    }
+    final generation = ++_generation;
+    try {
+      final repo = ref.read(libraryRepositoryProvider);
+      final visibleCount = max(
+        kBookPageSize,
+        current.games.length + (current.isLoadingMore ? kBookPageSize : 0),
+      );
+      var result = await _loadPage(
+        repo,
+        arg,
+        offset: 0,
+        // Keep the user's loaded pages and any pending load-more request.
+        limit: visibleCount,
+      );
+      // PostgREST can cap a response below the requested range. Continue
+      // from that boundary instead of dropping pages the user already loaded.
+      while (result.games.length < visibleCount && result.hasMore) {
+        if (generation != _generation) return;
+        result = await _loadPage(
+          repo,
+          arg,
+          offset: result.games.length,
+          limit: visibleCount - result.games.length,
+          existing: result,
+        );
+      }
+      if (generation == _generation) state = AsyncData(result);
+    } catch (_) {
+      // A background refresh must not clear an otherwise usable page.
+      if (generation == _generation) {
+        state = AsyncData(current.copyWith(isLoadingMore: false));
+      }
+    }
   }
 
   Future<PaginatedBookState> _loadPage(
     LibraryRepository repo,
     BookPaginationKey key, {
     required int offset,
+    int limit = kBookPageSize,
     PaginatedBookState? existing,
   }) async {
     final List<SavedAnalysis> page;
@@ -149,7 +204,7 @@ class BookGamesNotifier
           filter: key.filter,
           search: key.search,
           tags: key.tags,
-          limit: kBookPageSize,
+          limit: limit,
           offset: offset,
         ),
         if (offset == 0)
@@ -169,7 +224,7 @@ class BookGamesNotifier
           filter: key.filter,
           search: key.search,
           tags: key.tags,
-          limit: kBookPageSize,
+          limit: limit,
           offset: offset,
         ),
         if (offset == 0)
@@ -190,7 +245,7 @@ class BookGamesNotifier
     return PaginatedBookState(
       games: allGames,
       totalCount: count,
-      hasMore: page.length >= kBookPageSize,
+      hasMore: page.isNotEmpty && allGames.length < count,
       isLoadingMore: false,
     );
   }
@@ -198,7 +253,14 @@ class BookGamesNotifier
   /// Load the next page. No-op if already loading or no more pages.
   Future<void> loadMore() async {
     final current = state.valueOrNull;
-    if (current == null || current.isLoadingMore || !current.hasMore) return;
+    if (state.isLoading ||
+        current == null ||
+        current.isLoadingMore ||
+        !current.hasMore) {
+      return;
+    }
+
+    final generation = ++_generation;
 
     state = AsyncData(current.copyWith(isLoadingMore: true));
 
@@ -210,8 +272,9 @@ class BookGamesNotifier
         offset: current.games.length,
         existing: current,
       );
-      state = AsyncData(result);
+      if (generation == _generation) state = AsyncData(result);
     } catch (e, st) {
+      if (generation != _generation) return;
       // Restore previous state but stop loading indicator.
       state = AsyncData(current.copyWith(isLoadingMore: false, hasMore: false));
       // Re-throw for error handling upstream if needed.
@@ -221,13 +284,14 @@ class BookGamesNotifier
 
   /// Full refresh — reloads from page 0.
   Future<void> refresh() async {
+    final generation = ++_generation;
     state = const AsyncLoading();
     try {
       final repo = ref.read(libraryRepositoryProvider);
       final result = await _loadPage(repo, arg, offset: 0);
-      state = AsyncData(result);
+      if (generation == _generation) state = AsyncData(result);
     } catch (e, st) {
-      state = AsyncError(e, st);
+      if (generation == _generation) state = AsyncError(e, st);
     }
   }
 }

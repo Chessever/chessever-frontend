@@ -241,12 +241,12 @@ void main() {
           container.read(chessBoardScreenProviderNew(params)).requireValue;
       expect(after.variationComments, isEmpty);
       expect(after.moveNags, isEmpty);
-      expect(after.pgnData, before.pgnData);
+      expect(after.pgnData?.split('\n\n').last.trim(), '1. e4 e5 2. Nf3 *');
       expect(game.pgn, pgn);
       expect(after.showEngineAnalysis, engineVisibleBefore);
       expect(after.principalVariations, principalVariationsBefore);
       expect(after.shapes, engineShapesBefore);
-      expect(container.read(view).cleared, isFalse);
+      expect(container.read(view).cleared, isTrue);
 
       final tree = NotationTreeBuilder.build(after.analysisState.game!);
       expect(

@@ -842,7 +842,7 @@ void main() {
       final tree = _treeFromSans(['e4', 'e5'], variation: variation);
       final tokens = _buildTokens(
         tree,
-        hiddenVariationIds: {tree.mainline.first.variations.first.id},
+        forcedOpenIds: {tree.mainline.first.variations.first.id},
         rawPgnMode: true,
         lichessAnnotations: {
           0: LichessMoveAnnotation(

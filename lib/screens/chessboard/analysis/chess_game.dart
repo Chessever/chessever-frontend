@@ -17,11 +17,17 @@ class ChessGame {
   final Map<String, dynamic> metadata;
   final ChessLine mainline;
 
+  /// Remember explicit clearing in saved games so cached reports stay opt-in.
+  final bool analysisCleared;
+  final ChessAnalysisBackup? analysisBackup;
+
   ChessGame({
     required this.gameId,
     required this.startingFen,
     required this.metadata,
     required this.mainline,
+    this.analysisCleared = false,
+    this.analysisBackup,
   });
 
   factory ChessGame.fromJson(Map<String, dynamic> json) {
@@ -29,6 +35,13 @@ class ChessGame {
       gameId: json['id'] as String,
       startingFen: json['sf'] as String,
       metadata: (json['md'] as Map).cast<String, dynamic>(),
+      analysisCleared: json['analysisCleared'] == true,
+      analysisBackup:
+          json['analysisBackup'] is Map
+              ? ChessAnalysisBackup.fromJson(
+                (json['analysisBackup'] as Map).cast<String, dynamic>(),
+              )
+              : null,
       mainline:
           (json['m'] as List)
               .map(
@@ -44,6 +57,8 @@ class ChessGame {
     'sf': startingFen,
     'md': metadata,
     'm': mainline.map((move) => move.toJson()).toList(),
+    if (analysisCleared) 'analysisCleared': true,
+    if (analysisBackup != null) 'analysisBackup': analysisBackup!.toJson(),
   };
 
   ChessGame copyWith({
@@ -51,12 +66,18 @@ class ChessGame {
     String? startingFen,
     Map<String, dynamic>? metadata,
     ChessLine? mainline,
+    bool? analysisCleared,
+    ChessAnalysisBackup? analysisBackup,
+    bool overrideAnalysisBackup = false,
   }) {
     return ChessGame(
       gameId: gameId ?? this.gameId,
       startingFen: startingFen ?? this.startingFen,
       metadata: metadata ?? this.metadata,
       mainline: mainline ?? this.mainline,
+      analysisCleared: analysisCleared ?? this.analysisCleared,
+      analysisBackup:
+          overrideAnalysisBackup ? analysisBackup : this.analysisBackup,
     );
   }
 
@@ -68,6 +89,36 @@ class ChessGame {
     }
     return false;
   }
+
+  /// Keeps only the played mainline and game headers. Reconstructing moves
+  /// also drops clock/eval fields, which PGN export would turn into comments.
+  ChessGame withoutAnalysis({
+    Map<String, String> variationComments = const {},
+    Map<String, List<int>> moveNags = const {},
+  }) => copyWith(
+    analysisCleared: true,
+    analysisBackup:
+        (analysisCleared ? analysisBackup : null) ??
+        ChessAnalysisBackup(
+          game: copyWith(analysisCleared: false, overrideAnalysisBackup: true),
+          variationComments: Map.of(variationComments),
+          moveNags: {
+            for (final entry in moveNags.entries)
+              entry.key: List.of(entry.value),
+          },
+        ),
+    overrideAnalysisBackup: true,
+    mainline: [
+      for (final move in mainline)
+        ChessMove(
+          num: move.num,
+          fen: move.fen,
+          san: move.san.replaceAll(RegExp(r'[!?]+$'), ''),
+          uci: move.uci,
+          turn: move.turn,
+        ),
+    ],
+  );
 
   bool get allowMainlineExtension =>
       metadata[metadataAllowMainlineExtensionKey] == true;
@@ -152,6 +203,36 @@ class ChessGame {
 
     return line;
   }
+}
+
+/// Retained only by an explicitly cleared game. Never emitted into PGN.
+class ChessAnalysisBackup {
+  const ChessAnalysisBackup({
+    required this.game,
+    this.variationComments = const {},
+    this.moveNags = const {},
+  });
+
+  final ChessGame game;
+  final Map<String, String> variationComments;
+  final Map<String, List<int>> moveNags;
+
+  factory ChessAnalysisBackup.fromJson(Map<String, dynamic> json) =>
+      ChessAnalysisBackup(
+        game: ChessGame.fromJson((json['game'] as Map).cast<String, dynamic>()),
+        variationComments:
+            (json['comments'] as Map? ?? {}).cast<String, String>(),
+        moveNags: {
+          for (final entry in (json['nags'] as Map? ?? {}).entries)
+            entry.key as String: (entry.value as List).cast<int>(),
+        },
+      );
+
+  Map<String, dynamic> toJson() => {
+    'game': game.toJson(),
+    'comments': variationComments,
+    'nags': moveNags,
+  };
 }
 
 enum ChessColor {

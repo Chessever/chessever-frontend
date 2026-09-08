@@ -293,7 +293,7 @@ class BoardSettingsBody extends ConsumerWidget {
                     ),
                     SizedBox(height: 4.h),
                     Text(
-                      'Hide symbols, comments, and automatic report annotations. Generate Report shows its analysis for the current visit only.',
+                      'Show only mainline moves. Variations, comments, and annotations stay hidden until you turn this off.',
                       style: AppTypography.textSmRegular.copyWith(
                         color: context.colors.textSecondary,
                         fontSize: 11.f,

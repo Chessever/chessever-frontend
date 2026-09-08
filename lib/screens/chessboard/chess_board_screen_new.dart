@@ -4211,10 +4211,17 @@ class _AppBarState extends ConsumerState<_AppBar> {
             : null;
     // Live report → session cache → durable store so Copy/Share PGN still
     // hydrates after a cold start once Game Analysis has finished once.
-    final completedReport = await resolveCompletedGameAnalysisReport(
-      analysisGame: analysisGame,
-      liveReport: liveReport,
+    final viewSession = ref.read(analysisViewSessionProvider(widget.game.gameId));
+    final analysisCleared = !viewSession.showReport(
+      rawPgn: false,
+      analysisCleared: analysisGame?.analysisCleared ?? false,
     );
+    final completedReport = analysisCleared
+        ? null
+        : await resolveCompletedGameAnalysisReport(
+          analysisGame: analysisGame,
+          liveReport: liveReport,
+        );
     // Report first, then the reader's own Annotate glyphs over the top — the
     // PGN that leaves the app carries both, so a hand-applied `!!` survives
     // Copy PGN, Share PGN and the GIF render instead of dying with the session.
@@ -4517,12 +4524,42 @@ class _AppBarState extends ConsumerState<_AppBar> {
     );
   }
 
+  Future<void> _toggleAnalysis() async {
+    final params = ChessBoardProviderParams(
+      game: widget.game,
+      index: widget.currentGameIndex,
+    );
+    final notifier = ref.read(chessBoardScreenProviderNew(params).notifier);
+    final cleared = ref.read(chessBoardScreenProviderNew(params))
+        .valueOrNull?.analysisState.game?.analysisCleared ?? false;
+    HapticFeedback.selectionClick();
+    if (cleared) {
+      await notifier.restoreAnalysis();
+      return;
+    }
+    final confirmed = await _showAnalysisConfirmationDialog(
+      context: context,
+      title: 'Clear analysis?',
+      message: 'Remove all variations, comments, annotations, and move classifications from this PGN? You can bring them back with Restore Analysis. Live engine analysis will stay on.',
+      confirmLabel: 'Clear',
+      confirmColor: kRedColor,
+    ) ?? false;
+    if (!confirmed || !mounted) return;
+    GameReviewSheetScope.maybeOf(context)?.target.value = null;
+    await notifier.clearUserAnalysis();
+  }
+
   @override
   Widget build(BuildContext context) {
     // Watch the board state for PGN data
     final params = ChessBoardProviderParams(
       game: widget.game,
       index: widget.currentGameIndex,
+    );
+    final analysisCleared = ref.watch(
+      chessBoardScreenProviderNew(params).select(
+        (state) => state.valueOrNull?.analysisState.game?.analysisCleared ?? false,
+      ),
     );
     final infoSheetPgn =
         ref.watch(
@@ -4624,28 +4661,7 @@ class _AppBarState extends ConsumerState<_AppBar> {
                         ),
                       );
                     } else if (value == 'clear_analysis') {
-                      final params = ChessBoardProviderParams(
-                        game: widget.game,
-                        index: widget.currentGameIndex,
-                      );
-                      HapticFeedback.selectionClick();
-                      final confirmed =
-                          await _showAnalysisConfirmationDialog(
-                            context: context,
-                            title: 'Clear analysis?',
-                            message:
-                                'Permanently remove your custom PGN variations, comments, and annotations? Live engine analysis will stay on.',
-                            confirmLabel: 'Clear',
-                            confirmColor: kRedColor,
-                          ) ??
-                          false;
-                      if (!confirmed || !context.mounted) return;
-                      HapticFeedback.heavyImpact();
-                      final notifier = ref.read(
-                        chessBoardScreenProviderNew(params).notifier,
-                      );
-                      GameReviewSheetScope.maybeOf(context)?.target.value = null;
-                      await notifier.clearUserAnalysis();
+                      await _toggleAnalysis();
                     }
                   },
                   itemBuilder:
@@ -4698,13 +4714,15 @@ class _AppBarState extends ConsumerState<_AppBar> {
                           child: Row(
                             children: [
                               Icon(
-                                Icons.auto_delete_outlined,
-                                color: kRedColor,
+                                analysisCleared ? Icons.restore : Icons.auto_delete_outlined,
+                                color: analysisCleared ? context.colors.textPrimary : kRedColor,
                               ),
                               SizedBox(width: 8.w),
-                              const Text(
-                                'Clear Analysis',
-                                style: TextStyle(color: kRedColor),
+                              Text(
+                                analysisCleared ? 'Restore Analysis' : 'Clear Analysis',
+                                style: TextStyle(
+                                  color: analysisCleared ? context.colors.textPrimary : kRedColor,
+                                ),
                               ),
                             ],
                           ),
@@ -4732,28 +4750,7 @@ class _AppBarState extends ConsumerState<_AppBar> {
                         ),
                       );
                     } else if (value == 'clear_analysis') {
-                      final params = ChessBoardProviderParams(
-                        game: widget.game,
-                        index: widget.currentGameIndex,
-                      );
-                      HapticFeedback.selectionClick();
-                      final confirmed =
-                          await _showAnalysisConfirmationDialog(
-                            context: context,
-                            title: 'Clear analysis?',
-                            message:
-                                'Permanently remove your custom PGN variations, comments, and annotations? Live engine analysis will stay on.',
-                            confirmLabel: 'Clear',
-                            confirmColor: kRedColor,
-                          ) ??
-                          false;
-                      if (!confirmed || !context.mounted) return;
-                      HapticFeedback.heavyImpact();
-                      final notifier = ref.read(
-                        chessBoardScreenProviderNew(params).notifier,
-                      );
-                      GameReviewSheetScope.maybeOf(context)?.target.value = null;
-                      await notifier.clearUserAnalysis();
+                      await _toggleAnalysis();
                     }
                   },
                   itemBuilder:
@@ -4806,13 +4803,15 @@ class _AppBarState extends ConsumerState<_AppBar> {
                           child: Row(
                             children: [
                               Icon(
-                                Icons.auto_delete_outlined,
-                                color: kRedColor,
+                                analysisCleared ? Icons.restore : Icons.auto_delete_outlined,
+                                color: analysisCleared ? context.colors.textPrimary : kRedColor,
                               ),
                               SizedBox(width: 8.w),
-                              const Text(
-                                'Clear Analysis',
-                                style: TextStyle(color: kRedColor),
+                              Text(
+                                analysisCleared ? 'Restore Analysis' : 'Clear Analysis',
+                                style: TextStyle(
+                                  color: analysisCleared ? context.colors.textPrimary : kRedColor,
+                                ),
                               ),
                             ],
                           ),
@@ -9742,8 +9741,20 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard>
     );
     final viewSession = ref.watch(analysisViewSessionProvider(widget.game.gameId));
     final rawPgnMode = ref.watch(boardSettingsProviderNew.select((s) => s.valueOrNull?.rawPgnMode ?? true));
-    final showSourceAnnotations = viewSession.showSourceAnnotations(rawPgn: rawPgnMode);
-    final showReportAnnotations = viewSession.showReport(rawPgn: rawPgnMode);
+    final analysisCleared =
+        widget.chessBoardState.analysisState.game?.analysisCleared ?? false;
+    final showSourceAnnotations = viewSession.showSourceAnnotations(
+      rawPgn: rawPgnMode,
+      analysisCleared: analysisCleared,
+    );
+    final showReportAnnotations = viewSession.showReport(
+      rawPgn: rawPgnMode,
+      analysisCleared: analysisCleared,
+    );
+    // The cleared tree contains only new edits. Keep Annotate usable while
+    // imported/cached annotations remain suppressed.
+    final showLocalAnnotations =
+        showSourceAnnotations || (analysisCleared && !rawPgnMode);
     final boardShareBoundaryKey = ref.watch(boardShareBoundaryKeyProvider);
     final notifier = ref.read(chessBoardScreenProviderNew(params).notifier);
     // chessground v10: the board's tap-selection is cleared via the controller
@@ -9800,9 +9811,21 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard>
     final boardAnnotation =
         (() {
           if (analysisGame == null ||
-              widget.chessBoardState.isPvPreviewActive ||
-              !showReportAnnotations) {
+              widget.chessBoardState.isPvPreviewActive) {
             return null;
+          }
+          if (!showReportAnnotations) {
+            if (!showLocalAnnotations) return null;
+            final nags = _mergeUserNagsForMovePointer(
+              activeMove,
+              annotationMovePointer,
+              widget.chessBoardState.moveNags,
+            );
+            final nag = primaryBoardNag(nags);
+            final type = nag == null ? null : _mapNagToAnnotationType(nag);
+            return type == null
+                ? null
+                : LichessMoveAnnotation(type: type, comment: '');
           }
           final mainlineSans =
               analysisGame.mainline.map((move) => move.san).toList();
@@ -9866,14 +9889,14 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard>
               reportJudgedThisMove
                   ? reportAnnotations
                   : <int, LichessMoveAnnotation>{
-                    ...lichessAnnotations,
+                    if (showSourceAnnotations) ...lichessAnnotations,
                     ...reportAnnotations,
                   };
           final reportVerdict =
               currentMoveIndex >= 0
                   ? reportAnnotations[currentMoveIndex]
                   : null;
-          if (!showSourceAnnotations) return reportVerdict;
+          if (!showLocalAnnotations) return reportVerdict;
           final userNags = userNagsForMovePointer(
             annotationMovePointer,
             widget.chessBoardState.moveNags,
@@ -9929,7 +9952,7 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard>
               annotation: boardAnnotation,
             );
           }
-          if (!showSourceAnnotations) return null;
+          if (!showLocalAnnotations) return null;
           // Path B: any other NAG ($7, $10, $13–$22, $32, $36, $40, $44, $132,
           // $138, $140, $146) → render the literal Unicode glyph in a circular
           // badge. This is what fixes "exclamation symbols don't show on the
@@ -9975,7 +9998,7 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard>
             ? (widget.chessBoardState.shapes ?? const ISet<Shape>.empty())
             : const ISet<Shape>.empty();
 
-    final annotationShapes = showSourceAnnotations
+    final annotationShapes = showLocalAnnotations
         ? _extractAnnotationShapes(activeMove) : const <Shape>[];
     // chessground v10 takes a plain Set<Shape> (was ISet<Shape>).
     final allShapes = <Shape>{...pvShapes, ...annotationShapes};
@@ -11044,7 +11067,13 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
       ),
     );
     final viewSession = ref.watch(analysisViewSessionProvider(widget.game.gameId));
-    final effectiveRawPgnMode = !viewSession.showSourceAnnotations(rawPgn: rawPgnMode);
+    final analysisCleared = widget.state.analysisState.game?.analysisCleared ?? false;
+    final showSourceAnnotations = viewSession.showSourceAnnotations(
+      rawPgn: rawPgnMode,
+      analysisCleared: analysisCleared,
+    );
+    final effectiveRawPgnMode =
+        analysisCleared ? rawPgnMode : !showSourceAnnotations;
 
     if (_lastSignature != signature) {
       _moveKeys.clear();
@@ -11118,13 +11147,13 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
               forcedOpenIds.contains(variationId);
         }).toList();
     final showNextMovePanel =
-        nextMoveOptions.length > 1 && !widget.state.isPvPreviewActive;
+        !rawPgnMode && nextMoveOptions.length > 1 && !widget.state.isPvPreviewActive;
 
-    // Explicit Generate Report overrides Raw PGN for this visit only.
+    // Raw PGN remains authoritative, including after Generate or Restore.
     final effectiveLichessAnnotations =
-        !viewSession.showReport(rawPgn: rawPgnMode)
+        !viewSession.showReport(rawPgn: rawPgnMode, analysisCleared: analysisCleared)
             ? const <int, LichessMoveAnnotation>{}
-            : effectiveRawPgnMode ? reportAnnotations : moveAnnotations;
+            : showSourceAnnotations ? moveAnnotations : reportAnnotations;
 
     final pointerMap = <String, NotationMoveNode>{};
     final tokens = buildNotationTokens(

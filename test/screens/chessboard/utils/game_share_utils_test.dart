@@ -463,6 +463,22 @@ void main() {
       );
     }
 
+    test('explicit report export can annotate a previously cleared game', () {
+      final cleared = ChessGame.fromPgn(
+        'cleared-report',
+        '1. e4 e5 2. Nf3 Nc6 *',
+      ).withoutAnalysis();
+      final hydrated = hydrateGameAnnotationsForExport(
+        cleared,
+        report: reportFor(cleared),
+      );
+      expect(hydrated.analysisCleared, isFalse);
+      expect(hydrated.mainline.first.nags, contains(3));
+      expect(hydrated.mainline.first.eval, '0.42');
+      expect(cleared.analysisCleared, isTrue);
+      expect(cleared.mainline.first.nags, isNull);
+    });
+
     test('uses Game Analysis evals and classifications in exported PGN', () {
       final game = ChessGame.fromPgn(
         'export-evals',

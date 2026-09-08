@@ -253,7 +253,13 @@ ChessGame mergeGameReportAnnotationsForExport(
       })(),
   ];
 
-  return changed ? game.copyWith(mainline: mainline) : game;
+  return changed
+      ? game.copyWith(
+        mainline: mainline,
+        analysisCleared: false,
+        overrideAnalysisBackup: true,
+      )
+      : game;
 }
 
 /// Alias — GIF was the first consumer; identical hydrate to export, so the
