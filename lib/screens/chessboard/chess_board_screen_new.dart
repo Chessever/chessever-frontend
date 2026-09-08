@@ -4540,7 +4540,7 @@ class _AppBarState extends ConsumerState<_AppBar> {
     final confirmed = await _showAnalysisConfirmationDialog(
       context: context,
       title: 'Clear analysis?',
-      message: 'Remove all variations, comments, annotations, and move classifications from this PGN? You can bring them back with Restore Analysis. Live engine analysis will stay on.',
+      message: 'Remove all variations, comments, and annotations from this game? You can bring them back with Restore Analysis. Live engine analysis will stay on.',
       confirmLabel: 'Clear',
       confirmColor: kRedColor,
     ) ?? false;
