@@ -1,0 +1,325 @@
+{
+  "streams": [
+    {
+      "id": "youtube-quTNRNvL-rA",
+      "label": "IM Eric Rosen · English",
+      "provider": "youtube",
+      "sourceId": "quTNRNvL-rA",
+      "url": "https://www.youtube.com/watch?v=quTNRNvL-rA",
+      "countryCode": "GB",
+      "publication": {
+        "title": "Trying to Break 3000 Again",
+        "thumbnailUrl": "https://i.ytimg.com/vi/quTNRNvL-rA/hqdefault.jpg",
+        "uploadDate": "2026-09-10T20:59:25.348Z"
+      },
+      "audience": {
+        "channelId": "UCXy10-NEFGxQ3b4NVrzHw1Q",
+        "count": 260684,
+        "metricType": "subscribers",
+        "sourceUrl": "https://www.twitch.tv/imrosen",
+        "checkedOn": "2026-09-10",
+        "rounded": true
+      }
+    },
+    {
+      "id": "twitch-bortnykchess",
+      "label": "GM Oleksandr Bortnyk · English",
+      "provider": "twitch",
+      "sourceId": "bortnykchess",
+      "url": "https://www.twitch.tv/bortnykchess",
+      "countryCode": "GB",
+      "publication": {
+        "title": "3|0 Thursday !course",
+        "description": "3|0 Thursday !course",
+        "thumbnailUrl": "https://static-cdn.jtvnw.net/previews-ttv/live_user_bortnykchess-640x360.jpg",
+        "uploadDate": "2026-09-10T19:55:18.000Z",
+        "actualStart": "2026-09-10T19:55:18.000Z",
+        "confirmedAt": "2026-09-10T20:12:50.007Z",
+        "status": "live"
+      },
+      "audience": {
+        "channelId": "194664491",
+        "count": 43435,
+        "metricType": "followers",
+        "sourceUrl": "https://www.twitch.tv/bortnykchess",
+        "checkedOn": "2026-09-10",
+        "rounded": false
+      }
+    },
+    {
+      "id": "twitch-generalzodchess",
+      "label": "NM Joshua Alexander · English",
+      "provider": "twitch",
+      "sourceId": "generalzodchess",
+      "url": "https://www.twitch.tv/generalzodchess",
+      "countryCode": "GB",
+      "publication": {
+        "title": "3 0 THURSDAY!!!!",
+        "description": "3 0 THURSDAY!!!!",
+        "thumbnailUrl": "https://static-cdn.jtvnw.net/previews-ttv/live_user_generalzodchess-640x360.jpg",
+        "uploadDate": "2026-09-10T19:59:48.000Z",
+        "actualStart": "2026-09-10T19:59:48.000Z",
+        "confirmedAt": "2026-09-10T20:12:50.007Z",
+        "status": "live"
+      },
+      "audience": {
+        "channelId": "936354117",
+        "count": 13531,
+        "metricType": "followers",
+        "sourceUrl": "https://www.twitch.tv/generalzodchess",
+        "checkedOn": "2026-09-10",
+        "rounded": false
+      }
+    },
+    {
+      "id": "twitch-chachachess",
+      "label": "CM Vahan Nalbandyan · English",
+      "provider": "twitch",
+      "sourceId": "chachachess",
+      "url": "https://www.twitch.tv/chachachess",
+      "countryCode": "GB",
+      "publication": {
+        "title": "Playing 3|0 Thursday",
+        "description": "Playing 3|0 Thursday",
+        "thumbnailUrl": "https://static-cdn.jtvnw.net/previews-ttv/live_user_chachachess-640x360.jpg",
+        "uploadDate": "2026-09-10T19:45:04.000Z",
+        "actualStart": "2026-09-10T19:45:04.000Z",
+        "confirmedAt": "2026-09-10T20:12:50.007Z",
+        "status": "live"
+      },
+      "audience": {
+        "channelId": "154468012",
+        "count": 2504,
+        "metricType": "followers",
+        "sourceUrl": "https://www.twitch.tv/chachachess",
+        "checkedOn": "2026-09-10",
+        "rounded": false
+      }
+    },
+    {
+      "id": "twitch-the_chesscorner",
+      "label": "the_chesscorner · English",
+      "provider": "twitch",
+      "sourceId": "the_chesscorner",
+      "url": "https://www.twitch.tv/the_chesscorner",
+      "countryCode": "GB",
+      "publication": {
+        "title": "Second Community 3|0 Thursday",
+        "uploadDate": "2026-09-10T20:07:48.795Z"
+      },
+      "audience": {
+        "channelId": "727923089",
+        "count": 113,
+        "metricType": "followers",
+        "sourceUrl": "https://www.twitch.tv/the_chesscorner",
+        "checkedOn": "2026-09-10",
+        "rounded": false
+      }
+    },
+    {
+      "id": "youtube-sYBYJ978mC4",
+      "label": "GM Krikor · Portuguese",
+      "provider": "youtube",
+      "sourceId": "sYBYJ978mC4",
+      "url": "https://www.youtube.com/watch?v=sYBYJ978mC4",
+      "countryCode": "PT",
+      "publication": {
+        "title": "3 0 Thursday (3 minutos) no chess.com - 10/09/26",
+        "thumbnailUrl": "https://i.ytimg.com/vi/sYBYJ978mC4/hqdefault.jpg",
+        "uploadDate": "2026-09-10T19:59:55.155Z"
+      },
+      "audience": {
+        "channelId": "UCwWm-fABiYbcL7ro8qONd6Q",
+        "count": 337000,
+        "metricType": "subscribers",
+        "sourceUrl": "https://www.youtube.com/@GMKrikor",
+        "checkedOn": "2026-09-10",
+        "rounded": true
+      }
+    },
+    {
+      "id": "youtube-l8XtrA_KFGg",
+      "label": "GM Sergei Zhigalko · Russian",
+      "provider": "youtube",
+      "sourceId": "l8XtrA_KFGg",
+      "url": "https://www.youtube.com/watch?v=l8XtrA_KFGg",
+      "countryCode": "RU",
+      "publication": {
+        "title": "Ночной ТИТУЛЬНЫЙ ЧЕТВЕРГ! Играет СЕРГЕЙ ЖИГАЛКО и ТОПЫ МИРА! Шахматы. На Chess.com",
+        "thumbnailUrl": "https://i.ytimg.com/vi/l8XtrA_KFGg/hqdefault.jpg",
+        "uploadDate": "2026-09-10T20:17:18.511Z"
+      },
+      "audience": {
+        "channelId": "UCGrGLVn9PcP-mrDy3smR3xQ",
+        "count": 83400,
+        "metricType": "subscribers",
+        "sourceUrl": "https://www.youtube.com/@SergeiZhigalkoChess",
+        "checkedOn": "2026-09-10",
+        "rounded": true
+      }
+    },
+    {
+      "id": "youtube-qdjFGEfr2eQ",
+      "label": "CM Evgenij Novikov · Russian",
+      "provider": "youtube",
+      "sourceId": "qdjFGEfr2eQ",
+      "url": "https://www.youtube.com/watch?v=qdjFGEfr2eQ",
+      "countryCode": "RU",
+      "publication": {
+        "title": "Ночной Титульный Четверг 3+0 Chess.com | Шахматы 10 сен 2026",
+        "thumbnailUrl": "https://i.ytimg.com/vi/qdjFGEfr2eQ/hqdefault.jpg",
+        "uploadDate": "2026-09-10T20:17:32.908Z"
+      },
+      "audience": {
+        "channelId": "UCUJw1rIb9A8E4bB6ZbMkUww",
+        "count": 77300,
+        "metricType": "subscribers",
+        "sourceUrl": "https://www.youtube.com/@ShahMatKanalTV",
+        "checkedOn": "2026-09-10",
+        "rounded": true
+      }
+    },
+    {
+      "id": "youtube-q5pQWaYOemk",
+      "label": "DrygalovChess · Russian",
+      "provider": "youtube",
+      "sourceId": "q5pQWaYOemk",
+      "url": "https://www.youtube.com/watch?v=q5pQWaYOemk",
+      "countryCode": "RU",
+      "publication": {
+        "title": "Титульный четверг(TT)! Гроссмейстер Андрей Дрыгалов",
+        "thumbnailUrl": "https://i.ytimg.com/vi/q5pQWaYOemk/hqdefault.jpg",
+        "uploadDate": "2026-09-10T20:59:25.348Z"
+      },
+      "audience": {
+        "channelId": "UCnyeXgGaKd8NIl5V3NB2HtQ",
+        "count": 4940,
+        "metricType": "subscribers",
+        "sourceUrl": "https://www.youtube.com/@DrygalovChess",
+        "checkedOn": "2026-09-10",
+        "rounded": true
+      }
+    },
+    {
+      "id": "youtube-jTbOFIvPuUI",
+      "label": "Polski Związek Szachowy · Polish",
+      "provider": "youtube",
+      "sourceId": "jTbOFIvPuUI",
+      "url": "https://www.youtube.com/watch?v=jTbOFIvPuUI",
+      "countryCode": "PL",
+      "publication": {
+        "title": "3 0 Thursday z arcymistrzem Paklezą EDYCJA NOCNA",
+        "thumbnailUrl": "https://i.ytimg.com/vi/jTbOFIvPuUI/hqdefault.jpg",
+        "uploadDate": "2026-09-10T19:56:34.305Z"
+      },
+      "audience": {
+        "channelId": "UC9gp1FNpithXPLBT4joCC5g",
+        "count": 44100,
+        "metricType": "subscribers",
+        "sourceUrl": "https://www.youtube.com/channel/UC9gp1FNpithXPLBT4joCC5g/about",
+        "checkedOn": "2026-09-10",
+        "rounded": true
+      }
+    },
+    {
+      "id": "twitch-gmpakleza",
+      "label": "GM Zbigniew Pakleza · Polish",
+      "provider": "twitch",
+      "sourceId": "gmpakleza",
+      "url": "https://www.twitch.tv/gmpakleza",
+      "countryCode": "PL",
+      "publication": {
+        "title": "Bundesliga o 20:00 a o 22:00 3 0 Thursday !piła !białystok !szkolenie !amatorzy",
+        "description": "Bundesliga o 20:00 a o 22:00 3 0 Thursday !piła !białystok !szkolenie !amatorzy",
+        "thumbnailUrl": "https://static-cdn.jtvnw.net/previews-ttv/live_user_gmpakleza-640x360.jpg",
+        "uploadDate": "2026-09-10T19:45:59.000Z",
+        "actualStart": "2026-09-10T19:45:59.000Z",
+        "confirmedAt": "2026-09-10T20:12:50.007Z",
+        "status": "live"
+      },
+      "audience": {
+        "channelId": "684887086",
+        "count": 26113,
+        "metricType": "followers",
+        "sourceUrl": "https://www.twitch.tv/gmpakleza",
+        "checkedOn": "2026-09-10",
+        "rounded": false
+      }
+    },
+    {
+      "id": "twitch-gmrasmussvane",
+      "label": "GM Rasmus Svane · German",
+      "provider": "twitch",
+      "sourceId": "gmrasmussvane",
+      "url": "https://www.twitch.tv/gmrasmussvane",
+      "countryCode": "DE",
+      "publication": {
+        "title": "Zweiter 3 0 Thursday | !lotuschess",
+        "description": "Zweiter 3 0 Thursday | !lotuschess",
+        "thumbnailUrl": "https://static-cdn.jtvnw.net/previews-ttv/live_user_gmrasmussvane-640x360.jpg",
+        "uploadDate": "2026-09-10T19:45:55.000Z",
+        "actualStart": "2026-09-10T19:45:55.000Z",
+        "confirmedAt": "2026-09-10T20:12:50.007Z",
+        "status": "live"
+      },
+      "audience": {
+        "channelId": "556203010",
+        "count": 6924,
+        "metricType": "followers",
+        "sourceUrl": "https://www.twitch.tv/gmrasmussvane",
+        "checkedOn": "2026-09-10",
+        "rounded": false
+      }
+    },
+    {
+      "id": "twitch-keinsehrstarkerspieler",
+      "label": "GM Matthias Blübaum · German",
+      "provider": "twitch",
+      "sourceId": "keinsehrstarkerspieler",
+      "url": "https://www.twitch.tv/keinsehrstarkerspieler",
+      "countryCode": "DE",
+      "publication": {
+        "title": "Komplett im Bruch angekommen, letzter Stream vor der Olympiade !cystiphane !lotus",
+        "description": "Komplett im Bruch angekommen, letzter Stream vor der Olympiade !cystiphane !lotus",
+        "thumbnailUrl": "https://static-cdn.jtvnw.net/previews-ttv/live_user_keinsehrstarkerspieler-640x360.jpg",
+        "uploadDate": "2026-09-10T19:46:37.000Z",
+        "actualStart": "2026-09-10T19:46:37.000Z",
+        "confirmedAt": "2026-09-10T20:12:50.007Z",
+        "status": "live"
+      },
+      "audience": {
+        "channelId": "1014769418",
+        "count": 6179,
+        "metricType": "followers",
+        "sourceUrl": "https://www.twitch.tv/keinsehrstarkerspieler",
+        "checkedOn": "2026-09-10",
+        "rounded": false
+      }
+    },
+    {
+      "id": "twitch-cesart22",
+      "label": "cesart22 · Spanish",
+      "provider": "twitch",
+      "sourceId": "cesart22",
+      "url": "https://www.twitch.tv/cesart22",
+      "countryCode": "ES",
+      "publication": {
+        "title": "cesart22 - Twitch",
+        "thumbnailUrl": "https://static-cdn.jtvnw.net/previews-ttv/live_user_cesart22-640x360.jpg",
+        "uploadDate": "2026-09-10T20:07:48.795Z"
+      },
+      "audience": {
+        "channelId": "505825733",
+        "count": 507,
+        "metricType": "followers",
+        "sourceUrl": "https://www.twitch.tv/cesart22",
+        "checkedOn": "2026-09-10",
+        "rounded": false
+      }
+    }
+  ],
+  "source": {
+    "scope": "tour",
+    "id": "iPHk1gu0"
+  }
+}

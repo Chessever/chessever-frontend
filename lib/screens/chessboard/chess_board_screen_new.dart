@@ -1,3 +1,4 @@
+import 'widgets/notation_scroll.dart';
 import 'dart:async';
 import 'dart:developer' as developer;
 // import 'dart:io'; // UNUSED: Removed with old dialog approach
@@ -37,6 +38,7 @@ import 'package:chessever2/screens/chessboard/widgets/chess_board_bottom_nav_bar
 import 'package:chessever2/screens/chessboard/widgets/chess_board_from_fen_new.dart'
     show GameCardChessboard;
 import 'package:chessever2/screens/chessboard/widgets/engine_pv_layouts.dart';
+import 'package:chessever2/screens/chessboard/video/video_widgets.dart';
 import 'package:chessever2/screens/chessboard/widgets/evaluation_bar_widget.dart';
 // DISABLED: Move annotation overlay (requires move impact analysis)
 // import 'package:chessever2/screens/chessboard/widgets/move_annotation_overlay.dart';
@@ -125,7 +127,7 @@ import 'package:chessever2/widgets/game_filter/game_filter_model.dart';
 import 'package:showcaseview/showcaseview.dart';
 import 'package:chessever2/repository/local_storage/local_storage_repository.dart';
 import 'package:chessever2/services/lichess_move_annotations_service.dart';
-import 'package:chessever2/main.dart' show routeObserver;
+import 'package:chessever2/main.dart' show routeObserver, pageRouteObserver;
 
 const Color kGameEndingRedColor = Color(0xCCF53236);
 
@@ -1040,6 +1042,8 @@ class _GameSwitcherScope extends InheritedWidget {
 class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
     with WidgetsBindingObserver, TickerProviderStateMixin, RouteAware {
   late PageController _pageController;
+
+  final _eventVideoHostKey = GlobalKey<EventVideoHostState>();
 
   /// Owns the app-bar game-switcher panel. Screen-level (above the PageView)
   /// so switching games never unmounts the panel — see
@@ -2987,11 +2991,22 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
     // This prevents rebuilds when other games in the tournament get updated
     final isTablet = ResponsiveHelper.isTablet;
 
-    return withLikeFlightScope(
+    return EventVideoHost(
+      pageObserver: pageRouteObserver,
+      key: _eventVideoHostKey,
+      gameId: currentGame.gameId,
+      tourId: currentGame.source == GameSource.supabase ? currentGame.tourId : '',
+      roundId: currentGame.source == GameSource.supabase ? currentGame.roundId : '',
+      child: withLikeFlightScope(
       PopScope(
         canPop: false,
         onPopInvokedWithResult: (didPop, result) {
           if (didPop) return;
+          final video = _eventVideoHostKey.currentState?.session;
+          if (video?.expanded == true) {
+            video!.setExpanded(false);
+            return;
+          }
           // Back dismisses the game switcher before it leaves the board —
           // the panel now outlives game changes, so it owns the first back.
           if (_gameSwitcher.isOpen) {
@@ -3256,6 +3271,7 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
             },
           ),
         ),
+      ),
       ),
     );
   }
@@ -4649,7 +4665,11 @@ class _AppBarState extends ConsumerState<_AppBar> {
                   ),
                   enabled: !widget.isLoading,
                   onSelected: (value) async {
-                    if (value == 'share') {
+                    if (value == 'flip_board') {
+                      ref.read(chessBoardScreenProviderNew(ChessBoardProviderParams(
+                        game: widget.game, index: widget.currentGameIndex,
+                      )).notifier).flipBoard();
+                    } else if (value == 'share') {
                       shareGameBtnClicked();
                     } else if (value == 'board_settings') {
                       final allowed = await requireFullAuthGuard(context);
@@ -4666,6 +4686,9 @@ class _AppBarState extends ConsumerState<_AppBar> {
                   },
                   itemBuilder:
                       (context) => [
+                        ...eventVideoBoardMenuItems(
+                          EventVideoScope.maybeOf(this.context)?.session,
+                        ),
                         PopupMenuItem(
                           value: 'board_settings',
                           child: Row(
@@ -4738,7 +4761,11 @@ class _AppBarState extends ConsumerState<_AppBar> {
                   ),
                   enabled: !widget.isLoading,
                   onSelected: (value) async {
-                    if (value == 'share') {
+                    if (value == 'flip_board') {
+                      ref.read(chessBoardScreenProviderNew(ChessBoardProviderParams(
+                        game: widget.game, index: widget.currentGameIndex,
+                      )).notifier).flipBoard();
+                    } else if (value == 'share') {
                       shareGameBtnClicked();
                     } else if (value == 'board_settings') {
                       final allowed = await requireFullAuthGuard(context);
@@ -4755,6 +4782,9 @@ class _AppBarState extends ConsumerState<_AppBar> {
                   },
                   itemBuilder:
                       (context) => [
+                        ...eventVideoBoardMenuItems(
+                          EventVideoScope.maybeOf(this.context)?.session,
+                        ),
                         PopupMenuItem(
                           value: 'board_settings',
                           child: Row(
@@ -7260,8 +7290,13 @@ class _BottomNavBar extends ConsumerWidget {
       onBoardLongPressForwardEnd: () => notifier.stopLongPress(),
     );
 
+    final video = EventVideoScope.maybeOf(context)?.session;
+    final hasVideo = video != null && video.isActive(game.gameId) && video.hasVideo;
+
     return ChessBoardBottomNavBar(
       key: ValueKey('bottom_nav_gamebase_$isGamebaseActive'),
+      onVideoToggle: hasVideo ? video.toggle : null,
+      videoVisible: hasVideo && video.visible,
       gameIndex: index,
       showGamebaseButton: showGamebaseButton,
       explorerPanelVisible: explorerPanelVisible,
@@ -7670,6 +7705,21 @@ class _AnalysisGameBody extends ConsumerWidget {
               syncWithGamebaseToggle: showGamebaseButton,
               teachingsEnabled: shouldShowChessBoardTeachingsForGame(state.game),
             ),
+          );
+        }
+
+        final video = EventVideoScope.maybeOf(context)?.session;
+        if (isVisiblePage && video?.showVideo == true && video!.isActive(game.gameId)) {
+          return EventVideoGameLayout(
+            sideBySide: isTabletLandscape,
+            maxWidth: ResponsiveHelper.isTablet && !isTabletLandscape
+                ? math.min(MediaQuery.sizeOf(context).width * .85, 720.0) : null,
+            board: Column(mainAxisSize: MainAxisSize.min, children: boardHeaderChildren),
+            engine: showPv ? _PrincipalVariationList(
+              key: e2eKey(E2eIds.boardPvList), index: index, state: state, game: game,
+              compact: true,
+            ) : const SizedBox.shrink(),
+            analysis: buildAnalysisView(),
           );
         }
 
@@ -12706,93 +12756,16 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
     }
 
     final targetContext = context;
-    final isTablet = ResponsiveHelper.isTablet;
-
     Future.microtask(() {
-      if (!mounted) return;
-      if (!targetContext.mounted) return;
-
-      // On tablets, use direct scroll controller manipulation to prevent
-      // Scrollable.ensureVisible from propagating to the parent PageView,
-      // which causes the "halfway scroll and snap back" bug.
-      if (isTablet) {
-        _scrollToTargetOnTablet(
-          targetContext,
-          alignment: alignment,
-          animate: !isInitialScroll,
-        );
-      } else {
-        // On mobile, Scrollable.ensureVisible works fine
-        Scrollable.ensureVisible(
-          targetContext,
-          duration:
-              isInitialScroll
-                  ? const Duration(milliseconds: 1)
-                  : const Duration(milliseconds: 250),
-          curve: Curves.easeInOut,
-          alignment: alignment,
-        );
-      }
+      if (!mounted || !targetContext.mounted) return;
+      scrollNotationToMove(
+        _scrollController,
+        targetContext,
+        alignment: alignment,
+        animate: !isInitialScroll,
+      );
       _hasInitiallyScrolled = true;
     });
-  }
-
-  /// Tablet-specific scroll implementation that uses direct controller
-  /// manipulation instead of Scrollable.ensureVisible to prevent
-  /// the scroll from propagating to parent scrollables (PageView).
-  void _scrollToTargetOnTablet(
-    BuildContext targetContext, {
-    double alignment = 0.5,
-    bool animate = true,
-  }) {
-    if (!_scrollController.hasClients) return;
-
-    final targetRenderObject = targetContext.findRenderObject();
-    if (targetRenderObject == null) return;
-
-    final scrollableState = Scrollable.maybeOf(targetContext);
-    if (scrollableState == null) return;
-
-    final scrollableRenderObject = scrollableState.context.findRenderObject();
-    if (scrollableRenderObject == null) return;
-
-    // Get the target's position relative to the scrollable viewport
-    final targetBox = targetRenderObject as RenderBox;
-    final scrollableBox = scrollableRenderObject as RenderBox;
-
-    // Get the target's position in the scrollable's coordinate space
-    final targetOffset = targetBox.localToGlobal(
-      Offset.zero,
-      ancestor: scrollableBox,
-    );
-
-    // Calculate viewport dimensions
-    final viewportHeight = _scrollController.position.viewportDimension;
-    final targetHeight = targetBox.size.height;
-
-    // Calculate where we want the target to be positioned (based on alignment)
-    // alignment 0.0 = top of viewport, 0.5 = center, 1.0 = bottom
-    final desiredPosition =
-        viewportHeight * alignment - targetHeight * alignment;
-
-    // Calculate the scroll offset needed
-    final currentScroll = _scrollController.offset;
-    final targetScrollOffset =
-        currentScroll + targetOffset.dy - desiredPosition;
-
-    // Clamp to valid scroll range
-    final maxScroll = _scrollController.position.maxScrollExtent;
-    final clampedOffset = targetScrollOffset.clamp(0.0, maxScroll);
-
-    if (animate) {
-      _scrollController.animateTo(
-        clampedOffset,
-        duration: const Duration(milliseconds: 250),
-        curve: Curves.easeInOut,
-      );
-    } else {
-      _scrollController.jumpTo(clampedOffset);
-    }
   }
 
   /// Id of the variation that owns [pointer], or null for a mainline move.
@@ -13345,11 +13318,13 @@ const int _variationCommentMaxChars = 280;
 
 class _PrincipalVariationList extends ConsumerStatefulWidget {
   final int index;
+  final bool compact;
   final ChessBoardStateNew state;
   final GamesTourModel game;
 
   const _PrincipalVariationList({
     super.key,
+    this.compact = false,
     required this.index,
     required this.state,
     required this.game,
@@ -13562,69 +13537,10 @@ class _PrincipalVariationListState
     }
 
     final targetContext = context;
-    final isTablet = ResponsiveHelper.isTablet;
-
     Future.microtask(() {
-      if (!mounted) return;
-      if (!targetContext.mounted) return;
-
-      // On tablets, use direct scroll controller manipulation to prevent
-      // Scrollable.ensureVisible from propagating to the parent PageView.
-      if (isTablet) {
-        _scrollToPreviewMoveOnTablet(targetContext);
-      } else {
-        Scrollable.ensureVisible(
-          targetContext,
-          duration: const Duration(milliseconds: 250),
-          curve: Curves.easeInOut,
-          alignment: 0.5, // Center the move in the viewport
-        );
-      }
+      if (!mounted || !targetContext.mounted) return;
+      scrollNotationToMove(_previewScrollController, targetContext);
     });
-  }
-
-  /// Tablet-specific scroll for preview moves that uses direct controller
-  /// manipulation instead of Scrollable.ensureVisible.
-  void _scrollToPreviewMoveOnTablet(BuildContext targetContext) {
-    if (!_previewScrollController.hasClients) return;
-
-    final targetRenderObject = targetContext.findRenderObject();
-    if (targetRenderObject == null) return;
-
-    final scrollableState = Scrollable.maybeOf(targetContext);
-    if (scrollableState == null) return;
-
-    final scrollableRenderObject = scrollableState.context.findRenderObject();
-    if (scrollableRenderObject == null) return;
-
-    final targetBox = targetRenderObject as RenderBox;
-    final scrollableBox = scrollableRenderObject as RenderBox;
-
-    final targetOffset = targetBox.localToGlobal(
-      Offset.zero,
-      ancestor: scrollableBox,
-    );
-
-    // For horizontal scroll, use width instead of height
-    final viewportWidth = _previewScrollController.position.viewportDimension;
-    final targetWidth = targetBox.size.width;
-
-    // Center the target (alignment 0.5)
-    const alignment = 0.5;
-    final desiredPosition = viewportWidth * alignment - targetWidth * alignment;
-
-    final currentScroll = _previewScrollController.offset;
-    final targetScrollOffset =
-        currentScroll + targetOffset.dx - desiredPosition;
-
-    final maxScroll = _previewScrollController.position.maxScrollExtent;
-    final clampedOffset = targetScrollOffset.clamp(0.0, maxScroll);
-
-    _previewScrollController.animateTo(
-      clampedOffset,
-      duration: const Duration(milliseconds: 250),
-      curve: Curves.easeInOut,
-    );
   }
 
   @override
@@ -13650,7 +13566,7 @@ class _PrincipalVariationListState
 
     // Get user's PV count setting (caps at 5)
     final engineSettings = ref.watch(engineSettingsProviderNew).valueOrNull;
-    final multiPV = engineSettings?.multiPvForLichess() ?? 3;
+    final multiPV = widget.compact ? 1 : (engineSettings?.multiPvForLichess() ?? 3);
 
     // Get figurine notation setting and piece assets for PV card rendering
     final useFigurine = ref.watch(
@@ -14163,7 +14079,7 @@ class _PrincipalVariationListState
 
     // Traditional layout: stack the engine lines vertically instead of the
     // swipeable cards. Reuses the same tokens/spans/interactions.
-    final linesView = engineSettings?.engineLinesView ?? EngineLinesView.list;
+    final linesView = widget.compact ? EngineLinesView.list : (engineSettings?.engineLinesView ?? EngineLinesView.list);
     if (linesView == EngineLinesView.list) {
       return _buildPvListLayout(
         context: context,
