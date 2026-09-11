@@ -13,6 +13,8 @@ class ChessBoardBottomNavBar extends ConsumerWidget {
   final VoidCallback? onLeftMove;
   final VoidCallback? onRightMove;
   final VoidCallback onFlip;
+  final VoidCallback? onVideoToggle;
+  final bool videoVisible;
   final VoidCallback? toggleEngineVisibility;
   final VoidCallback? onEngineSettingsLongPress;
   final VoidCallback? onLongPressBackwardStart;
@@ -37,6 +39,8 @@ class ChessBoardBottomNavBar extends ConsumerWidget {
     required this.onLeftMove,
     required this.onRightMove,
     required this.onFlip,
+    this.onVideoToggle,
+    this.videoVisible = false,
     required this.canMoveForward,
     required this.canMoveBackward,
     required this.showEngineAnalysis,
@@ -105,7 +109,6 @@ class ChessBoardBottomNavBar extends ConsumerWidget {
       }
     }
 
-
     // Build the navigation buttons row
     final buttonsRow = Row(
       mainAxisSize: isTablet ? MainAxisSize.min : MainAxisSize.max,
@@ -133,13 +136,30 @@ class ChessBoardBottomNavBar extends ConsumerWidget {
           depthText: showEngineAnalysis ? depthText : null,
         ),
 
-        // Flip Board Button
-        ChessSvgBottomNavbar(
-          key: e2eKey(E2eIds.boardFlip),
-          width: buttonWidth,
-          svgPath: SvgAsset.refresh,
-          onPressed: onFlip,
-        ),
+        // Events with streams expose video here and board swap in the menu.
+        if (onVideoToggle != null)
+          SizedBox(
+            width: buttonWidth,
+            child: IconButton(
+              key: const ValueKey('board_video_toggle'),
+              tooltip: videoVisible ? 'Hide video' : 'Show video',
+              onPressed: onVideoToggle,
+              icon: Icon(
+                videoVisible ? Icons.videocam : Icons.videocam_off_outlined,
+                color:
+                    videoVisible
+                        ? Theme.of(context).colorScheme.primary
+                        : context.colors.textPrimary,
+              ),
+            ),
+          )
+        else
+          ChessSvgBottomNavbar(
+            key: e2eKey(E2eIds.boardFlip),
+            width: buttonWidth,
+            svgPath: SvgAsset.refresh,
+            onPressed: onFlip,
+          ),
         ChessSvgBottomNavbarWithLongPress(
           key: e2eKey(E2eIds.boardMoveBack),
           svgPath: SvgAsset.left_arrow,
@@ -234,4 +254,3 @@ class ChessBoardBottomNavBar extends ConsumerWidget {
     );
   }
 }
-

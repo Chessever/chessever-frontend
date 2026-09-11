@@ -1,0 +1,6 @@
+{"source":{"scope":"group","id":"fixture-event"},"streams":[
+  {"id":"english-main","label":"Studio · English","countryCode":"GB","url":"https://www.youtube.com/watch?v=abcdefghijk","provider":"youtube","sourceId":"abcdefghijk","preferred":true,"publication":{"language":"en","title":"Studio","description":"English commentary"}},
+  {"id":"english-second","label":"Second · English","countryCode":"GB","url":"https://www.youtube.com/watch?v=lmnopqrstuv","provider":"youtube","sourceId":"lmnopqrstuv"},
+  {"id":"german","label":"Deutsch","countryCode":"DE","url":"https://www.twitch.tv/fixture_chess","provider":"twitch","sourceId":"fixture_chess"},
+  {"id":"spanish","label":"Español","countryCode":"ES","url":"https://kick.com/fixture-chess","provider":"kick","sourceId":"fixture-chess"}
+]}
