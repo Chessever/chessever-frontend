@@ -1,4 +1,3 @@
-import 'widgets/scroll_hiding_toolbar.dart';
 import 'package:chessever2/providers/country_dropdown_provider.dart';
 import 'widgets/notation_scroll.dart';
 import 'dart:async';
@@ -3806,12 +3805,11 @@ class _GamePage extends ConsumerWidget {
         }
       });
     }
-    final scaffold = ScrollHidingToolbar(
-      key: ValueKey(game.gameId),
-      resetKey: EventVideoScope.maybeOf(context)?.session.showVideo,
-      autoHide: currentGameIndex == currentPageIndex &&
-          EventVideoScope.maybeOf(context)?.session.showVideo == true,
-      toolbar: _AppBar(
+    final scaffold = Scaffold(
+      backgroundColor: context.colors.background,
+      resizeToAvoidBottomInset: false,
+      extendBody: explorerVisible,
+      appBar: _AppBar(
         game: game,
         games: games,
         currentGameIndex: currentGameIndex,
@@ -3820,30 +3818,23 @@ class _GamePage extends ConsumerWidget {
         savedAnalysisData: savedAnalysisData,
         isActivePage: currentGameIndex == currentPageIndex,
       ),
-      bottomBar: _BottomNavBar(
+      bottomNavigationBar: _BottomNavBar(
         index: currentGameIndex,
         state: state,
         game: game,
         onGamebaseToggle: onToggleGamebase,
         showGamebaseButton: showGamebaseButton,
       ),
-      builder: (context, toolbar, bottomBar) => Scaffold(
-        backgroundColor: context.colors.background,
-        resizeToAvoidBottomInset: false,
-        extendBody: explorerVisible,
-        bottomNavigationBar: bottomBar,
-        appBar: toolbar,
-        body: _GameBody(
-          index: currentGameIndex,
-          currentPageIndex: currentPageIndex,
-          game: game,
-          scoreCardGamesContext: games,
-          scoreCardViewSource: scoreCardViewSource,
-          state: state,
-          playerProfileDataSource: playerProfileDataSource,
-          showGamebaseButton: showGamebaseButton,
-          showClock: showClock,
-        ),
+      body: _GameBody(
+        index: currentGameIndex,
+        currentPageIndex: currentPageIndex,
+        game: game,
+        scoreCardGamesContext: games,
+        scoreCardViewSource: scoreCardViewSource,
+        state: state,
+        playerProfileDataSource: playerProfileDataSource,
+        showGamebaseButton: showGamebaseButton,
+        showClock: showClock,
       ),
     );
     return _BoardShareBoundaryScope(
