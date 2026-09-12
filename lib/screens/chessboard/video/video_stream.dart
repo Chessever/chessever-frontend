@@ -117,6 +117,8 @@ class VideoAudience {
   }
 }
 
+enum VideoClientPlatform { web, mobile, desktop }
+
 class EventVideoStream {
   const EventVideoStream({
     required this.id,
@@ -127,12 +129,16 @@ class EventVideoStream {
     this.title = '',
     this.description = '',
     this.preferred = false,
+    this.platforms,
     this.audience,
   });
   final String id, label, title, description;
   final VideoSource source;
   final String? countryCode, language;
   final bool preferred;
+  final Set<VideoClientPlatform>? platforms;
+  bool supportsPlatform(VideoClientPlatform platform) =>
+      platforms == null || platforms!.contains(platform);
   final VideoAudience? audience;
   String get identity => '$id:${source.url}';
   String get displayName {
@@ -184,6 +190,7 @@ class EventVideoStream {
     title: title,
     description: description,
     preferred: previous.preferred,
+    platforms: platforms,
     audience: previous.audience,
   );
 
@@ -223,12 +230,37 @@ class EventVideoStream {
         if (preferred != null && preferred is! bool) continue;
         final publication =
             raw['publication'] is Map ? raw['publication'] as Map : const {};
+        Set<VideoClientPlatform>? platforms;
+        if (raw.containsKey('platforms')) {
+          final values = raw['platforms'];
+          if (values is! List ||
+              values.any(
+                (p) =>
+                    !VideoClientPlatform.values.any(
+                      (platform) => platform.name == p,
+                    ),
+              )) {
+            continue;
+          }
+          platforms =
+              VideoClientPlatform.values
+                  .where((p) => values.contains(p.name))
+                  .toSet();
+        }
+        final language =
+            raw.containsKey('language')
+                ? raw['language']
+                : publication['language'];
+        if (language != null && (language is! String || language.length > 80)) {
+          continue;
+        }
         final stream = EventVideoStream(
           id: id,
           label: label.trim(),
           source: source,
           countryCode: flag,
-          language: publication['language'] as String?,
+          platforms: platforms,
+          language: (language as String?)?.trim(),
           title: publication['title'] as String? ?? '',
           description: publication['description'] as String? ?? '',
           preferred: preferred == true,

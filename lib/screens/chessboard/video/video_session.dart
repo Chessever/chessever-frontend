@@ -121,6 +121,7 @@ class EventVideoSession extends ChangeNotifier {
       if (_disposed || revision != _scopeRevision) return;
       final ranked =
           result.streams
+              .where((s) => s.supportsPlatform(VideoClientPlatform.mobile))
               .map(
                 (s) => s.withRanking(_ranking.putIfAbsent(s.identity, () => s)),
               )

@@ -21,6 +21,11 @@ groups, and explicit stream language controls group matching.
 The camera action is always white: crossed out to hide a visible video, and
 uncrossed to show a hidden video.
 
+Streams honor the web contract's `platforms` list: omitted allows all clients;
+only streams allowing `mobile` enter mobile flags, ranking, and playback. An
+empty list allows none. Metadata refresh removes a stream if mobile access is
+removed. Top-level `language` takes precedence over legacy publication language.
+
 ## Flavor configuration
 
 The production flavor (`lib/main.dart`) enables video by default using the approved
