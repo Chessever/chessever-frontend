@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 import 'package:webview_flutter_android/webview_flutter_android.dart';
 import 'package:webview_flutter_wkwebview/webview_flutter_wkwebview.dart';
@@ -72,7 +73,13 @@ abstract class EventVideoPlayer extends ChangeNotifier {
 /// Controller outlives the game page/platform widget. The GlobalKey transfers
 /// its sole view between active pages and the expanded viewer in the same frame.
 class NativeEventVideoPlayer extends EventVideoPlayer {
-  NativeEventVideoPlayer(this.embedOrigin);
+  NativeEventVideoPlayer(
+    this.embedOrigin, {
+    Future<bool> Function(Uri)? openExternal,
+  }) : _openExternal = openExternal ?? _launchExternal;
+  final Future<bool> Function(Uri) _openExternal;
+  static Future<bool> _launchExternal(Uri uri) =>
+      launchUrl(uri, mode: LaunchMode.externalApplication);
   final Uri embedOrigin;
   final GlobalKey _viewKey = GlobalKey(debugLabel: 'event_video_native_view');
   WebViewController? _controller;
@@ -127,7 +134,35 @@ class NativeEventVideoPlayer extends EventVideoPlayer {
     );
     await controller.setNavigationDelegate(
       NavigationDelegate(
-        onNavigationRequest: (request) {
+        onNavigationRequest: (request) async {
+          final uri = Uri.tryParse(request.url);
+          final youtubeLink =
+              uri != null &&
+              uri.scheme == 'https' &&
+              uri.userInfo.isEmpty &&
+              const {
+                'youtube.com',
+                'www.youtube.com',
+                'm.youtube.com',
+                'youtu.be',
+              }.contains(uri.host) &&
+              (uri.path == '/' ||
+                  uri.path.isEmpty ||
+                  uri.path == '/watch' ||
+                  uri.path.startsWith('/@') ||
+                  uri.path.startsWith('/channel/') ||
+                  uri.host == 'youtu.be');
+          // YouTube's logo opens a watch page, sometimes in a new frame.
+          // Keep embed/API navigation inside the player, but hand these links
+          // to the YouTube app (or browser) rather than swallowing the tap.
+          if (youtubeLink && _acceptsDocumentEvents) {
+            try {
+              if (await _openExternal(uri)) _session?.stopPlayback();
+            } catch (_) {
+              // A failed external launch must not break the embedded player.
+            }
+            return NavigationDecision.prevent;
+          }
           // Provider frames keep their own offline/login notices. Links must not
           // replace the trusted wrapper or launch another app without a UI action.
           if (!request.isMainFrame ||

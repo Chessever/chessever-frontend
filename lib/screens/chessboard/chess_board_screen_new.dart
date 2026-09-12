@@ -3789,6 +3789,23 @@ class _GamePage extends ConsumerWidget {
     // Let explorer content paint under the bottom nav so a light translucent
     // bar can reveal that more games sit below.
     final explorerVisible = ref.watch(boardExplorerPanelVisibleProvider);
+    final videoSession = EventVideoScope.maybeOf(context)?.session;
+    if (videoSession?.showVideo == true &&
+        videoSession!.isActive(game.gameId) && state.isPvPreviewActive) {
+      // Stream metadata may arrive after the user entered a PV preview.
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!context.mounted || !videoSession.showVideo ||
+            !videoSession.isActive(game.gameId)) {
+          return;
+        }
+        final provider = chessBoardScreenProviderNew(
+          ChessBoardProviderParams(game: game, index: currentGameIndex),
+        );
+        if (ref.read(provider).valueOrNull?.isPvPreviewActive == true) {
+          ref.read(provider.notifier).clearPvPreview();
+        }
+      });
+    }
     final scaffold = ScrollHidingToolbar(
       key: ValueKey(game.gameId),
       resetKey: EventVideoScope.maybeOf(context)?.session.showVideo,
@@ -13354,6 +13371,10 @@ class _PrincipalVariationList extends ConsumerStatefulWidget {
 
 class _PrincipalVariationListState
     extends ConsumerState<_PrincipalVariationList> {
+  bool get _videoDisablesPreview {
+    final session = EventVideoScope.maybeOf(context)?.session;
+    return session?.showVideo == true && session!.isActive(widget.game.gameId);
+  }
   late PageController _pageController;
   int _currentPage = 0;
   int? _lastUserSelectedIndex;
@@ -13970,6 +13991,7 @@ class _PrincipalVariationListState
                         });
                         if (widget.state.isPvPreviewActive &&
                             widget.state.lockedPvLine != null) {
+                          if (_videoDisablesPreview) return;
                           notifier.previewPrincipalVariationMoveAt(
                             line,
                             variantIndex,
@@ -14445,6 +14467,7 @@ class _PrincipalVariationListState
           onTap: () {
             HapticFeedback.lightImpact();
             // Single tap: Enter preview mode and navigate to the tapped move
+            if (_videoDisablesPreview) return;
             notifier.previewPrincipalVariationMoveAt(
               line,
               variantIndex,

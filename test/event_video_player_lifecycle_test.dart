@@ -68,10 +68,14 @@ class _Controller extends PlatformWebViewController {
 class _Navigation extends PlatformNavigationDelegate {
   _Navigation(super.params) : super.implementation();
   WebResourceErrorCallback? onError;
+  NavigationRequestCallback? onNavigation;
   @override
   Future<void> setOnNavigationRequest(
     NavigationRequestCallback callback,
-  ) async {}
+  ) async {
+    onNavigation = callback;
+  }
+
   @override
   Future<void> setOnWebResourceError(WebResourceErrorCallback callback) async {
     onError = callback;
@@ -88,15 +92,18 @@ class _View extends PlatformWebViewWidget {
 }
 
 class _Harness {
+  _Harness({Future<bool> Function(Uri)? openExternal})
+    : player = NativeEventVideoPlayer(
+        Uri.parse('https://embed.test.example.com'),
+        openExternal: openExternal,
+      );
   final observer = RouteObserver<PageRoute<dynamic>>();
   final navigator = GlobalKey<NavigatorState>();
   final key = GlobalKey<EventVideoHostState>();
   final session = EventVideoSession(
     repository: FakeVideoRepository(fixtureVideos()),
   );
-  final player = NativeEventVideoPlayer(
-    Uri.parse('https://embed.test.example.com'),
-  );
+  final NativeEventVideoPlayer player;
   Widget get widget => MaterialApp(
     navigatorKey: navigator,
     navigatorObservers: [observer],
@@ -139,6 +146,49 @@ void main() {
     platform = _WebViewPlatform();
     WebViewPlatform.instance = platform;
   });
+
+  testWidgets(
+    'YouTube watch links open externally without replacing the player',
+    (tester) async {
+      final opened = <Uri>[];
+      final h = _Harness(
+        openExternal: (uri) async {
+          opened.add(uri);
+          return true;
+        },
+      );
+      await tester.pumpWidget(h.widget);
+      await _flushPlayer(tester);
+      final navigation = platform.controllers.single.navigation!.onNavigation!;
+      expect(
+        await navigation(
+          const NavigationRequest(
+            url: 'https://www.youtube.com/embed/abcdefghijk',
+            isMainFrame: false,
+          ),
+        ),
+        NavigationDecision.navigate,
+      );
+      expect(opened, isEmpty);
+      h.session.reportPlayback(true, h.session.playerRevision);
+      expect(
+        await navigation(
+          const NavigationRequest(
+            url: 'https://www.youtube.com/watch?v=abcdefghijk',
+            isMainFrame: false,
+          ),
+        ),
+        NavigationDecision.prevent,
+      );
+      expect(opened.single.host, 'www.youtube.com');
+      expect(h.session.playing, isFalse);
+      expect(h.player.failed, isFalse);
+      await tester.pump(const Duration(milliseconds: 1));
+      await _flushPlayer(tester);
+      await tester.pumpWidget(const SizedBox());
+      await tester.pump();
+    },
+  );
 
   testWidgets('menu preserves playback but a profile page stops it', (
     tester,
