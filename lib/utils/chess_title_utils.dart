@@ -24,6 +24,12 @@ class ChessTitleUtils {
             .replaceAll(RegExp(r'\s+'), ' ')
             .trim();
 
+    // A value made only of separators and punctuation is a placeholder, not a
+    // title. DGT LiveChess and the FIDE relay write `[WhiteTitle "-"]` for a
+    // title they do not know, and PGN's own unknown is `?`; both used to fall
+    // through to "preserve unknown titles as-is" and render as a badge.
+    if (normalized.isEmpty) return '';
+
     if (_knownShortTitles.contains(normalized)) return normalized;
 
     bool hasWord(String word) =>
