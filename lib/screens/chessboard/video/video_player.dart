@@ -14,8 +14,49 @@ import 'video_stream.dart';
 /// Unclaimed taps are forwarded to the WebView by the platform-view gesture
 /// arena, so Play/Pause and other native provider controls remain interactive.
 const eventVideoGestureRecognizers = <Factory<OneSequenceGestureRecognizer>>{
-  Factory<HorizontalDragGestureRecognizer>(HorizontalDragGestureRecognizer.new),
+  Factory<EventVideoSeekGestureRecognizer>(EventVideoSeekGestureRecognizer.new),
 };
+
+/// Decide the axis before the enclosing game PageView reaches its drag slop.
+/// A normal horizontal recognizer can lose that race on native WebViews.
+class EventVideoSeekGestureRecognizer extends OneSequenceGestureRecognizer {
+  final Map<int, Offset> _starts = {};
+
+  @override
+  void addAllowedPointer(PointerDownEvent event) {
+    _starts[event.pointer] = event.position;
+    startTrackingPointer(event.pointer, event.transform);
+  }
+
+  @override
+  void handleEvent(PointerEvent event) {
+    final start = _starts[event.pointer];
+    if (start == null) return;
+    if (event is PointerMoveEvent) {
+      final delta = event.position - start;
+      if (delta.distance >= 4) {
+        resolvePointer(
+          event.pointer,
+          delta.dx.abs() > delta.dy.abs()
+              ? GestureDisposition.accepted
+              : GestureDisposition.rejected,
+        );
+        _starts.remove(event.pointer);
+        stopTrackingPointer(event.pointer);
+      }
+    } else if (event is PointerUpEvent || event is PointerCancelEvent) {
+      resolvePointer(event.pointer, GestureDisposition.rejected);
+      _starts.remove(event.pointer);
+      stopTrackingPointer(event.pointer);
+    }
+  }
+
+  @override
+  void didStopTrackingLastPointer(int pointer) {}
+
+  @override
+  String get debugDescription => 'event video seek';
+}
 
 // WebViewController rejects an empty HTML string, including during cleanup.
 const _stoppedVideoHtml =

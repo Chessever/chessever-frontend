@@ -36,6 +36,116 @@ class FakeVideoRepository implements EventVideoRepository {
 
 void main() {
   test(
+    'country groups sort matching streams first and save manual country',
+    () async {
+      String? stored;
+      final session = EventVideoSession(
+        repository: FakeVideoRepository(fixtureVideos()),
+        preferredCountry: 'MX',
+        saveCountry: (value) async => stored = value,
+      );
+      addTearDown(session.dispose);
+      session.openGame(gameId: 'g', tourId: 'tour', roundId: 'round');
+      await Future<void>.delayed(Duration.zero);
+      expect(session.selected!.id, 'spanish');
+      expect(session.streams.first.id, 'spanish');
+      session.select('english-second');
+      expect(stored, 'GB');
+      expect(session.streams.take(2).map((s) => s.id), [
+        'english-main',
+        'english-second',
+      ]);
+      expect(session.selected!.id, 'english-second');
+      final next = EventVideoSession(
+        repository: FakeVideoRepository(fixtureVideos()),
+        preferredCountry: 'DE',
+        savedCountry: stored,
+      );
+      addTearDown(next.dispose);
+      next.openGame(gameId: 'g', tourId: 'tour', roundId: 'round');
+      await Future<void>.delayed(Duration.zero);
+      expect(next.selected!.id, 'english-main');
+      expect(next.streams.first.flagCode, 'GB');
+      expect(next.playRequested, isFalse);
+    },
+  );
+
+  test(
+    'saved country uses language group then event default when unavailable',
+    () async {
+      for (final country in ['AT', 'BR']) {
+        final session = EventVideoSession(
+          repository: FakeVideoRepository(fixtureVideos()),
+          preferredCountry: 'ES',
+          savedCountry: country,
+        );
+        session.openGame(gameId: 'g', tourId: 'tour', roundId: 'round');
+        await Future<void>.delayed(Duration.zero);
+        expect(
+          session.selected!.id,
+          country == 'AT' ? 'german' : 'english-main',
+        );
+        expect(session.streams.first.id, session.selected!.id);
+        session.dispose();
+      }
+    },
+  );
+
+  test(
+    'countrymen selects first matching flag before remembered language',
+    () async {
+      final session = EventVideoSession(
+        repository: FakeVideoRepository(fixtureVideos()),
+        preferredCountry: 'de',
+        rememberedLanguage: 'en',
+      );
+      addTearDown(session.dispose);
+      session.openGame(gameId: 'game', tourId: 'tour', roundId: 'round');
+      await Future<void>.delayed(Duration.zero);
+      expect(session.selected!.id, 'german');
+      expect(session.playRequested, isFalse);
+      session.select('spanish');
+      session.setPreferredCountry('GB');
+      await session.refresh();
+      expect(session.selected!.id, 'spanish');
+      session.openGame(gameId: 'next', tourId: 'tour', roundId: 'round');
+      expect(session.selected!.id, 'spanish');
+    },
+  );
+
+  test(
+    'late countrymen preference picks first matching stream until playback',
+    () async {
+      final session = EventVideoSession(
+        repository: FakeVideoRepository(fixtureVideos()),
+      );
+      addTearDown(session.dispose);
+      session.openGame(gameId: 'game', tourId: 'tour', roundId: 'round');
+      await Future<void>.delayed(Duration.zero);
+      session.setPreferredCountry('DE');
+      expect(session.selected!.id, 'german');
+      session.setPreferredCountry('GB');
+      expect(session.selected!.id, 'english-main');
+      session.reportPlayback(true, session.playerRevision);
+      session.setPreferredCountry('ES');
+      expect(session.selected!.id, 'english-main');
+      expect(session.playing, isTrue);
+    },
+  );
+
+  test('unmatched country uses event default', () async {
+    final session = EventVideoSession(
+      repository: FakeVideoRepository(fixtureVideos()),
+      preferredCountry: 'JP',
+      rememberedLanguage: 'es',
+    );
+    addTearDown(session.dispose);
+    session.openGame(gameId: 'game', tourId: 'tour', roundId: 'round');
+    await Future<void>.delayed(Duration.zero);
+    expect(session.selected!.id, 'english-main');
+  });
+
+  test(
     'all supported URL forms normalize and unsafe/future providers fail',
     () {
       for (final url in [
@@ -285,13 +395,10 @@ void main() {
     },
   );
   test(
-    'initial pause, language memory, same-event playback, hide and lifecycle',
+    'initial pause, country memory, same-event playback, hide and lifecycle',
     () async {
       final repo = FakeVideoRepository(fixtureVideos());
-      final session = EventVideoSession(
-        repository: repo,
-        rememberedLanguage: 'es',
-      );
+      final session = EventVideoSession(repository: repo, savedCountry: 'ES');
       addTearDown(session.dispose);
       session.openGame(gameId: 'g1', tourId: 'tour', roundId: 'round');
       await Future<void>.delayed(Duration.zero);

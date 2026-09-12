@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'video_repository.dart';
 import 'video_stream.dart';
+import 'video_country_preference.dart';
 
 typedef SaveVideoLanguage = Future<void> Function(String language);
 
@@ -11,6 +12,9 @@ class EventVideoSession extends ChangeNotifier {
     required this.repository,
     this.rememberedLanguage,
     this.saveLanguage,
+    this.preferredCountry,
+    this.savedCountry,
+    this.saveCountry,
   }) {
     if (repository != null) {
       _refreshTimer = Timer.periodic(
@@ -22,6 +26,32 @@ class EventVideoSession extends ChangeNotifier {
   final EventVideoRepository? repository;
   final SaveVideoLanguage? saveLanguage;
   String? rememberedLanguage;
+  String? preferredCountry;
+  String? savedCountry;
+  final SaveVideoLanguage? saveCountry;
+  String? get effectiveCountry =>
+      normalizeVideoCountry(savedCountry) ??
+      normalizeVideoCountry(preferredCountry);
+  bool _selectionLocked = false;
+
+  void setPreferredCountry(String? country) {
+    final normalized = normalizeVideoCountry(country);
+    if (preferredCountry == normalized) return;
+    preferredCountry = normalized;
+    streams = prioritizeVideoCountry(streams, effectiveCountry);
+    if (!_selectionLocked &&
+        !_selections.containsKey(tourId) &&
+        streams.isNotEmpty) {
+      final next = streams.first;
+      if (selected?.identity != next.identity) {
+        selected = next;
+        stopPlayback(notify: false);
+        revealFlags(notify: false);
+      }
+    }
+    notifyListeners();
+  }
+
   String gameId = '', tourId = '', roundId = '';
   List<EventVideoStream> streams = const [];
   EventVideoStream? selected;
@@ -57,6 +87,7 @@ class EventVideoSession extends ChangeNotifier {
     final newEvent = this.tourId != tourId;
     final newScope = newEvent || this.roundId != roundId;
     if (newEvent) {
+      _selectionLocked = false;
       stopPlayback(notify: false);
       streams = const [];
       selected = null;
@@ -94,7 +125,7 @@ class EventVideoSession extends ChangeNotifier {
                 (s) => s.withRanking(_ranking.putIfAbsent(s.identity, () => s)),
               )
               .toList();
-      streams = orderVideoStreams(ranked);
+      streams = prioritizeVideoCountry(ranked, effectiveCountry);
       EventVideoStream? find(bool Function(EventVideoStream) predicate) {
         for (final stream in streams) {
           if (predicate(stream)) return stream;
@@ -105,7 +136,6 @@ class EventVideoSession extends ChangeNotifier {
       final previous = selected;
       selected =
           find((s) => s.id == (previous?.id ?? _selections[tourId])) ??
-          find((s) => s.languageKey == rememberedLanguage) ??
           (streams.isEmpty ? null : streams.first);
       if (previous?.identity != selected?.identity) {
         stopPlayback(notify: false);
@@ -130,6 +160,7 @@ class EventVideoSession extends ChangeNotifier {
   void select(String id) {
     final matches = streams.where((s) => s.id == id);
     if (matches.isEmpty) return;
+    _selectionLocked = true;
     final next = matches.first;
     if (selected?.identity != next.identity) {
       final continuePlaying = playing;
@@ -140,6 +171,16 @@ class EventVideoSession extends ChangeNotifier {
     }
     _selections[tourId] = id;
     rememberedLanguage = next.languageKey;
+    final country = normalizeVideoCountry(next.flagCode);
+    if (country != null) {
+      savedCountry = country;
+      streams = prioritizeVideoCountry(streams, effectiveCountry);
+      final persist = saveCountry;
+      if (persist != null) {
+        unawaited(persist(country).catchError((Object _) {}));
+      }
+    }
+
     final save = saveLanguage;
     if (save != null) {
       unawaited(save(next.languageKey).catchError((Object _) {}));
@@ -151,6 +192,7 @@ class EventVideoSession extends ChangeNotifier {
   void reportPlayback(bool value, int revision) {
     if (_disposed || revision != playerRevision) return;
     playing = value && foreground && showVideo;
+    if (playing) _selectionLocked = true;
     // No rebuild: provider state events must not recreate platform views.
   }
 
@@ -205,7 +247,7 @@ class EventVideoSession extends ChangeNotifier {
     if (!showVideo || !foreground) return;
     flagsVisible = true;
     if (!_scrolling) {
-      _flagsTimer = Timer(const Duration(seconds: 5), () {
+      _flagsTimer = Timer(const Duration(seconds: 3), () {
         if (_disposed) return;
         flagsVisible = false;
         notifyListeners();

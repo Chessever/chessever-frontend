@@ -43,6 +43,7 @@ Widget harness(
   String game = 'g1',
   String tour = 'tour',
   bool sideBySide = false,
+  VoidCallback? onVideoInteraction,
 }) => MaterialApp(
   home: EventVideoHost(
     gameId: game,
@@ -50,6 +51,7 @@ Widget harness(
     roundId: 'round',
     session: session,
     player: player,
+    onVideoInteraction: onVideoInteraction,
     child: Scaffold(
       body: Builder(
         builder: (context) {
@@ -97,31 +99,39 @@ Widget harness(
 
 void main() {
   testWidgets(
-    'initial flags, five-second dismissal, taps do not consume player input',
+    'initial flags, three-second dismissal, taps do not consume player input',
     (tester) async {
       final session = EventVideoSession(
         repository: FakeVideoRepository(fixtureVideos()),
       );
       final player = FakePlayer();
-      await tester.pumpWidget(harness(session, player));
+      var previewActive = true;
+      await tester.pumpWidget(
+        harness(
+          session,
+          player,
+          onVideoInteraction: () => previewActive = false,
+        ),
+      );
       await tester.pump();
       expect(session.playRequested, isFalse);
       expect(find.byKey(const ValueKey('event_video_flags')), findsOneWidget);
       expect(find.text('One engine line'), findsNothing);
-      await tester.pump(const Duration(seconds: 5));
+      await tester.pump(const Duration(seconds: 3));
       expect(find.byKey(const ValueKey('event_video_flags')), findsNothing);
       expect(find.text('One engine line'), findsOneWidget);
       await tester.tap(find.text('Player'));
       await tester.pump();
+      expect(previewActive, isFalse);
       expect(find.byKey(const ValueKey('event_video_flags')), findsOneWidget);
-      await tester.pump(const Duration(seconds: 4));
+      await tester.pump(const Duration(seconds: 2));
       await tester.tap(
         find.byKey(const ValueKey('video_stream_english-second')),
       );
       await tester.pump();
       expect(session.selected!.id, 'english-second');
       expect(session.playRequested, isFalse);
-      await tester.pump(const Duration(seconds: 4));
+      await tester.pump(const Duration(seconds: 2));
       expect(session.flagsVisible, isTrue);
       await tester.pump(const Duration(seconds: 1));
       expect(session.flagsVisible, isFalse);
@@ -130,7 +140,7 @@ void main() {
     },
   );
   testWidgets(
-    'flag scroll suspends timeout and dismisses five seconds after use',
+    'flag scroll suspends timeout and dismisses three seconds after use',
     (tester) async {
       tester.view.physicalSize = const Size(375, 700);
       tester.view.devicePixelRatio = 1;
@@ -149,7 +159,7 @@ void main() {
       expect(session.flagsVisible, isTrue);
       await gesture.up();
       await tester.pumpAndSettle();
-      await tester.pump(const Duration(seconds: 5));
+      await tester.pump(const Duration(seconds: 3));
       expect(session.flagsVisible, isFalse);
       await tester.pumpWidget(const SizedBox());
     },
@@ -250,7 +260,7 @@ void main() {
       addTearDown(tester.view.resetDevicePixelRatio);
       final session = EventVideoSession(
         repository: FakeVideoRepository(fixtureVideos()),
-        rememberedLanguage: 'de',
+        savedCountry: 'DE',
       );
       await tester.pumpWidget(harness(session, FakePlayer()));
       await tester.pump();
@@ -349,12 +359,17 @@ void main() {
       await tester.pumpWidget(const SizedBox());
     },
   );
-  testWidgets('rotation to a narrow Twitch layout stops invisible playback', (tester) async {
+  testWidgets('rotation to a narrow Twitch layout stops invisible playback', (
+    tester,
+  ) async {
     tester.view.physicalSize = const Size(800, 600);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
-    final session = EventVideoSession(repository: FakeVideoRepository(fixtureVideos()), rememberedLanguage: 'de');
+    final session = EventVideoSession(
+      repository: FakeVideoRepository(fixtureVideos()),
+      savedCountry: 'DE',
+    );
     await tester.pumpWidget(harness(session, FakePlayer()));
     await tester.pump();
     expect(find.text('Player'), findsOneWidget);
@@ -367,5 +382,4 @@ void main() {
     expect(session.playRequested, isFalse);
     await tester.pumpWidget(const SizedBox());
   });
-
 }

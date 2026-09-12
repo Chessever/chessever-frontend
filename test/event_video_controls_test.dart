@@ -62,6 +62,11 @@ void main() {
       await tester.pump();
       expect(flip(), findsNothing);
       expect(find.byTooltip('Hide video'), findsOneWidget);
+      expect(find.byIcon(Icons.videocam_off_outlined), findsOneWidget);
+      expect(
+        tester.widget<Icon>(find.byIcon(Icons.videocam_off_outlined)).color,
+        Colors.white,
+      );
       await tester.tap(find.byTooltip('Hide video'));
       expect(toggles, 1);
       expect(flips, 1);
@@ -75,6 +80,11 @@ void main() {
       await tester.pumpWidget(app(true, false));
       await tester.pump();
       expect(find.byTooltip('Show video'), findsOneWidget);
+      expect(find.byIcon(Icons.videocam_outlined), findsOneWidget);
+      expect(
+        tester.widget<Icon>(find.byIcon(Icons.videocam_outlined)).color,
+        Colors.white,
+      );
       await tester.pumpWidget(const SizedBox());
     },
   );
@@ -102,7 +112,7 @@ void main() {
       await tester.pumpWidget(app());
       await tester.tap(find.byType(PopupMenuButton<String>));
       await tester.pumpAndSettle();
-      expect(find.text('Swap board'), findsNothing);
+      expect(find.text('Flip board'), findsNothing);
       await tester.tap(find.text('Board Settings'));
       await tester.pumpAndSettle();
       session.streams = fixtureVideos();
@@ -111,8 +121,8 @@ void main() {
         session.visible = visible;
         await tester.tap(find.byType(PopupMenuButton<String>));
         await tester.pumpAndSettle();
-        expect(find.text('Swap board'), findsOneWidget);
-        await tester.tap(find.text('Swap board'));
+        expect(find.text('Flip board'), findsOneWidget);
+        await tester.tap(find.text('Flip board'));
         await tester.pumpAndSettle();
         expect(selected, 'flip_board');
       }
