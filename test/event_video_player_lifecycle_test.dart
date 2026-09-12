@@ -114,7 +114,7 @@ class _Harness {
             PopupMenuButton<String>(
               itemBuilder:
                   (_) => const [
-                    PopupMenuItem(value: 'swap', child: Text('Swap board')),
+                    PopupMenuItem(value: 'swap', child: Text('Flip board')),
                   ],
             ),
           ],
@@ -153,7 +153,7 @@ void main() {
 
     await tester.tap(find.byType(PopupMenuButton<String>));
     await _flushPlayer(tester);
-    expect(find.text('Swap board'), findsOneWidget);
+    expect(find.text('Flip board'), findsOneWidget);
     expect(h.session.playing, isTrue);
     expect(h.session.foreground, isTrue);
     expect(controller.documents.length, loads);

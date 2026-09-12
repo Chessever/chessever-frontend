@@ -1,3 +1,5 @@
+import 'widgets/scroll_hiding_toolbar.dart';
+import 'package:chessever2/providers/country_dropdown_provider.dart';
 import 'widgets/notation_scroll.dart';
 import 'dart:async';
 import 'dart:developer' as developer;
@@ -2992,6 +2994,13 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
     final isTablet = ResponsiveHelper.isTablet;
 
     return EventVideoHost(
+      onVideoInteraction: () {
+        final provider = chessBoardScreenProviderNew(currentParams);
+        if (ref.read(provider).valueOrNull?.isPvPreviewActive == true) {
+          ref.read(provider.notifier).clearPvPreview();
+        }
+      },
+      preferredCountry: ref.watch(effectiveCountryProvider).valueOrNull?.countryCode,
       pageObserver: pageRouteObserver,
       key: _eventVideoHostKey,
       gameId: currentGame.gameId,
@@ -3780,18 +3789,12 @@ class _GamePage extends ConsumerWidget {
     // Let explorer content paint under the bottom nav so a light translucent
     // bar can reveal that more games sit below.
     final explorerVisible = ref.watch(boardExplorerPanelVisibleProvider);
-    final scaffold = Scaffold(
-      backgroundColor: context.colors.background,
-      resizeToAvoidBottomInset: false,
-      extendBody: explorerVisible,
-      bottomNavigationBar: _BottomNavBar(
-        index: currentGameIndex,
-        state: state,
-        game: game,
-        onGamebaseToggle: onToggleGamebase,
-        showGamebaseButton: showGamebaseButton,
-      ),
-      appBar: _AppBar(
+    final scaffold = ScrollHidingToolbar(
+      key: ValueKey(game.gameId),
+      resetKey: EventVideoScope.maybeOf(context)?.session.showVideo,
+      autoHide: currentGameIndex == currentPageIndex &&
+          EventVideoScope.maybeOf(context)?.session.showVideo == true,
+      toolbar: _AppBar(
         game: game,
         games: games,
         currentGameIndex: currentGameIndex,
@@ -3800,16 +3803,30 @@ class _GamePage extends ConsumerWidget {
         savedAnalysisData: savedAnalysisData,
         isActivePage: currentGameIndex == currentPageIndex,
       ),
-      body: _GameBody(
+      bottomBar: _BottomNavBar(
         index: currentGameIndex,
-        currentPageIndex: currentPageIndex,
-        game: game,
-        scoreCardGamesContext: games,
-        scoreCardViewSource: scoreCardViewSource,
         state: state,
-        playerProfileDataSource: playerProfileDataSource,
+        game: game,
+        onGamebaseToggle: onToggleGamebase,
         showGamebaseButton: showGamebaseButton,
-        showClock: showClock,
+      ),
+      builder: (context, toolbar, bottomBar) => Scaffold(
+        backgroundColor: context.colors.background,
+        resizeToAvoidBottomInset: false,
+        extendBody: explorerVisible,
+        bottomNavigationBar: bottomBar,
+        appBar: toolbar,
+        body: _GameBody(
+          index: currentGameIndex,
+          currentPageIndex: currentPageIndex,
+          game: game,
+          scoreCardGamesContext: games,
+          scoreCardViewSource: scoreCardViewSource,
+          state: state,
+          playerProfileDataSource: playerProfileDataSource,
+          showGamebaseButton: showGamebaseButton,
+          showClock: showClock,
+        ),
       ),
     );
     return _BoardShareBoundaryScope(

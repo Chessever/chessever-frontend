@@ -13,9 +13,11 @@ class EventVideoScope extends InheritedNotifier<EventVideoSession> {
     super.key,
     required EventVideoSession session,
     required this.player,
+    this.onVideoInteraction,
     required super.child,
   }) : super(notifier: session);
   final EventVideoPlayer? player;
+  final VoidCallback? onVideoInteraction;
   EventVideoSession get session => notifier!;
   static EventVideoScope? maybeOf(BuildContext context) =>
       context.dependOnInheritedWidgetOfExactType<EventVideoScope>();
@@ -31,8 +33,12 @@ class EventVideoHost extends StatefulWidget {
     this.session,
     this.player,
     this.pageObserver,
+    this.preferredCountry,
+    this.onVideoInteraction,
   });
   final String gameId, tourId, roundId;
+  final String? preferredCountry;
+  final VoidCallback? onVideoInteraction;
   final Widget child;
 
   /// Injectable ownership boundary for tests; otherwise uses the app flavor.
@@ -75,6 +81,10 @@ class EventVideoHostState extends State<EventVideoHost>
         widget.session ??
         EventVideoSession(
           repository: config == null ? null : HttpEventVideoRepository(config),
+          saveCountry: (country) async {
+            final prefs = await SharedPreferences.getInstance();
+            await prefs.setString('ce-video-country.v1', country);
+          },
           saveLanguage: (language) async {
             final prefs = await SharedPreferences.getInstance();
             await prefs.setString('ce-video-language.v1', language);
@@ -84,6 +94,7 @@ class EventVideoHostState extends State<EventVideoHost>
         widget.player ??
         (config == null ? null : NativeEventVideoPlayer(config.embedOrigin));
     session.addListener(_synchronize);
+    session.setPreferredCountry(widget.preferredCountry);
     if (widget.session != null || config == null) {
       _ready = true;
       _open();
@@ -94,8 +105,9 @@ class EventVideoHostState extends State<EventVideoHost>
 
   Future<void> _loadLanguage() async {
     try {
-      session.rememberedLanguage = (await SharedPreferences.getInstance())
-          .getString('ce-video-language.v1');
+      final prefs = await SharedPreferences.getInstance();
+      session.savedCountry = prefs.getString('ce-video-country.v1');
+      session.rememberedLanguage = prefs.getString('ce-video-language.v1');
     } catch (_) {
       /* Preferences are optional. */
     }
@@ -113,6 +125,7 @@ class EventVideoHostState extends State<EventVideoHost>
   @override
   void didUpdateWidget(covariant EventVideoHost oldWidget) {
     super.didUpdateWidget(oldWidget);
+    session.setPreferredCountry(widget.preferredCountry);
     if (oldWidget.pageObserver != widget.pageObserver) {
       oldWidget.pageObserver?.unsubscribe(this);
       if (_route != null) widget.pageObserver?.subscribe(this, _route!);
@@ -165,6 +178,7 @@ class EventVideoHostState extends State<EventVideoHost>
   Widget build(BuildContext context) => EventVideoScope(
     session: session,
     player: _player,
+    onVideoInteraction: widget.onVideoInteraction,
     child: ListenableBuilder(
       listenable: session,
       builder:
@@ -311,7 +325,10 @@ class EventVideoSurface extends StatelessWidget {
             child: Center(
               child: FilledButton.icon(
                 key: const ValueKey('video_expand_twitch'),
-                onPressed: () => session.setExpanded(true),
+                onPressed: () {
+                  scope.onVideoInteraction?.call();
+                  session.setExpanded(true);
+                },
                 icon: const Icon(Icons.open_in_full),
                 label: const Text('Watch Twitch in landscape'),
               ),
@@ -326,7 +343,10 @@ class EventVideoSurface extends StatelessWidget {
             color: Colors.black,
             child: Listener(
               behavior: HitTestBehavior.translucent,
-              onPointerDown: (_) => session.revealFlags(),
+              onPointerDown: (_) {
+                scope.onVideoInteraction?.call();
+                session.revealFlags();
+              },
               child:
                   player == null
                       ? const Center(
@@ -482,7 +502,7 @@ List<PopupMenuEntry<String>> eventVideoBoardMenuItems(
         children: [
           Icon(Icons.swap_vert),
           SizedBox(width: 8),
-          Text('Swap board'),
+          Text('Flip board'),
         ],
       ),
     ),

@@ -145,11 +145,12 @@ class ChessBoardBottomNavBar extends ConsumerWidget {
               tooltip: videoVisible ? 'Hide video' : 'Show video',
               onPressed: onVideoToggle,
               icon: Icon(
-                videoVisible ? Icons.videocam : Icons.videocam_off_outlined,
-                color:
-                    videoVisible
-                        ? Theme.of(context).colorScheme.primary
-                        : context.colors.textPrimary,
+                videoVisible
+                    ? Icons.videocam_off_outlined
+                    : Icons.videocam_outlined,
+                // Material camera glyphs have more inset than the SVG controls.
+                size: 28.sp,
+                color: Colors.white,
               ),
             ),
           )

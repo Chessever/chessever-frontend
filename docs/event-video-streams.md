@@ -1,12 +1,25 @@
 # Event video in the app
 
 YouTube, Twitch and Kick appear between the engine row and notation. The camera
-button replaces board swap when the event has valid streams; **Swap board** moves
+button replaces board swap when the event has valid streams; **Flip board** moves
 to the phone/tablet three-dot menu. Hiding video restores the user's engine layout.
 Vertical drags starting on the player scroll the game screen; taps and horizontal
 seeking remain with the video controls. The initial player is paused. Flags appear initially and on player touch, dismiss
-five seconds after interaction, and hold open during scrolling. Each stream has
+three seconds after interaction, and hold open during scrolling. Each stream has
 its own flag and provider label, including streams sharing the same language.
+
+Stream selection uses the locally saved country from a manually selected flag
+(`ce-video-country.v1`), falling back to the current Countrymen selection when no
+valid local preference exists. Exact-country streams come first, then streams
+in the configured commentary-language group, then the event's normal order.
+The first stream in that order is selected paused; an existing event selection
+or playing stream stays selected. If neither country nor language group matches,
+the event default wins. The language groups are maintained in
+`video_country_preference.dart`; multilingual countries may belong to multiple
+groups, and explicit stream language controls group matching.
+
+The camera action is always white: crossed out to hide a visible video, and
+uncrossed to show a hidden video.
 
 ## Flavor configuration
 
@@ -71,7 +84,7 @@ Using the production flavor, or the test flavor with verified test origins and
 streams, the user checks on Android and iOS:
 
 1. Open a streamed game: flags show; video is below the engine slot, above notation,
-   and paused. Flags disappear after five seconds; touch video to reveal them.
+   and paused. Flags disappear after three seconds; touch video to reveal them.
 2. Scroll/select repeated-language flags. The timer restarts; a paused stream stays
    paused, and switching from confirmed playback requests continued playback.
 3. Hide/show video. Normal engine lines return when hidden; Show stays paused.

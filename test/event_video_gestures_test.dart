@@ -22,6 +22,30 @@ class _RecordingPlatformView extends PlatformViewController {
 }
 
 void main() {
+  testWidgets('slow seek claims the player before the game swipe threshold', (
+    tester,
+  ) async {
+    final scroll = ScrollController();
+    final pages = PageController();
+    final view = _RecordingPlatformView();
+    await tester.pumpWidget(_harness(view, scroll, pages));
+    final bounds = tester.getRect(find.byType(PlatformViewSurface));
+    final gesture = await tester.startGesture(
+      bounds.bottomCenter - const Offset(0, 12),
+    );
+    await gesture.moveBy(const Offset(-6, 1));
+    await tester.pump();
+    expect(view.events.whereType<PointerMoveEvent>(), isNotEmpty);
+    await gesture.moveBy(const Offset(-240, 5));
+    await gesture.up();
+    await tester.pumpAndSettle();
+    expect(pages.page, 0);
+    expect(scroll.offset, 0);
+    await tester.pumpWidget(const SizedBox());
+    scroll.dispose();
+    pages.dispose();
+  });
+
   testWidgets(
     'existing eager platform view adopts the scroll-friendly policy',
     (tester) async {
