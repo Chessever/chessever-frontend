@@ -27,6 +27,7 @@ import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_mode
 import 'package:chessever2/screens/tour_detail/games_tour/utils/live_game_position_resolver.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/audio_player_service.dart';
+import 'package:chessever2/utils/chess_title_utils.dart';
 import 'package:chessever2/utils/pgn_clock_utils.dart';
 import 'package:chessever2/utils/pgn_time_control.dart';
 import 'package:chessever2/utils/time_control_bonus.dart';
@@ -1412,16 +1413,28 @@ class ChessBoardScreenNotifierNew
         final blackElo =
             int.tryParse(gameData.headers['BlackElo']?.toString() ?? '') ??
             game.blackPlayer.rating;
-        final whiteFed =
-            (gameData.headers['WhiteFed'] ?? game.whitePlayer.federation)
-                .trim();
-        final blackFed =
-            (gameData.headers['BlackFed'] ?? game.blackPlayer.federation)
-                .trim();
-        final whiteTitle =
-            (gameData.headers['WhiteTitle'] ?? game.whitePlayer.title).trim();
-        final blackTitle =
-            (gameData.headers['BlackTitle'] ?? game.blackPlayer.title).trim();
+        // A header tag outranks the stored player only when it carries a
+        // value. ChessEver-direct events store the normalised title in
+        // `games.players` but relay the feed's `[WhiteTitle "-"]` verbatim, so
+        // taking the header as written turned the stored `GM` into `-` on
+        // every re-parse while the live card path restored it on every clock
+        // tick: the title flipped for the whole game.
+        final whiteFed = _headerIdentityText(
+          gameData.headers['WhiteFed'],
+          fallback: game.whitePlayer.federation,
+        );
+        final blackFed = _headerIdentityText(
+          gameData.headers['BlackFed'],
+          fallback: game.blackPlayer.federation,
+        );
+        final whiteTitle = _headerTitle(
+          gameData.headers['WhiteTitle'],
+          fallback: game.whitePlayer.title,
+        );
+        final blackTitle = _headerTitle(
+          gameData.headers['BlackTitle'],
+          fallback: game.blackPlayer.title,
+        );
         final whiteFideId =
             int.tryParse(gameData.headers['WhiteFideId']?.toString() ?? '') ??
             game.whitePlayer.fideId;
@@ -8157,3 +8170,21 @@ List<Map<String, dynamic>> _analysisLinesWorker(Map<String, dynamic> payload) {
 }
 
 const int kVariationCommentMaxChars = 280;
+
+/// A PGN identity tag (`WhiteFed`, `BlackFed`) as a value, or [fallback] when
+/// the feed wrote a placeholder. `-` is what DGT LiveChess and the FIDE relay
+/// publish for a field they do not know; `?` is the PGN standard's own
+/// unknown. Either one is an absent value, never a federation.
+String _headerIdentityText(String? raw, {required String fallback}) {
+  final value = raw?.trim() ?? '';
+  if (value.isEmpty || value == '-' || value == '?') return fallback;
+  return value;
+}
+
+/// A PGN title tag normalised to the short form the badge renders, or
+/// [fallback] when the tag is absent or a placeholder. The stored title is
+/// already normalised by the writer, so it is returned as-is.
+String _headerTitle(String? raw, {required String fallback}) {
+  final normalized = ChessTitleUtils.normalize(raw);
+  return normalized.isNotEmpty ? normalized : fallback;
+}

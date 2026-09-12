@@ -102,6 +102,8 @@ GamesTourModel _dummyGame({
   String? pgn,
   String? lastMove,
   GameStatus gameStatus = GameStatus.ongoing,
+  PlayerCard? whitePlayer,
+  PlayerCard? blackPlayer,
 }) {
   final player = PlayerCard(
     name: 'Player',
@@ -113,8 +115,8 @@ GamesTourModel _dummyGame({
   );
   return GamesTourModel(
     gameId: 'test-game-1',
-    whitePlayer: player,
-    blackPlayer: player,
+    whitePlayer: whitePlayer ?? player,
+    blackPlayer: blackPlayer ?? player,
     whiteTimeDisplay: '--:--',
     blackTimeDisplay: '--:--',
     whiteClockCentiseconds: 0,
@@ -266,6 +268,72 @@ void main() {
       expect(after.analysisState.movePointer, [0]);
     },
   );
+
+  group('PGN header placeholders never outrank the stored player', () {
+    // ChessEver-direct events store the normalised title in `games.players`
+    // and relay the feed's `[WhiteTitle "-"]` verbatim. Taking the header as
+    // written turned the stored `GM` into `-` on every re-parse while the live
+    // card path restored it on every clock tick, so the board rows flipped
+    // for the whole game.
+    test('a "-" title tag keeps the stored title, a real one still wins', () async {
+      const pgn =
+          '[WhiteTitle "-"]\n[BlackTitle "im"]\n[WhiteFed "-"]\n[BlackFed "?"]\n'
+          '[Result "*"]\n\n1. e4 e5 2. Nf3 *';
+      final game = _dummyGame(
+        pgn: pgn,
+        whitePlayer: PlayerCard(
+          name: 'Dominguez Perez, Leinier',
+          federation: 'USA',
+          title: 'GM',
+          rating: 2657,
+          countryCode: 'USA',
+          team: null,
+        ),
+        blackPlayer: PlayerCard(
+          name: 'Mamedyarov, Shakhriyar',
+          federation: 'AZE',
+          title: 'GM',
+          rating: 2664,
+          countryCode: 'AZE',
+          team: null,
+        ),
+      );
+      final container = _createContainer(
+        gameRepository: _StaticGameRepository(pgn),
+      );
+      addTearDown(container.dispose);
+      final params = ChessBoardProviderParams(game: game, index: 0);
+      container.read(currentlyVisiblePageIndexProvider.notifier).state = 99;
+      final boardWatch = container.listen(
+        chessBoardScreenProviderNew(params),
+        (_, __) {},
+      );
+      addTearDown(boardWatch.close);
+      await _waitFor(
+        container,
+        params,
+        () =>
+            container
+                .read(chessBoardScreenProviderNew(params))
+                .valueOrNull
+                ?.pgnData !=
+            null,
+      );
+
+      // The header merge lands on the notifier's model, which every later
+      // stream tick and navigation hydrate copies into the published state;
+      // the first parse itself keeps the state's initial model. Read the
+      // model the next tick will publish.
+      final parsed =
+          container.read(chessBoardScreenProviderNew(params).notifier).game;
+      expect(parsed.whitePlayer.title, 'GM');
+      expect(parsed.whitePlayer.federation, 'USA');
+      expect(parsed.whitePlayer.countryCode, 'USA');
+      // A header that carries a value still outranks the row, normalised.
+      expect(parsed.blackPlayer.title, 'IM');
+      expect(parsed.blackPlayer.federation, 'AZE');
+    });
+  });
 
   group('Live FEN placeholder initialization', () {
     test('ongoing game with valid FEN seeds analysisState.position', () {
