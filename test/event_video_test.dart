@@ -36,6 +36,98 @@ class FakeVideoRepository implements EventVideoRepository {
 
 void main() {
   test(
+    'web platform contract supports legacy and explicitly enabled mobile streams',
+    () {
+      final base = <String, dynamic>{
+        'id': 's',
+        'label': 'Stream',
+        'url': 'https://youtu.be/abcdefghijk',
+      };
+      for (final platforms in [
+        null,
+        <String>[],
+        ['web'],
+        ['desktop'],
+        ['mobile'],
+        ['web', 'mobile'],
+        ['mobile', 'mobile'],
+      ]) {
+        final stream =
+            EventVideoStream.readList([
+              {...base, if (platforms != null) 'platforms': platforms},
+            ]).single;
+        expect(
+          stream.supportsPlatform(VideoClientPlatform.mobile),
+          platforms == null || platforms.contains('mobile'),
+        );
+      }
+      for (final invalid in [
+        null,
+        'mobile',
+        ['android'],
+        ['mobile', 1],
+      ]) {
+        expect(
+          EventVideoStream.readList([
+            {...base, 'platforms': invalid},
+          ]),
+          isEmpty,
+        );
+      }
+      final stream =
+          EventVideoStream.readList([
+            {
+              ...base,
+              'language': 'hi-IN',
+              'publication': {'language': 'en'},
+            },
+          ]).single;
+      expect(stream.languageKey, 'hi');
+      expect(stream.flagCode, 'IN');
+    },
+  );
+
+  test(
+    'mobile filtering precedes preference selection and refresh removes excluded playback',
+    () async {
+      List<EventVideoStream> streams(List<String> targets) =>
+          EventVideoStream.readList([
+            {
+              'id': 'preferred',
+              'label': 'English',
+              'url': 'https://youtu.be/abcdefghijk',
+              'platforms': targets,
+              'preferred': true,
+            },
+            {
+              'id': 'mobile',
+              'label': 'Deutsch',
+              'url': 'https://twitch.tv/fixture_chess',
+              'platforms': ['mobile'],
+            },
+          ]);
+      final repo = FakeVideoRepository(streams(['web']));
+      final session = EventVideoSession(repository: repo, savedCountry: 'GB');
+      addTearDown(session.dispose);
+      session.openGame(gameId: 'g', tourId: 'tour', roundId: 'round');
+      await Future<void>.delayed(Duration.zero);
+      expect(session.streams.map((s) => s.id), ['mobile']);
+      expect(session.selected!.id, 'mobile');
+      repo.streams = streams(['mobile']);
+      await session.refresh();
+      session.select('preferred');
+      session.reportPlayback(true, session.playerRevision);
+      repo.streams = streams(['desktop']);
+      await session.refresh();
+      expect(session.selected!.id, 'mobile');
+      expect(session.playing, isFalse);
+      repo.streams = streams(['web']).take(1).toList();
+      await session.refresh();
+      expect(session.hasVideo, isFalse);
+    },
+  );
+
+  test(
     'country groups sort matching streams first and save manual country',
     () async {
       String? stored;
