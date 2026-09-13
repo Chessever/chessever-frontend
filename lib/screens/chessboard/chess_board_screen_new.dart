@@ -3010,6 +3010,7 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
         canPop: false,
         onPopInvokedWithResult: (didPop, result) {
           if (didPop) return;
+          if (_eventVideoHostKey.currentState?.exitFullscreen() == true) return;
           final video = _eventVideoHostKey.currentState?.session;
           if (video?.expanded == true) {
             video!.setExpanded(false);

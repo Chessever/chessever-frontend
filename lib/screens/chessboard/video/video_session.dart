@@ -69,6 +69,13 @@ class EventVideoSession extends ChangeNotifier {
   List<EventVideoStream> streams = const [];
   EventVideoStream? selected;
   bool visible;
+  bool muted = false;
+
+  void reportMuted(bool value, int revision) {
+    if (_disposed || revision != playerRevision) return;
+    muted = value;
+  }
+
   bool flagsVisible = false, playing = false, foreground = true;
   bool expanded = false;
   bool failed = false;
@@ -117,7 +124,7 @@ class EventVideoSession extends ChangeNotifier {
       // this event. Permanent removal or a changed selection stops it below.
       unawaited(refresh());
     }
-    revealFlags(notify: false);
+    if (newEvent) revealFlags(notify: false);
     notifyListeners();
   }
 
@@ -158,7 +165,7 @@ class EventVideoSession extends ChangeNotifier {
           (streams.isEmpty ? null : streams.first);
       if (previous?.identity != selected?.identity) {
         stopPlayback(notify: false);
-        revealFlags(notify: false);
+        if (previous == null) revealFlags(notify: false);
       }
       failed = false;
       notifyListeners();

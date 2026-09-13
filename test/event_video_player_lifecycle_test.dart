@@ -33,6 +33,10 @@ class _Controller extends PlatformWebViewController {
   _Navigation? navigation;
   JavaScriptChannelParams? channel;
   bool cancelOnBlank = false;
+  Object muteSnapshot = 'null';
+  @override
+  Future<Object> runJavaScriptReturningResult(String script) async =>
+      muteSnapshot;
   @override
   Future<void> setJavaScriptMode(JavaScriptMode mode) async {}
   @override
@@ -146,6 +150,74 @@ void main() {
     platform = _WebViewPlatform();
     WebViewPlatform.instance = platform;
   });
+
+  testWidgets(
+    'Android fullscreen overlays the board without pausing playback',
+    (tester) async {
+      final h = _Harness();
+      await tester.pumpWidget(h.widget);
+      await _flushPlayer(tester);
+      final controller = platform.controllers.single;
+      final loads = controller.documents.length;
+      final revision = h.session.playerRevision;
+      h.session.reportPlayback(true, revision);
+      var closed = 0;
+      h.player.showFullscreen(
+        const Text('Fullscreen native video'),
+        () => closed++,
+      );
+      await tester.pump();
+      expect(find.text('Fullscreen native video'), findsOneWidget);
+      expect(h.session.foreground, isTrue);
+      expect(h.session.playing, isTrue);
+      expect(h.session.playerRevision, revision);
+      expect(controller.documents.length, loads);
+      await tester.tap(find.byTooltip('Exit fullscreen'));
+      await tester.pump();
+      expect(closed, 1);
+      expect(h.session.playing, isTrue);
+      h.player.showFullscreen(
+        const Text('Fullscreen native video'),
+        () => closed++,
+      );
+      expect(h.key.currentState!.exitFullscreen(), isTrue);
+      expect(closed, 2);
+      h.player.showFullscreen(
+        const Text('Fullscreen native video'),
+        () => closed++,
+      );
+      h.session.setForeground(false);
+      await _flushPlayer(tester);
+      expect(h.player.fullscreenView, isNull);
+      expect(closed, 3);
+      await tester.pumpWidget(const SizedBox());
+      await tester.pump();
+    },
+  );
+
+  testWidgets(
+    'switch captures native mute state and applies it to the next video',
+    (tester) async {
+      final h = _Harness();
+      await tester.pumpWidget(h.widget);
+      await _flushPlayer(tester);
+      final controller = platform.controllers.single;
+      controller.muteSnapshot = true;
+      h.session.reportPlayback(true, h.session.playerRevision);
+      h.session.select('english-second');
+      await _flushPlayer(tester);
+      expect(h.session.muted, isTrue);
+      expect(controller.documents.last, contains('mute:1'));
+      expect(controller.documents.last, contains('autoplay:1'));
+      controller.muteSnapshot = false;
+      h.session.select('english-main');
+      await _flushPlayer(tester);
+      expect(h.session.muted, isFalse);
+      expect(controller.documents.last, contains('mute:0'));
+      await tester.pumpWidget(const SizedBox());
+      await tester.pump();
+    },
+  );
 
   testWidgets(
     'YouTube watch links open externally without replacing the player',

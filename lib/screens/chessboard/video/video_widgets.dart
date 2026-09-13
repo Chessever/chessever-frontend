@@ -156,6 +156,7 @@ class EventVideoHostState extends State<EventVideoHost>
     // Rotation can replace an inline Twitch view with the expand action.
     // Stop the now-invisible player instead of leaving its audio running.
     if (!mounted ||
+        _player?.fullscreenView != null ||
         session.expanded ||
         session.selected?.source.platform != VideoPlatform.twitch) {
       return;
@@ -179,13 +180,19 @@ class EventVideoHostState extends State<EventVideoHost>
     super.dispose();
   }
 
+  bool exitFullscreen() {
+    if (_player?.fullscreenView == null) return false;
+    _player!.exitFullscreen();
+    return true;
+  }
+
   @override
   Widget build(BuildContext context) => EventVideoScope(
     session: session,
     player: _player,
     onVideoInteraction: widget.onVideoInteraction,
     child: ListenableBuilder(
-      listenable: session,
+      listenable: Listenable.merge([session, if (_player != null) _player!]),
       builder:
           (context, _) => Stack(
             fit: StackFit.expand,
@@ -193,6 +200,32 @@ class EventVideoHostState extends State<EventVideoHost>
               widget.child,
               if (session.expanded && session.showVideo)
                 const Positioned.fill(child: _ExpandedEventVideo()),
+              if (_player?.fullscreenView case final Widget view)
+                Positioned.fill(
+                  child: Material(
+                    color: Colors.black,
+                    child: Stack(
+                      fit: StackFit.expand,
+                      children: [
+                        view,
+                        Positioned(
+                          top: 0,
+                          right: 0,
+                          child: SafeArea(
+                            child: IconButton(
+                              tooltip: 'Exit fullscreen',
+                              onPressed: _player!.exitFullscreen,
+                              icon: const Icon(
+                                Icons.fullscreen_exit,
+                                color: Colors.white,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
             ],
           ),
     ),
@@ -284,21 +317,14 @@ class EventVideoFlags extends StatelessWidget {
   }
 }
 
-class EventVideoEngineSlot extends StatelessWidget {
-  const EventVideoEngineSlot({super.key, required this.engine});
-  final Widget engine;
+class EventVideoFlagSlot extends StatelessWidget {
+  const EventVideoFlagSlot({super.key});
   @override
   Widget build(BuildContext context) {
     final session = EventVideoScope.maybeOf(context)?.session;
-    final showFlags =
-        session != null && session.showVideo && session.flagsVisible;
-    return Stack(
-      alignment: Alignment.topLeft,
-      children: [
-        Offstage(offstage: showFlags, child: engine),
-        if (showFlags) const EventVideoFlags(),
-      ],
-    );
+    return session?.showVideo == true && session!.flagsVisible
+        ? const EventVideoFlags()
+        : const SizedBox.shrink();
   }
 }
 
@@ -463,8 +489,9 @@ class EventVideoGameLayout extends StatelessWidget {
       Widget lower() => Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          EventVideoEngineSlot(engine: engine),
+          const EventVideoFlagSlot(),
           const EventVideoSurface(),
+          engine,
           SizedBox(
             height: math.max(260, constraints.maxHeight * .55),
             child: analysis,

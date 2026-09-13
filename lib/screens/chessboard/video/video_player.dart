@@ -64,6 +64,8 @@ const _stoppedVideoHtml =
     '<!doctype html><html><body style="background:#000"></body></html>';
 
 abstract class EventVideoPlayer extends ChangeNotifier {
+  Widget? get fullscreenView => null;
+  void exitFullscreen() {}
   bool get failed;
   void synchronize(EventVideoSession session);
   Widget buildView();
@@ -73,6 +75,32 @@ abstract class EventVideoPlayer extends ChangeNotifier {
 /// Controller outlives the game page/platform widget. The GlobalKey transfers
 /// its sole view between active pages and the expanded viewer in the same frame.
 class NativeEventVideoPlayer extends EventVideoPlayer {
+  Widget? _fullscreenView;
+  VoidCallback? _hideFullscreen;
+  @override
+  Widget? get fullscreenView => _fullscreenView;
+
+  void showFullscreen(Widget view, VoidCallback onHidden) {
+    if (_disposed || !_acceptsDocumentEvents) {
+      onHidden();
+      return;
+    }
+    exitFullscreen();
+    _fullscreenView = view;
+    _hideFullscreen = onHidden;
+    notifyListeners();
+  }
+
+  @override
+  void exitFullscreen() {
+    final hide = _hideFullscreen;
+    final hadView = _fullscreenView != null;
+    _hideFullscreen = null;
+    _fullscreenView = null;
+    hide?.call();
+    if (hadView && !_disposed) notifyListeners();
+  }
+
   NativeEventVideoPlayer(
     this.embedOrigin, {
     Future<bool> Function(Uri)? openExternal,
@@ -113,6 +141,15 @@ class NativeEventVideoPlayer extends EventVideoPlayer {
     if (controller.platform is AndroidWebViewController) {
       await (controller.platform as AndroidWebViewController)
           .setMediaPlaybackRequiresUserGesture(false);
+      await (controller.platform as AndroidWebViewController)
+          .setCustomWidgetCallbacks(
+            onShowCustomWidget: showFullscreen,
+            onHideCustomWidget: () {
+              // Android already closed its custom view; do not call it again.
+              _hideFullscreen = null;
+              exitFullscreen();
+            },
+          );
     }
     await controller.addJavaScriptChannel(
       'ChessVideo',
@@ -123,6 +160,8 @@ class NativeEventVideoPlayer extends EventVideoPlayer {
           if (data is! Map || data['revision'] != _revision) return;
           if (data['type'] == 'playback' && data['playing'] is bool) {
             _session?.reportPlayback(data['playing'] as bool, _revision);
+          } else if (data['type'] == 'muted' && data['muted'] is bool) {
+            _session?.reportMuted(data['muted'] as bool, _revision);
           } else if (data['type'] == 'error') {
             _session?.reportPlayback(false, _revision);
             _setFailed(true);
@@ -199,6 +238,7 @@ class NativeEventVideoPlayer extends EventVideoPlayer {
   void synchronize(EventVideoSession session) {
     _session = session;
     if (_revision == session.playerRevision) return;
+    exitFullscreen();
     _revision = session.playerRevision;
     _documentRevision = -1;
     _requestedRevision = -1;
@@ -213,6 +253,25 @@ class NativeEventVideoPlayer extends EventVideoPlayer {
     unawaited(
       Future<void>(() async {
         try {
+          if (_disposed || generation != _generation) return;
+          // Capture a just-changed mute button before replacing the document,
+          // including a switch that happens before the next bridge poll.
+          if (_controller != null) {
+            try {
+              final value = await _controller!.runJavaScriptReturningResult(
+                'window.chessVideoMuted ? window.chessVideoMuted() : null',
+              );
+              if (_disposed || generation != _generation) return;
+              if (value == true || value == 'true') {
+                session.reportMuted(true, _revision);
+              }
+              if (value == false || value == 'false') {
+                session.reportMuted(false, _revision);
+              }
+            } catch (_) {
+              // Providers without a sound API retain the last known setting.
+            }
+          }
           if (_disposed || generation != _generation) return;
           final selected = session.selected;
           if (!session.showVideo ||
@@ -234,6 +293,7 @@ class NativeEventVideoPlayer extends EventVideoPlayer {
               embedOrigin,
               revision: _revision,
               play: session.playRequested,
+              muted: session.muted,
             ),
             baseUrl: '${embedOrigin.toString()}/',
           );
@@ -278,6 +338,7 @@ class NativeEventVideoPlayer extends EventVideoPlayer {
   @override
   void dispose() {
     _disposed = true;
+    exitFullscreen();
     _generation++;
     // WKWebView/Android controller has no dispose API. Blank it explicitly so
     // audio stops even before the final platform view is detached.
@@ -297,6 +358,7 @@ String videoPlayerHtml(
   Uri origin, {
   required int revision,
   required bool play,
+  bool muted = false,
 }) {
   final id = jsonEncode(source.id),
       host = jsonEncode(origin.host),
@@ -307,15 +369,16 @@ String videoPlayerHtml(
 <script>
 function onYouTubeIframeAPIReady() {
   new YT.Player('player', {width:'100%', height:'100%', videoId:$id,
-    playerVars:{autoplay:${play ? 1 : 0}, playsinline:1, origin:$parent, mute:0},
-    events:{onStateChange:e=>send('playback',{playing:e.data===1}), onError:()=>send('error',{})}});
+    playerVars:{autoplay:${play ? 1 : 0}, playsinline:1, origin:$parent, mute:${muted ? 1 : 0}},
+    events:{onReady:e=>{${muted ? 'e.target.mute();' : ''}trackMute(()=>e.target.isMuted());},onStateChange:e=>send('playback',{playing:e.data===1}), onError:()=>send('error',{})}});
 }
 </script><script src="https://www.youtube.com/iframe_api" onerror="send('error',{})"></script>''',
     VideoPlatform.twitch => '''
 <script src="https://player.twitch.tv/js/embed/v1.js" onerror="send('error',{})"></script>
 <script>
 try {
-  const p=new Twitch.Player('player',{width:'100%',height:'100%',channel:$id,parent:[$host],autoplay:$autoplay,muted:false});
+  const p=new Twitch.Player('player',{width:'100%',height:'100%',channel:$id,parent:[$host],autoplay:$autoplay,muted:$muted});
+  p.addEventListener(Twitch.Player.READY,()=>{p.setMuted($muted);trackMute(()=>p.getMuted());});
   p.addEventListener(Twitch.Player.PLAYING,()=>send('playback',{playing:true}));
   p.addEventListener(Twitch.Player.PAUSE,()=>send('playback',{playing:false}));
   p.addEventListener(Twitch.Player.ENDED,()=>send('playback',{playing:false}));
@@ -328,7 +391,7 @@ try {
     VideoPlatform.kick => '''
 <script>
 const frame=document.createElement('iframe');
-frame.src='https://player.kick.com/'+encodeURIComponent($id)+'?autoplay=$autoplay&muted=false';
+frame.src='https://player.kick.com/'+encodeURIComponent($id)+'?autoplay=$autoplay&muted=$muted';
 frame.allow='autoplay; fullscreen; picture-in-picture; encrypted-media';
 frame.allowFullscreen=true;frame.title='Kick video';
 frame.referrerPolicy='strict-origin-when-cross-origin';
@@ -340,5 +403,11 @@ document.getElementById('player').replaceWith(frame);
 <style>html,body,#player,iframe{margin:0;width:100%;height:100%;border:0;background:#000;overflow:hidden;}</style>
 </head><body><div id="player"></div><script>
 function send(type,data){ChessVideo.postMessage(JSON.stringify({type,revision:$revision,...data}));}
+function trackMute(read){
+  window.chessVideoMuted=read;
+  let last;
+  const timer=setInterval(()=>{try{const muted=read();if(typeof muted==='boolean'&&muted!==last){last=muted;send('muted',{muted});}}catch(_){}},250);
+  window.addEventListener('pagehide',()=>clearInterval(timer),{once:true});
+}
 </script>$provider</body></html>''';
 }
