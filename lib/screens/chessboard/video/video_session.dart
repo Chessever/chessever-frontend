@@ -90,7 +90,6 @@ class EventVideoSession extends ChangeNotifier {
 
   bool get hasVideo => selected != null;
   bool get showVideo => hasVideo && visible;
-  bool get compactEngine => showVideo;
   bool isActive(String id) => gameId == id;
 
   void openGame({

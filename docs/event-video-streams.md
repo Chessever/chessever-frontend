@@ -1,7 +1,8 @@
 # Event video in the app
 
 YouTube, Twitch and Kick appear above the engine row and notation. Flags stay
-above the video and do not replace engine lines. Switching games within the
+above the video and do not replace engine lines. Engine lines use the saved
+line count and layout, including when video is visible. Switching games within the
 event does not reveal or restart the flag timer. The camera
 button replaces board swap when the event has valid streams; **Flip board** moves
 to the phone/tablet three-dot menu. Hiding video restores the user's engine layout.

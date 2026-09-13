@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:math' as math;
+import 'package:flutter/foundation.dart';
 import 'package:country_flags/country_flags.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -202,28 +203,38 @@ class EventVideoHostState extends State<EventVideoHost>
                 const Positioned.fill(child: _ExpandedEventVideo()),
               if (_player?.fullscreenView case final Widget view)
                 Positioned.fill(
-                  child: Material(
-                    color: Colors.black,
-                    child: Stack(
-                      fit: StackFit.expand,
-                      children: [
-                        view,
-                        Positioned(
-                          top: 0,
-                          right: 0,
-                          child: SafeArea(
-                            child: IconButton(
-                              tooltip: 'Exit fullscreen',
-                              onPressed: _player!.exitFullscreen,
-                              icon: const Icon(
-                                Icons.fullscreen_exit,
-                                color: Colors.white,
-                              ),
+                  child: LayoutBuilder(
+                    builder:
+                        (context, constraints) => RotatedBox(
+                          key: const ValueKey('native_video_landscape'),
+                          quarterTurns:
+                              constraints.maxHeight > constraints.maxWidth
+                                  ? 1
+                                  : 0,
+                          child: Material(
+                            color: Colors.black,
+                            child: Stack(
+                              fit: StackFit.expand,
+                              children: [
+                                view,
+                                Positioned(
+                                  top: 0,
+                                  right: 0,
+                                  child: SafeArea(
+                                    child: IconButton(
+                                      tooltip: 'Exit fullscreen',
+                                      onPressed: _player!.exitFullscreen,
+                                      icon: const Icon(
+                                        Icons.fullscreen_exit,
+                                        color: Colors.white,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
                         ),
-                      ],
-                    ),
                   ),
                 ),
             ],
@@ -340,10 +351,13 @@ class EventVideoSurface extends StatelessWidget {
       builder: (context, constraints) {
         final twitch =
             session.selected!.source.platform == VideoPlatform.twitch;
-        final height = math.max(
-          twitch ? 300.0 : 200.0,
-          constraints.maxWidth * 9 / 16,
-        );
+        final height =
+            expanded && constraints.hasBoundedHeight
+                ? constraints.maxHeight
+                : math.max(
+                  twitch ? 300.0 : 200.0,
+                  constraints.maxWidth * 9 / 16,
+                );
         // Never mount a second native view behind the expanded one.
         if (session.expanded && !expanded) {
           return SizedBox(
@@ -406,7 +420,20 @@ class EventVideoSurface extends StatelessWidget {
                                       ),
                                     ),
                                   ),
-                                // Fullscreen affordance sits outside the provider's own controls.
+                                if (defaultTargetPlatform ==
+                                        TargetPlatform.iOS &&
+                                    !expanded &&
+                                    session.flagsVisible)
+                                  Positioned(
+                                    bottom: 4,
+                                    right: 4,
+                                    child: IconButton.filledTonal(
+                                      tooltip: 'Fullscreen video',
+                                      onPressed:
+                                          () => session.setExpanded(true),
+                                      icon: const Icon(Icons.fullscreen),
+                                    ),
+                                  ),
                               ],
                             ),
                       ),
@@ -455,10 +482,14 @@ class _ExpandedEventVideo extends StatelessWidget {
                       ),
                     ),
                     if (session.flagsVisible) const EventVideoFlags(),
-                    const Expanded(
-                      child: SingleChildScrollView(
-                        child: EventVideoSurface(expanded: true),
-                      ),
+                    Expanded(
+                      child:
+                          session.selected?.source.platform ==
+                                  VideoPlatform.twitch
+                              ? const SingleChildScrollView(
+                                child: EventVideoSurface(expanded: true),
+                              )
+                              : const EventVideoSurface(expanded: true),
                     ),
                   ],
                 ),

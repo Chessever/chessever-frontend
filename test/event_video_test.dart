@@ -565,10 +565,10 @@ void main() {
       session.reportPlayback(true, revision); // stale old-player event
       expect(session.playing, isFalse);
       session.toggle();
-      expect(session.compactEngine, isFalse);
+      expect(session.showVideo, isFalse);
       expect(session.playRequested, isFalse);
       session.toggle();
-      expect(session.compactEngine, isTrue);
+      expect(session.showVideo, isTrue);
       expect(session.playRequested, isFalse);
       session.reportPlayback(true, session.playerRevision);
       session.setForeground(false);

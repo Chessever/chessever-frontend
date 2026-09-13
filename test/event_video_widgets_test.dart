@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:chessever2/screens/chessboard/video/video_player.dart';
 import 'package:chessever2/screens/chessboard/video/video_session.dart';
@@ -98,6 +99,49 @@ Widget harness(
 );
 
 void main() {
+  testWidgets(
+    'iPhone fullscreen shows one landscape player without restarting it',
+    (tester) async {
+      debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+      addTearDown(() => debugDefaultTargetPlatformOverride = null);
+      await tester.binding.setSurfaceSize(const Size(400, 800));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      final session = EventVideoSession(
+        repository: FakeVideoRepository(fixtureVideos()),
+      );
+      final player = FakePlayer();
+      await tester.pumpWidget(harness(session, player));
+      await tester.pump();
+      session.reportPlayback(true, session.playerRevision);
+      final loads = player.loads;
+      final surface = tester.getRect(
+        find.byKey(const ValueKey('event_video_surface')),
+      );
+      final button = tester.getRect(find.byTooltip('Fullscreen video'));
+      expect(surface.right - button.right, inInclusiveRange(4, 12));
+      expect(surface.bottom - button.bottom, inInclusiveRange(4, 12));
+      await tester.pump(const Duration(seconds: 3));
+      expect(find.byTooltip('Fullscreen video'), findsNothing);
+      await tester.tap(find.text('Player'));
+      await tester.pump();
+      expect(find.byTooltip('Fullscreen video'), findsOneWidget);
+      await tester.tap(find.byTooltip('Fullscreen video'));
+      await tester.pump();
+      expect(session.expanded, isTrue);
+      expect(session.playing, isTrue);
+      expect(player.loads, loads);
+      expect(find.text('Player'), findsOneWidget);
+      final size = tester.getSize(find.byKey(player.viewKey));
+      expect(size.width, greaterThan(size.height));
+      await tester.tap(find.byKey(const ValueKey('video_close_expanded')));
+      await tester.pump();
+      expect(session.expanded, isFalse);
+      expect(find.byTooltip('Fullscreen video'), findsOneWidget);
+      await tester.pumpWidget(const SizedBox());
+      debugDefaultTargetPlatformOverride = null;
+    },
+  );
+
   testWidgets(
     'initial flags, three-second dismissal, taps do not consume player input',
     (tester) async {

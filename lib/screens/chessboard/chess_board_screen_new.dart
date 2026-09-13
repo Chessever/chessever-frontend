@@ -7743,7 +7743,6 @@ class _AnalysisGameBody extends ConsumerWidget {
             board: Column(mainAxisSize: MainAxisSize.min, children: boardHeaderChildren),
             engine: showPv ? _PrincipalVariationList(
               key: e2eKey(E2eIds.boardPvList), index: index, state: state, game: game,
-              compact: true,
             ) : const SizedBox.shrink(),
             analysis: buildAnalysisView(),
           );
@@ -13344,13 +13343,11 @@ const int _variationCommentMaxChars = 280;
 
 class _PrincipalVariationList extends ConsumerStatefulWidget {
   final int index;
-  final bool compact;
   final ChessBoardStateNew state;
   final GamesTourModel game;
 
   const _PrincipalVariationList({
     super.key,
-    this.compact = false,
     required this.index,
     required this.state,
     required this.game,
@@ -13596,7 +13593,7 @@ class _PrincipalVariationListState
 
     // Get user's PV count setting (caps at 5)
     final engineSettings = ref.watch(engineSettingsProviderNew).valueOrNull;
-    final multiPV = widget.compact ? 1 : (engineSettings?.multiPvForLichess() ?? 3);
+    final multiPV = engineSettings?.multiPvForLichess() ?? 3;
 
     // Get figurine notation setting and piece assets for PV card rendering
     final useFigurine = ref.watch(
@@ -14110,7 +14107,7 @@ class _PrincipalVariationListState
 
     // Traditional layout: stack the engine lines vertically instead of the
     // swipeable cards. Reuses the same tokens/spans/interactions.
-    final linesView = widget.compact ? EngineLinesView.list : (engineSettings?.engineLinesView ?? EngineLinesView.list);
+    final linesView = engineSettings?.engineLinesView ?? EngineLinesView.list;
     if (linesView == EngineLinesView.list) {
       return _buildPvListLayout(
         context: context,
