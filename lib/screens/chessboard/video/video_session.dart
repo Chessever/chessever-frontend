@@ -59,7 +59,6 @@ class EventVideoSession extends ChangeNotifier {
       if (selected?.identity != next.identity) {
         selected = next;
         stopPlayback(notify: false);
-        revealFlags(notify: false);
       }
     }
     notifyListeners();
@@ -69,20 +68,30 @@ class EventVideoSession extends ChangeNotifier {
   List<EventVideoStream> streams = const [];
   EventVideoStream? selected;
   bool visible;
+  bool playing = false, foreground = true;
+
+  /// Linear choice flow: the stream area shows the stream picker until the
+  /// user picks one, then the player fades in. Reset at every switch-on moment
+  /// (show toggle, new event/round) and kept across same-round game changes so
+  /// the video never drops while swiping games.
+  bool streamChosen = false;
+
+  /// Provider chrome starts hidden so the stream surface stays clean. The
+  /// first deliberate tap on the stream reveals it: the player reloads with
+  /// the provider controls at the live edge, keeping playback and mute.
+  bool controlsVisible = false;
+
+  /// Last mute state reported by the embedded provider player. Carried into
+  /// every later embed document, so switching streams never resets mute. Only
+  /// the next document consumes it, so reporting it never rebuilds the mounted
+  /// platform view.
   bool muted = false;
-
-  void reportMuted(bool value, int revision) {
-    if (_disposed || revision != playerRevision) return;
-    muted = value;
-  }
-
-  bool flagsVisible = false, playing = false, foreground = true;
   bool expanded = false;
   bool failed = false;
   int playerRevision = 0;
   bool playRequested = false;
-  Timer? _refreshTimer, _flagsTimer;
-  bool _disposed = false, _scrolling = false;
+  Timer? _refreshTimer;
+  bool _disposed = false;
   int _scopeRevision = 0;
   final Set<int> _pending = {};
   final Map<String, EventVideoStream> _ranking = {};
@@ -90,7 +99,6 @@ class EventVideoSession extends ChangeNotifier {
 
   bool get hasVideo => selected != null;
   bool get showVideo => hasVideo && visible;
-  bool get compactEngine => showVideo;
   bool isActive(String id) => gameId == id;
 
   void openGame({
@@ -103,7 +111,6 @@ class EventVideoSession extends ChangeNotifier {
         this.roundId == roundId) {
       return;
     }
-    _scrolling = false;
     final newEvent = this.tourId != tourId;
     final newScope = newEvent || this.roundId != roundId;
     if (newEvent) {
@@ -113,6 +120,10 @@ class EventVideoSession extends ChangeNotifier {
       stopPlayback(notify: false);
       streams = const [];
       selected = null;
+      // A new event is a fresh switch-on: choose again before the video fades
+      // in. A new round of the same event keeps the running stream instead.
+      streamChosen = false;
+      controlsVisible = false;
     }
     this.gameId = gameId;
     this.tourId = tourId;
@@ -124,7 +135,6 @@ class EventVideoSession extends ChangeNotifier {
       // this event. Permanent removal or a changed selection stops it below.
       unawaited(refresh());
     }
-    if (newEvent) revealFlags(notify: false);
     notifyListeners();
   }
 
@@ -165,7 +175,13 @@ class EventVideoSession extends ChangeNotifier {
           (streams.isEmpty ? null : streams.first);
       if (previous?.identity != selected?.identity) {
         stopPlayback(notify: false);
-        if (previous == null) revealFlags(notify: false);
+        // The stream the reader was watching no longer exists in this scope:
+        // offer the choice again instead of silently playing another one.
+        if (previous != null &&
+            !streams.any((s) => s.identity == previous.identity)) {
+          streamChosen = false;
+          controlsVisible = false;
+        }
       }
       failed = false;
       notifyListeners();
@@ -186,15 +202,20 @@ class EventVideoSession extends ChangeNotifier {
   void select(String id) {
     final matches = streams.where((s) => s.id == id);
     if (matches.isEmpty) return;
+    streamChosen = true;
     _selectionLocked = true;
     final next = matches.first;
-    if (selected?.identity != next.identity) {
-      final continuePlaying = playing;
-      selected = next;
-      playing = false;
-      playRequested = continuePlaying;
-      playerRevision++;
-    }
+    // Tapping a tile is the play gesture: choosing starts the stream, so the
+    // reader never has to press the provider's own play button. The revision
+    // always advances so re-picking an already-loaded stream reloads with
+    // autoplay instead of leaving its paused document in place.
+    selected = next;
+    playing = false;
+    playRequested = true;
+    playerRevision++;
+    // Every new choice opens clean: the provider chrome is hidden until the
+    // reader taps the stream themselves.
+    controlsVisible = false;
     _selections[tourId] = id;
     rememberedLanguage = next.languageKey;
     final country = normalizeVideoCountry(next.flagCode);
@@ -210,7 +231,6 @@ class EventVideoSession extends ChangeNotifier {
     if (save != null) {
       unawaited(save(next.languageKey).catchError((Object _) {}));
     }
-    revealFlags(notify: false);
     notifyListeners();
   }
 
@@ -221,19 +241,35 @@ class EventVideoSession extends ChangeNotifier {
     // No rebuild: provider state events must not recreate platform views.
   }
 
+  void reportMuted(bool value, int revision) {
+    if (_disposed || revision != playerRevision) return;
+    muted = value;
+    // No rebuild: the next embed document consumes this on load.
+  }
+
+  /// Reveals the provider's own controls on a deliberate tap. The player
+  /// reloads at the live edge with the controls enabled, keeping the current
+  /// playback and mute state, so the overlay is always one tap away.
+  void revealControls() {
+    if (_disposed || controlsVisible || !showVideo) return;
+    controlsVisible = true;
+    playRequested = playing || playRequested;
+    playing = false;
+    playerRevision++;
+    notifyListeners();
+  }
+
   void toggle() {
-    _scrolling = false;
     visible = !visible;
     final save = saveVisibility;
     if (save != null) {
       unawaited(save(visible).catchError((Object _) {}));
     }
     stopPlayback(notify: false);
+    controlsVisible = false;
     if (visible) {
-      revealFlags(notify: false);
-    } else {
-      flagsVisible = false;
-      _flagsTimer?.cancel();
+      // Showing the video is a switch-on: choose first, then fade in.
+      streamChosen = false;
     }
     notifyListeners();
   }
@@ -246,18 +282,31 @@ class EventVideoSession extends ChangeNotifier {
     if (notify && !_disposed) notifyListeners();
   }
 
-  void setForeground(bool value) {
+  /// True when the stream was actually playing at the moment the app was
+  /// backgrounded. Returning then reloads it at the live edge and keeps going
+  /// instead of dropping the viewer back to paused.
+  bool _wasStreamingOnBackground = false;
+
+  void setForeground(bool value, {bool resumeAfterBackground = false}) {
     if (_disposed || foreground == value) return;
     foreground = value;
+    if (!value) {
+      // Capture the live state before the document is cleared.
+      _wasStreamingOnBackground = playing;
+    }
     // Suspending clears the native document. Returning must issue a fresh
     // revision even when the same stream and player widget stayed mounted.
     stopPlayback(notify: false);
-    if (!value) {
-      _scrolling = false;
-      _flagsTimer?.cancel();
-      flagsVisible = false;
-    } else {
-      revealFlags(notify: false);
+    if (value) {
+      if (resumeAfterBackground &&
+          _wasStreamingOnBackground &&
+          showVideo &&
+          streamChosen) {
+        // App background return continues a stream that was live; the reload
+        // starts it at the provider's live edge.
+        playRequested = true;
+      }
+      _wasStreamingOnBackground = false;
       unawaited(refresh());
     }
     notifyListeners();
@@ -266,34 +315,13 @@ class EventVideoSession extends ChangeNotifier {
   void setExpanded(bool value) {
     if (!value) stopPlayback(notify: false);
     expanded = value;
-    revealFlags(notify: false);
     notifyListeners();
-  }
-
-  void revealFlags({bool notify = true}) {
-    _flagsTimer?.cancel();
-    if (!showVideo || !foreground) return;
-    flagsVisible = true;
-    if (!_scrolling) {
-      _flagsTimer = Timer(const Duration(seconds: 3), () {
-        if (_disposed) return;
-        flagsVisible = false;
-        notifyListeners();
-      });
-    }
-    if (notify) notifyListeners();
-  }
-
-  void setScrolling(bool value) {
-    _scrolling = value;
-    revealFlags();
   }
 
   @override
   void dispose() {
     _disposed = true;
     _refreshTimer?.cancel();
-    _flagsTimer?.cancel();
     repository?.close();
     super.dispose();
   }

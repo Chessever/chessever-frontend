@@ -1,7 +1,11 @@
 import 'dart:async';
 import 'dart:math' as math;
+import 'package:chessever2/theme/app_colors.dart';
+import 'package:chessever2/utils/svg_asset.dart';
+import 'package:chessever2/widgets/svg_widget.dart';
 import 'package:country_flags/country_flags.dart';
 import 'package:flutter/material.dart';
+import 'package:motor/motor.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'video_player.dart';
 import 'video_repository.dart';
@@ -98,6 +102,7 @@ class EventVideoHostState extends State<EventVideoHost>
         widget.player ??
         (config == null ? null : NativeEventVideoPlayer(config.embedOrigin));
     session.addListener(_synchronize);
+    _player?.addListener(_checkFullscreenExit);
     session.setPreferredCountry(widget.preferredCountry);
     if (widget.session != null || config == null) {
       _ready = true;
@@ -127,6 +132,27 @@ class EventVideoHostState extends State<EventVideoHost>
     roundId: widget.roundId,
   );
   void _synchronize() => _player?.synchronize(session);
+
+  bool _wasFullscreen = false;
+
+  void _checkFullscreenExit() {
+    final isFullscreen = _player?.fullscreenView != null;
+    final exited = _wasFullscreen && !isFullscreen;
+    _wasFullscreen = isFullscreen;
+    // Leaving provider fullscreen onto a narrow inline Twitch view must stop
+    // the now-invisible player, mirroring the rotation guard.
+    if (exited) didChangeMetrics();
+  }
+
+  /// Back-press layering: a provider fullscreen overlay consumes the press
+  /// before the expanded viewer, the game switcher, or the route itself.
+  /// Returns true when an open fullscreen was asked to close.
+  bool closeFullscreenIfOpen() {
+    if (_player?.fullscreenView == null) return false;
+    _player!.closeFullscreen();
+    return true;
+  }
+
   @override
   void didUpdateWidget(covariant EventVideoHost oldWidget) {
     super.didUpdateWidget(oldWidget);
@@ -150,14 +176,21 @@ class EventVideoHostState extends State<EventVideoHost>
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) => session
-      .setForeground(_routeVisible && state == AppLifecycleState.resumed);
+      .setForeground(
+        _routeVisible && state == AppLifecycleState.resumed,
+        // App background/return continues a stream that was live; covering the
+        // board with another route still returns paused.
+        resumeAfterBackground: state == AppLifecycleState.resumed,
+      );
   @override
   void didChangeMetrics() {
     // Rotation can replace an inline Twitch view with the expand action.
     // Stop the now-invisible player instead of leaving its audio running.
+    // Fullscreen (native or expanded viewer) owns its own geometry: rotating
+    // there must never stop playback.
     if (!mounted ||
-        _player?.fullscreenView != null ||
         session.expanded ||
+        _player?.fullscreenView != null ||
         session.selected?.source.platform != VideoPlatform.twitch) {
       return;
     }
@@ -175,15 +208,10 @@ class EventVideoHostState extends State<EventVideoHost>
     widget.pageObserver?.unsubscribe(this);
     WidgetsBinding.instance.removeObserver(this);
     session.removeListener(_synchronize);
+    _player?.removeListener(_checkFullscreenExit);
     _player?.dispose();
     session.dispose();
     super.dispose();
-  }
-
-  bool exitFullscreen() {
-    if (_player?.fullscreenView == null) return false;
-    _player!.exitFullscreen();
-    return true;
   }
 
   @override
@@ -192,139 +220,216 @@ class EventVideoHostState extends State<EventVideoHost>
     player: _player,
     onVideoInteraction: widget.onVideoInteraction,
     child: ListenableBuilder(
-      listenable: Listenable.merge([session, if (_player != null) _player!]),
-      builder:
-          (context, _) => Stack(
-            fit: StackFit.expand,
-            children: [
-              widget.child,
-              if (session.expanded && session.showVideo)
-                const Positioned.fill(child: _ExpandedEventVideo()),
-              if (_player?.fullscreenView case final Widget view)
-                Positioned.fill(
-                  child: Material(
-                    color: Colors.black,
-                    child: Stack(
-                      fit: StackFit.expand,
-                      children: [
-                        view,
-                        Positioned(
-                          top: 0,
-                          right: 0,
-                          child: SafeArea(
-                            child: IconButton(
-                              tooltip: 'Exit fullscreen',
-                              onPressed: _player!.exitFullscreen,
-                              icon: const Icon(
-                                Icons.fullscreen_exit,
-                                color: Colors.white,
-                              ),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-            ],
-          ),
+      listenable: session,
+      builder: (context, _) {
+        Stack frame(Widget? fullscreen) => Stack(
+          fit: StackFit.expand,
+          children: [
+            widget.child,
+            if (session.expanded && session.showVideo)
+              const Positioned.fill(child: _ExpandedEventVideo()),
+            if (fullscreen != null) Positioned.fill(child: fullscreen),
+          ],
+        );
+        final player = _player;
+        if (player == null) return frame(null);
+        return ListenableBuilder(
+          listenable: player,
+          builder:
+              (context, _) => frame(
+                player.fullscreenView == null
+                    ? null
+                    : _FullscreenVideoOverlay(player: player),
+              ),
+        );
+      },
     ),
   );
 }
 
-class EventVideoFlags extends StatelessWidget {
-  const EventVideoFlags({super.key});
+/// Provider-native fullscreen (Android custom view) above the whole route.
+/// Back exits fullscreen first; the route's own back handling must consult
+/// [EventVideoHostState.closeFullscreenIfOpen] before popping.
+class _FullscreenVideoOverlay extends StatelessWidget {
+  const _FullscreenVideoOverlay({required this.player});
+  final EventVideoPlayer player;
+  @override
+  Widget build(BuildContext context) => PopScope(
+    canPop: false,
+    onPopInvokedWithResult: (didPop, _) {
+      if (!didPop) player.closeFullscreen();
+    },
+    child: Material(
+      color: Colors.black,
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          player.fullscreenView ?? const SizedBox.shrink(),
+          // A Flutter-side exit: the provider's own chrome may be hidden and
+          // back is not obvious, so fullscreen always has a visible way out.
+          Positioned(
+            top: 8,
+            right: 8,
+            child: SafeArea(
+              child: IconButton(
+                key: const ValueKey('video_exit_fullscreen'),
+                tooltip: 'Exit fullscreen',
+                onPressed: player.closeFullscreen,
+                icon: const Icon(
+                  Icons.fullscreen_exit,
+                  color: Colors.white,
+                  size: 28,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    ),
+  );
+}
+
+/// The stream choice surface that occupies the stream area until the user
+/// picks a language. A grid keeps every stream readable and scrolls when the
+/// list is long. Flags and the player never share the area: choosing dismisses
+/// the picker and the player fades in.
+class _EventVideoStreamPicker extends StatelessWidget {
+  const _EventVideoStreamPicker();
+
   @override
   Widget build(BuildContext context) {
     final session = EventVideoScope.maybeOf(context)!.session;
-    return SizedBox(
-      key: const ValueKey('event_video_flags'),
-      height: 56,
-      child: NotificationListener<ScrollNotification>(
-        onNotification: (n) {
-          if (n is ScrollStartNotification) session.setScrolling(true);
-          if (n is ScrollEndNotification) session.setScrolling(false);
-          return false;
-        },
-        child: ListView.separated(
-          scrollDirection: Axis.horizontal,
-          padding: const EdgeInsets.symmetric(horizontal: 8),
-          itemCount: session.streams.length,
-          separatorBuilder: (_, __) => const SizedBox(width: 4),
-          itemBuilder: (context, index) {
-            final stream = session.streams[index];
-            final selected = session.selected?.id == stream.id;
-            final label =
-                '${stream.displayName} · ${stream.source.providerName}';
-            return Semantics(
-              selected: selected,
-              button: true,
-              label: '${stream.languageLabel}: $label',
-              child: Tooltip(
-                message: label,
-                child: InkWell(
-                  key: ValueKey('video_stream_${stream.id}'),
-                  borderRadius: BorderRadius.circular(8),
-                  onTap: () => session.select(stream.id),
-                  child: Container(
-                    width: 112,
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 4,
-                      vertical: 3,
-                    ),
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(8),
-                      color:
-                          selected
-                              ? Theme.of(
-                                context,
-                              ).colorScheme.primary.withValues(alpha: .14)
-                              : null,
-                      border: Border.all(
-                        color:
-                            selected
-                                ? Theme.of(context).colorScheme.primary
-                                : Colors.transparent,
-                      ),
-                    ),
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        if (stream.flagCode != null)
-                          CountryFlag.fromCountryCode(
-                            stream.flagCode!,
-                            theme: const ImageTheme(width: 28, height: 20),
-                          )
-                        else
-                          const Icon(Icons.language, size: 20),
-                        const SizedBox(height: 3),
-                        Text(
-                          label,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(fontSize: 10),
-                        ),
-                      ],
-                    ),
-                  ),
+    return Material(
+      color: context.colors.surface,
+      child: GestureDetector(
+        // Absorb horizontal drags so interacting with the chooser never swipes
+        // the game PageView; vertical drags stay with the grid.
+        onHorizontalDragStart: (_) {},
+        onHorizontalDragUpdate: (_) {},
+        onHorizontalDragEnd: (_) {},
+        behavior: HitTestBehavior.opaque,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(10, 12, 10, 0),
+              child: Text(
+                'Choose a stream',
+                style: TextStyle(
+                  color: context.colors.textPrimaryMuted,
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w600,
                 ),
               ),
-            );
-          },
+            ),
+            Expanded(
+              child: GridView.builder(
+                key: const ValueKey('event_video_picker'),
+                padding: const EdgeInsets.fromLTRB(10, 8, 10, 10),
+                physics: const ClampingScrollPhysics(),
+                gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+                  maxCrossAxisExtent: 200,
+                  mainAxisExtent: 56,
+                  crossAxisSpacing: 8,
+                  mainAxisSpacing: 8,
+                ),
+                itemCount: session.streams.length,
+                itemBuilder:
+                    (context, index) =>
+                        _EventVideoStreamTile(stream: session.streams[index]),
+              ),
+            ),
+          ],
         ),
       ),
     );
   }
 }
 
-class EventVideoFlagSlot extends StatelessWidget {
-  const EventVideoFlagSlot({super.key});
+class _EventVideoStreamTile extends StatelessWidget {
+  const _EventVideoStreamTile({required this.stream});
+  final EventVideoStream stream;
+
   @override
   Widget build(BuildContext context) {
-    final session = EventVideoScope.maybeOf(context)?.session;
-    return session?.showVideo == true && session!.flagsVisible
-        ? const EventVideoFlags()
-        : const SizedBox.shrink();
+    final session = EventVideoScope.maybeOf(context)!.session;
+    final provider = stream.source.providerName;
+    final colors = context.colors;
+    final flagOutline =
+        context.isLightTheme
+            ? Colors.black.withValues(alpha: .10)
+            : Colors.white.withValues(alpha: .10);
+    return Semantics(
+      button: true,
+      label: '${stream.languageLabel}: ${stream.displayName} · $provider',
+      child: Tooltip(
+        message: '${stream.displayName} · $provider',
+        child: InkWell(
+          key: ValueKey('video_stream_${stream.id}'),
+          borderRadius: BorderRadius.circular(12),
+          onTap: () {
+            EventVideoScope.maybeOf(context)?.onVideoInteraction?.call();
+            session.select(stream.id);
+          },
+          child: Ink(
+            decoration: BoxDecoration(
+              // The ranked order already carries the preference; no tile is
+              // drawn as "selected" before the reader picks one.
+              color: colors.surfaceElevated,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: colors.divider),
+            ),
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+            child: Row(
+              children: [
+                if (stream.flagCode != null)
+                  DecoratedBox(
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(2),
+                      border: Border.all(color: flagOutline),
+                    ),
+                    child: CountryFlag.fromCountryCode(
+                      stream.flagCode!,
+                      theme: const ImageTheme(width: 26, height: 18),
+                    ),
+                  )
+                else
+                  Icon(Icons.language, size: 18, color: colors.textPrimary),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        stream.displayName,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: colors.textPrimary,
+                          fontSize: 12.5,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        provider,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: colors.textPrimaryMuted,
+                          fontSize: 10.5,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
   }
 }
 
@@ -350,6 +455,15 @@ class EventVideoSurface extends StatelessWidget {
             height: twitch && constraints.maxWidth < 400 ? 96 : height,
           );
         }
+        // Choice first: the stream area is the picker until a stream is picked,
+        // so flags and the player never appear together.
+        if (!session.streamChosen) {
+          return SizedBox(
+            key: const ValueKey('event_video_picker_slot'),
+            height: height,
+            child: const _EventVideoStreamPicker(),
+          );
+        }
         if (twitch && constraints.maxWidth < 400) {
           return SizedBox(
             height: 96,
@@ -366,54 +480,109 @@ class EventVideoSurface extends StatelessWidget {
             ),
           );
         }
-        final player = scope.player;
+        final reduceMotion = MediaQuery.disableAnimationsOf(context);
         return SizedBox(
           key: const ValueKey('event_video_surface'),
           height: height,
-          child: ColoredBox(
-            color: Colors.black,
-            child: Listener(
-              behavior: HitTestBehavior.translucent,
-              onPointerDown: (_) {
-                scope.onVideoInteraction?.call();
-                session.revealFlags();
-              },
-              child:
-                  player == null
-                      ? const Center(
-                        child: Text(
-                          'Video is not configured',
-                          style: TextStyle(color: Colors.white),
-                        ),
-                      )
-                      : ListenableBuilder(
-                        listenable: player,
-                        builder:
-                            (context, _) => Stack(
-                              fit: StackFit.expand,
-                              children: [
-                                player.buildView(),
-                                if (player.failed)
-                                  ColoredBox(
-                                    color: Colors.black,
-                                    child: Center(
-                                      child: TextButton.icon(
-                                        onPressed: player.retry,
-                                        icon: const Icon(Icons.refresh),
-                                        label: const Text(
-                                          'Video unavailable · Retry',
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                // Fullscreen affordance sits outside the provider's own controls.
-                              ],
-                            ),
-                      ),
+          // The entrance is mount-based, not keyed: the box mounts exactly when
+          // the picker gives way to the player, so that is when it springs in.
+          // Never key it by stream/revision, or the native view's GlobalKey
+          // would be retaken mid-frame inside this LayoutBuilder.
+          child: SingleMotionBuilder(
+            motion: const CupertinoMotion.smooth(
+              duration: Duration(milliseconds: 320),
+              snapToEnd: true,
             ),
+            value: 1,
+            from: reduceMotion ? null : 0,
+            active: !reduceMotion,
+            child: _EventVideoPlayerBox(scope: scope),
+            builder:
+                (context, entry, child) => Opacity(
+                  opacity: entry.clamp(0.0, 1.0),
+                  child: Transform.translate(
+                    offset: Offset(0, 8 * (1 - entry.clamp(0.0, 1.0))),
+                    child: child,
+                  ),
+                ),
           ),
         );
       },
+    );
+  }
+}
+
+/// The live player box shared by the inline surface and the expanded viewer.
+class _EventVideoPlayerBox extends StatefulWidget {
+  const _EventVideoPlayerBox({required this.scope});
+  final EventVideoScope scope;
+  @override
+  State<_EventVideoPlayerBox> createState() => _EventVideoPlayerBoxState();
+}
+
+class _EventVideoPlayerBoxState extends State<_EventVideoPlayerBox> {
+  /// Down position of the current pointer, so a tap (reveal the provider
+  /// controls) is told apart from a drag (the seek gesture) without stealing
+  /// either.
+  Offset? _pointerDown;
+
+  static const double _tapSlop = 8;
+
+  @override
+  Widget build(BuildContext context) {
+    final scope = widget.scope;
+    final player = scope.player;
+    return ColoredBox(
+      color: Colors.black,
+      child: Listener(
+        behavior: HitTestBehavior.translucent,
+        onPointerDown: (event) {
+          _pointerDown = event.position;
+          scope.onVideoInteraction?.call();
+        },
+        onPointerUp: (event) {
+          final down = _pointerDown;
+          _pointerDown = null;
+          if (down == null || (event.position - down).distance > _tapSlop) {
+            return;
+          }
+          // One deliberate tap brings the provider's own controls back; the
+          // reload keeps playback and mute, so the overlay is one tap away.
+          scope.session.revealControls();
+        },
+        onPointerCancel: (_) => _pointerDown = null,
+        child:
+            player == null
+                ? const Center(
+                  child: Text(
+                    'Video is not configured',
+                    style: TextStyle(color: Colors.white),
+                  ),
+                )
+                : ListenableBuilder(
+                  listenable: player,
+                  builder:
+                      (context, _) => Stack(
+                        fit: StackFit.expand,
+                        children: [
+                          player.buildView(),
+                          if (player.failed)
+                            ColoredBox(
+                              color: Colors.black,
+                              child: Center(
+                                child: TextButton.icon(
+                                  onPressed: player.retry,
+                                  icon: const Icon(Icons.refresh),
+                                  label: const Text(
+                                    'Video unavailable · Retry',
+                                  ),
+                                ),
+                              ),
+                            ),
+                        ],
+                      ),
+                ),
+      ),
     );
   }
 }
@@ -454,7 +623,6 @@ class _ExpandedEventVideo extends StatelessWidget {
                         ],
                       ),
                     ),
-                    if (session.flagsVisible) const EventVideoFlags(),
                     const Expanded(
                       child: SingleChildScrollView(
                         child: EventVideoSurface(expanded: true),
@@ -470,7 +638,8 @@ class _ExpandedEventVideo extends StatelessWidget {
 }
 
 /// Video makes the old pinned phone header too tall. Keep the complete board
-/// and player scrollable, with a bounded, independently usable notation panel.
+/// and player scrollable, with the stream first, the reader's own engine lines
+/// under it, and the notation/explorer panel last at a bounded height.
 class EventVideoGameLayout extends StatelessWidget {
   const EventVideoGameLayout({
     super.key,
@@ -489,9 +658,10 @@ class EventVideoGameLayout extends StatelessWidget {
       Widget lower() => Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          const EventVideoFlagSlot(),
           const EventVideoSurface(),
           engine,
+          // The notation/explorer panel keeps a bounded, independently usable
+          // height under the engine lines.
           SizedBox(
             height: math.max(260, constraints.maxHeight * .55),
             child: analysis,
@@ -525,16 +695,26 @@ class EventVideoGameLayout extends StatelessWidget {
 
 /// Shared by the phone popup and the tablet-safe popup.
 List<PopupMenuEntry<String>> eventVideoBoardMenuItems(
+  BuildContext context,
   EventVideoSession? session,
 ) => [
   if (session?.hasVideo == true)
-    const PopupMenuItem(
+    PopupMenuItem(
       value: 'flip_board',
       child: Row(
         children: [
-          Icon(Icons.swap_vert),
-          SizedBox(width: 8),
-          Text('Flip board'),
+          // Same circular refresh mark as the bottom-bar flip control.
+          SvgWidget(
+            SvgAsset.refresh,
+            height: 20,
+            width: 20,
+            colorFilter: ColorFilter.mode(
+              context.colors.textPrimary,
+              BlendMode.srcIn,
+            ),
+          ),
+          const SizedBox(width: 8),
+          const Text('Flip board'),
         ],
       ),
     ),
