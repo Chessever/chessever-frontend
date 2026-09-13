@@ -114,11 +114,11 @@ which opens a rotated in-app viewer without changing the device orientation
 policy. Closing it returns to the selected stream paused. No offscreen Twitch
 player starts behind the expansion button.
 
-Fullscreen is the provider embed's own fullscreen button. iOS presents it inside
-the WebView; on Android the app wires the WebView custom-view callbacks and
-shows that custom view in an overlay above the route, which is what makes
-YouTube, Twitch and Kick fullscreen work there at all (the platform denies it by
-default). Back exits fullscreen first, then the expanded viewer, then the route.
+On iOS, the bottom-right fullscreen button opens the same player in a landscape
+in-app viewer. It dismisses after three seconds and reappears when the video is
+tapped. YouTube's native fullscreen button is disabled there. On Android, the
+provider's fullscreen button opens its WebView custom view above the route.
+Both viewers rotate their content to landscape on portrait phones. Back exits fullscreen first, then the expanded viewer, then the route.
 Entering or leaving never reloads the document, and a stream that was live is
 nudged back once if the embed paused while the custom view attached. Rotating
 during fullscreen never stops playback; only a real surface resize is treated as

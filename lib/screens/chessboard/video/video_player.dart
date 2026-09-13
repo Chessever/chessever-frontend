@@ -291,6 +291,7 @@ class NativeEventVideoPlayer extends EventVideoPlayer {
               revision: _revision,
               play: session.playRequested,
               muted: session.muted,
+              nativeFullscreen: defaultTargetPlatform != TargetPlatform.iOS,
             ),
             baseUrl: '${embedOrigin.toString()}/',
           );
@@ -464,6 +465,7 @@ String videoPlayerHtml(
   required int revision,
   required bool play,
   required bool muted,
+  bool nativeFullscreen = true,
 }) {
   final id = jsonEncode(source.id),
       host = jsonEncode(origin.host),
@@ -487,7 +489,7 @@ String videoPlayerHtml(
 <script>
 function onYouTubeIframeAPIReady() {
   const ytPlayer=new YT.Player('player', {width:'100%', height:'100%', videoId:$id,
-    playerVars:{autoplay:${play ? 1 : 0}, playsinline:1, origin:$parent, mute:${muted ? 1 : 0}, controls:1, modestbranding:1, rel:0, iv_load_policy:3},
+    playerVars:{autoplay:${play ? 1 : 0}, playsinline:1, fs:${nativeFullscreen ? 1 : 0}, origin:$parent, mute:${muted ? 1 : 0}, controls:1, modestbranding:1, rel:0, iv_load_policy:3},
     events:{onReady:()=>{try{ytPlayer.${muted ? 'mute' : 'unMute'}();}catch(e){}$youtubeStart$youtubePlayHook watchMuted(()=>ytPlayer.isMuted());},onStateChange:e=>send('playback',{playing:e.data===1}), onError:()=>send('error',{})}});
 }
 </script><script src="https://www.youtube.com/iframe_api" onerror="send('error',{})"></script>''',

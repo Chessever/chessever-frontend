@@ -160,6 +160,8 @@ void main() {
   testWidgets(
     'Android fullscreen overlays the board without pausing playback',
     (tester) async {
+      await tester.binding.setSurfaceSize(const Size(400, 800));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
       final h = _Harness();
       await tester.pumpWidget(h.widget);
       await _flushPlayer(tester);
@@ -176,6 +178,32 @@ void main() {
       );
       await tester.pump();
       expect(find.text('Fullscreen native video'), findsOneWidget);
+      expect(
+        tester.getSize(find.text('Fullscreen native video')),
+        const Size(800, 400),
+      );
+      expect(
+        tester
+            .widget<RotatedBox>(
+              find.byKey(const ValueKey('native_video_landscape')),
+            )
+            .quarterTurns,
+        1,
+      );
+      await tester.binding.setSurfaceSize(const Size(800, 400));
+      await tester.pump();
+      expect(
+        tester
+            .widget<RotatedBox>(
+              find.byKey(const ValueKey('native_video_landscape')),
+            )
+            .quarterTurns,
+        0,
+      );
+      expect(
+        tester.getSize(find.text('Fullscreen native video')),
+        const Size(800, 400),
+      );
       expect(h.session.foreground, isTrue);
       expect(h.session.playing, isTrue);
       expect(h.session.playerRevision, revision);

@@ -5,6 +5,7 @@ import 'package:chessever2/utils/svg_asset.dart';
 import 'package:chessever2/widgets/svg_widget.dart';
 import 'package:country_flags/country_flags.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:motor/motor.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'video_player.dart';
@@ -279,32 +280,39 @@ class _FullscreenVideoOverlay extends StatelessWidget {
     onPopInvokedWithResult: (didPop, _) {
       if (!didPop) player.closeFullscreen();
     },
-    child: Material(
-      color: Colors.black,
-      child: Stack(
-        fit: StackFit.expand,
-        children: [
-          player.fullscreenView ?? const SizedBox.shrink(),
-          // A Flutter-side exit: the provider's own chrome may be hidden and
-          // back is not obvious, so fullscreen always has a visible way out.
-          Positioned(
-            top: 8,
-            right: 8,
-            child: SafeArea(
-              child: IconButton(
-                key: const ValueKey('video_exit_fullscreen'),
-                tooltip: 'Exit fullscreen',
-                onPressed: player.closeFullscreen,
-                icon: const Icon(
-                  Icons.fullscreen_exit,
-                  color: Colors.white,
-                  size: 28,
-                ),
+    child: LayoutBuilder(
+      builder:
+          (context, constraints) => RotatedBox(
+            key: const ValueKey('native_video_landscape'),
+            quarterTurns: constraints.maxHeight > constraints.maxWidth ? 1 : 0,
+            child: Material(
+              color: Colors.black,
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  player.fullscreenView ?? const SizedBox.shrink(),
+                  // A Flutter-side exit: the provider's own chrome may be hidden and
+                  // back is not obvious, so fullscreen always has a visible way out.
+                  Positioned(
+                    top: 8,
+                    right: 8,
+                    child: SafeArea(
+                      child: IconButton(
+                        key: const ValueKey('video_exit_fullscreen'),
+                        tooltip: 'Exit fullscreen',
+                        onPressed: player.closeFullscreen,
+                        icon: const Icon(
+                          Icons.fullscreen_exit,
+                          color: Colors.white,
+                          size: 28,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ),
           ),
-        ],
-      ),
     ),
   );
 }
@@ -465,10 +473,13 @@ class EventVideoSurface extends StatelessWidget {
       builder: (context, constraints) {
         final twitch =
             session.selected!.source.platform == VideoPlatform.twitch;
-        final height = math.max(
-          twitch ? 300.0 : 200.0,
-          constraints.maxWidth * 9 / 16,
-        );
+        final height =
+            expanded && constraints.hasBoundedHeight
+                ? constraints.maxHeight
+                : math.max(
+                  twitch ? 300.0 : 200.0,
+                  constraints.maxWidth * 9 / 16,
+                );
         // Never mount a second native view behind the expanded one.
         if (session.expanded && !expanded) {
           return SizedBox(
@@ -516,7 +527,7 @@ class EventVideoSurface extends StatelessWidget {
             value: 1,
             from: reduceMotion ? null : 0,
             active: !reduceMotion,
-            child: _EventVideoPlayerBox(scope: scope),
+            child: _EventVideoPlayerBox(scope: scope, expanded: expanded),
             builder:
                 (context, entry, child) => Opacity(
                   opacity: entry.clamp(0.0, 1.0),
@@ -533,46 +544,109 @@ class EventVideoSurface extends StatelessWidget {
 }
 
 /// The live player box shared by the inline surface and the expanded viewer.
-/// Provider chrome is always visible, so the box is a plain presentation
-/// surface: every pointer gesture belongs to the embed itself.
-class _EventVideoPlayerBox extends StatelessWidget {
-  const _EventVideoPlayerBox({required this.scope});
+class _EventVideoPlayerBox extends StatefulWidget {
+  const _EventVideoPlayerBox({required this.scope, required this.expanded});
+  final bool expanded;
   final EventVideoScope scope;
+  @override
+  State<_EventVideoPlayerBox> createState() => _EventVideoPlayerBoxState();
+}
+
+class _EventVideoPlayerBoxState extends State<_EventVideoPlayerBox> {
+  /// Observe taps to reveal the fullscreen button without consuming player
+  /// controls or treating seek gestures as taps.
+  Offset? _pointerDown;
+
+  static const double _tapSlop = 8;
+  Timer? _fullscreenTimer;
+  bool _fullscreenVisible = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _scheduleFullscreenDismissal();
+  }
+
+  void _scheduleFullscreenDismissal() {
+    _fullscreenTimer?.cancel();
+    _fullscreenTimer = Timer(const Duration(seconds: 3), () {
+      if (mounted) setState(() => _fullscreenVisible = false);
+    });
+  }
+
+  @override
+  void dispose() {
+    _fullscreenTimer?.cancel();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
+    final scope = widget.scope;
     final player = scope.player;
     return ColoredBox(
       color: Colors.black,
-      child:
-          player == null
-              ? const Center(
-                child: Text(
-                  'Video is not configured',
-                  style: TextStyle(color: Colors.white),
-                ),
-              )
-              : ListenableBuilder(
-                listenable: player,
-                builder:
-                    (context, _) => Stack(
-                      fit: StackFit.expand,
-                      children: [
-                        player.buildView(),
-                        if (player.failed)
-                          ColoredBox(
-                            color: Colors.black,
-                            child: Center(
-                              child: TextButton.icon(
-                                onPressed: player.retry,
-                                icon: const Icon(Icons.refresh),
-                                label: const Text('Video unavailable · Retry'),
+      child: Listener(
+        behavior: HitTestBehavior.translucent,
+        onPointerDown: (event) {
+          _pointerDown = event.position;
+          scope.onVideoInteraction?.call();
+        },
+        onPointerUp: (event) {
+          final down = _pointerDown;
+          _pointerDown = null;
+          if (down == null || (event.position - down).distance > _tapSlop) {
+            return;
+          }
+          setState(() => _fullscreenVisible = true);
+          _scheduleFullscreenDismissal();
+        },
+        onPointerCancel: (_) => _pointerDown = null,
+        child:
+            player == null
+                ? const Center(
+                  child: Text(
+                    'Video is not configured',
+                    style: TextStyle(color: Colors.white),
+                  ),
+                )
+                : ListenableBuilder(
+                  listenable: player,
+                  builder:
+                      (context, _) => Stack(
+                        fit: StackFit.expand,
+                        children: [
+                          player.buildView(),
+                          if (defaultTargetPlatform == TargetPlatform.iOS &&
+                              !widget.expanded &&
+                              _fullscreenVisible)
+                            Positioned(
+                              bottom: 4,
+                              right: 4,
+                              child: IconButton.filledTonal(
+                                tooltip: 'Fullscreen video',
+                                onPressed:
+                                    () => scope.session.setExpanded(true),
+                                icon: const Icon(Icons.fullscreen),
                               ),
                             ),
-                          ),
-                      ],
-                    ),
-              ),
+                          if (player.failed)
+                            ColoredBox(
+                              color: Colors.black,
+                              child: Center(
+                                child: TextButton.icon(
+                                  onPressed: player.retry,
+                                  icon: const Icon(Icons.refresh),
+                                  label: const Text(
+                                    'Video unavailable · Retry',
+                                  ),
+                                ),
+                              ),
+                            ),
+                        ],
+                      ),
+                ),
+      ),
     );
   }
 }
@@ -613,10 +687,14 @@ class _ExpandedEventVideo extends StatelessWidget {
                         ],
                       ),
                     ),
-                    const Expanded(
-                      child: SingleChildScrollView(
-                        child: EventVideoSurface(expanded: true),
-                      ),
+                    Expanded(
+                      child:
+                          session.selected?.source.platform ==
+                                  VideoPlatform.twitch
+                              ? const SingleChildScrollView(
+                                child: EventVideoSurface(expanded: true),
+                              )
+                              : const EventVideoSurface(expanded: true),
                     ),
                   ],
                 ),
