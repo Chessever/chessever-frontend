@@ -633,7 +633,6 @@ void main() {
           revision: 3,
           play: false,
           muted: false,
-          controls: false,
         );
         expect(html, contains('revision:3'));
         expect(html, isNot(contains('autoplay:true')));
@@ -643,11 +642,11 @@ void main() {
         expect(html, isNot(contains('p.play()')));
         switch (stream.source.platform) {
           case VideoPlatform.youtube:
-            expect(html, contains('controls:0'));
+            expect(html, contains('controls:1'));
           case VideoPlatform.twitch:
-            expect(html, contains('controls:false'));
+            expect(html, contains('controls:true'));
           case VideoPlatform.kick:
-            expect(html, contains('controls=false'));
+            expect(html, contains('controls=true'));
         }
         if (stream.source.platform == VideoPlatform.twitch) {
           expect(html, contains('parent:["embed.test.example.com"]'));
@@ -662,7 +661,6 @@ void main() {
       revision: 3,
       play: true,
       muted: muted,
-      controls: false,
     );
     final youtubeMuted = htmlFor('https://youtu.be/abcdefghijk', true);
     expect(youtubeMuted, contains('mute:1'));
@@ -691,71 +689,39 @@ void main() {
       contains('muted=false'),
     );
   });
-  test('provider controls stay hidden until the reader reveals them', () {
-    String htmlFor(String url, {required bool controls}) => videoPlayerHtml(
+  test('provider embeds always carry classic controls', () {
+    String htmlFor(String url) => videoPlayerHtml(
       VideoSource.parse(url),
       Uri.parse('https://embed.test.example.com'),
       revision: 3,
-      play: true,
+      play: false,
       muted: false,
-      controls: controls,
     );
-    final youtubeHidden = htmlFor(
-      'https://youtu.be/abcdefghijk',
-      controls: false,
-    );
-    expect(youtubeHidden, contains('controls:0'));
+    expect(htmlFor('https://youtu.be/abcdefghijk'), contains('controls:1'));
     expect(
-      htmlFor('https://youtu.be/abcdefghijk', controls: true),
-      contains('controls:1'),
-    );
-    expect(
-      htmlFor('https://twitch.tv/fixture_chess', controls: false),
-      contains('controls:false'),
-    );
-    expect(
-      htmlFor('https://twitch.tv/fixture_chess', controls: true),
+      htmlFor('https://twitch.tv/fixture_chess'),
       contains('controls:true'),
     );
     expect(
-      htmlFor('https://kick.com/fixture_chess', controls: false),
-      contains('controls=false'),
-    );
-    expect(
-      htmlFor('https://kick.com/fixture_chess', controls: true),
+      htmlFor('https://kick.com/fixture_chess'),
       contains('controls=true'),
     );
   });
-  test('one tap reveals provider controls, keeping playback and mute', () {
+  test('re-picking a stream reloads with autoplay and keeps mute', () {
     final session = EventVideoSession(
       repository: FakeVideoRepository(fixtureVideos()),
     );
     addTearDown(session.dispose);
     session.openGame(gameId: 'g1', tourId: 'tour', roundId: 'round');
     session.streams = fixtureVideos();
-    session.selected = session.streams.first;
-    expect(session.controlsVisible, isFalse);
     session.select('english-main');
-    expect(session.controlsVisible, isFalse);
     session.reportPlayback(true, session.playerRevision);
     session.reportMuted(true, session.playerRevision);
     final revision = session.playerRevision;
-    session.revealControls();
-    expect(session.controlsVisible, isTrue);
+    session.select('english-main');
     expect(session.playRequested, isTrue);
-    expect(session.playing, isFalse);
     expect(session.playerRevision, revision + 1);
     expect(session.muted, isTrue);
-    // Revealing again is a no-op: from now on the provider owns the taps.
-    session.revealControls();
-    expect(session.playerRevision, revision + 1);
-    // A new choice starts clean again, and hiding the video resets it too.
-    session.select('english-second');
-    expect(session.controlsVisible, isFalse);
-    session.revealControls();
-    expect(session.controlsVisible, isTrue);
-    session.toggle();
-    expect(session.controlsVisible, isFalse);
   });
   test(
     'reported mute state survives stream switches and stale revisions',
@@ -835,24 +801,36 @@ void main() {
     session.setForeground(true);
     expect(session.playRequested, isFalse);
   });
-  test('a stream that disappears from the new round offers the choice again', () async {
-    final repo = FakeVideoRepository(fixtureVideos());
-    final session = EventVideoSession(repository: repo);
-    addTearDown(session.dispose);
-    session.openGame(gameId: 'g1', tourId: 'tour', roundId: 'round-1');
-    await Future<void>.delayed(Duration.zero);
-    session.select('english-main');
-    session.reportPlayback(true, session.playerRevision);
-    expect(session.playing, isTrue);
-    expect(session.streamChosen, isTrue);
-    // The new round no longer carries the chosen stream, so playback stops
-    // and the picker comes back instead of silently switching streams.
-    repo.streams =
-        fixtureVideos().where((s) => s.id != 'english-main').toList();
-    session.openGame(gameId: 'g2', tourId: 'tour', roundId: 'round-2');
-    await Future<void>.delayed(Duration.zero);
-    expect(session.streamChosen, isFalse);
-    expect(session.playing, isFalse);
-    expect(session.selected!.id, isNot('english-main'));
-  });
+  test(
+    'a running stream survives every game change inside the same event',
+    () async {
+      final repo = FakeVideoRepository(fixtureVideos());
+      final session = EventVideoSession(repository: repo);
+      addTearDown(session.dispose);
+      session.openGame(gameId: 'g1', tourId: 'tour', roundId: 'round-1');
+      await Future<void>.delayed(Duration.zero);
+      session.select('english-main');
+      session.reportPlayback(true, session.playerRevision);
+      expect(session.playing, isTrue);
+      expect(session.streamChosen, isTrue);
+      final revision = session.playerRevision;
+      final nudge = session.playNudge;
+      // The new round no longer carries the chosen stream; playback still
+      // continues and the player is nudged to re-assert it after the swap.
+      repo.streams =
+          fixtureVideos().where((s) => s.id != 'english-main').toList();
+      session.openGame(gameId: 'g2', tourId: 'tour', roundId: 'round-2');
+      await Future<void>.delayed(Duration.zero);
+      expect(session.streamChosen, isTrue);
+      expect(session.playing, isTrue);
+      expect(session.selected!.id, 'english-main');
+      expect(session.playerRevision, revision);
+      expect(session.playNudge, nudge + 1);
+      // A new event still resets to the picker.
+      session.openGame(gameId: 'g3', tourId: 'another-tour', roundId: 'r');
+      expect(session.streamChosen, isFalse);
+      expect(session.playing, isFalse);
+      expect(session.selected, isNull);
+    },
+  );
 }

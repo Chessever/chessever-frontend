@@ -63,6 +63,9 @@ class EventVideoHostState extends State<EventVideoHost>
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
+    // Seed the metrics baseline, otherwise the first real rotation would look
+    // like a metrics event with no previous size and be ignored.
+    _lastMetricsSize ??= View.of(context).physicalSize;
     final route = ModalRoute.of(context);
     if (route == _route) return;
     widget.pageObserver?.unsubscribe(this);
@@ -135,13 +138,17 @@ class EventVideoHostState extends State<EventVideoHost>
 
   bool _wasFullscreen = false;
 
+  /// Last surface size seen by [didChangeMetrics], so inset-only churn can be
+  /// told apart from a real resize or rotation.
+  Size? _lastMetricsSize;
+
   void _checkFullscreenExit() {
     final isFullscreen = _player?.fullscreenView != null;
     final exited = _wasFullscreen && !isFullscreen;
     _wasFullscreen = isFullscreen;
     // Leaving provider fullscreen onto a narrow inline Twitch view must stop
     // the now-invisible player, mirroring the rotation guard.
-    if (exited) didChangeMetrics();
+    if (exited) _maybeStopForNarrowTwitch();
   }
 
   /// Back-press layering: a provider fullscreen overlay consumes the press
@@ -175,8 +182,8 @@ class EventVideoHostState extends State<EventVideoHost>
   }
 
   @override
-  void didChangeAppLifecycleState(AppLifecycleState state) => session
-      .setForeground(
+  void didChangeAppLifecycleState(AppLifecycleState state) =>
+      session.setForeground(
         _routeVisible && state == AppLifecycleState.resumed,
         // App background/return continues a stream that was live; covering the
         // board with another route still returns paused.
@@ -184,10 +191,23 @@ class EventVideoHostState extends State<EventVideoHost>
       );
   @override
   void didChangeMetrics() {
-    // Rotation can replace an inline Twitch view with the expand action.
-    // Stop the now-invisible player instead of leaving its audio running.
-    // Fullscreen (native or expanded viewer) owns its own geometry: rotating
-    // there must never stop playback.
+    if (!mounted) return;
+    // Only a real resize or rotation can turn the inline Twitch view into the
+    // expand action. Inset-only churn (system bars, keyboard, the fullscreen
+    // transition) must never stop playback; it used to fire this guard before
+    // the custom-view callback landed and pause the stream on fullscreen.
+    final physicalSize = View.of(context).physicalSize;
+    final sizeChanged =
+        _lastMetricsSize != null && _lastMetricsSize != physicalSize;
+    _lastMetricsSize = physicalSize;
+    if (!sizeChanged) return;
+    _maybeStopForNarrowTwitch();
+  }
+
+  /// Rotation can replace an inline Twitch view with the expand action. Stop
+  /// the now-invisible player instead of leaving its audio running.
+  /// Fullscreen (native or expanded viewer) owns its own geometry.
+  void _maybeStopForNarrowTwitch() {
     if (!mounted ||
         session.expanded ||
         _player?.fullscreenView != null ||
@@ -513,76 +533,46 @@ class EventVideoSurface extends StatelessWidget {
 }
 
 /// The live player box shared by the inline surface and the expanded viewer.
-class _EventVideoPlayerBox extends StatefulWidget {
+/// Provider chrome is always visible, so the box is a plain presentation
+/// surface: every pointer gesture belongs to the embed itself.
+class _EventVideoPlayerBox extends StatelessWidget {
   const _EventVideoPlayerBox({required this.scope});
   final EventVideoScope scope;
-  @override
-  State<_EventVideoPlayerBox> createState() => _EventVideoPlayerBoxState();
-}
-
-class _EventVideoPlayerBoxState extends State<_EventVideoPlayerBox> {
-  /// Down position of the current pointer, so a tap (reveal the provider
-  /// controls) is told apart from a drag (the seek gesture) without stealing
-  /// either.
-  Offset? _pointerDown;
-
-  static const double _tapSlop = 8;
 
   @override
   Widget build(BuildContext context) {
-    final scope = widget.scope;
     final player = scope.player;
     return ColoredBox(
       color: Colors.black,
-      child: Listener(
-        behavior: HitTestBehavior.translucent,
-        onPointerDown: (event) {
-          _pointerDown = event.position;
-          scope.onVideoInteraction?.call();
-        },
-        onPointerUp: (event) {
-          final down = _pointerDown;
-          _pointerDown = null;
-          if (down == null || (event.position - down).distance > _tapSlop) {
-            return;
-          }
-          // One deliberate tap brings the provider's own controls back; the
-          // reload keeps playback and mute, so the overlay is one tap away.
-          scope.session.revealControls();
-        },
-        onPointerCancel: (_) => _pointerDown = null,
-        child:
-            player == null
-                ? const Center(
-                  child: Text(
-                    'Video is not configured',
-                    style: TextStyle(color: Colors.white),
-                  ),
-                )
-                : ListenableBuilder(
-                  listenable: player,
-                  builder:
-                      (context, _) => Stack(
-                        fit: StackFit.expand,
-                        children: [
-                          player.buildView(),
-                          if (player.failed)
-                            ColoredBox(
-                              color: Colors.black,
-                              child: Center(
-                                child: TextButton.icon(
-                                  onPressed: player.retry,
-                                  icon: const Icon(Icons.refresh),
-                                  label: const Text(
-                                    'Video unavailable · Retry',
-                                  ),
-                                ),
+      child:
+          player == null
+              ? const Center(
+                child: Text(
+                  'Video is not configured',
+                  style: TextStyle(color: Colors.white),
+                ),
+              )
+              : ListenableBuilder(
+                listenable: player,
+                builder:
+                    (context, _) => Stack(
+                      fit: StackFit.expand,
+                      children: [
+                        player.buildView(),
+                        if (player.failed)
+                          ColoredBox(
+                            color: Colors.black,
+                            child: Center(
+                              child: TextButton.icon(
+                                onPressed: player.retry,
+                                icon: const Icon(Icons.refresh),
+                                label: const Text('Video unavailable · Retry'),
                               ),
                             ),
-                        ],
-                      ),
-                ),
-      ),
+                          ),
+                      ],
+                    ),
+              ),
     );
   }
 }
@@ -638,19 +628,21 @@ class _ExpandedEventVideo extends StatelessWidget {
 }
 
 /// Video makes the old pinned phone header too tall. Keep the complete board
-/// and player scrollable, with the stream first, the reader's own engine lines
-/// under it, and the notation/explorer panel last at a bounded height.
+/// and player scrollable, with the stream first and the reader's own engine
+/// lines under it. Phones end there; tablets keep the notation/explorer panel
+/// under the engine lines at a bounded height.
 class EventVideoGameLayout extends StatelessWidget {
   const EventVideoGameLayout({
     super.key,
     required this.board,
     required this.engine,
     required this.analysis,
+    this.notation = false,
     this.sideBySide = false,
     this.maxWidth,
   });
   final Widget board, engine, analysis;
-  final bool sideBySide;
+  final bool notation, sideBySide;
   final double? maxWidth;
   @override
   Widget build(BuildContext context) => LayoutBuilder(
@@ -660,12 +652,13 @@ class EventVideoGameLayout extends StatelessWidget {
         children: [
           const EventVideoSurface(),
           engine,
-          // The notation/explorer panel keeps a bounded, independently usable
-          // height under the engine lines.
-          SizedBox(
-            height: math.max(260, constraints.maxHeight * .55),
-            child: analysis,
-          ),
+          if (notation)
+            // The notation/explorer panel keeps a bounded, independently
+            // usable height under the engine lines on tablets.
+            SizedBox(
+              height: math.max(260, constraints.maxHeight * .55),
+              child: analysis,
+            ),
         ],
       );
       if (sideBySide) {

@@ -7830,6 +7830,9 @@ class _AnalysisGameBody extends ConsumerWidget {
         if (isVisiblePage && video?.showVideo == true && video!.isActive(game.gameId)) {
           return EventVideoGameLayout(
             sideBySide: isTabletLandscape,
+            // Phones end the watch layout at the engine lines; tablets keep
+            // the notation/explorer panel below them.
+            notation: ResponsiveHelper.isTablet,
             maxWidth: ResponsiveHelper.isTablet && !isTabletLandscape
                 ? math.min(MediaQuery.sizeOf(context).width * .85, 720.0) : null,
             board: Column(mainAxisSize: MainAxisSize.min, children: boardHeaderChildren),

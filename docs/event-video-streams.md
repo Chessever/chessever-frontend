@@ -1,8 +1,9 @@
 # Event video in the app
 
 YouTube, Twitch and Kick appear directly under the board, with the engine lines
-below the stream (the reader's own engine settings, identical to watch mode off)
-and the notation/explorer panel under those at a bounded height. The camera
+below the stream (the reader's own engine settings, identical to watch mode off).
+On phones watch mode ends at the engine lines; tablets keep the
+notation/explorer panel under those at a bounded height. The camera
 button replaces board swap when the event has valid streams; **Flip board** moves
 to the phone/tablet three-dot menu, keeping the circular refresh mark from the
 bottom bar. Hiding video restores the user's engine layout. Turning watch mode
@@ -14,14 +15,12 @@ instead of a player: every stream is a readable tile with its flag and provider,
 the grid scrolls when the list is long, and flags and the player never share the
 area. Picking a stream dismisses the picker, springs the player in (motor smooth
 spring, snapped to rest), and starts playback: the tap that chose the stream is
-the play gesture, so the provider's own play button is never needed. Provider
-chrome (control bar, title, branding) starts hidden so the surface stays clean;
-one tap on the stream brings it back, and from then on the provider's own
-overlay behaves natively (the embed reloads at the live edge, keeping playback
-and mute). No tile is drawn as selected before the reader picks one. The player
-carries no chooser chrome of its own; hiding and showing the video (or moving to
-a new event or round) brings the picker back and hides the provider controls
-again. Each tile keeps its own flag and provider label, including streams
+the play gesture, so the provider's own play button is never needed. The embed
+loads with the provider's classic controls (play, mute, quality, fullscreen); the
+stream surface has no tap detector of its own. No tile is drawn as selected
+before the reader picks one. The player carries no chooser chrome of its own;
+hiding and showing the video (or moving to a new event or round) brings the
+picker back. Each tile keeps its own flag and provider label, including streams
 sharing the same language.
 
 Stream selection uses the locally saved country from a manually selected flag
@@ -120,9 +119,11 @@ the WebView; on Android the app wires the WebView custom-view callbacks and
 shows that custom view in an overlay above the route, which is what makes
 YouTube, Twitch and Kick fullscreen work there at all (the platform denies it by
 default). Back exits fullscreen first, then the expanded viewer, then the route.
-Entering or leaving never reloads the document, rotating during fullscreen never
-stops playback, and leaving fullscreen onto a narrow inline Twitch view stops
-the now-invisible player.
+Entering or leaving never reloads the document, and a stream that was live is
+nudged back once if the embed paused while the custom view attached. Rotating
+during fullscreen never stops playback; only a real surface resize is treated as
+rotation (inset-only metrics churn is ignored), and leaving fullscreen onto a
+narrow inline Twitch view stops the now-invisible player.
 
 ## Validation and device checklist
 
@@ -134,17 +135,17 @@ Using the production flavor, or the test flavor with verified test origins and
 streams, the user checks on Android and iOS:
 
 1. Open a streamed game: the stream area shows the picker grid, not a player.
-   Tap a tile: the player springs in under the board, the engine lines below it
-   follow the same settings as watch mode off (line count and list/cards), and
-   the notation/explorer panel sits under them. The stream starts with no
-   provider controls; tap it once and the provider overlay comes back, usable as
-   usual. Hide/Show or a new round returns to the picker with the controls
-   hidden again.
+   Tap a tile: the player springs in under the board, and the engine lines below
+   it follow the same settings as watch mode off (line count and list/cards).
+   Phones end there; tablet landscape keeps the notation/explorer panel under
+   the engine lines. The stream starts with the
+   provider's classic controls visible and usable from the first frame. Hide/Show
+   or a new round returns to the picker.
 2. Scroll a long stream list inside the picker; the grid scrolls without swiping
-   the game. Tap the stream once to bring the provider controls back, mute,
-   hide/show the video, pick another stream, and confirm the mute choice carried
-   over. On Android, use the provider's own fullscreen button for YouTube,
-   Twitch and Kick; back exits fullscreen before anything else.
+   the game. Mute, hide/show the video, pick another stream, and confirm the mute
+   choice carried over. On Android, use the provider's own fullscreen button for
+   YouTube, Twitch and Kick; the stream keeps playing in fullscreen, and back
+   exits fullscreen before anything else.
 3. Hide/show video. Normal engine lines return when hidden; Show reopens the
    picker. Swap board works in the top-right menu with the same circular refresh
    mark as the bottom-bar flip. Events without video keep bottom swap.
