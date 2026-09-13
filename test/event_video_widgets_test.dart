@@ -116,7 +116,7 @@ void main() {
       await tester.pump();
       expect(session.playRequested, isFalse);
       expect(find.byKey(const ValueKey('event_video_flags')), findsOneWidget);
-      expect(find.text('One engine line'), findsNothing);
+      expect(find.text('One engine line'), findsOneWidget);
       await tester.pump(const Duration(seconds: 3));
       expect(find.byKey(const ValueKey('event_video_flags')), findsNothing);
       expect(find.text('One engine line'), findsOneWidget);
@@ -188,7 +188,9 @@ void main() {
               .dy;
       final notationY = tester.getTopLeft(find.text('Notation 0')).dy;
       expect(railY, lessThan(playerY));
-      expect(playerY, lessThan(notationY));
+      final engineY = tester.getTopLeft(find.text('One engine line')).dy;
+      expect(playerY, lessThan(engineY));
+      expect(engineY, lessThan(notationY));
       session.reportPlayback(true, session.playerRevision);
       await tester.tap(find.byKey(const ValueKey('toggle')));
       await tester.pump();
@@ -214,12 +216,17 @@ void main() {
     session.reportPlayback(true, session.playerRevision);
     final revision = session.playerRevision;
     final loads = player.loads;
+    await tester.pump(const Duration(seconds: 3));
+    expect(session.flagsVisible, isFalse);
     await tester.pumpWidget(harness(session, player, game: 'g2'));
     await tester.pump();
     expect(session.playing, isTrue);
     expect(session.playerRevision, revision);
     expect(player.loads, loads);
     expect(find.text('Player'), findsOneWidget);
+    expect(session.flagsVisible, isFalse);
+    await tester.tap(find.text('Player'));
+    await tester.pump();
     expect(session.flagsVisible, isTrue);
     await tester.pumpWidget(
       harness(session, player, game: 'g3', tour: 'another-tour'),

@@ -1,6 +1,8 @@
 # Event video in the app
 
-YouTube, Twitch and Kick appear between the engine row and notation. The camera
+YouTube, Twitch and Kick appear above the engine row and notation. Flags stay
+above the video and do not replace engine lines. Switching games within the
+event does not reveal or restart the flag timer. The camera
 button replaces board swap when the event has valid streams; **Flip board** moves
 to the phone/tablet three-dot menu. Hiding video restores the user's engine layout.
 Vertical drags starting on the player scroll the game screen; taps and horizontal
@@ -93,7 +95,7 @@ and never contact providers. Run scoped `flutter analyze --no-pub` and the
 Using the production flavor, or the test flavor with verified test origins and
 streams, the user checks on Android and iOS:
 
-1. Open a streamed game: flags show; video is below the engine slot, above notation,
+1. Open a streamed game: flags show; video is below the flags and above engine lines and notation,
    and paused. Flags disappear after three seconds; touch video to reveal them.
 2. Scroll/select repeated-language flags. The timer restarts; a paused stream stays
    paused, and switching from confirmed playback requests continued playback.
