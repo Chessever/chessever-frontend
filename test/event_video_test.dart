@@ -64,7 +64,6 @@ void main() {
     await Future<void>.delayed(Duration.zero);
     expect(restored.hasVideo, isTrue);
     expect(restored.showVideo, isFalse);
-    expect(restored.streamChosen, isFalse);
     restored.toggle();
     expect(stored, isTrue);
     expect(restored.showVideo, isTrue);
@@ -482,7 +481,6 @@ void main() {
         contains('youtube-quTNRNvL-rA'),
       );
       expect(session.showVideo, isTrue);
-      expect(session.streamChosen, isFalse);
       expect(session.playRequested, isFalse);
     },
   );
@@ -554,7 +552,7 @@ void main() {
       expect(session.playRequested, isFalse);
       expect(session.showVideo, isTrue);
       session.select('english-main');
-      expect(session.playRequested, isTrue);
+      expect(session.playRequested, isFalse);
       session.reportPlayback(true, session.playerRevision);
       final revision = session.playerRevision;
       session.openGame(gameId: 'g2', tourId: 'tour', roundId: 'round');
@@ -707,7 +705,7 @@ void main() {
       contains('controls=true'),
     );
   });
-  test('re-picking a stream reloads with autoplay and keeps mute', () {
+  test('re-picking a stream preserves playback, revision and mute', () {
     final session = EventVideoSession(
       repository: FakeVideoRepository(fixtureVideos()),
     );
@@ -719,8 +717,8 @@ void main() {
     session.reportMuted(true, session.playerRevision);
     final revision = session.playerRevision;
     session.select('english-main');
-    expect(session.playRequested, isTrue);
-    expect(session.playerRevision, revision + 1);
+    expect(session.playing, isTrue);
+    expect(session.playerRevision, revision);
     expect(session.muted, isTrue);
   });
   test(
@@ -745,7 +743,7 @@ void main() {
       expect(session.muted, isFalse);
     },
   );
-  test('choice is required at every switch-on and kept across games', () async {
+  test('selection stays across games and showing video stays paused', () async {
     final session = EventVideoSession(
       repository: FakeVideoRepository(fixtureVideos()),
     );
@@ -753,27 +751,20 @@ void main() {
     session.openGame(gameId: 'g1', tourId: 'tour', roundId: 'round');
     session.streams = fixtureVideos();
     session.selected = session.streams.first;
-    expect(session.streamChosen, isFalse);
     session.select('english-main');
-    expect(session.streamChosen, isTrue);
     // Same-event game change keeps the choice (and the player).
     session.openGame(gameId: 'g2', tourId: 'tour', roundId: 'round');
-    expect(session.streamChosen, isTrue);
     // A new round of the same event keeps the running stream too: swiping or
     // jumping between games never interrupts the broadcast.
     session.openGame(gameId: 'g3', tourId: 'tour', roundId: 'round-2');
     await Future<void>.delayed(Duration.zero);
-    expect(session.streamChosen, isTrue);
     expect(session.selected!.id, 'english-main');
     // A new event is a fresh switch-on; streams resolve anew.
     session.openGame(gameId: 'g4', tourId: 'other', roundId: 'round');
     await Future<void>.delayed(Duration.zero);
-    expect(session.streamChosen, isFalse);
     session.select('english-main');
-    expect(session.streamChosen, isTrue);
     session.toggle();
     session.toggle();
-    expect(session.streamChosen, isFalse);
   });
   test('returning from background continues a stream that was live', () {
     final session = EventVideoSession(
@@ -812,7 +803,6 @@ void main() {
       session.select('english-main');
       session.reportPlayback(true, session.playerRevision);
       expect(session.playing, isTrue);
-      expect(session.streamChosen, isTrue);
       final revision = session.playerRevision;
       final nudge = session.playNudge;
       // The new round no longer carries the chosen stream; playback still
@@ -821,14 +811,12 @@ void main() {
           fixtureVideos().where((s) => s.id != 'english-main').toList();
       session.openGame(gameId: 'g2', tourId: 'tour', roundId: 'round-2');
       await Future<void>.delayed(Duration.zero);
-      expect(session.streamChosen, isTrue);
       expect(session.playing, isTrue);
       expect(session.selected!.id, 'english-main');
       expect(session.playerRevision, revision);
       expect(session.playNudge, nudge + 1);
       // A new event still resets to the picker.
       session.openGame(gameId: 'g3', tourId: 'another-tour', roundId: 'r');
-      expect(session.streamChosen, isFalse);
       expect(session.playing, isFalse);
       expect(session.selected, isNull);
     },

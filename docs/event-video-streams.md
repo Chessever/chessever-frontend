@@ -2,26 +2,21 @@
 
 YouTube, Twitch and Kick appear directly under the board, with the engine lines
 below the stream (the reader's own engine settings, identical to watch mode off).
-On phones watch mode ends at the engine lines; tablets keep the
-notation/explorer panel under those at a bounded height. The camera
+Phones and tablets keep the notation/explorer panel below the engine lines
+at a bounded, scrollable height. The camera
 button replaces board swap when the event has valid streams; **Flip board** moves
 to the phone/tablet three-dot menu, keeping the circular refresh mark from the
 bottom bar. Hiding video restores the user's engine layout. Turning watch mode
-on or off springs the incoming layout in (motor smooth spring, snapped to rest),
-so the swap between the watch surface and the analysis layout never snaps.
+on or off animates the layout. Swiping games keeps adjacent watch layouts
+consistent and transfers the single player without an entrance fade.
 Vertical drags starting on the player scroll the game screen; taps and horizontal
-seeking remain with the video controls. The stream area opens as a stream picker
-instead of a player: every stream is a readable tile with its flag and provider,
-the grid scrolls when the list is long, and flags and the player never share the
-area. Picking a stream dismisses the picker, springs the player in (motor smooth
-spring, snapped to rest), and starts playback: the tap that chose the stream is
-the play gesture, so the provider's own play button is never needed. The embed
-loads with the provider's classic controls (play, mute, quality, fullscreen); the
-stream surface has no tap detector of its own. No tile is drawn as selected
-before the reader picks one. The player carries no chooser chrome of its own;
-hiding and showing the video (or moving to a new event or round) brings the
-picker back. Each tile keeps its own flag and provider label, including streams
-sharing the same language.
+seeking remain with the video controls. The preferred stream loads paused, with
+horizontal flags above it. Flags appear on first entry and deliberate video taps,
+then dismiss after three seconds of inactivity. Scrolling holds dismissal;
+selecting a flag restarts the timer. Game switches do not reveal flags.
+Each stream has its own flag, provider label and selected styling. Switching
+streams continues only confirmed playback; a paused stream stays paused.
+Provider controls remain enabled without reloading the embed on taps.
 
 Stream selection uses the locally saved country from a manually selected flag
 (`ce-video-country.v1`), falling back to the current Countrymen selection when no
@@ -29,8 +24,7 @@ valid local preference exists. Saved-country streams come first, then exact Coun
 related-language streams for those preferences, then the event's normal order.
 This ordering is frozen during the event when a stream is selected; the newly
 saved preference applies when opening another event.
-The first stream in that order is used for playback; the picker itself draws no
-tile as selected before a choice. An existing event selection stays selected.
+The first stream in that order is selected initially. An existing event selection stays selected.
 If neither country nor language group matches,
 the event default wins. The language groups are maintained in
 `video_country_preference.dart`; multilingual countries may belong to multiple
@@ -45,7 +39,7 @@ empty list allows none. Metadata refresh removes a stream if mobile access is
 removed. Top-level `language` takes precedence over legacy publication language.
 
 Show/Hide Video is saved locally (`ce-video-visible.v1`) across events and app
-restarts. First-time users see video; restoring or showing it reopens the picker.
+restarts. First-time users see video; restoring or showing it loads the selected stream paused.
 
 ## Flavor configuration
 
@@ -83,8 +77,7 @@ The route owns one player controller. Only the active game attaches its view;
 changing games in the same tour preserves selection, visibility, and playback,
 including moving to another round of the same event, so swiping games or using
 the game dropdown never interrupts the broadcast. If the chosen stream no longer
-exists in the new round, playback stops and the picker returns rather than
-silently switching streams.
+exists in the new round, the existing selection is retained during the game change.
 The game model has no parent-event ID, so the tour ID is the event/session key.
 Language preference persists locally across events; exact stream/visibility
 choices last for the board route. The existing web language mapping and
@@ -134,21 +127,14 @@ and never contact providers. Run scoped `flutter analyze --no-pub` and the
 Using the production flavor, or the test flavor with verified test origins and
 streams, the user checks on Android and iOS:
 
-1. Open a streamed game: the stream area shows the picker grid, not a player.
-   Tap a tile: the player springs in under the board, and the engine lines below
-   it follow the same settings as watch mode off (line count and list/cards).
-   Phones end there; tablet landscape keeps the notation/explorer panel under
-   the engine lines. The stream starts with the
-   provider's classic controls visible and usable from the first frame. Hide/Show
-   or a new round returns to the picker.
-2. Scroll a long stream list inside the picker; the grid scrolls without swiping
-   the game. Mute, hide/show the video, pick another stream, and confirm the mute
-   choice carried over. On Android, use the provider's own fullscreen button for
-   YouTube, Twitch and Kick; the stream keeps playing in fullscreen, and back
-   exits fullscreen before anything else.
-3. Hide/show video. Normal engine lines return when hidden; Show reopens the
-   picker. Swap board works in the top-right menu with the same circular refresh
-   mark as the bottom-bar flip. Events without video keep bottom swap.
+1. Open a streamed game: the selected video is paused with flags above it and
+   engine lines below. Verify flags dismiss after three seconds, return on a
+   video tap, and stay visible while scrolling the horizontal list.
+2. Select another flag while paused and while playing. Check playback state and
+   mute carry over, repeated flags have distinct labels, and order stays fixed.
+   Verify Android/iOS landscape fullscreen still uses one player.
+3. Hide/show video: Show restores the selected stream paused. Flip board remains
+   in the top-right menu. Engine lines continue using saved settings.
 4. Switch games in the same tour during playback, by swiping and through the
    game dropdown, including games in another round of the same event. Check
    there is one player, no audio duplication, no restart, and the stream keeps

@@ -531,10 +531,10 @@ void main() {
     expect(h.player.failed, isFalse);
     h.session.toggle();
     await _flushPlayer(tester);
-    // Re-showing is a switch-on: pick a stream again before the player loads.
+    // Showing restores the selected player paused, including reselecting it.
     h.session.select('english-main');
     await _flushPlayer(tester);
-    expect(controller.documents.last, contains('autoplay:1'));
+    expect(controller.documents.last, contains('autoplay:0'));
     await tester.pumpWidget(const SizedBox());
     await tester.pump();
     expect(controller.documents.last, isNotEmpty);

@@ -70,11 +70,9 @@ class EventVideoSession extends ChangeNotifier {
   bool visible;
   bool playing = false, foreground = true;
 
-  /// Linear choice flow: the stream area shows the stream picker until the
-  /// user picks one, then the player fades in. Reset at every switch-on moment
-  /// (show toggle, new event/round) and kept across same-round game changes so
-  /// the video never drops while swiping games.
-  bool streamChosen = false;
+  bool flagsVisible = false;
+  bool _scrolling = false;
+  Timer? _flagsTimer;
 
   /// Last mute state reported by the embedded provider player. Carried into
   /// every later embed document, so switching streams never resets mute. Only
@@ -120,9 +118,9 @@ class EventVideoSession extends ChangeNotifier {
       stopPlayback(notify: false);
       streams = const [];
       selected = null;
-      // A new event is a fresh switch-on: choose again before the video fades
-      // in. A new round of the same event keeps the running stream instead.
-      streamChosen = false;
+      // New events load their preferred stream paused. Same-event rounds
+      // retain the existing player.
+      flagsVisible = false;
     }
     this.gameId = gameId;
     this.tourId = tourId;
@@ -130,7 +128,7 @@ class EventVideoSession extends ChangeNotifier {
     if (newScope) {
       _scopeRevision++;
       _ranking.clear();
-      // Resolve the new scope's streams for the picker without ever dropping a
+      // Resolve the new scope's flags without ever dropping a
       // stream that is already running in this event.
       unawaited(refresh(preserveSelection: true));
     }
@@ -187,14 +185,15 @@ class EventVideoSession extends ChangeNotifier {
         if (previous?.identity != selected?.identity) {
           stopPlayback(notify: false);
           // The stream the reader was watching no longer exists in this scope:
-          // offer the choice again instead of silently playing another one.
+          // keep the replacement paused and wait for a deliberate video tap.
           if (previous != null &&
               !streams.any((s) => s.identity == previous.identity)) {
-            streamChosen = false;
+            flagsVisible = false;
           }
         }
       }
       failed = false;
+      if (previous == null && selected != null) revealFlags(notify: false);
       notifyListeners();
     } catch (error) {
       if (_disposed || revision != _scopeRevision) return;
@@ -215,17 +214,15 @@ class EventVideoSession extends ChangeNotifier {
   void select(String id) {
     final matches = streams.where((s) => s.id == id);
     if (matches.isEmpty) return;
-    streamChosen = true;
     _selectionLocked = true;
     final next = matches.first;
-    // Tapping a tile is the play gesture: choosing starts the stream, so the
-    // reader never has to press the provider's own play button. The revision
-    // always advances so re-picking an already-loaded stream reloads with
-    // autoplay instead of leaving its paused document in place.
-    selected = next;
-    playing = false;
-    playRequested = true;
-    playerRevision++;
+    if (selected?.identity != next.identity) {
+      final continuePlaying = playing;
+      selected = next;
+      playing = false;
+      playRequested = continuePlaying;
+      playerRevision++;
+    }
     _selections[tourId] = id;
     rememberedLanguage = next.languageKey;
     final country = normalizeVideoCountry(next.flagCode);
@@ -241,6 +238,7 @@ class EventVideoSession extends ChangeNotifier {
     if (save != null) {
       unawaited(save(next.languageKey).catchError((Object _) {}));
     }
+    revealFlags(notify: false);
     notifyListeners();
   }
 
@@ -265,8 +263,7 @@ class EventVideoSession extends ChangeNotifier {
     }
     stopPlayback(notify: false);
     if (visible) {
-      // Showing the video is a switch-on: choose first, then fade in.
-      streamChosen = false;
+      revealFlags(notify: false);
     }
     notifyListeners();
   }
@@ -295,10 +292,7 @@ class EventVideoSession extends ChangeNotifier {
     // revision even when the same stream and player widget stayed mounted.
     stopPlayback(notify: false);
     if (value) {
-      if (resumeAfterBackground &&
-          _wasStreamingOnBackground &&
-          showVideo &&
-          streamChosen) {
+      if (resumeAfterBackground && _wasStreamingOnBackground && showVideo) {
         // App background return continues a stream that was live; the reload
         // starts it at the provider's live edge.
         playRequested = true;
@@ -315,10 +309,30 @@ class EventVideoSession extends ChangeNotifier {
     notifyListeners();
   }
 
+  void revealFlags({bool notify = true}) {
+    _flagsTimer?.cancel();
+    if (!showVideo || !foreground) return;
+    flagsVisible = true;
+    if (!_scrolling) {
+      _flagsTimer = Timer(const Duration(seconds: 3), () {
+        if (_disposed) return;
+        flagsVisible = false;
+        notifyListeners();
+      });
+    }
+    if (notify) notifyListeners();
+  }
+
+  void setScrolling(bool value) {
+    _scrolling = value;
+    revealFlags();
+  }
+
   @override
   void dispose() {
     _disposed = true;
     _refreshTimer?.cancel();
+    _flagsTimer?.cancel();
     repository?.close();
     super.dispose();
   }

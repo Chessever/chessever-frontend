@@ -7390,10 +7390,7 @@ class _GameBody extends StatelessWidget {
     // (the board share boundary) and a remount would retake them mid-frame.
     final video = EventVideoScope.maybeOf(context)?.session;
     final watchMode =
-        index == currentPageIndex &&
-        video != null &&
-        video.showVideo &&
-        video.isActive(game.gameId);
+        video != null && video.showVideo && video.tourId == game.tourId;
     return _WatchModeTransition(
       watchMode: watchMode,
       // Analysis mode is always active, use analysis game body
@@ -7827,12 +7824,10 @@ class _AnalysisGameBody extends ConsumerWidget {
         }
 
         final video = EventVideoScope.maybeOf(context)?.session;
-        if (isVisiblePage && video?.showVideo == true && video!.isActive(game.gameId)) {
+        if (video?.showVideo == true && video!.tourId == game.tourId) {
           return EventVideoGameLayout(
+            active: video.isActive(game.gameId),
             sideBySide: isTabletLandscape,
-            // Phones end the watch layout at the engine lines; tablets keep
-            // the notation/explorer panel below them.
-            notation: ResponsiveHelper.isTablet,
             maxWidth: ResponsiveHelper.isTablet && !isTabletLandscape
                 ? math.min(MediaQuery.sizeOf(context).width * .85, 720.0) : null,
             board: Column(mainAxisSize: MainAxisSize.min, children: boardHeaderChildren),
