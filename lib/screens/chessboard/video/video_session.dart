@@ -15,6 +15,8 @@ class EventVideoSession extends ChangeNotifier {
     this.preferredCountry,
     this.savedCountry,
     this.saveCountry,
+    this.visible = true,
+    this.saveVisibility,
   }) {
     if (repository != null) {
       _refreshTimer = Timer.periodic(
@@ -29,6 +31,7 @@ class EventVideoSession extends ChangeNotifier {
   String? preferredCountry;
   String? savedCountry;
   final SaveVideoLanguage? saveCountry;
+  final Future<void> Function(bool visible)? saveVisibility;
   String? get effectiveCountry =>
       normalizeVideoCountry(savedCountry) ??
       normalizeVideoCountry(preferredCountry);
@@ -65,7 +68,8 @@ class EventVideoSession extends ChangeNotifier {
   String gameId = '', tourId = '', roundId = '';
   List<EventVideoStream> streams = const [];
   EventVideoStream? selected;
-  bool visible = true, flagsVisible = false, playing = false, foreground = true;
+  bool visible;
+  bool flagsVisible = false, playing = false, foreground = true;
   bool expanded = false;
   bool failed = false;
   int playerRevision = 0;
@@ -76,7 +80,6 @@ class EventVideoSession extends ChangeNotifier {
   final Set<int> _pending = {};
   final Map<String, EventVideoStream> _ranking = {};
   final Map<String, String> _selections = {};
-  final Map<String, bool> _visibility = {};
 
   bool get hasVideo => selected != null;
   bool get showVideo => hasVideo && visible;
@@ -103,7 +106,6 @@ class EventVideoSession extends ChangeNotifier {
       stopPlayback(notify: false);
       streams = const [];
       selected = null;
-      visible = _visibility[tourId] ?? true;
     }
     this.gameId = gameId;
     this.tourId = tourId;
@@ -215,7 +217,10 @@ class EventVideoSession extends ChangeNotifier {
   void toggle() {
     _scrolling = false;
     visible = !visible;
-    _visibility[tourId] = visible;
+    final save = saveVisibility;
+    if (save != null) {
+      unawaited(save(visible).catchError((Object _) {}));
+    }
     stopPlayback(notify: false);
     if (visible) {
       revealFlags(notify: false);

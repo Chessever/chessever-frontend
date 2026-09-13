@@ -28,6 +28,9 @@ only streams allowing `mobile` enter mobile flags, ranking, and playback. An
 empty list allows none. Metadata refresh removes a stream if mobile access is
 removed. Top-level `language` takes precedence over legacy publication language.
 
+Show/Hide Video is saved locally (`ce-video-visible.v1`) across events and app
+restarts. First-time users see video; restoring or showing it always starts paused.
+
 ## Flavor configuration
 
 The production flavor (`lib/main.dart`) enables video by default using the approved
