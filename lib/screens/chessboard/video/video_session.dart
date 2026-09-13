@@ -33,12 +33,16 @@ class EventVideoSession extends ChangeNotifier {
       normalizeVideoCountry(savedCountry) ??
       normalizeVideoCountry(preferredCountry);
   bool _selectionLocked = false;
+  String? _orderingCountry;
 
   void setPreferredCountry(String? country) {
     final normalized = normalizeVideoCountry(country);
     if (preferredCountry == normalized) return;
     preferredCountry = normalized;
-    streams = prioritizeVideoCountry(streams, effectiveCountry);
+    if (!_selectionLocked && !_selections.containsKey(tourId)) {
+      _orderingCountry = effectiveCountry;
+      streams = prioritizeVideoCountry(streams, _orderingCountry);
+    }
     if (!_selectionLocked &&
         !_selections.containsKey(tourId) &&
         streams.isNotEmpty) {
@@ -88,6 +92,7 @@ class EventVideoSession extends ChangeNotifier {
     final newScope = newEvent || this.roundId != roundId;
     if (newEvent) {
       _selectionLocked = false;
+      _orderingCountry = effectiveCountry;
       stopPlayback(notify: false);
       streams = const [];
       selected = null;
@@ -126,7 +131,7 @@ class EventVideoSession extends ChangeNotifier {
                 (s) => s.withRanking(_ranking.putIfAbsent(s.identity, () => s)),
               )
               .toList();
-      streams = prioritizeVideoCountry(ranked, effectiveCountry);
+      streams = prioritizeVideoCountry(ranked, _orderingCountry);
       EventVideoStream? find(bool Function(EventVideoStream) predicate) {
         for (final stream in streams) {
           if (predicate(stream)) return stream;
@@ -175,7 +180,6 @@ class EventVideoSession extends ChangeNotifier {
     final country = normalizeVideoCountry(next.flagCode);
     if (country != null) {
       savedCountry = country;
-      streams = prioritizeVideoCountry(streams, effectiveCountry);
       final persist = saveCountry;
       if (persist != null) {
         unawaited(persist(country).catchError((Object _) {}));

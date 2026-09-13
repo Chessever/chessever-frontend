@@ -141,12 +141,14 @@ void main() {
       await Future<void>.delayed(Duration.zero);
       expect(session.selected!.id, 'spanish');
       expect(session.streams.first.id, 'spanish');
+      final initialOrder = session.streams.map((s) => s.id).toList();
       session.select('english-second');
       expect(stored, 'GB');
-      expect(session.streams.take(2).map((s) => s.id), [
-        'english-main',
-        'english-second',
-      ]);
+      expect(session.streams.map((s) => s.id), initialOrder);
+      await session.refresh();
+      expect(session.streams.map((s) => s.id), initialOrder);
+      session.openGame(gameId: 'g2', tourId: 'tour', roundId: 'round');
+      expect(session.streams.map((s) => s.id), initialOrder);
       expect(session.selected!.id, 'english-second');
       final next = EventVideoSession(
         repository: FakeVideoRepository(fixtureVideos()),
