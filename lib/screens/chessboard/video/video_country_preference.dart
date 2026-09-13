@@ -113,13 +113,22 @@ int videoCountryPriority(EventVideoStream stream, String? country) {
 
 List<EventVideoStream> prioritizeVideoCountry(
   List<EventVideoStream> streams,
-  String? country,
-) {
+  String? country, {
+  String? countrymen,
+}) {
   final ordered = orderVideoStreams(streams);
+  int priority(EventVideoStream stream) {
+    final saved = videoCountryPriority(stream, country);
+    final local = videoCountryPriority(stream, countrymen);
+    if (saved == 0) return 0;
+    if (local == 0) return 1;
+    if (saved == 1) return 2;
+    if (local == 1) return 3;
+    return 4;
+  }
+
   return [
-    for (var priority = 0; priority < 3; priority++)
-      ...ordered.where(
-        (stream) => videoCountryPriority(stream, country) == priority,
-      ),
+    for (var rank = 0; rank < 5; rank++)
+      ...ordered.where((stream) => priority(stream) == rank),
   ];
 }

@@ -36,6 +36,30 @@ class FakeVideoRepository implements EventVideoRepository {
 
 void main() {
   test(
+    'saved country comes first, then countrymen, without reordering on selection',
+    () async {
+      final session = EventVideoSession(
+        repository: FakeVideoRepository(fixtureVideos()),
+        savedCountry: 'ES',
+        preferredCountry: 'DE',
+      );
+      addTearDown(session.dispose);
+      session.openGame(gameId: 'g', tourId: 'tour', roundId: 'round');
+      await Future<void>.delayed(Duration.zero);
+      expect(session.streams.map((s) => s.id), [
+        'spanish',
+        'german',
+        'english-main',
+        'english-second',
+      ]);
+      final order = session.streams.map((s) => s.id).toList();
+      session.select('english-main');
+      await session.refresh();
+      expect(session.streams.map((s) => s.id), order);
+    },
+  );
+
+  test(
     'web platform contract supports legacy and explicitly enabled mobile streams',
     () {
       final base = <String, dynamic>{
@@ -165,7 +189,7 @@ void main() {
   );
 
   test(
-    'saved country uses language group then event default when unavailable',
+    'exact countrymen match precedes language-group fallbacks',
     () async {
       for (final country in ['AT', 'BR']) {
         final session = EventVideoSession(
@@ -175,10 +199,7 @@ void main() {
         );
         session.openGame(gameId: 'g', tourId: 'tour', roundId: 'round');
         await Future<void>.delayed(Duration.zero);
-        expect(
-          session.selected!.id,
-          country == 'AT' ? 'german' : 'english-main',
-        );
+        expect(session.selected!.id, 'spanish');
         expect(session.streams.first.id, session.selected!.id);
         session.dispose();
       }
