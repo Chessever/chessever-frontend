@@ -76,11 +76,6 @@ class EventVideoSession extends ChangeNotifier {
   /// the video never drops while swiping games.
   bool streamChosen = false;
 
-  /// Provider chrome starts hidden so the stream surface stays clean. The
-  /// first deliberate tap on the stream reveals it: the player reloads with
-  /// the provider controls at the live edge, keeping playback and mute.
-  bool controlsVisible = false;
-
   /// Last mute state reported by the embedded provider player. Carried into
   /// every later embed document, so switching streams never resets mute. Only
   /// the next document consumes it, so reporting it never rebuilds the mounted
@@ -90,6 +85,11 @@ class EventVideoSession extends ChangeNotifier {
   bool failed = false;
   int playerRevision = 0;
   bool playRequested = false;
+
+  /// Monotonic nudge counted when a same-event game change keeps the running
+  /// stream. The player re-asserts playback after the page swap reattaches the
+  /// native view; it never reloads the document.
+  int playNudge = 0;
   Timer? _refreshTimer;
   bool _disposed = false;
   int _scopeRevision = 0;
@@ -123,7 +123,6 @@ class EventVideoSession extends ChangeNotifier {
       // A new event is a fresh switch-on: choose again before the video fades
       // in. A new round of the same event keeps the running stream instead.
       streamChosen = false;
-      controlsVisible = false;
     }
     this.gameId = gameId;
     this.tourId = tourId;
@@ -131,14 +130,20 @@ class EventVideoSession extends ChangeNotifier {
     if (newScope) {
       _scopeRevision++;
       _ranking.clear();
-      // Retain the same player's state while resolving a different round in
-      // this event. Permanent removal or a changed selection stops it below.
-      unawaited(refresh());
+      // Resolve the new scope's streams for the picker without ever dropping a
+      // stream that is already running in this event.
+      unawaited(refresh(preserveSelection: true));
+    }
+    // Browsing the event's games — swipe or the top dropdown, same round or
+    // another one — must not interrupt the stream. The page swap can reattach
+    // the native view; ask the player to re-assert playback once it settles.
+    if (!newEvent && selected != null && (playing || playRequested)) {
+      playNudge++;
     }
     notifyListeners();
   }
 
-  Future<void> refresh() async {
+  Future<void> refresh({bool preserveSelection = false}) async {
     final revision = _scopeRevision;
     if (_disposed ||
         !foreground ||
@@ -170,17 +175,23 @@ class EventVideoSession extends ChangeNotifier {
       }
 
       final previous = selected;
-      selected =
-          find((s) => s.id == (previous?.id ?? _selections[tourId])) ??
-          (streams.isEmpty ? null : streams.first);
-      if (previous?.identity != selected?.identity) {
-        stopPlayback(notify: false);
-        // The stream the reader was watching no longer exists in this scope:
-        // offer the choice again instead of silently playing another one.
-        if (previous != null &&
-            !streams.any((s) => s.identity == previous.identity)) {
-          streamChosen = false;
-          controlsVisible = false;
+      final match = find((s) => s.id == (previous?.id ?? _selections[tourId]));
+      if (preserveSelection && previous != null) {
+        // Browsing the event's games or rounds (swipe or the top dropdown)
+        // never drops a running stream, even when the resolved scope does not
+        // list it. Only a new event resets playback; the provider itself shows
+        // offline/error states if the stream dies.
+        selected = match ?? previous;
+      } else {
+        selected = match ?? (streams.isEmpty ? null : streams.first);
+        if (previous?.identity != selected?.identity) {
+          stopPlayback(notify: false);
+          // The stream the reader was watching no longer exists in this scope:
+          // offer the choice again instead of silently playing another one.
+          if (previous != null &&
+              !streams.any((s) => s.identity == previous.identity)) {
+            streamChosen = false;
+          }
         }
       }
       failed = false;
@@ -188,7 +199,9 @@ class EventVideoSession extends ChangeNotifier {
     } catch (error) {
       if (_disposed || revision != _scopeRevision) return;
       failed = true;
-      if (error is VideoMetadataException && error.permanent) {
+      if (!preserveSelection &&
+          error is VideoMetadataException &&
+          error.permanent) {
         streams = const [];
         selected = null;
         stopPlayback(notify: false);
@@ -213,9 +226,6 @@ class EventVideoSession extends ChangeNotifier {
     playing = false;
     playRequested = true;
     playerRevision++;
-    // Every new choice opens clean: the provider chrome is hidden until the
-    // reader taps the stream themselves.
-    controlsVisible = false;
     _selections[tourId] = id;
     rememberedLanguage = next.languageKey;
     final country = normalizeVideoCountry(next.flagCode);
@@ -247,18 +257,6 @@ class EventVideoSession extends ChangeNotifier {
     // No rebuild: the next embed document consumes this on load.
   }
 
-  /// Reveals the provider's own controls on a deliberate tap. The player
-  /// reloads at the live edge with the controls enabled, keeping the current
-  /// playback and mute state, so the overlay is always one tap away.
-  void revealControls() {
-    if (_disposed || controlsVisible || !showVideo) return;
-    controlsVisible = true;
-    playRequested = playing || playRequested;
-    playing = false;
-    playerRevision++;
-    notifyListeners();
-  }
-
   void toggle() {
     visible = !visible;
     final save = saveVisibility;
@@ -266,7 +264,6 @@ class EventVideoSession extends ChangeNotifier {
       unawaited(save(visible).catchError((Object _) {}));
     }
     stopPlayback(notify: false);
-    controlsVisible = false;
     if (visible) {
       // Showing the video is a switch-on: choose first, then fade in.
       streamChosen = false;

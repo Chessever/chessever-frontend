@@ -30,6 +30,7 @@ class _WebViewPlatform extends WebViewPlatform {
 class _Controller extends PlatformWebViewController {
   _Controller(super.params) : super.implementation();
   final documents = <String>[];
+  final scripts = <String>[];
   _Navigation? navigation;
   JavaScriptChannelParams? channel;
   bool cancelOnBlank = false;
@@ -37,6 +38,11 @@ class _Controller extends PlatformWebViewController {
   @override
   Future<Object> runJavaScriptReturningResult(String script) async =>
       muteSnapshot;
+  @override
+  Future<void> runJavaScript(String script) async {
+    scripts.add(script);
+  }
+
   @override
   Future<void> setJavaScriptMode(JavaScriptMode mode) async {}
   @override
@@ -225,6 +231,92 @@ void main() {
     },
   );
 
+  testWidgets('Android fullscreen nudges a live stream back to playing', (
+    tester,
+  ) async {
+    final h = _Harness();
+    await tester.pumpWidget(h.widget);
+    await _flushPlayer(tester);
+    h.session.select('english-main');
+    await _flushPlayer(tester);
+    final controller = platform.controllers.single;
+    controller.scripts.clear();
+    h.session.reportPlayback(true, h.session.playerRevision);
+    var closed = 0;
+    h.player.enterFullscreen(
+      const Text('Fullscreen native video'),
+      () => closed++,
+    );
+    await tester.pump(const Duration(milliseconds: 500));
+    expect(
+      controller.scripts.any((script) => script.contains('chessVideoPlay')),
+      isTrue,
+    );
+    // Exiting before the nudge fires leaves the document untouched.
+    controller.scripts.clear();
+    h.player.enterFullscreen(
+      const Text('Fullscreen native video'),
+      () => closed++,
+    );
+    h.player.exitFullscreen();
+    await tester.pump(const Duration(milliseconds: 500));
+    expect(
+      controller.scripts.any((script) => script.contains('chessVideoPlay')),
+      isFalse,
+      reason: 'the nudge only fires while fullscreen is still open',
+    );
+    await tester.pumpWidget(const SizedBox());
+    await tester.pump();
+  });
+
+  testWidgets('Android fullscreen leaves a paused stream alone', (
+    tester,
+  ) async {
+    final h = _Harness();
+    await tester.pumpWidget(h.widget);
+    await _flushPlayer(tester);
+    h.session.select('english-main');
+    await _flushPlayer(tester);
+    final controller = platform.controllers.single;
+    controller.scripts.clear();
+    h.player.enterFullscreen(const Text('Fullscreen native video'), () {});
+    await tester.pump(const Duration(milliseconds: 500));
+    expect(
+      controller.scripts.any((script) => script.contains('chessVideoPlay')),
+      isFalse,
+    );
+    h.player.exitFullscreen();
+    await tester.pumpWidget(const SizedBox());
+    await tester.pump();
+  });
+
+  testWidgets(
+    'a same-event game change re-asserts playback without reloading',
+    (tester) async {
+      final h = _Harness();
+      await tester.pumpWidget(h.widget);
+      await _flushPlayer(tester);
+      h.session.select('english-main');
+      await _flushPlayer(tester);
+      final controller = platform.controllers.single;
+      final loads = controller.documents.length;
+      final revision = h.session.playerRevision;
+      controller.scripts.clear();
+      h.session.reportPlayback(true, revision);
+      h.session.openGame(gameId: 'game-2', tourId: 'tour', roundId: 'round');
+      await tester.pump(const Duration(milliseconds: 500));
+      expect(controller.documents.length, loads);
+      expect(h.session.playerRevision, revision);
+      expect(h.session.playing, isTrue);
+      expect(
+        controller.scripts.any((script) => script.contains('chessVideoPlay')),
+        isTrue,
+      );
+      await tester.pumpWidget(const SizedBox());
+      await tester.pump();
+    },
+  );
+
   testWidgets(
     'switch captures native mute state and applies it to the next video',
     (tester) async {
@@ -372,13 +464,13 @@ void main() {
   testWidgets('intentional cancellation never presents the retry overlay', (
     tester,
   ) async {
-      final h = _Harness();
-      await tester.pumpWidget(h.widget);
-      await _flushPlayer(tester);
-      h.session.select('english-main');
-      await _flushPlayer(tester);
-      final controller = platform.controllers.single..cancelOnBlank = true;
-      h.key.currentState!.setRouteVisible(false);
+    final h = _Harness();
+    await tester.pumpWidget(h.widget);
+    await _flushPlayer(tester);
+    h.session.select('english-main');
+    await _flushPlayer(tester);
+    final controller = platform.controllers.single..cancelOnBlank = true;
+    h.key.currentState!.setRouteVisible(false);
     await _flushPlayer(tester);
     expect(h.player.failed, isFalse);
     // An obsolete failure while the board is covered must not poison return.

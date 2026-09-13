@@ -96,6 +96,7 @@ class NativeEventVideoPlayer extends EventVideoPlayer {
   EventVideoSession? _session;
   int _revision = -1, _generation = 0, _requestedRevision = -1;
   int _documentRevision = -1;
+  int _playNudge = 0;
   bool _failed = false, _disposed = false;
 
   bool get _acceptsDocumentEvents =>
@@ -217,7 +218,17 @@ class NativeEventVideoPlayer extends EventVideoPlayer {
   @override
   void synchronize(EventVideoSession session) {
     _session = session;
-    if (_revision == session.playerRevision) return;
+    if (_revision == session.playerRevision) {
+      // A same-event game change keeps the document; the page swap may have
+      // paused the HTML5 element when the native view reattached, so re-assert
+      // playback once without reloading.
+      if (_playNudge != session.playNudge) {
+        _playNudge = session.playNudge;
+        _schedulePlayNudge();
+      }
+      return;
+    }
+    _playNudge = session.playNudge;
     // A new revision replaces the document; leaving the platform's custom view
     // up would strand it over the next stream.
     closeFullscreen();
@@ -228,6 +239,8 @@ class NativeEventVideoPlayer extends EventVideoPlayer {
   }
 
   void _scheduleUpdate() {
+    _playNudgeTimer?.cancel();
+    _playNudgeTimer = null;
     final session = _session;
     if (session == null) return;
     final generation = ++_generation;
@@ -278,7 +291,6 @@ class NativeEventVideoPlayer extends EventVideoPlayer {
               revision: _revision,
               play: session.playRequested,
               muted: session.muted,
-              controls: session.controlsVisible,
               nativeFullscreen: defaultTargetPlatform != TargetPlatform.iOS,
             ),
             baseUrl: '${embedOrigin.toString()}/',
@@ -329,14 +341,69 @@ class NativeEventVideoPlayer extends EventVideoPlayer {
       onHidden();
       return;
     }
+    // Some embeds pause the HTML5 element while the Android custom view
+    // attaches. Remember whether the stream was actually playing so it can be
+    // nudged back instead of stopping until the reader taps play again. A
+    // stream the reader paused stays paused.
+    final wasLive = _session?.playing == true;
     _fullscreenView = view;
     _exitFullscreenNative = onHidden;
     notifyListeners();
+    if (wasLive) _scheduleResumeAfterFullscreen();
+  }
+
+  Timer? _resumeTimer;
+
+  /// One-shot resume fired after provider fullscreen opens. Only nudges the
+  /// document when the fullscreen view is still up and the stream was live
+  /// before the transition; providers without a play hook are a no-op.
+  void _scheduleResumeAfterFullscreen() {
+    _resumeTimer?.cancel();
+    _resumeTimer = Timer(const Duration(milliseconds: 400), () {
+      _resumeTimer = null;
+      if (_disposed || _fullscreenView == null) return;
+      final controller = _controller;
+      if (controller == null) return;
+      unawaited(
+        controller
+            .runJavaScript('window.chessVideoPlay && window.chessVideoPlay()')
+            .catchError((Object _) {
+              // Kick has no documented playback API; its frame keeps playing
+              // on its own or the reader presses play.
+            }),
+      );
+    });
+  }
+
+  void _cancelResumeAfterFullscreen() {
+    _resumeTimer?.cancel();
+    _resumeTimer = null;
+  }
+
+  Timer? _playNudgeTimer;
+
+  /// One-shot playback re-assert after a same-event game change. The native
+  /// view can pause while the page swap reattaches it; this runs the provider
+  /// play hook again without touching the document.
+  void _schedulePlayNudge() {
+    _playNudgeTimer?.cancel();
+    _playNudgeTimer = Timer(const Duration(milliseconds: 400), () {
+      _playNudgeTimer = null;
+      if (_disposed || !_acceptsDocumentEvents) return;
+      final controller = _controller;
+      if (controller == null) return;
+      unawaited(
+        controller
+            .runJavaScript('window.chessVideoPlay && window.chessVideoPlay()')
+            .catchError((Object _) {}),
+      );
+    });
   }
 
   @override
   void exitFullscreen() {
     if (_disposed || _fullscreenView == null) return;
+    _cancelResumeAfterFullscreen();
     _fullscreenView = null;
     _exitFullscreenNative = null;
     notifyListeners();
@@ -348,6 +415,7 @@ class NativeEventVideoPlayer extends EventVideoPlayer {
   @override
   void closeFullscreen() {
     if (_fullscreenView == null && _exitFullscreenNative == null) return;
+    _cancelResumeAfterFullscreen();
     final hide = _exitFullscreenNative;
     _exitFullscreenNative = null;
     _fullscreenView = null;
@@ -366,6 +434,9 @@ class NativeEventVideoPlayer extends EventVideoPlayer {
   void dispose() {
     _disposed = true;
     _generation++;
+    _cancelResumeAfterFullscreen();
+    _playNudgeTimer?.cancel();
+    _playNudgeTimer = null;
     // Leaving fullscreen behind would strand the platform custom view after
     // the player is gone.
     _exitFullscreenNative?.call();
@@ -386,15 +457,14 @@ class NativeEventVideoPlayer extends EventVideoPlayer {
 /// Only validated provider IDs enter this document. No backend embed HTML.
 /// [muted] is the last mute state the provider player reported; it is applied
 /// on load so switching streams carries the user's mute choice across.
-/// [controls] is false while watching and true after the reader taps the
-/// stream, which is the only moment provider chrome is wanted.
+/// Provider chrome is always enabled: the reader gets the familiar controls
+/// (play, mute, quality, fullscreen) without any reload-on-tap machinery.
 String videoPlayerHtml(
   VideoSource source,
   Uri origin, {
   required int revision,
   required bool play,
   required bool muted,
-  required bool controls,
   bool nativeFullscreen = true,
 }) {
   final id = jsonEncode(source.id),
@@ -402,31 +472,38 @@ String videoPlayerHtml(
       parent = jsonEncode(origin.toString());
   final autoplay = play ? 'true' : 'false';
   final mutedFlag = muted ? 'true' : 'false';
-  final controlsFlag = controls ? 'true' : 'false';
   // The tap that chose the stream is the play gesture. Autoplay params alone
   // can be ignored, so each provider is also started explicitly once ready.
   final youtubeStart = play ? 'try{ytPlayer.playVideo();}catch(e){}' : '';
   final twitchStart = play ? 'try{p.play();}catch(e){}' : '';
+  // Fullscreen hook used to nudge a live stream back if the HTML5 element
+  // paused while the Android custom view attached.
+  final youtubePlayHook =
+      play
+          ? 'window.chessVideoPlay=()=>{try{ytPlayer.playVideo();}catch(e){}};'
+          : '';
+  final twitchPlayHook =
+      play ? 'window.chessVideoPlay=()=>{try{p.play();}catch(e){}};' : '';
   final provider = switch (source.platform) {
     VideoPlatform.youtube => '''
 <script>
 function onYouTubeIframeAPIReady() {
   const ytPlayer=new YT.Player('player', {width:'100%', height:'100%', videoId:$id,
-    playerVars:{autoplay:${play ? 1 : 0}, playsinline:1, fs:${nativeFullscreen ? 1 : 0}, origin:$parent, mute:${muted ? 1 : 0}, controls:${controls ? 1 : 0}, modestbranding:1, rel:0, iv_load_policy:3},
-    events:{onReady:()=>{try{ytPlayer.${muted ? 'mute' : 'unMute'}();}catch(e){}$youtubeStart watchMuted(()=>ytPlayer.isMuted());},onStateChange:e=>send('playback',{playing:e.data===1}), onError:()=>send('error',{})}});
+    playerVars:{autoplay:${play ? 1 : 0}, playsinline:1, fs:${nativeFullscreen ? 1 : 0}, origin:$parent, mute:${muted ? 1 : 0}, controls:1, modestbranding:1, rel:0, iv_load_policy:3},
+    events:{onReady:()=>{try{ytPlayer.${muted ? 'mute' : 'unMute'}();}catch(e){}$youtubeStart$youtubePlayHook watchMuted(()=>ytPlayer.isMuted());},onStateChange:e=>send('playback',{playing:e.data===1}), onError:()=>send('error',{})}});
 }
 </script><script src="https://www.youtube.com/iframe_api" onerror="send('error',{})"></script>''',
     VideoPlatform.twitch => '''
 <script src="https://player.twitch.tv/js/embed/v1.js" onerror="send('error',{})"></script>
 <script>
 try {
-  const p=new Twitch.Player('player',{width:'100%',height:'100%',channel:$id,parent:[$host],autoplay:$autoplay,muted:$mutedFlag,controls:$controlsFlag});
+  const p=new Twitch.Player('player',{width:'100%',height:'100%',channel:$id,parent:[$host],autoplay:$autoplay,muted:$mutedFlag,controls:true});
   p.addEventListener(Twitch.Player.PLAYING,()=>send('playback',{playing:true}));
   p.addEventListener(Twitch.Player.PAUSE,()=>send('playback',{playing:false}));
   p.addEventListener(Twitch.Player.ENDED,()=>send('playback',{playing:false}));
   p.addEventListener(Twitch.Player.OFFLINE,()=>send('playback',{playing:false}));
   try{p.setMuted($mutedFlag);}catch(e){}
-  $twitchStart
+  $twitchStart$twitchPlayHook
   watchMuted(()=>p.getMuted());
 } catch(e) {send('error',{});}
 </script>''',
@@ -438,7 +515,7 @@ try {
     VideoPlatform.kick => '''
 <script>
 const frame=document.createElement('iframe');
-frame.src='https://player.kick.com/'+encodeURIComponent($id)+'?autoplay=$autoplay&muted=$mutedFlag&controls=$controlsFlag';
+frame.src='https://player.kick.com/'+encodeURIComponent($id)+'?autoplay=$autoplay&muted=$mutedFlag&controls=true';
 frame.allow='autoplay; fullscreen; picture-in-picture; encrypted-media';
 frame.allowFullscreen=true;frame.title='Kick video';
 frame.referrerPolicy='strict-origin-when-cross-origin';
@@ -451,5 +528,6 @@ document.getElementById('player').replaceWith(frame);
 </head><body><div id="player"></div><script>
 function send(type,data){ChessVideo.postMessage(JSON.stringify({type,revision:$revision,...data}));}
 function watchMuted(read){window.chessVideoMuted=read;let last=null;setInterval(()=>{try{Promise.resolve(read()).then(m=>{if(m===null||m===undefined)return;m=!!m;if(m!==last){last=m;send('muted',{muted:m});}}).catch(()=>{});}catch(e){}},1000);}
+window.chessVideoPlay=()=>{};
 </script>$provider</body></html>''';
 }

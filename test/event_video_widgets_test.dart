@@ -66,6 +66,7 @@ Widget harness(
   String game = 'g1',
   String tour = 'tour',
   bool sideBySide = false,
+  bool notation = false,
   VoidCallback? onVideoInteraction,
 }) => MaterialApp(
   home: EventVideoHost(
@@ -95,6 +96,7 @@ Widget harness(
                     session.showVideo
                         ? EventVideoGameLayout(
                           sideBySide: sideBySide,
+                          notation: notation,
                           board: const SizedBox(
                             height: 250,
                             child: Center(child: Text('Board')),
@@ -165,6 +167,7 @@ void main() {
       await tester.pump();
       await chooseStream(tester, 'english-main');
       session.reportPlayback(true, session.playerRevision);
+      final loads = player.loads;
       final surface = tester.getRect(
         find.byKey(const ValueKey('event_video_surface')),
       );
@@ -176,10 +179,9 @@ void main() {
       await tester.tap(find.text('Player'));
       await tester.pump();
       expect(find.byTooltip('Fullscreen video'), findsOneWidget);
-      // Revealing provider controls reloads the embed with playback requested.
-      expect(session.playRequested, isTrue);
-      session.reportPlayback(true, session.playerRevision);
-      final loads = player.loads;
+      // Revealing the fullscreen button keeps the playing embed intact.
+      expect(session.playing, isTrue);
+      expect(player.loads, loads);
       await tester.tap(find.byTooltip('Fullscreen video'));
       await tester.pump();
       expect(session.expanded, isTrue);
@@ -276,11 +278,8 @@ void main() {
               .dy,
         ),
       );
-      // Notation sits under the engine lines, at a bounded height.
-      expect(
-        tester.getTopLeft(find.text('Notation 0')).dy,
-        greaterThan(tester.getTopLeft(find.text('One engine line')).dy),
-      );
+      // Phones end at the engine lines: no notation panel under the stream.
+      expect(find.text('Notation 0'), findsNothing);
       await tester.pumpWidget(const SizedBox());
       expect(player.disposed, isTrue);
     },
@@ -314,30 +313,22 @@ void main() {
     expect(tester.takeException(), isNull);
     await tester.pumpWidget(const SizedBox());
   });
-  testWidgets('one tap on the stream reveals provider controls once', (
+  testWidgets('taps on the stream belong to the provider: no reload', (
     tester,
   ) async {
-    tester.view.physicalSize = const Size(375, 800);
-    tester.view.devicePixelRatio = 1;
-    addTearDown(tester.view.resetPhysicalSize);
-    addTearDown(tester.view.resetDevicePixelRatio);
     final session = EventVideoSession(
       repository: FakeVideoRepository(fixtureVideos()),
     );
-    await tester.pumpWidget(harness(session, FakePlayer()));
+    final player = FakePlayer();
+    await tester.pumpWidget(harness(session, player));
     await tester.pump();
     await chooseStream(tester, 'english-main');
-    expect(session.controlsVisible, isFalse);
     final revision = session.playerRevision;
+    final loads = player.loads;
     await tester.tap(find.text('Player'));
     await tester.pump();
-    expect(session.controlsVisible, isTrue);
-    expect(session.playerRevision, revision + 1);
-    expect(session.playRequested, isTrue);
-    // From now on the provider owns the taps; no second reload.
-    await tester.tap(find.text('Player'));
-    await tester.pump();
-    expect(session.playerRevision, revision + 1);
+    expect(session.playerRevision, revision);
+    expect(player.loads, loads);
     await tester.pumpWidget(const SizedBox());
   });
   testWidgets('native fullscreen overlays the route and back exits it first', (
@@ -396,6 +387,30 @@ void main() {
       await tester.pumpWidget(const SizedBox());
     },
   );
+  testWidgets('inset-only churn never stops a narrow Twitch stream', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(375, 700);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    addTearDown(tester.view.resetViewPadding);
+    final session = EventVideoSession(
+      repository: FakeVideoRepository(fixtureVideos()),
+      savedCountry: 'DE',
+    );
+    final player = FakePlayer();
+    await tester.pumpWidget(harness(session, player));
+    await tester.pump();
+    await chooseStream(tester, 'german');
+    session.reportPlayback(true, session.playerRevision);
+    // Android hides the status bar while provider fullscreen opens: the
+    // padding-only metrics event must not be read as a rotation to narrow.
+    tester.view.viewPadding = const FakeViewPadding(top: 24);
+    await tester.pump();
+    expect(session.playing, isTrue);
+    await tester.pumpWidget(const SizedBox());
+  });
   testWidgets('same-event game change keeps one player and playback revision', (
     tester,
   ) async {
@@ -499,13 +514,17 @@ void main() {
     final session = EventVideoSession(
       repository: FakeVideoRepository(fixtureVideos()),
     );
-    await tester.pumpWidget(harness(session, FakePlayer(), sideBySide: true));
+    await tester.pumpWidget(
+      harness(session, FakePlayer(), sideBySide: true, notation: true),
+    );
     await tester.pump();
     await chooseStream(tester, 'english-main');
     expect(
       tester.getTopLeft(find.byKey(const ValueKey('event_video_surface'))).dx,
       greaterThan(tester.getTopLeft(find.text('Board')).dx),
     );
+    // Tablets keep the notation/explorer panel under the engine lines.
+    expect(find.text('Notation 0'), findsOneWidget);
     expect(tester.takeException(), isNull);
     await tester.pumpWidget(const SizedBox());
   });
