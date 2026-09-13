@@ -35,6 +35,42 @@ class FakeVideoRepository implements EventVideoRepository {
 }
 
 void main() {
+  test('video visibility is saved across events and restored paused', () async {
+    bool? stored;
+    final session = EventVideoSession(
+      repository: FakeVideoRepository(fixtureVideos()),
+      saveVisibility: (value) async {
+        stored = value;
+      },
+    );
+    addTearDown(session.dispose);
+    session.openGame(gameId: 'g1', tourId: 'one', roundId: 'r1');
+    await Future<void>.delayed(Duration.zero);
+    expect(session.showVideo, isTrue);
+    session.toggle();
+    expect(stored, isFalse);
+    session.openGame(gameId: 'g2', tourId: 'two', roundId: 'r2');
+    await Future<void>.delayed(Duration.zero);
+    expect(session.showVideo, isFalse);
+    final restored = EventVideoSession(
+      repository: FakeVideoRepository(fixtureVideos()),
+      visible: stored!,
+      saveVisibility: (value) async {
+        stored = value;
+      },
+    );
+    addTearDown(restored.dispose);
+    restored.openGame(gameId: 'g3', tourId: 'three', roundId: 'r3');
+    await Future<void>.delayed(Duration.zero);
+    expect(restored.hasVideo, isTrue);
+    expect(restored.showVideo, isFalse);
+    expect(restored.flagsVisible, isFalse);
+    restored.toggle();
+    expect(stored, isTrue);
+    expect(restored.showVideo, isTrue);
+    expect(restored.playRequested, isFalse);
+  });
+
   test(
     'saved country comes first, then countrymen, without reordering on selection',
     () async {
@@ -188,23 +224,20 @@ void main() {
     },
   );
 
-  test(
-    'exact countrymen match precedes language-group fallbacks',
-    () async {
-      for (final country in ['AT', 'BR']) {
-        final session = EventVideoSession(
-          repository: FakeVideoRepository(fixtureVideos()),
-          preferredCountry: 'ES',
-          savedCountry: country,
-        );
-        session.openGame(gameId: 'g', tourId: 'tour', roundId: 'round');
-        await Future<void>.delayed(Duration.zero);
-        expect(session.selected!.id, 'spanish');
-        expect(session.streams.first.id, session.selected!.id);
-        session.dispose();
-      }
-    },
-  );
+  test('exact countrymen match precedes language-group fallbacks', () async {
+    for (final country in ['AT', 'BR']) {
+      final session = EventVideoSession(
+        repository: FakeVideoRepository(fixtureVideos()),
+        preferredCountry: 'ES',
+        savedCountry: country,
+      );
+      session.openGame(gameId: 'g', tourId: 'tour', roundId: 'round');
+      await Future<void>.delayed(Duration.zero);
+      expect(session.selected!.id, 'spanish');
+      expect(session.streams.first.id, session.selected!.id);
+      session.dispose();
+    }
+  });
 
   test(
     'countrymen selects first matching flag before remembered language',

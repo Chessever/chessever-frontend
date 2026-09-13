@@ -81,6 +81,10 @@ class EventVideoHostState extends State<EventVideoHost>
         widget.session ??
         EventVideoSession(
           repository: config == null ? null : HttpEventVideoRepository(config),
+          saveVisibility: (visible) async {
+            final prefs = await SharedPreferences.getInstance();
+            await prefs.setBool('ce-video-visible.v1', visible);
+          },
           saveCountry: (country) async {
             final prefs = await SharedPreferences.getInstance();
             await prefs.setString('ce-video-country.v1', country);
@@ -107,6 +111,7 @@ class EventVideoHostState extends State<EventVideoHost>
     try {
       final prefs = await SharedPreferences.getInstance();
       session.savedCountry = prefs.getString('ce-video-country.v1');
+      session.visible = prefs.getBool('ce-video-visible.v1') ?? true;
       session.rememberedLanguage = prefs.getString('ce-video-language.v1');
     } catch (_) {
       /* Preferences are optional. */
