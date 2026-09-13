@@ -10,8 +10,10 @@ its own flag and provider label, including streams sharing the same language.
 
 Stream selection uses the locally saved country from a manually selected flag
 (`ce-video-country.v1`), falling back to the current Countrymen selection when no
-valid local preference exists. Exact-country streams come first, then streams
-in the configured commentary-language group, then the event's normal order.
+valid local preference exists. Saved-country streams come first, then exact Countrymen-country streams, then
+related-language streams for those preferences, then the event's normal order.
+This ordering is frozen during the event when a stream is selected; the newly
+saved preference applies when opening another event.
 The first stream in that order is selected paused; an existing event selection
 or playing stream stays selected. If neither country nor language group matches,
 the event default wins. The language groups are maintained in
