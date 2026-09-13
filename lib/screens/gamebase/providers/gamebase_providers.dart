@@ -1865,43 +1865,58 @@ final positionGamesProvider = FutureProvider.autoDispose
       query,
     ) async {
       final repository = ref.read(gamebaseRepositoryProvider);
-      if (query.useFenEndpoint) {
-        return repository.getFenPositionGames(
-          fen: query.fen,
-          uci: query.uci,
-          timeControl: query.timeControl,
-          playerId: query.playerId,
-          color: query.color,
-          result: query.result,
-          isOnline: query.isOnline,
-          minRating: query.minRating,
-          maxRating: query.maxRating,
-          yearFrom: query.yearFrom,
-          yearTo: query.yearTo,
-          sortBy: query.sortBy,
-          sortDirection: query.sortDirection,
-          notationPlies: query.notationPlies,
-          pageNumber: query.pageNumber,
-          pageSize: query.pageSize,
-        );
+      // Retain completed pages across board navigation, including exact-FEN
+      // searches that the move-row prefetcher cannot warm. Match desktop's TTL.
+      final keepAliveLink = ref.keepAlive();
+      Timer? cacheTimer;
+      ref.onDispose(() => cacheTimer?.cancel());
+      try {
+        final response =
+            await (() {
+              if (query.useFenEndpoint) {
+                return repository.getFenPositionGames(
+                  fen: query.fen,
+                  uci: query.uci,
+                  timeControl: query.timeControl,
+                  playerId: query.playerId,
+                  color: query.color,
+                  result: query.result,
+                  isOnline: query.isOnline,
+                  minRating: query.minRating,
+                  maxRating: query.maxRating,
+                  yearFrom: query.yearFrom,
+                  yearTo: query.yearTo,
+                  sortBy: query.sortBy,
+                  sortDirection: query.sortDirection,
+                  notationPlies: query.notationPlies,
+                  pageNumber: query.pageNumber,
+                  pageSize: query.pageSize,
+                );
+              }
+              return repository.getPositionGames(
+                fen: query.fen,
+                moves: query.moves,
+                uci: query.uci,
+                timeControl: query.timeControl,
+                playerId: query.playerId,
+                color: query.color,
+                result: query.result,
+                isOnline: query.isOnline,
+                minRating: query.minRating,
+                maxRating: query.maxRating,
+                yearFrom: query.yearFrom,
+                yearTo: query.yearTo,
+                sortBy: query.sortBy,
+                sortDirection: query.sortDirection,
+                notationPlies: query.notationPlies,
+                pageNumber: query.pageNumber,
+                pageSize: query.pageSize,
+              );
+            })();
+        cacheTimer = Timer(const Duration(minutes: 2), keepAliveLink.close);
+        return response;
+      } catch (_) {
+        keepAliveLink.close();
+        rethrow;
       }
-      return repository.getPositionGames(
-        fen: query.fen,
-        moves: query.moves,
-        uci: query.uci,
-        timeControl: query.timeControl,
-        playerId: query.playerId,
-        color: query.color,
-        result: query.result,
-        isOnline: query.isOnline,
-        minRating: query.minRating,
-        maxRating: query.maxRating,
-        yearFrom: query.yearFrom,
-        yearTo: query.yearTo,
-        sortBy: query.sortBy,
-        sortDirection: query.sortDirection,
-        notationPlies: query.notationPlies,
-        pageNumber: query.pageNumber,
-        pageSize: query.pageSize,
-      );
     });

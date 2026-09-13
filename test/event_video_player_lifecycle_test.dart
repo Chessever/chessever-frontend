@@ -159,12 +159,14 @@ void main() {
       final h = _Harness();
       await tester.pumpWidget(h.widget);
       await _flushPlayer(tester);
+      h.session.select('english-main');
+      await _flushPlayer(tester);
       final controller = platform.controllers.single;
       final loads = controller.documents.length;
       final revision = h.session.playerRevision;
       h.session.reportPlayback(true, revision);
       var closed = 0;
-      h.player.showFullscreen(
+      h.player.enterFullscreen(
         const Text('Fullscreen native video'),
         () => closed++,
       );
@@ -204,13 +206,13 @@ void main() {
       await tester.pump();
       expect(closed, 1);
       expect(h.session.playing, isTrue);
-      h.player.showFullscreen(
+      h.player.enterFullscreen(
         const Text('Fullscreen native video'),
         () => closed++,
       );
-      expect(h.key.currentState!.exitFullscreen(), isTrue);
+      expect(h.key.currentState!.closeFullscreenIfOpen(), isTrue);
       expect(closed, 2);
-      h.player.showFullscreen(
+      h.player.enterFullscreen(
         const Text('Fullscreen native video'),
         () => closed++,
       );
@@ -228,6 +230,8 @@ void main() {
     (tester) async {
       final h = _Harness();
       await tester.pumpWidget(h.widget);
+      await _flushPlayer(tester);
+      h.session.select('english-main');
       await _flushPlayer(tester);
       final controller = platform.controllers.single;
       controller.muteSnapshot = true;
@@ -258,6 +262,8 @@ void main() {
         },
       );
       await tester.pumpWidget(h.widget);
+      await _flushPlayer(tester);
+      h.session.select('english-main');
       await _flushPlayer(tester);
       final navigation = platform.controllers.single.navigation!.onNavigation!;
       expect(
@@ -295,6 +301,8 @@ void main() {
   ) async {
     final h = _Harness();
     await tester.pumpWidget(h.widget);
+    await _flushPlayer(tester);
+    h.session.select('english-main');
     await _flushPlayer(tester);
     final controller = platform.controllers.single;
     final revision = h.session.playerRevision;
@@ -337,6 +345,8 @@ void main() {
     final h = _Harness();
     await tester.pumpWidget(h.widget);
     await _flushPlayer(tester);
+    h.session.select('english-main');
+    await _flushPlayer(tester);
     final controller = platform.controllers.single;
     expect(controller.documents.last, contains('youtube.com/iframe_api'));
     h.session.reportPlayback(true, h.session.playerRevision);
@@ -362,11 +372,13 @@ void main() {
   testWidgets('intentional cancellation never presents the retry overlay', (
     tester,
   ) async {
-    final h = _Harness();
-    await tester.pumpWidget(h.widget);
-    await _flushPlayer(tester);
-    final controller = platform.controllers.single..cancelOnBlank = true;
-    h.key.currentState!.setRouteVisible(false);
+      final h = _Harness();
+      await tester.pumpWidget(h.widget);
+      await _flushPlayer(tester);
+      h.session.select('english-main');
+      await _flushPlayer(tester);
+      final controller = platform.controllers.single..cancelOnBlank = true;
+      h.key.currentState!.setRouteVisible(false);
     await _flushPlayer(tester);
     expect(h.player.failed, isFalse);
     // An obsolete failure while the board is covered must not poison return.
@@ -388,6 +400,8 @@ void main() {
     (tester) async {
       final h = _Harness();
       await tester.pumpWidget(h.widget);
+      await _flushPlayer(tester);
+      h.session.select('english-main');
       await _flushPlayer(tester);
       final controller = platform.controllers.single;
       controller.emitError(-1003, mainFrame: false);
@@ -411,6 +425,8 @@ void main() {
     final h = _Harness();
     await tester.pumpWidget(h.widget);
     await _flushPlayer(tester);
+    h.session.select('english-main');
+    await _flushPlayer(tester);
     final controller = platform.controllers.single;
     h.session.toggle();
     await _flushPlayer(tester);
@@ -423,11 +439,70 @@ void main() {
     expect(h.player.failed, isFalse);
     h.session.toggle();
     await _flushPlayer(tester);
-    expect(controller.documents.last, contains('autoplay:0'));
+    // Re-showing is a switch-on: pick a stream again before the player loads.
+    h.session.select('english-main');
+    await _flushPlayer(tester);
+    expect(controller.documents.last, contains('autoplay:1'));
     await tester.pumpWidget(const SizedBox());
     await tester.pump();
     expect(controller.documents.last, isNotEmpty);
     expect(controller.documents.last, isNot(contains('ChessVideo')));
     expect(tester.takeException(), isNull);
+  });
+  testWidgets('a provider mute report reloads the next stream muted', (
+    tester,
+  ) async {
+    final h = _Harness();
+    await tester.pumpWidget(h.widget);
+    await _flushPlayer(tester);
+    h.session.select('english-main');
+    await _flushPlayer(tester);
+    final controller = platform.controllers.single;
+    expect(controller.documents.last, contains('mute:0'));
+    h.session.reportPlayback(true, h.session.playerRevision);
+    controller.channel!.onMessageReceived(
+      JavaScriptMessage(
+        message:
+            '{"type":"muted","revision":${h.session.playerRevision},"muted":true}',
+      ),
+    );
+    expect(h.session.muted, isTrue);
+    // Switching to the Twitch fixture carries the reported mute across.
+    h.session.select('german');
+    await _flushPlayer(tester);
+    expect(controller.documents.last, contains('muted:true'));
+    expect(controller.documents.last, contains('p.setMuted(true)'));
+    controller.channel!.onMessageReceived(
+      JavaScriptMessage(
+        message:
+            '{"type":"muted","revision":${h.session.playerRevision},"muted":false}',
+      ),
+    );
+    expect(h.session.muted, isFalse);
+    await tester.pumpWidget(const SizedBox());
+    await tester.pump();
+  });
+  testWidgets('returning from background resumes the live stream', (
+    tester,
+  ) async {
+    final h = _Harness();
+    await tester.pumpWidget(h.widget);
+    await _flushPlayer(tester);
+    h.session.select('english-main');
+    await _flushPlayer(tester);
+    final controller = platform.controllers.single;
+    h.session.reportPlayback(true, h.session.playerRevision);
+    // Background the app: the document clears and playback stops.
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+    await _flushPlayer(tester);
+    expect(h.session.playing, isFalse);
+    expect(controller.documents.last, isNot(contains('ChessVideo')));
+    // Returning reloads the live stream playing instead of paused.
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    await _flushPlayer(tester);
+    expect(h.session.playRequested, isTrue);
+    expect(controller.documents.last, contains('autoplay:1'));
+    await tester.pumpWidget(const SizedBox());
+    await tester.pump();
   });
 }

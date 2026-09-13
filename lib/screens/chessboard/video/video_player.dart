@@ -64,9 +64,16 @@ const _stoppedVideoHtml =
     '<!doctype html><html><body style="background:#000"></body></html>';
 
 abstract class EventVideoPlayer extends ChangeNotifier {
-  Widget? get fullscreenView => null;
-  void exitFullscreen() {}
   bool get failed;
+
+  /// Provider-native fullscreen view (Android custom view), or null when the
+  /// player is inline. iOS presents provider fullscreen itself, so this stays
+  /// null there. Plain Dart state with no-op defaults so fakes stay trivial.
+  Widget? get fullscreenView => null;
+  void enterFullscreen(Widget view, VoidCallback onHidden) {}
+  void exitFullscreen() {}
+  void closeFullscreen() {}
+
   void synchronize(EventVideoSession session);
   Widget buildView();
   void retry();
@@ -75,32 +82,6 @@ abstract class EventVideoPlayer extends ChangeNotifier {
 /// Controller outlives the game page/platform widget. The GlobalKey transfers
 /// its sole view between active pages and the expanded viewer in the same frame.
 class NativeEventVideoPlayer extends EventVideoPlayer {
-  Widget? _fullscreenView;
-  VoidCallback? _hideFullscreen;
-  @override
-  Widget? get fullscreenView => _fullscreenView;
-
-  void showFullscreen(Widget view, VoidCallback onHidden) {
-    if (_disposed || !_acceptsDocumentEvents) {
-      onHidden();
-      return;
-    }
-    exitFullscreen();
-    _fullscreenView = view;
-    _hideFullscreen = onHidden;
-    notifyListeners();
-  }
-
-  @override
-  void exitFullscreen() {
-    final hide = _hideFullscreen;
-    final hadView = _fullscreenView != null;
-    _hideFullscreen = null;
-    _fullscreenView = null;
-    hide?.call();
-    if (hadView && !_disposed) notifyListeners();
-  }
-
   NativeEventVideoPlayer(
     this.embedOrigin, {
     Future<bool> Function(Uri)? openExternal,
@@ -139,17 +120,16 @@ class NativeEventVideoPlayer extends EventVideoPlayer {
     await controller.setJavaScriptMode(JavaScriptMode.unrestricted);
     await controller.setBackgroundColor(Colors.black);
     if (controller.platform is AndroidWebViewController) {
-      await (controller.platform as AndroidWebViewController)
-          .setMediaPlaybackRequiresUserGesture(false);
-      await (controller.platform as AndroidWebViewController)
-          .setCustomWidgetCallbacks(
-            onShowCustomWidget: showFullscreen,
-            onHideCustomWidget: () {
-              // Android already closed its custom view; do not call it again.
-              _hideFullscreen = null;
-              exitFullscreen();
-            },
-          );
+      final android = controller.platform as AndroidWebViewController;
+      await android.setMediaPlaybackRequiresUserGesture(false);
+      // Android renders a video element's fullscreen request in a custom view
+      // the platform denies by default, so YouTube/Twitch/Kick fullscreen
+      // silently does nothing without these callbacks. iOS needs no wiring:
+      // WKWebView presents provider fullscreen itself.
+      await android.setCustomWidgetCallbacks(
+        onShowCustomWidget: (view, onHidden) => enterFullscreen(view, onHidden),
+        onHideCustomWidget: exitFullscreen,
+      );
     }
     await controller.addJavaScriptChannel(
       'ChessVideo',
@@ -238,7 +218,9 @@ class NativeEventVideoPlayer extends EventVideoPlayer {
   void synchronize(EventVideoSession session) {
     _session = session;
     if (_revision == session.playerRevision) return;
-    exitFullscreen();
+    // A new revision replaces the document; leaving the platform's custom view
+    // up would strand it over the next stream.
+    closeFullscreen();
     _revision = session.playerRevision;
     _documentRevision = -1;
     _requestedRevision = -1;
@@ -254,8 +236,10 @@ class NativeEventVideoPlayer extends EventVideoPlayer {
       Future<void>(() async {
         try {
           if (_disposed || generation != _generation) return;
-          // Capture a just-changed mute button before replacing the document,
-          // including a switch that happens before the next bridge poll.
+          // Capture a just-flipped mute button before replacing the document,
+          // including a switch that happens before the next bridge poll. The
+          // helper is undefined once the old document is gone, so a stale
+          // player simply reports nothing.
           if (_controller != null) {
             try {
               final value = await _controller!.runJavaScriptReturningResult(
@@ -264,8 +248,7 @@ class NativeEventVideoPlayer extends EventVideoPlayer {
               if (_disposed || generation != _generation) return;
               if (value == true || value == 'true') {
                 session.reportMuted(true, _revision);
-              }
-              if (value == false || value == 'false') {
+              } else if (value == false || value == 'false') {
                 session.reportMuted(false, _revision);
               }
             } catch (_) {
@@ -276,6 +259,7 @@ class NativeEventVideoPlayer extends EventVideoPlayer {
           final selected = session.selected;
           if (!session.showVideo ||
               !session.foreground ||
+              !session.streamChosen ||
               selected == null ||
               _requestedRevision != _revision) {
             if (_controller != null) {
@@ -294,6 +278,7 @@ class NativeEventVideoPlayer extends EventVideoPlayer {
               revision: _revision,
               play: session.playRequested,
               muted: session.muted,
+              controls: session.controlsVisible,
               nativeFullscreen: defaultTargetPlatform != TargetPlatform.iOS,
             ),
             baseUrl: '${embedOrigin.toString()}/',
@@ -329,6 +314,47 @@ class NativeEventVideoPlayer extends EventVideoPlayer {
         );
   }
 
+  Widget? _fullscreenView;
+  VoidCallback? _exitFullscreenNative;
+
+  @override
+  Widget? get fullscreenView => _fullscreenView;
+
+  /// The provider entered native fullscreen (Android custom view). Pure
+  /// overlay state: the document and revision are untouched, so exiting
+  /// returns to the exact same player with no reload.
+  @override
+  void enterFullscreen(Widget view, VoidCallback onHidden) {
+    if (_disposed || !_acceptsDocumentEvents) {
+      onHidden();
+      return;
+    }
+    _fullscreenView = view;
+    _exitFullscreenNative = onHidden;
+    notifyListeners();
+  }
+
+  @override
+  void exitFullscreen() {
+    if (_disposed || _fullscreenView == null) return;
+    _fullscreenView = null;
+    _exitFullscreenNative = null;
+    notifyListeners();
+  }
+
+  /// App-initiated exit (back button or the overlay's own control): clears the
+  /// overlay immediately and asks the platform to hide its custom view, so the
+  /// platform's later [exitFullscreen] callback is a no-op.
+  @override
+  void closeFullscreen() {
+    if (_fullscreenView == null && _exitFullscreenNative == null) return;
+    final hide = _exitFullscreenNative;
+    _exitFullscreenNative = null;
+    _fullscreenView = null;
+    hide?.call();
+    if (!_disposed) notifyListeners();
+  }
+
   @override
   void retry() {
     final session = _session;
@@ -339,8 +365,12 @@ class NativeEventVideoPlayer extends EventVideoPlayer {
   @override
   void dispose() {
     _disposed = true;
-    exitFullscreen();
     _generation++;
+    // Leaving fullscreen behind would strand the platform custom view after
+    // the player is gone.
+    _exitFullscreenNative?.call();
+    _exitFullscreenNative = null;
+    _fullscreenView = null;
     // WKWebView/Android controller has no dispose API. Blank it explicitly so
     // audio stops even before the final platform view is detached.
     final controller = _controller;
@@ -354,46 +384,61 @@ class NativeEventVideoPlayer extends EventVideoPlayer {
 }
 
 /// Only validated provider IDs enter this document. No backend embed HTML.
+/// [muted] is the last mute state the provider player reported; it is applied
+/// on load so switching streams carries the user's mute choice across.
+/// [controls] is false while watching and true after the reader taps the
+/// stream, which is the only moment provider chrome is wanted.
 String videoPlayerHtml(
   VideoSource source,
   Uri origin, {
   required int revision,
   required bool play,
-  bool muted = false,
+  required bool muted,
+  required bool controls,
   bool nativeFullscreen = true,
 }) {
   final id = jsonEncode(source.id),
       host = jsonEncode(origin.host),
       parent = jsonEncode(origin.toString());
   final autoplay = play ? 'true' : 'false';
+  final mutedFlag = muted ? 'true' : 'false';
+  final controlsFlag = controls ? 'true' : 'false';
+  // The tap that chose the stream is the play gesture. Autoplay params alone
+  // can be ignored, so each provider is also started explicitly once ready.
+  final youtubeStart = play ? 'try{ytPlayer.playVideo();}catch(e){}' : '';
+  final twitchStart = play ? 'try{p.play();}catch(e){}' : '';
   final provider = switch (source.platform) {
     VideoPlatform.youtube => '''
 <script>
 function onYouTubeIframeAPIReady() {
-  new YT.Player('player', {width:'100%', height:'100%', videoId:$id,
-    playerVars:{autoplay:${play ? 1 : 0}, playsinline:1, fs:${nativeFullscreen ? 1 : 0}, origin:$parent, mute:${muted ? 1 : 0}},
-    events:{onReady:e=>{${muted ? 'e.target.mute();' : ''}trackMute(()=>e.target.isMuted());},onStateChange:e=>send('playback',{playing:e.data===1}), onError:()=>send('error',{})}});
+  const ytPlayer=new YT.Player('player', {width:'100%', height:'100%', videoId:$id,
+    playerVars:{autoplay:${play ? 1 : 0}, playsinline:1, fs:${nativeFullscreen ? 1 : 0}, origin:$parent, mute:${muted ? 1 : 0}, controls:${controls ? 1 : 0}, modestbranding:1, rel:0, iv_load_policy:3},
+    events:{onReady:()=>{try{ytPlayer.${muted ? 'mute' : 'unMute'}();}catch(e){}$youtubeStart watchMuted(()=>ytPlayer.isMuted());},onStateChange:e=>send('playback',{playing:e.data===1}), onError:()=>send('error',{})}});
 }
 </script><script src="https://www.youtube.com/iframe_api" onerror="send('error',{})"></script>''',
     VideoPlatform.twitch => '''
 <script src="https://player.twitch.tv/js/embed/v1.js" onerror="send('error',{})"></script>
 <script>
 try {
-  const p=new Twitch.Player('player',{width:'100%',height:'100%',channel:$id,parent:[$host],autoplay:$autoplay,muted:$muted});
-  p.addEventListener(Twitch.Player.READY,()=>{p.setMuted($muted);trackMute(()=>p.getMuted());});
+  const p=new Twitch.Player('player',{width:'100%',height:'100%',channel:$id,parent:[$host],autoplay:$autoplay,muted:$mutedFlag,controls:$controlsFlag});
   p.addEventListener(Twitch.Player.PLAYING,()=>send('playback',{playing:true}));
   p.addEventListener(Twitch.Player.PAUSE,()=>send('playback',{playing:false}));
   p.addEventListener(Twitch.Player.ENDED,()=>send('playback',{playing:false}));
   p.addEventListener(Twitch.Player.OFFLINE,()=>send('playback',{playing:false}));
+  try{p.setMuted($mutedFlag);}catch(e){}
+  $twitchStart
+  watchMuted(()=>p.getMuted());
 } catch(e) {send('error',{});}
 </script>''',
     // Kick documents an iframe, but no supported playback-state event API.
     // Do not guess that a pointer-down means "playing". Switching away from
     // Kick stays paused unless a future documented adapter can confirm state.
+    // Mute is likewise unreadable inside the Kick frame, so the last mute state
+    // known from another provider carries into its embed URL.
     VideoPlatform.kick => '''
 <script>
 const frame=document.createElement('iframe');
-frame.src='https://player.kick.com/'+encodeURIComponent($id)+'?autoplay=$autoplay&muted=$muted';
+frame.src='https://player.kick.com/'+encodeURIComponent($id)+'?autoplay=$autoplay&muted=$mutedFlag&controls=$controlsFlag';
 frame.allow='autoplay; fullscreen; picture-in-picture; encrypted-media';
 frame.allowFullscreen=true;frame.title='Kick video';
 frame.referrerPolicy='strict-origin-when-cross-origin';
@@ -405,11 +450,6 @@ document.getElementById('player').replaceWith(frame);
 <style>html,body,#player,iframe{margin:0;width:100%;height:100%;border:0;background:#000;overflow:hidden;}</style>
 </head><body><div id="player"></div><script>
 function send(type,data){ChessVideo.postMessage(JSON.stringify({type,revision:$revision,...data}));}
-function trackMute(read){
-  window.chessVideoMuted=read;
-  let last;
-  const timer=setInterval(()=>{try{const muted=read();if(typeof muted==='boolean'&&muted!==last){last=muted;send('muted',{muted});}}catch(_){}},250);
-  window.addEventListener('pagehide',()=>clearInterval(timer),{once:true});
-}
+function watchMuted(read){window.chessVideoMuted=read;let last=null;setInterval(()=>{try{Promise.resolve(read()).then(m=>{if(m===null||m===undefined)return;m=!!m;if(m!==last){last=m;send('muted',{muted:m});}}).catch(()=>{});}catch(e){}},1000);}
 </script>$provider</body></html>''';
 }

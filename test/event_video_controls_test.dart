@@ -6,6 +6,7 @@ import 'package:chessever2/screens/chessboard/widgets/chess_board_bottom_navbar.
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/svg_asset.dart';
+import 'package:chessever2/widgets/svg_widget.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -99,8 +100,8 @@ void main() {
           body: PopupMenuButton<String>(
             onSelected: (value) => selected = value,
             itemBuilder:
-                (_) => [
-                  ...eventVideoBoardMenuItems(session),
+                (context) => [
+                  ...eventVideoBoardMenuItems(context, session),
                   const PopupMenuItem(
                     value: 'settings',
                     child: Text('Board Settings'),
@@ -108,6 +109,9 @@ void main() {
                 ],
           ),
         ),
+      );
+      Finder flipIcon() => find.byWidgetPredicate(
+        (w) => w is SvgWidget && w.path == SvgAsset.refresh,
       );
       await tester.pumpWidget(app());
       await tester.tap(find.byType(PopupMenuButton<String>));
@@ -122,6 +126,9 @@ void main() {
         await tester.tap(find.byType(PopupMenuButton<String>));
         await tester.pumpAndSettle();
         expect(find.text('Flip board'), findsOneWidget);
+        // Same circular refresh mark as the bottom-bar flip control.
+        expect(flipIcon(), findsOneWidget);
+        expect(find.byIcon(Icons.swap_vert), findsNothing);
         await tester.tap(find.text('Flip board'));
         await tester.pumpAndSettle();
         expect(selected, 'flip_board');

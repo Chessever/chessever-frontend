@@ -3010,7 +3010,11 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
         canPop: false,
         onPopInvokedWithResult: (didPop, result) {
           if (didPop) return;
-          if (_eventVideoHostKey.currentState?.exitFullscreen() == true) return;
+          // Provider fullscreen (Android custom view) owns the first back.
+          if (_eventVideoHostKey.currentState?.closeFullscreenIfOpen() ==
+              true) {
+            return;
+          }
           final video = _eventVideoHostKey.currentState?.session;
           if (video?.expanded == true) {
             video!.setExpanded(false);
@@ -4713,6 +4717,7 @@ class _AppBarState extends ConsumerState<_AppBar> {
                   itemBuilder:
                       (context) => [
                         ...eventVideoBoardMenuItems(
+                          context,
                           EventVideoScope.maybeOf(this.context)?.session,
                         ),
                         PopupMenuItem(
@@ -4809,6 +4814,7 @@ class _AppBarState extends ConsumerState<_AppBar> {
                   itemBuilder:
                       (context) => [
                         ...eventVideoBoardMenuItems(
+                          context,
                           EventVideoScope.maybeOf(this.context)?.session,
                         ),
                         PopupMenuItem(
@@ -7378,17 +7384,103 @@ class _GameBody extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Analysis mode is always active, use analysis game body
-    return _AnalysisGameBody(
-      index: index,
-      currentPageIndex: currentPageIndex,
-      game: game,
-      scoreCardGamesContext: scoreCardGamesContext,
-      scoreCardViewSource: scoreCardViewSource,
-      state: state,
-      playerProfileDataSource: playerProfileDataSource,
-      showGamebaseButton: showGamebaseButton,
-      showClock: showClock,
+    // Watch mode swaps the whole body between the stream layout and the
+    // normal analysis layout. The wrapper springs the incoming layout in
+    // without remounting it, which matters because the body carries GlobalKeys
+    // (the board share boundary) and a remount would retake them mid-frame.
+    final video = EventVideoScope.maybeOf(context)?.session;
+    final watchMode =
+        index == currentPageIndex &&
+        video != null &&
+        video.showVideo &&
+        video.isActive(game.gameId);
+    return _WatchModeTransition(
+      watchMode: watchMode,
+      // Analysis mode is always active, use analysis game body
+      child: _AnalysisGameBody(
+        index: index,
+        currentPageIndex: currentPageIndex,
+        game: game,
+        scoreCardGamesContext: scoreCardGamesContext,
+        scoreCardViewSource: scoreCardViewSource,
+        state: state,
+        playerProfileDataSource: playerProfileDataSource,
+        showGamebaseButton: showGamebaseButton,
+        showClock: showClock,
+      ),
+    );
+  }
+}
+
+/// Springs the board body in when watch mode turns on or off, so the swap
+/// between the stream layout and the analysis layout never snaps.
+///
+/// The child is never keyed or remounted: the games PageView keeps neighbour
+/// pages alive and the body holds GlobalKeys, so remounting it to replay an
+/// entrance would retake a live key mid-frame and trip Flutter's
+/// `child == _child` element assertion. Only this wrapper animates; the child
+/// element is preserved and its own build swaps the branch.
+class _WatchModeTransition extends StatefulWidget {
+  const _WatchModeTransition({required this.watchMode, required this.child});
+
+  final bool watchMode;
+  final Widget child;
+
+  static const CupertinoMotion _motion = CupertinoMotion.smooth(
+    duration: Duration(milliseconds: 320),
+    snapToEnd: true,
+  );
+
+  @override
+  State<_WatchModeTransition> createState() => _WatchModeTransitionState();
+}
+
+class _WatchModeTransitionState extends State<_WatchModeTransition>
+    with SingleTickerProviderStateMixin {
+  // Rests at 1: entering the screen must not animate the whole board in.
+  late final AnimationController _controller = AnimationController(
+    vsync: this,
+    duration: _WatchModeTransition._motion.duration,
+  )..value = 1;
+  late final Curve _curve = _WatchModeTransition._motion.toCurve;
+  bool _reduceMotion = false;
+
+  @override
+  void didUpdateWidget(covariant _WatchModeTransition oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.watchMode == widget.watchMode) return;
+    if (_reduceMotion) {
+      _controller.value = 1;
+    } else {
+      _controller.forward(from: 0);
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    _reduceMotion = MediaQuery.disableAnimationsOf(context);
+    return AnimatedBuilder(
+      animation: _controller,
+      child: widget.child,
+      builder:
+          (context, child) {
+            final progress = _curve
+                .transform(_controller.value)
+                .clamp(0.0, 1.0);
+            return Opacity(
+              opacity: progress,
+              child: Transform.translate(
+                offset: Offset(0, 10 * (1 - progress)),
+                child: child,
+              ),
+            );
+          },
     );
   }
 }

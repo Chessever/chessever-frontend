@@ -687,10 +687,41 @@ class MoveStatisticsPanel extends HookConsumerWidget {
         !kDebugMode &&
         effectiveMoveNumber >= kFreeExplorerMoveNumberLimit;
 
-    // First load (or a position change that cleared the table) shows the same
-    // header+rows scaffold with shimmering skeleton rows instead of a centered
-    // spinner — keeps the layout stable and matches the app's shimmer style.
-    final showSkeleton = state.isLoading && !hasStaleData && !showGate;
+    // Start the inline page alongside statistics. A resolved small page can
+    // render immediately, without waiting for the independent aggregate query.
+    final startingFen = state.game?.startingFen.trim() ?? '';
+    final exactFenSession =
+        (startingFen.isNotEmpty && !_isStandardStartingFen(startingFen)) ||
+        (state.exploredMoves.isEmpty &&
+            _isPastIndexedAggregateWindow(
+              state: state,
+              effectiveMoveNumber: effectiveMoveNumber,
+            ));
+    final inlineQuery = GamebasePositionGamesQuery.fromFilters(
+      fen: state.currentFen,
+      moves: state.exploredMoves,
+      filters: state.filters,
+      pageSize: 10,
+      notationPlies: 20,
+      useFenEndpoint: exactFenSession,
+    );
+    final requestedInlineQuery = useState<GamebasePositionGamesQuery?>(null);
+    useEffect(() {
+      if (showGate || state.currentFen.trim().isEmpty) return null;
+      final timer = Timer(const Duration(milliseconds: 120), () {
+        requestedInlineQuery.value = inlineQuery;
+      });
+      return timer.cancel;
+    }, [inlineQuery, showGate]);
+    final inlinePage =
+        !showGate && requestedInlineQuery.value == inlineQuery
+            ? ref.watch(positionGamesProvider(inlineQuery)).valueOrNull
+            : null;
+    final hasInlinePage =
+        inlinePage != null &&
+        inlinePage.data.isNotEmpty &&
+        !inlinePage.metadata.hasMore &&
+        inlinePage.data.length <= kExplorerInlineGamesLimit;
 
     // Warm the games list behind the visible "Games" chips.
     //
@@ -744,12 +775,13 @@ class MoveStatisticsPanel extends HookConsumerWidget {
     // reader is looking at the same explorer, so they get the same table.
     final fenOnlyGames =
         !showGate &&
-        !state.isLoading &&
-        state.moveAggregates.isEmpty &&
-        _isPastIndexedAggregateWindow(
-          state: state,
-          effectiveMoveNumber: effectiveMoveNumber,
-        );
+        (exactFenSession ||
+            (!state.isLoading &&
+                state.moveAggregates.isEmpty &&
+                _isPastIndexedAggregateWindow(
+                  state: state,
+                  effectiveMoveNumber: effectiveMoveNumber,
+                )));
 
     // Mirrors the inline-games condition in `_buildListChildren` — the page
     // grid, the bottom reserve and the physics all hinge on the strip really
@@ -757,10 +789,13 @@ class MoveStatisticsPanel extends HookConsumerWidget {
     final showInlineGames =
         fenOnlyGames ||
         (!showGate &&
-            !state.isLoading &&
-            sortedAggregates.isNotEmpty &&
-            state.totalGames > 0 &&
-            state.totalGames <= kExplorerInlineGamesLimit);
+            (hasInlinePage ||
+                (!state.isLoading &&
+                    sortedAggregates.isNotEmpty &&
+                    state.totalGames > 0 &&
+                    state.totalGames <= kExplorerInlineGamesLimit)));
+    final showSkeleton =
+        state.isLoading && !hasStaleData && !showGate && !showInlineGames;
     final pagesGames = showInlineGames && pageMetrics != null;
 
     final movesHeader = ExplorerMovesHeader(
@@ -784,7 +819,7 @@ class MoveStatisticsPanel extends HookConsumerWidget {
       );
     }
 
-    if (state.error != null && !showGate) {
+    if (state.error != null && !showGate && !showInlineGames) {
       return withMovesHeader(
         Center(
           child: Padding(
@@ -805,7 +840,8 @@ class MoveStatisticsPanel extends HookConsumerWidget {
     if (state.moveAggregates.isEmpty &&
         !showGate &&
         !state.isLoading &&
-        !fenOnlyGames) {
+        !fenOnlyGames &&
+        !hasInlinePage) {
       return withMovesHeader(
         const _ExplorerEmpty(
           title: 'No games match this position',
