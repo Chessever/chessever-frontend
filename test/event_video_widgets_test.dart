@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:motor/motor.dart';
 import 'package:chessever2/screens/chessboard/video/video_player.dart';
 import 'package:chessever2/screens/chessboard/video/video_session.dart';
 import 'package:chessever2/screens/chessboard/video/video_stream.dart';
@@ -66,7 +65,6 @@ Widget harness(
   String game = 'g1',
   String tour = 'tour',
   bool sideBySide = false,
-  bool notation = false,
   VoidCallback? onVideoInteraction,
 }) => MaterialApp(
   home: EventVideoHost(
@@ -96,7 +94,6 @@ Widget harness(
                     session.showVideo
                         ? EventVideoGameLayout(
                           sideBySide: sideBySide,
-                          notation: notation,
                           board: const SizedBox(
                             height: 250,
                             child: Center(child: Text('Board')),
@@ -140,16 +137,6 @@ Future<void> chooseStream(WidgetTester tester, String id) async {
   await tester.pump();
   await tester.pump(const Duration(milliseconds: 400));
 }
-
-double playerOpacity(WidgetTester tester) =>
-    tester
-        .widget<Opacity>(
-          find.ancestor(
-            of: find.text('Player'),
-            matching: find.byType(Opacity),
-          ),
-        )
-        .opacity;
 
 void main() {
   testWidgets(
@@ -199,120 +186,49 @@ void main() {
     },
   );
 
-  testWidgets(
-    'stream area is a picker until chosen, then the player fades in',
-    (tester) async {
-      tester.view.physicalSize = const Size(375, 800);
-      tester.view.devicePixelRatio = 1;
-      addTearDown(tester.view.resetPhysicalSize);
-      addTearDown(tester.view.resetDevicePixelRatio);
-      final session = EventVideoSession(
-        repository: FakeVideoRepository(fixtureVideos()),
-      );
-      final player = FakePlayer();
-      var previewActive = true;
-      await tester.pumpWidget(
-        harness(
-          session,
-          player,
-          onVideoInteraction: () => previewActive = false,
-        ),
-      );
-      await tester.pump();
-      // The stream area holds the picker; no player or flag rail anywhere.
-      expect(find.byKey(const ValueKey('event_video_picker')), findsOneWidget);
-      expect(find.text('Player'), findsNothing);
-      expect(find.byKey(const ValueKey('event_video_flags')), findsNothing);
-      for (final id in [
-        'english-main',
-        'english-second',
-        'german',
-        'spanish',
-      ]) {
-        expect(find.byKey(ValueKey('video_stream_$id')), findsOneWidget);
-      }
-      // The ranked first stream is not drawn as a chosen tile.
-      expect(
-        find.descendant(
-          of: find.byKey(const ValueKey('event_video_picker')),
-          matching: find.byWidgetPredicate(
-            (w) => w is Semantics && w.properties.selected == true,
-          ),
-        ),
-        findsNothing,
-      );
-      // The engine line sits below the stream area, picker included.
-      expect(find.text('One engine line'), findsOneWidget);
-      expect(
-        tester.getTopLeft(find.text('One engine line')).dy,
-        greaterThan(
-          tester
-              .getTopLeft(find.byKey(const ValueKey('event_video_picker_slot')))
-              .dy,
-        ),
-      );
-      expect(session.playRequested, isFalse);
-      // Choosing dismisses the picker and fades the player in.
-      await tester.tap(find.byKey(const ValueKey('video_stream_english-main')));
-      await tester.pump();
-      expect(previewActive, isFalse);
-      expect(session.streamChosen, isTrue);
-      expect(find.byKey(const ValueKey('event_video_picker')), findsNothing);
-      expect(find.text('Player'), findsOneWidget);
-      // The entry is a motor spring, not a fixed-duration tween.
-      expect(find.byType(SingleMotionBuilder), findsOneWidget);
-      await tester.pump(const Duration(milliseconds: 80));
-      final fading = playerOpacity(tester);
-      expect(fading, greaterThan(0.0));
-      expect(fading, lessThan(1.0));
-      await tester.pumpAndSettle();
-      expect(playerOpacity(tester), 1.0);
-      // Choosing is the play gesture: the stream starts without a second tap
-      // on the provider's own play button.
-      expect(session.playRequested, isTrue);
-      expect(
-        tester.getTopLeft(find.text('One engine line')).dy,
-        greaterThan(
-          tester
-              .getTopLeft(find.byKey(const ValueKey('event_video_surface')))
-              .dy,
-        ),
-      );
-      // Phones end at the engine lines: no notation panel under the stream.
-      expect(find.text('Notation 0'), findsNothing);
-      await tester.pumpWidget(const SizedBox());
-      expect(player.disposed, isTrue);
-    },
-  );
-  testWidgets('long stream lists scroll inside the picker grid', (
+  testWidgets('flags appear above paused video, dismiss and return on tap', (
     tester,
   ) async {
-    tester.view.physicalSize = const Size(375, 700);
-    tester.view.devicePixelRatio = 1;
-    addTearDown(tester.view.resetPhysicalSize);
-    addTearDown(tester.view.resetDevicePixelRatio);
     final session = EventVideoSession(
-      repository: FakeVideoRepository(manyVideos(30)),
+      repository: FakeVideoRepository(fixtureVideos()),
     );
-    await tester.pumpWidget(harness(session, FakePlayer()));
+    final player = FakePlayer();
+    await tester.pumpWidget(harness(session, player));
     await tester.pump();
-    expect(find.byKey(const ValueKey('event_video_picker')), findsOneWidget);
-    expect(find.byKey(const ValueKey('video_stream_stream-0')), findsOneWidget);
-    final last = find.byKey(const ValueKey('video_stream_stream-29'));
-    expect(last, findsNothing);
-    await tester.scrollUntilVisible(
-      last,
-      400,
-      scrollable: find.descendant(
-        of: find.byKey(const ValueKey('event_video_picker')),
-        matching: find.byType(Scrollable),
+    expect(find.text('Player'), findsOneWidget);
+    expect(session.playRequested, isFalse);
+    final flags = find.byKey(const ValueKey('event_video_flags'));
+    expect(
+      tester.getBottomLeft(flags).dy,
+      lessThanOrEqualTo(
+        tester.getTopLeft(find.byKey(const ValueKey('event_video_surface'))).dy,
       ),
     );
-    await tester.pumpAndSettle();
-    expect(last, findsOneWidget);
-    expect(tester.takeException(), isNull);
+    final order = session.streams.map((s) => s.id).toList();
+    await chooseStream(tester, 'english-second');
+    expect(session.playRequested, isFalse);
+    expect(session.streams.map((s) => s.id), order);
+    await tester.pump(const Duration(seconds: 3));
+    expect(flags, findsNothing);
+    await tester.pumpWidget(harness(session, player, game: 'g2'));
+    await tester.pump();
+    expect(flags, findsNothing);
+    await tester.tap(find.text('Player'));
+    await tester.pump();
+    expect(flags, findsOneWidget);
+    session.setScrolling(true);
+    await tester.pump(const Duration(seconds: 4));
+    expect(flags, findsOneWidget);
+    session.setScrolling(false);
+    await tester.pump(const Duration(seconds: 2));
+    await chooseStream(tester, 'english-main');
+    await tester.pump(const Duration(seconds: 2));
+    expect(flags, findsOneWidget);
+    await tester.pump(const Duration(seconds: 1));
+    expect(flags, findsNothing);
     await tester.pumpWidget(const SizedBox());
   });
+
   testWidgets('taps on the stream belong to the provider: no reload', (
     tester,
   ) async {
@@ -426,7 +342,6 @@ void main() {
     final loads = player.loads;
     await tester.pumpWidget(harness(session, player, game: 'g2'));
     await tester.pump();
-    expect(session.streamChosen, isTrue);
     expect(session.playing, isTrue);
     expect(session.playerRevision, revision);
     expect(player.loads, loads);
@@ -437,33 +352,43 @@ void main() {
     await tester.pump();
     expect(session.playing, isFalse);
     expect(session.playRequested, isFalse);
-    expect(session.streamChosen, isFalse);
-    expect(find.byKey(const ValueKey('event_video_picker')), findsOneWidget);
-    expect(find.text('Player'), findsNothing);
+    expect(find.byKey(const ValueKey('event_video_flags')), findsOneWidget);
+    expect(find.text('Player'), findsOneWidget);
     await tester.pumpWidget(const SizedBox());
   });
-  testWidgets('short screens scroll to the engine line without overflow', (
-    tester,
-  ) async {
-    tester.view.physicalSize = const Size(375, 600);
-    tester.view.devicePixelRatio = 1;
-    addTearDown(tester.view.resetPhysicalSize);
-    addTearDown(tester.view.resetDevicePixelRatio);
-    final session = EventVideoSession(
-      repository: FakeVideoRepository(fixtureVideos()),
-    );
-    await tester.pumpWidget(harness(session, FakePlayer()));
-    await tester.pump();
-    await chooseStream(tester, 'english-main');
-    session.reportPlayback(true, session.playerRevision);
-    await tester.pump();
-    expect(tester.takeException(), isNull);
-    await tester.drag(find.text('Board'), const Offset(0, -450));
-    await tester.pumpAndSettle();
-    expect(find.text('One engine line'), findsOneWidget);
-    expect(tester.takeException(), isNull);
-    await tester.pumpWidget(const SizedBox());
-  });
+  testWidgets(
+    'short screens show notation below engine lines and scroll without overflow',
+    (tester) async {
+      tester.view.physicalSize = const Size(375, 600);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final session = EventVideoSession(
+        repository: FakeVideoRepository(fixtureVideos()),
+      );
+      await tester.pumpWidget(harness(session, FakePlayer()));
+      await tester.pump();
+      await chooseStream(tester, 'english-main');
+      session.reportPlayback(true, session.playerRevision);
+      await tester.pump();
+      expect(tester.takeException(), isNull);
+      await tester.drag(find.text('Board'), const Offset(0, -450));
+      await tester.pumpAndSettle();
+      expect(find.text('One engine line'), findsOneWidget);
+      expect(find.text('Notation 0').hitTestable(), findsOneWidget);
+      expect(
+        tester.getTopLeft(find.text('Notation 0')).dy,
+        greaterThanOrEqualTo(
+          tester.getBottomLeft(find.text('One engine line')).dy,
+        ),
+      );
+      await tester.drag(find.text('Notation 0'), const Offset(0, -200));
+      await tester.pumpAndSettle();
+      expect(find.text('Notation 19').hitTestable(), findsOneWidget);
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox());
+    },
+  );
   testWidgets(
     'narrow Twitch opens a single in-app landscape player and closes paused',
     (tester) async {
@@ -514,9 +439,7 @@ void main() {
     final session = EventVideoSession(
       repository: FakeVideoRepository(fixtureVideos()),
     );
-    await tester.pumpWidget(
-      harness(session, FakePlayer(), sideBySide: true, notation: true),
-    );
+    await tester.pumpWidget(harness(session, FakePlayer(), sideBySide: true));
     await tester.pump();
     await chooseStream(tester, 'english-main');
     expect(
@@ -580,6 +503,67 @@ void main() {
       await tester.pumpWidget(const SizedBox());
     },
   );
+  testWidgets('swiping games keeps one visible player and stable video slots', (
+    tester,
+  ) async {
+    final session = EventVideoSession(
+      repository: FakeVideoRepository(fixtureVideos()),
+    );
+    final player = FakePlayer();
+    await tester.pumpWidget(
+      MaterialApp(
+        home: EventVideoHost(
+          gameId: 'g1',
+          tourId: 'tour',
+          roundId: 'round',
+          session: session,
+          player: player,
+          child: Scaffold(
+            body: PageView(
+              onPageChanged:
+                  (index) => session.openGame(
+                    gameId: 'g${index + 1}',
+                    tourId: 'tour',
+                    roundId: 'round',
+                  ),
+              children: [
+                for (final id in ['g1', 'g2'])
+                  Builder(
+                    builder: (context) {
+                      final current = EventVideoScope.maybeOf(context)!.session;
+                      return EventVideoGameLayout(
+                        active: current.isActive(id),
+                        board: SizedBox(height: 100, child: Text('Board $id')),
+                        engine: const SizedBox(height: 44),
+                        analysis: const Text('Notation'),
+                      );
+                    },
+                  ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+    session.reportPlayback(true, session.playerRevision);
+    final element = player.viewKey.currentContext;
+    final loads = player.loads;
+    await tester.drag(find.text('Board g1'), const Offset(-700, 0));
+    await tester.pump();
+    expect(session.gameId, 'g2');
+    expect(find.text('Player'), findsOneWidget);
+    expect(player.viewKey.currentContext, same(element));
+    expect(
+      find.ancestor(of: find.text('Player'), matching: find.byType(Opacity)),
+      findsNothing,
+    );
+    await tester.pumpAndSettle();
+    expect(session.playing, isTrue);
+    expect(player.loads, loads);
+    await tester.pumpWidget(const SizedBox());
+  });
+
   testWidgets('rotation to a narrow Twitch layout stops invisible playback', (
     tester,
   ) async {

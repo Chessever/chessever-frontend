@@ -6,7 +6,6 @@ import 'package:chessever2/widgets/svg_widget.dart';
 import 'package:country_flags/country_flags.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
-import 'package:motor/motor.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'video_player.dart';
 import 'video_repository.dart';
@@ -317,152 +316,109 @@ class _FullscreenVideoOverlay extends StatelessWidget {
   );
 }
 
-/// The stream choice surface that occupies the stream area until the user
-/// picks a language. A grid keeps every stream readable and scrolls when the
-/// list is long. Flags and the player never share the area: choosing dismisses
-/// the picker and the player fades in.
-class _EventVideoStreamPicker extends StatelessWidget {
-  const _EventVideoStreamPicker();
-
+class EventVideoFlags extends StatelessWidget {
+  const EventVideoFlags({super.key});
   @override
   Widget build(BuildContext context) {
     final session = EventVideoScope.maybeOf(context)!.session;
-    return Material(
-      color: context.colors.surface,
-      child: GestureDetector(
-        // Absorb horizontal drags so interacting with the chooser never swipes
-        // the game PageView; vertical drags stay with the grid.
-        onHorizontalDragStart: (_) {},
-        onHorizontalDragUpdate: (_) {},
-        onHorizontalDragEnd: (_) {},
-        behavior: HitTestBehavior.opaque,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(10, 12, 10, 0),
-              child: Text(
-                'Choose a stream',
-                style: TextStyle(
-                  color: context.colors.textPrimaryMuted,
-                  fontSize: 12.5,
-                  fontWeight: FontWeight.w600,
+    return SizedBox(
+      key: const ValueKey('event_video_flags'),
+      height: 56,
+      child: NotificationListener<ScrollNotification>(
+        onNotification: (n) {
+          if (n is ScrollStartNotification) session.setScrolling(true);
+          if (n is ScrollEndNotification) session.setScrolling(false);
+          return false;
+        },
+        child: ListView.separated(
+          scrollDirection: Axis.horizontal,
+          padding: const EdgeInsets.symmetric(horizontal: 8),
+          itemCount: session.streams.length,
+          separatorBuilder: (_, __) => const SizedBox(width: 4),
+          itemBuilder: (context, index) {
+            final stream = session.streams[index];
+            final selected = session.selected?.id == stream.id;
+            final label =
+                '${stream.displayName} · ${stream.source.providerName}';
+            return Semantics(
+              selected: selected,
+              button: true,
+              label: '${stream.languageLabel}: $label',
+              child: Tooltip(
+                message: label,
+                child: InkWell(
+                  key: ValueKey('video_stream_${stream.id}'),
+                  borderRadius: BorderRadius.circular(8),
+                  onTap: () => session.select(stream.id),
+                  child: Container(
+                    width: 112,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 4,
+                      vertical: 3,
+                    ),
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(8),
+                      color:
+                          selected
+                              ? Theme.of(
+                                context,
+                              ).colorScheme.primary.withValues(alpha: .14)
+                              : null,
+                      border: Border.all(
+                        color:
+                            selected
+                                ? Theme.of(context).colorScheme.primary
+                                : Colors.transparent,
+                      ),
+                    ),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        if (stream.flagCode != null)
+                          CountryFlag.fromCountryCode(
+                            stream.flagCode!,
+                            theme: const ImageTheme(width: 28, height: 20),
+                          )
+                        else
+                          const Icon(Icons.language, size: 20),
+                        const SizedBox(height: 3),
+                        Text(
+                          label,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(fontSize: 10),
+                        ),
+                      ],
+                    ),
+                  ),
                 ),
               ),
-            ),
-            Expanded(
-              child: GridView.builder(
-                key: const ValueKey('event_video_picker'),
-                padding: const EdgeInsets.fromLTRB(10, 8, 10, 10),
-                physics: const ClampingScrollPhysics(),
-                gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-                  maxCrossAxisExtent: 200,
-                  mainAxisExtent: 56,
-                  crossAxisSpacing: 8,
-                  mainAxisSpacing: 8,
-                ),
-                itemCount: session.streams.length,
-                itemBuilder:
-                    (context, index) =>
-                        _EventVideoStreamTile(stream: session.streams[index]),
-              ),
-            ),
-          ],
+            );
+          },
         ),
       ),
     );
   }
 }
 
-class _EventVideoStreamTile extends StatelessWidget {
-  const _EventVideoStreamTile({required this.stream});
-  final EventVideoStream stream;
-
+class EventVideoFlagSlot extends StatelessWidget {
+  const EventVideoFlagSlot({super.key});
   @override
   Widget build(BuildContext context) {
-    final session = EventVideoScope.maybeOf(context)!.session;
-    final provider = stream.source.providerName;
-    final colors = context.colors;
-    final flagOutline =
-        context.isLightTheme
-            ? Colors.black.withValues(alpha: .10)
-            : Colors.white.withValues(alpha: .10);
-    return Semantics(
-      button: true,
-      label: '${stream.languageLabel}: ${stream.displayName} · $provider',
-      child: Tooltip(
-        message: '${stream.displayName} · $provider',
-        child: InkWell(
-          key: ValueKey('video_stream_${stream.id}'),
-          borderRadius: BorderRadius.circular(12),
-          onTap: () {
-            EventVideoScope.maybeOf(context)?.onVideoInteraction?.call();
-            session.select(stream.id);
-          },
-          child: Ink(
-            decoration: BoxDecoration(
-              // The ranked order already carries the preference; no tile is
-              // drawn as "selected" before the reader picks one.
-              color: colors.surfaceElevated,
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: colors.divider),
-            ),
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-            child: Row(
-              children: [
-                if (stream.flagCode != null)
-                  DecoratedBox(
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(2),
-                      border: Border.all(color: flagOutline),
-                    ),
-                    child: CountryFlag.fromCountryCode(
-                      stream.flagCode!,
-                      theme: const ImageTheme(width: 26, height: 18),
-                    ),
-                  )
-                else
-                  Icon(Icons.language, size: 18, color: colors.textPrimary),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        stream.displayName,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          color: colors.textPrimary,
-                          fontSize: 12.5,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        provider,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          color: colors.textPrimaryMuted,
-                          fontSize: 10.5,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
+    final session = EventVideoScope.maybeOf(context)?.session;
+    return session?.showVideo == true && session!.flagsVisible
+        ? const EventVideoFlags()
+        : const SizedBox.shrink();
   }
 }
 
 class EventVideoSurface extends StatelessWidget {
-  const EventVideoSurface({super.key, this.expanded = false});
+  const EventVideoSurface({
+    super.key,
+    this.expanded = false,
+    this.active = true,
+  });
+  final bool active;
   final bool expanded;
   @override
   Widget build(BuildContext context) {
@@ -481,18 +437,9 @@ class EventVideoSurface extends StatelessWidget {
                   constraints.maxWidth * 9 / 16,
                 );
         // Never mount a second native view behind the expanded one.
-        if (session.expanded && !expanded) {
+        if (!active || (session.expanded && !expanded)) {
           return SizedBox(
             height: twitch && constraints.maxWidth < 400 ? 96 : height,
-          );
-        }
-        // Choice first: the stream area is the picker until a stream is picked,
-        // so flags and the player never appear together.
-        if (!session.streamChosen) {
-          return SizedBox(
-            key: const ValueKey('event_video_picker_slot'),
-            height: height,
-            child: const _EventVideoStreamPicker(),
           );
         }
         if (twitch && constraints.maxWidth < 400) {
@@ -511,32 +458,10 @@ class EventVideoSurface extends StatelessWidget {
             ),
           );
         }
-        final reduceMotion = MediaQuery.disableAnimationsOf(context);
         return SizedBox(
           key: const ValueKey('event_video_surface'),
           height: height,
-          // The entrance is mount-based, not keyed: the box mounts exactly when
-          // the picker gives way to the player, so that is when it springs in.
-          // Never key it by stream/revision, or the native view's GlobalKey
-          // would be retaken mid-frame inside this LayoutBuilder.
-          child: SingleMotionBuilder(
-            motion: const CupertinoMotion.smooth(
-              duration: Duration(milliseconds: 320),
-              snapToEnd: true,
-            ),
-            value: 1,
-            from: reduceMotion ? null : 0,
-            active: !reduceMotion,
-            child: _EventVideoPlayerBox(scope: scope, expanded: expanded),
-            builder:
-                (context, entry, child) => Opacity(
-                  opacity: entry.clamp(0.0, 1.0),
-                  child: Transform.translate(
-                    offset: Offset(0, 8 * (1 - entry.clamp(0.0, 1.0))),
-                    child: child,
-                  ),
-                ),
-          ),
+          child: _EventVideoPlayerBox(scope: scope, expanded: expanded),
         );
       },
     );
@@ -598,6 +523,7 @@ class _EventVideoPlayerBoxState extends State<_EventVideoPlayerBox> {
           if (down == null || (event.position - down).distance > _tapSlop) {
             return;
           }
+          scope.session.revealFlags();
           setState(() => _fullscreenVisible = true);
           _scheduleFullscreenDismissal();
         },
@@ -687,6 +613,7 @@ class _ExpandedEventVideo extends StatelessWidget {
                         ],
                       ),
                     ),
+                    const EventVideoFlagSlot(),
                     Expanded(
                       child:
                           session.selected?.source.platform ==
@@ -707,20 +634,19 @@ class _ExpandedEventVideo extends StatelessWidget {
 
 /// Video makes the old pinned phone header too tall. Keep the complete board
 /// and player scrollable, with the stream first and the reader's own engine
-/// lines under it. Phones end there; tablets keep the notation/explorer panel
-/// under the engine lines at a bounded height.
+/// lines under it, followed by the notation/explorer panel at a bounded height.
 class EventVideoGameLayout extends StatelessWidget {
   const EventVideoGameLayout({
     super.key,
     required this.board,
     required this.engine,
     required this.analysis,
-    this.notation = false,
     this.sideBySide = false,
+    this.active = true,
     this.maxWidth,
   });
   final Widget board, engine, analysis;
-  final bool notation, sideBySide;
+  final bool sideBySide, active;
   final double? maxWidth;
   @override
   Widget build(BuildContext context) => LayoutBuilder(
@@ -728,15 +654,15 @@ class EventVideoGameLayout extends StatelessWidget {
       Widget lower() => Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          const EventVideoSurface(),
+          if (active) const EventVideoFlagSlot(),
+          EventVideoSurface(active: active),
           engine,
-          if (notation)
-            // The notation/explorer panel keeps a bounded, independently
-            // usable height under the engine lines on tablets.
-            SizedBox(
-              height: math.max(260, constraints.maxHeight * .55),
-              child: analysis,
-            ),
+          // The notation/explorer panel keeps a bounded, independently
+          // usable height under the engine lines on phones and tablets.
+          SizedBox(
+            height: math.max(260, constraints.maxHeight * .55),
+            child: analysis,
+          ),
         ],
       );
       if (sideBySide) {

@@ -272,7 +272,6 @@ class NativeEventVideoPlayer extends EventVideoPlayer {
           final selected = session.selected;
           if (!session.showVideo ||
               !session.foreground ||
-              !session.streamChosen ||
               selected == null ||
               _requestedRevision != _revision) {
             if (_controller != null) {
