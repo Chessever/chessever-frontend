@@ -15,6 +15,66 @@ List<EventVideoStream> fixtureVideos() => EventVideoStream.readList(
   )['streams'],
 );
 
+List<EventVideoStream> fideFixtureVideos() => EventVideoStream.readList([
+  {
+    'id': 'fide-main',
+    'label': 'FIDE',
+    'url': 'https://youtu.be/fidemain001',
+    'language': 'en',
+    'publication': {'title': 'FIDE Chess Olympiad 2026 | Round 1 | Live'},
+    'audience': {
+      'channelId': fideYoutubeChannelId,
+      'count': 379000,
+      'checkedOn': '2026-09-15',
+    },
+  },
+  {
+    'id': 'camera-10',
+    'label': 'Official stream 10',
+    'url': 'https://youtu.be/fidecam0010',
+    'platforms': ['web', 'desktop'],
+    'publication': {
+      'title': 'FIDE Chess Olympiad 2026 | Round 1 | Stream 10 | Open',
+    },
+    'audience': {
+      'channelId': fideYoutubeChannelId,
+      'count': 379000,
+      'checkedOn': '2026-09-15',
+    },
+  },
+  {
+    'id': 'camera-2',
+    'label': 'Official stream 2',
+    'url': 'https://youtu.be/fidecam0002',
+    'platforms': ['web', 'desktop'],
+    'publication': {
+      'title': 'FIDE Chess Olympiad 2026 | Round 1 | Stream 2 | Women',
+    },
+    'audience': {
+      'channelId': fideYoutubeChannelId,
+      'count': 379000,
+      'checkedOn': '2026-09-15',
+    },
+  },
+  {
+    'id': 'english-other',
+    'label': 'Other English',
+    'url': 'https://youtu.be/othereng001',
+    'language': 'en',
+    'audience': {
+      'channelId': 'UC0000000000000000000000',
+      'count': 900000,
+      'checkedOn': '2026-09-15',
+    },
+  },
+  {
+    'id': 'spanish',
+    'label': 'Español',
+    'url': 'https://youtu.be/spanish0001',
+    'language': 'es',
+  },
+]);
+
 class FakeVideoRepository implements EventVideoRepository {
   FakeVideoRepository(this.streams);
   List<EventVideoStream> streams;
@@ -186,6 +246,72 @@ void main() {
     },
   );
 
+  test('phone hides numbered FIDE cameras while desktop keeps them', () async {
+    Future<EventVideoSession> load(VideoClientPlatform platform) async {
+      final session = EventVideoSession(
+        repository: FakeVideoRepository(fideFixtureVideos()),
+        clientPlatform: platform,
+      );
+      session.openGame(gameId: 'g', tourId: 'tour', roundId: 'round');
+      await Future<void>.delayed(Duration.zero);
+      return session;
+    }
+
+    final phone = await load(VideoClientPlatform.mobile);
+    addTearDown(phone.dispose);
+    expect(phone.streams.map((stream) => stream.id), [
+      'fide-main',
+      'english-other',
+      'spanish',
+    ]);
+
+    final desktop = await load(VideoClientPlatform.desktop);
+    addTearDown(desktop.dispose);
+    expect(
+      desktop.streams.map((stream) => stream.id),
+      containsAll(['fide-main', 'camera-2', 'camera-10', 'spanish']),
+    );
+  });
+
+  test('exact choice wins, then non-English memory, then FIDE main', () async {
+    Future<EventVideoSession> load({String? language}) async {
+      final session = EventVideoSession(
+        repository: FakeVideoRepository(fideFixtureVideos()),
+        clientPlatform: VideoClientPlatform.desktop,
+        rememberedLanguage: language,
+      );
+      session.openGame(gameId: 'g', tourId: 'tour', roundId: 'round');
+      await Future<void>.delayed(Duration.zero);
+      return session;
+    }
+
+    final noMemory = await load();
+    addTearDown(noMemory.dispose);
+    expect(noMemory.selected!.id, 'fide-main');
+    expect(noMemory.streams.first.id, 'fide-main');
+    noMemory.setPreferredCountry('ES');
+    expect(noMemory.selected!.id, 'fide-main');
+    expect(noMemory.streams.first.id, 'fide-main');
+
+    final english = await load(language: 'en');
+    addTearDown(english.dispose);
+    expect(english.selected!.id, 'fide-main');
+
+    final spanish = await load(language: 'es');
+    addTearDown(spanish.dispose);
+    expect(spanish.selected!.id, 'spanish');
+    expect(spanish.streams.first.id, 'spanish');
+
+    spanish.select('camera-10');
+    await spanish.refresh();
+    expect(spanish.selected!.id, 'camera-10');
+    spanish.openGame(gameId: 'g2', tourId: 'other', roundId: 'round');
+    await Future<void>.delayed(Duration.zero);
+    spanish.openGame(gameId: 'g3', tourId: 'tour', roundId: 'round');
+    await Future<void>.delayed(Duration.zero);
+    expect(spanish.selected!.id, 'camera-10');
+  });
+
   test(
     'country groups sort matching streams first and save manual country',
     () async {
@@ -280,18 +406,20 @@ void main() {
     },
   );
 
-  test('unmatched country uses event default', () async {
-    final session = EventVideoSession(
-      repository: FakeVideoRepository(fixtureVideos()),
-      preferredCountry: 'JP',
-      rememberedLanguage: 'es',
-    );
-    addTearDown(session.dispose);
-    session.openGame(gameId: 'game', tourId: 'tour', roundId: 'round');
-    await Future<void>.delayed(Duration.zero);
-    expect(session.selected!.id, 'english-main');
-  });
-
+  test(
+    'remembered non-English language wins when country is unmatched',
+    () async {
+      final session = EventVideoSession(
+        repository: FakeVideoRepository(fixtureVideos()),
+        preferredCountry: 'JP',
+        rememberedLanguage: 'es',
+      );
+      addTearDown(session.dispose);
+      session.openGame(gameId: 'game', tourId: 'tour', roundId: 'round');
+      await Future<void>.delayed(Duration.zero);
+      expect(session.selected!.id, 'spanish');
+    },
+  );
   test(
     'all supported URL forms normalize and unsafe/future providers fail',
     () {
@@ -354,6 +482,60 @@ void main() {
       expect(streams.last.languageKey, 'country-FR');
     },
   );
+  test('recognises only exact FIDE commentary and numbered camera rows', () {
+    EventVideoStream stream({
+      required String id,
+      required String title,
+      String? language,
+      String channel = fideYoutubeChannelId,
+    }) => EventVideoStream(
+      id: id,
+      label: id,
+      source: VideoSource.parse('https://youtu.be/${id.padRight(11, 'x')}'),
+      language: language,
+      title: title,
+      audience: VideoAudience(channel, 379000, '2026-09-15'),
+    );
+
+    final main = stream(
+      id: 'fide-main',
+      title: 'FIDE Chess Olympiad 2026 | Round 1 | Live',
+      language: 'en',
+    );
+    final camera = stream(
+      id: 'camera-12',
+      title: 'FIDE Chess Olympiad 2026 | Round 1 | Stream 12 | Women',
+    );
+
+    expect(main.isFideMainCommentary, isTrue);
+    expect(main.fideCameraNumber, isNull);
+    expect(camera.fideCameraNumber, 12);
+    expect(camera.isFideMainCommentary, isFalse);
+    expect(
+      stream(
+        id: 'camera-lang',
+        title: 'FIDE Chess Olympiad 2026 | Round 1 | Stream 2 | Open',
+        language: 'en',
+      ).fideCameraNumber,
+      isNull,
+    );
+    expect(
+      stream(
+        id: 'wrong-owner',
+        title: 'FIDE Chess Olympiad 2026 | Round 1 | Stream 2 | Open',
+        channel: 'UC1111111111111111111111',
+      ).fideCameraNumber,
+      isNull,
+    );
+    expect(
+      stream(
+        id: 'loose-title',
+        title: 'FIDE Chess Olympiad 2026 | Round 1 | Stream 2 | Open extra',
+      ).fideCameraNumber,
+      isNull,
+    );
+  });
+
   test('language evidence, flags, and web selection order', () {
     final streams = fixtureVideos();
     expect(streams[0].languageKey, 'en');

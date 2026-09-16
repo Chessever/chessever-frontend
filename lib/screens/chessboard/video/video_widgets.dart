@@ -321,6 +321,19 @@ class EventVideoFlags extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final session = EventVideoScope.maybeOf(context)!.session;
+    final cameras =
+        session.streams
+            .where((stream) => stream.fideCameraNumber != null)
+            .toList()
+          ..sort((a, b) {
+            final number = a.fideCameraNumber!.compareTo(b.fideCameraNumber!);
+            return number != 0 ? number : a.id.compareTo(b.id);
+          });
+    final streams =
+        session.streams
+            .where((stream) => stream.fideCameraNumber == null)
+            .toList();
+    final itemCount = streams.length + (cameras.isEmpty ? 0 : 1);
     return SizedBox(
       key: const ValueKey('event_video_flags'),
       height: 56,
@@ -333,10 +346,13 @@ class EventVideoFlags extends StatelessWidget {
         child: ListView.separated(
           scrollDirection: Axis.horizontal,
           padding: const EdgeInsets.symmetric(horizontal: 8),
-          itemCount: session.streams.length,
+          itemCount: itemCount,
           separatorBuilder: (_, __) => const SizedBox(width: 4),
           itemBuilder: (context, index) {
-            final stream = session.streams[index];
+            if (index == streams.length) {
+              return _FideCameraControl(session: session, cameras: cameras);
+            }
+            final stream = streams[index];
             final selected = session.selected?.id == stream.id;
             final label =
                 '${stream.displayName} · ${stream.source.providerName}';
@@ -356,25 +372,22 @@ class EventVideoFlags extends StatelessWidget {
                       horizontal: 4,
                       vertical: 3,
                     ),
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(8),
-                      color:
-                          selected
-                              ? Theme.of(
-                                context,
-                              ).colorScheme.primary.withValues(alpha: .14)
-                              : null,
-                      border: Border.all(
-                        color:
-                            selected
-                                ? Theme.of(context).colorScheme.primary
-                                : Colors.transparent,
-                      ),
+                    decoration: _videoSelectorDecoration(
+                      context,
+                      selected: selected,
                     ),
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        if (stream.flagCode != null)
+                        if (stream.isFideMainCommentary)
+                          Image.asset(
+                            'assets/pngs/fide_logo.webp',
+                            key: const ValueKey('video_fide_logo'),
+                            width: 28,
+                            height: 20,
+                            fit: BoxFit.contain,
+                          )
+                        else if (stream.flagCode != null)
                           CountryFlag.fromCountryCode(
                             stream.flagCode!,
                             theme: const ImageTheme(width: 28, height: 20),
@@ -395,6 +408,85 @@ class EventVideoFlags extends StatelessWidget {
               ),
             );
           },
+        ),
+      ),
+    );
+  }
+}
+
+BoxDecoration _videoSelectorDecoration(
+  BuildContext context, {
+  required bool selected,
+}) => BoxDecoration(
+  borderRadius: BorderRadius.circular(8),
+  color:
+      selected
+          ? Theme.of(context).colorScheme.primary.withValues(alpha: .14)
+          : null,
+  border: Border.all(
+    color:
+        selected ? Theme.of(context).colorScheme.primary : Colors.transparent,
+  ),
+);
+
+class _FideCameraControl extends StatelessWidget {
+  const _FideCameraControl({required this.session, required this.cameras});
+
+  final EventVideoSession session;
+  final List<EventVideoStream> cameras;
+
+  @override
+  Widget build(BuildContext context) {
+    final selected = cameras.any((stream) => session.selected?.id == stream.id);
+    return Semantics(
+      button: true,
+      selected: selected,
+      label: '${cameras.length} FIDE cameras',
+      child: PopupMenuButton<String>(
+        key: const ValueKey('video_fide_cameras'),
+        tooltip: 'Choose FIDE camera',
+        onSelected: session.select,
+        itemBuilder:
+            (_) => [
+              for (final stream in cameras)
+                PopupMenuItem<String>(
+                  value: stream.id,
+                  child: Text('Camera ${stream.fideCameraNumber}'),
+                ),
+            ],
+        child: Container(
+          width: 64,
+          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 3),
+          decoration: _videoSelectorDecoration(context, selected: selected),
+          child: Center(
+            child: Stack(
+              clipBehavior: Clip.none,
+              children: [
+                const Icon(Icons.videocam_outlined, size: 22),
+                Positioned(
+                  right: -12,
+                  top: -8,
+                  child: Container(
+                    constraints: const BoxConstraints(minWidth: 18),
+                    padding: const EdgeInsets.symmetric(horizontal: 4),
+                    decoration: BoxDecoration(
+                      color: Theme.of(context).colorScheme.primary,
+                      borderRadius: BorderRadius.circular(9),
+                    ),
+                    child: Text(
+                      '${cameras.length}',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        color: Theme.of(context).colorScheme.onPrimary,
+                        fontSize: 10,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
         ),
       ),
     );

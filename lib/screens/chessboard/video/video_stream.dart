@@ -4,6 +4,11 @@ import 'video_languages.dart';
 
 enum VideoPlatform { youtube, twitch, kick }
 
+const fideYoutubeChannelId = 'UC9B47GnzCRFHTT1BIBWvStQ';
+final RegExp _fideCameraTitle = RegExp(
+  r'^FIDE Chess Olympiad 2026 \| Round (\d+) \| Stream (\d+) \| (Open|Women)$',
+);
+
 class VideoSource {
   const VideoSource(this.platform, this.id, this.url);
   final VideoPlatform platform;
@@ -141,6 +146,29 @@ class EventVideoStream {
       platforms == null || platforms!.contains(platform);
   final VideoAudience? audience;
   String get identity => '$id:${source.url}';
+
+  bool get _isFideYoutubeStream =>
+      source.platform == VideoPlatform.youtube &&
+      audience?.channelId == fideYoutubeChannelId;
+
+  String? get _primaryLanguage {
+    final value = language?.trim().toLowerCase();
+    if (value == null || value.isEmpty) return null;
+    return value.split(RegExp('[-_]')).first;
+  }
+
+  int? get fideCameraNumber {
+    if (!_isFideYoutubeStream || _primaryLanguage != null) return null;
+    final match = _fideCameraTitle.firstMatch(title);
+    if (match == null) return null;
+    return int.tryParse(match.group(2)!);
+  }
+
+  bool get isFideMainCommentary =>
+      _isFideYoutubeStream &&
+      _primaryLanguage == 'en' &&
+      !_fideCameraTitle.hasMatch(title);
+
   String get displayName {
     final parts = label.split(' · ');
     return parts.length == 2 &&
