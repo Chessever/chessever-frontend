@@ -5,7 +5,8 @@ import 'package:chessever2/screens/chessboard/video/video_player.dart';
 import 'package:chessever2/screens/chessboard/video/video_session.dart';
 import 'package:chessever2/screens/chessboard/video/video_stream.dart';
 import 'package:chessever2/screens/chessboard/video/video_widgets.dart';
-import 'event_video_test.dart' show FakeVideoRepository, fixtureVideos;
+import 'event_video_test.dart'
+    show FakeVideoRepository, fideFixtureVideos, fixtureVideos;
 
 class FakePlayer extends EventVideoPlayer {
   int revision = -1;
@@ -139,6 +140,57 @@ Future<void> chooseStream(WidgetTester tester, String id) async {
 }
 
 void main() {
+  testWidgets(
+    'desktop renders FIDE logo once and one final numeric camera menu',
+    (tester) async {
+      tester.view.physicalSize = const Size(1200, 800);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final session = EventVideoSession(
+        repository: FakeVideoRepository(fideFixtureVideos()),
+        clientPlatform: VideoClientPlatform.desktop,
+      );
+      await tester.pumpWidget(harness(session, FakePlayer()));
+      await tester.pump();
+
+      final fide = find.byKey(const ValueKey('video_stream_fide-main'));
+      final cameras = find.byKey(const ValueKey('video_fide_cameras'));
+      expect(fide, findsOneWidget);
+      expect(find.byKey(const ValueKey('video_fide_logo')), findsOneWidget);
+      expect(cameras, findsOneWidget);
+      expect(find.text('2'), findsOneWidget);
+      expect(find.byKey(const ValueKey('video_stream_camera-2')), findsNothing);
+      expect(
+        find.byKey(const ValueKey('video_stream_camera-10')),
+        findsNothing,
+      );
+      expect(
+        tester.getTopRight(cameras).dx,
+        greaterThan(
+          tester
+              .getTopRight(find.byKey(const ValueKey('video_stream_spanish')))
+              .dx,
+        ),
+      );
+
+      expect(session.selected!.id, 'fide-main');
+      await tester.tap(cameras);
+      await tester.pumpAndSettle();
+      expect(session.selected!.id, 'fide-main');
+      expect(find.text('Camera 2'), findsOneWidget);
+      expect(find.text('Camera 10'), findsOneWidget);
+      expect(
+        tester.getTopLeft(find.text('Camera 2')).dy,
+        lessThan(tester.getTopLeft(find.text('Camera 10')).dy),
+      );
+      await tester.tap(find.text('Camera 2'));
+      await tester.pumpAndSettle();
+      expect(session.selected!.id, 'camera-2');
+      await tester.pumpWidget(const SizedBox());
+    },
+  );
+
   testWidgets(
     'iPhone fullscreen shows one landscape player without restarting it',
     (tester) async {

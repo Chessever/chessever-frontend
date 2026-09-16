@@ -6,6 +6,16 @@ import 'video_country_preference.dart';
 
 typedef SaveVideoLanguage = Future<void> Function(String language);
 
+VideoClientPlatform _currentVideoClientPlatform() {
+  if (kIsWeb) return VideoClientPlatform.web;
+  return switch (defaultTargetPlatform) {
+    TargetPlatform.macOS ||
+    TargetPlatform.windows ||
+    TargetPlatform.linux => VideoClientPlatform.desktop,
+    _ => VideoClientPlatform.mobile,
+  };
+}
+
 /// Route-owned. No player or timer is created for adjacent game pages.
 class EventVideoSession extends ChangeNotifier {
   EventVideoSession({
@@ -15,9 +25,10 @@ class EventVideoSession extends ChangeNotifier {
     this.preferredCountry,
     this.savedCountry,
     this.saveCountry,
+    VideoClientPlatform? clientPlatform,
     this.visible = true,
     this.saveVisibility,
-  }) {
+  }) : clientPlatform = clientPlatform ?? _currentVideoClientPlatform() {
     if (repository != null) {
       _refreshTimer = Timer.periodic(
         const Duration(seconds: 30),
@@ -26,6 +37,7 @@ class EventVideoSession extends ChangeNotifier {
     }
   }
   final EventVideoRepository? repository;
+  final VideoClientPlatform clientPlatform;
   final SaveVideoLanguage? saveLanguage;
   String? rememberedLanguage;
   String? preferredCountry;
@@ -46,10 +58,12 @@ class EventVideoSession extends ChangeNotifier {
     if (!_selectionLocked && !_selections.containsKey(tourId)) {
       _orderingCountry = effectiveCountry;
       _orderingCountrymen = normalizeVideoCountry(preferredCountry);
-      streams = prioritizeVideoCountry(
-        streams,
-        _orderingCountry,
-        countrymen: _orderingCountrymen,
+      streams = _prioritizeFideAndLanguage(
+        prioritizeVideoCountry(
+          streams,
+          _orderingCountry,
+          countrymen: _orderingCountrymen,
+        ),
       );
     }
     if (!_selectionLocked &&
@@ -98,6 +112,35 @@ class EventVideoSession extends ChangeNotifier {
   bool get hasVideo => selected != null;
   bool get showVideo => hasVideo && visible;
   bool isActive(String id) => gameId == id;
+
+  String? get _rememberedLanguageCode {
+    final value = rememberedLanguage?.trim().toLowerCase();
+    if (value == null || value.isEmpty) return null;
+    return value.split(RegExp('[-_]')).first;
+  }
+
+  List<EventVideoStream> _prioritizeFideAndLanguage(
+    List<EventVideoStream> ordered,
+  ) {
+    final remembered = _rememberedLanguageCode;
+    final nonEnglish = remembered != null && remembered != 'en';
+    final preferredLanguage =
+        nonEnglish
+            ? ordered
+                .where((stream) => stream.languageKey == remembered)
+                .toList()
+            : const <EventVideoStream>[];
+    final fide =
+        ordered.where((stream) => stream.isFideMainCommentary).toList();
+    final promoted = {
+      for (final stream in [...preferredLanguage, ...fide]) stream.identity,
+    };
+    return [
+      ...preferredLanguage,
+      ...fide,
+      ...ordered.where((stream) => !promoted.contains(stream.identity)),
+    ];
+  }
 
   void openGame({
     required String gameId,
@@ -155,15 +198,22 @@ class EventVideoSession extends ChangeNotifier {
       if (_disposed || revision != _scopeRevision) return;
       final ranked =
           result.streams
-              .where((s) => s.supportsPlatform(VideoClientPlatform.mobile))
+              .where(
+                (stream) =>
+                    stream.supportsPlatform(clientPlatform) &&
+                    (clientPlatform != VideoClientPlatform.mobile ||
+                        stream.fideCameraNumber == null),
+              )
               .map(
                 (s) => s.withRanking(_ranking.putIfAbsent(s.identity, () => s)),
               )
               .toList();
-      streams = prioritizeVideoCountry(
-        ranked,
-        _orderingCountry,
-        countrymen: _orderingCountrymen,
+      streams = _prioritizeFideAndLanguage(
+        prioritizeVideoCountry(
+          ranked,
+          _orderingCountry,
+          countrymen: _orderingCountrymen,
+        ),
       );
       EventVideoStream? find(bool Function(EventVideoStream) predicate) {
         for (final stream in streams) {

@@ -4,6 +4,14 @@ import 'video_languages.dart';
 
 enum VideoPlatform { youtube, twitch, kick }
 
+const fideYoutubeChannelId = 'UC9B47GnzCRFHTT1BIBWvStQ';
+final RegExp _fideOlympiadTitle = RegExp(
+  r'^♟?\s*FIDE Chess Olympiad 2026\s*\|\s*Round\s+\d+\s*\|',
+);
+final RegExp _fideCameraTitle = RegExp(
+  r'^♟?\s*FIDE Chess Olympiad 2026\s*\|\s*Round\s+\d+\s*\|\s*(?:Stream\s+(\d+)\s*\|\s*(Open|Women)|(Open|Women)\s+Stream\s+(\d+))\s*$',
+);
+
 class VideoSource {
   const VideoSource(this.platform, this.id, this.url);
   final VideoPlatform platform;
@@ -141,6 +149,30 @@ class EventVideoStream {
       platforms == null || platforms!.contains(platform);
   final VideoAudience? audience;
   String get identity => '$id:${source.url}';
+
+  bool get _isFideYoutubeStream =>
+      source.platform == VideoPlatform.youtube &&
+      audience?.channelId == fideYoutubeChannelId;
+
+  String? get _primaryLanguage {
+    final value = language?.trim().toLowerCase();
+    if (value == null || value.isEmpty) return null;
+    return value.split(RegExp('[-_]')).first;
+  }
+
+  int? get fideCameraNumber {
+    if (!_isFideYoutubeStream || _primaryLanguage != null) return null;
+    final match = _fideCameraTitle.firstMatch(title);
+    if (match == null) return null;
+    return int.tryParse(match.group(1) ?? match.group(4)!);
+  }
+
+  bool get isFideMainCommentary =>
+      _isFideYoutubeStream &&
+      _primaryLanguage == 'en' &&
+      _fideOlympiadTitle.hasMatch(title) &&
+      !_fideCameraTitle.hasMatch(title);
+
   String get displayName {
     final parts = label.split(' · ');
     return parts.length == 2 &&
