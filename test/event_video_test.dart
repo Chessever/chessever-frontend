@@ -21,7 +21,7 @@ List<EventVideoStream> fideFixtureVideos() => EventVideoStream.readList([
     'label': 'FIDE',
     'url': 'https://youtu.be/fidemain001',
     'language': 'en',
-    'publication': {'title': 'FIDE Chess Olympiad 2026 | Round 1 | Live'},
+    'publication': {'title': '♟ FIDE Chess Olympiad 2026 | Round 1 | Gukesh, Sindarov, Bibisara & more'},
     'audience': {
       'channelId': fideYoutubeChannelId,
       'count': 379000,
@@ -34,7 +34,7 @@ List<EventVideoStream> fideFixtureVideos() => EventVideoStream.readList([
     'url': 'https://youtu.be/fidecam0010',
     'platforms': ['web', 'desktop'],
     'publication': {
-      'title': 'FIDE Chess Olympiad 2026 | Round 1 | Stream 10 | Open',
+      'title': 'FIDE Chess Olympiad 2026 | Round 1 |  Stream 10 | Open',
     },
     'audience': {
       'channelId': fideYoutubeChannelId,
@@ -48,7 +48,7 @@ List<EventVideoStream> fideFixtureVideos() => EventVideoStream.readList([
     'url': 'https://youtu.be/fidecam0002',
     'platforms': ['web', 'desktop'],
     'publication': {
-      'title': 'FIDE Chess Olympiad 2026 | Round 1 | Stream 2 | Women',
+      'title': 'FIDE Chess Olympiad 2026 | Round 1 | Women Stream 2',
     },
     'audience': {
       'channelId': fideYoutubeChannelId,
@@ -499,18 +499,25 @@ void main() {
 
     final main = stream(
       id: 'fide-main',
-      title: 'FIDE Chess Olympiad 2026 | Round 1 | Live',
+      title: '♟ FIDE Chess Olympiad 2026 | Round 1 | Gukesh, Sindarov, Bibisara & more',
       language: 'en',
     );
     final camera = stream(
       id: 'camera-12',
-      title: 'FIDE Chess Olympiad 2026 | Round 1 | Stream 12 | Women',
+      title: 'FIDE Chess Olympiad 2026 | Round 1 |  Stream 12 | Women',
     );
 
     expect(main.isFideMainCommentary, isTrue);
     expect(main.fideCameraNumber, isNull);
     expect(camera.fideCameraNumber, 12);
     expect(camera.isFideMainCommentary, isFalse);
+    expect(
+      stream(
+        id: 'camera-8',
+        title: 'FIDE Chess Olympiad 2026 | Round 1 | Open Stream 8',
+      ).fideCameraNumber,
+      8,
+    );
     expect(
       stream(
         id: 'camera-lang',
