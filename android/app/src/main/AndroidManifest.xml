@@ -164,9 +164,9 @@
        <meta-data
            android:name="flutterEmbedding"
            android:value="2" />
-      <meta-data
-          android:name="io.flutter.embedding.android.EnableHcpp"
-          android:value="true" />
+      <!-- Keep Android platform views on Flutter's supported default
+           composition path. HCPP is still experimental and can abort the
+           engine during WebView detach/end-of-frame transitions. -->
      <!-- Custom small icon for OneSignal push notifications (status bar) -->
      <meta-data
           android:name="com.onesignal.NotificationDefaultSmallIcon"
