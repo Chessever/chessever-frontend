@@ -1,6 +1,8 @@
+import 'dart:async';
 import 'dart:math' as math;
 import 'package:chessever2/e2e/e2e_ids.dart';
 import 'package:chessever2/providers/engine_settings_provider.dart';
+import 'package:chessever2/screens/chessboard/utils/live_stream_coachmark.dart';
 import 'package:chessever2/screens/chessboard/widgets/chess_board_bottom_navbar.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
@@ -38,6 +40,9 @@ class ChessBoardBottomNavBar extends ConsumerStatefulWidget {
   /// translucent so explorer games under the bar stay faintly visible.
   final bool explorerPanelVisible;
 
+  /// Override for tests. Production persists the hint through the app database.
+  final LiveStreamCoachmarkTracker? liveStreamCoachmarkTracker;
+
   const ChessBoardBottomNavBar({
     super.key,
     required this.gameIndex,
@@ -61,6 +66,7 @@ class ChessBoardBottomNavBar extends ConsumerStatefulWidget {
     this.isGamebaseActive = false,
     this.showGamebaseButton = false,
     this.explorerPanelVisible = false,
+    this.liveStreamCoachmarkTracker,
   });
 
   @override
@@ -70,48 +76,95 @@ class ChessBoardBottomNavBar extends ConsumerStatefulWidget {
 
 class _ChessBoardBottomNavBarState
     extends ConsumerState<ChessBoardBottomNavBar> {
-  final GlobalKey<TooltipState> _videoTooltipKey = GlobalKey<TooltipState>();
-  bool _videoTooltipScheduled = false;
+  final LayerLink _videoToggleLink = LayerLink();
+  OverlayEntry? _videoCoachmarkEntry;
+  Timer? _videoCoachmarkTimer;
+  bool _videoCoachmarkScheduled = false;
 
   bool get _hasVideoToggle => widget.onVideoToggle != null;
+  LiveStreamCoachmarkTracker get _coachmarkTracker =>
+      widget.liveStreamCoachmarkTracker ?? liveStreamCoachmarkTracker;
 
   @override
   void initState() {
     super.initState();
-    if (_hasVideoToggle) _scheduleVideoTooltip();
+    if (_hasVideoToggle && widget.videoVisible) _scheduleVideoCoachmark();
   }
 
   @override
   void didUpdateWidget(covariant ChessBoardBottomNavBar oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (!widget.videoVisible) _hideVideoCoachmark();
     if (!_hasVideoToggle || !widget.isActivePage) return;
     final toggleAppeared = oldWidget.onVideoToggle == null;
     final becameActive = !oldWidget.isActivePage;
     final streamOpened = widget.videoVisible && !oldWidget.videoVisible;
     final gameChanged = widget.gameIndex != oldWidget.gameIndex;
-    if (toggleAppeared || becameActive || streamOpened || gameChanged) {
-      _scheduleVideoTooltip();
+    if (widget.videoVisible &&
+        (toggleAppeared || becameActive || streamOpened || gameChanged)) {
+      _scheduleVideoCoachmark();
     }
   }
 
   @override
   void dispose() {
-    Tooltip.dismissAllToolTips();
+    _hideVideoCoachmark();
     super.dispose();
   }
 
-  /// Readers miss the camera switch, so every time a live stream opens the
-  /// bar points at it once. Tapping the camera (or the timeout) clears it.
-  void _scheduleVideoTooltip() {
-    if (_videoTooltipScheduled) return;
-    _videoTooltipScheduled = true;
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _videoTooltipScheduled = false;
-      if (!mounted || !_hasVideoToggle || !widget.isActivePage) return;
+  /// Readers miss the camera switch, so its first live appearance gets one
+  /// persistent, anchored hint. Tapping the camera (or the timeout) clears it.
+  void _scheduleVideoCoachmark() {
+    if (_videoCoachmarkScheduled) return;
+    _videoCoachmarkScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted ||
+          !_hasVideoToggle ||
+          !widget.videoVisible ||
+          !widget.isActivePage) {
+        _videoCoachmarkScheduled = false;
+        return;
+      }
       final route = ModalRoute.of(context);
-      if (route != null && !route.isCurrent) return;
-      _videoTooltipKey.currentState?.ensureTooltipVisible();
+      if (route != null && !route.isCurrent) {
+        _videoCoachmarkScheduled = false;
+        return;
+      }
+      final claimed = await _coachmarkTracker.claim();
+      if (!mounted) {
+        if (claimed) _coachmarkTracker.release();
+        return;
+      }
+      _videoCoachmarkScheduled = false;
+      if (!claimed ||
+          !_hasVideoToggle ||
+          !widget.videoVisible ||
+          !widget.isActivePage) {
+        if (claimed) _coachmarkTracker.release();
+        return;
+      }
+      final overlay = Overlay.maybeOf(context, rootOverlay: true);
+      if (overlay == null) {
+        _coachmarkTracker.release();
+        return;
+      }
+      _videoCoachmarkEntry = OverlayEntry(
+        builder: (_) => _LiveStreamCoachmark(link: _videoToggleLink),
+      );
+      overlay.insert(_videoCoachmarkEntry!);
+      _videoCoachmarkTimer = Timer(
+        const Duration(seconds: 4),
+        _hideVideoCoachmark,
+      );
+      await _coachmarkTracker.markShown();
     });
+  }
+
+  void _hideVideoCoachmark() {
+    _videoCoachmarkTimer?.cancel();
+    _videoCoachmarkTimer = null;
+    _videoCoachmarkEntry?.remove();
+    _videoCoachmarkEntry = null;
   }
 
   @override
@@ -195,30 +248,33 @@ class _ChessBoardBottomNavBarState
 
         // Events with streams expose video here and board swap in the menu.
         if (widget.onVideoToggle != null)
-          SizedBox(
-            width: buttonWidth,
-            child: Tooltip(
-              key: _videoTooltipKey,
-              message:
-                  widget.videoVisible
-                      ? 'Turn off the live stream'
-                      : 'Turn on the live stream',
-              // The bar sits at the screen edge, so the bubble must open up.
-              preferBelow: false,
-              showDuration: const Duration(seconds: 4),
-              child: IconButton(
-                key: const ValueKey('board_video_toggle'),
-                onPressed: () {
-                  Tooltip.dismissAllToolTips();
-                  widget.onVideoToggle?.call();
-                },
-                icon: Icon(
-                  widget.videoVisible
-                      ? Icons.videocam_off_outlined
-                      : Icons.videocam_outlined,
-                  // Material camera glyphs have more inset than the SVG controls.
-                  size: 28.sp,
-                  color: Colors.white,
+          CompositedTransformTarget(
+            link: _videoToggleLink,
+            child: SizedBox(
+              width: buttonWidth,
+              child: Tooltip(
+                message:
+                    widget.videoVisible
+                        ? 'Turn off the live stream'
+                        : 'Turn on the live stream',
+                // The bar sits at the screen edge, so the bubble must open up.
+                preferBelow: false,
+                showDuration: const Duration(seconds: 4),
+                child: IconButton(
+                  key: const ValueKey('board_video_toggle'),
+                  onPressed: () {
+                    Tooltip.dismissAllToolTips();
+                    _hideVideoCoachmark();
+                    widget.onVideoToggle?.call();
+                  },
+                  icon: Icon(
+                    widget.videoVisible
+                        ? Icons.videocam_off_outlined
+                        : Icons.videocam_outlined,
+                    // Material camera glyphs have more inset than the SVG controls.
+                    size: 28.sp,
+                    color: Colors.white,
+                  ),
                 ),
               ),
             ),
@@ -325,4 +381,80 @@ class _ChessBoardBottomNavBarState
       child: bar,
     );
   }
+}
+
+class _LiveStreamCoachmark extends StatelessWidget {
+  const _LiveStreamCoachmark({required this.link});
+
+  final LayerLink link;
+
+  @override
+  Widget build(BuildContext context) {
+    const ink = Color(0xFF08080A);
+    return Positioned(
+      left: 0,
+      top: 0,
+      child: IgnorePointer(
+        child: CompositedTransformFollower(
+          link: link,
+          showWhenUnlinked: false,
+          targetAnchor: Alignment.topCenter,
+          followerAnchor: Alignment.bottomCenter,
+          offset: const Offset(0, -6),
+          child: Material(
+            color: Colors.transparent,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  key: const ValueKey('live_stream_toggle_coachmark'),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 10,
+                  ),
+                  decoration: BoxDecoration(
+                    color: ink,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: Colors.white.withValues(alpha: 0.08),
+                    ),
+                  ),
+                  child: const Text(
+                    'Turn off the live stream',
+                    style: TextStyle(color: Colors.white),
+                  ),
+                ),
+                CustomPaint(
+                  key: const ValueKey('live_stream_toggle_coachmark_arrow'),
+                  size: const Size(14, 7),
+                  painter: const _DownArrowPainter(ink),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _DownArrowPainter extends CustomPainter {
+  const _DownArrowPainter(this.color);
+
+  final Color color;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final path =
+        Path()
+          ..moveTo(0, 0)
+          ..lineTo(size.width, 0)
+          ..lineTo(size.width / 2, size.height)
+          ..close();
+    canvas.drawPath(path, Paint()..color = color);
+  }
+
+  @override
+  bool shouldRepaint(covariant _DownArrowPainter oldDelegate) =>
+      oldDelegate.color != color;
 }
