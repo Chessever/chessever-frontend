@@ -66,10 +66,27 @@ class _GroupEventGamesTourContentBodyState
       return const SizedBox.shrink();
     }
 
+    // Matchup grouping is this tab's visual order: boards render under their
+    // team-pair card, not interleaved by the flat Games-tab sort. The board
+    // switcher receives that same order so a swipe moves to the adjacent board
+    // of the same matchup instead of the next team's board (Trello #1158).
+    final groupedByRound = <String, Map<String, List<MatchWithComparison>>>{
+      for (final round in visibleRounds)
+        round.id: ref
+            .read(gamesTourContentProvider)
+            .getGroupHeader(
+              selectedRoundId: round.id,
+              gamesScreenModel: widget.gamesScreenModel.copyWith(
+                gamesTourModels:
+                    gamesByRound[round.id] ?? const <GamesTourModel>[],
+              ),
+              roundName: round.name,
+            ),
+    };
     final orderedGamesData = widget.gamesScreenModel.copyWith(
       gamesTourModels: <GamesTourModel>[
         for (final round in visibleRounds)
-          ...(gamesByRound[round.id] ?? const <GamesTourModel>[]),
+          ...orderedGamesForTeamMatchups(groupedByRound[round.id]!),
       ],
     );
     final liveBatchKeyByGameId = buildGroupEventLiveBatchKeys(
@@ -92,6 +109,7 @@ class _GroupEventGamesTourContentBodyState
       context,
       visibleRounds,
       gamesByRound,
+      groupedByRound,
       orderedGamesData,
       scrollController,
       itemPositionsListener,
@@ -107,6 +125,7 @@ class _GroupEventGamesTourContentBodyState
     BuildContext context,
     List<GamesAppBarModel> visibleRounds,
     Map<String, List<GamesTourModel>> gamesByRound,
+    Map<String, Map<String, List<MatchWithComparison>>> groupedByRound,
     GamesScreenModel orderedGamesData,
     ItemScrollController scrollController,
     ItemPositionsListener itemPositionsListener,
@@ -121,16 +140,7 @@ class _GroupEventGamesTourContentBodyState
 
     for (final round in visibleRounds) {
       final roundGames = gamesByRound[round.id] ?? const <GamesTourModel>[];
-      // Get team groupings for this round
-      final grouped = ref
-          .read(gamesTourContentProvider)
-          .getGroupHeader(
-            selectedRoundId: round.id,
-            gamesScreenModel: orderedGamesData.copyWith(
-              gamesTourModels: roundGames,
-            ),
-            roundName: round.name,
-          );
+      final grouped = groupedByRound[round.id]!;
 
       final isRoundExpanded = roundExpansionState[round.id] ?? true;
 

@@ -11,20 +11,24 @@ import 'package:chessever2/screens/gamebase/event_view/gamebase_virtual_event.da
 import 'package:chessever2/screens/player_profile/player_profile_data_source.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/widgets/games_tour_content_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrapper/live_game_card_provider.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
-/// Isolate entry point that turns a single event's raw [Games] into the
-/// fully-ordered Games-tab list ([GamesTourModel]s, round DESC → game DESC →
-/// board ASC). Delegates to the shared [sortGamesForGamesTab] so the For You
-/// board dropdown matches the Games tab exactly. Kept top-level (and pin-less —
-/// the For You nav has no pin context) so it can run via [compute]; the PGN
-/// parsing inside [GamesTourModel.fromGame] is heavy and must stay off the main
-/// thread to keep game-card taps snappy.
-List<GamesTourModel> sortForYouEventGames(List<Games> games) =>
-    sortGamesForGamesTab(games: games, pinnedIds: const <String>[]);
+/// Isolate entry point that turns a single event's raw [Games] into the list
+/// the board switcher pages through: the Games-tab order ([GamesTourModel]s,
+/// round DESC → game DESC → board ASC), re-shaped into the team-event visual
+/// order when the event renders as matchup cards so a swipe follows the card
+/// list. Delegates the flat sort to the shared [sortGamesForGamesTab] (the
+/// PGN parsing inside [GamesTourModel.fromGame] is heavy and must stay off the
+/// main thread). Kept top-level so it can run via [compute].
+List<GamesTourModel> sortEventGamesForBoardNavigation(List<Games> games) {
+  final sorted = sortGamesForGamesTab(games: games, pinnedIds: const <String>[]);
+  if (!looksLikeTeamMatchupGames(sorted)) return sorted;
+  return orderTeamEventGamesForBoardNavigation(sorted);
+}
 
 /// Search and live/finished filters turn an otherwise expandable tournament
 /// preview into a deliberate user-visible collection. Keep that filtered
@@ -201,7 +205,10 @@ class _GameCardWrapperProvider {
         return _ResolvedNavigation(games: orderedGames, index: safeIndex);
       }
 
-      final fullGames = await compute(sortForYouEventGames, rawGames);
+      final fullGames = await compute(
+        sortEventGamesForBoardNavigation,
+        rawGames,
+      );
       final fullGameIds = fullGames.map((game) => game.gameId).toSet();
       final omitsImmediateSibling = sameTourGames.any(
         (game) => !fullGameIds.contains(game.gameId),

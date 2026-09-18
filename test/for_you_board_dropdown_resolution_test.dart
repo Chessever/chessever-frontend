@@ -62,7 +62,7 @@ void main() {
   }
 
   test('pure transform: returns the FULL event list in Games-tab order', () {
-    final resolved = sortForYouEventGames(fullEventRawGames());
+    final resolved = sortEventGamesForBoardNavigation(fullEventRawGames());
     expect(
       resolved.map((g) => g.gameId).toList(),
       expectedFullOrder,

@@ -1,6 +1,7 @@
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_app_bar_view_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/knockout_tournament_state_provider.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/utils/knockout_match_detector.dart';
 import 'package:dartchess/dartchess.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
@@ -122,6 +123,66 @@ Map<String, List<MatchWithComparison>> groupTeamGamesByMatchup({
     }
   }
   return grouped;
+}
+
+/// Flattens one round's matchup groups into the order this tab renders its
+/// cards: every board of team one vs team two, then the next pairing.
+List<GamesTourModel> orderedGamesForTeamMatchups(
+  Map<String, List<MatchWithComparison>> grouped,
+) => <GamesTourModel>[
+  for (final gamesForTeam in grouped.values)
+    for (final match in gamesForTeam) match.game,
+];
+
+/// True when the Games tab would render [games] as team matchup cards: every
+/// game carries a team on both sides. Knockout feeds are excluded — their
+/// visual order is already match-grouped, so reordering by team pairing could
+/// pull a leg out from under its bracket.
+bool looksLikeTeamMatchupGames(List<GamesTourModel> games) {
+  if (games.length < 2) return false;
+  if (KnockoutMatchDetector.isKnockoutMatchFormat(games)) return false;
+  for (final game in games) {
+    if (_teamMatchupLabel(game.whitePlayer.team) == null ||
+        _teamMatchupLabel(game.blackPlayer.team) == null) {
+      return false;
+    }
+  }
+  return true;
+}
+
+/// Board-switcher order for a team event: per round, matchups in first-seen
+/// order, then each pairing's boards. The flat Games-tab sort (round DESC →
+/// game DESC → board ASC) interleaves matchups because board numbers restart
+/// per pairing, so swiping used to land on the next team's board instead of
+/// the adjacent one (Trello #1158).
+List<GamesTourModel> orderTeamEventGamesForBoardNavigation(
+  List<GamesTourModel> games,
+) {
+  if (games.length < 2) return games;
+
+  final roundOrder = <String>[];
+  final gamesByRound = <String, List<GamesTourModel>>{};
+  for (final game in games) {
+    gamesByRound
+        .putIfAbsent(game.roundId, () {
+          roundOrder.add(game.roundId);
+          return <GamesTourModel>[];
+        })
+        .add(game);
+  }
+
+  final ordered = <GamesTourModel>[];
+  for (final roundId in roundOrder) {
+    ordered.addAll(
+      orderedGamesForTeamMatchups(
+        groupTeamGamesByMatchup(
+          selectedRoundId: roundId,
+          games: gamesByRound[roundId]!,
+        ),
+      ),
+    );
+  }
+  return ordered;
 }
 
 List<GamesTourModel> _gamesForTeamRound({

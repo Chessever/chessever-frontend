@@ -67,8 +67,12 @@ class _ChessProgressBarState extends ConsumerState<ChessProgressBar> {
       },
     );
 
-    // Adjust for reversed mode (invert the evaluation visually)
-    final displayEval = widget.isReversedMode ? (1.0 - evaluation) : evaluation;
+    // Reversed mode mirrors the bar: white's share keeps its length and keeps
+    // its colour, but grows from the right edge where the white player sits.
+    // The anchor alone does the flip — inverting the value here as well
+    // cancelled the mirror out and left the fill tracking the same side as
+    // the unflipped card (team-event list cards, bug #1161).
+    final displayEval = evaluation;
 
     // Foreground = white's share, background = black's share. Tokens live
     // on AppColors so light mode uses the broadcast mint-grey rail.
