@@ -20,6 +20,7 @@ import 'package:chessever2/screens/chessboard/provider/game_pgn_stream_provider.
 import 'package:chessever2/screens/chessboard/provider/stockfish_singleton.dart';
 import 'package:chessever2/screens/chessboard/view_model/chess_board_state_new.dart';
 import 'package:chessever2/screens/chessboard/notation/notation_tree.dart';
+import 'package:chessever2/screens/chessboard/utils/engine_pv_arrows.dart';
 import 'package:chessever2/screens/chessboard/utils/engine_pv_palette.dart';
 import 'package:chessever2/screens/chessboard/widgets/nag_display.dart';
 import 'package:chessever2/screens/library/utils/gamebase_pgn_builder.dart';
@@ -2180,10 +2181,7 @@ class ChessBoardScreenNotifierNew
             : <Number>[pointer.first.clamp(0, strippedMainline.length - 1)];
 
     _analysisNavigator!.replaceState(
-      ChessGameNavigatorState(
-        game: strippedGame,
-        movePointer: restoredPointer,
-      ),
+      ChessGameNavigatorState(game: strippedGame, movePointer: restoredPointer),
     );
 
     HapticFeedback.heavyImpact();
@@ -2224,19 +2222,24 @@ class ChessBoardScreenNotifierNew
     );
     restored.dispose();
     final pointer = navigator.state.movePointer;
-    final mainlinePointer = pointer.isEmpty || restoredGame.mainline.isEmpty
-        ? const <int>[]
-        : <int>[pointer.first.clamp(0, restoredGame.mainline.length - 1)];
-    state = AsyncValue.data(_clearVariantSelection(current).copyWith(
-      variationComments: {...?backup?.variationComments, ...current.variationComments},
-      moveNags: {...?backup?.moveNags, ...current.moveNags},
-      pgnData: exportGameToPgn(restoredGame),
-    ));
+    final mainlinePointer =
+        pointer.isEmpty || restoredGame.mainline.isEmpty
+            ? const <int>[]
+            : <int>[pointer.first.clamp(0, restoredGame.mainline.length - 1)];
+    state = AsyncValue.data(
+      _clearVariantSelection(current).copyWith(
+        variationComments: {
+          ...?backup?.variationComments,
+          ...current.variationComments,
+        },
+        moveNags: {...?backup?.moveNags, ...current.moveNags},
+        pgnData: exportGameToPgn(restoredGame),
+      ),
+    );
     ref.read(analysisViewSessionProvider(game.gameId).notifier).restore();
-    navigator.replaceState(ChessGameNavigatorState(
-      game: restoredGame,
-      movePointer: mainlinePointer,
-    ));
+    navigator.replaceState(
+      ChessGameNavigatorState(game: restoredGame, movePointer: mainlinePointer),
+    );
     _syncAnalysisFromNavigator(navigator.state);
     _updateEvaluation(force: true);
     await _persistAnalysisState();
@@ -7428,46 +7431,8 @@ class ChessBoardScreenNotifierNew
     }
   }
 
-  // Width/head ramp by engine rank. chessground maps `scale` to both shaft
-  // width and arrowhead size, so this is the only lever for thickness. Even
-  // 0.15 step from 1.0 down to 0.40 widens the spread (was 0.12 step / 0.52
-  // floor) to make the 1st recommendation clearly thickest while the gradient
-  // stays smooth and the 5th arrow remains visible. Range must stay in (0, 1].
-  static const List<double> _engineArrowRankScales = [
-    1.0,
-    0.85,
-    0.70,
-    0.55,
-    0.40,
-  ];
-
-  static const List<double> _engineArrowRankAlphas = [
-    0.95,
-    0.78,
-    0.62,
-    0.48,
-    0.34,
-  ];
-
-  double _engineArrowScaleForRank(int index) {
-    if (index >= 0 && index < _engineArrowRankScales.length) {
-      return _engineArrowRankScales[index];
-    }
-    return _engineArrowRankScales.last;
-  }
-
-  Color _engineArrowColorForRank(Color baseColor, int index) {
-    final alpha =
-        index >= 0 && index < _engineArrowRankAlphas.length
-            ? _engineArrowRankAlphas[index]
-            : _engineArrowRankAlphas.last;
-    return baseColor.withValues(alpha: alpha);
-  }
-
   ISet<Shape> getBestMoveShape(Position pos, CloudEval? cloudEval) {
     if (cloudEval?.pvs.isNotEmpty ?? false) {
-      final arrowShapes = <Shape>[];
-
       // CRITICAL: Validate that the PVs are for the correct position (incl.
       // side to move). Ignore halfmove/fullmove so arrows do not vanish solely
       // due to counter drift between board and cached eval FEN.
@@ -7481,68 +7446,17 @@ class ChessBoardScreenNotifierNew
       // Use maxArrowsOnBoard setting to limit number of arrows (independent of PV lines)
       final engineSettings = ref.read(engineSettingsProviderNew).valueOrNull;
       final maxArrows = engineSettings?.getMaxArrowsOnBoard() ?? 3;
-      final pvsToShow = cloudEval.pvs.take(maxArrows).toList();
+      final isThreatsMode = state.value?.isThreatsMode ?? false;
 
-      for (int i = 0; i < pvsToShow.length; i++) {
-        final pv = pvsToShow[i];
-        String bestMove =
-            pv.moves.split(" ")[0].toLowerCase(); // Normalize to lowercase
-
-        if (bestMove.length < 4 || bestMove.length > 5) {
-          _releaseLog('Invalid best move UCI: $bestMove');
-          continue; // Skip invalid UCI
-        }
-
-        try {
-          // Keep the existing arrow color order while making the rank obvious
-          // through progressive opacity and arrow/head scale.
-          final isThreatsMode = state.value?.isThreatsMode ?? false;
-          final baseArrowColor =
-              isThreatsMode ? const Color(0xFFFF0000) : const Color(0xFF98B39A);
-          final arrowColor = _engineArrowColorForRank(baseArrowColor, i);
-          final arrowScale = _engineArrowScaleForRank(i);
-
-          if (bestMove.contains('@')) {
-            // Drop move (e.g., "p@e4")
-            if (bestMove.length != 4 || bestMove[1] != '@') continue;
-            String toStr = bestMove.substring(2, 4);
-            Square to = Square.fromName(toStr);
-            arrowShapes.add(
-              Arrow(
-                color: arrowColor,
-                orig: to, // Same square as destination
-                dest: to,
-                scale: arrowScale,
-              ),
-            );
-          } else {
-            // Normal move or promotion (e.g., "e2e4" or "e7e8q")
-            String fromStr = bestMove.substring(0, 2);
-            String toStr = bestMove.substring(2, 4);
-            Square from = Square.fromName(fromStr);
-            Square to = Square.fromName(toStr);
-
-            // Validate the move is legal for this side/position so opposite-
-            // side UCI never paints and correct-side UCI is not dropped.
-            if (!isFirstUciLegalForFen(pos.fen, bestMove)) {
-              _releaseLog(
-                '⚠️ PV ARROWS: Move $bestMove is not legal for position (turn: ${pos.turn})',
-              );
-              continue; // Skip illegal moves
-            }
-
-            arrowShapes.add(
-              Arrow(color: arrowColor, orig: from, dest: to, scale: arrowScale),
-            );
-          }
-        } catch (e) {
-          // Parsing failed for this PV, continue with next
-          _releaseLog('Error parsing PV $i best move UCI: $e');
-          continue;
-        }
-      }
-
-      return arrowShapes.toISet();
+      return buildEnginePvArrows(
+        firstMoveUcis: [
+          for (final pv in cloudEval.pvs) pv.moves.split(' ').first,
+        ],
+        maxArrows: maxArrows,
+        legalForFen: pos.fen,
+        isThreatsMode: isThreatsMode,
+        colorMode: EngineArrowColorMode.uniformRanked,
+      ).toISet();
     } else {
       _releaseLog('No evaluation data available.');
     }
@@ -7588,7 +7502,7 @@ class ChessBoardScreenNotifierNew
   /// opacity, not labels or hue changes, to separate engine recommendation
   /// priority on the board.
   Color getVariantArrowColor(int variantIndex) {
-    return _engineArrowColorForRank(
+    return engineArrowColorForRank(
       enginePvVariantBaseColor(variantIndex),
       variantIndex,
     );
@@ -7600,49 +7514,21 @@ class ChessBoardScreenNotifierNew
     bool isThreatsMode = false,
     Position? legalForPosition,
   }) {
-    final arrows = <Shape>[];
-
     // Use maxArrowsOnBoard setting to limit number of arrows
     final engineSettings = ref.read(engineSettingsProviderNew).valueOrNull;
     final maxArrows = engineSettings?.getMaxArrowsOnBoard() ?? 3;
 
-    // When available, only draw arrows legal for the analysis position so
-    // opposite-side stale lines cannot paint (and correct-side lines still do).
-    final legalityFen = legalForPosition?.fen;
-
-    for (int i = 0; i < variants.length && i < maxArrows; i++) {
-      final variant = variants[i];
-      if (variant.moves.isEmpty) continue;
-
-      final move = variant.moves[0];
-      if (move is! NormalMove) continue;
-
-      if (legalityFen != null &&
-          !isFirstUciLegalForFen(legalityFen, move.uci)) {
-        continue;
-      }
-
-      try {
-        final arrowColor =
-            isThreatsMode
-                ? _engineArrowColorForRank(const Color(0xFFFF0000), i)
-                : getVariantArrowColor(i);
-        final arrowScale = _engineArrowScaleForRank(i);
-
-        arrows.add(
-          Arrow(
-            color: arrowColor,
-            orig: move.from,
-            dest: move.to,
-            scale: arrowScale,
-          ),
-        );
-      } catch (_) {
-        continue;
-      }
-    }
-
-    return arrows.toISet();
+    return buildEnginePvArrows(
+      firstMoveUcis: [
+        for (final variant in variants)
+          if (variant.moves.isNotEmpty && variant.moves.first is NormalMove)
+            (variant.moves.first as NormalMove).uci,
+      ],
+      maxArrows: maxArrows,
+      legalForFen: legalForPosition?.fen,
+      isThreatsMode: isThreatsMode,
+      colorMode: EngineArrowColorMode.variantPalette,
+    ).toISet();
   }
 
   ISet<Shape> _maybeSuppressShapes(

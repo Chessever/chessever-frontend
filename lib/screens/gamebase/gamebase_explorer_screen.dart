@@ -24,6 +24,7 @@ import 'package:chessever2/providers/engine_settings_provider.dart';
 import 'package:chessever2/screens/chessboard/analysis/chess_game_navigator.dart';
 import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
 import 'package:chessever2/screens/chessboard/view_model/chess_board_state_new.dart';
+import 'package:chessever2/screens/chessboard/utils/engine_pv_arrows.dart';
 import 'package:chessever2/screens/chessboard/utils/engine_pv_palette.dart';
 import 'package:chessever2/screens/settings/settings_page.dart';
 import 'package:chessever2/screens/chessboard/widgets/chess_board_bottom_nav_bar.dart';
@@ -1164,6 +1165,20 @@ class _GamebaseChessBoardState extends ConsumerState<_GamebaseChessBoard> {
     final boardSettingsAsync = ref.watch(boardSettingsProviderNew);
     final boardSettings =
         boardSettingsAsync.valueOrNull ?? const BoardSettingsNew();
+    final engineSettings = ref.watch(engineSettingsProviderNew).valueOrNull;
+    final evalState = ref.watch(explorerEvalProvider);
+    final engineShapes = resolveEnginePvBoardArrows(
+      showEngineAnalysis: engineSettings?.showEngineAnalysis ?? true,
+      showPvArrows: engineSettings?.showPvArrows ?? true,
+      isPvPreviewActive: widget.isPreviewing || evalState.pvPreview != null,
+      rankedFirstMoveUcis: [
+        for (final line in evalState.pvLines)
+          if (line.uciMoves.isNotEmpty) line.uciMoves.first,
+      ],
+      maxArrows: engineSettings?.getMaxArrowsOnBoard() ?? 3,
+      boardFen: widget.fen,
+      evalFen: evalState.fen,
+    );
     final notifier = ref.read(gamebaseExplorerProvider.notifier);
 
     Chess? position;
@@ -1199,6 +1214,7 @@ class _GamebaseChessBoardState extends ConsumerState<_GamebaseChessBoard> {
                   ),
                   orientation: widget.isFlipped ? Side.black : Side.white,
                   fen: widget.fen,
+                  shapes: engineShapes,
                 )
                 : Chessboard(
                   size: widget.boardSize,
@@ -1213,6 +1229,7 @@ class _GamebaseChessBoardState extends ConsumerState<_GamebaseChessBoard> {
                     enablePremoves: false,
                   ),
                   orientation: widget.isFlipped ? Side.black : Side.white,
+                  shapes: engineShapes,
                   // chessground v10: promotion is resolved inside the board,
                   // so onMove receives the fully-resolved move (promotion role
                   // already set) and lives on the widget, not GameData.

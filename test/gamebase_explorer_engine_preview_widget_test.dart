@@ -14,6 +14,7 @@ import 'package:chessever2/screens/gamebase/widgets/explorer_game_card.dart';
 import 'package:chessever2/screens/gamebase/widgets/move_statistics_panel.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessground/chessground.dart';
+import 'package:dartchess/dartchess.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -135,14 +136,19 @@ class _SubscribedNotifier extends SubscriptionNotifier {
 }
 
 class _CardEngineSettingsNotifier extends EngineSettingsNotifierNew {
+  _CardEngineSettingsNotifier({this.settings = _defaultSettings});
+
+  static const _defaultSettings = EngineSettings(
+    showEngineAnalysis: true,
+    engineLinesView: EngineLinesView.cards,
+    principalVariationIndex: 2,
+  );
+
+  final EngineSettings settings;
+
   @override
   Future<EngineSettings> build() async {
-    const settings = EngineSettings(
-      showEngineAnalysis: true,
-      engineLinesView: EngineLinesView.cards,
-      principalVariationIndex: 2,
-    );
-    state = const AsyncValue.data(settings);
+    state = AsyncValue.data(settings);
     return settings;
   }
 }
@@ -195,14 +201,19 @@ class _FixedExplorerEvalNotifier extends ExplorerEvalNotifier {
   }
 }
 
-ProviderContainer _createContainer({bool inlineGames = false}) {
+ProviderContainer _createContainer({
+  bool inlineGames = false,
+  EngineSettings engineSettings = _CardEngineSettingsNotifier._defaultSettings,
+}) {
   return ProviderContainer(
     overrides: [
       gamebaseRepositoryProvider.overrideWithValue(
         _FakeGamebaseRepository(inlineGames: inlineGames),
       ),
       subscriptionProvider.overrideWith((ref) => _SubscribedNotifier()),
-      engineSettingsProviderNew.overrideWith(_CardEngineSettingsNotifier.new),
+      engineSettingsProviderNew.overrideWith(
+        () => _CardEngineSettingsNotifier(settings: engineSettings),
+      ),
       boardSettingsProviderNew.overrideWith(_BoardSettingsNotifier.new),
       explorerEvalProvider.overrideWith(
         (ref) => _FixedExplorerEvalNotifier(ref),
@@ -250,6 +261,7 @@ void main() {
         containerDisposed = true;
         container.dispose();
       }
+
       addTearDown(disposeContainer);
       await _pumpExplorer(tester, container);
       await tester.pump(const Duration(milliseconds: 250));
@@ -379,6 +391,76 @@ void main() {
       board = tester.widget<Chessboard>(find.byType(Chessboard));
       expect(board.controller.fen, _initialFen);
       expect(board.controller.interactive, isTrue);
+
+      await tester.pumpWidget(const SizedBox.shrink());
+      disposeContainer();
+      await tester.pump();
+    },
+  );
+
+  testWidgets(
+    'Opening Explorer board draws engine arrows when Show Arrows is on',
+    (tester) async {
+      tester.view.devicePixelRatio = 1;
+      tester.view.physicalSize = const Size(390, 844);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      addTearDown(tester.view.resetPhysicalSize);
+
+      final container = _createContainer();
+      var containerDisposed = false;
+      void disposeContainer() {
+        if (containerDisposed) return;
+        containerDisposed = true;
+        container.dispose();
+      }
+
+      addTearDown(disposeContainer);
+      await _pumpExplorer(tester, container);
+
+      final board = tester.widget<Chessboard>(find.byType(Chessboard));
+      final arrows = board.shapes.whereType<Arrow>().toList();
+      expect(arrows, hasLength(3));
+      expect(arrows[0].orig, Square.fromName('e2'));
+      expect(arrows[0].dest, Square.fromName('e4'));
+      expect(arrows[1].orig, Square.fromName('d2'));
+      expect(arrows[1].dest, Square.fromName('d4'));
+      expect(arrows[2].orig, Square.fromName('g1'));
+      expect(arrows[2].dest, Square.fromName('f3'));
+
+      await tester.pumpWidget(const SizedBox.shrink());
+      disposeContainer();
+      await tester.pump();
+    },
+  );
+
+  testWidgets(
+    'Opening Explorer board hides engine arrows when Show Arrows is off',
+    (tester) async {
+      tester.view.devicePixelRatio = 1;
+      tester.view.physicalSize = const Size(390, 844);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      addTearDown(tester.view.resetPhysicalSize);
+
+      final container = _createContainer(
+        engineSettings: const EngineSettings(
+          showEngineAnalysis: true,
+          showPvArrows: false,
+          engineLinesView: EngineLinesView.cards,
+          principalVariationIndex: 2,
+        ),
+      );
+      var containerDisposed = false;
+      void disposeContainer() {
+        if (containerDisposed) return;
+        containerDisposed = true;
+        container.dispose();
+      }
+
+      addTearDown(disposeContainer);
+      await _pumpExplorer(tester, container);
+
+      final board = tester.widget<Chessboard>(find.byType(Chessboard));
+      expect(board.shapes, isEmpty);
 
       await tester.pumpWidget(const SizedBox.shrink());
       disposeContainer();

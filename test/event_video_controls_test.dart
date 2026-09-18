@@ -62,13 +62,13 @@ void main() {
       await tester.pumpWidget(app(true, true));
       await tester.pump();
       expect(flip(), findsNothing);
-      expect(find.byTooltip('Hide video'), findsOneWidget);
+      expect(find.byTooltip('Turn off the live stream'), findsOneWidget);
       expect(find.byIcon(Icons.videocam_off_outlined), findsOneWidget);
       expect(
         tester.widget<Icon>(find.byIcon(Icons.videocam_off_outlined)).color,
         Colors.white,
       );
-      await tester.tap(find.byTooltip('Hide video'));
+      await tester.tap(find.byTooltip('Turn off the live stream'));
       expect(toggles, 1);
       expect(flips, 1);
       final forward = find.byWidgetPredicate(
@@ -80,12 +80,90 @@ void main() {
       expect(next, 1);
       await tester.pumpWidget(app(true, false));
       await tester.pump();
-      expect(find.byTooltip('Show video'), findsOneWidget);
+      expect(find.byTooltip('Turn on the live stream'), findsOneWidget);
       expect(find.byIcon(Icons.videocam_outlined), findsOneWidget);
       expect(
         tester.widget<Icon>(find.byIcon(Icons.videocam_outlined)).color,
         Colors.white,
       );
+      await tester.pumpWidget(const SizedBox());
+    },
+  );
+  testWidgets(
+    'camera tooltip auto-shows every time a live stream opens',
+    (tester) async {
+      var toggles = 0;
+      Widget app({
+        required bool hasVideo,
+        required bool visible,
+        bool isActivePage = true,
+      }) => ProviderScope(
+        overrides: [
+          engineSettingsProviderNew.overrideWith(_Settings.new),
+          engineDepthStatusProvider.overrideWithValue(null),
+        ],
+        child: MaterialApp(
+          theme: AppTheme.darkTheme,
+          home: Builder(
+            builder: (context) {
+              ResponsiveHelper.init(context);
+              return Scaffold(
+                bottomNavigationBar: ChessBoardBottomNavBar(
+                  gameIndex: 0,
+                  onLeftMove: () {},
+                  onRightMove: () {},
+                  onFlip: () {},
+                  onVideoToggle: hasVideo ? () => toggles++ : null,
+                  videoVisible: visible,
+                  isActivePage: isActivePage,
+                  canMoveForward: true,
+                  canMoveBackward: true,
+                  showEngineAnalysis: false,
+                  showUnseenMoveBadge: false,
+                ),
+              );
+            },
+          ),
+        ),
+      );
+
+      // No stream: no camera, no bubble.
+      await tester.pumpWidget(app(hasVideo: false, visible: false));
+      await tester.pump();
+      expect(find.text('Turn off the live stream'), findsNothing);
+
+      // Stream metadata arrives with video showing: bubble points at camera.
+      await tester.pumpWidget(app(hasVideo: true, visible: true));
+      await tester.pump();
+      expect(find.text('Turn off the live stream'), findsOneWidget);
+
+      // Tapping the camera toggles and clears the bubble.
+      await tester.tap(find.byKey(const ValueKey('board_video_toggle')));
+      await tester.pumpAndSettle();
+      expect(toggles, 1);
+      expect(find.text('Turn off the live stream'), findsNothing);
+
+      // Hiding the stream pops nothing; re-opening it bubbles again.
+      await tester.pumpWidget(app(hasVideo: true, visible: false));
+      await tester.pump();
+      expect(find.text('Turn on the live stream'), findsNothing);
+      await tester.pumpWidget(app(hasVideo: true, visible: true));
+      await tester.pump();
+      expect(find.text('Turn off the live stream'), findsOneWidget);
+
+      // Off-screen pages never pop the bubble, even on a fresh mount with
+      // the stream open; swiping to the page pops it.
+      await tester.pumpWidget(const SizedBox());
+      await tester.pump();
+      await tester.pumpWidget(
+        app(hasVideo: true, visible: true, isActivePage: false),
+      );
+      await tester.pump();
+      expect(find.text('Turn off the live stream'), findsNothing);
+      await tester.pumpWidget(app(hasVideo: true, visible: true));
+      await tester.pump();
+      expect(find.text('Turn off the live stream'), findsOneWidget);
+
       await tester.pumpWidget(const SizedBox());
     },
   );

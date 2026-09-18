@@ -8,13 +8,18 @@ import 'package:chessever2/utils/svg_asset.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
-class ChessBoardBottomNavBar extends ConsumerWidget {
+class ChessBoardBottomNavBar extends ConsumerStatefulWidget {
   final int gameIndex;
   final VoidCallback? onLeftMove;
   final VoidCallback? onRightMove;
   final VoidCallback onFlip;
   final VoidCallback? onVideoToggle;
   final bool videoVisible;
+
+  /// Whether this bar belongs to the currently visible game page. The camera
+  /// tooltip only auto-shows on the active page so pre-built adjacent pages
+  /// never pop a bubble for a stream the reader is not looking at.
+  final bool isActivePage;
   final VoidCallback? toggleEngineVisibility;
   final VoidCallback? onEngineSettingsLongPress;
   final VoidCallback? onLongPressBackwardStart;
@@ -41,6 +46,7 @@ class ChessBoardBottomNavBar extends ConsumerWidget {
     required this.onFlip,
     this.onVideoToggle,
     this.videoVisible = false,
+    this.isActivePage = true,
     required this.canMoveForward,
     required this.canMoveBackward,
     required this.showEngineAnalysis,
@@ -58,8 +64,59 @@ class ChessBoardBottomNavBar extends ConsumerWidget {
   });
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final buttonCount = showGamebaseButton ? 5 : 4;
+  ConsumerState<ChessBoardBottomNavBar> createState() =>
+      _ChessBoardBottomNavBarState();
+}
+
+class _ChessBoardBottomNavBarState
+    extends ConsumerState<ChessBoardBottomNavBar> {
+  final GlobalKey<TooltipState> _videoTooltipKey = GlobalKey<TooltipState>();
+  bool _videoTooltipScheduled = false;
+
+  bool get _hasVideoToggle => widget.onVideoToggle != null;
+
+  @override
+  void initState() {
+    super.initState();
+    if (_hasVideoToggle) _scheduleVideoTooltip();
+  }
+
+  @override
+  void didUpdateWidget(covariant ChessBoardBottomNavBar oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!_hasVideoToggle || !widget.isActivePage) return;
+    final toggleAppeared = oldWidget.onVideoToggle == null;
+    final becameActive = !oldWidget.isActivePage;
+    final streamOpened = widget.videoVisible && !oldWidget.videoVisible;
+    final gameChanged = widget.gameIndex != oldWidget.gameIndex;
+    if (toggleAppeared || becameActive || streamOpened || gameChanged) {
+      _scheduleVideoTooltip();
+    }
+  }
+
+  @override
+  void dispose() {
+    Tooltip.dismissAllToolTips();
+    super.dispose();
+  }
+
+  /// Readers miss the camera switch, so every time a live stream opens the
+  /// bar points at it once. Tapping the camera (or the timeout) clears it.
+  void _scheduleVideoTooltip() {
+    if (_videoTooltipScheduled) return;
+    _videoTooltipScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _videoTooltipScheduled = false;
+      if (!mounted || !_hasVideoToggle || !widget.isActivePage) return;
+      final route = ModalRoute.of(context);
+      if (route != null && !route.isCurrent) return;
+      _videoTooltipKey.currentState?.ensureTooltipVisible();
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final buttonCount = widget.showGamebaseButton ? 5 : 4;
     final fullWidth = MediaQuery.of(context).size.width;
 
     // Tablet-specific layout calculations
@@ -116,13 +173,13 @@ class ChessBoardBottomNavBar extends ConsumerWidget {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         // Gamebase Explorer Toggle (only shown when showGamebaseButton is true)
-        if (showGamebaseButton)
+        if (widget.showGamebaseButton)
           ChessSvgBottomNavbar(
             key: e2eKey(E2eIds.boardGamebaseToggle),
             width: buttonWidth,
             svgPath: SvgAsset.libraryNavIcon,
-            onPressed: onGamebaseToggle,
-            isActive: isGamebaseActive,
+            onPressed: widget.onGamebaseToggle,
+            isActive: widget.isGamebaseActive,
           ),
 
         // Computer/Engine Analysis Toggle Button
@@ -130,27 +187,39 @@ class ChessBoardBottomNavBar extends ConsumerWidget {
           key: e2eKey(E2eIds.boardEngineToggle),
           width: buttonWidth,
           svgPath: SvgAsset.laptop,
-          onPressed: toggleEngineVisibility,
-          onLongPress: onEngineSettingsLongPress,
-          isActive: showEngineAnalysis,
-          depthText: showEngineAnalysis ? depthText : null,
+          onPressed: widget.toggleEngineVisibility,
+          onLongPress: widget.onEngineSettingsLongPress,
+          isActive: widget.showEngineAnalysis,
+          depthText: widget.showEngineAnalysis ? depthText : null,
         ),
 
         // Events with streams expose video here and board swap in the menu.
-        if (onVideoToggle != null)
+        if (widget.onVideoToggle != null)
           SizedBox(
             width: buttonWidth,
-            child: IconButton(
-              key: const ValueKey('board_video_toggle'),
-              tooltip: videoVisible ? 'Hide video' : 'Show video',
-              onPressed: onVideoToggle,
-              icon: Icon(
-                videoVisible
-                    ? Icons.videocam_off_outlined
-                    : Icons.videocam_outlined,
-                // Material camera glyphs have more inset than the SVG controls.
-                size: 28.sp,
-                color: Colors.white,
+            child: Tooltip(
+              key: _videoTooltipKey,
+              message:
+                  widget.videoVisible
+                      ? 'Turn off the live stream'
+                      : 'Turn on the live stream',
+              // The bar sits at the screen edge, so the bubble must open up.
+              preferBelow: false,
+              showDuration: const Duration(seconds: 4),
+              child: IconButton(
+                key: const ValueKey('board_video_toggle'),
+                onPressed: () {
+                  Tooltip.dismissAllToolTips();
+                  widget.onVideoToggle?.call();
+                },
+                icon: Icon(
+                  widget.videoVisible
+                      ? Icons.videocam_off_outlined
+                      : Icons.videocam_outlined,
+                  // Material camera glyphs have more inset than the SVG controls.
+                  size: 28.sp,
+                  color: Colors.white,
+                ),
               ),
             ),
           )
@@ -159,25 +228,27 @@ class ChessBoardBottomNavBar extends ConsumerWidget {
             key: e2eKey(E2eIds.boardFlip),
             width: buttonWidth,
             svgPath: SvgAsset.refresh,
-            onPressed: onFlip,
+            onPressed: widget.onFlip,
           ),
         ChessSvgBottomNavbarWithLongPress(
           key: e2eKey(E2eIds.boardMoveBack),
           svgPath: SvgAsset.left_arrow,
           width: buttonWidth,
-          onPressed: canMoveBackward ? onLeftMove : null,
-          onLongPressStart: canMoveBackward ? onLongPressBackwardStart : null,
-          onLongPressEnd: onLongPressBackwardEnd,
+          onPressed: widget.canMoveBackward ? widget.onLeftMove : null,
+          onLongPressStart:
+              widget.canMoveBackward ? widget.onLongPressBackwardStart : null,
+          onLongPressEnd: widget.onLongPressBackwardEnd,
         ),
 
         ChessSvgBottomNavbarWithLongPress(
           key: e2eKey(E2eIds.boardMoveForward),
           svgPath: SvgAsset.right_arrow,
           width: buttonWidth,
-          onPressed: canMoveForward ? onRightMove : null,
-          onLongPressStart: canMoveForward ? onLongPressForwardStart : null,
-          onLongPressEnd: onLongPressForwardEnd,
-          showBadge: showUnseenMoveBadge,
+          onPressed: widget.canMoveForward ? widget.onRightMove : null,
+          onLongPressStart:
+              widget.canMoveForward ? widget.onLongPressForwardStart : null,
+          onLongPressEnd: widget.onLongPressForwardEnd,
+          showBadge: widget.showUnseenMoveBadge,
         ),
       ],
     );
@@ -186,11 +257,11 @@ class ChessBoardBottomNavBar extends ConsumerWidget {
     // hint that more games sit under the bar, without washing out the chrome.
     const explorerBarAlpha = 0.86;
     final barColor =
-        explorerPanelVisible
+        widget.explorerPanelVisible
             ? context.colors.background.withValues(alpha: explorerBarAlpha)
             : context.colors.background;
     final tabletSurface =
-        explorerPanelVisible
+        widget.explorerPanelVisible
             ? context.colors.surface.withValues(alpha: explorerBarAlpha)
             : context.colors.surface;
 
