@@ -529,16 +529,23 @@ void main() {
     expect(h.session.showVideo, isFalse);
     expect(controller.documents.last, isNot(contains('ChessVideo')));
     expect(h.player.failed, isFalse);
+    // Hiding releases the native WebView instead of parking it blank, so the
+    // hidden state holds no renderer; the profile visit created none either.
+    expect(platform.controllers, hasLength(1));
     h.session.toggle();
     await _flushPlayer(tester);
-    // Showing restores the selected player paused, including reselecting it.
+    // Showing restores the selected player paused, including reselecting it,
+    // in a fresh WebView.
     h.session.select('english-main');
     await _flushPlayer(tester);
-    expect(controller.documents.last, contains('autoplay:0'));
+    expect(platform.controllers, hasLength(2));
+    final shown = platform.controllers.last;
+    expect(shown.documents.last, contains('autoplay:0'));
+    expect(controller.documents.last, isNot(contains('ChessVideo')));
     await tester.pumpWidget(const SizedBox());
     await tester.pump();
-    expect(controller.documents.last, isNotEmpty);
-    expect(controller.documents.last, isNot(contains('ChessVideo')));
+    expect(shown.documents.last, isNotEmpty);
+    expect(shown.documents.last, isNot(contains('ChessVideo')));
     expect(tester.takeException(), isNull);
   });
   testWidgets('a provider mute report reloads the next stream muted', (

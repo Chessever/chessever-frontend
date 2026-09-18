@@ -41,6 +41,7 @@ import 'package:chessever2/screens/chessboard/widgets/chess_board_from_fen_new.d
 import 'package:chessever2/screens/chessboard/widgets/engine_pv_layouts.dart';
 import 'package:chessever2/screens/chessboard/video/video_widgets.dart';
 import 'package:chessever2/screens/chessboard/widgets/evaluation_bar_widget.dart';
+import 'package:chessever2/screens/chessboard/widgets/rest_aware_opacity.dart';
 // DISABLED: Move annotation overlay (requires move impact analysis)
 // import 'package:chessever2/screens/chessboard/widgets/move_annotation_overlay.dart';
 import 'package:chessever2/screens/chessboard/widgets/share_game_screen.dart';
@@ -3793,13 +3794,18 @@ class _GamePage extends ConsumerWidget {
     // Let explorer content paint under the bottom nav so a light translucent
     // bar can reveal that more games sit below.
     final explorerVisible = ref.watch(boardExplorerPanelVisibleProvider);
-    final videoSession = EventVideoScope.maybeOf(context)?.session;
-    if (videoSession?.showVideo == true &&
-        videoSession!.isActive(game.gameId) && state.isPvPreviewActive) {
+    final video = EventVideoLayoutScope.maybeOf(context);
+    if (video != null &&
+        video.showVideo &&
+        video.isActive(game.gameId) &&
+        state.isPvPreviewActive) {
       // Stream metadata may arrive after the user entered a PV preview.
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!context.mounted || !videoSession.showVideo ||
-            !videoSession.isActive(game.gameId)) {
+        if (!context.mounted) return;
+        final current = EventVideoLayoutScope.read(context);
+        if (current == null ||
+            !current.showVideo ||
+            !current.isActive(game.gameId)) {
           return;
         }
         final provider = chessBoardScreenProviderNew(
@@ -4718,7 +4724,7 @@ class _AppBarState extends ConsumerState<_AppBar> {
                       (context) => [
                         ...eventVideoBoardMenuItems(
                           context,
-                          EventVideoScope.maybeOf(this.context)?.session,
+                          EventVideoScope.sessionOf(this.context),
                         ),
                         PopupMenuItem(
                           value: 'board_settings',
@@ -4815,7 +4821,7 @@ class _AppBarState extends ConsumerState<_AppBar> {
                       (context) => [
                         ...eventVideoBoardMenuItems(
                           context,
-                          EventVideoScope.maybeOf(this.context)?.session,
+                          EventVideoScope.sessionOf(this.context),
                         ),
                         PopupMenuItem(
                           value: 'board_settings',
@@ -7322,12 +7328,15 @@ class _BottomNavBar extends ConsumerWidget {
       onBoardLongPressForwardEnd: () => notifier.stopLongPress(),
     );
 
-    final video = EventVideoScope.maybeOf(context)?.session;
-    final hasVideo = video != null && video.isActive(game.gameId) && video.hasVideo;
+    final video = EventVideoLayoutScope.maybeOf(context);
+    final hasVideo = video != null && video.isActive(game.gameId);
 
     return ChessBoardBottomNavBar(
       key: ValueKey('bottom_nav_gamebase_$isGamebaseActive'),
-      onVideoToggle: hasVideo ? video.toggle : null,
+      onVideoToggle:
+          hasVideo
+              ? () => EventVideoScope.sessionOf(context)?.toggle()
+              : null,
       videoVisible: hasVideo && video.visible,
       gameIndex: index,
       showGamebaseButton: showGamebaseButton,
@@ -7388,9 +7397,8 @@ class _GameBody extends StatelessWidget {
     // normal analysis layout. The wrapper springs the incoming layout in
     // without remounting it, which matters because the body carries GlobalKeys
     // (the board share boundary) and a remount would retake them mid-frame.
-    final video = EventVideoScope.maybeOf(context)?.session;
     final watchMode =
-        video != null && video.showVideo && video.tourId == game.tourId;
+        EventVideoLayoutScope.maybeOf(context)?.watches(game.tourId) ?? false;
     return _WatchModeTransition(
       watchMode: watchMode,
       // Analysis mode is always active, use analysis game body
@@ -7470,7 +7478,9 @@ class _WatchModeTransitionState extends State<_WatchModeTransition>
             final progress = _curve
                 .transform(_controller.value)
                 .clamp(0.0, 1.0);
-            return Opacity(
+            // Not [Opacity]: at rest this wraps every game page's body, and
+            // a resting Opacity still composites its own layer.
+            return RestAwareOpacity(
               opacity: progress,
               child: Transform.translate(
                 offset: Offset(0, 10 * (1 - progress)),
@@ -7823,8 +7833,8 @@ class _AnalysisGameBody extends ConsumerWidget {
           );
         }
 
-        final video = EventVideoScope.maybeOf(context)?.session;
-        if (video?.showVideo == true && video!.tourId == game.tourId) {
+        final video = EventVideoLayoutScope.maybeOf(context);
+        if (video != null && video.watches(game.tourId)) {
           return EventVideoGameLayout(
             active: video.isActive(game.gameId),
             sideBySide: isTabletLandscape,
@@ -13450,9 +13460,12 @@ class _PrincipalVariationList extends ConsumerStatefulWidget {
 
 class _PrincipalVariationListState
     extends ConsumerState<_PrincipalVariationList> {
+  // Read from tap handlers: must not subscribe the engine lines to video.
   bool get _videoDisablesPreview {
-    final session = EventVideoScope.maybeOf(context)?.session;
-    return session?.showVideo == true && session!.isActive(widget.game.gameId);
+    final video = EventVideoLayoutScope.read(context);
+    return video != null &&
+        video.showVideo &&
+        video.isActive(widget.game.gameId);
   }
   late PageController _pageController;
   int _currentPage = 0;

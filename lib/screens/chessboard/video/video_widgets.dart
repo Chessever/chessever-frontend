@@ -23,8 +23,86 @@ class EventVideoScope extends InheritedNotifier<EventVideoSession> {
   final EventVideoPlayer? player;
   final VoidCallback? onVideoInteraction;
   EventVideoSession get session => notifier!;
+
+  /// Rebuilds the caller on every session change (flags timers, metadata
+  /// polls, foreground flips). Only the video's own small widgets use this;
+  /// the board reads [EventVideoLayoutScope] instead.
   static EventVideoScope? maybeOf(BuildContext context) =>
       context.dependOnInheritedWidgetOfExactType<EventVideoScope>();
+
+  /// The session for callbacks, without subscribing the caller to it.
+  static EventVideoSession? sessionOf(BuildContext context) =>
+      context.getInheritedWidgetOfExactType<EventVideoScope>()?.session;
+}
+
+/// The only session facts the board layout reacts to.
+///
+/// Game pages carry the board, notation and explorer, and three of them are
+/// alive at once. Depending on the session itself rebuilt all three on every
+/// metadata poll, flags timer and route change, even with video hidden. This
+/// snapshot compares by value, so those events rebuild nothing on the board,
+/// and an event without streams (or with video hidden) never changes it.
+@immutable
+class EventVideoLayout {
+  const EventVideoLayout({
+    required this.hasVideo,
+    required this.visible,
+    required this.gameId,
+    required this.tourId,
+  });
+
+  factory EventVideoLayout.of(EventVideoSession session) {
+    final hasVideo = session.hasVideo;
+    return EventVideoLayout(
+      hasVideo: hasVideo,
+      visible: hasVideo && session.visible,
+      // Irrelevant facts are blanked so they cannot trigger a rebuild.
+      gameId: hasVideo ? session.gameId : '',
+      tourId: session.showVideo ? session.tourId : '',
+    );
+  }
+
+  final bool hasVideo, visible;
+  final String gameId, tourId;
+
+  bool get showVideo => hasVideo && visible;
+  bool isActive(String id) => hasVideo && gameId == id;
+
+  /// Whether pages of [tourId] use the watch layout.
+  bool watches(String tourId) => showVideo && this.tourId == tourId;
+
+  @override
+  bool operator ==(Object other) =>
+      other is EventVideoLayout &&
+      other.hasVideo == hasVideo &&
+      other.visible == visible &&
+      other.gameId == gameId &&
+      other.tourId == tourId;
+
+  @override
+  int get hashCode => Object.hash(hasVideo, visible, gameId, tourId);
+}
+
+class EventVideoLayoutScope extends InheritedWidget {
+  const EventVideoLayoutScope({
+    super.key,
+    required this.layout,
+    required super.child,
+  });
+  final EventVideoLayout layout;
+
+  static EventVideoLayout? maybeOf(BuildContext context) =>
+      context
+          .dependOnInheritedWidgetOfExactType<EventVideoLayoutScope>()
+          ?.layout;
+
+  /// For callbacks: reads the snapshot without subscribing the caller.
+  static EventVideoLayout? read(BuildContext context) =>
+      context.getInheritedWidgetOfExactType<EventVideoLayoutScope>()?.layout;
+
+  @override
+  bool updateShouldNotify(EventVideoLayoutScope oldWidget) =>
+      layout != oldWidget.layout;
 }
 
 class EventVideoHost extends StatefulWidget {
@@ -252,15 +330,20 @@ class EventVideoHostState extends State<EventVideoHost>
           ],
         );
         final player = _player;
-        if (player == null) return frame(null);
-        return ListenableBuilder(
-          listenable: player,
-          builder:
-              (context, _) => frame(
-                player.fullscreenView == null
-                    ? null
-                    : _FullscreenVideoOverlay(player: player),
-              ),
+        return EventVideoLayoutScope(
+          layout: EventVideoLayout.of(session),
+          child:
+              player == null
+                  ? frame(null)
+                  : ListenableBuilder(
+                    listenable: player,
+                    builder:
+                        (context, _) => frame(
+                          player.fullscreenView == null
+                              ? null
+                              : _FullscreenVideoOverlay(player: player),
+                        ),
+                  ),
         );
       },
     ),

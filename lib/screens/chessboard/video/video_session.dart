@@ -19,10 +19,13 @@ class EventVideoSession extends ChangeNotifier {
     this.saveVisibility,
   }) {
     if (repository != null) {
-      _refreshTimer = Timer.periodic(
-        const Duration(seconds: 30),
-        (_) => refresh(),
-      );
+      _refreshTimer = Timer.periodic(const Duration(seconds: 30), (_) {
+        // A reader who hid the stream gains nothing from fresh metadata until
+        // they show it again. Events with no stream yet keep polling so the
+        // camera button can appear when one goes live.
+        if (hasVideo && !visible) return;
+        refresh();
+      });
     }
   }
   final EventVideoRepository? repository;

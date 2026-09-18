@@ -274,8 +274,20 @@ class NativeEventVideoPlayer extends EventVideoPlayer {
               !session.foreground ||
               selected == null ||
               _requestedRevision != _revision) {
-            if (_controller != null) {
-              await _controller!.loadHtmlString(_stoppedVideoHtml);
+            final controller = _controller;
+            if (controller != null) {
+              await controller.loadHtmlString(_stoppedVideoHtml);
+              // Hidden video must cost nothing. Dropping the only reference
+              // lets the plugin destroy the native WebView (and its renderer
+              // memory) instead of parking it blank until the board closes.
+              // Covered routes and inactive pages keep it for a fast return.
+              if (!_disposed &&
+                  generation == _generation &&
+                  !session.showVideo &&
+                  identical(_controller, controller)) {
+                _controller = null;
+                _ready = null;
+              }
             }
             return;
           }
