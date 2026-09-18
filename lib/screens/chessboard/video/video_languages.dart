@@ -20,6 +20,7 @@ const videoLanguages = <VideoLanguage>[
   VideoLanguage("pl", ["polish", "polski"], "Polish", "PL"),
   VideoLanguage("ru", ["russian", "русский"], "Russian", "RU"),
   VideoLanguage("tr", ["turkish", "türkçe"], "Turkish", "TR"),
+  VideoLanguage("uz", ["uzbek", "oʻzbek", "o'zbek", "ozbek"], "Uzbek", "UZ"),
   VideoLanguage("zh", ["chinese", "中文"], "Chinese", "CN"),
   VideoLanguage("ja", ["japanese", "日本語"], "Japanese", "JP"),
   VideoLanguage("ko", ["korean", "한국어"], "Korean", "KR"),

@@ -65,6 +65,13 @@ Deno.test("gateway 5xx / 429 and PostgREST connection codes are transient", () =
   );
   assert(isTransientError(new Error("OneSignal API error: 502 Bad Gateway")));
   assert(isTransientError(new Error("OneSignal API error: 429 {}")));
+  assert(
+    isTransientError(
+      new Error(
+        "Favorite map name lookup failed: [status 400] Bad Request",
+      ),
+    ),
+  );
 });
 
 Deno.test("deterministic failures never classify as transient", () => {

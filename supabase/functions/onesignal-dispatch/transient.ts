@@ -65,7 +65,9 @@ const TRANSIENT_PATTERNS: RegExp[] = [
   /unexpected (eof|end of file)/i,
   /socket hang ?up/i,
   // Gateway / upstream answers that say "try again", never "you are wrong".
-  /\[status (0|408|425|429|500|502|503|504)\]/,
+  /\[status (0|408|414|425|429|500|502|503|504)\]/,
+  /URI too long/i,
+  /Favorite (map|player) .*\[status 400\]/i,
   /OneSignal API error: (408|429|500|502|503|504)\b/,
   /\b(bad gateway|service unavailable|gateway time-?out|too many requests)\b/i,
   /\b(no healthy upstream|upstream (connect|request) (error|timeout))\b/i,

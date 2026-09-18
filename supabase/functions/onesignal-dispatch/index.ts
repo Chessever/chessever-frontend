@@ -1,6 +1,8 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
+import { collectFavoriteMatches } from "./favorite_match.ts";
 import { filterGameStartedPlayerRecipients } from "./player_game_recipients.ts";
+import { chunk, packForUrlBudget } from "./postgrest_in.ts";
 import {
   describeError,
   isTransientError,
@@ -82,15 +84,21 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
 });
 
 const jsonHeaders = { "Content-Type": "application/json" };
-const DEFAULT_DISPATCH_LIMIT = 50;
-const MAX_DISPATCH_LIMIT = 500;
-const POSTGREST_IN_QUERY_CHUNK_SIZE = 100;
+const CLAIM_PAGE = 25;
+const INVOCATION_DEADLINE_MS = 120_000;
+const STOP_CLAIMING_WITH_MS = 20_000;
 const ONESIGNAL_EXTERNAL_ID_CHUNK_SIZE = 1000;
 const ONESIGNAL_SUBSCRIPTION_ID_CHUNK_SIZE = 20000;
 const dispatchTokenCache: { token: string | null; expiresAtMs: number } = {
   token: null,
   expiresAtMs: 0,
 };
+
+let invocationDeadlineMs = 0;
+
+function remainingInvocationMs(): number {
+  return invocationDeadlineMs - Date.now();
+}
 
 Deno.serve(async (req) => {
   if (req.method !== "POST") {
@@ -102,9 +110,37 @@ Deno.serve(async (req) => {
     return new Response("Unauthorized", { status: 401 });
   }
 
-  const limit = await resolveDispatchLimit(req);
-  const items = await claimPending(limit);
-  const results = await processClaimedItems(items);
+  invocationDeadlineMs = Date.now() + INVOCATION_DEADLINE_MS;
+  const claimPage = await resolveClaimPage(req);
+  const results: Array<Record<string, unknown>> = [];
+
+  // Keep claiming until the queue is empty or this isolate is out of time.
+  // A page is a work unit, not a product max. Remaining due rows are handed
+  // to the next invocation via pg_net (dispatch_notification_now).
+  while (remainingInvocationMs() > STOP_CLAIMING_WITH_MS) {
+    const items = await claimPending(claimPage);
+    if (items.length === 0) break;
+    results.push(...await processClaimedItems(items));
+  }
+
+  let continued = false;
+  try {
+    const due = await runQuery<boolean>(
+      "Due work check",
+      () => supabase.rpc("outbox_has_due_work"),
+    );
+    if (due) {
+      continued = true;
+      await runQuery(
+        "Kick next dispatch",
+        () => supabase.rpc("dispatch_notification_now"),
+      );
+    }
+  } catch (error) {
+    console.error(
+      `[onesignal-dispatch] continue-kick failed: ${describeError(error)}`,
+    );
+  }
 
   // SEND-AND-FORGET: purge clock-ping refresh rows that are already done so they
   // never accumulate. The ~1s clock ping makes this run every second, so a
@@ -123,6 +159,7 @@ Deno.serve(async (req) => {
   return new Response(
     JSON.stringify({
       processed: results.length,
+      continued,
       results,
     }),
     { headers: jsonHeaders },
@@ -152,22 +189,18 @@ async function resolveDispatchToken(): Promise<string> {
   return vaultToken;
 }
 
-async function resolveDispatchLimit(req: Request): Promise<number> {
-  let requestedLimit: unknown = null;
+async function resolveClaimPage(req: Request): Promise<number> {
   try {
     const body = await req.json();
-    requestedLimit = body?.limit;
+    const requested = body?.limit;
+    if (typeof requested === "number" && Number.isFinite(requested)) {
+      const normalized = Math.trunc(requested);
+      if (normalized >= 1) return normalized;
+    }
   } catch (_error) {
-    return DEFAULT_DISPATCH_LIMIT;
+    // Empty / non-JSON body: drain with the default page.
   }
-
-  if (typeof requestedLimit !== "number" || !Number.isFinite(requestedLimit)) {
-    return DEFAULT_DISPATCH_LIMIT;
-  }
-
-  const normalizedLimit = Math.trunc(requestedLimit);
-  if (normalizedLimit < 1) return DEFAULT_DISPATCH_LIMIT;
-  return Math.min(normalizedLimit, MAX_DISPATCH_LIMIT);
+  return CLAIM_PAGE;
 }
 
 async function claimPending(limit: number): Promise<OutboxItem[]> {
@@ -382,7 +415,24 @@ async function processItem(item: OutboxItem) {
           }
         }
 
+        const progress = readRoundStartProgress(item);
+        const sentBoards = new Set(progress.boards_sent ?? []);
+
         for (const [gameId, userIds] of boardBatches) {
+          if (sentBoards.has(gameId)) continue;
+          if (remainingInvocationMs() < STOP_CLAIMING_WITH_MS) {
+            await saveRoundStartProgress(item, {
+              ...progress,
+              boards_sent: [...sentBoards],
+            });
+            await reschedulePending(item.id, "round_start_continue");
+            return {
+              id: item.id,
+              status: "pending",
+              reason: "round_start_continue",
+              boards_sent: sentBoards.size,
+            };
+          }
           const board = context.roundBoards.get(gameId);
           // Unreachable: gameIds were filtered against roundBoards above.
           if (!board) continue;
@@ -402,12 +452,13 @@ async function processItem(item: OutboxItem) {
             },
             androidChannelId: channelForEvent("round_started"),
           });
+          sentBoards.add(gameId);
         }
 
         // Fallback for player-favorite users whose favorites resolve to no
         // paired board this round (unnamed pairing, bye) — they still matched
         // playerUserIds, so send the event-level template rather than nothing.
-        if (unresolved.length > 0) {
+        if (unresolved.length > 0 && !progress.unresolved_sent) {
           const template = pickTemplate(ROUND_STARTED_EVENT, roundId);
           const filled = fillTemplate(template, { e: eventName, r: roundName });
           await sendOneSignal(unresolved, {
@@ -417,7 +468,11 @@ async function processItem(item: OutboxItem) {
             data: buildRoundStartedNotificationData(context, roundId),
             androidChannelId: channelForEvent("round_started"),
           });
+          progress.unresolved_sent = true;
         }
+
+        progress.boards_sent = [...sentBoards];
+        await saveRoundStartProgress(item, progress);
       }
 
       // Record game_start windows for every player recipient who just
@@ -426,12 +481,21 @@ async function processItem(item: OutboxItem) {
       // from sending a duplicate push to the same users.
       // TTL = 15 min — comfortably covers the gap between round start
       // and first moves in any standard tournament format.
-      if (dedupedPlayerRecipients.length > 0) {
+      const progressAfterBoards = readRoundStartProgress(item);
+      if (
+        dedupedPlayerRecipients.length > 0 &&
+        !progressAfterBoards.windows_recorded
+      ) {
         await recordGameStartWindow(dedupedPlayerRecipients, roundId);
+        await saveRoundStartProgress(item, {
+          ...progressAfterBoards,
+          windows_recorded: true,
+        });
       }
 
       // Event-only recipients (starred event, no favorites playing)
-      if (eventRecipients.length > 0) {
+      const progressAfterWindows = readRoundStartProgress(item);
+      if (eventRecipients.length > 0 && !progressAfterWindows.event_sent) {
         const template = pickTemplate(ROUND_STARTED_EVENT, roundId);
         const filled = fillTemplate(template, { e: eventName, r: roundName });
         await sendOneSignal(eventRecipients, {
@@ -440,6 +504,10 @@ async function processItem(item: OutboxItem) {
           url: null,
           data: buildRoundStartedNotificationData(context, roundId),
           androidChannelId: channelForEvent("round_started"),
+        });
+        await saveRoundStartProgress(item, {
+          ...progressAfterWindows,
+          event_sent: true,
         });
       }
 
@@ -905,6 +973,43 @@ async function persistOutboxState(
   }
 }
 
+type RoundStartProgress = {
+  event_sent?: boolean;
+  boards_sent?: string[];
+  unresolved_sent?: boolean;
+  windows_recorded?: boolean;
+};
+
+function readRoundStartProgress(item: OutboxItem): RoundStartProgress {
+  const raw = item.payload?.dispatch_progress;
+  if (!isPlainRecord(raw)) return {};
+  const boards = raw.boards_sent;
+  return {
+    event_sent: raw.event_sent === true,
+    boards_sent: Array.isArray(boards)
+      ? boards.filter((id): id is string => typeof id === "string")
+      : [],
+    unresolved_sent: raw.unresolved_sent === true,
+    windows_recorded: raw.windows_recorded === true,
+  };
+}
+
+async function saveRoundStartProgress(
+  item: OutboxItem,
+  progress: RoundStartProgress,
+) {
+  const payload = {
+    ...(item.payload ?? {}),
+    dispatch_progress: progress,
+  };
+  item.payload = payload;
+  await persistOutboxState("Save round-start progress", item.id, () =>
+    supabase
+      .from("notification_outbox")
+      .update({ payload })
+      .eq("id", item.id));
+}
+
 async function markSent(id: string) {
   await persistOutboxState("Mark sent", id, () =>
     supabase
@@ -1148,18 +1253,28 @@ async function buildContext(item: OutboxItem) {
     players: Array.from(playerNames),
   });
 
-  // Resolve per-user player favorites for round/game notifications
+  // Per-user favorite names are only used to word round_started / heads-up.
+  // game_started must not load every board in the round — Olympiad R1 Open is
+  // 404 games, and doing that on each of 200 start rows is what left those
+  // rows stuck in `processing` on 2026-09-16.
   let playerFavoriteMap = new Map<string, string[]>();
   if (
     (item.event_type === "round_started" ||
-      item.event_type === "round_heads_up" ||
-      item.event_type === "game_started") &&
+      item.event_type === "round_heads_up") &&
     item.round_id
   ) {
-    playerFavoriteMap = await resolvePlayerFavoriteMap(
-      item.round_id,
-      playerUserIds,
-    );
+    try {
+      playerFavoriteMap = await resolvePlayerFavoriteMap(
+        item.round_id,
+        playerUserIds,
+      );
+    } catch (error) {
+      console.error(
+        `[onesignal-dispatch] favorite map failed for ${item.event_type} ${item.round_id}; sending event-level copy: ${
+          describeError(error)
+        }`,
+      );
+    }
   }
 
   return {
@@ -1217,18 +1332,22 @@ async function hasSentGroupedRoundStart(
 
   // A failed dedupe read used to answer "not sent yet", which is exactly the
   // answer that double-sends a grouped round start. Fail loud and retry.
-  const data = await runQuery<
-    Array<{ payload?: Record<string, unknown> | null }>
-  >("Grouped round-start dedupe lookup", () =>
-    supabase
-      .from("notification_outbox")
-      .select("id,payload")
-      .eq("event_type", "round_started")
-      .eq("group_broadcast_id", groupId)
-      .eq("status", "sent")
-      .neq("id", item.id)
-      .gte("created_at", minCreatedAt)
-      .limit(25));
+  const data = await fetchAllPages<
+    { payload?: Record<string, unknown> | null }
+  >(
+    "Grouped round-start dedupe lookup",
+    (from, to) =>
+      supabase
+        .from("notification_outbox")
+        .select("id,payload")
+        .eq("event_type", "round_started")
+        .eq("group_broadcast_id", groupId)
+        .eq("status", "sent")
+        .neq("id", item.id)
+        .gte("created_at", minCreatedAt)
+        .order("id")
+        .range(from, to),
+  );
 
   return (data ?? [])
     .some((row) => sameInstant(row.payload?.starts_at, startsAt));
@@ -1276,13 +1395,15 @@ function playerBoardKey(name: string): string {
 }
 
 async function fetchRoundPlayers(roundId: string) {
-  const data = await runQuery<RoundGameRow[]>(
+  const data = await fetchAllPages<RoundGameRow>(
     "Round players lookup",
-    () =>
+    (from, to) =>
       supabase
         .from("games")
         .select("id,player_white,player_black,player_fide_ids,players")
-        .eq("round_id", roundId),
+        .eq("round_id", roundId)
+        .order("id")
+        .range(from, to),
   );
 
   const playerNames = new Set<string>();
@@ -1391,36 +1512,31 @@ async function resolveRecipients(args: {
     }
   }
 
-  if (args.fideIds.length > 0) {
-    const rows = await fetchAllPages<{ user_id: string | null }>(
-      "Favorite player fide lookup",
-      (from, to) =>
+  try {
+    const matches = await collectFavoriteMatches({
+      fideIds: args.fideIds,
+      names: args.players,
+      rpc: (params) =>
+        supabase.rpc("match_notification_favorite_players", params),
+      restPage: (column, values, from, to) =>
         supabase
           .from("user_favorite_players")
-          .select("user_id")
-          .in("fide_id", args.fideIds)
+          .select("user_id,fide_id,player_name")
+          .in(column, values)
           .order("id")
           .range(from, to),
-    );
-    for (const row of rows) {
+    });
+    for (const row of matches) {
       if (row.user_id) playerUserIds.add(row.user_id);
     }
-  }
-
-  if (args.players.length > 0) {
-    const rows = await fetchAllPages<{ user_id: string | null }>(
-      "Favorite player name lookup",
-      (from, to) =>
-        supabase
-          .from("user_favorite_players")
-          .select("user_id")
-          .in("player_name", args.players)
-          .order("id")
-          .range(from, to),
+  } catch (error) {
+    // Event-starred users are already in eventUserIds. A lookup failure
+    // must not take the whole round start down with it.
+    console.error(
+      `[onesignal-dispatch] player favorite lookup failed; event stars still used: ${
+        describeError(error)
+      }`,
     );
-    for (const row of rows) {
-      if (row.user_id) playerUserIds.add(row.user_id);
-    }
   }
 
   // Remove muted users from BOTH channels.
@@ -1431,10 +1547,7 @@ async function resolveRecipients(args: {
     const allCandidates = new Set([...eventUserIds, ...playerUserIds]);
     if (allCandidates.size > 0) {
       for (
-        const batch of chunk(
-          Array.from(allCandidates),
-          POSTGREST_IN_QUERY_CHUNK_SIZE,
-        )
+        const batch of packForUrlBudget(Array.from(allCandidates))
       ) {
         const mutedData = await runQuery<Array<{ user_id: string }>>(
           "Muted event lookup",
@@ -1768,7 +1881,7 @@ async function fetchPreferenceMap(
   const prefsMap = new Map<string, Record<string, unknown>>();
   const uniqueUserIds = [...new Set(userIds.filter(Boolean))];
 
-  for (const batch of chunk(uniqueUserIds, POSTGREST_IN_QUERY_CHUNK_SIZE)) {
+  for (const batch of packForUrlBudget(uniqueUserIds)) {
     const data = await runQuery<unknown[]>(
       "Preference lookup",
       () =>
@@ -1863,14 +1976,19 @@ async function fetchMutedUserIds(
   const muted = new Set<string>();
   if (!groupBroadcastId || candidateUserIds.length === 0) return muted;
   const unique = Array.from(new Set(candidateUserIds));
-  const { data, error } = await supabase
-    .from("user_muted_events")
-    .select("user_id")
-    .eq("group_broadcast_id", groupBroadcastId)
-    .in("user_id", unique);
-  if (error) return muted;
-  for (const row of data ?? []) {
-    muted.add(row.user_id as string);
+  for (const batch of packForUrlBudget(unique)) {
+    const data = await runQuery<Array<{ user_id: string }>>(
+      "Muted event lookup",
+      () =>
+        supabase
+          .from("user_muted_events")
+          .select("user_id")
+          .eq("group_broadcast_id", groupBroadcastId)
+          .in("user_id", batch),
+    );
+    for (const row of data ?? []) {
+      muted.add(row.user_id);
+    }
   }
   return muted;
 }
@@ -1882,7 +2000,7 @@ async function fetchUsersWithActiveGameStartWindow(
   const suppressed = new Set<string>();
   if (userIds.length === 0) return suppressed;
   const nowIso = new Date().toISOString();
-  for (const batch of chunk(userIds, POSTGREST_IN_QUERY_CHUNK_SIZE)) {
+  for (const batch of packForUrlBudget(userIds)) {
     // A failed window read must fail the item (and retry) rather than treat
     // covered users as uncovered and double-send. runQuery throws
     // `Game-start window lookup failed: …` once its in-process retries are
@@ -2212,19 +2330,20 @@ async function resolvePlayerFavoriteMap(
   const result = new Map<string, string[]>();
   if (playerUserIds.size === 0) return result;
 
-  // Get all games in this round to know which players are participating
-  const games = await runQuery<
-    Pick<RoundGameRow, "id" | "player_white" | "player_black" | "players">[]
+  const games = await fetchAllPages<
+    Pick<RoundGameRow, "id" | "player_white" | "player_black" | "players">
   >(
     "Favorite map round games lookup",
-    () =>
+    (from, to) =>
       supabase
         .from("games")
         .select("id,player_white,player_black,players")
-        .eq("round_id", roundId),
+        .eq("round_id", roundId)
+        .order("id")
+        .range(from, to),
   );
 
-  if (!games || games.length === 0) return result;
+  if (games.length === 0) return result;
 
   const roundFideIds = new Set<string>();
   const roundPlayerNames = new Set<string>();
@@ -2251,71 +2370,35 @@ async function resolvePlayerFavoriteMap(
     }
   }
 
-  const userIds = Array.from(playerUserIds);
+  const matches = await collectFavoriteMatches({
+    fideIds: Array.from(roundFideIds),
+    names: Array.from(roundPlayerNames),
+    userIds: Array.from(playerUserIds),
+    rpc: (params) =>
+      supabase.rpc("match_notification_favorite_players", params),
+    restPage: (column, values, from, to) =>
+      supabase
+        .from("user_favorite_players")
+        .select("user_id,fide_id,player_name")
+        .in(column, values)
+        .order("id")
+        .range(from, to),
+  });
 
-  // Fetch by fide_id. userIds can be thousands of uuids — an unchunked
-  // .in() builds a URL the gateway rejects, and the error used to be
-  // swallowed, which sent every user the generic round template.
-  if (roundFideIds.size > 0) {
-    const faveByFide: Array<Record<string, unknown>> = [];
-    for (const batch of chunk(userIds, POSTGREST_IN_QUERY_CHUNK_SIZE)) {
-      const rows = await fetchAllPages<Record<string, unknown>>(
-        "Favorite map fide lookup",
-        (from, to) =>
-          supabase
-            .from("user_favorite_players")
-            .select("user_id,fide_id")
-            .in("user_id", batch)
-            .in("fide_id", Array.from(roundFideIds))
-            .order("id")
-            .range(from, to),
-      );
-      faveByFide.push(...rows);
-    }
+  for (const row of matches) {
+    const userId = row.user_id;
+    if (!userId || !playerUserIds.has(userId)) continue;
+    if (!result.has(userId)) result.set(userId, []);
+    const existing = result.get(userId)!;
 
-    for (const row of faveByFide) {
-      const userId = row.user_id as string;
-      const fideId = String(row.fide_id);
-      const name = fideIdToName.get(fideId);
-      if (name) {
-        if (!result.has(userId)) result.set(userId, []);
-        result.get(userId)!.push(name);
-      }
-    }
-  }
-
-  // Fetch by player_name (fallback for players without fide_id matches)
-  if (roundPlayerNames.size > 0) {
-    const faveByName: Array<Record<string, unknown>> = [];
-    for (const batch of chunk(userIds, POSTGREST_IN_QUERY_CHUNK_SIZE)) {
-      const rows = await fetchAllPages<Record<string, unknown>>(
-        "Favorite map name lookup",
-        (from, to) =>
-          supabase
-            .from("user_favorite_players")
-            .select("user_id,player_name")
-            .in("user_id", batch)
-            .in("player_name", Array.from(roundPlayerNames))
-            .order("id")
-            .range(from, to),
-      );
-      faveByName.push(...rows);
-    }
-
-    for (const row of faveByName) {
-      const userId = row.user_id as string;
-      const name = row.player_name as string;
-      if (!result.has(userId)) result.set(userId, []);
-      const existing = result.get(userId)!;
-      // Deduplicate: don't add if last name already present from fide_id match
-      const lastNameLower = extractLastName(name).toLowerCase();
-      const alreadyHas = existing.some(
-        (n) => extractLastName(n).toLowerCase() === lastNameLower,
-      );
-      if (!alreadyHas) {
-        existing.push(name);
-      }
-    }
+    const fideName = row.fide_id ? fideIdToName.get(String(row.fide_id)) : null;
+    const name = fideName ?? row.player_name;
+    if (!name) continue;
+    const lastNameLower = extractLastName(name).toLowerCase();
+    const alreadyHas = existing.some(
+      (n) => extractLastName(n).toLowerCase() === lastNameLower,
+    );
+    if (!alreadyHas) existing.push(name);
   }
 
   return result;
@@ -2623,7 +2706,7 @@ async function fetchLegacySubscriptionFallback(
   userIds: string[],
 ): Promise<string[]> {
   const subscriptionIds = new Set<string>();
-  for (const batch of chunk(userIds, POSTGREST_IN_QUERY_CHUNK_SIZE)) {
+  for (const batch of packForUrlBudget(userIds)) {
     const data = await runQuery<Array<{ subscription_id: string | null }>>(
       "Legacy push token lookup",
       () =>
@@ -2640,14 +2723,6 @@ async function fetchLegacySubscriptionFallback(
     }
   }
   return [...subscriptionIds];
-}
-
-function chunk<T>(list: T[], size: number) {
-  const chunks: T[][] = [];
-  for (let i = 0; i < list.length; i += size) {
-    chunks.push(list.slice(i, i + size));
-  }
-  return chunks;
 }
 
 const POSTGREST_PAGE_SIZE = 1000;
