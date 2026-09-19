@@ -112,14 +112,15 @@ class _KnockoutBracketRoundsNotifier extends KnockoutRoundMetadataCoordinator {
         readGames: () {
           final gamesByTourId = <String, List<Games>>{};
           for (final tourId in request.tourIds) {
-            final games = ref.read(gamesTourProvider(tourId)).valueOrNull;
+            final games =
+                ref.read(completeGamesTourProvider(tourId)).valueOrNull;
             if (games != null) gamesByTourId[tourId] = games;
           }
           return gamesByTourId;
         },
       ) {
     for (final tourId in request.tourIds) {
-      ref.listen<AsyncValue<List<Games>>>(gamesTourProvider(tourId), (
+      ref.listen<AsyncValue<List<Games>>>(completeGamesTourProvider(tourId), (
         previous,
         next,
       ) {
@@ -392,7 +393,7 @@ final knockoutBracketProvider =
 
       final gamesByTourId = <String, List<Games>>{};
       for (final tour in source.relevantTours) {
-        final gamesState = ref.watch(gamesTourProvider(tour.id));
+        final gamesState = ref.watch(completeGamesTourProvider(tour.id));
         final games = gamesState.valueOrNull;
         if (games == null) {
           if (gamesState.hasError) {

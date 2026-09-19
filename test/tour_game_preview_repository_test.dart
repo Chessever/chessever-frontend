@@ -106,6 +106,104 @@ void main() {
     },
   );
 
+  test(
+    'complete priority round paints before other rounds or any PGNs',
+    () async {
+      final roundReady = Completer<List<Games>>();
+      final firstPaint = Completer<void>();
+      final requests = <Uri>[];
+      final client = SupabaseClient(
+        'https://example.test',
+        'placeholder',
+        httpClient: MockClient((request) async {
+          requests.add(request.url);
+          final q = request.url.queryParameters;
+          final offset = int.parse(q['offset'] ?? '0');
+          final limit = int.parse(q['limit'] ?? '1000');
+          final rows = <Map<String, dynamic>>[];
+          if (q['round_id'] == 'eq.current') {
+            expect(q['select']!.split(','), isNot(contains('pgn')));
+            for (var i = offset; i < (offset + limit).clamp(0, 1004); i++) {
+              rows.add({..._row(i), 'round_id': 'current'});
+            }
+          } else if (q.containsKey('id')) {
+            rows.addAll([
+              for (var i = 0; i < 2; i++)
+                {..._row(i), 'round_id': 'current', 'pgn': '[Result "*"]'},
+            ]);
+          } else {
+            expect(q['round_id'], 'neq.current');
+            rows.add({..._row(1004), 'round_id': 'earlier'});
+          }
+          return http.Response(
+            jsonEncode(rows),
+            200,
+            request: request,
+            headers: {'content-type': 'application/json'},
+          );
+        }),
+      );
+      addTearDown(client.dispose);
+      final loading = _Repository(client).getTourGamePreviews(
+        'tour',
+        priorityRoundId: 'current',
+        onPriorityRound: roundReady.complete,
+        afterPriorityRound: () => firstPaint.future,
+      );
+      final preview = await roundReady.future;
+      expect(
+        preview.length,
+        1004,
+      ); // includes all four boards of the last match
+      expect(preview.every((g) => g.isPgnDeferred && g.pgn == null), isTrue);
+      expect(requests.length, 2);
+      expect(
+        requests.every((q) => q.queryParameters['round_id'] == 'eq.current'),
+        isTrue,
+      );
+      firstPaint.complete();
+      final complete = await loading;
+      expect(complete.length, 1005);
+      expect(complete.map((g) => g.id).toSet().length, 1005);
+      expect(complete.any((g) => g.roundId == 'earlier'), isTrue);
+    },
+  );
+
+  test(
+    'failed remaining catalog does not retract the published round',
+    () async {
+      List<Games>? preview;
+      final client = SupabaseClient(
+        'https://example.test',
+        'placeholder',
+        httpClient: MockClient((request) async {
+          if (request.url.queryParameters['round_id'] != 'eq.current') {
+            throw StateError('background request failed');
+          }
+          return http.Response(
+            jsonEncode([
+              {..._row(2), 'round_id': 'current'},
+            ]),
+            200,
+            request: request,
+            headers: {'content-type': 'application/json'},
+          );
+        }),
+      );
+      addTearDown(client.dispose);
+      await expectLater(
+        _Repository(client).getTourGamePreviews(
+          'tour',
+          priorityRoundId: 'current',
+          onPriorityRound: (games) => preview = games,
+        ),
+        throwsA(anything),
+      );
+      expect(preview?.single.id, 'g2');
+      expect(preview?.single.isPgnDeferred, isTrue);
+    },
+  );
+
   test('nonstandard results and absent ratings preserve PGN fallbacks', () {
     final finished = Games.fromJson(_row(2));
     expect(tourIndexNeedsPgn(finished), isFalse);

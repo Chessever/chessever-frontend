@@ -1,3 +1,4 @@
+import 'package:chessever2/providers/country_dropdown_provider.dart';
 import 'dart:async';
 
 import 'package:chessever2/e2e/e2e_ids.dart';
@@ -36,7 +37,7 @@ void main() {
     });
     await Supabase.initialize(
       url: 'https://placeholder.supabase.co',
-      anonKey: 'placeholder-anon-key',
+      publishableKey: 'placeholder-anon-key',
     );
     GameAnalysisReportStore.debugSetInstance(GameAnalysisReportStore.memory());
   });
@@ -88,6 +89,7 @@ void main() {
       );
       final container = ProviderContainer(
         overrides: [
+          effectiveCountryProvider.overrideWithValue(const AsyncValue.loading()),
           gamesLocalStorage.overrideWith(
             (ref) => _FullCacheGamesLocalStorage(ref, {
               'tour-1': tourOne,
@@ -358,6 +360,7 @@ void main() {
 
       final container = ProviderContainer(
         overrides: [
+          effectiveCountryProvider.overrideWithValue(const AsyncValue.loading()),
           gamesLocalStorage.overrideWith(
             (ref) =>
                 _FullCacheGamesLocalStorage(ref, {'nested-tour': nestedRaw}),
@@ -982,6 +985,7 @@ ProviderContainer _boardTestContainer({
 }) {
   return ProviderContainer(
     overrides: [
+          effectiveCountryProvider.overrideWithValue(const AsyncValue.loading()),
       gamesLocalStorage.overrideWith(
         (ref) => _FullCacheGamesLocalStorage(ref, gamesByTour),
       ),
@@ -1047,6 +1051,10 @@ class _FullCacheGamesLocalStorage extends GamesLocalStorage {
   Future<List<Games>> fetchAndSaveGames(
     String tourId, {
     bool forceRefresh = false,
+    String? priorityRoundId,
+    void Function(List<Games>)? onPriorityRound,
+    Future<void> Function()? afterPriorityRound,
+    bool rethrowErrors = false,
   }) async => byTour[tourId] ?? const [];
 }
 

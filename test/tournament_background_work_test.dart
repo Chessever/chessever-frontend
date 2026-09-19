@@ -1,4 +1,6 @@
 import 'dart:async';
+import 'package:chessever2/repository/supabase/round/round.dart';
+import 'package:chessever2/repository/supabase/round/round_repository.dart';
 
 import 'package:chessever2/repository/local_storage/tournament/games/games_local_storage.dart';
 import 'package:chessever2/repository/supabase/game/game_repository.dart';
@@ -16,6 +18,7 @@ class _Storage extends GamesLocalStorage {
   _Storage(super.ref);
   Future<List<Games>>? cached;
   Future<List<Games>>? fresh;
+  List<Games>? preview;
 
   @override
   Future<List<Games>> getCachedGames(String tourId) async =>
@@ -24,19 +27,32 @@ class _Storage extends GamesLocalStorage {
   Future<List<Games>> fetchAndSaveGames(
     String tourId, {
     bool forceRefresh = false,
-  }) async =>
-      fresh == null
-          ? [
-            Games(
-              id: 'g',
-              roundId: 'r',
-              roundSlug: 'r',
-              tourId: tourId,
-              tourSlug: tourId,
-              status: '*',
-            ),
-          ]
-          : await fresh!;
+    String? priorityRoundId,
+    void Function(List<Games>)? onPriorityRound,
+    Future<void> Function()? afterPriorityRound,
+    bool rethrowErrors = false,
+  }) async {
+    if (preview != null) onPriorityRound?.call(preview!);
+    return fresh == null
+        ? [
+          Games(
+            id: 'g',
+            roundId: 'r',
+            roundSlug: 'r',
+            tourId: tourId,
+            tourSlug: tourId,
+            status: '*',
+          ),
+        ]
+        : await fresh!;
+  }
+}
+
+class _Rounds extends RoundRepository {
+  @override
+  Future<List<Round>> getRoundsByTourId(String tourId) async => [];
+  @override
+  Future<Round?> getLatestRoundByLastMove(String tourId) async => null;
 }
 
 class _Repository extends GameRepository {
@@ -76,10 +92,73 @@ void main() {
     status: '*',
   );
 
+  for (final failBackground in [false, true]) {
+    testWidgets(
+      'round preview stays usable with complete catalog pending: failure=$failBackground',
+      (tester) async {
+        final fresh = Completer<List<Games>>();
+        final container = ProviderContainer(
+          overrides: [
+            roundRepositoryProvider.overrideWithValue(_Rounds()),
+            gamesLocalStorage.overrideWith(
+              (ref) =>
+                  _Storage(ref)
+                    ..preview = [game('current')]
+                    ..fresh = fresh.future,
+            ),
+          ],
+        );
+        final subscription = container.listen(
+          completeGamesTourProvider('tour'),
+          (_, __) {},
+        );
+        final futureSubscription = container.listen(
+          completeGamesTourFutureProvider('tour'),
+          (_, __) {},
+        );
+        await tester.pump();
+        expect(
+          container.read(gamesTourProvider('tour')).valueOrNull?.single.id,
+          'current',
+        );
+        expect(
+          container.read(completeGamesTourProvider('tour')).isLoading,
+          isTrue,
+        );
+        expect(
+          container.read(completeGamesTourFutureProvider('tour')).isLoading,
+          isTrue,
+        );
+        if (failBackground) {
+          fresh.completeError(StateError('offline'));
+        } else {
+          fresh.complete([game('current'), game('older')]);
+        }
+        await tester.pump();
+        expect(
+          container.read(gamesTourProvider('tour')).valueOrNull?.first.id,
+          'current',
+        );
+        final complete = container.read(completeGamesTourProvider('tour'));
+        expect(complete.hasError, failBackground);
+        expect(
+          container.read(completeGamesTourFutureProvider('tour')).hasError,
+          failBackground,
+        );
+        if (!failBackground) expect(complete.valueOrNull?.length, 2);
+        futureSubscription.close();
+        subscription.close();
+        container.dispose();
+        await tester.pump(const Duration(milliseconds: 1));
+      },
+    );
+  }
+
   testWidgets('saved roster paints before a slow fresh load', (tester) async {
     final fresh = Completer<List<Games>>();
     final container = ProviderContainer(
       overrides: [
+        roundRepositoryProvider.overrideWithValue(_Rounds()),
         gamesLocalStorage.overrideWith(
           (ref) =>
               _Storage(ref)
@@ -103,6 +182,7 @@ void main() {
       container.read(gamesTourProvider('tour')).valueOrNull?.single.id,
       'fresh',
     );
+    expect(container.read(completeGamesTourProvider('tour')).hasValue, isTrue);
     subscription.close();
     container.dispose();
     await tester.pump(const Duration(milliseconds: 1));
@@ -114,6 +194,7 @@ void main() {
     final cached = Completer<List<Games>>();
     final container = ProviderContainer(
       overrides: [
+        roundRepositoryProvider.overrideWithValue(_Rounds()),
         gamesLocalStorage.overrideWith(
           (ref) =>
               _Storage(ref)
@@ -144,6 +225,7 @@ void main() {
     final repository = _Repository();
     final container = ProviderContainer(
       overrides: [
+        roundRepositoryProvider.overrideWithValue(_Rounds()),
         gameRepositoryProvider.overrideWithValue(repository),
         gamesLocalStorage.overrideWith(_Storage.new),
         tournamentDetailVisibleProvider.overrideWith((ref) => true),

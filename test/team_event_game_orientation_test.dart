@@ -19,8 +19,10 @@ GamesTourModel _game({
   required String whiteTeam,
   required String blackName,
   required String blackTeam,
+  int? boardNr,
 }) => GamesTourModel(
   gameId: id,
+  boardNr: boardNr,
   whitePlayer: _card(whiteName, whiteTeam),
   blackPlayer: _card(blackName, blackTeam),
   whiteTimeDisplay: '',
@@ -36,6 +38,7 @@ void main() {
   final games = [
     _game(
       id: 'board-1',
+      boardNr: 1,
       whiteName: 'A One',
       whiteTeam: 'Team A',
       blackName: 'B One',
@@ -43,6 +46,7 @@ void main() {
     ),
     _game(
       id: 'board-2',
+      boardNr: 2,
       whiteName: 'B Two',
       whiteTeam: 'Team B',
       blackName: 'A Two',
@@ -76,6 +80,24 @@ void main() {
     ]);
   });
 
+  test('pin priority cannot reverse the canonical matchup sides', () {
+    for (final order in [games, games.reversed.toList(), games]) {
+      final grouped = groupTeamGamesByMatchup(
+        selectedRoundId: 'round-1',
+        games: order,
+      );
+      expect(grouped.keys, ['Team A vs Team B']);
+      expect(
+        grouped.values.single.map((b) => b.game.gameId),
+        order.map((g) => g.gameId),
+      );
+      for (final board in grouped.values.single) {
+        expect(teamOrderedPlayers(board).teamOne.team, 'Team A');
+        expect(teamOrderedPlayers(board).teamTwo.team, 'Team B');
+      }
+    }
+  });
+
   test('empty team tags do not invent country matchups', () {
     final unlabeled = [
       _game(
@@ -100,7 +122,9 @@ void main() {
 
   test('pairingTitleFromRoundName only rewrites a two-team title', () {
     expect(
-      pairingTitleFromRoundName('Triveni Continental Kings - Fyers American Gambits'),
+      pairingTitleFromRoundName(
+        'Triveni Continental Kings - Fyers American Gambits',
+      ),
       'Triveni Continental Kings vs Fyers American Gambits',
     );
     expect(pairingTitleFromRoundName('Round 5'), isNull);

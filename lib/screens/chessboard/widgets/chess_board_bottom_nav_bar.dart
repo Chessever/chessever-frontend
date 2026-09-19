@@ -412,7 +412,7 @@ class _LiveStreamCoachmark extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const fill = kWhiteColor;
+    const fill = kBlack3Color;
     final screenWidth = MediaQuery.sizeOf(context).width;
     final screenHeight = MediaQuery.sizeOf(context).height;
     final popupWidth = math.min(screenWidth - 32, 380.0);
@@ -461,7 +461,7 @@ class _LiveStreamCoachmark extends StatelessWidget {
                             'Turn off the stream by clicking camera icon.',
                             textAlign: TextAlign.left,
                             style: AppTypography.textSmSemiBold.copyWith(
-                              color: kBackgroundColor,
+                              color: kWhiteColor,
                             ),
                           ),
                         ),
@@ -479,7 +479,7 @@ class _LiveStreamCoachmark extends StatelessWidget {
                           icon: const Icon(
                             Icons.close,
                             size: 19,
-                            color: kBackgroundColor,
+                            color: kWhiteColor,
                           ),
                         ),
                       ],

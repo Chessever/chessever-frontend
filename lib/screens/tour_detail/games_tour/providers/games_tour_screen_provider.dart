@@ -454,8 +454,8 @@ class GamesTourScreenProvider
       final pins = ref.read(gamesPinprovider(aboutTourModel!.id).notifier);
       // Manual pins and auto-pins are two separate stores; clearing only one
       // leaves boards pinned after "Unpin all".
-      await pins.clearManualPins();
       await pins.disableAutoPin();
+      await pins.clearManualPins();
       // Immediate UI update
       await _recompute(pinnedIdsOverride: const <String>[]);
     } catch (e, st) {

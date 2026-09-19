@@ -157,6 +157,10 @@ class GamesLocalStorage {
   Future<List<Games>> fetchAndSaveGames(
     String tourId, {
     bool forceRefresh = false,
+    String? priorityRoundId,
+    void Function(List<Games>)? onPriorityRound,
+    Future<void> Function()? afterPriorityRound,
+    bool rethrowErrors = false,
   }) async {
     final existingFetch = _inFlightTourFetches[tourId];
     if (existingFetch != null) {
@@ -170,7 +174,13 @@ class GamesLocalStorage {
       }
     }
 
-    final fetch = _fetchAndSaveGames(tourId);
+    final fetch = _fetchAndSaveGames(
+      tourId,
+      priorityRoundId: priorityRoundId,
+      onPriorityRound: onPriorityRound,
+      afterPriorityRound: afterPriorityRound,
+      rethrowErrors: rethrowErrors,
+    );
     _inFlightTourFetches[tourId] = fetch;
     try {
       return await fetch;
@@ -181,13 +191,24 @@ class GamesLocalStorage {
     }
   }
 
-  Future<List<Games>> _fetchAndSaveGames(String tourId) async {
+  Future<List<Games>> _fetchAndSaveGames(
+    String tourId, {
+    String? priorityRoundId,
+    void Function(List<Games>)? onPriorityRound,
+    Future<void> Function()? afterPriorityRound,
+    bool rethrowErrors = false,
+  }) async {
     try {
       ref.read(loggerProvider).logInfo('Fetching games for tourId: $tourId');
 
       final games = await ref
           .read(gameRepositoryProvider)
-          .getTourGamePreviews(tourId);
+          .getTourGamePreviews(
+            tourId,
+            priorityRoundId: priorityRoundId,
+            onPriorityRound: onPriorityRound,
+            afterPriorityRound: afterPriorityRound,
+          );
 
       _rememberRecentTourFetch(tourId, games);
 
@@ -206,6 +227,7 @@ class GamesLocalStorage {
       return games;
     } catch (error, st) {
       ref.read(loggerProvider).logError(error, st);
+      if (rethrowErrors) rethrow;
       return <Games>[];
     }
   }

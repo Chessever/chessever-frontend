@@ -1,5 +1,12 @@
 import 'dart:async';
 
+import 'package:flutter/scheduler.dart';
+import 'package:chessever2/repository/supabase/round/round_repository.dart';
+import 'games_app_bar_provider.dart'
+    show pendingRoundNavigationProvider, userSelectedRoundProvider;
+import 'initial_tour_round.dart';
+import 'live_rounds_id_provider.dart';
+
 import 'package:chessever2/repository/local_storage/tournament/games/games_local_storage.dart';
 import 'package:chessever2/repository/supabase/game/games.dart';
 import 'package:chessever2/repository/supabase/game/game_repository.dart';
@@ -76,10 +83,36 @@ final gamesTourProvider = AutoDisposeStateNotifierProvider.family<
   String
 >((ref, tourId) => GamesTourNotifier(ref: ref, tourId: tourId));
 
+/// Consumers calculating event totals must never use the early round preview.
+/// Errors in the background catalog surface here without blanking visible games.
+final completeGamesTourProvider = Provider.autoDispose
+    .family<AsyncValue<List<Games>>, String>((ref, tourId) {
+      final games = ref.watch(gamesTourProvider(tourId));
+      final loader = ref.read(gamesTourProvider(tourId).notifier);
+      if (loader.isCatalogComplete) return games;
+      final error = loader.catalogError;
+      if (error != null) return AsyncValue.error(error, StackTrace.current);
+      return const AsyncValue.loading();
+    });
+
+/// Awaitable complete catalog for standings. The preview never resolves this
+/// future, so a loading/error state cannot become a table of partial totals.
+final completeGamesTourFutureProvider = FutureProvider.autoDispose
+    .family<List<Games>, String>((ref, tourId) {
+      final complete = ref.watch(completeGamesTourProvider(tourId));
+      if (complete.hasValue) return complete.requireValue;
+      if (complete.hasError) {
+        Error.throwWithStackTrace(complete.error!, complete.stackTrace!);
+      }
+      return ref
+          .read(gamesTourProvider(tourId).notifier)
+          .waitForCompleteCatalog();
+    });
+
 /// Notifier that manages the list of games for a tournament.
 ///
 /// **Architecture:**
-/// - This provider holds ALL games in memory as a list
+/// - A complete round paints first, followed by the complete tour catalog
 /// - It does NOT maintain individual Supabase Realtime streams per game
 /// - Its safety net periodically fetches only game IDs, round IDs, and status;
 ///   a full snapshot is fetched only when game membership changes
@@ -92,7 +125,7 @@ final gamesTourProvider = AutoDisposeStateNotifierProvider.family<
 class GamesTourNotifier extends StateNotifier<AsyncValue<List<Games>>> {
   GamesTourNotifier({required this.ref, required this.tourId})
     : super(const AsyncValue.loading()) {
-    _loadInitialGames();
+    _loadFinished = _loadInitialGames();
 
     // Listen to shouldStreamProvider changes
     _shouldStreamListener = ref.listen<bool>(tournamentDataActiveProvider, (
@@ -129,6 +162,10 @@ class GamesTourNotifier extends StateNotifier<AsyncValue<List<Games>>> {
 
   final Ref ref;
   final String tourId;
+  late Future<void> _loadFinished;
+  bool isCatalogComplete = false;
+  Object? catalogError;
+  int _loadGeneration = 0;
   ProviderSubscription? _shouldStreamListener;
   ProviderSubscription? _selectedModeListener;
   ProviderSubscription? _primaryTourListener;
@@ -138,8 +175,13 @@ class GamesTourNotifier extends StateNotifier<AsyncValue<List<Games>>> {
   int _refreshGeneration = 0;
 
   Future<void> _loadInitialGames() async {
+    final generation = ++_loadGeneration;
+    _stopPeriodicRefresh();
+    bool isCurrent() => mounted && generation == _loadGeneration;
     final visibleGames = state.valueOrNull ?? const <Games>[];
     var networkFinished = false;
+    var roundPublished = false;
+    catalogError = null;
     try {
       // Gamebase-only event (sentinel tour id): build games from the cached
       // gamebase event view; these are finished games with no live feed, so
@@ -158,7 +200,8 @@ class GamesTourNotifier extends StateNotifier<AsyncValue<List<Games>>> {
                     ),
                   ).future,
                 );
-        if (mounted) {
+        if (isCurrent()) {
+          isCatalogComplete = true;
           state = AsyncValue.data(
             view == null
                 ? const <Games>[]
@@ -174,16 +217,72 @@ class GamesTourNotifier extends StateNotifier<AsyncValue<List<Games>>> {
         // Never let a slow disk read replace a newer network result.
         unawaited(
           gamesLocalStorageProvider.getCachedGames(tourId).then((cached) {
-            if (mounted && !networkFinished && cached.isNotEmpty) {
+            if (isCurrent() &&
+                !networkFinished &&
+                !roundPublished &&
+                cached.isNotEmpty) {
+              isCatalogComplete = true;
               state = AsyncValue.data(cached);
             }
           }),
         );
       }
-      final games = await gamesLocalStorageProvider.fetchAndSaveGames(tourId);
+      String? priorityRoundId;
+      try {
+        final rounds = await ref
+            .read(roundRepositoryProvider)
+            .getRoundsByTourId(tourId);
+        if (!isCurrent()) return;
+        final selection = ref.read(userSelectedRoundProvider);
+        priorityRoundId = initialTourRoundId(
+          rounds: rounds,
+          now: DateTime.now(),
+          requestedRoundId:
+              ref.read(pendingRoundNavigationProvider) ??
+              (selection?.userSelected == true ? selection!.id : null),
+          liveRoundIds:
+              ref.exists(liveRoundsIdProvider)
+                  ? ref.read(liveRoundsIdProvider).valueOrNull ?? const []
+                  : const [],
+        );
+        priorityRoundId ??=
+            (await ref
+                .read(roundRepositoryProvider)
+                .getLatestRoundByLastMove(tourId))?.id;
+      } catch (_) {
+        // Round metadata is an optimization, not a prerequisite for the catalog.
+      }
+      if (!isCurrent()) return;
+      final games = await gamesLocalStorageProvider.fetchAndSaveGames(
+        tourId,
+        priorityRoundId: priorityRoundId,
+        rethrowErrors: true,
+        onPriorityRound: (roundGames) {
+          if (!isCurrent()) return;
+          roundPublished = true;
+          isCatalogComplete = false;
+          final current = state.valueOrNull ?? const <Games>[];
+          final roundIds = roundGames.map((game) => game.roundId).toSet();
+          state = AsyncValue.data([
+            ...roundGames,
+            ...current.where((game) => !roundIds.contains(game.roundId)),
+          ]);
+        },
+        // Yield a frame after publishing the preview before starting the
+        // remaining catalog and its correctness fallbacks.
+        afterPriorityRound: () => SchedulerBinding.instance.endOfFrame,
+      );
       networkFinished = true;
 
-      if (mounted) {
+      if (isCurrent()) {
+        if (games.isEmpty &&
+            !isCatalogComplete &&
+            (state.valueOrNull?.isNotEmpty ?? false)) {
+          throw StateError(
+            'Complete catalog unavailable; retaining round preview',
+          );
+        }
+        isCatalogComplete = true;
         state = AsyncValue.data(
           retainGamesAcrossTransientEmptyRefresh(
             state.valueOrNull ?? visibleGames,
@@ -197,12 +296,14 @@ class GamesTourNotifier extends StateNotifier<AsyncValue<List<Games>>> {
         }
       }
     } catch (error, stackTrace) {
-      if (mounted) {
+      if (isCurrent()) {
+        catalogError = error;
         // A manual or automatic refresh must not blank already-visible boards
         // because one request failed. Initial-load errors still surface.
         if ((state.valueOrNull ?? visibleGames).isEmpty) {
           state = AsyncValue.error(error, stackTrace);
         } else {
+          state = AsyncValue.data(state.valueOrNull ?? visibleGames);
           debugPrint(
             '🔥 GamesTourNotifier: Keeping visible games after refresh error: '
             '$error',
@@ -262,6 +363,7 @@ class GamesTourNotifier extends StateNotifier<AsyncValue<List<Games>>> {
     // for them (it would return nothing and wipe the synthesized games).
     if (isVirtualGamebaseId(tourId) ||
         !_shouldRunSafetyNet ||
+        !isCatalogComplete ||
         state.valueOrNull == null) {
       return;
     }
@@ -406,8 +508,20 @@ class GamesTourNotifier extends StateNotifier<AsyncValue<List<Games>>> {
     );
   }
 
+  Future<List<Games>> waitForCompleteCatalog() async {
+    await _loadFinished;
+    if (!mounted) throw StateError('Tournament closed while loading');
+    if (!isCatalogComplete) {
+      throw catalogError ?? StateError('Catalog unavailable');
+    }
+    return state.requireValue;
+  }
+
   Future<void> refreshGames() async {
-    await _loadInitialGames();
+    await _loadFinished;
+    if (!mounted) return;
+    _loadFinished = _loadInitialGames();
+    await _loadFinished;
   }
 
   @override

@@ -155,21 +155,15 @@ void main() {
       await chooseStream(tester, 'english-main');
       session.reportPlayback(true, session.playerRevision);
       final loads = player.loads;
-      final surface = tester.getRect(
-        find.byKey(const ValueKey('event_video_surface')),
-      );
-      final button = tester.getRect(find.byTooltip('Fullscreen video'));
-      expect(surface.right - button.right, inInclusiveRange(4, 12));
-      expect(surface.bottom - button.bottom, inInclusiveRange(4, 12));
-      await tester.pump(const Duration(seconds: 3));
       expect(find.byTooltip('Fullscreen video'), findsNothing);
+      await tester.pump(const Duration(seconds: 3));
       await tester.tap(find.text('Player'));
       await tester.pump();
-      expect(find.byTooltip('Fullscreen video'), findsOneWidget);
-      // Revealing the fullscreen button keeps the playing embed intact.
+      expect(find.byTooltip('Fullscreen video'), findsNothing);
       expect(session.playing, isTrue);
       expect(player.loads, loads);
-      await tester.tap(find.byTooltip('Fullscreen video'));
+      // Provider/native fullscreen remains supported without the inline overlay.
+      session.setExpanded(true);
       await tester.pump();
       expect(session.expanded, isTrue);
       expect(session.playing, isTrue);
@@ -180,7 +174,7 @@ void main() {
       await tester.tap(find.byKey(const ValueKey('video_close_expanded')));
       await tester.pump();
       expect(session.expanded, isFalse);
-      expect(find.byTooltip('Fullscreen video'), findsOneWidget);
+      expect(find.byTooltip('Fullscreen video'), findsNothing);
       await tester.pumpWidget(const SizedBox());
       debugDefaultTargetPlatformOverride = null;
     },

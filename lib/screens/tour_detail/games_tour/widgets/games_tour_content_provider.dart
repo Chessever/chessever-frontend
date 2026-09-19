@@ -94,33 +94,47 @@ Map<String, List<MatchWithComparison>> groupTeamGamesByMatchup({
     games: games,
   );
 
-  for (final game in gamesPerRound) {
-    final whiteTeam = _teamMatchupLabel(game.whitePlayer.team);
-    final blackTeam = _teamMatchupLabel(game.blackPlayer.team);
-    final header =
-        (whiteTeam != null && blackTeam != null)
-            ? '$whiteTeam vs $blackTeam'
-            : (fallbackMatchupTitle ?? '');
-    final comparison = _compareAllTeamHeaders(grouped.keys, header);
+  // Pin/favorite sorting changes presentation order, never the match's sides.
+  // Anchor each pairing to its lowest numbered board (stable id breaks ties).
+  final anchors = <String, GamesTourModel>{};
+  String matchupKey(GamesTourModel game) {
+    final teams = [
+      _teamMatchupLabel(game.whitePlayer.team)?.toLowerCase() ?? '',
+      _teamMatchupLabel(game.blackPlayer.team)?.toLowerCase() ?? '',
+    ]..sort();
+    return teams.join('\u0000');
+  }
 
-    if (comparison == MatchComparison.sameOrder) {
-      grouped[header]!.add(
-        MatchWithComparison(game: game, comparison: comparison),
-      );
-    } else if (comparison == MatchComparison.oppositeOrder) {
-      final existingHeader = grouped.keys.firstWhere(
-        (candidate) =>
-            _compareTeamHeaders(candidate, header) ==
-            MatchComparison.oppositeOrder,
-      );
-      grouped[existingHeader]!.add(
-        MatchWithComparison(game: game, comparison: comparison),
-      );
-    } else {
-      grouped[header] = [
-        MatchWithComparison(game: game, comparison: MatchComparison.sameOrder),
-      ];
+  for (final game in gamesPerRound) {
+    final key = matchupKey(game);
+    final previous = anchors[key];
+    final boardOrder = (game.boardNr ?? 0x7fffffff).compareTo(
+      previous?.boardNr ?? 0x7fffffff,
+    );
+    if (previous == null ||
+        boardOrder < 0 ||
+        (boardOrder == 0 && game.gameId.compareTo(previous.gameId) < 0)) {
+      anchors[key] = game;
     }
+  }
+  for (final game in gamesPerRound) {
+    final anchor = anchors[matchupKey(game)]!;
+    final left = _teamMatchupLabel(anchor.whitePlayer.team);
+    final right = _teamMatchupLabel(anchor.blackPlayer.team);
+    final header =
+        left != null && right != null
+            ? '$left vs $right'
+            : (fallbackMatchupTitle ?? '');
+    final comparison =
+        left == null ||
+                right == null ||
+                _teamMatchupLabel(game.whitePlayer.team)?.toLowerCase() ==
+                    left.toLowerCase()
+            ? MatchComparison.sameOrder
+            : MatchComparison.oppositeOrder;
+    grouped
+        .putIfAbsent(header, () => [])
+        .add(MatchWithComparison(game: game, comparison: comparison));
   }
   return grouped;
 }
@@ -195,38 +209,6 @@ List<GamesTourModel> _gamesForTeamRound({
     return List<GamesTourModel>.from(games);
   }
   return games.where((game) => game.roundId == roundId).toList();
-}
-
-MatchComparison _compareAllTeamHeaders(
-  Iterable<String> headers,
-  String candidate,
-) {
-  var foundOpposite = false;
-  for (final header in headers) {
-    final comparison = _compareTeamHeaders(header, candidate);
-    if (comparison == MatchComparison.sameOrder) return comparison;
-    if (comparison == MatchComparison.oppositeOrder) foundOpposite = true;
-  }
-  return foundOpposite
-      ? MatchComparison.oppositeOrder
-      : MatchComparison.different;
-}
-
-String _normalizeTeamName(String name) => name.trim().toLowerCase();
-
-MatchComparison _compareTeamHeaders(String first, String second) {
-  final firstTeams = first.split(' vs ').map(_normalizeTeamName).toList();
-  final secondTeams = second.split(' vs ').map(_normalizeTeamName).toList();
-  if (firstTeams.length != 2 || secondTeams.length != 2) {
-    return MatchComparison.different;
-  }
-  if (firstTeams[0] == secondTeams[0] && firstTeams[1] == secondTeams[1]) {
-    return MatchComparison.sameOrder;
-  }
-  if (firstTeams[0] == secondTeams[1] && firstTeams[1] == secondTeams[0]) {
-    return MatchComparison.oppositeOrder;
-  }
-  return MatchComparison.different;
 }
 
 class _GamesTourContentProvider {

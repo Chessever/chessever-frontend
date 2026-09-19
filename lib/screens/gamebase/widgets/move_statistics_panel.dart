@@ -1400,18 +1400,23 @@ class _MoveStatisticsSkeletonRow extends StatelessWidget {
         children: [
           Expanded(
             flex: _kMoveColumnFlex,
-            child: Row(
-              children: [
-                Text(
-                  '12.',
-                  style: TextStyle(fontSize: 12.f, fontWeight: FontWeight.w500),
-                ),
-                SizedBox(width: 4.w),
-                Text(
-                  sans[seed % sans.length],
-                  style: TextStyle(fontSize: 14.f, fontWeight: FontWeight.w500),
-                ),
-              ],
+            child: FittedBox(
+              fit: BoxFit.scaleDown,
+              alignment: Alignment.centerLeft,
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    '12.',
+                    style: TextStyle(fontSize: 12.f, fontWeight: FontWeight.w500),
+                  ),
+                  SizedBox(width: 4.w),
+                  Text(
+                    sans[seed % sans.length],
+                    style: TextStyle(fontSize: 14.f, fontWeight: FontWeight.w500),
+                  ),
+                ],
+              ),
             ),
           ),
           SizedBox(width: _kColumnGap.sp),

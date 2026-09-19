@@ -706,6 +706,10 @@ class _CachedGamesLocalStorage extends GamesLocalStorage {
   Future<List<Games>> fetchAndSaveGames(
     String tourId, {
     bool forceRefresh = false,
+    String? priorityRoundId,
+    void Function(List<Games>)? onPriorityRound,
+    Future<void> Function()? afterPriorityRound,
+    bool rethrowErrors = false,
   }) async => _cached;
 }
 
