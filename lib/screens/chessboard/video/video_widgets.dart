@@ -798,4 +798,22 @@ List<PopupMenuEntry<String>> eventVideoBoardMenuItems(
         ],
       ),
     ),
+  if (session?.hasVideo == true)
+    PopupMenuItem(
+      value: session!.visible ? 'disable_video' : 'enable_video',
+      onTap: session.toggle,
+      child: Row(
+        children: [
+          Icon(
+            session.visible
+                ? Icons.videocam_off_outlined
+                : Icons.videocam_outlined,
+            size: 20,
+            color: context.colors.textPrimary,
+          ),
+          const SizedBox(width: 8),
+          Text(session.visible ? 'Disable Video' : 'Enable Video'),
+        ],
+      ),
+    ),
 ];

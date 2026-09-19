@@ -2,6 +2,26 @@ import 'package:chessever2/screens/tour_detail/games_tour/models/games_app_bar_v
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/round_ordering.dart';
 
+/// Selects rounds painted by the team-event renderer.
+///
+/// A populated board is direct evidence that its round has started, even when
+/// stale canonical metadata still labels the round as upcoming. Only rounds
+/// containing pairing-only placeholders stay hidden until explicitly chosen.
+List<GamesAppBarModel> selectGroupEventDisplayRounds({
+  required List<GamesAppBarModel> rounds,
+  required Map<String, List<GamesTourModel>> gamesByRound,
+  required Set<String> upcomingPairingRoundIds,
+  String? selectedRoundId,
+  bool userSelected = false,
+}) => rounds
+    .where((round) {
+      final roundGames = gamesByRound[round.id] ?? const <GamesTourModel>[];
+      if (roundGames.isEmpty) return false;
+      if (!upcomingPairingRoundIds.contains(round.id)) return true;
+      return userSelected && round.id == selectedRoundId;
+    })
+    .toList(growable: false);
+
 /// Selects and orders the rounds actually painted by the regular Games list.
 ///
 /// Keep this as the single source of truth for the renderer and every scroll

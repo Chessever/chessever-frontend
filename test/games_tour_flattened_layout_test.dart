@@ -8,6 +8,52 @@ import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_s
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  group('selectGroupEventDisplayRounds', () {
+    test('keeps played boards whose canonical round is still upcoming', () {
+      final staleUpcoming = _round(
+        'round-1',
+        RoundStatus.upcoming,
+        startsAt: DateTime(2026, 9, 19),
+      );
+
+      final visible = selectGroupEventDisplayRounds(
+        rounds: [staleUpcoming],
+        gamesByRound: {
+          staleUpcoming.id: [_game('finished-board', status: GameStatus.draw)],
+        },
+        upcomingPairingRoundIds: const {},
+      );
+
+      expect(visible.map((round) => round.id), [staleUpcoming.id]);
+    });
+
+    test('keeps pairing-only rounds hidden until selected', () {
+      final pairingRound = _round('round-2', RoundStatus.upcoming);
+      final gamesByRound = {
+        pairingRound.id: [_game('future-pairing')],
+      };
+
+      expect(
+        selectGroupEventDisplayRounds(
+          rounds: [pairingRound],
+          gamesByRound: gamesByRound,
+          upcomingPairingRoundIds: {pairingRound.id},
+        ),
+        isEmpty,
+      );
+      expect(
+        selectGroupEventDisplayRounds(
+          rounds: [pairingRound],
+          gamesByRound: gamesByRound,
+          upcomingPairingRoundIds: {pairingRound.id},
+          selectedRoundId: pairingRound.id,
+          userSelected: true,
+        ).map((round) => round.id),
+        [pairingRound.id],
+      );
+    });
+  });
+
   group('selectGamesTourDisplayRounds', () {
     test('puts a populated synthetic semifinal above quarterfinals', () {
       final now = DateTime(2026, 8, 13, 19, 31);
@@ -225,9 +271,17 @@ void main() {
       // the date-granular game rows cannot supply.
       final games = [
         _game('ju', identityOffset: 0, roundId: 'r-ju'), // 07-06 14:00
-        _game('vaishali', identityOffset: 100, roundId: 'r-vaishali'), // 07-06 16:30
+        _game(
+          'vaishali',
+          identityOffset: 100,
+          roundId: 'r-vaishali',
+        ), // 07-06 16:30
         _game('hou', identityOffset: 200, roundId: 'r-hou'), // 07-13 12:00
-        _game('polina', identityOffset: 300, roundId: 'r-polina'), // 07-13 14:30
+        _game(
+          'polina',
+          identityOffset: 300,
+          roundId: 'r-polina',
+        ), // 07-13 14:30
       ];
 
       final layout = _layout(
@@ -323,41 +377,47 @@ void main() {
       expect(layout.itemCount, greaterThanOrEqualTo(3));
     });
 
-    test('live board floats above boards that finished after its last move', () {
-      final stage = _round('knockout-stage-semifinals', RoundStatus.live);
-      // Matchup-labeled feed (speed-championship shape): every game of the
-      // matchup shares one round slug, so slug order ties everywhere and only
-      // status plus actual play time can rank the boards. The live board must
-      // hold the top even while other boards finish after its last move.
-      final games = [
-        _game(
-          'finished-late',
-          slug: 'semifinals',
-          status: GameStatus.whiteWins,
-          lastMoveTime: DateTime.utc(2026, 7, 15, 20, 0),
-        ),
-        _game(
-          'live',
-          slug: 'semifinals',
-          lastMoveTime: DateTime.utc(2026, 7, 15, 19, 30),
-        ),
-        _game(
-          'finished-early',
-          slug: 'semifinals',
-          status: GameStatus.draw,
-          lastMoveTime: DateTime.utc(2026, 7, 15, 18, 0),
-        ),
-      ];
+    test(
+      'live board floats above boards that finished after its last move',
+      () {
+        final stage = _round('knockout-stage-semifinals', RoundStatus.live);
+        // Matchup-labeled feed (speed-championship shape): every game of the
+        // matchup shares one round slug, so slug order ties everywhere and only
+        // status plus actual play time can rank the boards. The live board must
+        // hold the top even while other boards finish after its last move.
+        final games = [
+          _game(
+            'finished-late',
+            slug: 'semifinals',
+            status: GameStatus.whiteWins,
+            lastMoveTime: DateTime.utc(2026, 7, 15, 20, 0),
+          ),
+          _game(
+            'live',
+            slug: 'semifinals',
+            lastMoveTime: DateTime.utc(2026, 7, 15, 19, 30),
+          ),
+          _game(
+            'finished-early',
+            slug: 'semifinals',
+            status: GameStatus.draw,
+            lastMoveTime: DateTime.utc(2026, 7, 15, 18, 0),
+          ),
+        ];
 
-      final layout = _layout(rounds: [stage], gamesByRound: {stage.id: games});
+        final layout = _layout(
+          rounds: [stage],
+          gamesByRound: {stage.id: games},
+        );
 
-      final boardOrder =
-          layout.entries
-              .whereType<GamesTourGameRowEntry>()
-              .map((entry) => entry.game1.gameId)
-              .toList();
-      expect(boardOrder, ['live', 'finished-late', 'finished-early']);
-    });
+        final boardOrder =
+            layout.entries
+                .whereType<GamesTourGameRowEntry>()
+                .map((entry) => entry.game1.gameId)
+                .toList();
+        expect(boardOrder, ['live', 'finished-late', 'finished-early']);
+      },
+    );
 
     test('matchup with a live board outranks matchups that finished later', () {
       final stage = _round('knockout-stage-semifinals', RoundStatus.live);

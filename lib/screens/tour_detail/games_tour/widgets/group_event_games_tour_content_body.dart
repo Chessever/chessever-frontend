@@ -10,6 +10,7 @@ import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_app_bar_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_grouped_provider.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_display_rounds.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_provider.dart';
 import 'package:chessever2/screens/group_event/widget/tour_loading_widget.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
@@ -43,24 +44,17 @@ class _GroupEventGamesTourContentBodyState
     if (groupedData.isLoading) {
       return const TourLoadingWidget();
     }
-    final rounds = groupedData.rounds;
     final gamesByRound = groupedData.gamesByRound;
     final selectedRoundId = gamesAppBar.value?.selectedId;
     final userSelected = gamesAppBar.value?.userSelectedId ?? false;
 
-    // Filter rounds to hide upcoming rounds by default.
-    // Include upcoming only when user explicitly selected that round.
-    final visibleRounds =
-        rounds.where((round) {
-          final roundGames = gamesByRound[round.id] ?? const <GamesTourModel>[];
-          if (roundGames.isEmpty) return false;
-
-          // Always include explicitly user-selected round
-          if (userSelected && round.id == selectedRoundId) return true;
-
-          // Otherwise, exclude upcoming rounds
-          return round.roundStatus != RoundStatus.upcoming;
-        }).toList();
+    final visibleRounds = selectGroupEventDisplayRounds(
+      rounds: groupedData.filteredRounds,
+      gamesByRound: gamesByRound,
+      upcomingPairingRoundIds: groupedData.upcomingPairingRoundIds,
+      selectedRoundId: selectedRoundId,
+      userSelected: userSelected,
+    );
 
     if (visibleRounds.isEmpty) {
       return const SizedBox.shrink();

@@ -158,15 +158,38 @@ void main() {
     // No stream: no camera, no bubble.
     await tester.pumpWidget(app(hasVideo: false, visible: false));
     await tester.pump();
-    expect(find.text('Turn off the live stream'), findsNothing);
+    expect(
+      find.text('Turn off the stream by clicking camera icon.'),
+      findsNothing,
+    );
 
     // Stream metadata arrives with video showing: bubble points at camera.
     await tester.pumpWidget(app(hasVideo: true, visible: true));
     await tester.pump();
-    expect(find.text('Turn off the live stream'), findsOneWidget);
+    expect(
+      find.text('Turn off the stream by clicking camera icon.'),
+      findsOneWidget,
+    );
     expect(
       find.byKey(const ValueKey('live_stream_toggle_coachmark_arrow')),
       findsOneWidget,
+    );
+    final coachmarkRect = tester.getRect(
+      find.byKey(const ValueKey('live_stream_toggle_coachmark')),
+    );
+    final arrowRect = tester.getRect(
+      find.byKey(const ValueKey('live_stream_toggle_coachmark_arrow')),
+    );
+    final cameraRect = tester.getRect(
+      find.byKey(const ValueKey('board_video_toggle')),
+    );
+    final appRect = tester.getRect(find.byType(MaterialApp));
+    expect(coachmarkRect.left, greaterThanOrEqualTo(appRect.left + 16));
+    expect(coachmarkRect.right, lessThanOrEqualTo(appRect.right - 16));
+    expect(arrowRect.center.dx, closeTo(cameraRect.center.dx, 0.1));
+    expect(
+      tester.widget<Icon>(find.byIcon(Icons.videocam_off_outlined)).color,
+      kPrimaryColor,
     );
     expect(store.seen, isTrue);
 
@@ -174,7 +197,14 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('board_video_toggle')));
     await tester.pumpAndSettle();
     expect(toggles, 1);
-    expect(find.text('Turn off the live stream'), findsNothing);
+    expect(
+      find.text('Turn off the stream by clicking camera icon.'),
+      findsNothing,
+    );
+    expect(
+      tester.widget<Icon>(find.byIcon(Icons.videocam_off_outlined)).color,
+      Colors.white,
+    );
 
     // Hiding and re-opening the stream never repeats the lifetime hint.
     await tester.pumpWidget(app(hasVideo: true, visible: false));
@@ -182,13 +212,21 @@ void main() {
     expect(find.text('Turn on the live stream'), findsNothing);
     await tester.pumpWidget(app(hasVideo: true, visible: true));
     await tester.pump();
-    expect(find.text('Turn off the live stream'), findsNothing);
+    expect(
+      find.text('Turn off the stream by clicking camera icon.'),
+      findsNothing,
+    );
+    expect(
+      tester.widget<Icon>(find.byIcon(Icons.videocam_off_outlined)).color,
+      Colors.white,
+    );
 
     // A fresh tracker models a fresh install. Off-screen pages do not claim
     // the hint; it appears only when that page becomes active.
     await tester.pumpWidget(const SizedBox());
     await tester.pump();
     final freshTracker = LiveStreamCoachmarkTracker(_CoachmarkStore());
+    var backgroundTaps = 0;
     Widget freshApp(bool isActivePage) => ProviderScope(
       overrides: [
         engineSettingsProviderNew.overrideWith(_Settings.new),
@@ -200,6 +238,11 @@ void main() {
           builder: (context) {
             ResponsiveHelper.init(context);
             return Scaffold(
+              body: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () => backgroundTaps++,
+                child: const SizedBox.expand(),
+              ),
               bottomNavigationBar: ChessBoardBottomNavBar(
                 gameIndex: 0,
                 onLeftMove: () {},
@@ -221,58 +264,100 @@ void main() {
     );
     await tester.pumpWidget(freshApp(false));
     await tester.pump();
-    expect(find.text('Turn off the live stream'), findsNothing);
+    expect(
+      find.text('Turn off the stream by clicking camera icon.'),
+      findsNothing,
+    );
     await tester.pumpWidget(freshApp(true));
     await tester.pump();
-    expect(find.text('Turn off the live stream'), findsOneWidget);
+    expect(
+      find.text('Turn off the stream by clicking camera icon.'),
+      findsOneWidget,
+    );
+
+    // The coachmark has no timer and remains until explicitly dismissed.
+    await tester.pump(const Duration(minutes: 1));
+    expect(
+      find.text('Turn off the stream by clicking camera icon.'),
+      findsOneWidget,
+    );
+    await tester.tap(find.byKey(const ValueKey('close_live_stream_coachmark')));
+    await tester.pump();
+    expect(
+      find.text('Turn off the stream by clicking camera icon.'),
+      findsNothing,
+    );
+    expect(backgroundTaps, 0);
 
     await tester.pumpWidget(const SizedBox());
   });
-  testWidgets(
-    'shared phone/tablet menu offers swap while video is visible or hidden',
-    (tester) async {
-      final session = EventVideoSession(repository: null);
-      addTearDown(session.dispose);
-      var selected = '';
-      Widget app() => MaterialApp(
-        home: Scaffold(
-          body: PopupMenuButton<String>(
-            onSelected: (value) => selected = value,
-            itemBuilder:
-                (context) => [
-                  ...eventVideoBoardMenuItems(context, session),
-                  const PopupMenuItem(
-                    value: 'settings',
-                    child: Text('Board Settings'),
-                  ),
-                ],
-          ),
+  testWidgets('shared phone/tablet menu toggles video visibility', (
+    tester,
+  ) async {
+    final session = EventVideoSession(repository: null);
+    addTearDown(session.dispose);
+    var selected = '';
+    Widget app() => MaterialApp(
+      home: Scaffold(
+        body: PopupMenuButton<String>(
+          onSelected: (value) => selected = value,
+          itemBuilder:
+              (context) => [
+                ...eventVideoBoardMenuItems(context, session),
+                const PopupMenuItem(
+                  value: 'settings',
+                  child: Text('Board Settings'),
+                ),
+              ],
         ),
-      );
-      Finder flipIcon() => find.byWidgetPredicate(
-        (w) => w is SvgWidget && w.path == SvgAsset.refresh,
-      );
-      await tester.pumpWidget(app());
+      ),
+    );
+    Finder flipIcon() => find.byWidgetPredicate(
+      (w) => w is SvgWidget && w.path == SvgAsset.refresh,
+    );
+    await tester.pumpWidget(app());
+    await tester.tap(find.byType(PopupMenuButton<String>));
+    await tester.pumpAndSettle();
+    expect(find.text('Flip board'), findsNothing);
+    await tester.tap(find.text('Board Settings'));
+    await tester.pumpAndSettle();
+    session.streams = fixtureVideos();
+    session.selected = session.streams.first;
+    for (final visible in [true, false]) {
+      session.visible = visible;
       await tester.tap(find.byType(PopupMenuButton<String>));
       await tester.pumpAndSettle();
-      expect(find.text('Flip board'), findsNothing);
-      await tester.tap(find.text('Board Settings'));
+      expect(find.text('Flip board'), findsOneWidget);
+      expect(
+        find.text(visible ? 'Disable Video' : 'Enable Video'),
+        findsOneWidget,
+      );
+      // Same circular refresh mark as the bottom-bar flip control.
+      expect(flipIcon(), findsOneWidget);
+      expect(find.byIcon(Icons.swap_vert), findsNothing);
+      await tester.tap(find.text('Flip board'));
       await tester.pumpAndSettle();
-      session.streams = fixtureVideos();
-      session.selected = session.streams.first;
-      for (final visible in [true, false]) {
-        session.visible = visible;
-        await tester.tap(find.byType(PopupMenuButton<String>));
-        await tester.pumpAndSettle();
-        expect(find.text('Flip board'), findsOneWidget);
-        // Same circular refresh mark as the bottom-bar flip control.
-        expect(flipIcon(), findsOneWidget);
-        expect(find.byIcon(Icons.swap_vert), findsNothing);
-        await tester.tap(find.text('Flip board'));
-        await tester.pumpAndSettle();
-        expect(selected, 'flip_board');
-      }
-      await tester.pumpWidget(const SizedBox());
-    },
-  );
+      expect(selected, 'flip_board');
+    }
+
+    session.visible = true;
+    await tester.tap(find.byType(PopupMenuButton<String>));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Disable Video'));
+    await tester.pumpAndSettle();
+    expect(selected, 'disable_video');
+    expect(session.visible, isFalse);
+
+    // The option remains available and changes to the inverse action.
+    await tester.tap(find.byType(PopupMenuButton<String>));
+    await tester.pumpAndSettle();
+    expect(find.text('Enable Video'), findsOneWidget);
+    await tester.tap(find.text('Enable Video'));
+    await tester.pumpAndSettle();
+    expect(selected, 'enable_video');
+    expect(session.visible, isTrue);
+    await tester.pump(const Duration(seconds: 3));
+
+    await tester.pumpWidget(const SizedBox());
+  });
 }

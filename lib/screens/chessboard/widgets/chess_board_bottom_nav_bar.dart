@@ -1,4 +1,3 @@
-import 'dart:async';
 import 'dart:math' as math;
 import 'package:chessever2/e2e/e2e_ids.dart';
 import 'package:chessever2/providers/engine_settings_provider.dart';
@@ -76,9 +75,8 @@ class ChessBoardBottomNavBar extends ConsumerStatefulWidget {
 
 class _ChessBoardBottomNavBarState
     extends ConsumerState<ChessBoardBottomNavBar> {
-  final LayerLink _videoToggleLink = LayerLink();
+  final GlobalKey _videoToggleTargetKey = GlobalKey();
   OverlayEntry? _videoCoachmarkEntry;
-  Timer? _videoCoachmarkTimer;
   bool _videoCoachmarkScheduled = false;
 
   bool get _hasVideoToggle => widget.onVideoToggle != null;
@@ -94,8 +92,10 @@ class _ChessBoardBottomNavBarState
   @override
   void didUpdateWidget(covariant ChessBoardBottomNavBar oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (!widget.videoVisible) _hideVideoCoachmark();
-    if (!_hasVideoToggle || !widget.isActivePage) return;
+    if (!_hasVideoToggle || !widget.videoVisible || !widget.isActivePage) {
+      _hideVideoCoachmark();
+      return;
+    }
     final toggleAppeared = oldWidget.onVideoToggle == null;
     final becameActive = !oldWidget.isActivePage;
     final streamOpened = widget.videoVisible && !oldWidget.videoVisible;
@@ -108,12 +108,13 @@ class _ChessBoardBottomNavBarState
 
   @override
   void dispose() {
-    _hideVideoCoachmark();
+    _videoCoachmarkEntry?.remove();
+    _videoCoachmarkEntry = null;
     super.dispose();
   }
 
   /// Readers miss the camera switch, so its first live appearance gets one
-  /// persistent, anchored hint. Tapping the camera (or the timeout) clears it.
+  /// persistent, anchored hint. Tapping its close button or camera clears it.
   void _scheduleVideoCoachmark() {
     if (_videoCoachmarkScheduled) return;
     _videoCoachmarkScheduled = true;
@@ -149,22 +150,23 @@ class _ChessBoardBottomNavBarState
         return;
       }
       _videoCoachmarkEntry = OverlayEntry(
-        builder: (_) => _LiveStreamCoachmark(link: _videoToggleLink),
+        builder:
+            (_) => _LiveStreamCoachmark(
+              targetKey: _videoToggleTargetKey,
+              onClose: _hideVideoCoachmark,
+            ),
       );
       overlay.insert(_videoCoachmarkEntry!);
-      _videoCoachmarkTimer = Timer(
-        const Duration(seconds: 4),
-        _hideVideoCoachmark,
-      );
+      setState(() {});
       await _coachmarkTracker.markShown();
     });
   }
 
   void _hideVideoCoachmark() {
-    _videoCoachmarkTimer?.cancel();
-    _videoCoachmarkTimer = null;
+    if (_videoCoachmarkEntry == null) return;
     _videoCoachmarkEntry?.remove();
     _videoCoachmarkEntry = null;
+    if (mounted) setState(() {});
   }
 
   @override
@@ -248,33 +250,34 @@ class _ChessBoardBottomNavBarState
 
         // Events with streams expose video here and board swap in the menu.
         if (widget.onVideoToggle != null)
-          CompositedTransformTarget(
-            link: _videoToggleLink,
-            child: SizedBox(
-              width: buttonWidth,
-              child: Tooltip(
-                message:
-                    widget.videoVisible
-                        ? 'Turn off the live stream'
-                        : 'Turn on the live stream',
-                // The bar sits at the screen edge, so the bubble must open up.
-                preferBelow: false,
-                showDuration: const Duration(seconds: 4),
-                child: IconButton(
-                  key: const ValueKey('board_video_toggle'),
-                  onPressed: () {
-                    Tooltip.dismissAllToolTips();
-                    _hideVideoCoachmark();
-                    widget.onVideoToggle?.call();
-                  },
-                  icon: Icon(
-                    widget.videoVisible
-                        ? Icons.videocam_off_outlined
-                        : Icons.videocam_outlined,
-                    // Material camera glyphs have more inset than the SVG controls.
-                    size: 28.sp,
-                    color: Colors.white,
-                  ),
+          SizedBox(
+            key: _videoToggleTargetKey,
+            width: buttonWidth,
+            child: Tooltip(
+              message:
+                  widget.videoVisible
+                      ? 'Turn off the live stream'
+                      : 'Turn on the live stream',
+              // The bar sits at the screen edge, so the bubble must open up.
+              preferBelow: false,
+              showDuration: const Duration(seconds: 4),
+              child: IconButton(
+                key: const ValueKey('board_video_toggle'),
+                onPressed: () {
+                  Tooltip.dismissAllToolTips();
+                  _hideVideoCoachmark();
+                  widget.onVideoToggle?.call();
+                },
+                icon: Icon(
+                  widget.videoVisible
+                      ? Icons.videocam_off_outlined
+                      : Icons.videocam_outlined,
+                  // Material camera glyphs have more inset than the SVG controls.
+                  size: 28.sp,
+                  color:
+                      _videoCoachmarkEntry != null
+                          ? context.colors.brand
+                          : Colors.white,
                 ),
               ),
             ),
@@ -384,55 +387,106 @@ class _ChessBoardBottomNavBarState
 }
 
 class _LiveStreamCoachmark extends StatelessWidget {
-  const _LiveStreamCoachmark({required this.link});
+  const _LiveStreamCoachmark({required this.targetKey, required this.onClose});
 
-  final LayerLink link;
+  final GlobalKey targetKey;
+  final VoidCallback onClose;
 
   @override
   Widget build(BuildContext context) {
-    const ink = Color(0xFF08080A);
-    return Positioned(
-      left: 0,
-      top: 0,
-      child: IgnorePointer(
-        child: CompositedTransformFollower(
-          link: link,
-          showWhenUnlinked: false,
-          targetAnchor: Alignment.topCenter,
-          followerAnchor: Alignment.bottomCenter,
-          offset: const Offset(0, -6),
-          child: Material(
-            color: Colors.transparent,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Container(
-                  key: const ValueKey('live_stream_toggle_coachmark'),
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 14,
-                    vertical: 10,
-                  ),
-                  decoration: BoxDecoration(
-                    color: ink,
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(
-                      color: Colors.white.withValues(alpha: 0.08),
+    final highlight = context.colors.brand;
+    final screenWidth = MediaQuery.sizeOf(context).width;
+    final screenHeight = MediaQuery.sizeOf(context).height;
+    final popupWidth = math.min(screenWidth - 32, 380.0);
+    final targetBox =
+        targetKey.currentContext?.findRenderObject() as RenderBox?;
+    final targetTop = targetBox?.localToGlobal(Offset.zero).dy ?? screenHeight;
+    final targetCenterX =
+        targetBox?.localToGlobal(Offset(targetBox.size.width / 2, 0)).dx ??
+        screenWidth / 2;
+    final centeredLeft = targetCenterX - popupWidth / 2;
+    final clampedLeft = centeredLeft.clamp(16.0, screenWidth - popupWidth - 16);
+    final arrowLeft = (targetCenterX - clampedLeft - 8).clamp(
+      0.0,
+      popupWidth - 16,
+    );
+    return Positioned.fill(
+      child: Stack(
+        children: [
+          Positioned(
+            left: clampedLeft,
+            bottom: screenHeight - targetTop + 6,
+            width: popupWidth,
+            child: Material(
+              color: Colors.transparent,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    key: const ValueKey('live_stream_toggle_coachmark'),
+                    padding: const EdgeInsets.fromLTRB(18, 12, 8, 12),
+                    decoration: BoxDecoration(
+                      color: highlight,
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(
+                        color: Colors.white.withValues(alpha: 0.08),
+                      ),
+                    ),
+                    child: Row(
+                      children: [
+                        const Expanded(
+                          child: Text(
+                            'Turn off the stream by clicking camera icon.',
+                            textAlign: TextAlign.left,
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 16,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        IconButton(
+                          key: const ValueKey('close_live_stream_coachmark'),
+                          onPressed: onClose,
+                          tooltip: 'Close',
+                          visualDensity: VisualDensity.compact,
+                          constraints: const BoxConstraints(
+                            minWidth: 36,
+                            minHeight: 36,
+                          ),
+                          padding: EdgeInsets.zero,
+                          icon: const Icon(
+                            Icons.close,
+                            size: 19,
+                            color: Colors.white,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
-                  child: const Text(
-                    'Turn off the live stream',
-                    style: TextStyle(color: Colors.white),
+                  SizedBox(
+                    height: 8,
+                    child: Stack(
+                      children: [
+                        Positioned(
+                          left: arrowLeft,
+                          child: CustomPaint(
+                            key: const ValueKey(
+                              'live_stream_toggle_coachmark_arrow',
+                            ),
+                            size: const Size(16, 8),
+                            painter: _DownArrowPainter(highlight),
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
-                ),
-                CustomPaint(
-                  key: const ValueKey('live_stream_toggle_coachmark_arrow'),
-                  size: const Size(14, 7),
-                  painter: const _DownArrowPainter(ink),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
-        ),
+        ],
       ),
     );
   }
