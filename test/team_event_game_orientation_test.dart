@@ -1,4 +1,5 @@
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_stable_order_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/games_tour_content_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/group_event_match_card_provider.dart';
 import 'package:dartchess/dartchess.dart';
@@ -80,8 +81,34 @@ void main() {
     ]);
   });
 
-  test('pin priority cannot reverse the canonical matchup sides', () {
-    for (final order in [games, games.reversed.toList(), games]) {
+  test('manual pins, auto pins and unpin all preserve matchup sides', () {
+    final stableOrder = GamesTourStableOrder();
+    for (final priority in [
+      (manual: <String>{}, favorite: <String>{}, country: <String>{}),
+      (manual: {'board-2'}, favorite: <String>{}, country: <String>{}),
+      (manual: <String>{}, favorite: <String>{}, country: <String>{}),
+      (manual: <String>{}, favorite: {'board-2'}, country: <String>{}),
+      (manual: <String>{}, favorite: <String>{}, country: {'board-2'}),
+      (manual: {'board-1'}, favorite: <String>{}, country: {'board-2'}),
+      (manual: <String>{}, favorite: <String>{}, country: <String>{}),
+    ]) {
+      final order = resolveTournamentRoundPresentationOrder(
+        stableOrder: stableOrder,
+        roundId: 'round-1',
+        games: games,
+        isSearchMode: false,
+        hasResolvedAutoPins: true,
+        isRefreshingAutoPins: false,
+        pinnedGameIds: priority.manual,
+        favoriteGameIds: priority.favorite,
+        countrymanGameIds: priority.country,
+      );
+      final secondBoardLeads =
+          priority.manual.contains('board-2') ||
+          (priority.manual.isEmpty &&
+              (priority.favorite.contains('board-2') ||
+                  priority.country.contains('board-2')));
+      expect(order.first.gameId, secondBoardLeads ? 'board-2' : 'board-1');
       final grouped = groupTeamGamesByMatchup(
         selectedRoundId: 'round-1',
         games: order,
@@ -91,6 +118,34 @@ void main() {
         grouped.values.single.map((b) => b.game.gameId),
         order.map((g) => g.gameId),
       );
+      for (final board in grouped.values.single) {
+        expect(teamOrderedPlayers(board).teamOne.team, 'Team A');
+        expect(teamOrderedPlayers(board).teamTwo.team, 'Team B');
+        expect(
+          teamOneBottomSide(board.comparison),
+          board.game.gameId == 'board-1' ? Side.white : Side.black,
+        );
+      }
+    }
+  });
+
+  test('missing board numbers still keep sides stable across pin sorting', () {
+    final unnumbered = [
+      for (final game in games)
+        _game(
+          id: game.gameId,
+          whiteName: game.whitePlayer.name,
+          whiteTeam: game.whitePlayer.team!,
+          blackName: game.blackPlayer.name,
+          blackTeam: game.blackPlayer.team!,
+        ),
+    ];
+    for (final order in [unnumbered, unnumbered.reversed.toList()]) {
+      final grouped = groupTeamGamesByMatchup(
+        selectedRoundId: 'round-1',
+        games: order,
+      );
+      expect(grouped.keys, ['Team A vs Team B']);
       for (final board in grouped.values.single) {
         expect(teamOrderedPlayers(board).teamOne.team, 'Team A');
         expect(teamOrderedPlayers(board).teamTwo.team, 'Team B');
