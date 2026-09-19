@@ -1,3 +1,4 @@
+import 'package:flutter/rendering.dart' show ScrollCacheExtent;
 import 'package:flutter/widgets.dart';
 
 /// Centralised scroll-cache configuration for the app's list/feed views.
