@@ -1,11 +1,10 @@
 import 'package:chessever2/providers/engine_settings_provider.dart';
 import 'package:chessever2/screens/chessboard/utils/live_stream_coachmark.dart';
 import 'package:chessever2/screens/chessboard/video/video_session.dart';
-import 'package:chessever2/screens/chessboard/video/video_widgets.dart';
+import 'package:chessever2/screens/chessboard/widgets/chess_board_context_menu.dart';
 import 'package:chessever2/screens/chessboard/widgets/chess_board_bottom_nav_bar.dart';
 import 'package:chessever2/screens/chessboard/widgets/chess_board_bottom_navbar.dart';
 import 'package:chessever2/theme/app_theme.dart';
-import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/svg_asset.dart';
 import 'package:chessever2/widgets/svg_widget.dart';
@@ -305,96 +304,139 @@ void main() {
 
     await tester.pumpWidget(const SizedBox());
   });
-  testWidgets('shared phone/tablet menu toggles video visibility', (
-    tester,
-  ) async {
-    final session = EventVideoSession(repository: null);
-    addTearDown(session.dispose);
-    var selected = '';
-    Widget app() => MaterialApp(
-      theme: AppTheme.darkTheme,
-      home: Scaffold(
-        body: PopupMenuButton<String>(
-          onSelected: (value) => selected = value,
-          itemBuilder: (context) {
-            ResponsiveHelper.init(context);
-            return [
-              ...eventVideoBoardMenuItems(context, session),
-              PopupMenuItem(
-                value: 'settings',
-                child: Row(
-                  children: [
-                    Icon(Icons.settings, color: context.colors.textPrimary),
-                    SizedBox(width: 8.w),
-                    const Text('Board Settings'),
-                  ],
-                ),
-              ),
-            ];
-          },
+  for (final theme in [AppTheme.darkTheme, AppTheme.lightTheme]) {
+    testWidgets('board menu styling and actions match in ${theme.brightness}', (
+      tester,
+    ) async {
+      final session = EventVideoSession(repository: null);
+      addTearDown(session.dispose);
+      var selected = '';
+      var copies = 0;
+      Widget app() => MaterialApp(
+        theme: theme,
+        home: Scaffold(
+          body: PopupMenuButton<String>(
+            onSelected: (value) => selected = value,
+            itemBuilder: (context) {
+              ResponsiveHelper.init(context);
+              return chessBoardContextMenuItems(
+                context,
+                videoSession: session,
+                analysisCleared: false,
+                onCopyPgn: () => copies++,
+              );
+            },
+          ),
         ),
-      ),
-    );
-    Finder flipIcon() => find.byWidgetPredicate(
-      (w) => w is SvgWidget && w.path == SvgAsset.refresh,
-    );
-    await tester.pumpWidget(app());
-    await tester.tap(find.byType(PopupMenuButton<String>));
-    await tester.pumpAndSettle();
-    expect(find.text('Flip board'), findsNothing);
-    await tester.tap(find.text('Board Settings'));
-    await tester.pumpAndSettle();
-    session.streams = fixtureVideos();
-    session.selected = session.streams.first;
-    for (final visible in [true, false]) {
-      session.visible = visible;
+      );
+      Finder flipIcon() => find.byWidgetPredicate(
+        (w) => w is SvgWidget && w.path == SvgAsset.refresh,
+      );
+      await tester.pumpWidget(app());
       await tester.tap(find.byType(PopupMenuButton<String>));
       await tester.pumpAndSettle();
-      expect(find.text('Flip board'), findsOneWidget);
-      expect(
-        find.text(visible ? 'Close stream' : 'Show stream'),
-        findsOneWidget,
-      );
-      // Same circular refresh mark as the bottom-bar flip control.
-      expect(flipIcon(), findsOneWidget);
-      expect(find.byIcon(Icons.swap_vert), findsNothing);
-      final settingsIcon = find.byIcon(Icons.settings);
-      expect(tester.getSize(flipIcon()), tester.getSize(settingsIcon));
-      expect(
-        tester.getTopLeft(find.text('Flip board')).dx,
-        tester.getTopLeft(find.text('Board Settings')).dx,
-      );
-      expect(
-        tester.widget<SvgWidget>(flipIcon()).colorFilter,
-        ColorFilter.mode(
-          tester.widget<Icon>(settingsIcon).color!,
-          BlendMode.srcIn,
-        ),
-      );
-      await tester.tap(find.text('Flip board'));
+      expect(find.text('Flip Board'), findsNothing);
+      await tester.tap(find.text('Board Settings'));
       await tester.pumpAndSettle();
-      expect(selected, 'flip_board');
-    }
+      session.streams = fixtureVideos();
+      session.selected = session.streams.first;
+      for (final visible in [true, false]) {
+        session.visible = visible;
+        await tester.tap(find.byType(PopupMenuButton<String>));
+        await tester.pumpAndSettle();
+        expect(find.text('Flip Board'), findsOneWidget);
+        expect(
+          find.text(visible ? 'Close Stream' : 'Show Stream'),
+          findsOneWidget,
+        );
+        // Same circular refresh mark as the bottom-bar flip control.
+        expect(flipIcon(), findsOneWidget);
+        expect(find.byIcon(Icons.swap_vert), findsNothing);
+        final settingsIcon = find.byIcon(Icons.settings);
+        expect(tester.getSize(flipIcon()), tester.getSize(settingsIcon));
+        expect(
+          tester.getTopLeft(find.text('Flip Board')).dx,
+          tester.getTopLeft(find.text('Board Settings')).dx,
+        );
+        expect(
+          tester.widget<SvgWidget>(flipIcon()).colorFilter,
+          ColorFilter.mode(
+            IconTheme.of(tester.element(settingsIcon)).color!,
+            BlendMode.srcIn,
+          ),
+        );
+        TextStyle textStyle(String label) =>
+            tester
+                .widget<RichText>(
+                  find.descendant(
+                    of: find.text(label),
+                    matching: find.byType(RichText),
+                  ),
+                )
+                .text
+                .style!;
+        final streamLabel = visible ? 'Close Stream' : 'Show Stream';
+        final settingsStyle = textStyle('Board Settings');
+        final labelLeft = tester.getTopLeft(find.text('Board Settings')).dx;
+        for (final label in [
+          'Flip Board',
+          streamLabel,
+          'Share Game',
+          'Copy PGN',
+        ]) {
+          expect(textStyle(label), settingsStyle, reason: label);
+          expect(
+            tester.getTopLeft(find.text(label)).dx,
+            labelLeft,
+            reason: label,
+          );
+        }
+        final streamIcon = find.byIcon(
+          visible ? Icons.close : Icons.videocam_outlined,
+        );
+        expect(tester.getSize(streamIcon), tester.getSize(settingsIcon));
+        expect(
+          IconTheme.of(tester.element(streamIcon)).color,
+          IconTheme.of(tester.element(settingsIcon)).color,
+        );
+        await tester.tap(find.text('Flip Board'));
+        await tester.pumpAndSettle();
+        expect(selected, 'flip_board');
+      }
 
-    session.visible = true;
-    await tester.tap(find.byType(PopupMenuButton<String>));
-    await tester.pumpAndSettle();
-    expect(find.byIcon(Icons.close), findsOneWidget);
-    await tester.tap(find.text('Close stream'));
-    await tester.pumpAndSettle();
-    expect(selected, 'disable_video');
-    expect(session.visible, isFalse);
+      session.visible = true;
+      await tester.tap(find.byType(PopupMenuButton<String>));
+      await tester.pumpAndSettle();
+      expect(find.byIcon(Icons.close), findsOneWidget);
+      await tester.tap(find.text('Close Stream'));
+      await tester.pumpAndSettle();
+      expect(selected, 'disable_video');
+      expect(session.visible, isFalse);
 
-    // The option remains available and changes to the inverse action.
-    await tester.tap(find.byType(PopupMenuButton<String>));
-    await tester.pumpAndSettle();
-    expect(find.text('Show stream'), findsOneWidget);
-    await tester.tap(find.text('Show stream'));
-    await tester.pumpAndSettle();
-    expect(selected, 'enable_video');
-    expect(session.visible, isTrue);
-    await tester.pump(const Duration(seconds: 3));
+      // The option remains available and changes to the inverse action.
+      await tester.tap(find.byType(PopupMenuButton<String>));
+      await tester.pumpAndSettle();
+      expect(find.text('Show Stream'), findsOneWidget);
+      await tester.tap(find.text('Show Stream'));
+      await tester.pumpAndSettle();
+      expect(selected, 'enable_video');
+      expect(session.visible, isTrue);
+      await tester.pump(const Duration(seconds: 3));
 
-    await tester.pumpWidget(const SizedBox());
-  });
+      await tester.tap(find.byType(PopupMenuButton<String>));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Copy PGN'));
+      await tester.pumpAndSettle();
+      expect(copies, 1);
+      expect(selected, 'copy_pgn');
+
+      await tester.tap(find.byType(PopupMenuButton<String>));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Clear Analysis'));
+      await tester.pumpAndSettle();
+      expect(selected, 'clear_analysis');
+
+      await tester.pumpWidget(const SizedBox());
+    });
+  }
 }

@@ -37,6 +37,7 @@ import 'package:chessever2/providers/engine_settings_provider.dart';
 import 'package:chessever2/screens/chessboard/utils/engine_pv_arrows.dart';
 import 'package:chessever2/providers/gamebase_overlay_settings_provider.dart';
 import 'package:chessever2/screens/chessboard/widgets/chess_board_bottom_nav_bar.dart';
+import 'package:chessever2/screens/chessboard/widgets/chess_board_context_menu.dart';
 import 'package:chessever2/screens/chessboard/widgets/chess_board_from_fen_new.dart'
     show GameCardChessboard;
 import 'package:chessever2/screens/chessboard/widgets/engine_pv_layouts.dart';
@@ -4751,84 +4752,12 @@ class _AppBarState extends ConsumerState<_AppBar> {
                       await _toggleAnalysis();
                     }
                   },
-                  itemBuilder:
-                      (context) => [
-                        ...eventVideoBoardMenuItems(
-                          context,
-                          EventVideoScope.sessionOf(this.context),
-                        ),
-                        PopupMenuItem(
-                          value: 'board_settings',
-                          child: Row(
-                            children: [
-                              Icon(
-                                Icons.settings,
-                                color: context.colors.textPrimary,
-                              ),
-                              SizedBox(width: 8.w),
-                              const Text('Board Settings'),
-                            ],
-                          ),
-                        ),
-                        PopupMenuItem(
-                          value: 'share',
-                          child: Row(
-                            children: [
-                              Icon(
-                                Icons.share,
-                                color: context.colors.textPrimary,
-                              ),
-                              SizedBox(width: 8.w),
-                              const Text('Share Game'),
-                            ],
-                          ),
-                        ),
-                        PopupMenuItem(
-                          onTap: () {
-                            copyPgnBtnClicked();
-                          },
-                          value: 'copy_pgn',
-                          child: Row(
-                            children: [
-                              Icon(
-                                Icons.copy,
-                                color: context.colors.textPrimary,
-                              ),
-                              SizedBox(width: 8.w),
-                              const Text('Copy PGN'),
-                            ],
-                          ),
-                        ),
-                        const PopupMenuDivider(),
-                        PopupMenuItem(
-                          value: 'clear_analysis',
-                          child: Row(
-                            children: [
-                              Icon(
-                                analysisCleared
-                                    ? Icons.restore
-                                    : Icons.auto_delete_outlined,
-                                color:
-                                    analysisCleared
-                                        ? context.colors.textPrimary
-                                        : kRedColor,
-                              ),
-                              SizedBox(width: 8.w),
-                              Text(
-                                analysisCleared
-                                    ? 'Restore Analysis'
-                                    : 'Clear Analysis',
-                                style: TextStyle(
-                                  color:
-                                      analysisCleared
-                                          ? context.colors.textPrimary
-                                          : kRedColor,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
+                  itemBuilder: (context) => chessBoardContextMenuItems(
+                    context,
+                    videoSession: EventVideoScope.sessionOf(this.context),
+                    analysisCleared: analysisCleared,
+                    onCopyPgn: copyPgnBtnClicked,
+                  ),
                 )
               else
                 PopupMenuButton<String>(
@@ -4865,84 +4794,12 @@ class _AppBarState extends ConsumerState<_AppBar> {
                       await _toggleAnalysis();
                     }
                   },
-                  itemBuilder:
-                      (context) => [
-                        ...eventVideoBoardMenuItems(
-                          context,
-                          EventVideoScope.sessionOf(this.context),
-                        ),
-                        PopupMenuItem(
-                          value: 'board_settings',
-                          child: Row(
-                            children: [
-                              Icon(
-                                Icons.settings,
-                                color: context.colors.textPrimary,
-                              ),
-                              SizedBox(width: 8.w),
-                              const Text('Board Settings'),
-                            ],
-                          ),
-                        ),
-                        PopupMenuItem(
-                          value: 'share',
-                          child: Row(
-                            children: [
-                              Icon(
-                                Icons.share,
-                                color: context.colors.textPrimary,
-                              ),
-                              SizedBox(width: 8.w),
-                              const Text('Share Game'),
-                            ],
-                          ),
-                        ),
-                        PopupMenuItem(
-                          onTap: () {
-                            copyPgnBtnClicked();
-                          },
-                          value: 'copy_pgn',
-                          child: Row(
-                            children: [
-                              Icon(
-                                Icons.copy,
-                                color: context.colors.textPrimary,
-                              ),
-                              SizedBox(width: 8.w),
-                              const Text('Copy PGN'),
-                            ],
-                          ),
-                        ),
-                        const PopupMenuDivider(),
-                        PopupMenuItem(
-                          value: 'clear_analysis',
-                          child: Row(
-                            children: [
-                              Icon(
-                                analysisCleared
-                                    ? Icons.restore
-                                    : Icons.auto_delete_outlined,
-                                color:
-                                    analysisCleared
-                                        ? context.colors.textPrimary
-                                        : kRedColor,
-                              ),
-                              SizedBox(width: 8.w),
-                              Text(
-                                analysisCleared
-                                    ? 'Restore Analysis'
-                                    : 'Clear Analysis',
-                                style: TextStyle(
-                                  color:
-                                      analysisCleared
-                                          ? context.colors.textPrimary
-                                          : kRedColor,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
+                  itemBuilder: (context) => chessBoardContextMenuItems(
+                    context,
+                    videoSession: EventVideoScope.sessionOf(this.context),
+                    analysisCleared: analysisCleared,
+                    onCopyPgn: copyPgnBtnClicked,
+                  ),
                 ),
             ],
           ),
@@ -11459,8 +11316,9 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
           await notifier.setGameReviewVisible(true);
           if (!mounted ||
               !context.mounted ||
-              !viewController.isCurrentRequest(request))
+              !viewController.isCurrentRequest(request)) {
             return;
+          }
           sheet.target.value = params;
           return;
         }
@@ -11472,8 +11330,9 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
         await reviewController.requestAnalysis(context);
         if (!mounted ||
             !context.mounted ||
-            !viewController.isCurrentRequest(request))
+            !viewController.isCurrentRequest(request)) {
           return;
+        }
         await notifier.setGameReviewVisible(true);
         if (!mounted || !viewController.isCurrentRequest(request)) return;
         sheet.target.value = params;

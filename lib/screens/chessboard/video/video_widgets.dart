@@ -1,9 +1,5 @@
 import 'dart:async';
 import 'dart:math' as math;
-import 'package:chessever2/theme/app_colors.dart';
-import 'package:chessever2/utils/svg_asset.dart';
-import 'package:chessever2/utils/responsive_helper.dart';
-import 'package:chessever2/widgets/svg_widget.dart';
 import 'package:country_flags/country_flags.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -747,48 +743,3 @@ class EventVideoGameLayout extends StatelessWidget {
     },
   );
 }
-
-/// Shared by the phone popup and the tablet-safe popup.
-List<PopupMenuEntry<String>> eventVideoBoardMenuItems(
-  BuildContext context,
-  EventVideoSession? session,
-) => [
-  if (session?.hasVideo == true)
-    PopupMenuItem(
-      value: 'flip_board',
-      child: Row(
-        children: [
-          // Same circular refresh mark as the bottom-bar flip control.
-          SizedBox.square(
-            dimension: 24,
-            child: SvgWidget(
-              SvgAsset.refresh,
-              height: 24,
-              width: 24,
-              colorFilter: ColorFilter.mode(
-                context.colors.textPrimary,
-                BlendMode.srcIn,
-              ),
-            ),
-          ),
-          SizedBox(width: 8.w),
-          const Text('Flip board'),
-        ],
-      ),
-    ),
-  if (session?.hasVideo == true)
-    PopupMenuItem(
-      value: session!.visible ? 'disable_video' : 'enable_video',
-      onTap: session.toggle,
-      child: Row(
-        children: [
-          Icon(
-            session.visible ? Icons.close : Icons.videocam_outlined,
-            color: context.colors.textPrimary,
-          ),
-          SizedBox(width: 8.w),
-          Text(session.visible ? 'Close stream' : 'Show stream'),
-        ],
-      ),
-    ),
-];
