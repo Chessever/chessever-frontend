@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:chessever2/repository/supabase/game/game_repository.dart';
@@ -112,5 +113,108 @@ void main() {
       expect(tourIndexNeedsPgn(finished.copyWith(status: status)), isTrue);
     }
     expect(tourIndexNeedsPgn(Games.fromJson(_row(1))), isTrue);
+  });
+
+  test('a failed snapshot cannot publish an incomplete tournament', () async {
+    final client = SupabaseClient(
+      'https://example.test',
+      'placeholder',
+      httpClient: MockClient((request) async {
+        final query = request.url.queryParameters;
+        final snapshot = query.containsKey('id');
+        final offset = int.parse(query['offset'] ?? '0');
+        if (offset > 0) {
+          await Future<void>.delayed(const Duration(milliseconds: 20));
+        }
+        return http.Response(
+          jsonEncode(
+            snapshot
+                ? {'message': 'offline'}
+                : [
+                  if (offset == 0)
+                    for (var i = 0; i < 1000; i++) _row(i),
+                ],
+          ),
+          snapshot ? 503 : 200,
+          request: request,
+          headers: {'content-type': 'application/json'},
+        );
+      }),
+    );
+    addTearDown(client.dispose);
+    await expectLater(
+      _Repository(client).getTourGamePreviews('tour'),
+      throwsException,
+    );
+  });
+
+  test('large live events hydrate while paging with bounded requests', () async {
+    final secondPageRequested = Completer<void>();
+    final release = Completer<void>();
+    var active = 0;
+    var peakActive = 0;
+    var fullRequests = 0;
+    final client = SupabaseClient(
+      'https://example.test',
+      'placeholder',
+      httpClient: MockClient((request) async {
+        final query = request.url.queryParameters;
+        active++;
+        if (active > peakActive) peakActive = active;
+        final ids = query['id'];
+        late List<Map<String, dynamic>> rows;
+        if (ids != null) {
+          fullRequests++;
+          await release.future;
+          rows = [
+            for (final id in ids
+                .substring(4, ids.length - 1)
+                .replaceAll('"', '')
+                .split(','))
+              {
+                ..._row(int.parse(id.substring(1))),
+                'pgn': '[Result "*"]\n\n1. e4 *',
+              },
+          ];
+        } else {
+          final offset = int.parse(query['offset'] ?? '0');
+          if (offset != 0) {
+            secondPageRequested.complete();
+            await release.future;
+          }
+          rows = [
+            for (var i = offset; i < (offset + 1000).clamp(0, 1632); i++)
+              {..._row(i), 'status': '*'},
+          ];
+        }
+        active--;
+        return http.Response(
+          jsonEncode(rows),
+          200,
+          request: request,
+          headers: {'content-type': 'application/json'},
+        );
+      }),
+    );
+    addTearDown(client.dispose);
+    final loading = _Repository(client).getTourGamePreviews('tour');
+    try {
+      await secondPageRequested.future;
+      await Future<void>.delayed(Duration.zero);
+      expect(
+        fullRequests,
+        4,
+        reason:
+            'The Games tab must not serialize PGN downloads behind the entire index.',
+      );
+    } finally {
+      release.complete();
+      await loading;
+    }
+    final games = await loading;
+    expect(games.length, 1632);
+    expect(games.map((g) => g.id).toSet().length, 1632);
+    expect(games.every((g) => g.pgn != null && !g.isPgnDeferred), isTrue);
+    expect(peakActive, lessThanOrEqualTo(5));
   });
 }

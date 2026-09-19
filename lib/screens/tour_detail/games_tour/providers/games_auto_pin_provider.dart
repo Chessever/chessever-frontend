@@ -11,7 +11,6 @@ import 'package:chessever2/repository/supabase/game/games.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_priority_matching.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/knockout_tournament_state_provider.dart';
-import 'package:chessever2/screens/tour_detail/provider/tour_detail_screen_provider.dart';
 import 'package:country_picker/country_picker.dart';
 import 'package:flutter/foundation.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -176,43 +175,9 @@ class _AutoPinLogController {
         ref.read(gamesTourProvider(tourId)).valueOrNull ?? const <Games>[];
     addGames(gamePriorityIdentitiesFromRawGames(mainGamesRaw));
 
-    // Check if this is a multi-stage knockout tournament
-    final tourDetail = ref.read(tourDetailScreenProvider).valueOrNull;
-    if (tourDetail == null || tourDetail.tours.isEmpty) return allGames;
-
-    // Find the current tour to get its groupBroadcastId
-    final currentTour =
-        tourDetail.tours
-            .firstWhere(
-              (t) => t.tour.id == tourId,
-              orElse: () => tourDetail.tours.first,
-            )
-            .tour;
-
-    final groupBroadcastId = currentTour.groupBroadcastId;
-    if (groupBroadcastId == null || groupBroadcastId.isEmpty) {
-      return allGames; // Not a multi-stage knockout
-    }
-
-    // Get all tours in the group broadcast
-    final allToursInGroup =
-        tourDetail.tours
-            .where((t) => t.tour.groupBroadcastId == groupBroadcastId)
-            .toList();
-
-    if (allToursInGroup.length <= 1) {
-      return allGames; // Not multi-stage
-    }
-
-    debugPrint(
-      '🎯 Auto-pin: Detected ${allToursInGroup.length} stages in multi-stage knockout',
-    );
-
-    // Collect games from ALL stages
-    for (final tourModel in allToursInGroup) {
-      final stageTourId = tourModel.tour.id;
-      if (stageTourId == tourId) continue; // Skip main tour (already added)
-
+    for (final stageTourId in ref.read(
+      relatedKnockoutStageIdsProvider(tourId),
+    )) {
       final stageState = ref.read(knockoutTournamentStateProvider(stageTourId));
       addGames(gamePriorityIdentitiesFromModels(stageState.allGames));
     }

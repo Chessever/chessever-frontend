@@ -69,7 +69,7 @@ final mergedTournamentGamesProvider = AutoDisposeProvider<List<GamesTourModel>>(
       final models = <GamesTourModel>[];
       for (final game in rawGames) {
         try {
-          models.add(GamesTourModel.fromGame(game));
+          models.add(GamesTourModel.fromGameIndex(game));
         } catch (_) {}
       }
       return models;
@@ -96,7 +96,7 @@ final mergedTournamentGamesProvider = AutoDisposeProvider<List<GamesTourModel>>(
           if (tourGamesAsync.hasValue) {
             for (final g in tourGamesAsync.value!) {
               try {
-                allGames.add(GamesTourModel.fromGame(g));
+                allGames.add(GamesTourModel.fromGameIndex(g));
               } catch (_) {}
             }
           }
@@ -328,7 +328,7 @@ class PlayerTourScreenNotifier
 
       for (final game in games) {
         try {
-          allGames.add(GamesTourModel.fromGame(game));
+          allGames.add(GamesTourModel.fromGameIndex(game));
         } catch (_) {
           // Skip malformed rows to keep standings resilient during live ingest.
         }

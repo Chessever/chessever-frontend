@@ -242,7 +242,19 @@ class GamesTourModel {
     return whiteElo >= blackElo ? whiteElo : blackElo;
   }
 
-  factory GamesTourModel.fromGame(Games game) {
+  factory GamesTourModel.fromGame(Games game) =>
+      GamesTourModel._fromGame(game, resolvePosition: true);
+
+  /// Full tournament membership and metadata without replaying every board's
+  /// moves. Visible cards resolve the position from the retained PGN when they
+  /// mount; results, ratings, clocks and standings keep their existing inputs.
+  factory GamesTourModel.fromGameIndex(Games game) =>
+      GamesTourModel._fromGame(game, resolvePosition: false);
+
+  factory GamesTourModel._fromGame(
+    Games game, {
+    required bool resolvePosition,
+  }) {
     // Enhanced null safety and validation
     if (game.players == null || game.players!.length < 2) {
       throw ArgumentError(
@@ -341,11 +353,14 @@ class GamesTourModel {
         resolvedEco ??= parsed.eco;
         resolvedOpening ??= parsed.opening;
       }
-      final freshestFen = resolveFreshestGameFen(
-        fen: game.fen,
-        pgn: game.pgn,
-        lastMove: game.lastMove,
-      );
+      final freshestFen =
+          resolvePosition
+              ? resolveFreshestGameFen(
+                fen: game.fen,
+                pgn: game.pgn,
+                lastMove: game.lastMove,
+              )
+              : (isValidGameFen(game.fen) ? game.fen?.trim() : null);
 
       return GamesTourModel(
         gameId: game.id,

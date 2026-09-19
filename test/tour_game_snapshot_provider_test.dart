@@ -184,6 +184,33 @@ void main() {
   });
 
   testWidgets(
+    'index models repair a visible board from retained PGN without a fetch',
+    (tester) async {
+      final repo = _Repository();
+      final container = ProviderContainer(
+        overrides: [gameRepositoryProvider.overrideWithValue(repo)],
+      );
+      final raw = _game('g');
+      final indexGame = GamesTourModel.fromGameIndex(raw);
+      expect(indexGame.fen, raw.fen);
+      expect(indexGame.pgn, _pgn);
+      expect(indexGame.isPgnDeferred, isFalse);
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: container,
+          child: MaterialApp(home: _Card(indexGame)),
+        ),
+      );
+      await tester.pump();
+      expect(find.text(_finalFen), findsOneWidget);
+      expect(repo.requests, isEmpty);
+      await tester.pumpWidget(const SizedBox.shrink());
+      container.dispose();
+      await tester.pump(const Duration(milliseconds: 1));
+    },
+  );
+
+  testWidgets(
     'a card repaints the repaired position and releases it when covered',
     (tester) async {
       final repo = _Repository();

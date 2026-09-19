@@ -130,11 +130,11 @@ List<GamesTourModel> _processGamesWorker(_GamesProcessingArgs args) {
     return 0;
   });
 
-  // 3. Map to models (heavy PGN parsing happens here inside fromGame)
+  // 3. Map list metadata; visible cards replay their own board positions.
   final models = <GamesTourModel>[];
   for (final g in sortedGames) {
     try {
-      models.add(GamesTourModel.fromGame(g));
+      models.add(GamesTourModel.fromGameIndex(g));
     } catch (e) {
       // In isolate we can't use debugPrint, so we just skip invalid games
       // The main thread will see a slightly shorter list
@@ -230,6 +230,8 @@ class GamesTourScreenProvider
               !haveSameRawGamePriorityInputs(prev, next) ||
               prev.boardNr != next.boardNr ||
               prev.fen != next.fen ||
+              prev.pgn != next.pgn ||
+              prev.isPgnDeferred != next.isPgnDeferred ||
               prev.lastMove != next.lastMove ||
               prev.status != next.status) {
             significantChange = true;
@@ -693,7 +695,7 @@ class GamesTourScreenProvider
     int skippedCount = 0;
     for (final game in games) {
       try {
-        models.add(GamesTourModel.fromGame(game));
+        models.add(GamesTourModel.fromGameIndex(game));
       } catch (e) {
         skippedCount++;
         debugPrint(
@@ -766,7 +768,7 @@ class GamesTourScreenProvider
       final models = <GamesTourModel>[];
       for (final g in games) {
         try {
-          models.add(GamesTourModel.fromGame(g));
+          models.add(GamesTourModel.fromGameIndex(g));
         } catch (_) {}
       }
 

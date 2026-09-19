@@ -214,7 +214,8 @@ class _GamesPinController extends StateNotifier<GamesPinState> {
 
   final Ref ref;
   final String tourId;
-  final Set<String> _stageListeners = <String>{};
+  final _stageListeners =
+      <String, ProviderSubscription<KnockoutTournamentState>>{};
   Future<void>? _pinLoadInFlight;
   bool _reloadPinSnapshot = false;
 
@@ -234,49 +235,18 @@ class _GamesPinController extends StateNotifier<GamesPinState> {
   }
 
   void _listenToKnockoutStages() {
-    ref.listen(tourDetailScreenProvider, (previous, next) {
-      final detail = next.valueOrNull;
-      if (detail == null) {
-        return;
+    ref.listen(relatedKnockoutStageIdsProvider(tourId), (previous, next) {
+      final relatedStageIds = next.toSet();
+      var changed = false;
+      for (final stageId in _stageListeners.keys.toList()) {
+        if (relatedStageIds.contains(stageId)) continue;
+        _stageListeners.remove(stageId)!.close();
+        changed = true;
       }
-
-      if (detail.tours.isEmpty) {
-        return;
-      }
-
-      // Find the current tour to determine its group broadcast
-      var matchingTour = detail.tours.first;
-      for (final tourModel in detail.tours) {
-        if (tourModel.tour.id == tourId) {
-          matchingTour = tourModel;
-          break;
-        }
-      }
-
-      final groupBroadcastId = matchingTour.tour.groupBroadcastId;
-      if (groupBroadcastId == null || groupBroadcastId.isEmpty) {
-        return;
-      }
-
-      final relatedStageIds = detail.tours
-          .where(
-            (tourModel) => tourModel.tour.groupBroadcastId == groupBroadcastId,
-          )
-          .map((tourModel) => tourModel.tour.id);
-
-      var addedStageListener = false;
       for (final stageId in relatedStageIds) {
-        // The selected tour already has the raw primary-games listener below.
-        // Listening to its derived knockout state as well would enqueue the
-        // same scan twice for one identity update.
-        if (stageId == tourId) continue;
-
-        // Avoid wiring duplicate listeners
-        if (_stageListeners.contains(stageId)) continue;
-        _stageListeners.add(stageId);
-        addedStageListener = true;
-
-        ref.listen<KnockoutTournamentState>(
+        if (_stageListeners.containsKey(stageId)) continue;
+        changed = true;
+        _stageListeners[stageId] = ref.listen<KnockoutTournamentState>(
           knockoutTournamentStateProvider(stageId),
           (prevState, nextState) {
             final previousGames =
@@ -290,8 +260,7 @@ class _GamesPinController extends StateNotifier<GamesPinState> {
         );
       }
 
-      // One scan covers every newly wired stage and its current snapshot.
-      if (addedStageListener) computeAutoPins();
+      if (changed) computeAutoPins();
     }, fireImmediately: true);
   }
 
@@ -410,7 +379,9 @@ class _GamesPinController extends StateNotifier<GamesPinState> {
       Object error,
       StackTrace stackTrace,
     ) {
-      debugPrint('Failed to resolve auto pins for $tourId: $error\n$stackTrace');
+      debugPrint(
+        'Failed to resolve auto pins for $tourId: $error\n$stackTrace',
+      );
       return null;
     });
 
@@ -521,7 +492,9 @@ class _GamesPinController extends StateNotifier<GamesPinState> {
         ),
       );
     } catch (error, stackTrace) {
-      debugPrint('Failed to clear manual pins for $tourId: $error\n$stackTrace');
+      debugPrint(
+        'Failed to clear manual pins for $tourId: $error\n$stackTrace',
+      );
     }
     await loadPinnedGames();
   }

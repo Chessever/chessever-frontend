@@ -75,7 +75,7 @@ final knockoutTournamentStateProvider = Provider.autoDispose.family<
   final models = <GamesTourModel>[];
   for (final game in rawGames) {
     try {
-      models.add(GamesTourModel.fromGame(game));
+      models.add(GamesTourModel.fromGameIndex(game));
     } catch (_) {
       // Ignore games that fail to parse into display models
     }
@@ -174,6 +174,24 @@ final knockoutTournamentStateProvider = Provider.autoDispose.family<
 });
 
 typedef KnockoutRoundMetadataRequest = ({String tourId, String tourName});
+
+/// Sibling categories are not automatically knockout stages. In particular,
+/// opening Olympiad Open must not download the entire Women's section for pins.
+final relatedKnockoutStageIdsProvider = Provider.autoDispose
+    .family<List<String>, String>((ref, tourId) {
+      final isKnockout = ref.watch(
+        knockoutTournamentStateProvider(tourId).select((s) => s.isKnockout),
+      );
+      if (!isKnockout) return const [];
+      final detail = ref.watch(tourDetailScreenProvider).valueOrNull;
+      final groupId = _findTourById(detail, tourId)?.groupBroadcastId;
+      if (groupId == null || groupId.isEmpty) return const [];
+      return [
+        for (final model in detail!.tours)
+          if (model.tour.id != tourId && model.tour.groupBroadcastId == groupId)
+            model.tour.id,
+      ];
+    });
 
 KnockoutRoundMetadataRequest resolveKnockoutRoundMetadataRequest({
   required TourDetailViewModel? tourDetail,

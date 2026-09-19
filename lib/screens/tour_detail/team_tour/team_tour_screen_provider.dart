@@ -52,7 +52,7 @@ List<GamesTourModel> _watchTeamGames(Ref ref) {
   final raw = ref.watch(gamesTourProvider(tourId)).valueOrNull ?? const [];
   for (final g in raw) {
     try {
-      games.add(GamesTourModel.fromGame(g));
+      games.add(GamesTourModel.fromGameIndex(g));
     } catch (_) {}
   }
   return games;

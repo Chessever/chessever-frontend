@@ -139,6 +139,7 @@ class GamesTourNotifier extends StateNotifier<AsyncValue<List<Games>>> {
 
   Future<void> _loadInitialGames() async {
     final visibleGames = state.valueOrNull ?? const <Games>[];
+    var networkFinished = false;
     try {
       // Gamebase-only event (sentinel tour id): build games from the cached
       // gamebase event view; these are finished games with no live feed, so
@@ -168,11 +169,26 @@ class GamesTourNotifier extends StateNotifier<AsyncValue<List<Games>>> {
       }
 
       final gamesLocalStorageProvider = ref.read(gamesLocalStorage);
+      if (visibleGames.isEmpty) {
+        // A saved complete roster can paint while the fresh request runs.
+        // Never let a slow disk read replace a newer network result.
+        unawaited(
+          gamesLocalStorageProvider.getCachedGames(tourId).then((cached) {
+            if (mounted && !networkFinished && cached.isNotEmpty) {
+              state = AsyncValue.data(cached);
+            }
+          }),
+        );
+      }
       final games = await gamesLocalStorageProvider.fetchAndSaveGames(tourId);
+      networkFinished = true;
 
       if (mounted) {
         state = AsyncValue.data(
-          retainGamesAcrossTransientEmptyRefresh(visibleGames, games),
+          retainGamesAcrossTransientEmptyRefresh(
+            state.valueOrNull ?? visibleGames,
+            games,
+          ),
         );
 
         // Only start periodic refresh if streaming is enabled
@@ -184,7 +200,7 @@ class GamesTourNotifier extends StateNotifier<AsyncValue<List<Games>>> {
       if (mounted) {
         // A manual or automatic refresh must not blank already-visible boards
         // because one request failed. Initial-load errors still surface.
-        if (visibleGames.isEmpty) {
+        if ((state.valueOrNull ?? visibleGames).isEmpty) {
           state = AsyncValue.error(error, stackTrace);
         } else {
           debugPrint(
@@ -193,6 +209,8 @@ class GamesTourNotifier extends StateNotifier<AsyncValue<List<Games>>> {
           );
         }
       }
+    } finally {
+      networkFinished = true;
     }
   }
 
