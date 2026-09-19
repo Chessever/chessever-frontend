@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:math' as math;
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/utils/svg_asset.dart';
+import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/svg_widget.dart';
 import 'package:country_flags/country_flags.dart';
 import 'package:flutter/material.dart';
@@ -758,16 +759,19 @@ List<PopupMenuEntry<String>> eventVideoBoardMenuItems(
       child: Row(
         children: [
           // Same circular refresh mark as the bottom-bar flip control.
-          SvgWidget(
-            SvgAsset.refresh,
-            height: 20,
-            width: 20,
-            colorFilter: ColorFilter.mode(
-              context.colors.textPrimary,
-              BlendMode.srcIn,
+          SizedBox.square(
+            dimension: 24,
+            child: SvgWidget(
+              SvgAsset.refresh,
+              height: 24,
+              width: 24,
+              colorFilter: ColorFilter.mode(
+                context.colors.textPrimary,
+                BlendMode.srcIn,
+              ),
             ),
           ),
-          const SizedBox(width: 8),
+          SizedBox(width: 8.w),
           const Text('Flip board'),
         ],
       ),
@@ -779,14 +783,11 @@ List<PopupMenuEntry<String>> eventVideoBoardMenuItems(
       child: Row(
         children: [
           Icon(
-            session.visible
-                ? Icons.videocam_off_outlined
-                : Icons.videocam_outlined,
-            size: 20,
+            session.visible ? Icons.close : Icons.videocam_outlined,
             color: context.colors.textPrimary,
           ),
-          const SizedBox(width: 8),
-          Text(session.visible ? 'Disable Video' : 'Enable Video'),
+          SizedBox(width: 8.w),
+          Text(session.visible ? 'Close stream' : 'Show stream'),
         ],
       ),
     ),

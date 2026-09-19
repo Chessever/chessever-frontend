@@ -5,6 +5,7 @@ import 'package:chessever2/screens/chessboard/video/video_widgets.dart';
 import 'package:chessever2/screens/chessboard/widgets/chess_board_bottom_nav_bar.dart';
 import 'package:chessever2/screens/chessboard/widgets/chess_board_bottom_navbar.dart';
 import 'package:chessever2/theme/app_theme.dart';
+import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/svg_asset.dart';
 import 'package:chessever2/widgets/svg_widget.dart';
@@ -311,17 +312,26 @@ void main() {
     addTearDown(session.dispose);
     var selected = '';
     Widget app() => MaterialApp(
+      theme: AppTheme.darkTheme,
       home: Scaffold(
         body: PopupMenuButton<String>(
           onSelected: (value) => selected = value,
-          itemBuilder:
-              (context) => [
-                ...eventVideoBoardMenuItems(context, session),
-                const PopupMenuItem(
-                  value: 'settings',
-                  child: Text('Board Settings'),
+          itemBuilder: (context) {
+            ResponsiveHelper.init(context);
+            return [
+              ...eventVideoBoardMenuItems(context, session),
+              PopupMenuItem(
+                value: 'settings',
+                child: Row(
+                  children: [
+                    Icon(Icons.settings, color: context.colors.textPrimary),
+                    SizedBox(width: 8.w),
+                    const Text('Board Settings'),
+                  ],
                 ),
-              ],
+              ),
+            ];
+          },
         ),
       ),
     );
@@ -342,12 +352,25 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('Flip board'), findsOneWidget);
       expect(
-        find.text(visible ? 'Disable Video' : 'Enable Video'),
+        find.text(visible ? 'Close stream' : 'Show stream'),
         findsOneWidget,
       );
       // Same circular refresh mark as the bottom-bar flip control.
       expect(flipIcon(), findsOneWidget);
       expect(find.byIcon(Icons.swap_vert), findsNothing);
+      final settingsIcon = find.byIcon(Icons.settings);
+      expect(tester.getSize(flipIcon()), tester.getSize(settingsIcon));
+      expect(
+        tester.getTopLeft(find.text('Flip board')).dx,
+        tester.getTopLeft(find.text('Board Settings')).dx,
+      );
+      expect(
+        tester.widget<SvgWidget>(flipIcon()).colorFilter,
+        ColorFilter.mode(
+          tester.widget<Icon>(settingsIcon).color!,
+          BlendMode.srcIn,
+        ),
+      );
       await tester.tap(find.text('Flip board'));
       await tester.pumpAndSettle();
       expect(selected, 'flip_board');
@@ -356,7 +379,8 @@ void main() {
     session.visible = true;
     await tester.tap(find.byType(PopupMenuButton<String>));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Disable Video'));
+    expect(find.byIcon(Icons.close), findsOneWidget);
+    await tester.tap(find.text('Close stream'));
     await tester.pumpAndSettle();
     expect(selected, 'disable_video');
     expect(session.visible, isFalse);
@@ -364,8 +388,8 @@ void main() {
     // The option remains available and changes to the inverse action.
     await tester.tap(find.byType(PopupMenuButton<String>));
     await tester.pumpAndSettle();
-    expect(find.text('Enable Video'), findsOneWidget);
-    await tester.tap(find.text('Enable Video'));
+    expect(find.text('Show stream'), findsOneWidget);
+    await tester.tap(find.text('Show stream'));
     await tester.pumpAndSettle();
     expect(selected, 'enable_video');
     expect(session.visible, isTrue);
