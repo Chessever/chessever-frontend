@@ -5,7 +5,6 @@ import 'package:chessever2/utils/svg_asset.dart';
 import 'package:chessever2/widgets/svg_widget.dart';
 import 'package:country_flags/country_flags.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'video_player.dart';
 import 'video_repository.dart';
@@ -488,104 +487,19 @@ class EventVideoFlagSlot extends StatelessWidget {
   const EventVideoFlagSlot({super.key, this.active = true});
 
   final bool active;
-  // Hold the same height in both states, allowing room for large system text.
+  // Allow room for large system text while the transient picker is visible.
   static double heightFor(BuildContext context) =>
       math.max(56, 32 + MediaQuery.textScalerOf(context).scale(10) * 1.5);
 
   @override
   Widget build(BuildContext context) {
-    // Adjacent pages reserve the same space without subscribing to the picker.
-    final height = heightFor(context);
-    if (!active) return SizedBox(height: height);
     final session = EventVideoScope.maybeOf(context)?.session;
-    if (session == null || !session.showVideo) return const SizedBox.shrink();
-    final stream = session.selected!;
-    final duration =
-        MediaQuery.disableAnimationsOf(context)
-            ? Duration.zero
-            : const Duration(milliseconds: 220);
-    final toggleLabel =
-        session.flagsVisible
-            ? 'Minimize stream selector'
-            : 'Show stream selector';
-    return Material(
-      color: Theme.of(context).colorScheme.surface,
-      child: SizedBox(
-        key: const ValueKey('event_video_selector'),
-        height: height,
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Expanded(
-              // Both children stay mounted, preserving the horizontal scroll
-              // position. Only this toolbar fades; the native player is never
-              // wrapped in an animation or moved by the three-second timer.
-              child: AnimatedCrossFade(
-                duration: duration,
-                firstCurve: Curves.easeInOut,
-                secondCurve: Curves.easeInOut,
-                crossFadeState:
-                    session.flagsVisible
-                        ? CrossFadeState.showSecond
-                        : CrossFadeState.showFirst,
-                firstChild: SizedBox(
-                  height: height,
-                  child: InkWell(
-                    onTap: session.revealFlags,
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 12),
-                      child: Row(
-                        children: [
-                          if (stream.flagCode != null)
-                            CountryFlag.fromCountryCode(
-                              stream.flagCode!,
-                              theme: const ImageTheme(width: 28, height: 20),
-                            )
-                          else
-                            const Icon(Icons.language, size: 20),
-                          const SizedBox(width: 10),
-                          Expanded(
-                            child: Text(
-                              '${stream.displayName} · ${stream.source.providerName}',
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: Theme.of(context).textTheme.bodyMedium,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-                secondChild: const EventVideoFlags(),
-              ),
-            ),
-            IconButton(
-              tooltip: toggleLabel,
-              constraints: const BoxConstraints.tightFor(width: 44, height: 44),
-              onPressed:
-                  session.flagsVisible
-                      ? session.minimizeFlags
-                      : session.revealFlags,
-              icon: AnimatedRotation(
-                turns: session.flagsVisible ? .5 : 0,
-                duration: duration,
-                curve: Curves.easeInOut,
-                child: const Icon(Icons.expand_more, size: 20),
-              ),
-            ),
-            IconButton(
-              key: const ValueKey('video_close_stream'),
-              tooltip: 'Turn off the stream',
-              constraints: const BoxConstraints.tightFor(width: 44, height: 44),
-              onPressed: session.toggle,
-              icon: const Icon(Icons.close, size: 18),
-            ),
-            const SizedBox(width: 4),
-          ],
-        ),
-      ),
-    );
+    if (session?.showVideo != true || !session!.flagsVisible) {
+      return const SizedBox.shrink();
+    }
+    return active
+        ? const EventVideoFlags()
+        : SizedBox(height: heightFor(context));
   }
 }
 
@@ -655,33 +569,11 @@ class _EventVideoPlayerBox extends StatefulWidget {
 }
 
 class _EventVideoPlayerBoxState extends State<_EventVideoPlayerBox> {
-  /// Observe taps to reveal the fullscreen button without consuming player
+  /// Observe taps to reveal the stream selector without consuming player
   /// controls or treating seek gestures as taps.
   Offset? _pointerDown;
 
   static const double _tapSlop = 8;
-  Timer? _fullscreenTimer;
-  bool _fullscreenVisible = true;
-
-  @override
-  void initState() {
-    super.initState();
-    _scheduleFullscreenDismissal();
-  }
-
-  void _scheduleFullscreenDismissal() {
-    _fullscreenTimer?.cancel();
-    _fullscreenTimer = Timer(const Duration(seconds: 3), () {
-      if (mounted) setState(() => _fullscreenVisible = false);
-    });
-  }
-
-  @override
-  void dispose() {
-    _fullscreenTimer?.cancel();
-    super.dispose();
-  }
-
   @override
   Widget build(BuildContext context) {
     final scope = widget.scope;
@@ -701,8 +593,6 @@ class _EventVideoPlayerBoxState extends State<_EventVideoPlayerBox> {
             return;
           }
           scope.session.revealFlags();
-          setState(() => _fullscreenVisible = true);
-          _scheduleFullscreenDismissal();
         },
         onPointerCancel: (_) => _pointerDown = null,
         child:
@@ -720,19 +610,6 @@ class _EventVideoPlayerBoxState extends State<_EventVideoPlayerBox> {
                         fit: StackFit.expand,
                         children: [
                           player.buildView(),
-                          if (defaultTargetPlatform == TargetPlatform.iOS &&
-                              !widget.expanded &&
-                              _fullscreenVisible)
-                            Positioned(
-                              bottom: 4,
-                              right: 4,
-                              child: IconButton.filledTonal(
-                                tooltip: 'Fullscreen video',
-                                onPressed:
-                                    () => scope.session.setExpanded(true),
-                                icon: const Icon(Icons.fullscreen),
-                              ),
-                            ),
                           if (player.failed)
                             ColoredBox(
                               color: Colors.black,

@@ -10,7 +10,6 @@ import 'package:chessever2/screens/tour_detail/games_tour/providers/games_auto_p
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_priority_matching.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/knockout_tournament_state_provider.dart';
-import 'package:chessever2/screens/tour_detail/provider/tour_detail_screen_provider.dart';
 import 'package:flutter/foundation.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
@@ -516,38 +515,12 @@ class _GamesPinController extends StateNotifier<GamesPinState> {
     await loadPinnedGames();
   }
 
-  List<String> _getRelatedTourIds() {
-    final detail = ref.read(tourDetailScreenProvider).valueOrNull;
-    if (detail == null || detail.tours.isEmpty) {
-      return [tourId];
-    }
-
-    final matchingTour =
-        detail.tours
-            .firstWhere(
-              (tourModel) => tourModel.tour.id == tourId,
-              orElse: () => detail.tours.first,
-            )
-            .tour;
-
-    final groupBroadcastId = matchingTour.groupBroadcastId;
-    if (groupBroadcastId == null || groupBroadcastId.isEmpty) {
-      return [tourId];
-    }
-
-    final relatedIds = <String>[tourId];
-    for (final tourModel in detail.tours) {
-      final relatedTourId = tourModel.tour.id;
-      if (relatedTourId == tourId) {
-        continue;
-      }
-      if (tourModel.tour.groupBroadcastId == groupBroadcastId) {
-        relatedIds.add(relatedTourId);
-      }
-    }
-
-    return relatedIds;
-  }
+  // A shared event group can contain independent Open/Women sections. Only
+  // actual knockout stages share pins; Unpin all must not clear another section.
+  List<String> _getRelatedTourIds() => [
+    tourId,
+    ...ref.read(relatedKnockoutStageIdsProvider(tourId)),
+  ];
 }
 
 bool _haveSamePinState(GamesPinState first, GamesPinState second) {

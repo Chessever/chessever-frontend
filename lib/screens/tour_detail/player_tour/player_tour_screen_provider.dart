@@ -58,13 +58,17 @@ final mergedTournamentGamesProvider = AutoDisposeProvider<List<GamesTourModel>>(
     // so reuse it rather than re-parsing every PGN here.
     List<GamesTourModel> fullTournamentGames() {
       final screen = gamesTourAsync.valueOrNull;
-      if (screen != null && !screen.isFiltered) {
+      final complete = ref.watch(completeGamesTourProvider(aboutTourModel.id));
+      if (!complete.hasValue) return const <GamesTourModel>[];
+      if (screen != null &&
+          !screen.isFiltered &&
+          screen.gamesTourModels.length == complete.value!.length) {
         return screen.gamesTourModels;
       }
       final rawGames =
-          ref.watch(gamesTourProvider(aboutTourModel.id)).valueOrNull;
+          ref.watch(completeGamesTourProvider(aboutTourModel.id)).valueOrNull;
       if (rawGames == null) {
-        return screen?.gamesTourModels ?? const <GamesTourModel>[];
+        return const <GamesTourModel>[];
       }
       final models = <GamesTourModel>[];
       for (final game in rawGames) {
@@ -91,7 +95,7 @@ final mergedTournamentGamesProvider = AutoDisposeProvider<List<GamesTourModel>>(
       if (relatedTours.length > 1) {
         for (final tourModel in relatedTours) {
           final tourGamesAsync = ref.watch(
-            gamesTourProvider(tourModel.tour.id),
+            completeGamesTourProvider(tourModel.tour.id),
           );
           if (tourGamesAsync.hasValue) {
             for (final g in tourGamesAsync.value!) {
@@ -235,10 +239,18 @@ class PlayerTourScreenNotifier
               .toList();
     }
 
-    // Watch only the part of live games that can change standings. Move/clock
-    // ticks should not rebuild this provider, but new games or result changes
-    // should update scores gracefully while the list keeps its scroll offset.
-    final allGames = _watchStandingsGamesForTours(relatedTours);
+    final catalogs = [
+      for (final tour in relatedTours)
+        ref.watch(completeGamesTourFutureProvider(tour.tour.id).future),
+    ];
+    final allGames = <GamesTourModel>[];
+    for (final games in await Future.wait(catalogs)) {
+      for (final game in games) {
+        try {
+          allGames.add(GamesTourModel.fromGameIndex(game));
+        } catch (_) {}
+      }
+    }
 
     final allPlayers = <TournamentPlayer>[];
     for (final tourModel in relatedTours) {
@@ -310,32 +322,6 @@ class PlayerTourScreenNotifier
     _lastBroadcastId = broadcastId;
     _lastTourId = tourId;
     _lastGoodStandings = standings;
-  }
-
-  List<GamesTourModel> _watchStandingsGamesForTours(
-    List<TourModel> relatedTours,
-  ) {
-    final allGames = <GamesTourModel>[];
-
-    for (final tourModel in relatedTours) {
-      final tourId = tourModel.tour.id;
-      // Select rebuilds only when result-affecting fields change. Read the
-      // full list via watch (not read-after-select) so release builds never
-      // hit the "ref after dependency changed" path that debug asserts catch.
-      ref.watch(gamesTourProvider(tourId).select(standingsGamesSignature));
-      final games = ref.watch(gamesTourProvider(tourId)).valueOrNull;
-      if (games == null || games.isEmpty) continue;
-
-      for (final game in games) {
-        try {
-          allGames.add(GamesTourModel.fromGameIndex(game));
-        } catch (_) {
-          // Skip malformed rows to keep standings resilient during live ingest.
-        }
-      }
-    }
-
-    return allGames;
   }
 
   /// Identifies categories like "Boards 1-66", "Boards 67-126", "Boards 252+"

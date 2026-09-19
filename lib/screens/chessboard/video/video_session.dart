@@ -331,12 +331,6 @@ class EventVideoSession extends ChangeNotifier {
     revealFlags();
   }
 
-  void minimizeFlags() {
-    _flagsTimer?.cancel();
-    flagsVisible = false;
-    notifyListeners();
-  }
-
   @override
   void dispose() {
     _disposed = true;

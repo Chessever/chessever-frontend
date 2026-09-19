@@ -373,6 +373,10 @@ class _FakeGamesLocalStorage extends GamesLocalStorage {
   Future<List<Games>> fetchAndSaveGames(
     String tourId, {
     bool forceRefresh = false,
+    String? priorityRoundId,
+    void Function(List<Games>)? onPriorityRound,
+    Future<void> Function()? afterPriorityRound,
+    bool rethrowErrors = false,
   }) async {
     if (failFetch) throw Exception('network down');
     if (_networkByTour.isNotEmpty) return _networkByTour[tourId] ?? const [];

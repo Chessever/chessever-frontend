@@ -1,3 +1,4 @@
+import 'package:chessever2/providers/country_dropdown_provider.dart';
 import 'package:chessever2/e2e/e2e_ids.dart';
 import 'package:chessever2/providers/engine_settings_provider.dart';
 import 'package:chessever2/providers/gamebase_overlay_settings_provider.dart';
@@ -31,7 +32,7 @@ void main() {
     });
     await Supabase.initialize(
       url: 'https://placeholder.supabase.co',
-      anonKey: 'placeholder-anon-key',
+      publishableKey: 'placeholder-anon-key',
     );
     GameAnalysisReportStore.debugSetInstance(GameAnalysisReportStore.memory());
   });
@@ -49,6 +50,7 @@ void main() {
 
     final container = ProviderContainer(
       overrides: [
+          effectiveCountryProvider.overrideWithValue(const AsyncValue.loading()),
         gamesLocalStorage.overrideWith(
           (ref) => _FullCacheGamesLocalStorage(ref, {'tour-1': raws}),
         ),
@@ -209,6 +211,10 @@ class _FullCacheGamesLocalStorage extends GamesLocalStorage {
   Future<List<Games>> fetchAndSaveGames(
     String tourId, {
     bool forceRefresh = false,
+    String? priorityRoundId,
+    void Function(List<Games>)? onPriorityRound,
+    Future<void> Function()? afterPriorityRound,
+    bool rethrowErrors = false,
   }) async => byTour[tourId] ?? const [];
 }
 

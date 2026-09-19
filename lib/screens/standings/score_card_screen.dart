@@ -532,13 +532,19 @@ class _ScoreCardPage extends ConsumerWidget {
       // games across pagination-purposed sub-tours (e.g. EICC "Boards 1-66" +
       // "Boards 67-126") are unified. This must win over shouldFetchFullEventGames:
       // a caller may populate gamesContext with a single sub-tour's game, which
-      // would otherwise cause gamesTourProvider(subTourId) to miss the player's
+      // would otherwise cause completeGamesTourProvider(subTourId) to miss the player's
       // games in sibling sub-tours.
       final mergedGames = ref.watch(mergedTournamentGamesProvider);
 
       // If the merged provider is empty, we still want to check if the
       // underlying data is loading to show the skeleton loader
       final gamesTourAsync = ref.watch(gamesTourScreenProvider);
+      final selectedTourId =
+          ref.watch(tourDetailScreenProvider).valueOrNull?.aboutTourModel.id;
+      if (selectedTourId != null) {
+        isLoadingGames =
+            ref.watch(completeGamesTourProvider(selectedTourId)).isLoading;
+      }
 
       allGames = gamesTourAsync.when(
         data: (_) => mergedGames,
@@ -553,7 +559,7 @@ class _ScoreCardPage extends ConsumerWidget {
       // clear selectedBroadcastModelProvider so we can't rely on the merged
       // tournament provider. Fetch full event games by tourId to include all
       // rounds for the player.
-      final fullGamesAsync = ref.watch(gamesTourProvider(contextEvent));
+      final fullGamesAsync = ref.watch(completeGamesTourProvider(contextEvent));
       allGames = fullGamesAsync.when(
         data: (games) {
           final converted = _toGamesTourModels(games);
@@ -1825,7 +1831,9 @@ class _SliverScoreboardAppBarState
   bool _storedFavorite() {
     final selectedPlayer = widget.player;
     final player =
-        ref.read(backfilledStandingPlayerProvider(selectedPlayer)).valueOrNull ??
+        ref
+            .read(backfilledStandingPlayerProvider(selectedPlayer))
+            .valueOrNull ??
         selectedPlayer;
     return ref
             .read(favoritePlayersProviderNew)

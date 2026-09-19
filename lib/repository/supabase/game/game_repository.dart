@@ -686,9 +686,43 @@ class GameRepository extends BaseRepository {
   /// Live/ambiguous results and missing ratings still need PGN for existing
   /// result, placeholder and standings fallbacks. Card-only position/clock
   /// repairs are hydrated by the mounted card, never guessed from a lean row.
-  Future<List<Games>> getTourGamePreviews(String tourId) async {
+  Future<List<Games>> getTourGamePreviews(
+    String tourId, {
+    String? priorityRoundId,
+    void Function(List<Games>)? onPriorityRound,
+    Future<void> Function()? afterPriorityRound,
+  }) async {
     return handleApiCall(() async {
       final games = <Games>[];
+      String? loadedRoundId;
+      if (priorityRoundId != null) {
+        // The entire round is the sorting unit, never an arbitrary 16 rows.
+        // No PGN is needed to publish this first usable roster.
+        try {
+          var offset = 0;
+          while (true) {
+            final page = await _getTourPreviewPage(
+              tourId,
+              offset,
+              roundId: priorityRoundId,
+            );
+            games.addAll(
+              page.map((game) => game.copyWith(isPgnDeferred: true)),
+            );
+            if (!shouldFetchAnotherTourGamesPage(page.length)) break;
+            offset += page.length;
+          }
+          loadedRoundId = priorityRoundId;
+        } catch (_) {
+          // Metadata can race a round being replaced. Fall back to the complete
+          // index; never publish a truncated round if a later page failed.
+          games.clear();
+        }
+        if (games.isNotEmpty) {
+          onPriorityRound?.call(List<Games>.unmodifiable(games));
+          await afterPriorityRound?.call();
+        }
+      }
       final fullById = <String, Games>{};
       // Four serial lanes bound snapshot concurrency across page boundaries.
       // A slow page must not hold up independent PGNs from an earlier page.
@@ -696,29 +730,36 @@ class GameRepository extends BaseRepository {
       var nextLane = 0;
       Object? snapshotError;
       StackTrace? snapshotStack;
+      void hydrateFallbacks(List<Games> page) {
+        final requiredIds =
+            page.where(tourIndexNeedsPgn).map((g) => g.id).toList();
+        for (final chunk in _chunks(requiredIds, 100)) {
+          final lane = nextLane++ % lanes.length;
+          lanes[lane] = lanes[lane].then((_) async {
+            if (snapshotError != null) return;
+            try {
+              for (final game in await getGamesByIds(chunk)) {
+                fullById[game.id] = game;
+              }
+            } catch (error, stack) {
+              snapshotError ??= error;
+              snapshotStack ??= stack;
+            }
+          });
+        }
+      }
+
       var offset = 0;
       try {
+        hydrateFallbacks(games);
         while (snapshotError == null) {
-          final page = await _getTourPreviewPage(tourId, offset);
+          final page = await _getTourPreviewPage(
+            tourId,
+            offset,
+            excludingRoundId: loadedRoundId,
+          );
           games.addAll(page);
-          final requiredIds =
-              page.where(tourIndexNeedsPgn).map((g) => g.id).toList();
-          for (final chunk in _chunks(requiredIds, 100)) {
-            final lane = nextLane++ % lanes.length;
-            lanes[lane] = lanes[lane].then((_) async {
-              if (snapshotError != null) return;
-              try {
-                for (final game in await getGamesByIds(chunk)) {
-                  fullById[game.id] = game;
-                }
-              } catch (error, stack) {
-                // Observe failures as they happen, including while the next
-                // index page is still downloading. Never publish half a tour.
-                snapshotError ??= error;
-                snapshotStack ??= stack;
-              }
-            });
-          }
+          hydrateFallbacks(page);
           if (!shouldFetchAnotherTourGamesPage(page.length)) break;
           offset += page.length;
         }
@@ -735,11 +776,21 @@ class GameRepository extends BaseRepository {
     });
   }
 
-  Future<List<Games>> _getTourPreviewPage(String tourId, int offset) async {
-    final rows = await supabase
+  Future<List<Games>> _getTourPreviewPage(
+    String tourId,
+    int offset, {
+    String? roundId,
+    String? excludingRoundId,
+  }) async {
+    var query = supabase
         .from('games')
         .select('$_gameListPreviewSelectColumns,search')
-        .eq('tour_id', tourId)
+        .eq('tour_id', tourId);
+    if (roundId != null) query = query.eq('round_id', roundId);
+    if (excludingRoundId != null) {
+      query = query.neq('round_id', excludingRoundId);
+    }
+    final rows = await query
         .order('id', ascending: true)
         .range(offset, offset + _tourGamesFetchPageSize - 1);
     // PostgREST already decoded the JSON. Do not encode every row on the UI

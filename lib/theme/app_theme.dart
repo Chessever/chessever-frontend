@@ -62,6 +62,7 @@ const Color kBoardLightGreen = Colors.white; // #FFFFFF
 const Color kBoardLightGrey = Color(0xFFD9D9D9);
 const Color kBoardLightBrown = Color(0xFFC29D62);
 const Color kBoardLightDefault = Color(0xFFD1E9E9);
+
 /// Broadcast Blue set used by the light-theme board mock. Chrome around the
 /// board always follows [AppColors]; these squares apply only when the user
 /// is on the default board theme and the app is in light mode.
@@ -102,7 +103,10 @@ const LinearGradient kAppLinearGradient = LinearGradient(
 // because luminosity blending preserves the destination's chroma. Tune the two
 // alphas to make the background darker/lighter.
 RadialGradient radialOverlayGradient = RadialGradient(
-  colors: [kBlackColor.withValues(alpha: 0.40), kBlackColor.withValues(alpha: 0.58)],
+  colors: [
+    kBlackColor.withValues(alpha: 0.40),
+    kBlackColor.withValues(alpha: 0.58),
+  ],
 );
 
 // Profile initials gradient
@@ -161,6 +165,13 @@ class AppTheme {
       backgroundColor: kBlack2Color,
       modalBarrierColor: Color(0x99000000),
       surfaceTintColor: Colors.transparent,
+    ),
+    tooltipTheme: TooltipThemeData(
+      decoration: BoxDecoration(
+        color: kBlack3Color,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      textStyle: const TextStyle(color: kWhiteColor, fontSize: 12),
     ),
     extensions: const [_darkAppColors],
     useMaterial3: true,
