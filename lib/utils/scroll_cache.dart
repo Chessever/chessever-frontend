@@ -1,4 +1,3 @@
-import 'package:flutter/rendering.dart';
 import 'package:flutter/widgets.dart';
 
 /// Centralised scroll-cache configuration for the app's list/feed views.
@@ -21,5 +20,7 @@ const ScrollCacheExtent kBoardListScrollCacheExtent =
 /// Pixel cache extent (~1.5 screens) for widgets that only accept a raw double
 /// instead of a [ScrollCacheExtent] — e.g. `ScrollablePositionedList`'s
 /// `minCacheExtent`.
+/// ScrollablePositionedList 0.3.8 applies its own two-viewport minimum, so
+/// this value does not bound tournament data or the mounted window there.
 double listCacheExtentPixels(BuildContext context) =>
     MediaQuery.sizeOf(context).height * 1.5;

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:chessever2/repository/supabase/game/game_stream_repository.dart';
 import 'package:flutter/foundation.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -80,12 +82,28 @@ final gameUpdatesBatchStreamProvider = AutoDisposeStreamProvider.family<
 >((ref, key) {
   final repository = ref.read(gameStreamRepositoryProvider);
   final roundId = key.roundId?.trim();
-  if (roundId != null && roundId.isNotEmpty) {
-    return repository.subscribeToLiveGameUpdatesForRound(roundId);
-  }
   final tourId = key.tourId?.trim();
-  if (tourId != null && tourId.isNotEmpty) {
-    return repository.subscribeToLiveGameUpdatesForTour(tourId);
+  final Stream<Map<String, LiveGameUpdate>> source;
+  if (roundId != null && roundId.isNotEmpty) {
+    source = repository.subscribeToLiveGameUpdatesForRound(roundId);
+  } else if (tourId != null && tourId.isNotEmpty) {
+    source = repository.subscribeToLiveGameUpdatesForTour(tourId);
+  } else {
+    source = repository.subscribeToLiveGameUpdatesBatch(key.gameIds);
   }
-  return repository.subscribeToLiveGameUpdatesBatch(key.gameIds);
+
+  // Riverpod 2 can keep a disposed StreamProvider subscribed until its first
+  // event resolves `.future`. Own the upstream subscription explicitly so a
+  // slow initial snapshot cannot leave off-screen Realtime channels running.
+  final controller = StreamController<Map<String, LiveGameUpdate>>();
+  final subscription = source.listen(
+    controller.add,
+    onError: controller.addError,
+    onDone: controller.close,
+  );
+  ref.onDispose(() {
+    unawaited(subscription.cancel());
+    unawaited(controller.close());
+  });
+  return controller.stream;
 });

@@ -10,6 +10,14 @@ import 'package:flutter/foundation.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 final shouldStreamProvider = StateProvider((ref) => true);
+// The board switcher can enable card streams while this route is covered.
+// Its switch must never restart the tournament-wide safety-net poll.
+final tournamentDetailVisibleProvider = StateProvider((ref) => false);
+final tournamentDataActiveProvider = Provider<bool>(
+  (ref) =>
+      ref.watch(tournamentDetailVisibleProvider) &&
+      ref.watch(shouldStreamProvider),
+);
 final liveGameCardsPauseReasonsProvider = StateProvider<Set<String>>(
   (ref) => const <String>{},
 );
@@ -87,7 +95,7 @@ class GamesTourNotifier extends StateNotifier<AsyncValue<List<Games>>> {
     _loadInitialGames();
 
     // Listen to shouldStreamProvider changes
-    _shouldStreamListener = ref.listen<bool>(shouldStreamProvider, (
+    _shouldStreamListener = ref.listen<bool>(tournamentDataActiveProvider, (
       previous,
       next,
     ) {
@@ -100,7 +108,8 @@ class GamesTourNotifier extends StateNotifier<AsyncValue<List<Games>>> {
     _selectedModeListener = ref.listen<TournamentDetailScreenMode>(
       selectedTourModeProvider,
       (_, next) {
-        if (_usesLiveEventData(next) && ref.read(shouldStreamProvider)) {
+        if (_usesLiveEventData(next) &&
+            ref.read(tournamentDataActiveProvider)) {
           _startPeriodicRefresh();
         } else {
           _stopPeriodicRefresh();
@@ -211,7 +220,7 @@ class GamesTourNotifier extends StateNotifier<AsyncValue<List<Games>>> {
       _usesLiveEventData(ref.read(selectedTourModeProvider));
 
   bool get _shouldRunSafetyNet =>
-      ref.read(shouldStreamProvider) && _isEventDataTabVisible;
+      ref.read(tournamentDataActiveProvider) && _isEventDataTabVisible;
 
   int get _stableTourJitterSeconds {
     var hash = 0;

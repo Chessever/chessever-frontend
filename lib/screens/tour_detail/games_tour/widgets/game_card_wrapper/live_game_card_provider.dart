@@ -6,9 +6,10 @@ import 'package:chessever2/screens/gamebase/providers/gamebase_providers.dart';
 import 'package:chessever2/screens/library/utils/gamebase_pgn_builder.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_provider.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/providers/tour_game_snapshot_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/utils/live_game_position_resolver.dart';
 import 'package:chessever2/utils/time_control_bonus.dart';
-import 'package:flutter/foundation.dart';
+import 'package:flutter/widgets.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 /// Stores the base game model for each game, keyed by gameId.
@@ -494,6 +495,8 @@ GamesTourModel watchLiveGame(
   LiveGamesBatchKey? batchKey,
   bool streamEnabled = true,
 }) {
+  if (!TickerMode.valuesOf(ref.context).enabled) return game;
+  game = watchHydratedTourCard(ref, game);
   final current = ref.read(baseGameProvider(game.gameId));
   if (_shouldUseIncomingGame(current, game, allowEqualFreshnessUpdate: false)) {
     Future.microtask(() {
@@ -519,6 +522,8 @@ GamesTourModel watchLiveGamePosition(
   LiveGamesBatchKey? batchKey,
   bool streamEnabled = true,
 }) {
+  if (!TickerMode.valuesOf(ref.context).enabled) return game;
+  game = watchHydratedTourCard(ref, game);
   final positionedGame = watchHydratedGamebaseCard(ref, game);
   _ensureBaseGame(ref, positionedGame);
   final params = _liveWatchParamsForGame(
@@ -540,6 +545,7 @@ GamesTourModel watchLiveGameClock(
   LiveGamesBatchKey? batchKey,
   bool streamEnabled = true,
 }) {
+  if (!TickerMode.valuesOf(ref.context).enabled) return game;
   _ensureBaseGame(ref, game);
   final params = _liveWatchParamsForGame(
     game: game,
@@ -547,6 +553,26 @@ GamesTourModel watchLiveGameClock(
     streamEnabled: streamEnabled,
   );
   return ref.watch(liveGameClockProvider(params)) ?? game;
+}
+
+/// Unlike a prefetch-only listener, this watch repaints the card with the
+/// authoritative PGN-derived position, clocks and opening when it arrives.
+GamesTourModel watchHydratedTourCard(WidgetRef ref, GamesTourModel game) {
+  if (!game.isPgnDeferred) return game;
+  final snapshot = ref.watch(tourGameSnapshotProvider(game.gameId)).valueOrNull;
+  if (snapshot == null ||
+      snapshot.players == null ||
+      snapshot.players!.length < 2) {
+    return game;
+  }
+  try {
+    return selectFreshestNavigationGame(
+      current: game,
+      incoming: GamesTourModel.fromGame(snapshot),
+    );
+  } on ArgumentError {
+    return game;
+  }
 }
 
 LiveGameWatchParams _liveWatchParamsForGame({

@@ -191,6 +191,20 @@ void main() {
       tester.widget<Icon>(find.byIcon(Icons.videocam_off_outlined)).color,
       kPrimaryColor,
     );
+    // High-contrast bubble: light fill with dark text reads over the dark
+    // bar and the board alike.
+    final bubbleDecoration =
+        tester
+                .widget<Container>(
+                  find.byKey(const ValueKey('live_stream_toggle_coachmark')),
+                )
+                .decoration!
+            as BoxDecoration;
+    expect(bubbleDecoration.color, kWhiteColor);
+    final bubbleLabel = tester.widget<Text>(
+      find.text('Turn off the stream by clicking camera icon.'),
+    );
+    expect(bubbleLabel.style?.color, kBackgroundColor);
     expect(store.seen, isTrue);
 
     // Tapping the camera toggles and clears the bubble.

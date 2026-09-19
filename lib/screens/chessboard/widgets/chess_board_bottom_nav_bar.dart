@@ -4,6 +4,8 @@ import 'package:chessever2/providers/engine_settings_provider.dart';
 import 'package:chessever2/screens/chessboard/utils/live_stream_coachmark.dart';
 import 'package:chessever2/screens/chessboard/widgets/chess_board_bottom_navbar.dart';
 import 'package:chessever2/theme/app_colors.dart';
+import 'package:chessever2/theme/app_theme.dart';
+import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/svg_asset.dart';
 import 'package:flutter/material.dart';
@@ -261,6 +263,22 @@ class _ChessBoardBottomNavBarState
               // The bar sits at the screen edge, so the bubble must open up.
               preferBelow: false,
               showDuration: const Duration(seconds: 4),
+              // Match the high-contrast coachmark over the dark board bar.
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+              decoration: BoxDecoration(
+                color: kWhiteColor,
+                borderRadius: BorderRadius.circular(12),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.35),
+                    blurRadius: 12,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
+              ),
+              textStyle: AppTypography.textSmSemiBold.copyWith(
+                color: kBackgroundColor,
+              ),
               child: IconButton(
                 key: const ValueKey('board_video_toggle'),
                 onPressed: () {
@@ -394,7 +412,7 @@ class _LiveStreamCoachmark extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final highlight = context.colors.brand;
+    const fill = kWhiteColor;
     final screenWidth = MediaQuery.sizeOf(context).width;
     final screenHeight = MediaQuery.sizeOf(context).height;
     final popupWidth = math.min(screenWidth - 32, 380.0);
@@ -426,22 +444,24 @@ class _LiveStreamCoachmark extends StatelessWidget {
                     key: const ValueKey('live_stream_toggle_coachmark'),
                     padding: const EdgeInsets.fromLTRB(18, 12, 8, 12),
                     decoration: BoxDecoration(
-                      color: highlight,
+                      color: fill,
                       borderRadius: BorderRadius.circular(14),
-                      border: Border.all(
-                        color: Colors.white.withValues(alpha: 0.08),
-                      ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.35),
+                          blurRadius: 12,
+                          offset: const Offset(0, 4),
+                        ),
+                      ],
                     ),
                     child: Row(
                       children: [
-                        const Expanded(
+                        Expanded(
                           child: Text(
                             'Turn off the stream by clicking camera icon.',
                             textAlign: TextAlign.left,
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontSize: 16,
-                              fontWeight: FontWeight.w600,
+                            style: AppTypography.textSmSemiBold.copyWith(
+                              color: kBackgroundColor,
                             ),
                           ),
                         ),
@@ -459,7 +479,7 @@ class _LiveStreamCoachmark extends StatelessWidget {
                           icon: const Icon(
                             Icons.close,
                             size: 19,
-                            color: Colors.white,
+                            color: kBackgroundColor,
                           ),
                         ),
                       ],
@@ -476,7 +496,7 @@ class _LiveStreamCoachmark extends StatelessWidget {
                               'live_stream_toggle_coachmark_arrow',
                             ),
                             size: const Size(16, 8),
-                            painter: _DownArrowPainter(highlight),
+                            painter: const _DownArrowPainter(fill),
                           ),
                         ),
                       ],

@@ -64,6 +64,10 @@ class AtomicCountdownText extends ConsumerWidget {
 
     final staticLabel = _staticLabel(useClockSeconds, useCalculatedTime);
 
+    // Navigator keeps covered routes mounted. Timer-backed Riverpod streams
+    // do not pause with tickers automatically; release our listeners as well.
+    if (!TickerMode.valuesOf(context).enabled) return Text(staticLabel, style: style);
+
     // Board player rows own the whole running/stopped cycle so the tenths can
     // animate *out* when the turn passes, instead of being cut off by a widget
     // swap. Everything below this branch is the untouched shared behaviour.

@@ -52,7 +52,7 @@ class GamesListView extends ConsumerWidget {
     // Expansion states for rounds and matches
     // In search mode, override expansion to show everything
     final scopeId = ref.watch(gamesTourScrollScopeProvider);
-    final shouldStream = ref.watch(shouldStreamProvider);
+    final shouldStream = ref.watch(tournamentDataActiveProvider);
     final streamEnabled = shouldStream;
     final allowStockfishFallback = streamEnabled;
     final orderedGamesList = layout.orderedGames;

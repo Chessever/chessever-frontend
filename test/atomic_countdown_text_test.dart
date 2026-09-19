@@ -40,6 +40,51 @@ Future<void> _pumpRunningClock(
 }
 
 void main() {
+  testWidgets(
+    'covered routes release clock subscriptions and resume on reveal',
+    (tester) async {
+      var activeListeners = 0;
+      final enabled = ValueNotifier(true);
+      addTearDown(enabled.dispose);
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            dateTimeProvider.overrideWith((ref) {
+              ref.onCancel(() => activeListeners--);
+              ref.onResume(() => activeListeners++);
+              activeListeners++;
+              return Stream.value(_now);
+            }),
+          ],
+          child: MaterialApp(
+            home: ValueListenableBuilder<bool>(
+              valueListenable: enabled,
+              builder:
+                  (context, enabled, _) => TickerMode(
+                    enabled: enabled,
+                    child: AtomicCountdownText(
+                      clockSeconds: 120,
+                      clockCentiseconds: 0,
+                      lastMoveTime: _now,
+                      isActive: true,
+                      style: const TextStyle(),
+                    ),
+                  ),
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+      expect(activeListeners, 1);
+      enabled.value = false;
+      await tester.pump();
+      expect(activeListeners, 0);
+      enabled.value = true;
+      await tester.pump();
+      expect(activeListeners, 1);
+    },
+  );
+
   testWidgets('renders unknown live clock as placeholder, not zero', (
     tester,
   ) async {

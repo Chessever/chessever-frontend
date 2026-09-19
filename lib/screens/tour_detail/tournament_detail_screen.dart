@@ -97,50 +97,41 @@ class _TournamentDetailViewState extends ConsumerState<TournamentDetailScreen>
     });
   }
 
+  void _setRouteActive(bool active) {
+    final visibility = ref.read(tournamentDetailVisibleProvider.notifier);
+    final streaming = ref.read(shouldStreamProvider.notifier);
+    Future.microtask(() {
+      if (active && !mounted) return;
+      visibility.state = active;
+      streaming.state = active;
+    });
+  }
+
   @override
   void didPush() {
     markGamesTourScrollScopeActive(_scrollScopeId);
-    Future.microtask(() {
-      debugPrint('🔥 TournamentDetail: didPush - enabling streaming');
-      ref.read(shouldStreamProvider.notifier).state = true;
-    });
+    _setRouteActive(true);
     super.didPush();
   }
 
   @override
   void didPop() {
     clearGamesTourScrollScopeActive(_scrollScopeId);
-    Future.microtask(() {
-      debugPrint('🔥 TournamentDetail: didPop - disabling streaming');
-      ref.read(shouldStreamProvider.notifier).state = false;
-    });
+    _setRouteActive(false);
     super.didPop();
   }
 
   @override
   void didPopNext() {
     markGamesTourScrollScopeActive(_scrollScopeId);
-    Future.microtask(() {
-      debugPrint('🔥 TournamentDetail: didPopNext - enabling streaming');
-      ref.read(shouldStreamProvider.notifier).state = true;
-      ref.invalidate(gameUpdatesStreamProvider);
-      ref.invalidate(liveGameUpdateStreamProvider);
-      ref.invalidate(gameUpdatesBatchStreamProvider);
-    });
+    _setRouteActive(true);
     super.didPopNext();
   }
 
   @override
   void didPushNext() {
     clearGamesTourScrollScopeActive(_scrollScopeId);
-    Future.microtask(() {
-      debugPrint(
-        '🔥 TournamentDetail: didPushNext - disabling streaming while off-screen',
-      );
-      // Disable streaming when navigating to sub-screens (e.g., chessboard)
-      // to prevent unnecessary periodic fetches and logs.
-      ref.read(shouldStreamProvider.notifier).state = false;
-    });
+    _setRouteActive(false);
     super.didPushNext();
   }
 
@@ -269,6 +260,7 @@ class _TournamentDetailViewState extends ConsumerState<TournamentDetailScreen>
 
   @override
   void dispose() {
+    routeObserver.unsubscribe(this);
     WidgetsBinding.instance.removeObserver(this);
     clearGamesTourScrollScopeActive(_scrollScopeId);
     ForegroundTaskScheduler.cancel('tournament_detail_resume_$hashCode');

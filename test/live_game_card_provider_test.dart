@@ -137,6 +137,44 @@ LiveGamesBatchKey _batchKey([List<String> gameIds = const ['game-1']]) {
 
 void main() {
   group('liveGameCardProvider', () {
+    testWidgets('covered cards release live batches while the switcher stays enabled', (tester) async {
+      final updates = StreamController<Map<String, dynamic>?>.broadcast();
+      final repository = _FakeGameStreamRepository(updates.stream);
+      final container = ProviderContainer(overrides: [
+        gameStreamRepositoryProvider.overrideWithValue(repository),
+      ]);
+      final visible = ValueNotifier(true);
+      var latest = _game(id: 'game-1', status: GameStatus.ongoing);
+      await tester.pumpWidget(UncontrolledProviderScope(
+        container: container,
+        child: ValueListenableBuilder<bool>(
+          valueListenable: visible,
+          builder: (_, enabled, child) => TickerMode(enabled: enabled, child: child!),
+          child: _LiveGameProbe(game: latest, onBuild: (game) => latest = game),
+        ),
+      ));
+      await tester.pump();
+      expect(updates.hasListener, isTrue);
+      visible.value = false;
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 1));
+      await tester.pump(const Duration(milliseconds: 1));
+      expect(container.read(shouldStreamProvider), isTrue);
+      expect(updates.hasListener, isFalse);
+      visible.value = true;
+      await tester.pump();
+      await tester.pump();
+      updates.add({'status': '1-0', 'pgn': '1. e4 1-0'});
+      await tester.pump();
+      await tester.pump();
+      expect(latest.gameStatus, GameStatus.whiteWins);
+      await tester.pumpWidget(const SizedBox.shrink());
+      container.dispose();
+      await tester.pump(const Duration(milliseconds: 1));
+      await updates.close();
+      visible.dispose();
+    });
+
     const afterE4 =
         'rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1';
     const afterE4E5 =

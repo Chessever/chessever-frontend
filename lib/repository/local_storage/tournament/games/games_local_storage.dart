@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -126,10 +127,13 @@ class GamesLocalStorage {
   }
 
   void _rememberRecentTourFetch(String tourId, List<Games> games) {
-    _recentTourFetches[tourId] = _RecentTourFetch(
-      games: games,
-      fetchedAt: DateTime.now(),
-    );
+    final recent = _RecentTourFetch(games: games, fetchedAt: DateTime.now());
+    _recentTourFetches[tourId] = recent;
+    Timer(_recentTourFetchReuseWindow, () {
+      if (identical(_recentTourFetches[tourId], recent)) {
+        _recentTourFetches.remove(tourId);
+      }
+    });
 
     while (_recentTourFetches.length > _maxRecentTourFetches) {
       _recentTourFetches.remove(_recentTourFetches.keys.first);
@@ -183,7 +187,7 @@ class GamesLocalStorage {
 
       final games = await ref
           .read(gameRepositoryProvider)
-          .getGamesByTourId(tourId);
+          .getTourGamePreviews(tourId);
 
       _rememberRecentTourFetch(tourId, games);
 
@@ -214,7 +218,7 @@ class GamesLocalStorage {
         return cachedGames.games;
       }
       return await fetchAndSaveGames(tourId);
-    } catch (error, _) {
+    } catch (error) {
       // Cache corrupt / CursorWindow overflow / decode failure —
       // fall through to fresh network fetch. The next save will write
       // a proper compressed entry, self-healing the cache.
@@ -230,7 +234,7 @@ class GamesLocalStorage {
   Future<List<Games>> getCachedGames(String tourId) async {
     try {
       return (await _readCachedGames(tourId)).games;
-    } catch (error, _) {
+    } catch (error) {
       return <Games>[];
     }
   }
@@ -241,7 +245,7 @@ class GamesLocalStorage {
           .read(gameRepositoryProvider)
           .getGamesByCountryCode(countryCode);
       return games;
-    } catch (error, _) {
+    } catch (error) {
       return <Games>[];
     }
   }
@@ -271,7 +275,7 @@ class GamesLocalStorage {
       });
 
       return initialParsed;
-    } catch (error, _) {
+    } catch (error) {
       return <Games>[];
     }
   }
@@ -279,7 +283,7 @@ class GamesLocalStorage {
   Future<List<Games>> refresh(String tourId) async {
     try {
       return await fetchAndSaveGames(tourId, forceRefresh: true);
-    } catch (error, _) {
+    } catch (error) {
       return <Games>[];
     }
   }
@@ -296,7 +300,7 @@ class GamesLocalStorage {
       }
 
       return await compute(_searchGamesWorker, _SearchArguments(games, query));
-    } catch (e, _) {
+    } catch (e) {
       return <Games>[];
     }
   }
