@@ -406,7 +406,7 @@ class EventVideoFlags extends StatelessWidget {
     final session = EventVideoScope.maybeOf(context)!.session;
     return SizedBox(
       key: const ValueKey('event_video_flags'),
-      height: 56,
+      height: EventVideoFlagSlot.heightFor(context),
       child: NotificationListener<ScrollNotification>(
         onNotification: (n) {
           if (n is ScrollStartNotification) session.setScrolling(true);
@@ -469,7 +469,7 @@ class EventVideoFlags extends StatelessWidget {
                           label,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(fontSize: 10),
+                          style: const TextStyle(fontSize: 10, height: 1.5),
                         ),
                       ],
                     ),
@@ -485,13 +485,107 @@ class EventVideoFlags extends StatelessWidget {
 }
 
 class EventVideoFlagSlot extends StatelessWidget {
-  const EventVideoFlagSlot({super.key});
+  const EventVideoFlagSlot({super.key, this.active = true});
+
+  final bool active;
+  // Hold the same height in both states, allowing room for large system text.
+  static double heightFor(BuildContext context) =>
+      math.max(56, 32 + MediaQuery.textScalerOf(context).scale(10) * 1.5);
+
   @override
   Widget build(BuildContext context) {
+    // Adjacent pages reserve the same space without subscribing to the picker.
+    final height = heightFor(context);
+    if (!active) return SizedBox(height: height);
     final session = EventVideoScope.maybeOf(context)?.session;
-    return session?.showVideo == true && session!.flagsVisible
-        ? const EventVideoFlags()
-        : const SizedBox.shrink();
+    if (session == null || !session.showVideo) return const SizedBox.shrink();
+    final stream = session.selected!;
+    final duration =
+        MediaQuery.disableAnimationsOf(context)
+            ? Duration.zero
+            : const Duration(milliseconds: 220);
+    final toggleLabel =
+        session.flagsVisible
+            ? 'Minimize stream selector'
+            : 'Show stream selector';
+    return Material(
+      color: Theme.of(context).colorScheme.surface,
+      child: SizedBox(
+        key: const ValueKey('event_video_selector'),
+        height: height,
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Expanded(
+              // Both children stay mounted, preserving the horizontal scroll
+              // position. Only this toolbar fades; the native player is never
+              // wrapped in an animation or moved by the three-second timer.
+              child: AnimatedCrossFade(
+                duration: duration,
+                firstCurve: Curves.easeInOut,
+                secondCurve: Curves.easeInOut,
+                crossFadeState:
+                    session.flagsVisible
+                        ? CrossFadeState.showSecond
+                        : CrossFadeState.showFirst,
+                firstChild: SizedBox(
+                  height: height,
+                  child: InkWell(
+                    onTap: session.revealFlags,
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 12),
+                      child: Row(
+                        children: [
+                          if (stream.flagCode != null)
+                            CountryFlag.fromCountryCode(
+                              stream.flagCode!,
+                              theme: const ImageTheme(width: 28, height: 20),
+                            )
+                          else
+                            const Icon(Icons.language, size: 20),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Text(
+                              '${stream.displayName} · ${stream.source.providerName}',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: Theme.of(context).textTheme.bodyMedium,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+                secondChild: const EventVideoFlags(),
+              ),
+            ),
+            IconButton(
+              tooltip: toggleLabel,
+              constraints: const BoxConstraints.tightFor(width: 44, height: 44),
+              onPressed:
+                  session.flagsVisible
+                      ? session.minimizeFlags
+                      : session.revealFlags,
+              icon: AnimatedRotation(
+                turns: session.flagsVisible ? .5 : 0,
+                duration: duration,
+                curve: Curves.easeInOut,
+                child: const Icon(Icons.expand_more, size: 20),
+              ),
+            ),
+            IconButton(
+              key: const ValueKey('video_close_stream'),
+              tooltip: 'Turn off the stream',
+              constraints: const BoxConstraints.tightFor(width: 44, height: 44),
+              onPressed: session.toggle,
+              icon: const Icon(Icons.close, size: 18),
+            ),
+            const SizedBox(width: 4),
+          ],
+        ),
+      ),
+    );
   }
 }
 
@@ -683,7 +777,10 @@ class _ExpandedEventVideo extends StatelessWidget {
                             key: const ValueKey('video_close_expanded'),
                             tooltip: 'Return to game',
                             onPressed: () => session.setExpanded(false),
-                            icon: const Icon(Icons.close, color: Colors.white),
+                            icon: const Icon(
+                              Icons.arrow_back,
+                              color: Colors.white,
+                            ),
                           ),
                           Expanded(
                             child: Text(
@@ -737,7 +834,7 @@ class EventVideoGameLayout extends StatelessWidget {
       Widget lower() => Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          if (active) const EventVideoFlagSlot(),
+          EventVideoFlagSlot(active: active),
           EventVideoSurface(active: active),
           engine,
           // The notation/explorer panel keeps a bounded, independently
