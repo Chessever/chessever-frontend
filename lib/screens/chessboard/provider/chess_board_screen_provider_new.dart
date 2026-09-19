@@ -17,6 +17,7 @@ import 'package:chessever2/screens/chessboard/provider/board_eval_restart_policy
 import 'package:chessever2/screens/chessboard/provider/analysis_view_session.dart';
 import 'package:chessever2/screens/chessboard/provider/current_eval_provider.dart';
 import 'package:chessever2/screens/chessboard/provider/game_pgn_stream_provider.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/providers/tour_game_snapshot_provider.dart';
 import 'package:chessever2/screens/chessboard/provider/stockfish_singleton.dart';
 import 'package:chessever2/screens/chessboard/view_model/chess_board_state_new.dart';
 import 'package:chessever2/screens/chessboard/notation/notation_tree.dart';
@@ -1237,6 +1238,14 @@ class ChessBoardScreenNotifierNew
 
     try {
       String? pgn = pgnOverride ?? game.pgn;
+      // Reuse a mounted neighbouring card's snapshot without starting a new
+      // prefetch. The normal per-board fetch below still handles cache misses.
+      if (pgn == null || pgn.isEmpty) {
+        final snapshot = tourGameSnapshotProvider(game.gameId);
+        if (ref.exists(snapshot)) {
+          pgn = ref.read(snapshot).valueOrNull?.pgn;
+        }
+      }
 
       Future<String?> fetchRemotePgn({required bool requireMoves}) async {
         final expected = requireMoves ? 'moves' : 'PGN';

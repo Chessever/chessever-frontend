@@ -13,6 +13,7 @@ class Games {
   final int? thinkTime;
   final String? status;
   final String? pgn;
+  final bool isPgnDeferred;
   final List<String>? search;
   final String? lichessId;
   final int? boardNr;
@@ -50,6 +51,7 @@ class Games {
     this.thinkTime,
     this.status,
     this.pgn,
+    this.isPgnDeferred = false,
     this.search,
     this.lichessId,
     this.boardNr,
@@ -84,6 +86,7 @@ class Games {
     int? thinkTime,
     String? status,
     String? pgn,
+    bool? isPgnDeferred,
     List<String>? search,
     String? lichessId,
     int? boardNr,
@@ -117,6 +120,7 @@ class Games {
       thinkTime: thinkTime ?? this.thinkTime,
       status: status ?? this.status,
       pgn: pgn ?? this.pgn,
+      isPgnDeferred: isPgnDeferred ?? this.isPgnDeferred,
       search: search ?? this.search,
       lichessId: lichessId ?? this.lichessId,
       boardNr: boardNr ?? this.boardNr,
@@ -209,6 +213,7 @@ class Games {
                 : null,
         status: json['status'] as String?,
         pgn: json['pgn'] as String?,
+        isPgnDeferred: json['is_pgn_deferred'] == true,
         search:
             json['search'] != null
                 ? (json['search'] as List).map((e) => e as String).toList()
@@ -267,6 +272,7 @@ class Games {
       if (thinkTime != null) 'think_time': thinkTime,
       if (status != null) 'status': status,
       if (pgn != null) 'pgn': pgn,
+      if (isPgnDeferred) 'is_pgn_deferred': true,
       if (search != null) 'search': search!.map((s) => s).toList(),
       if (lichessId != null) 'lichess_id': lichessId,
       if (boardNr != null) 'board_nr': boardNr,

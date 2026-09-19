@@ -81,6 +81,7 @@ class GamesTourModel {
   final GameStatus gameStatus;
   final String? fen;
   final String? pgn;
+  final bool isPgnDeferred;
   final String? lastMove;
   final int? boardNr;
   final String roundId;
@@ -127,6 +128,7 @@ class GamesTourModel {
     this.lastMove,
     this.fen,
     this.pgn,
+    this.isPgnDeferred = false,
     this.boardNr,
     this.lastMoveTime,
     this.dateStart,
@@ -172,6 +174,7 @@ class GamesTourModel {
     String? lastMove,
     String? fen,
     String? pgn,
+    bool? isPgnDeferred,
     int? boardNr,
     String? roundId,
     String? roundSlug,
@@ -205,6 +208,7 @@ class GamesTourModel {
       lastMove: lastMove ?? this.lastMove,
       fen: fen ?? this.fen,
       pgn: pgn ?? this.pgn,
+      isPgnDeferred: isPgnDeferred ?? this.isPgnDeferred,
       boardNr: boardNr ?? this.boardNr,
       roundId: roundId ?? this.roundId,
       roundSlug: roundSlug ?? this.roundSlug,
@@ -367,6 +371,7 @@ class GamesTourModel {
         tourSlug: game.tourSlug, // Include tourSlug for display
         fen: freshestFen,
         pgn: game.pgn?.isNotEmpty == true ? game.pgn : null,
+        isPgnDeferred: game.isPgnDeferred,
         lastMove: game.lastMove?.isNotEmpty == true ? game.lastMove : null,
         boardNr: game.boardNr,
         // Prefer lastMoveTime, then gameDay (round start), then dateStart.
@@ -642,6 +647,7 @@ class GamesTourModel {
         other.lastMove == lastMove &&
         other.fen == fen &&
         other.pgn == pgn &&
+        other.isPgnDeferred == isPgnDeferred &&
         other.boardNr == boardNr &&
         other.roundId == roundId &&
         other.roundSlug == roundSlug &&
@@ -675,6 +681,7 @@ class GamesTourModel {
       lastMove,
       fen,
       pgn,
+      isPgnDeferred,
       boardNr,
       roundId,
       roundSlug,

@@ -669,9 +669,58 @@ class GameRepository extends BaseRepository {
     });
   }
 
-  // Fetch games by tour ID
+  // Full records remain available to callers that need an export/snapshot.
   Future<List<Games>> getGamesByTourId(
     String tourId, {
+    int? limit,
+    int offset = 0,
+  }) => _getTourGames(
+    tourId,
+    columns: _gameListSelectColumns,
+    limit: limit,
+    offset: offset,
+  );
+
+  /// Complete membership for search, standings and navigation, without keeping
+  /// every completed game's move history in the tournament's provider tree.
+  /// Live/ambiguous results and missing ratings still need PGN for existing
+  /// result, placeholder and standings fallbacks. Card-only position/clock
+  /// repairs are hydrated by the mounted card, never guessed from a lean row.
+  Future<List<Games>> getTourGamePreviews(String tourId) async {
+    final games = await _getTourGames(
+      tourId,
+      columns: '$_gameListPreviewSelectColumns,search',
+    );
+    final requiredIds =
+        games.where(tourIndexNeedsPgn).map((g) => g.id).toList();
+    final fullById = <String, Games>{};
+    for (final chunk in _chunks(requiredIds, 100)) {
+      for (final game in await getGamesByIds(chunk)) {
+        fullById[game.id] = game;
+      }
+    }
+    return [
+      for (final game in games)
+        fullById[game.id] ?? game.copyWith(isPgnDeferred: true),
+    ];
+  }
+
+  /// Full snapshots for a bounded set of mounted cards. Callers batch ids so
+  /// large team-event viewports do not issue one request per board.
+  Future<List<Games>> getGamesByIds(List<String> ids) async {
+    if (ids.isEmpty) return const [];
+    return handleApiCall(() async {
+      final rows = await supabase
+          .from('games')
+          .select(_gameListSelectColumns)
+          .inFilter('id', ids);
+      return (rows as List).map((row) => Games.fromJson(row)).toList();
+    });
+  }
+
+  Future<List<Games>> _getTourGames(
+    String tourId, {
+    required String columns,
     int? limit,
     int offset = 0,
   }) async {
@@ -691,7 +740,7 @@ class GameRepository extends BaseRepository {
 
         final response = await supabase
             .from('games')
-            .select(_gameListSelectColumns)
+            .select(columns)
             .eq('tour_id', tourId)
             .order('id', ascending: true)
             .range(pageOffset, pageOffset + pageSize - 1);
@@ -2973,4 +3022,17 @@ Iterable<List<T>> _chunks<T>(List<T> items, int size) sync* {
     final end = start + size < items.length ? start + size : items.length;
     yield items.sublist(start, end);
   }
+}
+
+/// Only these rows need move text before any card is mounted. All other
+/// completed rows get their full position/clock history on demand.
+@visibleForTesting
+bool tourIndexNeedsPgn(Games game) {
+  if (!const {'1-0', '0-1', '1/2-1/2'}.contains(game.status?.trim())) {
+    return true;
+  }
+  final players = game.players;
+  return players == null ||
+      players.length < 2 ||
+      players.take(2).any((player) => player.rating <= 0);
 }
