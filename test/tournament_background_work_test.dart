@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:chessever2/repository/local_storage/tournament/games/games_local_storage.dart';
 import 'package:chessever2/repository/supabase/game/game_repository.dart';
 import 'package:chessever2/repository/supabase/game/games.dart';
@@ -12,20 +14,29 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 class _Storage extends GamesLocalStorage {
   _Storage(super.ref);
+  Future<List<Games>>? cached;
+  Future<List<Games>>? fresh;
+
+  @override
+  Future<List<Games>> getCachedGames(String tourId) async =>
+      cached == null ? <Games>[] : await cached!;
   @override
   Future<List<Games>> fetchAndSaveGames(
     String tourId, {
     bool forceRefresh = false,
-  }) async => [
-    Games(
-      id: 'g',
-      roundId: 'r',
-      roundSlug: 'r',
-      tourId: tourId,
-      tourSlug: tourId,
-      status: '*',
-    ),
-  ];
+  }) async =>
+      fresh == null
+          ? [
+            Games(
+              id: 'g',
+              roundId: 'r',
+              roundSlug: 'r',
+              tourId: tourId,
+              tourSlug: tourId,
+              status: '*',
+            ),
+          ]
+          : await fresh!;
 }
 
 class _Repository extends GameRepository {
@@ -54,6 +65,77 @@ void main() {
       url: 'https://placeholder.supabase.co',
       publishableKey: 'placeholder',
     );
+  });
+
+  Games game(String id) => Games(
+    id: id,
+    roundId: 'r',
+    roundSlug: 'r',
+    tourId: 'tour',
+    tourSlug: 'tour',
+    status: '*',
+  );
+
+  testWidgets('saved roster paints before a slow fresh load', (tester) async {
+    final fresh = Completer<List<Games>>();
+    final container = ProviderContainer(
+      overrides: [
+        gamesLocalStorage.overrideWith(
+          (ref) =>
+              _Storage(ref)
+                ..cached = Future.value([game('cached')])
+                ..fresh = fresh.future,
+        ),
+      ],
+    );
+    final subscription = container.listen(
+      gamesTourProvider('tour'),
+      (_, __) {},
+    );
+    await tester.pump();
+    expect(
+      container.read(gamesTourProvider('tour')).valueOrNull?.single.id,
+      'cached',
+    );
+    fresh.complete([game('fresh')]);
+    await tester.pump();
+    expect(
+      container.read(gamesTourProvider('tour')).valueOrNull?.single.id,
+      'fresh',
+    );
+    subscription.close();
+    container.dispose();
+    await tester.pump(const Duration(milliseconds: 1));
+  });
+
+  testWidgets('late disk cache cannot overwrite the fresh roster', (
+    tester,
+  ) async {
+    final cached = Completer<List<Games>>();
+    final container = ProviderContainer(
+      overrides: [
+        gamesLocalStorage.overrideWith(
+          (ref) =>
+              _Storage(ref)
+                ..cached = cached.future
+                ..fresh = Future.value([game('fresh')]),
+        ),
+      ],
+    );
+    final subscription = container.listen(
+      gamesTourProvider('tour'),
+      (_, __) {},
+    );
+    await tester.pump();
+    cached.complete([game('stale')]);
+    await tester.pump();
+    expect(
+      container.read(gamesTourProvider('tour')).valueOrNull?.single.id,
+      'fresh',
+    );
+    subscription.close();
+    container.dispose();
+    await tester.pump(const Duration(milliseconds: 1));
   });
 
   testWidgets('board switcher cannot restart covered tournament polling', (

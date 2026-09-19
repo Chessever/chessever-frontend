@@ -201,6 +201,30 @@ void main() {
     expect(parsed.timeControl, 'standard');
   });
 
+  test(
+    'list index preserves clock corrections and PGN before board resolution',
+    () {
+      for (final plies in [78, 79, 80, 82]) {
+        final raw = game(
+          tc: '90 min / 40 moves + 30 min + 30 sec / move',
+          pgn: buildPgn(plies),
+          lastClockWhite: 3000,
+          lastClockBlack: 3000,
+        );
+        final full = GamesTourModel.fromGame(raw);
+        final index = GamesTourModel.fromGameIndex(raw);
+        expect(index.whiteClockSeconds, full.whiteClockSeconds);
+        expect(index.blackClockSeconds, full.blackClockSeconds);
+        expect(index.whiteTimeDisplay, full.whiteTimeDisplay);
+        expect(index.blackTimeDisplay, full.blackTimeDisplay);
+        expect(index.gameStatus, full.gameStatus);
+        expect(index.pgn, raw.pgn);
+        expect(index.whitePlayer.rating, full.whitePlayer.rating);
+        expect(index.blackPlayer.rating, full.blackPlayer.rating);
+      }
+    },
+  );
+
   group('gameIdsNeedingSecondaryPeriodPgn', () {
     Games row({
       required String id,

@@ -546,6 +546,7 @@ GamesTourModel watchLiveGameClock(
   bool streamEnabled = true,
 }) {
   if (!TickerMode.valuesOf(ref.context).enabled) return game;
+  game = watchHydratedTourCard(ref, game);
   _ensureBaseGame(ref, game);
   final params = _liveWatchParamsForGame(
     game: game,
@@ -558,7 +559,14 @@ GamesTourModel watchLiveGameClock(
 /// Unlike a prefetch-only listener, this watch repaints the card with the
 /// authoritative PGN-derived position, clocks and opening when it arrives.
 GamesTourModel watchHydratedTourCard(WidgetRef ref, GamesTourModel game) {
-  if (!game.isPgnDeferred) return game;
+  if (!game.isPgnDeferred) {
+    final fen = resolveFreshestGameFen(
+      fen: game.fen,
+      pgn: game.pgn,
+      lastMove: game.lastMove,
+    );
+    return fen == game.fen ? game : game.copyWith(fen: fen);
+  }
   final snapshot = ref.watch(tourGameSnapshotProvider(game.gameId)).valueOrNull;
   if (snapshot == null ||
       snapshot.players == null ||

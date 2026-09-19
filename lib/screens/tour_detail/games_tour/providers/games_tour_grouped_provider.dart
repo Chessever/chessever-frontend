@@ -219,7 +219,7 @@ final gamesTourGroupedProvider = Provider.autoDispose<GroupedGamesData>((ref) {
         final stageModels = <GamesTourModel>[];
         for (final game in rawStageGames) {
           try {
-            final model = GamesTourModel.fromGame(game);
+            final model = GamesTourModel.fromGameIndex(game);
             if (isEventBoardGameVisible(model)) stageModels.add(model);
           } catch (_) {
             // One malformed row must not hide every sibling stage game.
@@ -383,7 +383,7 @@ final gamesTourGroupedProvider = Provider.autoDispose<GroupedGamesData>((ref) {
       final fallbackModels = <GamesTourModel>[];
       for (final game in fetched) {
         try {
-          final model = GamesTourModel.fromGame(game);
+          final model = GamesTourModel.fromGameIndex(game);
           if (_hasResolvedPlayer(model.whitePlayer) &&
               _hasResolvedPlayer(model.blackPlayer)) {
             fallbackModels.add(model);

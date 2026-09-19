@@ -687,22 +687,64 @@ class GameRepository extends BaseRepository {
   /// result, placeholder and standings fallbacks. Card-only position/clock
   /// repairs are hydrated by the mounted card, never guessed from a lean row.
   Future<List<Games>> getTourGamePreviews(String tourId) async {
-    final games = await _getTourGames(
-      tourId,
-      columns: '$_gameListPreviewSelectColumns,search',
-    );
-    final requiredIds =
-        games.where(tourIndexNeedsPgn).map((g) => g.id).toList();
-    final fullById = <String, Games>{};
-    for (final chunk in _chunks(requiredIds, 100)) {
-      for (final game in await getGamesByIds(chunk)) {
-        fullById[game.id] = game;
+    return handleApiCall(() async {
+      final games = <Games>[];
+      final fullById = <String, Games>{};
+      // Four serial lanes bound snapshot concurrency across page boundaries.
+      // A slow page must not hold up independent PGNs from an earlier page.
+      final lanes = List.generate(4, (_) => Future<void>.value());
+      var nextLane = 0;
+      Object? snapshotError;
+      StackTrace? snapshotStack;
+      var offset = 0;
+      try {
+        while (snapshotError == null) {
+          final page = await _getTourPreviewPage(tourId, offset);
+          games.addAll(page);
+          final requiredIds =
+              page.where(tourIndexNeedsPgn).map((g) => g.id).toList();
+          for (final chunk in _chunks(requiredIds, 100)) {
+            final lane = nextLane++ % lanes.length;
+            lanes[lane] = lanes[lane].then((_) async {
+              if (snapshotError != null) return;
+              try {
+                for (final game in await getGamesByIds(chunk)) {
+                  fullById[game.id] = game;
+                }
+              } catch (error, stack) {
+                // Observe failures as they happen, including while the next
+                // index page is still downloading. Never publish half a tour.
+                snapshotError ??= error;
+                snapshotStack ??= stack;
+              }
+            });
+          }
+          if (!shouldFetchAnotherTourGamesPage(page.length)) break;
+          offset += page.length;
+        }
+      } finally {
+        await Future.wait(lanes);
       }
-    }
-    return [
-      for (final game in games)
-        fullById[game.id] ?? game.copyWith(isPgnDeferred: true),
-    ];
+      if (snapshotError != null) {
+        Error.throwWithStackTrace(snapshotError!, snapshotStack!);
+      }
+      return [
+        for (final game in _deduplicateGames(games))
+          fullById[game.id] ?? game.copyWith(isPgnDeferred: true),
+      ];
+    });
+  }
+
+  Future<List<Games>> _getTourPreviewPage(String tourId, int offset) async {
+    final rows = await supabase
+        .from('games')
+        .select('$_gameListPreviewSelectColumns,search')
+        .eq('tour_id', tourId)
+        .order('id', ascending: true)
+        .range(offset, offset + _tourGamesFetchPageSize - 1);
+    // PostgREST already decoded the JSON. Do not encode every row on the UI
+    // isolate only to decode it again in the worker.
+    return compute(_decodeGameRowsInIsolate, rows);
   }
 
   /// Full snapshots for a bounded set of mounted cards. Callers batch ids so
@@ -2950,6 +2992,9 @@ List<Games> _decodeGamesInIsolate(List<String> gameJsonList) {
       }).toList();
   return _deduplicateGames(games);
 }
+
+List<Games> _decodeGameRowsInIsolate(List<Map<String, dynamic>> rows) =>
+    rows.map(Games.fromJson).toList();
 
 /// Ids of the rows a preview page must fetch PGN for so the FIDE 40-move time
 /// bonus can be applied without double-counting (Trello #1005).
