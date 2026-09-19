@@ -186,7 +186,7 @@ void main() {
     },
   );
 
-  testWidgets('flags appear above paused video, dismiss and return on tap', (
+  testWidgets('flags minimize above paused video and expand again on tap', (
     tester,
   ) async {
     final session = EventVideoSession(
@@ -197,7 +197,7 @@ void main() {
     await tester.pump();
     expect(find.text('Player'), findsOneWidget);
     expect(session.playRequested, isFalse);
-    final flags = find.byKey(const ValueKey('event_video_flags'));
+    final flags = find.byKey(const ValueKey('event_video_flags')).hitTestable();
     expect(
       tester.getBottomLeft(flags).dy,
       lessThanOrEqualTo(
@@ -209,6 +209,7 @@ void main() {
     expect(session.playRequested, isFalse);
     expect(session.streams.map((s) => s.id), order);
     await tester.pump(const Duration(seconds: 3));
+    await tester.pumpAndSettle();
     expect(flags, findsNothing);
     await tester.pumpWidget(harness(session, player, game: 'g2'));
     await tester.pump();
@@ -225,6 +226,7 @@ void main() {
     await tester.pump(const Duration(seconds: 2));
     expect(flags, findsOneWidget);
     await tester.pump(const Duration(seconds: 1));
+    await tester.pumpAndSettle();
     expect(flags, findsNothing);
     await tester.pumpWidget(const SizedBox());
   });
