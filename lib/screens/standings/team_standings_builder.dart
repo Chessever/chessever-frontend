@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:chessever2/screens/standings/player_standing_model.dart';
 import 'package:chessever2/screens/standings/team_standing_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
@@ -32,8 +34,8 @@ List<TeamStandingModel> buildTeamStandings({
     if (wTeam == null || wTeam.isEmpty || bTeam == null || bTeam.isEmpty) {
       continue;
     }
-    final pair = ([wTeam, bTeam]..sort()).join('');
-    final key = '${g.roundId}$pair';
+    final pair = [wTeam, bTeam]..sort();
+    final key = jsonEncode([g.roundId, ...pair]);
     final sides = matches.putIfAbsent(key, () => <String, _MatchSide>{});
     final wSide = sides.putIfAbsent(wTeam, () => _MatchSide());
     final bSide = sides.putIfAbsent(bTeam, () => _MatchSide());
@@ -269,19 +271,21 @@ List<TeamMatch> buildTeamMatches({
     final oppCard = isWhiteOurs ? g.blackPlayer : g.whitePlayer;
     final status = g.gameStatus;
     final boardResult = _boardResultFor(status, isWhiteOurs);
-    boardsOf.putIfAbsent(key, () => <TeamBoardGame>[]).add(
-      TeamBoardGame(
-        boardNr: g.boardNr,
-        ourName: ourCard.name,
-        ourTitle: ourCard.title.isNotEmpty ? ourCard.title : null,
-        ourIsWhite: isWhiteOurs,
-        opponentName: oppCard.name,
-        opponentTitle: oppCard.title.isNotEmpty ? oppCard.title : null,
-        opponentRating: oppCard.rating > 0 ? oppCard.rating : null,
-        result: boardResult,
-        game: g,
-      ),
-    );
+    boardsOf
+        .putIfAbsent(key, () => <TeamBoardGame>[])
+        .add(
+          TeamBoardGame(
+            boardNr: g.boardNr,
+            ourName: ourCard.name,
+            ourTitle: ourCard.title.isNotEmpty ? ourCard.title : null,
+            ourIsWhite: isWhiteOurs,
+            opponentName: oppCard.name,
+            opponentTitle: oppCard.title.isNotEmpty ? oppCard.title : null,
+            opponentRating: oppCard.rating > 0 ? oppCard.rating : null,
+            result: boardResult,
+            game: g,
+          ),
+        );
 
     if (!status.isFinished) continue;
     ours.finished++;
@@ -296,7 +300,9 @@ List<TeamMatch> buildTeamMatches({
     final ours = byRoundOpp[key]!;
     final theirs = oppByRoundOpp[key]!;
     final boardGames = boardsOf[key] ?? <TeamBoardGame>[];
-    boardGames.sort((a, b) => (a.boardNr ?? 1 << 30).compareTo(b.boardNr ?? 1 << 30));
+    boardGames.sort(
+      (a, b) => (a.boardNr ?? 1 << 30).compareTo(b.boardNr ?? 1 << 30),
+    );
     matches.add(
       TeamMatch(
         roundId: roundOf[key]!,

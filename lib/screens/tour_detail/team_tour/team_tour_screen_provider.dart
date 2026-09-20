@@ -1,5 +1,6 @@
 import 'package:chessever2/repository/supabase/tour/tour.dart';
 import 'package:chessever2/screens/standings/standings_builder.dart';
+import 'package:chessever2/screens/standings/official_team_standings.dart';
 import 'package:chessever2/screens/standings/team_standing_model.dart';
 import 'package:chessever2/screens/standings/team_standings_builder.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
@@ -97,6 +98,12 @@ final teamStandingsProvider =
     AutoDisposeProvider<AsyncValue<List<TeamStandingModel>>>((ref) {
       final playersAsync = ref.watch(playerTourScreenProvider);
       return playersAsync.whenData((players) {
+        final info = _selectedTourInfo(ref);
+        final official = buildOfficialTeamStandings(
+          info: info,
+          players: players,
+        );
+        if (official != null) return official;
         final games = _watchTeamGames(ref);
         return buildTeamStandings(
           games: games,
