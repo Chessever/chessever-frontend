@@ -42,6 +42,7 @@ import 'package:chessever2/screens/chessboard/widgets/chess_board_from_fen_new.d
     show GameCardChessboard;
 import 'package:chessever2/screens/chessboard/widgets/engine_pv_layouts.dart';
 import 'package:chessever2/screens/chessboard/video/video_widgets.dart';
+import 'package:chessever2/providers/event_video_provider.dart';
 import 'package:chessever2/screens/chessboard/widgets/evaluation_bar_widget.dart';
 import 'package:chessever2/screens/chessboard/widgets/rest_aware_opacity.dart';
 // DISABLED: Move annotation overlay (requires move impact analysis)
@@ -2999,6 +3000,8 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
     final isTablet = ResponsiveHelper.isTablet;
 
     return EventVideoHost(
+      metadata: ref.watch(eventVideoMetadataProvider.notifier),
+      configuration: ref.watch(eventVideoConfigurationProvider),
       onVideoInteraction: () {
         final provider = chessBoardScreenProviderNew(currentParams);
         if (ref.read(provider).valueOrNull?.isPvPreviewActive == true) {

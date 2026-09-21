@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:chessever2/providers/event_video_provider.dart';
 
 import 'package:flutter/scheduler.dart';
 import 'package:chessever2/repository/supabase/round/round_repository.dart';
@@ -245,6 +246,13 @@ class GamesTourNotifier extends StateNotifier<AsyncValue<List<Games>>> {
                   ? ref.read(liveRoundsIdProvider).valueOrNull ?? const []
                   : const [],
         );
+        // Fetch metadata while the roster loads, with the opening round first.
+        ref.read(eventVideoMetadataProvider.notifier).prefetch([
+          if (priorityRoundId != null)
+            EventVideoKey(tourId: tourId, roundId: priorityRoundId),
+          for (final round in rounds)
+            EventVideoKey(tourId: tourId, roundId: round.id),
+        ]);
         priorityRoundId ??=
             (await ref
                 .read(roundRepositoryProvider)

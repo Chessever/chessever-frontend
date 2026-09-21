@@ -1,8 +1,10 @@
-import 'dart:async';
 import 'dart:math' as math;
 import 'package:country_flags/country_flags.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:chessever2/repository/local_storage/local_storage_repository.dart'
+    show SharedPreferencesService;
+import 'video_metadata_cache.dart';
 import 'video_player.dart';
 import 'video_repository.dart';
 import 'video_session.dart';
@@ -113,13 +115,18 @@ class EventVideoHost extends StatefulWidget {
     this.pageObserver,
     this.preferredCountry,
     this.onVideoInteraction,
+    this.metadata,
+    this.configuration,
   });
   final String gameId, tourId, roundId;
   final String? preferredCountry;
   final VoidCallback? onVideoInteraction;
   final Widget child;
 
-  /// Injectable ownership boundary for tests; otherwise uses the app flavor.
+  final EventVideoMetadataCache? metadata;
+  final EventVideoConfiguration? configuration;
+
+  /// Injectable ownership boundary for tests; otherwise uses app-owned metadata.
   final EventVideoSession? session;
   final EventVideoPlayer? player;
   final RouteObserver<PageRoute<dynamic>>? pageObserver;
@@ -131,7 +138,7 @@ class EventVideoHostState extends State<EventVideoHost>
     with WidgetsBindingObserver, RouteAware {
   late final EventVideoSession session;
   EventVideoPlayer? _player;
-  bool _ready = false, _routeVisible = true;
+  bool _routeVisible = true;
   PageRoute<dynamic>? _route;
 
   @override
@@ -157,11 +164,15 @@ class EventVideoHostState extends State<EventVideoHost>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    final config = EventVideoConfiguration.fromEnvironment();
+    final config = widget.configuration;
+    final prefs = SharedPreferencesService.instance.prefsOrNull;
     session =
         widget.session ??
         EventVideoSession(
-          repository: config == null ? null : HttpEventVideoRepository(config),
+          repository: widget.metadata,
+          savedCountry: prefs?.getString('ce-video-country.v1'),
+          visible: prefs?.getBool('ce-video-visible.v1') ?? true,
+          rememberedLanguage: prefs?.getString('ce-video-language.v1'),
           saveVisibility: (visible) async {
             final prefs = await SharedPreferences.getInstance();
             await prefs.setBool('ce-video-visible.v1', visible);
@@ -181,25 +192,8 @@ class EventVideoHostState extends State<EventVideoHost>
     session.addListener(_synchronize);
     _player?.addListener(_checkFullscreenExit);
     session.setPreferredCountry(widget.preferredCountry);
-    if (widget.session != null || config == null) {
-      _ready = true;
-      _open();
-    } else {
-      unawaited(_loadLanguage());
-    }
-  }
-
-  Future<void> _loadLanguage() async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      session.savedCountry = prefs.getString('ce-video-country.v1');
-      session.visible = prefs.getBool('ce-video-visible.v1') ?? true;
-      session.rememberedLanguage = prefs.getString('ce-video-language.v1');
-    } catch (_) {
-      /* Preferences are optional. */
-    }
-    if (!mounted) return;
-    _ready = true;
+    // Preferences are initialized during startup; optional storage failures
+    // must not postpone stream availability until after the first frame.
     _open();
   }
 
@@ -242,7 +236,7 @@ class EventVideoHostState extends State<EventVideoHost>
       oldWidget.pageObserver?.unsubscribe(this);
       if (_route != null) widget.pageObserver?.subscribe(this, _route!);
     }
-    if (_ready) _open();
+    _open();
   }
 
   void setRouteVisible(bool value) {

@@ -64,12 +64,32 @@ embed origin/referrer must be accepted by the providers on Android and iOS.
 Missing/invalid configuration leaves normal game controls and analysis available.
 Do not substitute the production broadcasting origin in the test flavor.
 
+`eventVideoMetadataProvider` owns stream metadata for the app's ProviderScope
+lifetime. `MyApp` watches `eventVideoPreloadProvider` to preload the live-round
+feed before a board is opened. Tournament roster loading also prefetches its
+rounds, and visible game cards retain their round in the cache, including past
+events. Duplicate requests share one future; at most four metadata requests run
+at once. Idle entries are bounded to 256; mounted scopes and live rounds stay
+available. This is an in-memory cache, not persisted URLs across app restarts.
+Deep links start prefetch as soon as the game is resolved, alongside the
+remaining tournament-context hydration.
+
+The board reads the cached response and startup-initialized video preferences
+synchronously before its first frame. A warmed round therefore starts with the
+correct video action, including when video is hidden, without a temporary Flip
+board action. The cache never creates a player. A cold direct link or a tap that
+beats prefetch still resolves asynchronously without blocking board navigation.
+
 Reads use `/api/broadcast/round/:roundId/video-streams`, or
 `/api/broadcast/:tourId/video-streams` only when no round is present. The server
 resolves round/tour/group inheritance and visibility; the app does not query
 private video tables. HTTP redirects are not followed. Reads refresh every 30
 seconds in foreground. Temporary failures retain the player; 401/403/404/410
-clear it. No migrations, server edits, or deployments are included.
+clear it. The single shared foreground refresh covers live rounds and mounted
+scopes, with no board-owned HTTP client or metadata polling timer. Leaving the
+board releases its scope but preserves cached URLs. A round response is never
+inferred from another round or a tour-level response. No migrations, server
+edits, or deployments are included.
 
 ## Playback and ownership
 
@@ -127,7 +147,10 @@ and never contact providers. Run scoped `flutter analyze --no-pub` and the
 Using the production flavor, or the test flavor with verified test origins and
 streams, the user checks on Android and iOS:
 
-1. Open a streamed game: the selected video is paused with flags above it and
+1. From the test app's event list, open a streamed game and verify the video
+   action is present from the first board frame. Return to the list and reopen;
+   repeat with video hidden, then try a different round and an event with no
+   streams. For visible video, the selected video is paused with flags above it and
    engine lines below. Verify flags dismiss after three seconds, return on a
    video tap, and stay visible while scrolling the horizontal list.
 2. Select another flag while paused and while playing. Check playback state and
