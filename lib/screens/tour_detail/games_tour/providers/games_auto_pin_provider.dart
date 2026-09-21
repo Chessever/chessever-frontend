@@ -36,11 +36,14 @@ class _AutoPinLogController {
   final Ref ref;
 
   AutoPinPreferencesRepository get _repo =>
-      AutoPinPreferencesRepository(AppDatabase.instance);
+      AutoPinPreferencesRepository(ref.read(appDatabaseProvider));
 
   String? get _userId => ref.read(currentUserProvider)?.id;
 
-  Future<AutoPinnedGamesResult> getAutoPinnedGames(String tourId) async {
+  Future<AutoPinnedGamesResult> getAutoPinnedGames(
+    String tourId, {
+    List<Games> queryCatalog = const [],
+  }) async {
     final shouldHidePin = await _repo.getTournamentAutoPinDisabled(
       tourId,
       _userId,
@@ -72,7 +75,10 @@ class _AutoPinLogController {
       );
     }
 
-    final gamesList = _getAllGamePrioritiesIncludingStages(tourId);
+    final gamesList = _getAllGamePrioritiesIncludingStages(
+      tourId,
+      queryCatalog,
+    );
     var favoriteGameIds = <String>{};
     var countrymanGameIds = <String>{};
     var favoritePlayersSnapshot = <FavoritePlayer>[];
@@ -160,6 +166,7 @@ class _AutoPinLogController {
   /// related knockout stage without reparsing PGNs or clocks.
   List<GamePriorityIdentity> _getAllGamePrioritiesIncludingStages(
     String tourId,
+    List<Games> queryCatalog,
   ) {
     final allGames = <GamePriorityIdentity>[];
     final seenGameIds = <String>{};
@@ -169,6 +176,10 @@ class _AutoPinLogController {
         if (seenGameIds.add(game.gameId)) allGames.add(game);
       }
     }
+
+    // Search has complete category/stage membership even when only one round
+    // is mounted. These identities affect pins, never browsing round demand.
+    addGames(gamePriorityIdentitiesFromRawGames(queryCatalog));
 
     // Get games from the main/selected tour using the raw games provider
     final mainGamesRaw =

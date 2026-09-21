@@ -8,6 +8,15 @@ final matchExpansionProvider =
       return MatchExpansionNotifier();
     });
 
+final searchMatchExpansionProvider =
+    StateNotifierProvider<MatchExpansionNotifier, Map<String, bool>>((ref) {
+      return MatchExpansionNotifier();
+    });
+
+StateNotifierProvider<MatchExpansionNotifier, Map<String, bool>>
+matchExpansionProviderFor(bool isSearchMode) =>
+    isSearchMode ? searchMatchExpansionProvider : matchExpansionProvider;
+
 /// Special key used to store the collapse all mode flag in the state
 const String _kCollapseAllModeKey = '__COLLAPSE_ALL_MODE__';
 
@@ -85,3 +94,7 @@ class MatchExpansionNotifier extends StateNotifier<Map<String, bool>> {
     state = {};
   }
 }
+
+/// The same pairing in another round is a separate expandable card.
+String teamMatchExpansionKey(String roundId, String title) =>
+    'team:$roundId:$title';

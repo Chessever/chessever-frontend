@@ -1,3 +1,4 @@
+import '../../providers/tournament_card_visibility_provider.dart';
 import 'dart:async';
 import 'package:chessever2/providers/event_video_provider.dart';
 
@@ -497,6 +498,7 @@ GamesTourModel watchLiveGame(
   bool streamEnabled = true,
 }) {
   if (!TickerMode.valuesOf(ref.context).enabled) return game;
+  batchKey = watchVisibleTournamentBatch(ref, batchKey);
   _preloadVideo(ref, game);
   game = watchHydratedTourCard(ref, game);
   final current = ref.read(baseGameProvider(game.gameId));
@@ -525,6 +527,7 @@ GamesTourModel watchLiveGamePosition(
   bool streamEnabled = true,
 }) {
   if (!TickerMode.valuesOf(ref.context).enabled) return game;
+  batchKey = watchVisibleTournamentBatch(ref, batchKey);
   _preloadVideo(ref, game);
   game = watchHydratedTourCard(ref, game);
   final positionedGame = watchHydratedGamebaseCard(ref, game);
@@ -558,6 +561,7 @@ GamesTourModel watchLiveGameClock(
   bool streamEnabled = true,
 }) {
   if (!TickerMode.valuesOf(ref.context).enabled) return game;
+  batchKey = watchVisibleTournamentBatch(ref, batchKey);
   game = watchHydratedTourCard(ref, game);
   _ensureBaseGame(ref, game);
   final params = _liveWatchParamsForGame(

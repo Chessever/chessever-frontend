@@ -13,11 +13,15 @@ List<GamesAppBarModel> selectGroupEventDisplayRounds({
   required Set<String> upcomingPairingRoundIds,
   String? selectedRoundId,
   bool userSelected = false,
+  Set<String> unloadedRoundIds = const {},
+  bool isSearchMode = false,
 }) => rounds
     .where((round) {
       final roundGames = gamesByRound[round.id] ?? const <GamesTourModel>[];
-      if (roundGames.isEmpty) return false;
-      if (!upcomingPairingRoundIds.contains(round.id)) return true;
+      if (roundGames.isEmpty) return unloadedRoundIds.contains(round.id);
+      if (isSearchMode || !upcomingPairingRoundIds.contains(round.id)) {
+        return true;
+      }
       return userSelected && round.id == selectedRoundId;
     })
     .toList(growable: false);
@@ -36,6 +40,7 @@ List<GamesAppBarModel> selectGamesTourDisplayRounds({
   required bool isMultiStageKnockout,
   String? selectedRoundId,
   bool userSelected = false,
+  Set<String> unloadedRoundIds = const {},
   DateTime? now,
 }) {
   final sourceRounds =
@@ -61,7 +66,7 @@ List<GamesAppBarModel> selectGamesTourDisplayRounds({
   final visibleRounds =
       sourceRounds.where((round) {
         final roundGames = gamesByRound[round.id] ?? const <GamesTourModel>[];
-        if (roundGames.isEmpty) return false;
+        if (roundGames.isEmpty) return unloadedRoundIds.contains(round.id);
         if (isSearchMode || isMultiStageKnockout || isPreConfigured) {
           return true;
         }
@@ -95,11 +100,16 @@ List<GamesAppBarModel> selectGamesTourDisplayRounds({
     sortRoundsForDisplay(
       <GamesAppBarModel>[...visibleRounds, ...upcomingPairingRounds],
       resolveDate: (round) => round.startsAt,
-      hasGames: (round) => gamesByRound[round.id]?.isNotEmpty ?? false,
+      hasGames:
+          (round) =>
+              unloadedRoundIds.contains(round.id) ||
+              (gamesByRound[round.id]?.isNotEmpty ?? false),
       hasStartedActivity:
           (round) =>
               !upcomingPairingRoundIds.contains(round.id) &&
-              (gamesByRound[round.id]?.isNotEmpty ?? false),
+              ((gamesByRound[round.id]?.isNotEmpty ?? false) ||
+                  (unloadedRoundIds.contains(round.id) &&
+                      round.roundStatus != RoundStatus.upcoming)),
       isRoundFullyPlayed: (round) {
         final games = gamesByRound[round.id] ?? const <GamesTourModel>[];
         return round.roundStatus == RoundStatus.completed ||

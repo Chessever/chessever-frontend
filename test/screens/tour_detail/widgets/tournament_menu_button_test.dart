@@ -75,18 +75,15 @@ void main() {
       );
     });
 
-    test(
-      'team players tab (individual table) shows Share standings only',
-      () {
-        expect(
-          standingsShareActionsFor(
-            mode: TournamentDetailScreenMode.players,
-            isTeamEvent: true,
-          ),
-          [TournamentMenuAction.shareStandings],
-        );
-      },
-    );
+    test('team players tab (individual table) shows Share standings only', () {
+      expect(
+        standingsShareActionsFor(
+          mode: TournamentDetailScreenMode.players,
+          isTeamEvent: true,
+        ),
+        [TournamentMenuAction.shareStandings],
+      );
+    });
 
     test('players mode on non-team events shows nothing (tab not used)', () {
       expect(
@@ -100,7 +97,7 @@ void main() {
   });
 
   group('areAllVisibleSectionsCollapsed', () {
-    test('treats missing round state as expanded by default', () {
+    test('treats unvisited rounds as collapsed by default', () {
       expect(
         areAllVisibleSectionsCollapsed(
           visibleRoundIds: const ['round-1', 'round-2'],
@@ -108,7 +105,7 @@ void main() {
           roundExpansionState: const {},
           matchExpansionState: const {},
         ),
-        isFalse,
+        isTrue,
       );
     });
 
@@ -124,7 +121,7 @@ void main() {
       );
     });
 
-    test('requires visible knockout matches to be collapsed as well', () {
+    test('collapsed parents hide remembered expanded knockout matches', () {
       expect(
         areAllVisibleSectionsCollapsed(
           visibleRoundIds: const ['round-1'],
@@ -132,7 +129,7 @@ void main() {
           roundExpansionState: const {'round-1': false},
           matchExpansionState: const {},
         ),
-        isFalse,
+        isTrue,
       );
 
       expect(
@@ -140,6 +137,27 @@ void main() {
           visibleRoundIds: const ['round-1'],
           visibleMatchKeys: const ['match-a'],
           roundExpansionState: const {'round-1': false},
+          matchExpansionState: const {'match-a': false},
+        ),
+        isTrue,
+      );
+    });
+
+    test('standalone match sections still use their own expansion state', () {
+      expect(
+        areAllVisibleSectionsCollapsed(
+          visibleRoundIds: const [],
+          visibleMatchKeys: const ['match-a'],
+          roundExpansionState: const {},
+          matchExpansionState: const {},
+        ),
+        isFalse,
+      );
+      expect(
+        areAllVisibleSectionsCollapsed(
+          visibleRoundIds: const [],
+          visibleMatchKeys: const ['match-a'],
+          roundExpansionState: const {},
           matchExpansionState: const {'match-a': false},
         ),
         isTrue,

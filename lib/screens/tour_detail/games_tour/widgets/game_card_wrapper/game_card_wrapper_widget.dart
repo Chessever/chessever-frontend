@@ -1,3 +1,4 @@
+import '../viewport_game_card.dart';
 import 'package:chessever2/screens/chessboard/widgets/chess_board_from_fen_new.dart';
 import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
 import 'package:chessever2/screens/chessboard/provider/game_pgn_stream_provider.dart';
@@ -15,6 +16,7 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 class GameCardWrapperWidget extends ConsumerWidget {
   final GamesTourModel game;
+  final bool deferUntilVisible;
   final GamesScreenModel gamesData;
   final int gameIndex;
   final bool isChessBoardVisible;
@@ -45,6 +47,7 @@ class GameCardWrapperWidget extends ConsumerWidget {
   const GameCardWrapperWidget({
     super.key,
     required this.game,
+    this.deferUntilVisible = false,
     required this.gamesData,
     required this.gameIndex,
     required this.isChessBoardVisible,
@@ -65,6 +68,19 @@ class GameCardWrapperWidget extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    if (!deferUntilVisible) return _buildCard(context, ref);
+    return ViewportGameCard(
+      key: ValueKey(game.gameId),
+      game: game,
+      board: isChessBoardVisible,
+      grid: false,
+      builder:
+          (_) =>
+              Consumer(builder: (context, ref, _) => _buildCard(context, ref)),
+    );
+  }
+
+  Widget _buildCard(BuildContext context, WidgetRef ref) {
     final effectiveLiveBatchKey =
         liveBatchKey ??
         liveContextBatchKeyForGame(

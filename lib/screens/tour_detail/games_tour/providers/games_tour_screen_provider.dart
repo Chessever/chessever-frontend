@@ -1,4 +1,10 @@
-import 'package:chessever2/repository/local_storage/tournament/games/games_local_storage.dart';
+import 'dart:async';
+import 'package:chessever2/screens/gamebase/event_view/gamebase_virtual_event_id.dart';
+import 'package:chessever2/screens/tour_detail/player_tour/player_tour_screen_provider.dart'
+    show standingsSearchQueryProvider;
+import 'round_expansion_provider.dart';
+import 'match_expansion_provider.dart';
+import 'package:chessever2/repository/supabase/game/game_repository.dart';
 import 'package:chessever2/providers/event_pin_refresh_provider.dart';
 import 'package:chessever2/repository/supabase/game/games.dart';
 import 'package:chessever2/screens/group_event/model/about_tour_model.dart';
@@ -151,7 +157,9 @@ class GamesTourScreenProvider
     this.error,
   }) : super(const AsyncValue.loading()) {
     _setupListeners();
-    _initialize();
+    Future.microtask(() {
+      if (mounted) _initialize();
+    });
   }
 
   // Constructor for loading state
@@ -171,6 +179,11 @@ class GamesTourScreenProvider
   final AboutTourModel? aboutTourModel;
   final Object? error;
   int _recomputeGeneration = 0;
+  int _searchGeneration = 0;
+  String? _activeSearchQuery;
+  List<Games>? _searchCatalog;
+  Future<List<Games>>? _searchCatalogFetch;
+  Set<String> _searchTourIds = {};
 
   Future<void> _setupListeners() async {
     // The display-mode provider lives outside this notifier so it survives
@@ -183,12 +196,14 @@ class GamesTourScreenProvider
     ) {
       if (previous == next) return;
       final current = state.valueOrNull;
-      if (current != null && !current.isSearchMode) {
+      if (current != null) {
         // Keep the screen model in sync with the persisted preference.
         // The grouped provider does the actual display filtering off
         // gameDisplayMode, so we just need to mirror it onto the model.
         if (mounted) {
-          state = AsyncValue.data(current.copyWith(gameDisplayMode: next));
+          state = state.whenData(
+            (value) => value.copyWith(gameDisplayMode: next),
+          );
         }
       }
     });
@@ -245,32 +260,18 @@ class GamesTourScreenProvider
         }
       }
 
-      // During search / finished-only filter mode, re-apply only filters that
-      // still hide rows. Focus-on-live ordering is derived by the grouped
-      // provider from each status update and never filters rows.
-      if (current?.isSearchMode == true) {
-        final displayMode = current?.gameDisplayMode;
-        if (displayMode == GameDisplayMode.showfinishedGame) {
-          bool statusChanged = false;
-          for (
-            int i = 0;
-            i < nextGames.length && i < previousGames.length;
-            i++
-          ) {
-            if (previousGames[i].status != nextGames[i].status) {
-              statusChanged = true;
-              break;
-            }
+      if (_activeSearchQuery != null) {
+        // Refresh matching/status for received rows without dropping results
+        // from rounds that have never been mounted.
+        final catalog = _searchCatalog;
+        if (catalog != null) {
+          final byId = {for (final game in catalog) game.id: game};
+          for (final game in nextGames) {
+            byId[game.id] = game.copyWith(pgn: game.pgn ?? byId[game.id]?.pgn);
           }
-
-          if (statusChanged) {
-            debugPrint(
-              '🎮 GamesTourScreen: Game status changed during finished-only filter - re-applying',
-            );
-            showFinishedGames();
-          }
+          _searchCatalog = byId.values.toList();
+          _publishSearchResults();
         }
-        // Text search keeps its current results.
         return;
       }
       _recompute();
@@ -290,13 +291,21 @@ class GamesTourScreenProvider
       // isolate. The grouped presentation owns stable priority placement;
       // this model only needs the latest ids for pin icons and navigation.
       if (mounted) {
-        state = AsyncValue.data(current.copyWith(pinnedGamedIs: allPins));
+        state = state.whenData(
+          (value) => value.copyWith(pinnedGamedIs: allPins),
+        );
       }
     });
   }
 
   Future<void> _initialize() async {
     if (aboutTourModel == null) return;
+
+    final retainedQuery = ref.read(standingsSearchQueryProvider).trim();
+    if (retainedQuery.isNotEmpty) {
+      await searchGamesEnhanced(retainedQuery);
+      return;
+    }
 
     // Wait until gamesTourProvider emits a value
     final games = ref.read(gamesTourProvider(aboutTourModel!.id));
@@ -323,6 +332,15 @@ class GamesTourScreenProvider
   }) async {
     if (aboutTourModel == null) return;
 
+    if (_activeSearchQuery != null && isSearchModeOverride != false) {
+      final current = state.valueOrNull;
+      if (current != null && pinnedIdsOverride != null) {
+        state = state.whenData(
+          (value) => value.copyWith(pinnedGamedIs: pinnedIdsOverride),
+        );
+      }
+      return;
+    }
     int? generation;
     try {
       final gamesAsync = ref.read(gamesTourProvider(aboutTourModel!.id));
@@ -338,7 +356,8 @@ class GamesTourScreenProvider
       final current = state.valueOrNull;
       final isSearchMode =
           isSearchModeOverride ?? (current?.isSearchMode ?? false);
-      final searchQuery = searchQueryOverride ?? current?.searchQuery;
+      final searchQuery =
+          isSearchMode ? searchQueryOverride ?? current?.searchQuery : null;
 
       // Pre-parse numbers to avoid repeated regex operations
       final gameInfo = <String, (int, int)>{};
@@ -440,6 +459,15 @@ class GamesTourScreenProvider
 
   void clearSearch() {
     if (aboutTourModel == null) return;
+    _searchGeneration++;
+    _activeSearchQuery = null;
+    _searchCatalog = null;
+    _searchCatalogFetch = null;
+    _searchTourIds = {};
+    state = const AsyncLoading();
+    ref
+        .read(gamesPinprovider(aboutTourModel!.id).notifier)
+        .setQueryCatalog(const []);
     final pins = ref.read(gamesPinprovider(aboutTourModel!.id)).allPins;
     _recompute(
       isSearchModeOverride: false,
@@ -525,167 +553,23 @@ class GamesTourScreenProvider
   }
 
   Future<void> showFinishedGames() async {
-    if (aboutTourModel == null) return;
-
-    final tourId = aboutTourModel!.id;
-    final pinnedIds = ref.read(gamesPinprovider(tourId)).allPins;
-    final allGames = _collectGamesAcrossVisibleStages();
-    final finishedGames = allGames.where((g) => g.status != '*').toList();
-    final sortedGames = _sortGamesForFilters(finishedGames, pinnedIds);
-    final models = _mapGamesToModels(sortedGames);
-
-    ref.read(gameDisplayModeProvider(tourId).notifier).state =
-        GameDisplayMode.showfinishedGame;
-
-    state = AsyncValue.data(
-      GamesScreenModel(
-        gamesTourModels: models,
-        pinnedGamedIs: pinnedIds,
-        isSearchMode: false,
-        gameDisplayMode: GameDisplayMode.showfinishedGame,
-      ),
-    );
+    _setDisplayMode(GameDisplayMode.showfinishedGame);
   }
 
-  /// Activates "Focus on live games": every board stays visible, boards that
-  /// are currently live lead, and each board returns to its normal order as
-  /// soon as it finishes.
+  /// Live focus changes order, never query membership.
   Future<void> hideFinishedGames() async {
-    if (aboutTourModel == null) return;
-
-    final tourId = aboutTourModel!.id;
-    final pinnedIds = ref.read(gamesPinprovider(tourId)).allPins;
-    final allGames = _collectGamesAcrossVisibleStages();
-    // Full membership — focus mode must not drop finished boards.
-    final sortedGames = _sortGamesForFilters(allGames, pinnedIds);
-    final models = _mapGamesToModels(sortedGames);
-
-    ref.read(gameDisplayModeProvider(tourId).notifier).state =
-        GameDisplayMode.hideFinishedGames;
-
-    state = AsyncValue.data(
-      GamesScreenModel(
-        gamesTourModels: models,
-        pinnedGamedIs: pinnedIds,
-        isSearchMode: false,
-        gameDisplayMode: GameDisplayMode.hideFinishedGames,
-      ),
-    );
+    _setDisplayMode(GameDisplayMode.hideFinishedGames);
   }
 
   Future<void> showAllGames() async {
+    _setDisplayMode(GameDisplayMode.all);
+  }
+
+  void _setDisplayMode(GameDisplayMode mode) {
     if (aboutTourModel == null) return;
-
-    final tourId = aboutTourModel!.id;
-    final pinnedIds = ref.read(gamesPinprovider(tourId)).allPins;
-    final allGames = _collectGamesAcrossVisibleStages();
-    final sortedGames = _sortGamesForFilters(allGames, pinnedIds);
-    final models = _mapGamesToModels(sortedGames);
-
-    ref.read(gameDisplayModeProvider(tourId).notifier).state =
-        GameDisplayMode.all;
-
-    state = AsyncValue.data(
-      GamesScreenModel(
-        gamesTourModels: models,
-        pinnedGamedIs: pinnedIds,
-        isSearchMode: false,
-        gameDisplayMode: GameDisplayMode.all,
-      ),
-    );
-  }
-
-  List<Games> _collectGamesAcrossVisibleStages() {
-    if (aboutTourModel == null) {
-      return const <Games>[];
-    }
-
-    final baseGames =
-        ref.read(gamesTourProvider(aboutTourModel!.id)).value ??
-        const <Games>[];
-    final gamesAppBar = ref.read(gamesAppBarProvider);
-
-    if (!gamesAppBar.hasValue) {
-      return baseGames;
-    }
-
-    final rounds =
-        gamesAppBar.value?.gamesAppBarModels ?? const <GamesAppBarModel>[];
-    final knownTourIds =
-        ref
-            .read(tourDetailScreenProvider)
-            .valueOrNull
-            ?.tours
-            .map((tour) => tour.tour.id) ??
-        const <String>[];
-    final stageTourIds =
-        siblingKnockoutStageTourIds(
-          rounds: rounds,
-          selectedTourId: aboutTourModel!.id,
-          knownTourIds: knownTourIds,
-        ).toSet();
-
-    if (stageTourIds.isEmpty) {
-      return baseGames;
-    }
-
-    final aggregatedGames = <Games>[];
-    final seenGameIds = <String>{};
-
-    void addGames(List<Games> games) {
-      for (final game in games) {
-        if (seenGameIds.add(game.id)) {
-          aggregatedGames.add(game);
-        }
-      }
-    }
-
-    addGames(baseGames);
-
-    for (final stageTourId in stageTourIds) {
-      if (stageTourId == aboutTourModel!.id) continue;
-      final stageGames = ref.read(gamesTourProvider(stageTourId)).value;
-      if (stageGames != null && stageGames.isNotEmpty) {
-        addGames(stageGames);
-      }
-    }
-
-    return aggregatedGames.isEmpty ? baseGames : aggregatedGames;
-  }
-
-  List<Games> _sortGamesForFilters(List<Games> games, List<String> pinnedIds) {
-    if (games.isEmpty) return const <Games>[];
-
-    final gameInfo = <String, (int, int)>{};
-    for (final game in games) {
-      gameInfo[game.id] = (
-        _extractRoundNumber(game.roundSlug),
-        _extractGameNumber(game.roundSlug),
-      );
-    }
-
-    final sortedGames = List<Games>.from(games);
-    final pinnedIdSet = pinnedIds.toSet();
-    sortedGames.sort((a, b) {
-      final aPinned = pinnedIdSet.contains(a.id);
-      final bPinned = pinnedIdSet.contains(b.id);
-      if (aPinned && !bPinned) return -1;
-      if (!aPinned && bPinned) return 1;
-
-      final (roundA, gameA) = gameInfo[a.id] ?? (0, 0);
-      final (roundB, gameB) = gameInfo[b.id] ?? (0, 0);
-
-      if (roundA != roundB) return roundB.compareTo(roundA);
-      if (gameA != gameB) return gameB.compareTo(gameA);
-
-      final aBoard = a.boardNr, bBoard = b.boardNr;
-      if (aBoard != null && bBoard != null) return aBoard.compareTo(bBoard);
-      if (aBoard != null) return -1;
-      if (bBoard != null) return 1;
-      return 0;
-    });
-
-    return sortedGames;
+    // Grouping applies the mode to every complete round/query result. Keeping
+    // the source intact also makes switching back from finished-only lossless.
+    ref.read(gameDisplayModeProvider(aboutTourModel!.id).notifier).state = mode;
   }
 
   List<GamesTourModel> _mapGamesToModels(List<Games> games) {
@@ -713,90 +597,122 @@ class GamesTourScreenProvider
 
   Future<void> searchGamesEnhanced(String query) async {
     if (aboutTourModel == null) return;
+    query = query.trim();
+    if (query.isEmpty) {
+      clearSearch();
+      return;
+    }
 
-    try {
-      if (query.isEmpty) {
-        clearSearch();
-        return;
-      }
-
-      // Current pins for correct pin UI in search mode
-      final pinnedIds = ref.read(gamesPinprovider(aboutTourModel!.id)).allPins;
-
-      final gamesLocal = ref.read(gamesLocalStorage);
-
-      // Search in main tournament
-      final mainSearchResult = await gamesLocal.searchGamesWithScoring(
-        tourId: aboutTourModel!.id,
-        query: query,
-      );
-      final allResults = <GameSearchResult>[...mainSearchResult.results];
-
-      // Check if this is a multi-stage knockout tournament and search all stages
-      final gamesAppBar = ref.read(gamesAppBarProvider);
-      if (gamesAppBar.hasValue) {
-        final rounds = gamesAppBar.value?.gamesAppBarModels ?? [];
-        final knownTourIds =
-            ref
-                .read(tourDetailScreenProvider)
-                .valueOrNull
-                ?.tours
-                .map((tour) => tour.tour.id) ??
-            const <String>[];
-        final stageTourIds = siblingKnockoutStageTourIds(
-          rounds: rounds,
-          selectedTourId: aboutTourModel!.id,
-          knownTourIds: knownTourIds,
-        ).toList(growable: false);
-
-        // Search each stage
-        for (final stageTourId in stageTourIds) {
-          try {
-            final stageSearchResult = await gamesLocal.searchGamesWithScoring(
-              tourId: stageTourId,
-              query: query,
-            );
-            allResults.addAll(stageSearchResult.results);
-          } catch (e) {
-            debugPrint('Error searching stage $stageTourId: $e');
-          }
-        }
-      }
-
-      final games = allResults.map((r) => r.game).toList();
-
-      final models = <GamesTourModel>[];
-      for (final g in games) {
-        try {
-          models.add(GamesTourModel.fromGameIndex(g));
-        } catch (_) {}
-      }
-
-      debugPrint(
-        '🔍 Search completed: Found ${models.length} games across all stages for query "$query"',
-      );
-
-      if (mounted) {
-        state = AsyncValue.data(
-          GamesScreenModel(
-            gamesTourModels: models,
-            pinnedGamedIs: pinnedIds, // show accurate pins in search
-            isSearchMode: true,
-            searchQuery: query,
-            gameDisplayMode:
-                state.valueOrNull?.gameDisplayMode ?? GameDisplayMode.all,
+    final generation = ++_searchGeneration;
+    _recomputeGeneration++; // Invalidate a pre-search isolate result.
+    if (_activeSearchQuery != query) {
+      ref.read(searchRoundExpansionProvider.notifier).reset();
+      ref.read(searchMatchExpansionProvider.notifier).reset();
+    }
+    _activeSearchQuery = query;
+    _searchCatalog = null;
+    state = const AsyncLoading<GamesScreenModel>().copyWithPrevious(
+      AsyncData(
+        GamesScreenModel(
+          gamesTourModels: const [],
+          pinnedGamedIs: ref.read(gamesPinprovider(aboutTourModel!.id)).allPins,
+          isSearchMode: true,
+          searchQuery: query,
+          gameDisplayMode: ref.read(
+            gameDisplayModeProvider(aboutTourModel!.id),
           ),
-        );
+        ),
+      ),
+    );
+    try {
+      // Metadata defines category/stage scope, never loaded game providers.
+      final appBar = await _waitForSearchRounds();
+      if (!mounted || generation != _searchGeneration) return;
+      final tourId = aboutTourModel!.id;
+      final tourIds = <String>{
+        tourId,
+        ...siblingKnockoutStageTourIds(
+          rounds: appBar.gamesAppBarModels,
+          selectedTourId: tourId,
+          knownTourIds:
+              ref
+                  .read(tourDetailScreenProvider)
+                  .valueOrNull
+                  ?.tours
+                  .map((tour) => tour.tour.id) ??
+              const <String>[],
+        ),
+      };
+      if (!setEquals(tourIds, _searchTourIds)) {
+        _searchTourIds = tourIds;
+        _searchCatalogFetch = null;
+      }
+      // Share overlapping keystrokes, but always start a fresh backend search
+      // after a completed request. The SQLite browsing cache may be stale.
+      final fetch = _searchCatalogFetch ??= _fetchSearchCatalog(tourIds);
+      try {
+        final catalog = await fetch;
+        if (!mounted || generation != _searchGeneration) return;
+        _searchCatalog = catalog;
+        ref.read(gamesPinprovider(tourId).notifier).setQueryCatalog(catalog);
+        _publishSearchResults();
+      } finally {
+        if (identical(_searchCatalogFetch, fetch)) _searchCatalogFetch = null;
       }
     } catch (e, st) {
-      if (mounted) state = AsyncValue.error(e, st);
+      if (mounted && generation == _searchGeneration) {
+        state = AsyncValue.error(e, st);
+      }
     }
+  }
+
+  Future<GamesAppBarViewModel> _waitForSearchRounds() =>
+      ref.read(gamesAppBarProvider.notifier).waitForRounds();
+
+  Future<List<Games>> _fetchSearchCatalog(Set<String> tourIds) async {
+    final repository = ref.read(gameRepositoryProvider);
+    final byId = <String, Games>{};
+    for (final tourId in tourIds) {
+      // Existing paginated Supabase query with result/rating PGN fallbacks.
+      // No round, viewport, pin, view-mode or expansion predicate belongs here.
+      final games =
+          isVirtualGamebaseId(tourId)
+              ? await ref.read(completeGamesTourFutureProvider(tourId).future)
+              : await repository.getTourGamePreviews(tourId);
+      for (final game in games) {
+        byId[game.id] = game;
+      }
+    }
+    return byId.values.toList();
+  }
+
+  void _publishSearchResults() {
+    final query = _activeSearchQuery;
+    final catalog = _searchCatalog;
+    if (!mounted || query == null || catalog == null) return;
+    final result = searchTournamentGameCatalog(catalog, query);
+    state = AsyncData(
+      GamesScreenModel(
+        gamesTourModels: _mapGamesToModels(
+          result.results.map((r) => r.game).toList(),
+        ),
+        pinnedGamedIs: ref.read(gamesPinprovider(aboutTourModel!.id)).allPins,
+        isSearchMode: true,
+        searchQuery: query,
+        gameDisplayMode: ref.read(gameDisplayModeProvider(aboutTourModel!.id)),
+      ),
+    );
   }
 
   Future<void> refreshGames() async {
     if (aboutTourModel == null) return;
+    final query = _activeSearchQuery;
+    if (query != null) {
+      _searchCatalogFetch = null;
+      await searchGamesEnhanced(query);
+      return;
+    }
     try {
-      clearSearch();
       await ref
           .read(gamesTourProvider(aboutTourModel!.id).notifier)
           .refreshGames();

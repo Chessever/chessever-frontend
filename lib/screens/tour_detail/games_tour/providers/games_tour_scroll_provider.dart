@@ -1,3 +1,8 @@
+import 'games_tour_screen_provider.dart';
+import 'package:chessever2/screens/tour_detail/provider/tour_detail_screen_provider.dart';
+import 'games_tour_round_demand_provider.dart';
+import 'package:flutter/foundation.dart';
+import 'games_tour_display_rounds.dart';
 import 'dart:async';
 
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_app_bar_provider.dart';
@@ -278,17 +283,17 @@ class _GamesTourScrollProvider extends StateNotifier<ItemScrollController> {
     }
 
     final vm = _ref.read(gamesAppBarProvider).valueOrNull;
-    final selectedId = vm?.selectedId;
-    final userSelected = vm?.userSelectedId ?? false;
-    final models = _ref.read(gamesTourGroupedProvider).rounds;
-    return models
-        .where(
-          (round) =>
-              _getGamesInRound(round.id) > 0 &&
-              ((userSelected && round.id == selectedId) ||
-                  round.roundStatus != RoundStatus.upcoming),
-        )
-        .toList(growable: false);
+    final grouped = _ref.read(gamesTourGroupedProvider);
+    return selectGroupEventDisplayRounds(
+      isSearchMode:
+          _ref.read(gamesTourScreenProvider).valueOrNull?.isSearchMode ?? false,
+      rounds: grouped.filteredRounds,
+      gamesByRound: grouped.gamesByRound,
+      upcomingPairingRoundIds: grouped.upcomingPairingRoundIds,
+      unloadedRoundIds: grouped.unloadedRoundIds,
+      selectedRoundId: vm?.selectedId,
+      userSelected: vm?.userSelectedId ?? false,
+    );
   }
 
   List<String> get visibleRoundIds =>
@@ -304,11 +309,13 @@ class _GamesTourScrollProvider extends StateNotifier<ItemScrollController> {
     }
 
     var index = 0;
-    final expansionState = _ref.read(roundExpansionProvider);
+    final isSearchMode =
+        _ref.read(gamesTourScreenProvider).valueOrNull?.isSearchMode ?? false;
+    final expansionState = _ref.read(roundExpansionProviderFor(isSearchMode));
     for (final round in _getVisibleRounds()) {
       if (round.id == roundId) return index;
       index += groupEventRoundListItemCount(
-        isExpanded: expansionState[round.id] ?? true,
+        isExpanded: expansionState[round.id] ?? isSearchMode,
         matchupCardCount: _getTeamMatchupCardsInRound(round.id, round.name),
       );
     }
@@ -332,17 +339,37 @@ class _GamesTourScrollProvider extends StateNotifier<ItemScrollController> {
   }
 
   void _onItemPositionsChanged() {
-    // Skip updates during programmatic scroll
-    if (_isProgrammaticScroll) return;
-
     _debounceTimer?.cancel();
     _debounceTimer = Timer(const Duration(milliseconds: 50), () {
       final positions = _itemPositionsListener.itemPositions.value;
-      if (positions.isEmpty) return;
+      final visiblePositions = positions.where(
+        (position) =>
+            position.itemTrailingEdge > 0 && position.itemLeadingEdge < 1,
+      );
+      final tourId =
+          _ref.read(tourDetailScreenProvider).valueOrNull?.aboutTourModel.id;
+      if (tourId != null) {
+        final visibleRounds =
+            visiblePositions
+                .map((position) => _getRoundIdFromItemIndex(position.index))
+                .whereType<String>()
+                .toSet();
+        final notifier = _ref.read(
+          visibleTournamentRoundsProvider(tourId).notifier,
+        );
+        if (!setEquals(notifier.state, visibleRounds)) {
+          notifier.state = visibleRounds;
+        }
+      }
+      // Explicit navigation still loads its destination, but must not be
+      // overwritten by dropdown synchronization during the animated scroll.
+      if (_isProgrammaticScroll || visiblePositions.isEmpty) return;
 
       // Find the topmost visible item (considering items that are at least partially visible).
       final topItem =
-          positions.where((pos) => pos.itemLeadingEdge < 0.3).firstOrNull;
+          visiblePositions
+              .where((pos) => pos.itemLeadingEdge < 0.3)
+              .firstOrNull;
       if (topItem == null) return;
 
       final gameId = _getGameIdFromItemIndex(topItem.index);
@@ -416,13 +443,15 @@ class _GamesTourScrollProvider extends StateNotifier<ItemScrollController> {
     }
 
     final rounds = _getVisibleRounds();
-    final expansionState = _ref.read(roundExpansionProvider);
+    final isSearchMode =
+        _ref.read(gamesTourScreenProvider).valueOrNull?.isSearchMode ?? false;
+    final expansionState = _ref.read(roundExpansionProviderFor(isSearchMode));
 
     int currentIndex = 0;
     for (final round in rounds) {
       if (itemIndex == currentIndex) return round.id; // header
       final itemCount = groupEventRoundListItemCount(
-        isExpanded: expansionState[round.id] ?? true,
+        isExpanded: expansionState[round.id] ?? isSearchMode,
         matchupCardCount: _getTeamMatchupCardsInRound(round.id, round.name),
       );
       currentIndex += itemCount;
@@ -444,10 +473,6 @@ class _GamesTourScrollProvider extends StateNotifier<ItemScrollController> {
 
     // Return the number of team matchup cards
     return grouped.keys.length;
-  }
-
-  int _getGamesInRound(String roundId) {
-    return _getGamesForRound(roundId).length;
   }
 
   List<GamesTourModel> _getGamesForRound(String roundId) {

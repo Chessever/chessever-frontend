@@ -10,7 +10,7 @@ import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrap
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrapper/grid_game_card_wrapper_widget.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrapper/live_game_card_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_provider.dart';
-import 'package:chessever2/screens/tour_detail/games_tour/widgets/round_header_widget.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/widgets/lazy_round_header.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/match_header_widget.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_screen_provider.dart';
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_screen_provider.dart';
@@ -146,36 +146,36 @@ class GamesListView extends ConsumerWidget {
               }
 
               if (lookup is GamesTourRoundHeaderEntry) {
+                final expansionProvider = roundExpansionProviderFor(
+                  isSearchMode,
+                );
                 final isRoundExpanded =
-                    isSearchMode
-                        ? true
-                        : ref.watch(
-                          roundExpansionStateProvider(lookup.round.id),
-                        );
+                    ref.watch(expansionProvider)[lookup.round.id] ??
+                    isSearchMode;
                 return Padding(
                   padding: EdgeInsets.only(bottom: 16.sp),
-                  child: RoundHeader(
+                  child: LazyRoundHeader(
                     round: lookup.round,
                     roundGames: lookup.roundGames,
                     isExpanded: isRoundExpanded,
-                    onToggle:
-                        isSearchMode
-                            ? null // Disable toggle in search mode
-                            : () {
-                              ref
-                                  .read(roundExpansionProvider.notifier)
-                                  .toggleRound(lookup.round.id);
-                            },
+                    onToggle: () {
+                      ref
+                          .read(expansionProvider.notifier)
+                          .toggleRound(lookup.round.id);
+                    },
                   ),
                 );
               }
 
               if (lookup is GamesTourMatchHeaderEntry) {
                 final matchKey = lookup.matchHeader.matchKey;
-                final isExpanded =
-                    isSearchMode
-                        ? true
-                        : ref.watch(matchExpansionStateProvider(matchKey));
+                final expansionProvider = matchExpansionProviderFor(
+                  isSearchMode,
+                );
+                final isExpanded = resolveMatchExpansionState(
+                  ref.watch(expansionProvider),
+                  matchKey,
+                );
 
                 return Padding(
                   padding: EdgeInsets.only(bottom: 12.sp),
@@ -183,14 +183,11 @@ class GamesListView extends ConsumerWidget {
                     match: lookup.matchHeader,
                     hideScores: hideMatchScores,
                     isExpanded: isExpanded,
-                    onToggle:
-                        isSearchMode
-                            ? null // Disable toggle in search mode
-                            : () {
-                              ref
-                                  .read(matchExpansionProvider.notifier)
-                                  .toggleMatch(matchKey);
-                            },
+                    onToggle: () {
+                      ref
+                          .read(expansionProvider.notifier)
+                          .toggleMatch(matchKey);
+                    },
                   ),
                 );
               }
@@ -333,6 +330,7 @@ class GamesListView extends ConsumerWidget {
     bool streamEnabled,
   ) {
     return GridGameCardWrapperWidget(
+      deferUntilVisible: true,
       key: ValueKey('game_${game.gameId}'),
       game: game,
       liveBatchKey: liveBatchKeyByGameId[game.gameId],
@@ -378,6 +376,7 @@ class GamesListView extends ConsumerWidget {
     );
 
     return GameCardWrapperWidget(
+      deferUntilVisible: true,
       game: item.game1,
       liveBatchKey: liveBatchKeyByGameId[item.game1.gameId],
       gamesData: modifiedGamesData,

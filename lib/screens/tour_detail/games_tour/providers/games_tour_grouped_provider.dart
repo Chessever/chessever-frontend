@@ -1,3 +1,5 @@
+import 'games_tour_round_demand_provider.dart';
+import 'round_expansion_provider.dart';
 import 'package:chessever2/repository/supabase/game/games.dart';
 import 'package:chessever2/screens/gamebase/event_view/gamebase_virtual_event_id.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_app_bar_view_model.dart';
@@ -32,6 +34,7 @@ class GroupedGamesData {
   /// names, no moves yet). They render as collapsible cards pinned to the
   /// BOTTOM of the Games tab, below every played round.
   final Set<String> upcomingPairingRoundIds;
+  final Set<String> unloadedRoundIds;
 
   GroupedGamesData({
     required this.filteredRounds,
@@ -44,6 +47,7 @@ class GroupedGamesData {
     required this.allGames,
     required this.providerGameCount,
     this.upcomingPairingRoundIds = const {},
+    this.unloadedRoundIds = const {},
   });
 }
 
@@ -80,6 +84,7 @@ final gamesTourGroupedProvider = Provider.autoDispose<GroupedGamesData>((ref) {
   }
 
   final rounds = roundResolution.rounds;
+  final demand = ref.watch(gamesTourRoundDemandProvider);
   final knockoutState = ref.watch(knockoutTournamentStateProvider(tourId));
   final isKnockoutTournament = knockoutState.isKnockout;
 
@@ -212,6 +217,7 @@ final gamesTourGroupedProvider = Provider.autoDispose<GroupedGamesData>((ref) {
               .map((reference) => reference.siblingTourId)
               .whereType<String>()
               .toSet()) {
+        if (!demand.containsKey(stageTourId)) continue;
         final stageAsync = ref.watch(gamesTourProvider(stageTourId));
         representedSiblingIsLoading =
             representedSiblingIsLoading || stageAsync.isLoading;
@@ -347,6 +353,7 @@ final gamesTourGroupedProvider = Provider.autoDispose<GroupedGamesData>((ref) {
     final now = DateTime.now();
     GamesAppBarModel? fallbackRound;
     for (final round in rounds) {
+      if (!demand.values.any((ids) => ids.contains(round.id))) continue;
       if (upcomingPairingRoundIds.contains(round.id)) continue;
       if (gamesByRound[round.id]?.isNotEmpty ?? false) continue;
       if (round.roundStatus == RoundStatus.completed) continue;
@@ -463,12 +470,34 @@ final gamesTourGroupedProvider = Provider.autoDispose<GroupedGamesData>((ref) {
             : ordered;
   }
 
+  final unloadedRoundIds = <String>{};
+  final expansion = ref.watch(roundExpansionProvider);
+  if (!isSearchMode && tourId != null) {
+    for (final round in rounds) {
+      final owner = stageReferences[round.id]?.siblingTourId ?? tourId;
+      if (!ref.exists(gamesTourProvider(owner))) {
+        unloadedRoundIds.add(round.id);
+        continue;
+      }
+      final loader = ref.read(gamesTourProvider(owner).notifier);
+      final sourceIds =
+          round.sourceRoundIds.isEmpty ? [round.id] : round.sourceRoundIds;
+      if ((!loader.isCatalogComplete &&
+              !sourceIds.every(loader.loadedRoundIds.contains)) ||
+          (expansion[round.id] == true &&
+              (gamesByRound[round.id]?.isEmpty ?? true))) {
+        unloadedRoundIds.add(round.id);
+      }
+    }
+  }
+
   final playedRounds =
       rounds
           .where(
             (round) =>
                 !upcomingPairingRoundIds.contains(round.id) &&
-                (gamesByRound[round.id]?.isNotEmpty ?? false),
+                ((gamesByRound[round.id]?.isNotEmpty ?? false) ||
+                    unloadedRoundIds.contains(round.id)),
           )
           .toList();
   final upcomingPairingRounds = sortRoundsForDisplay(
@@ -505,6 +534,7 @@ final gamesTourGroupedProvider = Provider.autoDispose<GroupedGamesData>((ref) {
     allGames: allGamesScreenModel,
     providerGameCount: providerGameCount,
     upcomingPairingRoundIds: upcomingPairingRoundIds,
+    unloadedRoundIds: unloadedRoundIds,
   );
 });
 

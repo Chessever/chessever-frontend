@@ -1,3 +1,4 @@
+import 'package:chessever2/widgets/search/gameSearch/enhanced_game_search.dart';
 import 'dart:async';
 import 'dart:convert';
 
@@ -24,6 +25,8 @@ Map<String, dynamic> _row(int index) => {
   'tour_slug': 'tour',
   'status': index == 0 ? '*' : '1-0',
   'board_nr': index % 400,
+  'eco': 'B90',
+  'opening_name': 'Sicilian Defense',
   'players': [
     for (final name in ['White', 'Black'])
       {
@@ -48,6 +51,72 @@ void main() {
       publishableKey: 'placeholder',
     );
   });
+
+  test(
+    'lazy round pages never request older rounds or PGN snapshots',
+    () async {
+      final requests = <Uri>[];
+      final client = SupabaseClient(
+        'https://example.test',
+        'placeholder',
+        httpClient: MockClient((request) async {
+          requests.add(request.url);
+          final query = request.url.queryParameters;
+          expect(query['tour_id'], 'eq.tour');
+          expect(query['round_id'], 'eq.current');
+          expect(query['select']!.split(','), isNot(contains('pgn')));
+          expect(query.containsKey('id'), isFalse);
+          final offset = int.parse(query['offset'] ?? '0');
+          final limit = int.parse(query['limit']!);
+          return http.Response(
+            jsonEncode([
+              for (var i = offset; i < (offset + limit).clamp(0, 1204); i++)
+                {..._row(i), 'round_id': 'current'},
+            ]),
+            200,
+            request: request,
+            headers: {'content-type': 'application/json'},
+          );
+        }),
+      );
+      addTearDown(client.dispose);
+      final games = await _Repository(
+        client,
+      ).getRoundGamePreviews('tour', 'current');
+      expect(games.length, 1204);
+      expect(requests.length, 2);
+      expect(games.every((game) => game.isPgnDeferred), isTrue);
+    },
+  );
+
+  test(
+    'safety net is bounded to expanded rounds and skips collapsed-all',
+    () async {
+      final requests = <Uri>[];
+      final client = SupabaseClient(
+        'https://example.test',
+        'placeholder',
+        httpClient: MockClient((request) async {
+          requests.add(request.url);
+          expect(
+            request.url.queryParameters['round_id']?.replaceAll('"', ''),
+            'in.(current)',
+          );
+          return http.Response(
+            '[]',
+            200,
+            request: request,
+            headers: {'content-type': 'application/json'},
+          );
+        }),
+      );
+      addTearDown(client.dispose);
+      final repo = _Repository(client);
+      await repo.getTourGamesSafetyNet('tour', roundIds: {'current'});
+      await repo.getTourGamesSafetyNet('tour', roundIds: {});
+      expect(requests.length, 1);
+    },
+  );
 
   test(
     '2400-game index is complete and fetches PGN only for required fallbacks',
@@ -76,6 +145,8 @@ void main() {
             expect(columns, contains('search'));
             expect(query['tour_id'], 'eq.tour');
             expect(query['order'], startsWith('id.asc'));
+            expect(query.containsKey('round_id'), isFalse);
+            expect(query.containsKey('status'), isFalse);
             final offset = int.parse(query['offset'] ?? '0');
             pages.add(offset);
             final limit = int.parse(query['limit']!);
@@ -96,6 +167,21 @@ void main() {
       expect(fullRequests.length, 1);
       expect(fullRequests.single.replaceAll('"', ''), 'in.(g0,g1)');
       expect(games.length, 2400);
+      for (final query in ['White', 'GM USA', 'B90', 'Sicilian Defense']) {
+        expect(
+          searchTournamentGameCatalog(games, query).results,
+          hasLength(2400),
+          reason: query,
+        );
+      }
+      expect(
+        searchTournamentGameCatalog(games, 'White 2399').results.single.game.id,
+        'g2399',
+      );
+      expect(
+        searchTournamentGameCatalog(games, '1-0').results,
+        hasLength(2399),
+      );
       expect(games.map((g) => g.id).toSet().length, 2400);
       expect(games.where((g) => g.pgn != null).length, 2);
       expect(games.first.isPgnDeferred, isFalse);

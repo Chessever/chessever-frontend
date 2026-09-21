@@ -1,6 +1,7 @@
 // ignore_for_file: avoid_print, empty_catches, unused_element
 
 import 'dart:async';
+import 'round_expansion_provider.dart';
 
 import 'package:collection/collection.dart';
 import 'package:chessever2/repository/supabase/game/games.dart';
@@ -232,6 +233,35 @@ class _GamesAppBarNotifier
     }
   }
 
+  final _roundWaiters = <Completer<GamesAppBarViewModel>>{};
+
+  /// Search needs the complete category/stage metadata before choosing queries.
+  /// Await a snapshot without introducing a screen -> metadata listener cycle.
+  Future<GamesAppBarViewModel> waitForRounds() async {
+    if (state.hasError) {
+      Error.throwWithStackTrace(state.error!, state.stackTrace!);
+    }
+    if (state.hasValue) return state.requireValue;
+    final keepAlive = ref.keepAlive();
+    final ready = Completer<GamesAppBarViewModel>();
+    _roundWaiters.add(ready);
+    final removeListener = addListener((next) {
+      if (ready.isCompleted) return;
+      if (next.hasError) {
+        ready.completeError(next.error!, next.stackTrace!);
+      } else if (next.hasValue) {
+        ready.complete(next.requireValue);
+      }
+    }, fireImmediately: false);
+    try {
+      return await ready.future;
+    } finally {
+      _roundWaiters.remove(ready);
+      removeListener();
+      keepAlive.close();
+    }
+  }
+
   Future<void> refresh() async {
     await _load();
     _invalidateRoundMetadataEvidence();
@@ -250,23 +280,12 @@ class _GamesAppBarNotifier
       return;
     }
 
-    final counts = _buildRoundGameCounts();
-    var targetModel = model;
-
-    // Never allow selecting a round with zero games.
-    if (!_hasGames(targetModel.id, counts)) {
-      final fallback = _selectAutoRound(current.gamesAppBarModels, counts);
-      if (fallback == null) {
-        print(
-          '⚠️ select() - no selectable non-empty rounds, ignoring selection',
-        );
-        return;
-      }
-      print(
-        '⚠️ select() - requested empty round (${targetModel.id}), redirecting to ${fallback.id}',
-      );
-      targetModel = fallback;
-    }
+    final targetModel = model;
+    final isSearchMode =
+        ref.read(gamesTourScreenProvider).valueOrNull?.isSearchMode ?? false;
+    ref
+        .read(roundExpansionProviderFor(isSearchMode).notifier)
+        .expandRound(targetModel.id);
 
     ref.read(userSelectedRoundProvider.notifier).state = (
       id: targetModel.id,
@@ -375,20 +394,13 @@ class _GamesAppBarNotifier
     return matchKeys;
   }
 
-  /// Get all rounds that currently have games in the Games tab dataset.
-  /// This is used by the menu actions so "Expand all" / "Collapse all"
-  /// always affect the full list dataset, not only the currently visible slice.
-  List<String> getAllRoundIdsWithGames() {
+  /// Include unloaded metadata rows so bulk expansion can request old rounds.
+  List<String> getAllRoundIds() {
     final vm = state.valueOrNull;
     final allRounds = vm?.gamesAppBarModels ?? [];
     if (allRounds.isEmpty) return [];
 
-    final gamesByRound = _buildRoundGameCounts();
-
-    return allRounds
-        .where((round) => (gamesByRound[round.id] ?? 0) > 0)
-        .map((round) => round.id)
-        .toList(growable: false);
+    return allRounds.map((round) => round.id).toList(growable: false);
   }
 
   Future<void> _scrollToRound(String roundId) async {
@@ -1087,8 +1099,27 @@ class _GamesAppBarNotifier
     };
   }
 
-  bool _hasGames(String roundId, Map<String, int> counts) =>
-      (counts[roundId] ?? 0) > 0;
+  bool _hasGames(String roundId, Map<String, int> counts) {
+    if ((counts[roundId] ?? 0) > 0) return true;
+    final model =
+        _knownRoundModels.where((round) => round.id == roundId).firstOrNull;
+    if (model == null || tourId == null) return false;
+    final detail = ref.read(tourDetailScreenProvider).valueOrNull;
+    final stage = resolveKnockoutStageRoundReference(
+      round: model,
+      selectedTourId: tourId!,
+      knownTourIds: detail?.tours.map((tour) => tour.tour.id) ?? const [],
+    );
+    final owner = stage?.siblingTourId ?? tourId!;
+    if (!ref.exists(gamesTourProvider(owner))) return true;
+    final loader = ref.read(gamesTourProvider(owner).notifier);
+    final sourceIds =
+        model.sourceRoundIds.isEmpty ? [model.id] : model.sourceRoundIds;
+    // Unfetched is not empty. Let existing selection rules choose a candidate;
+    // a completed empty request will then make that round ineligible.
+    return !loader.isCatalogComplete &&
+        !sourceIds.every(loader.loadedRoundIds.contains);
+  }
 
   GamesAppBarModel? _pickRoundModelByStatus(
     List<GamesAppBarModel> models,
@@ -1198,6 +1229,7 @@ class _GamesAppBarNotifier
           _hasGames(stickyId, counts);
       final nextSelectedId =
           stickyIsValid ? stickyId : autoSelected?.id ?? current.selectedId;
+      ref.read(roundExpansionProvider.notifier).initializeRound(nextSelectedId);
       state = AsyncValue.data(
         GamesAppBarViewModel(
           gamesAppBarModels: reordered,
@@ -1325,6 +1357,7 @@ class _GamesAppBarNotifier
         sticky?.id == nextSelected &&
         nextSelected.isNotEmpty;
 
+    ref.read(roundExpansionProvider.notifier).initializeRound(nextSelected);
     state = AsyncValue.data(
       GamesAppBarViewModel(
         gamesAppBarModels: updated,
@@ -1347,6 +1380,7 @@ class _GamesAppBarNotifier
         stickyId != null &&
         models.any((m) => m.id == stickyId) &&
         _hasGames(stickyId, counts)) {
+      ref.read(roundExpansionProvider.notifier).initializeRound(stickyId);
       state = AsyncValue.data(
         GamesAppBarViewModel(
           gamesAppBarModels: models,
@@ -1363,6 +1397,7 @@ class _GamesAppBarNotifier
     // 2) Prefer live round first (highest priority for real-time viewing)
     final liveModel = _pickRoundModelByStatus(models, counts, RoundStatus.live);
     if (liveModel != null) {
+      ref.read(roundExpansionProvider.notifier).initializeRound(liveModel.id);
       state = AsyncValue.data(
         GamesAppBarViewModel(
           gamesAppBarModels: models,
@@ -1388,6 +1423,9 @@ class _GamesAppBarNotifier
         isRoundFullyPlayed: (model) => completion[model.id] ?? false,
       );
       if (preconfiguredFocus != null) {
+        ref
+            .read(roundExpansionProvider.notifier)
+            .initializeRound(preconfiguredFocus.id);
         state = AsyncValue.data(
           GamesAppBarViewModel(
             gamesAppBarModels: models,
@@ -1429,6 +1467,9 @@ class _GamesAppBarNotifier
     }
 
     if (latestByActivityModel != null) {
+      ref
+          .read(roundExpansionProvider.notifier)
+          .initializeRound(latestByActivityModel.id);
       state = AsyncValue.data(
         GamesAppBarViewModel(
           gamesAppBarModels: models,
@@ -1445,6 +1486,7 @@ class _GamesAppBarNotifier
     // 5) Fall back to auto-select (ongoing → completed → upcoming)
     final autoModel = _selectAutoRound(models, counts);
     final fallbackId = autoModel?.id ?? '';
+    ref.read(roundExpansionProvider.notifier).initializeRound(fallbackId);
     state = AsyncValue.data(
       GamesAppBarViewModel(
         gamesAppBarModels: models,
@@ -1461,6 +1503,11 @@ class _GamesAppBarNotifier
 
   @override
   void dispose() {
+    for (final waiter in _roundWaiters) {
+      if (!waiter.isCompleted) {
+        waiter.completeError(StateError('Tournament changed'));
+      }
+    }
     _unknownGameRoundsRetryTimer?.cancel();
     _unknownGameRoundsRetryGeneration++;
     super.dispose();

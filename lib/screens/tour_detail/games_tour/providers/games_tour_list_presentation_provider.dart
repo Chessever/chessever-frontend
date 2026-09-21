@@ -50,6 +50,7 @@ final gamesTourListPresentationProvider =
         effectiveRounds: grouped.filteredRounds,
         gamesByRound: grouped.gamesByRound,
         upcomingPairingRoundIds: grouped.upcomingPairingRoundIds,
+        unloadedRoundIds: grouped.unloadedRoundIds,
         isSearchMode: isSearchMode,
         isMultiStageKnockout: grouped.isMultiStageKnockout,
         selectedRoundId: appBar?.selectedId,
@@ -59,14 +60,8 @@ final gamesTourListPresentationProvider =
         rounds: displayRounds,
         gamesByRound: grouped.gamesByRound,
         mode: viewMode,
-        matchExpansionState:
-            isSearchMode
-                ? const <String, bool>{}
-                : ref.watch(matchExpansionProvider),
-        roundExpansionState:
-            isSearchMode
-                ? const <String, bool>{}
-                : ref.watch(roundExpansionProvider),
+        matchExpansionState: ref.watch(matchExpansionProviderFor(isSearchMode)),
+        roundExpansionState: ref.watch(roundExpansionProviderFor(isSearchMode)),
         isKnockoutTournament: grouped.isKnockoutTournament,
         displayMode: screen?.gameDisplayMode ?? GameDisplayMode.all,
         isSearchMode: isSearchMode,

@@ -1,3 +1,4 @@
+import 'viewport_game_card.dart';
 import 'package:chessever2/screens/chessboard/provider/game_pgn_stream_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_screen_provider.dart';
@@ -45,15 +46,20 @@ class GroupEventGamesCard extends StatelessWidget {
       separatorBuilder: (context, _) => SizedBox(height: 12.sp),
       itemBuilder: (context, index) {
         final match = games[index];
-        return _GroupEventGameCardTile(
-          key: ValueKey('group_event_game_${match.game.gameId}'),
-          match: match,
-          gamesData: gamesData,
-          gameIndex: gameIndexMap[match.game.gameId] ?? -1,
-          liveBatchKey: liveBatchKeyByGameId[match.game.gameId],
-          allowStockfishFallback: allowStockfishFallback,
-          streamEnabled: streamEnabled,
-          onReturnFromChessboard: onReturnFromChessboard,
+        return ViewportGameCard(
+          key: ValueKey(match.game.gameId),
+          game: match.game,
+          builder:
+              (_) => _GroupEventGameCardTile(
+                key: ValueKey('group_event_game_${match.game.gameId}'),
+                match: match,
+                gamesData: gamesData,
+                gameIndex: gameIndexMap[match.game.gameId] ?? -1,
+                liveBatchKey: liveBatchKeyByGameId[match.game.gameId],
+                allowStockfishFallback: allowStockfishFallback,
+                streamEnabled: streamEnabled,
+                onReturnFromChessboard: onReturnFromChessboard,
+              ),
         );
       },
     );
