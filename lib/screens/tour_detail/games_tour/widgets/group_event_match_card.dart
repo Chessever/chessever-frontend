@@ -20,7 +20,6 @@ import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_screen_provider.dart';
 
 class GroupEventMatchCard extends ConsumerWidget {
-  final String roundId;
   final String roundTitle;
   final List<MatchWithComparison> games;
   final GamesScreenModel gamesData;
@@ -32,7 +31,6 @@ class GroupEventMatchCard extends ConsumerWidget {
 
   const GroupEventMatchCard({
     super.key,
-    required this.roundId,
     required this.roundTitle,
     required this.games,
     required this.gamesData,
@@ -82,13 +80,9 @@ class GroupEventMatchCard extends ConsumerWidget {
             ? context.colors.brand
             : context.colors.danger;
 
-    // Keep the same pairing in different rounds independently expandable.
-    final matchKey = teamMatchExpansionKey(roundId, roundTitle);
-    final expansionProvider = matchExpansionProviderFor(gamesData.isSearchMode);
-    final isExpanded = resolveMatchExpansionState(
-      ref.watch(expansionProvider),
-      matchKey,
-    );
+    // Use match key from roundTitle (Team1 vs Team2)
+    final matchKey = roundTitle;
+    final isExpanded = ref.watch(matchExpansionStateProvider(matchKey));
 
     final radius = Radius.circular(12.br);
     final cardBorderRadius = BorderRadius.circular(12.br);
@@ -107,7 +101,7 @@ class GroupEventMatchCard extends ConsumerWidget {
         children: [
           InkWell(
             onTap: () {
-              ref.read(expansionProvider.notifier).toggleMatch(matchKey);
+              ref.read(matchExpansionProvider.notifier).toggleMatch(matchKey);
             },
             child: Container(
               height: 60.h,
@@ -366,7 +360,6 @@ class GroupEventMatchCard extends ConsumerWidget {
         return Padding(
           padding: EdgeInsets.only(bottom: 12.sp),
           child: GameCardWrapperWidget(
-            deferUntilVisible: true,
             game: matchWithComparison.game,
             liveBatchKey: liveBatchKeyByGameId[matchWithComparison.game.gameId],
             gamesData: GamesScreenModel(
@@ -399,7 +392,6 @@ class GroupEventMatchCard extends ConsumerWidget {
     final fullGamesList = gamesData.gamesTourModels;
 
     return GridGameCardWrapperWidget(
-      deferUntilVisible: true,
       key: ValueKey('game_${matchWithComparison.game.gameId}'),
       game: matchWithComparison.game,
       liveBatchKey: liveBatchKeyByGameId[matchWithComparison.game.gameId],

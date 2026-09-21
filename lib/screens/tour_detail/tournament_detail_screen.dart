@@ -1,7 +1,4 @@
 import 'dart:async';
-import 'games_tour/providers/games_tour_round_demand_provider.dart';
-import 'games_tour/providers/round_expansion_provider.dart';
-import 'games_tour/providers/match_expansion_provider.dart';
 
 import 'package:chessever2/chat/botvinnik_chat_button.dart';
 import 'package:chessever2/chat/chat_api.dart';
@@ -72,8 +69,6 @@ class _TournamentDetailViewState extends ConsumerState<TournamentDetailScreen>
       TournamentDetailLayoutTracker();
   late List<TournamentDetailScreenMode> _renderedModes;
   String? _scheduledReferencedRoundId;
-  final Set<TournamentDetailScreenMode> _visitedModes = {};
-  String? _visitedTourId;
 
   void _scheduleReferencedRoundSelection(
     WidgetRef scopedRef,
@@ -199,7 +194,6 @@ class _TournamentDetailViewState extends ConsumerState<TournamentDetailScreen>
           await Future.wait(
             representedTourIds.map((tourId) async {
               try {
-                if (!ref.exists(gamesTourProvider(tourId))) return;
                 await ref
                     .read(gamesTourProvider(tourId).notifier)
                     .refreshGames();
@@ -247,8 +241,6 @@ class _TournamentDetailViewState extends ConsumerState<TournamentDetailScreen>
 
   void _cleanupProviders() {
     try {
-      ref.invalidate(roundExpansionProvider);
-      ref.invalidate(matchExpansionProvider);
       ref.invalidate(selectedTourModeProvider);
       ref.invalidate(gamesTourProvider);
       ref.invalidate(userSelectedRoundProvider);
@@ -288,7 +280,6 @@ class _TournamentDetailViewState extends ConsumerState<TournamentDetailScreen>
           final selectedTourMode = scopedRef.watch(selectedTourModeProvider);
           final tourDetailAsync = scopedRef.watch(tourDetailScreenProvider);
           final roundsAsync = scopedRef.watch(gamesAppBarProvider);
-          scopedRef.watch(gamesTourRoundDemandProvider);
           final pendingRoundId = scopedRef.watch(
             pendingRoundNavigationProvider,
           );
@@ -331,11 +322,6 @@ class _TournamentDetailViewState extends ConsumerState<TournamentDetailScreen>
             visibleModes,
             selectedTourMode,
           );
-          if (_visitedTourId != tourId) {
-            _visitedTourId = tourId;
-            _visitedModes.clear();
-          }
-          _visitedModes.add(effectiveMode);
           final isTeam = layout == TournamentDetailLayout.team;
           final selectedBroadcast = scopedRef.watch(
             selectedBroadcastModelProvider,
@@ -403,13 +389,6 @@ class _TournamentDetailViewState extends ConsumerState<TournamentDetailScreen>
                                     _handlePageChanged(index, visibleModes),
                             itemBuilder: (context, index) {
                               if (index >= visibleModes.length) {
-                                return const SizedBox.shrink();
-                              }
-                              // PageView may build a neighbouring tab before it
-                              // is opened. Do not start its full-catalog loaders.
-                              if (!_visitedModes.contains(
-                                visibleModes[index],
-                              )) {
                                 return const SizedBox.shrink();
                               }
                               switch (visibleModes[index]) {

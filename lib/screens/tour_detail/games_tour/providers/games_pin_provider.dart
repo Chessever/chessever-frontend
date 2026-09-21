@@ -217,13 +217,6 @@ class _GamesPinController extends StateNotifier<GamesPinState> {
       <String, ProviderSubscription<KnockoutTournamentState>>{};
   Future<void>? _pinLoadInFlight;
   bool _reloadPinSnapshot = false;
-  List<Games> _queryCatalog = const [];
-
-  void setQueryCatalog(List<Games> games) {
-    if (!didRawGamePriorityInputsChange(_queryCatalog, games)) return;
-    _queryCatalog = games;
-    computeAutoPins();
-  }
 
   void _listenToFavoritePlayers() {
     // Observe the canonical favorites provider. Loading/error transitions do
@@ -380,9 +373,7 @@ class _GamesPinController extends StateNotifier<GamesPinState> {
     // Kicked off first so it still overlaps the manual read, but with its own
     // failure and time bounds so it can never wedge this pass.
     final autoPinFuture = Future<AutoPinnedGamesResult?>(
-      () => ref
-          .read(autoPinLogicProvider)
-          .getAutoPinnedGames(tourId, queryCatalog: _queryCatalog),
+      () => ref.read(autoPinLogicProvider).getAutoPinnedGames(tourId),
     ).timeout(_autoPinResolveTimeout, onTimeout: () => null).catchError((
       Object error,
       StackTrace stackTrace,

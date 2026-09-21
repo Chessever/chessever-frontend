@@ -8,69 +8,6 @@ import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_s
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  test('unloaded older rounds remain selectable collapsed headers', () {
-    final current = _round('current', RoundStatus.live);
-    final old = _round('old', RoundStatus.completed);
-    final games = {
-      'current': [_game('current-game')],
-    };
-    final rounds = [current, old];
-    final teamRounds = selectGroupEventDisplayRounds(
-      rounds: rounds,
-      gamesByRound: games,
-      upcomingPairingRoundIds: {},
-      unloadedRoundIds: {'old'},
-    );
-    expect(teamRounds.map((round) => round.id), ['current', 'old']);
-    final layout = buildGamesTourFlattenedLayout(
-      rounds: rounds,
-      gamesByRound: games,
-      mode: GamesListViewMode.gamesCard,
-      matchExpansionState: {},
-      roundExpansionState: {'current': true},
-      isKnockoutTournament: false,
-      displayMode: GameDisplayMode.all,
-    );
-    expect(layout.roundHeaderIndex('current'), 0);
-    expect(layout.roundHeaderIndex('old'), 2);
-    expect(layout.itemIndexForGameId('current-game'), 1);
-  });
-
-  test(
-    'search expansion defaults open and honors both levels in every view',
-    () {
-      final round = _round('knockout-stage-selected', RoundStatus.live);
-      final games = [_game('finished', status: GameStatus.draw), _game('live')];
-      for (final view in GamesListViewMode.values) {
-        GamesTourFlattenedLayout layout(
-          Map<String, bool> rounds,
-          Map<String, bool> matches,
-        ) => buildGamesTourFlattenedLayout(
-          rounds: [round],
-          gamesByRound: {round.id: games},
-          mode: view,
-          isSearchMode: true,
-          isKnockoutTournament: true,
-          displayMode: GameDisplayMode.all,
-          roundExpansionState: rounds,
-          matchExpansionState: matches,
-        );
-        final expanded = layout({}, {});
-        expect(expanded.gameItemIndices.keys.toSet(), {'finished', 'live'});
-        expect(layout({round.id: false}, {}).gameItemIndices, isEmpty);
-        final matchKey = expanded.matchGroupsByRound[round.id]!.keys.single;
-        expect(layout({}, {matchKey: false}).gameItemIndices, isEmpty);
-        expect(
-          layout(
-            {round.id: true},
-            {matchKey: true},
-          ).gameItemIndices.keys.toSet(),
-          {'finished', 'live'},
-        );
-      }
-    },
-  );
-
   group('selectGroupEventDisplayRounds', () {
     test('keeps played boards whose canonical round is still upcoming', () {
       final staleUpcoming = _round(
@@ -576,10 +513,7 @@ GamesTourFlattenedLayout _layout({
   gamesByRound: gamesByRound,
   mode: mode,
   matchExpansionState: matchExpansionState,
-  roundExpansionState: {
-    for (final round in rounds) round.id: true,
-    ...roundExpansionState,
-  },
+  roundExpansionState: roundExpansionState,
   isKnockoutTournament: true,
   displayMode: displayMode,
   roundStartTimesById: roundStartTimesById,

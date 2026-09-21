@@ -4,7 +4,7 @@ import 'package:chessever2/screens/tour_detail/games_tour/providers/games_list_v
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/games_tour_content_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/group_event_match_card.dart';
-import 'package:chessever2/screens/tour_detail/games_tour/widgets/lazy_round_header.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/widgets/round_header_widget.dart';
 import 'package:chessever2/widgets/positioned_list_scrollbar.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -49,11 +49,9 @@ class _GroupEventGamesTourContentBodyState
     final userSelected = gamesAppBar.value?.userSelectedId ?? false;
 
     final visibleRounds = selectGroupEventDisplayRounds(
-      isSearchMode: widget.gamesScreenModel.isSearchMode,
       rounds: groupedData.filteredRounds,
       gamesByRound: gamesByRound,
       upcomingPairingRoundIds: groupedData.upcomingPairingRoundIds,
-      unloadedRoundIds: groupedData.unloadedRoundIds,
       selectedRoundId: selectedRoundId,
       userSelected: userSelected,
     );
@@ -99,9 +97,7 @@ class _GroupEventGamesTourContentBodyState
         ref
             .watch(gamesTourScrollProvider(scopeId).notifier)
             .itemPositionsListener;
-    final roundExpansionState = ref.watch(
-      roundExpansionProviderFor(widget.gamesScreenModel.isSearchMode),
-    );
+    final roundExpansionState = ref.watch(roundExpansionProvider);
 
     return _buildAllRoundsView(
       context,
@@ -140,25 +136,18 @@ class _GroupEventGamesTourContentBodyState
       final roundGames = gamesByRound[round.id] ?? const <GamesTourModel>[];
       final grouped = groupedByRound[round.id]!;
 
-      final isRoundExpanded =
-          roundExpansionState[round.id] ?? orderedGamesData.isSearchMode;
+      final isRoundExpanded = roundExpansionState[round.id] ?? true;
 
       // Add round header item
       allItems.add(
         _GroupEventItem(
           roundId: round.id,
-          widget: LazyRoundHeader(
+          widget: RoundHeader(
             round: round,
             roundGames: roundGames,
             isExpanded: isRoundExpanded,
             onToggle: () {
-              ref
-                  .read(
-                    roundExpansionProviderFor(
-                      orderedGamesData.isSearchMode,
-                    ).notifier,
-                  )
-                  .toggleRound(round.id);
+              ref.read(roundExpansionProvider.notifier).toggleRound(round.id);
             },
           ),
           isHeader: true,
@@ -176,8 +165,6 @@ class _GroupEventGamesTourContentBodyState
           _GroupEventItem(
             roundId: round.id,
             widget: GroupEventMatchCard(
-              key: ValueKey('team_${round.id}_$header'),
-              roundId: round.id,
               roundTitle: header,
               games: gamesForTeam,
               gamesData: orderedGamesData,

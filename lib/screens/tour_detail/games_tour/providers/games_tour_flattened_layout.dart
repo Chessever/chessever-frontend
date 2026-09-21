@@ -136,6 +136,7 @@ GamesTourFlattenedLayout buildGamesTourFlattenedLayout({
 
   for (final round in rounds) {
     final roundGames = gamesByRound[round.id] ?? const <GamesTourModel>[];
+    if (roundGames.isEmpty) continue;
 
     final isKnockoutRound = _isKnockoutRound(isKnockoutTournament, round);
     final matches =
@@ -175,7 +176,8 @@ GamesTourFlattenedLayout buildGamesTourFlattenedLayout({
       GamesTourRoundHeaderEntry(round: round, roundGames: roundGames),
     );
 
-    final isRoundExpanded = roundExpansionState[round.id] ?? isSearchMode;
+    final isRoundExpanded =
+        isSearchMode ? true : (roundExpansionState[round.id] ?? true);
     if (!isRoundExpanded) continue;
 
     if (!isKnockoutRound) {
@@ -211,10 +213,10 @@ GamesTourFlattenedLayout buildGamesTourFlattenedLayout({
         ),
       );
 
-      final isMatchExpanded = resolveMatchExpansionState(
-        matchExpansionState,
-        matchKey,
-      );
+      final isMatchExpanded =
+          isSearchMode
+              ? true
+              : resolveMatchExpansionState(matchExpansionState, matchKey);
       if (isMatchExpanded) {
         final visibleGames = <GamesTourModel>[];
         final globalIndices = <int>[];

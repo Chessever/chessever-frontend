@@ -62,7 +62,6 @@ class _GamesTourScreenState extends ConsumerState<GamesTourScreen>
         final gamesTourAsync = ref.watch(gamesTourScreenProvider);
 
         return gamesTourAsync.when(
-          skipLoadingOnRefresh: false,
           data: (data) {
             final groupedData = ref.watch(gamesTourGroupedProvider);
             final hasGroupedGames = groupedData.gamesByRound.values.any(
@@ -71,9 +70,7 @@ class _GamesTourScreenState extends ConsumerState<GamesTourScreen>
             if (data.gamesTourModels.isEmpty && groupedData.isLoading) {
               return const TourLoadingWidget();
             }
-            if (data.gamesTourModels.isEmpty &&
-                !hasGroupedGames &&
-                groupedData.unloadedRoundIds.isEmpty) {
+            if (data.gamesTourModels.isEmpty && !hasGroupedGames) {
               return SingleChildScrollView(
                 child:
                     data.isSearchMode && data.searchQuery != null
@@ -187,7 +184,6 @@ class _GamesTourScreenState extends ConsumerState<GamesTourScreen>
           selectedTourId: selectedTourId,
           knownTourIds: knownTourIds,
         )) {
-          if (!ref.exists(gamesTourProvider(siblingTourId))) continue;
           futures.add(
             ref.read(gamesTourProvider(siblingTourId).notifier).refreshGames(),
           );

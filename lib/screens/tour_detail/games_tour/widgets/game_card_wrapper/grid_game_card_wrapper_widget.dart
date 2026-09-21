@@ -1,4 +1,3 @@
-import '../viewport_game_card.dart';
 import 'dart:async';
 
 import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
@@ -16,7 +15,6 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 /// Similar to GameCardWrapperWidget but for the grid view.
 class GridGameCardWrapperWidget extends ConsumerWidget {
   final GamesTourModel game;
-  final bool deferUntilVisible;
 
   /// Callback that receives the live-updated games list for navigation.
   /// The list will have the current game replaced with the live-updated version.
@@ -39,7 +37,6 @@ class GridGameCardWrapperWidget extends ConsumerWidget {
   const GridGameCardWrapperWidget({
     super.key,
     required this.game,
-    this.deferUntilVisible = false,
     required this.onChangedWithLiveGames,
     required this.orderedGames,
     required this.gameIndex,
@@ -56,19 +53,6 @@ class GridGameCardWrapperWidget extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    if (!deferUntilVisible) return _buildCard(context, ref);
-    return ViewportGameCard(
-      key: ValueKey(game.gameId),
-      game: game,
-      board: true,
-      grid: true,
-      builder:
-          (_) =>
-              Consumer(builder: (context, ref, _) => _buildCard(context, ref)),
-    );
-  }
-
-  Widget _buildCard(BuildContext context, WidgetRef ref) {
     final effectiveLiveBatchKey =
         liveBatchKey ??
         liveContextBatchKeyForGame(

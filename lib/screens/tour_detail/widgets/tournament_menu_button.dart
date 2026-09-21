@@ -94,7 +94,9 @@ class TournamentMenuButton extends ConsumerWidget {
                   : const <String>[];
           final allRoundIds =
               isGamesTab
-                  ? ref.read(gamesAppBarProvider.notifier).getAllRoundIds()
+                  ? ref
+                      .read(gamesAppBarProvider.notifier)
+                      .getAllRoundIdsWithGames()
                   : const <String>[];
           final visibleMatchKeys =
               isGamesTab
@@ -293,15 +295,8 @@ class TournamentMenuButton extends ConsumerWidget {
     );
 
     // 4. Expand/Collapse All
-    final isSearchMode = gamesScreenState?.isSearchMode ?? false;
-    final roundsProvider = roundExpansionProviderFor(isSearchMode);
-    final matchesProvider = matchExpansionProviderFor(isSearchMode);
-    final roundExpansionState = {
-      if (isSearchMode)
-        for (final id in visibleRoundIds) id: true,
-      ...ref.read(roundsProvider),
-    };
-    final matchExpansionState = ref.read(matchesProvider);
+    final roundExpansionState = ref.read(roundExpansionProvider);
+    final matchExpansionState = ref.read(matchExpansionProvider);
     final isAllCollapsed = areAllVisibleSectionsCollapsed(
       visibleRoundIds: visibleRoundIds,
       visibleMatchKeys: visibleMatchKeys,
@@ -319,11 +314,17 @@ class TournamentMenuButton extends ConsumerWidget {
         height: 36.h,
         onTap: () {
           if (isAllCollapsed) {
-            ref.read(roundsProvider.notifier).expandAll(allRoundIds);
-            ref.read(matchesProvider.notifier).expandAll();
+            ref.read(roundExpansionProvider.notifier).expandAll(allRoundIds);
+            if (allMatchKeys.isNotEmpty) {
+              ref.read(matchExpansionProvider.notifier).expandAll();
+            }
           } else {
-            ref.read(roundsProvider.notifier).collapseAll(allRoundIds);
-            ref.read(matchesProvider.notifier).collapseAll(allMatchKeys);
+            ref.read(roundExpansionProvider.notifier).collapseAll(allRoundIds);
+            if (allMatchKeys.isNotEmpty) {
+              ref
+                  .read(matchExpansionProvider.notifier)
+                  .collapseAll(allMatchKeys);
+            }
           }
         },
         child: _MenuDropDownItem(
@@ -356,35 +357,20 @@ class TournamentMenuButton extends ConsumerWidget {
                   : TournamentMenuAction.disableNotifications,
           padding: EdgeInsets.zero,
           height: 36.h,
-          onTap: () async {
+          onTap: () {
             final isAuthenticated = ref.read(isAuthenticatedProvider);
             if (!isAuthenticated) {
               showAppSnack(context, 'Please sign in to manage notifications');
               return;
             }
-            final wasMuted =
-                ref.read(eventMuteProvider(groupBroadcastId)).valueOrNull;
-            if (wasMuted == null) {
-              showAppSnack(context, 'Notification settings are still loading');
-              return;
-            }
-            await ref
-                .read(eventMuteProvider(groupBroadcastId).notifier)
-                .toggleMute();
-            if (!context.mounted) return;
-            final didUpdate =
-                ref.read(eventMuteProvider(groupBroadcastId)).valueOrNull ==
-                !wasMuted;
+            ref.read(eventMuteProvider(groupBroadcastId).notifier).toggleMute();
 
             ScaffoldMessenger.of(context).hideCurrentSnackBar();
             showAppSnack(
               context,
-              didUpdate
-                  ? wasMuted
-                      ? 'Notifications enabled for this event'
-                      : 'Notifications disabled for this event'
-                  : 'Could not update notifications. Please try again.',
-              tone: didUpdate ? AppSnackTone.neutral : AppSnackTone.danger,
+              isMuted
+              ? 'Notifications enabled for this event'
+              : 'Notifications disabled for this event',
             );
           },
           child: _MenuDropDownItem(
@@ -417,7 +403,7 @@ class TournamentMenuButton extends ConsumerWidget {
           value: TournamentMenuAction.shareEvent,
           padding: EdgeInsets.zero,
           height: 36.h,
-          onTap: () async {
+          onTap: () {
             final url = buildEventShareUrl(
               id: fallbackId,
               title: aboutModel.name,
@@ -429,16 +415,7 @@ class TournamentMenuButton extends ConsumerWidget {
                 box != null
                     ? box.localToGlobal(Offset.zero) & box.size
                     : const Rect.fromLTWH(0, 0, 1, 1);
-            try {
-              await Share.share(url, sharePositionOrigin: origin);
-            } catch (_) {
-              if (!context.mounted) return;
-              showAppSnack(
-                context,
-                'Could not share this event. Please try again.',
-                tone: AppSnackTone.danger,
-              );
-            }
+            Share.share(url, sharePositionOrigin: origin);
           },
           child: _MenuDropDownItem(
             text: "Share event",
@@ -746,10 +723,8 @@ class TournamentMenuButton extends ConsumerWidget {
       // recipient zooms into the shared PNG. 4x keeps a phone viewport well
       // under any decode limit while roughly doubling legible detail vs 3x.
       const bracketPixelRatio = 4.0;
-      final snapshot = await captureBoundaryPng(
-        key,
-        pixelRatio: bracketPixelRatio,
-      );
+      final snapshot =
+          await captureBoundaryPng(key, pixelRatio: bracketPixelRatio);
       if (snapshot == null) {
         throw StateError('Bracket snapshot produced no image');
       }
@@ -814,11 +789,10 @@ class TournamentMenuButton extends ConsumerWidget {
     }
   }
 
-  String _safeFileName(String name) =>
-      name
-          .replaceAll(RegExp(r'[^A-Za-z0-9]+'), '-')
-          .replaceAll(RegExp(r'^-+|-+$'), '')
-          .toLowerCase();
+  String _safeFileName(String name) => name
+      .replaceAll(RegExp(r'[^A-Za-z0-9]+'), '-')
+      .replaceAll(RegExp(r'^-+|-+$'), '')
+      .toLowerCase();
 }
 
 /// Off-state label for the games-tab live-focus toggle in the ⋮ menu.
@@ -873,11 +847,8 @@ bool areAllVisibleSectionsCollapsed({
   }
 
   final areRoundsCollapsed = rounds.every(
-    (id) => !(roundExpansionState[id] ?? false),
+    (id) => !(roundExpansionState[id] ?? true),
   );
-  // A collapsed round hides its children regardless of their remembered state.
-  // Offer Expand all immediately after the user closes the last round by hand.
-  if (rounds.isNotEmpty) return areRoundsCollapsed;
   final areMatchesCollapsed = matches.every(
     (key) => !resolveMatchExpansionState(matchExpansionState, key),
   );

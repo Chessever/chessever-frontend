@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:chessever2/providers/event_video_provider.dart';
 
+import 'package:flutter/scheduler.dart';
 import 'package:chessever2/repository/supabase/round/round_repository.dart';
 import 'games_app_bar_provider.dart'
     show pendingRoundNavigationProvider, userSelectedRoundProvider;
@@ -83,8 +84,8 @@ final gamesTourProvider = AutoDisposeStateNotifierProvider.family<
   String
 >((ref, tourId) => GamesTourNotifier(ref: ref, tourId: tourId));
 
-/// Consumers calculating event totals explicitly request a complete catalog.
-/// Errors surface here without blanking the lazily loaded Games tab.
+/// Consumers calculating event totals must never use the early round preview.
+/// Errors in the background catalog surface here without blanking visible games.
 final completeGamesTourProvider = Provider.autoDispose
     .family<AsyncValue<List<Games>>, String>((ref, tourId) {
       final games = ref.watch(gamesTourProvider(tourId));
@@ -92,7 +93,6 @@ final completeGamesTourProvider = Provider.autoDispose
       if (loader.isCatalogComplete) return games;
       final error = loader.catalogError;
       if (error != null) return AsyncValue.error(error, StackTrace.current);
-      unawaited(Future.microtask(loader.ensureCompleteCatalog));
       return const AsyncValue.loading();
     });
 
@@ -113,7 +113,7 @@ final completeGamesTourFutureProvider = FutureProvider.autoDispose
 /// Notifier that manages the list of games for a tournament.
 ///
 /// **Architecture:**
-/// - Only requested rounds load; complete catalogs are explicitly requested
+/// - A complete round paints first, followed by the complete tour catalog
 /// - It does NOT maintain individual Supabase Realtime streams per game
 /// - Its safety net periodically fetches only game IDs, round IDs, and status;
 ///   a full snapshot is fetched only when game membership changes
@@ -166,12 +166,7 @@ class GamesTourNotifier extends StateNotifier<AsyncValue<List<Games>>> {
   late Future<void> _loadFinished;
   bool isCatalogComplete = false;
   Object? catalogError;
-  final Set<String> loadedRoundIds = {};
-  Set<String> _activeRoundIds = {};
-  final Map<String, Object> roundErrors = {};
-  int _demandGeneration = 0;
-  final Map<String, Future<void>> _roundLoads = {};
-  Future<void>? _completeLoad;
+  int _loadGeneration = 0;
   ProviderSubscription? _shouldStreamListener;
   ProviderSubscription? _selectedModeListener;
   ProviderSubscription? _primaryTourListener;
@@ -181,169 +176,150 @@ class GamesTourNotifier extends StateNotifier<AsyncValue<List<Games>>> {
   int _refreshGeneration = 0;
 
   Future<void> _loadInitialGames() async {
+    final generation = ++_loadGeneration;
+    _stopPeriodicRefresh();
+    bool isCurrent() => mounted && generation == _loadGeneration;
+    final visibleGames = state.valueOrNull ?? const <Games>[];
+    var networkFinished = false;
+    var roundPublished = false;
+    catalogError = null;
     try {
+      // Gamebase-only event (sentinel tour id): build games from the cached
+      // gamebase event view; these are finished games with no live feed, so
+      // skip the Supabase fetch/cache and the periodic refresh entirely.
       if (isVirtualGamebaseId(tourId)) {
-        final key = virtualEventKeyFromId(tourId);
+        final virtualKey = virtualEventKeyFromId(tourId);
         final view =
-            key == null
+            virtualKey == null
                 ? null
                 : await ref.read(
                   gamebaseEventViewProvider(
                     GamebaseEventViewRequest(
-                      eventName: key.eventName,
-                      site: key.site,
-                      slug: key.slug,
+                      eventName: virtualKey.eventName,
+                      site: virtualKey.site,
+                      slug: virtualKey.slug,
                     ),
                   ).future,
                 );
-        if (!mounted) return;
+        if (isCurrent()) {
+          isCatalogComplete = true;
+          state = AsyncValue.data(
+            view == null
+                ? const <Games>[]
+                : virtualGamesFromView(view, virtualId: tourId),
+          );
+        }
+        return;
+      }
+
+      final gamesLocalStorageProvider = ref.read(gamesLocalStorage);
+      if (visibleGames.isEmpty) {
+        // A saved complete roster can paint while the fresh request runs.
+        // Never let a slow disk read replace a newer network result.
+        unawaited(
+          gamesLocalStorageProvider.getCachedGames(tourId).then((cached) {
+            if (isCurrent() &&
+                !networkFinished &&
+                !roundPublished &&
+                cached.isNotEmpty) {
+              isCatalogComplete = true;
+              state = AsyncValue.data(cached);
+            }
+          }),
+        );
+      }
+      String? priorityRoundId;
+      try {
+        final rounds = await ref
+            .read(roundRepositoryProvider)
+            .getRoundsByTourId(tourId);
+        if (!isCurrent()) return;
+        final selection = ref.read(userSelectedRoundProvider);
+        priorityRoundId = initialTourRoundId(
+          rounds: rounds,
+          now: DateTime.now(),
+          requestedRoundId:
+              ref.read(pendingRoundNavigationProvider) ??
+              (selection?.userSelected == true ? selection!.id : null),
+          liveRoundIds:
+              ref.exists(liveRoundsIdProvider)
+                  ? ref.read(liveRoundsIdProvider).valueOrNull ?? const []
+                  : const [],
+        );
+        // Fetch metadata while the roster loads, with the opening round first.
+        ref.read(eventVideoMetadataProvider.notifier).prefetch([
+          if (priorityRoundId != null)
+            EventVideoKey(tourId: tourId, roundId: priorityRoundId),
+          for (final round in rounds)
+            EventVideoKey(tourId: tourId, roundId: round.id),
+        ]);
+        priorityRoundId ??=
+            (await ref
+                .read(roundRepositoryProvider)
+                .getLatestRoundByLastMove(tourId))?.id;
+      } catch (_) {
+        // Round metadata is an optimization, not a prerequisite for the catalog.
+      }
+      if (!isCurrent()) return;
+      final games = await gamesLocalStorageProvider.fetchAndSaveGames(
+        tourId,
+        priorityRoundId: priorityRoundId,
+        rethrowErrors: true,
+        onPriorityRound: (roundGames) {
+          if (!isCurrent()) return;
+          roundPublished = true;
+          isCatalogComplete = false;
+          final current = state.valueOrNull ?? const <Games>[];
+          final roundIds = roundGames.map((game) => game.roundId).toSet();
+          state = AsyncValue.data([
+            ...roundGames,
+            ...current.where((game) => !roundIds.contains(game.roundId)),
+          ]);
+        },
+        // Yield a frame after publishing the preview before starting the
+        // remaining catalog and its correctness fallbacks.
+        afterPriorityRound: () => SchedulerBinding.instance.endOfFrame,
+      );
+      networkFinished = true;
+
+      if (isCurrent()) {
+        if (games.isEmpty &&
+            !isCatalogComplete &&
+            (state.valueOrNull?.isNotEmpty ?? false)) {
+          throw StateError(
+            'Complete catalog unavailable; retaining round preview',
+          );
+        }
         isCatalogComplete = true;
         state = AsyncValue.data(
-          view == null
-              ? const <Games>[]
-              : virtualGamesFromView(view, virtualId: tourId),
+          retainGamesAcrossTransientEmptyRefresh(
+            state.valueOrNull ?? visibleGames,
+            games,
+          ),
         );
-        return;
+
+        // Only start periodic refresh if streaming is enabled
+        if (_shouldRunSafetyNet) {
+          _startPeriodicRefresh();
+        }
       }
-      // Structural checks for sibling categories must not fetch their games.
-      if (!_isPrimaryTour) {
-        state = const AsyncValue.data([]);
-        return;
-      }
-      final rounds = await ref
-          .read(roundRepositoryProvider)
-          .getRoundsByTourId(tourId);
-      if (!mounted) return;
-      final selection = ref.read(userSelectedRoundProvider);
-      final priorityRoundId =
-          initialTourRoundId(
-            rounds: rounds,
-            now: DateTime.now(),
-            requestedRoundId:
-                ref.read(pendingRoundNavigationProvider) ??
-                (selection?.userSelected == true ? selection!.id : null),
-            liveRoundIds:
-                ref.exists(liveRoundsIdProvider)
-                    ? ref.read(liveRoundsIdProvider).valueOrNull ?? const []
-                    : const [],
-          ) ??
-          (await ref
-              .read(roundRepositoryProvider)
-              .getLatestRoundByLastMove(tourId))?.id;
-      if (!mounted) return;
-      if (priorityRoundId == null) {
-        state = const AsyncValue.data([]);
-        return;
-      }
-      _activeRoundIds = {priorityRoundId};
-      await _loadRound(priorityRoundId);
-      if (mounted) _startPeriodicRefresh();
-    } catch (error, stack) {
-      if (mounted) state = AsyncValue.error(error, stack);
-    }
-  }
-
-  /// Demand comes from visible or explicitly expanded display sections.
-  Future<void> setActiveRounds(Set<String> roundIds) async {
-    final generation = ++_demandGeneration;
-    await _loadFinished;
-    if (!mounted ||
-        generation != _demandGeneration ||
-        isVirtualGamebaseId(tourId)) {
-      return;
-    }
-    final changed = !setEquals(_activeRoundIds, roundIds);
-    _activeRoundIds = Set.of(roundIds);
-    if (changed) _stopPeriodicRefresh();
-    // Bound concurrency when Expand all is used on a large tournament.
-    for (final id in roundIds) {
-      if (!mounted || generation != _demandGeneration) return;
-      if (!_activeRoundIds.contains(id)) continue;
-      if (!loadedRoundIds.contains(id)) await _loadRound(id);
-    }
-    if (mounted && changed) _startPeriodicRefresh();
-  }
-
-  void deactivateRounds() {
-    _demandGeneration++;
-    _activeRoundIds = {};
-    _stopPeriodicRefresh();
-  }
-
-  Future<void> _loadRound(String roundId, {bool refresh = false}) async {
-    final pending = _roundLoads[roundId];
-    if (pending != null) return pending;
-    if (!refresh && loadedRoundIds.contains(roundId)) return;
-    final load = _fetchRound(roundId);
-    _roundLoads[roundId] = load;
-    try {
-      await load;
-    } finally {
-      _roundLoads.remove(roundId);
-    }
-  }
-
-  Future<void> _fetchRound(String roundId) async {
-    if (roundErrors.remove(roundId) != null && state.hasValue) {
-      state = AsyncValue.data(state.requireValue);
-    }
-    try {
-      final games = await ref
-          .read(gameRepositoryProvider)
-          .getRoundGamePreviews(
-            tourId,
-            roundId,
-            hydrateFallbacks: isCatalogComplete,
+    } catch (error, stackTrace) {
+      if (isCurrent()) {
+        catalogError = error;
+        // A manual or automatic refresh must not blank already-visible boards
+        // because one request failed. Initial-load errors still surface.
+        if ((state.valueOrNull ?? visibleGames).isEmpty) {
+          state = AsyncValue.error(error, stackTrace);
+        } else {
+          state = AsyncValue.data(state.valueOrNull ?? visibleGames);
+          debugPrint(
+            '🔥 GamesTourNotifier: Keeping visible games after refresh error: '
+            '$error',
           );
-      if (!mounted) return;
-      loadedRoundIds.add(roundId);
-      roundErrors.remove(roundId);
-      final current = state.valueOrNull ?? const <Games>[];
-      final previous = current.where((g) => g.roundId == roundId).toList();
-      state = AsyncValue.data([
-        ...current.where((g) => g.roundId != roundId),
-        ...retainGamesAcrossTransientEmptyRefresh(previous, games),
-      ]);
-      ref.read(eventVideoMetadataProvider.notifier).prefetch([
-        EventVideoKey(tourId: tourId, roundId: roundId),
-      ]);
-    } catch (error, stack) {
-      if (!mounted) return;
-      roundErrors[roundId] = error;
-      state =
-          state.hasValue
-              ? AsyncValue.data(state.requireValue)
-              : AsyncValue.error(error, stack);
-      // Keep already-visible rounds; a later expansion/refresh retries this one.
-      debugPrint('Round $roundId could not load: $error');
-    }
-  }
-
-  Future<void> ensureCompleteCatalog() async {
-    await _loadFinished;
-    if (!mounted || isCatalogComplete) return;
-    if (_completeLoad != null) return _completeLoad;
-    _completeLoad = _fetchCompleteCatalog();
-    await _completeLoad;
-  }
-
-  Future<void> _fetchCompleteCatalog() async {
-    try {
-      final games = await ref
-          .read(gamesLocalStorage)
-          .fetchAndSaveGames(tourId, rethrowErrors: true);
-      if (!mounted) return;
-      isCatalogComplete = true;
-      catalogError = null;
-      loadedRoundIds.addAll(games.map((game) => game.roundId));
-      state = AsyncValue.data(games);
-    } catch (error, stack) {
-      if (!mounted) return;
-      catalogError = error;
-      state =
-          state.hasValue
-              ? AsyncValue.data(state.requireValue)
-              : AsyncValue.error(error, stack);
+        }
+      }
+    } finally {
+      networkFinished = true;
     }
   }
 
@@ -393,13 +369,14 @@ class GamesTourNotifier extends StateNotifier<AsyncValue<List<Games>>> {
   void _startPeriodicRefresh() {
     // Gamebase-only events are finished with no live feed; never poll Supabase
     // for them (it would return nothing and wipe the synthesized games).
-    _stopPeriodicRefresh();
     if (isVirtualGamebaseId(tourId) ||
         !_shouldRunSafetyNet ||
-        _activeRoundIds.isEmpty ||
+        !isCatalogComplete ||
         state.valueOrNull == null) {
       return;
     }
+
+    _stopPeriodicRefresh();
 
     final interval = _safetyNetInterval;
     final firstDelay = _firstSafetyNetDelay;
@@ -443,15 +420,12 @@ class GamesTourNotifier extends StateNotifier<AsyncValue<List<Games>>> {
     if (!_isRefreshActive(generation) || _safetyNetRefreshInFlight) return;
     _safetyNetRefreshInFlight = true;
     try {
-      final currentGames =
-          state.valueOrNull
-              ?.where((g) => _activeRoundIds.contains(g.roundId))
-              .toList();
+      final currentGames = state.valueOrNull;
       if (currentGames == null) return;
 
       final safetySnapshots = await ref
           .read(gameRepositoryProvider)
-          .getTourGamesSafetyNet(tourId, roundIds: _activeRoundIds);
+          .getTourGamesSafetyNet(tourId);
       if (!_isRefreshActive(generation)) return;
 
       final currentById = {for (final game in currentGames) game.id: game};
@@ -479,12 +453,7 @@ class GamesTourNotifier extends StateNotifier<AsyncValue<List<Games>>> {
       }
 
       if (hasChanges && _isRefreshActive(generation)) {
-        state = AsyncValue.data([
-          ...?state.valueOrNull?.where(
-            (g) => !_activeRoundIds.contains(g.roundId),
-          ),
-          ...mergedGames,
-        ]);
+        state = AsyncValue.data(mergedGames);
       }
     } catch (error) {
       // Suppress noise from races where the notifier is disposed mid-await.
@@ -499,10 +468,30 @@ class GamesTourNotifier extends StateNotifier<AsyncValue<List<Games>>> {
     List<Games> currentGames,
     int generation,
   ) async {
-    for (final roundId in _activeRoundIds.toList()) {
-      if (!_isRefreshActive(generation)) return;
-      await _loadRound(roundId, refresh: true);
-    }
+    final freshGames = await ref
+        .read(gamesLocalStorage)
+        .fetchAndSaveGames(tourId, forceRefresh: true);
+    if (!_isRefreshActive(generation)) return;
+
+    debugPrint(
+      '🔥 GamesTourNotifier: Detected game count change! Current: '
+      '${currentGames.length}, Fresh: ${freshGames.length}',
+    );
+    final currentById = {for (final game in currentGames) game.id: game};
+    final mergedGames = freshGames
+        .map((fresh) {
+          final current = currentById[fresh.id];
+          if (current == null) return fresh;
+          return current.copyWith(
+            roundId: fresh.roundId,
+            roundSlug: fresh.roundSlug,
+            status: fresh.status ?? current.status,
+          );
+        })
+        .toList(growable: false);
+    state = AsyncValue.data(
+      retainGamesAcrossTransientEmptyRefresh(currentGames, mergedGames),
+    );
   }
 
   bool _hasSafetyNetChange(Games current, TourGameSafetyNetSnapshot fresh) {
@@ -528,7 +517,7 @@ class GamesTourNotifier extends StateNotifier<AsyncValue<List<Games>>> {
   }
 
   Future<List<Games>> waitForCompleteCatalog() async {
-    await ensureCompleteCatalog();
+    await _loadFinished;
     if (!mounted) throw StateError('Tournament closed while loading');
     if (!isCatalogComplete) {
       throw catalogError ?? StateError('Catalog unavailable');
@@ -539,16 +528,8 @@ class GamesTourNotifier extends StateNotifier<AsyncValue<List<Games>>> {
   Future<void> refreshGames() async {
     await _loadFinished;
     if (!mounted) return;
-    for (final roundId in _activeRoundIds.toList()) {
-      if (!mounted) return;
-      await _loadRound(roundId, refresh: true);
-    }
-    if (isCatalogComplete || catalogError != null) {
-      isCatalogComplete = false;
-      catalogError = null;
-      _completeLoad = null;
-      await ensureCompleteCatalog();
-    }
+    _loadFinished = _loadInitialGames();
+    await _loadFinished;
   }
 
   @override

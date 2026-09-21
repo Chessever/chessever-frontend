@@ -776,43 +776,6 @@ class GameRepository extends BaseRepository {
     });
   }
 
-  /// A complete single-round roster, without fetching any other rounds.
-  /// Standings consumers can retain their result/rating PGN fallbacks on refresh.
-  Future<List<Games>> getRoundGamePreviews(
-    String tourId,
-    String roundId, {
-    bool hydrateFallbacks = false,
-  }) async {
-    return handleApiCall(() async {
-      final games = <Games>[];
-      var offset = 0;
-      while (true) {
-        final page = await _getTourPreviewPage(
-          tourId,
-          offset,
-          roundId: roundId,
-        );
-        games.addAll(page);
-        if (!shouldFetchAnotherTourGamesPage(page.length)) break;
-        offset += page.length;
-      }
-      final fullById = <String, Games>{};
-      if (hydrateFallbacks) {
-        final ids =
-            games.where(tourIndexNeedsPgn).map((game) => game.id).toList();
-        for (final chunk in _chunks(ids, 100)) {
-          for (final game in await getGamesByIds(chunk)) {
-            fullById[game.id] = game;
-          }
-        }
-      }
-      return [
-        for (final game in _deduplicateGames(games))
-          fullById[game.id] ?? game.copyWith(isPgnDeferred: true),
-      ];
-    });
-  }
-
   Future<List<Games>> _getTourPreviewPage(
     String tourId,
     int offset, {
@@ -906,23 +869,17 @@ class GameRepository extends BaseRepository {
   /// downloading all of that every few seconds caused avoidable UI-isolate
   /// encode/decode and cache work even when nothing changed.
   Future<List<TourGameSafetyNetSnapshot>> getTourGamesSafetyNet(
-    String tourId, {
-    Set<String>? roundIds,
-  }) async {
-    if (roundIds != null && roundIds.isEmpty) return const [];
+    String tourId,
+  ) async {
     return handleApiCall(() async {
       final snapshots = <TourGameSafetyNetSnapshot>[];
       var pageOffset = 0;
 
       while (true) {
-        var query = supabase
+        final response = await supabase
             .from('games')
             .select('id,round_id,round_slug,status')
-            .eq('tour_id', tourId);
-        if (roundIds != null) {
-          query = query.inFilter('round_id', roundIds.toList());
-        }
-        final response = await query
+            .eq('tour_id', tourId)
             .order('id', ascending: true)
             .range(pageOffset, pageOffset + _tourGamesFetchPageSize - 1);
         final responseList = response as List;
