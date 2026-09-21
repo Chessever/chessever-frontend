@@ -16,9 +16,10 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
 # In Windows, build-name is used as the major, minor, and patch parts
 # of the product and file versions while build-number is used as the build suffix.
-version: 35.10.0+3463
+version: 35.11.0+3464
 environment:
-  sdk: ^3.7.2
+  sdk: ^3.12.0
+  flutter: '>=3.44.0'
 
 # Dependencies specify other packages that your package needs in order to work.
 # To automatically upgrade your package dependencies to the latest versions
@@ -99,9 +100,9 @@ dependencies:
   url_launcher: ^6.3.1
 
   # Event stream embeds (YouTube, Twitch, Kick).
-  webview_flutter: ^4.9.0
-  webview_flutter_android: ^3.16.9
-  webview_flutter_wkwebview: ^3.25.1
+  webview_flutter: ^4.14.1
+  webview_flutter_android: ^4.14.1
+  webview_flutter_wkwebview: ^3.26.1
 
   chess: ^0.8.1
   stockfish: ^1.8.1

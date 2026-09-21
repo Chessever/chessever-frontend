@@ -126,6 +126,39 @@ Hub. This is not a claim to have exercised every app control on every device.
 
 ## Remaining device acceptance
 
+### WebView dependency baseline update
+
+After continued stream-mode FPS drops were reported, the WebView dependencies
+were updated to the latest stable versions listed by pub.dev on 2026-09-21:
+
+| Package | Previous lock | Updated lock |
+| --- | --- | --- |
+| `webview_flutter` | 4.9.0 | 4.14.1 |
+| `webview_flutter_android` | 3.16.9 | 4.14.1 |
+| `webview_flutter_wkwebview` | 3.25.1 | 3.26.1 |
+
+The platform interface remains at 2.15.1, already current. Only these three
+dependencies changed in the lockfile. The app's declared SDK minimum now matches
+the native implementations: Flutter 3.44 and Dart 3.12. The installed Flutter
+3.48 prerelease satisfies these requirements. The `.env` asset stays commented.
+
+All 85 event-video unit/widget tests passed after the update, including player
+lifetime, fullscreen, gestures, board rebuild isolation, and stream selection.
+Scoped analysis of the video module, board screen, and player lifecycle test
+passed. Whole-repository analysis is not clean: it reports 27 errors in unrelated
+library tests and vendored chessground examples/tests, plus warnings and
+informational diagnostics outside the scoped check.
+
+This update preserves the scrolling layout and player configuration. It is not
+evidence that the remaining native presentation stalls are fixed: the iOS
+changelog does not identify a scrolling-performance fix between these versions.
+The Flutter plugin still embeds the system WebView. Testing the new native
+implementation requires reinstalling the app, not just a hot reload. Native
+playback and FPS after this dependency update have not yet been verified on a
+physical device.
+
+### Acceptance procedure
+
 The catalog still has proportional work when loaded or genuinely replaced. The
 open switcher still groups changed input, selected video uses native resources,
 and active engine analysis has its own CPU cost. No universal zero-jank or
