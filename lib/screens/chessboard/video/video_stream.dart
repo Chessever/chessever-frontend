@@ -2,6 +2,20 @@
 
 import 'video_languages.dart';
 
+// Compiled once, shared by all streams. These patterns preserve Unicode word
+// boundaries and the language priority used by the web contract.
+final _languagePatterns = {
+  for (final language in videoLanguages)
+    language.code: [
+      for (final name in language.names)
+        RegExp(
+          '(^|[^\\p{L}])${RegExp.escape(name)}([^\\p{L}]|\$)',
+          unicode: true,
+          caseSensitive: false,
+        ),
+    ],
+};
+
 enum VideoPlatform { youtube, twitch, kick }
 
 class VideoSource {
@@ -120,7 +134,7 @@ class VideoAudience {
 enum VideoClientPlatform { web, mobile, desktop }
 
 class EventVideoStream {
-  const EventVideoStream({
+  EventVideoStream({
     required this.id,
     required this.label,
     required this.source,
@@ -151,19 +165,20 @@ class EventVideoStream {
         : label;
   }
 
-  VideoLanguage? get inferredLanguage {
+  // Metadata is immutable. Selector sorting, flags and labels used to replay
+  // the same language detection (and compile its regexes) on every access.
+  // Cache null too: unidentified streams previously did the most work.
+  late final VideoLanguage? inferredLanguage = _resolveLanguage();
+
+  VideoLanguage? _resolveLanguage() {
     final code = language?.trim().toLowerCase().split(RegExp('[-_]')).first;
     for (final item in videoLanguages) {
       if (item.code == code) return item;
     }
     final text = '$title $description $label';
     for (final item in videoLanguages) {
-      for (final name in item.names) {
-        if (RegExp(
-          '(^|[^\\p{L}])${RegExp.escape(name)}([^\\p{L}]|\$)',
-          unicode: true,
-          caseSensitive: false,
-        ).hasMatch(text)) {
+      for (final pattern in _languagePatterns[item.code]!) {
+        if (pattern.hasMatch(text)) {
           return item;
         }
       }

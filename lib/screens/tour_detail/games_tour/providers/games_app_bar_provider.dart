@@ -154,12 +154,16 @@ class _GamesAppBarNotifier
   bool _selectionRefreshScheduled = false;
   bool _roundMetadataReloadInFlight = false;
   bool _roundMetadataReloadPending = false;
+  Timer? _roundMetadataRetryTimer;
+  Duration _roundMetadataRetryDelay = const Duration(seconds: 2);
   final Set<String> _checkedUnknownLiveRoundIds = <String>{};
   Timer? _unknownGameRoundsRetryTimer;
   Set<String> _pendingUnknownGameRoundIds = const <String>{};
   int _unknownGameRoundsRetryGeneration = 0;
 
   void _scheduleRoundMetadataReload() {
+    _roundMetadataRetryTimer?.cancel();
+    _roundMetadataRetryTimer = null;
     _roundMetadataReloadPending = true;
     if (_roundMetadataReloadInFlight) return;
     unawaited(_drainRoundMetadataReloads());
@@ -170,7 +174,24 @@ class _GamesAppBarNotifier
     try {
       while (mounted && _roundMetadataReloadPending) {
         _roundMetadataReloadPending = false;
-        await _load(showLoading: false, scrollSelection: false);
+        final loaded = await _load(showLoading: false, scrollSelection: false);
+        if (!mounted) return;
+        if (loaded) _roundMetadataRetryDelay = const Duration(seconds: 2);
+        _roundMetadataRetryTimer?.cancel();
+        _roundMetadataRetryTimer = null;
+        // Duplicate ingestion events no longer provide accidental retries.
+        // Retry failed reads and finish the existing bounded deletion check.
+        if (!loaded || _roundMissingSnapshotCounts.values.any((n) => n > 0)) {
+          _roundMetadataRetryTimer = Timer(
+            _roundMetadataRetryDelay,
+            _scheduleRoundMetadataReload,
+          );
+          if (!loaded) {
+            _roundMetadataRetryDelay = Duration(
+              seconds: (_roundMetadataRetryDelay.inSeconds * 2).clamp(2, 30),
+            );
+          }
+        }
       }
     } finally {
       _roundMetadataReloadInFlight = false;
@@ -487,7 +508,7 @@ class _GamesAppBarNotifier
         .roundHeaderIndex(roundId);
   }
 
-  Future<void> _load({
+  Future<bool> _load({
     bool showLoading = true,
     bool scrollSelection = false,
   }) async {
@@ -496,7 +517,7 @@ class _GamesAppBarNotifier
       if (showLoading && visibleState == null) {
         state = const AsyncValue.loading();
       }
-      return;
+      return true;
     }
 
     // Reloads must never hide an already-published round snapshot. This also
@@ -510,7 +531,7 @@ class _GamesAppBarNotifier
         final games = gamesAsync.valueOrNull;
         if (gamesAsync.isLoading || games == null) {
           if (showLoading) state = const AsyncValue.loading();
-          return;
+          return true;
         }
 
         _roundSortMeta.clear();
@@ -525,7 +546,7 @@ class _GamesAppBarNotifier
               userSelectedId: false,
             ),
           );
-          return;
+          return true;
         }
 
         _sortRounds(models);
@@ -536,11 +557,12 @@ class _GamesAppBarNotifier
           tourId!,
           scrollSelection: scrollSelection,
         );
-        return;
+        return true;
       }
 
       final repo = ref.read(roundRepositoryProvider);
       final rounds = await repo.getRoundsByTourId(tourId!);
+      if (!mounted) return true;
 
       _roundSortMeta.addEntries(
         rounds.map(
@@ -558,6 +580,7 @@ class _GamesAppBarNotifier
         models,
         sourceRounds: rounds,
       );
+      if (!mounted) return true;
       var processedModels = mergePublishedRoundModels(
         previous: _knownRoundModels,
         incoming: incomingModels,
@@ -596,7 +619,9 @@ class _GamesAppBarNotifier
         tourId!,
         scrollSelection: scrollSelection,
       );
+      return true;
     } catch (e, st) {
+      if (!mounted) return true;
       if (visibleState == null) {
         state = AsyncValue.error(e, st);
       } else {
@@ -605,6 +630,7 @@ class _GamesAppBarNotifier
           'refresh error: $e',
         );
       }
+      return false;
     }
   }
 
@@ -1461,6 +1487,7 @@ class _GamesAppBarNotifier
 
   @override
   void dispose() {
+    _roundMetadataRetryTimer?.cancel();
     _unknownGameRoundsRetryTimer?.cancel();
     _unknownGameRoundsRetryGeneration++;
     super.dispose();

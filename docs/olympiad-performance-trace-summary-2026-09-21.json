@@ -1,0 +1,286 @@
+{
+  "date": "2026-09-21",
+  "mode": "debug",
+  "device": "iPhone 17 Pro simulator, iOS 26.4.1",
+  "event": "46th FIDE Chess Olympiad 2026 / Open / Round 6",
+  "tour_id": "nKADDSF2",
+  "round_id": "mdA7RWbW",
+  "game_id": "mdA7RWbW-2stswi",
+  "route_game_count": 2456,
+  "available_streams": 33,
+  "selected_stream": "FIDE Chess - Main Commentary",
+  "youtube_id": "2LSWCQxvhcU",
+  "method": "Flutter.Frame extension events plus Dart VM CPU/timeline capture. Alternating vertical drags in the board scroll view with native video playing; 10 drags per 18s capture and 20 in the 40s capture. No concurrent test run. Baseline already contains the earlier catalog/batching optimizations; comparison isolates the round-metadata reload fix.",
+  "limitations": [
+    "Debug simulator timings are not physical-device release FPS.",
+    "Dart and raster timings do not measure all native WKWebView/media/compositor work.",
+    "Unequal frame counts reflect simulator scheduling and natural network timing.",
+    "No controlled peak/native-memory comparison or long-duration leak claim."
+  ],
+  "runs": [
+    {
+      "label": "olympiad-playing-before",
+      "duration_seconds": 18,
+      "frames": 503,
+      "cpu_samples": 1592,
+      "raw_trace": "/tmp/chessever-trace-olympiad-playing-before.json",
+      "build": {
+        "p50_ms": 0.623,
+        "p95_ms": 22.945,
+        "max_ms": 32.128,
+        "frames_over_16_667_ms": 26
+      },
+      "raster": {
+        "p50_ms": 1.23,
+        "p95_ms": 2.179,
+        "max_ms": 2.632,
+        "frames_over_16_667_ms": 0
+      },
+      "top_app_functions": [
+        {
+          "source": "lib/screens/tour_detail/games_tour/providers/games_app_bar_provider.dart",
+          "owner": "_GamesAppBarNotifier",
+          "function": "_load",
+          "inclusive_samples": 53
+        },
+        {
+          "source": "lib/screens/tour_detail/games_tour/widgets/group_event_games_tour_content_body.dart",
+          "owner": "_GroupEventGamesTourContentBodyState",
+          "function": "build",
+          "inclusive_samples": 29
+        },
+        {
+          "source": "lib/screens/tour_detail/games_tour/widgets/games_tour_content_provider.dart",
+          "owner": "_GamesTourContentProvider",
+          "function": "getGroupHeader",
+          "inclusive_samples": 27
+        },
+        {
+          "source": "lib/screens/tour_detail/games_tour/providers/games_tour_grouped_provider.dart",
+          "owner": "gamesTourGroupedProvider",
+          "function": "<anonymous closure>",
+          "inclusive_samples": 26
+        },
+        {
+          "source": "lib/screens/tour_detail/games_tour/providers/games_app_bar_provider.dart",
+          "owner": "_buildRoundCompletion",
+          "function": "<anonymous closure>",
+          "inclusive_samples": 25
+        },
+        {
+          "source": "lib/screens/tour_detail/games_tour/providers/games_app_bar_provider.dart",
+          "owner": "_GamesAppBarNotifier",
+          "function": "_buildRoundCompletion",
+          "inclusive_samples": 25
+        },
+        {
+          "source": "lib/screens/tour_detail/games_tour/widgets/games_tour_content_provider.dart",
+          "owner": "",
+          "function": "groupTeamGamesByMatchup",
+          "inclusive_samples": 25
+        },
+        {
+          "source": "lib/screens/tour_detail/games_tour/providers/games_app_bar_provider.dart",
+          "owner": "_GamesAppBarNotifier",
+          "function": "_sortRounds",
+          "inclusive_samples": 22
+        },
+        {
+          "source": "lib/screens/chessboard/widgets/player_first_row_detail_widget.dart",
+          "owner": "PlayerFirstRowDetailWidget",
+          "function": "build",
+          "inclusive_samples": 22
+        },
+        {
+          "source": "lib/screens/tour_detail/games_tour/widgets/group_event_match_card.dart",
+          "owner": "GroupEventMatchCard",
+          "function": "build",
+          "inclusive_samples": 20
+        },
+        {
+          "source": "lib/screens/chessboard/widgets/player_first_row_detail_widget.dart",
+          "owner": "build",
+          "function": "<anonymous closure>",
+          "inclusive_samples": 17
+        },
+        {
+          "source": "lib/screens/tour_detail/games_tour/providers/games_app_bar_provider.dart",
+          "owner": "_GamesAppBarNotifier",
+          "function": "_applySelectionFrom",
+          "inclusive_samples": 16
+        }
+      ]
+    },
+    {
+      "label": "olympiad-playing-metadata-filter",
+      "duration_seconds": 18,
+      "frames": 443,
+      "cpu_samples": 1294,
+      "raw_trace": "/tmp/chessever-trace-olympiad-playing-metadata-filter.json",
+      "build": {
+        "p50_ms": 0.767,
+        "p95_ms": 1.361,
+        "max_ms": 2.818,
+        "frames_over_16_667_ms": 0
+      },
+      "raster": {
+        "p50_ms": 1.256,
+        "p95_ms": 2.189,
+        "max_ms": 3.58,
+        "frames_over_16_667_ms": 0
+      },
+      "top_app_functions": [
+        {
+          "source": "lib/widgets/event_card/event_card.dart",
+          "owner": "_NextRoundLine",
+          "function": "build",
+          "inclusive_samples": 5
+        },
+        {
+          "source": "lib/screens/chessboard/widgets/rest_aware_opacity.dart",
+          "owner": "RenderRestAwareOpacity",
+          "function": "paint",
+          "inclusive_samples": 1
+        },
+        {
+          "source": "lib/widgets/event_card/event_card.dart",
+          "owner": "_NextRoundLine",
+          "function": "_formatCountdown",
+          "inclusive_samples": 1
+        },
+        {
+          "source": "lib/widgets/event_card/event_card.dart",
+          "owner": "_NextRoundLine",
+          "function": "_formatTrailing",
+          "inclusive_samples": 1
+        }
+      ]
+    },
+    {
+      "label": "olympiad-playing-final",
+      "duration_seconds": 40,
+      "frames": 922,
+      "cpu_samples": 2874,
+      "raw_trace": "/tmp/chessever-trace-olympiad-playing-final.json",
+      "build": {
+        "p50_ms": 0.853,
+        "p95_ms": 1.774,
+        "max_ms": 9.229,
+        "frames_over_16_667_ms": 0
+      },
+      "raster": {
+        "p50_ms": 1.225,
+        "p95_ms": 2.239,
+        "max_ms": 3.764,
+        "frames_over_16_667_ms": 0
+      },
+      "top_app_functions": [
+        {
+          "source": "lib/screens/chessboard/video/video_repository.dart",
+          "owner": "HttpEventVideoRepository",
+          "function": "fetch",
+          "inclusive_samples": 13
+        },
+        {
+          "source": "lib/widgets/event_card/event_card.dart",
+          "owner": "_NextRoundLine",
+          "function": "build",
+          "inclusive_samples": 8
+        },
+        {
+          "source": "lib/screens/chessboard/video/video_stream.dart",
+          "owner": "EventVideoStream",
+          "function": "readList",
+          "inclusive_samples": 7
+        },
+        {
+          "source": "lib/screens/chessboard/video/video_stream.dart",
+          "owner": "VideoAudience",
+          "function": "read",
+          "inclusive_samples": 4
+        },
+        {
+          "source": "lib/screens/chessboard/video/video_metadata_cache.dart",
+          "owner": "EventVideoMetadataCache",
+          "function": "_load",
+          "inclusive_samples": 3
+        },
+        {
+          "source": "lib/screens/chessboard/video/video_country_preference.dart",
+          "owner": "",
+          "function": "prioritizeVideoCountry",
+          "inclusive_samples": 2
+        },
+        {
+          "source": "lib/screens/chessboard/video/video_session.dart",
+          "owner": "EventVideoSession",
+          "function": "_onMetadataChanged",
+          "inclusive_samples": 2
+        },
+        {
+          "source": "lib/screens/chessboard/video/video_session.dart",
+          "owner": "EventVideoSession",
+          "function": "_applyMetadata",
+          "inclusive_samples": 2
+        },
+        {
+          "source": "lib/screens/chessboard/chess_board_screen_new.dart",
+          "owner": "build",
+          "function": "<anonymous closure>",
+          "inclusive_samples": 1
+        },
+        {
+          "source": "lib/screens/chessboard/video/video_widgets.dart",
+          "owner": "build",
+          "function": "<anonymous closure>",
+          "inclusive_samples": 1
+        },
+        {
+          "source": "lib/screens/chessboard/video/video_metadata_cache.dart",
+          "owner": "EventVideoMetadataCache",
+          "function": "_pump",
+          "inclusive_samples": 1
+        },
+        {
+          "source": "lib/screens/chessboard/video/video_stream.dart",
+          "owner": "VideoSource",
+          "function": "parse",
+          "inclusive_samples": 1
+        }
+      ]
+    },
+    {
+      "label": "olympiad-playing-verified",
+      "duration_seconds": 18,
+      "frames": 442,
+      "cpu_samples": 1469,
+      "raw_trace": "/tmp/chessever-trace-olympiad-playing-verified.json",
+      "build": {
+        "p50_ms": 1.012,
+        "p95_ms": 2.349,
+        "max_ms": 8.993,
+        "frames_over_16_667_ms": 0
+      },
+      "raster": {
+        "p50_ms": 1.213,
+        "p95_ms": 2.15,
+        "max_ms": 2.79,
+        "frames_over_16_667_ms": 0
+      },
+      "top_app_functions": [
+        {
+          "source": "lib/widgets/event_card/event_card.dart",
+          "owner": "_NextRoundLine",
+          "function": "build",
+          "inclusive_samples": 8
+        },
+        {
+          "source": "lib/screens/chessboard/video/video_widgets.dart",
+          "owner": "build",
+          "function": "<anonymous closure>",
+          "inclusive_samples": 1
+        }
+      ]
+    }
+  ]
+}

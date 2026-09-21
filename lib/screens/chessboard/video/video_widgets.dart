@@ -1,4 +1,5 @@
 import 'dart:math' as math;
+import 'dart:ui' show FlutterView;
 import 'package:country_flags/country_flags.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -146,7 +147,8 @@ class EventVideoHostState extends State<EventVideoHost>
     super.didChangeDependencies();
     // Seed the metrics baseline, otherwise the first real rotation would look
     // like a metrics event with no previous size and be ignored.
-    _lastMetricsSize ??= View.of(context).physicalSize;
+    _metricsView = View.of(context);
+    _lastMetricsSize ??= _metricsView!.physicalSize;
     final route = ModalRoute.of(context);
     if (route == _route) return;
     widget.pageObserver?.unsubscribe(this);
@@ -209,6 +211,7 @@ class EventVideoHostState extends State<EventVideoHost>
   /// Last surface size seen by [didChangeMetrics], so inset-only churn can be
   /// told apart from a real resize or rotation.
   Size? _lastMetricsSize;
+  FlutterView? _metricsView;
 
   void _checkFullscreenExit() {
     final isFullscreen = _player?.fullscreenView != null;
@@ -264,7 +267,8 @@ class EventVideoHostState extends State<EventVideoHost>
     // expand action. Inset-only churn (system bars, keyboard, the fullscreen
     // transition) must never stop playback; it used to fire this guard before
     // the custom-view callback landed and pause the stream on fullscreen.
-    final physicalSize = View.of(context).physicalSize;
+    final physicalSize = _metricsView?.physicalSize;
+    if (physicalSize == null) return;
     final sizeChanged =
         _lastMetricsSize != null && _lastMetricsSize != physicalSize;
     _lastMetricsSize = physicalSize;
@@ -282,7 +286,8 @@ class EventVideoHostState extends State<EventVideoHost>
         session.selected?.source.platform != VideoPlatform.twitch) {
       return;
     }
-    final view = View.of(context);
+    final view = _metricsView;
+    if (view == null) return;
     final width =
         (view.physicalSize.width -
             view.viewPadding.left -

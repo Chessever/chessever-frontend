@@ -139,6 +139,38 @@ Future<void> chooseStream(WidgetTester tester, String id) async {
 }
 
 void main() {
+  testWidgets('video metrics are safe while the host is deactivated', (
+    tester,
+  ) async {
+    final key = GlobalKey<EventVideoHostState>();
+    final session = EventVideoSession(
+      repository: FakeVideoRepository(fixtureVideos()),
+    );
+    var checked = false;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: EventVideoHost(
+          key: key,
+          gameId: 'g',
+          tourId: 't',
+          roundId: 'r',
+          session: session,
+          player: FakePlayer(),
+          child: _OnDeactivate(
+            onDeactivate: () {
+              checked = true;
+              key.currentState!.didChangeMetrics();
+            },
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.pumpWidget(const SizedBox.shrink());
+    expect(checked, isTrue);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets(
     'iPhone fullscreen shows one landscape player without restarting it',
     (tester) async {
@@ -584,4 +616,22 @@ void main() {
     expect(session.playRequested, isFalse);
     await tester.pumpWidget(const SizedBox());
   });
+}
+
+class _OnDeactivate extends StatefulWidget {
+  const _OnDeactivate({required this.onDeactivate});
+  final VoidCallback onDeactivate;
+  @override
+  State<_OnDeactivate> createState() => _OnDeactivateState();
+}
+
+class _OnDeactivateState extends State<_OnDeactivate> {
+  @override
+  void deactivate() {
+    widget.onDeactivate();
+    super.deactivate();
+  }
+
+  @override
+  Widget build(BuildContext context) => const SizedBox.shrink();
 }

@@ -5,6 +5,7 @@ import 'dart:developer' as developer;
 // import 'dart:io'; // UNUSED: Removed with old dialog approach
 import 'dart:math' as math;
 import 'dart:ui';
+import 'package:chessever2/screens/chessboard/utils/game_list_snapshot.dart';
 import 'package:chessever2/e2e/e2e_ids.dart';
 import 'package:chessever2/providers/for_you_games_provider.dart';
 import 'package:chessever2/screens/standings/score_card_screen.dart';
@@ -1049,6 +1050,7 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
   late PageController _pageController;
 
   final _eventVideoHostKey = GlobalKey<EventVideoHostState>();
+  final _gameListCache = BoardGameListCache();
 
   /// Owns the app-bar game-switcher panel. Screen-level (above the PageView)
   /// so switching games never unmounts the panel — see
@@ -1068,6 +1070,7 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
   /// Last surface size seen by [didChangeMetrics], to tell a real rotation or
   /// resize apart from inset-only metric churn.
   Size? _lastMetricsSize;
+  FlutterView? _metricsView;
   // REMOVED: bool analysisMode - was causing useless full rebuilds
   int? _lastViewedIndex;
   int _currentPageIndex = 0;
@@ -1879,7 +1882,8 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
     super.didChangeDependencies();
     routeObserver.subscribe(this, ModalRoute.of(context)!);
     // Baseline for the rotation/resize check in [didChangeMetrics].
-    _lastMetricsSize = View.of(context).physicalSize;
+    _metricsView = View.of(context);
+    _lastMetricsSize = _metricsView!.physicalSize;
     if (_didInitialBoardBootstrap) return;
     _didInitialBoardBootstrap = true;
 
@@ -2626,7 +2630,9 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
     // dismiss rather than leave the panel hanging at a stale offset. Compare
     // the actual surface size: inset-only churn (system bars, a keyboard
     // somewhere behind) also lands here and must NOT dismiss the panel.
-    final size = View.of(context).physicalSize;
+    // Metrics can arrive while the element is deactivated but still mounted.
+    final size = _metricsView?.physicalSize;
+    if (size == null) return;
     final previous = _lastMetricsSize;
     _lastMetricsSize = size;
     if (previous == null || previous == size) return;
@@ -2936,20 +2942,13 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
       liveGames = widget.games;
     } else {
       // For other views: merge with gamesModel which has live streaming
-      final liveGamesMap = Map.fromEntries(
-        gamesModel.gamesTourModels.map((g) => MapEntry(g.gameId, g)),
+      liveGames = _gameListCache.merge(
+        widget.games,
+        gamesModel.gamesTourModels,
       );
-      liveGames =
-          widget.games
-              .map(
-                (originalGame) =>
-                    liveGamesMap[originalGame.gameId] ?? originalGame,
-              )
-              .toList();
     }
 
-    final syncedGames = List<GamesTourModel>.from(liveGames);
-    if (syncedGames.isEmpty) {
+    if (liveGames.isEmpty) {
       if (widget.games.isEmpty) {
         return withLikeFlightScope(buildEmptyGamesLoading());
       }
@@ -2965,17 +2964,15 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
       );
     }
 
-    final visibleStart = (_currentPageIndex - 1).clamp(
-      0,
-      syncedGames.length - 1,
-    );
-    final visibleEnd = (_currentPageIndex + 1).clamp(0, syncedGames.length - 1);
+    final visibleStart = (_currentPageIndex - 1).clamp(0, liveGames.length - 1);
+    final visibleEnd = (_currentPageIndex + 1).clamp(0, liveGames.length - 1);
+    final visibleUpdates = <int, GamesTourModel>{};
 
     // PERFORMANCE FIX: Use select() to only watch the 'game' property, not the entire state.
     // This prevents rebuilds from evaluation updates, PV changes, depth progress, etc.
     // Each PageView item will watch its own full provider state via Consumer.
     for (int i = visibleStart; i <= visibleEnd; i++) {
-      final game = syncedGames[i];
+      final game = liveGames[i];
       final params = _createParams(game, i);
 
       // Only watch game changes - this rarely changes compared to eval/PV updates
@@ -2985,9 +2982,10 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
         ).select((state) => state.valueOrNull?.game),
       );
       if (gameFromProvider != null) {
-        syncedGames[i] = gameFromProvider;
+        visibleUpdates[i] = gameFromProvider;
       }
     }
+    final syncedGames = GameListSnapshot(liveGames, updates: visibleUpdates);
 
     // Use same params as watch to listen to the same provider
     final currentGame =
@@ -6239,12 +6237,16 @@ class _GameDropdownContentState extends ConsumerState<_GameDropdownContent> {
                     final game = widget.games[index];
                     final isSelected = index == widget.currentGameIndex;
                     final itemDelay = index * 0.04;
-                    final itemAnimation = CurvedAnimation(
-                      parent: widget.animation,
-                      curve: Interval(
-                        itemDelay.clamp(0.0, 0.4),
-                        (itemDelay + 0.5).clamp(0.0, 1.0),
-                        curve: Curves.easeOutCubic,
+                    // CurveTween owns no status listener. CurvedAnimation
+                    // created here leaked one status listener per rebuilt
+                    // card for the lifetime of the board route.
+                    final itemAnimation = widget.animation.drive(
+                      CurveTween(
+                        curve: Interval(
+                          itemDelay.clamp(0.0, 0.4),
+                          (itemDelay + 0.5).clamp(0.0, 1.0),
+                          curve: Curves.easeOutCubic,
+                        ),
                       ),
                     );
 
@@ -6254,7 +6256,7 @@ class _GameDropdownContentState extends ConsumerState<_GameDropdownContent> {
                         final v = itemAnimation.value.clamp(0.0, 1.0);
                         return Transform.translate(
                           offset: Offset(0, 8 * (1 - v)),
-                          child: Opacity(opacity: v, child: child),
+                          child: child,
                         );
                       },
                       child: _GameSelectorCard(

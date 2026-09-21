@@ -246,6 +246,59 @@ Future<void> _pumpExplorer(
 }
 
 void main() {
+  testWidgets('explorer scroll handoff tolerates two attached positions', (
+    tester,
+  ) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(390, 844);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    addTearDown(tester.view.resetPhysicalSize);
+    final container = _createContainer(inlineGames: true);
+    var containerDisposed = false;
+    void disposeContainer() {
+      if (containerDisposed) return;
+      containerDisposed = true;
+      container.dispose();
+    }
+
+    addTearDown(disposeContainer);
+    await _pumpExplorer(tester, container);
+    await tester.pump(const Duration(milliseconds: 250));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 50));
+    final list = find.descendant(
+      of: find.byType(MoveStatisticsPanel),
+      matching: find.byType(ListView),
+    );
+    final controller = tester.widget<ListView>(list).controller!;
+    final scrollable = tester.state<ScrollableState>(
+      find.descendant(of: list, matching: find.byType(Scrollable)).first,
+    );
+    final outgoing = ScrollPositionWithSingleContext(
+      physics: const ClampingScrollPhysics(),
+      context: scrollable,
+      initialPixels: 0,
+    );
+    controller.attach(outgoing);
+    expect(controller.positions.length, 2);
+    ScrollEndNotification(
+      metrics: scrollable.position.copyWith(),
+      context: scrollable.context,
+    ).dispatch(scrollable.context);
+    expect(tester.takeException(), isNull);
+    controller.detach(outgoing);
+    outgoing.dispose();
+    await tester.drag(list, const Offset(0, -250));
+    for (var frame = 0; frame < 30; frame++) {
+      await tester.pump(const Duration(milliseconds: 50));
+    }
+    expect(controller.positions.length, 1);
+    expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox.shrink());
+    disposeContainer();
+    await tester.pump(const Duration(seconds: 4));
+  });
+
   testWidgets(
     'standalone Explorer gives an under-10 games strip the shared paging viewport',
     (tester) async {
