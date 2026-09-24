@@ -2,9 +2,9 @@ import 'dart:async';
 
 import 'package:chessever2/screens/feed/puzzles/feed_puzzle.dart';
 import 'package:chessever2/screens/feed/puzzles/puzzle_tab_provider.dart';
+import 'package:chessever2/screens/feed/widgets/feed_pull_refresh.dart';
 import 'package:chessever2/screens/feed/widgets/feed_sfx_provider.dart';
 import 'package:chessever2/screens/feed/widgets/feed_states.dart';
-import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/user_error_message.dart';
 import 'package:chessever2/widgets/app_snack.dart';
@@ -112,7 +112,6 @@ class _PuzzleStreamState extends ConsumerState<PuzzleStream> {
   }
 
   Future<void> _refresh() async {
-    unawaited(HapticFeedbackService.selection());
     final messenger = ScaffoldMessenger.maybeOf(context);
     try {
       await ref
@@ -120,6 +119,7 @@ class _PuzzleStreamState extends ConsumerState<PuzzleStream> {
           .refresh()
           .timeout(const Duration(seconds: 20));
       if (!mounted) return;
+      unawaited(HapticFeedbackService.light());
       setState(() => _index = 0);
       if (_pages.hasClients) _pages.jumpToPage(0);
       final first = ref.read(puzzleTabProvider).valueOrNull?.firstOrNull;
@@ -139,7 +139,6 @@ class _PuzzleStreamState extends ConsumerState<PuzzleStream> {
   Widget build(BuildContext context) {
     final state = ref.watch(puzzleTabProvider);
     final puzzles = state.valueOrNull ?? const <FeedPuzzle>[];
-    final colors = context.colors;
 
     if (puzzles.isEmpty) {
       if (state.isLoading) return const FeedSkeleton();
@@ -156,16 +155,14 @@ class _PuzzleStreamState extends ConsumerState<PuzzleStream> {
       );
     }
 
-    return RefreshIndicator(
+    return FeedPullRefresh(
       key: const ValueKey('puzzle_refresh'),
       onRefresh: _refresh,
-      color: colors.textPrimary,
-      backgroundColor: colors.surface,
-      elevation: 0,
       child: PageView.builder(
         key: const ValueKey('puzzle_pages'),
         controller: _pages,
         scrollDirection: Axis.vertical,
+        physics: feedPagePhysics,
         allowImplicitScrolling: true,
         onPageChanged: (i) => _onPageChanged(i, puzzles),
         itemCount: puzzles.length,

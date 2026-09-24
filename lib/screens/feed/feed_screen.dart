@@ -13,6 +13,7 @@ import 'package:chessever2/screens/feed/puzzles/puzzle_stream.dart';
 import 'package:chessever2/screens/feed/widgets/feed_action_row.dart';
 import 'package:chessever2/screens/feed/widgets/feed_clip.dart';
 import 'package:chessever2/screens/feed/widgets/feed_glyphs.dart';
+import 'package:chessever2/screens/feed/widgets/feed_pull_refresh.dart';
 import 'package:chessever2/screens/feed/widgets/feed_sfx_provider.dart';
 import 'package:chessever2/screens/feed/widgets/feed_states.dart';
 import 'package:chessever2/screens/home/widget/bottom_nav_bar.dart';
@@ -243,11 +244,10 @@ class _FeedScreenState extends ConsumerState<FeedScreen>
 
   // ------------------------------------------------------ pull to refresh
 
-  /// A new draw: fresh sources, a new seed, the games already seen held
-  /// back. The page on screen stays until the new first page is ready; a
-  /// failed refresh says so and keeps it.
+  /// A new draw: usually the notifier's ready reserve, landing in the same
+  /// frame; otherwise fresh sources, the page on screen staying until the
+  /// new first page is ready. A failed refresh says so and keeps it.
   Future<void> _refreshFeed() async {
-    unawaited(HapticFeedbackService.selection());
     final messenger = ScaffoldMessenger.maybeOf(context);
     try {
       await ref
@@ -266,6 +266,8 @@ class _FeedScreenState extends ConsumerState<FeedScreen>
       return;
     }
     if (!mounted) return;
+    // The fresh page has landed: one light tap to say so.
+    unawaited(HapticFeedbackService.light());
     setState(() {
       _index = 0;
       _scrollLocked = false;
@@ -374,17 +376,12 @@ class _FeedScreenState extends ConsumerState<FeedScreen>
 
     final Widget body;
     if (entries.isNotEmpty) {
-      body = RefreshIndicator(
+      body = FeedPullRefresh(
         key: const ValueKey('feed_refresh'),
         onRefresh: _refreshFeed,
-        color: context.colors.textPrimary,
-        backgroundColor: context.colors.surface,
-        // Tone, not a cast shadow, lifts the spinner off the page.
-        elevation: 0,
-        // Only the page view's own drags, and never while a clip holds the
-        // pages (a piece or the scrub bar under the finger).
-        notificationPredicate: (notification) =>
-            notification.depth == 0 && !_scrollLocked,
+        // Never while a clip holds the pages (a piece or the scrub bar
+        // under the finger).
+        enabled: !_scrollLocked,
         child: PageView.builder(
           key: const ValueKey('feed_pages'),
           controller: _pages,
@@ -392,7 +389,9 @@ class _FeedScreenState extends ConsumerState<FeedScreen>
           // Keeps the neighbours built (current ± 1) so the next board is
           // already painted when the swipe lands.
           allowImplicitScrolling: true,
-          physics: _scrollLocked ? const NeverScrollableScrollPhysics() : null,
+          physics: _scrollLocked
+              ? const NeverScrollableScrollPhysics()
+              : feedPagePhysics,
           onPageChanged: (i) => _onPageChanged(i, entries),
           itemCount: entries.length,
           // Pages keep their state by identity, not position, so an entry that
