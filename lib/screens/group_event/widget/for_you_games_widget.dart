@@ -29,6 +29,10 @@ import 'package:chessever2/widgets/event_card/smart_event_card.dart';
 import 'package:chessever2/widgets/generic_error_widget.dart';
 import 'package:chessever2/widgets/skeleton_widget.dart';
 import 'package:flutter/material.dart';
+// Stable Flutter's material.dart does not export this type (only newer SDKs
+// do), so it is imported explicitly, as in lib/utils/scroll_cache.dart.
+// ignore: unnecessary_import
+import 'package:flutter/rendering.dart' show ScrollCacheExtent;
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:chessever2/screens/chessboard/provider/game_pgn_stream_provider.dart';
 
