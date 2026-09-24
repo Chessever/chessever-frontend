@@ -9,6 +9,7 @@ import 'package:chessever2/repository/supabase/round/round.dart';
 import 'package:chessever2/repository/supabase/settings/settings.dart';
 import 'package:chessever2/repository/supabase/settings/settings_repository.dart';
 import 'package:chessever2/repository/supabase/tour/tour.dart';
+import 'package:chessever2/utils/owned_stream.dart';
 import 'package:flutter/foundation.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
@@ -17,10 +18,10 @@ const _liveIndicatorRefreshInterval = Duration(minutes: 1);
 
 final configuredLiveGroupBroadcastIdsProvider =
     AutoDisposeStreamProvider<List<String>>(
-      (ref) =>
-          ref
-              .read(settingsRepositoryProvider)
-              .subscribeToLiveGroupBroadcastIds(),
+      (ref) => ownedStream(
+        ref,
+        ref.read(settingsRepositoryProvider).subscribeToLiveGroupBroadcastIds(),
+      ),
     );
 
 final _strictLiveGroupBroadcastResolverProvider =

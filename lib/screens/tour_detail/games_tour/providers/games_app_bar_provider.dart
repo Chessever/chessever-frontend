@@ -23,6 +23,7 @@ import 'package:chessever2/screens/tour_detail/games_tour/providers/live_rounds_
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_app_bar_view_model.dart'; // adjust import path if needed
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/repository/supabase/tour/tour.dart';
+import 'package:chessever2/utils/owned_stream.dart';
 import 'package:chessever2/utils/string_utils.dart';
 
 const int kUnknownGameRoundMaxRetries = 5;
@@ -56,9 +57,10 @@ final gamesAppBarGamesProvider = Provider.autoDispose
 /// once when the channel is ready, closing the initial HTTP/Realtime race.
 final roundMetadataChangesProvider = StreamProvider.autoDispose
     .family<String, String>((ref, tourId) {
-      return ref
-          .watch(roundRepositoryProvider)
-          .watchRoundMetadataChanges(tourId);
+      return ownedStream(
+        ref,
+        ref.watch(roundRepositoryProvider).watchRoundMetadataChanges(tourId),
+      );
     });
 
 /// Auto-disposed optimized provider
