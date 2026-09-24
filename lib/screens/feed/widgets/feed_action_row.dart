@@ -47,7 +47,7 @@ class FeedActionRow extends StatelessWidget {
               semanticsLabel: 'Analyze',
               semanticsHint: 'Open game on the board',
               onTap: onAnalyze,
-              child: _Action(
+              child: FeedActionLabel(
                 label: 'Analyze',
                 icon: FeedGlyph(
                   FeedGlyphs.analyze,
@@ -68,7 +68,7 @@ class FeedActionRow extends StatelessWidget {
                     : 'Add to My Space',
                 selected: space,
                 onTap: onSpace,
-                child: _Action(
+                child: FeedActionLabel(
                   label: 'My Space',
                   icon: FeedGlyph(
                     space ? FeedGlyphs.mySpaceAdded : FeedGlyphs.mySpaceAdd,
@@ -84,7 +84,7 @@ class FeedActionRow extends StatelessWidget {
               key: const ValueKey('feed_share_button'),
               semanticsLabel: 'Share',
               onTap: onShare,
-              child: _Action(
+              child: FeedActionLabel(
                 label: 'Share',
                 icon: FeedGlyph(
                   FeedGlyphs.share,
@@ -101,7 +101,7 @@ class FeedActionRow extends StatelessWidget {
               semanticsLabel: liked ? 'Liked' : 'Like',
               selected: liked,
               onTap: onLike,
-              child: _Action(
+              child: FeedActionLabel(
                 label: liked ? 'Liked' : 'Like',
                 icon: FeedGlyph(
                   key: likeIconKey,
@@ -119,8 +119,10 @@ class FeedActionRow extends StatelessWidget {
   }
 }
 
-class _Action extends StatelessWidget {
-  const _Action({required this.label, required this.icon});
+/// One action under a Feed board: a 22pt glyph over its word. Shared by
+/// game and puzzle posts so both rows read as one system.
+class FeedActionLabel extends StatelessWidget {
+  const FeedActionLabel({required this.label, required this.icon, super.key});
 
   final String label;
   final Widget icon;

@@ -16,6 +16,7 @@ import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessground/chessground.dart';
 import 'package:dartchess/dartchess.dart';
 import 'package:flutter/material.dart';
+import 'package:chessever2/screens/feed/widgets/feed_action_row.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:http/http.dart' as http;
@@ -1258,14 +1259,15 @@ void main() {
       for (var i = 0; i < 4; i++) {
         await tester.pump(const Duration(milliseconds: 800));
       }
-      expect(find.text('Solution'), findsOneWidget); // the status line
+      // The status line, and the action row's (now dimmed) Solution.
+      expect(find.text('Solution'), findsNWidgets(2));
       // The puzzle carries its source game's link, but the post neither
-      // names Lichess nor offers to open it: just Retry and Next.
+      // names Lichess nor offers to open it: the post's own four actions.
       expect(_castle.gameUrl, isNotNull);
       _expectNoLichess();
       expect(find.text('Retry'), findsOneWidget);
       expect(find.text('Next'), findsOneWidget);
-      expect(find.byType(PuzzleButton), findsNWidgets(2));
+      expect(find.byType(FeedActionLabel), findsNWidgets(4));
       expect(h.repo.outcomeOf('castle'), FeedPuzzleOutcome.revealed);
       expect(h.store.rating!.value, lessThan(1200));
       expect(h.sounds.played.map((p) => p.$1), ['Rb8', 'O-O', 'Rb1', 'Rfxb1']);

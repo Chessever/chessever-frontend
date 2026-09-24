@@ -1537,6 +1537,55 @@ class _FeedClipState extends ConsumerState<FeedClip>
             FeedHeaderPiece.text('Miniature', tone: FeedHeaderTone.secondary),
           ],
         );
+      case FeedSignalKind.liked:
+        final count = signal.count ?? 0;
+        if (count <= 0) return null;
+        final heart = FeedHeaderPiece.glyph(
+          FeedGlyph(
+            FeedGlyphs.heartOutline,
+            width: 12,
+            height: 11,
+            color: colors.textSecondary,
+          ),
+          width: 12,
+        );
+        return FeedHeaderPart(
+          id: 'signal',
+          pieces: [
+            heart,
+            const FeedHeaderPiece.gap(5),
+            FeedHeaderPiece.text('$count', tone: FeedHeaderTone.strong),
+            const FeedHeaderPiece.text(
+              ' today',
+              tone: FeedHeaderTone.secondary,
+            ),
+          ],
+          compact: [
+            heart,
+            const FeedHeaderPiece.gap(5),
+            FeedHeaderPiece.text('$count', tone: FeedHeaderTone.strong),
+          ],
+          semanticsLabel: count == 1
+              ? 'Liked once today'
+              : 'Liked $count times today',
+        );
+      case FeedSignalKind.upset:
+        final points = signal.count ?? 0;
+        if (points <= 0) return null;
+        return FeedHeaderPart(
+          id: 'signal',
+          pieces: [
+            FeedHeaderPiece.text('$points-point', tone: FeedHeaderTone.strong),
+            const FeedHeaderPiece.text(
+              ' upset',
+              tone: FeedHeaderTone.secondary,
+            ),
+          ],
+          compact: const [
+            FeedHeaderPiece.text('Upset', tone: FeedHeaderTone.secondary),
+          ],
+          semanticsLabel: 'Upset, the winner was rated $points points lower',
+        );
     }
   }
 

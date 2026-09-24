@@ -113,6 +113,35 @@ abstract final class FeedGlyphs {
       '<path d="M4.5 10.4l3.6 3.6 7.4-8" stroke="#FFFFFF" stroke-width="1.8" '
       'stroke-linecap="round" stroke-linejoin="round"/></svg>';
 
+  /// Puzzle hint: the ring the hint draws round the piece to move, with the
+  /// piece's dot inside it.
+  static const hint =
+      '<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">'
+      '<circle cx="12" cy="12" r="7.6" stroke="#FFFFFF" stroke-width="1.7"/>'
+      '<circle cx="12" cy="12" r="2.4" fill="#FFFFFF"/></svg>';
+
+  /// Puzzle retry: one turn back round to the start.
+  static const retry =
+      '<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">'
+      '<path d="M5.2 12a6.8 6.8 0 1 0 2-4.8" stroke="#FFFFFF" '
+      'stroke-width="1.7" stroke-linecap="round"/>'
+      '<path d="M6.6 3.9v3.6h3.6" stroke="#FFFFFF" stroke-width="1.7" '
+      'stroke-linecap="round" stroke-linejoin="round"/></svg>';
+
+  /// Puzzle solution: the answer plays out, drawn as the outline of [play].
+  static const solution =
+      '<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">'
+      '<path d="M7.8 5.4v13.2c0 .8.9 1.3 1.6.8l9.6-6.6c.6-.4.6-1.2 0-1.6'
+      'L9.4 4.6c-.7-.5-1.6 0-1.6.8Z" stroke="#FFFFFF" stroke-width="1.7" '
+      'stroke-linejoin="round"/></svg>';
+
+  /// The next post, below: the way the feed moves.
+  static const next =
+      '<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">'
+      '<path d="M12 4.8v13.6M6.4 13l5.6 5.6 5.6-5.6" stroke="#FFFFFF" '
+      'stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>'
+      '</svg>';
+
   /// Double chevron beside the "2×" status.
   static const fast =
       '<svg viewBox="0 0 18 12" fill="none" xmlns="http://www.w3.org/2000/svg">'

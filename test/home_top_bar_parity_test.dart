@@ -15,8 +15,6 @@ import 'package:chessever2/screens/feed/models/feed_models.dart';
 import 'package:chessever2/screens/feed/news/feed_news.dart';
 import 'package:chessever2/screens/feed/providers/feed_provider.dart';
 import 'package:chessever2/screens/feed/puzzles/feed_puzzle.dart';
-import 'package:chessever2/screens/feed/race/race_widgets.dart';
-import 'package:chessever2/screens/feed/widgets/feed_glyphs.dart';
 import 'package:chessever2/screens/feed/widgets/feed_sfx_provider.dart';
 import 'package:chessever2/screens/for_you/for_you_screen.dart';
 import 'package:chessever2/screens/for_you/providers/for_you_tab_provider.dart';
@@ -329,7 +327,9 @@ void main() {
     });
   }
 
-  testWidgets('Feed draws the race knight beside its speaker', (tester) async {
+  testWidgets('Feed titles its two streams and switches between them', (
+    tester,
+  ) async {
     final shell = await pumpHomeShell(
       tester,
       size: const Size(393, 852),
@@ -337,13 +337,23 @@ void main() {
       premium: false,
     );
     await shell.show(BottomNavBarItem.feed);
-    final glyph = tester.widget<FeedGlyph>(
-      find.descendant(
-        of: find.byKey(const ValueKey('feed_puzzle_race')),
-        matching: find.byType(FeedGlyph),
-      ),
-    );
-    expect(glyph.svg, RaceGlyphs.rush);
+    expect(find.byKey(const ValueKey('feed_tab_feed')), findsOneWidget);
+    expect(find.byKey(const ValueKey('feed_tab_puzzle')), findsOneWidget);
+    expect(find.byKey(const ValueKey('feed_puzzle_race')), findsNothing);
+    expect(shell.read(feedTabProvider), FeedTab.feed);
+    final before = measureTopBar(tester).toString();
+
+    await tester.tap(find.byKey(const ValueKey('feed_tab_puzzle')));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+    expect(shell.read(feedTabProvider), FeedTab.puzzle);
+    // Switching streams moves nothing in the bar.
+    expect(measureTopBar(tester).toString(), before);
+
+    await tester.tap(find.byKey(const ValueKey('feed_tab_feed')));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+    expect(shell.read(feedTabProvider), FeedTab.feed);
     await shell.dispose();
   });
 
@@ -503,7 +513,8 @@ List<(String, Finder)> _tapControls(BottomNavBarItem tab) {
   return [
     ('avatar', inTab(find.byType(HomeTopBarAvatar))),
     if (tab == BottomNavBarItem.feed) ...[
-      ('race', inTab(find.byKey(const ValueKey('feed_puzzle_race')))),
+      ('feed tab', inTab(find.byKey(const ValueKey('feed_tab_feed')))),
+      ('puzzle tab', inTab(find.byKey(const ValueKey('feed_tab_puzzle')))),
       ('sound', inTab(find.byKey(const ValueKey('feed_sound_toggle')))),
     ],
     if (tab == BottomNavBarItem.library) ...[
@@ -617,7 +628,7 @@ TopBarRects measureTopBar(WidgetTester tester) {
   final controls = <String, Rect>{
     for (final (name, finder) in [
       ('title', find.text('Feed')),
-      ('race', find.byKey(const ValueKey('feed_puzzle_race'))),
+      ('puzzle tab', find.byKey(const ValueKey('feed_tab_puzzle'))),
       ('sound', find.byKey(const ValueKey('feed_sound_toggle'))),
       ('board', find.byKey(const ValueKey('e2e_library_board_button'))),
       ('add', find.byKey(const ValueKey('e2e_library_create_folder_button'))),

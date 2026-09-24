@@ -1,16 +1,15 @@
 import 'package:chessever2/screens/feed/models/feed_entry.dart';
 import 'package:chessever2/screens/feed/news/feed_news.dart';
 import 'package:chessever2/screens/feed/providers/feed_provider.dart';
-import 'package:chessever2/screens/feed/puzzles/feed_puzzle.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
-/// The Feed as pages: [feedProvider]'s games with a Lichess puzzle after
-/// every [kFeedPuzzleEvery] games and a ChessEver News article after every
-/// [kFeedNewsEvery], each only once one has loaded.
+/// The Feed tab as pages: [feedProvider]'s games with a ChessEver News
+/// article after every [kFeedNewsEvery], once one has loaded. Puzzles live
+/// in their own tab ([puzzleTabProvider]).
 ///
-/// Games never wait on puzzles or news: the first page is exactly the games'
-/// first page, and extras slot in behind the viewer as they arrive. Pages the
-/// viewer has reached are frozen ([markSeen]) so a late puzzle can never
+/// Games never wait on news: the first page is exactly the games' first
+/// page, and articles slot in behind the viewer as they arrive. Pages the
+/// viewer has reached are frozen ([markSeen]) so a late article can never
 /// shift the page under their thumb.
 ///
 /// Loading, errors and paging stay on [feedProvider]; this provider only
@@ -33,11 +32,9 @@ class FeedEntriesNotifier extends Notifier<List<FeedEntry>> {
       _frozenThrough = -1;
       return _last;
     }
-    final puzzles = ref.watch(feedPuzzlesProvider).valueOrNull ?? const [];
     final news = ref.watch(feedNewsProvider).valueOrNull ?? const [];
     final next = composeFeedEntries(
       games: games,
-      puzzles: puzzles,
       news: news,
       previous: _last,
       frozenThrough: _frozenThrough,

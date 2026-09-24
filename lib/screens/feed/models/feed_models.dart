@@ -98,6 +98,12 @@ enum FeedSignalKind {
 
   /// A Gamebase miniature.
   miniature,
+
+  /// One of today's most liked games ([FeedSignal.count] distinct likes).
+  liked,
+
+  /// The lower-rated player won by [FeedSignal.count] rating points.
+  upset,
 }
 
 @immutable

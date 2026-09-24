@@ -13,6 +13,7 @@ import 'package:chessever2/screens/feed/puzzles/puzzle_store.dart';
 import 'package:chessever2/screens/feed/puzzles/puzzle_difficulty_sheet.dart';
 import 'package:chessever2/screens/feed/puzzles/puzzle_widgets.dart';
 import 'package:chessever2/screens/feed/race/puzzle_rating_range.dart';
+import 'package:chessever2/screens/feed/widgets/feed_action_row.dart';
 import 'package:chessever2/screens/feed/widgets/feed_classification.dart';
 import 'package:chessever2/screens/feed/widgets/feed_glyphs.dart';
 import 'package:chessever2/screens/feed/widgets/feed_post_header.dart';
@@ -791,49 +792,80 @@ class _FeedPuzzlePageState extends ConsumerState<FeedPuzzlePage> {
     );
   }
 
+  /// Hint · Retry · Solution · Next, in the game posts' action row: the
+  /// same glyph-over-word columns at the same height, so a puzzle reads as
+  /// one more post in the stream. All four always hold their place; one that
+  /// does nothing right now is dimmed rather than removed, so nothing shifts
+  /// under the thumb as the puzzle moves on.
   Widget _actions() {
+    final colors = context.colors;
+    final solving = _phase == _Phase.solving;
+    final canReveal =
+        solving || _phase == _Phase.wrong || _phase == _Phase.replying;
     final finished = _phase == _Phase.solved || _phase == _Phase.revealed;
-    final List<Widget> buttons;
-    if (finished) {
-      buttons = [
-        PuzzleButton(label: 'Retry', onTap: _retry),
-        PuzzleButton(
-          label: 'Next',
-          semanticsLabel: 'Next in Feed',
-          primary: true,
-          onTap: _next,
+    final triedSomething =
+        finished || (_session?.step ?? 0) > 0 || _feedback != _Feedback.none;
+
+    Widget action({
+      required String key,
+      required String label,
+      required String glyph,
+      required VoidCallback? onTap,
+      String? hint,
+    }) {
+      final enabled = onTap != null;
+      return Expanded(
+        child: FeedPressable(
+          key: ValueKey(key),
+          semanticsLabel: label,
+          semanticsHint: hint,
+          onTap: onTap,
+          child: Opacity(
+            opacity: enabled ? 1 : 0.32,
+            child: FeedActionLabel(
+              label: label,
+              icon: FeedGlyph(
+                glyph,
+                width: 22,
+                height: 22,
+                color: colors.textPrimary,
+              ),
+            ),
+          ),
         ),
-      ];
-    } else {
-      final solving = _phase == _Phase.solving;
-      final canReveal =
-          solving || _phase == _Phase.wrong || _phase == _Phase.replying;
-      final triedSomething =
-          (_session?.step ?? 0) > 0 || _feedback != _Feedback.none;
-      buttons = [
-        PuzzleButton(
-          label: 'Hint',
-          semanticsLabel: 'Show which piece to move',
-          onTap: solving && _hint == null ? _showHint : null,
-        ),
-        PuzzleButton(
-          label: 'Retry',
-          semanticsLabel: 'Start the puzzle again',
-          onTap: triedSomething && _phase != _Phase.revealing ? _retry : null,
-        ),
-        PuzzleButton(
-          label: 'Solution',
-          semanticsLabel: 'Show the solution',
-          onTap: canReveal ? _showSolution : null,
-        ),
-      ];
+      );
     }
+
     return Row(
       children: [
-        for (var i = 0; i < buttons.length; i++) ...[
-          if (i > 0) const SizedBox(width: 8),
-          Expanded(child: buttons[i]),
-        ],
+        action(
+          key: 'feed_puzzle_hint',
+          label: 'Hint',
+          glyph: FeedGlyphs.hint,
+          hint: 'Show which piece to move',
+          onTap: solving && _hint == null ? _showHint : null,
+        ),
+        action(
+          key: 'feed_puzzle_retry',
+          label: 'Retry',
+          glyph: FeedGlyphs.retry,
+          hint: 'Start the puzzle again',
+          onTap: triedSomething && _phase != _Phase.revealing ? _retry : null,
+        ),
+        action(
+          key: 'feed_puzzle_solution',
+          label: 'Solution',
+          glyph: FeedGlyphs.solution,
+          hint: 'Show the solution',
+          onTap: canReveal ? _showSolution : null,
+        ),
+        action(
+          key: 'feed_puzzle_next',
+          label: 'Next',
+          glyph: FeedGlyphs.next,
+          hint: 'Next puzzle',
+          onTap: _next,
+        ),
       ],
     );
   }

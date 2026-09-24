@@ -208,6 +208,41 @@ class FeedPuzzleRepository {
     return puzzles;
   }
 
+  /// The Puzzle tab's next page: up to [freshCount] puzzles that are not in
+  /// [have] and not finished, from the pool first and, when it runs short,
+  /// one request to the service. Served puzzles are stamped like [load]'s.
+  /// Never throws; an empty list means nothing more right now.
+  Future<List<FeedPuzzle>> loadMore(Set<String> have) async {
+    if (!isConfigured) return const [];
+    try {
+      final now = _clock();
+      final done = await _doneIds();
+      bool usable(FeedPuzzle p) =>
+          !have.contains(p.id) && !done.contains(p.id) && _servable(p);
+      final picks = [
+        for (final c in _ordered(_live(await _readPool(), now, done)))
+          if (usable(c.puzzle)) c,
+      ];
+      if (picks.length < freshCount) {
+        final ids = {for (final c in picks) c.puzzle.id};
+        for (final p in await _fetchFresh({...have, ...done})) {
+          if (usable(p) && ids.add(p.id)) picks.add(CachedPuzzle(p, now));
+        }
+      }
+      final served = [
+        for (final c in picks.take(freshCount)) c.servedOn(now),
+      ];
+      for (final c in served) {
+        if (_sessionServedIds.add(c.puzzle.id)) _sessionServed.add(c);
+      }
+      if (served.isNotEmpty) unawaited(_recordServed(served, now));
+      return [for (final c in served) c.puzzle];
+    } catch (error) {
+      debugPrint('[FeedPuzzles] loadMore failed: $error');
+      return const [];
+    }
+  }
+
   /// Drops cached puzzles rated outside [min]..[max] (a new difficulty), so
   /// the next load tops up inside it. Unrated puzzles stay.
   Future<void> retainWithin(int min, int max) async {
