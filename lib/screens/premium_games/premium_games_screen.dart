@@ -78,7 +78,7 @@ class _PremiumGamesScreenState extends ConsumerState<PremiumGamesScreen> {
           final itemCount = state.games.length + (state.isLoadingMore ? 1 : 0);
 
           return RefreshIndicator(
-            color: kPrimaryColor,
+            color: context.colors.accentText,
             backgroundColor: context.colors.surface,
             onRefresh:
                 () =>
@@ -176,7 +176,7 @@ class _PremiumGamesScreenState extends ConsumerState<PremiumGamesScreen> {
               onPressed: _showFilterDialog,
               icon: Icon(
                 Icons.tune_rounded,
-                color: hasActiveFilters ? kPrimaryColor : context.colors.textPrimary,
+                color: hasActiveFilters ? context.colors.accentText : context.colors.textPrimary,
                 size: 22.ic,
               ),
             ),
@@ -187,8 +187,8 @@ class _PremiumGamesScreenState extends ConsumerState<PremiumGamesScreen> {
                 child: Container(
                   width: 8.sp,
                   height: 8.sp,
-                  decoration: const BoxDecoration(
-                    color: kPrimaryColor,
+                  decoration: BoxDecoration(
+                    color: context.colors.accentText,
                     shape: BoxShape.circle,
                   ),
                 ),
@@ -239,8 +239,8 @@ class _LoadingState extends StatelessWidget {
           SizedBox(
             width: 32.sp,
             height: 32.sp,
-            child: const CircularProgressIndicator(
-              color: kPrimaryColor,
+            child: CircularProgressIndicator(
+              color: context.colors.accentText,
               strokeWidth: 2.5,
             ),
           ),
@@ -248,7 +248,7 @@ class _LoadingState extends StatelessWidget {
           Text(
             'Loading games...',
             style: AppTypography.textSmMedium.copyWith(
-              color: context.colors.textPrimary.withValues(alpha: 0.6),
+              color: context.textInk(0.6),
             ),
           ),
         ],
@@ -266,8 +266,8 @@ class _LoadingMoreIndicator extends StatelessWidget {
         child: SizedBox(
           width: 24.sp,
           height: 24.sp,
-          child: const CircularProgressIndicator(
-            color: kPrimaryColor,
+          child: CircularProgressIndicator(
+            color: context.colors.accentText,
             strokeWidth: 2,
           ),
         ),
@@ -292,7 +292,7 @@ class _ErrorState extends StatelessWidget {
           children: [
             Icon(
               Icons.error_outline_rounded,
-              color: context.colors.textPrimary.withValues(alpha: 0.4),
+              color: context.textInk(0.4),
               size: 48.ic,
             ),
             SizedBox(height: 16.sp),
@@ -304,7 +304,7 @@ class _ErrorState extends StatelessWidget {
             Text(
               error,
               style: AppTypography.textSmRegular.copyWith(
-                color: context.colors.textPrimary.withValues(alpha: 0.5),
+                color: context.textInk(0.5),
               ),
               textAlign: TextAlign.center,
             ),
@@ -372,7 +372,7 @@ class _EmptyState extends StatelessWidget {
               child: Center(
                 child: Icon(
                   icon,
-                  color: context.colors.textPrimary.withValues(alpha: 0.4),
+                  color: context.textInk(0.4),
                   size: 36.ic,
                 ),
               ),
@@ -386,7 +386,7 @@ class _EmptyState extends StatelessWidget {
             Text(
               subtitle,
               style: AppTypography.textSmRegular.copyWith(
-                color: context.colors.textPrimary.withValues(alpha: 0.5),
+                color: context.textInk(0.5),
               ),
               textAlign: TextAlign.center,
             ),

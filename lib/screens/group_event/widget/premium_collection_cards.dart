@@ -6,18 +6,22 @@ import 'package:chessever2/providers/favorite_players_provider.dart';
 import 'package:chessever2/repository/favorites/models/favorite_player.dart';
 import 'package:chessever2/screens/countrymen/countrymen_tab_screen.dart';
 import 'package:chessever2/screens/favorites/favorites_tab_screen.dart';
+import 'package:chessever2/screens/library/widgets/library_context_menu.dart';
+import 'package:chessever2/screens/my_space/actions/space_menu_action.dart';
+import 'package:chessever2/screens/my_space/models/space_shortcut.dart';
 import 'package:chessever2/screens/premium_games/premium_games_screen.dart';
 import 'package:chessever2/services/fide_photo_service.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/widgets/card_context_menu.dart';
 
 import 'package:country_flags/country_flags.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:motor/motor.dart';
 
 /// Opaque ink the collection tiles are printed on.
 ///
@@ -39,6 +43,11 @@ const Color _kTileInk = Color(0xFF0C0C0E);
 /// darkened artwork — in dark mode these are exactly what `textPrimary`
 /// resolved to, so nothing there moves.
 const Color _kOnTile = Color(0xFFFFFFFF);
+
+/// Ink drawn ON the tile's artwork: white on the dark media tile, the page's
+/// own ink on the light paper tile.
+Color _onTile(BuildContext context) =>
+    context.isLightTheme ? context.colors.textPrimary : _kOnTile;
 
 /// Collection cards displayed at the top of For You tab.
 /// Shows "Favorites" and "Countrymen" cards that navigate to combined game lists.
@@ -66,7 +75,7 @@ class PremiumCollectionCards extends StatelessWidget {
           ),
         ],
       ),
-    ).animate().fadeIn(duration: 300.ms).slideY(begin: -0.05, end: 0);
+    );
   }
 }
 
@@ -78,13 +87,78 @@ class _PremiumCollectionCard extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final isLight = context.isLightTheme;
-    return GestureDetector(
+    final tile = _PressScale(
       onTap: () => _handleTap(context, ref),
-      child: Container(
+      child: _buildTile(context, ref),
+    );
+    // Favorites has no My Space kind of its own; Countrymen pins the
+    // federation on the tile.
+    if (type != PremiumGamesType.countrymen) return tile;
+    return Builder(
+      builder:
+          (anchorContext) => GestureDetector(
+            behavior: HitTestBehavior.deferToChild,
+            onLongPressStart:
+                (details) => _showCountrymenMenu(
+                  anchorContext,
+                  ref,
+                  details.globalPosition,
+                ),
+            child: tile,
+          ),
+    );
+  }
+
+  /// Long-press on the Countrymen tile: it lifts into the shared focus menu
+  /// to open Countrymen or pin the federation it shows into My Space.
+  void _showCountrymenMenu(
+    BuildContext anchorContext,
+    WidgetRef ref,
+    Offset origin,
+  ) {
+    final country = ref.read(countryDropdownProvider).valueOrNull;
+    final code = country?.countryCode.trim() ?? '';
+    CardContextMenu.open(
+      anchorContext,
+      actions:
+          (menuContext) => [
+            LibraryMenuAction(
+              icon: Icons.open_in_new_rounded,
+              label: 'Open Countrymen',
+              onSelected: () => _handleTap(anchorContext, ref),
+            ),
+            if (country != null && code.isNotEmpty)
+              spaceMenuAction(
+                context: menuContext,
+                ref: ref,
+                // Same shortcut the Countrymen screen pins, so the two
+                // dedupe: targetId is the federation code.
+                draft: SpaceShortcut.draft(
+                  kind: SpaceShortcutKind.countrymen,
+                  targetId: code,
+                  title: country.name,
+                  subtitle: 'Countrymen',
+                  params: {'name': country.name},
+                ),
+              ),
+          ],
+      previewBuilder: (_) => _buildTile(anchorContext, ref),
+      onPreviewTap: () => _handleTap(anchorContext, ref),
+      // A screen reader's long-press action reports no position.
+      origin: origin == Offset.zero ? null : origin,
+    );
+  }
+
+  Widget _buildTile(BuildContext context, WidgetRef ref) {
+    final isLight = context.isLightTheme;
+    final onTile = _onTile(context);
+    // Light: a paper card on the mint page, its artwork washed into paper at
+    // the label. Dark: the original media tile, pixel for pixel.
+    final base = isLight ? context.colors.surface : _kTileInk;
+    return Container(
         height: 108.sp,
         decoration: BoxDecoration(
-          color: _kTileInk,
+          color: base,
           borderRadius: BorderRadius.circular(14.br),
           // The edge is the only part of the tile that meets the page, so it
           // is the only part that follows the theme. On dark the page and the
@@ -92,10 +166,15 @@ class _PremiumCollectionCard extends ConsumerWidget {
           // On light the near-black tile already cuts cleanly against the mint
           // page — any hairline there only muddies an edge that reads better
           // from tone alone.
-          border:
-              isLight
-                  ? null
-                  : Border.all(color: context.colors.divider, width: 1),
+          // On light the paper tile sits one tonal step above the page; a
+          // faint self-coloured ink lip draws its edge without a hard rule.
+          border: Border.all(
+            color:
+                isLight
+                    ? context.colors.textPrimary.withValues(alpha: 0.08)
+                    : context.colors.divider,
+            width: 1,
+          ),
         ),
         child: ClipRRect(
           borderRadius: BorderRadius.circular(14.br),
@@ -116,11 +195,18 @@ class _PremiumCollectionCard extends ConsumerWidget {
                     gradient: LinearGradient(
                       begin: Alignment.topCenter,
                       end: Alignment.bottomCenter,
-                      colors: [
-                        Colors.transparent,
-                        Colors.black.withValues(alpha: 0.6),
-                        Colors.black.withValues(alpha: 0.95),
-                      ],
+                      colors:
+                          isLight
+                              ? [
+                                base.withValues(alpha: 0),
+                                base.withValues(alpha: 0.72),
+                                base.withValues(alpha: 0.96),
+                              ]
+                              : [
+                                Colors.transparent,
+                                Colors.black.withValues(alpha: 0.6),
+                                Colors.black.withValues(alpha: 0.95),
+                              ],
                       stops: const [0.0, 0.5, 1.0],
                     ),
                   ),
@@ -136,18 +222,22 @@ class _PremiumCollectionCard extends ConsumerWidget {
                     Text(
                       title,
                       style: AppTypography.textMdBold.copyWith(
-                        color: _kOnTile,
+                        color: onTile,
                         letterSpacing: 0.3,
                         // A pale FIDE headshot can land right under the label.
-                        // The ramp alone does not always clear it, so the type
-                        // carries its own contrast.
-                        shadows: [
-                          Shadow(
-                            color: Colors.black.withValues(alpha: 0.45),
-                            blurRadius: 4,
-                            offset: const Offset(0, 1),
-                          ),
-                        ],
+                        // On dark the ramp alone does not always clear it, so
+                        // the type carries its own contrast. Dark ink on paper
+                        // needs none (a shadow under it only muddies it).
+                        shadows:
+                            isLight
+                                ? null
+                                : [
+                                  Shadow(
+                                    color: Colors.black.withValues(alpha: 0.45),
+                                    blurRadius: 4,
+                                    offset: const Offset(0, 1),
+                                  ),
+                                ],
                       ),
                     ),
                     SizedBox(height: 2.sp),
@@ -157,13 +247,21 @@ class _PremiumCollectionCard extends ConsumerWidget {
                         Text(
                           'Tap to view',
                           style: AppTypography.textXsRegular.copyWith(
-                            color: _kOnTile.withValues(alpha: 0.85),
-                            shadows: [
-                              Shadow(
-                                color: Colors.black.withValues(alpha: 0.4),
-                                blurRadius: 3,
-                              ),
-                            ],
+                            color:
+                                isLight
+                                    ? context.colors.textSecondary
+                                    : _kOnTile.withValues(alpha: 0.85),
+                            shadows:
+                                isLight
+                                    ? null
+                                    : [
+                                      Shadow(
+                                        color: Colors.black.withValues(
+                                          alpha: 0.4,
+                                        ),
+                                        blurRadius: 3,
+                                      ),
+                                    ],
                           ),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
@@ -172,13 +270,21 @@ class _PremiumCollectionCard extends ConsumerWidget {
                         Icon(
                           Icons.arrow_forward_rounded,
                           size: 12.sp,
-                          color: _kOnTile.withValues(alpha: 0.85),
-                          shadows: [
-                            Shadow(
-                              color: Colors.black.withValues(alpha: 0.4),
-                              blurRadius: 3,
-                            ),
-                          ],
+                          color:
+                              isLight
+                                  ? context.colors.textSecondary
+                                  : _kOnTile.withValues(alpha: 0.85),
+                          shadows:
+                              isLight
+                                  ? null
+                                  : [
+                                    Shadow(
+                                      color: Colors.black.withValues(
+                                        alpha: 0.4,
+                                      ),
+                                      blurRadius: 3,
+                                    ),
+                                  ],
                         ),
                       ],
                     ),
@@ -188,8 +294,7 @@ class _PremiumCollectionCard extends ConsumerWidget {
             ],
           ),
         ),
-      ),
-    );
+      );
   }
 
   void _handleTap(BuildContext context, WidgetRef ref) {
@@ -476,7 +581,13 @@ class _PlayerPhotoCell extends StatelessWidget {
       height: size,
       decoration: BoxDecoration(
         shape: BoxShape.circle,
-        border: Border.all(color: _kOnTile.withValues(alpha: 0.35), width: 1.5),
+        border: Border.all(
+          color:
+              context.isLightTheme
+                  ? context.colors.textPrimary.withValues(alpha: 0.14)
+                  : _kOnTile.withValues(alpha: 0.35),
+          width: 1.5,
+        ),
       ),
       child: ClipOval(
         child:
@@ -506,8 +617,8 @@ class _PlayerPhotoCell extends StatelessWidget {
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
           colors: [
-            _kOnTile.withValues(alpha: 0.15),
-            _kOnTile.withValues(alpha: 0.08),
+            _onTile(context).withValues(alpha: 0.15),
+            _onTile(context).withValues(alpha: 0.08),
           ],
         ),
       ),
@@ -515,7 +626,7 @@ class _PlayerPhotoCell extends StatelessWidget {
         child: Icon(
           Icons.person_rounded,
           size: size * 0.5,
-          color: _kOnTile.withValues(alpha: 0.4),
+          color: _onTile(context).withValues(alpha: 0.4),
         ),
       ),
     );
@@ -547,8 +658,8 @@ class _PlayerPhotoCell extends StatelessWidget {
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
           colors: [
-            _kOnTile.withValues(alpha: 0.2),
-            _kOnTile.withValues(alpha: 0.1),
+            _onTile(context).withValues(alpha: 0.12),
+            _onTile(context).withValues(alpha: 0.06),
           ],
         ),
       ),
@@ -559,7 +670,7 @@ class _PlayerPhotoCell extends StatelessWidget {
           style: TextStyle(
             fontSize: size * 0.32,
             fontWeight: FontWeight.w700,
-            color: _kOnTile.withValues(alpha: 0.9),
+            color: _onTile(context).withValues(alpha: 0.9),
             letterSpacing: -0.5,
             // Default line height leaves the glyphs sitting a hair high in the
             // circle. Pinning it to 1 hands the vertical centring to the Center
@@ -584,14 +695,14 @@ class _EmptyFavoritesPlaceholder extends StatelessWidget {
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
           colors: [
-            _kOnTile.withValues(alpha: 0.1),
-            _kOnTile.withValues(alpha: 0.05),
-            _kOnTile.withValues(alpha: 0.07),
+            _onTile(context).withValues(alpha: 0.1),
+            _onTile(context).withValues(alpha: 0.05),
+            _onTile(context).withValues(alpha: 0.07),
           ],
         ),
       ),
       child: CustomPaint(
-        painter: const _FloatingHeartsPainter(accentColor: _kOnTile),
+        painter: _FloatingHeartsPainter(accentColor: _onTile(context)),
         size: Size.infinite,
       ),
     );
@@ -656,7 +767,8 @@ class _FloatingHeartsPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(covariant _FloatingHeartsPainter oldDelegate) => false;
+  bool shouldRepaint(covariant _FloatingHeartsPainter oldDelegate) =>
+      oldDelegate.accentColor != accentColor;
 }
 
 /// Full background country flag for Countrymen card
@@ -673,7 +785,9 @@ class _FlagFullBackground extends StatelessWidget {
       data:
           (country) => SizedBox.expand(
             child: Opacity(
-              opacity: 0.25,
+              // A touch more flag on paper, where it reads as a pastel wash
+              // rather than a dim print.
+              opacity: context.isLightTheme ? 0.3 : 0.25,
               child: FittedBox(
                 fit: BoxFit.cover,
                 child: CountryFlag.fromCountryCode(
@@ -698,8 +812,8 @@ class _FlagPlaceholder extends StatelessWidget {
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
           colors: [
-            _kOnTile.withValues(alpha: 0.1),
-            _kOnTile.withValues(alpha: 0.05),
+            _onTile(context).withValues(alpha: 0.1),
+            _onTile(context).withValues(alpha: 0.05),
           ],
         ),
       ),
@@ -707,8 +821,54 @@ class _FlagPlaceholder extends StatelessWidget {
         child: Icon(
           Icons.public_rounded,
           size: 48.sp,
-          color: _kOnTile.withValues(alpha: 0.15),
+          color: _onTile(context).withValues(alpha: 0.15),
         ),
+      ),
+    );
+  }
+}
+
+
+/// Press feedback for a collection tile: it settles to 0.97 under the finger
+/// on a spring and springs back on release, so the tap is felt before the
+/// route pushes. No scale under reduced motion.
+class _PressScale extends StatefulWidget {
+  const _PressScale({required this.onTap, required this.child});
+
+  final VoidCallback onTap;
+  final Widget child;
+
+  @override
+  State<_PressScale> createState() => _PressScaleState();
+}
+
+class _PressScaleState extends State<_PressScale> {
+  bool _pressed = false;
+
+  void _set(bool value) {
+    if (_pressed == value) return;
+    setState(() => _pressed = value);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final reduce = MediaQuery.disableAnimationsOf(context);
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTapDown: (_) => _set(true),
+      onTapUp: (_) => _set(false),
+      onTapCancel: () => _set(false),
+      onTap: widget.onTap,
+      child: SingleMotionBuilder(
+        motion: const CupertinoMotion.snappy(),
+        value: _pressed && !reduce ? 0.97 : 1.0,
+        builder: (context, value, child) {
+          // A spring only asymptotes to 1; settle on exact identity so the
+          // artwork is never resampled a hair soft at rest.
+          final scale = (value - 1).abs() < 0.001 ? 1.0 : value;
+          return Transform.scale(scale: scale, child: child);
+        },
+        child: widget.child,
       ),
     );
   }

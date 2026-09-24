@@ -1087,7 +1087,7 @@ class _FavoritesCombinedGamesScreenState
           Text(
             'Try a different filter',
             style: AppTypography.textSmRegular.copyWith(
-              color: context.colors.textPrimary.withValues(alpha: 0.55),
+              color: context.textInk(0.55),
             ),
             textAlign: TextAlign.center,
           ),
@@ -1120,7 +1120,7 @@ class _FavoritesCombinedGamesScreenState
           Text(
             'Clear chips or load more games',
             style: AppTypography.textSmRegular.copyWith(
-              color: context.colors.textPrimary.withValues(alpha: 0.55),
+              color: context.textInk(0.55),
             ),
             textAlign: TextAlign.center,
           ),
@@ -1167,7 +1167,7 @@ class _FavoritesCombinedGamesScreenState
           Text(
             'Try adjusting your filters',
             style: AppTypography.textSmRegular.copyWith(
-              color: context.colors.textPrimary.withValues(alpha: 0.55),
+              color: context.textInk(0.55),
             ),
             textAlign: TextAlign.center,
           ),

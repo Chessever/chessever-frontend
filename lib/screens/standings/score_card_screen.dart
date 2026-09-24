@@ -2,7 +2,12 @@ import 'dart:io' as io;
 import 'dart:math' as math;
 import 'package:chessever2/e2e/e2e_ids.dart';
 import 'package:chessever2/providers/player_backfill_provider.dart';
+import 'package:chessever2/screens/library/widgets/library_context_menu.dart';
+import 'package:chessever2/screens/my_space/models/space_shortcut.dart';
+import 'package:chessever2/screens/player_profile/utils/player_menu_actions.dart';
 import 'package:chessever2/screens/standings/player_standing_model.dart';
+import 'package:chessever2/widgets/card_context_menu.dart';
+import 'package:chessever2/widgets/space_shortcut_drafts.dart';
 import 'package:chessever2/widgets/app_snack.dart';
 import 'package:chessever2/widgets/player_initials_avatar.dart';
 import 'package:chessever2/widgets/fullscreen_image_viewer.dart';
@@ -18,6 +23,7 @@ import 'package:chessever2/screens/tour_detail/provider/tour_detail_mode_provide
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_screen_provider.dart'
     show tourDetailScreenProvider;
 import 'package:chessever2/screens/tour_detail/player_tour/player_tour_screen_provider.dart';
+import 'package:chessever2/screens/player_profile/widgets/lifted_row_menu.dart';
 import 'package:chessever2/screens/player_profile/widgets/performance_stats_row.dart';
 import 'package:chessever2/services/fide_photo_service.dart';
 import 'package:chessever2/utils/app_typography.dart';
@@ -26,6 +32,7 @@ import 'package:chessever2/utils/location_service_provider.dart';
 import 'package:chessever2/utils/png_asset.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/federation_flag.dart';
+import 'package:chessever2/widgets/time_control_glyph.dart';
 import 'package:heroine/heroine.dart';
 import 'package:smooth_sheets/smooth_sheets.dart';
 import 'package:skeletonizer/skeletonizer.dart';
@@ -40,6 +47,9 @@ import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_p
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_screen_provider.dart';
 import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
 import 'package:chessever2/screens/chessboard/widgets/smooth_sheet_config.dart';
+import 'package:chessever2/screens/chessboard/widgets/chess_board_from_fen_new.dart'
+    show showGameShareOverlay;
+import 'package:chessever2/screens/tour_detail/games_tour/utils/game_space_shortcut.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrapper/game_card_wrapper_provider.dart';
 import 'package:chessever2/providers/favorite_players_provider.dart';
 import 'package:chessever2/utils/favorite_constants.dart';
@@ -907,6 +917,8 @@ class _ScoreCardPage extends ConsumerWidget {
                   coachmarkEnabled: isActive,
                   isSheet: isSheet,
                   onSharePerformance: sharePlayerProfile,
+                  scorecardShareUrl: playerShareUrl,
+                  eventName: eventName ?? selectedBroadcast?.name,
                 ),
                 SliverToBoxAdapter(
                   child: Padding(
@@ -1049,9 +1061,7 @@ class _ScoreCardPage extends ConsumerWidget {
                           Icon(
                             Icons.info_outline,
                             size: 40.ic,
-                            color: context.colors.textPrimary.withValues(
-                              alpha: 0.5,
-                            ),
+                            color: context.textInk(0.5),
                           ),
                           SizedBox(height: 12.h),
                           Text(
@@ -1071,9 +1081,7 @@ class _ScoreCardPage extends ConsumerWidget {
                                 : 'Games will appear once they are played',
                             textAlign: TextAlign.center,
                             style: AppTypography.textXsRegular.copyWith(
-                              color: context.colors.textPrimary.withValues(
-                                alpha: 0.5,
-                              ),
+                              color: context.textInk(0.5),
                             ),
                           ),
                         ],
@@ -1125,49 +1133,82 @@ class _ScoreCardPage extends ConsumerWidget {
                         );
                       }
 
+                      void openGame() {
+                        final navigation = scoreCardGameNavigationContext(
+                          hasEventContext: hasEventContext,
+                        );
+
+                        // Pass playerGames (filtered for this player) instead of allGames
+                        // so swiping in chessboard only shows this player's games
+                        ref
+                            .read(gameCardWrapperProvider)
+                            .navigateToChessBoard(
+                              context: context,
+                              orderedGames: playerGames,
+                              gameIndex: index,
+                              onReturnFromChessboard: (_) {},
+                              viewSource: navigation.viewSource,
+                              listPolicy: navigation.listPolicy,
+                              playerProfileDataSource: profileDataSource,
+                            );
+                      }
+
+                      void openOpponent() => _openOpponentCard(
+                        context: context,
+                        ref: ref,
+                        opponent: opponent,
+                      );
+
+                      // One builder for the live row and its lifted copy. In
+                      // the list the row is a segment (a rule under it, only
+                      // the group's ends rounded); lifted it is `whole`: no
+                      // rule, and the plate rounds all four corners.
+                      Widget scoreRow({bool whole = false}) =>
+                          ScoreboardCardWidget(
+                            roundLabel:
+                                hasEventContext
+                                    ? _buildRoundLabel(game)
+                                    : null,
+                            countryCode: opponent.countryCode,
+                            title: opponent.title,
+                            name: opponent.name,
+                            score: opponent.rating,
+                            scoreChange:
+                                ratingChange != 0.0 ? ratingChange : null,
+                            matchScore: result,
+                            isWhite: isWhite,
+                            index: index,
+                            isFirst: whole || index == 0,
+                            isLast: whole || index == playerGames.length - 1,
+                            onPlayerTap: openOpponent,
+                            onTap: openGame,
+                          );
+
                       return Padding(
                         padding: EdgeInsets.symmetric(
                           horizontal: horizontalPadding,
                         ),
-                        child: ScoreboardCardWidget(
-                          roundLabel:
-                              hasEventContext ? _buildRoundLabel(game) : null,
-                          countryCode: opponent.countryCode,
-                          title: opponent.title,
-                          name: opponent.name,
-                          score: opponent.rating,
-                          scoreChange:
-                              ratingChange != 0.0 ? ratingChange : null,
-                          matchScore: result,
-                          isWhite: isWhite,
-                          index: index,
-                          isFirst: index == 0,
-                          isLast: index == playerGames.length - 1,
-                          onPlayerTap:
-                              () => _openOpponentCard(
-                                context: context,
-                                ref: ref,
+                        // Long-press lifts the row into the focus menu: the
+                        // game and the opponent, each openable or pinnable.
+                        child: CardContextMenu(
+                          onPreviewTap: openGame,
+                          actions:
+                              (rowContext) => _opponentRowActions(
+                                rowContext,
+                                ref,
+                                game: game,
                                 opponent: opponent,
+                                onOpenGame: openGame,
+                                onOpenOpponent: openOpponent,
                               ),
-                          onTap: () {
-                            final navigation = scoreCardGameNavigationContext(
-                              hasEventContext: hasEventContext,
-                            );
-
-                            // Pass playerGames (filtered for this player) instead of allGames
-                            // so swiping in chessboard only shows this player's games
-                            ref
-                                .read(gameCardWrapperProvider)
-                                .navigateToChessBoard(
-                                  context: context,
-                                  orderedGames: playerGames,
-                                  gameIndex: index,
-                                  onReturnFromChessboard: (_) {},
-                                  viewSource: navigation.viewSource,
-                                  listPolicy: navigation.listPolicy,
-                                  playerProfileDataSource: profileDataSource,
-                                );
-                          },
+                          previewBuilder:
+                              (previewContext) => LiftedRowSurface(
+                                // The row's own fill, so the plate's rounded
+                                // edge anti-aliases against the same colour.
+                                color: previewContext.colors.surface,
+                                child: scoreRow(whole: true),
+                              ),
+                          child: scoreRow(),
                         ),
                       );
                     }, childCount: playerGames.length),
@@ -1195,6 +1236,67 @@ class _ScoreCardPage extends ConsumerWidget {
       onShare: sharePlayerProfile,
       child: scoreCardScaffold,
     );
+  }
+
+  /// The opponent row's focus menu: open or share the game, open the
+  /// opponent's card, and pin either into My Space.
+  List<LibraryMenuAction> _opponentRowActions(
+    BuildContext rowContext,
+    WidgetRef ref, {
+    required GamesTourModel game,
+    required PlayerCard opponent,
+    required VoidCallback onOpenGame,
+    required VoidCallback onOpenOpponent,
+  }) {
+    final gameDraft = gameSpaceShortcutDraft(game);
+    return [
+      LibraryMenuAction(
+        icon: Icons.open_in_new_rounded,
+        label: 'Open game',
+        onSelected: () {
+          if (rowContext.mounted) onOpenGame();
+        },
+      ),
+      LibraryMenuAction(
+        icon: Icons.person_outline_rounded,
+        label: 'Open opponent',
+        onSelected: () {
+          if (rowContext.mounted) onOpenOpponent();
+        },
+      ),
+      LibraryMenuAction(
+        icon: Icons.ios_share_rounded,
+        label: 'Share game',
+        onSelected: () {
+          if (rowContext.mounted) {
+            return showGameShareOverlay(rowContext, ref, game);
+          }
+        },
+      ),
+      if (gameDraft != null)
+        labeledSpaceMenuAction(
+          context: rowContext,
+          ref: ref,
+          draft: gameDraft,
+          addLabel: 'Add game to My Space',
+          removeLabel: 'Remove game from My Space',
+        ),
+      if (opponent.name.trim().isNotEmpty)
+        labeledSpaceMenuAction(
+          context: rowContext,
+          ref: ref,
+          draft: spacePlayerDraft(
+            playerName: opponent.name,
+            fideId: opponent.fideId,
+            title: opponent.title,
+            federation: opponent.countryCode,
+            rating: opponent.rating > 0 ? opponent.rating : null,
+            gamebasePlayerId: opponent.gamebasePlayerId,
+          ),
+          addLabel: 'Add opponent to My Space',
+          removeLabel: 'Remove opponent from My Space',
+        ),
+    ];
   }
 
   /// Opens the tapped opponent's performance card. On the root screen that is
@@ -1778,7 +1880,15 @@ class _SliverScoreboardAppBar extends ConsumerStatefulWidget {
     required this.coachmarkEnabled,
     required this.onSharePerformance,
     this.isSheet = false,
+    this.scorecardShareUrl,
+    this.eventName,
   });
+
+  /// The performance's share destination. Only an event-scoped
+  /// `/broadcast/.../player/<fideId>` link is pinnable as "this scorecard";
+  /// the profile fallback is already covered by the player row.
+  final String? scorecardShareUrl;
+  final String? eventName;
 
   /// The player this app bar belongs to. Passed explicitly rather than read
   /// from [selectedPlayerProvider] so an opponent card opened in a sheet keeps
@@ -1997,12 +2107,31 @@ class _SliverScoreboardAppBarState
         ),
         onPressed: () => Navigator.of(context).pop(),
       ),
-      title: PlayerNameShareTarget(
-        playerName: player.name,
-        onShare: widget.onSharePerformance,
-        coachmarkEnabled: widget.coachmarkEnabled,
-        coachmarkMessage: 'Tap the player’s name to share this performance.',
-        child: headerRow,
+      // Long-press the name for the focus menu: pin the player, their Games
+      // tab or this very scorecard, or share the performance. There is no
+      // three-dot in the bar on purpose: one would take ~40px from the name
+      // and push the heart inward, so the menu rides a gesture instead and
+      // the bar lays out exactly as before.
+      title: Builder(
+        builder:
+            (titleContext) => GestureDetector(
+              // The name keeps its own tap (share); only the long-press is
+              // ours.
+              behavior: HitTestBehavior.deferToChild,
+              onLongPress:
+                  () => CardContextMenu.open(
+                    titleContext,
+                    actions: (menuContext) => _menuActions(menuContext, player),
+                  ),
+              child: PlayerNameShareTarget(
+                playerName: player.name,
+                onShare: widget.onSharePerformance,
+                coachmarkEnabled: widget.coachmarkEnabled,
+                coachmarkMessage:
+                    'Tap the player’s name to share this performance.',
+                child: headerRow,
+              ),
+            ),
       ),
       actions: [
         InkWell(
@@ -2030,6 +2159,75 @@ class _SliverScoreboardAppBarState
       ],
     );
   }
+
+  List<LibraryMenuAction> _menuActions(
+    BuildContext menuContext,
+    PlayerStandingModel player,
+  ) {
+    final scorecardDraft = scorecardSpaceDraft(
+      shareUrl: widget.scorecardShareUrl,
+      playerName: player.name,
+      eventName: widget.eventName,
+    );
+    return playerStandingMenuActions(
+      menuContext,
+      ref,
+      player,
+      // The name in the bar already shares the performance card, a richer
+      // share than the bare profile link.
+      includeShare: false,
+      extra: [
+        if (scorecardDraft != null)
+          labeledSpaceMenuAction(
+            context: menuContext,
+            ref: ref,
+            draft: scorecardDraft,
+            addLabel: 'Add this scorecard to My Space',
+            removeLabel: 'Remove this scorecard from My Space',
+          ),
+        LibraryMenuAction(
+          icon: Icons.ios_share_rounded,
+          label: 'Share performance',
+          onSelected: widget.onSharePerformance,
+        ),
+      ],
+    );
+  }
+}
+
+/// A player's scorecard in one event as a My Space `link` shortcut: the
+/// scorecard has no kind of its own, and its share URL
+/// (`/broadcast/<slug>/<id>/player/<fideId>`) is a route the shortcut opener
+/// already follows. Null for any other URL (a profile fallback, no event).
+SpaceShortcut? scorecardSpaceDraft({
+  required String? shareUrl,
+  required String playerName,
+  String? eventName,
+}) {
+  final url = shareUrl?.trim() ?? '';
+  final uri = Uri.tryParse(url);
+  if (uri == null ||
+      uri.scheme != 'https' ||
+      uri.host != 'chessever.com' ||
+      uri.pathSegments.length < 5 ||
+      uri.pathSegments.first != 'broadcast' ||
+      uri.pathSegments[uri.pathSegments.length - 2] != 'player') {
+    return null;
+  }
+  final event = eventName?.trim() ?? '';
+  final name = playerName.trim();
+  return SpaceShortcut.draft(
+    kind: SpaceShortcutKind.link,
+    targetId: url,
+    title: name.isEmpty ? 'Scorecard' : formatPlayerDisplayName(name),
+    subtitle: event.isEmpty ? 'Scorecard' : 'Scorecard · $event',
+    params: {
+      'url': url,
+      'type': 'scorecard',
+      if (name.isNotEmpty) 'playerName': name,
+      if (event.isNotEmpty) 'eventName': event,
+    },
+  );
 }
 
 /// Simplified rating display that uses a cached provider to fetch all ratings
@@ -2086,7 +2284,11 @@ class _RatingDisplay extends ConsumerWidget {
           mainAxisAlignment: MainAxisAlignment.center,
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
-            Image.asset(assetPath, width: iconSize, height: iconSize),
+            TimeControlGlyph(
+              assetPath,
+              size: iconSize,
+              fit: BoxFit.scaleDown,
+            ),
             SizedBox(height: elementSpacing),
             Text(
               label,
@@ -2170,7 +2372,10 @@ Future<void> showOpponentScoreCardSheet({
   return Navigator.of(context).push(
     MotionSheetRoute<void>(
       builder: (_) => _OpponentScoreCardSheet(player: player),
-      barrierColor: Colors.black.withValues(alpha: 0.6),
+      barrierColor:
+          context.isLightTheme
+              ? context.colors.scrim
+              : Colors.black.withValues(alpha: 0.6),
       barrierLabel: 'Close player card',
       // Keep the card clear of the status bar. It still reaches the bottom
       // edge, so nothing is inset away from the home indicator.

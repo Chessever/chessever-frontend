@@ -16,18 +16,29 @@ void main() {
     expect(light.textPrimary, const Color(0xFF0E1A1C));
     expect(light.textPrimaryMuted, const Color(0xB30E1A1C));
     expect(light.textSecondary, const Color(0xFF4D5E61));
-    expect(light.textTertiary, const Color(0xFF6B7C7E));
-    expect(light.placeholder, const Color(0xFF8A9A9C));
+    // Tertiary / placeholder / danger are deepened from the raw hand-off
+    // (#6B7C7E / #8A9A9C / kRedColor) so small text clears WCAG AA on paper.
+    expect(light.textTertiary, const Color(0xFF58696B));
+    expect(light.placeholder, const Color(0xFF6E7F81));
     expect(light.brand, kPrimaryColor);
     expect(light.brandMuted, const Color(0xFF17AAD6));
-    expect(light.danger, kRedColor);
+    expect(light.danger, const Color(0xFFC53128));
+    expect(light.accentText, const Color(0xFF005F7D));
     expect(light.surfaceInverse, const Color(0xFF0E1A1C));
     expect(light.textInverse, const Color(0xFFE2ECEC));
     expect(light.titleAccent, const Color(0xFF4F5334));
     expect(light.inkOnAccent, const Color(0xFF0A0A0A));
     expect(light.scrim, const Color(0x660E1A1C));
     expect(light.evalWhite, const Color(0xFFE8EAED));
-    expect(light.evalBlack, const Color(0xFFB7C6C7));
+    // Deepened from the hand-off rail (#B7C6C7, 1.46:1) so the split reads.
+    expect(light.evalBlack, const Color(0xFF5E7174));
+  });
+
+  test('light eval bar shares separate at 3:1 or more', () {
+    const light = AppColors.light;
+    for (final paper in [light.evalWhite, light.background, light.surface]) {
+      expect(wcagContrast(light.evalBlack, paper), greaterThanOrEqualTo(3));
+    }
   });
 
   test('AppColors.dark keeps the historic chrome tokens', () {
@@ -40,6 +51,8 @@ void main() {
     expect(dark.inkOnAccent, kBlack3Color);
     expect(dark.evalWhite, kWhiteColor);
     expect(dark.evalBlack, kPopUpColor);
+    expect(dark.accentText, kPrimaryColor);
+    expect(dark.danger, kRedColor);
   });
 
   test('light ThemeData wires the light extension and mint scaffold', () {

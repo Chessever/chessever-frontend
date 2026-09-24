@@ -7,6 +7,7 @@ import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provid
 import 'package:chessever2/screens/chessboard/provider/game_pgn_stream_provider.dart';
 import 'package:chessever2/screens/chessboard/widgets/chess_board_from_fen_new.dart';
 import 'package:chessever2/screens/countrymen/provider/countrymen_combined_games_provider.dart';
+import 'package:chessever2/screens/favorites/widgets/collection_inks.dart';
 import 'package:chessever2/screens/library/widgets/add_to_folder_sheet.dart';
 import 'package:chessever2/screens/library/widgets/live_gamebase_search_game_card.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
@@ -16,7 +17,6 @@ import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrap
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrapper/grid_game_card_wrapper_widget.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrapper/live_game_card_provider.dart';
 import 'package:chessever2/theme/app_colors.dart';
-import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/scroll_cache.dart';
@@ -515,13 +515,13 @@ class _CountrymenGamesTabState extends ConsumerState<CountrymenGamesTab>
               decoration: BoxDecoration(
                 color:
                     hasActiveFilters
-                        ? const Color(0xFFEF4444).withValues(alpha: 0.15)
+                        ? context.collectionAlertInk.withValues(alpha: 0.15)
                         : context.colors.background,
                 borderRadius: BorderRadius.circular(12.br),
                 border: Border.all(
                   color:
                       hasActiveFilters
-                          ? const Color(0xFFEF4444).withValues(alpha: 0.5)
+                          ? context.collectionAlertInk.withValues(alpha: 0.5)
                           : context.colors.surfaceRecessed,
                 ),
               ),
@@ -533,7 +533,7 @@ class _CountrymenGamesTabState extends ConsumerState<CountrymenGamesTab>
                     size: 20.sp,
                     color:
                         hasActiveFilters
-                            ? const Color(0xFFEF4444)
+                            ? context.collectionAlertInk
                             : context.colors.textSecondary,
                   ),
                   // Badge showing active filter count
@@ -984,12 +984,12 @@ class _CountrymenGamesTabState extends ConsumerState<CountrymenGamesTab>
             width: 64.w,
             height: 64.h,
             decoration: BoxDecoration(
-              color: const Color(0xFFEF4444).withValues(alpha: 0.1),
+              color: context.collectionAlertInk.withValues(alpha: 0.1),
               borderRadius: BorderRadius.circular(16.br),
             ),
             child: Icon(
               Icons.error_outline_rounded,
-              color: const Color(0xFFEF4444),
+              color: context.collectionAlertInk,
               size: 32.ic,
             ),
           ),
@@ -1098,7 +1098,7 @@ class _CountrymenGamesTabState extends ConsumerState<CountrymenGamesTab>
           Icon(
             Icons.search_off_outlined,
             size: 56.sp,
-            color: context.colors.textPrimary.withValues(alpha: 0.4),
+            color: context.textInk(0.4),
           ),
           SizedBox(height: 12.h),
           Text(
@@ -1111,7 +1111,7 @@ class _CountrymenGamesTabState extends ConsumerState<CountrymenGamesTab>
           Text(
             'Try a different search term',
             style: AppTypography.textSmRegular.copyWith(
-              color: context.colors.textPrimary.withValues(alpha: 0.55),
+              color: context.textInk(0.55),
             ),
             textAlign: TextAlign.center,
           ),
@@ -1128,7 +1128,7 @@ class _CountrymenGamesTabState extends ConsumerState<CountrymenGamesTab>
           Icon(
             Icons.filter_alt_off_outlined,
             size: 56.sp,
-            color: context.colors.textPrimary.withValues(alpha: 0.4),
+            color: context.textInk(0.4),
           ),
           SizedBox(height: 12.h),
           Text(
@@ -1141,7 +1141,7 @@ class _CountrymenGamesTabState extends ConsumerState<CountrymenGamesTab>
           Text(
             'Try adjusting your filters',
             style: AppTypography.textSmRegular.copyWith(
-              color: context.colors.textPrimary.withValues(alpha: 0.55),
+              color: context.textInk(0.55),
             ),
             textAlign: TextAlign.center,
           ),
@@ -1293,7 +1293,10 @@ class _DateHeader extends StatelessWidget {
           ),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withValues(alpha: 0.1),
+              color:
+                  context.isLightTheme
+                      ? context.colors.shadow
+                      : Colors.black.withValues(alpha: 0.1),
               blurRadius: 4,
               offset: const Offset(0, 2),
             ),
@@ -1306,7 +1309,7 @@ class _DateHeader extends StatelessWidget {
               width: 4.w,
               height: 20.h,
               decoration: BoxDecoration(
-                color: kPrimaryColor,
+                color: context.colors.accentText,
                 borderRadius: BorderRadius.circular(2),
               ),
             ),
@@ -1329,7 +1332,7 @@ class _DateHeader extends StatelessWidget {
                 isExpanded
                     ? Icons.keyboard_arrow_up_rounded
                     : Icons.keyboard_arrow_down_rounded,
-                color: context.colors.textPrimary.withValues(alpha: 0.5),
+                color: context.textInk(0.5),
                 size: 20.sp,
               ),
             ],

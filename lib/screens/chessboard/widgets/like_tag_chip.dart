@@ -11,6 +11,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:motor/motor.dart';
+import 'package:chessever2/screens/chessboard/utils/legible_ink.dart';
 
 /// The post-like tag picker that lives *in the AppBar*.
 ///
@@ -258,7 +259,17 @@ class _LikeTagChipState extends ConsumerState<LikeTagChip>
     final radius = 17.br;
     // Subtle accent glow under the chip, brightest while the countdown is
     // still draining, faded once the user commits.
-    final glowAlpha = _committed ? 0.0 : 0.22 * remaining;
+    // Paper gets no bloom at all.
+    final glowAlpha =
+        _committed || context.isLightTheme ? 0.0 : 0.22 * remaining;
+    // Tag hues are tuned on black; on paper the glyph, check and countdown
+    // take the same hue darkened to 3:1 against the chip's recessed well.
+    final ink = legibleHueInk(
+      context,
+      face.accent,
+      minContrast: 3,
+      on: colors.surfaceRecessed,
+    );
     return AnimatedSize(
       duration: const Duration(milliseconds: 260),
       curve: Curves.easeOutCubic,
@@ -282,7 +293,7 @@ class _LikeTagChipState extends ConsumerState<LikeTagChip>
           foregroundPainter: _CountdownBorderPainter(
             remaining: remaining,
             radius: radius,
-            accent: face.accent,
+            accent: ink,
             track: colors.dividerStrong.withValues(alpha: 0.45),
           ),
           child: Container(
@@ -297,7 +308,7 @@ class _LikeTagChipState extends ConsumerState<LikeTagChip>
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                _IconBubble(icon: face.icon, accent: face.accent),
+                _IconBubble(icon: face.icon, accent: face.accent, ink: ink),
                 SizedBox(width: 7.w),
                 Flexible(
                   child: AnimatedSwitcher(
@@ -331,7 +342,7 @@ class _LikeTagChipState extends ConsumerState<LikeTagChip>
                     ? Icon(
                       Icons.check_rounded,
                       size: 17.sp,
-                      color: face.accent,
+                      color: ink,
                     ).animate().scale(
                       duration: 240.ms,
                       curve: Curves.elasticOut,
@@ -406,10 +417,17 @@ class _ChipFace {
 
 /// Small tinted glyph bubble on the AppBar chip face.
 class _IconBubble extends StatelessWidget {
-  const _IconBubble({required this.icon, required this.accent});
+  const _IconBubble({
+    required this.icon,
+    required this.accent,
+    required this.ink,
+  });
 
   final IconData icon;
   final Color accent;
+
+  /// Glyph colour: [accent] in dark, its legible paper ink in light.
+  final Color ink;
 
   @override
   Widget build(BuildContext context) {
@@ -422,7 +440,7 @@ class _IconBubble extends StatelessWidget {
         borderRadius: BorderRadius.circular(dim * 0.32),
       ),
       alignment: Alignment.center,
-      child: Icon(icon, size: dim * 0.62, color: accent),
+      child: Icon(icon, size: dim * 0.62, color: ink),
     );
   }
 }
@@ -640,8 +658,11 @@ class _TagDropdownState extends State<_TagDropdown> {
         padBottom;
     return Material(
       color: colors.surfaceElevated,
-      elevation: 12,
-      shadowColor: Colors.black.withValues(alpha: 0.45),
+      elevation: context.isLightTheme ? 4 : 12,
+      shadowColor:
+          context.isLightTheme
+              ? colors.shadow
+              : Colors.black.withValues(alpha: 0.45),
       borderRadius: BorderRadius.circular(16.br),
       child: Container(
         decoration: BoxDecoration(
@@ -694,13 +715,13 @@ class _TagDropdownState extends State<_TagDropdown> {
                               Icon(
                                 Icons.check_rounded,
                                 size: 15.sp,
-                                color: colors.brand,
+                                color: context.colors.accentText,
                               ),
                               SizedBox(width: 4.w),
                               Text(
                                 'Save',
                                 style: AppTypography.textXsMedium.copyWith(
-                                  color: colors.brand,
+                                  color: context.colors.accentText,
                                   fontWeight: FontWeight.w700,
                                   letterSpacing: 0.2,
                                 ),
@@ -885,7 +906,15 @@ class _TagSquare extends StatelessWidget {
     final Color textColor;
     if (selected) {
       fill = accent.withValues(alpha: 0.18);
-      border = accent.withValues(alpha: 0.9);
+      border =
+          context.isLightTheme
+              ? legibleHueInk(
+                context,
+                accent,
+                minContrast: 3,
+                on: Color.alphaBlend(fill, colors.surfaceElevated),
+              )
+              : accent.withValues(alpha: 0.9);
       textColor = colors.textPrimary;
     } else {
       fill = colors.surfaceRecessed;

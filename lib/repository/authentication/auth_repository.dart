@@ -79,7 +79,12 @@ class AuthController extends AutoDisposeAsyncNotifier<AppAuthState> {
         previous.displayName == next.displayName &&
         previous.avatarUrl == next.avatarUrl &&
         previous.createdAt == next.createdAt &&
-        previous.isAnonymous == next.isAnonymous;
+        previous.isAnonymous == next.isAnonymous &&
+        // Linked chess-site usernames live in user_metadata; saving them on
+        // My Profile arrives as a userUpdated event that must reach
+        // `linkedChessAccountsProvider`.
+        previous.lichessUsername == next.lichessUsername &&
+        previous.chesscomUsername == next.chesscomUsername;
   }
 
   @override

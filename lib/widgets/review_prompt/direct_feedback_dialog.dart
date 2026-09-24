@@ -177,12 +177,20 @@ class _DirectFeedbackDialogState extends State<DirectFeedbackDialog> {
         border: Border.all(
           color: context.colors.textPrimary.withValues(alpha: 0.08),
         ),
+        // Dark floats the card on a deep black bloom; on paper that is a
+        // grey smear, so light casts one tight ink shadow instead.
         boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.3),
-            blurRadius: 24,
-            offset: const Offset(0, 12),
-          ),
+          context.isLightTheme
+              ? BoxShadow(
+                color: context.colors.shadow,
+                blurRadius: 8,
+                offset: const Offset(0, 2),
+              )
+              : BoxShadow(
+                color: Colors.black.withValues(alpha: 0.3),
+                blurRadius: 24,
+                offset: const Offset(0, 12),
+              ),
         ],
       ),
       child: SingleChildScrollView(
@@ -216,7 +224,7 @@ class _DirectFeedbackDialogState extends State<DirectFeedbackDialog> {
               Text(
                 'Tell us what happened or what we can improve.',
                 style: AppTypography.textSmRegular.copyWith(
-                  color: context.colors.textPrimary.withValues(alpha: 0.6),
+                  color: context.textInk(0.6),
                 ),
               ),
               SizedBox(height: 16.sp),
@@ -237,7 +245,7 @@ class _DirectFeedbackDialogState extends State<DirectFeedbackDialog> {
                 decoration: InputDecoration(
                   hintText: 'Type your feedback here...',
                   hintStyle: AppTypography.textSmRegular.copyWith(
-                    color: context.colors.textPrimary.withValues(alpha: 0.35),
+                    color: context.textInk(0.35),
                   ),
                   filled: true,
                   fillColor: context.colors.surface,
@@ -255,10 +263,15 @@ class _DirectFeedbackDialogState extends State<DirectFeedbackDialog> {
                   ),
                   focusedBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(12.br),
-                    borderSide: const BorderSide(color: kPrimaryColor),
+                    borderSide: BorderSide(
+                      color:
+                          context.isLightTheme
+                              ? context.colors.accentText
+                              : kPrimaryColor,
+                    ),
                   ),
                   counterStyle: AppTypography.textXsRegular.copyWith(
-                    color: context.colors.textPrimary.withValues(alpha: 0.35),
+                    color: context.textInk(0.35),
                   ),
                 ),
               ),
@@ -327,7 +340,7 @@ class _DirectFeedbackDialogState extends State<DirectFeedbackDialog> {
               Text(
                 'A picture can help us understand the issue faster. Optional.',
                 style: AppTypography.textXsRegular.copyWith(
-                  color: context.colors.textPrimary.withValues(alpha: 0.5),
+                  color: context.textInk(0.5),
                 ),
               ),
               if (_pictureError != null) ...[
@@ -362,7 +375,9 @@ class _DirectFeedbackDialogState extends State<DirectFeedbackDialog> {
                   child: Text(
                     'Send',
                     style: AppTypography.textSmMedium.copyWith(
-                      color: kBlackColor,
+                      // Black on the recessed fill vanished in dark (1.3:1).
+                      color:
+                          _canSend ? kBlackColor : context.colors.textSecondary,
                     ),
                   ),
                 ),

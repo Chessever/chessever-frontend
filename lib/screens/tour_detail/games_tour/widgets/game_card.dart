@@ -19,6 +19,8 @@ import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:chessever2/screens/chessboard/widgets/context_pop_up_menu.dart';
 import 'package:chessever2/screens/library/widgets/library_context_menu.dart';
+import 'package:chessever2/screens/my_space/actions/space_menu_action.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/utils/game_space_shortcut.dart';
 
 class GameCard extends ConsumerWidget {
   const GameCard({
@@ -56,6 +58,26 @@ class GameCard extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    return TappableScale(
+      onTap: () {
+        HapticFeedbackService.cardTap();
+        onTap();
+      },
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onLongPress: () => _showContextMenu(context, ref),
+        child: _surface(context, allowStockfishFallback: allowStockfishFallback),
+      ),
+    );
+  }
+
+  /// The card as drawn in the list. The long-press menu lifts this same
+  /// surface (pin mark, footer and light-theme edge included), so the card in
+  /// focus is the card the user pressed rather than a look-alike.
+  Widget _surface(
+    BuildContext context, {
+    required bool allowStockfishFallback,
+  }) {
     final body = SizedBox(
       width: double.infinity,
       child: Stack(
@@ -74,8 +96,7 @@ class GameCard extends ConsumerWidget {
     // settings page _SettingCard: faint divider border + soft shadow. The
     // inner sections already round to 12br, so the outer wrapper matches.
     // Dark theme is unchanged — no wrapper.
-    final wrapped =
-        context.isLightTheme
+    return context.isLightTheme
             ? DecoratedBox(
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(12.br),
@@ -96,18 +117,6 @@ class GameCard extends ConsumerWidget {
               ),
             )
             : body;
-
-    return TappableScale(
-      onTap: () {
-        HapticFeedbackService.cardTap();
-        onTap();
-      },
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onLongPress: () => _showContextMenu(context),
-        child: wrapped,
-      ),
-    );
   }
 
   /// One menu, everywhere. This used to be a bespoke blurred overlay that
@@ -115,15 +124,20 @@ class GameCard extends ConsumerWidget {
   /// visually unrelated treatment to the one the Library cards use. Both now
   /// go through [showLibraryContextMenu], so a long press feels the same
   /// wherever the user does it.
-  void _showContextMenu(BuildContext context) {
+  void _showContextMenu(BuildContext context, WidgetRef ref) {
     final game = matchComparison.game;
+    final spaceDraft = gameSpaceShortcutDraft(game);
     showLibraryContextMenu(
       context: context,
+      // The lifted copy never starts the engine: the list card already owns
+      // any evaluation, and the copy only lives while the menu is open.
       previewBuilder:
-          (_) => GamesTourGameCardBody(
-            matchComparison: matchComparison,
-            allowStockfishFallback: false,
-          ),
+          (previewContext) =>
+              _surface(previewContext, allowStockfishFallback: false),
+      onPreviewTap: () {
+        HapticFeedbackService.cardTap();
+        onTap();
+      },
       actions: [
         if (showPin)
           LibraryMenuAction(
@@ -136,6 +150,8 @@ class GameCard extends ConsumerWidget {
           label: 'Share',
           onSelected: () => onShare?.call(game),
         ),
+        if (spaceDraft != null)
+          spaceMenuAction(context: context, ref: ref, draft: spaceDraft),
       ],
     );
   }
@@ -359,12 +375,12 @@ class _CenterContent extends ConsumerWidget {
     // No Spoilers also hides live evaluation. Keep a neutral live-state marker
     // so the card still communicates that moves and clocks are updating.
     if (hideSpoilers) {
-      return Center(child: StatusText(status: 'LIVE', color: kPrimaryColor));
+      return Center(child: StatusText(status: 'LIVE', color: context.colors.accentText));
     }
 
     // If engine gauge is disabled, show "LIVE" indicator instead of progress bar
     if (!showEngineGauge) {
-      return Center(child: StatusText(status: 'LIVE', color: kPrimaryColor));
+      return Center(child: StatusText(status: 'LIVE', color: context.colors.accentText));
     }
 
     // Show the eval progress bar
@@ -546,7 +562,10 @@ class _GamesRound extends ConsumerWidget {
             SizedBox(width: 4.w),
             Flexible(
               child: Text(
-                '${player.title} ${player.rating}',
+                [
+                  if (player.title.trim().isNotEmpty) player.title.trim(),
+                  if (player.rating > 0) '${player.rating}',
+                ].join(' '),
                 style: AppTypography.textXsMedium.copyWith(color: ratingColor),
                 overflow: TextOverflow.ellipsis,
               ),
@@ -624,7 +643,7 @@ class _TimerWidget extends StatelessWidget {
           border:
               shouldHighlightClock
                   ? Border.all(
-                    color: kPrimaryColor.withValues(alpha: 0.4),
+                    color: context.colors.accentText.withValues(alpha: 0.4),
                     width: 0.7,
                   )
                   : null,
@@ -646,7 +665,7 @@ class _TimerWidget extends StatelessWidget {
                   isGameFinished
                       ? context.colors.textPrimary
                       : (shouldHighlightClock
-                          ? kPrimaryColor
+                          ? context.colors.accentText
                           : context.colors.textPrimaryMuted),
             ),
           ),

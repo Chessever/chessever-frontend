@@ -286,6 +286,16 @@ class GroupBroadcastRepository extends BaseRepository {
     });
   }
 
+  /// One page of the group broadcasts that run during the local calendar
+  /// month [selectedYear]/[selectedMonth].
+  ///
+  /// Matches every row whose span overlaps the month, including one that
+  /// starts before it and ends after it, read the way
+  /// `calendarEventDaySpan` reads dates: a lone start or end is a one-day
+  /// event and a reversed pair is read forwards. The month is bounded by the
+  /// device's local midnights, sent as UTC instants to match the
+  /// `timestamptz` columns. Rows are ordered with `id` as the tiebreak, so
+  /// paging by [offset] neither skips nor repeats a row.
   Future<List<GroupBroadcast>> getCurrentMonthGroupBroadcasts({
     required int selectedYear,
     required int selectedMonth,
@@ -295,35 +305,25 @@ class GroupBroadcastRepository extends BaseRepository {
     bool ascending = false,
   }) async {
     return handleApiCall(() async {
-      final supabaseClient = supabase; // assume this is your instance
+      final from =
+          DateTime(selectedYear, selectedMonth).toUtc().toIso8601String();
+      final until =
+          DateTime(selectedYear, selectedMonth + 1).toUtc().toIso8601String();
 
-      // Calculate first and last day of the selected month
-      final startOfMonth = DateTime(selectedYear, selectedMonth, 1);
-      final endOfMonth = DateTime(
-        selectedYear,
-        selectedMonth + 1,
-        0,
-        23,
-        59,
-        59,
-      );
-
-      // Build query
-      PostgrestTransformBuilder<PostgrestList> query = supabaseClient
+      var query = supabase
           .from('group_broadcasts')
           .select()
           .or(
-            'and(date_start.gte.${startOfMonth.toIso8601String()},date_start.lte.${endOfMonth.toIso8601String()}),'
-            'and(date_end.gte.${startOfMonth.toIso8601String()},date_end.lte.${endOfMonth.toIso8601String()})',
+            'and(date_start.lt.$until,date_end.gte.$from),'
+            'and(date_end.lt.$until,date_start.gte.$from),'
+            'and(date_end.is.null,date_start.gte.$from,date_start.lt.$until),'
+            'and(date_start.is.null,date_end.gte.$from,date_end.lt.$until)',
           )
-          .order(orderBy, ascending: ascending)
-          .limit(limit);
+          .order(orderBy, ascending: ascending);
+      if (orderBy != 'id') query = query.order('id', ascending: true);
 
-      if (offset != null) {
-        query = query.range(offset, offset + limit - 1);
-      }
-
-      final dynamic response = await query;
+      final start = offset ?? 0;
+      final dynamic response = await query.range(start, start + limit - 1);
       if (response == null) return <GroupBroadcast>[];
 
       return (response as List)

@@ -1,3 +1,6 @@
+import 'package:chessever2/screens/library/widgets/library_context_menu.dart';
+import 'package:chessever2/screens/my_space/actions/space_menu_action.dart';
+import 'package:chessever2/screens/my_space/models/space_shortcut.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
@@ -6,6 +9,7 @@ import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/app_button.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
+import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 Color smartEventAccentColor(String stableKey) {
   const palette = <Color>[
@@ -39,6 +43,7 @@ class SmartEventCard extends StatelessWidget {
     this.countPlural = 'events',
     this.accentColor = kPrimaryColor,
     this.onTap,
+    this.spaceDraft,
     super.key,
   });
 
@@ -61,6 +66,11 @@ class SmartEventCard extends StatelessWidget {
   final Color accentColor;
   final VoidCallback? onTap;
 
+  /// When set, a long press lifts the card into the shared focus menu with
+  /// Open and the My Space row for this smart event (see
+  /// `smartEventSpaceDraft`).
+  final SpaceShortcut? spaceDraft;
+
   static double _imageWidth(BuildContext context) {
     double w = 108.w;
     if (MediaQuery.sizeOf(context).width < 360) {
@@ -77,13 +87,44 @@ class SmartEventCard extends StatelessWidget {
 
     if (onTap == null) return _entrance(card, reduceMotion);
 
+    final draft = spaceDraft;
     return _entrance(
       TappableScale(
         onTap: () {
           HapticFeedbackService.cardTap();
           onTap!();
         },
-        child: card,
+        child:
+            draft == null
+                ? card
+                : Consumer(
+                  child: card,
+                  builder:
+                      (context, ref, child) => GestureDetector(
+                        behavior: HitTestBehavior.opaque,
+                        onLongPress:
+                            () => showLibraryContextMenu(
+                              context: context,
+                              previewBuilder:
+                                  (previewContext) =>
+                                      _buildCard(previewContext, true),
+                              onPreviewTap: onTap,
+                              actions: [
+                                LibraryMenuAction(
+                                  icon: Icons.open_in_new_rounded,
+                                  label: 'Open smart event',
+                                  onSelected: onTap!,
+                                ),
+                                spaceMenuAction(
+                                  context: context,
+                                  ref: ref,
+                                  draft: draft,
+                                ),
+                              ],
+                            ),
+                        child: child,
+                      ),
+                ),
       ),
       reduceMotion,
     );
@@ -123,13 +164,22 @@ class SmartEventCard extends StatelessWidget {
           ),
           width: 1,
         ),
+        // Dark lifts the card with an accent-tinted bloom; on paper that is
+        // a coloured haze, so light casts the same tight shadow as the
+        // regular event card.
         boxShadow: [
-          BoxShadow(
-            color: accentColor.withValues(alpha: 0.18),
-            blurRadius: 16,
-            spreadRadius: -4,
-            offset: const Offset(0, 4),
-          ),
+          context.isLightTheme
+              ? BoxShadow(
+                color: context.colors.shadow,
+                blurRadius: 8,
+                offset: const Offset(0, 1),
+              )
+              : BoxShadow(
+                color: accentColor.withValues(alpha: 0.18),
+                blurRadius: 16,
+                spreadRadius: -4,
+                offset: const Offset(0, 4),
+              ),
         ],
       ),
       clipBehavior: Clip.antiAlias,
@@ -188,7 +238,10 @@ class SmartEventCard extends StatelessWidget {
                   SizedBox(width: 2.w),
                   Icon(
                     Icons.arrow_forward_ios_rounded,
-                    color: accentColor.withValues(alpha: 0.85),
+                    color:
+                        context.isLightTheme
+                            ? smartEventAccentInk(context, accentColor, min: 3)
+                            : accentColor.withValues(alpha: 0.85),
                     size: 16.sp,
                     weight: 700,
                   ),
@@ -314,10 +367,11 @@ class _FilterCaption extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final ink = smartEventAccentInk(context, accentColor);
     final dot = Container(
       height: 6.h,
       width: 6.w,
-      decoration: BoxDecoration(shape: BoxShape.circle, color: accentColor),
+      decoration: BoxDecoration(shape: BoxShape.circle, color: ink),
     );
 
     return Row(
@@ -338,7 +392,10 @@ class _FilterCaption extends StatelessWidget {
               maxLines: 1,
               softWrap: false,
               style: AppTypography.textXxsMedium.copyWith(
-                color: accentColor.withValues(alpha: 0.95),
+                color:
+                    context.isLightTheme
+                        ? ink
+                        : accentColor.withValues(alpha: 0.95),
                 fontSize: 11.sp,
                 letterSpacing: 0.1,
               ),
@@ -426,6 +483,25 @@ class _LevelEmblem extends StatelessWidget {
       ),
     );
   }
+}
+
+/// The level hue as TEXT or ICON ink on the card. Dark returns the raw hue.
+/// On paper lime, orange and pink sit near 1.5:1, so the hue is deepened
+/// until it clears [min] against the darkest facet it can land on (the
+/// overlapping corner and stripe tints, ~20% of the hue over the surface).
+Color smartEventAccentInk(
+  BuildContext context,
+  Color accentColor, {
+  double min = 4.5,
+}) {
+  return context.accentInk(
+    accentColor,
+    min: min,
+    on: Color.alphaBlend(
+      accentColor.withValues(alpha: 0.21),
+      context.colors.surface,
+    ),
+  );
 }
 
 /// Paints the card's fractured "convergence" background: slanted facets tinted

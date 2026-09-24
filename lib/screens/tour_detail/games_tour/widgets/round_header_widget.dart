@@ -1,13 +1,22 @@
+import 'package:chessever2/screens/library/widgets/library_context_menu.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_app_bar_view_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/utils/knockout_match_detector.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/utils/round_space_shortcut.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/knockout_tournament_state_provider.dart';
+import 'package:chessever2/screens/tour_detail/provider/tour_detail_mode_provider.dart';
+import 'package:chessever2/screens/tour_detail/provider/tour_detail_screen_provider.dart';
 import 'package:chessever2/theme/app_colors.dart';
-import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/widgets/card_context_menu.dart';
+import 'package:chessever2/widgets/space_shortcut_drafts.dart';
 import 'package:flutter/material.dart';
+import 'package:hooks_riverpod/hooks_riverpod.dart';
 
-class RoundHeader extends StatelessWidget {
+/// Round header in the Games tab. Tap folds the round; long-press lifts the
+/// header into the shared focus menu to pin the round into My Space (and fold
+/// it from there too).
+class RoundHeader extends ConsumerWidget {
   final GamesAppBarModel round;
   final List<GamesTourModel> roundGames;
   final bool isExpanded;
@@ -22,13 +31,57 @@ class RoundHeader extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     // Removed all the individual visibility checking logic
     // Now handled centrally in GamesTourScreen for better performance
 
     // Format the round name better for knockout tournaments
     final displayName = _formatRoundName(round, roundGames);
 
+    // Only what the round draft reads; both are stable while the event is
+    // open, so a header never rebuilds for them mid-scroll.
+    final about = ref.watch(
+      tourDetailScreenProvider.select((s) => s.valueOrNull?.aboutTourModel),
+    );
+    final broadcastId = ref.watch(
+      selectedBroadcastModelProvider.select((b) => b?.id),
+    );
+    final canPin =
+        roundSpaceDraft(
+          round: round,
+          tourId: about?.id,
+          groupBroadcastId: about?.groupBroadcastId ?? broadcastId,
+        ) !=
+        null;
+
+    return CardContextMenu(
+      enabled: canPin,
+      actions: (menuContext) => _menuActions(menuContext, ref),
+      child: _buildHeader(context, displayName),
+    );
+  }
+
+  List<LibraryMenuAction> _menuActions(BuildContext context, WidgetRef ref) {
+    final draft = currentEventRoundSpaceDraft(ref, round);
+    if (draft == null) return const [];
+    return [
+      if (onToggle != null)
+        LibraryMenuAction(
+          icon: isExpanded ? Icons.unfold_less : Icons.unfold_more,
+          label: isExpanded ? 'Collapse round' : 'Expand round',
+          onSelected: onToggle!,
+        ),
+      labeledSpaceMenuAction(
+        context: context,
+        ref: ref,
+        draft: draft,
+        addLabel: 'Add round to My Space',
+        removeLabel: 'Remove round from My Space',
+      ),
+    ];
+  }
+
+  Widget _buildHeader(BuildContext context, String displayName) {
     return InkWell(
       onTap: onToggle,
       borderRadius: BorderRadius.circular(12.br),
@@ -40,7 +93,9 @@ class RoundHeader extends StatelessWidget {
           border: Border.all(color: context.colors.textPrimary.withValues(alpha: 0.1)),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withValues(alpha: 0.1),
+              color: context.isLightTheme
+                  ? context.colors.shadow
+                  : Colors.black.withValues(alpha: 0.1),
               blurRadius: 4,
               offset: const Offset(0, 2),
             ),
@@ -53,14 +108,14 @@ class RoundHeader extends StatelessWidget {
               width: 4.w,
               height: 20.h,
               decoration: BoxDecoration(
-                color: kPrimaryColor,
+                color: context.colors.accentText,
                 borderRadius: BorderRadius.circular(2),
               ),
             ),
             SizedBox(width: 12.w),
             Expanded(
               child: Text(
-                '$displayName ⚫ ${round.formattedRoundDateTime}',
+                '$displayName · ${round.formattedRoundDateTime}',
                 style: TextStyle(
                   color: context.colors.textPrimary,
                   fontSize: 16.sp,
@@ -76,7 +131,7 @@ class RoundHeader extends StatelessWidget {
                 isExpanded
                     ? Icons.keyboard_arrow_up_rounded
                     : Icons.keyboard_arrow_down_rounded,
-                color: context.colors.textPrimary.withValues(alpha: 0.5),
+                color: context.textInk(0.5),
                 size: 20.sp,
               ),
             ],

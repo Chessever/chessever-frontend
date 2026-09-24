@@ -285,12 +285,12 @@ class _ActionTile extends StatelessWidget {
                     isLoading
                         ? Padding(
                           padding: EdgeInsets.all(12.sp),
-                          child: const CircularProgressIndicator(
+                          child: CircularProgressIndicator(
                             strokeWidth: 2,
-                            color: kPrimaryColor,
+                            color: context.colors.accentText,
                           ),
                         )
-                        : Icon(icon, color: kPrimaryColor, size: 20.sp),
+                        : Icon(icon, color: context.colors.accentText, size: 20.sp),
               ),
               SizedBox(width: 12.w),
               Expanded(
@@ -307,7 +307,7 @@ class _ActionTile extends StatelessWidget {
                     Text(
                       subtitle,
                       style: AppTypography.textXsRegular.copyWith(
-                        color: context.colors.textPrimary.withValues(alpha: 0.6),
+                        color: context.textInk(0.6),
                       ),
                     ),
                   ],
@@ -315,7 +315,7 @@ class _ActionTile extends StatelessWidget {
               ),
               Icon(
                 Icons.chevron_right_rounded,
-                color: context.colors.textPrimary.withValues(alpha: 0.4),
+                color: context.textInk(0.4),
               ),
             ],
           ),

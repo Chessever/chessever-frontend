@@ -39,6 +39,7 @@ class AppColors extends ThemeExtension<AppColors> {
     required this.inkOnAccent,
     required this.evalWhite,
     required this.evalBlack,
+    required this.accentText,
   });
 
   final Color brand;
@@ -82,8 +83,15 @@ class AppColors extends ThemeExtension<AppColors> {
   final Color evalWhite;
 
   /// Eval-bar black share / rail. Dark keeps historic `popup` near-black; light
-  /// uses broadcast `--eval-rail` (mint-grey) so the rail is not a dark-mode slab.
+  /// uses a slate teal (not a near-black slab) deep enough that the split
+  /// against [evalWhite] clears 3:1.
   final Color evalBlack;
+
+  /// Brand cyan for TEXT, links and selected-state icons. Dark keeps the
+  /// historic [kPrimaryColor]; light deepens it to a teal-blue so it clears
+  /// WCAG AA (≥4.5:1) on paper, where raw brand cyan only reaches ~2:1.
+  /// Fills, rings and indicators keep using [brand].
+  final Color accentText;
 
   static const AppColors dark = AppColors(
     brand: kPrimaryColor,
@@ -117,6 +125,7 @@ class AppColors extends ThemeExtension<AppColors> {
     inkOnAccent: kBlack3Color,
     evalWhite: kWhiteColor,
     evalBlack: kPopUpColor,
+    accentText: kPrimaryColor,
   );
 
   /// Broadcast-ported mint/teal light palette. Values come from
@@ -135,29 +144,41 @@ class AppColors extends ThemeExtension<AppColors> {
     textPrimary: Color(0xFF0E1A1C),
     textPrimaryMuted: Color(0xB30E1A1C),
     textSecondary: Color(0xFF4D5E61),
-    textTertiary: Color(0xFF6B7C7E),
+    // Tertiary / placeholder deepened from the broadcast values (#6B7C7E /
+    // #8A9A9C read 3.6:1 / 2.4:1 on the mint background) so small metadata
+    // clears AA and hints clear 3:1.
+    textTertiary: Color(0xFF58696B),
     textInverse: Color(0xFFE2ECEC),
-    placeholder: Color(0xFF8A9A9C),
+    placeholder: Color(0xFF6E7F81),
     iconPrimary: Color(0xFF0E1A1C),
-    iconSecondary: Color(0xFF6B7C7E),
-    success: kGreenColor,
-    successStrong: Color(0xFF007A33),
-    danger: kRedColor,
-    dangerMuted: kDarkRedColor,
+    iconSecondary: Color(0xFF58696B),
+    // Signal colours deepened for paper: kGreenColor / kRedColor sit at
+    // ~3:1 on the mint background, too faint for text-sized labels.
+    success: Color(0xFF007A33),
+    successStrong: Color(0xFF006B2D),
+    danger: Color(0xFFC53128),
+    dangerMuted: Color(0xFFA9443D),
     tabInactive: Color(0xB30E1A1C),
     shadow: Color(0x1F0E1A1C),
     scrim: Color(0x660E1A1C),
     skeleton: Color(0xFFC5D6D5),
+    // Deep teal (accent-text family) so the white initials drawn on it
+    // clear AA (4.9:1 at the lightest stop); brand cyan held them at ~2.4:1.
     profileGradient: LinearGradient(
       begin: Alignment.topCenter,
       end: Alignment.bottomCenter,
-      colors: [Color(0xFF0FB4E5), Color(0xFF0894C2)],
+      colors: [Color(0xFF087A9C), Color(0xFF005F7D)],
       stops: [0.0, 1.0],
     ),
     titleAccent: Color(0xFF4F5334),
     inkOnAccent: Color(0xFF0A0A0A),
     evalWhite: Color(0xFFE8EAED),
-    evalBlack: Color(0xFFB7C6C7),
+    // Deepened from the broadcast `--eval-rail` (#B7C6C7): that sat at
+    // 1.46:1 against evalWhite, so nobody could see the split. This slate
+    // teal parts from evalWhite and the mint page at 4.26:1. As in dark, one
+    // share melts into the page and the other one carries the bar.
+    evalBlack: Color(0xFF5E7174),
+    accentText: Color(0xFF005F7D),
   );
 
   @override
@@ -193,6 +214,7 @@ class AppColors extends ThemeExtension<AppColors> {
     Color? inkOnAccent,
     Color? evalWhite,
     Color? evalBlack,
+    Color? accentText,
   }) {
     return AppColors(
       brand: brand ?? this.brand,
@@ -226,6 +248,7 @@ class AppColors extends ThemeExtension<AppColors> {
       inkOnAccent: inkOnAccent ?? this.inkOnAccent,
       evalWhite: evalWhite ?? this.evalWhite,
       evalBlack: evalBlack ?? this.evalBlack,
+      accentText: accentText ?? this.accentText,
     );
   }
 
@@ -265,6 +288,7 @@ class AppColors extends ThemeExtension<AppColors> {
       inkOnAccent: Color.lerp(inkOnAccent, other.inkOnAccent, t)!,
       evalWhite: Color.lerp(evalWhite, other.evalWhite, t)!,
       evalBlack: Color.lerp(evalBlack, other.evalBlack, t)!,
+      accentText: Color.lerp(accentText, other.accentText, t)!,
     );
   }
 }
@@ -278,4 +302,60 @@ extension AppColorsContext on BuildContext {
 
   /// Convenience: true when the current theme is light.
   bool get isLightTheme => Theme.of(this).brightness == Brightness.light;
+
+  /// Primary ink at [alpha], for TEXT. Dark mode returns exactly
+  /// `colors.textPrimary.withValues(alpha: alpha)`, so nothing moves there.
+  /// On paper a faint ink falls under AA long before it does on black, so
+  /// light mode lifts low alphas into a 0.62–0.74 band: every step still
+  /// reads lighter than the one above it, and none drops below ~4.5:1 on
+  /// the background or surface tokens.
+  Color textInk(double alpha) {
+    final ink = colors.textPrimary;
+    if (!isLightTheme || alpha >= 0.74) return ink.withValues(alpha: alpha);
+    return ink.withValues(alpha: 0.62 + alpha.clamp(0.0, 0.74) * 0.16);
+  }
+
+  /// A saturated hue drawn as TEXT or ICON ink (a level colour, an ECO
+  /// letter, a gold glyph). Dark mode returns [accent] untouched. On paper
+  /// most of these sit at 1.2–3:1, so light mode walks the hue toward
+  /// `textPrimary` in 5% steps and stops at the first step that clears
+  /// [min] against [on] (default: the background token, the darkest paper
+  /// most text sits on). The hue survives; only its value drops.
+  ///
+  /// Keep the raw [accent] for tints, borders and fills.
+  Color accentInk(Color accent, {Color? on, double min = 4.5}) {
+    if (!isLightTheme) return accent;
+    return legibleAccentInk(
+      accent,
+      ink: colors.textPrimary,
+      on: on ?? colors.background,
+      min: min,
+    );
+  }
+}
+
+/// WCAG 2.x contrast ratio of [foreground] over [background]. A translucent
+/// foreground is composited over the background first, as it renders.
+double wcagContrast(Color foreground, Color background) {
+  final fg = Color.alphaBlend(foreground, background);
+  final l1 = fg.computeLuminance();
+  final l2 = background.computeLuminance();
+  final hi = l1 > l2 ? l1 : l2;
+  final lo = l1 > l2 ? l2 : l1;
+  return (hi + 0.05) / (lo + 0.05);
+}
+
+/// Theme-free core of [AppColorsContext.accentInk]: the first 5% step from
+/// [accent] toward [ink] that reads at [min] on [on], or [ink] itself.
+Color legibleAccentInk(
+  Color accent, {
+  required Color ink,
+  required Color on,
+  double min = 4.5,
+}) {
+  for (var step = 0; step <= 20; step++) {
+    final candidate = Color.lerp(accent, ink, step / 20)!;
+    if (wcagContrast(candidate, on) >= min) return candidate;
+  }
+  return ink;
 }

@@ -9,7 +9,11 @@ import 'package:chessever2/screens/library/utils/folder_pgn_exporter.dart';
 import 'package:chessever2/screens/library/utils/load_saved_analysis.dart';
 import 'package:chessever2/screens/my_likes/provider/my_likes_provider.dart';
 import 'package:chessever2/screens/my_likes/widgets/date_section_header.dart';
+import 'package:chessever2/screens/my_likes/widgets/my_likes_archive_boundary.dart';
 import 'package:chessever2/screens/my_likes/widgets/my_likes_game_card.dart';
+import 'package:chessever2/screens/my_space/actions/space_menu_action.dart';
+import 'package:chessever2/screens/my_space/models/space_shortcut.dart';
+import 'package:chessever2/screens/my_space/providers/space_shortcuts_provider.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
@@ -26,11 +30,13 @@ import 'package:flutter_animate/flutter_animate.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
+import 'package:chessever2/screens/chessboard/utils/legible_ink.dart';
 
 /// Standalone "My Likes" screen — the For You → Favorites → Games view without
 /// the tab bar, sourced from the user's liked games. Same search + filter +
 /// date sections + game cards; sections are bucketed by when each game was
-/// liked, and free users can only open games liked in the last 7 days.
+/// liked. Free users see their latest [kFreeMyLikesVisibleLimit] likes; older
+/// ones stay stored behind the archive boundary until Premium brings them back.
 class MyLikesScreen extends ConsumerStatefulWidget {
   const MyLikesScreen({super.key});
 
@@ -65,8 +71,8 @@ class _MyLikesScreenState extends ConsumerState<MyLikesScreen>
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     super.didChangeAppLifecycleState(state);
-    // Recompute the view on resume so the liked-at date headers and the lock
-    // state reflect the current day (both derive from DateTime.now() at build).
+    // Recompute the view on resume so the liked-at date headers reflect the
+    // current day and likes made elsewhere move the free window.
     if (state == AppLifecycleState.resumed && mounted) {
       ref.invalidate(myLikesViewProvider);
       ref.invalidate(myLikesTagCountsProvider);
@@ -101,9 +107,9 @@ class _MyLikesScreenState extends ConsumerState<MyLikesScreen>
   Future<void> _showFilterDialog() async {
     HapticFeedbackService.buttonPress();
     // Search + filter + sort inside My Likes are free for everyone. The only
-    // free-tier restriction left is the 7-day read window (locked cards can't
-    // be opened), enforced in [_openAnalysis] / [myLikesViewProvider] — not
-    // here. So no paywall on applying a filter or sort.
+    // free-tier restriction is the window of the latest likes, enforced in
+    // [myLikesViewProvider] / [_openAnalysis] — not here. So no paywall on
+    // applying a filter or sort.
     final result = await showGameFilterDialog(
       context: context,
       currentFilter: ref.read(myLikesFilterProvider).filter,
@@ -141,31 +147,41 @@ class _MyLikesScreenState extends ConsumerState<MyLikesScreen>
   }
 
   Future<void> _openAnalysis(SavedAnalysis analysis) async {
-    // Re-validate the lock at tap time. entry.isLocked is computed once when the
-    // view builds and can go stale if the app sits open across local midnight,
-    // so this is the authoritative gate before opening a liked game.
-    final subscription = ref.read(subscriptionProvider);
-    final locked = isLikedGameLocked(
-      analysis.createdAt.toLocal(),
-      isSubscribed: subscription.isSubscribed,
-      subscriptionLoading: subscription.isLoading,
-    );
-    if (locked) {
-      final unlocked = await requirePremiumGuard(context, ref);
-      if (!unlocked || !mounted) return;
-    }
-
+    // Re-validate the lock at tap time against the live entitlement: a card is
+    // built from one view snapshot, and only games inside the free window are
+    // openable without Premium.
     final openable =
         ref.read(myLikesViewProvider).valueOrNull?.openableAnalyses ??
+        _lastData?.openableAnalyses ??
         const <SavedAnalysis>[];
-    final index = openable.indexWhere((a) => a.id == analysis.id);
-    if (index >= 0) {
-      loadSavedAnalysisWithSwiping(context, openable, index);
-    } else {
-      // Not in the openable list yet (e.g. just unlocked via the paywall before
-      // the list recomputed) — open this single game directly.
-      loadSavedAnalysis(context, analysis);
+    final locked =
+        !ref.read(myLikesUnlimitedProvider) &&
+        !openable.any((a) => a.id == analysis.id);
+
+    void open() {
+      if (!mounted) return;
+      final index = openable.indexWhere((a) => a.id == analysis.id);
+      if (index >= 0) {
+        loadSavedAnalysisWithSwiping(context, openable, index);
+      } else {
+        // Not in the openable list yet (e.g. just unlocked via the paywall
+        // before the list recomputed) — open this single game directly.
+        loadSavedAnalysis(context, analysis);
+      }
     }
+
+    if (!locked) {
+      open();
+      return;
+    }
+    // A confirmed purchase or restore resumes straight into this game.
+    await requirePremiumGuard(
+      context,
+      ref,
+      featureId: kMyLikesHistoryFeatureId,
+      returnTo: kMyLikesReturnTo,
+      onEntitled: open,
+    );
   }
 
   Future<void> _removeAnalysis(SavedAnalysis analysis) async {
@@ -247,6 +263,7 @@ class _MyLikesScreenState extends ConsumerState<MyLikesScreen>
             ),
           ),
           const Spacer(),
+          _buildSpaceButton(),
           if (totalLiked > 0)
             IconButton(
               onPressed: _handleExportPgn,
@@ -262,31 +279,94 @@ class _MyLikesScreenState extends ConsumerState<MyLikesScreen>
     );
   }
 
+  /// Pins My Likes to My Space; filled once it is there.
+  Widget _buildSpaceButton() {
+    final draft = SpaceShortcut.draft(
+      kind: SpaceShortcutKind.likes,
+      targetId: 'me',
+      title: 'My Likes',
+    );
+    final inSpace = ref.watch(spaceShortcutExistsProvider(draft.key));
+    return IconButton(
+      tooltip: inSpace ? 'Remove from My Space' : 'Add to My Space',
+      onPressed:
+          () => toggleSpaceShortcut(context: context, ref: ref, draft: draft),
+      icon: Icon(
+        inSpace ? Icons.dashboard_customize : Icons.dashboard_customize_outlined,
+        color: context.colors.textPrimary,
+        size: 20.sp,
+      ),
+    );
+  }
+
+  /// Opens the paywall from the archive boundary. The sheet sits over My
+  /// Likes, so a purchase lands right back here; the view re-derives from the
+  /// entitlement and the full history is in place.
+  Future<void> _viewFullHistory() async {
+    HapticFeedbackService.buttonPress();
+    await requirePremiumGuard(
+      context,
+      ref,
+      featureId: kMyLikesHistoryFeatureId,
+      returnTo: kMyLikesReturnTo,
+      onEntitled: () {
+        if (!mounted) return;
+        ref.invalidate(myLikesViewProvider);
+        if (ref.read(subscriptionProvider).isSubscribed) {
+          showAppSnack(
+            context,
+            'Your full My Likes history is back',
+            tone: AppSnackTone.success,
+          );
+        }
+      },
+    );
+  }
+
   /// Returns true if the user accepted the upgrade and actually subscribed.
-  /// Renders a non-blocking soft-wall snackbar with an Upgrade action; we
-  /// use this instead of immediately raising the paywall so the user can
-  /// also tap "Export 7-day window" by ignoring the snackbar's action.
+  /// Renders a non-blocking soft-wall snackbar with an "Export all" action; we
+  /// use this instead of immediately raising the paywall so the user still
+  /// gets their latest likes by ignoring the snackbar's action.
   Future<bool> _promptExportUpgrade(int lockedCount) async {
     if (!mounted) return false;
     final completer = Completer<bool>();
+    // Set once "Export all" is tapped: from then on the paywall, not the
+    // snack's timer, decides the answer.
+    var upgrading = false;
+    final older =
+        lockedCount == 1
+            ? '1 older like needs'
+            : '$lockedCount older likes need';
     final controller = showAppSnack(
       context,
-      'Upgrade to export $lockedCount more game${lockedCount == 1 ? '' : 's'}',
-      actionLabel: 'Upgrade',
+      'Exporting your latest $kFreeMyLikesVisibleLimit likes. $older Premium.',
+      actionLabel: 'Export all',
       duration: const Duration(seconds: 6),
       onAction: () async {
-        if (completer.isCompleted) return;
-        final unlocked = await requirePremiumGuard(context, ref);
+        if (completer.isCompleted || upgrading) return;
+        upgrading = true;
+        final unlocked = await requirePremiumGuard(
+          context,
+          ref,
+          featureId: kMyLikesExportFeatureId,
+          returnTo: kMyLikesReturnTo,
+          // A confirmed purchase resumes the export with every like.
+          onEntitled: () {
+            if (!completer.isCompleted) completer.complete(true);
+          },
+        );
         if (!completer.isCompleted) completer.complete(unlocked);
       },
     );
     if (controller == null) return false;
     // Resolve to false when the snack dismisses without the Upgrade action
     // being tapped — caller proceeds with the unlocked slice. This is exactly
-    // why the snack must never be persistent: `closed` is the gate.
+    // why the snack must never be persistent: `closed` is the gate. Once the
+    // action is tapped the snack timing out must not answer for the paywall
+    // still open over it.
     unawaited(
       controller.closed.then((_) {
-        if (!completer.isCompleted) completer.complete(false);
+        if (!upgrading && !completer.isCompleted) completer.complete(false);
       }),
     );
     return completer.future;
@@ -302,28 +382,27 @@ class _MyLikesScreenState extends ConsumerState<MyLikesScreen>
       return;
     }
 
-    // Policy C: free users get the same 7-day window they can read; premium
+    // Policy C: free users export the same latest likes they can see; premium
     // gets everything. Slice the list at tap time so a sub picked up mid-
     // session takes effect immediately.
-    final subscription = ref.read(subscriptionProvider);
+    final window = freeLikesWindow(
+      allAnalyses,
+      unlimited: ref.read(myLikesUnlimitedProvider),
+    );
     List<SavedAnalysis> analyses;
-    if (subscription.isSubscribed || subscription.isLoading) {
+    if (window == null) {
       analyses = allAnalyses;
     } else {
       analyses =
-          allAnalyses.where((a) {
-            return !isLikedGameLocked(
-              a.createdAt.toLocal(),
-              isSubscribed: subscription.isSubscribed,
-              subscriptionLoading: subscription.isLoading,
-            );
-          }).toList();
+          allAnalyses
+              .where((a) => !isLikedGameLocked(a.id, window: window))
+              .toList();
       final lockedCount = allAnalyses.length - analyses.length;
       if (lockedCount > 0) {
         final proceed = await _promptExportUpgrade(lockedCount);
         if (!mounted) return;
         if (proceed) {
-          // User just subscribed via the upgrade prompt — re-read state
+          // User just subscribed via the export prompt — re-read state
           // and export everything.
           final refreshed = ref.read(subscriptionProvider);
           if (refreshed.isSubscribed) {
@@ -569,6 +648,37 @@ class _MyLikesScreenState extends ConsumerState<MyLikesScreen>
       }
     }
 
+    if (data.showsArchiveBoundary) {
+      items.add(
+        Padding(
+          padding: EdgeInsets.only(top: items.isEmpty ? 0 : 4.h, bottom: 12.h),
+          child: MyLikesArchiveBoundary(
+            key: const ValueKey('mylikes_archive_boundary'),
+            data: data,
+            onViewHistory: _viewFullHistory,
+          ),
+        ),
+      );
+      // A glimpse of what is kept: the next archived likes, locked. Tapping
+      // one opens the paywall and, once unlocked, the game itself.
+      for (final entry in data.lockedPreview) {
+        items.add(
+          Padding(
+            padding: EdgeInsets.only(bottom: 12.h),
+            child: MyLikesGameCard(
+              key: ValueKey('mylikes_${entry.analysis.id}'),
+              analysis: entry.analysis,
+              game: entry.game,
+              isLocked: true,
+              tagCounts: tagCounts,
+              onOpen: () => _openAnalysis(entry.analysis),
+              onRemove: () => _removeAnalysis(entry.analysis),
+            ),
+          ),
+        );
+      }
+    }
+
     return SliverPadding(
       padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 8.h),
       sliver: SliverList(
@@ -630,7 +740,7 @@ class _MyLikesScreenState extends ConsumerState<MyLikesScreen>
           Icon(
             Icons.filter_alt_off_outlined,
             size: 56.sp,
-            color: context.colors.textPrimary.withValues(alpha: 0.4),
+            color: context.textInk(0.4),
           ),
           SizedBox(height: 12.h),
           Text(
@@ -643,7 +753,7 @@ class _MyLikesScreenState extends ConsumerState<MyLikesScreen>
           Text(
             subtitle ?? 'Try adjusting your search or filters',
             style: AppTypography.textSmRegular.copyWith(
-              color: context.colors.textPrimary.withValues(alpha: 0.55),
+              color: context.textInk(0.55),
             ),
             textAlign: TextAlign.center,
           ),
@@ -674,7 +784,10 @@ class _MyLikesScreenState extends ConsumerState<MyLikesScreen>
           children: [
             Icon(
               Icons.error_outline_rounded,
-              color: const Color(0xFFEF4444),
+              color:
+                  context.isLightTheme
+                      ? context.colors.danger
+                      : const Color(0xFFEF4444),
               size: 32.ic,
             ),
             SizedBox(height: 12.h),
@@ -741,10 +854,19 @@ class _LikeTagFilterChip extends StatelessWidget {
           color.withValues(alpha: 0.22),
           t,
         )!;
+    // Paper: the selected edge takes the tag hue darkened to 3:1 so the
+    // chosen state reads without leaning on the pale swatch alone.
     final borderColor =
         Color.lerp(
           color.withValues(alpha: 0.32),
-          color.withValues(alpha: 0.85),
+          context.isLightTheme
+              ? legibleHueInk(
+                context,
+                color,
+                minContrast: 3,
+                on: Color.alphaBlend(background, colors.background),
+              )
+              : color.withValues(alpha: 0.85),
           t,
         )!;
 
@@ -799,7 +921,7 @@ class _LikeTagFilterChip extends StatelessWidget {
                       color:
                           selected
                               ? colors.textPrimary
-                              : colors.textPrimary.withValues(alpha: 0.55),
+                              : context.textInk(0.55),
                       fontSize: 10.sp,
                     ),
                   ),

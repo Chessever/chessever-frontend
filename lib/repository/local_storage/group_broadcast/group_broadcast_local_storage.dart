@@ -14,6 +14,10 @@ final groupBroadcastLocalStorage = Provider.family<
 
 enum _LocalGroupBroadcastStorage { upcoming, current, past }
 
+/// Upcoming is read soonest-first and capped: the far end of the schedule is
+/// what a cap should drop, and the cache stays a bounded blob.
+const int kUpcomingEventsFetchLimit = 300;
+
 class GroupBroadcastLocalStorage {
   GroupBroadcastLocalStorage({required this.ref, required this.category});
 
@@ -22,12 +26,14 @@ class GroupBroadcastLocalStorage {
 
   String get localStorageName {
     switch (category) {
-      case GroupEventCategory.forYou:
+      case GroupEventCategory.upcoming:
         return _LocalGroupBroadcastStorage.upcoming.name;
-      case GroupEventCategory.current:
-        return _LocalGroupBroadcastStorage.current.name;
       case GroupEventCategory.past:
         return _LocalGroupBroadcastStorage.past.name;
+      // Search keeps no event list of its own. It aliases Current so a refresh
+      // through it re-reads Current instead of saving an empty list over the
+      // Current cache.
+      case GroupEventCategory.current:
       case GroupEventCategory.search:
         return _LocalGroupBroadcastStorage.current.name;
     }
@@ -36,32 +42,29 @@ class GroupBroadcastLocalStorage {
   String get _cacheKey => 'group_broadcast_$localStorageName';
   String get _cacheTimeKey => 'group_broadcast_${localStorageName}_time';
 
+  /// Background warm-up: a failure here is silent because the tab's own load
+  /// fetches again and reports it.
   Future<void> fetchAndSaveGroupBroadcasts() async {
     try {
-      final broadcasts = await _fetchGroupBroadcastsFromSource();
-      final db = ref.read(appDatabaseProvider);
-      final encoded = _encodeGroupBroadcastsList(broadcasts);
-      await db.setCacheAndInt(
-        cacheKey: _cacheKey,
-        cacheValue: jsonEncode(encoded),
-        intKey: _cacheTimeKey,
-        intValue: DateTime.now().millisecondsSinceEpoch,
-      );
-      _memoize(broadcasts);
-    } catch (_) {
-      // Local storage failure is not critical - Supabase is source of truth
-    }
+      await _fetchSaveAndReturnGroupBroadcasts();
+    } catch (_) {}
   }
 
   Future<List<GroupBroadcast>> _fetchGroupBroadcastsFromSource() async {
     switch (category) {
-      case GroupEventCategory.forYou:
-      case GroupEventCategory.search:
-        return <GroupBroadcast>[];
       case GroupEventCategory.current:
+      case GroupEventCategory.search:
         return ref
             .read(groupBroadcastRepositoryProvider)
             .getCurrentGroupBroadcasts();
+      case GroupEventCategory.upcoming:
+        return ref
+            .read(groupBroadcastRepositoryProvider)
+            .getUpcomingGroupBroadcasts(
+              orderBy: 'date_start',
+              ascending: true,
+              limit: kUpcomingEventsFetchLimit,
+            );
       case GroupEventCategory.past:
         final events = await ref
             .read(groupBroadcastRepositoryProvider)
@@ -70,50 +73,50 @@ class GroupBroadcastLocalStorage {
     }
   }
 
+  /// Only the server read can fail this call. The list is returned even when
+  /// the cache write fails: the write is best effort, and letting it throw
+  /// would turn fetched events into an error.
   Future<List<GroupBroadcast>> _fetchSaveAndReturnGroupBroadcasts() async {
     final broadcasts = await _fetchGroupBroadcastsFromSource();
-    final db = ref.read(appDatabaseProvider);
-    final encoded = _encodeGroupBroadcastsList(broadcasts);
-    await db.setCacheAndInt(
-      cacheKey: _cacheKey,
-      cacheValue: jsonEncode(encoded),
-      intKey: _cacheTimeKey,
-      intValue: DateTime.now().millisecondsSinceEpoch,
-    );
     _memoize(broadcasts);
+    try {
+      final db = ref.read(appDatabaseProvider);
+      final encoded = _encodeGroupBroadcastsList(broadcasts);
+      await db.setCacheAndInt(
+        cacheKey: _cacheKey,
+        cacheValue: jsonEncode(encoded),
+        intKey: _cacheTimeKey,
+        intValue: DateTime.now().millisecondsSinceEpoch,
+      );
+    } catch (_) {}
     return broadcasts;
   }
 
+  /// Serves the cache while it is fresh, otherwise reads the server.
+  ///
+  /// A failed server read falls back to the cache. With nothing cached it
+  /// throws instead of returning an empty list, so the caller shows an error
+  /// with Retry rather than an empty state that says there are no events.
   Future<List<GroupBroadcast>> fetchGroupBroadcasts() async {
+    final cachedBroadcasts = await getGroupBroadcasts();
+    int? lastFetched;
     try {
-      final db = ref.read(appDatabaseProvider);
-      final lastFetched = await db.getInt(_cacheTimeKey);
-      final cachedBroadcasts = await getGroupBroadcasts();
-      final shouldRefresh =
-          lastFetched == null ||
-          cachedBroadcasts.isEmpty ||
-          (DateTime.now().millisecondsSinceEpoch - lastFetched) >
-              25 * 60 * 1000;
-
-      if (!shouldRefresh) {
-        return cachedBroadcasts;
-      }
-
-      try {
-        final fresh = await _fetchSaveAndReturnGroupBroadcasts();
-        return fresh;
-      } catch (_) {
-        if (cachedBroadcasts.isNotEmpty) {
-          return cachedBroadcasts;
-        }
-        return <GroupBroadcast>[];
-      }
+      lastFetched = await ref.read(appDatabaseProvider).getInt(_cacheTimeKey);
     } catch (_) {
-      try {
-        return await getGroupBroadcasts();
-      } catch (_) {
-        return <GroupBroadcast>[];
-      }
+      // An unreadable timestamp counts as stale.
+    }
+    final isFresh =
+        lastFetched != null &&
+        cachedBroadcasts.isNotEmpty &&
+        (DateTime.now().millisecondsSinceEpoch - lastFetched) <=
+            25 * 60 * 1000;
+    if (isFresh) return cachedBroadcasts;
+
+    try {
+      return await _fetchSaveAndReturnGroupBroadcasts();
+    } catch (_) {
+      if (cachedBroadcasts.isNotEmpty) return cachedBroadcasts;
+      rethrow;
     }
   }
 
@@ -184,11 +187,15 @@ class GroupBroadcastLocalStorage {
     }
   }
 
+  /// Reads the server, bypassing the cache TTL. A failure falls back to the
+  /// cache and, like [fetchGroupBroadcasts], throws when nothing is cached.
   Future<List<GroupBroadcast>> refresh() async {
     try {
       return await _fetchSaveAndReturnGroupBroadcasts();
     } catch (_) {
-      return getGroupBroadcasts();
+      final cached = await getGroupBroadcasts();
+      if (cached.isNotEmpty) return cached;
+      rethrow;
     }
   }
 

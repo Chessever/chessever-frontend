@@ -3,8 +3,15 @@ import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/svg_widget.dart';
 import 'package:flutter/material.dart';
+import 'package:motor/motor.dart';
 
-class BottomNavBarWidget extends StatelessWidget {
+/// One slot of the phone bottom bar: icon over label, the selected slot in
+/// full ink and a bold label, the rest in secondary ink at medium weight (both
+/// inks clear 4.5:1 on the bar in either theme). Ink alone is only 2.6:1
+/// between the two states in light mode, so the weight step is what marks the
+/// active slot there, not colour. A press settles the slot to 0.97 on a spring
+/// and lets go the same way; reduced motion snaps instead.
+class BottomNavBarWidget extends StatefulWidget {
   const BottomNavBarWidget({
     required this.isSelected,
     required this.onTap,
@@ -21,35 +28,76 @@ class BottomNavBarWidget extends StatelessWidget {
   final double width;
 
   @override
+  State<BottomNavBarWidget> createState() => _BottomNavBarWidgetState();
+}
+
+class _BottomNavBarWidgetState extends State<BottomNavBarWidget> {
+  static const _press = CupertinoMotion.snappy(
+    duration: Duration(milliseconds: 260),
+  );
+
+  bool _pressed = false;
+
+  void _setPressed(bool value) {
+    if (_pressed == value) return;
+    setState(() => _pressed = value);
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final selectedColor = context.colors.textPrimary;
-    final inactiveColor = context.colors.tabInactive;
-    return InkWell(
-      splashColor: context.colors.surfaceRecessed,
-      onTap: onTap,
-      child: Container(
-        width: width,
-        padding: EdgeInsets.symmetric(vertical: 8.sp),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            SvgWidget(
-              height: 20.h,
-              width: 20.w,
-              svgIcon,
-              colorFilter: ColorFilter.mode(
-                isSelected ? selectedColor : inactiveColor,
-                BlendMode.srcIn,
+    final colors = context.colors;
+    final ink = widget.isSelected ? colors.textPrimary : colors.textSecondary;
+    // Square on every phone: `20.h` by `20.w` went 15 by 18 on short ones.
+    final iconSide = 20.ic.clamp(18.0, 24.0);
+
+    return MergeSemantics(
+      child: Semantics(
+        button: true,
+        selected: widget.isSelected,
+        child: InkWell(
+          splashColor: colors.surfaceRecessed,
+          highlightColor: Colors.transparent,
+          onTapDown: (_) => _setPressed(true),
+          onTapUp: (_) => _setPressed(false),
+          onTapCancel: () => _setPressed(false),
+          onTap: widget.onTap,
+          child: SizedBox(
+            width: widget.width,
+            child: Padding(
+              padding: EdgeInsets.symmetric(vertical: 8.sp),
+              child: SingleMotionBuilder(
+                motion: _press,
+                value: _pressed ? 0.97 : 1.0,
+                active: !MediaQuery.disableAnimationsOf(context),
+                builder:
+                    (context, scale, child) =>
+                        Transform.scale(scale: scale, child: child),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    SvgWidget(
+                      widget.svgIcon,
+                      height: iconSide,
+                      width: iconSide,
+                      colorFilter: ColorFilter.mode(ink, BlendMode.srcIn),
+                    ),
+                    SizedBox(height: 4.h),
+                    Text(
+                      widget.title,
+                      textAlign: TextAlign.center,
+                      // Same size and line height in both styles, so the
+                      // weight step never moves the label.
+                      style:
+                          (widget.isSelected
+                                  ? AppTypography.textXsBold
+                                  : AppTypography.textXsMedium)
+                              .copyWith(color: ink),
+                    ),
+                  ],
+                ),
               ),
             ),
-            SizedBox(height: 4.h),
-            Text(
-              title,
-              style: AppTypography.textXsMedium.copyWith(
-                color: isSelected ? selectedColor : inactiveColor,
-              ),
-            ),
-          ],
+          ),
         ),
       ),
     );

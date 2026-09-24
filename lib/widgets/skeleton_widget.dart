@@ -23,7 +23,12 @@ class SkeletonWidget extends StatelessWidget {
         // to a theme-aware skeleton tone so the shimmer doesn't paint as a
         // black smear on white surfaces.
         baseColor: context.isLightTheme ? context.colors.skeleton : kBlackColor,
-        highlightColor: context.colors.surfaceRecessed,
+        // On paper `surfaceRecessed` IS the skeleton tone, so the sweep was
+        // invisible; the lighter background tone gives it something to show.
+        highlightColor:
+            context.isLightTheme
+                ? context.colors.background
+                : context.colors.surfaceRecessed,
       ),
       child: child,
     );

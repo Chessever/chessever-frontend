@@ -4,10 +4,13 @@ import 'package:dartchess/dartchess.dart';
 import 'package:chessever2/screens/chessboard/chess_board_screen_new.dart';
 import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
 import 'package:chessever2/screens/library/utils/gamebase_pgn_builder.dart';
+import 'package:chessever2/screens/library/widgets/library_context_menu.dart';
 import 'package:chessever2/screens/library/widgets/library_game_card.dart';
+import 'package:chessever2/screens/my_space/actions/space_menu_action.dart';
 import 'package:chessever2/screens/player_profile/player_profile_data_source.dart';
 import 'package:chessever2/screens/player_profile/utils/twic_event_identity.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/utils/game_space_shortcut.dart';
 import 'package:chessever2/repository/gamebase/search/gamebase_search_models.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
@@ -92,7 +95,10 @@ Future<void> showGamebaseSortOptions({
                           ),
                           child: Icon(
                             Icons.close,
-                            color: Colors.grey,
+                            color:
+                                context.isLightTheme
+                                    ? context.colors.iconSecondary
+                                    : Colors.grey,
                             size: 20.sp,
                           ),
                         ),
@@ -421,49 +427,67 @@ class _PositionGamesSheetState extends ConsumerState<PositionGamesSheet> {
                                   ? game.tourId
                                   : 'Gamebase';
 
-                          return LibraryGameCard(
-                            game: game,
-                            eventName: eventName,
-                            eco: game.roundSlug,
-                            date: game.lastMoveTime,
-                            showRound: true,
-                            onTap: () {
-                              String? targetFen = widget.fen;
-                              if (widget.uci != null) {
-                                try {
-                                  final position = Chess.fromSetup(
-                                    Setup.parseFen(widget.fen),
-                                  );
-                                  final from = Square.fromName(
-                                    widget.uci!.substring(0, 2),
-                                  );
-                                  final to = Square.fromName(
-                                    widget.uci!.substring(2, 4),
-                                  );
-                                  Role? promotion;
-                                  if (widget.uci!.length > 4) {
-                                    promotion = Role.fromChar(widget.uci![4]);
-                                  }
-                                  final move = NormalMove(
-                                    from: from,
-                                    to: to,
-                                    promotion: promotion,
-                                  );
-                                  targetFen = position.play(move).fen;
-                                } catch (_) {
-                                  // Fallback to widget.fen
+                          void openGame() {
+                            String? targetFen = widget.fen;
+                            if (widget.uci != null) {
+                              try {
+                                final position = Chess.fromSetup(
+                                  Setup.parseFen(widget.fen),
+                                );
+                                final from = Square.fromName(
+                                  widget.uci!.substring(0, 2),
+                                );
+                                final to = Square.fromName(
+                                  widget.uci!.substring(2, 4),
+                                );
+                                Role? promotion;
+                                if (widget.uci!.length > 4) {
+                                  promotion = Role.fromChar(widget.uci![4]);
                                 }
+                                final move = NormalMove(
+                                  from: from,
+                                  to: to,
+                                  promotion: promotion,
+                                );
+                                targetFen = position.play(move).fen;
+                              } catch (_) {
+                                // Fallback to widget.fen
                               }
-                              _openGame(
-                                context,
-                                ref,
-                                game,
-                                _games,
-                                index,
-                                targetFen,
+                            }
+                            _openGame(
+                              context,
+                              ref,
+                              game,
+                              _games,
+                              index,
+                              targetFen,
+                            );
+                          }
+
+                          Widget buildCard({VoidCallback? onLongPress}) =>
+                              LibraryGameCard(
+                                game: game,
+                                eventName: eventName,
+                                eco: game.roundSlug,
+                                date: game.lastMoveTime,
+                                showRound: true,
+                                onTap: openGame,
+                                onLongPress: onLongPress,
                               );
-                            },
-                            onLongPress: null,
+
+                          // The Builder hands the menu the card's own box to
+                          // anchor to; the item context is the whole sliver.
+                          return Builder(
+                            builder:
+                                (cardContext) => buildCard(
+                                  onLongPress:
+                                      () => _showGameActions(
+                                        cardContext,
+                                        game,
+                                        openGame,
+                                        buildCard,
+                                      ),
+                                ),
                           );
                         },
                       ),
@@ -471,6 +495,30 @@ class _PositionGamesSheetState extends ConsumerState<PositionGamesSheet> {
           ],
         ),
       ),
+    );
+  }
+
+  /// Long-press menu for an explorer game: open it, or pin it to My Space.
+  void _showGameActions(
+    BuildContext cardContext,
+    GamesTourModel game,
+    VoidCallback onOpen,
+    Widget Function({VoidCallback? onLongPress}) buildCard,
+  ) {
+    final spaceDraft = gameSpaceShortcutDraft(game);
+    showLibraryContextMenu(
+      context: cardContext,
+      previewBuilder: (_) => buildCard(),
+      onPreviewTap: onOpen,
+      actions: [
+        LibraryMenuAction(
+          icon: Icons.open_in_new_rounded,
+          label: 'Open game',
+          onSelected: onOpen,
+        ),
+        if (spaceDraft != null)
+          spaceMenuAction(context: cardContext, ref: ref, draft: spaceDraft),
+      ],
     );
   }
 
@@ -992,7 +1040,7 @@ class _SortOptionTile extends StatelessWidget {
                 title,
                 style: AppTypography.textSmMedium.copyWith(
                   color:
-                      isSelected ? kPrimaryColor : context.colors.textPrimary,
+                      isSelected ? context.colors.accentText : context.colors.textPrimary,
                   fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
                 ),
               ),
@@ -1002,7 +1050,7 @@ class _SortOptionTile extends StatelessWidget {
                 sortDirection == GamebaseSortDirection.desc
                     ? Icons.arrow_downward_rounded
                     : Icons.arrow_upward_rounded,
-                color: kPrimaryColor,
+                color: context.colors.accentText,
                 size: 18.sp,
               ),
             if (!isSelected)

@@ -3,9 +3,13 @@ import 'dart:ui' show ImageFilter;
 
 import 'package:chessever2/providers/board_settings_provider_new.dart';
 import 'package:chessever2/revenue_cat_service/subscribe_state.dart';
+import 'package:chessever2/screens/gamebase/utils/space_position_draft.dart';
+import 'package:chessever2/screens/library/widgets/library_context_menu.dart';
+import 'package:chessever2/screens/library/widgets/menu_preview_surface.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/figurine_notation.dart';
 import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
+import 'package:chessever2/widgets/space_shortcut_drafts.dart';
 import 'package:dartchess/dartchess.dart';
 import 'package:flutter/foundation.dart';
 import 'package:chessever2/theme/app_colors.dart';
@@ -831,7 +835,7 @@ class MoveStatisticsPanel extends HookConsumerWidget {
             padding: EdgeInsets.all(16.sp),
             child: Text(
               state.error!,
-              style: TextStyle(color: kRedColor, fontSize: 14.f),
+              style: TextStyle(color: context.colors.danger, fontSize: 14.f),
               textAlign: TextAlign.center,
             ),
           ),
@@ -1024,7 +1028,12 @@ class MoveStatisticsPanel extends HookConsumerWidget {
               child: BackdropFilter(
                 filter: ImageFilter.blur(sigmaX: 5, sigmaY: 5),
                 child: Container(
-                  color: Colors.black.withValues(alpha: 0.4),
+                  // Paper frost in light: a black veil drops the gate copy
+                  // to ~1.9:1 there.
+                  color:
+                      context.isLightTheme
+                          ? context.colors.surface.withValues(alpha: 0.72)
+                          : Colors.black.withValues(alpha: 0.4),
                   child: GestureDetector(
                     onTap: () => requirePremiumGuard(context, ref),
                     behavior: HitTestBehavior.opaque,
@@ -1099,6 +1108,7 @@ class MoveStatisticsPanel extends HookConsumerWidget {
           aggregate: aggregate,
           currentFen: state.currentFen,
           exploredMoves: state.exploredMoves,
+          startingFen: state.game?.startingFen,
           filters: state.filters,
           onTap: () async {
             // A move-row tap always releases a focused game card so the
@@ -1276,7 +1286,7 @@ class _MoveStatisticsSummaryRow extends StatelessWidget {
                                   textAlign: TextAlign.right,
                                   overflow: TextOverflow.ellipsis,
                                   style: TextStyle(
-                                    color: kPrimaryColor,
+                                    color: context.colors.accentText,
                                     fontSize: 12.f,
                                     fontWeight: FontWeight.w700,
                                   ),
@@ -1285,7 +1295,7 @@ class _MoveStatisticsSummaryRow extends StatelessWidget {
                               SizedBox(width: 4.w),
                               Icon(
                                 Icons.list_alt_rounded,
-                                color: kPrimaryColor,
+                                color: context.colors.accentText,
                                 size: 15.ic,
                               ),
                             ],
@@ -1476,6 +1486,7 @@ class _MoveStatisticsRow extends ConsumerWidget {
     required this.exploredMoves,
     required this.filters,
     required this.onTap,
+    this.startingFen,
   });
 
   final MoveAggregate aggregate;
@@ -1483,6 +1494,73 @@ class _MoveStatisticsRow extends ConsumerWidget {
   final List<String> exploredMoves;
   final GamebaseFilters filters;
   final VoidCallback onTap;
+
+  /// Where [exploredMoves] start; a Board Editor setup pins as a bare FEN.
+  final String? startingFen;
+
+  /// Long-press: play the move, see its games, or pin the position it leads
+  /// to. The row lifts on a plate of the panel surface so it reads over the
+  /// menu's veil.
+  void _showMenu(
+    BuildContext context,
+    WidgetRef ref, {
+    required String moveLabel,
+    required VoidCallback openGames,
+  }) {
+    final (_, nextFen) = uciToSanAndFen(aggregate.uci, currentFen);
+    final player =
+        filters.selectedPlayers.length == 1
+            ? filters.selectedPlayers.first
+            : null;
+    final draft =
+        nextFen == null
+            ? null
+            : spacePositionDraft(
+              fen: nextFen,
+              ucis: [...exploredMoves, aggregate.uci],
+              startingFen: startingFen,
+              player: player,
+            );
+    final surface = context.colors.surface;
+    showLibraryContextMenu(
+      context: context,
+      previewBuilder:
+          (_) => MenuPreviewSurface(
+            color: surface,
+            outset: EdgeInsets.zero,
+            borderRadius: BorderRadius.circular(10.br),
+            child: _MoveStatisticsRow(
+              aggregate: aggregate,
+              currentFen: currentFen,
+              exploredMoves: exploredMoves,
+              filters: filters,
+              startingFen: startingFen,
+              onTap: () {},
+            ),
+          ),
+      onPreviewTap: onTap,
+      actions: [
+        LibraryMenuAction(
+          icon: Icons.play_arrow_rounded,
+          label: 'Play $moveLabel',
+          onSelected: onTap,
+        ),
+        LibraryMenuAction(
+          icon: Icons.list_alt_rounded,
+          label: 'Show games',
+          onSelected: openGames,
+        ),
+        if (draft != null)
+          labeledSpaceMenuAction(
+            context: context,
+            ref: ref,
+            draft: draft,
+            addLabel: 'Add position to My Space',
+            removeLabel: 'Remove position from My Space',
+          ),
+      ],
+    );
+  }
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -1529,6 +1607,13 @@ class _MoveStatisticsRow extends ConsumerWidget {
 
     return InkWell(
       onTap: onTap,
+      onLongPress:
+          () => _showMenu(
+            context,
+            ref,
+            moveLabel: '$moveNumberLabel$sanMove',
+            openGames: openGames,
+          ),
       child: Padding(
         padding: EdgeInsets.symmetric(horizontal: 12.sp, vertical: 10.sp),
         child: Row(
@@ -1616,7 +1701,7 @@ class _MoveStatisticsRow extends ConsumerWidget {
                                     textAlign: TextAlign.right,
                                     overflow: TextOverflow.ellipsis,
                                     style: TextStyle(
-                                      color: kPrimaryColor,
+                                      color: context.colors.accentText,
                                       fontSize: 12.f,
                                       fontWeight: FontWeight.w700,
                                     ),
@@ -1625,7 +1710,7 @@ class _MoveStatisticsRow extends ConsumerWidget {
                                 SizedBox(width: 4.w),
                                 Icon(
                                   Icons.list_alt_rounded,
-                                  color: kPrimaryColor,
+                                  color: context.colors.accentText,
                                   size: 15.ic,
                                 ),
                               ],
@@ -1902,7 +1987,7 @@ class _ExplorerPremiumGate extends ConsumerWidget {
               ),
               child: Icon(
                 Icons.auto_stories_rounded,
-                color: kPrimaryColor,
+                color: context.colors.accentText,
                 size: 28.ic,
               ),
             ),

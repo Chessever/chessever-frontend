@@ -122,9 +122,7 @@ class _EventTabs extends StatelessWidget {
         children: [
           TabBar(
             labelColor: context.colors.textPrimary,
-            unselectedLabelColor: context.colors.textPrimary.withValues(
-              alpha: 0.5,
-            ),
+            unselectedLabelColor: context.textInk(0.5),
             indicatorColor: context.colors.textPrimary,
             labelStyle: AppTypography.textSmMedium,
             tabs: [
@@ -204,7 +202,7 @@ class _AboutTab extends StatelessWidget {
           Text(
             'This event is very large — only the most recent games are shown.',
             style: AppTypography.textXsRegular.copyWith(
-              color: context.colors.textPrimary.withValues(alpha: 0.5),
+              color: context.textInk(0.5),
             ),
           ),
         ],
@@ -231,7 +229,7 @@ class _AboutRow extends StatelessWidget {
             child: Text(
               label,
               style: AppTypography.textSmRegular.copyWith(
-                color: context.colors.textPrimary.withValues(alpha: 0.5),
+                color: context.textInk(0.5),
               ),
             ),
           ),
@@ -459,7 +457,7 @@ class _GamesTabState extends State<_GamesTab> {
         child: Text(
           'No games',
           style: AppTypography.textSmRegular.copyWith(
-            color: context.colors.textPrimary.withValues(alpha: 0.5),
+            color: context.textInk(0.5),
           ),
         ),
       );
@@ -558,8 +556,8 @@ class _MatchHeader extends StatelessWidget {
     final leftWins = data.leftScore > data.rightScore;
     final rightWins = data.rightScore > data.leftScore;
     final neutral = context.colors.textPrimary;
-    final win = kGreenColor;
-    final lose = context.colors.textPrimary.withValues(alpha: 0.5);
+    final win = context.colors.successStrong;
+    final lose = context.textInk(0.5);
 
     Color sideColor(bool wins, bool otherWins) {
       if (!wins && !otherWins) return neutral;
@@ -741,7 +739,7 @@ class _StandingsTab extends StatelessWidget {
     child: Text(
       'Standings unavailable',
       style: AppTypography.textSmRegular.copyWith(
-        color: context.colors.textPrimary.withValues(alpha: 0.5),
+        color: context.textInk(0.5),
       ),
     ),
   );
@@ -755,7 +753,7 @@ class _StandingsHeaderRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final style = AppTypography.textXsRegular.copyWith(
-      color: context.colors.textPrimary.withValues(alpha: 0.45),
+      color: context.textInk(0.45),
     );
     return Padding(
       padding: EdgeInsets.only(left: 4.w, right: 4.w, bottom: 8.h),
@@ -804,7 +802,7 @@ class _PlayerStandingRow extends StatelessWidget {
             child: Text(
               '${player.rank}',
               style: AppTypography.textSmMedium.copyWith(
-                color: context.colors.textPrimary.withValues(alpha: 0.55),
+                color: context.textInk(0.55),
               ),
             ),
           ),
@@ -841,7 +839,7 @@ class _PlayerStandingRow extends StatelessWidget {
                 Text(
                   record,
                   style: AppTypography.textXsRegular.copyWith(
-                    color: context.colors.textPrimary.withValues(alpha: 0.45),
+                    color: context.textInk(0.45),
                   ),
                 ),
               ],
@@ -852,7 +850,7 @@ class _PlayerStandingRow extends StatelessWidget {
             child: Text(
               _trimDouble(player.points),
               textAlign: TextAlign.right,
-              style: AppTypography.textSmBold.copyWith(color: kGreenColor),
+              style: AppTypography.textSmBold.copyWith(color: context.colors.successStrong),
             ),
           ),
           SizedBox(
@@ -861,7 +859,7 @@ class _PlayerStandingRow extends StatelessWidget {
               '${player.played}',
               textAlign: TextAlign.right,
               style: AppTypography.textSmRegular.copyWith(
-                color: context.colors.textPrimary.withValues(alpha: 0.6),
+                color: context.textInk(0.6),
               ),
             ),
           ),
@@ -896,7 +894,7 @@ class _TeamStandingRow extends StatelessWidget {
             child: Text(
               '${team.rank}',
               style: AppTypography.textSmMedium.copyWith(
-                color: context.colors.textPrimary.withValues(alpha: 0.55),
+                color: context.textInk(0.55),
               ),
             ),
           ),
@@ -916,7 +914,7 @@ class _TeamStandingRow extends StatelessWidget {
                 Text(
                   record,
                   style: AppTypography.textXsRegular.copyWith(
-                    color: context.colors.textPrimary.withValues(alpha: 0.45),
+                    color: context.textInk(0.45),
                   ),
                 ),
               ],
@@ -927,7 +925,7 @@ class _TeamStandingRow extends StatelessWidget {
             child: Text(
               _trimDouble(team.matchPoints),
               textAlign: TextAlign.right,
-              style: AppTypography.textSmBold.copyWith(color: kGreenColor),
+              style: AppTypography.textSmBold.copyWith(color: context.colors.successStrong),
             ),
           ),
           SizedBox(
@@ -936,7 +934,7 @@ class _TeamStandingRow extends StatelessWidget {
               _trimDouble(team.gamePoints),
               textAlign: TextAlign.right,
               style: AppTypography.textSmRegular.copyWith(
-                color: context.colors.textPrimary.withValues(alpha: 0.6),
+                color: context.textInk(0.6),
               ),
             ),
           ),
@@ -988,7 +986,7 @@ class _EmptyState extends StatelessWidget {
             Icon(
               Icons.search_off_rounded,
               size: 48.ic,
-              color: context.colors.textPrimary.withValues(alpha: 0.4),
+              color: context.textInk(0.4),
             ),
             SizedBox(height: 16.h),
             Text(
@@ -1002,7 +1000,7 @@ class _EmptyState extends StatelessWidget {
             Text(
               'Open the ChessEver Database to search its games instead.',
               style: AppTypography.textSmRegular.copyWith(
-                color: context.colors.textPrimary.withValues(alpha: 0.5),
+                color: context.textInk(0.5),
               ),
               textAlign: TextAlign.center,
             ),
@@ -1042,7 +1040,10 @@ class _ErrorState extends StatelessWidget {
             Icon(
               Icons.error_outline_rounded,
               size: 40.ic,
-              color: Colors.redAccent,
+              color:
+                  context.isLightTheme
+                      ? context.colors.danger
+                      : Colors.redAccent,
             ),
             SizedBox(height: 12.h),
             Text(

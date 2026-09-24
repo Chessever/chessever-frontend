@@ -146,12 +146,20 @@ class _FolderNameDialogState extends ConsumerState<_FolderNameDialog> {
           color: context.colors.surface,
           borderRadius: BorderRadius.circular(24.br),
           border: Border.all(color: context.colors.divider),
+          // Paper gets one tight contact shadow; the deep drop only reads
+          // on black.
           boxShadow: [
-            BoxShadow(
-              color: context.colors.shadow,
-              blurRadius: 40,
-              offset: const Offset(0, 20),
-            ),
+            context.isLightTheme
+                ? BoxShadow(
+                  color: context.colors.shadow,
+                  blurRadius: 8,
+                  offset: const Offset(0, 2),
+                )
+                : BoxShadow(
+                  color: context.colors.shadow,
+                  blurRadius: 40,
+                  offset: const Offset(0, 20),
+                ),
           ],
         ),
         child: Padding(
@@ -175,7 +183,7 @@ class _FolderNameDialogState extends ConsumerState<_FolderNameDialog> {
                           : (_isDatabase
                               ? Icons.storage_rounded
                               : Icons.folder_rounded),
-                      color: kPrimaryColor,
+                      color: context.colors.accentText,
                       size: 22.sp,
                     ),
                   ),
@@ -266,7 +274,7 @@ class _FolderNameDialogState extends ConsumerState<_FolderNameDialog> {
     if (parents.isEmpty) {
       return Text(
         'Create a folder first to organize items inside it.',
-        style: AppTypography.textXsRegular.copyWith(color: kRedColor),
+        style: AppTypography.textXsRegular.copyWith(color: context.colors.danger),
       ).animate().fadeIn();
     }
 
@@ -276,7 +284,7 @@ class _FolderNameDialogState extends ConsumerState<_FolderNameDialog> {
         Text(
           'PARENT FOLDER',
           style: AppTypography.textXsBold.copyWith(
-            color: context.colors.textPrimary.withValues(alpha: 0.4),
+            color: context.textInk(0.4),
             letterSpacing: 1.0,
           ),
         ),
@@ -297,7 +305,7 @@ class _FolderNameDialogState extends ConsumerState<_FolderNameDialog> {
               borderRadius: BorderRadius.circular(12.br),
               icon: Icon(
                 Icons.keyboard_arrow_down_rounded,
-                color: context.colors.textPrimary.withValues(alpha: 0.4),
+                color: context.textInk(0.4),
               ),
               isExpanded: true,
               items:
@@ -336,7 +344,7 @@ class _FolderNameDialogState extends ConsumerState<_FolderNameDialog> {
       ),
       child: Row(
         children: [
-          Icon(Icons.info_outline_rounded, color: kPrimaryColor, size: 16.sp),
+          Icon(Icons.info_outline_rounded, color: context.colors.accentText, size: 16.sp),
           SizedBox(width: 10.w),
           Expanded(
             child: Text(
@@ -358,7 +366,7 @@ class _FolderNameDialogState extends ConsumerState<_FolderNameDialog> {
         Text(
           'NAME',
           style: AppTypography.textXsBold.copyWith(
-            color: context.colors.textPrimary.withValues(alpha: 0.4),
+            color: context.textInk(0.4),
             letterSpacing: 1.0,
           ),
         ),
@@ -370,11 +378,11 @@ class _FolderNameDialogState extends ConsumerState<_FolderNameDialog> {
           style: AppTypography.textMdMedium.copyWith(
             color: context.colors.textPrimary,
           ),
-          cursorColor: kPrimaryColor,
+          cursorColor: context.colors.accentText,
           decoration: InputDecoration(
             hintText: 'e.g. My Openings',
             hintStyle: AppTypography.textMdRegular.copyWith(
-              color: context.colors.textPrimary.withValues(alpha: 0.2),
+              color: context.textInk(0.2),
             ),
             filled: true,
             fillColor: context.colors.textPrimary.withValues(alpha: 0.04),
@@ -389,7 +397,10 @@ class _FolderNameDialogState extends ConsumerState<_FolderNameDialog> {
             ),
             focusedBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(12.br),
-              borderSide: const BorderSide(color: kPrimaryColor, width: 1.5),
+              borderSide: BorderSide(
+                color: context.colors.accentText,
+                width: 1.5,
+              ),
             ),
           ),
           onSubmitted: (_) => _handleConfirm(),
@@ -413,7 +424,7 @@ class _FolderNameDialogState extends ConsumerState<_FolderNameDialog> {
             child: Text(
               'Cancel',
               style: AppTypography.textSmMedium.copyWith(
-                color: context.colors.textPrimary.withValues(alpha: 0.5),
+                color: context.textInk(0.5),
               ),
             ),
           ),
@@ -478,7 +489,7 @@ class _TypeButton extends StatelessWidget {
               color:
                   isSelected
                       ? context.colors.textPrimary
-                      : context.colors.textPrimary.withValues(alpha: 0.4),
+                      : context.textInk(0.4),
             ),
           ),
         ),

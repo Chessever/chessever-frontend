@@ -3,7 +3,6 @@ import 'package:chessever2/screens/group_event/model/about_tour_model.dart';
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_mode_provider.dart';
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_screen_provider.dart';
 import 'package:chessever2/theme/app_colors.dart';
-import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/location_service_provider.dart';
 import 'package:chessever2/utils/png_asset.dart';
@@ -379,8 +378,8 @@ class _AboutTourScreenState extends ConsumerState<AboutTourScreen>
                         height: 12.h,
                         width: 12.h,
                         colorFilter: context.isLightTheme
-                            ? const ColorFilter.mode(
-                                kPrimaryColor,
+                            ? ColorFilter.mode(
+                                context.colors.accentText,
                                 BlendMode.srcIn,
                               )
                             : null,
@@ -391,7 +390,7 @@ class _AboutTourScreenState extends ConsumerState<AboutTourScreen>
                           domain.isEmpty ? 'Chessever' : domain,
                           maxLines: 1,
                           style: AppTypography.textXsMedium.copyWith(
-                            color: kPrimaryColor,
+                            color: context.colors.accentText,
                             overflow: TextOverflow.ellipsis,
                           ),
                         ),
@@ -413,9 +412,9 @@ class _AboutTourScreenState extends ConsumerState<AboutTourScreen>
                 child: Text(
                   'Official Standings',
                   style: AppTypography.textXsMedium.copyWith(
-                    color: kPrimaryColor,
+                    color: context.colors.accentText,
                     decoration: TextDecoration.underline,
-                    decorationColor: kPrimaryColor,
+                    decorationColor: context.colors.accentText,
                   ),
                 ),
               ),
@@ -484,9 +483,9 @@ class _InlineLinkRow extends StatelessWidget {
               child: Text(
                 linkLabel,
                 style: AppTypography.textXsMedium.copyWith(
-                  color: kPrimaryColor,
+                  color: context.colors.accentText,
                   decoration: TextDecoration.underline,
-                  decorationColor: kPrimaryColor,
+                  decorationColor: context.colors.accentText,
                 ),
               ),
             ),

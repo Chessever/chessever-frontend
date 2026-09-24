@@ -126,7 +126,7 @@ class _AddSourceTile extends StatelessWidget {
                 color: kPrimaryColor.withValues(alpha: 0.12),
                 borderRadius: BorderRadius.circular(10.br),
               ),
-              child: Icon(icon, color: kPrimaryColor, size: 22.sp),
+              child: Icon(icon, color: context.colors.accentText, size: 22.sp),
             ),
             SizedBox(width: 14.w),
             Expanded(
@@ -143,7 +143,7 @@ class _AddSourceTile extends StatelessWidget {
                   Text(
                     subtitle,
                     style: AppTypography.textXsRegular.copyWith(
-                      color: context.colors.textPrimary.withValues(alpha: 0.55),
+                      color: context.textInk(0.55),
                     ),
                   ),
                 ],
@@ -151,7 +151,7 @@ class _AddSourceTile extends StatelessWidget {
             ),
             Icon(
               Icons.chevron_right_rounded,
-              color: context.colors.textPrimary.withValues(alpha: 0.35),
+              color: context.textInk(0.35),
               size: 20.sp,
             ),
           ],

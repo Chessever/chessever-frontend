@@ -3,6 +3,9 @@ import 'package:chessever2/screens/library/miniatures/miniatures_games_tab.dart'
 import 'package:chessever2/screens/library/miniatures/miniatures_mode_provider.dart';
 import 'package:chessever2/screens/library/miniatures/miniatures_players_tab.dart';
 import 'package:chessever2/screens/library/providers/miniatures_provider.dart';
+import 'package:chessever2/screens/my_space/actions/space_menu_action.dart';
+import 'package:chessever2/screens/my_space/models/space_shortcut.dart';
+import 'package:chessever2/screens/my_space/providers/space_shortcuts_provider.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
@@ -17,9 +20,11 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 /// move 25, served by the gamebase `/api/miniatures` index.
 ///
 /// Laid out like Favorites and Countrymen — a Games / Players / About tab
-/// triple over a shared page view. Browse, search, filters, players, and
-/// add-to-folder are free. Opening a game dated before local Today shows the
-/// premium paywall; Today-dated games open freely.
+/// triple over a shared page view. Today is free: its games open, and search,
+/// filters, players and add-to-folder work on it. Every earlier day is the
+/// Premium archive: for a free account the Games tab lists Today only, under
+/// a date control whose earlier-day step goes through the paywall, and ends
+/// on "Explore the Miniatures archive" (see miniatures_access.dart).
 class MiniaturesScreen extends ConsumerStatefulWidget {
   const MiniaturesScreen({super.key});
 
@@ -179,7 +184,32 @@ class _MiniaturesScreenState extends ConsumerState<MiniaturesScreen> {
               ],
             ),
           ),
+          Align(
+            alignment: Alignment.centerRight,
+            child: _buildSpaceButton(),
+          ),
         ],
+      ),
+    );
+  }
+
+  /// Pins today's miniatures to My Space; filled once it is there.
+  Widget _buildSpaceButton() {
+    final draft = SpaceShortcut.draft(
+      kind: SpaceShortcutKind.miniatures,
+      targetId: 'today',
+      title: 'Miniatures',
+      subtitle: 'Short decisive games',
+    );
+    final inSpace = ref.watch(spaceShortcutExistsProvider(draft.key));
+    return IconButton(
+      tooltip: inSpace ? 'Remove from My Space' : 'Add to My Space',
+      onPressed:
+          () => toggleSpaceShortcut(context: context, ref: ref, draft: draft),
+      icon: Icon(
+        inSpace ? Icons.dashboard_customize : Icons.dashboard_customize_outlined,
+        size: 18.sp,
+        color: context.colors.textPrimary,
       ),
     );
   }

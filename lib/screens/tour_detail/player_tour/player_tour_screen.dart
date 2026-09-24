@@ -2,6 +2,7 @@ import 'package:chessever2/providers/favorite_players_provider.dart';
 import 'package:chessever2/repository/favorites/models/favorite_player.dart';
 import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
 import 'package:chessever2/e2e/e2e_ids.dart';
+import 'package:chessever2/screens/library/widgets/library_context_menu.dart';
 import 'package:chessever2/screens/player_profile/player_profile_data_source.dart';
 import 'package:chessever2/screens/standings/player_standing_model.dart';
 import 'package:chessever2/screens/standings/providers/player_utils_provider.dart';
@@ -13,6 +14,7 @@ import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/figma_player_card.dart';
 import 'package:chessever2/widgets/scroll_to_top_bus.dart';
 import 'package:chessever2/widgets/skeleton_widget.dart';
+import 'package:chessever2/widgets/space_shortcut_drafts.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
@@ -203,27 +205,41 @@ class _StandingsList extends ConsumerWidget {
                       countryCode: player.countryCode,
                     ) !=
                     null;
-                return FigmaPlayerCard(
+                void openScorecard() {
+                  ref.read(selectedPlayerProvider.notifier).state = player;
+                  // Clear games context - tournament games come
+                  // from gamesTourScreenProvider.
+                  ref.read(scoreCardGamesContextProvider.notifier).state = null;
+                  ref
+                      .read(scoreCardPlayerProfileDataSourceProvider.notifier)
+                      .state = PlayerProfileDataSource.supabase;
+                  ref.read(chessboardViewFromProviderNew.notifier).state =
+                      ChessboardView.tour;
+                  Navigator.of(context).pushNamed('/scorecard_screen');
+                }
+
+                // Builder so the long-press menu anchors to this row's own
+                // box rather than the list's sliver.
+                return Builder(
                   key: ValueKey(
                     'standing_${player.fideId ?? player.gamebasePlayerId ?? player.name}',
                   ),
-                  player: player,
-                  rank: player.overallRank,
-                  isFavorite: isFav,
-                  showFavoriteButton: false,
-                  onTap: () {
-                    ref.read(selectedPlayerProvider.notifier).state = player;
-                    // Clear games context - tournament games come
-                    // from gamesTourScreenProvider.
-                    ref.read(scoreCardGamesContextProvider.notifier).state =
-                        null;
-                    ref
-                        .read(scoreCardPlayerProfileDataSourceProvider.notifier)
-                        .state = PlayerProfileDataSource.supabase;
-                    ref.read(chessboardViewFromProviderNew.notifier).state =
-                        ChessboardView.tour;
-                    Navigator.of(context).pushNamed('/scorecard_screen');
-                  },
+                  builder:
+                      (rowContext) => FigmaPlayerCard(
+                        player: player,
+                        rank: player.overallRank,
+                        isFavorite: isFav,
+                        showFavoriteButton: false,
+                        onTap: openScorecard,
+                        onLongPress:
+                            (_) => _showStandingMenu(
+                              rowContext,
+                              ref,
+                              player: player,
+                              isFavorite: isFav,
+                              onOpen: openScorecard,
+                            ),
+                      ),
                 );
               },
             );
@@ -240,6 +256,70 @@ class _StandingsList extends ConsumerWidget {
           loading: () => const _StandingScreenLoading(),
         );
   }
+}
+
+/// Long-press menu for a standings row: open the row, or pin the player (or
+/// their Games tab) into My Space.
+void _showStandingMenu(
+  BuildContext context,
+  WidgetRef ref, {
+  required PlayerStandingModel player,
+  required bool isFavorite,
+  required VoidCallback onOpen,
+}) {
+  final playerDraft = spacePlayerDraft(
+    playerName: player.name,
+    fideId: player.fideId,
+    title: player.title,
+    federation: player.countryCode,
+    rating: player.score,
+    gamebasePlayerId: player.gamebasePlayerId,
+    memorialSourceIdentity: player.memorialSourceIdentity,
+    memorialRouteId: player.memorialRouteId,
+  );
+  final gamesDraft = spacePlayerGamesDraft(
+    playerName: player.name,
+    fideId: player.fideId,
+    title: player.title,
+    federation: player.countryCode,
+    rating: player.score,
+    gamebasePlayerId: player.gamebasePlayerId,
+    memorialSourceIdentity: player.memorialSourceIdentity,
+    memorialRouteId: player.memorialRouteId,
+  );
+  showLibraryContextMenu(
+    context: context,
+    previewBuilder:
+        (_) => FigmaPlayerCard(
+          player: player,
+          rank: player.overallRank,
+          isFavorite: isFavorite,
+          showFavoriteButton: false,
+          onTap: () {},
+        ),
+    onPreviewTap: onOpen,
+    actions: [
+      LibraryMenuAction(
+        icon: Icons.open_in_new_rounded,
+        label: 'Open scorecard',
+        onSelected: onOpen,
+      ),
+      labeledSpaceMenuAction(
+        context: context,
+        ref: ref,
+        draft: playerDraft,
+        addLabel: 'Add player to My Space',
+        removeLabel: 'Remove player from My Space',
+      ),
+      labeledSpaceMenuAction(
+        context: context,
+        ref: ref,
+        draft: gamesDraft,
+        addLabel: 'Add Games tab to My Space',
+        removeLabel: 'Remove Games tab from My Space',
+      ),
+    ],
+  );
 }
 
 class _StandingScreenLoading extends StatelessWidget {

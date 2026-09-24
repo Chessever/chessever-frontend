@@ -3,14 +3,16 @@ import 'dart:async';
 import 'package:chessever2/providers/favorite_players_provider.dart';
 import 'package:chessever2/screens/favorites/favorite_players_provider.dart';
 import 'package:chessever2/screens/favorites/widgets/favorite_player_search_suggestion.dart';
+import 'package:chessever2/screens/library/widgets/library_context_menu.dart';
 import 'package:chessever2/screens/standings/player_standing_model.dart';
 import 'package:chessever2/screens/player_profile/player_profile_screen.dart';
+import 'package:chessever2/screens/player_profile/utils/player_menu_actions.dart';
+import 'package:chessever2/screens/player_profile/widgets/lifted_row_menu.dart';
 import 'package:chessever2/utils/favorite_constants.dart';
 import 'package:chessever2/utils/favorite_limit_guard.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/scroll_cache.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
-import 'package:chessever2/utils/tablet_safe_menu.dart';
 import 'package:chessever2/utils/user_error_message.dart';
 import 'package:chessever2/widgets/alert_dialog/alert_modal.dart';
 import 'package:chessever2/widgets/app_snack.dart';
@@ -22,7 +24,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:chessever2/theme/app_colors.dart';
-import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/widgets/auth/auth_upgrade_sheet.dart';
 import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
@@ -194,16 +195,19 @@ class _FavoritesListTabState extends ConsumerState<FavoritesListTab>
       sliver: SliverList(
         delegate: SliverChildBuilderDelegate((context, index) {
           final player = sortedPlayers[index];
-          return FigmaPlayerCard(
-            player: player,
-            rank: index + 1,
-            isFavorite: true,
-            showFavoriteButton: true,
-            onTap: () => _openPlayer(player),
-            onToggleFavorite: () => _removeFavoritePlayer(player),
-            onLongPress: (details) {
-              _showContextMenu(context, details.globalPosition, player);
-            },
+          // Long-press lifts the row into the shared focus menu; the row is
+          // its own preview.
+          return LiftedRowMenu(
+            onPreviewTap: () => _openPlayer(player),
+            actions: (rowContext) => _playerMenuActions(rowContext, player),
+            child: FigmaPlayerCard(
+              player: player,
+              rank: index + 1,
+              isFavorite: true,
+              showFavoriteButton: true,
+              onTap: () => _openPlayer(player),
+              onToggleFavorite: () => _removeFavoritePlayer(player),
+            ),
           );
         }, childCount: sortedPlayers.length),
       ),
@@ -218,7 +222,7 @@ class _FavoritesListTabState extends ConsumerState<FavoritesListTab>
           Icon(
             Icons.favorite_outline,
             size: 48.ic,
-            color: context.colors.textPrimary.withValues(alpha: 0.5),
+            color: context.textInk(0.5),
           ),
           SizedBox(height: 16.h),
           Text(
@@ -233,7 +237,7 @@ class _FavoritesListTabState extends ConsumerState<FavoritesListTab>
               subtitle,
               textAlign: TextAlign.center,
               style: AppTypography.textSmRegular.copyWith(
-                color: context.colors.textPrimary.withValues(alpha: 0.5),
+                color: context.textInk(0.5),
               ),
             ),
           ),
@@ -247,7 +251,11 @@ class _FavoritesListTabState extends ConsumerState<FavoritesListTab>
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(Icons.error_outline, size: 48.ic, color: kRedColor),
+          Icon(
+            Icons.error_outline,
+            size: 48.ic,
+            color: context.colors.danger,
+          ),
           SizedBox(height: 16.h),
           Text(
             'Error loading favorites',
@@ -261,7 +269,7 @@ class _FavoritesListTabState extends ConsumerState<FavoritesListTab>
               error,
               textAlign: TextAlign.center,
               style: AppTypography.textSmRegular.copyWith(
-                color: context.colors.textPrimary.withValues(alpha: 0.5),
+                color: context.textInk(0.5),
               ),
             ),
           ),
@@ -348,45 +356,36 @@ class _FavoritesListTabState extends ConsumerState<FavoritesListTab>
     );
   }
 
-  Future<void> _showContextMenu(
-    BuildContext context,
-    Offset position,
+  /// The favourite row's menu. The three actions the old popup offered keep
+  /// their exact wording and behaviour ("Add to My Space", "Add Games tab to
+  /// My Space", "Remove from favorites" behind its confirmation); opening and
+  /// sharing the profile join them.
+  List<LibraryMenuAction> _playerMenuActions(
+    BuildContext rowContext,
     PlayerStandingModel player,
-  ) async {
-    final RenderBox overlay =
-        Overlay.of(context).context.findRenderObject() as RenderBox;
-
-    final value = await showTabletSafeMenu(
-      context: context,
-      position: RelativeRect.fromRect(
-        position & const Size(40, 40),
-        Offset.zero & overlay.size,
-      ),
-      color: context.colors.surface,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8.br)),
-      items: [
-        PopupMenuItem(
-          value: 'delete',
-          child: Row(
-            children: [
-              Icon(Icons.delete_outline, color: kRedColor, size: 20.ic),
-              SizedBox(width: 12.w),
-              Text(
-                'Remove from favorites',
-                style: AppTypography.textSmRegular.copyWith(color: kRedColor),
-              ),
-            ],
-          ),
+  ) {
+    return playerStandingMenuActions(
+      rowContext,
+      ref,
+      player,
+      onOpen: () => _openPlayer(player),
+      playerAddLabel: 'Add to My Space',
+      playerRemoveLabel: 'Remove from My Space',
+      extra: [
+        LibraryMenuAction(
+          icon: Icons.delete_outline,
+          label: 'Remove from favorites',
+          destructive: true,
+          onSelected: () async {
+            if (!mounted) return;
+            final confirmed = await _showDeleteConfirmation(player);
+            if (confirmed == true && mounted) {
+              HapticFeedback.mediumImpact();
+            }
+          },
         ),
       ],
     );
-
-    if (!mounted || value != 'delete') return;
-
-    final confirmed = await _showDeleteConfirmation(player);
-    if (confirmed == true && mounted) {
-      HapticFeedback.mediumImpact();
-    }
   }
 
   Future<bool?> _showDeleteConfirmation(PlayerStandingModel player) async {

@@ -5,15 +5,27 @@ import 'package:chessever2/repository/supabase/game/games.dart';
 import 'package:chessever2/screens/group_event/model/tour_event_card_model.dart';
 import 'package:chessever2/screens/group_event/providers/group_event_screen_provider.dart';
 import 'package:chessever2/screens/group_event/providers/supabase_combined_search_provider.dart';
+import 'package:chessever2/screens/gamebase/event_view/gamebase_virtual_event_id.dart';
+import 'package:chessever2/screens/gamebase/utils/space_position_draft.dart';
+import 'package:chessever2/screens/library/widgets/library_context_menu.dart';
+import 'package:chessever2/screens/my_space/actions/space_menu_action.dart';
+import 'package:chessever2/screens/my_space/models/space_shortcut.dart';
+import 'package:chessever2/screens/my_space/navigation/space_shortcut_navigator.dart'
+    show resolveSpaceLine;
+import 'package:chessever2/screens/player_profile/utils/player_menu_actions.dart';
+import 'package:chessever2/screens/player_profile/widgets/lifted_row_menu.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/user_error_message.dart';
+import 'package:chessever2/widgets/event_card/event_context_menu.dart'
+    show eventSpaceDraft;
 import 'package:chessever2/widgets/search/enhanced_group_broadcast_local_storage.dart';
 import 'package:chessever2/widgets/search/opening_search_suggestion.dart';
 import 'package:chessever2/widgets/search/recent_searches_provider.dart';
 import 'package:chessever2/widgets/search/search_result_model.dart';
 import 'package:chessever2/widgets/search/widgets/search_result_title.dart';
+import 'package:chessever2/widgets/space_shortcut_drafts.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
@@ -228,7 +240,11 @@ class SearchOverlay extends ConsumerWidget {
             padding: EdgeInsets.all(12.sp),
             child: Row(
               children: [
-                Icon(Icons.menu_book_outlined, size: 16.ic, color: kDarkBlue),
+                Icon(
+                  Icons.menu_book_outlined,
+                  size: 16.ic,
+                  color: searchAccentInk(context),
+                ),
                 SizedBox(width: 8.w),
                 Text(
                   'Openings (${openings.length})',
@@ -249,11 +265,48 @@ class SearchOverlay extends ConsumerWidget {
               separatorBuilder: (_, __) => SizedBox(width: 8.w),
               itemBuilder: (context, index) {
                 final opening = openings[index];
-                return _OpeningResultTile(
-                  suggestion: opening,
-                  showsAll:
-                      opening.isAggregate || openings.any(opening.isParentOf),
-                  onTap: () => onOpeningTap?.call(opening.selection),
+                final showsAll =
+                    opening.isAggregate || openings.any(opening.isParentOf);
+                return Consumer(
+                  builder:
+                      (context, ref, _) => _OpeningResultTile(
+                        suggestion: opening,
+                        showsAll: showsAll,
+                        onTap: () => onOpeningTap?.call(opening.selection),
+                        onLongPress:
+                            (tileContext) => showLibraryContextMenu(
+                              context: tileContext,
+                              previewBuilder:
+                                  (_) => _OpeningResultTile(
+                                    suggestion: opening,
+                                    showsAll: showsAll,
+                                    onTap: () {},
+                                  ),
+                              onPreviewTap:
+                                  () => onOpeningTap?.call(opening.selection),
+                              actions: [
+                                if (onOpeningTap != null)
+                                  LibraryMenuAction(
+                                    icon: Icons.menu_book_outlined,
+                                    label: 'Open opening',
+                                    onSelected:
+                                        () => onOpeningTap?.call(
+                                          opening.selection,
+                                        ),
+                                  ),
+                                labeledSpaceMenuAction(
+                                  context: tileContext,
+                                  ref: ref,
+                                  draft: openingSearchSpaceDraft(
+                                    opening.selection,
+                                    name: opening.fullTitle,
+                                  ),
+                                  addLabel: 'Add opening to My Space',
+                                  removeLabel: 'Remove opening from My Space',
+                                ),
+                              ],
+                            ),
+                      ),
                 );
               },
             ),
@@ -347,7 +400,7 @@ class SearchOverlay extends ConsumerWidget {
           padding: EdgeInsets.all(12.sp),
           child: Row(
             children: [
-              Icon(icon, size: 16.ic, color: kDarkBlue),
+              Icon(icon, size: 16.ic, color: searchAccentInk(context)),
               SizedBox(width: 8.w),
               Text(
                 '$title (${filteredResults.length})',
@@ -367,20 +420,142 @@ class SearchOverlay extends ConsumerWidget {
             itemCount: filteredResults.length,
             itemBuilder: (context, index) {
               final result = filteredResults[index];
-              return SearchResultTile(
+              final player = isPlayerSection ? result.player : null;
+              final VoidCallback onTap =
+                  player != null
+                      ? () => onPlayerTap?.call(player)
+                      : () => onTournamentTap(result.tournament);
+              final tile = SearchResultTile(
                 result: result,
-                onTap:
-                    isPlayerSection
-                        ? () => onPlayerTap?.call(result.player!)
-                        : () => onTournamentTap(result.tournament),
+                onTap: onTap,
                 isPlayerResult: isPlayerSection,
                 isFullWidth: isFullWidth,
+              );
+              if (isPlayerSection && player == null) return tile;
+              // Long-press lifts the row into the shared focus menu.
+              return Consumer(
+                builder:
+                    (context, ref, child) => LiftedRowMenu(
+                      surfaceColor: context.colors.surfaceRecessed,
+                      onPreviewTap: onTap,
+                      actions:
+                          (tileContext) =>
+                              player != null
+                                  ? _playerActions(tileContext, ref, player)
+                                  : _tournamentActions(
+                                    tileContext,
+                                    ref,
+                                    result.tournament,
+                                  ),
+                      child: child!,
+                    ),
+                child: tile,
               );
             },
           ),
         ),
       ],
     );
+  }
+
+  /// A player result's menu: open, the two My Space rows it always had, and
+  /// the profile link.
+  List<LibraryMenuAction> _playerActions(
+    BuildContext tileContext,
+    WidgetRef ref,
+    SearchPlayer player, {
+    VoidCallback? onOpen,
+  }) {
+    final open = onPlayerTap;
+    return playerMenuActions(
+      tileContext,
+      ref,
+      playerName: player.name,
+      fideId: player.fideId,
+      title: player.title,
+      federation: player.fed,
+      rating: player.rating,
+      gamebasePlayerId: player.gamebasePlayerId,
+      memorialSourceIdentity: player.memorialSourceIdentity,
+      memorialRouteId: player.memorialRouteId,
+      onOpen: onOpen ?? (open == null ? null : () => open(player)),
+    );
+  }
+
+  List<LibraryMenuAction> _tournamentActions(
+    BuildContext tileContext,
+    WidgetRef ref,
+    GroupEventCardModel tournament,
+  ) {
+    final draft = searchEventSpaceDraft(tournament);
+    return [
+      LibraryMenuAction(
+        icon: Icons.open_in_new_rounded,
+        label: 'Open event',
+        onSelected: () => onTournamentTap(tournament),
+      ),
+      if (draft != null)
+        spaceMenuAction(context: tileContext, ref: ref, draft: draft),
+    ];
+  }
+
+  /// A recent destination's menu: open it again, pin it, or drop it from the
+  /// list (the same removal as the row's close button).
+  List<LibraryMenuAction> _recentActions(
+    BuildContext tileContext,
+    WidgetRef ref,
+    RecentSearchEntry entry,
+  ) {
+    void open() => unawaited(_openRecent(entry));
+    final remove = LibraryMenuAction(
+      icon: Icons.close_rounded,
+      label: 'Remove from recent searches',
+      destructive: true,
+      onSelected:
+          () => unawaited(ref.read(recentSearchesProvider.notifier).remove(entry)),
+    );
+    switch (entry.kind) {
+      case RecentSearchKind.player:
+        final player = entry.toPlayer();
+        if (player == null) return [remove];
+        return [
+          // The recent entry resolves its player before opening it.
+          ..._playerActions(tileContext, ref, player, onOpen: open),
+          remove,
+        ];
+      case RecentSearchKind.tournament:
+        final tournament = entry.toTournament();
+        final draft =
+            tournament == null ? null : searchEventSpaceDraft(tournament);
+        return [
+          LibraryMenuAction(
+            icon: Icons.open_in_new_rounded,
+            label: 'Open event',
+            onSelected: open,
+          ),
+          if (draft != null)
+            spaceMenuAction(context: tileContext, ref: ref, draft: draft),
+          remove,
+        ];
+      case RecentSearchKind.opening:
+        final selection = entry.toOpeningSelection();
+        return [
+          LibraryMenuAction(
+            icon: Icons.menu_book_outlined,
+            label: 'Open opening',
+            onSelected: open,
+          ),
+          if (selection != null && selection.filter.code != null)
+            labeledSpaceMenuAction(
+              context: tileContext,
+              ref: ref,
+              draft: openingSearchSpaceDraft(selection, name: entry.title),
+              addLabel: 'Add opening to My Space',
+              removeLabel: 'Remove opening from My Space',
+            ),
+          remove,
+        ];
+    }
   }
 
   Widget _buildHeader(
@@ -401,7 +576,7 @@ class SearchOverlay extends ConsumerWidget {
       ),
       child: Row(
         children: [
-          Icon(Icons.search, size: 16.ic, color: kDarkBlue),
+          Icon(Icons.search, size: 16.ic, color: searchAccentInk(context)),
           SizedBox(width: 8.w),
           Expanded(
             child: Text(
@@ -450,7 +625,11 @@ class SearchOverlay extends ConsumerWidget {
                     padding: EdgeInsets.fromLTRB(12.w, 4.h, 4.w, 4.h),
                     child: Row(
                       children: [
-                        Icon(Icons.history, size: 16.ic, color: kDarkBlue),
+                        Icon(
+                          Icons.history,
+                          size: 16.ic,
+                          color: searchAccentInk(context),
+                        ),
                         SizedBox(width: 8.w),
                         Expanded(
                           child: Text(
@@ -483,15 +662,22 @@ class SearchOverlay extends ConsumerWidget {
                       itemCount: entries.length,
                       itemBuilder: (context, index) {
                         final entry = entries[index];
-                        return _RecentSearchTile(
-                          entry: entry,
-                          onTap: () => unawaited(_openRecent(entry)),
-                          onRemove:
-                              () => unawaited(
-                                ref
-                                    .read(recentSearchesProvider.notifier)
-                                    .remove(entry),
-                              ),
+                        return LiftedRowMenu(
+                          surfaceColor: context.colors.surfaceRecessed,
+                          onPreviewTap: () => unawaited(_openRecent(entry)),
+                          actions:
+                              (tileContext) =>
+                                  _recentActions(tileContext, ref, entry),
+                          child: _RecentSearchTile(
+                            entry: entry,
+                            onTap: () => unawaited(_openRecent(entry)),
+                            onRemove:
+                                () => unawaited(
+                                  ref
+                                      .read(recentSearchesProvider.notifier)
+                                      .remove(entry),
+                                ),
+                          ),
                         );
                       },
                     ),
@@ -570,7 +756,12 @@ class SearchOverlay extends ConsumerWidget {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.error_outline, size: 48.ic, color: kRedColor),
+            Icon(
+              Icons.error_outline,
+              size: 48.ic,
+              // kRedColor in dark; the deeper paper red in light.
+              color: context.colors.danger,
+            ),
             SizedBox(height: 16.h),
             Text(
               'Search failed',
@@ -637,16 +828,77 @@ class SearchOverlay extends ConsumerWidget {
   }
 }
 
+/// My Space shortcut for an opening the search offers, from a live result or
+/// a recent search. Both reopen in the opening explorer.
+///
+/// A named line (one catalog row, e.g. "Najdorf, English Attack") is pinned
+/// as the `position` its moves reach, built by the shared
+/// [spacePositionDraft]: several named lines share one ECO code, so a code
+/// key would make every B90 line (and the board's opening row) read as
+/// pinned, and it would reopen on the code's canonical line instead of this
+/// one. As a position it dedupes with the explorer and board pins of the
+/// same line and reopens on exactly its moves.
+///
+/// Aggregate rows (a whole code, or a family range like `B90-B99`) keep the
+/// bare code label as their key, shared with the board's opening row and the
+/// profile repertoire rows. A named line whose moves do not replay falls
+/// back to that code pin rather than saving a shallower position.
+SpaceShortcut openingSearchSpaceDraft(
+  OpeningSearchSelection selection, {
+  required String name,
+}) {
+  if (!selection.isAggregate && !selection.filter.isFamily) {
+    final line = resolveSpaceLine(moves: selection.movePath);
+    if (line != null && line.ucis.length == selection.movePath.length) {
+      final draft = spacePositionDraft(fen: line.fen, ucis: line.ucis);
+      if (draft != null) return draft;
+    }
+  }
+  return spaceOpeningDraft(
+    targetId: selection.codeLabel,
+    name: name,
+    extraParams: {
+      if (selection.filter.code != null) 'ecoCode': selection.filter.code,
+      'hierarchyLabel': selection.hierarchyLabel,
+      'movePath': selection.movePath,
+      'isAggregate': selection.isAggregate,
+    },
+  );
+}
+
+/// The My Space shortcut for a searched event. Community (calendar) events
+/// carry their calendar identity so the opener can route them to the calendar
+/// detail. Gamebase-only virtual events have no id the opener can resolve, so
+/// they offer no pin.
+SpaceShortcut? searchEventSpaceDraft(GroupEventCardModel tournament) {
+  if (tournament.id.trim().isEmpty || isVirtualGamebaseId(tournament.id)) {
+    return null;
+  }
+  final draft = eventSpaceDraft(tournament);
+  if (tournament.eventSource != EventSource.communityEvent) return draft;
+  return draft.copyWith(
+    params: {
+      ...draft.params,
+      'source': 'calendar',
+      'calendarEventId': tournament.id,
+    },
+  );
+}
+
 class _OpeningResultTile extends StatelessWidget {
   const _OpeningResultTile({
     required this.suggestion,
     required this.showsAll,
     required this.onTap,
+    this.onLongPress,
   });
 
   final OpeningSearchSuggestion suggestion;
   final bool showsAll;
   final VoidCallback onTap;
+
+  /// Receives the tile's own context so a context menu can anchor to it.
+  final void Function(BuildContext tileContext)? onLongPress;
 
   @override
   Widget build(BuildContext context) {
@@ -659,6 +911,7 @@ class _OpeningResultTile extends StatelessWidget {
       child: InkWell(
         key: ValueKey('opening-result-${suggestion.id}'),
         onTap: onTap,
+        onLongPress: onLongPress == null ? null : () => onLongPress!(context),
         borderRadius: BorderRadius.circular(8.br),
         child: Container(
           width: 230,
@@ -681,8 +934,8 @@ class _OpeningResultTile extends StatelessWidget {
                     children: [
                       TextSpan(
                         text: codeLabel,
-                        style: const TextStyle(
-                          color: kDarkBlue,
+                        style: TextStyle(
+                          color: searchAccentInk(context),
                           fontWeight: FontWeight.w700,
                         ),
                       ),
@@ -690,7 +943,7 @@ class _OpeningResultTile extends StatelessWidget {
                         TextSpan(
                           text: '  ★ All',
                           style: TextStyle(
-                            color: context.colors.brand,
+                            color: context.colors.accentText,
                             fontWeight: FontWeight.w700,
                           ),
                         ),
@@ -766,7 +1019,7 @@ class _RecentSearchTile extends StatelessWidget {
           padding: EdgeInsets.only(left: 12.w, right: 2.w),
           child: Row(
             children: [
-              Icon(_icon, size: 17.ic, color: kDarkBlue),
+              Icon(_icon, size: 17.ic, color: searchAccentInk(context)),
               SizedBox(width: 10.w),
               Expanded(
                 child: Column(
@@ -813,3 +1066,8 @@ class _RecentSearchTile extends StatelessWidget {
     );
   }
 }
+
+/// Search's blue accent for icons and the ECO code: [kDarkBlue] on the dark
+/// overlay; on paper it is ~2.6:1, so light uses the accent-text teal.
+Color searchAccentInk(BuildContext context) =>
+    context.isLightTheme ? context.colors.accentText : kDarkBlue;

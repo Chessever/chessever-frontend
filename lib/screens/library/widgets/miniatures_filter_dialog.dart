@@ -262,11 +262,11 @@ class _MiniaturesFilterDialogState extends State<MiniaturesFilterDialog> {
               Text(
                 label,
                 style: AppTypography.textXsMedium.copyWith(
-                  color: kPrimaryColor,
+                  color: context.colors.accentText,
                 ),
               ),
               SizedBox(width: 4.w),
-              Icon(Icons.close_rounded, color: kPrimaryColor, size: 14.ic),
+              Icon(Icons.close_rounded, color: context.colors.accentText, size: 14.ic),
             ],
           ),
         ),
@@ -346,7 +346,7 @@ class _MiniaturesFilterDialogState extends State<MiniaturesFilterDialog> {
                 onPressed: () => Navigator.of(context).pop(),
                 icon: Icon(
                   Icons.close_rounded,
-                  color: context.colors.textPrimary.withValues(alpha: 0.6),
+                  color: context.textInk(0.6),
                   size: 20.ic,
                 ),
               ),
@@ -517,7 +517,7 @@ class _MiniaturesFilterDialogState extends State<MiniaturesFilterDialog> {
       decoration: InputDecoration(
         hintText: hint,
         hintStyle: AppTypography.textSmRegular.copyWith(
-          color: context.colors.textPrimary.withValues(alpha: 0.4),
+          color: context.textInk(0.4),
         ),
         filled: true,
         fillColor: context.colors.surfaceRecessed,

@@ -9,7 +9,12 @@ import 'package:chessever2/utils/svg_asset.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
-enum BottomNavBarItem { tournaments, calendar, library }
+/// Main sections, in bar order: Events, Feed, For You, Library. The calendar
+/// lives as a compact month in the sidebar.
+///
+/// Tabs are only ever addressed by value or by [Enum.name] (analytics sends
+/// the name), never by index, so reordering the bar moves nothing else.
+enum BottomNavBarItem { tournaments, feed, forYou, library }
 
 /// Emitted whenever the user taps the already-selected bottom nav item.
 /// Screens that own a scrollable surface for [item] should listen and
@@ -28,7 +33,7 @@ class BottomNavBarReTapRequestNotifier
   BottomNavBarReTapRequestNotifier()
     : super(
         const BottomNavBarReTapRequest(
-          item: BottomNavBarItem.tournaments,
+          item: BottomNavBarItem.forYou,
           sequence: 0,
         ),
       );
@@ -45,20 +50,33 @@ final bottomNavBarReTapRequestProvider = StateNotifierProvider<
 
 final Map<BottomNavBarItem, String> bottomNavBarIcons = {
   BottomNavBarItem.tournaments: SvgAsset.tournamentIcon,
-  BottomNavBarItem.calendar: SvgAsset.calendarNavIcon,
+  BottomNavBarItem.feed: SvgAsset.feedNavIcon,
+  BottomNavBarItem.forYou: SvgAsset.forYouNavIcon,
   BottomNavBarItem.library: SvgAsset.libraryNavIcon,
 };
 
 final namesBottomNavBarIcons = {
   BottomNavBarItem.tournaments: 'Events',
-  BottomNavBarItem.calendar: 'Calendar',
+  BottomNavBarItem.feed: 'Feed',
+  BottomNavBarItem.forYou: 'For You',
   BottomNavBarItem.library: 'Library',
 };
 
+/// The section Home shows. The app opens on For You (its Today page); deep
+/// links and notification taps push their screens over Home, so backing out
+/// of them lands there too.
 final selectedBottomNavBarItemProvider =
     StateProvider.autoDispose<BottomNavBarItem>(
-      (ref) => BottomNavBarItem.tournaments,
+      (ref) => BottomNavBarItem.forYou,
     );
+
+/// Whether the home sidebar (the home Scaffold's drawer) is open, however it
+/// was opened: avatar, nav rail or edge swipe. Home reports it through
+/// `Scaffold.onDrawerChanged`. A drawer is not a route, so a tab that must
+/// pause under it (Feed playback) cannot learn this from RouteAware.
+/// Auto-disposed with its last listener, so it can never outlive the shell
+/// reading "open".
+final homeDrawerOpenProvider = StateProvider.autoDispose<bool>((ref) => false);
 
 class BottomNavBar extends ConsumerWidget {
   const BottomNavBar({super.key});
@@ -88,44 +106,48 @@ class BottomNavBar extends ConsumerWidget {
       child: ConstrainedBox(
         constraints: BoxConstraints(minHeight: 70.h),
         child: Row(
-          children: List.generate(
-          BottomNavBarItem.values.length,
-          (index) => BottomNavBarWidget(
-            key: switch (BottomNavBarItem.values[index]) {
-              BottomNavBarItem.tournaments => e2eKey(E2eIds.navEvents),
-              BottomNavBarItem.calendar => e2eKey(E2eIds.navCalendar),
-              BottomNavBarItem.library => e2eKey(E2eIds.navLibrary),
-            },
-            width:
-                MediaQuery.sizeOf(context).width /
-                BottomNavBarItem.values.length,
-            isSelected: selectedItem == BottomNavBarItem.values[index],
-            onTap: () {
-              final previous = ref.read(selectedBottomNavBarItemProvider);
-              final next = BottomNavBarItem.values[index];
-              if (previous == next) {
-                // Same tab re-tapped: signal screens to scroll their active
-                // list to top. Selected subtab + data are preserved; no
-                // pull-to-refresh, no reload.
-                ref
-                    .read(bottomNavBarReTapRequestProvider.notifier)
-                    .request(next);
-                return;
-              }
+          children: [
+            for (final item in BottomNavBarItem.values)
+              BottomNavBarWidget(
+                key: switch (item) {
+                  BottomNavBarItem.tournaments => e2eKey(E2eIds.navEvents),
+                  BottomNavBarItem.feed => e2eKey(E2eIds.navFeed),
+                  BottomNavBarItem.forYou => e2eKey(E2eIds.navForYou),
+                  BottomNavBarItem.library => e2eKey(E2eIds.navLibrary),
+                },
+                width:
+                    MediaQuery.sizeOf(context).width /
+                    BottomNavBarItem.values.length,
+                isSelected: selectedItem == item,
+                onTap: () {
+                  final previous = ref.read(selectedBottomNavBarItemProvider);
+                  if (previous == item) {
+                    // Same tab re-tapped: signal screens to scroll their
+                    // active list to top. Selected subtab + data are
+                    // preserved; no pull-to-refresh, no reload.
+                    ref
+                        .read(bottomNavBarReTapRequestProvider.notifier)
+                        .request(item);
+                    return;
+                  }
 
-              ref.read(selectedBottomNavBarItemProvider.notifier).state = next;
+                  ref.read(selectedBottomNavBarItemProvider.notifier).state =
+                      item;
 
-              unawaited(
-                AnalyticsService.instance.trackEvent(
-                  'Bottom Nav Changed',
-                  properties: {'previous_tab': previous.name, 'tab': next.name},
-                ),
-              );
-            },
-            svgIcon: bottomNavBarIcons[BottomNavBarItem.values[index]]!,
-            title: namesBottomNavBarIcons[BottomNavBarItem.values[index]]!,
-            ),
-          ),
+                  unawaited(
+                    AnalyticsService.instance.trackEvent(
+                      'Bottom Nav Changed',
+                      properties: {
+                        'previous_tab': previous.name,
+                        'tab': item.name,
+                      },
+                    ),
+                  );
+                },
+                svgIcon: bottomNavBarIcons[item]!,
+                title: namesBottomNavBarIcons[item]!,
+              ),
+          ],
         ),
       ),
     );

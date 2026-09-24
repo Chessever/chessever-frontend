@@ -2,11 +2,11 @@ import 'dart:async';
 
 import 'package:chessever2/providers/favorite_events_provider.dart';
 import 'package:chessever2/repository/supabase/calendar_event/calendar_event.dart';
-import 'package:chessever2/repository/supabase/calendar_event/calendar_event_repository.dart';
 import 'package:chessever2/repository/supabase/group_broadcast/group_broadcast.dart';
 import 'package:chessever2/repository/supabase/group_broadcast/group_tour_repository.dart';
 import 'package:chessever2/screens/calendar/calendar_screen.dart';
 import 'package:chessever2/screens/calendar/calendar_event_detail_screen.dart';
+import 'package:chessever2/screens/calendar/provider/calendar_month_events_provider.dart';
 import 'package:chessever2/screens/calendar/provider/calendar_screen_provider.dart';
 import 'package:chessever2/screens/calendar/provider/calendar_search_isolate.dart';
 import 'package:chessever2/screens/group_event/model/tour_event_card_model.dart';
@@ -85,20 +85,13 @@ class _CalendarDetailScreenController
 
   Future<void> _init() async {
     try {
-      // Fetch both group broadcasts and calendar events
-      final current = await ref
-          .read(groupBroadcastRepositoryProvider)
-          .getCurrentMonthGroupBroadcasts(
-            selectedMonth: filterArgs.month,
-            selectedYear: filterArgs.year,
-          );
-
-      final calEvents = await ref
-          .read(calendarEventRepositoryProvider)
-          .getCalendarEventsForMonth(
-            selectedMonth: filterArgs.month,
-            selectedYear: filterArgs.year,
-          );
+      // Group broadcasts and calendar events for the month, shared with the
+      // sidebar month view so a month it already showed is not fetched again.
+      final month = await ref.read(
+        calendarMonthEventsProvider(filterArgs).future,
+      );
+      final current = month.broadcasts;
+      final calEvents = month.calendarEvents;
 
       groupBroadcast = current;
       calendarEvents = calEvents;
@@ -349,6 +342,7 @@ class _CalendarDetailScreenController
   }
 
   Future<void> refresh() async {
+    ref.invalidate(calendarMonthEventsProvider(filterArgs));
     await _init();
   }
 }

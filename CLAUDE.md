@@ -79,7 +79,7 @@ We **purposefully deactivate local Stockfish in debug mode** because its native 
 
 - **Never construct a `SnackBar` by hand.** Flutter ≥3.38 (PR #173084) defaults `SnackBar.persist` to `action != null`, so any hand-rolled snack with an action never times out — it survives route pushes and stays pinned over whatever screen the user walks to next. That shipped as a bug. The helper always passes `persist: false`.
 - The gotcha is worst where logic awaits `ScaffoldFeatureController.closed` (the My Likes export gate): with `persist: true` that future never completes and the flow hangs silently.
-- Tone carries the meaning: `neutral` for confirmations, `danger` for genuine failures, `success` for completed work. The capsule is black in both themes — do not recolour the surface per message.
+- Tone carries the meaning: `neutral` for confirmations, `danger` for genuine failures, `success` for completed work. One capsule per theme — ink-black in dark, paper (`colors.popup`, ink edge, short ink shadow) in light — never recolour the surface per message.
 - Regression cover lives in `test/app_snack_test.dart` (auto-dismiss, action close, 44dp tap target).
 
 ## Edge Functions: NEVER deploy with `verify_jwt` enabled

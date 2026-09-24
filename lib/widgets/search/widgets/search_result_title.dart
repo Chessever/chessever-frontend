@@ -104,6 +104,11 @@ class _SearchResultTileState extends State<SearchResultTile>
     );
   }
 
+  /// Secondary metadata ink: the historic grey[400] on dark, the AA-safe
+  /// secondary token on paper.
+  Color get _metaColor =>
+      context.isLightTheme ? context.colors.textSecondary : Colors.grey[400]!;
+
   Widget _buildPlayerContent() {
     final player = widget.result.player;
     final title = player?.title;
@@ -130,8 +135,8 @@ class _SearchResultTileState extends State<SearchResultTile>
                 displayName,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  color: Colors.white,
+                style: TextStyle(
+                  color: context.colors.textPrimary,
                   fontSize: 12,
                   fontWeight: FontWeight.w500,
                 ),
@@ -141,7 +146,7 @@ class _SearchResultTileState extends State<SearchResultTile>
                 Text(
                   subtitle,
                   overflow: TextOverflow.ellipsis,
-                  style: TextStyle(color: Colors.grey[400], fontSize: 12),
+                  style: TextStyle(color: _metaColor, fontSize: 12),
                 ),
               ],
             ],
@@ -159,8 +164,8 @@ class _SearchResultTileState extends State<SearchResultTile>
           widget.result.tournament.title,
           maxLines: 2,
           overflow: TextOverflow.ellipsis,
-          style: const TextStyle(
-            color: Colors.white,
+          style: TextStyle(
+            color: context.colors.textPrimary,
             fontSize: 12,
             fontWeight: FontWeight.w500,
           ),
@@ -169,13 +174,13 @@ class _SearchResultTileState extends State<SearchResultTile>
           SizedBox(height: 8.h),
           Row(
             children: [
-              Icon(Icons.calendar_today, size: 12.ic, color: Colors.grey[400]),
+              Icon(Icons.calendar_today, size: 12.ic, color: _metaColor),
               SizedBox(width: 4.w),
               Expanded(
                 child: Text(
                   widget.result.tournament.dates,
                   overflow: TextOverflow.ellipsis,
-                  style: TextStyle(color: Colors.grey[400], fontSize: 12),
+                  style: TextStyle(color: _metaColor, fontSize: 12),
                 ),
               ),
             ],

@@ -1,7 +1,7 @@
 import 'package:chessever2/theme/app_colors.dart';
-import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/widgets/app_switch_colors.dart';
 import 'package:flutter/material.dart';
 
 /// A self-contained settings tile: title/subtitle + adaptive switch.
@@ -81,18 +81,11 @@ class NotifToggleTile extends StatelessWidget {
             Switch.adaptive(
               value: value,
               onChanged: onChanged,
-              thumbColor: WidgetStateProperty.resolveWith(
-                (states) =>
-                    states.contains(WidgetState.selected)
-                        ? kPrimaryColor
-                        : context.colors.textPrimary.withValues(alpha: 0.6),
+              thumbColor: appSwitchThumbColor(
+                context,
+                darkOffThumb: context.colors.textPrimary.withValues(alpha: 0.6),
               ),
-              trackColor: WidgetStateProperty.resolveWith(
-                (states) =>
-                    states.contains(WidgetState.selected)
-                        ? kPrimaryColor.withValues(alpha: 0.35)
-                        : context.colors.divider.withValues(alpha: 0.5),
-              ),
+              trackColor: appSwitchTrackColor(context),
             ),
           ],
         ),

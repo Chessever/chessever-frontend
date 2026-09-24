@@ -6,8 +6,7 @@ import 'package:chessever2/screens/settings/widgets/engine_settings_body.dart';
 import 'package:chessever2/screens/settings/widgets/notification_settings_body.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
-// Light theme is temporarily disabled — Appearance stays out of Settings.
-// import 'package:chessever2/theme/theme_provider.dart';
+import 'package:chessever2/theme/theme_provider.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
@@ -16,6 +15,7 @@ import 'package:chessever2/widgets/hamburger_menu/hamburger_menu_dialogs.dart';
 import 'package:chessever2/widgets/svg_widget.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:motor/motor.dart';
 
 enum SettingsSection { botvinnik, board, engine, notification }
 
@@ -131,12 +131,12 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                 bottom: 16.sp + bottomPadding,
               ),
               children: [
-                // Light theme is temporarily disabled — hide the Dark-only
-                // Appearance card so Settings matches the pre-light-theme layout.
-                // const _AppearanceSection(),
-                // SizedBox(height: 14.h),
+                const SettingsAppearanceSection(),
+                SizedBox(height: 14.h),
                 _CollapsibleSection(
                   title: 'Botvinnik',
+                  // BotvinnikIcon picks its own tint per theme (paperTint on
+                  // light); an accent-text override drowns the face.
                   leading: BotvinnikIcon(size: 24.ic),
                   expanded: _expanded == SettingsSection.botvinnik,
                   onTap: () => _toggle(SettingsSection.botvinnik),
@@ -198,157 +198,242 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
   }
 }
 
-// Light theme is temporarily disabled. Uncomment with the Appearance card
-// above, plus the theme_provider import, to restore Dark / Auto / Light.
-//
-// class _AppearanceSection extends ConsumerWidget {
-//   const _AppearanceSection();
-//
-//   static const _modes = <(ThemeMode, String, IconData)>[
-//     (ThemeMode.dark, 'Dark', Icons.dark_mode_outlined),
-//     (ThemeMode.system, 'Auto', Icons.brightness_auto_outlined),
-//     (ThemeMode.light, 'Light', Icons.light_mode_outlined),
-//   ];
-//
-//   @override
-//   Widget build(BuildContext context, WidgetRef ref) {
-//     final selected = ref.watch(themeModeProvider);
-//     final accent = kPrimaryColor;
-//
-//     return Container(
-//       decoration: BoxDecoration(
-//         color: context.colors.surface,
-//         borderRadius: BorderRadius.circular(20.br),
-//         border: Border.all(
-//           color: context.colors.divider.withValues(alpha: 0.4),
-//         ),
-//         boxShadow: context.isLightTheme
-//             ? [
-//                 BoxShadow(
-//                   color: context.colors.shadow,
-//                   blurRadius: 8,
-//                   offset: const Offset(0, 1),
-//                 ),
-//               ]
-//             : null,
-//       ),
-//       padding: EdgeInsets.fromLTRB(16.sp, 14.sp, 16.sp, 16.sp),
-//       child: Column(
-//         crossAxisAlignment: CrossAxisAlignment.start,
-//         children: [
-//           Row(
-//             children: [
-//               Container(
-//                 width: 40.w,
-//                 height: 40.h,
-//                 decoration: BoxDecoration(
-//                   color: context.colors.surfaceRecessed,
-//                   borderRadius: BorderRadius.circular(12.br),
-//                 ),
-//                 child: Icon(
-//                   Icons.contrast,
-//                   color: context.colors.iconPrimary,
-//                   size: 22.ic,
-//                 ),
-//               ),
-//               SizedBox(width: 14.w),
-//               Expanded(
-//                 child: Text(
-//                   'Appearance',
-//                   style: AppTypography.textMdMedium.copyWith(
-//                     color: context.colors.textPrimary,
-//                     fontSize: 14.f,
-//                     fontWeight: FontWeight.w600,
-//                   ),
-//                 ),
-//               ),
-//             ],
-//           ),
-//           SizedBox(height: 14.h),
-//           Container(
-//             decoration: BoxDecoration(
-//               color: context.colors.surfaceRecessed,
-//               borderRadius: BorderRadius.circular(14.br),
-//             ),
-//             padding: EdgeInsets.all(3.sp),
-//             child: Row(
-//               children: [
-//                 for (final entry in _modes)
-//                   Expanded(
-//                     child: _ThemeModeChip(
-//                       label: entry.$2,
-//                       icon: entry.$3,
-//                       selected: selected == entry.$1,
-//                       accent: accent,
-//                       onTap: () {
-//                         HapticFeedbackService.selection();
-//                         ref
-//                             .read(themeModeProvider.notifier)
-//                             .setTheme(entry.$1);
-//                       },
-//                     ),
-//                   ),
-//               ],
-//             ),
-//           ),
-//         ],
-//       ),
-//     );
-//   }
-// }
-//
-// class _ThemeModeChip extends StatelessWidget {
-//   const _ThemeModeChip({
-//     required this.label,
-//     required this.icon,
-//     required this.selected,
-//     required this.accent,
-//     required this.onTap,
-//   });
-//
-//   final String label;
-//   final IconData icon;
-//   final bool selected;
-//   final Color accent;
-//   final VoidCallback onTap;
-//
-//   @override
-//   Widget build(BuildContext context) {
-//     return Material(
-//       color: selected ? context.colors.surface : Colors.transparent,
-//       borderRadius: BorderRadius.circular(11.br),
-//       child: InkWell(
-//         onTap: onTap,
-//         borderRadius: BorderRadius.circular(11.br),
-//         splashColor: accent.withValues(alpha: 0.08),
-//         highlightColor: accent.withValues(alpha: 0.04),
-//         child: Padding(
-//           padding: EdgeInsets.symmetric(vertical: 10.sp),
-//           child: Column(
-//             children: [
-//               Icon(
-//                 icon,
-//                 size: 18.ic,
-//                 color: selected ? accent : context.colors.textTertiary,
-//               ),
-//               SizedBox(height: 4.h),
-//               Text(
-//                 label,
-//                 style: AppTypography.textXsMedium.copyWith(
-//                   color: selected
-//                       ? context.colors.textPrimary
-//                       : context.colors.textSecondary,
-//                   fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
-//                   fontSize: 12.f,
-//                 ),
-//               ),
-//             ],
-//           ),
-//         ),
-//       ),
-//     );
-//   }
-// }
+/// Dark / Auto / Light picker. Plain text segments on an inset track with a
+/// sliding thumb: no icon tile, no accent flood. Dark stays the default for
+/// anyone who never opens this card.
+class SettingsAppearanceSection extends ConsumerWidget {
+  const SettingsAppearanceSection({super.key});
+
+  static const _modes = <(ThemeMode, String)>[
+    (ThemeMode.dark, 'Dark'),
+    (ThemeMode.system, 'Auto'),
+    (ThemeMode.light, 'Light'),
+  ];
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final selected = ref.watch(themeModeProvider);
+    final selectedIndex = _modes.indexWhere((m) => m.$1 == selected);
+
+    return Container(
+      key: const ValueKey('settings_appearance_card'),
+      decoration: BoxDecoration(
+        color: context.colors.surface,
+        borderRadius: BorderRadius.circular(20.br),
+        border: Border.all(
+          color: context.colors.divider.withValues(alpha: 0.4),
+        ),
+        boxShadow: context.isLightTheme
+            ? [
+                BoxShadow(
+                  color: context.colors.shadow,
+                  blurRadius: 8,
+                  offset: const Offset(0, 1),
+                ),
+              ]
+            : null,
+      ),
+      padding: EdgeInsets.fromLTRB(16.sp, 14.sp, 16.sp, 16.sp),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Appearance',
+            style: AppTypography.textMdMedium.copyWith(
+              color: context.colors.textPrimary,
+              fontSize: 14.f,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          SizedBox(height: 12.h),
+          _ThemeModeSegments(
+            labels: [for (final m in _modes) m.$2],
+            selectedIndex: selectedIndex < 0 ? 0 : selectedIndex,
+            onSelected: (index) {
+              final mode = _modes[index].$1;
+              if (mode == selected) return;
+              HapticFeedbackService.selection();
+              ref.read(themeModeProvider.notifier).setTheme(mode);
+            },
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Inset segmented track with one thumb that springs between options.
+/// Selection reads from three cues at once: the raised thumb, the label
+/// weight and the label ink, so it survives both themes and colour-blindness.
+class _ThemeModeSegments extends StatelessWidget {
+  const _ThemeModeSegments({
+    required this.labels,
+    required this.selectedIndex,
+    required this.onSelected,
+  });
+
+  final List<String> labels;
+  final int selectedIndex;
+  final ValueChanged<int> onSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    final isLight = context.isLightTheme;
+    final reduceMotion = MediaQuery.maybeDisableAnimationsOf(context) ?? false;
+    // Track sits a step below the card; the thumb a step above the track.
+    final trackColor = context.colors.background;
+    final thumbColor = isLight ? kWhiteColor : context.colors.surfaceRecessed;
+    final thumbEdge = isLight
+        ? context.colors.divider.withValues(alpha: 0.8)
+        : context.colors.dividerStrong.withValues(alpha: 0.6);
+    final count = labels.length;
+    final inset = 3.sp;
+
+    return Container(
+      // A floor, not a fixed height: at large text sizes (and on short
+      // phones, where 40.h shrinks) the track grows to its labels instead of
+      // slicing their descenders.
+      constraints: BoxConstraints(minHeight: 40.h),
+      padding: EdgeInsets.all(inset),
+      decoration: BoxDecoration(
+        color: trackColor,
+        borderRadius: BorderRadius.circular(4.br),
+      ),
+      child: IntrinsicHeight(
+        child: Stack(
+          children: [
+            Positioned.fill(
+              child: SingleMotionBuilder(
+                motion: reduceMotion
+                    ? const Motion.none()
+                    : const CupertinoMotion.snappy(),
+                value: selectedIndex.toDouble(),
+                builder: (context, value, child) {
+                  final x = count <= 1 ? 0.0 : -1 + 2 * value / (count - 1);
+                  return Align(
+                    alignment: Alignment(x.clamp(-1.0, 1.0), 0),
+                    child: child,
+                  );
+                },
+                child: FractionallySizedBox(
+                  widthFactor: 1 / count,
+                  heightFactor: 1,
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      color: thumbColor,
+                      borderRadius: BorderRadius.circular(2.br),
+                      border: Border.all(color: thumbEdge, width: 0.5),
+                      boxShadow: isLight
+                          ? [
+                              BoxShadow(
+                                color: context.colors.textPrimary.withValues(
+                                  alpha: 0.08,
+                                ),
+                                blurRadius: 2,
+                                offset: const Offset(0, 1),
+                              ),
+                            ]
+                          : null,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            Row(
+              children: [
+                for (var i = 0; i < count; i++)
+                  Expanded(
+                    child: _ThemeModeSegment(
+                      label: labels[i],
+                      selected: i == selectedIndex,
+                      reduceMotion: reduceMotion,
+                      onTap: () => onSelected(i),
+                    ),
+                  ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ThemeModeSegment extends StatefulWidget {
+  const _ThemeModeSegment({
+    required this.label,
+    required this.selected,
+    required this.reduceMotion,
+    required this.onTap,
+  });
+
+  final String label;
+  final bool selected;
+  final bool reduceMotion;
+  final VoidCallback onTap;
+
+  @override
+  State<_ThemeModeSegment> createState() => _ThemeModeSegmentState();
+}
+
+class _ThemeModeSegmentState extends State<_ThemeModeSegment> {
+  bool _pressed = false;
+
+  void _setPressed(bool value) {
+    if (_pressed == value) return;
+    setState(() => _pressed = value);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      button: true,
+      selected: widget.selected,
+      label: '${widget.label} appearance',
+      excludeSemantics: true,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTapDown: (_) => _setPressed(true),
+        onTapCancel: () => _setPressed(false),
+        onTapUp: (_) => _setPressed(false),
+        onTap: widget.onTap,
+        child: SingleMotionBuilder(
+          motion: widget.reduceMotion
+              ? const Motion.none()
+              : const CupertinoMotion.snappy(),
+          value: _pressed ? 0.97 : 1.0,
+          builder: (context, scale, child) {
+            return Transform.scale(scale: scale, child: child);
+          },
+          child: Center(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+              child: Text(
+                widget.label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                // Control-scale text stops at 1.4x, as the Feed header does, so
+                // three labels still fit across the track.
+                textScaler: MediaQuery.textScalerOf(
+                  context,
+                ).clamp(maxScaleFactor: 1.4),
+                style: AppTypography.textSmMedium.copyWith(
+                  color: widget.selected
+                      ? context.colors.textPrimary
+                      : context.colors.textSecondary,
+                  fontWeight: widget.selected
+                      ? FontWeight.w600
+                      : FontWeight.w500,
+                  fontSize: 13.f,
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
 
 class _DeleteAccountRow extends StatelessWidget {
   const _DeleteAccountRow({required this.onTap});
@@ -429,11 +514,14 @@ class _CollapsibleSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final accent = kPrimaryColor;
-    final borderColor =
-        expanded
-            ? accent.withValues(alpha: 0.45)
-            : context.colors.divider.withValues(alpha: 0.4);
+    final isLight = context.isLightTheme;
+    // Paper takes the deep accent-text teal: raw brand cyan reads ~2.3:1
+    // on the mint surface, under the 3:1 floor for UI chrome. Dark keeps
+    // the brand cyan and its expanded bloom unchanged.
+    final accent = isLight ? context.colors.accentText : kPrimaryColor;
+    final borderColor = expanded
+        ? (isLight ? accent : accent.withValues(alpha: 0.45))
+        : context.colors.divider.withValues(alpha: 0.4);
 
     return AnimatedContainer(
       duration: const Duration(milliseconds: 240),
@@ -442,25 +530,26 @@ class _CollapsibleSection extends StatelessWidget {
         color: context.colors.surface,
         borderRadius: BorderRadius.circular(20.br),
         border: Border.all(color: borderColor),
-        boxShadow:
-            expanded
-                ? [
-                  BoxShadow(
-                    color: accent.withValues(alpha: 0.18),
-                    blurRadius: 18,
-                    spreadRadius: -4,
-                    offset: const Offset(0, 6),
-                  ),
-                ]
-                : context.isLightTheme
-                ? [
-                  BoxShadow(
-                    color: context.colors.shadow,
-                    blurRadius: 8,
-                    offset: const Offset(0, 1),
-                  ),
-                ]
-                : null,
+        // Light: one tight ink-tinted shadow in both states, so expanding
+        // never blooms a coloured smudge onto the mint page.
+        boxShadow: isLight
+            ? [
+                BoxShadow(
+                  color: context.colors.shadow,
+                  blurRadius: 8,
+                  offset: const Offset(0, 1),
+                ),
+              ]
+            : expanded
+            ? [
+                BoxShadow(
+                  color: accent.withValues(alpha: 0.18),
+                  blurRadius: 18,
+                  spreadRadius: -4,
+                  offset: const Offset(0, 6),
+                ),
+              ]
+            : null,
       ),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(20.br),
@@ -484,17 +573,17 @@ class _CollapsibleSection extends StatelessWidget {
                         curve: Curves.easeOutCubic,
                         width: 40.w,
                         height: 40.h,
+                        // Light never tints the tile; the section border
+                        // alone carries the expanded state there.
                         decoration: BoxDecoration(
-                          color:
-                              expanded
-                                  ? accent.withValues(alpha: 0.16)
-                                  : context.colors.surfaceRecessed,
+                          color: expanded && !isLight
+                              ? accent.withValues(alpha: 0.16)
+                              : context.colors.surfaceRecessed,
                           borderRadius: BorderRadius.circular(12.br),
                           border: Border.all(
-                            color:
-                                expanded
-                                    ? accent.withValues(alpha: 0.35)
-                                    : Colors.transparent,
+                            color: expanded && !isLight
+                                ? accent.withValues(alpha: 0.35)
+                                : Colors.transparent,
                           ),
                         ),
                         child: Center(
@@ -525,8 +614,9 @@ class _CollapsibleSection extends StatelessWidget {
                         turns: expanded ? 0.25 : 0.0,
                         child: Icon(
                           Icons.chevron_right_rounded,
-                          color:
-                              expanded ? accent : context.colors.textTertiary,
+                          color: expanded
+                              ? accent
+                              : context.colors.textTertiary,
                           size: 24.ic,
                         ),
                       ),

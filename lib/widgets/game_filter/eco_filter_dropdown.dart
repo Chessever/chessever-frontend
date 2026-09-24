@@ -1,5 +1,4 @@
 import 'package:chessever2/theme/app_colors.dart';
-import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/eco_openings.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
@@ -333,6 +332,34 @@ class _EcoFilterDropdownState extends State<EcoFilterDropdown>
     return _categoryColors[letter.toUpperCase()] ?? context.colors.textPrimary;
   }
 
+  /// The category hue as TEXT or ICON ink. Dark keeps the raw hue; on paper
+  /// amber, emerald and pink sit at 1.6–2.6:1, so the hue is deepened until
+  /// it clears AA. [tint] is the alpha of the hue's own plate under the ink
+  /// (the letter tiles and code chips), composited over the list surface.
+  Color _categoryInk(String? letter, {double? tint}) {
+    final color = _getCategoryColor(letter);
+    return context.accentInk(
+      color,
+      on:
+          tint == null
+              ? null
+              : Color.alphaBlend(
+                color.withValues(alpha: tint),
+                context.colors.surface,
+              ),
+    );
+  }
+
+  /// Letter on the full-strength category badge of the open header. Dark
+  /// keeps its white letter; paper picks whichever of white or ink reads
+  /// better on the hue (amber and emerald want ink, indigo and violet white).
+  Color _inkOnCategoryFill(Color fill) {
+    if (!context.isLightTheme) return context.colors.textPrimary;
+    const white = Color(0xFFFFFFFF);
+    final ink = context.colors.textPrimary;
+    return wcagContrast(white, fill) >= wcagContrast(ink, fill) ? white : ink;
+  }
+
   List<OpeningSearchSuggestion> _getOpeningSuggestions() {
     final query = _searchQuery.trim();
     if (query.isEmpty) return browseOpeningSuggestions();
@@ -388,7 +415,7 @@ class _EcoFilterDropdownState extends State<EcoFilterDropdown>
                         style: AppTypography.textSmMedium.copyWith(
                           color:
                               _isExpanded
-                                  ? kBlackColor
+                                  ? context.colors.textInverse
                                   : context.colors.textPrimary,
                           fontWeight: FontWeight.w600,
                         ),
@@ -401,7 +428,9 @@ class _EcoFilterDropdownState extends State<EcoFilterDropdown>
                           style: AppTypography.textXsRegular.copyWith(
                             color:
                                 _isExpanded
-                                    ? kBlackColor.withValues(alpha: 0.6)
+                                    ? context.colors.textInverse.withValues(
+                                      alpha: 0.6,
+                                    )
                                     : context.colors.textSecondary,
                           ),
                           maxLines: 1,
@@ -419,7 +448,9 @@ class _EcoFilterDropdownState extends State<EcoFilterDropdown>
                     size: 20.ic,
                     color:
                         _isExpanded
-                            ? kBlackColor.withValues(alpha: 0.7)
+                            ? context.colors.textInverse.withValues(
+                              alpha: 0.7,
+                            )
                             : context.colors.textSecondary,
                   ),
                 ),
@@ -710,7 +741,7 @@ class _EcoFilterDropdownState extends State<EcoFilterDropdown>
                 child: Text(
                   category,
                   style: AppTypography.textSmBold.copyWith(
-                    color: color,
+                    color: _categoryInk(category, tint: 0.2),
                     fontSize: 12.f,
                   ),
                 ),
@@ -719,7 +750,9 @@ class _EcoFilterDropdownState extends State<EcoFilterDropdown>
               Expanded(
                 child: Text(
                   categoryInfo?.name ?? '',
-                  style: AppTypography.textSmMedium.copyWith(color: color),
+                  style: AppTypography.textSmMedium.copyWith(
+                    color: _categoryInk(category),
+                  ),
                 ),
               ),
               AnimatedRotation(
@@ -729,7 +762,7 @@ class _EcoFilterDropdownState extends State<EcoFilterDropdown>
                 child: Icon(
                   Icons.keyboard_arrow_down_rounded,
                   size: 20.ic,
-                  color: color,
+                  color: _categoryInk(category),
                 ),
               ),
             ],
@@ -814,7 +847,10 @@ class _EcoFilterDropdownState extends State<EcoFilterDropdown>
                   overflow: TextOverflow.fade,
                   softWrap: false,
                   style: AppTypography.textXsBold.copyWith(
-                    color: color,
+                    color: _categoryInk(
+                      suggestion.filter.categoryLetter,
+                      tint: isSelected ? 0.28 : 0.2,
+                    ),
                     fontSize: 10.f,
                     letterSpacing: 0.1,
                   ),
@@ -854,7 +890,11 @@ class _EcoFilterDropdownState extends State<EcoFilterDropdown>
               ),
               if (isSelected) ...[
                 SizedBox(width: 8.w),
-                Icon(Icons.check_rounded, size: 16.ic, color: color),
+                Icon(
+                  Icons.check_rounded,
+                  size: 16.ic,
+                  color: _categoryInk(suggestion.filter.categoryLetter),
+                ),
               ],
               if (hasChildren) ...[
                 SizedBox(width: 4.w),
@@ -876,7 +916,7 @@ class _EcoFilterDropdownState extends State<EcoFilterDropdown>
                     child: Icon(
                       Icons.keyboard_arrow_down_rounded,
                       size: 20.ic,
-                      color: color,
+                      color: _categoryInk(suggestion.filter.categoryLetter),
                     ),
                   ),
                 ),
@@ -907,7 +947,10 @@ class _EcoFilterDropdownState extends State<EcoFilterDropdown>
         child: Text(
           letter,
           style: AppTypography.textSmBold.copyWith(
-            color: isExpanded ? context.colors.textPrimary : color,
+            color:
+                isExpanded
+                    ? _inkOnCategoryFill(color)
+                    : _categoryInk(letter, tint: 0.15),
             fontSize: 13.f,
             letterSpacing: 0.5,
           ),

@@ -41,7 +41,7 @@ class GenericErrorWidget extends StatelessWidget {
               TextButton(
                 onPressed: onRetry,
                 style: TextButton.styleFrom(
-                  foregroundColor: colors.brand,
+                  foregroundColor: colors.accentText,
                   textStyle: const TextStyle(
                     fontSize: 14,
                     fontWeight: FontWeight.w600,

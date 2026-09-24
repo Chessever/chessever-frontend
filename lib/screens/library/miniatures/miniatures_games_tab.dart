@@ -1,8 +1,11 @@
 import 'dart:async';
 
 import 'package:chessever2/repository/gamebase/miniatures/miniatures_models.dart';
+import 'package:chessever2/revenue_cat_service/subscribe_state.dart';
 import 'package:chessever2/screens/library/miniatures/miniature_game_launcher.dart';
+import 'package:chessever2/screens/library/miniatures/miniatures_access.dart';
 import 'package:chessever2/screens/library/miniatures/miniatures_day_list_utils.dart';
+import 'package:chessever2/screens/library/miniatures/widgets/miniatures_archive_gate.dart';
 import 'package:chessever2/screens/player_profile/player_profile_data_source.dart';
 import 'package:chessever2/screens/library/providers/miniatures_provider.dart';
 import 'package:chessever2/screens/library/widgets/add_to_folder_sheet.dart';
@@ -19,6 +22,7 @@ import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/scroll_cache.dart';
 import 'package:chessever2/utils/svg_asset.dart';
+import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
 import 'package:chessever2/widgets/scroll_to_top_bus.dart';
 import 'package:chessever2/widgets/scroll_to_top_button.dart';
 import 'package:chessever2/widgets/skeleton_widget.dart';
@@ -26,12 +30,22 @@ import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:intl/intl.dart';
+import 'package:chessever2/screens/chessboard/utils/legible_ink.dart';
 
 /// Miniatures browsed as collapsible day sections, matching the Favorites and
 /// Countrymen games tabs. Cards honour the app-wide games list view mode, so
 /// switching to grid or board here switches it everywhere.
+///
+/// Today is free. For a free account the list holds Today's sections only,
+/// under a date control whose earlier-day step is Premium, and ends on the
+/// archive boundary ("Explore the Miniatures archive"); a date range from the
+/// filters is Premium too (see miniatures_access.dart). A confirmed purchase
+/// resumes the step that asked for it.
 class MiniaturesGamesTab extends ConsumerStatefulWidget {
-  const MiniaturesGamesTab({super.key});
+  const MiniaturesGamesTab({super.key, this.now});
+
+  /// Pins "today" in tests.
+  final DateTime? now;
 
   @override
   ConsumerState<MiniaturesGamesTab> createState() => _MiniaturesGamesTabState();
@@ -49,6 +63,19 @@ class _MiniaturesGamesTabState extends ConsumerState<MiniaturesGamesTab>
 
   /// Collapsed (not expanded) day keys. Empty means every section is open.
   final Set<String> _collapsedDates = {};
+
+  /// Set once an archive gate resolves entitled, so the earlier days open at
+  /// once instead of waiting for the subscription state to catch up (and in
+  /// debug builds, where the guard always passes).
+  bool _archiveOpened = false;
+
+  /// Whether paging has reached the archive boundary of a locked list.
+  /// Refreshed on every build of the content.
+  bool _pagingStoppedAtArchive = false;
+
+  /// Day keys of the sections a locked list shows (Today's), so the
+  /// earlier-day step can fold them away and land on the archive.
+  List<String> _todaySectionKeys = const <String>[];
 
   @override
   bool get wantKeepAlive => true;
@@ -79,10 +106,55 @@ class _MiniaturesGamesTabState extends ConsumerState<MiniaturesGamesTab>
     if (_scrollController.position.pixels >=
         _scrollController.position.maxScrollExtent - 200) {
       final state = ref.read(miniaturesPaginatedProvider);
-      if (!state.isLoading && state.hasMore) {
+      if (!state.isLoading && state.hasMore && !_pagingStoppedAtArchive) {
         ref.read(miniaturesPaginatedProvider.notifier).loadNextPage();
       }
     }
+  }
+
+  /// Whether every day before Today is behind Premium for this viewer.
+  bool _archiveLockedFor(SubscriptionState subscription) {
+    if (_archiveOpened) return false;
+    return isMiniaturesArchiveLocked(
+      isSubscribed: subscription.isSubscribed,
+      subscriptionLoading: subscription.isLoading,
+    );
+  }
+
+  /// Opens the archive behind the paywall. [fromDateControl] is the
+  /// earlier-day step: once entitled it folds Today away and scrolls up, so
+  /// the newest earlier day is the first thing on screen. From the boundary
+  /// at the foot of Today's list the archive simply opens in place.
+  Future<void> _openArchive({required bool fromDateControl}) async {
+    HapticFeedbackService.buttonPress();
+    await requirePremiumGuard(
+      context,
+      ref,
+      featureId: kMiniaturesArchiveFeatureId,
+      returnTo: kMiniaturesReturnTo,
+      onEntitled: () => _revealArchive(stepBack: fromDateControl),
+    );
+  }
+
+  void _revealArchive({required bool stepBack}) {
+    if (!mounted) return;
+    final todayKeys = _todaySectionKeys;
+    setState(() {
+      _archiveOpened = true;
+      if (stepBack) _collapsedDates.addAll(todayKeys);
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      if (stepBack && _scrollController.hasClients) {
+        if (MediaQuery.disableAnimationsOf(context)) {
+          _scrollController.jumpTo(0);
+        } else {
+          animateScrollControllerToTop(_scrollController);
+        }
+      }
+      // The archive may leave the list shorter than the viewport.
+      _checkScrollAfterLayoutChange();
+    });
   }
 
   void _onSearchChanged(String query) {
@@ -111,9 +183,33 @@ class _MiniaturesGamesTabState extends ConsumerState<MiniaturesGamesTab>
       context: context,
       currentFilter: ref.read(miniaturesFilterProvider),
     );
-    if (newFilter != null && mounted) {
-      ref.read(miniaturesFilterProvider.notifier).state = newFilter;
+    if (newFilter == null || !mounted) return;
+
+    // A date range walks the archive: Premium date navigation. A confirmed
+    // purchase applies it as chosen; backing out keeps every other choice,
+    // since a locked list only ever shows Today anyway.
+    if (_archiveLockedFor(ref.read(subscriptionProvider)) &&
+        miniaturesFilterWalksArchive(newFilter)) {
+      var applied = false;
+      await requirePremiumGuard(
+        context,
+        ref,
+        featureId: kMiniaturesArchiveFeatureId,
+        returnTo: kMiniaturesReturnTo,
+        onEntitled: () {
+          if (!mounted) return;
+          applied = true;
+          setState(() => _archiveOpened = true);
+          ref.read(miniaturesFilterProvider.notifier).state = newFilter;
+        },
+      );
+      if (applied || !mounted) return;
+      ref.read(miniaturesFilterProvider.notifier).state = newFilter.copyWith(
+        clearDates: true,
+      );
+      return;
     }
+    ref.read(miniaturesFilterProvider.notifier).state = newFilter;
   }
 
   void _toggleDateSection(String dateKey) {
@@ -142,7 +238,7 @@ class _MiniaturesGamesTabState extends ConsumerState<MiniaturesGamesTab>
       if (!needsMore) return;
 
       final state = ref.read(miniaturesPaginatedProvider);
-      if (!state.hasMore || state.isLoading) return;
+      if (!state.hasMore || state.isLoading || _pagingStoppedAtArchive) return;
 
       final beforeCount = state.items.length;
       await ref.read(miniaturesPaginatedProvider.notifier).loadNextPage();
@@ -157,6 +253,14 @@ class _MiniaturesGamesTabState extends ConsumerState<MiniaturesGamesTab>
     });
   }
 
+  /// Day key of a miniature's section ('yyyy-MM-dd', or the unknown key).
+  String _dateKeyOf(GamesTourModel game) {
+    final raw = game.lastMoveTime;
+    return raw == null
+        ? _unknownDateKey
+        : DateFormat('yyyy-MM-dd').format(raw.toUtc());
+  }
+
   /// Miniature dates come from PGN headers and are stored as bare calendar
   /// days at UTC midnight, so they must be read back in UTC. Converting to
   /// local would shift every game a day backwards west of Greenwich.
@@ -165,12 +269,7 @@ class _MiniaturesGamesTabState extends ConsumerState<MiniaturesGamesTab>
   ) {
     final grouped = <String, List<GamesTourModel>>{};
     for (final game in games) {
-      final raw = game.lastMoveTime;
-      final key =
-          raw == null
-              ? _unknownDateKey
-              : DateFormat('yyyy-MM-dd').format(raw.toUtc());
-      grouped.putIfAbsent(key, () => <GamesTourModel>[]).add(game);
+      grouped.putIfAbsent(_dateKeyOf(game), () => <GamesTourModel>[]).add(game);
     }
 
     final sortedKeys =
@@ -190,7 +289,7 @@ class _MiniaturesGamesTabState extends ConsumerState<MiniaturesGamesTab>
 
     // The key is a wall-clock day, so it is compared against the viewer's own
     // calendar day rather than a UTC instant.
-    final now = DateTime.now();
+    final now = widget.now ?? DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
     final target = DateTime(date.year, date.month, date.day);
     final deltaDays = today.difference(target).inDays;
@@ -243,6 +342,7 @@ class _MiniaturesGamesTabState extends ConsumerState<MiniaturesGamesTab>
     final games = ref.watch(miniatureGamesProvider);
     final filter = ref.watch(miniaturesFilterProvider);
     final viewMode = ref.watch(gamesListViewModeProvider);
+    final archiveLocked = _archiveLockedFor(ref.watch(subscriptionProvider));
     final horizontalPadding = ResponsiveHelper.adaptive(
       phone: 16.w,
       tablet: 24.w,
@@ -271,10 +371,29 @@ class _MiniaturesGamesTabState extends ConsumerState<MiniaturesGamesTab>
                 horizontalPadding,
                 8.h,
               ),
-              child: _buildSearchBar(filter),
+              child: Column(
+                children: [
+                  _buildSearchBar(filter),
+                  // The date control stays on screen for a locked archive, so
+                  // the Today boundary is visible before anything is tapped.
+                  if (archiveLocked) ...[
+                    SizedBox(height: 4.h),
+                    MiniaturesDateControl(
+                      now: widget.now,
+                      onEarlier: () => _openArchive(fromDateControl: true),
+                    ),
+                  ],
+                ],
+              ),
             ),
           ),
-          _buildContentSliver(state, games, filter, viewMode),
+          _buildContentSliver(
+            state,
+            games,
+            filter,
+            viewMode,
+            archiveLocked: archiveLocked,
+          ),
           SliverToBoxAdapter(child: SizedBox(height: 24.h)),
         ],
       ),
@@ -370,7 +489,9 @@ class _MiniaturesGamesTabState extends ConsumerState<MiniaturesGamesTab>
               size: 20.sp,
               color:
                   hasActiveFilters
-                      ? const Color(0xFFEF4444)
+                      ? (context.isLightTheme
+                          ? context.colors.danger
+                          : const Color(0xFFEF4444))
                       : context.colors.textSecondary,
             ),
           ),
@@ -397,15 +518,39 @@ class _MiniaturesGamesTabState extends ConsumerState<MiniaturesGamesTab>
 
   Widget _buildContentSliver(
     MiniaturesPaginationState state,
-    List<GamesTourModel> games,
+    List<GamesTourModel> allGames,
     MiniatureGamesFilter filter,
-    GamesListViewMode viewMode,
-  ) {
-    if (state.isLoading && games.isEmpty) {
+    GamesListViewMode viewMode, {
+    required bool archiveLocked,
+  }) {
+    // A locked archive lists Today only. The board opened from it carries the
+    // same list, so swiping there never walks into an earlier day either.
+    var games = allGames;
+    var reachedArchive = false;
+    if (archiveLocked) {
+      final split = splitMiniaturesAtToday(
+        allGames,
+        (game) => game.lastMoveTime,
+        now: widget.now,
+      );
+      games = split.today;
+      reachedArchive = split.archived > 0;
+    }
+    _pagingStoppedAtArchive = miniaturesPagingStopsAtArchive(
+      archiveLocked: archiveLocked,
+      reachedArchive: reachedArchive,
+      newestFirst: miniaturesFilterIsNewestFirst(filter),
+    );
+    _todaySectionKeys =
+        archiveLocked
+            ? games.map(_dateKeyOf).toSet().toList(growable: false)
+            : const <String>[];
+
+    if (state.isLoading && allGames.isEmpty) {
       return SliverToBoxAdapter(child: _buildSkeletonList());
     }
 
-    if (state.error != null && games.isEmpty) {
+    if (state.error != null && allGames.isEmpty) {
       return SliverFillRemaining(
         hasScrollBody: false,
         child: _MiniaturesMessage(
@@ -416,6 +561,24 @@ class _MiniaturesGamesTabState extends ConsumerState<MiniaturesGamesTab>
           onAction: () {
             ref.read(miniaturesPaginatedProvider.notifier).refresh();
           },
+        ),
+      );
+    }
+
+    if (archiveLocked && games.isEmpty && reachedArchive) {
+      // Everything loaded is from earlier days: say Today is empty and point
+      // at the archive rather than claiming there are no miniatures at all.
+      return SliverPadding(
+        padding: EdgeInsets.symmetric(
+          horizontal: ResponsiveHelper.adaptive(phone: 16.w, tablet: 24.w),
+          vertical: 8.h,
+        ),
+        sliver: SliverToBoxAdapter(
+          child: MiniaturesArchiveBoundary(
+            key: const ValueKey('miniatures_archive_boundary'),
+            todayEmpty: true,
+            onExplore: () => _openArchive(fromDateControl: false),
+          ),
         ),
       );
     }
@@ -499,12 +662,20 @@ class _MiniaturesGamesTabState extends ConsumerState<MiniaturesGamesTab>
       }
     }
 
-    if (state.isLoading) {
+    if (_pagingStoppedAtArchive) {
+      listEntries.add(
+        const _MiniatureFooterEntry(_MiniatureFooterType.archive),
+      );
+    } else if (state.isLoading) {
       listEntries.add(
         const _MiniatureFooterEntry(_MiniatureFooterType.loading),
       );
     } else if (state.hasMore) {
       listEntries.add(const _MiniatureFooterEntry(_MiniatureFooterType.spacer));
+    } else if (archiveLocked && reachedArchive) {
+      listEntries.add(
+        const _MiniatureFooterEntry(_MiniatureFooterType.archive),
+      );
     } else {
       listEntries.add(const _MiniatureFooterEntry(_MiniatureFooterType.end));
     }
@@ -654,6 +825,11 @@ class _MiniaturesGamesTabState extends ConsumerState<MiniaturesGamesTab>
           );
         case _MiniatureFooterType.spacer:
           return SizedBox(height: 60.h);
+        case _MiniatureFooterType.archive:
+          return MiniaturesArchiveBoundary(
+            key: const ValueKey('miniatures_archive_boundary'),
+            onExplore: () => _openArchive(fromDateControl: false),
+          );
         case _MiniatureFooterType.end:
           return Padding(
             padding: EdgeInsets.symmetric(vertical: 16.h),
@@ -770,7 +946,7 @@ class _MiniatureGameEntry extends _MiniatureListEntry {
   final bool isLast;
 }
 
-enum _MiniatureFooterType { loading, spacer, end }
+enum _MiniatureFooterType { loading, spacer, end, archive }
 
 class _MiniatureFooterEntry extends _MiniatureListEntry {
   const _MiniatureFooterEntry(this.type);
@@ -840,7 +1016,7 @@ class _DateHeader extends StatelessWidget {
                   ? Icons.keyboard_arrow_up_rounded
                   : Icons.keyboard_arrow_down_rounded,
               size: 20.sp,
-              color: context.colors.textPrimary.withValues(alpha: 0.5),
+              color: context.textInk(0.5),
             ),
           ],
         ),
@@ -866,7 +1042,9 @@ class _SquareIconButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const activeColor = Color(0xFFEF4444);
+    // Paper: the deeper danger ink keeps the active glyph and badge at AA.
+    final activeColor =
+        context.isLightTheme ? context.colors.danger : const Color(0xFFEF4444);
     return GestureDetector(
       onTap: onTap,
       child: Container(
@@ -896,7 +1074,7 @@ class _SquareIconButton extends StatelessWidget {
                 child: Container(
                   width: 14.w,
                   height: 14.h,
-                  decoration: const BoxDecoration(
+                  decoration: BoxDecoration(
                     color: activeColor,
                     shape: BoxShape.circle,
                   ),
@@ -904,7 +1082,10 @@ class _SquareIconButton extends StatelessWidget {
                     child: Text(
                       '$badgeCount',
                       style: AppTypography.textXsBold.copyWith(
-                        color: context.colors.textPrimary,
+                        color:
+                            context.isLightTheme
+                                ? labelOnFill(context, activeColor)
+                                : context.colors.textPrimary,
                         fontSize: 9.sp,
                         height: 1,
                       ),

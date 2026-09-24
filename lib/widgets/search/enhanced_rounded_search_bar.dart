@@ -3,15 +3,14 @@ import 'dart:async';
 import 'package:chessever2/repository/supabase/game/games.dart';
 import 'package:chessever2/screens/group_event/model/tour_event_card_model.dart';
 import 'package:chessever2/screens/group_event/providers/group_event_screen_provider.dart';
-import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/dismiss_keyboard.dart';
+import 'package:chessever2/widgets/home_top_bar.dart';
 import 'package:chessever2/widgets/search/opening_search_suggestion.dart';
 import 'package:chessever2/widgets/search/recent_searches_provider.dart';
 import 'package:chessever2/widgets/search/search_motion.dart';
 import 'package:chessever2/widgets/search/search_overlay_widget.dart';
 import 'package:chessever2/widgets/simple_search_bar.dart';
-import 'package:chessever2/widgets/user_avatar.dart';
 import 'package:easy_debounce/easy_debounce.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -50,9 +49,10 @@ class EnhancedRoundedSearchBar extends ConsumerStatefulWidget {
   final VoidCallback? onProfileTap;
 
   /// Whether the profile avatar belongs in this bar at all. The avatar also
-  /// collapses on focus without the host having to drive it — see
-  /// [_ProfileSlot] — so a host that just wants "avatar on the home bar" can
-  /// leave this `true` and never rebuild on focus.
+  /// collapses on focus without the host having to drive it (the shared
+  /// [HomeTopBarRow] listens to the focus node), so a host that just wants
+  /// "avatar on the home bar" can leave this `true` and never rebuild on
+  /// focus.
   final bool showProfile;
   final bool showFilter;
   final FocusNode? focusNode;
@@ -295,94 +295,34 @@ class _EnhancedRoundedSearchBarState
     );
   }
 
+  /// The home bar's shared row (see [HomeTopBarRow]): the avatar squeezes
+  /// out as the field takes focus, on the same spring as the field's morph.
   Widget _buildSearchBar() {
-    return Row(
-      children: [
-        _ProfileSlot(
+    return HomeTopBarRow(
+      showAvatar: widget.showProfile,
+      onAvatarTap: widget.onProfileTap,
+      focusNode: _effectiveNode,
+      content: AnimatedBuilder(
+        animation: _morph,
+        // Built once. Everything the morph touches on this side is paint, so
+        // the field never rebuilds mid-animation.
+        child: SimpleSearchBar(
+          textFieldKey: widget.textFieldKey,
+          filterButtonKey: widget.filterButtonKey,
+          hintText: widget.hintText,
+          rotatingHints: widget.rotatingHints,
+          controller: widget.controller,
           focusNode: _effectiveNode,
-          enabled: widget.showProfile,
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              UserAvatar(size: 44, onTap: widget.onProfileTap),
-              SizedBox(width: 16.w),
-            ],
-          ),
+          onCloseTap: _clearSearchAndHide,
+          onOpenFilter: widget.onFilterTap,
+          filterBadgeCount: widget.filterBadgeCount,
         ),
-        Expanded(
-          child: AnimatedBuilder(
-            animation: _morph,
-            // Built once. Everything the morph touches on this side is paint,
-            // so the field never rebuilds mid-animation.
-            child: SimpleSearchBar(
-              textFieldKey: widget.textFieldKey,
-              filterButtonKey: widget.filterButtonKey,
-              hintText: widget.hintText,
-              rotatingHints: widget.rotatingHints,
-              controller: widget.controller,
-              focusNode: _effectiveNode,
-              onCloseTap: _clearSearchAndHide,
-              onOpenFilter: widget.onFilterTap,
-              filterBadgeCount: widget.filterBadgeCount,
+        builder:
+            (context, child) => HomeSearchFieldSurface(
+              lift: _morph.value,
+              child: RepaintBoundary(child: child),
             ),
-            builder: (context, child) {
-              final t = _morph.value.clamp(0.0, 1.0);
-              final colors = context.colors;
-              // Tonal elevation with a self-coloured edge: the fill steps a
-              // hair toward the ink and the stroke is that same surface lifted
-              // further, so focus reads as a lit lip rather than a drawn
-              // outline. Works in both themes because `textPrimary` flips.
-              final fill =
-                  Color.lerp(colors.surface, colors.textPrimary, 0.04 * t)!;
-              return DecoratedBox(
-                key: const ValueKey('simple-search-field-surface'),
-                decoration: BoxDecoration(
-                  color: fill,
-                  borderRadius: BorderRadius.circular(12.br),
-                  border: Border.all(
-                    color: Color.lerp(fill, colors.textPrimary, 0.16 * t)!,
-                  ),
-                ),
-                // DecoratedBox does not inset for its border, so the stroke
-                // costs no layout and the field cannot jump by a pixel when
-                // it lights up.
-                child: RepaintBoundary(child: child),
-              );
-            },
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-/// Squeezes the profile avatar out of the row as the field takes focus.
-///
-/// Listening to the focus node here keeps the collapse off the host screen's
-/// build: the home screen no longer rebuilds its whole tab tree just because
-/// the keyboard came up.
-class _ProfileSlot extends StatelessWidget {
-  const _ProfileSlot({
-    required this.focusNode,
-    required this.enabled,
-    required this.child,
-  });
-
-  final FocusNode focusNode;
-  final bool enabled;
-  final Widget child;
-
-  @override
-  Widget build(BuildContext context) {
-    return ListenableBuilder(
-      listenable: focusNode,
-      child: child,
-      builder:
-          (context, child) => SqueezeSlot(
-            open: enabled && !focusNode.hasFocus,
-            motion: SearchMotion.morph,
-            child: child!,
-          ),
+      ),
     );
   }
 }

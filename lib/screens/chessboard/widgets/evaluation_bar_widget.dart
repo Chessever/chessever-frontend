@@ -26,6 +26,10 @@ class EvaluationBarWidget extends StatefulWidget {
   final bool isWhiteToMove;
   final String? positionKey;
 
+  /// The position is checkmate: the label reads "#", as the game cards' bar
+  /// does, instead of the pawn count the caller fills the bar with.
+  final bool isCheckmate;
+
   const EvaluationBarWidget({
     required this.width,
     required this.height,
@@ -35,6 +39,7 @@ class EvaluationBarWidget extends StatefulWidget {
     required this.isEvaluating,
     this.isWhiteToMove = true,
     this.positionKey,
+    this.isCheckmate = false,
     super.key,
   });
 
@@ -151,6 +156,8 @@ class _EvaluationBarWidgetState extends State<EvaluationBarWidget> {
             ? '...'
             : !hasEval
             ? ''
+            : widget.isCheckmate
+            ? '#'
             : (displayEval.abs() >= 10.0 && displayMate != 0)
             ? '#$displayMate'
             : _formatSignedEval(displayEval);
@@ -195,7 +202,10 @@ class _EvaluationBarWidgetState extends State<EvaluationBarWidget> {
                   color: bottomColor,
                 ),
               ),
-              // Evaluation text positioned at the meeting point of black/white
+              // Evaluation text positioned at the meeting point of black/white.
+              // No number (e.g. Feed autoplay cache miss) means no chip: an
+              // empty cyan block reads as a leftover, not a state.
+              if (displayText.isNotEmpty)
               Positioned(
                 left: 0,
                 right: 0,
@@ -211,7 +221,12 @@ class _EvaluationBarWidgetState extends State<EvaluationBarWidget> {
                       maxLines: 1,
                       textAlign: TextAlign.center,
                       style: AppTypography.textSmRegular.copyWith(
-                        color: Colors.white,
+                        // Light takes dark ink on the cyan chip (8.2:1);
+                        // dark keeps its shipped white label unchanged.
+                        color:
+                            context.isLightTheme
+                                ? context.colors.inkOnAccent
+                                : Colors.white,
                         fontSize: 3.5.f,
                         fontWeight: FontWeight.w600,
                         letterSpacing: -0.5,
@@ -549,7 +564,9 @@ class _Bars extends StatelessWidget {
                   color: bottomColor,
                 ),
               ),
-              // Evaluation text positioned at the meeting point of black/white
+              // Evaluation text positioned at the meeting point of black/white.
+              // Skip the chip when there is nothing to say.
+              if (displayText.isNotEmpty)
               Positioned(
                 left: 0,
                 right: 0,
@@ -564,7 +581,12 @@ class _Bars extends StatelessWidget {
                       maxLines: 1,
                       textAlign: TextAlign.center,
                       style: AppTypography.textSmRegular.copyWith(
-                        color: Colors.white,
+                        // Light takes dark ink on the cyan chip (8.2:1);
+                        // dark keeps its shipped white label unchanged.
+                        color:
+                            context.isLightTheme
+                                ? context.colors.inkOnAccent
+                                : Colors.white,
                         fontSize:
                             playerView == PlayerView.gridView ? 0.2.f : 1.5.f,
                         fontWeight:

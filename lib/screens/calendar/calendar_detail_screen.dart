@@ -111,16 +111,25 @@ class _CalendarDetailsScreenState extends ConsumerState<CalendarDetailsScreen> {
                                           8.br,
                                         ),
                                         border: Border.all(
+                                          // Light matches the sibling search
+                                          // fields: an accentText ring, no
+                                          // raw-cyan glow.
                                           color:
                                               focusNode.hasFocus
-                                                  ? kPrimaryColor.withValues(
-                                                    alpha: 0.5,
-                                                  )
+                                                  ? (context.isLightTheme
+                                                      ? context
+                                                          .colors
+                                                          .accentText
+                                                      : kPrimaryColor
+                                                          .withValues(
+                                                            alpha: 0.5,
+                                                          ))
                                                   : Colors.transparent,
                                           width: 2.0,
                                         ),
                                         boxShadow:
-                                            focusNode.hasFocus
+                                            focusNode.hasFocus &&
+                                                    !context.isLightTheme
                                                 ? [
                                                   BoxShadow(
                                                     color: kPrimaryColor

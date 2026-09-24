@@ -5,11 +5,14 @@ import 'package:chessever2/providers/auth_state_provider.dart';
 import 'package:chessever2/providers/event_mute_provider.dart';
 import 'package:chessever2/screens/group_event/model/tour_detail_view_model.dart';
 import 'package:chessever2/screens/group_event/widget/appbar_icons_widget.dart';
+import 'package:chessever2/screens/library/widgets/library_context_menu.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/event_no_spoilers_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_app_bar_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_pin_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_screen_provider.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/models/games_app_bar_view_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/utils/round_space_shortcut.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/match_expansion_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/round_expansion_provider.dart';
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_mode_provider.dart';
@@ -24,14 +27,13 @@ import 'package:chessever2/screens/tour_detail/widgets/standings_share_image_car
 import 'package:chessever2/screens/tour_detail/widgets/team_standings_share_image_card.dart';
 import 'package:chessever2/widgets/app_snack.dart';
 import 'package:flutter/rendering.dart';
-import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/share_card.dart';
 import 'package:chessever2/utils/svg_asset.dart';
-import 'package:chessever2/utils/tablet_safe_menu.dart';
+import 'package:chessever2/widgets/card_context_menu.dart';
 import 'package:chessever2/widgets/event_card/event_context_menu.dart';
+import 'package:chessever2/widgets/space_shortcut_drafts.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_svg/svg.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
@@ -59,149 +61,98 @@ class TournamentMenuButton extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final GlobalKey menuKey = GlobalKey();
-
     // Watch mute state here to keep the provider alive while on this screen
-    // and ensure ref.read in the onTap gets a synchronous value.
+    // and ensure ref.read in the menu gets a synchronous value.
     final groupBroadcastId = tourData.aboutTourModel.groupBroadcastId;
-    final isMuted =
-        (groupBroadcastId != null && groupBroadcastId.isNotEmpty)
-            ? ref.watch(eventMuteProvider(groupBroadcastId)).valueOrNull ??
-                false
-            : false;
+    if (groupBroadcastId != null && groupBroadcastId.isNotEmpty) {
+      ref.watch(eventMuteProvider(groupBroadcastId));
+    }
     final isGamesTab =
         ref.watch(selectedTourModeProvider) == TournamentDetailScreenMode.games;
-    final noSpoilersEnabled =
-        isGamesTab
-            ? ref.watch(
-              eventNoSpoilersProvider(
-                tourData.aboutTourModel.id,
-              ).select((state) => state.enabled),
-            )
-            : false;
-
-    return AppBarIcons(
-      key: menuKey,
-      padding: EdgeInsets.symmetric(horizontal: 2.sp, vertical: 1.sp),
-      image: SvgAsset.threeDots,
-      onTap: () {
-        final RenderBox? renderBox =
-            menuKey.currentContext?.findRenderObject() as RenderBox?;
-        if (renderBox != null) {
-          final visibleRoundIds =
-              isGamesTab
-                  ? ref.read(gamesAppBarProvider.notifier).getVisibleRoundIds()
-                  : const <String>[];
-          final allRoundIds =
-              isGamesTab
-                  ? ref
-                      .read(gamesAppBarProvider.notifier)
-                      .getAllRoundIdsWithGames()
-                  : const <String>[];
-          final visibleMatchKeys =
-              isGamesTab
-                  ? ref
-                      .read(gamesAppBarProvider.notifier)
-                      .getVisibleMatchKeys(visibleRoundIds)
-                  : const <String>[];
-          final allMatchKeys =
-              isGamesTab
-                  ? ref
-                      .read(gamesAppBarProvider.notifier)
-                      .getVisibleMatchKeys(allRoundIds)
-                  : const <String>[];
-          final Offset offset = renderBox.localToGlobal(Offset.zero);
-
-          showTabletSafeMenu(
-            context: context,
-            position: RelativeRect.fromLTRB(
-              offset.dx,
-              offset.dy + renderBox.size.height,
-              offset.dx + renderBox.size.width,
-              offset.dy,
-            ),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12.br),
-            ),
-            color: context.colors.surface,
-            constraints: BoxConstraints.tightFor(width: 208.w),
-            items: _buildRedesignedMenuItems(
-              ref,
-              context,
-              visibleRoundIds,
-              visibleMatchKeys,
-              allRoundIds,
-              allMatchKeys,
-              tourData,
-              isMuted,
-              isGamesTab,
-              noSpoilersEnabled,
-            ),
-          );
-        }
-      },
-    );
-  }
-
-  List<PopupMenuEntry<TournamentMenuAction>> _buildRedesignedMenuItems(
-    WidgetRef ref,
-    BuildContext context,
-    List<String> visibleRoundIds,
-    List<String> visibleMatchKeys,
-    List<String> allRoundIds,
-    List<String> allMatchKeys,
-    TourDetailViewModel tourData,
-    bool isMuted,
-    bool isGamesTab,
-    bool noSpoilersEnabled,
-  ) {
-    final List<PopupMenuEntry<TournamentMenuAction>> items = [];
-
     if (isGamesTab) {
-      _addGamesTabItems(
-        ref,
-        context,
-        items,
-        visibleRoundIds,
-        visibleMatchKeys,
-        allRoundIds,
-        allMatchKeys,
-        tourData,
-        noSpoilersEnabled,
+      ref.watch(
+        eventNoSpoilersProvider(
+          tourData.aboutTourModel.id,
+        ).select((state) => state.enabled),
       );
     }
 
-    // Notifications + share are shared across tabs.
-    _addSharedItems(ref, context, items, tourData, isMuted);
+    // The shared focus menu, anchored to this button: the same menu, rows
+    // and motion as every long-press in the app. Rows are built when it
+    // opens, so every label reads live state.
+    void open() => unawaited(
+      CardContextMenu.open(
+        context,
+        actions: (menuContext) => _menuActions(menuContext, ref),
+      ),
+    );
 
-    return items;
+    // The glyph is the shipped app-bar tile, laid out exactly as before: its
+    // own 32x32 box is the whole footprint, so the dropdown and the sibling
+    // grid toggle never move. Do not wrap it in a larger box to grow the tap
+    // target; that widens the Row's trailing slot and shifts the header.
+    // Semantics adds a name for screen readers without touching layout.
+    return Semantics(
+      button: true,
+      label: 'Event actions',
+      excludeSemantics: true,
+      onTap: open,
+      child: AppBarIcons(
+        padding: EdgeInsets.symmetric(horizontal: 2.sp, vertical: 1.sp),
+        image: SvgAsset.threeDots,
+        onTap: open,
+      ),
+    );
   }
 
-  void _addGamesTabItems(
-    WidgetRef ref,
-    BuildContext context,
-    List<PopupMenuEntry<TournamentMenuAction>> items,
-    List<String> visibleRoundIds,
-    List<String> visibleMatchKeys,
-    List<String> allRoundIds,
-    List<String> allMatchKeys,
-    TourDetailViewModel tourData,
-    bool noSpoilersEnabled,
-  ) {
+  List<LibraryMenuAction> _menuActions(BuildContext context, WidgetRef ref) {
+    final isGamesTab =
+        ref.read(selectedTourModeProvider) == TournamentDetailScreenMode.games;
+    final groupBroadcastId = tourData.aboutTourModel.groupBroadcastId;
+    final isMuted =
+        (groupBroadcastId != null && groupBroadcastId.isNotEmpty)
+            ? ref.read(eventMuteProvider(groupBroadcastId)).valueOrNull ?? false
+            : false;
+
+    return [
+      if (isGamesTab) ..._gamesTabActions(ref),
+      // Notifications + share are shared across tabs.
+      ..._sharedActions(ref, context, isMuted),
+      ..._spaceActions(ref, context, isGamesTab),
+    ];
+  }
+
+  List<LibraryMenuAction> _gamesTabActions(WidgetRef ref) {
+    final appBar = ref.read(gamesAppBarProvider.notifier);
+    final visibleRoundIds = appBar.getVisibleRoundIds();
+    final allRoundIds = appBar.getAllRoundIdsWithGames();
+    final visibleMatchKeys = appBar.getVisibleMatchKeys(visibleRoundIds);
+    final allMatchKeys = appBar.getVisibleMatchKeys(allRoundIds);
+    final tourId = tourData.aboutTourModel.id;
+
     final gamesScreenState = ref.read(gamesTourScreenProvider).valueOrNull;
     final isFocusingLiveGames =
         gamesScreenState?.gameDisplayMode == GameDisplayMode.hideFinishedGames;
+    final noSpoilersEnabled = ref.read(eventNoSpoilersProvider(tourId)).enabled;
+    final isAnyPinned = ref.read(gamesPinprovider(tourId)).allPins.isNotEmpty;
+    final isAllCollapsed = areAllVisibleSectionsCollapsed(
+      visibleRoundIds: visibleRoundIds,
+      visibleMatchKeys: visibleMatchKeys,
+      roundExpansionState: ref.read(roundExpansionProvider),
+      matchExpansionState: ref.read(matchExpansionProvider),
+    );
 
-    // 1. Live games first / Board order
-    items.add(
-      PopupMenuItem<TournamentMenuAction>(
-        value:
+    return [
+      // 1. Live games first / Board order
+      LibraryMenuAction(
+        icon:
             isFocusingLiveGames
-                ? TournamentMenuAction.showAllGames
-                : TournamentMenuAction.focusLiveGames,
-        padding: EdgeInsets.zero,
-        height: 36.h,
-        onTap: () {
+                ? Icons.format_list_bulleted_outlined
+                : Icons.center_focus_strong_outlined,
+        label: liveFocusOrderingMenuLabel(
+          isFocusingLiveGames: isFocusingLiveGames,
+        ),
+        onSelected: () {
           if (isFocusingLiveGames) {
             unawaited(
               ref.read(gamesTourScreenProvider.notifier).showAllGames(),
@@ -212,107 +163,37 @@ class TournamentMenuButton extends ConsumerWidget {
             );
           }
         },
-        child: _MenuDropDownItem(
-          text: liveFocusOrderingMenuLabel(
-            isFocusingLiveGames: isFocusingLiveGames,
-          ),
-          fontFamily: 'InterDisplay',
-          icon: Icon(
-            isFocusingLiveGames
-                ? Icons.format_list_bulleted_outlined
-                : Icons.center_focus_strong_outlined,
-            color: context.colors.textPrimary,
-            size: 16,
-          ),
-          hasBorder: false,
-        ),
       ),
-    );
-
-    // 2. No spoilers
-    items.add(
-      PopupMenuItem<TournamentMenuAction>(
-        value: TournamentMenuAction.noSpoilers,
-        padding: EdgeInsets.zero,
-        height: 36.h,
-        onTap: () {
-          unawaited(
-            ref
-                .read(
-                  eventNoSpoilersProvider(tourData.aboutTourModel.id).notifier,
-                )
-                .toggle(),
-          );
-        },
-        child: _MenuDropDownItem(
-          text: noSpoilersEnabled ? "Disable No Spoilers" : "No Spoilers",
-          icon: Icon(
+      // 2. No spoilers
+      LibraryMenuAction(
+        icon:
             noSpoilersEnabled
                 ? Icons.visibility_off_outlined
                 : Icons.visibility_outlined,
-            color: context.colors.textPrimary,
-            size: 16,
-          ),
-        ),
+        label: noSpoilersEnabled ? "Disable No Spoilers" : "No Spoilers",
+        onSelected: () {
+          unawaited(
+            ref.read(eventNoSpoilersProvider(tourId).notifier).toggle(),
+          );
+        },
       ),
-    );
-
-    // 3. Pin/Unpin All
-    final isAnyPinned =
-        ref
-            .read(gamesPinprovider(tourData.aboutTourModel.id))
-            .allPins
-            .isNotEmpty;
-
-    items.add(
-      PopupMenuItem<TournamentMenuAction>(
-        value:
-            isAnyPinned
-                ? TournamentMenuAction.unpinAll
-                : TournamentMenuAction.pinAll,
-        padding: EdgeInsets.zero,
-        height: 36.h,
-        onTap: () {
+      // 3. Pin/Unpin All
+      LibraryMenuAction(
+        icon: isAnyPinned ? Icons.push_pin : Icons.push_pin_outlined,
+        label: isAnyPinned ? "Unpin all" : "Pin all",
+        onSelected: () {
           if (isAnyPinned) {
             ref.read(gamesTourScreenProvider.notifier).unpinAllGames();
           } else {
             ref.read(gamesTourScreenProvider.notifier).enableAutoPin();
           }
         },
-        child: _MenuDropDownItem(
-          text: isAnyPinned ? "Unpin all" : "Pin all",
-          icon: SvgPicture.asset(
-            isAnyPinned ? SvgAsset.unpine : SvgAsset.pin,
-            height: 16,
-            width: 16,
-            colorFilter: ColorFilter.mode(
-              context.colors.iconPrimary,
-              BlendMode.srcIn,
-            ),
-          ),
-        ),
       ),
-    );
-
-    // 4. Expand/Collapse All
-    final roundExpansionState = ref.read(roundExpansionProvider);
-    final matchExpansionState = ref.read(matchExpansionProvider);
-    final isAllCollapsed = areAllVisibleSectionsCollapsed(
-      visibleRoundIds: visibleRoundIds,
-      visibleMatchKeys: visibleMatchKeys,
-      roundExpansionState: roundExpansionState,
-      matchExpansionState: matchExpansionState,
-    );
-
-    items.add(
-      PopupMenuItem<TournamentMenuAction>(
-        value:
-            isAllCollapsed
-                ? TournamentMenuAction.expandAllRounds
-                : TournamentMenuAction.collapseAllRounds,
-        padding: EdgeInsets.zero,
-        height: 36.h,
-        onTap: () {
+      // 4. Expand/Collapse All
+      LibraryMenuAction(
+        icon: isAllCollapsed ? Icons.unfold_more : Icons.unfold_less,
+        label: isAllCollapsed ? "Expand all" : "Collapse all",
+        onSelected: () {
           if (isAllCollapsed) {
             ref.read(roundExpansionProvider.notifier).expandAll(allRoundIds);
             if (allMatchKeys.isNotEmpty) {
@@ -327,37 +208,29 @@ class TournamentMenuButton extends ConsumerWidget {
             }
           }
         },
-        child: _MenuDropDownItem(
-          text: isAllCollapsed ? "Expand all" : "Collapse all",
-          icon: Icon(
-            isAllCollapsed ? Icons.unfold_more : Icons.unfold_less,
-            color: context.colors.textPrimary,
-            size: 16,
-          ),
-        ),
       ),
-    );
+    ];
   }
 
-  void _addSharedItems(
+  List<LibraryMenuAction> _sharedActions(
     WidgetRef ref,
     BuildContext context,
-    List<PopupMenuEntry<TournamentMenuAction>> items,
-    TourDetailViewModel tourData,
     bool isMuted,
   ) {
-    // 4. Notifications
+    final actions = <LibraryMenuAction>[];
+
+    // 5. Notifications
     final groupBroadcastId = tourData.aboutTourModel.groupBroadcastId;
     if (groupBroadcastId != null && groupBroadcastId.isNotEmpty) {
-      items.add(
-        PopupMenuItem<TournamentMenuAction>(
-          value:
+      actions.add(
+        LibraryMenuAction(
+          icon:
               isMuted
-                  ? TournamentMenuAction.enableNotifications
-                  : TournamentMenuAction.disableNotifications,
-          padding: EdgeInsets.zero,
-          height: 36.h,
-          onTap: () {
+                  ? Icons.notifications_none
+                  : Icons.notifications_off_outlined,
+          label: isMuted ? "Enable notifications" : "Disable notifications",
+          onSelected: () {
+            if (!context.mounted) return;
             final isAuthenticated = ref.read(isAuthenticatedProvider);
             if (!isAuthenticated) {
               showAppSnack(context, 'Please sign in to manage notifications');
@@ -369,25 +242,15 @@ class TournamentMenuButton extends ConsumerWidget {
             showAppSnack(
               context,
               isMuted
-              ? 'Notifications enabled for this event'
-              : 'Notifications disabled for this event',
+                  ? 'Notifications enabled for this event'
+                  : 'Notifications disabled for this event',
             );
           },
-          child: _MenuDropDownItem(
-            text: isMuted ? "Enable notifications" : "Disable notifications",
-            icon: Icon(
-              isMuted
-                  ? Icons.notifications_none
-                  : Icons.notifications_off_outlined,
-              color: context.colors.textPrimary,
-              size: 16,
-            ),
-          ),
         ),
       );
     }
 
-    // 5. Share event
+    // 6. Share event
     // We have the active tour (id + slug) in hand here, so we can build the
     // Lichess-mirror URL `<tour.slug>/<tour.id>` directly without an extra
     // database round-trip. `groupBroadcastId` is passed only as the fallback
@@ -397,140 +260,151 @@ class TournamentMenuButton extends ConsumerWidget {
         aboutModel.groupBroadcastId?.isNotEmpty == true
             ? aboutModel.groupBroadcastId!
             : aboutModel.id;
-    if (fallbackId.isNotEmpty && aboutModel.name.isNotEmpty) {
-      items.add(
-        PopupMenuItem<TournamentMenuAction>(
-          value: TournamentMenuAction.shareEvent,
-          padding: EdgeInsets.zero,
-          height: 36.h,
-          onTap: () {
+    if (fallbackId.isEmpty || aboutModel.name.isEmpty) return actions;
+
+    actions.add(
+      LibraryMenuAction(
+        icon: Icons.ios_share_rounded,
+        label: "Share event",
+        onSelected: () {
+          final url = buildEventShareUrl(
+            id: fallbackId,
+            title: aboutModel.name,
+            tourId: aboutModel.id,
+            tourSlug: aboutModel.slug,
+          );
+          final box =
+              context.mounted ? context.findRenderObject() as RenderBox? : null;
+          final origin =
+              box != null && box.hasSize
+                  ? box.localToGlobal(Offset.zero) & box.size
+                  : const Rect.fromLTWH(0, 0, 1, 1);
+          Share.share(url, sharePositionOrigin: origin);
+        },
+      ),
+    );
+
+    // Standings share actions are tab-scoped (same idea as Share brackets).
+    // Individual table: Standings on non-team events, Players on team events.
+    // Team table: Standings tab on team events only.
+    final isTeamEvent = ref.read(isTeamEventProvider(aboutModel.id));
+    final mode = ref.read(selectedTourModeProvider);
+    final standingsShares = standingsShareActionsFor(
+      mode: mode,
+      isTeamEvent: isTeamEvent,
+    );
+    if (standingsShares.contains(TournamentMenuAction.shareStandings)) {
+      actions.add(
+        LibraryMenuAction(
+          icon: Icons.leaderboard_outlined,
+          label: "Share standings",
+          onSelected: () {
+            // Standings share = the event link + the standings tab marker, so
+            // the same URL renders standings on the web and opens the
+            // Standings tab in-app.
             final url = buildEventShareUrl(
               id: fallbackId,
               title: aboutModel.name,
               tourId: aboutModel.id,
               tourSlug: aboutModel.slug,
+              tab: kEventStandingsTab,
             );
-            final box = context.findRenderObject() as RenderBox?;
-            final origin =
-                box != null
-                    ? box.localToGlobal(Offset.zero) & box.size
-                    : const Rect.fromLTWH(0, 0, 1, 1);
-            Share.share(url, sharePositionOrigin: origin);
+            unawaited(_shareStandings(ref, context, aboutModel.name, url));
           },
-          child: _MenuDropDownItem(
-            text: "Share event",
-            icon: Icon(
-              Icons.ios_share,
-              color: context.colors.textPrimary,
-              size: 16,
-            ),
-          ),
         ),
       );
-      // Standings share actions are tab-scoped (same idea as Share brackets).
-      // Individual table: Standings on non-team events, Players on team events.
-      // Team table: Standings tab on team events only.
-      final isTeamEvent = ref.read(isTeamEventProvider(aboutModel.id));
-      final mode = ref.read(selectedTourModeProvider);
-      final standingsShares = standingsShareActionsFor(
-        mode: mode,
-        isTeamEvent: isTeamEvent,
+    }
+    if (standingsShares.contains(TournamentMenuAction.shareTeamStandings)) {
+      actions.add(
+        LibraryMenuAction(
+          icon: Icons.groups_outlined,
+          label: "Share team standings",
+          onSelected: () {
+            final url = buildEventShareUrl(
+              id: fallbackId,
+              title: aboutModel.name,
+              tourId: aboutModel.id,
+              tourSlug: aboutModel.slug,
+              tab: kEventStandingsTab,
+            );
+            unawaited(_shareTeamStandings(ref, context, aboutModel.name, url));
+          },
+        ),
       );
-      if (standingsShares.contains(TournamentMenuAction.shareStandings)) {
-        items.add(
-          PopupMenuItem<TournamentMenuAction>(
-            value: TournamentMenuAction.shareStandings,
-            padding: EdgeInsets.zero,
-            height: 36.h,
-            onTap: () {
-              // Standings share = the event link + the standings tab marker, so
-              // the same URL renders standings on the web and opens the Standings
-              // tab in-app.
-              final url = buildEventShareUrl(
-                id: fallbackId,
-                title: aboutModel.name,
-                tourId: aboutModel.id,
-                tourSlug: aboutModel.slug,
-                tab: kEventStandingsTab,
-              );
-              unawaited(_shareStandings(ref, context, aboutModel.name, url));
-            },
-            child: _MenuDropDownItem(
-              text: "Share standings",
-              icon: Icon(
-                Icons.leaderboard_outlined,
-                color: context.colors.textPrimary,
-                size: 16,
-              ),
-            ),
-          ),
-        );
-      }
-      if (standingsShares.contains(TournamentMenuAction.shareTeamStandings)) {
-        items.add(
-          PopupMenuItem<TournamentMenuAction>(
-            value: TournamentMenuAction.shareTeamStandings,
-            padding: EdgeInsets.zero,
-            height: 36.h,
-            onTap: () {
-              final url = buildEventShareUrl(
-                id: fallbackId,
-                title: aboutModel.name,
-                tourId: aboutModel.id,
-                tourSlug: aboutModel.slug,
-                tab: kEventStandingsTab,
-              );
-              unawaited(
-                _shareTeamStandings(ref, context, aboutModel.name, url),
-              );
-            },
-            child: _MenuDropDownItem(
-              text: "Share team standings",
-              icon: Icon(
-                Icons.groups_outlined,
-                color: context.colors.textPrimary,
-                size: 16,
-              ),
-            ),
-          ),
-        );
-      }
+    }
 
-      // Knockout events, only while the Bracket tab is on screen (so the live
-      // canvas boundary exists to snapshot the framed area).
-      final isKnockout =
-          ref.read(knockoutTournamentStateProvider(aboutModel.id)).isKnockout;
-      final onBracketTab =
-          ref.read(selectedTourModeProvider) ==
-          TournamentDetailScreenMode.bracket;
-      if (isKnockout && onBracketTab) {
-        items.add(
-          PopupMenuItem<TournamentMenuAction>(
-            value: TournamentMenuAction.shareBrackets,
-            padding: EdgeInsets.zero,
-            height: 36.h,
-            onTap: () {
-              final url = buildEventShareUrl(
-                id: fallbackId,
-                title: aboutModel.name,
-                tourId: aboutModel.id,
-                tourSlug: aboutModel.slug,
-                tab: kEventBracketTab,
-              );
-              unawaited(_shareBrackets(ref, context, aboutModel.name, url));
-            },
-            child: _MenuDropDownItem(
-              text: "Share brackets",
-              icon: Icon(
-                Icons.account_tree_outlined,
-                color: context.colors.textPrimary,
-                size: 16,
-              ),
-            ),
-          ),
-        );
+    // Knockout events, only while the Bracket tab is on screen (so the live
+    // canvas boundary exists to snapshot the framed area).
+    final isKnockout =
+        ref.read(knockoutTournamentStateProvider(aboutModel.id)).isKnockout;
+    final onBracketTab = mode == TournamentDetailScreenMode.bracket;
+    if (isKnockout && onBracketTab) {
+      actions.add(
+        LibraryMenuAction(
+          icon: Icons.account_tree_outlined,
+          label: "Share brackets",
+          onSelected: () {
+            final url = buildEventShareUrl(
+              id: fallbackId,
+              title: aboutModel.name,
+              tourId: aboutModel.id,
+              tourSlug: aboutModel.slug,
+              tab: kEventBracketTab,
+            );
+            unawaited(_shareBrackets(ref, context, aboutModel.name, url));
+          },
+        ),
+      );
+    }
+    return actions;
+  }
+
+  /// The event itself, and on the Games tab the round on screen. A
+  /// gamebase-only virtual event pins by its virtual id; its rounds are left
+  /// out, since the round opener resolves real broadcasts only.
+  List<LibraryMenuAction> _spaceActions(
+    WidgetRef ref,
+    BuildContext context,
+    bool isGamesTab,
+  ) {
+    final eventDraft = tournamentEventSpaceDraft(
+      broadcast: ref.read(selectedBroadcastModelProvider),
+      about: tourData.aboutTourModel,
+    );
+    GamesAppBarModel? currentRound;
+    if (isGamesTab) {
+      final rounds = ref.read(gamesAppBarProvider).valueOrNull;
+      if (rounds != null) {
+        for (final round in rounds.gamesAppBarModels) {
+          if (round.id == rounds.selectedId) currentRound = round;
+        }
       }
     }
+    final roundDraft =
+        currentRound == null
+            ? null
+            : currentEventRoundSpaceDraft(ref, currentRound);
+    final roundName =
+        currentRound == null ? '' : spaceRoundLabelName(currentRound.name);
+
+    return [
+      if (eventDraft != null)
+        labeledSpaceMenuAction(
+          context: context,
+          ref: ref,
+          draft: eventDraft,
+          addLabel: 'Add event to My Space',
+          removeLabel: 'Remove event from My Space',
+        ),
+      if (roundDraft != null)
+        labeledSpaceMenuAction(
+          context: context,
+          ref: ref,
+          draft: roundDraft,
+          addLabel: 'Add $roundName to My Space',
+          removeLabel: 'Remove $roundName from My Space',
+        ),
+    ];
   }
 
   /// Renders the tournament standings to a branded share image and opens the
@@ -854,59 +728,4 @@ bool areAllVisibleSectionsCollapsed({
   );
 
   return areRoundsCollapsed && areMatchesCollapsed;
-}
-
-class _MenuDropDownItem extends StatelessWidget {
-  final String text;
-  final Widget icon;
-  final bool hasBorder;
-  final String fontFamily;
-
-  const _MenuDropDownItem({
-    required this.text,
-    required this.icon,
-    this.hasBorder = true,
-    this.fontFamily = 'SF Pro',
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      height: 40.h,
-      padding: EdgeInsets.symmetric(horizontal: 14.w),
-      decoration: BoxDecoration(
-        color: context.colors.surface,
-        border:
-            hasBorder
-                ? Border(
-                  top: BorderSide(
-                    color: const Color(0xFFE2E2E2).withValues(alpha: 0.04),
-                    width: 1.w,
-                  ),
-                )
-                : null,
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
-          SizedBox(width: 16.w, height: 16.h, child: icon),
-          SizedBox(width: 10.w),
-          Expanded(
-            child: Text(
-              text,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                fontFamily: fontFamily,
-                fontSize: 12.sp,
-                fontWeight: FontWeight.w400,
-                color: context.colors.textPrimary,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
 }

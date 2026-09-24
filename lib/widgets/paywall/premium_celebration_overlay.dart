@@ -24,7 +24,13 @@ Future<void> showPremiumCelebration(
     barrierColor: Colors.black.withValues(alpha: 0.85),
     transitionDuration: const Duration(milliseconds: 400),
     pageBuilder: (context, animation, secondaryAnimation) {
-      return _PremiumCelebrationOverlay(managementUrl: managementUrl);
+      // The celebration is always a dark stage (a black 0.85 barrier), so
+      // it renders with the dark theme: in light its textPrimary ink would
+      // be ink on black.
+      return Theme(
+        data: AppTheme.darkTheme,
+        child: _PremiumCelebrationOverlay(managementUrl: managementUrl),
+      );
     },
     transitionBuilder: (context, animation, secondaryAnimation, child) {
       return FadeTransition(opacity: animation, child: child);
@@ -299,7 +305,7 @@ class _PremiumCelebrationOverlayState extends State<_PremiumCelebrationOverlay>
                   Text(
                         'Tap anywhere to continue',
                         style: AppTypography.textSmRegular.copyWith(
-                          color: context.colors.textPrimary.withValues(alpha: 0.4),
+                          color: context.textInk(0.4),
                         ),
                       )
                       .animate(

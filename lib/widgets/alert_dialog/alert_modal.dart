@@ -231,6 +231,19 @@ class _DialogButton extends StatefulWidget {
 class _DialogButtonState extends State<_DialogButton> {
   double _scale = 1.0;
 
+  /// The label ink. Dark keeps its white label. On paper a filled button
+  /// takes whichever of ink or white reads better on its fill: ink on the
+  /// brand cyan, white on the danger red (ink there reads ~3.2:1).
+  Color _labelColor(BuildContext context) {
+    final colors = context.colors;
+    if (widget.isOutlined || !context.isLightTheme) return colors.textPrimary;
+    final fill = widget.color ?? kPrimaryColor;
+    const white = Color(0xFFFFFFFF);
+    return wcagContrast(white, fill) > wcagContrast(colors.textPrimary, fill)
+        ? white
+        : colors.textPrimary;
+  }
+
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
@@ -264,7 +277,7 @@ class _DialogButtonState extends State<_DialogButton> {
             child: Text(
               widget.text,
               style: TextStyle(
-                color: context.colors.textPrimary,
+                color: _labelColor(context),
                 fontSize: 15.sp,
                 fontWeight: FontWeight.w600,
               ),

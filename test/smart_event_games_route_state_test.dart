@@ -4,6 +4,8 @@ import 'package:chessever2/providers/favorite_events_provider.dart';
 import 'package:chessever2/repository/favorites/models/favorite_event.dart';
 import 'package:chessever2/screens/group_event/smart_event/smart_aggregate_event_provider.dart';
 import 'package:chessever2/screens/group_event/smart_event/smart_event_screen.dart';
+import 'package:chessever2/screens/my_space/models/space_shortcut.dart';
+import 'package:chessever2/screens/my_space/providers/space_shortcuts_provider.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:flutter/material.dart';
@@ -24,6 +26,13 @@ class _TestBoardSettingsNotifier extends BoardSettingsNotifierNew {
 class _TestFavoriteEventsNotifier extends FavoriteEventsNotifier {
   @override
   Future<List<FavoriteEvent>> build() async => const [];
+}
+
+/// The app bar's My Space button watches this; the real notifier reads the
+/// SQLite cache, which has no backend under widget tests.
+class _TestSpaceShortcutsNotifier extends SpaceShortcutsNotifier {
+  @override
+  Future<List<SpaceShortcut>> build() async => const [];
 }
 
 SmartEventRequest _request() {
@@ -50,6 +59,7 @@ void main() {
         overrides: [
           boardSettingsProviderNew.overrideWith(_TestBoardSettingsNotifier.new),
           favoriteEventsProvider.overrideWith(_TestFavoriteEventsNotifier.new),
+          spaceShortcutsProvider.overrideWith(_TestSpaceShortcutsNotifier.new),
           smartAggregateEventRepositoryProvider.overrideWith((ref, query) {
             final notifier = _LoadedAggregateNotifier(ref, query);
             createdNotifiers.add(notifier);

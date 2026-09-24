@@ -1,7 +1,8 @@
 import 'package:chessever2/screens/standings/team_standing_model.dart';
-import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/png_asset.dart';
+import 'package:chessever2/utils/share_card.dart';
+import 'package:chessever2/utils/share_card_palette.dart';
 import 'package:chessever2/widgets/team_crest_avatar.dart';
 import 'package:flutter/material.dart';
 
@@ -13,9 +14,9 @@ const int kTeamStandingsShareRowLimit = 12;
 
 /// A self-contained, brand-forward leaderboard image of a team event's team
 /// standings, built to be captured off-screen (see `captureCardPng`) and shared
-/// to social. Deterministic dark palette (independent of the active theme) so
-/// the shared image looks identical in light or dark mode. Height is intrinsic
-/// (grows with the row count up to [kTeamStandingsShareRowLimit]).
+/// to social. Colours come from the capture's [ShareCardPalette]: the dark
+/// brand identity, or its paper edition when the app is in light mode. Height
+/// is intrinsic (grows with the row count up to [kTeamStandingsShareRowLimit]).
 ///
 /// This is the team-event sibling of [StandingsShareImageCard]: same header /
 /// footer chrome, but each row is a team (crest, name, W-D-L record) with match
@@ -32,16 +33,6 @@ class TeamStandingsShareImageCard extends StatelessWidget {
   final String? eventName;
   final List<TeamStandingModel> standings;
 
-  // Deterministic dark brand palette (matches StandingsShareImageCard).
-  static const _bg = Color(0xFF0A0B0D);
-  static const _surfaceLow = Color(0xFF101216);
-  static const _hairline = Color(0xFF23262E);
-  static const _cyan = kPrimaryColor;
-  static const _gold = kLightYellowColor;
-  static const _textHi = Colors.white;
-  static const _textMid = Color(0xFFAEB4BF);
-  static const _textLo = Color(0xFF868C97);
-
   static const _padH = 22.0;
 
   @override
@@ -51,25 +42,24 @@ class TeamStandingsShareImageCard extends StatelessWidget {
             ? standings.sublist(0, kTeamStandingsShareRowLimit)
             : standings;
     final remaining = standings.length - rows.length;
+    final p = ShareCardPalette.of(context);
 
     return MediaQuery(
       data: const MediaQueryData(devicePixelRatio: 3.0),
       child: Directionality(
         textDirection: TextDirection.ltr,
         child: Material(
-          color: _bg,
+          color: p.bg,
           child: SizedBox(
             width: width,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
+            child: ShareCardColumn(
               children: [
-                _buildHeader(),
+                _buildHeader(p),
                 Padding(
                   padding: const EdgeInsets.fromLTRB(_padH, 6, _padH, 18),
-                  child: _buildTable(rows, remaining),
+                  child: _buildTable(rows, remaining, p),
                 ),
-                _buildFooter(),
+                _buildFooter(p),
               ],
             ),
           ),
@@ -78,18 +68,28 @@ class TeamStandingsShareImageCard extends StatelessWidget {
     );
   }
 
-  Widget _buildHeader() {
+  Widget _buildHeader(ShareCardPalette p) {
     final title = eventName?.trim();
     final hasEvent = title != null && title.isNotEmpty;
 
     return DecoratedBox(
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [Color.alphaBlend(_cyan.withValues(alpha: 0.13), _bg), _bg],
-        ),
-      ),
+      // Paper keeps a flat header; dark washes it with cyan.
+      decoration:
+          p.heroTint > 0
+              ? BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [
+                    Color.alphaBlend(
+                      p.accentFill.withValues(alpha: p.heroTint),
+                      p.bg,
+                    ),
+                    p.bg,
+                  ],
+                ),
+              )
+              : const BoxDecoration(),
       child: Padding(
         padding: const EdgeInsets.fromLTRB(_padH, 22, _padH, 18),
         child: Column(
@@ -97,12 +97,12 @@ class TeamStandingsShareImageCard extends StatelessWidget {
           children: [
             Row(
               children: [
-                _logoBadge(26),
+                _logoBadge(26, p),
                 const SizedBox(width: 9),
                 Text(
                   'ChessEver',
                   style: AppTypography.textSmBold.copyWith(
-                    color: _textHi,
+                    color: p.textHi,
                     fontSize: 15,
                     letterSpacing: 0.2,
                   ),
@@ -111,7 +111,7 @@ class TeamStandingsShareImageCard extends StatelessWidget {
                 Text(
                   'TEAM STANDINGS',
                   style: AppTypography.textXxsBold.copyWith(
-                    color: _textLo,
+                    color: p.textLo,
                     fontSize: 10,
                     letterSpacing: 1.4,
                   ),
@@ -121,10 +121,10 @@ class TeamStandingsShareImageCard extends StatelessWidget {
             const SizedBox(height: 16),
             Text(
               hasEvent ? title : 'Team Tournament',
-              maxLines: 1,
+              maxLines: 2,
               overflow: TextOverflow.ellipsis,
               style: AppTypography.textXlBold.copyWith(
-                color: _textHi,
+                color: p.textHi,
                 fontSize: 21,
                 height: 1.15,
                 letterSpacing: -0.3,
@@ -135,7 +135,7 @@ class TeamStandingsShareImageCard extends StatelessWidget {
               width: 38,
               height: 3,
               decoration: BoxDecoration(
-                color: _cyan,
+                color: p.accentFill,
                 borderRadius: BorderRadius.circular(2),
               ),
             ),
@@ -145,7 +145,11 @@ class TeamStandingsShareImageCard extends StatelessWidget {
     );
   }
 
-  Widget _buildTable(List<TeamStandingModel> rows, int remaining) {
+  Widget _buildTable(
+    List<TeamStandingModel> rows,
+    int remaining,
+    ShareCardPalette p,
+  ) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -156,17 +160,18 @@ class TeamStandingsShareImageCard extends StatelessWidget {
               Text(
                 'RANK',
                 style: AppTypography.textXxsBold.copyWith(
-                  color: _textLo,
+                  color: p.textLo,
                   fontSize: 10.5,
                   letterSpacing: 1.4,
                 ),
               ),
               const Spacer(),
-              // Column legend: MP = match points, BP = board points.
+              // Column legend, in row order: board points (muted), then the
+              // headline match points.
               Text(
-                'MP  ·  BP',
+                'BP  ·  MP',
                 style: AppTypography.textXxsBold.copyWith(
-                  color: _textLo,
+                  color: p.textLo,
                   fontSize: 10.5,
                   letterSpacing: 1.2,
                 ),
@@ -177,7 +182,7 @@ class TeamStandingsShareImageCard extends StatelessWidget {
         ClipRRect(
           borderRadius: BorderRadius.circular(14),
           child: Container(
-            color: _surfaceLow,
+            color: p.surfaceLow,
             child: Column(
               children: [
                 for (var i = 0; i < rows.length; i++)
@@ -196,7 +201,7 @@ class TeamStandingsShareImageCard extends StatelessWidget {
             child: Text(
               '+$remaining more on ChessEver',
               style: AppTypography.textXxsMedium.copyWith(
-                color: _textLo,
+                color: p.textLo,
                 fontSize: 11.5,
               ),
             ),
@@ -205,15 +210,15 @@ class TeamStandingsShareImageCard extends StatelessWidget {
     );
   }
 
-  Widget _buildFooter() {
+  Widget _buildFooter(ShareCardPalette p) {
     return Container(
-      decoration: const BoxDecoration(
-        border: Border(top: BorderSide(color: _hairline, width: 1)),
+      decoration: BoxDecoration(
+        border: Border(top: BorderSide(color: p.hairline, width: 1)),
       ),
       padding: const EdgeInsets.fromLTRB(_padH, 15, _padH, 16),
       child: Row(
         children: [
-          _logoBadge(30),
+          _logoBadge(30, p),
           const SizedBox(width: 11),
           Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -222,15 +227,15 @@ class TeamStandingsShareImageCard extends StatelessWidget {
               Text(
                 'ChessEver',
                 style: AppTypography.textSmBold.copyWith(
-                  color: _textHi,
+                  color: p.textHi,
                   fontSize: 14.5,
                 ),
               ),
               const SizedBox(height: 1),
               Text(
-                'Follow live chess',
+                kShareFooterSlogan,
                 style: AppTypography.textXxsMedium.copyWith(
-                  color: _textLo,
+                  color: p.textLo,
                   fontSize: 11,
                 ),
               ),
@@ -240,7 +245,7 @@ class TeamStandingsShareImageCard extends StatelessWidget {
           Text(
             'chessever.com',
             style: AppTypography.textXsBold.copyWith(
-              color: _cyan,
+              color: p.accentInk,
               fontSize: 12.5,
             ),
           ),
@@ -249,19 +254,22 @@ class TeamStandingsShareImageCard extends StatelessWidget {
     );
   }
 
-  Widget _logoBadge(double size) {
+  Widget _logoBadge(double size, ShareCardPalette p) {
     return Container(
       width: size,
       height: size,
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(size * 0.28),
-        boxShadow: [
-          BoxShadow(
-            color: _cyan.withValues(alpha: 0.35),
-            blurRadius: 14,
-            spreadRadius: -4,
-          ),
-        ],
+        boxShadow:
+            p.logoGlow
+                ? [
+                  BoxShadow(
+                    color: p.accentFill.withValues(alpha: 0.35),
+                    blurRadius: 14,
+                    spreadRadius: -4,
+                  ),
+                ]
+                : null,
       ),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(size * 0.28),
@@ -290,6 +298,7 @@ class _TeamStandingRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isTopThree = rank <= 3;
+    final p = ShareCardPalette.of(context);
 
     return Container(
       height: 52,
@@ -298,12 +307,7 @@ class _TeamStandingRow extends StatelessWidget {
         border:
             isLast
                 ? null
-                : const Border(
-                  bottom: BorderSide(
-                    color: TeamStandingsShareImageCard._hairline,
-                    width: 0.7,
-                  ),
-                ),
+                : Border(bottom: BorderSide(color: p.hairline, width: 0.7)),
       ),
       child: Row(
         children: [
@@ -313,10 +317,7 @@ class _TeamStandingRow extends StatelessWidget {
               '$rank',
               maxLines: 1,
               style: AppTypography.textSmBold.copyWith(
-                color:
-                    isTopThree
-                        ? TeamStandingsShareImageCard._gold
-                        : TeamStandingsShareImageCard._textMid,
+                color: isTopThree ? p.gold : p.textMid,
                 fontSize: 15,
                 fontFeatures: const [FontFeature.tabularFigures()],
               ),
@@ -335,7 +336,7 @@ class _TeamStandingRow extends StatelessWidget {
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: AppTypography.textSmBold.copyWith(
-                    color: TeamStandingsShareImageCard._textHi,
+                    color: p.textHi,
                     fontSize: 14.5,
                   ),
                 ),
@@ -344,7 +345,7 @@ class _TeamStandingRow extends StatelessWidget {
                   '${team.matchesWon}W  ${team.matchesDrawn}D  ${team.matchesLost}L',
                   maxLines: 1,
                   style: AppTypography.textXxsMedium.copyWith(
-                    color: TeamStandingsShareImageCard._textLo,
+                    color: p.textLo,
                     fontSize: 10.5,
                     fontFeatures: const [FontFeature.tabularFigures()],
                   ),
@@ -360,7 +361,7 @@ class _TeamStandingRow extends StatelessWidget {
               team.gamePointsLabel,
               textAlign: TextAlign.right,
               style: AppTypography.textSmMedium.copyWith(
-                color: TeamStandingsShareImageCard._textMid,
+                color: p.textMid,
                 fontSize: 13,
                 fontFeatures: const [FontFeature.tabularFigures()],
               ),
@@ -374,7 +375,7 @@ class _TeamStandingRow extends StatelessWidget {
               '${team.matchPoints}',
               textAlign: TextAlign.right,
               style: AppTypography.textMdBold.copyWith(
-                color: TeamStandingsShareImageCard._textHi,
+                color: p.textHi,
                 fontSize: 16,
                 fontFeatures: const [FontFeature.tabularFigures()],
               ),

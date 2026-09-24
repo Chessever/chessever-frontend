@@ -1,15 +1,20 @@
+import 'package:chessever2/repository/library/library_game_event.dart';
 import 'package:chessever2/repository/library/models/saved_analysis.dart';
 import 'package:chessever2/screens/chessboard/utils/game_share_utils.dart';
 import 'package:chessever2/screens/chessboard/widgets/share_game_screen.dart';
 import 'package:chessever2/screens/library/utils/load_saved_analysis.dart';
 import 'package:chessever2/screens/library/widgets/library_context_menu.dart';
 import 'package:chessever2/screens/library/widgets/move_game_to_database_sheet.dart';
+import 'package:chessever2/screens/my_space/actions/space_menu_action.dart';
+import 'package:chessever2/screens/my_space/models/space_shortcut.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/utils/game_space_shortcut.dart';
 import 'package:chessever2/utils/logger/logger.dart';
 import 'package:chessever2/utils/pgn_export_utils.dart';
 import 'package:chessever2/widgets/app_snack.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 /// Long-press menu for a saved game in the library.
 ///
@@ -23,11 +28,15 @@ import 'package:flutter/services.dart';
 /// list refresh); omit it to hide the destructive row. [readOnly] is for games
 /// inside a subscribed database, which the user does not own. [locked] is a
 /// paywalled My Likes card: the game's content stays behind the paywall, so
-/// only opening (which raises it) and removing are offered.
+/// only opening (which raises it) and removing are offered; that includes
+/// "Add to My Space", whose pin would reopen the locked copy. With a [ref],
+/// an unlocked game's menu also offers "Add to My Space" whenever the game
+/// points back at a source game My Space can reopen.
 Future<void> showSavedGameActions({
   required BuildContext context,
   required SavedAnalysis analysis,
   required VoidCallback onOpen,
+  WidgetRef? ref,
   WidgetBuilder? previewBuilder,
   Future<void> Function()? onDelete,
   String deleteLabel = 'Delete game',
@@ -36,6 +45,42 @@ Future<void> showSavedGameActions({
   bool readOnly = false,
   bool locked = false,
 }) {
+  return showLibraryContextMenu(
+    context: context,
+    actions: savedGameMenuActions(
+      context: context,
+      analysis: analysis,
+      onOpen: onOpen,
+      ref: ref,
+      onDelete: onDelete,
+      deleteLabel: deleteLabel,
+      deleteIcon: deleteIcon,
+      onChanged: onChanged,
+      readOnly: readOnly,
+      locked: locked,
+    ),
+    previewBuilder: previewBuilder,
+    onPreviewTap: onOpen,
+  );
+}
+
+/// The rows of [showSavedGameActions], for hosts that raise the menu through
+/// a [CardContextMenu] (so a trailing 3-dot opens the same menu as the
+/// long-press). Same arguments, same order, same labels.
+List<LibraryMenuAction> savedGameMenuActions({
+  required BuildContext context,
+  required SavedAnalysis analysis,
+  required VoidCallback onOpen,
+  WidgetRef? ref,
+  Future<void> Function()? onDelete,
+  String deleteLabel = 'Delete game',
+  IconData deleteIcon = Icons.delete_outline_rounded,
+  VoidCallback? onChanged,
+  bool readOnly = false,
+  bool locked = false,
+}) {
+  final spaceDraft =
+      ref == null || locked ? null : _savedGameSpaceDraft(analysis);
   final actions = <LibraryMenuAction>[
     LibraryMenuAction(
       icon: Icons.open_in_new_rounded,
@@ -76,6 +121,8 @@ Future<void> showSavedGameActions({
               onMoved: onChanged,
             ),
       ),
+    if (ref != null && spaceDraft != null)
+      spaceMenuAction(context: context, ref: ref, draft: spaceDraft),
     if (!readOnly && onDelete != null)
       LibraryMenuAction(
         icon: deleteIcon,
@@ -84,12 +131,36 @@ Future<void> showSavedGameActions({
         onSelected: onDelete,
       ),
   ];
+  return actions;
+}
 
-  return showLibraryContextMenu(
-    context: context,
-    actions: actions,
-    previewBuilder: previewBuilder,
-    onPreviewTap: onOpen,
+/// The saved game as a My Space shortcut, keyed on the source game so it is
+/// the same shortcut the Games tab or a board would add. `analysisId` lets My
+/// Space reopen the user's own annotated copy; games saved from nowhere (board
+/// editor, pasted PGN) have no source and are skipped.
+SpaceShortcut? _savedGameSpaceDraft(SavedAnalysis analysis) {
+  final sourceGameId = analysis.sourceGameId?.trim();
+  if (sourceGameId == null || sourceGameId.isEmpty) return null;
+  final md = analysis.chessGame.metadata;
+  final game = savedAnalysisToCardGame(analysis);
+  final tourId = analysis.sourceTournamentId?.trim();
+  return gameSpaceShortcutDraft(
+    game,
+    subtitle: chooseLibraryEventName(
+      canonicalEventName: md['BroadcastName']?.toString(),
+      metadataEvent: md['Event']?.toString(),
+      site: md['Site']?.toString(),
+      whiteName: game.whitePlayer.name,
+      blackName: game.blackPlayer.name,
+    ),
+    params: {
+      // The card model falls back to the event name / PGN round text here;
+      // neither is an id a route can open, so only real ids are kept.
+      'tourId': (tourId?.isNotEmpty ?? false) ? tourId : null,
+      'roundId': null,
+      'tourSlug': md['TourSlug']?.toString(),
+      'analysisId': analysis.id,
+    },
   );
 }
 

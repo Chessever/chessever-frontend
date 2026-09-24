@@ -1,4 +1,5 @@
 import 'package:chessever2/screens/home/widget/bottom_nav_bar.dart';
+import 'package:chessever2/screens/home/widget/bottom_nav_bar_widget.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:flutter/material.dart';
@@ -7,8 +8,8 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 void main() {
   testWidgets(
-    'bottom nav bar never overflows the bottom on a short screen at large '
-    'text scale with a gesture-nav inset',
+    'bottom nav bar (Events, Feed, For You, Library) never overflows on a '
+    'short 393px screen at large text scale with a gesture-nav inset',
     (tester) async {
       // The regression: the nav-item Column (icon + label + vertical padding,
       // whose label height rides MediaQuery.textScaler) was placed in a fixed
@@ -51,6 +52,23 @@ void main() {
       );
 
       FlutterError.onError = previousOnError;
+
+      // Four equal slots at 393px, in bar order: Events, Feed, For You,
+      // Library.
+      expect(find.byType(BottomNavBarWidget), findsNWidgets(4));
+      expect(
+        tester
+            .widgetList<BottomNavBarWidget>(find.byType(BottomNavBarWidget))
+            .map((item) => item.title)
+            .toList(),
+        ['Events', 'Feed', 'For You', 'Library'],
+      );
+      expect(find.text('Calendar'), findsNothing);
+      for (final widget in tester.widgetList<BottomNavBarWidget>(
+        find.byType(BottomNavBarWidget),
+      )) {
+        expect(widget.width, closeTo(393 / 4, 0.001));
+      }
 
       final overflowErrors = errors
           .map((e) => e.exceptionAsString())

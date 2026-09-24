@@ -1,3 +1,6 @@
+import 'package:chessever2/providers/for_you_games_provider.dart';
+import 'package:chessever2/screens/feed/providers/feed_provider.dart';
+import 'package:chessever2/screens/for_you/providers/for_you_tab_provider.dart';
 import 'package:chessever2/screens/group_event/providers/group_event_screen_provider.dart';
 import 'package:chessever2/screens/home/widget/bottom_nav_bar.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
@@ -22,11 +25,18 @@ class _HomeScreenController {
       case BottomNavBarItem.tournaments:
         ref.read(groupEventScreenProvider.notifier).onRefresh();
         break;
-      case BottomNavBarItem.calendar:
-        debugPrint('Refreshing calendar...');
+      case BottomNavBarItem.forYou:
+        // Only Today is a live feed; My Space and Discovery refresh from
+        // their own providers when their data changes.
+        if (ref.read(selectedForYouTabProvider) == ForYouTab.today) {
+          await ref.read(forYouEventsProvider.notifier).refresh();
+        }
         break;
       case BottomNavBarItem.library:
         debugPrint('Refreshing library...');
+        break;
+      case BottomNavBarItem.feed:
+        ref.invalidate(feedProvider);
         break;
     }
   }

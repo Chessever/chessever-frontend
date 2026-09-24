@@ -1,6 +1,6 @@
 import 'package:chessever2/theme/app_colors.dart';
-import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/utils/svg_asset.dart';
 import 'package:chessever2/widgets/svg_widget.dart';
 import 'package:flutter/material.dart';
 import '../utils/app_typography.dart';
@@ -106,8 +106,19 @@ class _AuthButtonState extends State<AuthButton>
                 height: 20.h,
                 width: ResponsiveHelper.isTablet ? 24 : 29.w,
                 // Apple/Google brand logos must keep their original colours
-                // (multi-colour Google glyph, black Apple silhouette).
+                // (multi-colour Google glyph, black Apple silhouette). The
+                // button is textPrimary, so on paper it is an ink plate and
+                // the black Apple mark takes the inverse ink instead, the
+                // same white-on-black pairing Apple's own button uses.
                 preserveOriginalColors: true,
+                colorFilter:
+                    widget.svgIconPath == SvgAsset.appleIcon &&
+                            context.isLightTheme
+                        ? ColorFilter.mode(
+                          context.colors.textInverse,
+                          BlendMode.srcIn,
+                        )
+                        : null,
                 fallback: Icon(
                   Icons.apple,
                   size: 24.ic,
@@ -119,7 +130,9 @@ class _AuthButtonState extends State<AuthButton>
                 child: Text(
                   widget.signInTitle,
                   style: AppTypography.textLgMedium.copyWith(
-                    color: kBlackColor,
+                    // Black on the white plate in dark, mint on the ink
+                    // plate in light (it was black on ink, ~1.1:1).
+                    color: context.colors.textInverse,
                   ),
                   overflow: TextOverflow.ellipsis,
                 ),

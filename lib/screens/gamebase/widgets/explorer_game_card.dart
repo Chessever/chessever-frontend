@@ -13,8 +13,12 @@ import 'package:chessever2/screens/gamebase/providers/gamebase_providers.dart';
 import 'package:chessever2/screens/gamebase/utils/continuation_line.dart';
 import 'package:chessever2/screens/gamebase/utils/explorer_games_paging.dart';
 import 'package:chessever2/screens/gamebase/widgets/position_games_sheet.dart';
+import 'package:chessever2/screens/library/widgets/archive_game_actions.dart';
+import 'package:chessever2/screens/library/widgets/library_context_menu.dart';
+import 'package:chessever2/screens/my_space/actions/space_menu_action.dart';
 import 'package:chessever2/screens/player_profile/utils/twic_event_identity.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/utils/game_space_shortcut.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
@@ -672,6 +676,39 @@ class _ExplorerGameCardState extends ConsumerState<ExplorerGameCard> {
     );
   }
 
+  /// Long-press on the board half: the same game menu every archive row
+  /// raises (open, share, My Space). Free users get the paywall, like every
+  /// other interaction on this card.
+  ///
+  /// No lifted copy: the continuation strip holds a GlobalKey, so the menu
+  /// anchors to the card instead of rebuilding it.
+  Future<void> _handleBodyLongPress() async {
+    // Same gate as a tap: premium passes straight through.
+    if (!await _requirePremium() || !mounted) return;
+    final game = widget.game;
+    final spaceDraft = gameSpaceShortcutDraft(game);
+    await showLibraryContextMenu(
+      context: context,
+      actions: [
+        LibraryMenuAction(
+          icon: Icons.open_in_new_rounded,
+          label: 'Open game',
+          onSelected: _handleBodyTap,
+        ),
+        LibraryMenuAction(
+          icon: Icons.ios_share_rounded,
+          label: 'Share game',
+          onSelected: () async {
+            if (!mounted) return;
+            await shareArchiveGame(context: context, ref: ref, game: game);
+          },
+        ),
+        if (spaceDraft != null)
+          spaceMenuAction(context: context, ref: ref, draft: spaceDraft),
+      ],
+    );
+  }
+
   void _scheduleEnsureChipVisible() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
@@ -833,6 +870,7 @@ class _ExplorerGameCardState extends ConsumerState<ExplorerGameCard> {
           child: GestureDetector(
             behavior: HitTestBehavior.opaque,
             onTap: _handleBodyTap,
+            onLongPress: _handleBodyLongPress,
             child: Container(
               decoration: BoxDecoration(
                 color:
@@ -1119,7 +1157,7 @@ class _ExplorerGameCardState extends ConsumerState<ExplorerGameCard> {
         child: Text(
           label,
           style: AppTypography.textXsMedium.copyWith(
-            color: isCurrent ? kPrimaryColor : context.colors.textPrimary,
+            color: isCurrent ? context.colors.accentText : context.colors.textPrimary,
             fontWeight: isCurrent ? FontWeight.w700 : FontWeight.w500,
           ),
         ),
@@ -1377,7 +1415,7 @@ class _ExplorerCardPlayerRow extends StatelessWidget {
         !status.isFinished
             ? context.colors.textPrimary
             : isWin
-            ? kPrimaryColor
+            ? context.colors.accentText
             : isDraw
             ? context.colors.textPrimaryMuted
             : context.colors.danger;

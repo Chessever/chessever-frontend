@@ -45,6 +45,7 @@ import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:motor/motor.dart';
+import 'package:chessever2/screens/chessboard/utils/legible_ink.dart';
 
 /// Games tab showing all games of a player with comprehensive filters
 class PlayerGamesTab extends ConsumerStatefulWidget {
@@ -849,7 +850,9 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
                     size: 20.sp,
                     color:
                         hasActiveFilters
-                            ? const Color(0xFFEF4444)
+                            ? (context.isLightTheme
+                                ? context.colors.danger
+                                : const Color(0xFFEF4444))
                             : context.colors.textSecondary,
                   ),
                   if (hasActiveFilters)
@@ -859,15 +862,24 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
                       child: Container(
                         width: 14.w,
                         height: 14.h,
-                        decoration: const BoxDecoration(
-                          color: Color(0xFFEF4444),
+                        decoration: BoxDecoration(
+                          color:
+                              context.isLightTheme
+                                  ? context.colors.danger
+                                  : const Color(0xFFEF4444),
                           shape: BoxShape.circle,
                         ),
                         child: Center(
                           child: Text(
                             '$activeFilterCount',
                             style: AppTypography.textXsBold.copyWith(
-                              color: context.colors.textPrimary,
+                              color:
+                                  context.isLightTheme
+                                      ? labelOnFill(
+                                        context,
+                                        context.colors.danger,
+                                      )
+                                      : context.colors.textPrimary,
                               fontSize: 9.sp,
                               height: 1,
                             ),
@@ -942,12 +954,19 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
                 color: context.colors.surface,
                 borderRadius: BorderRadius.circular(16.br),
                 border: Border.all(color: kPrimaryColor.withValues(alpha: 0.3)),
+                // No cyan bloom on paper: one tight contact shadow instead.
                 boxShadow: [
-                  BoxShadow(
-                    color: kPrimaryColor.withValues(alpha: 0.1),
-                    blurRadius: 12,
-                    offset: const Offset(0, 4),
-                  ),
+                  context.isLightTheme
+                      ? BoxShadow(
+                        color: context.colors.shadow,
+                        blurRadius: 4,
+                        offset: const Offset(0, 1),
+                      )
+                      : BoxShadow(
+                        color: kPrimaryColor.withValues(alpha: 0.1),
+                        blurRadius: 12,
+                        offset: const Offset(0, 4),
+                      ),
                 ],
               ),
               child: Column(
@@ -969,7 +988,7 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
                                         ? context.colors.textPrimary.withValues(
                                           alpha: 0.75,
                                         )
-                                        : kPrimaryColor,
+                                        : context.colors.accentText,
                                 fontWeight: FontWeight.bold,
                               ),
                             ),
@@ -977,9 +996,7 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
                             Text(
                               subtitle,
                               style: AppTypography.textXsRegular.copyWith(
-                                color: context.colors.textPrimary.withValues(
-                                  alpha: 0.58,
-                                ),
+                                color: context.textInk(0.58),
                               ),
                               maxLines: 2,
                             ),
@@ -1067,7 +1084,9 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
   }
 
   Widget _buildActiveFiltersChip(PlayerProfileGamesState state) {
-    const filterRedColor = Color(0xFFEF4444);
+    // Used as text on its own 10% tint: paper needs the deeper danger ink.
+    final filterRedColor =
+        context.isLightTheme ? context.colors.danger : const Color(0xFFEF4444);
     return GestureDetector(
       onTap: () {
         HapticFeedback.lightImpact();
@@ -1518,12 +1537,14 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
                 border: Border.all(
                   color:
                       isSelected
-                          ? kPrimaryColor.withValues(alpha: 0.85)
+                          ? (context.isLightTheme
+                              ? context.colors.accentText
+                              : kPrimaryColor.withValues(alpha: 0.85))
                           : Colors.transparent,
                   width: 1.6,
                 ),
                 boxShadow:
-                    isSelected
+                    isSelected && !context.isLightTheme
                         ? [
                           BoxShadow(
                             color: kPrimaryColor.withValues(alpha: 0.22),
@@ -1654,7 +1675,7 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
         child: Text(
           'Loaded all ${state.totalCount} games',
           style: AppTypography.textXsRegular.copyWith(
-            color: context.colors.textPrimary.withValues(alpha: 0.45),
+            color: context.textInk(0.45),
           ),
         ),
       );
@@ -1831,7 +1852,7 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
           Icon(
             Icons.filter_alt_off_outlined,
             size: 56.sp,
-            color: context.colors.textPrimary.withValues(alpha: 0.4),
+            color: context.textInk(0.4),
           ),
           SizedBox(height: 12.h),
           Text(
@@ -1844,7 +1865,7 @@ class _PlayerGamesTabState extends ConsumerState<PlayerGamesTab>
           Text(
             'Try adjusting your filters',
             style: AppTypography.textSmRegular.copyWith(
-              color: context.colors.textPrimary.withValues(alpha: 0.55),
+              color: context.textInk(0.55),
             ),
             textAlign: TextAlign.center,
           ),
@@ -2042,7 +2063,11 @@ class _SelectionActionButton extends StatelessWidget {
             color:
                 enabled
                     ? (emphasized
-                        ? kPrimaryColor.withValues(alpha: 0.8)
+                        // Paper: the cyan fill sits near the page's value,
+                        // so the rim carries the 3:1 edge in accent ink.
+                        ? (context.isLightTheme
+                            ? context.colors.accentText
+                            : kPrimaryColor.withValues(alpha: 0.8))
                         : context.colors.textPrimary.withValues(alpha: 0.18))
                     : context.colors.textPrimary.withValues(alpha: 0.08),
           ),
@@ -2056,7 +2081,7 @@ class _SelectionActionButton extends StatelessWidget {
               color:
                   enabled
                       ? context.colors.textPrimary
-                      : context.colors.textPrimary.withValues(alpha: 0.45),
+                      : context.textInk(0.45),
             ),
             SizedBox(width: 6.w),
             Flexible(
@@ -2066,7 +2091,7 @@ class _SelectionActionButton extends StatelessWidget {
                   color:
                       enabled
                           ? context.colors.textPrimary
-                          : context.colors.textPrimary.withValues(alpha: 0.45),
+                          : context.textInk(0.45),
                 ),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
@@ -2200,13 +2225,13 @@ class _EventSection extends ConsumerWidget {
               Icon(
                 Icons.sports_esports_outlined,
                 size: 14.sp,
-                color: context.colors.textPrimary.withValues(alpha: 0.5),
+                color: context.textInk(0.5),
               ),
               SizedBox(width: 4.w),
               Text(
                 '$gameCount ${gameCount == 1 ? 'game' : 'games'}',
                 style: AppTypography.textXsRegular.copyWith(
-                  color: context.colors.textPrimary.withValues(alpha: 0.5),
+                  color: context.textInk(0.5),
                 ),
               ),
             ],
@@ -2240,7 +2265,7 @@ class _EventSection extends ConsumerWidget {
   Color _getScoreColor(BuildContext context) {
     if (gameCount == 0) return context.colors.textPrimary;
     final percentage = playerScore / gameCount;
-    if (percentage >= 0.6) return kGreenColor;
+    if (percentage >= 0.6) return context.colors.successStrong;
     if (percentage >= 0.4) return context.colors.textPrimary;
     return context.colors.danger;
   }

@@ -59,6 +59,64 @@ void main() {
     service.close();
   });
 
+  group('theme', () {
+    const queued = {
+      'jobId': 'job-theme',
+      'status': 'queued',
+      'stage': 'queued',
+      'completedFrames': 0,
+      'totalFrames': 3,
+      'expiresAt': '2026-07-28T12:00:00Z',
+    };
+
+    Future<String> submittedBody({CloudflareGifTheme? theme}) async {
+      late http.Request captured;
+      final service = CloudflareGifService(
+        baseUri: Uri.parse('https://cloudflare.example.test'),
+        accessTokenProvider: () async => 'access-token',
+        client: MockClient((request) async {
+          captured = request;
+          return http.Response(jsonEncode(queued), 202);
+        }),
+      );
+      const metadata = {'white': 'Alice', 'black': 'Bob'};
+      if (theme == null) {
+        await service.submitJob(
+          pgn: '1. e4 *',
+          flipped: false,
+          metadata: metadata,
+        );
+      } else {
+        await service.submitJob(
+          pgn: '1. e4 *',
+          flipped: false,
+          metadata: metadata,
+          theme: theme,
+        );
+      }
+      service.close();
+      return captured.body;
+    }
+
+    // What every app version before themes posts; the Worker hashes this
+    // exact shape, so dark must never drift from it.
+    const legacyBody =
+        '{"schemaVersion":1,"pgn":"1. e4 *","flipped":false,'
+        '"metadata":{"white":"Alice","black":"Bob"}}';
+
+    test('dark requests carry no theme key and match the legacy body', () async {
+      expect(await submittedBody(), legacyBody);
+      expect(await submittedBody(theme: CloudflareGifTheme.dark), legacyBody);
+    });
+
+    test('the light edition names itself, last', () async {
+      final body = await submittedBody(theme: CloudflareGifTheme.light);
+      expect((jsonDecode(body) as Map<String, dynamic>)['theme'], 'light');
+      expect(body, '${legacyBody.substring(0, legacyBody.length - 1)},'
+          '"theme":"light"}');
+    });
+  });
+
   test('polls until the workflow succeeds and reports progress', () async {
     var calls = 0;
     final client = MockClient((request) async {

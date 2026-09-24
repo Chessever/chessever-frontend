@@ -4,7 +4,6 @@ import 'package:chessever2/screens/library/widgets/add_to_folder_sheet.dart';
 import 'package:chessever2/screens/library/widgets/gamebase_search_game_card.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/theme/app_colors.dart';
-import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/chess_title_utils.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
@@ -72,7 +71,10 @@ class _GamebasePlayerGamesScreenState
                   Text(
                     displayTitle,
                     style: AppTypography.textSmBold.copyWith(
-                      color: const Color(0xFFA1A1AA), // Zinc 400
+                      color:
+                          context.isLightTheme
+                              ? context.colors.titleAccent
+                              : const Color(0xFFA1A1AA), // Zinc 400
                     ),
                   ),
                   SizedBox(width: 6.w),
@@ -103,7 +105,10 @@ class _GamebasePlayerGamesScreenState
                   Text(
                     widget.player.fed,
                     style: AppTypography.textXsRegular.copyWith(
-                      color: const Color(0xFFA1A1AA),
+                      color:
+                          context.isLightTheme
+                              ? context.colors.textSecondary
+                              : const Color(0xFFA1A1AA),
                     ),
                   ),
                 ],
@@ -137,7 +142,11 @@ class _GamebasePlayerGamesScreenState
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.error_outline, color: kRedColor, size: 48.sp),
+            Icon(
+              Icons.error_outline,
+              color: context.colors.danger,
+              size: 48.sp,
+            ),
             SizedBox(height: 16.h),
             Text(
               'Failed to load games',
@@ -169,7 +178,10 @@ class _GamebasePlayerGamesScreenState
           children: [
             Icon(
               Icons.sports_esports_outlined,
-              color: const Color(0xFFA1A1AA),
+              color:
+                  context.isLightTheme
+                      ? context.colors.iconSecondary
+                      : const Color(0xFFA1A1AA),
               size: 48.sp,
             ),
             SizedBox(height: 16.h),
@@ -181,7 +193,10 @@ class _GamebasePlayerGamesScreenState
             Text(
               'This player has no recorded games',
               style: AppTypography.textSmRegular.copyWith(
-                color: const Color(0xFFA1A1AA),
+                color:
+                    context.isLightTheme
+                        ? context.colors.textSecondary
+                        : const Color(0xFFA1A1AA),
               ),
             ),
           ],

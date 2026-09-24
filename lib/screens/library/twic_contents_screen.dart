@@ -11,6 +11,8 @@ import 'package:chessever2/screens/library/widgets/bulk_add_to_folder_sheet.dart
 import 'package:chessever2/screens/library/widgets/gamebase_search_game_card.dart';
 import 'package:chessever2/screens/library/widgets/library_gamebase_filter_dialog.dart';
 import 'package:chessever2/screens/library/widgets/library_search_bar.dart';
+import 'package:chessever2/screens/library/widgets/library_context_menu.dart';
+import 'package:chessever2/widgets/space_shortcut_drafts.dart';
 import 'package:chessever2/screens/library/widgets/twic_player_search_cards.dart';
 import 'package:chessever2/screens/gamebase/gamebase_explorer_screen.dart';
 import 'package:chessever2/screens/player_profile/player_profile_data_source.dart';
@@ -182,6 +184,55 @@ class _TwicContentsScreenState extends ConsumerState<TwicContentsScreen> {
     ref.read(twicSelectedEventProvider.notifier).state =
         isDeselecting ? null : normalized;
     _scrollChipToIndex(isDeselecting ? 0 : chipIndex);
+  }
+
+  /// Long-press on an event chip: the chip lifts in place with the filter it
+  /// applies and a My Space shortcut that reopens the database on this event.
+  void _showEventMenu(
+    BuildContext chipContext,
+    _TwicEventDisplayItem item, {
+    required bool isSelected,
+    required int chipIndex,
+  }) {
+    final draft =
+        item.event.trim().isEmpty
+            ? null
+            : spaceTwicEventDraft(eventName: item.event);
+    void toggle() {
+      HapticFeedbackService.light();
+      _toggleSelectedEvent(item.event, chipIndex: chipIndex);
+    }
+
+    showLibraryContextMenu(
+      context: chipContext,
+      previewBuilder:
+          (_) => _TwicEventCard(
+            label: item.event,
+            gameCount: item.gameCount,
+            isSelected: isSelected,
+            isAllCard: false,
+            onTap: () {},
+          ),
+      onPreviewTap: toggle,
+      actions: [
+        LibraryMenuAction(
+          icon:
+              isSelected
+                  ? Icons.filter_alt_off_outlined
+                  : Icons.filter_alt_outlined,
+          label: isSelected ? 'Show all events' : 'Show games from this event',
+          onSelected: toggle,
+        ),
+        if (draft != null)
+          labeledSpaceMenuAction(
+            context: chipContext,
+            ref: ref,
+            draft: draft,
+            addLabel: 'Add event to My Space',
+            removeLabel: 'Remove event from My Space',
+          ),
+      ],
+    );
   }
 
   void _scrollChipToIndex(int index) {
@@ -389,7 +440,7 @@ class _TwicContentsScreenState extends ConsumerState<TwicContentsScreen> {
         child: Text(
           '${isEstimate ? '~' : ''}${formatCompactCount(totalCount)} games',
           style: AppTypography.textXsRegular.copyWith(
-            color: context.colors.textPrimary.withValues(alpha: 0.4),
+            color: context.textInk(0.4),
           ),
         ),
       ),
@@ -538,7 +589,7 @@ class _TwicContentsScreenState extends ConsumerState<TwicContentsScreen> {
               Icon(
                 Icons.error_outline_rounded,
                 size: 40.sp,
-                color: context.colors.textPrimary.withValues(alpha: 0.3),
+                color: context.textInk(0.3),
               ),
               SizedBox(height: 12.h),
               Text(
@@ -622,7 +673,10 @@ class _TwicContentsScreenState extends ConsumerState<TwicContentsScreen> {
       ignoreContainers: true,
       effect:  ShimmerEffect(
         baseColor: context.colors.surfaceRecessed,
-        highlightColor: Color(0xFF48484E),
+        highlightColor:
+            context.isLightTheme
+                ? context.colors.surface
+                : const Color(0xFF48484E),
         duration: Duration(milliseconds: 1200),
       ),
       child: ListView.separated(
@@ -701,12 +755,23 @@ class _TwicContentsScreenState extends ConsumerState<TwicContentsScreen> {
             }
 
             final item = eventItems[index - 1];
-            return _TwicEventCard(
-              label: item.event,
-              gameCount: item.gameCount,
-              isSelected: isSelected,
-              isAllCard: false,
-              onTap: () => _toggleSelectedEvent(item.event, chipIndex: index),
+            return Builder(
+              builder:
+                  (chipContext) => _TwicEventCard(
+                    label: item.event,
+                    gameCount: item.gameCount,
+                    isSelected: isSelected,
+                    isAllCard: false,
+                    onTap:
+                        () => _toggleSelectedEvent(item.event, chipIndex: index),
+                    onLongPress:
+                        () => _showEventMenu(
+                          chipContext,
+                          item,
+                          isSelected: isSelected,
+                          chipIndex: index,
+                        ),
+                  ),
             );
           },
         ),
@@ -724,7 +789,10 @@ class _TwicContentsScreenState extends ConsumerState<TwicContentsScreen> {
           ignoreContainers: true,
           effect:  ShimmerEffect(
             baseColor: context.colors.surfaceRecessed,
-            highlightColor: Color(0xFF48484E),
+            highlightColor:
+            context.isLightTheme
+                ? context.colors.surface
+                : const Color(0xFF48484E),
             duration: Duration(milliseconds: 1200),
           ),
           child: ListView.separated(
@@ -786,10 +854,10 @@ class _TwicContentsScreenState extends ConsumerState<TwicContentsScreen> {
     double horizontalPadding,
   ) {
     final infoStyle = AppTypography.textXsRegular.copyWith(
-      color: context.colors.textPrimary.withValues(alpha: 0.55),
+      color: context.textInk(0.55),
     );
     final separatorStyle = infoStyle.copyWith(
-      color: context.colors.textPrimary.withValues(alpha: 0.3),
+      color: context.textInk(0.3),
     );
 
     final infoParts = <Widget>[];
@@ -802,7 +870,7 @@ class _TwicContentsScreenState extends ConsumerState<TwicContentsScreen> {
             Icon(
               Icons.location_on_rounded,
               size: 11.ic,
-              color: context.colors.textPrimary.withValues(alpha: 0.45),
+              color: context.textInk(0.45),
             ),
             SizedBox(width: 2.w),
             ConstrainedBox(
@@ -893,7 +961,7 @@ class _TwicContentsScreenState extends ConsumerState<TwicContentsScreen> {
                       child: Icon(
                         Icons.close_rounded,
                         size: 14.ic,
-                        color: context.colors.textPrimary.withValues(alpha: 0.6),
+                        color: context.textInk(0.6),
                       ),
                     ),
                   ),
@@ -938,13 +1006,13 @@ class _TwicContentsScreenState extends ConsumerState<TwicContentsScreen> {
                       Icon(
                         Icons.library_add_outlined,
                         size: 16.ic,
-                        color: kPrimaryColor,
+                        color: context.colors.accentText,
                       ),
                       SizedBox(width: 8.w),
                       Text(
                         'Save Games to Library',
                         style: AppTypography.textSmMedium.copyWith(
-                          color: kPrimaryColor,
+                          color: context.colors.accentText,
                         ),
                       ),
                     ],
@@ -979,7 +1047,8 @@ class _SkeletonGameCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       decoration: BoxDecoration(
-        color: _outerBg,
+        // Light mode mirrors LibraryGameCard's paper card, not the dark slab.
+        color: context.isLightTheme ? context.colors.surface : _outerBg,
         borderRadius: BorderRadius.circular(12.br),
       ),
       child: Column(
@@ -988,7 +1057,10 @@ class _SkeletonGameCard extends StatelessWidget {
           Container(
             padding: EdgeInsets.fromLTRB(14.w, 10.h, 14.w, 10.h),
             decoration: BoxDecoration(
-              color: _topBg,
+              color:
+                  context.isLightTheme
+                      ? context.colors.surfaceRecessed
+                      : _topBg,
               borderRadius: BorderRadius.vertical(top: Radius.circular(12.br)),
             ),
             child: Row(
@@ -1053,7 +1125,8 @@ class _SkeletonGameCard extends StatelessWidget {
           Container(
             padding: EdgeInsets.symmetric(horizontal: 6.w, vertical: 5.h),
             decoration: BoxDecoration(
-              color: _bottomBg,
+              color:
+                  context.isLightTheme ? context.colors.surface : _bottomBg,
               borderRadius: BorderRadius.vertical(
                 bottom: Radius.circular(12.br),
               ),
@@ -1123,6 +1196,7 @@ class _TwicEventCard extends StatefulWidget {
   final bool isSelected;
   final bool isAllCard;
   final VoidCallback onTap;
+  final VoidCallback? onLongPress;
 
   const _TwicEventCard({
     required this.label,
@@ -1130,6 +1204,7 @@ class _TwicEventCard extends StatefulWidget {
     required this.isAllCard,
     required this.onTap,
     this.gameCount,
+    this.onLongPress,
   });
 
   @override
@@ -1159,6 +1234,7 @@ class _TwicEventCardState extends State<_TwicEventCard> {
       onTapDown: _onTapDown,
       onTapUp: _onTapUp,
       onTapCancel: _onTapCancel,
+      onLongPress: widget.onLongPress,
       child: SingleMotionBuilder(
         motion: const CupertinoMotion.snappy(),
         value: _pressScale,
@@ -1173,18 +1249,29 @@ class _TwicEventCardState extends State<_TwicEventCard> {
                     kPrimaryColor.withValues(alpha: 0.18),
                     selectProgress,
                   )!;
+              final isLight = context.isLightTheme;
               final borderColor =
                   Color.lerp(
                     Colors.transparent,
-                    kPrimaryColor,
+                    isLight ? context.colors.accentText : kPrimaryColor,
                     selectProgress,
                   )!;
               final labelColor =
                   Color.lerp(
-                    context.colors.textPrimary.withValues(alpha: 0.7),
-                    kPrimaryColor,
+                    context.textInk(0.7),
+                    isLight ? context.colors.accentText : kPrimaryColor,
                     selectProgress,
                   )!;
+              // Paper: an alpha step under an AA ink falls below AA, so the
+              // count dims through contrast rather than transparency.
+              final countColor =
+                  isLight
+                      ? Color.lerp(
+                        context.textInk(0.4),
+                        context.colors.accentText,
+                        selectProgress,
+                      )!
+                      : labelColor.withValues(alpha: 0.6);
               final borderWidth = selectProgress * 2.0;
               final selectScale = 1.0 + (selectProgress * 0.04);
               final combinedScale = pressScale * selectScale;
@@ -1205,7 +1292,7 @@ class _TwicEventCardState extends State<_TwicEventCard> {
                             ? Border.all(color: borderColor, width: borderWidth)
                             : null,
                     boxShadow:
-                        clampedSelect > 0.01
+                        clampedSelect > 0.01 && !isLight
                             ? [
                               BoxShadow(
                                 color: kPrimaryColor.withValues(
@@ -1234,7 +1321,7 @@ class _TwicEventCardState extends State<_TwicEventCard> {
                         Text(
                           '${widget.gameCount}',
                           style: AppTypography.textXsRegular.copyWith(
-                            color: labelColor.withValues(alpha: 0.6),
+                            color: countColor,
                             fontSize: 10.sp,
                           ),
                         ),

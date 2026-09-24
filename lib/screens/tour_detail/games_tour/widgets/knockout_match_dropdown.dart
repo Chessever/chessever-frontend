@@ -112,7 +112,7 @@ class _MatchDropdown extends HookConsumerWidget {
                   Text(
                     _shortenMatchTitle(match.matchTitle),
                     style: AppTypography.textXsRegular.copyWith(
-                      color: isSelected ? kPrimaryColor : context.colors.textPrimary,
+                      color: isSelected ? context.colors.accentText : context.colors.textPrimary,
                       fontWeight:
                           isSelected ? FontWeight.w600 : FontWeight.w400,
                     ),
@@ -135,7 +135,7 @@ class _MatchDropdown extends HookConsumerWidget {
                         child: Text(
                           match.scoreDisplay,
                           style: AppTypography.textXsRegular.copyWith(
-                            color: kPrimaryColor,
+                            color: context.colors.accentText,
                             fontSize: 9.sp,
                             fontWeight: FontWeight.w700,
                           ),
@@ -394,7 +394,7 @@ class _MatchDropdown extends HookConsumerWidget {
                     Text(
                       selectedMatch.scoreDisplay,
                       style: AppTypography.textXsRegular.copyWith(
-                        color: kPrimaryColor,
+                        color: context.colors.accentText,
                         fontSize: 9.sp,
                         fontWeight: FontWeight.w600,
                       ),

@@ -266,18 +266,33 @@ class _ChessBoardBottomNavBarState
               // Match the high-contrast coachmark over the dark board bar.
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
               decoration: BoxDecoration(
-                color: kWhiteColor,
-                borderRadius: BorderRadius.circular(12),
+                // Inverse ink capsule: white over the dark bar, ink over paper.
+                color: context.colors.surfaceInverse,
+                // Light: the ink capsule already clears mint paper by ~15:1,
+                // so it only needs a tight ink-tinted contact shadow and the
+                // 4px house radius. Dark keeps the shipped coachmark lift.
+                borderRadius: BorderRadius.circular(
+                  context.isLightTheme ? 4 : 12,
+                ),
                 boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.35),
-                    blurRadius: 12,
-                    offset: const Offset(0, 4),
-                  ),
+                  context.isLightTheme
+                      ? BoxShadow(
+                        color: context.colors.shadow,
+                        blurRadius: 2,
+                        offset: const Offset(0, 1),
+                      )
+                      : BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.35),
+                        blurRadius: 12,
+                        offset: const Offset(0, 4),
+                      ),
                 ],
               ),
               textStyle: AppTypography.textSmSemiBold.copyWith(
-                color: kBackgroundColor,
+                color:
+                    context.isLightTheme
+                        ? context.colors.textInverse
+                        : kBackgroundColor,
               ),
               child: IconButton(
                 key: const ValueKey('board_video_toggle'),
@@ -294,8 +309,8 @@ class _ChessBoardBottomNavBarState
                   size: 28.sp,
                   color:
                       _videoCoachmarkEntry != null
-                          ? context.colors.brand
-                          : Colors.white,
+                          ? context.colors.accentText
+                          : context.colors.iconPrimary,
                 ),
               ),
             ),
@@ -352,7 +367,10 @@ class _ChessBoardBottomNavBarState
             isTablet
                 ? Border(
                   top: BorderSide(
-                    color: Colors.white.withValues(alpha: 0.06),
+                    color:
+                        context.isLightTheme
+                            ? context.colors.divider
+                            : Colors.white.withValues(alpha: 0.06),
                     width: 1,
                   ),
                 )
@@ -412,7 +430,10 @@ class _LiveStreamCoachmark extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const fill = kBlack3Color;
+    // Light: the ink capsule, same as the camera tooltip; dark unchanged.
+    final isLight = context.isLightTheme;
+    final fill = isLight ? context.colors.surfaceInverse : kBlack3Color;
+    final ink = isLight ? context.colors.textInverse : kWhiteColor;
     final screenWidth = MediaQuery.sizeOf(context).width;
     final screenHeight = MediaQuery.sizeOf(context).height;
     final popupWidth = math.min(screenWidth - 32, 380.0);
@@ -447,11 +468,17 @@ class _LiveStreamCoachmark extends StatelessWidget {
                       color: fill,
                       borderRadius: BorderRadius.circular(14),
                       boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.35),
-                          blurRadius: 12,
-                          offset: const Offset(0, 4),
-                        ),
+                        isLight
+                            ? BoxShadow(
+                              color: context.colors.shadow,
+                              blurRadius: 2,
+                              offset: const Offset(0, 1),
+                            )
+                            : BoxShadow(
+                              color: Colors.black.withValues(alpha: 0.35),
+                              blurRadius: 12,
+                              offset: const Offset(0, 4),
+                            ),
                       ],
                     ),
                     child: Row(
@@ -461,7 +488,7 @@ class _LiveStreamCoachmark extends StatelessWidget {
                             'Turn off the stream by clicking camera icon.',
                             textAlign: TextAlign.left,
                             style: AppTypography.textSmSemiBold.copyWith(
-                              color: kWhiteColor,
+                              color: ink,
                             ),
                           ),
                         ),
@@ -476,11 +503,7 @@ class _LiveStreamCoachmark extends StatelessWidget {
                             minHeight: 36,
                           ),
                           padding: EdgeInsets.zero,
-                          icon: const Icon(
-                            Icons.close,
-                            size: 19,
-                            color: kWhiteColor,
-                          ),
+                          icon: Icon(Icons.close, size: 19, color: ink),
                         ),
                       ],
                     ),
@@ -496,7 +519,7 @@ class _LiveStreamCoachmark extends StatelessWidget {
                               'live_stream_toggle_coachmark_arrow',
                             ),
                             size: const Size(16, 8),
-                            painter: const _DownArrowPainter(fill),
+                            painter: _DownArrowPainter(fill),
                           ),
                         ),
                       ],

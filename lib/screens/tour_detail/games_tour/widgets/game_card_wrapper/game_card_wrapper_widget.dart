@@ -39,8 +39,9 @@ class GameCardWrapperWidget extends ConsumerWidget {
   /// no clock and no last move so the footer strip would otherwise be blank.
   final String? footerDetail;
 
-  /// Passed through to [GameCard]: drops the long-press Pin item where there is
-  /// no pin target (archive lists stub [onPinToggle] out).
+  /// Passed through to [GameCard] and [ChessBoardFromFENNew]: drops the
+  /// long-press Pin item where there is no pin target (archive lists stub
+  /// [onPinToggle] out).
   final bool showPin;
 
   const GameCardWrapperWidget({
@@ -158,6 +159,10 @@ class GameCardWrapperWidget extends ConsumerWidget {
                 scoreCardViewSource: viewSource,
                 scoreCardGamesContext: getUpdatedGamesList(),
                 playerProfileDataSource: playerProfileDataSource,
+                // Same Pin policy as the list card below: hosts with no pin
+                // target (Discovery wide boards, archive lists) drop the row
+                // instead of offering one that pins into the wrong scope.
+                showPin: showPin,
               )
               : GameCard(
                 key: ValueKey(keyValue),

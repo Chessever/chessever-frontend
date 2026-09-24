@@ -5,7 +5,6 @@ import 'package:chessever2/widgets/svg_widget.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:chessever2/theme/app_colors.dart';
-import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 
 class StandingScoreCard extends ConsumerWidget {
@@ -144,7 +143,7 @@ class StandingScoreCard extends ConsumerWidget {
                     Text(
                       scoreChange! > 0 ? '+$scoreChange' : '$scoreChange',
                       style: AppTypography.textXsMedium.copyWith(
-                        color: scoreChange! > 0 ? kGreenColor : kRedColor,
+                        color: scoreChange! > 0 ? context.colors.successStrong : context.colors.danger,
                       ),
                     ),
                   ],

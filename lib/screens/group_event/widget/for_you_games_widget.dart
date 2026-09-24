@@ -7,8 +7,8 @@ import 'package:chessever2/providers/for_you_games_provider.dart';
 import 'package:chessever2/repository/favorites/models/favorite_event.dart';
 import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
 import 'package:chessever2/screens/group_event/model/tour_event_card_model.dart';
-import 'package:chessever2/screens/group_event/group_event_screen.dart';
-import 'package:chessever2/screens/group_event/providers/group_event_screen_provider.dart';
+import 'package:chessever2/screens/for_you/open_for_you_event.dart';
+import 'package:chessever2/screens/for_you/providers/for_you_tab_provider.dart';
 import 'package:chessever2/screens/group_event/widget/premium_collection_cards.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_list_view_mode_provider.dart';
@@ -18,7 +18,6 @@ import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrap
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrapper/grid_game_card_wrapper_widget.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrapper/live_game_card_provider.dart';
 import 'package:chessever2/theme/app_colors.dart';
-import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/foreground_task_scheduler.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/user_error_message.dart';
@@ -30,7 +29,6 @@ import 'package:chessever2/widgets/event_card/smart_event_card.dart';
 import 'package:chessever2/widgets/generic_error_widget.dart';
 import 'package:chessever2/widgets/skeleton_widget.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/rendering.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:chessever2/screens/chessboard/provider/game_pgn_stream_provider.dart';
 
@@ -226,12 +224,11 @@ class _ForYouGamesWidgetState extends ConsumerState<ForYouGamesWidget>
   void _publishSurfaceVisibility() {
     if (!mounted || _isDisposing) return;
     final routeIsCurrent = _pageRoute?.isCurrent == true;
-    final selected = ref.read(selectedGroupCategoryProvider);
     final isVisible =
         _routeIsCurrent &&
         routeIsCurrent &&
         _appIsResumed &&
-        selected == GroupEventCategory.forYou;
+        ref.read(forYouTodayTabActiveProvider);
     if (_surfaceVisibility.state != isVisible) {
       _surfaceVisibility.state = isVisible;
     }
@@ -241,8 +238,7 @@ class _ForYouGamesWidgetState extends ConsumerState<ForYouGamesWidget>
     if (!mounted || _isDisposing) return;
     if (!_routeIsCurrent || !_appIsResumed) return;
     if (_pageRoute?.isCurrent != true) return;
-    final selected = ref.read(selectedGroupCategoryProvider);
-    if (selected == GroupEventCategory.forYou) {
+    if (ref.read(forYouTodayTabActiveProvider)) {
       final wasStreaming = ref.read(shouldStreamProvider);
       if (!wasStreaming) {
         ref.read(shouldStreamProvider.notifier).state = true;
@@ -275,12 +271,12 @@ class _ForYouGamesWidgetState extends ConsumerState<ForYouGamesWidget>
     super.build(context); // required by AutomaticKeepAliveClientMixin
 
     // If PageView keeps this page around briefly while swiping, drop all
-    // expensive provider subscriptions until For You is visible again.
-    final selectedCategory = ref.watch(selectedGroupCategoryProvider);
-    ref.listen<GroupEventCategory>(selectedGroupCategoryProvider, (_, __) {
+    // expensive provider subscriptions until For You > Today is visible again.
+    final isTodayTabActive = ref.watch(forYouTodayTabActiveProvider);
+    ref.listen<bool>(forYouTodayTabActiveProvider, (_, __) {
       _publishSurfaceVisibility();
     });
-    if (selectedCategory != GroupEventCategory.forYou || !_isActiveOnScreen) {
+    if (!isTodayTabActive || !_isActiveOnScreen) {
       return const SizedBox.shrink();
     }
 
@@ -352,7 +348,7 @@ class _ForYouGamesWidgetState extends ConsumerState<ForYouGamesWidget>
         ref.invalidate(smartEventResolvedEventsProvider);
         await ref.read(forYouEventsProvider.notifier).refresh();
       },
-      color: kPrimaryColor,
+      color: context.colors.accentText,
       backgroundColor: context.colors.surface,
       child: _buildEventsList(
         events,
@@ -575,6 +571,7 @@ class _ForYouGamesWidgetState extends ConsumerState<ForYouGamesWidget>
       countSingular: request.countSingular,
       countPlural: request.countPlural,
       accentColor: smartEventAccentColor(request.scopeId),
+      spaceDraft: smartEventSpaceDraft(request),
       onTap:
           () => Navigator.of(context).push(
             MaterialPageRoute(
@@ -593,7 +590,7 @@ class _ForYouGamesWidgetState extends ConsumerState<ForYouGamesWidget>
           height: 24.sp,
           child: CircularProgressIndicator(
             strokeWidth: 2.sp,
-            color: kPrimaryColor,
+            color: context.colors.accentText,
           ),
         ),
       ),
@@ -802,11 +799,13 @@ class _ForYouEventSection extends ConsumerWidget {
       showHeartIndicator: true,
       favoritePlayersSource: EventFavoritePlayersSource.cacheOnly,
       heroTagSuffix: '_foryou',
-      onTap: () {
-        ref
-            .read(groupEventScreenProvider.notifier)
-            .onSelectTournament(context: context, id: event.id);
-      },
+      onTap:
+          () => openForYouEvent(
+            context,
+            ref,
+            eventId: event.id,
+            source: ForYouEventSource.today,
+          ),
     );
 
     // On tablet, wrap in AspectRatio to give the Stack-based layout proper height
@@ -920,11 +919,13 @@ class _ForYouTabletEventColumn extends ConsumerWidget {
             showHeartIndicator: true,
             favoritePlayersSource: EventFavoritePlayersSource.cacheOnly,
             heroTagSuffix: '_foryou_tablet_col',
-            onTap: () {
-              ref
-                  .read(groupEventScreenProvider.notifier)
-                  .onSelectTournament(context: context, id: event.id);
-            },
+            onTap:
+                () => openForYouEvent(
+                  context,
+                  ref,
+                  eventId: event.id,
+                  source: ForYouEventSource.today,
+                ),
           ),
         ),
         SizedBox(height: 10.sp),

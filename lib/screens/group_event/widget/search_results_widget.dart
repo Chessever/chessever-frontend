@@ -6,7 +6,6 @@ import 'package:chessever2/screens/group_event/widget/filter_popup/filter_popup_
 import 'package:chessever2/screens/group_event/widget/filter_popup/filter_popup_state.dart';
 import 'package:chessever2/screens/group_event/widget/player_search_cards.dart';
 import 'package:chessever2/theme/app_colors.dart';
-import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/event_time_control.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/scroll_cache.dart';
@@ -256,7 +255,7 @@ class _SearchResultsListView extends ConsumerWidget {
         // Invalidate the search provider to refetch
         ref.invalidate(supabaseCombinedSearchProvider(searchQuery.trim()));
       },
-      color: kPrimaryColor,
+      color: context.colors.accentText,
       backgroundColor: context.colors.surface,
       displacement: 60.h,
       strokeWidth: 3.w,

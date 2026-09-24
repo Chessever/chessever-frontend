@@ -374,13 +374,27 @@ Future<void> tapBottomNavRoot(
   await expectVisible($, expectedRoot);
 }
 
+/// Taps a drawer row, scrolling the drawer's list to it first. The sidebar
+/// month calendar sits above the menu rows, so on short phones the lower rows
+/// start below the fold (and, in a lazy list, unbuilt).
+Future<void> tapDrawerItem(PatrolTester $, String drawerItemId) async {
+  final drawerList = find
+      .descendant(
+        of: find.byKey(e2eKey(E2eIds.homeDrawer)),
+        matching: find.byType(Scrollable),
+      )
+      .first;
+  await byId($, drawerItemId).scrollTo(view: drawerList);
+  await byId($, drawerItemId).tap();
+}
+
 Future<void> openDrawerDestination(
   PatrolTester $, {
   required String drawerItemId,
   required String expectedRoot,
 }) async {
   await openHomeDrawer($);
-  await byId($, drawerItemId).tap();
+  await tapDrawerItem($, drawerItemId);
   await expectVisible($, expectedRoot);
 }
 
@@ -869,7 +883,7 @@ Future<void> openSyntheticBoard(PatrolTester $) async {
 
 Future<void> openSettingsDialog(PatrolTester $) async {
   await openHomeDrawer($);
-  await byId($, E2eIds.drawerSettings).tap();
+  await tapDrawerItem($, E2eIds.drawerSettings);
   await expectVisible($, E2eIds.settingsRoot);
 }
 

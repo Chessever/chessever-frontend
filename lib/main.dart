@@ -68,6 +68,7 @@ import 'services/deep_link_service.dart';
 import 'services/pgn_file_intake_service.dart';
 import 'services/push_notifications_service.dart';
 import 'theme/app_theme.dart';
+import 'theme/theme_provider.dart';
 import 'package:chessever2/repository/authentication/auth_repository.dart';
 import 'package:chessever2/providers/app_resume_signal_provider.dart';
 import 'package:chessever2/providers/push_token_sync_provider.dart';
@@ -1163,8 +1164,9 @@ class MyApp extends HookConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    // Light theme is temporarily disabled — always stay dark.
-    const themeMode = ThemeMode.dark;
+    // Dark stays the default for everyone who never picked a theme; the
+    // Settings → Appearance choice (Dark / Auto / Light) is restored from prefs.
+    final themeMode = ref.watch(themeModeProvider);
     final locale = ref.watch(localeProvider);
     ref.watch(pushTokenSyncProvider);
     ref.watch(eventVideoPreloadProvider);
@@ -1190,8 +1192,18 @@ class MyApp extends HookConsumerWidget {
     // Also ensure status bar is visible and UI is edge-to-edge
     useEffect(() {
       SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+      final platformDark =
+          WidgetsBinding.instance.platformDispatcher.platformBrightness ==
+          Brightness.dark;
+      final resolvedDark = switch (themeMode) {
+        ThemeMode.dark => true,
+        ThemeMode.light => false,
+        ThemeMode.system => platformDark,
+      };
       SystemChrome.setSystemUIOverlayStyle(
-        AppTheme.overlayFor(Brightness.dark),
+        AppTheme.overlayFor(
+          resolvedDark ? Brightness.dark : Brightness.light,
+        ),
       );
 
       if (ResponsiveHelper.isTablet) {
@@ -1208,7 +1220,7 @@ class MyApp extends HookConsumerWidget {
         ]);
       }
       return null;
-    }, const []);
+    }, [themeMode]);
 
     final upgrader = useMemoized(
       () => Upgrader(

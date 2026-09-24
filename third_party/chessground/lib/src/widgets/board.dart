@@ -3,8 +3,11 @@ import 'dart:ui' as ui;
 import 'package:chessground/src/widgets/geometry.dart';
 import 'package:dartchess/dartchess.dart';
 import 'package:flutter/gestures.dart';
+import 'package:flutter/physics.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:flutter/widgets.dart';
 
+import 'animation.dart' show TranslatingPieces;
 import 'board_border.dart';
 import 'board_controller.dart';
 import 'board_painter.dart';
@@ -24,6 +27,14 @@ import '../board_settings.dart';
 const double _kDragDistanceThreshold = 3.0;
 
 const _kCancelShapesDoubleTapDelay = Duration(milliseconds: 200);
+
+// CHESSEVER PATCH (landing settle): the landed piece pops to this scale and
+// springs back to 1.0 — ~300 ms, a whisper of overshoot (damping ratio 0.7).
+const double _kLandingSettleFrom = 1.08;
+final SpringDescription _kLandingSettleSpring = SpringDescription.withDurationAndBounce(
+  duration: const Duration(milliseconds: 300),
+  bounce: 0.3,
+);
 
 /// A chessboard widget.
 ///
@@ -52,6 +63,8 @@ class Chessboard extends StatefulWidget with ChessboardGeometry {
     this.onTouchedSquare,
     this.shapes = const {},
     this.annotations = const {},
+    this.landingSquare,
+    this.landingKey,
   }) : _size = size;
 
   final double _size;
@@ -85,6 +98,19 @@ class Chessboard extends StatefulWidget with ChessboardGeometry {
 
   /// Move annotations to be displayed on the board.
   final Map<Square, Annotation> annotations;
+
+  /// CHESSEVER PATCH (landing settle): the square a piece just landed on.
+  ///
+  /// When [landingKey] changes and this is set, the piece on this square gets
+  /// a tiny spring "settle" (scale 1.08 → 1.0) as soon as its move animation
+  /// has committed. Null (the default) never settles anything and leaves the
+  /// board exactly as upstream. Skipped when piece animations are off or the
+  /// platform asks for reduced motion.
+  final Square? landingSquare;
+
+  /// CHESSEVER PATCH (landing settle): changes once per landing (e.g. the ply
+  /// index); a change replays the settle on [landingSquare].
+  final Object? landingKey;
 
   /// Whether the pieces can be moved by one side or both.
   bool get interactive => controller.interactive;
@@ -182,6 +208,17 @@ class _BoardState extends State<Chessboard> with TickerProviderStateMixin {
   /// Whether the pending promotion move was initiated via drag and drop.
   bool _pendingPromotionViaDragAndDrop = false;
 
+  // CHESSEVER PATCH (landing settle) state. See [Chessboard.landingSquare].
+  late final AnimationController _landingSettle = AnimationController.unbounded(
+    vsync: this,
+    value: 1.0,
+  );
+  final ValueNotifier<Square?> _landingSquareNotifier = ValueNotifier<Square?>(null);
+  Square? _pendingLandingSquare;
+  ValueNotifier<TranslatingPieces>? _watchedTranslation;
+  ValueNotifier<Pieces>? _watchedPieces;
+  int _landingRun = 0;
+
   @override
   Widget build(BuildContext context) {
     final settings = widget.settings;
@@ -224,6 +261,7 @@ class _BoardState extends State<Chessboard> with TickerProviderStateMixin {
       blindfoldMode: settings.blindfoldMode,
       pieceOrientationBehavior: settings.pieceOrientationBehavior,
       imagesLoaded: _imagesLoaded,
+      landingSquareNotifier: _landingSquareNotifier,
     );
 
     final fadingPiecesPainter = FadingPiecesPainter(
@@ -308,6 +346,24 @@ class _BoardState extends State<Chessboard> with TickerProviderStateMixin {
               painter: translatingPiecesPainter,
               willChange: true,
             ),
+            // CHESSEVER PATCH (landing settle): only on boards that use it.
+            if (widget.landingSquare != null)
+              CustomPaint(
+                size: Size.square(widget.size),
+                painter: LandingPiecePainter(
+                  landingSquareNotifier: _landingSquareNotifier,
+                  piecesNotifier: _controller.piecesNotifier,
+                  translatingPiecesNotifier: _controller.translatingPiecesNotifier,
+                  pieceAssets: settings.pieceAssets,
+                  squareSize: widget.squareSize,
+                  orientation: widget.orientation,
+                  blindfoldMode: settings.blindfoldMode,
+                  pieceOrientationBehavior: settings.pieceOrientationBehavior,
+                  gameNotifier: _controller.gameNotifier,
+                  scale: _landingSettle,
+                ),
+                willChange: true,
+              ),
             for (final shape in shapes)
               BoardShapeWidget(shape: shape, size: widget.size, orientation: widget.orientation),
             if (_shapeAvatar != null)
@@ -479,6 +535,7 @@ class _BoardState extends State<Chessboard> with TickerProviderStateMixin {
 
   @override
   void deactivate() {
+    _cancelLandingSettle();
     _controller.detach();
     _controllerDetached = true;
     super.deactivate();
@@ -501,6 +558,9 @@ class _BoardState extends State<Chessboard> with TickerProviderStateMixin {
     if (!_controllerDetached) {
       _controller.detach();
     }
+    _unwatchLandingNotifiers();
+    _landingSettle.dispose();
+    _landingSquareNotifier.dispose();
     _explosionNotifier.dispose();
     _draggedPieceSquareNotifier.dispose();
     _dragAvatar?.cancel();
@@ -581,6 +641,88 @@ class _BoardState extends State<Chessboard> with TickerProviderStateMixin {
     if (oldBoard.settings.animationDuration != widget.settings.animationDuration) {
       _controller.animationDuration = widget.settings.animationDuration;
     }
+
+    // CHESSEVER PATCH (landing settle).
+    if (oldBoard.controller != widget.controller || widget.landingSquare == null) {
+      _cancelLandingSettle();
+    }
+    if (widget.landingSquare != null && widget.landingKey != oldBoard.landingKey) {
+      _scheduleLandingSettle();
+    }
+  }
+
+  // --- CHESSEVER PATCH (landing settle) ------------------------------------
+
+  void _scheduleLandingSettle() {
+    _cancelLandingSettle();
+    final square = widget.landingSquare;
+    if (square == null || widget.settings.animationDuration <= Duration.zero) return;
+    if (MediaQuery.maybeDisableAnimationsOf(context) ?? false) return;
+    _pendingLandingSquare = square;
+    // The app hands the controller its new position around this build; by the
+    // end of the frame the move animation (if any) has started.
+    SchedulerBinding.instance.addPostFrameCallback((_) => _startLandingSettleWhenLanded());
+  }
+
+  /// Starts the settle once [_pendingLandingSquare] is no longer translating;
+  /// until then it listens for the move animation to commit.
+  void _startLandingSettleWhenLanded() {
+    final square = _pendingLandingSquare;
+    if (!mounted || square == null) return;
+    final translating = _controller.translatingPiecesNotifier;
+    if (translating.value.containsKey(square)) {
+      if (!identical(_watchedTranslation, translating)) {
+        _watchedTranslation?.removeListener(_startLandingSettleWhenLanded);
+        _watchedTranslation = translating..addListener(_startLandingSettleWhenLanded);
+      }
+      return;
+    }
+    _watchedTranslation?.removeListener(_startLandingSettleWhenLanded);
+    _watchedTranslation = null;
+    _pendingLandingSquare = null;
+    if (!_controller.pieces.containsKey(square)) return;
+
+    // Any later position change ends the settle: the piece it scales may no
+    // longer be the one that landed.
+    _watchedPieces = _controller.piecesNotifier..addListener(_cancelLandingSettle);
+    _landingSquareNotifier.value = square;
+    final run = ++_landingRun;
+    _landingSettle
+        .animateWith(
+          SpringSimulation(
+            _kLandingSettleSpring,
+            _kLandingSettleFrom,
+            1.0,
+            0,
+            snapToEnd: true,
+            tolerance: const Tolerance(distance: 0.0005, velocity: 0.01),
+          ),
+        )
+        .whenCompleteOrCancel(() {
+          // A later settle owns the notifier now; this one's end is stale.
+          if (run == _landingRun) _endLandingSettle();
+        });
+  }
+
+  void _endLandingSettle() {
+    if (!mounted) return;
+    _unwatchLandingNotifiers();
+    _landingSettle.value = 1.0;
+    _landingSquareNotifier.value = null;
+  }
+
+  void _cancelLandingSettle() {
+    _landingRun++;
+    _pendingLandingSquare = null;
+    if (_landingSettle.isAnimating) _landingSettle.stop();
+    _endLandingSettle();
+  }
+
+  void _unwatchLandingNotifiers() {
+    _watchedTranslation?.removeListener(_startLandingSettleWhenLanded);
+    _watchedTranslation = null;
+    _watchedPieces?.removeListener(_cancelLandingSettle);
+    _watchedPieces = null;
   }
 
   /// Updates the highlight notifier with the current selection state so

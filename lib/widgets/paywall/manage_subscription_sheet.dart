@@ -129,7 +129,7 @@ class _StatusLine extends StatelessWidget {
         : '';
     return Row(
       children: [
-        Icon(Icons.workspace_premium_rounded, size: 16.ic, color: kPrimaryColor),
+        Icon(Icons.workspace_premium_rounded, size: 16.ic, color: context.colors.accentText),
         SizedBox(width: 6.w),
         Flexible(
           child: Text(
@@ -156,7 +156,7 @@ class _StripeBody extends StatelessWidget {
         Text(
           'Your Premium plan is billed on the web. Sign in at '
           'chessever.com/account to update your payment method, download '
-          'invoices, or cancel anytime — changes sync back to the app within '
+          'invoices, or cancel anytime. Changes sync back to the app within '
           'a few minutes.',
           style: AppTypography.textSmRegular.copyWith(
             color: context.colors.textPrimaryMuted,

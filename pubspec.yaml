@@ -16,7 +16,7 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
 # In Windows, build-name is used as the major, minor, and patch parts
 # of the product and file versions while build-number is used as the build suffix.
-version: 35.11.0+3464
+version: 35.12.0+3465
 environment:
   sdk: ^3.12.0
   flutter: '>=3.44.0'
@@ -252,6 +252,10 @@ flutter:
     # debug and falls back to --dart-define values when it isn't bundled.
     # - .env
     - shorebird.yaml
+
+  # My Space door tiles: pixel-block chess art with glint, flicker and sparkles.
+  shaders:
+    - shaders/space_door.frag
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images

@@ -13,6 +13,15 @@ final filterPopupProvider =
       (ref) => _FilterPopupController(ref),
     );
 
+/// The Smart Event builder's draft of the same filters. It runs the dialog's
+/// own controller, so every tap means exactly what it means in the dialog,
+/// but it is auto-disposed: each builder session starts clean and never
+/// touches the draft the Events and For You dialogs seed before they open.
+final smartEventBuilderFilterProvider = StateNotifierProvider.autoDispose<
+  _FilterPopupController,
+  FilterPopupState
+>((ref) => _FilterPopupController(ref));
+
 final eventAppliedFilterProvider = StateProvider<FilterPopupState>(
   (ref) => defaultFilterPopupState,
 );
