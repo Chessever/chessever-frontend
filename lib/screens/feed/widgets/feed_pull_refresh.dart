@@ -53,6 +53,68 @@ const ScrollPhysics feedPagePhysics = PageScrollPhysics(
   parent: ClampingScrollPhysics(),
 );
 
+/// [feedPagePhysics] with a last page to rest on. Dragged or flung past it,
+/// the pages spring back to it; the pages after it can be looked at, not
+/// stayed on. Feed rests on its last post when the page after it is only a
+/// short note (the end of the feed) that already shows in full under that
+/// post, so the viewer is never left on a page that is mostly empty.
+///
+/// A PageView given these physics must set `pageSnapping: false`: its own
+/// snapping would wrap them and never ask where to stop.
+class FeedPagePhysics extends PageScrollPhysics {
+  const FeedPagePhysics({required this.lastPage, super.parent});
+
+  /// The last page to rest on, or null when every page may be rested on.
+  /// Asked at every settle, so it follows the feed without new physics (a
+  /// Scrollable keeps its first physics while the type stays the same).
+  final int? Function() lastPage;
+
+  @override
+  FeedPagePhysics applyTo(ScrollPhysics? ancestor) =>
+      FeedPagePhysics(lastPage: lastPage, parent: buildParent(ancestor));
+
+  @override
+  Simulation? createBallisticSimulation(
+    ScrollMetrics position,
+    double velocity,
+  ) {
+    final last = lastPage();
+    if (last != null && position is PageMetrics) {
+      final extent = position.viewportDimension * position.viewportFraction;
+      if (extent > 0) {
+        final stop = math.min(
+          position.maxScrollExtent,
+          math.max(0, last) * extent,
+        );
+        final tolerance = toleranceFor(position);
+        // Where plain page physics would settle: the page under the
+        // finger, or the next one either way when flung.
+        var page = position.pixels / extent;
+        if (velocity < -tolerance.velocity) {
+          page -= 0.5;
+        } else if (velocity > tolerance.velocity) {
+          page += 0.5;
+        }
+        final target = page.roundToDouble() * extent;
+        if (target > stop + tolerance.distance) {
+          if ((position.pixels - stop).abs() < tolerance.distance &&
+              velocity.abs() < tolerance.velocity) {
+            return null;
+          }
+          return ScrollSpringSimulation(
+            spring,
+            position.pixels,
+            stop,
+            velocity,
+            tolerance: tolerance,
+          );
+        }
+      }
+    }
+    return super.createBallisticSimulation(position, velocity);
+  }
+}
+
 class _FeedPullRefreshState extends State<FeedPullRefresh>
     with TickerProviderStateMixin {
   /// Displayed offset at which a release refreshes.

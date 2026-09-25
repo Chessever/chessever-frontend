@@ -54,6 +54,21 @@ final feedProvider = AsyncNotifierProvider<FeedNotifier, List<FeedItem>>(
   FeedNotifier.new,
 );
 
+/// What lies past the last loaded game, as the last finished
+/// [FeedNotifier.loadMore] found it. Feed's tail page reads it: the next
+/// post's skeleton while [open], a quiet end of the feed otherwise.
+enum FeedMore {
+  /// More may come, or is on its way.
+  open,
+
+  /// The last load came back with nothing although sources are left (a
+  /// failed request, a batch the filters emptied): worth another try.
+  stalled,
+
+  /// Every source is read to its end and nothing is left to show.
+  exhausted,
+}
+
 /// One game waiting to become a [FeedItem].
 class _FeedCandidate {
   const _FeedCandidate({
@@ -197,6 +212,14 @@ class FeedNotifier extends AsyncNotifier<List<FeedItem>> {
 
   final Map<String, _FeedCandidate> _pool = <String, _FeedCandidate>{};
   bool _loadingMore = false;
+
+  /// The [loadMore] running now, handed to every caller that asks meanwhile.
+  Future<void>? _moreRun;
+  FeedMore _more = FeedMore.open;
+
+  /// See [FeedMore]. Not state: the screen reads it when a [loadMore] it
+  /// awaited completes, and at every build.
+  FeedMore get more => _more;
 
   /// The source reads running now; a second refill joins them instead of
   /// asking every source again.
@@ -427,13 +450,27 @@ class FeedNotifier extends AsyncNotifier<List<FeedItem>> {
     }
   }
 
-  /// Appends the next page. Safe to call repeatedly; no-ops while loading.
-  Future<void> loadMore() async {
-    if (_loadingMore || !state.hasValue) return;
-    final generation = _generation;
+  /// Appends the next page. Safe to call repeatedly: while a page is
+  /// loading, every call gets that load, so awaiting one means the page has
+  /// landed (or [more] says why not). Never throws.
+  Future<void> loadMore() {
+    final running = _moreRun;
+    if (_loadingMore && running != null) return running;
+    if (_loadingMore || !state.hasValue) return Future<void>.value();
     _loadingMore = true;
+    _more = FeedMore.open;
+    final run = _loadMore(_generation);
+    _moreRun = run;
+    run.whenComplete(() {
+      if (identical(_moreRun, run)) _moreRun = null;
+    }).ignore();
+    return run;
+  }
+
+  Future<void> _loadMore(int generation) async {
+    var items = <FeedItem>[];
+    var failed = false;
     try {
-      var items = <FeedItem>[];
       // Two rounds: filters (short draws, unparsable PGNs) can empty a batch.
       for (var round = 0; round < 2 && items.isEmpty; round++) {
         if (_pool.length < _poolLow) await _refillAll(generation).all;
@@ -444,9 +481,17 @@ class FeedNotifier extends AsyncNotifier<List<FeedItem>> {
       }
       if (items.isNotEmpty) await _append(generation, items);
     } catch (error, stack) {
+      failed = true;
       debugPrint('[Feed] loadMore failed: $error\n$stack');
     } finally {
-      if (generation == _generation) _loadingMore = false;
+      if (generation == _generation) {
+        _loadingMore = false;
+        _more = items.isNotEmpty && !failed
+            ? FeedMore.open
+            : !failed && _allSourcesExhausted && _pool.isEmpty
+            ? FeedMore.exhausted
+            : FeedMore.stalled;
+      }
     }
   }
 
@@ -1129,6 +1174,9 @@ class FeedNotifier extends AsyncNotifier<List<FeedItem>> {
     }
     if (generation != _generation) return;
     final current = state.valueOrNull ?? const <FeedItem>[];
+    // Games landed from behind (the opening pages, a warm launch's fresh
+    // ones): whatever stalled before is past.
+    if (_more == FeedMore.stalled) _more = FeedMore.open;
     state = AsyncData(List.unmodifiable([...current, ...items]));
   }
 
@@ -1140,6 +1188,8 @@ class FeedNotifier extends AsyncNotifier<List<FeedItem>> {
     _seen.clear();
     _pool.clear();
     _loadingMore = false;
+    _moreRun = null;
+    _more = FeedMore.open;
     _inFlight = null;
     _reserve = null;
     _currentTours = null;

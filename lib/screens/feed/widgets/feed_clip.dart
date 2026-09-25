@@ -9,6 +9,7 @@ import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provid
 import 'package:chessever2/screens/chessboard/widgets/evaluation_bar_widget.dart';
 import 'package:chessever2/screens/chessboard/widgets/heart_burst.dart';
 import 'package:chessever2/screens/chessboard/widgets/player_first_row_detail_widget.dart';
+import 'package:chessever2/screens/feed/feed_visibility.dart';
 import 'package:chessever2/screens/feed/logic/feed_exploration.dart';
 import 'package:chessever2/screens/feed/logic/feed_opening.dart';
 import 'package:chessever2/screens/feed/models/feed_entry.dart';
@@ -52,6 +53,7 @@ import 'package:chessever2/widgets/app_snack.dart';
 import 'package:chessever2/widgets/time_control_glyph.dart';
 import 'package:chessground/chessground.dart';
 import 'package:dartchess/dartchess.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
@@ -93,6 +95,8 @@ class FeedClip extends ConsumerStatefulWidget {
     required this.isVisible,
     required this.onRequestNext,
     required this.onScrollLock,
+    this.hasNext = true,
+    this.resumeOnReturn = false,
     super.key,
   });
 
@@ -105,6 +109,17 @@ class FeedClip extends ConsumerStatefulWidget {
   final bool isVisible;
   final VoidCallback onRequestNext;
   final ValueChanged<bool> onScrollLock;
+
+  /// There is a game to move on to: a page after this one, or more still
+  /// coming. False on the last post of a feed that has ended, where the
+  /// result card offers no "Next game" and runs no countdown to one.
+  final bool hasNext;
+
+  /// When this page becomes the settled one again, it carries on as the
+  /// viewer left it rather than starting over: Feed sent them back to it
+  /// (the next page turned out not to come). A game that had ended shows
+  /// its result again, one mid-way plays on from there.
+  final bool resumeOnReturn;
 
   @override
   ConsumerState<FeedClip> createState() => _FeedClipState();
@@ -219,6 +234,9 @@ class _FeedClipState extends ConsumerState<FeedClip>
   late final FeedMoveSound _moveSound;
   late final FeedClipResumeStore _resume;
   late final ChessboardController _board;
+
+  /// Whether Feed is seen this instant ([FeedSeen]); null outside a Feed.
+  ValueListenable<bool>? _seen;
   late final AnimationController _countdown;
   final HeartBurstController _burst = HeartBurstController();
   final GlobalKey _likeIconKey = GlobalKey();
@@ -344,6 +362,9 @@ class _FeedClipState extends ConsumerState<FeedClip>
     if (resumed != null && resumed.countdown < 1) {
       _countdown.value = resumed.countdown;
     }
+    // Listened to, not just read at build: leaving Feed has to stop the
+    // clip before its next timer, not at the next frame.
+    _seen = FeedSeen.maybeOf(context)?..addListener(_onSeenChanged);
     _syncing = true;
     if (widget.isCurrent && resumed == null) _playback.restart();
     _syncSuspended();
@@ -408,10 +429,11 @@ class _FeedClipState extends ConsumerState<FeedClip>
       _cardAside = false;
       if (widget.isCurrent) {
         // Swiped onto: a fresh start, and whatever an earlier Feed left
-        // behind no longer applies.
+        // behind no longer applies. Sent back to: where it was, with a
+        // spent countdown starting over.
         _resume.clear();
         _countdown.value = 0;
-        _playback.restart();
+        if (!widget.resumeOnReturn) _playback.restart();
       }
     }
     _syncSuspended();
@@ -421,6 +443,7 @@ class _FeedClipState extends ConsumerState<FeedClip>
 
   @override
   void dispose() {
+    _seen?.removeListener(_onSeenChanged);
     // Leaving Feed (another tab) tears the settled clip down; keep its place
     // for the return. A neighbour page restarts when swiped onto anyway.
     if (widget.isCurrent) _resume.save(_snapshot());
@@ -448,10 +471,18 @@ class _FeedClipState extends ConsumerState<FeedClip>
   // ---------------------------------------------------------------- playback
 
   void _syncSuspended() {
+    final seen = _seen?.value ?? true;
     _playback.setSuspended(
-      !(widget.isCurrent && widget.isVisible) || _menuOpen,
+      !(widget.isCurrent && widget.isVisible && seen) || _menuOpen,
     );
     _syncCountdown();
+  }
+
+  /// Feed was left or came back: the clip holds (or plays on) right away,
+  /// where it is, so nothing it had coming sounds after the viewer left.
+  void _onSeenChanged() {
+    if (!mounted) return;
+    _syncSuspended();
   }
 
   void _onPlayback() {
@@ -495,6 +526,7 @@ class _FeedClipState extends ConsumerState<FeedClip>
     final seen = !_cardAside && !_playback.isHeld && _line == null;
     final run =
         seen &&
+        widget.hasNext &&
         !_screenReader &&
         !_playback.isSuspended &&
         !_playback.isScrubbing &&
@@ -507,8 +539,9 @@ class _FeedClipState extends ConsumerState<FeedClip>
     }
     if (_countdown.isAnimating) _countdown.stop();
     // The viewer took the board: the wait for "Next game" starts over once
-    // the card comes back. A screen reader gets no half-run fill either.
-    if ((!seen || _screenReader) && _countdown.value != 0) {
+    // the card comes back. A screen reader gets no half-run fill either, nor
+    // does a card with no next game to fill towards.
+    if ((!seen || _screenReader || !widget.hasNext) && _countdown.value != 0) {
       _countdown.value = 0;
     }
   }
@@ -1246,21 +1279,37 @@ class _FeedClipState extends ConsumerState<FeedClip>
     _cancelGestures();
     // Scrubbing is the game line; the viewer's own line gives way.
     _line = null;
-    _playback.beginScrub((f * _item.plyCount).round());
+    final target = (f * _item.plyCount).round();
+    if (target != _playback.shownPly) _scrubTick();
+    _playback.beginScrub(target);
   }
 
   void _onScrubUpdate(double f) {
     if (!_playback.isScrubbing) return;
     final target = (f * _item.plyCount).round();
     if (target == _playback.shownPly) return;
-    final moment = _item.plies[target.clamp(0, _item.plyCount)].moment;
-    if (feedIsChartDot(moment) || (moment?.isHeadline ?? false)) {
-      HapticFeedbackService.selection();
-    }
+    _scrubTick();
     _playback.scrubTo(target);
   }
 
+  /// Let go: the game plays on from the move it was let go on.
   void _onScrubEnd() => _playback.endScrub();
+
+  /// A tap on the line: the game jumps to that move and plays on from it,
+  /// as a scrub let go there does.
+  void _onScrubTap(double f) {
+    if (_item.plyCount <= 0) return;
+    _cancelGestures();
+    _line = null;
+    final target = (f * _item.plyCount).round();
+    if (target != _playback.shownPly) _scrubTick();
+    _playback.jumpTo(target);
+  }
+
+  /// One selection tick when the scrub lands on another move: at most one
+  /// per pointer event, never one per frame, and none while the finger
+  /// stays within a move.
+  void _scrubTick() => HapticFeedbackService.selection();
 
   // ----------------------------------------------------------------- build
 
@@ -1336,6 +1385,7 @@ class _FeedClipState extends ConsumerState<FeedClip>
       tokens: _gameTokens(),
       current: shown,
       height: l.infoHeight,
+      follow: p.isScrubbing,
       onTokenTap: _stepTo,
       trailing: [
         if (evalText.isNotEmpty)
@@ -1773,10 +1823,7 @@ class _FeedClipState extends ConsumerState<FeedClip>
 
         final n = math.max(1, _item.plyCount);
         final progress = _item.plyCount <= 0 ? 1.0 : shown / n;
-        final track = l.width - 2 * l.contentLeft;
-        final bubbleX = (l.contentLeft + track * progress)
-            .clamp(60.0, math.max(60.0, l.width - 60))
-            .toDouble();
+        final counterWidest = feedMoveCounter(_item, _item.plyCount);
 
         // The board column: eval bar, board and the player rows, centred
         // when the board is height-bound.
@@ -1872,11 +1919,13 @@ class _FeedClipState extends ConsumerState<FeedClip>
                           _countdown.value = 0;
                           _playback.restart();
                         },
-                        onNext: () {
-                          _consumeZoneTap();
-                          HapticFeedbackService.buttonPress();
-                          widget.onRequestNext();
-                        },
+                        onNext: widget.hasNext
+                            ? () {
+                                _consumeZoneTap();
+                                HapticFeedbackService.buttonPress();
+                                widget.onRequestNext();
+                              }
+                            : null,
                       ),
                     ),
                   ),
@@ -1933,6 +1982,9 @@ class _FeedClipState extends ConsumerState<FeedClip>
 
         // While the chart is up it carries the move line itself.
         final lowerOpacity = showChart ? 0.0 : 1.0;
+        // Under a scrub the actions step aside for the move riding the
+        // thumb, as they do for the chart.
+        final actionsOpacity = showChart || showBubble ? 0.0 : 1.0;
 
         return Stack(
           children: [
@@ -1964,7 +2016,7 @@ class _FeedClipState extends ConsumerState<FeedClip>
                 const SizedBox(height: FeedLayout.actionsGap),
                 fullRow(
                   Opacity(
-                    opacity: lowerOpacity,
+                    opacity: actionsOpacity,
                     child: FeedActionRow(
                       height: l.actionsHeight,
                       liked: liked,
@@ -1984,12 +2036,27 @@ class _FeedClipState extends ConsumerState<FeedClip>
                 FeedScrubStrip(
                   progress: progress,
                   scrubbing: p.isScrubbing,
-                  fast: p.isFast,
                   inset: l.contentLeft,
                   semanticsValue: feedPlyText(_item, shown),
+                  semanticsIncreased: feedPlyText(
+                    _item,
+                    math.min(shown + 1, _item.plyCount),
+                  ),
+                  semanticsDecreased: feedPlyText(
+                    _item,
+                    math.max(shown - 1, 0),
+                  ),
+                  counter: feedMoveCounter(_item, shown),
+                  counterWidest: counterWidest,
+                  // The report chart carries the move itself.
+                  bubble: showBubble
+                      ? FeedMoveBubble(item: _item, ply: shown)
+                      : null,
                   onStart: _onScrubStart,
                   onUpdate: _onScrubUpdate,
                   onEnd: _onScrubEnd,
+                  onSeek: _onScrubTap,
+                  onStep: (delta) => _stepTo(shown + delta),
                 ),
               ],
             ),
@@ -2002,31 +2069,16 @@ class _FeedClipState extends ConsumerState<FeedClip>
                 child: FeedReportOverlay(
                   item: _item,
                   ply: shown,
-                  chartWidth: l.contentWidth,
-                ),
-              ),
-            if (showBubble) ...[
-              if (!_item.hasEvals)
-                Positioned(
-                  left: l.contentLeft,
-                  bottom: FeedLayout.scrubHeight + 34,
-                  child: IgnorePointer(
-                    child: Text(
-                      'No report for this game yet',
-                      style: AppTypography.textXxsMedium.copyWith(
-                        fontSize: 11,
-                        height: 14 / 11,
-                        color: colors.textSecondary,
-                      ),
-                    ),
+                  // The strip's own line, so the chart's cursor stands over
+                  // the thumb.
+                  run: FeedScrubRun.resolve(
+                    context,
+                    width: constraints.maxWidth,
+                    inset: l.contentLeft,
+                    counterWidest: counterWidest,
                   ),
                 ),
-              Positioned(
-                left: bubbleX,
-                bottom: FeedLayout.scrubHeight + 2,
-                child: FeedMoveBubble(item: _item, ply: shown),
               ),
-            ],
           ],
         );
       },

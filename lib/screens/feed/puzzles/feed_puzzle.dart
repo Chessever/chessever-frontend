@@ -5,6 +5,7 @@ import 'package:chessever2/providers/board_settings_provider_new.dart';
 import 'package:chessever2/repository/sqlite/app_database.dart';
 import 'package:chessever2/screens/chessboard/classification_fx/classification_fx.dart';
 import 'package:chessever2/screens/chessboard/classification_fx/move_class.dart';
+import 'package:chessever2/screens/feed/feed_visibility.dart';
 import 'package:chessever2/screens/feed/puzzles/feed_puzzle_model.dart';
 import 'package:chessever2/screens/feed/puzzles/puzzle_repository.dart';
 import 'package:chessever2/screens/feed/puzzles/puzzle_service_client.dart';
@@ -26,6 +27,7 @@ import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessground/chessground.dart';
 import 'package:dartchess/dartchess.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
@@ -176,14 +178,19 @@ AppLifecycleListener? _listenForResume(VoidCallback onResume) {
 /// the board's usual sounds otherwise. Silent while the Feed is muted or the
 /// board's sound setting is off. Tests override it with a recorder.
 class FeedPuzzleSounds {
-  const FeedPuzzleSounds({this._isSilent});
+  const FeedPuzzleSounds({this._isSilent, this._onSounded});
 
   final bool Function()? _isSilent;
+
+  /// Told of every sound asked for, so leaving Feed can cut one still
+  /// ringing ([FeedSfx.hush]).
+  final void Function()? _onSounded;
 
   /// Fire-and-forget; a sound failure never reaches the puzzle.
   void move({required String san, MoveClass? moveClass}) {
     try {
       if (_isSilent?.call() ?? false) return;
+      _onSounded?.call();
       ClassificationSfx.playMove(san: san, moveClass: moveClass);
     } catch (error) {
       debugPrint('[FeedPuzzles] sound failed: $error');
@@ -198,6 +205,7 @@ final feedPuzzleSoundsProvider = Provider<FeedPuzzleSounds>(
       final sfx = ref.read(feedSfxProvider);
       return sfx.muted || !sfx.boardSoundEnabled;
     },
+    onSounded: () => ref.read(feedSfxProvider).noteSounded(),
   ),
 );
 
@@ -278,7 +286,11 @@ class _FeedPuzzlePageState extends ConsumerState<FeedPuzzlePage> {
   MoveClass? _markClass;
   int _markSeq = 0;
 
-  bool get _active => widget.isCurrent && widget.isVisible;
+  /// Whether Feed is seen this instant ([FeedSeen]); null outside a Feed.
+  ValueListenable<bool>? _seen;
+
+  bool get _active =>
+      widget.isCurrent && widget.isVisible && (_seen?.value ?? true);
 
   bool get _canMove =>
       _active && _phase == _Phase.solving && (_session?.isSolverTurn ?? false);
@@ -286,8 +298,17 @@ class _FeedPuzzlePageState extends ConsumerState<FeedPuzzlePage> {
   @override
   void initState() {
     super.initState();
+    // Listened to, so leaving Feed stops a reply or the answer playing out
+    // before its timer fires, not at the next frame.
+    _seen = FeedSeen.maybeOf(context)?..addListener(_onSeenChanged);
     _load();
     _syncActive();
+  }
+
+  void _onSeenChanged() {
+    if (!mounted) return;
+    _syncActive();
+    _pushBoard(animate: false);
   }
 
   @override
@@ -312,6 +333,7 @@ class _FeedPuzzlePageState extends ConsumerState<FeedPuzzlePage> {
 
   @override
   void dispose() {
+    _seen?.removeListener(_onSeenChanged);
     _timer?.cancel();
     _board?.dispose();
     super.dispose();

@@ -136,18 +136,20 @@ void main() {
     // ordinary checkmate one.
     expect(feed.sound.played.last, ('Qxf7#', MoveClass.brilliant));
 
-    // A touch on the bottom line is not a scrub: nothing moves until the
-    // finger travels sideways past the drag slop.
+    // A touch on the bottom line is not yet a scrub: nothing moves until the
+    // finger rests or travels sideways past the drag slop.
     final strip = tester.getRect(find.byType(FeedScrubStrip));
     final gesture = await tester.startGesture(strip.center);
     await tester.pump();
-    expect(find.text('No report for this game yet'), findsNothing);
+    expect(find.byType(FeedMoveBubble), findsNothing);
     expect(find.byKey(const ValueKey('feed_end_card')), findsOneWidget);
 
-    // Drag it back to the start: no evals → move bubble.
+    // Drag it back to the start: no evals, so the move rides the thumb, and
+    // nothing else is said about the missing report.
     await gesture.moveTo(Offset(strip.left + 17, strip.center.dy));
     await tester.pump();
-    expect(find.text('No report for this game yet'), findsOneWidget);
+    expect(find.byType(FeedMoveBubble), findsOneWidget);
+    expect(find.textContaining('report'), findsNothing);
     expect(find.byKey(const ValueKey('feed_end_card')), findsNothing);
     expect(rowsReveal(), isFalse);
 
@@ -155,7 +157,7 @@ void main() {
     await tester.pump();
     await gesture.up();
     await tester.pump();
-    expect(find.text('No report for this game yet'), findsNothing);
+    expect(find.byType(FeedMoveBubble), findsNothing);
 
     await _tearDown(tester);
   });
@@ -226,7 +228,8 @@ void main() {
         _scholarsMate(id: 'g2'),
       ],
     );
-    final board = tester.getRect(find.byType(FeedLiveBoard));
+    // The next post already stands under this one; the first board is ours.
+    final board = tester.getRect(find.byType(FeedLiveBoard).first);
 
     // Swipe up from White's d-pawn: pieces move tap-tap, so the finger's
     // travel belongs to the feed.
@@ -253,14 +256,17 @@ void main() {
     final board = tester.getRect(find.byType(FeedLiveBoard));
 
     // Touch the d-pawn and drag a little: the page snaps back, and the pawn
-    // the touch picked up must not be left in hand, holding the clip.
+    // the touch picked up must not be left in hand, holding the clip. (The
+    // page after the post, the tail, gives even a one-post feed room to
+    // move, so the snap back is a real one.)
     await tester.dragFrom(_squareCenter(board, 'd2'), const Offset(0, -60));
-    for (var i = 0; i < 4; i++) {
+    for (var i = 0; i < 10; i++) {
       await tester.pump(const Duration(milliseconds: 100));
     }
     expect(tester.getRect(find.byType(FeedLiveBoard)), board);
     await tester.pump(const Duration(milliseconds: 500));
-    expect(feed.sound.played, [('e4', null)]);
+    // Nothing left in hand: the clip played on through the drag.
+    expect(feed.sound.played, [('e4', null), ('e5', null)]);
 
     await _tearDown(tester);
   });
@@ -690,7 +696,9 @@ Future<_Feed> _pumpFeed(
           () => _TestEngineSettings(engineSettings),
         ),
         eventNoSpoilersProvider.overrideWith(_MemoryNoSpoilers.new),
-        feedCachedEvalProvider.overrideWith((ref, fen) async => cached?.call(fen)),
+        feedCachedEvalProvider.overrideWith(
+          (ref, fen) async => cached?.call(fen),
+        ),
         feedEngineProvider.overrideWithValue(engine ?? _RecordingEngine()),
       ],
       child: MaterialApp(

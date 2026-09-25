@@ -26,7 +26,8 @@ class FeedStripToken {
 /// The Feed's compact notation: the game's moves in one scrolling line under
 /// the board, the one on the board set in full ink with its classification,
 /// the rest dimmed. Any move is a tap target that jumps the board there; the
-/// line keeps the current move in view as the clip plays.
+/// line keeps the current move in view as the clip plays, and keeps up with
+/// a scrub move for move ([follow]).
 ///
 /// [leading] and [trailing] sit either side of the scroller (the "Your line"
 /// label, the eval, the step controls, "Back to game").
@@ -38,6 +39,7 @@ class FeedMoveStrip extends StatefulWidget {
     required this.height,
     this.leading,
     this.trailing = const [],
+    this.follow = false,
     super.key,
   });
 
@@ -50,6 +52,11 @@ class FeedMoveStrip extends StatefulWidget {
   final double height;
   final Widget? leading;
   final List<Widget> trailing;
+
+  /// A finger is scrubbing the game: the line jumps with the current move
+  /// instead of gliding. A glide restarted at every move a finger crosses
+  /// never catches up, so the line would sit still until the finger did.
+  final bool follow;
 
   @override
   State<FeedMoveStrip> createState() => _FeedMoveStripState();
@@ -109,7 +116,8 @@ class _FeedMoveStripState extends State<FeedMoveStrip> {
           .offset
           .clamp(position.minScrollExtent, position.maxScrollExtent);
       if ((offset - position.pixels).abs() < 0.5) return;
-      final still = !animate || MediaQuery.disableAnimationsOf(context);
+      final still =
+          !animate || widget.follow || MediaQuery.disableAnimationsOf(context);
       if (still) {
         _scroll.jumpTo(offset);
       } else {

@@ -141,7 +141,7 @@ class _PuzzleStreamState extends ConsumerState<PuzzleStream> {
     final puzzles = state.valueOrNull ?? const <FeedPuzzle>[];
 
     if (puzzles.isEmpty) {
-      if (state.isLoading) return const FeedSkeleton();
+      if (state.isLoading) return const FeedSkeleton(puzzles: true);
       return FeedMessage(
         title: state.hasError ? "Puzzles didn't load" : 'No puzzles right now',
         body: state.hasError

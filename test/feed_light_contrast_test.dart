@@ -112,9 +112,22 @@ void main() {
       }
     });
 
+    test('$name: the scrub line stands off the page, played part apart', () {
+      final page = colors().background;
+      final line = FeedScrubColors.of(colors());
+      // The whole track, the played part and the thumb are marks: 3:1.
+      expect(feedContrast(line.track, page), greaterThanOrEqualTo(3));
+      expect(feedContrast(line.played, page), greaterThanOrEqualTo(3));
+      expect(feedContrast(line.played, line.track), greaterThanOrEqualTo(3));
+      // The counter is text, at rest and under a finger.
+      expect(feedContrast(line.counter, page), greaterThanOrEqualTo(4.5));
+      expect(feedContrast(line.counterHeld, page), greaterThanOrEqualTo(4.5));
+    });
+
     testWidgets('$name: the scrub bubble reads on its surface', (tester) async {
       await _pump(tester, light, FeedMoveBubble(item: _item(null), ply: 1));
-      final surface = colors().popup;
+      // The thumb's own ink.
+      final surface = colors().textPrimary;
       for (final text in tester.widgetList<Text>(find.byType(Text))) {
         expect(
           feedContrast(_over(text.style!.color!, surface), surface),

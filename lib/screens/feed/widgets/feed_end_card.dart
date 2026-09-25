@@ -6,7 +6,9 @@ import 'package:flutter/material.dart';
 /// Result card over the bottom of the board once a clip reaches its last ply.
 ///
 /// "Next game" fills left to right over the auto-advance window driven by
-/// [countdown]; reaching the end moves the feed on by itself.
+/// [countdown]; reaching the end moves the feed on by itself. With no next
+/// game ([onNext] null: the last post of a feed that has ended) the card
+/// offers Replay alone.
 class FeedEndCard extends StatelessWidget {
   const FeedEndCard({
     required this.result,
@@ -21,7 +23,7 @@ class FeedEndCard extends StatelessWidget {
   final String detail;
   final Animation<double> countdown;
   final VoidCallback onReplay;
-  final VoidCallback onNext;
+  final VoidCallback? onNext;
 
   @override
   Widget build(BuildContext context) {
@@ -78,21 +80,23 @@ class FeedEndCard extends StatelessWidget {
                   onTap: onReplay,
                 ),
               ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: _EndButton(
-                  label: 'Next game',
-                  fill: colors.textPrimary,
-                  ink: colors.background,
-                  weight: FontWeight.w700,
-                  onTap: onNext,
-                  progress: countdown,
-                  progressColor: _countdownFill(
-                    plate: colors.textPrimary,
+              if (onNext case final next?) ...[
+                const SizedBox(width: 8),
+                Expanded(
+                  child: _EndButton(
+                    label: 'Next game',
+                    fill: colors.textPrimary,
                     ink: colors.background,
+                    weight: FontWeight.w700,
+                    onTap: next,
+                    progress: countdown,
+                    progressColor: _countdownFill(
+                      plate: colors.textPrimary,
+                      ink: colors.background,
+                    ),
                   ),
                 ),
-              ),
+              ],
             ],
           ),
         ],

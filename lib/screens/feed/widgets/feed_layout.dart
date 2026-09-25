@@ -93,6 +93,73 @@ class FeedLayout {
     return _fixedHeight(scaler) + board.floorToDouble();
   }
 
+  /// How Feed stands its pages on a viewport [viewport] tall: every page
+  /// [extent] tall, that is one post ([naturalHeight], kept between half
+  /// and all of the viewport) and a blank [foot] under it.
+  ///
+  /// On a screen taller than a post the top of the next page shows under
+  /// the current one: the peek. The foot makes the peek end in a gap
+  /// between the next post's rows, never through one: not across its
+  /// header line or a player row, and not a few points into its board,
+  /// which leaves a sliced strip of squares along the screen's bottom edge.
+  /// Where it would, the page grows by exactly the points it takes for the
+  /// peek to stop just above that row. A board may show a slice when it is
+  /// a real one, at least half a square. The foot sits under the scrub
+  /// line, so the line stays with its own post rather than drifting down
+  /// towards the next one.
+  static ({double extent, double foot}) pageFit(
+    double width,
+    double viewport,
+    TextScaler scaler, {
+    double evalWidth = defaultEvalWidth,
+  }) {
+    final post = naturalHeight(width, scaler, evalWidth: evalWidth);
+    if (!viewport.isFinite || viewport <= 0) return (extent: post, foot: 0.0);
+    final extent = post.clamp(viewport * 0.5, viewport).toDouble();
+    final peek = viewport - extent;
+    if (peek <= 0) return (extent: extent, foot: 0.0);
+    final next = FeedLayout.resolve(
+      BoxConstraints(maxWidth: width, maxHeight: extent),
+      scaler,
+      evalWidth: evalWidth,
+    );
+    final clean = next._cleanPeek(peek, scaler);
+    return (extent: viewport - clean, foot: peek - clean);
+  }
+
+  /// How far above a row the peek stops when it would have cut into it:
+  /// inside the gap between that row and the one before it.
+  static const double peekClearance = 2;
+
+  /// [peek] as it may end over this post's top: moved up to just above a
+  /// row it would cut, unchanged where it ends in a gap or well into the
+  /// board.
+  double _cleanPeek(double peek, TextScaler scaler) {
+    double line(double fontSize, double lineHeight) =>
+        math.max(lineHeight, scaler.scale(fontSize) * lineHeight / fontSize);
+    // What each row draws: the header's line (its tappable segments are
+    // 20pt tall), the player rows' names and flags inside their 3pt
+    // padding, and the board.
+    final headInk = math.max(20.0, line(13, 18));
+    final headTop = topGap + (metaHeight - headInk) / 2;
+    final rowInk = rowHeight - 6;
+    final rowOver = topGap + metaHeight + gap + 3;
+    final rowUnder = boardBottom + gap + 3;
+    final bands = <(double, double, double)>[
+      (headTop, headTop + headInk, headInk),
+      (rowOver, rowOver + rowInk, rowInk),
+      // Half a square is a board seen; less is a sliver.
+      (boardTop, boardBottom, math.max(16.0, board / 16)),
+      (rowUnder, rowUnder + rowInk, rowInk),
+    ];
+    for (final (top, bottom, least) in bands) {
+      if (peek > top && peek < bottom && peek - top < least) {
+        return math.max(0.0, top - peekClearance);
+      }
+    }
+    return peek;
+  }
+
   /// Every row of a post except the board, at [scaler]'s text size.
   static double _fixedHeight(TextScaler scaler) {
     double line(double fontSize, double lineHeight) =>
@@ -126,7 +193,17 @@ class FeedLayout {
   static const double infoGap = 10;
   static const double actionsGap = 8;
   static const double minSpacer = 8;
-  static const double scrubHeight = 34;
+
+  /// The scrub line's row: a full 44pt touch target across the page.
+  static const double scrubHeight = 44;
+
+  /// The scrub track's line inside its row: a little above the row's middle,
+  /// so the line sits with its own post's actions rather than halfway to the
+  /// next post's header.
+  static const double scrubTrackCenter = 18;
+
+  /// The scrub track's thickness at rest (it thickens under the finger).
+  static const double scrubTrack = 6;
   static const double minBoard = 160;
 
   final double width;

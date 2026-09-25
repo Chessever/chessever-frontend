@@ -103,6 +103,14 @@ String feedPlyText(FeedItem item, int i) {
   return 'move ${math.min(current, total)} of $total';
 }
 
+/// "12/31": the move shown at ply [i] over the game's moves, on the scrub
+/// line. "0/31" at the start, before any move.
+String feedMoveCounter(FeedItem item, int i) {
+  final total = math.max(1, (item.plyCount + 1) ~/ 2);
+  final current = (math.max(i, 0) + 1) ~/ 2;
+  return '${math.min(current, total)}/$total';
+}
+
 /// Report-classification moments the info row and chart mark with a colour.
 LichessMoveAnnotationType? feedJudgmentType(FeedMoment? moment) {
   return switch (moment?.type) {

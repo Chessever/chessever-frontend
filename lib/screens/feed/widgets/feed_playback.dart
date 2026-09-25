@@ -219,6 +219,25 @@ class FeedPlayback extends ChangeNotifier {
     _notify();
   }
 
+  /// A tap on the scrub line: shows [target] and plays on from it, exactly
+  /// as a scrub let go there would. A jump forward sounds the move it lands
+  /// on; a jump back is silent, like a step back.
+  void jumpTo(int target) {
+    final next = target.clamp(0, lastPly);
+    final forward = next > shownPly;
+    _scrubbing = false;
+    _ply = next;
+    _scrubPly = next;
+    _ended = false;
+    _userPaused = false;
+    _manual = false;
+    _fast = false;
+    _freshStart = false;
+    if (forward) _playPly(next);
+    _notify();
+    _reschedule();
+  }
+
   /// Lands playback on the scrubbed ply and plays on from there.
   void endScrub() {
     if (!_scrubbing) return;

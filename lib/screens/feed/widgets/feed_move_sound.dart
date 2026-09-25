@@ -45,6 +45,8 @@ class FeedMoveSound {
       return;
     }
     _lastMs = now;
+    // Leaving Feed cuts it if it is still ringing ([FeedSfx.hush]).
+    _sfx.noteSounded();
     ClassificationSfx.playMove(san: san, moveClass: moveClass);
   }
 }
