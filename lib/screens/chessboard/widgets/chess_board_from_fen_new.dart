@@ -112,6 +112,79 @@ bool _shouldShowEvalBarForGame(WidgetRef ref, GamesTourModel game) {
   return game.hasStarted;
 }
 
+/// The engine gauge's lane beside a card's board: 10 on a grid card, 20 on
+/// a full board card. Every card that sets a board beside the gauge (a game,
+/// or a saved position through [PositionCardBoard]) reserves exactly this,
+/// so their boards start and end on the same lines.
+double gameCardGaugeLane(PlayerView view) =>
+    view == PlayerView.gridView ? 10.w : 20.w;
+
+/// The full board card's inset in a list: its side margins and the gap
+/// under it.
+EdgeInsets get gameBoardCardPadding =>
+    EdgeInsets.only(left: 24.sp, right: 24.sp, bottom: 8.sp);
+
+/// A grid card's width on a phone: half the screen less the list's margin.
+double gameGridCardPhoneWidth(BuildContext context) =>
+    (MediaQuery.of(context).size.width / 2) - 24.sp;
+
+/// A position set on a card the way a game card sets its board: the engine
+/// gauge in the card's lane (while the viewer shows the gauge on cards) and
+/// the board beside it, from the game cards' own widgets and geometry. For a
+/// card that holds a position and no players (a saved opening), so it cannot
+/// drift from the game cards it sits among.
+///
+/// [width] is the whole row, lane included. The gauge only reads what is
+/// already known about the position (cache and server); it never starts the
+/// engine.
+class PositionCardBoard extends ConsumerWidget {
+  const PositionCardBoard({
+    super.key,
+    required this.fen,
+    required this.lastMove,
+    required this.width,
+    required this.view,
+  });
+
+  final String? fen;
+  final Move? lastMove;
+  final double width;
+
+  /// Grid card or full board card: picks the lane.
+  final PlayerView view;
+
+  /// The lane the gauge takes on a [view] card, or 0 with the gauge off.
+  static double laneOf(WidgetRef ref, PlayerView view) =>
+      _shouldShowEvalBar(ref) ? gameCardGaugeLane(view) : 0.0;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final lane = laneOf(ref, view);
+    final boardSize = width - lane;
+    final board = GameCardChessboard(
+      fen: fen,
+      lastMove: lastMove,
+      boardSize: boardSize,
+      orientation: Side.white,
+      showCoordinates: false,
+    );
+    if (lane == 0) return board;
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        EvaluationBarWidgetForGames(
+          width: lane,
+          height: boardSize,
+          fen: fen ?? '',
+          playerView: view,
+          allowStockfishFallback: false,
+        ),
+        board,
+      ],
+    );
+  }
+}
+
 /// Resolved FEN provider that caches the resolution logic for a game model
 @immutable
 class _ResolvedFenKey {
@@ -442,7 +515,12 @@ class ChessBoardFromFENNew extends ConsumerWidget {
     this.scoreCardGamesContext = const [],
     this.playerProfileDataSource = PlayerProfileDataSource.supabase,
     this.showPin = true,
+    this.menuActions,
   });
+
+  /// Replaces the long-press menu's rows for a host whose game is its own
+  /// thing (a saved like). See [GameCard.menuActions].
+  final List<LibraryMenuAction> Function(BuildContext context)? menuActions;
 
   final GamesTourModel gamesTourModel;
   final VoidCallback onChanged;
@@ -478,22 +556,28 @@ class ChessBoardFromFENNew extends ConsumerWidget {
       context: cardContext,
       previewBuilder: preview,
       onPreviewTap: preview == null ? null : _openFromPreview,
-      actions: [
-        if (showPin)
-          LibraryMenuAction(
-            icon: isPinned ? Icons.push_pin : Icons.push_pin_outlined,
-            label: isPinned ? 'Unpin' : 'Pin',
-            onSelected: () => onPinToggle(gamesTourModel),
-          ),
-        LibraryMenuAction(
-          icon: Icons.ios_share_rounded,
-          label: 'Share',
-          onSelected:
-              () => showGameShareOverlay(cardContext, ref, gamesTourModel),
-        ),
-        if (spaceDraft != null)
-          spaceMenuAction(context: cardContext, ref: ref, draft: spaceDraft),
-      ],
+      actions:
+          menuActions?.call(cardContext) ??
+          [
+            if (showPin)
+              LibraryMenuAction(
+                icon: isPinned ? Icons.push_pin : Icons.push_pin_outlined,
+                label: isPinned ? 'Unpin' : 'Pin',
+                onSelected: () => onPinToggle(gamesTourModel),
+              ),
+            LibraryMenuAction(
+              icon: Icons.ios_share_rounded,
+              label: 'Share',
+              onSelected:
+                  () => showGameShareOverlay(cardContext, ref, gamesTourModel),
+            ),
+            if (spaceDraft != null)
+              spaceMenuAction(
+                context: cardContext,
+                ref: ref,
+                draft: spaceDraft,
+              ),
+          ],
     );
   }
 
@@ -505,10 +589,11 @@ class ChessBoardFromFENNew extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final showEvalBar = _shouldShowEvalBarForGame(ref, gamesTourModel);
-    final sideBarWidth = showEvalBar ? 20.w : 0.w;
+    final sideBarWidth =
+        showEvalBar ? gameCardGaugeLane(PlayerView.listView) : 0.w;
 
     return Padding(
-      padding: EdgeInsets.only(left: 24.sp, right: 24.sp, bottom: 8.sp),
+      padding: gameBoardCardPadding,
       child: LayoutBuilder(
         builder: (cardContext, constraints) {
           // Get width AFTER padding is applied
@@ -573,7 +658,12 @@ class GridChessBoardFromFENNew extends ConsumerWidget {
     this.scoreCardGamesContext = const [],
     this.playerProfileDataSource = PlayerProfileDataSource.supabase,
     this.showPin = true,
+    this.menuActions,
   });
+
+  /// Replaces the long-press menu's rows for a host whose game is its own
+  /// thing (a saved like). See [GameCard.menuActions].
+  final List<LibraryMenuAction> Function(BuildContext context)? menuActions;
 
   final GamesTourModel gamesTourModel;
   final VoidCallback onChanged;
@@ -604,22 +694,28 @@ class GridChessBoardFromFENNew extends ConsumerWidget {
       context: cardContext,
       previewBuilder: preview,
       onPreviewTap: preview == null ? null : _openFromPreview,
-      actions: [
-        if (showPin)
-          LibraryMenuAction(
-            icon: isPinned ? Icons.push_pin : Icons.push_pin_outlined,
-            label: isPinned ? 'Unpin' : 'Pin',
-            onSelected: () => onPinToggle(gamesTourModel),
-          ),
-        LibraryMenuAction(
-          icon: Icons.ios_share_rounded,
-          label: 'Share',
-          onSelected:
-              () => showGameShareOverlay(cardContext, ref, gamesTourModel),
-        ),
-        if (spaceDraft != null)
-          spaceMenuAction(context: cardContext, ref: ref, draft: spaceDraft),
-      ],
+      actions:
+          menuActions?.call(cardContext) ??
+          [
+            if (showPin)
+              LibraryMenuAction(
+                icon: isPinned ? Icons.push_pin : Icons.push_pin_outlined,
+                label: isPinned ? 'Unpin' : 'Pin',
+                onSelected: () => onPinToggle(gamesTourModel),
+              ),
+            LibraryMenuAction(
+              icon: Icons.ios_share_rounded,
+              label: 'Share',
+              onSelected:
+                  () => showGameShareOverlay(cardContext, ref, gamesTourModel),
+            ),
+            if (spaceDraft != null)
+              spaceMenuAction(
+                context: cardContext,
+                ref: ref,
+                draft: spaceDraft,
+              ),
+          ],
     );
   }
 
@@ -685,7 +781,8 @@ class GridChessBoardFromFENNew extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final showEvalBar = _shouldShowEvalBarForGame(ref, gamesTourModel);
-    final sideBarWidth = showEvalBar ? 10.w : 0.w;
+    final sideBarWidth =
+        showEvalBar ? gameCardGaugeLane(PlayerView.gridView) : 0.w;
     final bottomSide = fixedBottomSide ?? Side.white;
     final topSide = _oppositeSide(bottomSide);
 
@@ -725,7 +822,7 @@ class GridChessBoardFromFENNew extends ConsumerWidget {
 
     // On phone, use the original fixed calculation for 2-column grid
     if (ResponsiveHelper.isPhone) {
-      final screenWidth = (MediaQuery.of(context).size.width / 2) - 24.sp;
+      final screenWidth = gameGridCardPhoneWidth(context);
       final boardSize = screenWidth - sideBarWidth;
       return card(context, boardSize: boardSize, width: screenWidth);
     }

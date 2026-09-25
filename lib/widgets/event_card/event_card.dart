@@ -6,6 +6,7 @@ import 'package:chessever2/providers/favorite_events_provider.dart';
 import 'package:chessever2/screens/group_event/model/tour_event_card_model.dart';
 import 'package:chessever2/screens/group_event/providers/live_group_broadcast_id_provider.dart';
 import 'package:chessever2/theme/app_colors.dart';
+import 'package:chessever2/widgets/hub_tile.dart' show kHubTileInk;
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
@@ -291,7 +292,10 @@ class EventCard extends ConsumerWidget {
                     overflow: TextOverflow.ellipsis,
                     style: AppTypography.textSmMedium.copyWith(
                       color: context.colors.textPrimary,
-                      fontSize: 14.sp,
+                      // The type scale, like the meta line under it: the
+                      // same 14 on a phone, and on a tablet the compact
+                      // card keeps the phone's title-to-meta proportion.
+                      fontSize: 14.f,
                       height: 1.2,
                     ),
                   ),
@@ -595,6 +599,10 @@ class _MetaLine extends StatelessWidget {
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               softWrap: false,
+              // A cut date measures to its ellipsis, not to the room it was
+              // given, so the dot after it keeps its even margins. A date
+              // that fits measures the same either way: nothing moves.
+              textWidthBasis: TextWidthBasis.longestLine,
             ),
           ),
           if (dates.isNotEmpty)
@@ -764,7 +772,7 @@ class _EventImage extends ConsumerWidget {
                 ),
                 child: Container(color: context.colors.surfaceRecessed),
               ),
-          error: (_, __) => _EventFallbackArtwork(title: event.title),
+          error: (_, __) => EventFallbackArtwork(title: event.title),
         ),
       ),
     );
@@ -803,7 +811,7 @@ class _EventImage extends ConsumerWidget {
       );
     }
 
-    return _EventFallbackArtwork(title: event.title);
+    return EventFallbackArtwork(title: event.title);
   }
 
   String? _extractCountryCode(WidgetRef ref, String? location) {
@@ -869,7 +877,7 @@ class _FlagEventImage extends StatelessWidget {
               ),
             ),
             if (countryCode == null)
-              _EventFallbackArtwork(title: fallbackTitle),
+              EventFallbackArtwork(title: fallbackTitle),
           ],
         ),
       ),
@@ -880,13 +888,6 @@ class _FlagEventImage extends StatelessWidget {
 /// Dark ground under a flag (phone thumbnail and tablet background): the
 /// shipped dark-mode colours, unchanged.
 const List<Color> _kDarkFlagGround = [Color(0xFF1F1C2C), Color(0xFF2C5364)];
-
-/// Dark ground under the initials fallback artwork: the shipped dark-mode
-/// colours, unchanged.
-const List<Color> _kDarkFallbackGround = [
-  Color(0xFF202329),
-  Color(0xFF303846),
-];
 
 /// Ground behind a phone thumbnail's flag: the shipped ground in dark, a
 /// recessed mint step on paper so a flag-less card is not a dark hole.
@@ -920,51 +921,50 @@ LinearGradient _thumbnailScrim(BuildContext context) {
   );
 }
 
-class _EventFallbackArtwork extends StatelessWidget {
-  const _EventFallbackArtwork({required this.title, this.overImage = false});
+/// What an event card shows when its event has no photo and no flag: the
+/// event's initials set straight on a neutral plate, the one a smart event's
+/// combination sits on ([kHubTileInk] in dark, the recessed surface on
+/// paper, a hairline in its own colour), so the two read as one list.
+/// Public so a row naming an event the app cannot resolve (a liked game's
+/// archive event) draws the same face.
+class EventFallbackArtwork extends StatelessWidget {
+  const EventFallbackArtwork({
+    super.key,
+    required this.title,
+    this.overImage = false,
+  });
 
   final String title;
 
   /// Tablet cards write white titles over this artwork under a black scrim,
-  /// so there it stays the dark slab in both themes.
+  /// so there it stays the dark plate in both themes.
   final bool overImage;
 
   @override
   Widget build(BuildContext context) {
     final paper = context.isLightTheme && !overImage;
     final colors = context.colors;
-    final ink = paper ? colors.textPrimary : Colors.white;
+    final edge = (paper ? Colors.black : Colors.white).withValues(alpha: 0.06);
     return DecoratedBox(
       decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors:
-              paper
-                  ? [colors.surfaceRecessed, colors.background]
-                  : _kDarkFallbackGround,
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
+        color: paper ? colors.surfaceRecessed : kHubTileInk,
+        border: Border.all(color: edge),
       ),
       child: Center(
-        child: Container(
-          width: 42.w,
-          height: 42.w,
-          alignment: Alignment.center,
-          decoration: BoxDecoration(
-            color: ink.withValues(alpha: paper ? 0.06 : 0.12),
-            shape: BoxShape.circle,
-            border: Border.all(
-              color: ink.withValues(alpha: paper ? 0.16 : 0.22),
-            ),
-          ),
-          child: Text(
-            _eventInitials(title),
-            maxLines: 1,
-            overflow: TextOverflow.clip,
-            style: AppTypography.textSmSemiBold.copyWith(
-              color: ink,
-              fontSize: 15.sp,
-            ),
+        child: Text(
+          _eventInitials(title),
+          maxLines: 1,
+          overflow: TextOverflow.clip,
+          textScaler: TextScaler.noScaling,
+          style: AppTypography.textSmSemiBold.copyWith(
+            color:
+                paper
+                    ? colors.textSecondary
+                    : Colors.white.withValues(alpha: 0.72),
+            fontSize: 18.sp,
+            height: 1,
+            letterSpacing: 0.6,
+            fontFeatures: const [FontFeature.tabularFigures()],
           ),
         ),
       ),
@@ -1031,7 +1031,7 @@ class _TabletEventBackground extends ConsumerWidget {
       },
       loading: () => _buildLoadingBackground(context),
       error:
-          (_, __) => _EventFallbackArtwork(title: event.title, overImage: true),
+          (_, __) => EventFallbackArtwork(title: event.title, overImage: true),
     );
   }
 
@@ -1078,7 +1078,7 @@ class _TabletEventBackground extends ConsumerWidget {
             theme: ImageTheme(height: double.infinity, width: double.infinity),
           ),
         if (countryCode == null || countryCode.isEmpty)
-          _EventFallbackArtwork(title: fallbackTitle, overImage: true),
+          EventFallbackArtwork(title: fallbackTitle, overImage: true),
       ],
     );
   }
@@ -1122,7 +1122,7 @@ class _LiveLabel extends StatelessWidget {
           // Over the dark image keep raw brand cyan; on the theme surface use
           // the contrast-safe accent ink (identical to cyan in dark mode).
           color: onLight ? kPrimaryColor : context.colors.accentText,
-          fontSize: 11.sp,
+          fontSize: onLight ? 11.sp : 11.f,
           fontWeight: FontWeight.w700,
           letterSpacing: 0.6,
           shadows:
@@ -1390,7 +1390,7 @@ class _NextRoundLine extends ConsumerWidget {
 
     final textStyle = AppTypography.textXxsMedium.copyWith(
       color: baseColor,
-      fontSize: 11.sp,
+      fontSize: onLight ? 11.sp : 11.f,
       letterSpacing: 0.1,
       shadows:
           onLight
@@ -1421,7 +1421,17 @@ class _NextRoundLine extends ConsumerWidget {
                     ),
                   ),
                   Text('  ·  ', style: textStyle),
-                  Text(label, style: textStyle, maxLines: 1, softWrap: false),
+                  // Gives way too on a narrow card (a trailing save toggle),
+                  // instead of pushing past the card's edge.
+                  Flexible(
+                    child: Text(
+                      label,
+                      style: textStyle,
+                      maxLines: 1,
+                      softWrap: false,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
                 ],
               )
               : Text(

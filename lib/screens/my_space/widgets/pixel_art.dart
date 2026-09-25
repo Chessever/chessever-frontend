@@ -977,6 +977,38 @@ class PixelScene {
     );
   }
 
+  /// [art] as a mark in a square slot of its own beside a label: fitted and
+  /// centred, with room above only for embers that rise off it. No sparkles
+  /// and no scan-line overhang, so nothing the scene draws strays out of the
+  /// slot toward the text next to it.
+  factory PixelScene.mark(PixelArt art, Size size) {
+    final headroom = art.embers.isEmpty ? 0.0 : 10.0;
+    return PixelScene._fitted(
+      art,
+      size,
+      Rect.fromLTWH(0, headroom, size.width, size.height - headroom),
+      layout: 'mark',
+      sparkleFloor: size.height,
+      sparkles: false,
+      scanOverhang: 0,
+    );
+  }
+
+  /// [art] as a hub tile's full-bleed backdrop: fitted into [box], which may
+  /// run past the tile's edges so the object bleeds off them, with its
+  /// embers and scan line but no sparkles, which would scatter into the
+  /// label's side of the tile.
+  factory PixelScene.backdrop(PixelArt art, Size size, Rect box) {
+    return PixelScene._fitted(
+      art,
+      size,
+      box,
+      layout: 'backdrop',
+      sparkleFloor: size.height,
+      sparkles: false,
+    );
+  }
+
   /// The door layout inside [box]. A sparkle whose "+" would reach below
   /// [sparkleFloor] or past a side of the tile is left out whole.
   factory PixelScene._fitted(
@@ -985,6 +1017,8 @@ class PixelScene {
     Rect box, {
     required String layout,
     required double sparkleFloor,
+    bool sparkles = true,
+    double scanOverhang = 4,
   }) {
     final w = size.width;
     final s = math
@@ -1008,8 +1042,8 @@ class PixelScene {
         ),
     ];
 
-    final sparkles = <PixelSparkle>[];
-    if (art.sparkles) {
+    final sparkleMarks = <PixelSparkle>[];
+    if (sparkles && art.sparkles) {
       final sp = math.max(2, (s * 0.45).round()).toDouble();
       final spots = [
         Offset(bb.left - sp * 2.5, bb.top + bb.height * 0.2),
@@ -1025,7 +1059,7 @@ class PixelScene {
             pt.dx + sp * 2 > w - 2) {
           continue;
         }
-        sparkles.add(PixelSparkle(pt, sp, cyan: i == 1));
+        sparkleMarks.add(PixelSparkle(pt, sp, cyan: i == 1));
       }
     }
 
@@ -1033,8 +1067,8 @@ class PixelScene {
         ? null
         : PixelScanLine(
             y: oy + art.scanRow! * s - 0.5,
-            x0: box.left - 4,
-            x1: box.right + 4,
+            x0: box.left - scanOverhang,
+            x1: box.right + scanOverhang,
             thickness: 2,
             color: art.palette.accent,
             period: 1.8,
@@ -1047,7 +1081,7 @@ class PixelScene {
         e.rect.translate(0, -emberRise).expandToInclude(e.rect),
       );
     }
-    for (final sp in sparkles) {
+    for (final sp in sparkleMarks) {
       bounds = bounds.expandToInclude(
         Rect.fromLTWH(
           sp.origin.dx - sp.block,
@@ -1079,7 +1113,7 @@ class PixelScene {
       embers: embers,
       emberRise: emberRise,
       emberRadius: 0.6,
-      sparkles: sparkles,
+      sparkles: sparkleMarks,
       scan: scan,
       driftAmplitude: math.min(6.0, s * 0.75),
       paintBounds: bounds.inflate(1.5),

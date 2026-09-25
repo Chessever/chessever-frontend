@@ -1,14 +1,13 @@
 import 'package:chessever2/screens/favorites/tabs/favorites_players_tab.dart';
 import 'package:chessever2/screens/for_you/discovery/models/discovery_models.dart';
 import 'package:chessever2/screens/for_you/discovery/widgets/discovery_common.dart';
+import 'package:chessever2/screens/my_space/widgets/space_avatar.dart';
 import 'package:chessever2/screens/player_profile/player_profile_screen.dart';
 import 'package:chessever2/screens/player_profile/utils/player_menu_actions.dart';
 import 'package:chessever2/screens/player_profile/widgets/lifted_row_menu.dart';
 import 'package:chessever2/screens/streaks/widgets/wall_common.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
-import 'package:chessever2/widgets/federation_flag.dart';
-import 'package:chessever2/widgets/player_initials_avatar.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
@@ -70,14 +69,25 @@ class MostLikedDateControl extends StatelessWidget {
 }
 
 /// The Players view: everyone with a game in the ranking, most-liked first.
-/// Each row reads like the Miniatures Players leaderboard (rank, photo,
-/// flag and rating, the likes where Miniatures has W-L) but in Discovery's
-/// own compact voice, and every text in it can shrink before it overflows.
-/// A tap opens the player's profile.
+/// Each row reads like the Miniatures Players leaderboard (rank, the
+/// player's profile circle with their flag and title, rating and games, the
+/// likes where Miniatures has W-L) but in Discovery's own compact voice, and
+/// every text in it can shrink before it overflows. A tap opens the player's
+/// profile; a long press lifts the row into the player focus menu (profile,
+/// My Space, share, favourites).
 class MostLikedPlayersList extends StatelessWidget {
   const MostLikedPlayersList({super.key, required this.players});
 
   final List<MostLikedPlayer> players;
+
+  /// A row's height at the default text size.
+  static double get rowHeight => 56.w;
+
+  /// The rank column.
+  static double get rankWidth => 20.w;
+
+  /// The profile circle's diameter.
+  static double get avatarSize => 40.w;
 
   @override
   Widget build(BuildContext context) {
@@ -175,19 +185,18 @@ class _PlayerRow extends ConsumerWidget {
     required String detail,
   }) {
     final p = row.player;
-    final flag = p.countryCode.trim();
 
     return WallPressable(
-      pressScale: 0.98,
+      pressScale: 0.96,
       onTap: () => _open(context),
       child: ConstrainedBox(
-        constraints: BoxConstraints(minHeight: 56.w),
+        constraints: BoxConstraints(minHeight: MostLikedPlayersList.rowHeight),
         child: Padding(
           padding: EdgeInsets.symmetric(vertical: 8.w),
           child: Row(
             children: [
               SizedBox(
-                width: 20.w,
+                width: MostLikedPlayersList.rankWidth,
                 child: Text(
                   '${row.rank}',
                   maxLines: 1,
@@ -200,12 +209,13 @@ class _PlayerRow extends ConsumerWidget {
                 ),
               ),
               SizedBox(width: 8.w),
-              PlayerInitialsAvatar(
+              // The same face a saved player wears in My Space.
+              SpacePlayerAvatar(
+                size: MostLikedPlayersList.avatarSize,
+                name: p.name,
                 photoUrl: photo,
-                initials: wallInitials(p.name),
-                size: 40.w,
-                borderRadius: 4.br,
                 title: title.isEmpty ? null : title,
+                federation: p.countryCode.trim(),
               ),
               SizedBox(width: 12.w),
               Expanded(
@@ -220,30 +230,15 @@ class _PlayerRow extends ConsumerWidget {
                       style: discoveryType(context, DiscoveryType.body),
                     ),
                     SizedBox(height: 2.w),
-                    Row(
-                      children: [
-                        if (FederationFlag.hasVisibleFlag(flag)) ...[
-                          FederationFlag(
-                            federation: flag,
-                            width: 16.w,
-                            height: 11.w,
-                            borderRadius: BorderRadius.circular(2.br),
-                          ),
-                          SizedBox(width: 6.w),
-                        ],
-                        Flexible(
-                          child: Text(
-                            detail,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: discoveryType(
-                              context,
-                              DiscoveryType.meta,
-                              tabular: true,
-                            ),
-                          ),
-                        ),
-                      ],
+                    Text(
+                      detail,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: discoveryType(
+                        context,
+                        DiscoveryType.meta,
+                        tabular: true,
+                      ),
                     ),
                   ],
                 ),

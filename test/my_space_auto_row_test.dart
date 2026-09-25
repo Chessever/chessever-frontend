@@ -150,5 +150,35 @@ void main() {
       {'d'},
     );
     expect(drafts.map((d) => d.targetId), ['d', 'a', 'c']);
+    expect(drafts.every((d) => d.kind == SpaceShortcutKind.event), isTrue);
+  });
+
+  test('spaceCurrentEvents: live, ongoing and upcoming only, followed first '
+      '(ordering only), database-only events dropped', () {
+    GroupEventCardModel event(String id, TourEventCategory c) =>
+        GroupEventCardModel(
+          id: id,
+          title: 'Event $id',
+          dates: 'Sep 20 - 28',
+          maxAvgElo: 2700,
+          timeUntilStart: '',
+          tourEventCategory: c,
+          timeControl: 'standard',
+          endDate: null,
+          startDate: null,
+        );
+    final events = spaceCurrentEvents(
+      [
+        event('a', TourEventCategory.live),
+        event('b', TourEventCategory.completed),
+        event('gamebase::x', TourEventCategory.live),
+        event('c', TourEventCategory.upcoming),
+        event('d', TourEventCategory.ongoing),
+        event(' ', TourEventCategory.live),
+      ],
+      // A followed event the feed does not carry is never added.
+      {'c', 'zz'},
+    );
+    expect(events.map((e) => e.id), ['c', 'a', 'd']);
   });
 }

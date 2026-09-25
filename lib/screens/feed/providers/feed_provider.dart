@@ -105,8 +105,39 @@ class _FeedReserve {
   final Map<String, _FeedCandidate> leftovers;
 }
 
+/// The account the Feed's disk cache is kept under: the signed-in user, or
+/// null for a guest (and wherever Supabase is not set up).
+String? feedCacheUserId() {
+  try {
+    return Supabase.instance.client.auth.currentUser?.id;
+  } catch (_) {
+    return null;
+  }
+}
+
+/// The first page Feed last cached for [userId], parsed and ready to play:
+/// exactly the page [FeedNotifier.build] paints on its next open. Empty when
+/// nothing is cached, the cache is older than its max age, or it cannot be
+/// read. Reads SQLite only, never the network, and never builds
+/// [feedProvider].
+Future<List<FeedItem>> readFeedFirstPageCache({String? userId}) async {
+  try {
+    final entry = await AppDatabase.instance.getCache(
+      key: FeedNotifier.cacheKey,
+      userId: userId,
+      maxAge: FeedNotifier._cacheMaxAge,
+    );
+    if (entry == null) return const [];
+    return decodeFlowFeedCache(entry.value, now: DateTime.now());
+  } catch (error) {
+    debugPrint('[Feed] cache read failed: $error');
+    return const [];
+  }
+}
+
 class FeedNotifier extends AsyncNotifier<List<FeedItem>> {
-  static const String _cacheKey = 'flow_feed_first_page_v1';
+  /// Where the first page is kept on disk ([readFeedFirstPageCache]).
+  static const String cacheKey = 'flow_feed_first_page_v1';
   static const String _shownKey = 'flow_feed_shown_v1';
   static const Duration _cacheMaxAge = Duration(days: 3);
 
@@ -1199,33 +1230,14 @@ class FeedNotifier extends AsyncNotifier<List<FeedItem>> {
     }, fireImmediately: true);
   }
 
-  String? get _userId {
-    try {
-      return Supabase.instance.client.auth.currentUser?.id;
-    } catch (_) {
-      return null;
-    }
-  }
+  String? get _userId => feedCacheUserId();
 
-  Future<List<FeedItem>> _readCache() async {
-    try {
-      final entry = await AppDatabase.instance.getCache(
-        key: _cacheKey,
-        userId: _userId,
-        maxAge: _cacheMaxAge,
-      );
-      if (entry == null) return const [];
-      return decodeFlowFeedCache(entry.value, now: DateTime.now());
-    } catch (error) {
-      debugPrint('[Feed] cache read failed: $error');
-      return const [];
-    }
-  }
+  Future<List<FeedItem>> _readCache() => readFeedFirstPageCache(userId: _userId);
 
   Future<void> _writeCache(List<FeedItem> items) async {
     try {
       await AppDatabase.instance.setCache(
-        key: _cacheKey,
+        key: cacheKey,
         userId: _userId,
         value: encodeFlowFeedCache(items),
       );

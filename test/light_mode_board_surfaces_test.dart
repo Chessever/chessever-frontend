@@ -20,6 +20,9 @@ import 'package:chessever2/screens/my_likes/widgets/my_likes_game_card.dart';
 import 'package:chessever2/screens/my_space/models/space_shortcut.dart';
 import 'package:chessever2/screens/my_space/providers/space_shortcuts_provider.dart';
 import 'package:chessever2/revenue_cat_service/subscribe_state.dart';
+import 'package:chessever2/screens/collections/collections_data.dart';
+import 'package:chessever2/screens/feed/models/feed_models.dart';
+import 'package:chessever2/screens/feed/widgets/feed_tile_board.dart';
 import 'package:chessever2/screens/for_you/discovery/discovery_view.dart';
 import 'package:chessever2/screens/for_you/discovery/models/discovery_models.dart';
 import 'package:chessever2/screens/for_you/discovery/providers/discovery_providers.dart';
@@ -220,6 +223,15 @@ void main() {
           // The seam over the viewer's favourites, never the account.
           discoveryFollowedFideIdsProvider.overrideWith(
             (ref) => const <int>{},
+          ),
+          // A loading preview's skeleton reads the eval bar setting.
+          engineSettingsProviderNew.overrideWith(_EngineSettings.new),
+          // The tiles' previews: Feed's disk cache and the collections.
+          feedFirstPageCacheReaderProvider.overrideWithValue(
+            () async => const <FeedItem>[],
+          ),
+          collectionsProvider.overrideWith(
+            (ref) async => const <Collection>[],
           ),
         ],
         settle: false,

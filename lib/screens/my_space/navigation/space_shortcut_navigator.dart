@@ -19,6 +19,12 @@ import 'package:chessever2/screens/group_event/smart_event/smart_aggregate_event
 import 'package:chessever2/screens/group_event/smart_event/smart_event_screen.dart';
 import 'package:chessever2/screens/library/folder_contents_screen.dart';
 import 'package:chessever2/screens/library/miniatures_screen.dart';
+import 'package:chessever2/repository/gamebase/collections/collections_models.dart'
+    show Collection;
+import 'package:chessever2/screens/collections/collections_data.dart'
+    show collectionsProvider;
+import 'package:chessever2/screens/collections/collections_screen.dart'
+    show CollectionScreen;
 import 'package:chessever2/screens/library/providers/library_folders_provider.dart'
     show kMiniaturesBookId, kTwicBookId;
 import 'package:chessever2/screens/library/twic_contents_screen.dart';
@@ -84,6 +90,14 @@ Future<void> openSpaceShortcut(
   unawaited(_afterTransition().then((_) => shortcuts.markOpened(s.id)));
 }
 
+/// Records an open of [s] that did not go through [openSpaceShortcut] (a
+/// saved game opened on the board with its neighbours), the same way: once
+/// the pushed page has finished sliding in.
+Future<void> markSpaceShortcutOpened(WidgetRef ref, SpaceShortcut s) {
+  final shortcuts = ref.read(spaceShortcutsProvider.notifier);
+  return _afterTransition().then((_) => shortcuts.markOpened(s.id));
+}
+
 /// Longest wait for the frames to go quiet: a destination that animates for
 /// good (a live clock, a spinner) never idles.
 const _kTransitionWait = Duration(milliseconds: 900);
@@ -129,7 +143,38 @@ Future<bool> _open(BuildContext context, WidgetRef ref, SpaceShortcut s) {
     SpaceShortcutKind.miniatures => _push(context, const MiniaturesScreen()),
     SpaceShortcutKind.likes => _push(context, const MyLikesScreen()),
     SpaceShortcutKind.link => _openLink(context, s.targetId),
+    SpaceShortcutKind.collection => _openCollection(context, ref, s),
   };
+}
+
+/// A published collection, by id, from the team's list (usually warm: the
+/// Discovery tile keeps it). False when it is no longer published.
+Future<bool> _openCollection(
+  BuildContext context,
+  WidgetRef ref,
+  SpaceShortcut s,
+) async {
+  // Held while it loads: the list is autoDispose, and a bare read would let
+  // it go before it answers.
+  final container = ProviderScope.containerOf(context, listen: false);
+  final sub = container.listen(collectionsProvider.future, (_, _) {});
+  final List<Collection> all;
+  try {
+    all = await sub.read();
+  } catch (_) {
+    return false;
+  } finally {
+    sub.close();
+  }
+  Collection? found;
+  for (final c in all) {
+    if (c.id == s.targetId) {
+      found = c;
+      break;
+    }
+  }
+  if (found == null || !context.mounted) return false;
+  return _push(context, CollectionScreen(collection: found));
 }
 
 // ------------------------------------------------------------------- events

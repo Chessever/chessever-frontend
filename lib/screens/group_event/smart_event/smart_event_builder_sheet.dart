@@ -1,6 +1,10 @@
 import 'dart:async';
 import 'dart:math' as math;
 
+import 'package:chessever2/screens/group_event/providers/live_group_broadcast_id_provider.dart'
+    show liveGroupBroadcastIdsProvider;
+import 'package:chessever2/screens/group_event/model/tour_event_card_model.dart'
+    show TourEventCategory;
 import 'package:chessever2/screens/group_event/smart_event/smart_aggregate_event_provider.dart';
 import 'package:chessever2/screens/group_event/smart_event/smart_event_screen.dart'
     show smartEventSpaceDraft;
@@ -107,6 +111,32 @@ String? smartEventBuilderSummary(FilterPopupState filter) {
   }
   if (!filter.eco.isAll) parts.add(_ecoCode(filter.eco));
   return parts.isEmpty ? null : parts.join(', ');
+}
+
+/// [smartEventBuilderSummary] for a saved Smart Event: the line its card
+/// carries under the counts, in the builder's own words.
+String? smartEventCardSummary(SmartEventRequest request) =>
+    smartEventBuilderSummary(request.criteria.toPopupState());
+
+/// Whether any event [request] gathers is live now, by the category each
+/// member carried when it was gathered.
+bool smartEventHasLive(SmartEventRequest request) => request.events.any(
+  (e) => e.tourEventCategory == TourEventCategory.live,
+);
+
+/// Whether any event [request] gathers is live now, the way an event card
+/// decides its LIVE: the member's category, or the strict live-ids stream,
+/// which is the authority while a category lags a round that just started.
+/// Rebuilds the caller only when that answer changes.
+bool watchSmartEventLive(WidgetRef ref, SmartEventRequest request) {
+  if (smartEventHasLive(request)) return true;
+  final ids = {for (final e in request.events) e.id};
+  if (ids.isEmpty) return false;
+  return ref.watch(
+    liveGroupBroadcastIdsProvider.select(
+      (live) => live.valueOrNull?.any(ids.contains) ?? false,
+    ),
+  );
 }
 
 String? _orList(List<String> items) {

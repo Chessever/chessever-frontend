@@ -6,6 +6,8 @@ import 'package:chessever2/revenue_cat_service/subscribe_state.dart';
 import 'package:chessever2/screens/chessboard/provider/current_eval_provider.dart';
 import 'package:chessever2/screens/collections/collections_data.dart';
 import 'package:chessever2/screens/collections/collections_screen.dart';
+import 'package:chessever2/screens/my_space/models/space_shortcut.dart';
+import 'package:chessever2/screens/my_space/providers/space_shortcuts_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/event_no_spoilers_provider.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
@@ -99,6 +101,11 @@ CollectionGame _game(String id, {String? sectionId, int orderIndex = 0}) {
   )!;
 }
 
+class _NoShortcuts extends SpaceShortcutsNotifier {
+  @override
+  Future<List<SpaceShortcut>> build() async => const [];
+}
+
 Future<void> _pump(WidgetTester tester, _FakeCollections repo) async {
   tester.view.physicalSize = const Size(390, 4000);
   tester.view.devicePixelRatio = 1;
@@ -152,6 +159,55 @@ Future<void> _teardown(WidgetTester tester) async {
 Finder _rich(String text) => find.textContaining(text, findRichText: true);
 
 void main() {
+  testWidgets('holding a collection card offers Open and Add to My Space, '
+      'with the collection itself as the draft', (tester) async {
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    const collection = Collection(
+      id: 'c9',
+      slug: 'zurich-1953',
+      kind: CollectionKind.book,
+      title: 'Zurich 1953',
+      gameCount: 210,
+    );
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          spaceShortcutsProvider.overrideWith(_NoShortcuts.new),
+        ],
+        child: MaterialApp(
+          theme: AppTheme.darkTheme,
+          home: Builder(
+            builder: (context) {
+              ResponsiveHelper.init(context);
+              return const Scaffold(
+                body: Padding(
+                  padding: EdgeInsets.all(16),
+                  child: CollectionCard(collection: collection),
+                ),
+              );
+            },
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    final draft = collectionSpaceDraft(collection);
+    expect(draft.kind, SpaceShortcutKind.collection);
+    expect(draft.targetId, 'c9');
+    expect(draft.section, SpaceSection.library);
+
+    await tester.longPress(find.byType(CollectionCard));
+    await tester.pump(const Duration(milliseconds: 600));
+    expect(find.text('Open'), findsOneWidget);
+    expect(find.text('Add to My Space'), findsOneWidget);
+    await tester.pump(const Duration(seconds: 2));
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('an event lists its games under dated rounds, in order', (
     tester,
   ) async {

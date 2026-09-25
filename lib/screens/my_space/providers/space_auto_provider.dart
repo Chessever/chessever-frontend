@@ -235,10 +235,11 @@ SpaceShortcut spaceLikedGameFace(SavedAnalysis analysis) {
   );
 }
 
-/// Live and upcoming events from the For You feed, followed ones first, as
-/// the same shortcut the event card pins. Events the database invented (no
-/// broadcast behind them) are left out: they cannot be reopened later.
-List<SpaceShortcut> spaceCurrentEventDrafts(
+/// Live and upcoming events from the For You feed, followed ones first.
+/// Events the database invented (no broadcast behind them) are left out:
+/// they cannot be reopened later. Following only orders the list; it never
+/// adds an event the feed does not carry.
+List<GroupEventCardModel> spaceCurrentEvents(
   List<GroupEventCardModel> events,
   Set<String> favoriteIds,
 ) {
@@ -254,18 +255,21 @@ List<SpaceShortcut> spaceCurrentEventDrafts(
           !isVirtualGamebaseId(e.id))
         e,
   ];
-  final followed = [
+  return [
     for (final e in eligible)
       if (favoriteIds.contains(e.id)) e,
-  ];
-  final rest = [
     for (final e in eligible)
       if (!favoriteIds.contains(e.id)) e,
   ];
-  return [
-    for (final e in [...followed, ...rest]) eventSpaceDraft(e),
-  ];
 }
+
+/// [spaceCurrentEvents] as the same shortcut the event card pins.
+List<SpaceShortcut> spaceCurrentEventDrafts(
+  List<GroupEventCardModel> events,
+  Set<String> favoriteIds,
+) => [
+  for (final e in spaceCurrentEvents(events, favoriteIds)) eventSpaceDraft(e),
+];
 
 /// The strongest active classical players of the user's country, for a
 /// Players row with nobody followed yet. Read once a session.

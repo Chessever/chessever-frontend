@@ -61,6 +61,11 @@ enum SpaceShortcutKind {
   /// scorecard, an event tab, a profile, a game, a shared database, a streak
   /// card). targetId: the URL.
   link,
+
+  /// A published ChessEver collection (an annotated event or a book, from
+  /// Discovery's Collection). targetId: the collection id. params: `slug`,
+  /// `collectionKind`, `coverUrl`, `gameCount`. Sits with the databases.
+  collection,
 }
 
 /// The row a shortcut lives in on My Space, in page order. Never persisted:
@@ -89,7 +94,8 @@ extension SpaceShortcutKindX on SpaceShortcutKind {
     SpaceShortcutKind.opening ||
     SpaceShortcutKind.playerOpenings => SpaceSection.openings,
     SpaceShortcutKind.folder ||
-    SpaceShortcutKind.miniatures => SpaceSection.library,
+    SpaceShortcutKind.miniatures ||
+    SpaceShortcutKind.collection => SpaceSection.library,
     SpaceShortcutKind.likes => SpaceSection.likes,
     SpaceShortcutKind.game => SpaceSection.games,
     SpaceShortcutKind.smartEvent => SpaceSection.smartEvents,

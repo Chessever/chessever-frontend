@@ -15,7 +15,10 @@ enum ForYouEventSource {
   search('forYouSearch'),
 
   /// The Discovery tab.
-  discovery('forYouDiscovery');
+  discovery('forYouDiscovery'),
+
+  /// My Space: an event suggested to a new user, or a saved one.
+  mySpace('forYouMySpace');
 
   const ForYouEventSource(this.analyticsLabel);
 

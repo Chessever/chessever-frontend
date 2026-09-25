@@ -35,7 +35,7 @@ LibraryMenuAction spaceMenuAction({
         if (messenger != null && removed != null) {
           showAppSnackOn(
             messenger,
-            'Removed from ${draft.section.title}',
+            'Removed from My Space',
             actionLabel: 'Undo',
             onAction: () => notifier.restore(removed),
           );
@@ -47,9 +47,7 @@ LibraryMenuAction spaceMenuAction({
       if (messenger != null) {
         showAppSnackOn(
           messenger,
-          added
-              ? 'Added to ${draft.section.title} in My Space'
-              : 'Already in My Space',
+          added ? 'Added to My Space' : 'Already in My Space',
           tone: added ? AppSnackTone.success : AppSnackTone.neutral,
         );
       }

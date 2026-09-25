@@ -1,36 +1,42 @@
+import 'package:chessever2/screens/group_event/widget/filter_popup/group_event_filter_provider.dart'
+    show EventFormat;
 import 'package:chessever2/screens/library/widgets/library_context_menu.dart';
 import 'package:chessever2/screens/my_space/actions/space_menu_action.dart';
 import 'package:chessever2/screens/my_space/models/space_shortcut.dart';
+import 'package:chessever2/screens/my_space/widgets/space_glyphs.dart';
+import 'package:chessever2/screens/my_space/widgets/space_tile_content.dart'
+    show spaceText;
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/app_button.dart';
+import 'package:chessever2/widgets/game_filter/rating_tier_filter.dart';
+import 'package:chessever2/widgets/hub_tile.dart' show kHubTileInk;
+import 'package:chessever2/widgets/time_control_glyph.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_animate/flutter_animate.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
-Color smartEventAccentColor(String stableKey) {
-  const palette = <Color>[
-    kPrimaryColor,
-    Color(0xFF38BDF8),
-    Color(0xFFA3E635),
-    Color(0xFFF97316),
-    Color(0xFFF472B6),
-    Color(0xFF22C55E),
-  ];
-  final hash = stableKey.codeUnits.fold<int>(
-    0,
-    (value, unit) => (value * 31 + unit) & 0x7fffffff,
-  );
-  return palette[hash % palette.length];
-}
+/// The time controls a smart event can hold, slow to fast: the builder's
+/// order and its glyphs.
+const List<EventFormat> _kFormats = [
+  EventFormat.standard,
+  EventFormat.rapid,
+  EventFormat.blitz,
+];
 
-/// Generated level-games card.
+/// A smart event (the games of every current event that matches a set of
+/// criteria) drawn in the Events list's language: the phone event card's
+/// surface, radius, padding and lines, so it sits among events as one of
+/// them. Where an event keeps its photo, a neutral plate shows the
+/// combination the way the builder draws it: the level (its code over its
+/// floor, "GM" over "2500+") and the chosen time controls' glyphs under it;
+/// with neither picked, the stacked-boards glyph. No hue anywhere: the
+/// builder's own monochrome vocabulary.
 ///
-/// Gathers current games from active broadcasts that match the user's filter,
-/// while keeping the For You surface close to the regular event-card anatomy.
+/// Title, then "3 events · Ø 2728", then the builder's one-line summary of
+/// the criteria, or the event card's LIVE while a member event is live.
 class SmartEventCard extends StatelessWidget {
   const SmartEventCard({
     required this.tierLabel,
@@ -44,25 +50,35 @@ class SmartEventCard extends StatelessWidget {
     this.accentColor = kPrimaryColor,
     this.onTap,
     this.spaceDraft,
+    this.quiet = false,
+    this.formatsAndStates = const <String>{},
+    this.summary,
+    this.live = false,
     super.key,
   });
 
   /// Short tier label for the headline, e.g. `GM`, `IM`, or `2500+`.
   final String tierLabel;
 
-  /// The applied ELO floor (drives the "from your … filter" caption).
+  /// The applied game-average floor; 0 when no level is picked.
   final int minElo;
 
-  /// Number of currently live/ongoing events folded into this smart event.
+  /// Number of current events folded into this smart event.
   final int liveCount;
 
-  /// Average rating across the gathered events (0 hides the Ø chip).
+  /// Average rating across the gathered events (0 hides the Ø figure).
   final int avgElo;
 
   final String titleSuffix;
+
+  /// The saved caption ("From your 2500+ filter"): the third line when no
+  /// [summary] is given.
   final String? caption;
   final String countSingular;
   final String countPlural;
+
+  /// Not drawn. Smart events used to wear a per-event hue; they now share
+  /// the builder's neutral look everywhere. Kept so callers still compile.
   final Color accentColor;
   final VoidCallback? onTap;
 
@@ -70,6 +86,21 @@ class SmartEventCard extends StatelessWidget {
   /// Open and the My Space row for this smart event (see
   /// `smartEventSpaceDraft`).
   final SpaceShortcut? spaceDraft;
+
+  /// Kept for callers that asked for a still card; every card is still now.
+  final bool quiet;
+
+  /// The criteria's raw formats and statuses (`standard`, `rapid`, `blitz`,
+  /// `live`, `completed`): the time-control glyphs on the plate.
+  final Set<String> formatsAndStates;
+
+  /// The builder's one-line account of the criteria ("Game average 2500+,
+  /// classical, live events"). Falls back to [caption].
+  final String? summary;
+
+  /// Whether one of the gathered events is live now: the third line reads
+  /// LIVE, as an event card's does.
+  final bool live;
 
   static double _imageWidth(BuildContext context) {
     double w = 108.w;
@@ -81,15 +112,11 @@ class SmartEventCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final reduceMotion =
-        MediaQuery.maybeOf(context)?.disableAnimations ?? false;
-    final card = _buildCard(context, reduceMotion);
-
-    if (onTap == null) return _entrance(card, reduceMotion);
+    final card = _buildCard(context);
+    if (onTap == null) return card;
 
     final draft = spaceDraft;
-    return _entrance(
-      TappableScale(
+    return TappableScale(
         onTap: () {
           HapticFeedbackService.cardTap();
           onTap!();
@@ -105,9 +132,7 @@ class SmartEventCard extends StatelessWidget {
                         onLongPress:
                             () => showLibraryContextMenu(
                               context: context,
-                              previewBuilder:
-                                  (previewContext) =>
-                                      _buildCard(previewContext, true),
+                              previewBuilder: _buildCard,
                               onPreviewTap: onTap,
                               actions: [
                                 LibraryMenuAction(
@@ -125,187 +150,105 @@ class SmartEventCard extends StatelessWidget {
                         child: child,
                       ),
                 ),
-      ),
-      reduceMotion,
     );
   }
 
-  // One-shot reveal so the card lands gracefully when the filter is applied.
-  Widget _entrance(Widget child, bool reduceMotion) {
-    if (reduceMotion) return child;
-    return child
-        .animate()
-        .fadeIn(duration: 320.ms, curve: Curves.easeOutQuart)
-        .slideY(
-          begin: -0.06,
-          end: 0,
-          duration: 360.ms,
-          curve: Curves.easeOutQuart,
-        )
-        .scaleXY(
-          begin: 0.985,
-          end: 1,
-          duration: 360.ms,
-          curve: Curves.easeOutQuart,
-        );
-  }
-
-  Widget _buildCard(BuildContext context, bool reduceMotion) {
+  Widget _buildCard(BuildContext context) {
+    final colors = context.colors;
+    final light = context.isLightTheme;
     final imageW = _imageWidth(context);
     final imageH = imageW * 4 / 5;
 
     return Container(
       decoration: BoxDecoration(
-        color: context.colors.surface,
+        color: colors.surface,
         borderRadius: BorderRadius.circular(8.br),
-        border: Border.all(
-          color: accentColor.withValues(
-            alpha: context.isLightTheme ? 0.45 : 0.35,
-          ),
-          width: 1,
-        ),
-        // Dark lifts the card with an accent-tinted bloom; on paper that is
-        // a coloured haze, so light casts the same tight shadow as the
-        // regular event card.
-        boxShadow: [
-          context.isLightTheme
-              ? BoxShadow(
-                color: context.colors.shadow,
-                blurRadius: 8,
-                offset: const Offset(0, 1),
-              )
-              : BoxShadow(
-                color: accentColor.withValues(alpha: 0.18),
-                blurRadius: 16,
-                spreadRadius: -4,
-                offset: const Offset(0, 4),
-              ),
-        ],
-      ),
-      clipBehavior: Clip.antiAlias,
-      child: Stack(
-        children: [
-          // Faceted "convergence" background — the rectangle split into pieces.
-          Positioned.fill(
-            child: CustomPaint(
-              painter: _FacetBackgroundPainter(
-                isLight: context.isLightTheme,
-                accentColor: accentColor,
-              ),
-            ),
-          ),
-          Padding(
-            padding: EdgeInsets.all(6.sp),
-            child: ConstrainedBox(
-              constraints: BoxConstraints(minHeight: imageH),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: [
-                  _LevelEmblem(
-                    tierLabel: tierLabel,
-                    width: imageW,
-                    height: imageH,
-                    accentColor: accentColor,
+        // The event card's own treatment: paper lifts with a hairline and
+        // a tight shadow, dark stands on its tone.
+        border:
+            light
+                ? Border.all(color: colors.divider.withValues(alpha: 0.4))
+                : null,
+        boxShadow:
+            light
+                ? [
+                  BoxShadow(
+                    color: colors.shadow,
+                    blurRadius: 8,
+                    offset: const Offset(0, 1),
                   ),
-                  SizedBox(width: 10.w),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        _TitleRow(
-                          tierLabel: tierLabel,
-                          titleSuffix: titleSuffix,
-                          accentColor: accentColor,
-                        ),
-                        SizedBox(height: 4.h),
-                        _MetaLine(
-                          liveCount: liveCount,
-                          avgElo: avgElo,
-                          countSingular: countSingular,
-                          countPlural: countPlural,
-                        ),
-                        SizedBox(height: 3.h),
-                        _FilterCaption(
-                          minElo: minElo,
-                          caption: caption,
-                          accentColor: accentColor,
-                          reduceMotion: reduceMotion,
-                        ),
-                      ],
+                ]
+                : null,
+      ),
+      padding: EdgeInsets.all(6.sp),
+      child: ConstrainedBox(
+        constraints: BoxConstraints(minHeight: imageH),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            SmartEventPlate(
+              width: imageW,
+              height: imageH,
+              minElo: minElo,
+              formatsAndStates: formatsAndStates,
+            ),
+            SizedBox(width: 10.w),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    '$tierLabel $titleSuffix'.trim(),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: AppTypography.textSmMedium.copyWith(
+                      color: colors.textPrimary,
+                      fontSize: 14.f,
+                      height: 1.2,
                     ),
                   ),
-                  SizedBox(width: 2.w),
-                  Icon(
-                    Icons.arrow_forward_ios_rounded,
-                    color:
-                        context.isLightTheme
-                            ? smartEventAccentInk(context, accentColor, min: 3)
-                            : accentColor.withValues(alpha: 0.85),
-                    size: 16.sp,
-                    weight: 700,
+                  SizedBox(height: 4.h),
+                  _MetaLine(
+                    count: liveCount,
+                    avgElo: avgElo,
+                    countSingular: countSingular,
+                    countPlural: countPlural,
                   ),
-                  SizedBox(width: 2.w),
+                  _ThirdLine(
+                    live: live,
+                    text: summary ?? caption ?? _fallbackCaption,
+                  ),
                 ],
               ),
             ),
-          ),
-        ],
+            SizedBox(width: 4.w),
+            Icon(
+              Icons.chevron_right_rounded,
+              size: 20.ic,
+              color: colors.iconSecondary,
+            ),
+            SizedBox(width: 4.w),
+          ],
+        ),
       ),
     );
   }
+
+  String get _fallbackCaption =>
+      minElo > 0 ? 'Every game averaging $minElo+' : 'Games from your filters';
 }
 
-/// Headline row: level name. Auto-shrinks to fit instead of ever ellipsizing,
-/// since "GM Rap…" reads worse than slightly smaller "GM Rapid Games".
-class _TitleRow extends StatelessWidget {
-  const _TitleRow({
-    required this.tierLabel,
-    required this.titleSuffix,
-    required this.accentColor,
-  });
-
-  final String tierLabel;
-  final String titleSuffix;
-  final Color accentColor;
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      children: [
-        Expanded(
-          child: FittedBox(
-            fit: BoxFit.scaleDown,
-            alignment: Alignment.centerLeft,
-            child: Text(
-              '$tierLabel $titleSuffix',
-              maxLines: 1,
-              softWrap: false,
-              style: AppTypography.textSmMedium.copyWith(
-                color: context.colors.textPrimary,
-                fontSize: 14.sp,
-                height: 1.2,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-          ),
-        ),
-        SizedBox(width: 6.w),
-      ],
-    );
-  }
-}
-
-/// Meta line mirroring the real card's `count · Ø elo` rhythm.
+/// "3 events · Ø 2728", in the event card's meta ink with its dot.
 class _MetaLine extends StatelessWidget {
   const _MetaLine({
-    required this.liveCount,
+    required this.count,
     required this.avgElo,
     required this.countSingular,
     required this.countPlural,
   });
 
-  final int liveCount;
+  final int count;
   final int avgElo;
   final String countSingular;
   final String countPlural;
@@ -313,314 +256,184 @@ class _MetaLine extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final muted = context.colors.textPrimaryMuted;
-    final spans = <InlineSpan>[
+    return Text.rich(
       TextSpan(
-        text: liveCount == 1 ? '1 $countSingular' : '$liveCount $countPlural',
-      ),
-    ];
-    if (avgElo > 0) {
-      spans.add(_dot(muted));
-      spans.add(TextSpan(text: 'Ø $avgElo'));
-    }
-
-    return FittedBox(
-      fit: BoxFit.scaleDown,
-      alignment: Alignment.centerLeft,
-      child: Text.rich(
-        TextSpan(
-          style: AppTypography.textXsMedium.copyWith(color: muted),
-          children: spans,
+        style: AppTypography.textXsMedium.copyWith(
+          color: muted,
+          fontFeatures: const [FontFeature.tabularFigures()],
         ),
-        maxLines: 1,
-        softWrap: false,
-      ),
-    );
-  }
-
-  InlineSpan _dot(Color color) {
-    return WidgetSpan(
-      alignment: PlaceholderAlignment.middle,
-      child: Container(
-        margin: EdgeInsets.symmetric(horizontal: 4.w),
-        height: 6.h,
-        width: 6.w,
-        decoration: BoxDecoration(shape: BoxShape.circle, color: color),
-      ),
-    );
-  }
-}
-
-/// Third line: a pulsing live dot + the filter-bound caption, so it is obvious
-/// this card only exists because a filter is applied.
-class _FilterCaption extends StatelessWidget {
-  const _FilterCaption({
-    required this.minElo,
-    required this.caption,
-    required this.accentColor,
-    required this.reduceMotion,
-  });
-
-  final int minElo;
-  final String? caption;
-  final Color accentColor;
-  final bool reduceMotion;
-
-  @override
-  Widget build(BuildContext context) {
-    final ink = smartEventAccentInk(context, accentColor);
-    final dot = Container(
-      height: 6.h,
-      width: 6.w,
-      decoration: BoxDecoration(shape: BoxShape.circle, color: ink),
-    );
-
-    return Row(
-      children: [
-        reduceMotion
-            ? dot
-            : dot
-                .animate(onPlay: (c) => c.repeat(reverse: true))
-                .fadeIn(duration: 700.ms, curve: Curves.easeOut)
-                .scaleXY(begin: 0.7, end: 1.15, duration: 700.ms),
-        SizedBox(width: 5.w),
-        Expanded(
-          child: FittedBox(
-            fit: BoxFit.scaleDown,
-            alignment: Alignment.centerLeft,
-            child: Text(
-              caption ?? 'From your $minElo+ filter',
-              maxLines: 1,
-              softWrap: false,
-              style: AppTypography.textXxsMedium.copyWith(
-                color:
-                    context.isLightTheme
-                        ? ink
-                        : accentColor.withValues(alpha: 0.95),
-                fontSize: 11.sp,
-                letterSpacing: 0.1,
+        children: [
+          TextSpan(text: count == 1 ? '1 $countSingular' : '$count $countPlural'),
+          if (avgElo > 0) ...[
+            WidgetSpan(
+              alignment: PlaceholderAlignment.middle,
+              child: Container(
+                margin: EdgeInsets.symmetric(horizontal: 4.w),
+                height: 6.h,
+                width: 6.w,
+                decoration: BoxDecoration(shape: BoxShape.circle, color: muted),
               ),
             ),
-          ),
-        ),
-      ],
+            TextSpan(text: 'Ø $avgElo'),
+          ],
+        ],
+      ),
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
     );
   }
 }
 
-/// The left tile: a stylized "board of boards" — a diamond mosaic tinted with
-/// the level's accent color, atop a deep base for premium contrast.
-///
-/// Short tier codes (GM / IM / FM / CM / All / Live) render as oversized
-/// uppercase text. Longer category labels (Classical / Standard / Rapid /
-/// Blitz / Completed / Filtered, plus any unrecognized term) switch to a
-/// canonical icon so the tile stays iconic instead of ever ellipsizing.
-/// Combinations such as "GM Rapid" use the first word — the second segment
-/// rides along in the title row above the meta line.
-class _LevelEmblem extends StatelessWidget {
-  const _LevelEmblem({
-    required this.tierLabel,
+/// The card's third line: the event card's LIVE while a member event is
+/// live, else what the smart event gathers, in the builder's words.
+class _ThirdLine extends StatelessWidget {
+  const _ThirdLine({required this.live, required this.text});
+
+  final bool live;
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    final style = AppTypography.textXxsMedium.copyWith(
+      fontSize: 11.f,
+      letterSpacing: 0.1,
+      color: context.colors.textSecondary,
+    );
+    return Padding(
+      padding: EdgeInsets.only(top: 3.h),
+      child: Text(
+        live ? 'LIVE' : text,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style:
+            live
+                ? style.copyWith(
+                  color: context.colors.accentText,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 0.6,
+                )
+                : style,
+      ),
+    );
+  }
+}
+
+/// The smart event's plate: a neutral panel (the hub tiles' ink in dark, the
+/// recessed surface on paper) with a hairline in its own colour, holding the
+/// combination as the builder draws it: the level ("GM" over "2500+", or
+/// "2700+" alone off the tiers) and under it the chosen time controls'
+/// glyphs. With neither, the stacked-boards glyph.
+class SmartEventPlate extends StatelessWidget {
+  const SmartEventPlate({
+    super.key,
     required this.width,
     required this.height,
-    required this.accentColor,
+    required this.minElo,
+    this.formatsAndStates = const <String>{},
   });
 
-  final String tierLabel;
   final double width;
   final double height;
-  final Color accentColor;
+  final int minElo;
+  final Set<String> formatsAndStates;
 
-  static const _textLabels = <String>{'GM', 'IM', 'FM', 'CM', 'All', 'Live'};
-
-  static IconData _iconForLabel(String label) {
-    final lc = label.toLowerCase();
-    if (lc.contains('classical') || lc.contains('standard')) {
-      return Icons.hourglass_top_rounded;
+  /// The level track's code for [minElo] ("GM"), when it is one of its tiers.
+  static String? levelCode(int minElo) {
+    for (final tier in RatingTierFilter.tiers) {
+      if (tier.minRating == minElo) return tier.label;
     }
-    if (lc.contains('rapid')) return Icons.bolt_rounded;
-    if (lc.contains('blitz')) return Icons.flash_on_rounded;
-    if (lc.contains('completed')) return Icons.flag_rounded;
-    if (lc.contains('filtered')) return Icons.tune_rounded;
-    return Icons.auto_awesome_rounded;
+    return null;
   }
 
   @override
   Widget build(BuildContext context) {
-    final firstWord = tierLabel.split(' ').first;
-    final useText = _textLabels.contains(firstWord);
+    final colors = context.colors;
+    final light = context.isLightTheme;
+    final plate = light ? colors.surfaceRecessed : kHubTileInk;
+    final edge = (light ? Colors.black : Colors.white).withValues(alpha: 0.06);
+    final glyphs = [
+      for (final f in _kFormats)
+        if (formatsAndStates.contains(f.name))
+          if (TimeControlGlyph.assetForLabel(f.name) case final asset?) asset,
+    ];
+    final level = minElo > 0;
+    final code = level ? levelCode(minElo) : null;
+    final glyphSide = 18.w;
 
-    final content =
-        useText
-            ? FittedBox(
-              fit: BoxFit.scaleDown,
-              child: Text(
-                firstWord,
+    final Widget content;
+    if (!level && glyphs.isEmpty) {
+      content = SpaceGlyph(
+        SpaceGlyphKind.boards,
+        size: 40.w,
+        ink: colors.iconPrimary,
+        background: plate,
+      );
+    } else {
+      content = Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (level) ...[
+            if (code != null)
+              Text(
+                code,
                 maxLines: 1,
-                softWrap: false,
-                style: AppTypography.textMdBold.copyWith(
-                  color: Colors.white,
-                  fontSize: 28.sp,
-                  letterSpacing: 0.8,
+                style: spaceText(
+                  context,
+                  size: 15,
+                  line: 20,
+                  weight: FontWeight.w700,
                 ),
               ),
-            )
-            : Icon(
-              _iconForLabel(tierLabel),
-              size: 38.sp,
-              color: Colors.white,
-            );
+            Text(
+              '$minElo+',
+              maxLines: 1,
+              style:
+                  code != null
+                      ? spaceText(
+                        context,
+                        size: 12,
+                        line: 16,
+                        color: colors.textSecondary,
+                        tabular: true,
+                      )
+                      : spaceText(
+                        context,
+                        size: 15,
+                        line: 20,
+                        weight: FontWeight.w700,
+                        tabular: true,
+                      ),
+            ),
+          ],
+          if (level && glyphs.isNotEmpty) SizedBox(height: 6.w),
+          if (glyphs.isNotEmpty)
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                for (final (i, asset) in glyphs.indexed) ...[
+                  if (i > 0) SizedBox(width: 6.w),
+                  TimeControlGlyph(asset, size: glyphSide),
+                ],
+              ],
+            ),
+        ],
+      );
+    }
 
     return Container(
       width: width,
       height: height,
       decoration: BoxDecoration(
-        color: const Color(0xFF12202B),
+        color: plate,
         borderRadius: BorderRadius.circular(6.br),
-        border: Border.all(color: accentColor.withValues(alpha: 0.45)),
+        border: Border.all(color: edge),
       ),
-      child: CustomPaint(
-        painter: _MosaicTilePainter(accentColor: accentColor),
-        child: Center(child: content),
+      child: Center(
+        child: MediaQuery.withClampedTextScaling(
+          maxScaleFactor: 1.15,
+          child: FittedBox(fit: BoxFit.scaleDown, child: content),
+        ),
       ),
     );
   }
-}
-
-/// The level hue as TEXT or ICON ink on the card. Dark returns the raw hue.
-/// On paper lime, orange and pink sit near 1.5:1, so the hue is deepened
-/// until it clears [min] against the darkest facet it can land on (the
-/// overlapping corner and stripe tints, ~20% of the hue over the surface).
-Color smartEventAccentInk(
-  BuildContext context,
-  Color accentColor, {
-  double min = 4.5,
-}) {
-  return context.accentInk(
-    accentColor,
-    min: min,
-    on: Color.alphaBlend(
-      accentColor.withValues(alpha: 0.21),
-      context.colors.surface,
-    ),
-  );
-}
-
-/// Paints the card's fractured "convergence" background: slanted facets tinted
-/// with the accent color at stepped alphas, separated by hairline seams.
-class _FacetBackgroundPainter extends CustomPainter {
-  _FacetBackgroundPainter({required this.isLight, required this.accentColor});
-
-  final bool isLight;
-  final Color accentColor;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final w = size.width;
-    final h = size.height;
-
-    final cuts = <List<double>>[
-      [0.0, 0.0, 0.30, 0.14, 0.05],
-      [0.30, 0.14, 0.55, 0.40, 0.085],
-      [0.55, 0.40, 0.80, 0.66, 0.055],
-      [0.80, 0.66, 1.0, 1.0, 0.11],
-    ];
-
-    for (final c in cuts) {
-      final path =
-          Path()
-            ..moveTo(c[0] * w, 0)
-            ..lineTo(c[2] * w, 0)
-            ..lineTo(c[3] * w, h)
-            ..lineTo(c[1] * w, h)
-            ..close();
-      canvas.drawPath(
-        path,
-        Paint()..color = accentColor.withValues(alpha: c[4]),
-      );
-    }
-
-    final corner =
-        Path()
-          ..moveTo(0.62 * w, 0)
-          ..lineTo(w, 0)
-          ..lineTo(w, 0.45 * h)
-          ..close();
-    canvas.drawPath(
-      corner,
-      Paint()..color = accentColor.withValues(alpha: 0.10),
-    );
-
-    final seam =
-        Paint()
-          ..color = accentColor.withValues(alpha: isLight ? 0.16 : 0.12)
-          ..strokeWidth = 1
-          ..style = PaintingStyle.stroke;
-    for (final c in cuts.sublist(1)) {
-      canvas.drawLine(Offset(c[0] * w, 0), Offset(c[1] * w, h), seam);
-    }
-  }
-
-  @override
-  bool shouldRepaint(covariant _FacetBackgroundPainter oldDelegate) =>
-      oldDelegate.isLight != isLight || oldDelegate.accentColor != accentColor;
-}
-
-/// Paints the left emblem tile: a dark base broken into a diamond mosaic of
-/// accent facets — a stylized, abstracted "board of boards".
-class _MosaicTilePainter extends CustomPainter {
-  const _MosaicTilePainter({required this.accentColor});
-
-  final Color accentColor;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final w = size.width;
-    final h = size.height;
-
-    canvas.drawRect(
-      Offset.zero & size,
-      Paint()..color = const Color(0xFF12202B),
-    );
-
-    const cols = 4;
-    const rows = 3;
-    final cw = w / cols;
-    final ch = h / rows;
-    for (var r = 0; r < rows; r++) {
-      for (var col = 0; col < cols; col++) {
-        final cx = (col + 0.5) * cw;
-        final cy = (r + 0.5) * ch;
-        final alpha =
-            ((col + r) % 3 == 0)
-                ? 0.30
-                : ((col + r) % 3 == 1)
-                ? 0.16
-                : 0.07;
-        final diamond =
-            Path()
-              ..moveTo(cx, cy - ch * 0.5)
-              ..lineTo(cx + cw * 0.5, cy)
-              ..lineTo(cx, cy + ch * 0.5)
-              ..lineTo(cx - cw * 0.5, cy)
-              ..close();
-        canvas.drawPath(
-          diamond,
-          Paint()..color = accentColor.withValues(alpha: alpha),
-        );
-      }
-    }
-
-    canvas.drawRect(
-      Offset.zero & size,
-      Paint()
-        ..shader = LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [Colors.white.withValues(alpha: 0.10), Colors.transparent],
-        ).createShader(Offset.zero & size),
-    );
-  }
-
-  @override
-  bool shouldRepaint(covariant _MosaicTilePainter oldDelegate) =>
-      oldDelegate.accentColor != accentColor;
 }

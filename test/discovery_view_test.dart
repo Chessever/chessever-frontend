@@ -1,25 +1,39 @@
+import 'dart:async';
 
 import 'package:chessever2/providers/board_settings_provider_new.dart';
 import 'package:chessever2/providers/engine_settings_provider.dart';
 import 'package:chessever2/repository/lichess/cloud_eval/cloud_eval.dart';
 import 'package:chessever2/revenue_cat_service/subscribe_state.dart';
 import 'package:chessever2/screens/chessboard/provider/current_eval_provider.dart';
+import 'package:chessever2/screens/collections/collections_data.dart';
 import 'package:chessever2/screens/favorites/tabs/favorites_players_tab.dart';
+import 'package:chessever2/screens/feed/models/feed_models.dart';
+import 'package:chessever2/screens/feed/providers/feed_provider.dart';
+import 'package:chessever2/screens/feed/widgets/feed_tile_board.dart';
 import 'package:chessever2/screens/for_you/discovery/data/discovery_repository.dart';
 import 'package:chessever2/screens/for_you/discovery/discovery_view.dart';
 import 'package:chessever2/screens/for_you/discovery/models/discovery_models.dart';
+import 'package:chessever2/screens/for_you/discovery/most_liked_screen.dart';
 import 'package:chessever2/screens/for_you/discovery/providers/discovery_providers.dart';
+import 'package:chessever2/screens/for_you/discovery/widgets/discovery_common.dart';
 import 'package:chessever2/screens/for_you/discovery/widgets/discovery_game_cards.dart';
+import 'package:chessever2/screens/for_you/discovery/widgets/most_liked_controls.dart';
+import 'package:chessever2/screens/for_you/discovery/widgets/most_liked_section.dart'
+    show kMostLikedNotLive;
 import 'package:chessever2/screens/group_event/smart_event/smart_aggregate_event_provider.dart';
 import 'package:chessever2/screens/library/providers/miniatures_provider.dart';
 import 'package:chessever2/screens/streaks/models/streak_models.dart';
 import 'package:chessever2/screens/streaks/providers/streak_providers.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/event_no_spoilers_provider.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/providers/games_list_view_mode_provider.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrapper/game_card_wrapper_widget.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrapper/grid_game_card_wrapper_widget.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/board_like_heart.dart';
 import 'package:flutter/material.dart';
+import 'package:chessever2/widgets/hub_tile_art.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -165,10 +179,14 @@ Future<ProviderContainer> _pump(
   List<GamesTourModel> analyzed = const [],
   Size size = const Size(390, 5200),
   double textScale = 1,
-  // The phone the page believes it is on (the view itself stays tall so
-  // every section builds); null keeps the view's own size.
+  // The screen the page believes it is on (the view itself stays tall so
+  // every section builds); a 390-wide phone when null.
   Size? phone,
   ThemeData? theme,
+  List<FeedItem> feedCache = const [],
+  Future<List<Collection>> Function()? collections,
+  GamesListViewMode? mode,
+  List<Override> extra = const [],
 }) async {
   // Tall enough that every section builds without scrolling.
   tester.view.physicalSize = size;
@@ -208,6 +226,15 @@ Future<ProviderContainer> _pump(
       gameCardEvalCacheOnlyProvider.overrideWith(
         (ref, fen) async => _eval(fen),
       ),
+      // The tiles' previews: Feed's disk cache and the collections list.
+      feedFirstPageCacheReaderProvider.overrideWithValue(
+        () async => feedCache,
+      ),
+      collectionsProvider.overrideWith(
+        (ref) => collections?.call() ?? Future.value(const <Collection>[]),
+      ),
+      if (mode != null) gamesListViewModeProvider.overrideWithValue(mode),
+      ...extra,
     ],
   );
   addTearDown(container.dispose);
@@ -220,7 +247,9 @@ Future<ProviderContainer> _pump(
         builder: (context, child) => MediaQuery(
           data: MediaQuery.of(context).copyWith(
             textScaler: TextScaler.linear(textScale),
-            size: phone ?? MediaQuery.sizeOf(context),
+            // A phone unless a test says otherwise: the view itself is
+            // tall only so every section builds.
+            size: phone ?? const Size(390, 844),
           ),
           child: child!,
         ),
@@ -644,4 +673,272 @@ void main() {
     });
   });
 
+  group('DiscoveryView previews', () {
+    List<MostLikedEntry> twelve() => [
+      for (var i = 0; i < 12; i++)
+        MostLikedEntry(
+          rank: i + 1,
+          likes: 1200 - i * 90,
+          game: _game(
+            'ml$i',
+            fen: i.isEven ? _fenA : _fenB,
+            lastMove: 'e2e4',
+          ),
+          eventName: 'Sinquefield Cup 2026',
+        ),
+    ];
+    List<DiscoveryMiniature> minis(int n) => [
+      for (var i = 0; i < n; i++)
+        DiscoveryMiniature(
+          game: _game(
+            'mi$i',
+            fen: _fenB,
+            lastMove: 'e2e4',
+            source: GameSource.gamebase,
+            whiteRating: 2701,
+            blackRating: 2800,
+          ),
+          moves: 19,
+        ),
+    ];
+
+    Finder seeAll() => find.textContaining('See all', findRichText: true);
+
+    testWidgets('Most liked previews four of its twelve, each board holding '
+        'its likes, and the fourth opens on all twelve', (tester) async {
+      final container = await _pump(
+        tester,
+        mostLiked: (_) async => MostLikedResult.ranked(twelve()),
+      );
+
+      final cards = tester
+          .widgetList<GridGameCardWrapperWidget>(
+            find.byType(GridGameCardWrapperWidget),
+          )
+          .toList();
+      expect(cards, hasLength(4));
+      for (final card in cards) {
+        expect(card.orderedGames, hasLength(12));
+      }
+      expect(cards[3].gameIndex, 3);
+      expect(cards[3].orderedGames[3].gameId, 'ml3');
+      expect(
+        tester
+            .widgetList<LikeCountHeart>(find.byType(LikeCountHeart))
+            .map((h) => h.likes),
+        [1200, 1110, 1020, 930],
+      );
+      expect(tester.takeException(), isNull);
+      await _teardownCards(tester, container);
+    });
+
+    testWidgets('board view previews two; list view four rows with likes and '
+        'event under the players', (tester) async {
+      var container = await _pump(
+        tester,
+        mode: GamesListViewMode.chessBoard,
+        mostLiked: (_) async => MostLikedResult.ranked(twelve()),
+      );
+      expect(find.byType(GameCardWrapperWidget), findsNWidgets(2));
+      await _teardownCards(tester, container);
+
+      container = await _pump(
+        tester,
+        mode: GamesListViewMode.gamesCard,
+        mostLiked: (_) async => MostLikedResult.ranked(twelve()),
+      );
+      final rows = tester
+          .widgetList<GameCardWrapperWidget>(find.byType(GameCardWrapperWidget))
+          .toList();
+      expect(rows, hasLength(4));
+      // A row's strip shows its clocks (or, without them, the opening and
+      // the day); the likes and the event ride on the one line over each
+      // row, as they ride over a grid card.
+      expect(rows.first.footerDetail ?? '', isNot(contains('likes')));
+      final lines = tester
+          .widgetList<DiscoveryCardMeta>(find.byType(DiscoveryCardMeta))
+          .toList();
+      expect(lines, hasLength(4));
+      expect(lines.first.semanticsLabel, startsWith('1,200 likes'));
+      expect(lines.first.semanticsLabel, contains('Sinquefield Cup'));
+      for (final row in rows) {
+        expect(row.gamesData.gamesTourModels, hasLength(12));
+      }
+      await _teardownCards(tester, container);
+    });
+
+    testWidgets('the hub is always today: no periods, no date control, and '
+        'a period picked on the page never moves it', (tester) async {
+      final queries = <MostLikedQuery>[];
+      final container = await _pump(
+        tester,
+        subscribed: true,
+        mostLikedQueries: queries,
+        mostLiked: (_) async => MostLikedResult.ranked(twelve()),
+        extra: [
+          mostLikedPeriodProvider.overrideWith((ref) => MostLikedPeriod.week),
+        ],
+      );
+
+      expect(find.byType(DiscoverySegments<MostLikedPeriod>), findsNothing);
+      expect(find.byType(MostLikedDateControl), findsNothing);
+      expect(find.byType(DiscoveryDateStepper), findsNothing);
+      expect(queries, isNotEmpty);
+      expect(queries.every((q) => q.period == MostLikedPeriod.today), isTrue);
+      await _teardownCards(tester, container);
+    });
+
+    testWidgets('a miniature card reads its length and average over the '
+        'board, on one line', (tester) async {
+      // The test font sets every glyph a full em wide; at a smaller text
+      // size the whole line fits the card, as it does in Inter.
+      final container = await _pump(
+        tester,
+        miniatures: minis(12),
+        textScale: 0.7,
+      );
+
+      expect(find.byType(GridGameCardWrapperWidget), findsNWidgets(4));
+      final label = find.textContaining('19 moves · Ø 2750', findRichText: true);
+      expect(label, findsNWidgets(4));
+      // Paired cards keep one top edge.
+      final tops = [
+        for (final e in label.evaluate())
+          tester.getTopLeft(find.byWidget(e.widget)).dy,
+      ];
+      expect(tops[0], tops[1]);
+      expect(tops[2], tops[3]);
+      await _teardownCards(tester, container);
+    });
+
+    testWidgets('nothing on the hub streams or runs the engine, and the Feed '
+        'is never built', (tester) async {
+      final container = await _pump(
+        tester,
+        mostLiked: (_) async => MostLikedResult.ranked(twelve()),
+        miniatures: minis(6),
+      );
+
+      final grid = tester.widgetList<GridGameCardWrapperWidget>(
+        find.byType(GridGameCardWrapperWidget),
+      );
+      expect(grid, hasLength(8));
+      for (final card in grid) {
+        expect(card.streamEnabled, isFalse);
+        expect(card.allowStockfishFallback, isFalse);
+      }
+      for (final card in tester.widgetList<GameCardWrapperWidget>(
+        find.byType(GameCardWrapperWidget),
+      )) {
+        expect(card.streamEnabled, isFalse);
+        expect(card.allowStockfishFallback, isFalse);
+      }
+      expect(container.exists(feedProvider), isFalse);
+      await _teardownCards(tester, container);
+    });
+
+    testWidgets('the tiles say what is behind them', (tester) async {
+      final feedGame = _game('feed', fen: _fenA, lastMove: 'e2e4').copyWith(
+        whitePlayer: PlayerCard(
+          name: 'Carlsen, Magnus',
+          federation: 'NOR',
+          title: 'GM',
+          rating: 2830,
+          countryCode: 'NO',
+          team: null,
+        ),
+        blackPlayer: PlayerCard(
+          name: 'Nakamura, Hikaru',
+          federation: 'USA',
+          title: 'GM',
+          rating: 2800,
+          countryCode: 'US',
+          team: null,
+        ),
+      );
+      Collection c(String id, CollectionKind kind) =>
+          Collection(id: id, slug: id, kind: kind, title: id);
+      var container = await _pump(
+        tester,
+        feedCache: [
+          FeedItem(
+            game: feedGame,
+            plies: const [FeedPly(fen: _fenA, uci: 'e2e4')],
+            reason: 'Brilliant finish',
+          ),
+        ],
+        collections: () async => [
+          c('a', CollectionKind.event),
+          c('b', CollectionKind.event),
+          c('c', CollectionKind.book),
+        ],
+      );
+      expect(find.text('Carlsen vs Nakamura'), findsOneWidget);
+      expect(find.text('2 events · 1 book'), findsOneWidget);
+      // Both tiles are filled by their picture: Feed's animated pixel object.
+      expect(find.byType(HubPixelBackdrop), findsWidgets);
+      await _teardownCards(tester, container);
+
+      // Before Feed has cached a page, and before the collections land.
+      container = await _pump(
+        tester,
+        collections: () => Completer<List<Collection>>().future,
+      );
+      expect(find.text('Games and news'), findsOneWidget);
+      expect(find.text('Tap to view'), findsOneWidget);
+      await _teardownCards(tester, container);
+    });
+
+    testWidgets('on a tablet the two previews stand side by side', (
+      tester,
+    ) async {
+      final container = await _pump(
+        tester,
+        size: const Size(1024, 5200),
+        phone: const Size(1024, 1366),
+        mostLiked: (_) async => MostLikedResult.ranked(twelve()),
+        miniatures: minis(6),
+      );
+      final mostLiked = tester.getTopLeft(find.text('Most liked'));
+      final miniatures = tester.getTopLeft(find.text('Miniatures'));
+      expect(miniatures.dy, mostLiked.dy);
+      expect(miniatures.dx, greaterThan(mostLiked.dx + 300));
+      // Each column is a 2x2 grid of its own.
+      expect(find.byType(GridGameCardWrapperWidget), findsNWidgets(8));
+      expect(tester.takeException(), isNull);
+      await _teardownCards(tester, container);
+    });
+
+    testWidgets('See all opens the Most liked page', (tester) async {
+      final container = await _pump(
+        tester,
+        mostLiked: (_) async => MostLikedResult.ranked(twelve()),
+      );
+      await tester.tap(find.bySemanticsLabel('See all of Most liked'));
+      await _settle(tester);
+      expect(find.byType(MostLikedScreen), findsOneWidget);
+      expect(tester.takeException(), isNull);
+      await _teardownCards(tester, container);
+    });
+
+    testWidgets('empty and not-live states keep the page honest', (
+      tester,
+    ) async {
+      var container = await _pump(
+        tester,
+        mostLiked: (_) async => const MostLikedResult.ranked([]),
+      );
+      expect(find.text('No games liked yet today'), findsOneWidget);
+      expect(find.text('No miniatures yet today'), findsOneWidget);
+      // Both headers still lead somewhere.
+      expect(seeAll(), findsNWidgets(2));
+      await _teardownCards(tester, container);
+
+      container = await _pump(tester);
+      expect(find.text(kMostLikedNotLive), findsOneWidget);
+      // Nothing to see all of while ranking is not live.
+      expect(seeAll(), findsOneWidget);
+      await _teardownCards(tester, container);
+    });
+  });
 }

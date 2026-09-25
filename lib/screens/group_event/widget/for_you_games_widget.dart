@@ -26,6 +26,8 @@ import 'package:chessever2/screens/group_event/smart_event/smart_event_screen.da
 import 'package:chessever2/screens/group_event/widget/filter_popup/filter_popup_provider.dart';
 import 'package:chessever2/widgets/event_card/event_card.dart';
 import 'package:chessever2/widgets/event_card/smart_event_card.dart';
+import 'package:chessever2/screens/group_event/smart_event/smart_event_builder_sheet.dart'
+    show smartEventCardSummary, watchSmartEventLive;
 import 'package:chessever2/widgets/generic_error_widget.dart';
 import 'package:chessever2/widgets/skeleton_widget.dart';
 import 'package:flutter/material.dart';
@@ -574,7 +576,9 @@ class _ForYouGamesWidgetState extends ConsumerState<ForYouGamesWidget>
       caption: request.caption,
       countSingular: request.countSingular,
       countPlural: request.countPlural,
-      accentColor: smartEventAccentColor(request.scopeId),
+      formatsAndStates: request.formatsAndStates,
+      summary: smartEventCardSummary(request),
+      live: watchSmartEventLive(ref, request),
       spaceDraft: smartEventSpaceDraft(request),
       onTap:
           () => Navigator.of(context).push(

@@ -22,6 +22,7 @@ import 'package:chessever2/screens/group_event/smart_event/smart_aggregate_event
 import 'package:chessever2/screens/chessboard/widgets/player_first_row_detail_widget.dart'
     show PlayerView;
 import 'package:chessever2/screens/my_space/defaults/space_defaults.dart';
+import 'package:chessever2/screens/my_space/library/space_library_bridge.dart';
 import 'package:chessever2/screens/my_space/models/space_game_card.dart';
 import 'package:chessever2/screens/my_space/models/space_shortcut.dart';
 import 'package:chessever2/screens/my_space/navigation/space_shortcut_navigator.dart';
@@ -57,6 +58,7 @@ String spaceSheetSearchHint(SpaceSection section) => switch (section) {
   SpaceSection.events => 'Search events',
   SpaceSection.games => 'Search by player or event',
   SpaceSection.openings => 'Search openings or ECO',
+  SpaceSection.library => 'Search your Library',
   _ => 'Search',
 };
 
@@ -143,6 +145,7 @@ class SpaceAddSources extends ConsumerWidget {
       SpaceSection.events => _events(ref, query),
       SpaceSection.games => _games(ref, query),
       SpaceSection.openings => _openings(query, pinnedAtOpen),
+      SpaceSection.library => _library(ref, query),
       _ => const <SpaceSheetEntry>[],
     };
     return ListView.builder(
@@ -256,6 +259,40 @@ class SpaceAddSources extends ConsumerWidget {
       leading: _Avatar(fideId: fideId, name: name),
     );
   }
+
+  // ------------------------------------------------------------- library
+
+  /// The Library tab's destinations, in its order, to save into My Database.
+  /// Liked Games is left out: My Likes has its own tile on My Space.
+  List<SpaceSheetEntry> _library(WidgetRef ref, String query) {
+    final library = ref.watch(spaceLibraryFoldersProvider);
+    final needle = query.toLowerCase();
+    final rows = <SpaceSheetEntry>[
+      for (final f in library.folders)
+        if (!f.isLikedGames &&
+            (needle.length < 2 || f.name.toLowerCase().contains(needle)))
+          _libraryRow(spaceLibraryFolderDraft(f)),
+    ];
+    return [
+      const SpaceSheetLabel('Your Library'),
+      if (rows.isNotEmpty)
+        ...rows
+      else
+        SpaceSheetNote(
+          !library.settled
+              ? 'Loading'
+              : needle.length < 2
+              ? 'Nothing in your Library yet'
+              : 'No results',
+        ),
+    ];
+  }
+
+  SpaceSheetRow _libraryRow(SpaceShortcut draft) => SpaceSheetRow(
+    draft: draft,
+    title: draft.title,
+    meta: draft.subtitle ?? 'Database',
+  );
 
   // -------------------------------------------------------------- events
 

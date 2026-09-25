@@ -1,20 +1,23 @@
+import 'dart:math' as math;
+
 import 'package:chessever2/revenue_cat_service/subscribe_state.dart';
-import 'package:chessever2/screens/favorites/tabs/favorites_players_tab.dart';
+import 'package:chessever2/screens/chessboard/provider/game_pgn_stream_provider.dart'
+    show LiveGamesBatchKey;
 import 'package:chessever2/screens/for_you/discovery/models/discovery_models.dart';
+import 'package:chessever2/screens/for_you/discovery/most_liked_screen.dart';
 import 'package:chessever2/screens/for_you/discovery/providers/discovery_providers.dart';
 import 'package:chessever2/screens/for_you/discovery/widgets/discovery_common.dart';
 import 'package:chessever2/screens/for_you/discovery/widgets/discovery_game_cards.dart';
 import 'package:chessever2/screens/for_you/discovery/widgets/most_liked_controls.dart';
-import 'package:chessever2/screens/streaks/widgets/wall_common.dart';
-import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrapper/live_game_card_provider.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/board_like_heart.dart';
-import 'package:chessever2/widgets/player_initials_avatar.dart';
+import 'package:chessever2/widgets/skeleton_widget.dart';
+import 'package:chessever2/widgets/time_control_glyph.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
-import 'package:motor/motor.dart';
 
 /// The Premium outcome Most Liked sells, word for word from the spec.
 const String kMostLikedUpgradeCta = 'View weekly, monthly, and yearly rankings';
@@ -27,19 +30,203 @@ const String kMostLikedNotLive = 'Most Liked starts once ranking is live';
 /// Premium period that the account no longer has falls back to Today.
 bool _canSeePremiumPeriods(bool subscribed) => subscribed || kDebugMode;
 
-/// Most Liked: the community ranking of games by how many people liked them.
-/// Today is free; Week, Month and Year sit behind the Premium boundary, and
-/// so do the date control's earlier periods and the Players view (everyone
-/// with a game in the ranking). Every period is a calendar one the date
-/// control walks: a day, a Monday-to-Sunday week, a month, a year.
+/// The ranking the Most liked page is on: the picked period holding the
+/// walked-to day, with Premium periods and earlier days folded back to the
+/// current day for an account without Premium. Watches what it reads, so a
+/// page and its tabs call it from build and always agree.
+MostLikedQuery mostLikedActiveQuery(WidgetRef ref, {DateTime? now}) {
+  final subscribed = ref.watch(
+    subscriptionProvider.select((s) => s.isSubscribed),
+  );
+  final premium = _canSeePremiumPeriods(subscribed);
+  final picked = ref.watch(mostLikedPeriodProvider);
+  final period = picked.isPremium && !premium ? MostLikedPeriod.today : picked;
+  final day = ref.watch(mostLikedDayProvider);
+  return MostLikedQuery(period, (premium ? day : null) ?? now ?? DateTime.now());
+}
+
+/// "[glyph] Sinquefield Cup" over a card: where the game was played. Only
+/// on tablets, where the preview stands beside Miniatures and its cards
+/// share that section's one-line label slot, so the two columns keep one
+/// grid; on a phone the heart on the board says enough.
+Widget? _eventMeta(MostLikedEntry entry) {
+  final event = discoveryShortEventName(entry.eventName);
+  if (event == null) return null;
+  return DiscoveryCardMeta(
+    timeControlAsset: TimeControlGlyph.assetForLabel(entry.game.timeControl),
+    parts: [DiscoveryMetaPart.text(event)],
+    semanticsLabel: entry.eventName ?? event,
+  );
+}
+
+/// "[glyph] ♥ 1.1K · Sinquefield Cup" over a list row: a row has no board
+/// for the heart, and its strip shows the clocks, so the likes ride here.
+Widget _likesMeta(MostLikedEntry entry) {
+  final event = discoveryShortEventName(entry.eventName);
+  return DiscoveryCardMeta(
+    timeControlAsset: TimeControlGlyph.assetForLabel(entry.game.timeControl),
+    parts: [
+      DiscoveryMetaPart.likes(entry.likes),
+      if (event != null) DiscoveryMetaPart.text(event),
+    ],
+    semanticsLabel: [
+      discoveryLikes(entry.likes),
+      ?(entry.eventName ?? event),
+    ].join(', '),
+  );
+}
+
+/// Each board's like count, set in the heart on its corner.
+Widget _heart(MostLikedEntry entry, double boardSize) =>
+    LikeCountHeart(likes: entry.likes, size: likeHeartSizeFor(boardSize));
+
+/// Sends the viewer through the paywall to the week's ranking on the Most
+/// liked page: what the upgrade line under the free ranking sells.
+Future<void> _openWeeklyRanking(BuildContext context, WidgetRef ref) {
+  return unlockThen(
+    context,
+    ref,
+    () {
+      ref.read(mostLikedPeriodProvider.notifier).state = MostLikedPeriod.week;
+      ref.read(mostLikedDayProvider.notifier).state = null;
+      if (context.mounted) MostLikedScreen.open(context);
+    },
+    featureId: 'most_liked_rankings',
+    returnTo: discoveryReturnTo('most_liked'),
+  );
+}
+
+// ---------------------------------------------------------------- the hub
+
+/// Discovery's Most liked: today's ranking as a short preview, laid out the
+/// way an event's Games tab lays out its games (the viewer's own games view
+/// setting), each board holding its like count in a heart. Four cards (two
+/// boards in board view) in rank order; "See all" opens the whole ranking,
+/// with its periods, dates and players, on the Most liked page. Opening any
+/// card hands the board the whole ranking, so previous/next walks past the
+/// preview.
 ///
-/// The games sit on one rail of the app's grid cards in rank order, each
-/// under one meta line (rank, likes, event). A game with no real position to
-/// draw goes to a compact card below the rail instead of a made-up board.
-/// Under the games, the faces of the players in the ranking open the Players
-/// list in place.
+/// Always today's ranking: a period picked on the page never moves the hub.
+/// The preview is archive-cheap: no card streams or runs the engine.
+class MostLikedPreview extends ConsumerWidget {
+  const MostLikedPreview({super.key, this.now});
+
+  /// Pins "today" in tests.
+  final DateTime? now;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final subscribed = ref.watch(
+      subscriptionProvider.select((s) => s.isSubscribed),
+    );
+    final query = MostLikedQuery(MostLikedPeriod.today, now ?? DateTime.now());
+    final result = ref.watch(mostLikedProvider(query));
+    final labelled = ResponsiveHelper.isTablet;
+    // Nothing to rank anywhere while the function is missing: no See all to
+    // an empty page, and nothing sold.
+    final notLive = result.valueOrNull?.status == MostLikedStatus.notLive;
+    final upgrade = subscribed || notLive
+        ? null
+        : DiscoveryUpgradeLine(
+            label: kMostLikedUpgradeCta,
+            quiet: true,
+            onTap: () => _openWeeklyRanking(context, ref),
+          );
+    void retry() => ref.invalidate(mostLikedProvider(query));
+
+    final body = result.when(
+      data: (value) {
+        switch (value.status) {
+          case MostLikedStatus.notLive:
+            return const DiscoveryNotice(text: kMostLikedNotLive);
+          case MostLikedStatus.premiumRequired:
+            // Today is free; a refusal here is a server hiccup, not a sale.
+            return DiscoveryNotice(
+              text: "Couldn't load Most liked",
+              actionLabel: 'Retry',
+              onAction: retry,
+            );
+          case MostLikedStatus.ranked:
+            break;
+        }
+        final entries = value.entries;
+        if (entries.isEmpty) {
+          return const DiscoveryNotice(text: 'No games liked yet today');
+        }
+        return DiscoveryGameList(
+          games: [for (final e in entries) e.game],
+          limit: kDiscoveryPreviewCards,
+          boardLimit: kDiscoveryPreviewBoards,
+          badgeFor: (i, boardSize) => _heart(entries[i], boardSize),
+          labelFor: labelled ? (i) => _eventMeta(entries[i]) : null,
+          rowLabelFor: (i) => _likesMeta(entries[i]),
+          streamEnabled: false,
+          allowStockfishFallback: false,
+        );
+      },
+      loading: () => DiscoveryGameListSkeleton(
+        count: kDiscoveryPreviewCards,
+        boardCount: kDiscoveryPreviewBoards,
+        labels: labelled,
+        rowLabels: true,
+      ),
+      error: (_, __) => DiscoveryNotice(
+        text: "Couldn't load Most liked",
+        actionLabel: 'Retry',
+        onAction: retry,
+      ),
+    );
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        DiscoverySectionHeader(
+          title: 'Most liked',
+          trailing: notLive
+              ? null
+              : DiscoveryAction(
+                  label: 'See all',
+                  arrow: true,
+                  semanticsLabel: 'See all of Most liked',
+                  onTap: () => MostLikedScreen.open(context),
+                ),
+        ),
+        SizedBox(height: 8.w),
+        body,
+        if (upgrade != null) ...[SizedBox(height: 4.w), upgrade],
+      ],
+    );
+  }
+}
+
+// ---------------------------------------------------------------- the page
+
+/// The Most liked page's ranking: the community ranking of games by how many
+/// people liked them. Today is free; Week, Month and Year sit behind the
+/// Premium boundary, and so do the date control's earlier periods and the
+/// Players view (everyone with a game in the ranking). Every period is a
+/// calendar one the date control walks: a day, a Monday-to-Sunday week, a
+/// month, a year.
+///
+/// The segments pick the period and the date control under them walks it,
+/// the way a calendar picks Day | Week | Month | Year over the date it
+/// shows (the page's title already says Most liked). Under them, [view]
+/// decides what is listed: the games, in rank order and
+/// in the viewer's games view setting, each board holding its like count; or
+/// the players in the ranking. Both tabs of the page share one query
+/// ([mostLikedActiveQuery]), so they always rank the same period.
 class MostLikedSection extends ConsumerWidget {
-  const MostLikedSection({super.key});
+  const MostLikedSection({
+    super.key,
+    this.view = MostLikedView.games,
+    this.now,
+  });
+
+  final MostLikedView view;
+
+  /// Pins "now" in tests.
+  final DateTime? now;
 
   Future<void> _select(
     BuildContext context,
@@ -57,26 +244,6 @@ class MostLikedSection extends ConsumerWidget {
         ref.read(mostLikedPeriodProvider.notifier).state = period;
       },
       featureId: 'most_liked_rankings',
-      returnTo: discoveryReturnTo('most_liked'),
-    );
-  }
-
-  Future<void> _selectView(
-    BuildContext context,
-    WidgetRef ref,
-    MostLikedView view,
-  ) async {
-    if (!view.isPremium) {
-      ref.read(mostLikedViewProvider.notifier).state = view;
-      return;
-    }
-    await unlockThen(
-      context,
-      ref,
-      () {
-        ref.read(mostLikedViewProvider.notifier).state = view;
-      },
-      featureId: 'most_liked_players',
       returnTo: discoveryReturnTo('most_liked'),
     );
   }
@@ -114,108 +281,130 @@ class MostLikedSection extends ConsumerWidget {
       subscriptionProvider.select((s) => s.isSubscribed),
     );
     final premium = _canSeePremiumPeriods(subscribed);
-    final picked = ref.watch(mostLikedPeriodProvider);
-    final period = picked.isPremium && !premium
-        ? MostLikedPeriod.today
-        : picked;
-    final pickedView = ref.watch(mostLikedViewProvider);
-    final view = pickedView.isPremium && !premium
-        ? MostLikedView.games
-        : pickedView;
-    // A walked-back day is Premium too: without it the ranking is today's.
-    final pickedDay = ref.watch(mostLikedDayProvider);
-    final now = DateTime.now();
-    final query = MostLikedQuery(period, (premium ? pickedDay : null) ?? now);
+    final locked = !subscribed;
+    final now = this.now ?? DateTime.now();
+    final query = mostLikedActiveQuery(ref, now: now);
     final result = ref.watch(mostLikedProvider(query));
     final previous = query.previous;
     final next = query.next(now);
-    final locked = !subscribed;
+    // The Players list is Premium. It opens for a subscriber, and (in debug
+    // builds, where the guard lets everyone through) once the guard passed.
+    final playersOpen =
+        subscribed ||
+        (premium && ref.watch(mostLikedViewProvider) == MostLikedView.players);
 
     // With the ranking function missing there is nothing to rank in any
     // period, so nothing is offered: no periods, no date to walk, no paywall.
-    // Only the honest notice shows, never a muted control that answers no
-    // tap.
     final notLive = result.valueOrNull?.status == MostLikedStatus.notLive;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       mainAxisSize: MainAxisSize.min,
       children: [
-        DiscoverySectionHeader(
-          title: 'Most liked',
-          trailingReachesEdge: true,
-          trailing: notLive
-              ? null
-              : MostLikedDateControl(
-                  query: query,
-                  now: now,
-                  locked: locked,
-                  edgeInset: discoveryGutter,
-                  onPrevious: previous == null
-                      ? null
-                      : () => _walk(context, ref, previous, locked),
-                  onNext: next == null
-                      ? null
-                      : () => _walk(context, ref, next, false),
-                ),
-        ),
-        if (notLive)
-          SizedBox(height: 8.w)
-        else ...[
-          DiscoverySegments<MostLikedPeriod>(
-            values: MostLikedPeriod.values,
-            selected: period,
-            label: (p) => p.label,
-            locked: (p) => p.isPremium && locked,
-            semanticsPrefix: 'Most liked',
-            onSelect: (p) => _select(context, ref, p),
+        // The period picker, then the one it picked: the calendar pattern
+        // of a segmented Day | Week | Month | Year over the date it shows,
+        // stepped by the arrows either side. Nothing while ranking is not
+        // live: no periods, no date to walk, no paywall.
+        if (!notLive) ...[
+          // Edge to edge with the page's Games | Players switcher above it
+          // (EventViewShell sets it 20 in on phones, 32 on tablets), so the
+          // two controls stack on one pair of edges.
+          Padding(
+            padding: EdgeInsets.symmetric(
+              horizontal: math.max(
+                0,
+                ResponsiveHelper.adaptive(phone: 20.sp, tablet: 32.sp) -
+                    discoveryGutter,
+              ),
+            ),
+            child: DiscoverySegments<MostLikedPeriod>(
+              values: MostLikedPeriod.values,
+              selected: query.period,
+              label: (p) => p.label,
+              locked: (p) => p.isPremium && locked,
+              semanticsPrefix: 'Most liked',
+              onSelect: (p) => _select(context, ref, p),
+            ),
           ),
-          SizedBox(height: 12.w),
+          SizedBox(height: 4.w),
+          Center(
+            child: MostLikedDateControl(
+              query: query,
+              now: now,
+              locked: locked,
+              onPrevious: previous == null
+                  ? null
+                  : () => _walk(context, ref, previous, locked),
+              onNext: next == null
+                  ? null
+                  : () => _walk(context, ref, next, false),
+            ),
+          ),
+          SizedBox(height: 8.w),
         ],
-        result.when(
-          data: (value) => _Body(
-            result: value,
-            period: period,
-            view: view,
-            isToday: query.isFree(now),
-            locked: locked,
-            onUpgrade: () => _select(context, ref, MostLikedPeriod.week),
-            onToggleView: () => _selectView(
+        if (view == MostLikedView.players && !playersOpen && !notLive)
+          DiscoveryNotice(
+            text: 'See everyone in this ranking',
+            actionLabel: 'Unlock',
+            onAction: () => unlockThen(
               context,
               ref,
-              view == MostLikedView.players
-                  ? MostLikedView.games
-                  : MostLikedView.players,
+              () {
+                ref.read(mostLikedViewProvider.notifier).state =
+                    MostLikedView.players;
+              },
+              featureId: 'most_liked_players',
+              returnTo: discoveryReturnTo('most_liked'),
             ),
-            onRetry: () => ref.invalidate(mostLikedProvider(query)),
+          )
+        else
+          result.when(
+            data: (value) => _PageBody(
+              result: value,
+              query: query,
+              view: view,
+              isCurrent: query.isCurrent(now),
+              isToday: query.isFree(now),
+              locked: locked,
+              onUpgrade: () => _select(context, ref, MostLikedPeriod.week),
+              onRetry: () => ref.invalidate(mostLikedProvider(query)),
+            ),
+            loading: () => view == MostLikedView.players
+                ? const _PlayersSkeleton()
+                : const DiscoveryGameListSkeleton(
+                    count: 8,
+                    boardCount: kDiscoveryPreviewBoards,
+                    rowLabels: true,
+                  ),
+            error: (_, __) => DiscoveryNotice(
+              text: "Couldn't load Most liked",
+              actionLabel: 'Retry',
+              onAction: () => ref.invalidate(mostLikedProvider(query)),
+            ),
           ),
-          loading: () => const _MostLikedSkeleton(),
-          error: (_, __) => DiscoveryNotice(
-            text: "Couldn't load Most liked",
-            actionLabel: 'Retry',
-            onAction: () => ref.invalidate(mostLikedProvider(query)),
-          ),
-        ),
       ],
     );
   }
 }
 
-class _Body extends StatelessWidget {
-  const _Body({
+class _PageBody extends StatelessWidget {
+  const _PageBody({
     required this.result,
-    required this.period,
+    required this.query,
     required this.view,
+    required this.isCurrent,
     required this.isToday,
     required this.locked,
     required this.onUpgrade,
-    required this.onToggleView,
     required this.onRetry,
   });
 
   final MostLikedResult result;
-  final MostLikedPeriod period;
+  final MostLikedQuery query;
   final MostLikedView view;
+
+  /// The ranking is the current period's, so its unfinished games can move.
+  final bool isCurrent;
 
   /// The ranking is the current day's (not an earlier day's).
   final bool isToday;
@@ -223,7 +412,6 @@ class _Body extends StatelessWidget {
   /// Premium periods, days and the players list are behind the boundary.
   final bool locked;
   final VoidCallback onUpgrade;
-  final VoidCallback onToggleView;
   final VoidCallback onRetry;
 
   @override
@@ -237,10 +425,7 @@ class _Body extends StatelessWidget {
         // The server refused a Premium window. A subscriber seeing this has
         // an entitlement that has not reached the server yet.
         return locked
-            ? DiscoveryUpgradeLine(
-                label: kMostLikedUpgradeCta,
-                onTap: onUpgrade,
-              )
+            ? DiscoveryUpgradeLine(label: kMostLikedUpgradeCta, onTap: onUpgrade)
             : DiscoveryNotice(
                 text: 'Your Premium is still syncing',
                 actionLabel: 'Retry',
@@ -251,266 +436,110 @@ class _Body extends StatelessWidget {
     }
 
     final entries = result.entries;
-    final upgrade = locked && period == MostLikedPeriod.today
+    final upgrade = locked && query.period == MostLikedPeriod.today
         ? DiscoveryUpgradeLine(label: kMostLikedUpgradeCta, onTap: onUpgrade)
         : null;
 
+    final Widget list;
     if (entries.isEmpty) {
-      return Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          DiscoveryNotice(
-            text: isToday
-                ? 'No games liked yet today'
-                : period == MostLikedPeriod.today
-                ? 'No games liked that day'
-                : 'No games liked in this period',
-          ),
-          ?upgrade,
-        ],
+      list = DiscoveryNotice(
+        text: isToday
+            ? 'No games liked yet today'
+            : query.period == MostLikedPeriod.today
+            ? 'No games liked that day'
+            : 'No games liked in this period',
+      );
+    } else if (view == MostLikedView.players) {
+      final players = aggregateMostLikedPlayers(entries);
+      list = players.isEmpty
+          ? const DiscoveryNotice(text: 'No players in this ranking yet')
+          : MostLikedPlayersList(players: players);
+    } else {
+      final games = [for (final e in entries) e.game];
+      // The current period's unfinished broadcast games stream, all on one
+      // channel for the page; nothing runs the on-device engine.
+      final batches = isCurrent
+          ? liveBatchKeysForGames(
+              games: games,
+              scopePrefix: 'most_liked_page:${query.period.name}',
+            )
+          : const <String, LiveGamesBatchKey>{};
+      list = DiscoveryGameList(
+        games: games,
+        badgeFor: (i, boardSize) => _heart(entries[i], boardSize),
+        rowLabelFor: (i) => _likesMeta(entries[i]),
+        streamEnabled: isCurrent,
+        liveBatchKeyFor: (i) => batches[games[i].gameId],
+        allowStockfishFallback: false,
       );
     }
 
-    final players = aggregateMostLikedPlayers(entries);
-    final expanded = view == MostLikedView.players;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       mainAxisSize: MainAxisSize.min,
       children: [
-        _Ranking(entries: entries),
-        if (players.isNotEmpty) ...[
-          SizedBox(height: 4.w),
-          _PlayersRow(
-            key: const ValueKey('most_liked_players_row'),
-            players: players,
-            expanded: expanded,
-            locked: locked,
-            onTap: onToggleView,
-          ),
-          if (expanded) MostLikedPlayersList(players: players),
-        ],
-        ?upgrade,
+        list,
+        if (upgrade != null) ...[SizedBox(height: 4.w), upgrade],
       ],
     );
   }
 }
 
-/// The ranking in rank order, listed as an event's Games tab lists its
-/// games, each board carrying its like count in a heart (a list row says it
-/// under the players). The first ten show; the rest open in place. One list
-/// behind every card, so the board's previous/next walks the ranking.
-class _Ranking extends StatefulWidget {
-  const _Ranking({required this.entries});
-
-  final List<MostLikedEntry> entries;
-
-  static const int _initial = 10;
-
-  @override
-  State<_Ranking> createState() => _RankingState();
-}
-
-class _RankingState extends State<_Ranking> {
-  bool _all = false;
+/// The Players list while the ranking loads: plates of its rows' final
+/// geometry (rank, face, name), so nothing moves when the players land.
+class _PlayersSkeleton extends StatelessWidget {
+  const _PlayersSkeleton();
 
   @override
   Widget build(BuildContext context) {
-    final entries = widget.entries;
-    final shown =
-        _all || entries.length <= _Ranking._initial
-            ? entries
-            : entries.take(_Ranking._initial).toList(growable: false);
-    final rest = entries.length - shown.length;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        DiscoveryGameList(
-          games: [for (final e in shown) e.game],
-          badgeFor:
-              (i, boardSize) => LikeCountHeart(
-                likes: shown[i].likes,
-                size: likeHeartSizeFor(boardSize),
-              ),
-          footerFor: (i) => discoveryLikes(shown[i].likes),
-        ),
-        if (rest > 0) ...[
-          SizedBox(height: 4.w),
-          Padding(
-            padding: EdgeInsets.symmetric(horizontal: discoveryGutter),
-            child: Align(
-              alignment: Alignment.centerLeft,
-              child: DiscoveryAction(
-                label: rest == 1 ? 'Show 1 more' : 'Show $rest more',
-                onTap: () => setState(() => _all = true),
-              ),
-            ),
-          ),
-        ],
-      ],
-    );
-  }
-}
-
-/// Who is in this ranking, at a glance: the first faces stacked, the count,
-/// and a disclosure that opens the full list under it (Premium for free
-/// accounts, shown by the padlock). The chevron turns with the list on a
-/// motor spring, and simply flips under reduced motion.
-class _PlayersRow extends StatelessWidget {
-  const _PlayersRow({
-    super.key,
-    required this.players,
-    required this.expanded,
-    required this.locked,
-    required this.onTap,
-  });
-
-  final List<MostLikedPlayer> players;
-  final bool expanded;
-  final bool locked;
-  final VoidCallback onTap;
-
-  static const int _faces = 4;
-
-  @override
-  Widget build(BuildContext context) {
-    final n = players.length;
-    final label = n == 1
-        ? '1 player in this ranking'
-        : '$n players in this ranking';
-    final ink = context.colors.accentText;
-    return Padding(
-      padding: EdgeInsets.symmetric(horizontal: discoveryGutter),
-      child: Semantics(
-        container: true,
-        button: true,
-        expanded: expanded,
-        label: locked ? '$label, Premium' : label,
-        onTap: onTap,
-        excludeSemantics: true,
-        child: WallPressable(
-          pressScale: 0.98,
-          onTap: onTap,
-          // Collapsed, the row is the section's last line for a subscriber:
-          // the room under the faces is not counted in the gap below it.
-          child: DiscoveryInkFloor(
-            minHeight: 44.w,
-            endsSection: true,
-            child: Row(
-              children: [
-                _FaceStack(players: players.take(_faces).toList()),
-                SizedBox(width: 10.w),
-                Flexible(
-                  child: Text(
-                    label,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: discoveryType(
-                      context,
-                      DiscoveryType.label,
-                      weight: FontWeight.w600,
-                      color: ink,
-                    ),
-                  ),
-                ),
-                if (locked) ...[
-                  SizedBox(width: DiscoveryPadlock.gap),
-                  const DiscoveryPadlock(),
-                ],
-                SizedBox(width: 6.w),
-                SingleMotionBuilder(
-                  motion: const CupertinoMotion.snappy(),
-                  value: expanded ? 1.0 : 0.0,
-                  active: !MediaQuery.disableAnimationsOf(context),
-                  builder: (context, t, _) => DiscoveryChevron(
-                    color: ink,
-                    // Down when closed, up when open.
-                    turns: 1 + 2 * t,
-                    width: 6,
-                    height: 10,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-/// Up to four faces, each tucked under the one before and ringed in the page
-/// colour so every edge reads as a cut, not an outline.
-class _FaceStack extends ConsumerWidget {
-  const _FaceStack({required this.players});
-
-  final List<MostLikedPlayer> players;
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final face = 26.w;
-    final ring = 2.w;
-    final slot = face + ring * 2;
-    // Enough overlap to read as one group, little enough that a face's
-    // initials (when there is no photo) stay whole.
-    final step = slot - 8.w;
+    final ink = context.colors.surfaceRecessed;
     return ExcludeSemantics(
-      child: SizedBox(
-        width: slot + step * (players.length - 1),
-        height: slot,
-        child: Stack(
-          children: [
-            // The first face on top, the rest tucked under it.
-            for (var i = players.length - 1; i >= 0; i--)
-              Positioned(
-                left: step * i,
-                top: 0,
-                child: DecoratedBox(
-                  decoration: BoxDecoration(
-                    color: context.colors.background,
-                    shape: BoxShape.circle,
-                  ),
-                  child: Padding(
-                    padding: EdgeInsets.all(ring),
-                    child: _Face(player: players[i].player, size: face),
+      child: SkeletonWidget(
+        child: Padding(
+          padding: EdgeInsets.symmetric(horizontal: discoveryGutter),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              for (var i = 0; i < 6; i++)
+                SizedBox(
+                  height: MostLikedPlayersList.rowHeight,
+                  child: Row(
+                    children: [
+                      SizedBox(width: MostLikedPlayersList.rankWidth + 8.w),
+                      SizedBox.square(
+                        dimension: MostLikedPlayersList.avatarSize,
+                        child: DecoratedBox(
+                          decoration: BoxDecoration(
+                            color: ink,
+                            shape: BoxShape.circle,
+                          ),
+                        ),
+                      ),
+                      SizedBox(width: 12.w),
+                      Expanded(
+                        child: Align(
+                          alignment: Alignment.centerLeft,
+                          child: FractionallySizedBox(
+                            widthFactor: 0.5,
+                            child: SizedBox(
+                              height: 10.w,
+                              child: DecoratedBox(
+                                decoration: BoxDecoration(
+                                  color: ink,
+                                  borderRadius: BorderRadius.circular(2.br),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-              ),
-          ],
+            ],
+          ),
         ),
       ),
     );
-  }
-}
-
-class _Face extends ConsumerWidget {
-  const _Face({required this.player, required this.size});
-
-  final PlayerCard player;
-  final double size;
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final photo = ref.watch(playerPhotoProvider(player.fideId)).valueOrNull;
-    return MediaQuery.withNoTextScaling(
-      child: PlayerInitialsAvatar(
-        photoUrl: photo,
-        initials: wallInitials(player.name),
-        size: size,
-        isCircular: true,
-      ),
-    );
-  }
-}
-
-class _MostLikedSkeleton extends StatelessWidget {
-  const _MostLikedSkeleton();
-
-  @override
-  Widget build(BuildContext context) {
-    final card = discoveryGridCardWidth(context);
-    // One meta line (16) and its gap (8) over the card and its player rows.
-    return DiscoverySkeletonRail(width: card, height: card + 48.w + 24.w);
   }
 }

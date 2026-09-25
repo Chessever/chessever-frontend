@@ -16,6 +16,7 @@ import 'package:chessever2/screens/my_space/providers/space_game_card_provider.d
 import 'package:chessever2/screens/my_space/widgets/pixel_flame.dart';
 import 'package:chessever2/screens/my_space/widgets/space_game_rows.dart';
 import 'package:chessever2/screens/my_space/widgets/space_glyphs.dart';
+import 'package:chessever2/screens/my_space/widgets/space_avatar.dart';
 import 'package:chessever2/screens/my_space/widgets/space_metrics.dart';
 import 'package:chessever2/screens/streaks/models/streak_models.dart';
 import 'package:chessever2/screens/streaks/providers/streak_providers.dart';
@@ -81,6 +82,7 @@ class SpaceTileContent extends StatelessWidget {
       SpaceShortcutKind.miniatures ||
       SpaceShortcutKind.likes ||
       SpaceShortcutKind.smartEvent ||
+      SpaceShortcutKind.collection ||
       SpaceShortcutKind.link => _GlyphTile(
         shortcut: shortcut,
         subtitle: subtitle,
@@ -198,12 +200,13 @@ class _PlayerTile extends ConsumerWidget {
         padding: EdgeInsets.fromLTRB(12.w, 18.w, 12.w, 14.w),
         child: Column(
           children: [
-            _AvatarWithFlag(
+            SpaceAvatarWithFlag(
               size: 72.w,
               photoUrl: photo,
-              initials: _initials(name),
+              name: name,
               title: title,
               federation: federation,
+              flatFallback: true,
             ),
             SizedBox(height: 14.w),
             // At most two lines, which the plate holds at any text size.
@@ -321,23 +324,40 @@ TextPainter _painter(
   );
 }
 
-class _AvatarWithFlag extends StatelessWidget {
-  const _AvatarWithFlag({
+/// A player's photo in a circle with the federation flag cut into its
+/// corner. With [flatFallback] (every My Space surface) it is
+/// [SpacePlayerAvatar]: flat initials when there is no photo, the title as a
+/// band, a hairline outline; without it, the app's gradient initials avatar.
+class SpaceAvatarWithFlag extends StatelessWidget {
+  const SpaceAvatarWithFlag({
+    super.key,
     required this.size,
     required this.photoUrl,
-    required this.initials,
+    required this.name,
     required this.title,
     required this.federation,
+    this.flatFallback = false,
   });
 
   final double size;
   final String? photoUrl;
-  final String initials;
+  final String name;
   final String? title;
   final String? federation;
+  final bool flatFallback;
 
   @override
   Widget build(BuildContext context) {
+    if (flatFallback) {
+      return SpacePlayerAvatar(
+        size: size,
+        name: name,
+        photoUrl: photoUrl,
+        title: title,
+        federation: federation,
+        ring: context.colors.surface,
+      );
+    }
     final showFlag = FederationFlag.hasVisibleFlag(federation);
     final ring = 2.w;
     return SizedBox(
@@ -348,7 +368,7 @@ class _AvatarWithFlag extends StatelessWidget {
         children: [
           PlayerInitialsAvatar(
             photoUrl: photoUrl,
-            initials: initials,
+            initials: _initials(name),
             size: size,
             title: title,
             isCircular: true,
@@ -535,10 +555,11 @@ class _StreakTileState extends ConsumerState<_StreakTile> {
         padding: EdgeInsets.fromLTRB(12.w, 16.w, 12.w, 14.w),
         child: Column(
           children: [
-            _AvatarWithFlag(
+            SpaceAvatarWithFlag(
               size: 60.w,
               photoUrl: photo,
-              initials: _initials(initialsName),
+              name: initialsName,
+              flatFallback: true,
               title: live?.title ?? shortcut.str('title'),
               federation:
                   live?.fed ??
@@ -1075,6 +1096,45 @@ class _Line {
   }
 }
 
+/// What an opening, position or player-openings pin shows: its name, its
+/// ECO code, the position its line reaches (the last move with it, when
+/// known) and the line as a caption ("After 4.Nf3"). An opening family
+/// saved by code plays its canonical line.
+({String name, String? eco, String? fen, Move? lastMove, String caption})
+spaceOpeningFace(SpaceShortcut shortcut) {
+  final kind = shortcut.kind;
+  final eco =
+      (shortcut.str('eco') ??
+              (kind == SpaceShortcutKind.opening ? shortcut.targetId : null))
+          ?.toUpperCase();
+
+  Object? moves = shortcut.params['moves'];
+  if (kind == SpaceShortcutKind.opening &&
+      (moves == null || (moves is List && moves.isEmpty)) &&
+      eco != null) {
+    // An opening family pins a code (or a range like B90-B99): play its
+    // canonical line so the tile shows the position the name refers to.
+    moves = spaceEcoMovePath(eco.split('-').first.trim());
+  }
+  final storedFen = kind == SpaceShortcutKind.position
+      ? shortcut.targetId
+      : shortcut.str('fen');
+  final line = _Line.resolve(fen: storedFen, moves: moves);
+
+  final name =
+      shortcut.str('openingName') ?? shortcut.str('name') ?? shortcut.title;
+  final caption = kind == SpaceShortcutKind.playerOpenings
+      ? (shortcut.subtitle ?? line.after ?? '')
+      : (line.after ?? shortcut.subtitle ?? '');
+  return (
+    name: name,
+    eco: eco,
+    fen: line.fen,
+    lastMove: line.lastMove,
+    caption: caption,
+  );
+}
+
 class _OpeningTile extends StatelessWidget {
   const _OpeningTile({required this.shortcut});
 
@@ -1082,30 +1142,11 @@ class _OpeningTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final kind = shortcut.kind;
-    final eco =
-        (shortcut.str('eco') ??
-                (kind == SpaceShortcutKind.opening ? shortcut.targetId : null))
-            ?.toUpperCase();
-
-    Object? moves = shortcut.params['moves'];
-    if (kind == SpaceShortcutKind.opening &&
-        (moves == null || (moves is List && moves.isEmpty)) &&
-        eco != null) {
-      // An opening family pins a code (or a range like B90-B99): play its
-      // canonical line so the tile shows the position the name refers to.
-      moves = spaceEcoMovePath(eco.split('-').first.trim());
-    }
-    final storedFen = kind == SpaceShortcutKind.position
-        ? shortcut.targetId
-        : shortcut.str('fen');
-    final line = _Line.resolve(fen: storedFen, moves: moves);
-
-    final name =
-        shortcut.str('openingName') ?? shortcut.str('name') ?? shortcut.title;
-    final caption = kind == SpaceShortcutKind.playerOpenings
-        ? (shortcut.subtitle ?? line.after ?? '')
-        : (line.after ?? shortcut.subtitle ?? '');
+    final face = spaceOpeningFace(shortcut);
+    final eco = face.eco;
+    final line = (fen: face.fen, lastMove: face.lastMove);
+    final name = face.name;
+    final caption = face.caption;
 
     final lane = SpaceMetrics.wide - SpaceMetrics.board;
     final rowHeight = 20.w;
@@ -1425,6 +1466,7 @@ class _GlyphTile extends StatelessWidget {
       SpaceShortcutKind.miniatures => (SpaceGlyphKind.bolt, 'Today'),
       SpaceShortcutKind.likes => (SpaceGlyphKind.heart, 'Liked games'),
       SpaceShortcutKind.smartEvent => (SpaceGlyphKind.boards, 'Smart Event'),
+      SpaceShortcutKind.collection => (SpaceGlyphKind.database, 'Collection'),
       _ => (SpaceGlyphKind.link, _host(shortcut.targetId)),
     };
     final caption = shortcut.subtitle ?? fallbackSubtitle;

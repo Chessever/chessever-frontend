@@ -40,3 +40,36 @@ Future<void> _libraryAdd(BuildContext context, WidgetRef ref) async {
   if (!context.mounted) return;
   await spaceLibraryAdd(context, ref);
 }
+
+/// "Add" on My Database and its See all pages: every type opens its add
+/// sheet over the page (the Library's files included, listed to save; a
+/// guest signs in first, as for any Library action). Links are saved from
+/// wherever they are, so their Add says how.
+Future<void> openSpaceAdd(
+  BuildContext context,
+  WidgetRef ref,
+  SpaceSection section,
+) async {
+  HapticFeedbackService.buttonPress();
+  switch (section) {
+    case SpaceSection.library:
+      if (!await requireFullAuthGuard(context)) return;
+      if (!context.mounted) return;
+      await showSpaceAddSheet(context, ref, section);
+    case SpaceSection.likes:
+      await Navigator.of(
+        context,
+      ).push(MaterialPageRoute<void>(builder: (_) => const MyLikesScreen()));
+    case SpaceSection.links:
+      showAppSnack(
+        context,
+        'Hold anything in ChessEver and choose Add to My Space',
+      );
+    case SpaceSection.players:
+    case SpaceSection.events:
+    case SpaceSection.games:
+    case SpaceSection.smartEvents:
+    case SpaceSection.openings:
+      await showSpaceAddSheet(context, ref, section);
+  }
+}

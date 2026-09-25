@@ -128,13 +128,27 @@ bool feedIsChartDot(FeedMoment? moment) => switch (moment?.type) {
   _ => false,
 };
 
-/// "Carlsen, Magnus" → "Carlsen"; "Magnus Carlsen" → "Carlsen".
+/// "Carlsen, Magnus" → "Carlsen"; "Magnus Carlsen" → "Carlsen". A trailing
+/// initial never stands for the name: "Gukesh D" → "Gukesh",
+/// "Praggnanandhaa R." → "Praggnanandhaa".
 String feedSurname(String name) {
   final trimmed = name.trim();
   if (trimmed.isEmpty) return '';
   final comma = trimmed.indexOf(',');
   if (comma > 0) return trimmed.substring(0, comma).trim();
   final tokens = trimmed.split(RegExp(r'\s+'));
+  // One letter ("D", "R.") or two capitals written as initials ("R.B.",
+  // "RB"); a real two-letter surname ("So", "Li") is not one.
+  bool initial(String t) {
+    final letters = t.replaceAll('.', '');
+    if (letters.length == 1) return true;
+    return letters.length == 2 &&
+        (t.contains('.') || letters == letters.toUpperCase());
+  }
+
+  for (var i = tokens.length - 1; i >= 0; i--) {
+    if (!initial(tokens[i]) || i == 0) return tokens[i];
+  }
   return tokens.last;
 }
 

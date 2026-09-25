@@ -3,6 +3,8 @@ import 'package:chessever2/screens/chessboard/chess_board_screen_new.dart';
 import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
 import 'package:chessever2/screens/collections/collections_data.dart';
 import 'package:chessever2/screens/collections/event_view_shell.dart';
+import 'package:chessever2/screens/feed/widgets/feed_tile_board.dart'
+    show HubPictureMark, hubPictureMarkSide;
 import 'package:chessever2/screens/for_you/discovery/widgets/discovery_common.dart'
     show discoveryGutter;
 import 'package:chessever2/screens/for_you/discovery/widgets/discovery_game_cards.dart';
@@ -17,7 +19,16 @@ import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/user_error_message.dart';
 import 'package:chessever2/widgets/app_button.dart' show TappableScale;
-import 'package:chessever2/widgets/federation_flag.dart';
+import 'package:chessever2/screens/library/widgets/library_context_menu.dart'
+    show LibraryMenuAction;
+import 'package:chessever2/screens/my_space/actions/space_menu_action.dart';
+import 'package:chessever2/widgets/card_context_menu.dart';
+import 'package:chessever2/screens/favorites/tabs/favorites_players_tab.dart'
+    show playerPhotoProvider;
+import 'package:chessever2/screens/my_space/widgets/space_avatar.dart'
+    show SpacePlayerAvatar;
+import 'package:chessever2/screens/player_profile/utils/player_menu_actions.dart'
+    show playerMenuActions;
 import 'package:chessever2/widgets/hub_tile.dart';
 import 'package:chessever2/widgets/skeleton_widget.dart';
 import 'package:flutter/material.dart';
@@ -98,8 +109,27 @@ class CollectionsScreen extends ConsumerWidget {
   }
 }
 
+/// [c] as a My Space shortcut: it sits with the databases and opens the
+/// collection again from there.
+SpaceShortcut collectionSpaceDraft(Collection c) {
+  final games = c.gameCount == 1 ? '1 game' : '${c.gameCount} games';
+  return SpaceShortcut.draft(
+    kind: SpaceShortcutKind.collection,
+    targetId: c.id,
+    title: c.title,
+    subtitle: games,
+    params: {
+      'slug': c.slug,
+      'collectionKind': c.kind.name,
+      'gameCount': c.gameCount,
+      if (c.coverUrl != null) 'coverUrl': c.coverUrl,
+    },
+  );
+}
+
 /// A collection as the Events list draws an event: its cover (or its pixel
-/// object) on the left, the title, and one meta line.
+/// object) on the left, the title, and one meta line. Held, it lifts into
+/// the focus menu with Open and My Space.
 class CollectionCard extends StatelessWidget {
   const CollectionCard({super.key, required this.collection});
 
@@ -137,54 +167,72 @@ class CollectionCard extends StatelessWidget {
       onTap: open,
       child: TappableScale(
         onTap: open,
-        child: Container(
-          decoration: BoxDecoration(
-            color: colors.surface,
-            borderRadius: BorderRadius.circular(8.br),
-            border: isLight
-                ? Border.all(color: colors.divider.withValues(alpha: 0.4))
-                : null,
-          ),
-          padding: EdgeInsets.all(6.sp),
-          child: Row(
-            children: [
-              ClipRRect(
-                borderRadius: BorderRadius.circular(6.br),
-                child: SizedBox(
-                  width: plateWidth,
-                  height: plateHeight,
-                  child: _Cover(collection: c),
-                ),
+        child: Consumer(
+          builder: (context, ref, child) => CardContextMenu(
+            onPreviewTap: open,
+            actions: (menuContext) => [
+              LibraryMenuAction(
+                icon: Icons.open_in_new_rounded,
+                label: 'Open',
+                onSelected: open,
               ),
-              SizedBox(width: 10.w),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      c.title,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: AppTypography.textSmMedium.copyWith(
-                        color: colors.textPrimary,
-                        fontSize: 14.sp,
-                        height: 1.2,
-                      ),
-                    ),
-                    SizedBox(height: 4.h),
-                    Text(
-                      meta,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: AppTypography.textXsMedium.copyWith(
-                        color: colors.textPrimaryMuted,
-                      ),
-                    ),
-                  ],
-                ),
+              spaceMenuAction(
+                context: menuContext,
+                ref: ref,
+                draft: collectionSpaceDraft(c),
               ),
             ],
+            child: child!,
+          ),
+          child: Container(
+            decoration: BoxDecoration(
+              color: colors.surface,
+              borderRadius: BorderRadius.circular(8.br),
+              border: isLight
+                  ? Border.all(color: colors.divider.withValues(alpha: 0.4))
+                  : null,
+            ),
+            padding: EdgeInsets.all(6.sp),
+            child: Row(
+              children: [
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(6.br),
+                  child: SizedBox(
+                    width: plateWidth,
+                    height: plateHeight,
+                    child: _Cover(collection: c),
+                  ),
+                ),
+                SizedBox(width: 10.w),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        c.title,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: AppTypography.textSmMedium.copyWith(
+                          color: colors.textPrimary,
+                          fontSize: 14.f,
+                          height: 1.2,
+                        ),
+                      ),
+                      SizedBox(height: 4.h),
+                      Text(
+                        meta,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: AppTypography.textXsMedium.copyWith(
+                          color: colors.textPrimaryMuted,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),
@@ -230,6 +278,68 @@ class _Cover extends StatelessWidget {
       fit: BoxFit.cover,
       placeholder: (_, __) => plate,
       errorWidget: (_, __, ___) => plate,
+    );
+  }
+}
+
+/// Discovery's Collection tile mark: the cover of the first collection, in
+/// the team's order, that has one, cropped square into the tile's mark slot
+/// (see [HubPictureMark]). The events pixel object stands in while the list
+/// loads, when it fails, when nothing has a cover yet, and while the cover
+/// itself downloads or if it cannot; the cover replaces it in one frame.
+class CollectionTileCover extends StatelessWidget {
+  const CollectionTileCover({super.key, required this.collections});
+
+  final AsyncValue<List<Collection>> collections;
+
+  /// The cover the tile shows from [list], or null.
+  static String? coverOf(List<Collection>? list) {
+    if (list == null) return null;
+    for (final c in list) {
+      final url = c.coverUrl?.trim();
+      if (url != null && url.isNotEmpty) return url;
+    }
+    return null;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    const fallback = HubPixelArtwork(section: SpaceSection.events);
+    final url = coverOf(collections.valueOrNull);
+    if (url == null) return fallback;
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final slot = constraints.biggest.shortestSide;
+        if (!slot.isFinite || slot <= 0) return const SizedBox.shrink();
+        final dpr = MediaQuery.devicePixelRatioOf(context);
+        // The same side as the Feed tile's board, so the pair matches.
+        final side = hubPictureMarkSide(slot, dpr);
+        // Decoded at twice the slot's device width: a cover crops to a
+        // square, so a landscape photo up to 2:1 keeps its short side at
+        // full resolution while nothing near the source size is decoded.
+        final cacheWidth = (side * dpr * 2).round();
+        return CachedNetworkImage(
+          imageUrl: url,
+          memCacheWidth: cacheWidth,
+          fadeInDuration: Duration.zero,
+          fadeOutDuration: Duration.zero,
+          placeholderFadeInDuration: Duration.zero,
+          // The builder is handed the undecoded provider; asking for the
+          // same resize the widget decoded reuses that decode.
+          imageBuilder: (context, image) => HubPictureMark(
+            side: side,
+            child: Image(
+              image: ResizeImage.resizeIfNeeded(cacheWidth, null, image),
+              width: side,
+              height: side,
+              fit: BoxFit.cover,
+              filterQuality: FilterQuality.medium,
+            ),
+          ),
+          placeholder: (_, __) => fallback,
+          errorWidget: (_, __, ___) => fallback,
+        );
+      },
     );
   }
 }
@@ -774,7 +884,6 @@ class _PlayersPage extends StatelessWidget {
     if (players.isEmpty) {
       return const _Notice(text: 'No players in this collection yet.');
     }
-    final colors = context.colors;
     return ListView.separated(
       padding: EdgeInsets.fromLTRB(
         16.sp,
@@ -784,76 +893,122 @@ class _PlayersPage extends StatelessWidget {
       ),
       itemCount: players.length,
       separatorBuilder: (_, __) => SizedBox(height: 8.sp),
-      itemBuilder: (context, i) {
-        final p = players[i];
-        final count = p.games == 1 ? '1 game' : '${p.games} games';
-        final hasFlag = FederationFlag.hasVisibleFlag(p.fed);
-        return Semantics(
-          button: true,
-          label: '${p.title ?? ''} ${p.name}, $count. Show their games'.trim(),
-          excludeSemantics: true,
-          child: TappableScale(
-            onTap: () => onPick(p),
-            child: Container(
-              constraints: BoxConstraints(minHeight: 56.sp),
-              padding: EdgeInsets.symmetric(horizontal: 14.sp, vertical: 10.sp),
-              decoration: BoxDecoration(
-                color: colors.surface,
-                borderRadius: BorderRadius.circular(8.br),
+      itemBuilder: (context, i) => _CollectionPlayerRow(
+        key: ValueKey<String>('collection_player_${players[i].key}'),
+        player: players[i],
+        onPick: onPick,
+      ),
+    );
+  }
+}
+
+/// One of a collection's players: their profile circle (photo, flag and
+/// title, as every person on these pages wears it), the name and best
+/// rating, and how many of the collection's games they play. Tap shows
+/// their games here; a long press lifts the row into the player focus menu
+/// (their games, My Space for the player and their Games tab, share).
+class _CollectionPlayerRow extends ConsumerWidget {
+  const _CollectionPlayerRow({
+    super.key,
+    required this.player,
+    required this.onPick,
+  });
+
+  final CollectionPlayer player;
+  final ValueChanged<CollectionPlayer> onPick;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final p = player;
+    final colors = context.colors;
+    final fideId = int.tryParse(p.fideId ?? '');
+    final photo =
+        fideId == null || fideId <= 0
+            ? null
+            : ref.watch(playerPhotoProvider(fideId)).valueOrNull;
+    final title = p.title?.trim();
+    final fed = p.fed?.trim();
+    final count = p.games == 1 ? '1 game' : '${p.games} games';
+    void pick() => onPick(p);
+    return Semantics(
+      button: true,
+      label: '${title ?? ''} ${p.name}, $count. Show their games'.trim(),
+      excludeSemantics: true,
+      onTap: pick,
+      child: TappableScale(
+        onTap: pick,
+        child: CardContextMenu(
+          onPreviewTap: pick,
+          actions:
+              (menuContext) => playerMenuActions(
+                menuContext,
+                ref,
+                playerName: p.name,
+                fideId: fideId != null && fideId > 0 ? fideId : null,
+                title: title == null || title.isEmpty ? null : title,
+                federation: fed == null || fed.isEmpty ? null : fed,
+                rating: p.bestElo,
+                gamebasePlayerId: p.playerId,
+                onOpen: pick,
+                openLabel: 'Show their games',
+                openIcon: Icons.open_in_new_rounded,
               ),
-              child: Row(
-                children: [
-                  if (hasFlag) ...[
-                    FederationFlag(
-                      federation: p.fed,
-                      width: 20.sp,
-                      height: 14.sp,
-                      borderRadius: BorderRadius.circular(2),
-                    ),
-                    SizedBox(width: 10.sp),
-                  ],
-                  Expanded(
-                    child: Text.rich(
-                      TextSpan(
-                        children: [
-                          if (p.title != null)
-                            TextSpan(
-                              text: '${p.title} ',
-                              style: TextStyle(
-                                color: colors.titleAccent,
-                                fontWeight: FontWeight.w700,
-                              ),
+          child: Container(
+            constraints: BoxConstraints(minHeight: 56.sp),
+            padding: EdgeInsets.symmetric(horizontal: 12.sp, vertical: 8.sp),
+            decoration: BoxDecoration(
+              color: colors.surface,
+              borderRadius: BorderRadius.circular(8.br),
+            ),
+            child: Row(
+              children: [
+                SpacePlayerAvatar(
+                  size: 40.sp,
+                  name: p.name,
+                  photoUrl: photo,
+                  title: title,
+                  federation: fed,
+                  ring: colors.surface,
+                ),
+                SizedBox(width: 14.sp),
+                Expanded(
+                  child: Text.rich(
+                    TextSpan(
+                      children: [
+                        TextSpan(text: p.name),
+                        if (p.bestElo != null)
+                          TextSpan(
+                            text: '  ${p.bestElo}',
+                            style: TextStyle(
+                              color: colors.textSecondary,
+                              fontFeatures: const [
+                                FontFeature.tabularFigures(),
+                              ],
                             ),
-                          TextSpan(text: p.name),
-                          if (p.bestElo != null)
-                            TextSpan(
-                              text: '  ${p.bestElo}',
-                              style: TextStyle(color: colors.textSecondary),
-                            ),
-                        ],
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: AppTypography.textSmMedium.copyWith(
-                        color: colors.textPrimary,
-                      ),
+                          ),
+                      ],
                     ),
-                  ),
-                  SizedBox(width: 12.sp),
-                  Text(
-                    count,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                     style: AppTypography.textSmMedium.copyWith(
                       color: colors.textPrimary,
-                      fontWeight: FontWeight.w600,
-                      fontFeatures: const [FontFeature.tabularFigures()],
                     ),
                   ),
-                ],
-              ),
+                ),
+                SizedBox(width: 12.sp),
+                Text(
+                  count,
+                  style: AppTypography.textSmMedium.copyWith(
+                    color: colors.textPrimary,
+                    fontWeight: FontWeight.w600,
+                    fontFeatures: const [FontFeature.tabularFigures()],
+                  ),
+                ),
+              ],
             ),
           ),
-        );
-      },
+        ),
+      ),
     );
   }
 }

@@ -62,8 +62,8 @@ Future<void> showSpaceAddSheet(
     if (added.isNotEmpty && messenger != null && messenger.mounted) {
       final store = container.read(spaceShortcutsProvider.notifier);
       final message = added.length == 1
-          ? 'Added ${titles[added.first] ?? 'it'} to ${section.title}'
-          : 'Added ${added.length} to ${section.title}';
+          ? 'Added ${titles[added.first] ?? 'it'} to My Space'
+          : 'Added ${added.length} to My Space';
       showAppSnackOn(
         messenger,
         message,

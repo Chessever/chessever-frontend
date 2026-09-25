@@ -248,7 +248,7 @@ void main() {
     expect(store.added, ['smartEvent:2400-3200:']);
     await tester.tap(find.text('Done'));
     await _settle(tester);
-    expect(find.text('Added IM Games to Smart Events'), findsOneWidget);
+    expect(find.text('Added IM Games to My Space'), findsOneWidget);
     await tester.pump(const Duration(seconds: 10));
   });
 

@@ -8,7 +8,9 @@ import 'package:chessever2/screens/for_you/discovery/widgets/discovery_game_card
 import 'package:chessever2/screens/library/miniatures/miniature_game_launcher.dart';
 import 'package:chessever2/screens/library/miniatures/miniatures_access.dart';
 import 'package:chessever2/screens/library/miniatures_screen.dart';
+import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/widgets/time_control_glyph.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
@@ -17,24 +19,30 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 const String kMiniaturesUpgradeCta = kMiniaturesArchiveCta;
 
 /// Miniatures: the day's decisive games that ended by move 25, free to
-/// open. The date stepper sits in the header: the next day does not exist
-/// yet, and every earlier day is the Premium archive.
+/// open, as a short preview laid out the way an event's Games tab lays out
+/// its games (the viewer's own games view setting). Each grid or board card
+/// carries one line over it, "19 moves · Ø 2751": the length is what makes a
+/// miniature. Four cards (two boards in board view); "See all" opens the
+/// Miniatures screen, where today is free and every earlier day is the
+/// Premium archive, and opening any card walks the whole day.
 class TodaysMiniaturesSection extends ConsumerWidget {
-  const TodaysMiniaturesSection({super.key, this.now});
+  const TodaysMiniaturesSection({super.key});
 
-  /// Pins "today" in tests.
-  final DateTime? now;
+  /// The Miniatures screen. Today is free there and it locks its own
+  /// archive, so reaching it needs no paywall.
+  static Future<void> open(BuildContext context) {
+    HapticFeedbackService.cardTap();
+    return Navigator.of(context).push(
+      MaterialPageRoute<void>(builder: (_) => const MiniaturesScreen()),
+    );
+  }
 
   Future<void> _openArchive(BuildContext context, WidgetRef ref) {
     return unlockThen(
       context,
       ref,
       () {
-        unawaited(
-          Navigator.of(context).push(
-            MaterialPageRoute<void>(builder: (_) => const MiniaturesScreen()),
-          ),
-        );
+        if (context.mounted) unawaited(open(context));
       },
       featureId: kMiniaturesArchiveFeatureId,
       returnTo: discoveryReturnTo('todays_miniatures'),
@@ -47,7 +55,6 @@ class TodaysMiniaturesSection extends ConsumerWidget {
       subscriptionProvider.select((s) => s.isSubscribed),
     );
     final minis = ref.watch(discoveryTodayMiniaturesProvider);
-    final today = now ?? DateTime.now();
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -55,17 +62,11 @@ class TodaysMiniaturesSection extends ConsumerWidget {
       children: [
         DiscoverySectionHeader(
           title: 'Miniatures',
-          trailingReachesEdge: true,
-          trailing: DiscoveryDateStepper(
-            label: discoveryWeekday(today, now: today),
-            previousSemantics: subscribed
-                ? 'Earlier days, in the Miniatures archive'
-                : 'Earlier days, in the Miniatures archive, Premium',
-            nextSemantics: 'Next day',
-            previousLocked: !subscribed,
-            onPrevious: () => _openArchive(context, ref),
-            onNext: null,
-            edgeInset: discoveryGutter,
+          trailing: DiscoveryAction(
+            label: 'See all',
+            arrow: true,
+            semanticsLabel: 'See all Miniatures',
+            onTap: () => open(context),
           ),
         ),
         SizedBox(height: 8.w),
@@ -74,12 +75,16 @@ class TodaysMiniaturesSection extends ConsumerWidget {
             if (list.isEmpty) {
               return const DiscoveryNotice(text: 'No miniatures yet today');
             }
-            // Listed as the Miniatures screen lists them; a miniature needs
-            // its PGN fetched first, so the launcher opens it.
+            // A miniature needs its PGN fetched first, so the launcher opens
+            // it, on the whole day.
             return DiscoveryGameList(
               games: [for (final m in list) m.game],
+              limit: kDiscoveryPreviewCards,
+              boardLimit: kDiscoveryPreviewBoards,
               streamEnabled: false,
-              footerFor: (i) => _footer(list[i]),
+              allowStockfishFallback: false,
+              labelFor: (i) => miniatureMeta(list[i]),
+              rowLabelFor: (i) => miniatureMeta(list[i]),
               onOpen: (games, index) => openMiniatureGame(
                 context: context,
                 ref: ref,
@@ -89,13 +94,12 @@ class TodaysMiniaturesSection extends ConsumerWidget {
               ),
             );
           },
-          loading: () {
-            final card = discoveryGridCardWidth(context);
-            return DiscoverySkeletonRail(
-              width: card,
-              height: card + 48.w + 24.w,
-            );
-          },
+          loading: () => DiscoveryGameListSkeleton(
+            count: kDiscoveryPreviewCards,
+            boardCount: kDiscoveryPreviewBoards,
+            labels: true,
+            rowLabels: true,
+          ),
           error: (_, __) => DiscoveryNotice(
             text: "Couldn't load today's miniatures",
             actionLabel: 'Retry',
@@ -106,6 +110,7 @@ class TodaysMiniaturesSection extends ConsumerWidget {
           SizedBox(height: 4.w),
           DiscoveryUpgradeLine(
             label: kMiniaturesUpgradeCta,
+            quiet: true,
             onTap: () => _openArchive(context, ref),
           ),
         ],
@@ -113,14 +118,24 @@ class TodaysMiniaturesSection extends ConsumerWidget {
     );
   }
 
-  /// "19 moves · Ø 2751" under a list row: the length is what makes a
-  /// miniature. Ratings are never comma-grouped.
-  static String _footer(DiscoveryMiniature mini) {
+  /// "[owl] 19 moves · Ø 2751" over a grid or board card: the time-control
+  /// glyph, then the length as the line's one bold figure, then the average
+  /// rating. Ratings are never comma-grouped.
+  static Widget miniatureMeta(DiscoveryMiniature mini) {
     final avg = discoveryAverageRating(mini.game);
-    final unit = mini.moves == 1 ? 'move' : 'moves';
-    return [
-      '${mini.moves} $unit',
-      if (avg != null) 'Ø $avg',
-    ].join(' · ');
+    final unit = mini.moves == 1 ? ' move' : ' moves';
+    final timeControl = mini.game.timeControl?.trim();
+    return DiscoveryCardMeta(
+      timeControlAsset: TimeControlGlyph.assetForLabel(mini.game.timeControl),
+      parts: [
+        DiscoveryMetaPart.figure('${mini.moves}', unit: unit),
+        if (avg != null) DiscoveryMetaPart.figure('$avg', prefix: 'Ø '),
+      ],
+      semanticsLabel: [
+        '${mini.moves}$unit',
+        if (timeControl != null && timeControl.isNotEmpty) timeControl,
+        if (avg != null) 'average rating $avg',
+      ].join(', '),
+    );
   }
 }

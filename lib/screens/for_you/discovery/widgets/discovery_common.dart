@@ -9,6 +9,7 @@ import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/widgets/hub_tile.dart';
 import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
 import 'package:chessever2/widgets/skeleton_widget.dart';
 import 'package:chessground/chessground.dart';
@@ -18,11 +19,9 @@ import 'package:flutter/rendering.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:motor/motor.dart';
 
-/// Side gutter of every Discovery section: the design's 16 on phones, and on
-/// tablets the For You header's own inset (its search field and segments
-/// sit at 32.sp), so titles and rails start on the header's left edge.
-double get discoveryGutter =>
-    ResponsiveHelper.adaptive(phone: 16.sp, tablet: 32.sp);
+/// Side gutter of every Discovery section: the hub pages' one gutter
+/// ([hubGutter]), so Discovery and My Space start on the same edge.
+double get discoveryGutter => hubGutter;
 
 /// InterDisplay at an exact size and line, the same way the streak wall and
 /// My Space set theirs. Sections reach it through [discoveryType], never
@@ -899,20 +898,74 @@ class DiscoveryAction extends StatelessWidget {
 /// stated once, and the sentence itself appears once per page. Its screen
 /// reader label still says Premium. [onTap] null shows it as a boundary
 /// that is not live yet.
+///
+/// [quiet] is the hub's form, under a preview whose header already carries
+/// "See all": the padlock and the outcome in quiet ink, no arrow, so a
+/// section offers one link out and the boundary reads as a fact about it.
+/// The line still opens the paywall.
 class DiscoveryUpgradeLine extends StatelessWidget {
   const DiscoveryUpgradeLine({
     super.key,
     required this.label,
     required this.onTap,
     this.semanticsLabel,
+    this.quiet = false,
   });
 
   final String label;
   final VoidCallback? onTap;
   final String? semanticsLabel;
+  final bool quiet;
+
+  Widget _quiet(BuildContext context) {
+    final ink = context.colors.textSecondary;
+    final line = MediaQuery.textScalerOf(context).scale(13.f) * 18 / 13;
+    final body = DiscoveryInkFloor(
+      minHeight: 44.w,
+      inset: math.max(0, (44.w - line) / 2),
+      endsSection: true,
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            height: line,
+            child: Center(child: DiscoveryPadlock(color: ink)),
+          ),
+          SizedBox(width: 6.w),
+          Flexible(
+            child: Text(
+              label,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: discoveryType(context, DiscoveryType.label, color: ink),
+            ),
+          ),
+        ],
+      ),
+    );
+    final tap = onTap;
+    return Padding(
+      padding: EdgeInsets.symmetric(horizontal: discoveryGutter),
+      child: Align(
+        alignment: Alignment.centerLeft,
+        child: Semantics(
+          container: true,
+          button: tap != null,
+          label: semanticsLabel ?? '$label, Premium',
+          onTap: tap,
+          excludeSemantics: true,
+          child: tap == null
+              ? body
+              : WallPressable(pressScale: 0.97, onTap: tap, child: body),
+        ),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
+    if (quiet) return _quiet(context);
     return Padding(
       padding: EdgeInsets.symmetric(horizontal: discoveryGutter),
       child: Align(
@@ -985,6 +1038,7 @@ class DiscoveryDateStepper extends StatelessWidget {
         _StepArrow(
           pointsLeft: false,
           locked: false,
+          reserveLock: previousLocked && onPrevious != null,
           semanticLabel: nextSemantics,
           onTap: onNext,
           endInset: edgeInset,
@@ -1001,12 +1055,18 @@ class _StepArrow extends StatelessWidget {
     required this.semanticLabel,
     required this.onTap,
     this.endInset = 0,
+    this.reserveLock = false,
   });
 
   final bool pointsLeft;
   final bool locked;
   final String semanticLabel;
   final VoidCallback? onTap;
+
+  /// Keeps the padlock's room (empty) between the label and this chevron,
+  /// so a date whose other arrow carries the padlock sits evenly between
+  /// its two chevrons.
+  final bool reserveLock;
 
   /// Space kept clear after the chevron inside the target.
   final double endInset;
@@ -1017,9 +1077,11 @@ class _StepArrow extends StatelessWidget {
     final ink = enabled
         ? context.colors.textSecondary
         : context.colors.dividerStrong;
+    final lockRoom = DiscoveryPadlock.gap + const DiscoveryPadlock().width.w;
     final glyph = Row(
       mainAxisSize: MainAxisSize.min,
       children: [
+        if (reserveLock) SizedBox(width: lockRoom),
         DiscoveryChevron(color: ink, turns: pointsLeft ? 2 : 0),
         if (locked) ...[
           SizedBox(width: DiscoveryPadlock.gap),
@@ -1029,7 +1091,9 @@ class _StepArrow extends StatelessWidget {
     );
     final target = 44.w;
     final box = SizedBox(
-      width: endInset > 0 ? math.max(target, endInset + 20.w) : target,
+      width: endInset > 0
+          ? math.max(target, endInset + 20.w + (reserveLock ? lockRoom : 0))
+          : target,
       height: target,
       child: endInset > 0
           ? Padding(

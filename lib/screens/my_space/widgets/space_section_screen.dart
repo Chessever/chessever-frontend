@@ -1,21 +1,29 @@
 import 'dart:async';
 import 'dart:math' as math;
 
+import 'package:chessever2/config/feature_flags.dart';
 import 'package:chessever2/repository/library/models/saved_analysis.dart';
+import 'package:chessever2/screens/for_you/discovery/widgets/discovery_common.dart'
+    show DiscoveryAction, DiscoveryActionLead;
 import 'package:chessever2/screens/my_space/models/space_auto_item.dart';
 import 'package:chessever2/screens/my_space/models/space_shortcut.dart';
 import 'package:chessever2/screens/my_space/navigation/space_shortcut_navigator.dart';
 import 'package:chessever2/screens/my_space/providers/space_auto_provider.dart';
 import 'package:chessever2/screens/my_space/providers/space_shortcuts_provider.dart';
 import 'package:chessever2/screens/my_space/widgets/space_auto_tile.dart';
+import 'package:chessever2/screens/my_space/widgets/space_database.dart'
+    show SpaceGroupPage, SpaceSavedRow;
+import 'package:chessever2/screens/my_space/widgets/space_door_actions.dart';
 import 'package:chessever2/screens/my_space/widgets/space_metrics.dart';
 import 'package:chessever2/screens/my_space/widgets/space_reorder.dart';
+import 'package:chessever2/screens/my_space/widgets/space_section_header.dart';
 import 'package:chessever2/screens/my_space/widgets/space_tile.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/app_snack.dart';
+import 'package:chessever2/widgets/hub_tile.dart' show hubGutter;
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
@@ -24,10 +32,22 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 /// tiles and the same hold menu as the rail; swipe-to-remove stays on the
 /// rail, where a tile has one clear direction to leave in. Here a grabbed pin
 /// moves freely and the grid reflows around it.
+///
+/// With [pinsOnly] (My Database's See all) it lists what the user saved and
+/// nothing else: no mirror, no suggestions. Then it is the group itself at
+/// full length ([SpaceGroupPage]): the same cards My Database draws for the
+/// group's first few, in the viewer's games view, never the rail's tiles.
 class SpaceSectionScreen extends ConsumerStatefulWidget {
-  const SpaceSectionScreen({super.key, required this.section});
+  const SpaceSectionScreen({
+    super.key,
+    required this.section,
+    this.pinsOnly = false,
+  });
 
   final SpaceSection section;
+
+  /// Only the saved things, as My Database groups them.
+  final bool pinsOnly;
 
   @override
   ConsumerState<SpaceSectionScreen> createState() => _SpaceSectionScreenState();
@@ -36,6 +56,9 @@ class SpaceSectionScreen extends ConsumerStatefulWidget {
 class _SpaceSectionScreenState extends ConsumerState<SpaceSectionScreen> {
   /// The grid as a drag in progress shows it; null when nothing is lifted.
   List<String>? _order;
+
+  /// See all is putting its things in order (a plain list with handles).
+  bool _editing = false;
   String? _dragKey;
 
   SpaceSection get section => widget.section;
@@ -106,7 +129,7 @@ class _SpaceSectionScreenState extends ConsumerState<SpaceSectionScreen> {
     if (messenger != null) {
       showAppSnackOn(
         messenger,
-        'Removed from ${section.title}',
+        'Removed from My Space',
         actionLabel: 'Undo',
         onAction: () => notifier.restore(current),
       );
@@ -199,6 +222,22 @@ class _SpaceSectionScreenState extends ConsumerState<SpaceSectionScreen> {
     );
   }
 
+  /// See all's reorder list moved [s] to [to] among the pins it shows.
+  void _moveTo(SpaceShortcut s, int to) {
+    final stored = _stored;
+    final from = stored.indexWhere((item) => item.key == s.key);
+    if (from < 0 || to == from) return;
+    HapticFeedbackService.selection();
+    final order = [for (final p in stored) p.key]
+      ..removeAt(from)
+      ..insert(to.clamp(0, stored.length - 1), s.key);
+    unawaited(
+      ref
+          .read(spaceShortcutsProvider.notifier)
+          .moveWithinSection(s.key, _storeIndex(s.key, order)),
+    );
+  }
+
   /// Moves for the pin at [index] of [count]. Pins sit after the mirror's
   /// [_lead] tiles, so the column comes from the grid slot, and a sideways
   /// move is offered only onto a neighbouring pin in the same row.
@@ -220,12 +259,19 @@ class _SpaceSectionScreenState extends ConsumerState<SpaceSectionScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final all = ref.watch(
-      spaceShortcutsBySectionProvider.select(
-        (map) => map[section] ?? const <SpaceShortcut>[],
-      ),
-    );
-    final auto = ref.watch(spaceAutoRowProvider(section));
+    final all = [
+      for (final s in ref.watch(
+        spaceShortcutsBySectionProvider.select(
+          (map) => map[section] ?? const <SpaceShortcut>[],
+        ),
+      ))
+        // Streak cards stay out while streaks are hidden.
+        if (FeatureFlags.streaks || s.kind != SpaceShortcutKind.streak) s,
+    ];
+    final auto = widget.pinsOnly
+        ? SpaceAutoRow.empty
+        : ref.watch(spaceAutoRowProvider(section));
+    final title = widget.pinsOnly ? spaceGroupTitle(section) : section.title;
     final stored = _pins = [
       for (final s in all)
         if (!auto.hiddenPinKeys.contains(s.key)) s,
@@ -260,27 +306,68 @@ class _SpaceSectionScreenState extends ConsumerState<SpaceSectionScreen> {
                       size: 20.sp,
                     ),
                   ),
-                  Text(
-                    section.title,
-                    style: AppTypography.textLgBold.copyWith(
-                      color: context.colors.textPrimary,
+                  // The title and its count take the room the action leaves,
+                  // so the action sits on the gutter.
+                  Expanded(
+                    child: Row(
+                      children: [
+                        Flexible(
+                          child: Text(
+                            title,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: AppTypography.textLgBold.copyWith(
+                              color: context.colors.textPrimary,
+                            ),
+                          ),
+                        ),
+                        SizedBox(width: 8.w),
+                        Text(
+                          '${auto.total ?? shown}',
+                          style: AppTypography.textLgMedium.copyWith(
+                            color: context.colors.textSecondary,
+                            fontFeatures: const [FontFeature.tabularFigures()],
+                          ),
+                        ),
+                      ],
                     ),
                   ),
-                  SizedBox(width: 8.w),
-                  Text(
-                    '${auto.total ?? shown}',
-                    style: AppTypography.textLgMedium.copyWith(
-                      color: context.colors.textSecondary,
+                  // See all orders its things in a plain list with handles,
+                  // the cards themselves staying what they are.
+                  if (widget.pinsOnly && (stored.length >= 2 || _editing)) ...[
+                    DiscoveryAction(
+                      label: _editing ? 'Done' : 'Reorder',
+                      onTap: () {
+                        HapticFeedbackService.selection();
+                        setState(() => _editing = !_editing);
+                      },
+                      semanticsLabel: _editing
+                          ? 'Done reordering'
+                          : 'Reorder $title',
                     ),
-                  ),
+                    if (!_editing) SizedBox(width: 16.w),
+                  ],
+                  if (!_editing &&
+                      section != SpaceSection.links &&
+                      section != SpaceSection.likes)
+                    DiscoveryAction(
+                      label: 'Add',
+                      lead: DiscoveryActionLead.plus,
+                      onTap: () => openSpaceAdd(context, ref, section),
+                      semanticsLabel: 'Add to $title',
+                    ),
                 ],
               ),
             ),
             Expanded(
-              child: shown == 0
+              child: widget.pinsOnly
+                  ? (_editing
+                        ? _OrderList(items: stored, onMove: _moveTo)
+                        : SpaceGroupPage(section: section))
+                  : shown == 0
                   ? Center(
                       child: Text(
-                        'Nothing in ${section.title} yet',
+                        'Nothing in $title yet',
                         style: AppTypography.textSmMedium.copyWith(
                           color: context.colors.textSecondary,
                         ),
@@ -395,6 +482,99 @@ class _SpaceSectionScreenState extends ConsumerState<SpaceSectionScreen> {
               )
             : null,
       ),
+    );
+  }
+}
+
+/// See all's order: every saved thing of the group as a plain row (its name,
+/// what it is) with a handle to drag it by. The group's cards come back when
+/// the reader is done.
+class _OrderList extends StatelessWidget {
+  const _OrderList({required this.items, required this.onMove});
+
+  final List<SpaceShortcut> items;
+  final void Function(SpaceShortcut item, int to) onMove;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.colors;
+    final gutter = hubGutter;
+    return ReorderableListView.builder(
+      buildDefaultDragHandles: false,
+      padding: EdgeInsets.fromLTRB(
+        gutter,
+        8.sp,
+        gutter,
+        32.sp + MediaQuery.viewPaddingOf(context).bottom,
+      ),
+      itemCount: items.length,
+      onReorderItem: (from, to) => onMove(items[from], to),
+      proxyDecorator: (child, index, animation) =>
+          Material(color: Colors.transparent, child: child),
+      itemBuilder: (context, i) {
+        final s = items[i];
+        return Padding(
+          key: ValueKey<String>('order_${s.key}'),
+          padding: EdgeInsets.only(bottom: 8.sp),
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              color: colors.surface,
+              borderRadius: BorderRadius.circular(8.br),
+              border: context.isLightTheme
+                  ? Border.all(color: colors.divider.withValues(alpha: 0.4))
+                  : null,
+            ),
+            child: Row(
+              children: [
+                SizedBox(width: 12.w),
+                Expanded(
+                  child: Padding(
+                    padding: EdgeInsets.symmetric(vertical: 10.sp),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          s.title,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: AppTypography.textSmMedium.copyWith(
+                            color: colors.textPrimary,
+                          ),
+                        ),
+                        SizedBox(height: 2.h),
+                        Text(
+                          SpaceSavedRow.savedMeta(s),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: AppTypography.textXsMedium.copyWith(
+                            color: colors.textPrimaryMuted,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                ReorderableDragStartListener(
+                  index: i,
+                  child: Semantics(
+                    label: 'Drag to move ${s.title}',
+                    child: SizedBox.square(
+                      dimension: 44,
+                      child: Icon(
+                        Icons.drag_handle_rounded,
+                        size: 22.ic,
+                        color: colors.iconSecondary,
+                      ),
+                    ),
+                  ),
+                ),
+                SizedBox(width: 4.w),
+              ],
+            ),
+          ),
+        );
+      },
     );
   }
 }

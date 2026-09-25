@@ -4,6 +4,8 @@ import 'package:chessever2/repository/library/models/library_folder.dart';
 import 'package:chessever2/screens/home/widget/bottom_nav_bar.dart';
 import 'package:chessever2/screens/library/folder_contents_screen.dart';
 import 'package:chessever2/screens/my_likes/my_likes_screen.dart';
+import 'package:chessever2/screens/for_you/discovery/widgets/discovery_common.dart'
+    show DiscoveryAction, DiscoveryActionLead;
 import 'package:chessever2/screens/gamebase/gamebase_explorer_screen.dart';
 import 'package:chessever2/screens/library/miniatures_screen.dart';
 import 'package:chessever2/screens/library/pgn_import_preview_screen.dart';
@@ -38,7 +40,12 @@ import 'package:flutter/services.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 class LibraryScreen extends ConsumerStatefulWidget {
-  const LibraryScreen({super.key});
+  const LibraryScreen({super.key, this.embedded = false});
+
+  /// The databases list alone, as a page inside another screen's frame (My
+  /// Prep's Databases tab): no home bar, and Add on a line of its own above
+  /// the list. The Library tab never sets it.
+  final bool embedded;
 
   @override
   ConsumerState<LibraryScreen> createState() => _LibraryScreenState();
@@ -288,7 +295,10 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
               maxWidth: ResponsiveHelper.contentMaxWidth,
             ),
             child: Column(
-              children: [_buildTopBar(), Expanded(child: _buildContent())],
+              children: [
+                if (!widget.embedded) _buildTopBar(),
+                Expanded(child: _buildContent()),
+              ],
             ),
           ),
         ),
@@ -421,7 +431,11 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
           parent: BouncingScrollPhysics(),
         ),
         slivers: [
-          SliverToBoxAdapter(child: SizedBox(height: 4.h)),
+          SliverToBoxAdapter(
+            child: widget.embedded
+                ? _buildEmbeddedHeader()
+                : SizedBox(height: 4.h),
+          ),
           if (contentState.isLoading)
             _buildLoadingSliver()
           else if (contentState.hasError)
@@ -440,6 +454,40 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
               fillOverscroll: false,
               child: _FitOrHide(child: _LibraryBackgroundDecoration()),
             ),
+        ],
+      ),
+    );
+  }
+
+  /// My Prep's line over the list: Add, where the Library tab keeps it in
+  /// its bar.
+  Widget _buildEmbeddedHeader() {
+    return Padding(
+      padding: EdgeInsets.fromLTRB(
+        ResponsiveHelper.adaptive(phone: 16.w, tablet: 24.w),
+        8.h,
+        ResponsiveHelper.adaptive(phone: 16.w, tablet: 24.w),
+        4.h,
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              'Databases and PGN files',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: AppTypography.textSmRegular.copyWith(
+                color: context.colors.textSecondary,
+              ),
+            ),
+          ),
+          SizedBox(width: 12.w),
+          DiscoveryAction(
+            label: 'Add',
+            lead: DiscoveryActionLead.plus,
+            semanticsLabel: 'Add a database or PGN',
+            onTap: _handlePlusButton,
+          ),
         ],
       ),
     );

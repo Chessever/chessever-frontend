@@ -25,8 +25,10 @@ class BoardCornerBadge extends InheritedWidget {
 double likeHeartSizeFor(double boardSize) =>
     (boardSize * 0.16).clamp(30.0, 52.0);
 
-/// A see-through heart holding a like count, to sit on a board. Dark glass
-/// over the squares with the figure in white, the same on every board theme.
+/// A heart holding a like count, to sit on a board: a solid dark heart (the
+/// piece under it never shows through the figure) with the count in white,
+/// fitted inside the heart's round upper body, the same on every board
+/// theme.
 class LikeCountHeart extends StatelessWidget {
   const LikeCountHeart({super.key, required this.likes, required this.size});
 
@@ -53,9 +55,11 @@ class LikeCountHeart extends StatelessWidget {
               // The optical centre of the heart sits in its round upper half,
               // above the middle of its box.
               alignment: const Alignment(0, -0.22),
+              // Inside the lobes with a margin to the outline even for the
+              // widest count ("1.1K", "34K").
               child: SizedBox(
-                width: width * 0.62,
-                height: height * 0.46,
+                width: width * 0.54,
+                height: height * 0.4,
                 child: FittedBox(
                   fit: BoxFit.scaleDown,
                   child: Text(
@@ -107,13 +111,15 @@ class _HeartPainter extends CustomPainter {
       ..cubicTo(w * 0.86, 0, w, h * 0.12, w, h * 0.3)
       ..cubicTo(w, h * 0.52, w * 0.82, h * 0.74, w * 0.5, h * 0.98)
       ..close();
-    canvas.drawPath(path, Paint()..color = Colors.black.withValues(alpha: 0.5));
+    // A solid ink body: a see-through one let the piece beneath (the a8
+    // rook, a knight) read through the figure.
+    canvas.drawPath(path, Paint()..color = const Color(0xFF0C0C0E).withValues(alpha: 0.88));
     canvas.drawPath(
       path,
       Paint()
         ..style = PaintingStyle.stroke
         ..strokeWidth = 1
-        ..color = Colors.white.withValues(alpha: 0.35),
+        ..color = Colors.white.withValues(alpha: 0.28),
     );
   }
 

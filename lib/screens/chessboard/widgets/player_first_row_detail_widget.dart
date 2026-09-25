@@ -1101,6 +1101,11 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
               },
             ),
           ),
+          // A fixed gap between the name and whatever ends the row (the
+          // pin, the clock's box), so a long name gives way with its
+          // ellipsis instead of running into the box.
+          if (isPinned || (showClock && hasClockData))
+            SizedBox(width: playerView == PlayerView.boardView ? 8.w : 6.w),
           if (isPinned) ...[
             SvgPicture.asset(
               SvgAsset.pin,

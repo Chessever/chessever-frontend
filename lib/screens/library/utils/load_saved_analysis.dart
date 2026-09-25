@@ -372,6 +372,11 @@ GamesTourModel savedAnalysisToCardGame(SavedAnalysis analysis) {
           ? analysis.sourceTournamentId!
           : event;
 
+  // The game's final position and move, from the already parsed mainline,
+  // so a card of it can draw the real board rather than a list row.
+  final mainline = analysis.chessGame.mainline;
+  final last = mainline.isEmpty ? null : mainline.last;
+
   return GamesTourModel(
     gameId: analysis.id,
     sourceGameId: analysis.sourceGameId,
@@ -406,6 +411,8 @@ GamesTourModel savedAnalysisToCardGame(SavedAnalysis analysis) {
     eco: eco,
     openingName: openingName,
     lastMoveTime: parsedDate,
+    fen: last?.fen ?? analysis.chessGame.startingFen,
+    lastMove: last?.uci,
   );
 }
 

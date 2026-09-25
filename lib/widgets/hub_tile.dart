@@ -1,5 +1,6 @@
 import 'package:chessever2/screens/my_space/models/space_shortcut.dart';
 import 'package:chessever2/screens/my_space/widgets/pixel_art.dart';
+import 'package:chessever2/screens/my_space/widgets/space_glyphs.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
@@ -28,20 +29,35 @@ const Color kHubTileOnMedia = Color(0xFFFFFFFF);
 Color hubTileOnTile(BuildContext context) =>
     context.isLightTheme ? context.colors.textPrimary : kHubTileOnMedia;
 
+/// Side gutter of the hub pages (My Space, Discovery): the design's 16 on
+/// phones, and on tablets the For You header's own inset (its search field
+/// and segments sit at 32.sp), so tiles, titles and cards start on the
+/// header's left edge.
+double get hubGutter => ResponsiveHelper.adaptive(phone: 16.sp, tablet: 32.sp);
+
 /// The tile Today opens with (Favorites, Countrymen), as a building block:
-/// artwork filling a 108-tall card, the title and "Tap to view" in its
-/// bottom-left corner. My Space and Discovery open with the same pair.
+/// a 108-tall card with the title and "Tap to view" in its bottom-left
+/// corner. My Space and Discovery open with the same pair.
+///
+/// Its picture is either [artwork], filling the card behind the label (the
+/// photo mosaic, the flag), or a [mark], an object set in a square slot of
+/// its own on the right with a fixed gap to the label, so the two never
+/// touch however long the title or caption is.
 class HubTile extends StatelessWidget {
   const HubTile({
     super.key,
     required this.title,
-    required this.artwork,
+    this.artwork,
+    this.mark,
     required this.onTap,
     this.caption = kHubTileCaption,
     this.titleIcon,
     this.ramp = true,
     this.onLongPressStart,
-  });
+  }) : assert(
+         (artwork == null) != (mark == null),
+         'A hub tile has either full-bleed artwork or a mark.',
+       );
 
   final String title;
 
@@ -52,7 +68,10 @@ class HubTile extends StatelessWidget {
   final IconData? titleIcon;
 
   /// Fills the tile behind the label.
-  final Widget artwork;
+  final Widget? artwork;
+
+  /// Sits beside the label in its own square slot.
+  final Widget? mark;
   final VoidCallback onTap;
 
   /// Grades the artwork down to the tile's ink under the label. Artwork that
@@ -70,15 +89,18 @@ class HubTile extends StatelessWidget {
       child: HubTileFace(
         title: title,
         artwork: artwork,
+        mark: mark,
         ramp: ramp,
         caption: caption,
         titleIcon: titleIcon,
       ),
     );
     final longPress = onLongPressStart;
+    // The caption is part of what the tile says ("My Likes, 128 games"), so
+    // a screen reader hears the same line a sighted viewer reads.
     final semantic = Semantics(
       button: true,
-      label: title,
+      label: '$title, $caption',
       excludeSemantics: true,
       onTap: onTap,
       child: tile,
@@ -121,17 +143,28 @@ class HubTileFace extends StatelessWidget {
   const HubTileFace({
     super.key,
     required this.title,
-    required this.artwork,
+    this.artwork,
+    this.mark,
     this.ramp = true,
     this.caption = kHubTileCaption,
     this.titleIcon,
-  });
+  }) : assert(
+         (artwork == null) != (mark == null),
+         'A hub tile has either full-bleed artwork or a mark.',
+       );
 
   final String title;
-  final Widget artwork;
+  final Widget? artwork;
+  final Widget? mark;
   final bool ramp;
   final String caption;
   final IconData? titleIcon;
+
+  /// Between the title and the mark beside it.
+  static double get markGap => 12.sp;
+
+  /// The mark's square, the same on every tile so a pair always matches.
+  static double get markSide => 44.sp;
 
   @override
   Widget build(BuildContext context) {
@@ -142,16 +175,157 @@ class HubTileFace extends StatelessWidget {
         ? context.colors.textSecondary
         : kHubTileOnMedia.withValues(alpha: 0.85);
     // On paper the type needs no help; on the media tile a pale photo can
-    // land right under the label, so the type carries its own contrast.
-    List<Shadow>? shadow(double alpha, double blur, [Offset? offset]) => isLight
-        ? null
-        : [
+    // land right under the label, so the type carries its own contrast. A
+    // mark never sits under the type, so its label needs no shadow either.
+    final shadowed = !isLight && mark == null;
+    List<Shadow>? shadow(double alpha, double blur, [Offset? offset]) =>
+        shadowed
+        ? [
             Shadow(
               color: Colors.black.withValues(alpha: alpha),
               blurRadius: blur,
               offset: offset ?? Offset.zero,
             ),
-          ];
+          ]
+        : null;
+
+    // Sized on the type scale here, at build, so the tile's words grow with
+    // the tile on a tablet exactly as the section titles beside it do.
+    final titleStyle = AppTypography.textMdBold.copyWith(
+      fontSize: 16.f,
+      color: onTile,
+      letterSpacing: 0.3,
+      shadows: shadow(0.45, 4, const Offset(0, 1)),
+    );
+    final captionSize = 12.f;
+    final captionStyle = AppTypography.textXsRegular.copyWith(
+      fontSize: captionSize,
+      color: quiet,
+      shadows: shadow(0.4, 3),
+    );
+
+    final titleRow = Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (titleIcon != null) ...[
+          Icon(
+            titleIcon,
+            size: 18.sp,
+            color: onTile,
+            shadows: shadow(0.45, 4, const Offset(0, 1)),
+          ),
+          SizedBox(width: 4.w),
+        ],
+        Flexible(
+          child: Text(
+            title,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: titleStyle,
+          ),
+        ),
+      ],
+    );
+    final captionRow = Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Flexible(
+          child: Text(
+            caption,
+            style: captionStyle,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            // A cut caption measures to its ellipsis, so the arrow follows
+            // the visible words at the same gap as after a whole caption.
+            textWidthBasis: TextWidthBasis.longestLine,
+          ),
+        ),
+        SizedBox(width: 4.w),
+        // The page's one navigation arrow (See all's), sized from the
+        // caption it ends so the two grow together.
+        SpaceGlyph(
+          SpaceGlyphKind.arrowUpRight,
+          size: (captionSize * 0.8).roundToDouble(),
+          // The glyph paints opaque ink, so the caption's veiled white is
+          // flattened onto the tile's dark foot first.
+          ink: Color.alphaBlend(quiet, isLight ? base : Colors.black),
+        ),
+      ],
+    );
+
+    final markWidget = mark;
+    final body = markWidget == null
+        ? Stack(
+            clipBehavior: Clip.hardEdge,
+            children: [
+              Positioned.fill(child: artwork!),
+              // One ramp in both themes: it grades the tile's own artwork
+              // down to its own ink, and never touches the page behind it.
+              if (ramp)
+                Positioned.fill(
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: isLight
+                            ? [
+                                base.withValues(alpha: 0),
+                                base.withValues(alpha: 0.72),
+                                base.withValues(alpha: 0.96),
+                              ]
+                            : [
+                                Colors.transparent,
+                                Colors.black.withValues(alpha: 0.6),
+                                Colors.black.withValues(alpha: 0.95),
+                              ],
+                        stops: const [0.0, 0.5, 1.0],
+                      ),
+                    ),
+                  ),
+                ),
+              Padding(
+                padding: EdgeInsets.all(14.sp),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    titleRow,
+                    SizedBox(height: 2.sp),
+                    captionRow,
+                  ],
+                ),
+              ),
+            ],
+          )
+        : Padding(
+            padding: EdgeInsets.all(14.sp),
+            // The mark stands beside the title, bottom-aligned with it, and
+            // the caption runs the tile's full width under both: the longer
+            // line never shares its row with the mark, and the title gives
+            // way (truncating) before it could reach the mark.
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Expanded(
+                      child: Align(
+                        alignment: Alignment.bottomLeft,
+                        child: titleRow,
+                      ),
+                    ),
+                    SizedBox(width: markGap),
+                    SizedBox.square(dimension: markSide, child: markWidget),
+                  ],
+                ),
+                SizedBox(height: 2.sp),
+                captionRow,
+              ],
+            ),
+          );
 
     return Container(
       height: 108.sp,
@@ -169,106 +343,14 @@ class HubTileFace extends StatelessWidget {
           width: 1,
         ),
       ),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(14.br),
-        child: Stack(
-          clipBehavior: Clip.hardEdge,
-          children: [
-            Positioned.fill(child: artwork),
-            // One ramp in both themes: it grades the tile's own artwork down
-            // to its own ink, and never touches the page behind it.
-            if (ramp)
-              Positioned.fill(
-                child: DecoratedBox(
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.topCenter,
-                      end: Alignment.bottomCenter,
-                      colors: isLight
-                          ? [
-                              base.withValues(alpha: 0),
-                              base.withValues(alpha: 0.72),
-                              base.withValues(alpha: 0.96),
-                            ]
-                          : [
-                              Colors.transparent,
-                              Colors.black.withValues(alpha: 0.6),
-                              Colors.black.withValues(alpha: 0.95),
-                            ],
-                      stops: const [0.0, 0.5, 1.0],
-                    ),
-                  ),
-                ),
-              ),
-            Padding(
-              padding: EdgeInsets.all(14.sp),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisAlignment: MainAxisAlignment.end,
-                children: [
-                  Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      if (titleIcon != null) ...[
-                        Icon(
-                          titleIcon,
-                          size: 18.sp,
-                          color: onTile,
-                          shadows: shadow(0.45, 4, const Offset(0, 1)),
-                        ),
-                        SizedBox(width: 4.w),
-                      ],
-                      Flexible(
-                        child: Text(
-                          title,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: AppTypography.textMdBold.copyWith(
-                            color: onTile,
-                            letterSpacing: 0.3,
-                            shadows: shadow(0.45, 4, const Offset(0, 1)),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                  SizedBox(height: 2.sp),
-                  Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Flexible(
-                        child: Text(
-                          caption,
-                          style: AppTypography.textXsRegular.copyWith(
-                            color: quiet,
-                            shadows: shadow(0.4, 3),
-                          ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                      SizedBox(width: 4.w),
-                      Icon(
-                        Icons.arrow_forward_rounded,
-                        size: 12.sp,
-                        color: quiet,
-                        shadows: shadow(0.4, 3),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
+      child: ClipRRect(borderRadius: BorderRadius.circular(14.br), child: body),
     );
   }
 }
 
-/// One of My Space's pixel objects (the heart, the bookmarked board...) as
-/// tile artwork: fitted into the tile's top-right corner, clear of the label
-/// in the bottom-left, and drawn for the theme's paper or black.
+/// One of My Space's pixel objects (the heart, the bookmarked board...) as a
+/// hub tile's [HubTile.mark]: fitted and centred in the square slot the tile
+/// gives it, drawn for the theme's paper or black.
 class HubPixelArtwork extends StatelessWidget {
   const HubPixelArtwork({super.key, required this.section});
 
@@ -282,20 +364,8 @@ class HubPixelArtwork extends StatelessWidget {
       builder: (context, constraints) {
         final size = constraints.biggest;
         if (!size.isFinite || size.isEmpty) return const SizedBox.shrink();
-        // The right half, beside the label's column. The top keeps room for
-        // what rises off the object (the heart's embers) inside the tile.
-        final box = Rect.fromLTRB(
-          size.width * 0.54,
-          22,
-          size.width - 14,
-          size.height - 14,
-        );
         return PixelArtView(
-          scene: PixelScene.inBox(
-            PixelArt.door(section, tone: tone),
-            size,
-            box,
-          ),
+          scene: PixelScene.mark(PixelArt.door(section, tone: tone), size),
         );
       },
     );

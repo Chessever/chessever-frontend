@@ -65,6 +65,7 @@ String? spaceShortcutShareUrl(SpaceShortcut s) {
     case SpaceShortcutKind.countrymen:
     case SpaceShortcutKind.miniatures:
     case SpaceShortcutKind.likes:
+    case SpaceShortcutKind.collection:
       return null;
   }
 }

@@ -3,6 +3,8 @@ import 'package:chessever2/screens/chessboard/utils/game_list_snapshot.dart';
 
 import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
 import 'package:chessever2/screens/chessboard/widgets/chess_board_from_fen_new.dart';
+import 'package:chessever2/screens/library/widgets/library_context_menu.dart'
+    show LibraryMenuAction;
 import 'package:chessever2/screens/chessboard/provider/game_pgn_stream_provider.dart';
 import 'package:chessever2/screens/player_profile/player_profile_data_source.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
@@ -35,6 +37,9 @@ class GridGameCardWrapperWidget extends ConsumerWidget {
   /// to pin into (Favorites, Countrymen).
   final bool showPin;
 
+  /// Replaces the card's long-press rows (see [GameCard.menuActions]).
+  final List<LibraryMenuAction> Function(BuildContext context)? menuActions;
+
   const GridGameCardWrapperWidget({
     super.key,
     required this.game,
@@ -50,6 +55,7 @@ class GridGameCardWrapperWidget extends ConsumerWidget {
     this.viewSource = ChessboardView.tour,
     this.playerProfileDataSource = PlayerProfileDataSource.supabase,
     this.showPin = true,
+    this.menuActions,
   });
 
   @override
@@ -102,6 +108,7 @@ class GridGameCardWrapperWidget extends ConsumerWidget {
       scoreCardGamesContext: getUpdatedGamesList(),
       playerProfileDataSource: playerProfileDataSource,
       showPin: showPin,
+      menuActions: menuActions,
     );
   }
 }
