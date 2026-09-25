@@ -170,7 +170,12 @@ class HubTileFace extends StatelessWidget {
   Widget build(BuildContext context) {
     final isLight = context.isLightTheme;
     final onTile = hubTileOnTile(context);
-    final base = isLight ? context.colors.surface : kHubTileInk;
+    // On paper the tile sits a half step above the page, not on the cards'
+    // bright white: a full-white slab (and a ramp fading into it) glares
+    // next to the page's own tone.
+    final base = isLight
+        ? Color.lerp(context.colors.background, context.colors.surface, 0.45)!
+        : kHubTileInk;
     final quiet = isLight
         ? context.colors.textSecondary
         : kHubTileOnMedia.withValues(alpha: 0.85);
@@ -268,18 +273,23 @@ class HubTileFace extends StatelessWidget {
                       gradient: LinearGradient(
                         begin: Alignment.topCenter,
                         end: Alignment.bottomCenter,
+                        // Paper: the veil fades into the tile's own
+                        // page-toned paper, never bright white, so the
+                        // words get a calm backing without a white glow.
                         colors: isLight
                             ? [
                                 base.withValues(alpha: 0),
-                                base.withValues(alpha: 0.72),
-                                base.withValues(alpha: 0.96),
+                                base.withValues(alpha: 0.74),
+                                base.withValues(alpha: 0.92),
                               ]
                             : [
                                 Colors.transparent,
                                 Colors.black.withValues(alpha: 0.6),
                                 Colors.black.withValues(alpha: 0.95),
                               ],
-                        stops: const [0.0, 0.5, 1.0],
+                        stops: isLight
+                            ? const [0.2, 0.6, 1.0]
+                            : const [0.0, 0.5, 1.0],
                       ),
                     ),
                   ),
