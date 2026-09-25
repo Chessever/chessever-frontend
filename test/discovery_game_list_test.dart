@@ -263,8 +263,10 @@ void main() {
       await _teardown(tester, container);
     });
 
-    testWidgets('grid: a game without a position is a list row, and counts '
-        'toward the limit', (tester) async {
+    testWidgets('grid: a game without a position is still a grid card '
+        '(the user\'s chosen type), and counts toward the limit', (
+      tester,
+    ) async {
       final games = [
         _game('a'),
         _game('b', position: false),
@@ -278,10 +280,43 @@ void main() {
         DiscoveryGameList(games: games, limit: 4, streamEnabled: false),
       );
 
-      expect(_gridCards, findsNWidgets(3));
-      expect(find.byKey(const ValueKey('discovery_row_b')), findsOneWidget);
+      expect(_gridCards, findsNWidgets(4));
+      expect(find.byKey(const ValueKey('discovery_grid_b')), findsOneWidget);
+      expect(find.byKey(const ValueKey('discovery_row_b')), findsNothing);
       expect(find.byKey(const ValueKey('discovery_grid_e')), findsNothing);
       await _teardown(tester, container);
+    });
+
+    testWidgets('board and list views draw every game as the chosen type, '
+        'positions or not', (tester) async {
+      final games = [
+        _game('a'),
+        _game('b', position: false),
+        _game('c'),
+      ];
+      for (final (mode, boards) in [
+        (GamesListViewMode.chessBoard, true),
+        (GamesListViewMode.gamesCard, false),
+      ]) {
+        final container = await _pump(
+          tester,
+          DiscoveryGameList(games: games, streamEnabled: false),
+          mode: mode,
+        );
+        final cards = tester
+            .widgetList<GameCardWrapperWidget>(
+              find.byType(GameCardWrapperWidget),
+            )
+            .toList();
+        expect(cards, hasLength(3), reason: '$mode');
+        expect(
+          cards.every((c) => c.isChessBoardVisible == boards),
+          isTrue,
+          reason: '$mode: one card type for every game',
+        );
+        expect(_gridCards, findsNothing);
+        await _teardown(tester, container);
+      }
     });
 
     testWidgets('without a limit every game is drawn', (tester) async {

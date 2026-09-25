@@ -625,8 +625,9 @@ class DiscoveryGameList extends ConsumerWidget {
     final out = <Widget>[];
     if (viewMode == GamesListViewMode.chessBoardGrid) {
       // In the list's own order, the order previous/next walks: boards two
-      // to a row, and a game with no position yet (no board worth drawing)
-      // as a row in its place, closing the pair before it.
+      // to a row, every game the same grid card as the event Games tab
+      // draws it (a game that has not started shows its starting board),
+      // so the user's chosen card type is the only one on screen.
       final pending = <int>[];
       void flush() {
         if (pending.isEmpty) return;
@@ -648,21 +649,15 @@ class DiscoveryGameList extends ConsumerWidget {
       }
 
       for (var i = start; i < end; i++) {
-        if (!discoveryHasRealPosition(games[i])) {
-          flush();
-          out.add(listCard(i, board: false));
-          continue;
-        }
         pending.add(i);
         if (pending.length == 2) flush();
       }
       flush();
     } else {
+      // List rows or full boards, exactly as chosen, for every game.
       final boardView = viewMode == GamesListViewMode.chessBoard;
       for (var i = start; i < end; i++) {
-        out.add(
-          listCard(i, board: boardView && discoveryHasRealPosition(games[i])),
-        );
+        out.add(listCard(i, board: boardView));
       }
     }
     final column = Column(
