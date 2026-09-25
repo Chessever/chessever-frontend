@@ -961,6 +961,7 @@ class FeedNotifier extends AsyncNotifier<List<FeedItem>> {
       result: result,
       hasEvals: clip.hasEvals,
       signal: streak?.signal ?? _signalFor(candidate),
+      likes: candidate.signals.likes,
     );
   }
 

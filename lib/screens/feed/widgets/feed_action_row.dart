@@ -1,8 +1,24 @@
 import 'package:chessever2/screens/feed/widgets/feed_glyphs.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/utils/app_typography.dart';
+import 'package:chessever2/utils/number_format_utils.dart';
 import 'package:flutter/material.dart';
 import 'package:motor/motor.dart';
+
+/// From this many likes the Like button shows the count instead of "Like".
+const int kFeedLikeCountFloor = 3;
+
+/// The Like button's word: the like count from [kFeedLikeCountFloor] up
+/// ("12", "1.2K"), otherwise "Like". The heart's fill says whether the
+/// viewer is among them.
+String feedLikeLabel(int likes) =>
+    likes >= kFeedLikeCountFloor ? formatCompactCount(likes) : 'Like';
+
+/// What a screen reader hears on the Like button.
+String feedLikeSemantics({required bool liked, required int likes}) {
+  final state = liked ? 'Liked' : 'Like';
+  return likes >= kFeedLikeCountFloor ? '$state, $likes likes' : state;
+}
 
 /// Analyze · My Space · Share · Like under the board, Like on the far right
 /// where the thumb rests.
@@ -10,6 +26,7 @@ class FeedActionRow extends StatelessWidget {
   const FeedActionRow({
     required this.height,
     required this.liked,
+    this.likes = 0,
     required this.inSpace,
     required this.likeIconKey,
     required this.onLike,
@@ -21,6 +38,10 @@ class FeedActionRow extends StatelessWidget {
 
   final double height;
   final bool liked;
+
+  /// How many people like the game, the viewer included; shown on the
+  /// button from [kFeedLikeCountFloor] up, "Like" below that.
+  final int likes;
 
   /// Null when this game cannot be saved to My Space; the button is dropped.
   final bool? inSpace;
@@ -98,11 +119,11 @@ class FeedActionRow extends StatelessWidget {
           Expanded(
             child: FeedPressable(
               key: const ValueKey('feed_like_button'),
-              semanticsLabel: liked ? 'Liked' : 'Like',
+              semanticsLabel: feedLikeSemantics(liked: liked, likes: likes),
               selected: liked,
               onTap: onLike,
               child: FeedActionLabel(
-                label: liked ? 'Liked' : 'Like',
+                label: feedLikeLabel(likes),
                 icon: FeedGlyph(
                   key: likeIconKey,
                   liked ? FeedGlyphs.heartFilled : FeedGlyphs.heartOutline,

@@ -13,12 +13,14 @@ import 'package:chessever2/screens/feed/puzzles/feed_puzzle.dart';
 import 'package:chessever2/screens/feed/widgets/feed_action_row.dart';
 import 'package:chessever2/screens/feed/widgets/feed_clip.dart';
 import 'package:chessever2/screens/feed/widgets/feed_glyphs.dart';
+import 'package:chessever2/screens/feed/widgets/feed_layout.dart';
 import 'package:chessever2/screens/feed/widgets/feed_pull_refresh.dart';
 import 'package:chessever2/screens/feed/widgets/feed_sfx_provider.dart';
 import 'package:chessever2/screens/feed/widgets/feed_states.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
+import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/user_error_message.dart';
 import 'package:chessever2/widgets/app_snack.dart';
 import 'package:chessever2/widgets/home_top_bar.dart';
@@ -47,9 +49,9 @@ class FeedScreen extends ConsumerStatefulWidget {
   /// Opens Feed over whatever is showing.
   static Future<void> open(BuildContext context) {
     HapticFeedbackService.navigation();
-    return Navigator.of(context).push(
-      MaterialPageRoute<void>(builder: (_) => const FeedScreen()),
-    );
+    return Navigator.of(
+      context,
+    ).push(MaterialPageRoute<void>(builder: (_) => const FeedScreen()));
   }
 
   @override
@@ -65,7 +67,11 @@ final feedCurrentEntryKeyProvider = StateProvider<String?>((ref) => null);
 
 class _FeedScreenState extends ConsumerState<FeedScreen>
     with WidgetsBindingObserver, RouteAware {
-  late final PageController _pages;
+  late PageController _pages;
+
+  /// Each page's share of the viewport: one post tall, so a screen taller
+  /// than a post shows the next one under it rather than an empty band.
+  double _pageFraction = 1;
   int _index = 0;
   bool _appResumed = true;
   bool _routeCurrent = true;
@@ -308,6 +314,24 @@ class _FeedScreenState extends ConsumerState<FeedScreen>
     await ref.read(boardSettingsProviderNew.notifier).toggleSound(true);
   }
 
+  /// Sizes the pages to one post for [constraints], swapping in a controller
+  /// with the new fraction (on the same page) when it changes.
+  void _fitPages(BoxConstraints constraints, TextScaler scaler) {
+    final height = constraints.maxHeight;
+    if (!height.isFinite || height <= 0) return;
+    final post = FeedLayout.naturalHeight(
+      constraints.maxWidth,
+      scaler,
+      evalWidth: 20.w,
+    );
+    final fraction = (post / height).clamp(0.5, 1.0).toDouble();
+    if ((fraction - _pageFraction).abs() < 0.002) return;
+    _pageFraction = fraction;
+    final old = _pages;
+    _pages = PageController(initialPage: _index, viewportFraction: fraction);
+    WidgetsBinding.instance.addPostFrameCallback((_) => old.dispose());
+  }
+
   @override
   Widget build(BuildContext context) {
     final feed = ref.watch(feedProvider);
@@ -344,52 +368,60 @@ class _FeedScreenState extends ConsumerState<FeedScreen>
         // Never while a clip holds the pages (a piece or the scrub bar
         // under the finger).
         enabled: !_scrollLocked,
-        child: PageView.builder(
-          key: const ValueKey('feed_pages'),
-          controller: _pages,
-          scrollDirection: Axis.vertical,
-          // Keeps the neighbours built (current ± 1) so the next board is
-          // already painted when the swipe lands.
-          allowImplicitScrolling: true,
-          physics: _scrollLocked
-              ? const NeverScrollableScrollPhysics()
-              : feedPagePhysics,
-          onPageChanged: (i) => _onPageChanged(i, entries),
-          itemCount: entries.length,
-          // Pages keep their state by identity, not position, so an entry that
-          // is recaptioned (or a list that grows) never restarts a clip.
-          findChildIndexCallback: (key) {
-            if (key is! ValueKey<String>) return null;
-            final index = entries.indexWhere((e) => e.key == key.value);
-            return index < 0 ? null : index;
-          },
-          itemBuilder: (context, i) {
-            final entry = entries[i];
-            final isCurrent = i == _index;
-            return switch (entry) {
-              FeedGameEntry(:final item) => FeedClip(
-                key: ValueKey(entry.key),
-                item: item,
-                isCurrent: isCurrent,
-                isVisible: visible,
-                onRequestNext: _goNext,
-                onScrollLock: _setScrollLock,
-              ),
-              FeedPuzzleEntry(:final puzzle) => FeedPuzzlePage(
-                key: ValueKey(entry.key),
-                puzzle: puzzle,
-                isCurrent: isCurrent,
-                isVisible: visible,
-                onRequestNext: _goNext,
-              ),
-              FeedNewsEntry(:final news) => FeedNewsPage(
-                key: ValueKey(entry.key),
-                news: news,
-                isCurrent: isCurrent,
-                isVisible: visible,
-                onRequestNext: _goNext,
-              ),
-            };
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            _fitPages(constraints, MediaQuery.textScalerOf(context));
+            return PageView.builder(
+              key: const ValueKey('feed_pages'),
+              controller: _pages,
+              // Pages start at the top, one post tall; the next post shows
+              // under the current one on a screen taller than a post.
+              padEnds: false,
+              scrollDirection: Axis.vertical,
+              // Keeps the neighbours built (current ± 1) so the next board is
+              // already painted when the swipe lands.
+              allowImplicitScrolling: true,
+              physics: _scrollLocked
+                  ? const NeverScrollableScrollPhysics()
+                  : feedPagePhysics,
+              onPageChanged: (i) => _onPageChanged(i, entries),
+              itemCount: entries.length,
+              // Pages keep their state by identity, not position, so an entry that
+              // is recaptioned (or a list that grows) never restarts a clip.
+              findChildIndexCallback: (key) {
+                if (key is! ValueKey<String>) return null;
+                final index = entries.indexWhere((e) => e.key == key.value);
+                return index < 0 ? null : index;
+              },
+              itemBuilder: (context, i) {
+                final entry = entries[i];
+                final isCurrent = i == _index;
+                return switch (entry) {
+                  FeedGameEntry(:final item) => FeedClip(
+                    key: ValueKey(entry.key),
+                    item: item,
+                    isCurrent: isCurrent,
+                    isVisible: visible,
+                    onRequestNext: _goNext,
+                    onScrollLock: _setScrollLock,
+                  ),
+                  FeedPuzzleEntry(:final puzzle) => FeedPuzzlePage(
+                    key: ValueKey(entry.key),
+                    puzzle: puzzle,
+                    isCurrent: isCurrent,
+                    isVisible: visible,
+                    onRequestNext: _goNext,
+                  ),
+                  FeedNewsEntry(:final news) => FeedNewsPage(
+                    key: ValueKey(entry.key),
+                    news: news,
+                    isCurrent: isCurrent,
+                    isVisible: visible,
+                    onRequestNext: _goNext,
+                  ),
+                };
+              },
+            );
           },
         ),
       );

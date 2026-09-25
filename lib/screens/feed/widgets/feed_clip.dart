@@ -1631,6 +1631,19 @@ class _FeedClipState extends ConsumerState<FeedClip>
   /// [evals] is the engine toggle and an event's No Spoilers: it gates the
   /// report chart. [bar] adds the on-board gauge setting: it gates the eval
   /// bar and the move strip's number, which is the bar's value in words.
+  /// Whether the viewer had liked the game when the post was first built,
+  /// so a like or unlike here moves the loaded count by one.
+  bool? _likedAtOpen;
+
+  /// The count the Like button shows: Feed's loaded count, moved by the
+  /// viewer's own like or unlike since.
+  int _likesShown(bool liked) {
+    final base = widget.item.likes;
+    if (base <= 0) return 0;
+    final delta = (liked ? 1 : 0) - ((_likedAtOpen ?? liked) ? 1 : 0);
+    return (base + delta).clamp(0, 1 << 30).toInt();
+  }
+
   ({bool bar, bool evals}) _watchEvalVisibility() {
     final gauge = ref.watch(
       engineSettingsProviderNew.select(
@@ -1700,6 +1713,7 @@ class _FeedClipState extends ConsumerState<FeedClip>
 
     final colors = context.colors;
     final liked = ref.watch(isGameLikedProvider(_game.likeId));
+    _likedAtOpen ??= liked;
     final draft = _spaceDraft;
     final inSpace = draft == null
         ? null
@@ -1954,6 +1968,7 @@ class _FeedClipState extends ConsumerState<FeedClip>
                     child: FeedActionRow(
                       height: l.actionsHeight,
                       liked: liked,
+                      likes: _likesShown(liked),
                       inSpace: inSpace,
                       likeIconKey: _likeIconKey,
                       onLike: () => unawaited(_toggleLike()),

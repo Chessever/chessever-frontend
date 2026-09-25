@@ -66,6 +66,7 @@ class FeedLayout {
     final byWidth = width - 2 * sidePadding - evalWidth;
     final byHeight = height - fixed;
     final board = math.max(minBoard, math.min(byWidth, byHeight));
+    assert(fixed == _fixedHeight(scaler));
 
     return FeedLayout._(
       width: width,
@@ -77,6 +78,42 @@ class FeedLayout {
       infoHeight: info,
       actionsHeight: actions,
     );
+  }
+
+  /// The height one post needs on a page [width] wide when its board is as
+  /// wide as the page allows: everything [FeedLayout.resolve] stacks, with no
+  /// spare. Feed sizes its pages to this, so a tall screen shows the next
+  /// post under the current one instead of an empty band under the actions.
+  static double naturalHeight(
+    double width,
+    TextScaler scaler, {
+    double evalWidth = defaultEvalWidth,
+  }) {
+    final board = math.max(minBoard, width - 2 * sidePadding - evalWidth);
+    return _fixedHeight(scaler) + board.floorToDouble();
+  }
+
+  /// Every row of a post except the board, at [scaler]'s text size.
+  static double _fixedHeight(TextScaler scaler) {
+    double line(double fontSize, double lineHeight) =>
+        math.max(lineHeight, scaler.scale(fontSize) * lineHeight / fontSize);
+    final meta = math.max(44.0, line(13, 18) + 12);
+    final row = math.max(20.0, scaler.scale(10) * 1.15 + 6);
+    final info = math.max(44.0, line(15, 20) + 12);
+    final actions = math.max(56.0, 22 + 5 + line(12, 14) + 12);
+    return topGap +
+        meta +
+        gap +
+        row +
+        gap +
+        gap +
+        row +
+        infoGap +
+        info +
+        actionsGap +
+        actions +
+        minSpacer +
+        scrubHeight;
   }
 
   static const double sidePadding = 16;

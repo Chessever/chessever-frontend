@@ -126,6 +126,7 @@ Map<String, Object?> _itemToJson(FeedItem item) {
     'event': item.eventLabel,
     'result': item.result,
     'evals': item.hasEvals,
+    if (item.likes > 0) 'likes': item.likes,
     // A streak is re-derived from the live wall on every read, never stored.
     if (item.signal != null && item.signal!.kind != FeedSignalKind.streak)
       'signal': _signalToJson(item.signal!),
@@ -164,6 +165,7 @@ FeedItem? _itemFromJson(Map<String, Object?> json, DateTime now) {
       eventLabel: json['event'] as String?,
       result: result,
       hasEvals: json['evals'] == true,
+      likes: (json['likes'] as num?)?.toInt() ?? 0,
       signal:
           rawSignal is Map
               ? _signalFromJson(rawSignal.cast<String, Object?>())

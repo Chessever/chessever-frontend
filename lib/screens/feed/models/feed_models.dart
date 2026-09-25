@@ -141,6 +141,7 @@ class FeedItem {
     this.result,
     this.hasEvals = false,
     this.signal,
+    this.likes = 0,
   });
 
   final GamesTourModel game;
@@ -162,6 +163,10 @@ class FeedItem {
   /// report chart instead of a plain progress line.
   final bool hasEvals;
 
+  /// How many people liked the game, when Feed knows (today's most liked
+  /// games); 0 when it does not. The Like button shows it from 3 up.
+  final int likes;
+
   int get plyCount => plies.length - 1;
 
   FeedItem copyWith({String? reason, FeedSignal? signal}) => FeedItem(
@@ -172,6 +177,7 @@ class FeedItem {
     result: result,
     hasEvals: hasEvals,
     signal: signal ?? this.signal,
+    likes: likes,
   );
 
   /// Plies Feed should linger on (headline moments).
