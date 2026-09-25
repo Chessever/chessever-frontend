@@ -36,7 +36,6 @@ import 'package:chessever2/utils/time_control_bonus.dart';
 import 'package:chessground/chessground.dart';
 import 'package:collection/collection.dart';
 import 'package:dartchess/dartchess.dart';
-import 'package:easy_debounce/easy_debounce.dart';
 import 'package:fast_immutable_collections/fast_immutable_collections.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -267,6 +266,8 @@ class ChessBoardScreenNotifierNew
   final bool startAtLastMove;
   final String? initialFen;
   Timer? _longPressTimer;
+  // Owned by this notifier, independent of its remappable PageView index.
+  Timer? _evaluationTimer;
   bool _hasParsedMoves = false;
   bool _isProcessingMove = false;
   bool _isLongPressing = false;
@@ -5022,7 +5023,7 @@ class ChessBoardScreenNotifierNew
   }
 
   Future<void> onBecameInvisible() async {
-    EasyDebounce.cancel('evaluation-$index');
+    _evaluationTimer?.cancel();
     _cancelEvaluation = true;
     _cancelEvalWatchdog(resetPending: true);
     _clearActiveEvalState();
@@ -5035,7 +5036,7 @@ class ChessBoardScreenNotifierNew
   }
 
   Future<void> onBecameVisible({bool force = true}) async {
-    EasyDebounce.cancel('evaluation-$index');
+    _evaluationTimer?.cancel();
 
     final stockfish = StockfishSingleton();
     final currentState = state.value;
@@ -7589,11 +7590,11 @@ class ChessBoardScreenNotifierNew
     bool preserveDepthProgress = false,
     bool refreshPreviewPvs = false,
   }) {
-    if (_isLongPressing) return;
+    if (!mounted || _isLongPressing) return;
 
     if (force || forceRestart) {
       // Force requests should interrupt any pending scheduled evaluations
-      EasyDebounce.cancel('evaluation-$index');
+      _evaluationTimer?.cancel();
     }
 
     _cancelEvaluation = false;
@@ -7696,7 +7697,8 @@ class ChessBoardScreenNotifierNew
     }
 
     void scheduleEvaluation() {
-      if (_cancelEvaluation || !mounted) {
+      if (!mounted) return;
+      if (_cancelEvaluation) {
         // SAFETY: Clear isEvaluating state if evaluation was cancelled
         // This prevents the UI from being stuck in a loading state
         final lastState = state.value;
@@ -7733,8 +7735,8 @@ class ChessBoardScreenNotifierNew
       scheduleEvaluation();
     } else {
       // Debounce rapid navigation so we only evaluate after the user settles on a move
-      EasyDebounce.debounce(
-        'evaluation-$index',
+      _evaluationTimer?.cancel();
+      _evaluationTimer = Timer(
         const Duration(milliseconds: 120),
         scheduleEvaluation,
       );
@@ -7819,7 +7821,10 @@ class ChessBoardScreenNotifierNew
 
   @override
   void dispose() {
-    stopLongPress();
+    _evaluationTimer?.cancel();
+    _longPressTimer?.cancel();
+    _isLongPressing = false;
+    _cancelEvaluation = true;
     for (final request in _navigationQueue) {
       if (!request.completer.isCompleted) {
         request.completer.complete();

@@ -16,9 +16,17 @@ final tourGameSnapshotProvider = FutureProvider.autoDispose
     });
 
 final _snapshotBatcherProvider = Provider.autoDispose<_SnapshotBatcher>((ref) {
-  final batcher = _SnapshotBatcher(ref.watch(gameRepositoryProvider));
-  ref.listen<bool>(liveGameCardsPausedProvider, (_, paused) {
-    batcher.setPaused(paused);
+  final batcher = _SnapshotBatcher(
+    ref.watch(gameRepositoryProvider),
+    retainRequest: () {
+      // A slow request still occupies a slot if every card is unmounted.
+      // Reuse this scheduler on remount instead of starting another burst.
+      final link = ref.keepAlive();
+      return link.close;
+    },
+  );
+  ref.listen<Set<String>>(liveGameCardsPauseReasonsProvider, (_, reasons) {
+    batcher.setPaused(reasons.isNotEmpty);
   }, fireImmediately: true);
   ref.onDispose(batcher.dispose);
   return batcher;
@@ -27,12 +35,17 @@ final _snapshotBatcherProvider = Provider.autoDispose<_SnapshotBatcher>((ref) {
 /// Transport batching only. Disposed cards leave the queue before a fetch;
 /// in-flight replies complete their original requests, never a replacement.
 class _SnapshotBatcher {
-  _SnapshotBatcher(this.repository);
+  _SnapshotBatcher(this.repository, {required this.retainRequest});
 
   final GameRepository repository;
+  final void Function() Function() retainRequest;
+  static const _batchSize = 16;
+  static const _maxConcurrentRequests = 2;
   final _pending = <String, Completer<Games?>>{};
   Timer? _timer;
   bool _paused = false;
+  bool _disposed = false;
+  int _running = 0;
 
   void setPaused(bool paused) {
     _paused = paused;
@@ -61,12 +74,18 @@ class _SnapshotBatcher {
 
   void _flush() {
     _timer = null;
-    final requests = Map<String, Completer<Games?>>.of(_pending);
-    _pending.clear();
-    final ids = requests.keys.toList();
-    for (var start = 0; start < ids.length; start += 16) {
-      final end = start + 16 < ids.length ? start + 16 : ids.length;
-      unawaited(_fetch(ids.sublist(start, end), requests));
+    _pump();
+  }
+
+  void _pump() {
+    while (!_disposed &&
+        !_paused &&
+        _running < _maxConcurrentRequests &&
+        _pending.isNotEmpty) {
+      final ids = _pending.keys.take(_batchSize).toList();
+      final requests = {for (final id in ids) id: _pending.remove(id)!};
+      _running++;
+      unawaited(_fetch(ids, requests));
     }
   }
 
@@ -74,6 +93,7 @@ class _SnapshotBatcher {
     List<String> ids,
     Map<String, Completer<Games?>> requests,
   ) async {
+    final release = retainRequest();
     try {
       final games = await repository.getGamesByIds(ids);
       final byId = {for (final game in games) game.id: game};
@@ -84,10 +104,15 @@ class _SnapshotBatcher {
       for (final id in ids) {
         requests[id]!.completeError(error, stack);
       }
+    } finally {
+      _running--;
+      _pump();
+      release();
     }
   }
 
   void dispose() {
+    _disposed = true;
     _timer?.cancel();
     for (final request in _pending.values) {
       request.complete(null);

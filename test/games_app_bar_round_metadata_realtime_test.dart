@@ -21,7 +21,7 @@ void main() {
     } catch (_) {
       await Supabase.initialize(
         url: 'https://placeholder.supabase.co',
-        anonKey: 'placeholder-anon-key',
+        publishableKey: 'placeholder-anon-key',
       );
     }
   });
@@ -105,6 +105,8 @@ void main() {
       expect(after.gamesAppBarModels.single.startsAt, canonicalStart.toLocal());
       expect(repository.fetchCount, 2);
 
+      final rescheduledStart = canonicalStart.add(const Duration(hours: 1));
+      repository.round = _round(startsAt: rescheduledStart);
       repository.failNextFetch = true;
       metadataChanges.add('round-7');
       await _waitFor(() => repository.fetchCount == 3);
@@ -114,6 +116,37 @@ void main() {
       expect(
         afterTransientFailure.requireValue.gamesAppBarModels.single.startsAt,
         canonicalStart.toLocal(),
+      );
+      // No second Realtime event: duplicates are filtered at the repository.
+      await _waitFor(
+        () =>
+            container
+                .read(gamesAppBarProvider)
+                .requireValue
+                .gamesAppBarModels
+                .single
+                .startsAt ==
+            rescheduledStart.toLocal(),
+        timeout: const Duration(seconds: 4),
+      );
+      expect(repository.fetchCount, 4);
+
+      // A real deletion still finishes the existing partial-snapshot grace
+      // period without depending on unrelated ingestion heartbeats.
+      repository.deleted = true;
+      metadataChanges.add('round-7');
+      await _waitFor(
+        () =>
+            container
+                .read(gamesAppBarProvider)
+                .requireValue
+                .gamesAppBarModels
+                .isEmpty,
+        timeout: const Duration(seconds: 13),
+      );
+      expect(
+        repository.fetchCount,
+        4 + kPublishedRoundMissingSnapshotTolerance + 1,
       );
     },
   );
@@ -151,6 +184,7 @@ class _MutableRoundRepository extends RoundRepository {
   Round round = _round();
   int fetchCount = 0;
   bool failNextFetch = false;
+  bool deleted = false;
 
   @override
   Future<List<Round>> getRoundsByTourId(String tourId) async {
@@ -159,7 +193,7 @@ class _MutableRoundRepository extends RoundRepository {
       failNextFetch = false;
       throw StateError('transient metadata read failure');
     }
-    return <Round>[round];
+    return deleted ? <Round>[] : <Round>[round];
   }
 
   @override

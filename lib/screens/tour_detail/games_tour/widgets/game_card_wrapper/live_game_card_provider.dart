@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:chessever2/providers/event_video_provider.dart';
 
 import 'package:chessever2/repository/supabase/game/game_stream_repository.dart';
 import 'package:chessever2/screens/chessboard/provider/game_pgn_stream_provider.dart';
@@ -496,6 +497,7 @@ GamesTourModel watchLiveGame(
   bool streamEnabled = true,
 }) {
   if (!TickerMode.valuesOf(ref.context).enabled) return game;
+  _preloadVideo(ref, game);
   game = watchHydratedTourCard(ref, game);
   final current = ref.read(baseGameProvider(game.gameId));
   if (_shouldUseIncomingGame(current, game, allowEqualFreshnessUpdate: false)) {
@@ -523,6 +525,7 @@ GamesTourModel watchLiveGamePosition(
   bool streamEnabled = true,
 }) {
   if (!TickerMode.valuesOf(ref.context).enabled) return game;
+  _preloadVideo(ref, game);
   game = watchHydratedTourCard(ref, game);
   final positionedGame = watchHydratedGamebaseCard(ref, game);
   _ensureBaseGame(ref, positionedGame);
@@ -537,6 +540,15 @@ GamesTourModel watchLiveGamePosition(
 GamesTourModel watchHydratedGamebaseCard(WidgetRef ref, GamesTourModel game) {
   if (!shouldHydrateGamebaseCard(game)) return game;
   return ref.watch(hydratedGamebaseCardProvider(game)).valueOrNull ?? game;
+}
+
+void _preloadVideo(WidgetRef ref, GamesTourModel game) {
+  if (game.source != GameSource.supabase || game.tourId.isEmpty) return;
+  ref.watch(
+    eventVideoScopePreloadProvider(
+      EventVideoKey(tourId: game.tourId, roundId: game.roundId),
+    ),
+  );
 }
 
 GamesTourModel watchLiveGameClock(

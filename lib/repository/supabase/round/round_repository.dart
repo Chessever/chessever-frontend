@@ -3,6 +3,7 @@ import 'dart:async';
 
 import 'package:chessever2/repository/supabase/base_repository.dart';
 import 'package:chessever2/repository/supabase/round/round.dart';
+import 'package:chessever2/repository/supabase/round/round_metadata_changes.dart';
 import 'package:flutter/foundation.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -20,6 +21,7 @@ class RoundRepository extends BaseRepository {
   Stream<String> watchRoundMetadataChanges(String tourId) {
     late final StreamController<String> controller;
     late final RealtimeChannel channel;
+    final changes = RoundMetadataChanges();
 
     controller = StreamController<String>(
       onListen: () {
@@ -35,6 +37,13 @@ class RoundRepository extends BaseRepository {
                 value: tourId,
               ),
               callback: (payload) {
+                final deleted = payload.eventType == PostgresChangeEvent.delete;
+                if (!changes.accept(
+                  deleted ? payload.oldRecord : payload.newRecord,
+                  deleted: deleted,
+                )) {
+                  return;
+                }
                 final changedId =
                     payload.newRecord['id']?.toString() ??
                     payload.oldRecord['id']?.toString();
@@ -45,6 +54,7 @@ class RoundRepository extends BaseRepository {
             )
             .subscribe((status, error) {
               if (status == RealtimeSubscribeStatus.subscribed) {
+                changes.reset();
                 if (!controller.isClosed) controller.add('');
                 return;
               }

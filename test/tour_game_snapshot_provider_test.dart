@@ -75,6 +75,60 @@ void main() {
     );
   });
 
+  testWidgets(
+    'large bursts bound in-flight PGN batches and cancel queued cards',
+    (tester) async {
+      final replies = <Completer<List<Games>>>[];
+      final repo =
+          _Repository()
+            ..load = (_) {
+              final reply = Completer<List<Games>>();
+              replies.add(reply);
+              return reply.future;
+            };
+      final container = ProviderContainer(
+        overrides: [gameRepositoryProvider.overrideWithValue(repo)],
+      );
+      final listeners = [
+        for (var i = 0; i < 800; i++)
+          container.listen(tourGameSnapshotProvider('g$i'), (_, __) {}),
+      ];
+      await tester.pump(const Duration(milliseconds: 100));
+      final initialRequests = repo.requests.length;
+
+      // A fling removes all but the last queued card while two batches are slow.
+      for (var i = 32; i < 799; i++) {
+        listeners[i].close();
+      }
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 1));
+      replies.first.complete(repo.requests.first.map(_game).toList());
+      await tester.pump();
+      final afterRelease = repo.requests.length;
+      final lastRequest = repo.requests.last;
+
+      // Drain and dispose even when the initial concurrency assertion fails.
+      for (final listener in listeners.take(32)) {
+        listener.close();
+      }
+      listeners.last.close();
+      container.dispose();
+      for (var i = 1; i < replies.length; i++) {
+        replies[i].complete(repo.requests[i].map(_game).toList());
+      }
+      await tester.pump(const Duration(milliseconds: 1));
+      expect(
+        initialRequests,
+        2,
+        reason: '800 mounted requests must not launch 50 PGN downloads at once',
+      );
+      expect(afterRelease, 3);
+      expect(lastRequest, [
+        'g799',
+      ], reason: 'Unmounted cards must leave the queue before a slot opens');
+    },
+  );
+
   testWidgets('mounted cards batch by 16 and release snapshots on unmount', (
     tester,
   ) async {
@@ -101,6 +155,61 @@ void main() {
     container.dispose();
     await tester.pump(const Duration(milliseconds: 1));
   });
+
+  testWidgets(
+    'in-flight requests share the concurrency budget across remounts',
+    (tester) async {
+      final replies = <Completer<List<Games>>>[];
+      final repo =
+          _Repository()
+            ..load = (_) {
+              final reply = Completer<List<Games>>();
+              replies.add(reply);
+              return reply.future;
+            };
+      final container = ProviderContainer(
+        overrides: [gameRepositoryProvider.overrideWithValue(repo)],
+      );
+      final old = [
+        for (var i = 0; i < 32; i++)
+          container.listen(tourGameSnapshotProvider('old$i'), (_, __) {}),
+      ];
+      await tester.pump(const Duration(milliseconds: 100));
+      for (final listener in old) {
+        listener.close();
+      }
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 1));
+      final current = container.listen(
+        tourGameSnapshotProvider('new'),
+        (_, __) {},
+      );
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(repo.requests, hasLength(2));
+      container.read(liveGameCardsPauseReasonsProvider.notifier).state = {
+        'scroll',
+      };
+      await tester.pump();
+      replies.first.completeError(StateError('offline'));
+      await tester.pump();
+      expect(
+        repo.requests,
+        hasLength(2),
+        reason: 'A free slot must respect scroll pause',
+      );
+      container.read(liveGameCardsPauseReasonsProvider.notifier).state = {};
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(repo.requests.last, ['new']);
+      replies.last.complete([_game('new')]);
+      await tester.pump();
+      expect(current.read().valueOrNull?.id, 'new');
+      current.close();
+      container.dispose();
+      replies[1].complete([]);
+      await tester.pump(const Duration(milliseconds: 1));
+    },
+  );
 
   testWidgets('a fling cancels unmounted requests and delays remaining work', (
     tester,

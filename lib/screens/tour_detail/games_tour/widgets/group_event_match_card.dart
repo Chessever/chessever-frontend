@@ -287,10 +287,7 @@ class GroupEventMatchCard extends ConsumerWidget {
     WidgetRef ref,
     Map<String, LiveGamesBatchKey> liveBatchKeyByGameId,
   ) {
-    final fullGamesList = gamesData.gamesTourModels;
-    final gameIndexMap = {
-      for (int i = 0; i < fullGamesList.length; i++) fullGamesList[i].gameId: i,
-    };
+    final gameIndexMap = gamesData.gameIndexById;
 
     return ListView.builder(
       padding: EdgeInsets.zero,
@@ -344,9 +341,7 @@ class GroupEventMatchCard extends ConsumerWidget {
   ) {
     // Use the games list from widget data to maintain correct order for group events
     final fullGamesList = gamesData.gamesTourModels;
-    final gameIndexMap = {
-      for (int i = 0; i < fullGamesList.length; i++) fullGamesList[i].gameId: i,
-    };
+    final gameIndexMap = gamesData.gameIndexById;
 
     return ListView.builder(
       padding: EdgeInsets.zero,

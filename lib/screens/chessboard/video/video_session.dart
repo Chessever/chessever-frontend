@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'video_repository.dart';
 import 'video_stream.dart';
 import 'video_country_preference.dart';
+import 'video_metadata_cache.dart';
 
 typedef SaveVideoLanguage = Future<void> Function(String language);
 
@@ -18,7 +19,10 @@ class EventVideoSession extends ChangeNotifier {
     this.visible = true,
     this.saveVisibility,
   }) {
-    if (repository != null) {
+    final source = repository;
+    if (source is EventVideoMetadataCache) {
+      source.addListener(_onMetadataChanged);
+    } else if (source != null) {
       _refreshTimer = Timer.periodic(const Duration(seconds: 30), (_) {
         // A reader who hid the stream gains nothing from fresh metadata until
         // they show it again. Events with no stream yet keep polling so the
@@ -95,6 +99,18 @@ class EventVideoSession extends ChangeNotifier {
   final Set<int> _pending = {};
   final Map<String, EventVideoStream> _ranking = {};
   final Map<String, String> _selections = {};
+  VoidCallback? _releaseMetadata;
+  ResolvedEventVideos? _lastMetadata;
+
+  void _onMetadataChanged() {
+    if (_disposed || !foreground || _pending.contains(_scopeRevision)) return;
+    final source = repository;
+    if (source is! EventVideoMetadataCache) return;
+    final result = source.peek(EventVideoKey(tourId: tourId, roundId: roundId));
+    if (result == null || identical(result, _lastMetadata)) return;
+    _applyMetadata(result, preserveSelection: false);
+    notifyListeners();
+  }
 
   bool get hasVideo => selected != null;
   bool get showVideo => hasVideo && visible;
@@ -129,6 +145,21 @@ class EventVideoSession extends ChangeNotifier {
     if (newScope) {
       _scopeRevision++;
       _ranking.clear();
+      _lastMetadata = null;
+      _releaseMetadata?.call();
+      // Seed synchronously before the host paints its first board frame.
+      // The app/list preloader owns this cache, so opening a board does not
+      // start over with an empty video action while an HTTP request completes.
+      final source = repository;
+      final cached =
+          source is EventVideoMetadataCache
+              ? source.peek(EventVideoKey(tourId: tourId, roundId: roundId))
+              : null;
+      if (cached != null) _applyMetadata(cached, preserveSelection: true);
+      _releaseMetadata =
+          source is EventVideoMetadataCache && tourId.isNotEmpty
+              ? source.retain(EventVideoKey(tourId: tourId, roundId: roundId))
+              : null;
       // Resolve the new scope's flags without ever dropping a
       // stream that is already running in this event.
       unawaited(refresh(preserveSelection: true));
@@ -154,44 +185,7 @@ class EventVideoSession extends ChangeNotifier {
     try {
       final result = await repository!.fetch(tourId: tourId, roundId: roundId);
       if (_disposed || revision != _scopeRevision) return;
-      final ranked =
-          result.streams
-              .where((s) => s.supportsPlatform(VideoClientPlatform.mobile))
-              .map(
-                (s) => s.withRanking(_ranking.putIfAbsent(s.identity, () => s)),
-              )
-              .toList();
-      streams = prioritizeVideoCountry(
-        ranked,
-        _orderingCountry,
-        countrymen: _orderingCountrymen,
-      );
-      EventVideoStream? find(bool Function(EventVideoStream) predicate) {
-        for (final stream in streams) {
-          if (predicate(stream)) return stream;
-        }
-        return null;
-      }
-
-      final previous = selected;
-      final match = find((s) => s.id == (previous?.id ?? _selections[tourId]));
-      if (preserveSelection && previous != null) {
-        // Browsing the event's games or rounds (swipe or the top dropdown)
-        // never drops a running stream, even when the resolved scope does not
-        // list it. Only a new event resets playback; the provider itself shows
-        // offline/error states if the stream dies.
-        selected = match ?? previous;
-      } else {
-        selected = match ?? (streams.isEmpty ? null : streams.first);
-        if (previous?.identity != selected?.identity) {
-          stopPlayback(notify: false);
-          // The stream the reader was watching no longer exists in this scope:
-          // keep the replacement paused and wait for a deliberate video tap.
-          if (selected != null) revealFlags(notify: false);
-        }
-      }
-      failed = false;
-      if (previous == null && selected != null) revealFlags(notify: false);
+      _applyMetadata(result, preserveSelection: preserveSelection);
       notifyListeners();
     } catch (error) {
       if (_disposed || revision != _scopeRevision) return;
@@ -207,6 +201,51 @@ class EventVideoSession extends ChangeNotifier {
     } finally {
       _pending.remove(revision);
     }
+  }
+
+  void _applyMetadata(
+    ResolvedEventVideos result, {
+    required bool preserveSelection,
+  }) {
+    _lastMetadata = result;
+    final ranked =
+        result.streams
+            .where((s) => s.supportsPlatform(VideoClientPlatform.mobile))
+            .map(
+              (s) => s.withRanking(_ranking.putIfAbsent(s.identity, () => s)),
+            )
+            .toList();
+    streams = prioritizeVideoCountry(
+      ranked,
+      _orderingCountry,
+      countrymen: _orderingCountrymen,
+    );
+    EventVideoStream? find(bool Function(EventVideoStream) predicate) {
+      for (final stream in streams) {
+        if (predicate(stream)) return stream;
+      }
+      return null;
+    }
+
+    final previous = selected;
+    final match = find((s) => s.id == (previous?.id ?? _selections[tourId]));
+    if (preserveSelection && previous != null) {
+      // Browsing the event's games or rounds (swipe or the top dropdown)
+      // never drops a running stream, even when the resolved scope does not
+      // list it. Only a new event resets playback; the provider itself shows
+      // offline/error states if the stream dies.
+      selected = match ?? previous;
+    } else {
+      selected = match ?? (streams.isEmpty ? null : streams.first);
+      if (previous?.identity != selected?.identity) {
+        stopPlayback(notify: false);
+        // The stream the reader was watching no longer exists in this scope:
+        // keep the replacement paused and wait for a deliberate video tap.
+        if (selected != null) revealFlags(notify: false);
+      }
+    }
+    failed = false;
+    if (previous == null && selected != null) revealFlags(notify: false);
   }
 
   void select(String id) {
@@ -316,6 +355,11 @@ class EventVideoSession extends ChangeNotifier {
   @override
   void dispose() {
     _disposed = true;
+    final source = repository;
+    if (source is EventVideoMetadataCache) {
+      source.removeListener(_onMetadataChanged);
+    }
+    _releaseMetadata?.call();
     _refreshTimer?.cancel();
     repository?.close();
     super.dispose();

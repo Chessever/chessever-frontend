@@ -99,6 +99,8 @@ class _TeamList extends ConsumerWidget {
                     )
                     .toList(growable: false);
         final isSearching = query.isNotEmpty;
+        final officialRound =
+            allTeams.isEmpty ? null : allTeams.first.officialRound;
 
         // Empty finished compute must not look like "still loading".
         if (allTeams.isEmpty && !isSearching) {
@@ -116,8 +118,19 @@ class _TeamList extends ConsumerWidget {
             top: 8.sp,
             bottom: MediaQuery.of(context).viewInsets.bottom + 16.sp,
           ),
-          itemCount: data.isEmpty ? 1 : data.length,
+          itemCount:
+              (data.isEmpty ? 1 : data.length) +
+              (officialRound == null ? 0 : 1),
           itemBuilder: (context, index) {
+            if (officialRound != null && index == 0) {
+              return Padding(
+                padding: EdgeInsets.symmetric(vertical: 12.sp),
+                child: Text(
+                  'Official standings · after round $officialRound',
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+              );
+            }
             if (data.isEmpty) {
               return Padding(
                 padding: EdgeInsets.only(top: 48.h),
@@ -130,7 +143,7 @@ class _TeamList extends ConsumerWidget {
               );
             }
 
-            final team = data[index];
+            final team = data[index - (officialRound == null ? 0 : 1)];
             // Per-row selector: toggling one team only rebuilds that row, not
             // the whole (crest-heavy) list.
             return Consumer(

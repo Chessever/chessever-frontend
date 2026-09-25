@@ -112,6 +112,32 @@ void main() {
   }
 
   test(
+    'closing a board cancels a pending move evaluation after index remap',
+    () async {
+      final container = _boardContainer();
+      container.read(currentlyVisiblePageIndexProvider.notifier).state = 99;
+      final params = ChessBoardProviderParams(
+        game: _boardGame(id: 'dispose-debounce', pgn: _shortPgn),
+        index: 0,
+      );
+      final sub = container.listen(
+        chessBoardScreenProviderNew(params),
+        (_, __) {},
+      );
+      await Future<void>.delayed(Duration.zero);
+      final notifier = container.read(
+        chessBoardScreenProviderNew(params).notifier,
+      );
+      notifier.evaluateCurrentPosition();
+      notifier.syncPageIndex(4);
+      sub.close();
+      container.dispose();
+      // The old global debounce fired here and read disposed StateNotifier.state.
+      await Future<void>.delayed(const Duration(milliseconds: 160));
+    },
+  );
+
+  test(
     'ChessBoardProviderParams identity is gameId-only so index remap reuses provider',
     () {
       final game = _boardGame(id: 'r1-b2', pgn: _shortPgn);

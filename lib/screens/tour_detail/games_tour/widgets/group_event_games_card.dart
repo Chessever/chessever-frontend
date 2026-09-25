@@ -30,12 +30,7 @@ class GroupEventGamesCard extends StatelessWidget {
   @override
   Widget build(BuildContext buildCxt) {
     // Use the games list from widget data to maintain correct order for group events
-    final fullGamesList = gamesData.gamesTourModels;
-
-    // Audit optimization: Precompute indices to avoid O(N^2) indexWhere lookups
-    final gameIndexMap = {
-      for (int i = 0; i < fullGamesList.length; i++) fullGamesList[i].gameId: i,
-    };
+    final gameIndexMap = gamesData.gameIndexById;
 
     return ListView.separated(
       padding: EdgeInsets.zero,

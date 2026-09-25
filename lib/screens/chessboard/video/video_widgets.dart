@@ -1,8 +1,11 @@
-import 'dart:async';
 import 'dart:math' as math;
+import 'dart:ui' show FlutterView;
 import 'package:country_flags/country_flags.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:chessever2/repository/local_storage/local_storage_repository.dart'
+    show SharedPreferencesService;
+import 'video_metadata_cache.dart';
 import 'video_player.dart';
 import 'video_repository.dart';
 import 'video_session.dart';
@@ -113,13 +116,18 @@ class EventVideoHost extends StatefulWidget {
     this.pageObserver,
     this.preferredCountry,
     this.onVideoInteraction,
+    this.metadata,
+    this.configuration,
   });
   final String gameId, tourId, roundId;
   final String? preferredCountry;
   final VoidCallback? onVideoInteraction;
   final Widget child;
 
-  /// Injectable ownership boundary for tests; otherwise uses the app flavor.
+  final EventVideoMetadataCache? metadata;
+  final EventVideoConfiguration? configuration;
+
+  /// Injectable ownership boundary for tests; otherwise uses app-owned metadata.
   final EventVideoSession? session;
   final EventVideoPlayer? player;
   final RouteObserver<PageRoute<dynamic>>? pageObserver;
@@ -131,7 +139,7 @@ class EventVideoHostState extends State<EventVideoHost>
     with WidgetsBindingObserver, RouteAware {
   late final EventVideoSession session;
   EventVideoPlayer? _player;
-  bool _ready = false, _routeVisible = true;
+  bool _routeVisible = true;
   PageRoute<dynamic>? _route;
 
   @override
@@ -139,7 +147,8 @@ class EventVideoHostState extends State<EventVideoHost>
     super.didChangeDependencies();
     // Seed the metrics baseline, otherwise the first real rotation would look
     // like a metrics event with no previous size and be ignored.
-    _lastMetricsSize ??= View.of(context).physicalSize;
+    _metricsView = View.of(context);
+    _lastMetricsSize ??= _metricsView!.physicalSize;
     final route = ModalRoute.of(context);
     if (route == _route) return;
     widget.pageObserver?.unsubscribe(this);
@@ -157,11 +166,15 @@ class EventVideoHostState extends State<EventVideoHost>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    final config = EventVideoConfiguration.fromEnvironment();
+    final config = widget.configuration;
+    final prefs = SharedPreferencesService.instance.prefsOrNull;
     session =
         widget.session ??
         EventVideoSession(
-          repository: config == null ? null : HttpEventVideoRepository(config),
+          repository: widget.metadata,
+          savedCountry: prefs?.getString('ce-video-country.v1'),
+          visible: prefs?.getBool('ce-video-visible.v1') ?? true,
+          rememberedLanguage: prefs?.getString('ce-video-language.v1'),
           saveVisibility: (visible) async {
             final prefs = await SharedPreferences.getInstance();
             await prefs.setBool('ce-video-visible.v1', visible);
@@ -181,25 +194,8 @@ class EventVideoHostState extends State<EventVideoHost>
     session.addListener(_synchronize);
     _player?.addListener(_checkFullscreenExit);
     session.setPreferredCountry(widget.preferredCountry);
-    if (widget.session != null || config == null) {
-      _ready = true;
-      _open();
-    } else {
-      unawaited(_loadLanguage());
-    }
-  }
-
-  Future<void> _loadLanguage() async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      session.savedCountry = prefs.getString('ce-video-country.v1');
-      session.visible = prefs.getBool('ce-video-visible.v1') ?? true;
-      session.rememberedLanguage = prefs.getString('ce-video-language.v1');
-    } catch (_) {
-      /* Preferences are optional. */
-    }
-    if (!mounted) return;
-    _ready = true;
+    // Preferences are initialized during startup; optional storage failures
+    // must not postpone stream availability until after the first frame.
     _open();
   }
 
@@ -215,6 +211,7 @@ class EventVideoHostState extends State<EventVideoHost>
   /// Last surface size seen by [didChangeMetrics], so inset-only churn can be
   /// told apart from a real resize or rotation.
   Size? _lastMetricsSize;
+  FlutterView? _metricsView;
 
   void _checkFullscreenExit() {
     final isFullscreen = _player?.fullscreenView != null;
@@ -242,7 +239,7 @@ class EventVideoHostState extends State<EventVideoHost>
       oldWidget.pageObserver?.unsubscribe(this);
       if (_route != null) widget.pageObserver?.subscribe(this, _route!);
     }
-    if (_ready) _open();
+    _open();
   }
 
   void setRouteVisible(bool value) {
@@ -270,7 +267,8 @@ class EventVideoHostState extends State<EventVideoHost>
     // expand action. Inset-only churn (system bars, keyboard, the fullscreen
     // transition) must never stop playback; it used to fire this guard before
     // the custom-view callback landed and pause the stream on fullscreen.
-    final physicalSize = View.of(context).physicalSize;
+    final physicalSize = _metricsView?.physicalSize;
+    if (physicalSize == null) return;
     final sizeChanged =
         _lastMetricsSize != null && _lastMetricsSize != physicalSize;
     _lastMetricsSize = physicalSize;
@@ -288,7 +286,8 @@ class EventVideoHostState extends State<EventVideoHost>
         session.selected?.source.platform != VideoPlatform.twitch) {
       return;
     }
-    final view = View.of(context);
+    final view = _metricsView;
+    if (view == null) return;
     final width =
         (view.physicalSize.width -
             view.viewPadding.left -
