@@ -260,11 +260,23 @@ class _PvRowState extends State<_PvRow> {
     Color evalBgColor;
     Color evalTextColor;
     if (item.isWhiteWinning) {
-      evalBgColor = context.colors.textPrimary;
-      evalTextColor = context.colors.surface;
+      // Light keeps the eval-bar semantics: White's edge is the paper
+      // slab, Black's the ink one. Dark is unchanged.
+      evalBgColor =
+          context.isLightTheme ? Colors.white : context.colors.textPrimary;
+      evalTextColor =
+          context.isLightTheme
+              ? context.colors.textPrimary
+              : context.colors.surface;
     } else if (item.isBlackWinning) {
-      evalBgColor = context.colors.divider;
-      evalTextColor = context.colors.textPrimary;
+      evalBgColor =
+          context.isLightTheme
+              ? context.colors.surfaceInverse
+              : context.colors.divider;
+      evalTextColor =
+          context.isLightTheme
+              ? context.colors.textInverse
+              : context.colors.textPrimary;
     } else {
       evalBgColor = context.colors.textSecondary.withValues(alpha: 0.3);
       evalTextColor = context.colors.textPrimary;
@@ -323,9 +335,8 @@ class _PvRowPlaceholder extends StatelessWidget {
           _EvalBadge(
             text: badgeText,
             background: context.colors.textSecondary.withValues(alpha: 0.2),
-            foreground: context.colors.textPrimary.withValues(
-              alpha: isEvaluating ? 0.35 : 0.18,
-            ),
+            // Placeholder ink: faint on black, lifted to AA on paper.
+            foreground: context.textInk(isEvaluating ? 0.35 : 0.18),
           ),
         ],
       ),

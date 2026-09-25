@@ -39,6 +39,11 @@ String? cloudGifPhotoMimeType(Uint8List bytes) {
   return null;
 }
 
+/// Which edition of the GIF to render. [dark] is the historical look and is
+/// what the renderer draws when a request names no theme, so a dark request
+/// never carries the key and stays byte-identical to older app versions.
+enum CloudflareGifTheme { dark, light }
+
 enum CloudflareGifJobStatus {
   queued,
   analyzing,
@@ -211,12 +216,16 @@ class CloudflareGifService {
     required String pgn,
     required bool flipped,
     required Map<String, Object?> metadata,
+    CloudflareGifTheme theme = CloudflareGifTheme.dark,
   }) async {
     final response = await _postJson('v1/gif-jobs', <String, Object?>{
       'schemaVersion': 1,
       'pgn': pgn,
       'flipped': flipped,
       'metadata': metadata,
+      // Only the paper edition names itself; dark requests keep the exact
+      // body (and so the exact cache key) they always had.
+      if (theme == CloudflareGifTheme.light) 'theme': 'light',
     });
     return CloudflareGifJob.fromJson(response);
   }

@@ -10,6 +10,11 @@ import 'package:chessever2/repository/supabase/game/games.dart';
 import 'package:chessever2/providers/favorite_players_provider.dart';
 import 'package:chessever2/providers/player_backfill_provider.dart';
 import 'package:chessever2/screens/gamebase/models/models.dart';
+import 'package:chessever2/screens/library/widgets/library_context_menu.dart';
+import 'package:chessever2/screens/my_space/actions/space_menu_action.dart';
+import 'package:chessever2/screens/my_space/models/space_shortcut.dart';
+import 'package:chessever2/screens/my_space/providers/space_shortcuts_provider.dart';
+import 'package:chessever2/widgets/space_shortcut_drafts.dart';
 import 'package:chessever2/screens/player_profile/player_profile_data_source.dart';
 import 'package:chessever2/screens/player_profile/provider/player_profile_provider.dart';
 import 'package:chessever2/screens/player_profile/tabs/player_about_tab.dart';
@@ -19,6 +24,13 @@ import 'package:chessever2/screens/player_profile/widgets/save_to_library_sheet.
 import 'package:chessever2/screens/player_profile/tabs/player_events_tab.dart';
 import 'package:chessever2/screens/player_profile/tabs/player_games_tab.dart';
 import 'package:chessever2/screens/standings/providers/player_utils_provider.dart';
+import 'package:chessever2/screens/my_space/widgets/pixel_flame.dart';
+import 'package:chessever2/config/feature_flags.dart';
+import 'package:chessever2/screens/streaks/models/streak_models.dart';
+import 'package:chessever2/screens/streaks/providers/streak_providers.dart';
+import 'package:chessever2/screens/streaks/streak_player_screen.dart';
+import 'package:chessever2/screens/streaks/widgets/wall_common.dart'
+    show wallStreakDraft;
 import 'package:chessever2/services/fide_photo_service.dart';
 import 'package:chessever2/repository/gamebase/memorial_player.dart';
 import 'package:chessever2/repository/gamebase/memorial_tree_scope.dart';
@@ -36,6 +48,7 @@ import 'package:chessever2/utils/favorite_constants.dart';
 import 'package:chessever2/utils/favorite_limit_guard.dart';
 import 'package:chessever2/widgets/app_snack.dart';
 import 'package:chessever2/widgets/auth/auth_upgrade_sheet.dart';
+import 'package:chessever2/widgets/card_context_menu.dart';
 import 'package:chessever2/widgets/game_filter/game_filter_model.dart';
 import 'package:chessever2/widgets/federation_flag.dart';
 import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
@@ -86,6 +99,7 @@ class PlayerProfileScreen extends ConsumerStatefulWidget {
     this.gamebasePlayerId,
     this.memorialSourceIdentity,
     this.memorialRouteId,
+    this.initialTab,
   });
 
   /// FIDE ID - can be null for players without official FIDE registration
@@ -97,6 +111,11 @@ class PlayerProfileScreen extends ConsumerStatefulWidget {
   final String? gamebasePlayerId;
   final String? memorialSourceIdentity;
   final String? memorialRouteId;
+
+  /// Tab to open on (a My Space "Games" shortcut). Wins over the tab another
+  /// mounted profile left in [selectedPlayerProfileTabProvider]. When null the
+  /// screen keeps that shared tab, as before.
+  final PlayerProfileTab? initialTab;
 
   /// Create from SearchPlayer model
   factory PlayerProfileScreen.fromSearchPlayer(SearchPlayer player) {
@@ -131,8 +150,33 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
   String? _currentGamebasePlayerId;
   int? _gamesTabCueCount;
 
+  /// The requested [PlayerProfileScreen.initialTab] until the shared tab
+  /// provider catches up. Providers cannot be written while the route builds,
+  /// so the first frame paints this tab and the provider follows post-frame.
+  PlayerProfileTab? _pendingInitialTab;
+
+  PlayerProfileTab get _currentTab =>
+      _pendingInitialTab ?? ref.read(selectedPlayerProfileTabProvider);
+
   bool get _isMemorial =>
       widget.memorialSourceIdentity?.trim().isNotEmpty == true;
+
+  /// The FIDE id the live-streak line reads, or null for memorial and id-less
+  /// profiles, which are never on a wall, and while streaks are hidden.
+  int? get _streakFideId {
+    if (!FeatureFlags.streaks) return null;
+    final id = widget.fideId;
+    return id != null && id > 0 && !_isMemorial ? id : null;
+  }
+
+  /// Which slot the live-streak line takes, decided once in [initState] so a
+  /// wall that lands after first paint never pushes the tab bar down.
+  /// True: the wall was already in memory with this player on it, so the line
+  /// sits under the name from the very first frame. False: the wall was still
+  /// loading (or the player was not on it), so a line that turns up later
+  /// opens beneath the tab switcher, among the header extras. Null: no FIDE
+  /// identity, no line.
+  bool? _streakLineAboveTabs;
 
   List<PlayerProfileTab> get _availableTabs =>
       playerProfileTabsFor(isMemorial: _isMemorial);
@@ -177,13 +221,26 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
   void initState() {
     super.initState();
     _currentGamebasePlayerId = _normalizePlayerId(widget.gamebasePlayerId);
-    final requestedTab = ref.read(selectedPlayerProfileTabProvider);
+    // Before anything paints: the line may only sit above the tabs when it
+    // can be there on the first frame. Reading also warms the wall.
+    final streakFideId = _streakFideId;
+    if (streakFideId != null) {
+      _streakLineAboveTabs =
+          ref.read(playerLiveStreaksProvider(streakFideId)).isNotEmpty;
+    }
+    final storedTab = ref.read(selectedPlayerProfileTabProvider);
+    final requestedTab = widget.initialTab ?? storedTab;
     final initialTab =
         _availableTabs.contains(requestedTab)
             ? requestedTab
             : PlayerProfileTab.about;
-    if (initialTab != requestedTab) {
-      ref.read(selectedPlayerProfileTabProvider.notifier).state = initialTab;
+    if (initialTab != storedTab) {
+      _pendingInitialTab = initialTab;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        final pending = _pendingInitialTab;
+        if (!mounted || pending == null) return;
+        ref.read(selectedPlayerProfileTabProvider.notifier).state = pending;
+      });
     }
     _pageController = PageController(
       initialPage: _availableTabs.indexOf(initialTab),
@@ -217,11 +274,12 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
   void _handleTabSelection(int index) {
     HapticFeedbackService.buttonPress();
     final nextTab = _availableTabs[index];
-    final currentTab = ref.read(selectedPlayerProfileTabProvider);
+    final currentTab = _currentTab;
     if (nextTab == currentTab) {
       _scrollToTopBus.request();
       return;
     }
+    _pendingInitialTab = null;
     ref.read(selectedPlayerProfileTabProvider.notifier).state = nextTab;
     if (nextTab == PlayerProfileTab.games && _gamesTabCueCount != null) {
       setState(() => _gamesTabCueCount = null);
@@ -235,8 +293,10 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
 
   void _handlePageChanged(int index) {
     final nextTab = _availableTabs[index];
-    final currentTab = ref.read(selectedPlayerProfileTabProvider);
-    if (_availableTabs.indexOf(currentTab) != index) {
+    final currentTab = _currentTab;
+    _pendingInitialTab = null;
+    if (_availableTabs.indexOf(currentTab) != index ||
+        ref.read(selectedPlayerProfileTabProvider) != nextTab) {
       ref.read(selectedPlayerProfileTabProvider.notifier).state = nextTab;
     }
     if (nextTab == PlayerProfileTab.games && _gamesTabCueCount != null) {
@@ -689,7 +749,9 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
 
   @override
   Widget build(BuildContext context) {
-    final selectedTab = ref.watch(selectedPlayerProfileTabProvider);
+    final watchedTab = ref.watch(selectedPlayerProfileTabProvider);
+    if (_pendingInitialTab == watchedTab) _pendingInitialTab = null;
+    final selectedTab = _pendingInitialTab ?? watchedTab;
     final hasPlayerExplorer =
         _resolveGamebasePlayerId() != null ||
         widget.memorialSourceIdentity?.trim().isNotEmpty == true;
@@ -802,6 +864,7 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
           filteredStats.isLoading;
     }
     final isTwicLoading = gamesState.isLoading || isTwicStatsLoading;
+    final streakFideId = _streakFideId;
 
     final scaffold = Scaffold(
       key: e2eKey(E2eIds.playerProfileRoot),
@@ -837,7 +900,16 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
                 effectiveFederation: effectiveFederation,
                 effectiveName: effectiveName,
                 effectiveTitle: effectiveTitle,
+                hasPlayerExplorer: hasPlayerExplorer,
               ),
+
+              // Live streaks, one line under the name, only when the line was
+              // there on the first frame (see [_streakLineAboveTabs]).
+              if (streakFideId != null && _streakLineAboveTabs == true)
+                _ProfileStreakRow(
+                  fideId: streakFideId,
+                  playerName: effectiveName,
+                ),
 
               SizedBox(height: 8.h),
 
@@ -867,6 +939,14 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
+                    // A live streak that arrives after first paint opens here,
+                    // under the tabs, so the tab bar never moves.
+                    if (streakFideId != null && _streakLineAboveTabs == false)
+                      _ProfileStreakRow(
+                        fideId: streakFideId,
+                        playerName: effectiveName,
+                        growIn: true,
+                      ),
                     if (hasPlayerExplorer &&
                         selectedTab == PlayerProfileTab.about)
                       _buildStudyOpeningRow(),
@@ -917,10 +997,49 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
     required String? effectiveFederation,
     required String effectiveName,
     required String? effectiveTitle,
+    required bool hasPlayerExplorer,
   }) {
     final horizontalPadding = ResponsiveHelper.adaptive(
       phone: 16.w,
       tablet: 24.w,
+    );
+    final identity = Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (FederationFlag.hasVisibleFlag(effectiveFederation)) ...[
+          FederationFlag(
+            federation: effectiveFederation!.trim(),
+            height: 16.h,
+            width: 22.w,
+            borderRadius: BorderRadius.circular(2.br),
+          ),
+          SizedBox(width: 8.w),
+        ],
+        Flexible(
+          child: RichText(
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            text: TextSpan(
+              children: [
+                if (effectiveTitle != null &&
+                    effectiveTitle.trim().isNotEmpty)
+                  TextSpan(
+                    text: '${effectiveTitle.trim()} ',
+                    style: AppTypography.textMdBold.copyWith(
+                      color: context.colors.titleAccent,
+                    ),
+                  ),
+                TextSpan(
+                  text: formatPlayerDisplayName(effectiveName),
+                  style: AppTypography.textMdBold.copyWith(
+                    color: context.colors.textPrimary,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
     );
     return Padding(
       padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
@@ -953,43 +1072,36 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
                     ),
                 coachmarkMessage:
                     'Tap the player’s name to share this profile.',
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    if (FederationFlag.hasVisibleFlag(effectiveFederation)) ...[
-                      FederationFlag(
-                        federation: effectiveFederation!.trim(),
-                        height: 16.h,
-                        width: 22.w,
-                        borderRadius: BorderRadius.circular(2.br),
-                      ),
-                      SizedBox(width: 8.w),
-                    ],
-                    Flexible(
-                      child: RichText(
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        text: TextSpan(
-                          children: [
-                            if (effectiveTitle != null &&
-                                effectiveTitle.trim().isNotEmpty)
-                              TextSpan(
-                                text: '${effectiveTitle.trim()} ',
-                                style: AppTypography.textMdBold.copyWith(
-                                  color: context.colors.titleAccent,
-                                ),
-                              ),
-                            TextSpan(
-                              text: formatPlayerDisplayName(effectiveName),
-                              style: AppTypography.textMdBold.copyWith(
-                                color: context.colors.textPrimary,
-                              ),
+                // Long-press on the name opens the shared focus menu with
+                // everything about this player: pin the profile, its Games
+                // tab, its tree or its streak into My Space, share, follow.
+                // There is no visible three-dot here: the bar has no free
+                // slot for one, and the detector adds no box, so the bar
+                // lays out exactly as it always has.
+                child: Builder(
+                  builder:
+                      (nameContext) => GestureDetector(
+                        onLongPressStart:
+                            (details) => CardContextMenu.open(
+                              nameContext,
+                              // A screen reader's long-press reports no
+                              // position.
+                              origin:
+                                  details.globalPosition == Offset.zero
+                                      ? null
+                                      : details.globalPosition,
+                              actions:
+                                  (menuContext) => _profileMenuActions(
+                                    menuContext,
+                                    isFavorite: isFavorite,
+                                    effectiveName: effectiveName,
+                                    effectiveTitle: effectiveTitle,
+                                    effectiveFederation: effectiveFederation,
+                                    hasPlayerExplorer: hasPlayerExplorer,
+                                  ),
                             ),
-                          ],
-                        ),
+                        child: identity,
                       ),
-                    ),
-                  ],
                 ),
               ),
             ),
@@ -1019,6 +1131,137 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
         ],
       ),
     );
+  }
+
+  /// This player's My Space identity (FIDE id, else gamebase id, else name).
+  /// Built from constructor data only, so the key never shifts once async
+  /// lookups land and "Add" here reads "Remove" on every other surface.
+  String get _spaceTargetId => spacePlayerTargetId(
+    playerName: widget.playerName,
+    fideId: widget.fideId,
+    gamebasePlayerId: _normalizePlayerId(widget.gamebasePlayerId),
+  );
+
+  /// The menu a long-press on the app bar name opens. The My Space rows are
+  /// the ones the old pin button offered (profile, Games tab, opening tree,
+  /// streak card), worded for a menu that now also shares and follows.
+  List<LibraryMenuAction> _profileMenuActions(
+    BuildContext menuContext, {
+    required bool isFavorite,
+    required String effectiveName,
+    required String? effectiveTitle,
+    required String? effectiveFederation,
+    required bool hasPlayerExplorer,
+  }) {
+    final shareAndFollow = <LibraryMenuAction>[
+      LibraryMenuAction(
+        icon: Icons.ios_share_rounded,
+        label: 'Share profile',
+        onSelected:
+            () => _shareProfile(
+              effectiveName: effectiveName,
+              effectiveTitle: effectiveTitle,
+              effectiveFederation: effectiveFederation,
+            ),
+      ),
+      LibraryMenuAction(
+        icon:
+            isFavorite
+                ? Icons.favorite_rounded
+                : Icons.favorite_border_rounded,
+        label: isFavorite ? 'Remove from favorites' : 'Add to favorites',
+        onSelected: _toggleFavorite,
+      ),
+    ];
+    final targetId = _spaceTargetId;
+    if (targetId.isEmpty) return shareAndFollow;
+
+    SpaceShortcut playerDraft({bool games = false}) {
+      final build = games ? spacePlayerGamesDraft : spacePlayerDraft;
+      return build(
+        playerName: widget.playerName,
+        fideId: widget.fideId,
+        title: effectiveTitle,
+        federation: effectiveFederation,
+        rating: widget.rating,
+        gamebasePlayerId: _normalizePlayerId(widget.gamebasePlayerId),
+        memorialSourceIdentity: widget.memorialSourceIdentity,
+        memorialRouteId: widget.memorialRouteId,
+      );
+    }
+
+    LibraryMenuAction row(SpaceShortcut draft, String noun, IconData icon) {
+      final base = spaceMenuAction(
+        context: menuContext,
+        ref: ref,
+        draft: draft,
+      );
+      final inSpace = ref.read(spaceShortcutExistsProvider(draft.key));
+      return LibraryMenuAction(
+        icon: icon,
+        label: inSpace ? 'Remove $noun from My Space' : 'Add $noun to My Space',
+        onSelected: base.onSelected,
+      );
+    }
+
+    // The whole tree, in the explorer scope the "Study openings" row opens.
+    // Per-ECO trees pinned elsewhere key as `player:eco:color`, so the bare
+    // player key never collides with them.
+    final explorerScope =
+        _resolveGamebasePlayerId() ??
+        (_isMemorial
+            ? memorialTreeScopeKey(widget.memorialSourceIdentity!.trim())
+            : null);
+    final profileDraft = playerDraft();
+    final treeDraft =
+        hasPlayerExplorer && explorerScope != null
+            ? SpaceShortcut.draft(
+              kind: SpaceShortcutKind.playerOpenings,
+              targetId: targetId,
+              title: profileDraft.title,
+              subtitle: 'Opening tree',
+              params: {
+                ...profileDraft.params,
+                'gamebasePlayerId': explorerScope,
+                'color': 'all',
+              },
+            )
+            : null;
+
+    // The live streak card, opening on the player's hottest class.
+    final streakFideId =
+        _isMemorial || !FeatureFlags.streaks ? null : widget.fideId;
+    SpaceShortcut? streakDraft;
+    if (streakFideId != null && streakFideId > 0) {
+      final hottest =
+          ref.read(playerLiveStreaksProvider(streakFideId)).firstOrNull;
+      final fed = effectiveFederation?.trim();
+      final title = effectiveTitle?.trim();
+      streakDraft = SpaceShortcut.draft(
+        kind: SpaceShortcutKind.streak,
+        targetId: streakFideId.toString(),
+        title: widget.playerName.trim(),
+        subtitle:
+            hottest == null ? 'Streak' : '${hottest.timeClass.label} streak',
+        params: {
+          'fideId': streakFideId,
+          'playerName': widget.playerName.trim(),
+          if (hottest != null) 'timeClass': hottest.timeClass.wire,
+          if (title != null && title.isNotEmpty) 'title': title,
+          if (fed != null && fed.isNotEmpty) 'fed': fed,
+        },
+      );
+    }
+
+    return [
+      row(profileDraft, 'profile', Icons.person_outline_rounded),
+      row(playerDraft(games: true), 'Games tab', Icons.grid_view_rounded),
+      if (treeDraft != null)
+        row(treeDraft, 'opening tree', Icons.account_tree_outlined),
+      if (streakDraft != null)
+        row(streakDraft, 'streak card', Icons.local_fire_department_outlined),
+      ...shareAndFollow,
+    ];
   }
 
   Widget _buildTabSwitcher(PlayerProfileTab selectedTab) {
@@ -1104,7 +1347,9 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
                       child: LinearProgressIndicator(
                         backgroundColor: kPrimaryColor.withValues(alpha: 0.12),
                         valueColor: AlwaysStoppedAnimation<Color>(
-                          kPrimaryColor.withValues(alpha: 0.92),
+                          context.isLightTheme
+                              ? context.colors.accentText
+                              : kPrimaryColor.withValues(alpha: 0.92),
                         ),
                       ),
                     );
@@ -1280,6 +1525,200 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
   }
 }
 
+/// The player's live streaks as one tappable line in the header:
+/// "7 classical wins in a row · also 3 in rapid". Opens the streak card on the
+/// hottest class. Renders nothing when the player is on no wall.
+class _ProfileStreakRow extends ConsumerStatefulWidget {
+  const _ProfileStreakRow({
+    required this.fideId,
+    required this.playerName,
+    this.growIn = false,
+  });
+
+  final int fideId;
+  final String playerName;
+
+  /// Springs the row open when the streaks land after first paint (the slot
+  /// under the tab switcher), so the tab content eases down instead of
+  /// snapping. The slot above the tabs only ever holds a line that was there
+  /// on the first frame, so it never animates.
+  final bool growIn;
+
+  @override
+  ConsumerState<_ProfileStreakRow> createState() => _ProfileStreakRowState();
+}
+
+class _ProfileStreakRowState extends ConsumerState<_ProfileStreakRow> {
+  bool _pressed = false;
+
+  void _setPressed(bool value) {
+    if (_pressed != value) setState(() => _pressed = value);
+  }
+
+  void _open(StreakTimeClass timeClass) {
+    HapticFeedbackService.light();
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder:
+            (_) => StreakPlayerScreen(
+              fideId: widget.fideId,
+              initialClass: timeClass,
+              fallbackName: formatPlayerDisplayName(widget.playerName),
+            ),
+      ),
+    );
+  }
+
+  /// Long-press: the line lifts into the shared focus menu, where the streak
+  /// card can be opened or pinned on the class the line leads with.
+  void _showMenu(StreakRow top) {
+    _setPressed(false);
+    showLibraryContextMenu(
+      context: context,
+      previewBuilder: (_) {
+        final live = ref.read(playerLiveStreaksProvider(widget.fideId));
+        return live.isEmpty
+            ? const SizedBox.shrink()
+            : _buildLine(context, live);
+      },
+      onPreviewTap: () => _open(top.timeClass),
+      actions: [
+        LibraryMenuAction(
+          icon: Icons.local_fire_department_outlined,
+          label: 'Open streak card',
+          onSelected: () {
+            if (mounted) _open(top.timeClass);
+          },
+        ),
+        labeledSpaceMenuAction(
+          context: context,
+          ref: ref,
+          draft: wallStreakDraft(top),
+          addLabel: 'Add streak card to My Space',
+          removeLabel: 'Remove streak card from My Space',
+        ),
+      ],
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final live = ref.watch(playerLiveStreaksProvider(widget.fideId));
+    final line = live.isEmpty ? null : _buildLine(context, live);
+    if (!widget.growIn) return line ?? const SizedBox.shrink();
+
+    return SingleMotionBuilder(
+      motion: const CupertinoMotion.snappy(),
+      value: line == null ? 0.0 : 1.0,
+      builder: (context, t, child) {
+        if (child == null || t <= 0) return const SizedBox.shrink();
+        // Springs only approach 1; snap the rest so no pixel row is shaved.
+        final factor = t >= 0.999 ? 1.0 : t.clamp(0.0, 1.0);
+        return ClipRect(
+          child: Align(
+            alignment: Alignment.topCenter,
+            heightFactor: factor,
+            child: child,
+          ),
+        );
+      },
+      child: line,
+    );
+  }
+
+  Widget _buildLine(BuildContext context, List<StreakRow> live) {
+    final top = live.first;
+    final lead =
+        '${top.currentStreak} ${top.timeClass.label.toLowerCase()} '
+        'wins in a row';
+    final others = live.skip(1).toList(growable: false);
+    final also =
+        others.isEmpty
+            ? ''
+            : ' · also ${others.map((r) => '${r.currentStreak} in ${r.timeClass.label.toLowerCase()}').join(', ')}';
+    final horizontalPadding = ResponsiveHelper.adaptive(
+      phone: 20.sp,
+      tablet: 32.sp,
+    );
+
+    return Padding(
+      padding: EdgeInsets.fromLTRB(
+        horizontalPadding,
+        widget.growIn ? 4.h : 2.h,
+        horizontalPadding,
+        0,
+      ),
+      child: Semantics(
+        button: true,
+        label: '$lead$also. Open streak card',
+        excludeSemantics: true,
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTapDown: (_) => _setPressed(true),
+          onTapUp: (_) => _setPressed(false),
+          onTapCancel: () => _setPressed(false),
+          onTap: () => _open(top.timeClass),
+          onLongPress: () => _showMenu(top),
+          child: ConstrainedBox(
+            constraints: BoxConstraints(minHeight: 40.h),
+            child: SingleMotionBuilder(
+              motion: const CupertinoMotion.snappy(),
+              value: _pressed ? 1.0 : 0.0,
+              builder:
+                  (context, press, child) => Opacity(
+                    opacity: (1 - 0.4 * press).clamp(0.0, 1.0),
+                    child: child,
+                  ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  PixelFlame(streak: top.currentStreak, size: 20.ic),
+                  SizedBox(width: 8.w),
+                  Flexible(
+                    child: Text.rich(
+                      TextSpan(
+                        children: [
+                          TextSpan(
+                            text: lead,
+                            style: AppTypography.textSmMedium.copyWith(
+                              color: context.colors.textPrimary,
+                              fontFeatures: const [
+                                FontFeature.tabularFigures(),
+                              ],
+                            ),
+                          ),
+                          if (also.isNotEmpty)
+                            TextSpan(
+                              text: also,
+                              style: AppTypography.textSmRegular.copyWith(
+                                color: context.colors.textPrimaryMuted,
+                                fontFeatures: const [
+                                  FontFeature.tabularFigures(),
+                                ],
+                              ),
+                            ),
+                        ],
+                      ),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  SizedBox(width: 2.w),
+                  Icon(
+                    Icons.chevron_right_rounded,
+                    size: 18.ic,
+                    color: context.textInk(0.5),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 /// Compact pill-style button for study opening on the About tab.
 class _StudyOpeningPill extends StatefulWidget {
   const _StudyOpeningPill({required this.onTap});
@@ -1323,7 +1762,7 @@ class _StudyOpeningPillState extends State<_StudyOpeningPill> {
                   Icon(
                     Icons.account_tree_outlined,
                     size: 16.ic,
-                    color: kPrimaryColor,
+                    color: context.colors.accentText,
                   ),
                   SizedBox(width: 8.w),
                   Text(
@@ -1336,7 +1775,7 @@ class _StudyOpeningPillState extends State<_StudyOpeningPill> {
                   Icon(
                     Icons.chevron_right_rounded,
                     size: 18.ic,
-                    color: context.colors.textPrimary.withValues(alpha: 0.5),
+                    color: context.textInk(0.5),
                   ),
                 ],
               ),
@@ -1407,7 +1846,7 @@ class _ActionCardState extends State<_ActionCard> {
                 final iconColor =
                     Color.lerp(
                       context.colors.textPrimary.withValues(alpha: 0.85),
-                      _filterRed,
+                      context.isLightTheme ? context.colors.danger : _filterRed,
                       h,
                     )!;
                 return Container(
@@ -1493,11 +1932,12 @@ class _ActionCardState extends State<_ActionCard> {
                                             height: 1.15,
                                             color:
                                                 widget.isHighlighted
-                                                    ? _filterRed.withValues(
-                                                      alpha: 0.9,
-                                                    )
-                                                    : context.colors.textPrimary
-                                                        .withValues(alpha: 0.5),
+                                                    ? (context.isLightTheme
+                                                        ? context.colors.danger
+                                                        : _filterRed.withValues(
+                                                          alpha: 0.9,
+                                                        ))
+                                                    : context.textInk(0.5),
                                           ),
                                     ),
                                   ],

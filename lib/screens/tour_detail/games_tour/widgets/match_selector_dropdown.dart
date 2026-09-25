@@ -121,7 +121,7 @@ class _MatchDropdown extends HookConsumerWidget {
                     child: Text(
                       match.scoreDisplay,
                       style: AppTypography.textXsRegular.copyWith(
-                        color: kPrimaryColor,
+                        color: context.colors.accentText,
                         fontSize: 10.sp,
                         fontWeight: FontWeight.w700,
                       ),
@@ -351,7 +351,7 @@ class _MatchDropdown extends HookConsumerWidget {
                     Text(
                       selectedMatch.scoreDisplay,
                       style: AppTypography.textXsRegular.copyWith(
-                        color: kPrimaryColor,
+                        color: context.colors.accentText,
                         fontSize: 9.sp,
                         fontWeight: FontWeight.w600,
                       ),

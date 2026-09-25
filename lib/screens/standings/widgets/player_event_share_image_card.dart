@@ -1,7 +1,8 @@
 import 'package:chessever2/screens/standings/player_standing_model.dart';
-import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/png_asset.dart';
+import 'package:chessever2/utils/share_card.dart';
+import 'package:chessever2/utils/share_card_palette.dart';
 import 'package:chessever2/widgets/federation_flag.dart';
 import 'package:chessever2/widgets/player_initials_avatar.dart';
 import 'package:flutter/material.dart';
@@ -43,8 +44,8 @@ class PlayerEventShareGameRow {
 /// cyan hero glow behind the player, and the full opponent list. Height is
 /// intrinsic (grows with the game count) so no row is ever dropped to fit.
 ///
-/// The palette is hardcoded to the dark brand identity on purpose: the shared
-/// image must look the same whether the user is in light or dark mode.
+/// Colours come from the [ShareCardPalette] the capture provides: the dark
+/// brand identity, or its paper edition when the app is in light mode.
 class PlayerEventShareImageCard extends StatelessWidget {
   const PlayerEventShareImageCard({
     super.key,
@@ -77,19 +78,6 @@ class PlayerEventShareImageCard extends StatelessWidget {
   final int? blitzRating;
   final List<PlayerEventShareGameRow> rows;
 
-  // Deterministic dark brand palette (independent of the active app theme).
-  static const _bg = Color(0xFF0A0B0D);
-  static const _surface = Color(0xFF15171C); // elevated tiles
-  static const _surfaceLow = Color(0xFF101216); // recessed list / rating strip
-  static const _hairline = Color(0xFF23262E);
-  static const _cyan = kPrimaryColor;
-  static const _gold = kLightYellowColor;
-  static const _win = kGreenColor2;
-  static const _loss = kRedColor;
-  static const _textHi = Colors.white;
-  static const _textMid = Color(0xFFAEB4BF);
-  static const _textLo = Color(0xFF868C97); // ≥4.5:1 on the dark surfaces
-
   static const _padH = 22.0;
   static const footerSlogan = 'Follow Chess Better';
 
@@ -97,6 +85,7 @@ class PlayerEventShareImageCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final p = ShareCardPalette.of(context);
     // Provide MediaQuery + Material locally so the card survives the
     // off-screen measurement pass of captureFromLongWidget (which only wraps
     // the widget in Directionality), and renders identically on any device.
@@ -105,31 +94,29 @@ class PlayerEventShareImageCard extends StatelessWidget {
       child: Directionality(
         textDirection: TextDirection.ltr,
         child: Material(
-          color: _bg,
+          color: p.bg,
           child: SizedBox(
             width: width,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
+            child: ShareCardColumn(
               children: [
-                _buildHero(),
+                _buildHero(p),
                 const SizedBox(height: 16),
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: _padH),
-                  child: _buildHeadlineStats(),
+                  child: _buildHeadlineStats(p),
                 ),
                 const SizedBox(height: 10),
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: _padH),
-                  child: _buildRatingStrip(),
+                  child: _buildRatingStrip(p),
                 ),
                 const SizedBox(height: 18),
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: _padH),
-                  child: _buildGames(),
+                  child: _buildGames(p),
                 ),
                 const SizedBox(height: 18),
-                _buildFooter(),
+                _buildFooter(p),
               ],
             ),
           ),
@@ -139,27 +126,42 @@ class PlayerEventShareImageCard extends StatelessWidget {
   }
 
   // ── Hero: brand mark, event name, player identity, over a cyan glow ────────
-  Widget _buildHero() {
+  Widget _buildHero(ShareCardPalette p) {
     final eventTitle = eventName?.trim();
     final hasEvent = eventTitle != null && eventTitle.isNotEmpty;
 
     return ClipRect(
       child: DecoratedBox(
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [Color.alphaBlend(_cyan.withValues(alpha: 0.13), _bg), _bg],
-          ),
-        ),
+        // Paper keeps a flat header; dark washes it with cyan.
+        decoration:
+            p.heroTint > 0
+                ? BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [
+                      Color.alphaBlend(
+                        p.accentFill.withValues(alpha: p.heroTint),
+                        p.bg,
+                      ),
+                      p.bg,
+                    ],
+                  ),
+                )
+                : const BoxDecoration(),
         child: Stack(
           children: [
-            // Soft cyan glow bleeding from behind the avatar.
-            Positioned(
-              left: -60,
-              top: 56,
-              child: _GlowBlob(color: _cyan, size: 240, opacity: 0.20),
-            ),
+            // Soft cyan glow bleeding from behind the avatar (dark only).
+            if (p.glowOpacity > 0)
+              Positioned(
+                left: -60,
+                top: 56,
+                child: _GlowBlob(
+                  color: p.accentFill,
+                  size: 240,
+                  opacity: p.glowOpacity,
+                ),
+              ),
             Padding(
               padding: const EdgeInsets.fromLTRB(_padH, 22, _padH, 20),
               child: Column(
@@ -168,12 +170,12 @@ class PlayerEventShareImageCard extends StatelessWidget {
                   // Brand mark + wordmark
                   Row(
                     children: [
-                      _logoBadge(26),
+                      _logoBadge(26, p),
                       const SizedBox(width: 9),
                       Text(
                         'ChessEver',
                         style: AppTypography.textSmBold.copyWith(
-                          color: _textHi,
+                          color: p.textHi,
                           fontSize: 15,
                           letterSpacing: 0.2,
                         ),
@@ -182,7 +184,7 @@ class PlayerEventShareImageCard extends StatelessWidget {
                       Text(
                         'PLAYER REPORT',
                         style: AppTypography.textXxsBold.copyWith(
-                          color: _textLo,
+                          color: p.textLo,
                           fontSize: 10,
                           letterSpacing: 1.4,
                         ),
@@ -193,10 +195,10 @@ class PlayerEventShareImageCard extends StatelessWidget {
                   // Event name (the headline at the top, per the brief)
                   Text(
                     hasEvent ? eventTitle : 'Tournament',
-                    maxLines: 1,
+                    maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                     style: AppTypography.textXlBold.copyWith(
-                      color: _textHi,
+                      color: p.textHi,
                       fontSize: 21,
                       height: 1.15,
                       letterSpacing: -0.3,
@@ -208,12 +210,12 @@ class PlayerEventShareImageCard extends StatelessWidget {
                     width: 38,
                     height: 3,
                     decoration: BoxDecoration(
-                      color: _cyan,
+                      color: p.accentFill,
                       borderRadius: BorderRadius.circular(2),
                     ),
                   ),
                   const SizedBox(height: 18),
-                  _buildPlayerIdentity(),
+                  _buildPlayerIdentity(p),
                 ],
               ),
             ),
@@ -223,7 +225,7 @@ class PlayerEventShareImageCard extends StatelessWidget {
     );
   }
 
-  Widget _buildPlayerIdentity() {
+  Widget _buildPlayerIdentity(ShareCardPalette p) {
     final titleText = (player.title ?? '').trim();
     final countryCode = player.countryCode.trim();
 
@@ -261,7 +263,7 @@ class PlayerEventShareImageCard extends StatelessWidget {
                       TextSpan(
                         text: '$titleText ',
                         style: AppTypography.textXlBold.copyWith(
-                          color: _gold,
+                          color: p.gold,
                           fontSize: 22,
                           height: 1.1,
                           letterSpacing: -0.3,
@@ -270,7 +272,7 @@ class PlayerEventShareImageCard extends StatelessWidget {
                     TextSpan(
                       text: player.name,
                       style: AppTypography.textXlBold.copyWith(
-                        color: _textHi,
+                        color: p.textHi,
                         fontSize: 22,
                         height: 1.1,
                         letterSpacing: -0.3,
@@ -295,7 +297,7 @@ class PlayerEventShareImageCard extends StatelessWidget {
                     Text(
                       formatHeaderRating(standardRating!),
                       style: AppTypography.textSmMedium.copyWith(
-                        color: _textMid,
+                        color: p.textMid,
                         fontSize: 13,
                         fontFeatures: const [FontFeature.tabularFigures()],
                       ),
@@ -310,7 +312,7 @@ class PlayerEventShareImageCard extends StatelessWidget {
   }
 
   // ── Headline stats: Performance / Score / Rating, divided not boxed ────────
-  Widget _buildHeadlineStats() {
+  Widget _buildHeadlineStats(ShareCardPalette p) {
     final scoreText =
         eventScore != null && eventTotalGames != null
             ? formatShareScore(eventScore!, eventTotalGames!)
@@ -320,14 +322,14 @@ class PlayerEventShareImageCard extends StatelessWidget {
             ? '-'
             : (ratingDiff! >= 0 ? '+$ratingDiff' : '$ratingDiff');
     final diffColor =
-        ratingDiff == null ? _textHi : (ratingDiff! >= 0 ? _win : _loss);
+        ratingDiff == null ? p.textHi : (ratingDiff! >= 0 ? p.win : p.loss);
 
     return Container(
       height: 92,
       decoration: BoxDecoration(
-        color: _surface,
+        color: p.surface,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: _hairline, width: 1),
+        border: Border.all(color: p.tileEdge ?? p.hairline, width: 1),
       ),
       child: Row(
         children: [
@@ -337,9 +339,9 @@ class PlayerEventShareImageCard extends StatelessWidget {
               value: performanceRating?.toString() ?? '-',
             ),
           ),
-          _statDivider(),
+          _statDivider(p),
           Expanded(child: _HeadlineStat(label: 'SCORE', value: scoreText)),
-          _statDivider(),
+          _statDivider(p),
           Expanded(
             child: _HeadlineStat(
               label: 'RATING',
@@ -352,14 +354,15 @@ class PlayerEventShareImageCard extends StatelessWidget {
     );
   }
 
-  Widget _statDivider() => Container(width: 1, height: 42, color: _hairline);
+  Widget _statDivider(ShareCardPalette p) =>
+      Container(width: 1, height: 42, color: p.hairline);
 
   // ── Rating strip: Classical / Rapid / Blitz, secondary weight ──────────────
-  Widget _buildRatingStrip() {
+  Widget _buildRatingStrip(ShareCardPalette p) {
     return Container(
       height: 54,
       decoration: BoxDecoration(
-        color: _surfaceLow,
+        color: p.surfaceLow,
         borderRadius: BorderRadius.circular(12),
       ),
       child: Row(
@@ -371,7 +374,7 @@ class PlayerEventShareImageCard extends StatelessWidget {
               rating: standardRating,
             ),
           ),
-          _segDivider(),
+          _segDivider(p),
           Expanded(
             child: _RatingSegment(
               icon: PngAsset.rapidIcon,
@@ -379,7 +382,7 @@ class PlayerEventShareImageCard extends StatelessWidget {
               rating: rapidRating,
             ),
           ),
-          _segDivider(),
+          _segDivider(p),
           Expanded(
             child: _RatingSegment(
               icon: PngAsset.blitzIcon,
@@ -392,10 +395,11 @@ class PlayerEventShareImageCard extends StatelessWidget {
     );
   }
 
-  Widget _segDivider() => Container(width: 1, height: 28, color: _hairline);
+  Widget _segDivider(ShareCardPalette p) =>
+      Container(width: 1, height: 28, color: p.hairline);
 
   // ── Games: every opponent row, never truncated ────────────────────────────
-  Widget _buildGames() {
+  Widget _buildGames(ShareCardPalette p) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -406,7 +410,7 @@ class PlayerEventShareImageCard extends StatelessWidget {
               Text(
                 'RESULTS',
                 style: AppTypography.textXxsBold.copyWith(
-                  color: _textLo,
+                  color: p.textLo,
                   fontSize: 10.5,
                   letterSpacing: 1.4,
                 ),
@@ -415,7 +419,7 @@ class PlayerEventShareImageCard extends StatelessWidget {
               Text(
                 rows.length == 1 ? '1 game' : '${rows.length} games',
                 style: AppTypography.textXxsMedium.copyWith(
-                  color: _textLo,
+                  color: p.textLo,
                   fontSize: 11,
                   fontFeatures: const [FontFeature.tabularFigures()],
                 ),
@@ -426,7 +430,7 @@ class PlayerEventShareImageCard extends StatelessWidget {
         ClipRRect(
           borderRadius: BorderRadius.circular(14),
           child: Container(
-            color: _surfaceLow,
+            color: p.surfaceLow,
             child: Column(
               children: [
                 for (var i = 0; i < rows.length; i++)
@@ -444,15 +448,15 @@ class PlayerEventShareImageCard extends StatelessWidget {
   }
 
   // ── Footer: persistent ChessEver lockup + attribution ──────────────────────
-  Widget _buildFooter() {
+  Widget _buildFooter(ShareCardPalette p) {
     return Container(
-      decoration: const BoxDecoration(
-        border: Border(top: BorderSide(color: _hairline, width: 1)),
+      decoration: BoxDecoration(
+        border: Border(top: BorderSide(color: p.hairline, width: 1)),
       ),
       padding: const EdgeInsets.fromLTRB(_padH, 15, _padH, 16),
       child: Row(
         children: [
-          _logoBadge(30),
+          _logoBadge(30, p),
           const SizedBox(width: 11),
           Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -461,7 +465,7 @@ class PlayerEventShareImageCard extends StatelessWidget {
               Text(
                 'ChessEver',
                 style: AppTypography.textSmBold.copyWith(
-                  color: _textHi,
+                  color: p.textHi,
                   fontSize: 14.5,
                 ),
               ),
@@ -469,7 +473,7 @@ class PlayerEventShareImageCard extends StatelessWidget {
               Text(
                 PlayerEventShareImageCard.footerSlogan,
                 style: AppTypography.textXxsMedium.copyWith(
-                  color: _textLo,
+                  color: p.textLo,
                   fontSize: 11,
                 ),
               ),
@@ -479,7 +483,7 @@ class PlayerEventShareImageCard extends StatelessWidget {
           Text(
             'chessever.com',
             style: AppTypography.textXsBold.copyWith(
-              color: _cyan,
+              color: p.accentInk,
               fontSize: 12.5,
             ),
           ),
@@ -488,19 +492,22 @@ class PlayerEventShareImageCard extends StatelessWidget {
     );
   }
 
-  Widget _logoBadge(double size) {
+  Widget _logoBadge(double size, ShareCardPalette p) {
     return Container(
       width: size,
       height: size,
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(size * 0.28),
-        boxShadow: [
-          BoxShadow(
-            color: _cyan.withValues(alpha: 0.35),
-            blurRadius: 14,
-            spreadRadius: -4,
-          ),
-        ],
+        boxShadow:
+            p.logoGlow
+                ? [
+                  BoxShadow(
+                    color: p.accentFill.withValues(alpha: 0.35),
+                    blurRadius: 14,
+                    spreadRadius: -4,
+                  ),
+                ]
+                : null,
       ),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(size * 0.28),
@@ -569,6 +576,7 @@ class _HeadlineStat extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final p = ShareCardPalette.of(context);
     return Column(
       mainAxisSize: MainAxisSize.min,
       mainAxisAlignment: MainAxisAlignment.center,
@@ -577,7 +585,7 @@ class _HeadlineStat extends StatelessWidget {
           label,
           maxLines: 1,
           style: AppTypography.textXxsBold.copyWith(
-            color: PlayerEventShareImageCard._textLo,
+            color: p.textLo,
             fontSize: 10,
             letterSpacing: 0.8,
           ),
@@ -587,7 +595,7 @@ class _HeadlineStat extends StatelessWidget {
           value,
           maxLines: 1,
           style: AppTypography.displayXsBold.copyWith(
-            color: valueColor ?? PlayerEventShareImageCard._textHi,
+            color: valueColor ?? p.textHi,
             fontSize: 26,
             height: 1.0,
             letterSpacing: -0.5,
@@ -612,10 +620,11 @@ class _RatingSegment extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final p = ShareCardPalette.of(context);
     return Row(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
-        Image.asset(icon, width: 17, height: 17),
+        shareTimeControlIcon(icon, p),
         const SizedBox(width: 8),
         Column(
           mainAxisSize: MainAxisSize.min,
@@ -625,7 +634,7 @@ class _RatingSegment extends StatelessWidget {
               label,
               maxLines: 1,
               style: AppTypography.textXxsMedium.copyWith(
-                color: PlayerEventShareImageCard._textLo,
+                color: p.textLo,
                 fontSize: 9.5,
                 letterSpacing: 0.2,
               ),
@@ -635,7 +644,7 @@ class _RatingSegment extends StatelessWidget {
               rating?.toString() ?? '-',
               maxLines: 1,
               style: AppTypography.textSmBold.copyWith(
-                color: PlayerEventShareImageCard._textHi,
+                color: p.textHi,
                 fontSize: 15,
                 height: 1.05,
                 fontFeatures: const [FontFeature.tabularFigures()],
@@ -661,6 +670,7 @@ class _ShareGameRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final p = ShareCardPalette.of(context);
     final titleText = (row.title ?? '').trim();
 
     return Container(
@@ -670,12 +680,7 @@ class _ShareGameRow extends StatelessWidget {
         border:
             isLast
                 ? null
-                : const Border(
-                  bottom: BorderSide(
-                    color: PlayerEventShareImageCard._hairline,
-                    width: 0.7,
-                  ),
-                ),
+                : Border(bottom: BorderSide(color: p.hairline, width: 0.7)),
       ),
       child: Row(
         children: [
@@ -685,7 +690,7 @@ class _ShareGameRow extends StatelessWidget {
               row.roundLabel ?? '${index + 1}.',
               maxLines: 1,
               style: AppTypography.textSmBold.copyWith(
-                color: PlayerEventShareImageCard._textMid,
+                color: p.textMid,
                 fontSize: 13.5,
                 fontFeatures: const [FontFeature.tabularFigures()],
               ),
@@ -711,14 +716,14 @@ class _ShareGameRow extends StatelessWidget {
                     TextSpan(
                       text: '$titleText ',
                       style: AppTypography.textSmBold.copyWith(
-                        color: PlayerEventShareImageCard._gold,
+                        color: p.gold,
                         fontSize: 14.5,
                       ),
                     ),
                   TextSpan(
                     text: row.name,
                     style: AppTypography.textSmBold.copyWith(
-                      color: PlayerEventShareImageCard._textHi,
+                      color: p.textHi,
                       fontSize: 14.5,
                     ),
                   ),
@@ -730,7 +735,7 @@ class _ShareGameRow extends StatelessWidget {
           Text(
             row.rating.toString(),
             style: AppTypography.textSmMedium.copyWith(
-              color: PlayerEventShareImageCard._textMid,
+              color: p.textMid,
               fontSize: 13.5,
               fontFeatures: const [FontFeature.tabularFigures()],
             ),
@@ -744,10 +749,7 @@ class _ShareGameRow extends StatelessWidget {
                     ? '+${row.ratingChange!.toStringAsFixed(0)}'
                     : row.ratingChange!.toStringAsFixed(0),
                 style: AppTypography.textXxsBold.copyWith(
-                  color:
-                      row.ratingChange! > 0
-                          ? PlayerEventShareImageCard._win
-                          : PlayerEventShareImageCard._loss,
+                  color: row.ratingChange! > 0 ? p.win : p.loss,
                   fontSize: 11,
                   fontFeatures: const [FontFeature.tabularFigures()],
                 ),
@@ -757,28 +759,28 @@ class _ShareGameRow extends StatelessWidget {
           const SizedBox(width: 12),
           // Result on a white/black piece-colour circle (mirrors the live
           // scorecard): the circle fill conveys the side the player had, the
-          // inverted text the score. Replaces the old colour-tinted chip.
+          // inverted text the score. The disc that matches the page gets an
+          // edge so it never melts into it.
           Container(
             width: 28,
             height: 28,
             alignment: Alignment.center,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              color: row.isWhite ? Colors.white : Colors.black,
-              border:
-                  row.isWhite
-                      ? null
-                      : Border.all(
-                        color: Colors.white.withValues(alpha: 0.35),
-                        width: 1.1,
-                      ),
+              color: row.isWhite ? p.pieceWhite : p.pieceBlack,
+              border: switch (row.isWhite
+                  ? p.pieceWhiteEdge
+                  : p.pieceBlackEdge) {
+                final edge? => Border.all(color: edge, width: 1.1),
+                null => null,
+              },
             ),
             child: Text(
               row.result,
               maxLines: 1,
               textAlign: TextAlign.center,
               style: AppTypography.textSmBold.copyWith(
-                color: row.isWhite ? Colors.black : Colors.white,
+                color: row.isWhite ? p.pieceBlack : p.pieceWhite,
                 fontSize: 13.5,
               ),
             ),

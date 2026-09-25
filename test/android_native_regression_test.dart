@@ -44,7 +44,17 @@ void main() {
       expect(source, contains('handle.id <= 0'));
       expect(source, contains('player.getIsValidVoiceHandle(handle)'));
       expect(source, contains('prepareForForegroundPlayback()'));
-      expect(source, contains('_recoverAndroidPlayback(type);'));
+      expect(
+        source,
+        matches(
+          RegExp(
+            r'await _recoverAndroidPlayback\(\s*type,\s*ticket: ticket,\s*'
+            r'fallback: fallback,\s*classTicket: classTicket,?'
+            // A layered voice (a race loop) threads its playback shape too.
+            r'(?:\s*voice: voice,?)?\s*\);',
+          ),
+        ),
+      );
       expect(source, contains('Future<void> _recoverAndroidSfxAssets()'));
       expect(source, contains('Future<void> _reloadAndroidSfxAssets()'));
       expect(
@@ -73,7 +83,8 @@ void main() {
       );
       _expectBefore(
         source,
-        anchor: 'Future<void> _playWithRecovery',
+        // Completes with the voice it started, for the race's layered loops.
+        anchor: 'Future<SoundHandle?> _playWithRecovery',
         first: 'if (Platform.isAndroid)',
         second: '_teardownPlayer();',
         reason:

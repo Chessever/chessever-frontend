@@ -92,7 +92,7 @@ void main() {
         File(
           'lib/screens/onboarding/player_selection_screen.dart',
         ).readAsStringSync();
-    final flowSource =
+    final feedSource =
         File(
           'lib/screens/onboarding/onboarding_flow_screen.dart',
         ).readAsStringSync();
@@ -101,12 +101,12 @@ void main() {
     expect(authSource, isNot(contains('requestPermissionIfNotGranted')));
     expect(selectionSource, isNot(contains('requestPermissionIfNotGranted')));
     expect(
-      'requestPermissionIfNotGranted'.allMatches(flowSource),
+      'requestPermissionIfNotGranted'.allMatches(feedSource),
       hasLength(1),
       reason:
           'The native permission dialog must have one onboarding trigger, '
           'immediately after Favorites.',
     );
-    expect(flowSource, contains('NotificationPermissionStep('));
+    expect(feedSource, contains('NotificationPermissionStep('));
   });
 }

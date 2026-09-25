@@ -207,9 +207,14 @@ class _PositionedListScrollbarState extends State<PositionedListScrollbar> {
                         scrollProgress:
                             _isDragging ? _dragProgress : _scrollProgress,
                         thumbWidth: widget.thumbWidth,
+                        // A draggable thumb: cyan is ~1.7:1 on paper, so
+                        // light draws it in accent-text teal.
                         thumbColor:
                             widget.thumbColor ??
-                            kPrimaryColor.withValues(alpha: 0.7),
+                            (context.isLightTheme
+                                    ? context.colors.accentText
+                                    : kPrimaryColor)
+                                .withValues(alpha: 0.7),
                         trackColor:
                             widget.trackColor ??
                             context.colors.surfaceRecessed.withValues(alpha: 0.3),

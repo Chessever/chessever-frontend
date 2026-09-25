@@ -22,10 +22,13 @@ import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/pgn_clock_utils.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/string_utils.dart';
+import 'package:chessever2/widgets/board_like_heart.dart';
 import 'package:chessground/chessground.dart';
 import 'package:dartchess/dartchess.dart';
 import 'package:flutter/foundation.dart';
 import 'package:chessever2/screens/library/widgets/library_context_menu.dart';
+import 'package:chessever2/screens/my_space/actions/space_menu_action.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/utils/game_space_shortcut.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
@@ -462,9 +465,19 @@ class ChessBoardFromFENNew extends ConsumerWidget {
   /// Same menu the Library and Games-tab cards raise, so a long press reads
   /// identically wherever it happens. Replaces a bespoke selective-blur overlay
   /// that dimmed the whole screen around a cut-out of this board.
-  void _showContextMenu(BuildContext context, WidgetRef ref) {
+  ///
+  /// [cardContext] is the board card's own box (inside the side padding), and
+  /// [preview] rebuilds that card so it lifts in place above the menu.
+  void _showContextMenu(
+    BuildContext cardContext,
+    WidgetRef ref, {
+    WidgetBuilder? preview,
+  }) {
+    final spaceDraft = gameSpaceShortcutDraft(gamesTourModel);
     showLibraryContextMenu(
-      context: context,
+      context: cardContext,
+      previewBuilder: preview,
+      onPreviewTap: preview == null ? null : _openFromPreview,
       actions: [
         if (showPin)
           LibraryMenuAction(
@@ -475,10 +488,18 @@ class ChessBoardFromFENNew extends ConsumerWidget {
         LibraryMenuAction(
           icon: Icons.ios_share_rounded,
           label: 'Share',
-          onSelected: () => showGameShareOverlay(context, ref, gamesTourModel),
+          onSelected:
+              () => showGameShareOverlay(cardContext, ref, gamesTourModel),
         ),
+        if (spaceDraft != null)
+          spaceMenuAction(context: cardContext, ref: ref, draft: spaceDraft),
       ],
     );
+  }
+
+  void _openFromPreview() {
+    HapticFeedbackService.cardTap();
+    onChanged();
   }
 
   @override
@@ -489,32 +510,48 @@ class ChessBoardFromFENNew extends ConsumerWidget {
     return Padding(
       padding: EdgeInsets.only(left: 24.sp, right: 24.sp, bottom: 8.sp),
       child: LayoutBuilder(
-        builder: (context, constraints) {
+        builder: (cardContext, constraints) {
           // Get width AFTER padding is applied
           final availableWidth = constraints.maxWidth;
           // Board size is available width minus the evaluation bar
           final boardSize = availableWidth - sideBarWidth;
+
+          Widget layout({
+            required bool allowStockfish,
+            bool animateEnding = true,
+          }) => _ChessBoardLayout(
+            gamesTourModel: gamesTourModel,
+            lastMove: _uciToMove(gamesTourModel.lastMove ?? ''),
+            sideBarWidth: sideBarWidth,
+            boardSize: boardSize,
+            isPinned: isPinned,
+            showEvalBar: showEvalBar,
+            fixedBottomSide: fixedBottomSide,
+            allowStockfishFallback: allowStockfish,
+            animateEnding: animateEnding,
+            liveBatchKey: liveBatchKey,
+            scoreCardViewSource: scoreCardViewSource,
+            scoreCardGamesContext: scoreCardGamesContext,
+            playerProfileDataSource: playerProfileDataSource,
+          );
 
           return GestureDetector(
             onTap: () {
               HapticFeedbackService.cardTap();
               onChanged();
             },
-            onLongPress: () => _showContextMenu(context, ref),
-            child: _ChessBoardLayout(
-              gamesTourModel: gamesTourModel,
-              lastMove: _uciToMove(gamesTourModel.lastMove ?? ''),
-              sideBarWidth: sideBarWidth,
-              boardSize: boardSize,
-              isPinned: isPinned,
-              showEvalBar: showEvalBar,
-              fixedBottomSide: fixedBottomSide,
-              allowStockfishFallback: allowStockfishFallback,
-              liveBatchKey: liveBatchKey,
-              scoreCardViewSource: scoreCardViewSource,
-              scoreCardGamesContext: scoreCardGamesContext,
-              playerProfileDataSource: playerProfileDataSource,
-            ),
+            onLongPress:
+                () => _showContextMenu(
+                  cardContext,
+                  ref,
+                  // The lifted copy is a static StaticChessboard + rows, never
+                  // an engine client: the list card already owns the eval.
+                  // Its game-end marks start at rest so it matches the card.
+                  preview:
+                      (_) =>
+                          layout(allowStockfish: false, animateEnding: false),
+                ),
+            child: layout(allowStockfish: allowStockfishFallback),
           );
         },
       ),
@@ -557,9 +594,16 @@ class GridChessBoardFromFENNew extends ConsumerWidget {
   bool get isPinned => pinnedIds.contains(gamesTourModel.gameId);
 
   /// The one shared long-press menu — see [ChessBoardFromFENNew._showContextMenu].
-  void _showContextMenu(BuildContext context, WidgetRef ref) {
+  void _showContextMenu(
+    BuildContext cardContext,
+    WidgetRef ref, {
+    WidgetBuilder? preview,
+  }) {
+    final spaceDraft = gameSpaceShortcutDraft(gamesTourModel);
     showLibraryContextMenu(
-      context: context,
+      context: cardContext,
+      previewBuilder: preview,
+      onPreviewTap: preview == null ? null : _openFromPreview,
       actions: [
         if (showPin)
           LibraryMenuAction(
@@ -570,7 +614,69 @@ class GridChessBoardFromFENNew extends ConsumerWidget {
         LibraryMenuAction(
           icon: Icons.ios_share_rounded,
           label: 'Share',
-          onSelected: () => showGameShareOverlay(context, ref, gamesTourModel),
+          onSelected:
+              () => showGameShareOverlay(cardContext, ref, gamesTourModel),
+        ),
+        if (spaceDraft != null)
+          spaceMenuAction(context: cardContext, ref: ref, draft: spaceDraft),
+      ],
+    );
+  }
+
+  void _openFromPreview() {
+    HapticFeedbackService.cardTap();
+    onChanged();
+  }
+
+  /// Player row, board, player row: the grid card as laid out in the list,
+  /// and the copy the long-press menu lifts (with the engine off).
+  Widget _cardColumn({
+    required double boardSize,
+    required double sideBarWidth,
+    required bool showEvalBar,
+    required Side topSide,
+    required Side bottomSide,
+    required bool allowStockfish,
+    bool animateEnding = true,
+  }) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        _PlayerRow(
+          gamesTourModel: gamesTourModel,
+          isWhitePlayer: topSide == Side.white,
+          isCurrentPlayer: gamesTourModel.activePlayer == topSide,
+          isPinned: isPinned,
+          playerView: PlayerView.gridView,
+          liveBatchKey: liveBatchKey,
+          scoreCardViewSource: scoreCardViewSource,
+          scoreCardGamesContext: scoreCardGamesContext,
+          playerProfileDataSource: playerProfileDataSource,
+        ),
+        SizedBox(height: 4.h),
+        _ChessBoardWithEvaluation(
+          gamesTourModel: gamesTourModel,
+          lastMove: _uciToMove(gamesTourModel.lastMove ?? ''),
+          sideBarWidth: sideBarWidth,
+          boardSize: boardSize,
+          playerView: PlayerView.gridView,
+          showEvalBar: showEvalBar,
+          showCoordinates: false,
+          orientation: bottomSide,
+          allowStockfishFallback: allowStockfish,
+          animateEnding: animateEnding,
+        ),
+        SizedBox(height: 4.h),
+        _PlayerRow(
+          gamesTourModel: gamesTourModel,
+          isWhitePlayer: bottomSide == Side.white,
+          isCurrentPlayer: gamesTourModel.activePlayer == bottomSide,
+          isPinned: false,
+          playerView: PlayerView.gridView,
+          liveBatchKey: liveBatchKey,
+          scoreCardViewSource: scoreCardViewSource,
+          scoreCardGamesContext: scoreCardGamesContext,
+          playerProfileDataSource: playerProfileDataSource,
         ),
       ],
     );
@@ -583,115 +689,53 @@ class GridChessBoardFromFENNew extends ConsumerWidget {
     final bottomSide = fixedBottomSide ?? Side.white;
     final topSide = _oppositeSide(bottomSide);
 
-    // On phone, use the original fixed calculation for 2-column grid
-    if (ResponsiveHelper.isPhone) {
-      final screenWidth = (MediaQuery.of(context).size.width / 2) - 24.sp;
-      final boardSize = screenWidth - sideBarWidth;
+    Widget card(
+      BuildContext cardContext, {
+      required double boardSize,
+      double? width,
+    }) {
+      Widget column({required bool allowStockfish, bool animateEnding = true}) {
+        final content = _cardColumn(
+          boardSize: boardSize,
+          sideBarWidth: sideBarWidth,
+          showEvalBar: showEvalBar,
+          topSide: topSide,
+          bottomSide: bottomSide,
+          allowStockfish: allowStockfish,
+          animateEnding: animateEnding,
+        );
+        return width == null ? content : SizedBox(width: width, child: content);
+      }
+
       return GestureDetector(
         onTap: () {
           HapticFeedbackService.cardTap();
           onChanged();
         },
-        onLongPress: () => _showContextMenu(context, ref),
-        child: SizedBox(
-          width: screenWidth,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              _PlayerRow(
-                gamesTourModel: gamesTourModel,
-                isWhitePlayer: topSide == Side.white,
-                isCurrentPlayer: gamesTourModel.activePlayer == topSide,
-                isPinned: isPinned,
-                playerView: PlayerView.gridView,
-                liveBatchKey: liveBatchKey,
-                scoreCardViewSource: scoreCardViewSource,
-                scoreCardGamesContext: scoreCardGamesContext,
-                playerProfileDataSource: playerProfileDataSource,
-              ),
-              SizedBox(height: 4.h),
-              _ChessBoardWithEvaluation(
-                gamesTourModel: gamesTourModel,
-                lastMove: _uciToMove(gamesTourModel.lastMove ?? ''),
-                sideBarWidth: sideBarWidth,
-                boardSize: boardSize,
-                playerView: PlayerView.gridView,
-                showEvalBar: showEvalBar,
-                showCoordinates: false,
-                orientation: bottomSide,
-                allowStockfishFallback: allowStockfishFallback,
-              ),
-              SizedBox(height: 4.h),
-              _PlayerRow(
-                gamesTourModel: gamesTourModel,
-                isWhitePlayer: bottomSide == Side.white,
-                isCurrentPlayer: gamesTourModel.activePlayer == bottomSide,
-                isPinned: false,
-                playerView: PlayerView.gridView,
-                liveBatchKey: liveBatchKey,
-                scoreCardViewSource: scoreCardViewSource,
-                scoreCardGamesContext: scoreCardGamesContext,
-                playerProfileDataSource: playerProfileDataSource,
-              ),
-            ],
-          ),
-        ),
+        onLongPress:
+            () => _showContextMenu(
+              cardContext,
+              ref,
+              preview:
+                  (_) => column(allowStockfish: false, animateEnding: false),
+            ),
+        child: column(allowStockfish: allowStockfishFallback),
       );
+    }
+
+    // On phone, use the original fixed calculation for 2-column grid
+    if (ResponsiveHelper.isPhone) {
+      final screenWidth = (MediaQuery.of(context).size.width / 2) - 24.sp;
+      final boardSize = screenWidth - sideBarWidth;
+      return card(context, boardSize: boardSize, width: screenWidth);
     }
 
     // On tablet, use LayoutBuilder to adapt to parent constraints
     return LayoutBuilder(
-      builder: (context, constraints) {
+      builder: (cardContext, constraints) {
         final availableWidth = constraints.maxWidth;
         final boardSize = availableWidth - sideBarWidth;
-
-        return GestureDetector(
-          onTap: () {
-            HapticFeedbackService.cardTap();
-            onChanged();
-          },
-          onLongPress: () => _showContextMenu(context, ref),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              _PlayerRow(
-                gamesTourModel: gamesTourModel,
-                isWhitePlayer: topSide == Side.white,
-                isCurrentPlayer: gamesTourModel.activePlayer == topSide,
-                isPinned: isPinned,
-                playerView: PlayerView.gridView,
-                liveBatchKey: liveBatchKey,
-                scoreCardViewSource: scoreCardViewSource,
-                scoreCardGamesContext: scoreCardGamesContext,
-                playerProfileDataSource: playerProfileDataSource,
-              ),
-              SizedBox(height: 4.h),
-              _ChessBoardWithEvaluation(
-                gamesTourModel: gamesTourModel,
-                lastMove: _uciToMove(gamesTourModel.lastMove ?? ''),
-                sideBarWidth: sideBarWidth,
-                boardSize: boardSize,
-                playerView: PlayerView.gridView,
-                showEvalBar: showEvalBar,
-                showCoordinates: false,
-                orientation: bottomSide,
-                allowStockfishFallback: allowStockfishFallback,
-              ),
-              SizedBox(height: 4.h),
-              _PlayerRow(
-                gamesTourModel: gamesTourModel,
-                isWhitePlayer: bottomSide == Side.white,
-                isCurrentPlayer: gamesTourModel.activePlayer == bottomSide,
-                isPinned: false,
-                playerView: PlayerView.gridView,
-                liveBatchKey: liveBatchKey,
-                scoreCardViewSource: scoreCardViewSource,
-                scoreCardGamesContext: scoreCardGamesContext,
-                playerProfileDataSource: playerProfileDataSource,
-              ),
-            ],
-          ),
-        );
+        return card(cardContext, boardSize: boardSize);
       },
     );
   }
@@ -738,6 +782,7 @@ class _ChessBoardLayout extends ConsumerWidget {
     required this.showEvalBar,
     required this.fixedBottomSide,
     required this.allowStockfishFallback,
+    this.animateEnding = true,
     required this.liveBatchKey,
     required this.scoreCardViewSource,
     required this.scoreCardGamesContext,
@@ -752,6 +797,9 @@ class _ChessBoardLayout extends ConsumerWidget {
   final bool showEvalBar;
   final Side? fixedBottomSide;
   final bool allowStockfishFallback;
+
+  /// See [GameCardChessboard.animateEnding].
+  final bool animateEnding;
   final LiveGamesBatchKey? liveBatchKey;
   final ChessboardView? scoreCardViewSource;
   final List<GamesTourModel> scoreCardGamesContext;
@@ -786,6 +834,7 @@ class _ChessBoardLayout extends ConsumerWidget {
           showCoordinates: false,
           orientation: bottomSide,
           allowStockfishFallback: allowStockfishFallback,
+          animateEnding: animateEnding,
         ),
         SizedBox(height: 4.h),
         _PlayerRow(
@@ -855,6 +904,7 @@ class _ChessBoardWithEvaluation extends ConsumerWidget {
     required this.orientation,
     this.showCoordinates = true,
     this.allowStockfishFallback = true,
+    this.animateEnding = true,
   });
 
   final GamesTourModel gamesTourModel;
@@ -866,6 +916,9 @@ class _ChessBoardWithEvaluation extends ConsumerWidget {
   final Side orientation;
   final bool showCoordinates;
   final bool allowStockfishFallback;
+
+  /// See [GameCardChessboard.animateEnding].
+  final bool animateEnding;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -885,6 +938,7 @@ class _ChessBoardWithEvaluation extends ConsumerWidget {
         showCoordinates: showCoordinates,
         gameStatus: gameStatus,
         orientation: orientation,
+        animateEnding: animateEnding,
       );
     }
 
@@ -905,6 +959,7 @@ class _ChessBoardWithEvaluation extends ConsumerWidget {
           showCoordinates: showCoordinates,
           gameStatus: gameStatus,
           orientation: orientation,
+          animateEnding: animateEnding,
         ),
       ],
     );
@@ -922,6 +977,7 @@ class GameCardChessboard extends ConsumerWidget {
     required this.orientation,
     this.showCoordinates = true,
     this.gameStatus,
+    this.animateEnding = true,
   });
 
   final String? fen;
@@ -931,8 +987,40 @@ class GameCardChessboard extends ConsumerWidget {
   final bool showCoordinates;
   final GameStatus? gameStatus;
 
+  /// Whether the game-end marks (the loser's king tipping over, the draw
+  /// doves) play their one-shot entrance when this board mounts. Pass false
+  /// for a copy of a board already on screen, such as the one the long-press
+  /// menu lifts: it has to match the card that was pressed, so the marks start
+  /// at rest instead of replaying (and a dove never grows from scale 0).
+  /// Reduced motion always starts them at rest.
+  final bool animateEnding;
+
+  /// Read only when a mark is drawn, so ongoing boards take no MediaQuery
+  /// dependency.
+  bool _animateMarks(BuildContext context) =>
+      animateEnding && !(MediaQuery.maybeDisableAnimationsOf(context) ?? false);
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final board = _buildBoard(context, ref);
+    // A host can set a mark on the board's top-left corner (Most Liked's like
+    // count), the one corner the coordinates never use.
+    final badge = BoardCornerBadge.maybeOf(context);
+    if (badge == null) return board;
+    final inset = boardSize / 40;
+    return SizedBox(
+      width: boardSize,
+      height: boardSize,
+      child: Stack(
+        children: [
+          board,
+          Positioned(top: inset, left: inset, child: badge(boardSize)),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildBoard(BuildContext context, WidgetRef ref) {
     final boardSettingsAsync = ref.watch(boardSettingsProviderNew);
     final boardSettings =
         boardSettingsAsync.valueOrNull ?? const BoardSettingsNew();
@@ -1053,6 +1141,7 @@ class GameCardChessboard extends ConsumerWidget {
               top: loserKingOffset.top,
               squareSize: squareSize,
               pieceImage: pieceImage!,
+              animate: _animateMarks(context),
             ),
           ],
         ),
@@ -1062,6 +1151,7 @@ class GameCardChessboard extends ConsumerWidget {
     // Add dove icons for draws
     if (isDraw && whiteKingSquare != null && blackKingSquare != null) {
       final squareSize = boardSize / 8;
+      final animateMarks = _animateMarks(context);
       final whiteKingCg = Square.fromName(whiteKingSquare.name);
       final blackKingCg = Square.fromName(blackKingSquare.name);
       final whiteKingOffset = _orientedSquareOffset(
@@ -1100,12 +1190,14 @@ class GameCardChessboard extends ConsumerWidget {
               squareSize: squareSize,
               orientation: orientation,
               delayMs: 0,
+              animate: animateMarks,
             ),
             _SmallPeaceIcon(
               square: blackKingCg,
               squareSize: squareSize,
               orientation: orientation,
               delayMs: 100,
+              animate: animateMarks,
             ),
           ],
         ),
@@ -1173,11 +1265,15 @@ class _SmallFallenKingOverlay extends StatefulWidget {
   final double squareSize;
   final ImageProvider pieceImage;
 
+  /// False starts the king already tipped over (no replay).
+  final bool animate;
+
   const _SmallFallenKingOverlay({
     required this.left,
     required this.top,
     required this.squareSize,
     required this.pieceImage,
+    this.animate = true,
   });
 
   @override
@@ -1196,10 +1292,13 @@ class _SmallFallenKingOverlayState extends State<_SmallFallenKingOverlay>
     _controller = AnimationController(
       duration: const Duration(milliseconds: 600),
       vsync: this,
+      // At rest the curve lands exactly on its end value: fully tipped.
+      value: widget.animate ? 0 : 1,
     );
     _rotationAnimation = Tween<double>(begin: 0, end: -0.785398) // -45 degrees
     .chain(CurveTween(curve: Curves.elasticOut)).animate(_controller);
 
+    if (!widget.animate) return;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) _controller.forward();
     });
@@ -1268,11 +1367,15 @@ class _SmallPeaceIcon extends StatefulWidget {
   final Side orientation;
   final int delayMs;
 
+  /// False starts the dove at full size (no replay from scale 0).
+  final bool animate;
+
   const _SmallPeaceIcon({
     required this.square,
     required this.squareSize,
     required this.orientation,
     required this.delayMs,
+    this.animate = true,
   });
 
   @override
@@ -1290,12 +1393,14 @@ class _SmallPeaceIconState extends State<_SmallPeaceIcon>
     _controller = AnimationController(
       duration: const Duration(milliseconds: 400),
       vsync: this,
+      value: widget.animate ? 0 : 1,
     );
     _scaleAnimation = Tween<double>(
       begin: 0,
       end: 1,
     ).chain(CurveTween(curve: Curves.elasticOut)).animate(_controller);
 
+    if (!widget.animate) return;
     Future.delayed(Duration(milliseconds: widget.delayMs), () {
       if (mounted) _controller.forward();
     });

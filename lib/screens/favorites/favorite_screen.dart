@@ -1,6 +1,8 @@
 import 'package:chessever2/providers/favorite_players_provider.dart';
 import 'package:chessever2/screens/favorites/favorite_players_provider.dart';
 import 'package:chessever2/screens/player_profile/player_profile_data_source.dart';
+import 'package:chessever2/screens/my_space/actions/space_menu_action.dart';
+import 'package:chessever2/screens/my_space/providers/space_shortcuts_provider.dart';
 import 'package:chessever2/screens/standings/player_standing_model.dart';
 import 'package:chessever2/screens/standings/score_card_screen.dart';
 import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
@@ -11,6 +13,7 @@ import 'package:chessever2/utils/tablet_safe_menu.dart';
 import 'package:chessever2/utils/user_error_message.dart';
 import 'package:chessever2/widgets/alert_dialog/alert_modal.dart';
 import 'package:chessever2/widgets/search/gameSearch/enhanced_game_search_widget.dart';
+import 'package:chessever2/widgets/space_shortcut_drafts.dart';
 import 'package:chessever2/widgets/standing_score_card.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -290,7 +293,7 @@ class _FavoriteScreenState extends ConsumerState<FavoriteScreen> {
               subtitle,
               textAlign: TextAlign.center,
               style: AppTypography.textSmRegular.copyWith(
-                color: context.colors.textPrimary.withValues(alpha: 0.5),
+                color: context.textInk(0.5),
               ),
             ),
           ),
@@ -318,7 +321,7 @@ class _FavoriteScreenState extends ConsumerState<FavoriteScreen> {
               error,
               textAlign: TextAlign.center,
               style: AppTypography.textSmRegular.copyWith(
-                color: context.colors.textPrimary.withValues(alpha: 0.5),
+                color: context.textInk(0.5),
               ),
             ),
           ),
@@ -361,6 +364,31 @@ class _FavoriteScreenState extends ConsumerState<FavoriteScreen> {
     final RenderBox overlay =
         Overlay.of(context).context.findRenderObject() as RenderBox;
 
+    final playerDraft = spacePlayerDraft(
+      playerName: player.name,
+      fideId: player.fideId,
+      title: player.title,
+      federation: player.countryCode,
+      rating: player.score,
+      gamebasePlayerId: player.gamebasePlayerId,
+      memorialSourceIdentity: player.memorialSourceIdentity,
+      memorialRouteId: player.memorialRouteId,
+    );
+    final gamesDraft = spacePlayerGamesDraft(
+      playerName: player.name,
+      fideId: player.fideId,
+      title: player.title,
+      federation: player.countryCode,
+      rating: player.score,
+      gamebasePlayerId: player.gamebasePlayerId,
+      memorialSourceIdentity: player.memorialSourceIdentity,
+      memorialRouteId: player.memorialRouteId,
+    );
+    final playerInSpace = ref.read(
+      spaceShortcutExistsProvider(playerDraft.key),
+    );
+    final gamesInSpace = ref.read(spaceShortcutExistsProvider(gamesDraft.key));
+
     final value = await showTabletSafeMenu(
       context: context,
       position: RelativeRect.fromRect(
@@ -370,6 +398,19 @@ class _FavoriteScreenState extends ConsumerState<FavoriteScreen> {
       color: context.colors.surface,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8.br)),
       items: [
+        _spaceMenuItem(
+          value: 'space_player',
+          inSpace: playerInSpace,
+          label: playerInSpace ? 'Remove from My Space' : 'Add to My Space',
+        ),
+        _spaceMenuItem(
+          value: 'space_games',
+          inSpace: gamesInSpace,
+          label:
+              gamesInSpace
+                  ? 'Remove Games tab from My Space'
+                  : 'Add Games tab to My Space',
+        ),
         PopupMenuItem(
           value: 'delete',
           child: Row(
@@ -378,7 +419,7 @@ class _FavoriteScreenState extends ConsumerState<FavoriteScreen> {
               SizedBox(width: 12.w),
               Text(
                 'Remove from favorites',
-                style: AppTypography.textSmRegular.copyWith(color: kRedColor),
+                style: AppTypography.textSmRegular.copyWith(color: context.colors.danger),
               ),
             ],
           ),
@@ -386,12 +427,53 @@ class _FavoriteScreenState extends ConsumerState<FavoriteScreen> {
       ],
     );
 
-    if (!mounted || value != 'delete') return;
+    if (!mounted) return;
+    if (value == 'space_player' || value == 'space_games') {
+      await toggleSpaceShortcut(
+        context: this.context,
+        ref: ref,
+        draft: value == 'space_player' ? playerDraft : gamesDraft,
+      );
+      return;
+    }
+    if (value != 'delete') return;
 
     final confirmed = await _showDeleteConfirmation(player);
     if (confirmed == true && mounted) {
       HapticFeedback.mediumImpact();
     }
+  }
+
+  PopupMenuItem<String> _spaceMenuItem({
+    required String value,
+    required bool inSpace,
+    required String label,
+  }) {
+    return PopupMenuItem(
+      value: value,
+      child: Row(
+        children: [
+          Icon(
+            inSpace
+                ? Icons.dashboard_customize
+                : Icons.dashboard_customize_outlined,
+            color: context.colors.textPrimary,
+            size: 20.ic,
+          ),
+          SizedBox(width: 12.w),
+          Flexible(
+            child: Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: AppTypography.textSmRegular.copyWith(
+                color: context.colors.textPrimary,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   Future<bool?> _showDeleteConfirmation(PlayerStandingModel player) async {

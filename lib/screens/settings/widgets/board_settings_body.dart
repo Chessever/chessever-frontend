@@ -141,16 +141,8 @@ class BoardSettingsBody extends ConsumerWidget {
               ),
               Switch.adaptive(
                 value: boardSettings.soundEnabled,
-                thumbColor: WidgetStateProperty.resolveWith(
-                  (states) => states.contains(WidgetState.selected)
-                      ? kPrimaryColor
-                      : context.colors.textSecondary.withValues(alpha: 0.6),
-                ),
-                trackColor: WidgetStateProperty.resolveWith(
-                  (states) => states.contains(WidgetState.selected)
-                      ? kPrimaryColor.withValues(alpha: 0.35)
-                      : context.colors.divider.withValues(alpha: 0.5),
-                ),
+                thumbColor: settingsSwitchThumb(context),
+                trackColor: settingsSwitchTrack(context),
                 onChanged: (value) {
                   trackPersist(boardNotifier.toggleSound(value));
                 },
@@ -192,7 +184,7 @@ class BoardSettingsBody extends ConsumerWidget {
                           child: Text(
                             boardSettings.useFigurine ? '♞f3' : 'Nf3',
                             style: AppTypography.textSmMedium.copyWith(
-                              color: kPrimaryColor,
+                              color: context.colors.accentText,
                               fontSize: 11.f,
                             ),
                           ),
@@ -212,16 +204,8 @@ class BoardSettingsBody extends ConsumerWidget {
               ),
               Switch.adaptive(
                 value: boardSettings.useFigurine,
-                thumbColor: WidgetStateProperty.resolveWith(
-                  (states) => states.contains(WidgetState.selected)
-                      ? kPrimaryColor
-                      : context.colors.textSecondary.withValues(alpha: 0.6),
-                ),
-                trackColor: WidgetStateProperty.resolveWith(
-                  (states) => states.contains(WidgetState.selected)
-                      ? kPrimaryColor.withValues(alpha: 0.35)
-                      : context.colors.divider.withValues(alpha: 0.5),
-                ),
+                thumbColor: settingsSwitchThumb(context),
+                trackColor: settingsSwitchTrack(context),
                 onChanged: (value) {
                   trackPersist(boardNotifier.toggleFigurine(value));
                 },
@@ -258,16 +242,8 @@ class BoardSettingsBody extends ConsumerWidget {
               ),
               Switch.adaptive(
                 value: boardSettings.showCoordinates,
-                thumbColor: WidgetStateProperty.resolveWith(
-                  (states) => states.contains(WidgetState.selected)
-                      ? kPrimaryColor
-                      : context.colors.textSecondary.withValues(alpha: 0.6),
-                ),
-                trackColor: WidgetStateProperty.resolveWith(
-                  (states) => states.contains(WidgetState.selected)
-                      ? kPrimaryColor.withValues(alpha: 0.35)
-                      : context.colors.divider.withValues(alpha: 0.5),
-                ),
+                thumbColor: settingsSwitchThumb(context),
+                trackColor: settingsSwitchTrack(context),
                 onChanged: (value) {
                   trackPersist(boardNotifier.toggleShowCoordinates(value));
                 },
@@ -304,16 +280,8 @@ class BoardSettingsBody extends ConsumerWidget {
               ),
               Switch.adaptive(
                 value: boardSettings.rawPgnMode,
-                thumbColor: WidgetStateProperty.resolveWith(
-                  (states) => states.contains(WidgetState.selected)
-                      ? kPrimaryColor
-                      : context.colors.textSecondary.withValues(alpha: 0.6),
-                ),
-                trackColor: WidgetStateProperty.resolveWith(
-                  (states) => states.contains(WidgetState.selected)
-                      ? kPrimaryColor.withValues(alpha: 0.35)
-                      : context.colors.divider.withValues(alpha: 0.5),
-                ),
+                thumbColor: settingsSwitchThumb(context),
+                trackColor: settingsSwitchTrack(context),
                 onChanged: (value) {
                   trackPersist(boardNotifier.toggleRawPgnMode(value));
                 },
@@ -366,12 +334,8 @@ class _AutoPinSection extends ConsumerWidget {
               ),
               Switch.adaptive(
                 value: prefs.favoritePlayersAutoPinEnabled,
-                thumbColor: WidgetStatePropertyAll(kPrimaryColor),
-                trackColor: WidgetStateProperty.resolveWith(
-                  (states) => states.contains(WidgetState.selected)
-                      ? kPrimaryColor.withValues(alpha: 0.35)
-                      : context.colors.divider.withValues(alpha: 0.5),
-                ),
+                thumbColor: settingsSwitchThumb(context),
+                trackColor: settingsSwitchTrack(context),
                 onChanged: (value) {
                   trackPersist(notifier.setFavoritePlayersAutoPin(value));
                 },
@@ -407,12 +371,8 @@ class _AutoPinSection extends ConsumerWidget {
               ),
               Switch.adaptive(
                 value: prefs.countrymenAutoPinEnabled,
-                thumbColor: WidgetStatePropertyAll(kPrimaryColor),
-                trackColor: WidgetStateProperty.resolveWith(
-                  (states) => states.contains(WidgetState.selected)
-                      ? kPrimaryColor.withValues(alpha: 0.35)
-                      : context.colors.divider.withValues(alpha: 0.5),
-                ),
+                thumbColor: settingsSwitchThumb(context),
+                trackColor: settingsSwitchTrack(context),
                 onChanged: (value) {
                   trackPersist(notifier.setCountrymenAutoPin(value));
                 },
@@ -485,7 +445,7 @@ class _BoardThemePickerCard extends StatelessWidget {
                   child: Text(
                     '${kBoardThemes.length}',
                     style: AppTypography.textSmMedium.copyWith(
-                      color: kPrimaryColor,
+                      color: context.colors.accentText,
                       fontSize: 12.f,
                     ),
                   ),
@@ -544,7 +504,7 @@ class _BoardThemePickerCard extends StatelessWidget {
                         Text(
                           'Tap to browse all themes',
                           style: AppTypography.textSmRegular.copyWith(
-                            color: context.colors.textTertiary,
+                            color: _wellInk(context),
                             fontSize: 11.f,
                           ),
                         ),
@@ -731,10 +691,10 @@ class _BoardThemeGridItem extends StatelessWidget {
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(12.br),
           border: Border.all(
-            color: isSelected ? kPrimaryColor : Colors.transparent,
+            color: isSelected ? context.colors.accentText : Colors.transparent,
             width: 2,
           ),
-          boxShadow: isSelected
+          boxShadow: isSelected && !context.isLightTheme
               ? [
                   BoxShadow(
                     color: kPrimaryColor.withValues(alpha: 0.3),
@@ -789,7 +749,7 @@ class _BoardThemeGridItem extends StatelessWidget {
                 theme.name,
                 style: AppTypography.textXsRegular.copyWith(
                   color:
-                      isSelected ? kPrimaryColor : context.colors.textPrimary,
+                      isSelected ? context.colors.accentText : context.colors.textPrimary,
                   fontSize: 10.f,
                   fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400,
                 ),
@@ -908,7 +868,7 @@ class _PieceSetPickerCard extends StatelessWidget {
                   child: Text(
                     '${kPieceSets.length}',
                     style: AppTypography.textSmMedium.copyWith(
-                      color: kPrimaryColor,
+                      color: context.colors.accentText,
                       fontSize: 12.f,
                     ),
                   ),
@@ -981,7 +941,7 @@ class _PieceSetPickerCard extends StatelessWidget {
                         Text(
                           'Tap to browse all pieces',
                           style: AppTypography.textSmRegular.copyWith(
-                            color: context.colors.textTertiary,
+                            color: _wellInk(context),
                             fontSize: 11.f,
                           ),
                         ),
@@ -1168,10 +1128,10 @@ class _PieceSetGridItem extends StatelessWidget {
           color: context.colors.surfaceRecessed,
           borderRadius: BorderRadius.circular(12.br),
           border: Border.all(
-            color: isSelected ? kPrimaryColor : Colors.transparent,
+            color: isSelected ? context.colors.accentText : Colors.transparent,
             width: 2,
           ),
-          boxShadow: isSelected
+          boxShadow: isSelected && !context.isLightTheme
               ? [
                   BoxShadow(
                     color: kPrimaryColor.withValues(alpha: 0.3),
@@ -1262,7 +1222,7 @@ class _PieceSetGridItem extends StatelessWidget {
                 pieceSet.label,
                 style: AppTypography.textXsRegular.copyWith(
                   color:
-                      isSelected ? kPrimaryColor : context.colors.textPrimary,
+                      isSelected ? context.colors.accentText : context.colors.textPrimary,
                   fontSize: 9.f,
                   fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400,
                 ),
@@ -1341,10 +1301,11 @@ class _ViewModeSelector extends StatelessWidget {
                 : Colors.transparent,
             borderRadius: BorderRadius.circular(8.br),
             border: Border.all(
-              color: isSelected ? kPrimaryColor : Colors.transparent,
+              color:
+                  isSelected ? context.colors.accentText : Colors.transparent,
               width: isSelected ? 1.5 : 1.0,
             ),
-            boxShadow: isSelected
+            boxShadow: isSelected && !context.isLightTheme
                 ? [
                     BoxShadow(
                       color: kPrimaryColor.withValues(alpha: 0.18),
@@ -1360,7 +1321,7 @@ class _ViewModeSelector extends StatelessWidget {
                 icon,
                 color: isSelected
                     ? context.colors.textPrimary
-                    : context.colors.textTertiary,
+                    : _wellInk(context),
                 size: 20.ic,
               ),
               SizedBox(height: 4.h),
@@ -1369,7 +1330,7 @@ class _ViewModeSelector extends StatelessWidget {
                 style: AppTypography.textXsMedium.copyWith(
                   color: isSelected
                       ? context.colors.textPrimary
-                      : context.colors.textTertiary,
+                      : _wellInk(context),
                   fontSize: 10.f,
                 ),
               ),
@@ -1380,3 +1341,10 @@ class _ViewModeSelector extends StatelessWidget {
     );
   }
 }
+
+/// Quiet ink for copy sitting on a recessed well. Dark keeps tertiary; on
+/// paper tertiary reads 3.8:1 against the well, so it steps up to secondary.
+Color _wellInk(BuildContext context) =>
+    context.isLightTheme
+        ? context.colors.textSecondary
+        : context.colors.textTertiary;

@@ -8,6 +8,7 @@ import 'package:chessever2/screens/group_event/providers/countryman_games_tour_s
 import 'package:chessever2/screens/standings/player_standing_model.dart';
 import 'package:chessever2/screens/standings/score_card_screen.dart';
 import 'package:chessever2/screens/player_profile/player_profile_data_source.dart';
+import 'package:chessever2/screens/player_profile/utils/player_menu_actions.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/event_no_spoilers_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrapper/live_game_card_provider.dart';
@@ -23,6 +24,7 @@ import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/twic_player_enrichment.dart';
 import 'package:chessever2/widgets/atomic_countdown_text.dart';
 import 'package:chessever2/widgets/alert_dialog/alert_modal.dart';
+import 'package:chessever2/widgets/card_context_menu.dart';
 import 'package:chessever2/widgets/federation_flag.dart';
 import 'package:dartchess/dartchess.dart';
 import 'package:flutter/material.dart';
@@ -58,6 +60,20 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
   /// seconds so the extra digit cannot overflow those tighter chips.
   final bool showSubSecondClock;
 
+  /// Long-press on the name opens the player's focus menu (scorecard,
+  /// profile, My Space, share). Null follows the focused-board signal
+  /// ([showSubSecondClock] on the board view), so it is on exactly where the
+  /// row is the page's own header and off inside board cards, grids and the
+  /// switcher, whose card-level long-press is the game menu and must never be
+  /// stolen by a name inside it.
+  final bool? nameMenu;
+
+  /// Whether a finished game's result label may show. Null (every existing
+  /// caller) keeps the usual rules. False keeps the result column's width,
+  /// so nothing shifts when it turns on, but leaves it empty: a replay that
+  /// has not reached its last move (the Feed) must not print the outcome.
+  final bool? revealResult;
+
   const PlayerFirstRowDetailWidget({
     super.key,
     required this.playerView,
@@ -74,7 +90,12 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
     this.scoreCardGamesContext = const [],
     this.compactName = false,
     this.showSubSecondClock = false,
+    this.nameMenu,
+    this.revealResult,
   });
+
+  bool get _nameMenuEnabled =>
+      nameMenu ?? (showSubSecondClock && playerView == PlayerView.boardView);
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -773,7 +794,9 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
             key: const ValueKey('player-row-evaluation-space'),
             width: engineGaugeWidth,
             child:
-                effectiveGameModel.gameStatus.isFinished && revealSpoilers
+                effectiveGameModel.gameStatus.isFinished &&
+                        revealSpoilers &&
+                        revealResult != false
                     ? Center(
                       child: Builder(
                         builder: (context) {
@@ -792,7 +815,7 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
                               '';
                           final resultColor =
                               isWin
-                                  ? kPrimaryColor
+                                  ? context.colors.accentText
                                   : isDraw
                                   ? context.colors.textPrimaryMuted
                                   : context.colors.danger;
@@ -982,11 +1005,68 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
                     availableWidth < 0 ? 0.0 : availableWidth;
                 final nameTapWidth =
                     textPainter.width.clamp(0.0, maxNameTapWidth).toDouble();
+                // Board-editor and local-analysis names are typed labels
+                // ("White"), not people: nothing to open or pin.
+                final source = effectiveGameModel.source;
+                final canOpenNameMenu =
+                    _nameMenuEnabled &&
+                    onEditName == null &&
+                    effectivePlayerCard.name.trim().isNotEmpty &&
+                    source != GameSource.boardEditor &&
+                    source != GameSource.localAnalysis;
                 final tappableName = GestureDetector(
                   behavior: HitTestBehavior.translucent,
                   onTap: openPlayerScoreCard,
                   child: SizedBox(width: nameTapWidth, child: nameWidget),
                 );
+                // The long-press sits on its own layer over the same name-only
+                // rect, so the scorecard tap target stays exactly the name and
+                // rows with the menu off keep the bare tap detector.
+                final nameTarget =
+                    canOpenNameMenu
+                        ? Builder(
+                          builder:
+                              (nameContext) => GestureDetector(
+                                behavior: HitTestBehavior.translucent,
+                                onLongPress:
+                                    () => CardContextMenu.open(
+                                      nameContext,
+                                      actions:
+                                          (menuContext) => playerMenuActions(
+                                            menuContext,
+                                            ref,
+                                            playerName:
+                                                effectivePlayerCard.name,
+                                            fideId: effectivePlayerCard.fideId,
+                                            title:
+                                                effectivePlayerCard.title
+                                                        .trim()
+                                                        .isEmpty
+                                                    ? null
+                                                    : effectivePlayerCard.title,
+                                            federation:
+                                                effectivePlayerCard.countryCode,
+                                            rating:
+                                                effectivePlayerCard.rating > 0
+                                                    ? effectivePlayerCard.rating
+                                                    : null,
+                                            gamebasePlayerId:
+                                                effectivePlayerCard
+                                                    .gamebasePlayerId,
+                                            onOpen: () {
+                                              if (context.mounted) {
+                                                return openPlayerScoreCard();
+                                              }
+                                            },
+                                            openLabel: 'Open scorecard',
+                                            openIcon:
+                                                Icons.open_in_new_rounded,
+                                          ),
+                                    ),
+                                child: tappableName,
+                              ),
+                        )
+                        : tappableName;
 
                 if (onEditName != null) {
                   return Align(
@@ -1006,7 +1086,7 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
                           child: Icon(
                             Icons.edit,
                             size: 14.ic,
-                            color: Colors.white.withValues(alpha: 0.4),
+                            color: context.textInk(0.4),
                           ),
                         ),
                       ],
@@ -1016,7 +1096,7 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
 
                 return Align(
                   alignment: Alignment.centerLeft,
-                  child: tappableName,
+                  child: nameTarget,
                 );
               },
             ),
@@ -1037,10 +1117,15 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
                 horizontal: clockPadding,
                 vertical: 1.sp,
               ),
+              // The clock of the side to move is framed. Raw cyan at 0.4
+              // all but vanishes on paper, so light frames it in the
+              // accent ink instead.
               decoration: BoxDecoration(
                 color:
                     visibleIsCurrentPlayer
-                        ? kPrimaryColor.withValues(alpha: 0.12)
+                        ? (context.isLightTheme
+                            ? context.colors.accentText.withValues(alpha: 0.1)
+                            : kPrimaryColor.withValues(alpha: 0.12))
                         : Colors.transparent,
                 borderRadius: BorderRadius.circular(
                   playerView == PlayerView.gridView ? 3.br : 4.br,
@@ -1051,7 +1136,11 @@ class PlayerFirstRowDetailWidget extends HookConsumerWidget {
                 border: Border.all(
                   color:
                       visibleIsCurrentPlayer
-                          ? kPrimaryColor.withValues(alpha: 0.4)
+                          ? (context.isLightTheme
+                              ? context.colors.accentText.withValues(
+                                alpha: 0.75,
+                              )
+                              : kPrimaryColor.withValues(alpha: 0.4))
                           : Colors.transparent,
                   width: 0.7,
                 ),
@@ -1117,9 +1206,7 @@ void _showEditNameDialog(
                   decoration: InputDecoration(
                     hintText: 'Player name',
                     hintStyle: AppTypography.textSmRegular.copyWith(
-                      color: dialogContext.colors.textPrimary.withValues(
-                        alpha: 0.4,
-                      ),
+                      color: dialogContext.textInk(0.4),
                     ),
                     enabledBorder: UnderlineInputBorder(
                       borderSide: BorderSide(
@@ -1153,9 +1240,7 @@ void _showEditNameDialog(
                         child: Text(
                           'Cancel',
                           style: AppTypography.textSmMedium.copyWith(
-                            color: dialogContext.colors.textPrimary.withValues(
-                              alpha: 0.6,
-                            ),
+                            color: dialogContext.textInk(0.6),
                           ),
                         ),
                       ),

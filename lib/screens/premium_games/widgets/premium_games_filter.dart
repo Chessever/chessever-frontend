@@ -101,9 +101,7 @@ class _PremiumGamesFilterDialogState
                         onTap: () => Navigator.pop(context),
                         child: Icon(
                           Icons.close_rounded,
-                          color: context.colors.textPrimary.withValues(
-                            alpha: 0.6,
-                          ),
+                          color: context.textInk(0.6),
                           size: 20.ic,
                         ),
                       ),

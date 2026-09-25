@@ -1,12 +1,16 @@
 import 'package:chessever2/e2e/e2e_ids.dart';
 import 'package:chessever2/providers/board_settings_provider_new.dart';
 import 'package:chessever2/repository/lichess/cloud_eval/cloud_eval.dart';
+import 'package:chessever2/screens/board_editor/board_editor_space_draft.dart';
 import 'package:chessever2/screens/board_editor/board_editor_state.dart';
 import 'package:chessever2/screens/chessboard/chess_board_screen_new.dart';
 import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
 import 'package:chessever2/screens/chessboard/provider/current_eval_provider.dart';
 import 'package:chessever2/screens/chessboard/widgets/evaluation_bar_widget.dart';
+import 'package:chessever2/screens/feed/widgets/feed_glyphs.dart';
 import 'package:chessever2/screens/library/pgn_import_preview_screen.dart';
+import 'package:chessever2/screens/my_space/actions/space_menu_action.dart';
+import 'package:chessever2/screens/my_space/providers/space_shortcuts_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
@@ -20,6 +24,18 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:motor/motor.dart';
+
+/// A board editor that opens with [fen] already set up, on its first frame
+/// (no flash of the starting position). Everything else is
+/// [BoardEditorScreen]'s; the position is handed to this editor alone.
+Widget boardEditorAt(String fen, {bool returnFenOnDone = false}) =>
+    ProviderScope(
+      overrides: [boardEditorInitialFenProvider.overrideWithValue(fen)],
+      child: BoardEditorScreen(
+        initialFen: fen,
+        returnFenOnDone: returnFenOnDone,
+      ),
+    );
 
 class BoardEditorScreen extends ConsumerStatefulWidget {
   const BoardEditorScreen({
@@ -50,6 +66,9 @@ class _BoardEditorScreenState extends ConsumerState<BoardEditorScreen> {
     super.initState();
     final initialFen = widget.initialFen?.trim();
     if (initialFen == null || initialFen.isEmpty) return;
+    // Opened through [boardEditorAt]: the position is already on the board.
+    final current = ref.read(boardEditorProvider).fullFen;
+    if (_fenPositionKey(current) == _fenPositionKey(initialFen)) return;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       ref.read(boardEditorProvider.notifier).loadFen(initialFen);
@@ -66,27 +85,8 @@ class _BoardEditorScreenState extends ConsumerState<BoardEditorScreen> {
     _analysisBlackName = 'Black';
   }
 
-  String? _analysisValidationError(BoardEditorState editorState) {
-    bool hasWhiteKing = false;
-    bool hasBlackKing = false;
-    for (final piece in editorState.pieces.values) {
-      if (piece.role == Role.king) {
-        if (piece.color == Side.white) hasWhiteKing = true;
-        if (piece.color == Side.black) hasBlackKing = true;
-      }
-    }
-    if (!hasWhiteKing || !hasBlackKing) {
-      return 'Position must include both kings before analysis.';
-    }
-
-    try {
-      final setup = Setup.parseFen(editorState.fullFen);
-      Chess.fromSetup(setup);
-    } catch (_) {
-      return 'Illegal position. Check king safety, side to move, and castling rights.';
-    }
-    return null;
-  }
+  String? _analysisValidationError(BoardEditorState editorState) =>
+      boardEditorValidationError(editorState);
 
   void _showSnack(String message, {Color? backgroundColor}) {
     if (!mounted) return;
@@ -475,12 +475,31 @@ class _BoardEditorScreenState extends ConsumerState<BoardEditorScreen> {
     return Column(
       children: [
         _buildTopControls(),
-        _BoardWithEvalBar(
-          editorState: editorState,
-          boardSettings: boardSettings,
-          availableWidth: boardWidth,
-          evalBarWidth: evalBarWidth,
-          showEval: editorState.isEvaluatable,
+        // The board takes the full width, as it always has; only on a phone
+        // too short for it and everything under it does it give way,
+        // shrinking (centred) so the tray, the FEN and the paste actions stay
+        // on screen instead of being cut off at the bottom.
+        Flexible(
+          child: LayoutBuilder(
+            builder: (context, box) {
+              // Bounded by the height alone, not height plus the eval bar:
+              // the bar slides in over a few frames, and the board must fit
+              // through every one of them.
+              final available = box.maxHeight < boardWidth
+                  ? box.maxHeight
+                  : boardWidth;
+              return SizedBox(
+                width: available,
+                child: _BoardWithEvalBar(
+                  editorState: editorState,
+                  boardSettings: boardSettings,
+                  availableWidth: available,
+                  evalBarWidth: evalBarWidth,
+                  showEval: editorState.isEvaluatable,
+                ),
+              );
+            },
+          ),
         ),
         _buildPieceTray(squareSize),
         _FenBar(fen: editorState.fullFen, onCopy: _copyFen),
@@ -633,42 +652,72 @@ class _BoardEditorScreenState extends ConsumerState<BoardEditorScreen> {
         children: [
           IconButton(
             onPressed: () => Navigator.of(context).pop(),
+            tooltip: MaterialLocalizations.of(context).backButtonTooltip,
             icon: Icon(
               Icons.arrow_back_ios_new_rounded,
               color: context.colors.textPrimary,
               size: 20.sp,
             ),
           ),
+          // Shrinks rather than cutting a word when a large text size meets
+          // a narrow phone: the bar also carries My Space and Analyze.
           Expanded(
-            child: Text(
-              'Board Editor',
-              style: AppTypography.textLgMedium.copyWith(
-                color: context.colors.textPrimary,
+            child: FittedBox(
+              fit: BoxFit.scaleDown,
+              child: Text(
+                'Board Editor',
+                maxLines: 1,
+                style: AppTypography.textLgMedium.copyWith(
+                  color: context.colors.textPrimary,
+                ),
+                textAlign: TextAlign.center,
               ),
-              textAlign: TextAlign.center,
             ),
           ),
-          GestureDetector(
+          const _AddToSpaceButton(),
+          SizedBox(width: 4.w),
+          // The pill stays 34.h to sit level with the title, but the tap
+          // target is a 44dp band around it, announced as a button (the
+          // bare GestureDetector read as plain text to screen readers).
+          Semantics(
+            button: true,
+            label: 'Analyze',
             onTap: _onDone,
-            child: Container(
-              key: e2eKey(E2eIds.boardEditorDoneButton),
-              // 6.h + the 22.h line box of textSmBold + 6.h = 34.h, which is
-              // ExplorerViewToggle's compact height — the size the Board
-              // workspace uses for a control living in a header. At 8.h it
-              // came out 38 and stood a full 12 taller than the title beside
-              // it, which is what read as oversized.
-              padding: EdgeInsets.symmetric(horizontal: 14.w, vertical: 6.h),
-              // The one primary action here, so it wears the app's primary
-              // button: brand fill with inkOnAccent, same as Apply in the
-              // game filter dialog. Not an inverted white slab.
-              decoration: BoxDecoration(
-                color: kPrimaryColor,
-                borderRadius: BorderRadius.circular(10.br),
-              ),
-              child: Text(
-                'Analyze',
-                style: AppTypography.textSmBold.copyWith(
-                  color: context.colors.inkOnAccent,
+            excludeSemantics: true,
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: _onDone,
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(minHeight: 44),
+                child: Center(
+                  widthFactor: 1,
+                  child: Container(
+                    key: e2eKey(E2eIds.boardEditorDoneButton),
+                    // 6.h + the 22.h line box of textSmBold + 6.h = 34.h,
+                    // which is ExplorerViewToggle's compact height — the size
+                    // the Board workspace uses for a control living in a
+                    // header. At 8.h it came out 38 and stood a full 12 taller
+                    // than the title beside it, which is what read as
+                    // oversized.
+                    padding: EdgeInsets.symmetric(
+                      horizontal: 14.w,
+                      vertical: 6.h,
+                    ),
+                    // The one primary action here, so it wears the app's
+                    // primary button: brand fill with inkOnAccent, same as
+                    // Apply in the game filter dialog. Not an inverted white
+                    // slab.
+                    decoration: BoxDecoration(
+                      color: kPrimaryColor,
+                      borderRadius: BorderRadius.circular(10.br),
+                    ),
+                    child: Text(
+                      'Analyze',
+                      style: AppTypography.textSmBold.copyWith(
+                        color: context.colors.inkOnAccent,
+                      ),
+                    ),
+                  ),
                 ),
               ),
             ),
@@ -678,6 +727,82 @@ class _BoardEditorScreenState extends ConsumerState<BoardEditorScreen> {
           // 4.w it hung 4 further right than every row beneath it.
           SizedBox(width: 8.w),
         ],
+      ),
+    );
+  }
+}
+
+/// Why [editorState] cannot be analyzed or saved, or null when it can: both
+/// kings on the board and a legal position.
+String? boardEditorValidationError(BoardEditorState editorState) {
+  bool hasWhiteKing = false;
+  bool hasBlackKing = false;
+  for (final piece in editorState.pieces.values) {
+    if (piece.role == Role.king) {
+      if (piece.color == Side.white) hasWhiteKing = true;
+      if (piece.color == Side.black) hasBlackKing = true;
+    }
+  }
+  if (!hasWhiteKing || !hasBlackKing) {
+    return 'Position must include both kings before analysis.';
+  }
+
+  try {
+    final setup = Setup.parseFen(editorState.fullFen);
+    Chess.fromSetup(setup);
+  } catch (_) {
+    return 'Illegal position. Check king safety, side to move, and castling rights.';
+  }
+  return null;
+}
+
+// ---------------------------------------------------------------------------
+// Add to My Space
+// ---------------------------------------------------------------------------
+
+/// Saves the position on the board to My Space: as the catalogue opening it
+/// is (it then sits with the other openings), else as a custom position.
+/// An illegal setup answers with the same message Analyze gives.
+class _AddToSpaceButton extends ConsumerWidget {
+  const _AddToSpaceButton();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final fen = ref.watch(boardEditorProvider.select((s) => s.fullFen));
+    final index = ref.watch(ecoPositionIndexProvider).valueOrNull;
+    final draft = boardEditorSpaceDraft(fen, index);
+    final inSpace =
+        draft != null && ref.watch(spaceShortcutExistsProvider(draft.key));
+    final ink = context.colors.textPrimary;
+    return Semantics(
+      button: true,
+      label: inSpace ? 'Remove from My Space' : 'Add position to My Space',
+      excludeSemantics: true,
+      child: GestureDetector(
+        key: const ValueKey('board_editor_space_button'),
+        behavior: HitTestBehavior.opaque,
+        onTap: () async {
+          if (draft == null) return;
+          final error = boardEditorValidationError(
+            ref.read(boardEditorProvider),
+          );
+          if (error != null) {
+            showAppSnack(context, error);
+            return;
+          }
+          await toggleSpaceShortcut(context: context, ref: ref, draft: draft);
+        },
+        child: SizedBox.square(
+          dimension: 44,
+          child: Center(
+            child: FeedGlyph(
+              inSpace ? FeedGlyphs.mySpaceAdded : FeedGlyphs.mySpaceAdd,
+              width: 22,
+              height: 22,
+              color: ink,
+            ),
+          ),
+        ),
       ),
     );
   }
@@ -986,7 +1111,9 @@ class _SideToMoveToggle extends StatelessWidget {
         ),
         SizedBox(width: 4.w),
         _SideOption(
-          label: '\u265F', // Black pawn
+          // Black pawn. U+265F is the one chess symbol in the emoji set;
+          // U+FE0E pins the text glyph so iOS never swaps in the emoji.
+          label: '\u265F\uFE0E',
           isSelected: sideToMove == Side.black,
           onTap: () => onChanged(Side.black),
         ),
@@ -1109,9 +1236,8 @@ class _CastlingCheck extends StatelessWidget {
               onChanged: (v) => onChanged(v ?? false),
               activeColor: context.colors.textPrimary,
               checkColor: context.colors.background,
-              side: BorderSide(
-                color: context.colors.textPrimary.withValues(alpha: 0.5),
-              ),
+              // An unchecked box must still read as a box (3:1) on paper.
+              side: BorderSide(color: context.textInk(0.5)),
               materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
               visualDensity: VisualDensity.compact,
             ),
@@ -1176,7 +1302,7 @@ class _PieceTray extends StatelessWidget {
 
     return Container(
       width: double.infinity,
-      color: const Color(0xFFA1ADAE),
+      color: _kTrayGrey,
       padding: EdgeInsets.symmetric(vertical: 8.h, horizontal: 8.w),
       child: Column(
         children: [
@@ -1240,6 +1366,17 @@ class _PieceTray extends StatelessWidget {
   }
 }
 
+/// The piece tray's surface: a mid grey both piece colours stand out on,
+/// in either theme. The tray does not follow the app theme, so neither do
+/// the marks drawn on it.
+const Color _kTrayGrey = Color(0xFFA1ADAE);
+
+/// Ink for the tray's own controls (delete, flip): about 5:1 on the tray.
+const Color _kTrayInk = Color(0xFF263032);
+
+/// The tray's light ink, on an active control's [_kTrayInk] fill.
+const Color _kTrayInkInverse = Color(0xFFF4FAF9);
+
 class _TrayActionButton extends StatelessWidget {
   final IconData icon;
   final bool isActive;
@@ -1264,26 +1401,16 @@ class _TrayActionButton extends StatelessWidget {
         width: size,
         height: size,
         decoration: BoxDecoration(
-          color:
-              isActive
-                  ? context.colors.textPrimary.withValues(alpha: 0.3)
-                  : Colors.transparent,
+          color: isActive ? _kTrayInk : Colors.transparent,
           borderRadius: BorderRadius.circular(6.br),
-          border:
-              isActive
-                  ? Border.all(
-                    color: context.colors.textPrimary.withValues(alpha: 0.6),
-                    width: 1.5,
-                  )
-                  : null,
         ),
         child: Center(
           child: Icon(
             icon,
-            color:
-                isActive
-                    ? context.colors.background
-                    : context.colors.surfaceRecessed,
+            // The tray is a fixed grey in both themes, so its controls take
+            // the tray's own inks rather than theme tokens: idle dark ink
+            // (about 5:1), active the same ink as a fill under light ink.
+            color: isActive ? _kTrayInkInverse : _kTrayInk,
             size: size * 0.6,
           ),
         ),

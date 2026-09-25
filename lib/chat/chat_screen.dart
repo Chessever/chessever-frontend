@@ -5,6 +5,7 @@ import 'package:chessever2/chat/chat_api.dart';
 import 'package:chessever2/chat/botvinnik_provider.dart';
 import 'package:chessever2/providers/auth_state_provider.dart';
 import 'package:chessever2/services/deep_link_service.dart';
+import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/screens/group_event/smart_event/smart_aggregate_event_provider.dart';
 import 'package:chessever2/screens/group_event/smart_event/smart_event_screen.dart';
 import 'package:chessever2/screens/player_profile/player_profile_screen.dart';
@@ -16,6 +17,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:motor/motor.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -26,6 +28,10 @@ Uri? safeChatSourceUri(String? href) {
   if (uri == null || uri.scheme != 'https' || uri.host.isEmpty) return null;
   return uri;
 }
+
+/// The tablet side panel's slide: a smooth spring, sampled as a curve for
+/// the route's transition animation (house rule: springs, not easings).
+final Curve _panelCurve = const CupertinoMotion.smooth().toCurve;
 
 class ChatScreen extends ConsumerStatefulWidget {
   const ChatScreen({
@@ -56,6 +62,8 @@ class ChatScreen extends ConsumerStatefulWidget {
     );
 
     final width = MediaQuery.sizeOf(context).width;
+    final light = context.isLightTheme;
+    final colors = context.colors;
     if (width < 700) {
       await Navigator.of(
         context,
@@ -66,14 +74,20 @@ class ChatScreen extends ConsumerStatefulWidget {
       context: context,
       barrierDismissible: true,
       barrierLabel: 'Close Botvinnik',
-      barrierColor: Colors.black38,
+      barrierColor: light ? colors.scrim : Colors.black38,
       transitionDuration: const Duration(milliseconds: 220),
       pageBuilder: (context, animation, secondaryAnimation) {
         return Align(
           alignment: Alignment.centerRight,
           child: SafeArea(
             child: Material(
-              elevation: 20,
+              // A 20dp black elevation smears a grey cloud across paper; in
+              // light the scrim and a hairline edge separate the panel.
+              elevation: light ? 0 : 20,
+              shape:
+                  light
+                      ? Border(left: BorderSide(color: colors.divider))
+                      : null,
               child: SizedBox(
                 width: 520,
                 height: double.infinity,
@@ -89,7 +103,7 @@ class ChatScreen extends ConsumerStatefulWidget {
             begin: const Offset(1, 0),
             end: Offset.zero,
           ).animate(
-            CurvedAnimation(parent: animation, curve: Curves.easeOutCubic),
+            CurvedAnimation(parent: animation, curve: _panelCurve),
           ),
           child: child,
         );
@@ -504,7 +518,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         _scrollController.animateTo(
           end,
           duration: const Duration(milliseconds: 220),
-          curve: Curves.easeOut,
+          curve: _panelCurve,
         ),
       );
     });
@@ -595,6 +609,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           onPressed: () => _scaffoldKey.currentState?.openDrawer(),
         ),
         titleSpacing: 4,
+        // The name alone carries the title; "Beta" rides in the subtitle so
+        // the title never truncates at 360dp with a 1.3x text scale.
         title: const Row(
           children: [
             BotvinnikIcon(size: 40),
@@ -604,17 +620,25 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Text('Botvinnik (Beta)'),
+                  Text(
+                    'Botvinnik',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
                   SizedBox(height: 1),
                   Row(
                     children: [
                       _OnlineDot(),
                       SizedBox(width: 5),
-                      Text(
-                        'Chess assistant',
-                        style: TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w400,
+                      Flexible(
+                        child: Text(
+                          'Beta · Chess assistant',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w400,
+                          ),
                         ),
                       ),
                     ],
@@ -649,7 +673,11 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
             Expanded(
               child:
                   _loading
-                      ? const Center(child: CircularProgressIndicator())
+                      ? Center(
+                        child: CircularProgressIndicator(
+                          color: context.colors.accentText,
+                        ),
+                      )
                       : _messages.isEmpty
                       ? _EmptyChat(
                         suggestions: chatSuggestionsForScreen(
@@ -979,12 +1007,44 @@ class _OnlineDot extends StatelessWidget {
     return Container(
       width: 7,
       height: 7,
-      decoration: const BoxDecoration(
-        color: Color(0xff35c759),
+      decoration: BoxDecoration(
+        color: chatOnlineDotColor(context),
         shape: BoxShape.circle,
       ),
     );
   }
+}
+
+/// The app bar's "online" dot: the historic #35C759 in dark, the paper
+/// `success` green in light, where #35C759 sits at ~1.8:1 on the mint bar.
+Color chatOnlineDotColor(BuildContext context) =>
+    context.isLightTheme ? context.colors.success : const Color(0xff35c759);
+
+/// Markdown styling for Botvinnik's answers. Links take the accent-text ink
+/// in both themes, set semibold so a link differs from body ink by more than
+/// hue alone: the package's `Colors.blue` read 2.5:1 on the paper bubble and,
+/// in dark, put a second, unrelated blue under the cyan BOTVINNIK label.
+/// Dark otherwise keeps the package's theme-derived sheet. On paper, code
+/// sits on the surface, one step up from the #E2ECEC bubble, seated by a
+/// divider edge so a block never reads as a loose white slab.
+MarkdownStyleSheet chatMarkdownStyleSheet(BuildContext context) {
+  final theme = Theme.of(context);
+  final base = MarkdownStyleSheet.fromTheme(theme);
+  final colors = context.colors;
+  final link = TextStyle(color: colors.accentText, fontWeight: FontWeight.w600);
+  if (theme.brightness != Brightness.light) return base.copyWith(a: link);
+  return base.copyWith(
+    a: link,
+    code: base.code?.copyWith(
+      color: colors.textPrimary,
+      backgroundColor: colors.surface,
+    ),
+    codeblockDecoration: BoxDecoration(
+      color: colors.surface,
+      borderRadius: BorderRadius.circular(8),
+      border: Border.all(color: colors.divider),
+    ),
+  );
 }
 
 class _ChatComposer extends StatefulWidget {
@@ -1113,11 +1173,11 @@ class _ChatUpgradeGate extends StatelessWidget {
 
 class _ChatComposerState extends State<_ChatComposer> {
   static const _placeholders = <String>[
-    'Your move—ask Botvinnik',
-    '轮到你了——问问博特维尼克',
-    'आपकी चाल—बोटविनिक से पूछें',
-    'Tu jugada—pregúntale a Botvinnik',
-    'حان دورك—اسأل بوتفينيك',
+    'Your move. Ask Botvinnik',
+    '轮到你了，问问博特维尼克',
+    'आपकी चाल। बोटविनिक से पूछें',
+    'Tu jugada. Pregúntale a Botvinnik',
+    'حان دورك، اسأل بوتفينيك',
   ];
 
   static const _typingDelay = Duration(milliseconds: 70);
@@ -1244,6 +1304,13 @@ class _ChatComposerState extends State<_ChatComposer> {
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
+    // Dark lifts the field a step above the surface; paper recesses it one
+    // gentle step (the page background) instead of the deep #C5D6D5, which
+    // left the hint at a bare 4.5:1.
+    final fieldFill =
+        context.isLightTheme
+            ? context.colors.background
+            : colorScheme.surfaceContainerHighest;
     return Material(
       color: colorScheme.surface,
       child: SafeArea(
@@ -1255,7 +1322,7 @@ class _ChatComposerState extends State<_ChatComposer> {
           ),
           child: Container(
             decoration: BoxDecoration(
-              color: colorScheme.surfaceContainerHighest,
+              color: fieldFill,
               borderRadius: BorderRadius.circular(22),
               border: Border.all(color: colorScheme.outlineVariant),
             ),
@@ -1293,15 +1360,21 @@ class _ChatComposerState extends State<_ChatComposer> {
                         tooltip: 'Send',
                         onPressed: canSend ? widget.onSend : null,
                         style: IconButton.styleFrom(
+                          // The app's IconTheme colour otherwise outranks the
+                          // filled default: white on cyan (2.4:1) in dark,
+                          // ink on the teal fill (2.5:1) in light. onPrimary
+                          // is the ink each theme picked for its fill.
+                          foregroundColor: colorScheme.onPrimary,
                           minimumSize: const Size.square(40),
                           maximumSize: const Size.square(40),
                         ),
                         icon:
                             widget.sending
-                                ? const SizedBox.square(
+                                ? SizedBox.square(
                                   dimension: 17,
                                   child: CircularProgressIndicator(
                                     strokeWidth: 2,
+                                    color: context.colors.accentText,
                                   ),
                                 )
                                 : const Icon(Icons.arrow_upward_rounded),
@@ -1352,7 +1425,7 @@ class _EmptyChat extends StatelessWidget {
               Text(
                 isTournamentContext
                     ? 'Ask about this tournament’s format, schedule, rounds, games, or standings.'
-                    : 'Ask about tournaments, schedules, rounds, games, or standings — in your preferred language.',
+                    : 'Ask about tournaments, schedules, rounds, games or standings, in any language.',
                 textAlign: TextAlign.center,
                 style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                   color: colorScheme.onSurfaceVariant,
@@ -1493,7 +1566,7 @@ class _MessageBubble extends StatelessWidget {
             Text(
               'BOTVINNIK',
               style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                color: colorScheme.primary,
+                color: context.colors.accentText,
                 fontWeight: FontWeight.w700,
                 letterSpacing: 0.7,
               ),
@@ -1504,9 +1577,12 @@ class _MessageBubble extends StatelessWidget {
             Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                const SizedBox.square(
+                SizedBox.square(
                   dimension: 16,
-                  child: CircularProgressIndicator(strokeWidth: 2),
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: context.colors.accentText,
+                  ),
                 ),
                 const SizedBox(width: 8),
                 Text(
@@ -1546,9 +1622,7 @@ class _MessageBubble extends StatelessWidget {
                     unawaited(launchUrl(uri, mode: LaunchMode.platformDefault));
                   }
                 },
-                styleSheet: MarkdownStyleSheet.fromTheme(
-                  Theme.of(context),
-                ).copyWith(
+                styleSheet: chatMarkdownStyleSheet(context).copyWith(
                   p: Theme.of(
                     context,
                   ).textTheme.bodyMedium?.copyWith(height: 1.45),
@@ -1842,6 +1916,10 @@ class _ConversationDrawer extends ConsumerWidget {
                     child: ListTile(
                       selected: selected,
                       selectedTileColor: colorScheme.secondaryContainer,
+                      // The fill marks the selection; the title takes the
+                      // container's own ink (cyan `primary` on the dark
+                      // container read 3.8:1).
+                      selectedColor: colorScheme.onSecondaryContainer,
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(12),
                       ),

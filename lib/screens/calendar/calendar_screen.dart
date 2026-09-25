@@ -5,17 +5,24 @@ import 'package:chessever2/repository/supabase/calendar_event/calendar_event.dar
 import 'package:chessever2/repository/supabase/calendar_event/calendar_event_repository.dart';
 import 'package:chessever2/repository/supabase/group_broadcast/group_tour_repository.dart';
 import 'package:chessever2/screens/calendar/calendar_event_detail_screen.dart';
+import 'package:chessever2/screens/calendar/provider/calendar_detail_screen_provider.dart';
+import 'package:chessever2/screens/calendar/provider/calendar_month_events_provider.dart';
 import 'package:chessever2/screens/calendar/provider/calendar_screen_provider.dart';
-import 'package:chessever2/screens/home/widget/bottom_nav_bar.dart';
 import 'package:chessever2/screens/group_event/model/tour_event_card_model.dart';
+import 'package:chessever2/screens/group_event/providers/live_group_broadcast_id_provider.dart';
 import 'package:chessever2/screens/group_event/providers/sorting_all_event_provider.dart';
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_mode_provider.dart';
 import 'package:chessever2/services/analytics/analytics_service.dart';
+import 'package:chessever2/utils/png_asset.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/utils/user_error_message.dart';
 import 'package:chessever2/widgets/app_snack.dart';
+import 'package:chessever2/widgets/generic_error_widget.dart';
 import 'package:chessever2/widgets/skeleton_widget.dart';
+import 'package:chessever2/widgets/time_control_glyph.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:intl/intl.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/widgets/simple_search_bar.dart';
@@ -58,8 +65,49 @@ List<MonthEventsSummary> orderMonthsByRelevance(
   return [...months.sublist(pivot), ...months.sublist(0, pivot)];
 }
 
+/// Pushes the calendar as an ordinary route. It is no longer a main section;
+/// the sidebar month view is its entry point.
+///
+/// [day] opens it on that day's events. Without it the year of months opens
+/// at today. Year and month move to the target before the route builds, so
+/// the year grid never fetches the wrong year first, and filters left over
+/// from an earlier visit are cleared so every open starts clean.
+Future<void> openCalendarScreen(
+  BuildContext context, {
+  DateTime? day,
+  String source = 'sidebar',
+}) {
+  final container = ProviderScope.containerOf(context, listen: false);
+  final navigator = Navigator.of(context);
+  final years = container.read(availableYearsProvider);
+  // The year dropdown only offers [years]; a day outside them cannot be shown.
+  final focus =
+      day != null && years.contains(day.year) ? DateUtils.dateOnly(day) : null;
+  final target = focus ?? DateTime.now();
+
+  container.read(selectedYearProvider.notifier).state = target.year;
+  container.read(selectedMonthProvider.notifier).state = target.month;
+  container.read(calendarSearchQueryProvider.notifier).state = '';
+  container.read(calendarTimeControlProvider.notifier).state = null;
+  container.read(calendarFilterModeProvider.notifier).state =
+      CalendarFilterMode.all;
+
+  AnalyticsService.instance.trackEventDetached(
+    'Calendar Opened',
+    properties: {'source': source, 'focused_day': focus != null},
+  );
+
+  return navigator.push(
+    MaterialPageRoute<void>(builder: (_) => CalendarScreen(initialDate: focus)),
+  );
+}
+
 class CalendarScreen extends ConsumerStatefulWidget {
-  const CalendarScreen({super.key});
+  const CalendarScreen({super.key, this.initialDate});
+
+  /// Opens the screen on this day's events instead of the year of months.
+  /// Use [openCalendarScreen], which also moves the year to match.
+  final DateTime? initialDate;
 
   @override
   ConsumerState<CalendarScreen> createState() => _CalendarScreenState();
@@ -71,6 +119,31 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
   final ScrollController _scrollController = ScrollController();
   Timer? _searchAnalyticsTimer;
 
+  /// The day whose events are shown in place of the month grid, or null.
+  DateTime? _focusDay;
+
+  @override
+  void initState() {
+    super.initState();
+    // The query outlives the screen; show it rather than an empty field over
+    // filtered results.
+    searchController.text = ref.read(calendarSearchQueryProvider);
+    final initial = widget.initialDate;
+    if (initial == null) return;
+    _focusDay = DateUtils.dateOnly(initial);
+    // Opened directly rather than through [openCalendarScreen]: bring the
+    // year along after the first frame so the grid behind the day matches.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final day = _focusDay;
+      if (day == null) return;
+      if (ref.read(selectedYearProvider) != day.year &&
+          ref.read(availableYearsProvider).contains(day.year)) {
+        ref.read(selectedYearProvider.notifier).state = day.year;
+      }
+    });
+  }
+
   @override
   void dispose() {
     searchController.dispose();
@@ -80,26 +153,26 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
     super.dispose();
   }
 
-  void _scrollToTop() {
-    if (!_scrollController.hasClients) return;
-    _scrollController.animateTo(
-      0,
-      duration: const Duration(milliseconds: 300),
-      curve: Curves.easeOutCubic,
-    );
+  void _clearFocus() {
+    if (_focusDay == null) return;
+    setState(() => _focusDay = null);
   }
 
   @override
   Widget build(BuildContext context) {
-    ref.listen<BottomNavBarReTapRequest>(bottomNavBarReTapRequestProvider, (
-      previous,
-      next,
-    ) {
-      if (next.item == BottomNavBarItem.calendar) {
-        _scrollToTop();
-      }
+    // Searching, switching to a quick filter or picking another year asks a
+    // different question than "what is on this day", so the day gives way.
+    ref.listen<String>(calendarSearchQueryProvider, (_, next) {
+      if (next.trim().isNotEmpty) _clearFocus();
+    });
+    ref.listen<CalendarFilterMode>(calendarFilterModeProvider, (_, next) {
+      if (next != CalendarFilterMode.all) _clearFocus();
+    });
+    ref.listen<int>(selectedYearProvider, (_, next) {
+      if (_focusDay != null && _focusDay!.year != next) _clearFocus();
     });
 
+    final canPop = ModalRoute.of(context)?.canPop ?? false;
     final yearList = ref.read(availableYearsProvider);
     const timeControls = ['Standard', 'Rapid', 'Blitz'];
     final filterMode = ref.watch(calendarFilterModeProvider);
@@ -122,6 +195,13 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
                 Row(
                   crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
+                    if (canPop) ...[
+                      _CalendarBackButton(
+                        onPressed: () => Navigator.of(context).maybePop(),
+                      ),
+                      SizedBox(width: 4.w),
+                    ],
+
                     /// Search bar
                     Expanded(
                       child: Hero(
@@ -139,14 +219,20 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
                               color: context.colors.surfaceRecessed,
                               borderRadius: BorderRadius.circular(8.br),
                               border: Border.all(
+                                // Light matches the sibling search fields:
+                                // an accentText ring, no raw-cyan glow.
                                 color:
                                     focusNode.hasFocus
-                                        ? kPrimaryColor.withValues(alpha: 0.5)
+                                        ? (context.isLightTheme
+                                            ? context.colors.accentText
+                                            : kPrimaryColor.withValues(
+                                              alpha: 0.5,
+                                            ))
                                         : Colors.transparent,
                                 width: 2.0,
                               ),
                               boxShadow:
-                                  focusNode.hasFocus
+                                  focusNode.hasFocus && !context.isLightTheme
                                       ? [
                                         BoxShadow(
                                           color: kPrimaryColor.withValues(
@@ -344,7 +430,10 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
 
           SizedBox(height: 16.h),
 
-          /// Month Grid
+          /// A focused day, or the month grid
+          if (_focusDay != null)
+            Expanded(child: _buildDayFocus(_focusDay!))
+          else
           Expanded(
             child: ref
                 .watch(calendarScreenProvider)
@@ -367,13 +456,21 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
                         // Invalidate the calendar provider to refresh data
                         ref.invalidate(calendarScreenProvider);
                       },
-                      color: kPrimaryColor,
+                      color: context.colors.accentText,
                       backgroundColor: context.colors.surface,
                       displacement: 60.h,
                       strokeWidth: 3.w,
                       child: GridView.builder(
                         controller: _scrollController,
-                        padding: EdgeInsets.symmetric(horizontal: 16.sp),
+                        // Explicit padding stops the scroll view adding the
+                        // home-indicator inset itself, so add it here: this
+                        // is a pushed route with no bottom bar beneath it.
+                        padding: EdgeInsets.fromLTRB(
+                          16.sp,
+                          0,
+                          16.sp,
+                          12.sp + MediaQuery.viewPaddingOf(context).bottom,
+                        ),
                         physics: const AlwaysScrollableScrollPhysics(
                           parent: BouncingScrollPhysics(),
                         ),
@@ -448,7 +545,12 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
 
                     return SkeletonWidget(
                       child: GridView.builder(
-                        padding: EdgeInsets.symmetric(horizontal: 16.sp),
+                        padding: EdgeInsets.fromLTRB(
+                          16.sp,
+                          0,
+                          16.sp,
+                          12.sp + MediaQuery.viewPaddingOf(context).bottom,
+                        ),
                         gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
                           crossAxisCount: crossAxisCount,
                           mainAxisSpacing: 12.sp,
@@ -517,6 +619,118 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
           .sortCalendarEvents(flattenedEvents, prioritizeFavorites: false);
     }
 
+    return _buildEventCollection(
+      events: sortedEvents,
+      onRefresh: () async {
+        HapticFeedbackService.medium();
+        ref.invalidate(calendarScreenProvider);
+      },
+      emptyText: 'No events found',
+      heroPrefix: 'calendar-list',
+    );
+  }
+
+  /// The day view: every event running on [day], in the calendar's usual
+  /// card list, from the same month rows the sidebar marked the day with.
+  Widget _buildDayFocus(DateTime day) {
+    final args = CalendarFilterArgs(month: day.month, year: day.year);
+    final monthAsync = ref.watch(calendarMonthEventsProvider(args));
+    final liveIds =
+        ref.watch(liveGroupBroadcastIdsProvider).valueOrNull ??
+        const <String>[];
+    final timeControl = normalizeTimeControl(
+      ref.watch(calendarTimeControlProvider),
+    );
+
+    List<GroupEventCardModel> eventsOn(CalendarMonthEvents month) {
+      final events = <GroupEventCardModel>[
+        for (final b in month.broadcasts)
+          if (calendarEventRunsOn(b.dateStart, b.dateEnd, day))
+            GroupEventCardModel.fromGroupBroadcast(b, liveIds),
+        for (final e in month.calendarEvents)
+          if (calendarEventRunsOn(e.startDate, e.endDate, day))
+            GroupEventCardModel.fromCalendarEvent(e),
+      ];
+      final shown =
+          timeControl == null
+              ? events
+              : events
+                  .where((e) => normalizeTimeControl(e.timeControl) == timeControl)
+                  .toList();
+      return ref
+          .read(tournamentSortingServiceProvider)
+          .sortCalendarEvents(shown, prioritizeFavorites: false);
+    }
+
+    final events = monthAsync.whenOrNull(data: eventsOn);
+    final years = ref.watch(availableYearsProvider);
+    final firstDay = DateTime(years.first);
+    final lastDay = DateTime(years.last, 12, 31);
+
+    final Widget body = monthAsync.when(
+      data: (_) => _buildEventCollection(
+        events: events!,
+        onRefresh: () async {
+          HapticFeedbackService.medium();
+          ref.invalidate(calendarMonthEventsProvider(args));
+          try {
+            await ref.read(calendarMonthEventsProvider(args).future);
+          } catch (_) {
+            // The error branch shows the failure with a retry.
+          }
+        },
+        emptyText: 'No events on this day',
+        heroPrefix: 'calendar-day',
+      ),
+      loading: () => const _DayLoadingTiles(),
+      error: (error, _) => GenericErrorWidget(
+        message: userFacingError(
+          error,
+          fallback: "Couldn't load this day's events",
+        ),
+        onRetry: () => ref.invalidate(calendarMonthEventsProvider(args)),
+      ),
+    );
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _DayFocusHeader(
+          day: day,
+          eventCount: events?.length,
+          onPrevious:
+              day.isAfter(firstDay) ? () => _stepDay(day, -1) : null,
+          onNext: day.isBefore(lastDay) ? () => _stepDay(day, 1) : null,
+          onShowMonths: () {
+            HapticFeedbackService.navigation();
+            _clearFocus();
+          },
+        ),
+        Expanded(child: body),
+      ],
+    );
+  }
+
+  void _stepDay(DateTime from, int delta) {
+    HapticFeedbackService.selection();
+    final next = DateTime(from.year, from.month, from.day + delta);
+    setState(() => _focusDay = next);
+    // Keep the year behind the day in step; the listener sees the new focus
+    // year and leaves the day in place.
+    if (ref.read(selectedYearProvider) != next.year) {
+      ref.read(selectedYearProvider.notifier).state = next.year;
+    }
+    ref.read(selectedMonthProvider.notifier).state = next.month;
+  }
+
+  /// Event cards as the calendar shows them: a grid on tablets, a list on
+  /// phones, pull to refresh, and [emptyText] when there is nothing to show.
+  Widget _buildEventCollection({
+    required List<GroupEventCardModel> events,
+    required Future<void> Function() onRefresh,
+    required String emptyText,
+    required String heroPrefix,
+  }) {
     final isTablet = ResponsiveHelper.isTablet;
     final crossAxisCount = ResponsiveHelper.getGridCrossAxisCount(
       phoneCount: 1,
@@ -525,31 +739,33 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
       phone: 16.sp,
       tablet: 24.sp,
     );
+    // Explicit padding stops the scroll view adding the home-indicator inset
+    // itself; this is a pushed route, so nothing else clears it.
+    final bottomInset = MediaQuery.viewPaddingOf(context).bottom;
 
     return RefreshIndicator(
-      onRefresh: () async {
-        HapticFeedbackService.medium();
-        ref.invalidate(calendarScreenProvider);
-      },
-      color: kPrimaryColor,
+      onRefresh: onRefresh,
+      color: context.colors.accentText,
       backgroundColor: context.colors.surface,
       displacement: 60.h,
       strokeWidth: 3.w,
       child:
-          sortedEvents.isEmpty
+          events.isEmpty
               ? ListView(
                 controller: _scrollController,
                 physics: const AlwaysScrollableScrollPhysics(
                   parent: BouncingScrollPhysics(),
                 ),
-                padding: EdgeInsets.symmetric(
-                  horizontal: horizontalPadding,
-                  vertical: 24.h,
+                padding: EdgeInsets.fromLTRB(
+                  horizontalPadding,
+                  24.h,
+                  horizontalPadding,
+                  24.h + bottomInset,
                 ),
                 children: [
                   Center(
                     child: Text(
-                      'No events found',
+                      emptyText,
                       style: AppTypography.textLgRegular.copyWith(
                         color: context.colors.textPrimaryMuted,
                       ),
@@ -564,9 +780,11 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
                 physics: const AlwaysScrollableScrollPhysics(
                   parent: BouncingScrollPhysics(),
                 ),
-                padding: EdgeInsets.symmetric(
-                  horizontal: horizontalPadding,
-                  vertical: 12.h,
+                padding: EdgeInsets.fromLTRB(
+                  horizontalPadding,
+                  12.h,
+                  horizontalPadding,
+                  12.h + bottomInset,
                 ),
                 gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
                   crossAxisCount: crossAxisCount,
@@ -574,13 +792,13 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
                   mainAxisSpacing: 16.sp,
                   childAspectRatio: ResponsiveHelper.isLandscape ? 2.2 : 1.8,
                 ),
-                itemCount: sortedEvents.length,
+                itemCount: events.length,
                 itemBuilder: (context, index) {
-                  final event = sortedEvents[index];
+                  final event = events[index];
                   return EventCard(
                     tourEventCardModel: event,
-                    heroTagSuffix: 'calendar-list-$index',
-                    onTap: () => _onEventTap(event, sortedEvents),
+                    heroTagSuffix: '$heroPrefix-$index',
+                    onTap: () => _onEventTap(event, events),
                   );
                 },
               )
@@ -589,19 +807,21 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
                 physics: const AlwaysScrollableScrollPhysics(
                   parent: BouncingScrollPhysics(),
                 ),
-                padding: EdgeInsets.symmetric(
-                  horizontal: horizontalPadding,
-                  vertical: 12.h,
+                padding: EdgeInsets.fromLTRB(
+                  horizontalPadding,
+                  12.h,
+                  horizontalPadding,
+                  12.h + bottomInset,
                 ),
-                itemCount: sortedEvents.length,
+                itemCount: events.length,
                 itemBuilder: (context, index) {
-                  final event = sortedEvents[index];
+                  final event = events[index];
                   return Padding(
                     padding: EdgeInsets.only(bottom: 12.h),
                     child: EventCard(
                       tourEventCardModel: event,
-                      heroTagSuffix: 'calendar-list-$index',
-                      onTap: () => _onEventTap(event, sortedEvents),
+                      heroTagSuffix: '$heroPrefix-$index',
+                      onTap: () => _onEventTap(event, events),
                     ),
                   );
                 },
@@ -761,27 +981,20 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
     String? assetPath;
 
     if (lower.contains('blitz')) {
-      assetPath = 'assets/pngs/blitz.png';
+      assetPath = PngAsset.blitzIcon;
     } else if (lower.contains('rapid')) {
-      assetPath = 'assets/pngs/rapid.png';
+      assetPath = PngAsset.rapidIcon;
     } else if (lower.contains('standard') || lower.contains('classic')) {
-      assetPath = 'assets/pngs/classical.png';
+      assetPath = PngAsset.classicalIcon;
     } else if (lower.contains('bullet')) {
-      // No bullet asset, use a lightning icon
-      return Icon(
-        Icons.flash_on_rounded,
-        size: 16.ic,
-        color: const Color(0xFFFFD700), // Gold color for bullet
-      );
+      // Bullet has no mark of its own. Borrow the blitz coin, as the library
+      // and feed cards do, and let the label beside it name the format; a
+      // second, stock Material bolt read as a near-duplicate of blitz.
+      assetPath = PngAsset.blitzIcon;
     }
 
     if (assetPath != null) {
-      return Image.asset(
-        assetPath,
-        width: 16.sp,
-        height: 16.sp,
-        fit: BoxFit.contain,
-      );
+      return TimeControlGlyph(assetPath, size: 16.sp);
     }
 
     return Icon(
@@ -1020,27 +1233,34 @@ class _FilterButton extends StatelessWidget {
     final iconColor = isDisabled
         ? context.colors.placeholder
         : isSelected
-            ? kPrimaryColor
+            ? context.colors.accentText
             : context.colors.textSecondary;
     final textColor = isDisabled
         ? context.colors.placeholder
         : isSelected
-            ? kPrimaryColor
+            ? context.colors.accentText
             : context.colors.textPrimary;
     final badgeColor = isDisabled
         ? context.colors.divider.withValues(alpha: 0.4)
         : isSelected
-            ? kPrimaryColor.withValues(alpha: 0.25)
+            // On the deeper cyan wash the count only just makes 4.5:1 on
+            // paper; light seats it on the surface instead (6.8:1).
+            ? (context.isLightTheme
+                ? context.colors.surface
+                : kPrimaryColor.withValues(alpha: 0.25))
             : context.colors.surfaceRecessed;
     final badgeTextColor = isDisabled
         ? context.colors.placeholder
         : isSelected
-            ? kPrimaryColor
+            ? context.colors.accentText
             : context.colors.textSecondary;
     final borderColor = isDisabled
         ? context.colors.divider
         : isSelected
-            ? kPrimaryColor.withValues(alpha: 0.6)
+            // Cyan at 0.6 is 1.7:1 on paper; light rings in the accent ink.
+            ? (context.isLightTheme
+                ? context.colors.accentText
+                : kPrimaryColor.withValues(alpha: 0.6))
             : context.colors.divider;
     final backgroundColor = isDisabled
         ? context.colors.surface.withValues(alpha: 0.6)
@@ -1114,6 +1334,222 @@ class _FilterButton extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+/// Back to wherever the calendar was opened from, on a 44pt target.
+class _CalendarBackButton extends StatelessWidget {
+  const _CalendarBackButton({required this.onPressed});
+
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox.square(
+      dimension: 44,
+      child: IconButton(
+        tooltip: 'Back',
+        padding: EdgeInsets.zero,
+        onPressed: () {
+          HapticFeedbackService.navigation();
+          onPressed();
+        },
+        icon: Icon(
+          Icons.arrow_back_ios_new_rounded,
+          color: context.colors.iconPrimary,
+          size: 20.ic,
+        ),
+      ),
+    );
+  }
+}
+
+/// Title row of the day view: the date with previous/next day steps, then
+/// the event count and the way back to the year of months.
+class _DayFocusHeader extends StatelessWidget {
+  const _DayFocusHeader({
+    required this.day,
+    required this.eventCount,
+    required this.onPrevious,
+    required this.onNext,
+    required this.onShowMonths,
+  });
+
+  final DateTime day;
+
+  /// Null while the month is loading.
+  final int? eventCount;
+  final VoidCallback? onPrevious;
+  final VoidCallback? onNext;
+  final VoidCallback onShowMonths;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.colors;
+    // Another year's date carries the year, so its weekday is shortened to
+    // keep the title whole on a narrow phone.
+    final pattern =
+        day.year == DateTime.now().year ? 'EEEE, d MMMM' : 'EEE, d MMMM y';
+    final count = eventCount;
+    final countLabel = switch (count) {
+      null => '',
+      1 => '1 event',
+      _ => '$count events',
+    };
+
+    return Padding(
+      // The step buttons' 44pt boxes overhang the 16pt gutter so their
+      // glyphs, not their boxes, line up with the content edge.
+      padding: EdgeInsets.fromLTRB(16.sp, 0, 6.sp, 4.h),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          SizedBox(
+            height: 44,
+            child: Row(
+              children: [
+                Expanded(
+                  child: Semantics(
+                    header: true,
+                    liveRegion: true,
+                    child: Text(
+                      DateFormat(pattern).format(day),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: AppTypography.textLgBold.copyWith(
+                        color: colors.textPrimary,
+                      ),
+                    ),
+                  ),
+                ),
+                _DayStepButton(
+                  icon: Icons.chevron_left_rounded,
+                  tooltip: 'Previous day',
+                  onPressed: onPrevious,
+                ),
+                _DayStepButton(
+                  icon: Icons.chevron_right_rounded,
+                  tooltip: 'Next day',
+                  onPressed: onNext,
+                ),
+              ],
+            ),
+          ),
+          SizedBox(
+            height: 44,
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    countLabel,
+                    maxLines: 1,
+                    style: AppTypography.textSmRegular.copyWith(
+                      color: colors.textSecondary,
+                    ),
+                  ),
+                ),
+                InkWell(
+                  onTap: onShowMonths,
+                  borderRadius: BorderRadius.circular(4),
+                  child: Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 10.sp),
+                    child: Center(
+                      child: Text(
+                        'All months',
+                        style: AppTypography.textSmMedium.copyWith(
+                          color: colors.textPrimary,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _DayStepButton extends StatelessWidget {
+  const _DayStepButton({
+    required this.icon,
+    required this.tooltip,
+    required this.onPressed,
+  });
+
+  final IconData icon;
+  final String tooltip;
+  final VoidCallback? onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final ink = context.colors.iconPrimary;
+    return SizedBox.square(
+      dimension: 44,
+      child: IconButton(
+        tooltip: tooltip,
+        padding: EdgeInsets.zero,
+        onPressed: onPressed,
+        color: ink,
+        disabledColor: ink.withValues(alpha: 0.25),
+        icon: Icon(icon, size: 24.ic),
+      ),
+    );
+  }
+}
+
+/// Plain card-shaped tiles while a day's month loads, in the same list or
+/// grid the cards will take. Real event cards would look up images for ids
+/// that do not exist.
+class _DayLoadingTiles extends StatelessWidget {
+  const _DayLoadingTiles();
+
+  @override
+  Widget build(BuildContext context) {
+    final crossAxisCount = ResponsiveHelper.getGridCrossAxisCount(
+      phoneCount: 1,
+    );
+    final horizontalPadding = ResponsiveHelper.adaptive(
+      phone: 16.sp,
+      tablet: 24.sp,
+    );
+    final tile = DecoratedBox(
+      decoration: BoxDecoration(
+        color: context.colors.surface,
+        borderRadius: BorderRadius.circular(12.br),
+      ),
+    );
+    final padding = EdgeInsets.symmetric(
+      horizontal: horizontalPadding,
+      vertical: 12.h,
+    );
+
+    if (ResponsiveHelper.isTablet && crossAxisCount > 1) {
+      return GridView.builder(
+        physics: const NeverScrollableScrollPhysics(),
+        padding: padding,
+        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: crossAxisCount,
+          crossAxisSpacing: 16.sp,
+          mainAxisSpacing: 16.sp,
+          childAspectRatio: ResponsiveHelper.isLandscape ? 2.2 : 1.8,
+        ),
+        itemCount: crossAxisCount * 2,
+        itemBuilder: (_, _) => tile,
+      );
+    }
+    return ListView.builder(
+      physics: const NeverScrollableScrollPhysics(),
+      padding: padding,
+      itemCount: 4,
+      itemBuilder:
+          (_, _) => Padding(
+            padding: EdgeInsets.only(bottom: 12.h),
+            child: SizedBox(height: 96.h, child: tile),
+          ),
     );
   }
 }

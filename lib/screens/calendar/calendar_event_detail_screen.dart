@@ -5,7 +5,6 @@ import 'package:chessever2/repository/supabase/calendar_event/calendar_event.dar
 import 'package:chessever2/screens/group_event/model/tour_event_card_model.dart';
 import 'package:chessever2/services/analytics/analytics_service.dart';
 import 'package:chessever2/theme/app_colors.dart';
-import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/favorite_event_ids.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
@@ -98,6 +97,11 @@ class _CalendarEventDetailScreenState
         backgroundColor: context.colors.surface,
         iconTheme: IconThemeData(color: context.colors.iconPrimary),
         actions: [
+          // No three-dot here: the app bar has no free slot for one (a long
+          // title runs right up to the star), and adding a button would push
+          // the star left and truncate the title earlier. Pinning lives on
+          // the calendar card's long-press menu; the website is the bottom
+          // bar's link.
           _CalendarEventFavoriteStar(event: favoriteModel),
           SizedBox(width: 8.w),
         ],
@@ -333,7 +337,7 @@ class _EventBottomBar extends StatelessWidget {
               width: 12.h,
               colorFilter:
                   context.isLightTheme
-                      ? const ColorFilter.mode(kPrimaryColor, BlendMode.srcIn)
+                      ? ColorFilter.mode(context.colors.accentText, BlendMode.srcIn)
                       : null,
             ),
             SizedBox(width: 4.w),
@@ -342,7 +346,7 @@ class _EventBottomBar extends StatelessWidget {
                 domain,
                 maxLines: 1,
                 style: AppTypography.textXsMedium.copyWith(
-                  color: kPrimaryColor,
+                  color: context.colors.accentText,
                   overflow: TextOverflow.ellipsis,
                 ),
               ),

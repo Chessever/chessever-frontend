@@ -3,7 +3,6 @@ import 'dart:async';
 import 'package:app_settings/app_settings.dart';
 import 'package:chessever2/revenue_cat_service/subscribe_state.dart';
 import 'package:chessever2/theme/app_colors.dart';
-import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:flutter/foundation.dart';
@@ -136,18 +135,11 @@ class _BillingIssueSheet extends ConsumerWidget {
                   ),
                 ),
                 SizedBox(height: 24.h),
-                Container(
-                  width: 64.w,
-                  height: 64.h,
-                  decoration: BoxDecoration(
-                    color: kPrimaryColor.withValues(alpha: 0.12),
-                    shape: BoxShape.circle,
-                  ),
-                  child: Icon(
-                    Icons.credit_card_off_rounded,
-                    color: kPrimaryColor,
-                    size: 32.ic,
-                  ),
+                // The mark stands bare, no tinted disc behind it.
+                Icon(
+                  Icons.credit_card_off_rounded,
+                  color: context.colors.accentText,
+                  size: 40.ic,
                 ),
                 SizedBox(height: 20.h),
                 Text(
@@ -269,20 +261,10 @@ class _PrimaryButton extends StatelessWidget {
       width: double.infinity,
       height: 54.h,
       child: DecoratedBox(
+        // One solid brand fill, no cyan-to-blue gradient and no bloom.
         decoration: BoxDecoration(
-          gradient: const LinearGradient(
-            colors: [kPrimaryColor, kDarkBlue],
-            begin: Alignment.centerLeft,
-            end: Alignment.centerRight,
-          ),
+          color: context.colors.brand,
           borderRadius: BorderRadius.circular(16.br),
-          boxShadow: [
-            BoxShadow(
-              color: kPrimaryColor.withValues(alpha: 0.3),
-              blurRadius: 16,
-              offset: const Offset(0, 6),
-            ),
-          ],
         ),
         child: Material(
           color: Colors.transparent,
@@ -293,7 +275,9 @@ class _PrimaryButton extends StatelessWidget {
               child: Text(
                 label,
                 style: AppTypography.textMdBold.copyWith(
-                  color: Colors.white,
+                  // White on the cyan fill was 2.4:1; the ink made for
+                  // brand fills clears AA in both themes.
+                  color: context.colors.inkOnAccent,
                 ),
               ),
             ),

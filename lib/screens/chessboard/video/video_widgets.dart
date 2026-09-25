@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 import 'dart:ui' show FlutterView;
 import 'package:country_flags/country_flags.dart';
+import 'package:chessever2/theme/app_theme.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:chessever2/repository/local_storage/local_storage_repository.dart'
@@ -612,6 +613,12 @@ class _EventVideoPlayerBoxState extends State<_EventVideoPlayerBox> {
                               child: Center(
                                 child: TextButton.icon(
                                   onPressed: player.retry,
+                                  // The player is black in both themes, so
+                                  // the light theme's deep teal would sink
+                                  // to ~2.9:1 here; keep the bright accent.
+                                  style: TextButton.styleFrom(
+                                    foregroundColor: kPrimaryColor,
+                                  ),
                                   icon: const Icon(Icons.refresh),
                                   label: const Text(
                                     'Video unavailable · Retry',

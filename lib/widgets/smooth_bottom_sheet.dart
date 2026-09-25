@@ -210,7 +210,14 @@ class _SmoothBottomSheetWrapperState<T>
                                   width: 36.w,
                                   height: 4.h,
                                   decoration: BoxDecoration(
-                                    color: context.colors.textPrimary.withValues(alpha: 0.3),
+                                    // Paper needs a solid ink to clear 3:1
+                                    // (30% ink reads ~1.9:1); dark keeps
+                                    // its original 30% white.
+                                    color:
+                                        context.isLightTheme
+                                            ? context.colors.placeholder
+                                            : context.colors.textPrimary
+                                                .withValues(alpha: 0.3),
                                     borderRadius: BorderRadius.circular(2.br),
                                   ),
                                 ),

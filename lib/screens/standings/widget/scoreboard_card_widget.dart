@@ -3,7 +3,6 @@ import 'package:chessever2/widgets/federation_flag.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
-import '../../../theme/app_theme.dart';
 import '../../../utils/app_typography.dart';
 
 class ScoreboardCardWidget extends ConsumerWidget {
@@ -163,7 +162,7 @@ class ScoreboardCardWidget extends ConsumerWidget {
                                 : scoreChange!.toStringAsFixed(0),
                             style: AppTypography.textXsMedium.copyWith(
                               color:
-                                  scoreChange! > 0 ? kGreenColor : kRedColor,
+                                  scoreChange! > 0 ? context.colors.successStrong : context.colors.danger,
                             ),
                           )
                           : null,
@@ -180,7 +179,14 @@ class ScoreboardCardWidget extends ConsumerWidget {
                   shape: BoxShape.circle,
                   border:
                       isWhite!
-                          ? null
+                          // A white disc on the light card is 1.06:1;
+                          // light gives it an edge so it still reads.
+                          ? (context.isLightTheme
+                              ? Border.all(
+                                color: context.colors.textTertiary,
+                                width: 1.1,
+                              )
+                              : null)
                           : Border.all(
                             color: context.colors.textPrimary.withValues(alpha: 0.35),
                             width: 1.1,

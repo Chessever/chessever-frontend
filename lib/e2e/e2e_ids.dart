@@ -14,7 +14,7 @@ class E2eIds {
   static const boardColorDialogRoot = 'e2e_board_color_dialog_root';
 
   static const navEvents = 'e2e_nav_events';
-  static const navCalendar = 'e2e_nav_calendar';
+  static const navForYou = 'e2e_nav_for_you';
   static const navLibrary = 'e2e_nav_library';
 
   static const drawerSettings = 'e2e_drawer_settings';
@@ -23,9 +23,16 @@ class E2eIds {
   static const drawerPremium = 'e2e_drawer_premium';
   static const drawerLogout = 'e2e_drawer_logout';
 
+  /// The sidebar month view's "Full calendar" link, the calendar's entry
+  /// point now that it is no longer a main section. The value predates the
+  /// id (widget tests find it by this key), so it keeps its original string.
+  static const drawerFullCalendar = 'sidebar_calendar_full';
+
   static const eventsRoot = 'e2e_events_root';
+  static const forYouRoot = 'e2e_for_you_root';
   static const calendarRoot = 'e2e_calendar_root';
   static const libraryRoot = 'e2e_library_root';
+  static const feedRoot = 'e2e_feed_root';
   static const playersRoot = 'e2e_players_root';
   static const favoritesRoot = 'e2e_favorites_root';
   static const countrymenRoot = 'e2e_countrymen_root';
@@ -43,6 +50,8 @@ class E2eIds {
 
   static const eventsSearchField = 'e2e_events_search_field';
   static const eventsFilterButton = 'e2e_events_filter_button';
+  static const forYouSearchField = 'e2e_for_you_search_field';
+  static const forYouFilterButton = 'e2e_for_you_filter_button';
   static const calendarSearchField = 'e2e_calendar_search_field';
   static const playersSearchField = 'e2e_players_search_field';
   static const playerSelectionSearchField = 'e2e_player_selection_search_field';

@@ -5,8 +5,9 @@ import 'package:chessever2/providers/event_favorite_players_provider.dart';
 import 'package:chessever2/providers/favorite_events_provider.dart';
 import 'package:chessever2/screens/group_event/widget/search_results_widget.dart';
 import 'package:chessever2/screens/group_event/widget/all_events_tab_widget.dart';
+import 'package:chessever2/screens/group_event/widget/events_load_error_state.dart';
+import 'package:chessever2/screens/group_event/widget/upcoming_events_empty_state.dart';
 import 'package:chessever2/screens/group_event/widget/filter_popup/filter_popup_provider.dart';
-import 'package:chessever2/screens/group_event/widget/for_you_games_widget.dart';
 import 'package:chessever2/screens/group_event/smart_event/smart_aggregate_event_provider.dart';
 import 'package:chessever2/screens/group_event/smart_event/smart_event_screen.dart';
 import 'package:chessever2/screens/home/home_screen_provider.dart';
@@ -21,8 +22,8 @@ import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/screens/group_event/widget/filter_popup/filter_popup.dart';
 import 'package:chessever2/providers/for_you_games_provider.dart';
 import 'package:chessever2/screens/group_event/widget/filter_popup/filter_popup_state.dart';
-import 'package:chessever2/widgets/generic_error_widget.dart';
 import 'package:chessever2/widgets/alert_dialog/alert_modal.dart';
+import 'package:chessever2/widgets/home_top_bar.dart';
 import 'package:chessever2/widgets/search/enhanced_rounded_search_bar.dart';
 import 'package:chessever2/widgets/skeleton_widget.dart';
 import 'package:chessever2/widgets/stable_height_slot.dart';
@@ -32,7 +33,26 @@ import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:chessever2/widgets/segmented_switcher.dart';
 
-enum GroupEventCategory { past, current, forYou, search }
+/// The Events section's lists: Past | Current | Upcoming
+/// ([eventsHomeCategories]), plus [search] while a query is active. The
+/// personalised feed is not an Events list; it lives in For You > Today.
+enum GroupEventCategory { past, current, upcoming, search }
+
+/// The Events segments shown when no search is active, in display order.
+const eventsHomeCategories = <GroupEventCategory>[
+  GroupEventCategory.past,
+  GroupEventCategory.current,
+  GroupEventCategory.upcoming,
+];
+
+/// The segments the Events switcher renders. Search is appended (never
+/// inserted) so the home segments keep their page index while a query runs.
+List<GroupEventCategory> visibleEventCategories({
+  required bool hasActiveSearch,
+}) =>
+    hasActiveSearch
+        ? const [...eventsHomeCategories, GroupEventCategory.search]
+        : eventsHomeCategories;
 
 /// Provider for the current search query used in search tab
 final searchTabQueryProvider = StateProvider<String>((ref) => '');
@@ -40,12 +60,12 @@ final searchTabQueryProvider = StateProvider<String>((ref) => '');
 final _mappedName = {
   GroupEventCategory.past: 'Past',
   GroupEventCategory.current: 'Current',
-  GroupEventCategory.forYou: 'For You',
+  GroupEventCategory.upcoming: 'Upcoming',
   GroupEventCategory.search: 'Search',
 };
 
 final selectedGroupCategoryProvider = StateProvider<GroupEventCategory>(
-  (ref) => GroupEventCategory.forYou,
+  (ref) => GroupEventCategory.current,
 );
 
 final groupEventSearchTabControllerProvider =
@@ -55,7 +75,7 @@ class GroupEventSearchTabController {
   GroupEventSearchTabController(this._ref);
 
   final Ref _ref;
-  GroupEventCategory _categoryBeforeSearch = GroupEventCategory.forYou;
+  GroupEventCategory _categoryBeforeSearch = GroupEventCategory.current;
 
   void showSearch() {
     final currentCategory = _ref.read(selectedGroupCategoryProvider);
@@ -75,8 +95,23 @@ class GroupEventSearchTabController {
   }
 }
 
+/// Builds the body of one Events list around the scroll controller the screen
+/// owns for it (re-tapping the nav item scrolls that controller to the top).
+typedef GroupEventPageBuilder =
+    Widget Function(
+      BuildContext context,
+      GroupEventCategory category,
+      ScrollController scrollController,
+    );
+
 class GroupEventScreen extends HookConsumerWidget {
-  const GroupEventScreen({super.key});
+  const GroupEventScreen({super.key, this.pageBuilder});
+
+  /// Replaces the list bodies, so widget tests can drive the screen (its top
+  /// bar above all) without the network- and database-backed lists. Null in
+  /// the app.
+  @visibleForTesting
+  final GroupEventPageBuilder? pageBuilder;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -99,32 +134,35 @@ class GroupEventScreen extends HookConsumerWidget {
 
     final filterBadgeCount = activeFilterCount(appliedFilterState);
 
-    // Determine which categories to show (search tab only appears when searching)
-    final visibleCategories =
-        hasActiveSearch
-            ? [
-              GroupEventCategory.forYou,
-              GroupEventCategory.current,
-              GroupEventCategory.past,
-              GroupEventCategory.search,
-            ]
-            : [
-              GroupEventCategory.forYou,
-              GroupEventCategory.current,
-              GroupEventCategory.past,
-            ];
+    // Search tab only appears when searching.
+    final visibleCategories = visibleEventCategories(
+      hasActiveSearch: hasActiveSearch,
+    );
+    // Search can outlive its query by a frame while the tab is restored; show
+    // Current then instead of whatever page the index clamp would land on.
+    final activeCategory =
+        visibleCategories.contains(selectedTourEvent)
+            ? selectedTourEvent
+            : GroupEventCategory.current;
 
     final pageController = usePageController(
-      initialPage: visibleCategories
-          .indexOf(selectedTourEvent)
-          .clamp(0, visibleCategories.length - 1),
+      initialPage: visibleCategories.indexOf(activeCategory),
     );
     final pastScrollController = useScrollController();
     final currentScrollController = useScrollController();
-    final forYouScrollController = useScrollController();
+    final upcomingScrollController = useScrollController();
     final searchScrollController = useScrollController();
     final isAnimating = useRef(false);
     final focusNode = useFocusNode();
+
+    ScrollController scrollControllerFor(GroupEventCategory category) {
+      return switch (category) {
+        GroupEventCategory.past => pastScrollController,
+        GroupEventCategory.upcoming => upcomingScrollController,
+        GroupEventCategory.search => searchScrollController,
+        GroupEventCategory.current => currentScrollController,
+      };
+    }
 
     // No `isSearching` state here on purpose. Mirroring the focus node into a
     // hook rebuilt this entire screen — four tabs, their lists and the
@@ -143,7 +181,7 @@ class GroupEventScreen extends HookConsumerWidget {
     }, [searchQuery, focusNode]);
 
     useEffect(() {
-      final newIndex = visibleCategories.indexOf(selectedTourEvent);
+      final newIndex = visibleCategories.indexOf(activeCategory);
       if (newIndex >= 0 &&
           pageController.hasClients &&
           pageController.page?.round() != newIndex) {
@@ -157,7 +195,7 @@ class GroupEventScreen extends HookConsumerWidget {
             .then((_) => isAnimating.value = false);
       }
       return null;
-    }, [selectedTourEvent, visibleCategories]);
+    }, [activeCategory, visibleCategories]);
 
     ref.listen<GroupEventCategory>(selectedGroupCategoryProvider, (
       previous,
@@ -176,11 +214,6 @@ class GroupEventScreen extends HookConsumerWidget {
             ref.read(searchTabQueryProvider.notifier).state = '';
             searchController.clear();
           }
-          if (next == GroupEventCategory.forYou) {
-            unawaited(
-              ref.read(forYouEventsProvider.notifier).refreshForVisibility(),
-            );
-          }
           FocusScope.of(context).unfocus();
           // ignore: unused_result
           ref.refresh(groupEventScreenProvider);
@@ -189,16 +222,7 @@ class GroupEventScreen extends HookConsumerWidget {
     });
 
     void scrollActiveEventsTabToTop() {
-      final ScrollController target;
-      if (selectedTourEvent == GroupEventCategory.forYou) {
-        target = forYouScrollController;
-      } else if (selectedTourEvent == GroupEventCategory.past) {
-        target = pastScrollController;
-      } else if (selectedTourEvent == GroupEventCategory.current) {
-        target = currentScrollController;
-      } else {
-        target = searchScrollController;
-      }
+      final target = scrollControllerFor(activeCategory);
       if (!target.hasClients) return;
       target.animateTo(
         0,
@@ -217,7 +241,7 @@ class GroupEventScreen extends HookConsumerWidget {
     });
 
     void onScroll() {
-      if (!context.mounted || selectedTourEvent != GroupEventCategory.past) {
+      if (!context.mounted || activeCategory != GroupEventCategory.past) {
         return;
       } else {
         final max = pastScrollController.position.maxScrollExtent;
@@ -231,12 +255,10 @@ class GroupEventScreen extends HookConsumerWidget {
     useEffect(() {
       pastScrollController.addListener(onScroll);
       return () => pastScrollController.removeListener(onScroll);
-    }, [pastScrollController, selectedTourEvent]);
+    }, [pastScrollController, activeCategory]);
 
-    final horizontalPadding = ResponsiveHelper.adaptive(
-      phone: 20.sp,
-      tablet: 32.sp,
-    );
+    // The segments share the top bar's gutter.
+    final horizontalPadding = HomeTopBarMetrics.horizontalPadding;
 
     return Material(
       key: e2eKey(E2eIds.eventsRoot),
@@ -250,9 +272,9 @@ class GroupEventScreen extends HookConsumerWidget {
             crossAxisAlignment: CrossAxisAlignment.center,
             mainAxisSize: MainAxisSize.min,
             children: [
-              SizedBox(height: 24.h + MediaQuery.viewPaddingOf(context).top),
-              Padding(
-                padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
+              // The home bar's shared frame: the same inset and gutter as
+              // every other home tab, so the avatar never moves on a switch.
+              HomeTopBarFrame(
                 // Plain SizedBox, not an AnimatedSwitcher: the switcher's child
                 // key never changed, so it never transitioned — it only added a
                 // Stack for the search bar's own morph to relayout through
@@ -400,28 +422,19 @@ class GroupEventScreen extends HookConsumerWidget {
                     Expanded(
                       child: _SegmentedSwitcher(
                         searchController: searchController,
-                        selectedTourEvent: selectedTourEvent,
+                        selectedTourEvent: activeCategory,
                         visibleCategories: visibleCategories,
                         onSelectedChanged: (index) {
                           final newCategory = visibleCategories[index];
-                          final currentCategory = selectedTourEvent;
+                          final currentCategory = activeCategory;
 
                           // If tapping the same tab, scroll to top
                           if (newCategory == currentCategory) {
-                            ScrollController? controller;
-                            if (newCategory == GroupEventCategory.forYou) {
-                              controller = forYouScrollController;
-                            } else if (newCategory == GroupEventCategory.past) {
-                              controller = pastScrollController;
-                            } else if (newCategory ==
-                                GroupEventCategory.current) {
-                              controller = currentScrollController;
-                            } else if (newCategory ==
-                                GroupEventCategory.search) {
-                              controller = searchScrollController;
-                            }
+                            final controller = scrollControllerFor(
+                              newCategory,
+                            );
 
-                            if (controller != null && controller.hasClients) {
+                            if (controller.hasClients) {
                               controller.animateTo(
                                 0,
                                 duration: const Duration(milliseconds: 300),
@@ -463,25 +476,27 @@ class GroupEventScreen extends HookConsumerWidget {
                       final isPast = currentCategory == GroupEventCategory.past;
                       final isCurrent =
                           currentCategory == GroupEventCategory.current;
-                      final isForYou =
-                          currentCategory == GroupEventCategory.forYou;
+                      final isUpcoming =
+                          currentCategory == GroupEventCategory.upcoming;
                       final isSearch =
                           currentCategory == GroupEventCategory.search;
-                      final scrollController =
-                          isPast
-                              ? pastScrollController
-                              : isCurrent
-                              ? currentScrollController
-                              : isForYou
-                              ? forYouScrollController
-                              : isSearch
-                              ? searchScrollController
-                              : null;
+                      final scrollController = scrollControllerFor(
+                        currentCategory,
+                      );
 
                       // Only load data for the currently selected tab. Heavy
                       // tabs keep their provider caches, not their widget trees.
-                      if (currentCategory != selectedTourEvent) {
+                      if (currentCategory != activeCategory) {
                         return const SizedBox.shrink();
+                      }
+
+                      final buildPage = pageBuilder;
+                      if (buildPage != null) {
+                        return buildPage(
+                          context,
+                          currentCategory,
+                          scrollController,
+                        );
                       }
 
                       // Special handling for "Search" tab - show search results
@@ -489,13 +504,6 @@ class GroupEventScreen extends HookConsumerWidget {
                         return SearchResultsWidget(
                           scrollController: searchScrollController,
                           searchQuery: searchQuery,
-                        );
-                      }
-
-                      // Special handling for "For You" tab - show games instead of events
-                      if (isForYou) {
-                        return ForYouGamesWidget(
-                          scrollController: forYouScrollController,
                         );
                       }
 
@@ -537,25 +545,28 @@ class GroupEventScreen extends HookConsumerWidget {
                                 eventFavoritePlayersCacheProvider,
                               );
 
-                              // Disable favorite prioritization for past events
-                              final shouldApplyFavoriteSorting =
-                                  currentCategory != GroupEventCategory.past;
-
-                              final finalEvents =
-                                  isSearching || !shouldApplyFavoriteSorting
-                                      ? filteredEvents
-                                      : ref
-                                          .read(
-                                            tournamentSortingServiceProvider,
-                                          )
-                                          .sortBasedOnFavorite(
-                                            tours: filteredEvents,
-                                            favorites: allFavorites,
-                                            eventFavoritePlayersMap:
-                                                cachedEventFavoritePlayers,
-                                            favoriteTimestamps:
-                                                favoriteTimestamps,
-                                          );
+                              // Past keeps its date order; Upcoming keeps its
+                              // soonest-first order with starred events pinned
+                              // on top; Current ranks favourites and hearts.
+                              final List<GroupEventCardModel> finalEvents;
+                              if (isSearching || isPast) {
+                                finalEvents = filteredEvents;
+                              } else if (isUpcoming) {
+                                finalEvents = sortUpcomingEvents(
+                                  filteredEvents,
+                                  starredIds: allFavorites.toSet(),
+                                );
+                              } else {
+                                finalEvents = ref
+                                    .read(tournamentSortingServiceProvider)
+                                    .sortBasedOnFavorite(
+                                      tours: filteredEvents,
+                                      favorites: allFavorites,
+                                      eventFavoritePlayersMap:
+                                          cachedEventFavoritePlayers,
+                                      favoriteTimestamps: favoriteTimestamps,
+                                    );
+                              }
                               final smartData =
                                   isCurrent
                                       ? visibleSmartEventCardData(
@@ -575,21 +586,40 @@ class GroupEventScreen extends HookConsumerWidget {
                                 backgroundColor: context.colors.surface,
                                 displacement: 60.h,
                                 strokeWidth: 3.w,
-                                child: AllEventsTabWidget(
-                                  filteredEvents: finalEvents,
-                                  smartData: smartData,
-                                  onSelect:
-                                      (tourEventCardModel) => ref
-                                          .read(
-                                            groupEventScreenProvider.notifier,
-                                          )
-                                          .onSelectTournament(
-                                            context: context,
-                                            id: tourEventCardModel.id,
-                                          ),
-                                  isLoadingMore: isLoadingMore,
-                                  scrollController: scrollController,
-                                ),
+                                child:
+                                    isUpcoming && finalEvents.isEmpty
+                                        ? UpcomingEventsEmptyState(
+                                          filtersActive: filterBadgeCount > 0,
+                                          onResetFilters: () {
+                                            HapticFeedbackService.buttonPress();
+                                            ref
+                                                .read(
+                                                  eventAppliedFilterProvider
+                                                      .notifier,
+                                                )
+                                                .state = defaultFilterPopupState;
+                                            ref.invalidate(
+                                              forYouEventsProvider,
+                                            );
+                                          },
+                                          scrollController: scrollController,
+                                        )
+                                        : AllEventsTabWidget(
+                                          filteredEvents: finalEvents,
+                                          smartData: smartData,
+                                          onSelect:
+                                              (tourEventCardModel) => ref
+                                                  .read(
+                                                    groupEventScreenProvider
+                                                        .notifier,
+                                                  )
+                                                  .onSelectTournament(
+                                                    context: context,
+                                                    id: tourEventCardModel.id,
+                                                  ),
+                                          isLoadingMore: isLoadingMore,
+                                          scrollController: scrollController,
+                                        ),
                               );
                             },
                             loading:
@@ -616,9 +646,41 @@ class GroupEventScreen extends HookConsumerWidget {
                                     ),
                                   ),
                                 ),
+                            // A failed load (nothing cached to fall back on)
+                            // says so and offers Retry on every tab; only a
+                            // successful empty load shows an empty state.
                             error:
-                                (error, stackTrace) =>
-                                    const GenericErrorWidget(),
+                                (error, stackTrace) => RefreshIndicator(
+                                  onRefresh:
+                                      ref
+                                          .read(homeScreenProvider)
+                                          .onPullRefresh,
+                                  color: context.colors.textSecondary,
+                                  backgroundColor: context.colors.surface,
+                                  displacement: 60.h,
+                                  strokeWidth: 3.w,
+                                  child: EventsLoadErrorState(
+                                    key: ValueKey(
+                                      'events_load_error_${currentCategory.name}',
+                                    ),
+                                    error: error,
+                                    fallbackMessage:
+                                        isUpcoming
+                                            ? "Couldn't load upcoming events."
+                                            : "Couldn't load these events.",
+                                    scrollController: scrollController,
+                                    onRetry: () {
+                                      HapticFeedbackService.buttonPress();
+                                      unawaited(
+                                        ref
+                                            .read(
+                                              groupEventScreenProvider.notifier,
+                                            )
+                                            .loadTours(),
+                                      );
+                                    },
+                                  ),
+                                ),
                           );
                     },
                   ),

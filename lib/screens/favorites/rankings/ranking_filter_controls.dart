@@ -4,6 +4,7 @@ import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/png_asset.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/widgets/time_control_glyph.dart';
 import 'package:flutter/material.dart';
 import 'package:motor/motor.dart';
 
@@ -97,12 +98,7 @@ class _RankingChip extends StatelessWidget {
               mainAxisSize: MainAxisSize.min,
               children: [
                 if (iconAsset != null) ...[
-                  Image.asset(
-                    iconAsset!,
-                    width: 14.ic,
-                    height: 14.ic,
-                    fit: BoxFit.contain,
-                  ),
+                  TimeControlGlyph(iconAsset!, size: 14.ic),
                   if (showLabel) SizedBox(width: 4.w),
                 ],
                 if (expandLabelWhenSelected)

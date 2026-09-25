@@ -1,6 +1,5 @@
 import 'package:chessever2/services/fide_photo_service.dart';
 import 'package:chessever2/theme/app_colors.dart';
-import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/png_asset.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
@@ -8,6 +7,7 @@ import 'package:chessever2/widgets/fullscreen_image_viewer.dart';
 import 'package:chessever2/widgets/player_initials_avatar.dart';
 import 'package:flutter/material.dart';
 import 'package:heroine/heroine.dart';
+import 'package:chessever2/widgets/time_control_glyph.dart';
 
 /// Section displaying player avatar with three rating cards (Classical, Rapid, Blitz).
 class PlayerAvatarSection extends StatefulWidget {
@@ -143,7 +143,11 @@ class _PlayerAvatarSectionState extends State<PlayerAvatarSection> {
         children: [
           Row(
             children: [
-              Image.asset(icon, width: 18.w, height: 18.h),
+              Image.asset(
+                TimeControlGlyph.resolve(icon, light: context.isLightTheme),
+                width: 18.w,
+                height: 18.h,
+              ),
               SizedBox(width: 8.w),
               Text(
                 label,

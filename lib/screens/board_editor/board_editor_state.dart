@@ -124,8 +124,12 @@ class BoardEditorState {
 }
 
 class BoardEditorNotifier extends StateNotifier<BoardEditorState> {
-  BoardEditorNotifier()
-    : super(BoardEditorState(pieces: readFen(_startingFen)));
+  /// Opens on [initialFen] when it parses, else the starting position.
+  BoardEditorNotifier([String? initialFen])
+    : super(BoardEditorState(pieces: readFen(_startingFen))) {
+    final fen = initialFen?.trim();
+    if (fen != null && fen.isNotEmpty) loadFen(fen);
+  }
 
   void reset() {
     state = BoardEditorState(pieces: readFen(_startingFen));
@@ -330,7 +334,12 @@ class BoardEditorNotifier extends StateNotifier<BoardEditorState> {
   }
 }
 
+/// The position a board editor opens on, set for one editor by
+/// `boardEditorAt`. Null (the default) is the starting position.
+final boardEditorInitialFenProvider = Provider<String?>((ref) => null);
+
 final boardEditorProvider =
     StateNotifierProvider.autoDispose<BoardEditorNotifier, BoardEditorState>(
-      (ref) => BoardEditorNotifier(),
+      (ref) => BoardEditorNotifier(ref.watch(boardEditorInitialFenProvider)),
+      dependencies: [boardEditorInitialFenProvider],
     );

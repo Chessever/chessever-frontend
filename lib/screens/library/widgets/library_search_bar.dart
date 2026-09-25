@@ -6,7 +6,6 @@ import 'package:chessever2/screens/gamebase/models/models.dart';
 import 'package:chessever2/screens/library/widgets/animated_search_hint.dart';
 import 'package:chessever2/screens/library/widgets/library_search_overlay.dart';
 import 'package:chessever2/theme/app_colors.dart';
-import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/svg_asset.dart';
@@ -410,7 +409,9 @@ class _LibrarySearchBarState extends ConsumerState<LibrarySearchBar> {
                           widget.filterBadgeCount > 0
                               ? context.colors.textPrimary
                               : _effectiveFocusNode.hasFocus
-                              ? kPrimaryColor
+                              ? context.colors.accentText
+                              : context.isLightTheme
+                              ? context.colors.iconSecondary
                               : Colors.grey[400]!,
                           BlendMode.srcIn,
                         ),

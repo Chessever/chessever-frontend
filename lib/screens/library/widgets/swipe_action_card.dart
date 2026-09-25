@@ -1,6 +1,6 @@
 import 'package:chessever2/repository/sqlite/app_database.dart';
+import 'package:chessever2/screens/chessboard/utils/legible_ink.dart';
 import 'package:chessever2/theme/app_colors.dart';
-import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:flutter/material.dart';
@@ -197,6 +197,14 @@ class _SwipeActionCardState extends State<SwipeActionCard>
 
   @override
   Widget build(BuildContext context) {
+    // Paper: the ink or white, whichever reads on this action's fill (ink
+    // is 3:1 on the danger red, white is 3.6:1 on the add green). Dark keeps
+    // the page ink, which is white.
+    final actionInk = labelOnFill(
+      context,
+      widget.backgroundColor,
+      dark: context.colors.textPrimary,
+    );
     if (!_isVisible) {
       // Return an animating-out placeholder that collapses
       return SizedBox(height: 0, child: widget.child)
@@ -230,18 +238,18 @@ class _SwipeActionCardState extends State<SwipeActionCard>
                           Text(
                             widget.label!,
                             style: AppTypography.textSmMedium.copyWith(
-                              color: context.colors.textPrimary,
+                              color: actionInk,
                             ),
                           ),
                           SizedBox(width: 10.w),
                         ],
-                        Icon(widget.icon, color: context.colors.textPrimary, size: 22.sp),
+                        Icon(widget.icon, color: actionInk, size: 22.sp),
                         if (!isRtl && widget.label != null) ...[
                           SizedBox(width: 10.w),
                           Text(
                             widget.label!,
                             style: AppTypography.textSmMedium.copyWith(
-                              color: context.colors.textPrimary,
+                              color: actionInk,
                             ),
                           ),
                         ],

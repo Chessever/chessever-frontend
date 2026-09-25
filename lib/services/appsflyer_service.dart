@@ -55,6 +55,11 @@ abstract class AFParams {
   static const searchString = 'af_search_string';
   static const price = 'af_price';
   static const quantity = 'af_quantity';
+
+  // Chessever-specific custom params. Fixed identifiers only, never user,
+  // player or account data.
+  static const feature = 'chessever_feature';
+  static const returnTo = 'chessever_return_to';
 }
 
 @visibleForTesting
@@ -450,16 +455,22 @@ class AppsflyerService {
     await logEvent(AFEvents.login, {AFParams.registrationMethod: method});
   }
 
-  /// Fire when the paywall opens or a purchase flow begins.
+  /// Fire when the paywall opens or a purchase flow begins. [featureId] and
+  /// [returnTo] say which feature or CTA started the upgrade and where it
+  /// resumes; fixed identifiers only, never user or player data.
   Future<void> logInitiatedCheckout({
     String? productId,
     double? price,
     String? currency,
+    String? featureId,
+    String? returnTo,
   }) async {
     await logEvent(AFEvents.initiatedCheckout, {
       if (productId != null) AFParams.contentId: productId,
       if (price != null) AFParams.price: price,
       if (currency != null) AFParams.currency: currency,
+      if (featureId != null) AFParams.feature: featureId,
+      if (returnTo != null) AFParams.returnTo: returnTo,
     });
   }
 

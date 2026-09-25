@@ -1,8 +1,9 @@
 import 'package:chessever2/screens/player_profile/provider/player_profile_provider.dart';
-import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/country_utils.dart';
 import 'package:chessever2/utils/png_asset.dart';
+import 'package:chessever2/utils/share_card.dart';
+import 'package:chessever2/utils/share_card_palette.dart';
 import 'package:chessever2/widgets/federation_flag.dart';
 import 'package:chessever2/widgets/player_initials_avatar.dart';
 import 'package:flutter/material.dart';
@@ -14,8 +15,8 @@ import 'package:flutter/material.dart';
 /// tournament run (that is [PlayerEventShareImageCard]'s job). Height is
 /// intrinsic so no section is ever clipped to fit.
 ///
-/// The palette is hardcoded to the dark brand identity on purpose: the shared
-/// image must look the same whether the user is in light or dark mode.
+/// Colours come from the [ShareCardPalette] the capture provides: the dark
+/// brand identity, or its paper edition when the app is in light mode.
 class PlayerProfileShareImageCard extends StatelessWidget {
   const PlayerProfileShareImageCard({
     super.key,
@@ -48,20 +49,6 @@ class PlayerProfileShareImageCard extends StatelessWidget {
   final bool isMemorial;
   final String? lifespan;
 
-  // Deterministic dark brand palette (independent of the active app theme).
-  static const _bg = Color(0xFF0A0B0D);
-  static const _surface = Color(0xFF15171C); // elevated tiles
-  static const _surfaceLow = Color(0xFF101216); // recessed list / rating strip
-  static const _hairline = Color(0xFF23262E);
-  static const _cyan = kPrimaryColor;
-  static const _gold = kLightYellowColor;
-  static const _win = kGreenColor2;
-  static const _loss = kRedColor;
-  static const _draw = Color(0xFF868C97);
-  static const _textHi = Colors.white;
-  static const _textMid = Color(0xFFAEB4BF);
-  static const _textLo = Color(0xFF868C97); // ≥4.5:1 on the dark surfaces
-
   static const _padH = 22.0;
   static const footerSlogan = 'Follow Chess Better';
 
@@ -77,52 +64,51 @@ class PlayerProfileShareImageCard extends StatelessWidget {
     // off-screen measurement pass of the capture (which only wraps the widget
     // in Directionality), and renders identically on any device.
     final openings = _topOpenings();
+    final p = ShareCardPalette.of(context);
     return MediaQuery(
       data: const MediaQueryData(devicePixelRatio: 3.0),
       child: Directionality(
         textDirection: TextDirection.ltr,
         child: Material(
-          color: _bg,
+          color: p.bg,
           child: SizedBox(
             width: width,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
+            child: ShareCardColumn(
               children: [
-                _buildHero(),
+                _buildHero(p),
                 const SizedBox(height: 16),
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: _padH),
-                  child: _buildRatingStrip(),
+                  child: _buildRatingStrip(p),
                 ),
                 if (_hasStats) ...[
                   const SizedBox(height: 10),
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: _padH),
-                    child: _buildHeadlineStats(),
+                    child: _buildHeadlineStats(p),
                   ),
                   const SizedBox(height: 18),
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: _padH),
-                    child: _buildResults(),
+                    child: _buildResults(p),
                   ),
                   if (analytics!.recentForm.isNotEmpty) ...[
                     const SizedBox(height: 18),
                     Padding(
                       padding: const EdgeInsets.symmetric(horizontal: _padH),
-                      child: _buildForm(),
+                      child: _buildForm(p),
                     ),
                   ],
                   if (openings.isNotEmpty) ...[
                     const SizedBox(height: 18),
                     Padding(
                       padding: const EdgeInsets.symmetric(horizontal: _padH),
-                      child: _buildOpenings(openings),
+                      child: _buildOpenings(openings, p),
                     ),
                   ],
                 ],
                 const SizedBox(height: 18),
-                _buildFooter(),
+                _buildFooter(p),
               ],
             ),
           ),
@@ -142,7 +128,7 @@ class PlayerProfileShareImageCard extends StatelessWidget {
   }
 
   // ── Hero: brand mark + player identity ────────────────────────────────────
-  Widget _buildHero() {
+  Widget _buildHero(ShareCardPalette p) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(_padH, 22, _padH, 20),
       child: Column(
@@ -155,7 +141,7 @@ class PlayerProfileShareImageCard extends StatelessWidget {
               Text(
                 'ChessEver',
                 style: AppTypography.textSmBold.copyWith(
-                  color: _textHi,
+                  color: p.textHi,
                   fontSize: 15,
                   letterSpacing: 0.2,
                 ),
@@ -164,20 +150,20 @@ class PlayerProfileShareImageCard extends StatelessWidget {
               Text(
                 isMemorial ? 'Memorial profile' : 'Player profile',
                 style: AppTypography.textXsMedium.copyWith(
-                  color: _textLo,
+                  color: p.textLo,
                   fontSize: 11,
                 ),
               ),
             ],
           ),
           const SizedBox(height: 18),
-          _buildPlayerIdentity(),
+          _buildPlayerIdentity(p),
         ],
       ),
     );
   }
 
-  Widget _buildPlayerIdentity() {
+  Widget _buildPlayerIdentity(ShareCardPalette p) {
     final titleText = (title ?? '').trim();
     final country = countryCode.trim();
     final countryName =
@@ -215,7 +201,7 @@ class PlayerProfileShareImageCard extends StatelessWidget {
                       TextSpan(
                         text: '$titleText ',
                         style: AppTypography.textXlBold.copyWith(
-                          color: _gold,
+                          color: p.gold,
                           fontSize: 22,
                           height: 1.1,
                           letterSpacing: -0.3,
@@ -224,7 +210,7 @@ class PlayerProfileShareImageCard extends StatelessWidget {
                     TextSpan(
                       text: playerName,
                       style: AppTypography.textXlBold.copyWith(
-                        color: _textHi,
+                        color: p.textHi,
                         fontSize: 22,
                         height: 1.1,
                         letterSpacing: -0.3,
@@ -250,7 +236,7 @@ class PlayerProfileShareImageCard extends StatelessWidget {
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: AppTypography.textSmMedium.copyWith(
-                          color: _textMid,
+                          color: p.textMid,
                           fontSize: 13,
                         ),
                       ),
@@ -263,7 +249,7 @@ class PlayerProfileShareImageCard extends StatelessWidget {
                 Text(
                   '${isMemorial ? 'Historical FIDE ID' : 'FIDE ID'} $fideId',
                   style: AppTypography.textXxsMedium.copyWith(
-                    color: _textLo,
+                    color: p.textLo,
                     fontSize: 11,
                     letterSpacing: 0.4,
                     fontFeatures: const [FontFeature.tabularFigures()],
@@ -275,7 +261,7 @@ class PlayerProfileShareImageCard extends StatelessWidget {
                 Text(
                   lifespan!.trim(),
                   style: AppTypography.textXxsMedium.copyWith(
-                    color: _textLo,
+                    color: p.textLo,
                     fontSize: 11,
                   ),
                 ),
@@ -288,12 +274,13 @@ class PlayerProfileShareImageCard extends StatelessWidget {
   }
 
   // ── Rating strip: Classical / Rapid / Blitz ────────────────────────────────
-  Widget _buildRatingStrip() {
+  Widget _buildRatingStrip(ShareCardPalette p) {
     return Container(
       height: 62,
       decoration: BoxDecoration(
-        color: _surface,
+        color: p.surface,
         borderRadius: BorderRadius.circular(14),
+        border: _tileEdge(p),
       ),
       child: Row(
         children: [
@@ -326,7 +313,11 @@ class PlayerProfileShareImageCard extends StatelessWidget {
   }
 
   // ── Headline stats: Win rate / Games / Avg opponent ────────────────────────
-  Widget _buildHeadlineStats() {
+  /// Light only: a white tile on paper needs an edge; dark separates by tone.
+  static Border? _tileEdge(ShareCardPalette p) =>
+      p.tileEdge == null ? null : Border.all(color: p.tileEdge!);
+
+  Widget _buildHeadlineStats(ShareCardPalette p) {
     final stats = analytics!.resultStats;
     final winRateText = '${(stats.winRate * 100).toStringAsFixed(1)}%';
     final avgOpponent = analytics!.avgOpponentRating;
@@ -334,8 +325,9 @@ class PlayerProfileShareImageCard extends StatelessWidget {
     return Container(
       height: 92,
       decoration: BoxDecoration(
-        color: _surface,
+        color: p.surface,
         borderRadius: BorderRadius.circular(16),
+        border: _tileEdge(p),
       ),
       child: Row(
         children: [
@@ -343,7 +335,7 @@ class PlayerProfileShareImageCard extends StatelessWidget {
             child: _HeadlineStat(
               label: 'Win rate',
               value: winRateText,
-              valueColor: _win,
+              valueColor: p.win,
             ),
           ),
           const SizedBox(width: 2),
@@ -363,19 +355,19 @@ class PlayerProfileShareImageCard extends StatelessWidget {
   }
 
   // ── Results: W/D/L ratio bar + counts + colour split ───────────────────────
-  Widget _buildResults() {
+  Widget _buildResults(ShareCardPalette p) {
     final stats = analytics!.resultStats;
     final colors = analytics!.colorStats;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        _sectionLabel('Record'),
+        _sectionLabel('Record', p),
         const SizedBox(height: 8),
         Container(
           padding: const EdgeInsets.fromLTRB(14, 14, 14, 12),
           decoration: BoxDecoration(
-            color: _surfaceLow,
+            color: p.surfaceLow,
             borderRadius: BorderRadius.circular(14),
           ),
           child: Column(
@@ -391,17 +383,17 @@ class PlayerProfileShareImageCard extends StatelessWidget {
                       if (stats.wins > 0)
                         Expanded(
                           flex: stats.wins,
-                          child: Container(color: _win),
+                          child: Container(color: p.win),
                         ),
                       if (stats.draws > 0)
                         Expanded(
                           flex: stats.draws,
-                          child: Container(color: _draw),
+                          child: Container(color: p.draw),
                         ),
                       if (stats.losses > 0)
                         Expanded(
                           flex: stats.losses,
-                          child: Container(color: _loss),
+                          child: Container(color: p.loss),
                         ),
                     ],
                   ),
@@ -411,20 +403,20 @@ class PlayerProfileShareImageCard extends StatelessWidget {
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  _resultCount('W', stats.wins, _win),
-                  _resultCount('D', stats.draws, _draw),
-                  _resultCount('L', stats.losses, _loss),
+                  _resultCount('W', stats.wins, p.win, p),
+                  _resultCount('D', stats.draws, p.draw, p),
+                  _resultCount('L', stats.losses, p.loss, p),
                 ],
               ),
               const SizedBox(height: 12),
-              Container(height: 1, color: _hairline),
+              Container(height: 1, color: p.hairline),
               const SizedBox(height: 12),
               Row(
                 children: [
                   Expanded(
                     child: _ColorScore(
                       label: 'White',
-                      pieceColor: Colors.white,
+                      isWhite: true,
                       games: colors.whiteGames,
                       score: colors.whiteScore,
                     ),
@@ -433,7 +425,7 @@ class PlayerProfileShareImageCard extends StatelessWidget {
                   Expanded(
                     child: _ColorScore(
                       label: 'Black',
-                      pieceColor: Colors.black,
+                      isWhite: false,
                       games: colors.blackGames,
                       score: colors.blackScore,
                     ),
@@ -447,7 +439,12 @@ class PlayerProfileShareImageCard extends StatelessWidget {
     );
   }
 
-  Widget _resultCount(String letter, int count, Color color) {
+  Widget _resultCount(
+    String letter,
+    int count,
+    Color color,
+    ShareCardPalette p,
+  ) {
     return Row(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.baseline,
@@ -465,7 +462,9 @@ class PlayerProfileShareImageCard extends StatelessWidget {
         Text(
           letter,
           style: AppTypography.textXxsBold.copyWith(
-            color: color.withValues(alpha: 0.75),
+            // A step quieter than its count in dark; on paper the faded
+            // signal colour would fall under AA, so it keeps full strength.
+            color: p.isLight ? color : color.withValues(alpha: 0.75),
             fontSize: 11,
           ),
         ),
@@ -474,18 +473,18 @@ class PlayerProfileShareImageCard extends StatelessWidget {
   }
 
   // ── Form: last N results as coloured dots ──────────────────────────────────
-  Widget _buildForm() {
+  Widget _buildForm(ShareCardPalette p) {
     final form = analytics!.recentForm;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        _sectionLabel('Recent form'),
+        _sectionLabel('Recent form', p),
         const SizedBox(height: 8),
         Container(
           height: 52,
           padding: const EdgeInsets.symmetric(horizontal: 14),
           decoration: BoxDecoration(
-            color: _surfaceLow,
+            color: p.surfaceLow,
             borderRadius: BorderRadius.circular(14),
           ),
           child: Row(
@@ -498,7 +497,7 @@ class PlayerProfileShareImageCard extends StatelessWidget {
               Text(
                 'last ${form.length}',
                 style: AppTypography.textXxsMedium.copyWith(
-                  color: _textLo,
+                  color: p.textLo,
                   fontSize: 11,
                 ),
               ),
@@ -510,16 +509,16 @@ class PlayerProfileShareImageCard extends StatelessWidget {
   }
 
   // ── Openings: most played, with per-opening score ──────────────────────────
-  Widget _buildOpenings(List<OpeningStatistic> openings) {
+  Widget _buildOpenings(List<OpeningStatistic> openings, ShareCardPalette p) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        _sectionLabel('Most played openings'),
+        _sectionLabel('Most played openings', p),
         const SizedBox(height: 8),
         ClipRRect(
           borderRadius: BorderRadius.circular(14),
           child: Container(
-            color: _surfaceLow,
+            color: p.surfaceLow,
             child: Column(
               children: [
                 for (var i = 0; i < openings.length; i++)
@@ -535,21 +534,21 @@ class PlayerProfileShareImageCard extends StatelessWidget {
     );
   }
 
-  Widget _sectionLabel(String text) {
+  Widget _sectionLabel(String text, ShareCardPalette p) {
     return Padding(
       padding: const EdgeInsets.only(left: 4),
       child: Text(
         text,
-        style: AppTypography.textXsBold.copyWith(color: _textLo, fontSize: 11),
+        style: AppTypography.textXsBold.copyWith(color: p.textLo, fontSize: 11),
       ),
     );
   }
 
   // ── Footer: persistent ChessEver lockup + attribution ──────────────────────
-  Widget _buildFooter() {
+  Widget _buildFooter(ShareCardPalette p) {
     return Container(
-      decoration: const BoxDecoration(
-        border: Border(top: BorderSide(color: _hairline, width: 1)),
+      decoration: BoxDecoration(
+        border: Border(top: BorderSide(color: p.hairline, width: 1)),
       ),
       padding: const EdgeInsets.fromLTRB(_padH, 15, _padH, 16),
       child: Row(
@@ -563,7 +562,7 @@ class PlayerProfileShareImageCard extends StatelessWidget {
               Text(
                 'ChessEver',
                 style: AppTypography.textSmBold.copyWith(
-                  color: _textHi,
+                  color: p.textHi,
                   fontSize: 14.5,
                 ),
               ),
@@ -571,7 +570,7 @@ class PlayerProfileShareImageCard extends StatelessWidget {
               Text(
                 footerSlogan,
                 style: AppTypography.textXxsMedium.copyWith(
-                  color: _textLo,
+                  color: p.textLo,
                   fontSize: 11,
                 ),
               ),
@@ -581,7 +580,7 @@ class PlayerProfileShareImageCard extends StatelessWidget {
           Text(
             'chessever.com',
             style: AppTypography.textXsBold.copyWith(
-              color: _cyan,
+              color: p.accentInk,
               fontSize: 12.5,
             ),
           ),
@@ -616,6 +615,7 @@ class _HeadlineStat extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final p = ShareCardPalette.of(context);
     return Column(
       mainAxisSize: MainAxisSize.min,
       mainAxisAlignment: MainAxisAlignment.center,
@@ -624,7 +624,7 @@ class _HeadlineStat extends StatelessWidget {
           label,
           maxLines: 1,
           style: AppTypography.textXxsBold.copyWith(
-            color: PlayerProfileShareImageCard._textLo,
+            color: p.textLo,
             fontSize: 10,
           ),
         ),
@@ -633,7 +633,7 @@ class _HeadlineStat extends StatelessWidget {
           value,
           maxLines: 1,
           style: AppTypography.displayXsBold.copyWith(
-            color: valueColor ?? PlayerProfileShareImageCard._textHi,
+            color: valueColor ?? p.textHi,
             fontSize: 24,
             height: 1.0,
             letterSpacing: -0.5,
@@ -658,10 +658,11 @@ class _RatingSegment extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final p = ShareCardPalette.of(context);
     return Row(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
-        Image.asset(icon, width: 17, height: 17),
+        shareTimeControlIcon(icon, p),
         const SizedBox(width: 8),
         Column(
           mainAxisSize: MainAxisSize.min,
@@ -671,7 +672,7 @@ class _RatingSegment extends StatelessWidget {
               label,
               maxLines: 1,
               style: AppTypography.textXxsMedium.copyWith(
-                color: PlayerProfileShareImageCard._textLo,
+                color: p.textLo,
                 fontSize: 9.5,
                 letterSpacing: 0.2,
               ),
@@ -681,7 +682,7 @@ class _RatingSegment extends StatelessWidget {
               rating?.toString() ?? '-',
               maxLines: 1,
               style: AppTypography.textSmBold.copyWith(
-                color: PlayerProfileShareImageCard._textHi,
+                color: p.textHi,
                 fontSize: 15,
                 height: 1.05,
                 fontFeatures: const [FontFeature.tabularFigures()],
@@ -697,19 +698,23 @@ class _RatingSegment extends StatelessWidget {
 class _ColorScore extends StatelessWidget {
   const _ColorScore({
     required this.label,
-    required this.pieceColor,
+    required this.isWhite,
     required this.games,
     required this.score,
   });
 
   final String label;
-  final Color pieceColor;
+
+  /// The side the disc stands for.
+  final bool isWhite;
   final int games;
   final double score;
 
   @override
   Widget build(BuildContext context) {
+    final p = ShareCardPalette.of(context);
     final scoreText = games > 0 ? '${(score * 100).toStringAsFixed(0)}%' : '-';
+    final edge = isWhite ? p.pieceWhiteEdge : p.pieceBlackEdge;
     return Row(
       children: [
         Container(
@@ -717,14 +722,8 @@ class _ColorScore extends StatelessWidget {
           height: 18,
           decoration: BoxDecoration(
             shape: BoxShape.circle,
-            color: pieceColor,
-            border:
-                pieceColor == Colors.black
-                    ? Border.all(
-                      color: Colors.white.withValues(alpha: 0.35),
-                      width: 1.1,
-                    )
-                    : null,
+            color: isWhite ? p.pieceWhite : p.pieceBlack,
+            border: edge == null ? null : Border.all(color: edge, width: 1.1),
           ),
         ),
         const SizedBox(width: 8),
@@ -736,7 +735,7 @@ class _ColorScore extends StatelessWidget {
               '$label · $games games',
               maxLines: 1,
               style: AppTypography.textXxsMedium.copyWith(
-                color: PlayerProfileShareImageCard._textLo,
+                color: p.textLo,
                 fontSize: 10,
               ),
             ),
@@ -745,7 +744,7 @@ class _ColorScore extends StatelessWidget {
               scoreText,
               maxLines: 1,
               style: AppTypography.textSmBold.copyWith(
-                color: PlayerProfileShareImageCard._textHi,
+                color: p.textHi,
                 fontSize: 15,
                 height: 1.05,
                 fontFeatures: const [FontFeature.tabularFigures()],
@@ -766,12 +765,13 @@ class _FormDot extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final p = ShareCardPalette.of(context);
     final color =
         result >= 1.0
-            ? PlayerProfileShareImageCard._win
+            ? p.win
             : result >= 0.5
-            ? PlayerProfileShareImageCard._draw
-            : PlayerProfileShareImageCard._loss;
+            ? p.draw
+            : p.loss;
     return Container(
       width: 14,
       height: 14,
@@ -791,6 +791,7 @@ class _OpeningRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final p = ShareCardPalette.of(context);
     final name = (stat.openingName ?? '').trim();
     return Container(
       height: 44,
@@ -799,28 +800,28 @@ class _OpeningRow extends StatelessWidget {
         border:
             isLast
                 ? null
-                : const Border(
-                  bottom: BorderSide(
-                    color: PlayerProfileShareImageCard._hairline,
-                    width: 0.7,
-                  ),
-                ),
+                : Border(bottom: BorderSide(color: p.hairline, width: 0.7)),
       ),
       child: Row(
         children: [
+          // The 34x22 slot holds the column in both editions; only dark
+          // fills it (paper leaves the code bare, no chip around metadata).
           Container(
             width: 34,
             height: 22,
             alignment: Alignment.center,
-            decoration: BoxDecoration(
-              color: PlayerProfileShareImageCard._cyan.withValues(alpha: 0.14),
-              borderRadius: BorderRadius.circular(6),
-            ),
+            decoration:
+                p.ecoTileAlpha > 0
+                    ? BoxDecoration(
+                      color: p.accentFill.withValues(alpha: p.ecoTileAlpha),
+                      borderRadius: BorderRadius.circular(6),
+                    )
+                    : null,
             child: Text(
               stat.eco,
               maxLines: 1,
               style: AppTypography.textXxsBold.copyWith(
-                color: PlayerProfileShareImageCard._cyan,
+                color: p.accentInk,
                 fontSize: 11,
               ),
             ),
@@ -832,7 +833,7 @@ class _OpeningRow extends StatelessWidget {
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: AppTypography.textSmBold.copyWith(
-                color: PlayerProfileShareImageCard._textHi,
+                color: p.textHi,
                 fontSize: 13.5,
               ),
             ),
@@ -841,7 +842,7 @@ class _OpeningRow extends StatelessWidget {
           Text(
             stat.count == 1 ? '1 game' : '${stat.count} games',
             style: AppTypography.textXxsMedium.copyWith(
-              color: PlayerProfileShareImageCard._textLo,
+              color: p.textLo,
               fontSize: 11,
               fontFeatures: const [FontFeature.tabularFigures()],
             ),
@@ -853,7 +854,7 @@ class _OpeningRow extends StatelessWidget {
               '${(stat.score * 100).toStringAsFixed(0)}%',
               textAlign: TextAlign.right,
               style: AppTypography.textSmBold.copyWith(
-                color: PlayerProfileShareImageCard._textMid,
+                color: p.textMid,
                 fontSize: 13,
                 fontFeatures: const [FontFeature.tabularFigures()],
               ),

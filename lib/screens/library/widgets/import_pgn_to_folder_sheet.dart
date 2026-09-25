@@ -410,9 +410,7 @@ class _ImportPgnToFolderPageState
                         child: Text(
                           'No folders yet. Create one below.',
                           style: AppTypography.textSmRegular.copyWith(
-                            color: context.colors.textPrimary.withValues(
-                              alpha: 0.5,
-                            ),
+                            color: context.textInk(0.5),
                           ),
                           textAlign: TextAlign.center,
                         ),
@@ -460,7 +458,7 @@ class _ImportPgnToFolderPageState
                       borderRadius: BorderRadius.circular(10.br),
                       child: LinearProgressIndicator(
                         minHeight: 8.h,
-                        color: kPrimaryColor,
+                        color: context.colors.accentText,
                         backgroundColor: context.colors.textPrimary.withValues(
                           alpha: 0.08,
                         ),
@@ -631,7 +629,7 @@ class _ImportFolderTile extends StatelessWidget {
               Icon(
                 Icons.subdirectory_arrow_right_rounded,
                 size: 16.sp,
-                color: context.colors.textPrimary.withValues(alpha: 0.3),
+                color: context.textInk(0.3),
               ),
               SizedBox(width: 8.w),
             ],
@@ -655,8 +653,8 @@ class _ImportFolderTile extends StatelessWidget {
                   : Icons.radio_button_unchecked_rounded,
               color:
                   selected
-                      ? kPrimaryColor
-                      : context.colors.textPrimary.withValues(alpha: 0.35),
+                      ? context.colors.accentText
+                      : context.textInk(0.35),
               size: 20.sp,
             ),
           ],

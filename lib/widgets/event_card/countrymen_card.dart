@@ -45,7 +45,11 @@ class CountrymenCardWidget extends ConsumerWidget {
                   child: Text(
                     'Countrymen',
                     style: AppTypography.textSmMedium.copyWith(
-                      color: kGreenColor2,
+                      // #45C86E is ~2:1 on paper; light uses success ink.
+                      color:
+                          context.isLightTheme
+                              ? context.colors.success
+                              : kGreenColor2,
                     ),
                     overflow: TextOverflow.ellipsis,
                     maxLines: 1,

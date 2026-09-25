@@ -1,9 +1,13 @@
+import 'dart:async';
 import 'dart:math' as math;
 import 'package:collection/collection.dart';
 import 'package:chessever2/repository/supabase/tour/tour.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_app_bar_view_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_app_bar_provider.dart';
+import 'package:chessever2/screens/library/widgets/library_context_menu.dart';
+import 'package:chessever2/screens/library/widgets/menu_preview_surface.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_scroll_provider.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/utils/round_space_shortcut.dart';
 import 'package:chessever2/screens/tour_detail/provider/tour_category_ordering.dart';
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_mode_provider.dart';
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_screen_provider.dart';
@@ -15,6 +19,7 @@ import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/tablet_safe_menu.dart';
 import 'package:chessever2/widgets/skeleton_widget.dart';
+import 'package:chessever2/widgets/space_shortcut_drafts.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -273,6 +278,53 @@ class _CategoryDropdownContent extends HookConsumerWidget {
     );
   }
 
+  /// Long-press on a round row: the row lifts into the shared focus menu to
+  /// jump to that round or pin it into My Space.
+  ///
+  /// The menu is a route, and this dropdown is a bare overlay entry that the
+  /// route would otherwise fight for the top of the stack, so the dropdown
+  /// steps aside in the same frame the menu takes over. The row is measured
+  /// before that, so the lifted copy still lands exactly where it was.
+  void _showRoundMenu({
+    required BuildContext chipContext,
+    required BuildContext rowContext,
+    required WidgetBuilder preview,
+    required GamesAppBarModel round,
+    required WidgetRef ref,
+    required VoidCallback dismissDropdown,
+  }) {
+    final draft = currentEventRoundSpaceDraft(ref, round);
+    if (draft == null) return;
+    void goToRound() {
+      HapticFeedbackService.selection();
+      onRoundChanged(round);
+    }
+
+    final menu = showLibraryContextMenu(
+      context: rowContext,
+      previewBuilder: preview,
+      onPreviewTap: goToRound,
+      actions: [
+        LibraryMenuAction(
+          icon: Icons.arrow_outward_rounded,
+          label: 'Go to round',
+          onSelected: goToRound,
+        ),
+        labeledSpaceMenuAction(
+          // The app-bar chip outlives the dropdown, so the confirmation snack
+          // has a live messenger to land on.
+          context: chipContext,
+          ref: ref,
+          draft: draft,
+          addLabel: 'Add round to My Space',
+          removeLabel: 'Remove round from My Space',
+        ),
+      ],
+    );
+    dismissDropdown();
+    unawaited(menu);
+  }
+
   void _showOverlay({
     required BuildContext context,
     required LayerLink layerLink,
@@ -358,6 +410,21 @@ class _CategoryDropdownContent extends HookConsumerWidget {
                   isOpen.value = false;
                 });
               },
+              onRoundLongPress:
+                  (round, rowContext, preview) => _showRoundMenu(
+                    chipContext: context,
+                    rowContext: rowContext,
+                    preview: preview,
+                    round: round,
+                    ref: ref,
+                    dismissDropdown: () {
+                      if (ResponsiveHelper.isTablet) {
+                        TabletPopupState.markClosed();
+                      }
+                      animationController.value = 0;
+                      isOpen.value = false;
+                    },
+                  ),
             ),
       );
 
@@ -444,7 +511,7 @@ class _StadiumChipButton extends HookWidget {
           border: Border.all(
             color:
                 isOpen
-                    ? kPrimaryColor.withValues(alpha: 0.4)
+                    ? context.colors.accentText.withValues(alpha: 0.4)
                     : context.colors.textPrimary.withValues(alpha: 0.12),
             width: 1.0,
           ),
@@ -460,7 +527,7 @@ class _StadiumChipButton extends HookWidget {
               child: _MarqueeText(
                 text: label,
                 style: AppTypography.textXsMedium.copyWith(
-                  color: isOpen ? kPrimaryColor : context.colors.textPrimary,
+                  color: isOpen ? context.colors.accentText : context.colors.textPrimary,
                   letterSpacing: 0.3,
                 ),
                 continuous: false, // Single cycle for chip button
@@ -476,7 +543,7 @@ class _StadiumChipButton extends HookWidget {
                   Icons.keyboard_arrow_down_rounded,
                   color:
                       isOpen
-                          ? kPrimaryColor
+                          ? context.colors.accentText
                           : context.colors.textPrimary.withValues(alpha: 0.7),
                   size: 18.ic,
                 ),
@@ -753,7 +820,9 @@ class _LiveDot extends HookWidget {
           height: 8.sp,
           decoration: BoxDecoration(
             shape: BoxShape.circle,
-            color: kPrimaryColor.withValues(alpha: 1 - controller.value * 0.3),
+            color: context.colors.accentText.withValues(
+              alpha: 1 - controller.value * 0.3,
+            ),
           ),
         );
       },
@@ -776,6 +845,7 @@ class _DropdownOverlay extends ConsumerWidget {
   final ValueChanged<TourModel> onCategoryChange; // Select without closing
   final ValueChanged<GamesAppBarModel> onRoundSelect;
   final VoidCallback onDismiss;
+  final _RoundLongPress? onRoundLongPress;
 
   const _DropdownOverlay({
     required this.layerLink,
@@ -791,6 +861,7 @@ class _DropdownOverlay extends ConsumerWidget {
     required this.onCategoryChange,
     required this.onRoundSelect,
     required this.onDismiss,
+    this.onRoundLongPress,
   });
 
   /// Check if enough time has passed to allow dismissal (tablet phantom tap protection)
@@ -893,6 +964,7 @@ class _DropdownOverlay extends ConsumerWidget {
                         onCategorySelect: onCategorySelect,
                         onCategoryChange: onCategoryChange,
                         onRoundSelect: onRoundSelect,
+                        onRoundLongPress: onRoundLongPress,
                       ),
                     ),
                   ),
@@ -918,6 +990,7 @@ class _DropdownContent extends StatefulWidget {
   final ValueChanged<TourModel>
   onCategoryChange; // Select without closing dropdown
   final ValueChanged<GamesAppBarModel> onRoundSelect;
+  final _RoundLongPress? onRoundLongPress;
 
   const _DropdownContent({
     required this.animation,
@@ -929,6 +1002,7 @@ class _DropdownContent extends StatefulWidget {
     required this.onCategorySelect,
     required this.onCategoryChange,
     required this.onRoundSelect,
+    this.onRoundLongPress,
   });
 
   @override
@@ -1454,6 +1528,19 @@ class _DropdownContentState extends State<_DropdownContent> {
                       round: round,
                       isSelected: isSelected,
                       isNested: isNested,
+                      onLongPress:
+                          widget.onRoundLongPress == null
+                              ? null
+                              : (rowContext, preview) {
+                                // A finger already dragging the droplet is
+                                // choosing a row, not asking for its menu.
+                                if (_isDragging) return;
+                                widget.onRoundLongPress!(
+                                  round,
+                                  rowContext,
+                                  preview,
+                                );
+                              },
                       onTap: () {
                         _animateToIndex(index);
                         // Select the parent category ONLY if it's different from current
@@ -1511,7 +1598,7 @@ class _DropdownContentState extends State<_DropdownContent> {
                             height: indicatorHeight,
                             morphProgress: _isDragging ? 0.5 : 0.0,
                             isDragging: _isDragging,
-                            baseColor: kPrimaryColor,
+                            baseColor: context.colors.accentText,
                             horizontalMargin: 8.sp,
                           ),
                         );
@@ -1618,7 +1705,7 @@ class _CategoryRow extends StatelessWidget {
                         style: AppTypography.textSmMedium.copyWith(
                           color:
                               isSelected
-                                  ? kPrimaryColor
+                                  ? context.colors.accentText
                                   : context.colors.textPrimary,
                           fontWeight:
                               isSelected ? FontWeight.w600 : FontWeight.w500,
@@ -1649,9 +1736,7 @@ class _CategoryRow extends StatelessWidget {
                       color:
                           isExpanded
                               ? context.colors.textPrimary
-                              : context.colors.textPrimary.withValues(
-                                alpha: 0.5,
-                              ),
+                              : context.textInk(0.5),
                     ),
                   ),
                 ),
@@ -1673,6 +1758,11 @@ class _RoundRow extends StatelessWidget {
   final bool isNested;
   final VoidCallback onTap;
 
+  /// Receives the row's own context (the rect the focus menu lifts) and a
+  /// builder for its lifted copy.
+  final void Function(BuildContext rowContext, WidgetBuilder preview)?
+  onLongPress;
+
   const _RoundRow({
     required this.index,
     required this.animation,
@@ -1680,7 +1770,27 @@ class _RoundRow extends StatelessWidget {
     required this.isSelected,
     required this.isNested,
     required this.onTap,
+    this.onLongPress,
   });
+
+  /// The row as it lifts into the focus menu: the same row, fully entered
+  /// (the dropdown's own animation is gone by then), on the dropdown's
+  /// surface so it reads the same over the menu scrim in both themes.
+  Widget _buildMenuCopy(BuildContext context) {
+    return MenuPreviewSurface(
+      color: context.colors.surface,
+      outset: EdgeInsets.zero,
+      borderRadius: BorderRadius.circular(12.br),
+      child: _RoundRow(
+        index: 0,
+        animation: kAlwaysCompleteAnimation,
+        round: round,
+        isSelected: isSelected,
+        isNested: isNested,
+        onTap: () {},
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -1706,6 +1816,10 @@ class _RoundRow extends StatelessWidget {
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
         onTap: onTap,
+        onLongPress:
+            onLongPress == null
+                ? null
+                : () => onLongPress!(context, _buildMenuCopy),
         child: Container(
           padding: EdgeInsets.only(
             left: isNested ? 28.sp : 14.sp,
@@ -1732,7 +1846,7 @@ class _RoundRow extends StatelessWidget {
                       style: AppTypography.textSmRegular.copyWith(
                         color:
                             isSelected
-                                ? kPrimaryColor
+                                ? context.colors.accentText
                                 : context.colors.textPrimary.withValues(
                                   alpha: 0.85,
                                 ),
@@ -1747,10 +1861,14 @@ class _RoundRow extends StatelessWidget {
                         style: AppTypography.textXxsRegular.copyWith(
                           color:
                               isSelected
-                                  ? kPrimaryColor.withValues(alpha: 0.7)
-                                  : context.colors.textPrimary.withValues(
-                                    alpha: 0.5,
-                                  ),
+                                  // 0.7 of the paper ink drops to 3.5:1
+                                  // at 10sp; light keeps it solid.
+                                  ? (context.isLightTheme
+                                      ? context.colors.accentText
+                                      : context.colors.accentText.withValues(
+                                        alpha: 0.7,
+                                      ))
+                                  : context.textInk(0.5),
                           fontSize: 10.sp,
                         ),
                         maxLines: 1,
@@ -1766,6 +1884,13 @@ class _RoundRow extends StatelessWidget {
     );
   }
 }
+
+typedef _RoundLongPress =
+    void Function(
+      GamesAppBarModel round,
+      BuildContext rowContext,
+      WidgetBuilder preview,
+    );
 
 /// Water droplet selection indicator painter
 class _DropletSelectionPainter extends CustomPainter {

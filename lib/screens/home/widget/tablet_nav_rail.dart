@@ -3,10 +3,10 @@ import 'dart:async';
 import 'package:chessever2/screens/home/widget/bottom_nav_bar.dart';
 import 'package:chessever2/services/analytics/analytics_service.dart';
 import 'package:chessever2/theme/app_colors.dart';
-import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/widgets/svg_widget.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:motor/motor.dart';
 
 /// A tablet-optimized navigation rail that replaces the bottom navigation bar.
 /// Provides a vertical navigation experience with icons and labels.
@@ -54,7 +54,14 @@ class TabletNavRail extends ConsumerWidget {
                           final previous = ref.read(
                             selectedBottomNavBarItemProvider,
                           );
-                          if (previous == item) return;
+                          if (previous == item) {
+                            // Same contract as the phone bar: a re-tap asks
+                            // the tab to jump (Flow: next clip, lists: top).
+                            ref
+                                .read(bottomNavBarReTapRequestProvider.notifier)
+                                .request(item);
+                            return;
+                          }
 
                           ref
                               .read(selectedBottomNavBarItemProvider.notifier)
@@ -89,26 +96,25 @@ class _MenuButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        width: 48.0,
-        height: 48.0,
-        decoration: BoxDecoration(
-          color: context.colors.surfaceRecessed,
-          borderRadius: BorderRadius.circular(12.0),
-        ),
-        child: Icon(
-          Icons.menu_rounded,
-          color: context.colors.iconPrimary,
-          size: 24.0,
-        ),
+    // The bare mark on the rail, no tile behind it; 48 square to tap.
+    return SizedBox.square(
+      dimension: 48.0,
+      child: IconButton(
+        tooltip: 'Menu',
+        onPressed: onTap,
+        padding: EdgeInsets.zero,
+        color: context.colors.iconPrimary,
+        icon: const Icon(Icons.menu_rounded, size: 24.0),
       ),
     );
   }
 }
 
-class _NavRailItem extends StatelessWidget {
+/// One rail slot, in the phone bar's language: the selected slot in full ink
+/// with a heavier label, the rest in secondary ink (both clear 4.5:1 on the
+/// rail in either theme). A press settles the slot to 0.97 on a spring and
+/// lets go the same way; reduced motion snaps instead.
+class _NavRailItem extends StatefulWidget {
   final BottomNavBarItem item;
   final bool isSelected;
   final VoidCallback onTap;
@@ -120,9 +126,25 @@ class _NavRailItem extends StatelessWidget {
   });
 
   @override
+  State<_NavRailItem> createState() => _NavRailItemState();
+}
+
+class _NavRailItemState extends State<_NavRailItem> {
+  static const _press = CupertinoMotion.snappy(
+    duration: Duration(milliseconds: 260),
+  );
+
+  bool _pressed = false;
+
+  void _setPressed(bool value) {
+    if (_pressed == value) return;
+    setState(() => _pressed = value);
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final iconPath = bottomNavBarIcons[item]!;
-    final title = namesBottomNavBarIcons[item]!;
+    final iconPath = bottomNavBarIcons[widget.item]!;
+    final title = namesBottomNavBarIcons[widget.item]!;
 
     // Get orientation from MediaQuery for reliable updates
     final orientation = MediaQuery.orientationOf(context);
@@ -130,66 +152,63 @@ class _NavRailItem extends StatelessWidget {
 
     // Use fixed pixel sizes for tablet to avoid ResponsiveHelper timing issues
     final iconSize = isLandscape ? 28.0 : 24.0;
-    final iconColor =
-        isSelected
-            ? kPrimaryColor
-            : context.isLightTheme
-            ? context.colors.textTertiary
-            : context.colors.textPrimaryMuted;
+    final colors = context.colors;
+    final ink = widget.isSelected ? colors.textPrimary : colors.textSecondary;
     final verticalPadding = isLandscape ? 16.0 : 12.0;
-    final horizontalIconPadding = isLandscape ? 20.0 : 16.0;
 
-    return GestureDetector(
-      onTap: onTap,
-      behavior: HitTestBehavior.opaque,
-      child: Container(
-        width: double.infinity,
-        padding: EdgeInsets.symmetric(
-          vertical: verticalPadding,
-          horizontal: 8.0,
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            // Indicator background for selected item
-            Container(
-              padding: EdgeInsets.symmetric(
-                horizontal: horizontalIconPadding,
-                vertical: 8.0,
-              ),
-              decoration: BoxDecoration(
-                color:
-                    isSelected
-                        ? kPrimaryColor.withValues(alpha: 0.15)
-                        : Colors.transparent,
-                borderRadius: BorderRadius.circular(16.0),
-              ),
-              child: SvgWidget(
-                iconPath,
-                width: iconSize,
-                height: iconSize,
-                colorFilter: ColorFilter.mode(iconColor, BlendMode.srcIn),
+    return MergeSemantics(
+      child: Semantics(
+        button: true,
+        selected: widget.isSelected,
+        child: GestureDetector(
+          onTapDown: (_) => _setPressed(true),
+          onTapUp: (_) => _setPressed(false),
+          onTapCancel: () => _setPressed(false),
+          onTap: widget.onTap,
+          behavior: HitTestBehavior.opaque,
+          child: Container(
+            width: double.infinity,
+            padding: EdgeInsets.symmetric(
+              vertical: verticalPadding,
+              horizontal: 8.0,
+            ),
+            child: SingleMotionBuilder(
+              motion: _press,
+              value: _pressed ? 0.97 : 1.0,
+              active: !MediaQuery.disableAnimationsOf(context),
+              builder:
+                  (context, scale, child) =>
+                      Transform.scale(scale: scale, child: child),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 8.0),
+                    child: SvgWidget(
+                      iconPath,
+                      width: iconSize,
+                      height: iconSize,
+                      colorFilter: ColorFilter.mode(ink, BlendMode.srcIn),
+                    ),
+                  ),
+                  const SizedBox(height: 4.0),
+                  // Label
+                  Text(
+                    title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 11.0,
+                      fontWeight:
+                          widget.isSelected ? FontWeight.w600 : FontWeight.w400,
+                      color: ink,
+                    ),
+                  ),
+                ],
               ),
             ),
-            const SizedBox(height: 4.0),
-            // Label
-            Text(
-              title,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                fontSize: 11.0,
-                fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400,
-                color:
-                    isSelected
-                        ? kPrimaryColor
-                        : context.isLightTheme
-                        ? context.colors.textTertiary
-                        : context.colors.textPrimaryMuted,
-              ),
-            ),
-          ],
+          ),
         ),
       ),
     );

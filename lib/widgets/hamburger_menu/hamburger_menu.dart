@@ -7,6 +7,8 @@ import 'package:chessever2/providers/app_version_provider.dart';
 import 'package:chessever2/providers/auth_state_provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:chessever2/revenue_cat_service/subscribe_state.dart';
+import 'package:chessever2/screens/calendar/calendar_screen.dart';
+import 'package:chessever2/screens/my_profile/my_profile_screen.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
@@ -17,7 +19,6 @@ import 'package:chessever2/widgets/auth/auth_upgrade_sheet.dart';
 import 'package:chessever2/widgets/board_navigation_icon.dart';
 import 'package:chessever2/widgets/alert_dialog/alert_modal.dart';
 import 'package:chessever2/widgets/hamburger_menu/hamburger_menu_dialogs.dart';
-import 'package:chessever2/widgets/paywall/manage_subscription_sheet.dart';
 import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
 import 'package:chessever2/widgets/svg_widget.dart';
 import 'package:chessever2/widgets/user_avatar.dart';
@@ -177,6 +178,34 @@ class HamburgerMenu extends HookConsumerWidget {
                         onPressed: () {
                           Navigator.of(context).pop();
                           callbacks.onBoardPressed();
+                        },
+                        showChevron: true,
+                      ),
+                      _MenuItem(
+                        customIcon: SvgWidget(
+                          SvgAsset.calendarNavIcon,
+                          semanticsLabel: 'Calendar Icon',
+                          height: 20.h,
+                          width: 20.w,
+                          colorFilter:
+                              context.isLightTheme
+                                  ? ColorFilter.mode(
+                                    context.colors.iconPrimary,
+                                    BlendMode.srcIn,
+                                  )
+                                  : null,
+                        ),
+                        title: 'Calendar',
+                        textStyle: AppTypography.textSmRegular.copyWith(
+                          color: context.colors.iconPrimary,
+                          height: 20.h / 14.h,
+                        ),
+                        onPressed: () {
+                          // The drawer stays mounted through its closing
+                          // animation, so its context is still good for the
+                          // push.
+                          Navigator.of(context).pop();
+                          openCalendarScreen(context, source: 'sidebar');
                         },
                         showChevron: true,
                       ),
@@ -359,15 +388,16 @@ class _UserProfileHeader extends ConsumerWidget {
     final name = user?.displayName?.trim();
     final displayName = (name?.isNotEmpty ?? false) ? name! : 'Guest';
 
+    // Opens My Profile (its plan row holds Manage Subscription).
     return GestureDetector(
-      onTap:
-          isPremium
-              ? () async {
-                Navigator.of(context).pop();
-                if (!context.mounted) return;
-                await showManageSubscriptionSheet(context);
-              }
-              : null,
+      behavior: HitTestBehavior.opaque,
+      onTap: () {
+        final navigator = Navigator.of(context);
+        navigator.pop();
+        navigator.push(
+          MaterialPageRoute<void>(builder: (_) => const MyProfileScreen()),
+        );
+      },
       child: Padding(
         padding: EdgeInsets.symmetric(horizontal: 16.sp, vertical: 12.sp),
         child: Row(

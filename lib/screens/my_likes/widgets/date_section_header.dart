@@ -35,11 +35,17 @@ class DateSectionHeader extends StatelessWidget {
             color: context.colors.textPrimary.withValues(alpha: 0.1),
           ),
           boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.1),
-              blurRadius: 4,
-              offset: const Offset(0, 2),
-            ),
+            context.isLightTheme
+                ? BoxShadow(
+                  color: context.colors.shadow,
+                  blurRadius: 2,
+                  offset: const Offset(0, 1),
+                )
+                : BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.1),
+                  blurRadius: 4,
+                  offset: const Offset(0, 2),
+                ),
           ],
         ),
         child: Row(
@@ -72,7 +78,7 @@ class DateSectionHeader extends StatelessWidget {
                 isExpanded
                     ? Icons.keyboard_arrow_up_rounded
                     : Icons.keyboard_arrow_down_rounded,
-                color: context.colors.textPrimary.withValues(alpha: 0.5),
+                color: context.textInk(0.5),
                 size: 20.sp,
               ),
             ],

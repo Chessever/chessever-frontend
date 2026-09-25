@@ -5,11 +5,13 @@ import 'package:chessever2/chat/botvinnik_chat_button.dart';
 import 'package:chessever2/chat/chat_api.dart';
 import 'package:chessever2/e2e/e2e_ids.dart';
 import 'package:chessever2/repository/authentication/auth_repository.dart';
+import 'package:chessever2/repository/local_storage/local_storage_repository.dart';
 import 'package:chessever2/screens/authentication/auth_screen_provider.dart';
-import 'package:chessever2/screens/calendar/calendar_screen.dart';
 import 'package:chessever2/screens/library/library_screen.dart';
 import 'package:chessever2/screens/favorites/favorites_tab_screen.dart';
 import 'package:chessever2/screens/favorites/provider/favorites_mode_provider.dart';
+import 'package:chessever2/screens/for_you/for_you_screen.dart';
+import 'package:chessever2/screens/for_you/providers/for_you_tab_provider.dart';
 import 'package:chessever2/screens/gamebase/gamebase_explorer_screen.dart';
 import 'package:chessever2/providers/favorite_events_provider.dart';
 import 'package:chessever2/providers/favorite_players_provider.dart';
@@ -34,6 +36,30 @@ import '../group_event/group_event_screen.dart';
 import 'widget/bottom_nav_bar.dart';
 import 'widget/tablet_nav_rail.dart';
 
+/// A launch opens on For You › Today. The For You page memory must not carry
+/// a stored My Space or Discovery into a cold start, so Home drops it before
+/// For You first reads it. Within a session nothing changes: the page
+/// controller is already alive and keeps the user's page.
+///
+/// The prefs cache is normally warm by the time Home mounts (auth storage
+/// opens it at startup), so the key is gone synchronously. When it is not,
+/// the removal is queued on the same initialisation the controller waits on,
+/// ahead of it.
+@visibleForTesting
+void forgetForYouPageForLaunch() {
+  final service = SharedPreferencesService.instance;
+  final prefs = service.prefsOrNull;
+  if (prefs != null) {
+    unawaited(prefs.remove(forYouLastTabPrefsKey));
+    return;
+  }
+  unawaited(
+    service.ensureInitialized().then(
+      (prefs) => prefs?.remove(forYouLastTabPrefsKey),
+    ),
+  );
+}
+
 class HomeScreen extends ConsumerStatefulWidget {
   const HomeScreen({super.key});
 
@@ -48,6 +74,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   @override
   void initState() {
     super.initState();
+    forgetForYouPageForLaunch();
     if (!E2eConfig.suppressInterruptivePrompts) {
       unawaited(ReviewPromptService.instance.incrementSessionCount());
     }
@@ -258,87 +285,28 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   }
 }
 
-class BottomNavBarView extends ConsumerStatefulWidget {
+/// The selected section, switched in place. No scale or fade on a switch:
+/// the section is simply there, and nothing is ever drawn from nothing.
+class BottomNavBarView extends ConsumerWidget {
   const BottomNavBarView({super.key});
-
-  @override
-  ConsumerState<BottomNavBarView> createState() => _BottomNavBarViewState();
-}
-
-class _BottomNavBarViewState extends ConsumerState<BottomNavBarView>
-    with TickerProviderStateMixin {
-  late AnimationController _animationController;
-  late Animation<double> _scaleAnimation;
-  late Animation<double> _fadeAnimation;
-
-  @override
-  void initState() {
-    super.initState();
-    _animationController = AnimationController(
-      duration: const Duration(milliseconds: 400),
-      vsync: this,
-    );
-
-    _scaleAnimation = Tween<double>(begin: 0.8, end: 1.0).animate(
-      CurvedAnimation(parent: _animationController, curve: Curves.elasticOut),
-    );
-
-    _fadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
-      CurvedAnimation(
-        parent: _animationController,
-        curve: const Interval(0.0, 0.7, curve: Curves.easeInOut),
-      ),
-    );
-
-    // The Events tab is the first screen users see; don't spend the first
-    // frames scaling/repainting the whole For You feed while it is loading.
-    _animationController.value = 1;
-  }
-
-  @override
-  void dispose() {
-    _animationController.dispose();
-    super.dispose();
-  }
 
   Widget _buildScreen(BottomNavBarItem item) {
     switch (item) {
       case BottomNavBarItem.tournaments:
         return const GroupEventScreen();
-      case BottomNavBarItem.calendar:
-        return const CalendarScreen();
+      case BottomNavBarItem.forYou:
+        return const ForYouScreen();
       case BottomNavBarItem.library:
         return const LibraryScreen();
     }
   }
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final currentItem = ref.watch(selectedBottomNavBarItemProvider);
-
-    // Listen for tab changes and trigger animation
-    ref.listen<BottomNavBarItem>(selectedBottomNavBarItemProvider, (
-      previous,
-      next,
-    ) {
-      if (previous != null && previous != next) {
-        _animationController.reset();
-        _animationController.forward();
-      }
-    });
-
     return GestureDetector(
       onTap: FocusScope.of(context).unfocus,
-      child: AnimatedBuilder(
-        animation: _animationController,
-        child: _buildScreen(currentItem),
-        builder: (context, child) {
-          return FadeTransition(
-            opacity: _fadeAnimation,
-            child: ScaleTransition(scale: _scaleAnimation, child: child),
-          );
-        },
-      ),
+      child: _buildScreen(currentItem),
     );
   }
 }

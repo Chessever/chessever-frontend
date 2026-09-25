@@ -1,3 +1,5 @@
+import 'package:chessever2/screens/chessboard/utils/legible_ink.dart';
+import 'package:chessever2/theme/app_colors.dart';
 import 'package:flutter/material.dart';
 
 /// A single classification a user can attach to a liked game.
@@ -103,4 +105,18 @@ List<String> normalizeLikeTagLabels(Iterable<String> labels) {
     normalized.add(label);
   }
   return List<String>.unmodifiable(normalized);
+}
+
+/// Theme-aware ink for a tag's accent when it is drawn as a line, border,
+/// glyph or text. Dark returns [LikeTag.color] untouched; light darkens the
+/// hue until it clears [min] on the recessed well the chips sit in. The
+/// palette itself (and what is persisted) never changes.
+extension LikeTagInk on LikeTag {
+  Color inkIn(BuildContext context, {double min = 3.0, Color? on}) =>
+      legibleHueInk(
+        context,
+        color,
+        minContrast: min,
+        on: on ?? context.colors.surfaceRecessed,
+      );
 }

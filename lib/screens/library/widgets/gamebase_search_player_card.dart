@@ -1,6 +1,5 @@
 import 'package:chessever2/screens/gamebase/models/models.dart';
 import 'package:chessever2/theme/app_colors.dart';
-import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/chess_title_utils.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
@@ -131,7 +130,7 @@ class _PlayerCardContent extends StatelessWidget {
                           Text(
                             fed,
                             style: AppTypography.textXsRegular.copyWith(
-                              color: context.colors.textPrimary.withValues(alpha: 0.55),
+                              color: context.textInk(0.55),
                             ),
                           ),
                         if (fed.isNotEmpty) SizedBox(width: 10.w),
@@ -180,7 +179,7 @@ class _PlayerCardContent extends StatelessWidget {
         Text(
           'Unrated',
           style: AppTypography.textXsRegular.copyWith(
-            color: context.colors.textPrimary.withValues(alpha: 0.4),
+            color: context.textInk(0.4),
           ),
         ),
       );
@@ -204,7 +203,7 @@ class _RatingChip extends StatelessWidget {
         Text(
           label,
           style: AppTypography.textXsBold.copyWith(
-            color: context.colors.textPrimary.withValues(alpha: 0.4),
+            color: context.textInk(0.4),
           ),
         ),
         SizedBox(width: 2.w),

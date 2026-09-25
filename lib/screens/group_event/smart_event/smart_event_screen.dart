@@ -2,15 +2,21 @@ import 'dart:async';
 
 import 'package:chessever2/main.dart' show routeObserver;
 import 'package:chessever2/providers/favorite_events_provider.dart';
+import 'package:chessever2/repository/favorites/models/favorite_event.dart';
 import 'package:chessever2/repository/gamebase/search/gamebase_search_models.dart';
 import 'package:chessever2/revenue_cat_service/subscribe_state.dart';
 import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
 import 'package:chessever2/screens/chessboard/provider/game_pgn_stream_provider.dart';
+import 'package:chessever2/screens/for_you/open_for_you_event.dart';
+import 'package:chessever2/screens/group_event/group_event_screen.dart'
+    show GroupEventCategory;
 import 'package:chessever2/screens/group_event/model/tour_event_card_model.dart';
 import 'package:chessever2/screens/group_event/smart_event/smart_aggregate_event_provider.dart';
-import 'package:chessever2/screens/group_event/providers/group_event_screen_provider.dart';
 import 'package:chessever2/screens/group_event/widget/filter_popup/filter_popup_provider.dart';
 import 'package:chessever2/screens/group_event/widget/filter_popup/filter_popup_state.dart';
+import 'package:chessever2/screens/my_space/actions/space_menu_action.dart';
+import 'package:chessever2/screens/my_space/models/space_shortcut.dart';
+import 'package:chessever2/screens/my_space/providers/space_shortcuts_provider.dart';
 import 'package:chessever2/utils/event_time_control.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_list_view_mode_provider.dart';
@@ -51,6 +57,47 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:intl/intl.dart';
 
 const smartEventTabLabels = <String>['About', 'Games', 'Events'];
+
+/// My Space shortcut for a smart event.
+///
+/// targetId is the criteria key, the same identity the saved favorite lives
+/// under (`smart_event:v2:{criteriaKey}`), so pinning the same filters from
+/// the card and from the app bar dedupes. `params['request']` is
+/// [SmartEventRequest.toFavoriteMetadata] minus the resolved-event snapshot:
+/// a smart event IS its criteria and re-resolves its members on open. Rebuild
+/// it with [smartEventRequestFromSpaceShortcut].
+SpaceShortcut smartEventSpaceDraft(SmartEventRequest request) {
+  final metadata = Map<String, dynamic>.of(request.toFavoriteMetadata())
+    ..remove('events')
+    ..remove('notificationsEnabled');
+  return SpaceShortcut.draft(
+    kind: SpaceShortcutKind.smartEvent,
+    targetId: request.criteriaKey,
+    title: request.displayName,
+    subtitle: request.caption,
+    params: {'request': metadata},
+  );
+}
+
+/// Inverse of [smartEventSpaceDraft]: the request a smartEvent shortcut was
+/// pinned from, parsed through the same path saved smart favorites use.
+/// Returns null when the shortcut carries no request map.
+SmartEventRequest? smartEventRequestFromSpaceShortcut(SpaceShortcut shortcut) {
+  final raw = shortcut.params['request'];
+  if (raw is! Map) return null;
+  final stamp = shortcut.createdAt ?? DateTime.now();
+  return SmartEventRequest.fromFavoriteEvent(
+    FavoriteEvent(
+      id: shortcut.id,
+      userId: '',
+      eventId: 'smart_event:v2:${shortcut.targetId}',
+      eventName: shortcut.title,
+      metadata: Map<String, dynamic>.from(raw),
+      createdAt: stamp,
+      updatedAt: stamp,
+    ),
+  );
+}
 
 /// Full event view for generated level games — an aggregate of every matching
 /// game across broadcasts, not just currently-running events. Renders the
@@ -623,6 +670,9 @@ class _AppBar extends ConsumerWidget {
         ref.watch(smartEventSavedFavoriteProvider(savedRequest.criteriaKey)) ??
         ref.watch(smartEventSavedFavoriteProvider(request.criteriaKey));
     final isSaved = savedFavorite != null;
+    // Pins what is on screen: the request with any tier / filter overrides.
+    final spaceDraft = smartEventSpaceDraft(request);
+    final inSpace = ref.watch(spaceShortcutExistsProvider(spaceDraft.key));
 
     return Padding(
       padding: EdgeInsets.fromLTRB(8.w, 8.h, 16.w, 0),
@@ -641,7 +691,29 @@ class _AppBar extends ConsumerWidget {
             // and offer to apply + save it.
             onPressed: () => Navigator.of(context).maybePop(),
           ),
+          // Mirrors the My Space button + gap on the right so the title
+          // stays centred on the screen, not just between the buttons.
+          SizedBox(width: 24.ic + 16.w),
           Expanded(child: Center(child: _AppBarTitle(request: request))),
+          IconButton(
+            tooltip: inSpace ? 'Remove from My Space' : 'Add to My Space',
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints(),
+            iconSize: 24.ic,
+            icon: Icon(
+              inSpace
+                  ? Icons.dashboard_customize
+                  : Icons.dashboard_customize_outlined,
+              color: context.colors.textPrimary,
+            ),
+            onPressed:
+                () => toggleSpaceShortcut(
+                  context: context,
+                  ref: ref,
+                  draft: spaceDraft,
+                ),
+          ),
+          SizedBox(width: 16.w),
           IconButton(
             tooltip:
                 isSaved
@@ -913,7 +985,7 @@ class _TitleSelectorState extends State<_TitleSelector>
             border: Border.all(
               color:
                   _isOpen
-                      ? kPrimaryColor.withValues(alpha: 0.4)
+                      ? context.colors.accentText.withValues(alpha: 0.4)
                       : context.colors.textPrimary.withValues(alpha: 0.12),
               width: 1,
             ),
@@ -927,7 +999,7 @@ class _TitleSelectorState extends State<_TitleSelector>
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: AppTypography.textSmMedium.copyWith(
-                    color: _isOpen ? kPrimaryColor : context.colors.textPrimary,
+                    color: _isOpen ? context.colors.accentText : context.colors.textPrimary,
                     fontWeight: FontWeight.w700,
                     letterSpacing: 0.3,
                   ),
@@ -943,7 +1015,7 @@ class _TitleSelectorState extends State<_TitleSelector>
                   size: 18.ic,
                   color:
                       _isOpen
-                          ? kPrimaryColor
+                          ? context.colors.accentText
                           : context.colors.textPrimary.withValues(alpha: 0.7),
                 ),
               ),
@@ -1020,7 +1092,10 @@ class _TierOverlay extends StatelessWidget {
                     ),
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.18),
+                        color:
+                            context.isLightTheme
+                                ? context.colors.shadow
+                                : Colors.black.withValues(alpha: 0.18),
                         blurRadius: 24,
                         spreadRadius: -6,
                         offset: const Offset(0, 8),
@@ -1123,13 +1198,13 @@ class _TierOptionRow extends StatelessWidget {
                   overflow: TextOverflow.ellipsis,
                   style: AppTypography.textSmMedium.copyWith(
                     color:
-                        isSelected ? kPrimaryColor : context.colors.textPrimary,
+                        isSelected ? context.colors.accentText : context.colors.textPrimary,
                     fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
                   ),
                 ),
               ),
               if (isSelected)
-                Icon(Icons.check_rounded, size: 18.ic, color: kPrimaryColor),
+                Icon(Icons.check_rounded, size: 18.ic, color: context.colors.accentText),
             ],
           ),
         ),
@@ -1511,7 +1586,7 @@ class _GamesTabState extends ConsumerState<_GamesTab>
       return NotificationListener<ScrollNotification>(
         onNotification: _handleScrollNotification,
         child: RefreshIndicator(
-          color: kPrimaryColor,
+          color: context.colors.accentText,
           backgroundColor: context.colors.surface,
           onRefresh: () async {
             // Re-resolve the criteria's membership from the server, then
@@ -2033,7 +2108,10 @@ class _DateHeader extends StatelessWidget {
           ),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withValues(alpha: 0.1),
+              color:
+                  context.isLightTheme
+                      ? context.colors.shadow
+                      : Colors.black.withValues(alpha: 0.1),
               blurRadius: 4,
               offset: const Offset(0, 2),
             ),
@@ -2046,7 +2124,7 @@ class _DateHeader extends StatelessWidget {
               width: 4.w,
               height: 20.h,
               decoration: BoxDecoration(
-                color: kPrimaryColor,
+                color: context.colors.accentText,
                 borderRadius: BorderRadius.circular(2),
               ),
             ),
@@ -2069,7 +2147,7 @@ class _DateHeader extends StatelessWidget {
                 isExpanded
                     ? Icons.keyboard_arrow_up_rounded
                     : Icons.keyboard_arrow_down_rounded,
-                color: context.colors.textPrimary.withValues(alpha: 0.5),
+                color: context.textInk(0.5),
                 size: 20.sp,
               ),
             ],
@@ -2078,6 +2156,28 @@ class _DateHeader extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Opens one of a smart event's included tournaments.
+///
+/// SmartEventScreen is mostly reached from For You (Today cards, Discovery,
+/// My Space shortcuts), where the Events screen is not mounted. Going through
+/// the shared tournament navigator avoids spinning up a throwaway Events
+/// controller (which would load a whole Events tab just to borrow its tap
+/// handler) and surfaces a failed open as a snack. The analytics category
+/// follows the tapped event's own state rather than Events' last tab.
+Future<void> _openIncludedEvent(
+  BuildContext context,
+  WidgetRef ref,
+  GroupEventCardModel event,
+) {
+  final category = switch (event.tourEventCategory) {
+    TourEventCategory.live || TourEventCategory.ongoing =>
+      GroupEventCategory.current,
+    TourEventCategory.upcoming => GroupEventCategory.upcoming,
+    TourEventCategory.completed => GroupEventCategory.past,
+  };
+  return openForYouEvent(context, ref, eventId: event.id, category: category);
 }
 
 class _SmartIncludedEventCard extends ConsumerWidget {
@@ -2096,10 +2196,7 @@ class _SmartIncludedEventCard extends ConsumerWidget {
       showHeartIndicator: true,
       favoritePlayersSource: EventFavoritePlayersSource.cacheOnly,
       heroTagSuffix: heroTagSuffix,
-      onTap:
-          () => ref
-              .read(groupEventScreenProvider.notifier)
-              .onSelectTournament(context: context, id: event.id),
+      onTap: () => _openIncludedEvent(context, ref, event),
     );
 
     if (!ResponsiveHelper.isTablet) return card;
@@ -2196,7 +2293,9 @@ class _AboutTabState extends ConsumerState<_AboutTab>
           decoration: BoxDecoration(
             color: context.colors.surface,
             borderRadius: BorderRadius.circular(12.br),
-            border: Border.all(color: kPrimaryColor.withValues(alpha: 0.3)),
+            border: Border.all(
+              color: context.colors.accentText.withValues(alpha: 0.3),
+            ),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -2209,7 +2308,11 @@ class _AboutTabState extends ConsumerState<_AboutTab>
                       opening.codeLabel,
                       key: const ValueKey('smart-opening-scope-code'),
                       style: AppTypography.textSmBold.copyWith(
-                        color: kDarkBlue,
+                        // kDarkBlue is 2.6:1 on paper.
+                        color:
+                            context.isLightTheme
+                                ? context.colors.accentText
+                                : kDarkBlue,
                       ),
                     ),
                     SizedBox(width: 10.w),
@@ -2314,13 +2417,7 @@ class _AboutTabState extends ConsumerState<_AboutTab>
                 tourEventCardModel: includedEvent,
                 forceCompactLayout: true,
                 heroTagSuffix: 'smart_about_${request.scopeId}',
-                onTap:
-                    () => ref
-                        .read(groupEventScreenProvider.notifier)
-                        .onSelectTournament(
-                          context: context,
-                          id: includedEvent.id,
-                        ),
+                onTap: () => _openIncludedEvent(context, ref, includedEvent),
               ),
             ),
           ),
@@ -2555,7 +2652,7 @@ class _EventsTabState extends ConsumerState<_EventsTab>
               maxWidth: ResponsiveHelper.contentMaxWidth,
             ),
             child: RefreshIndicator(
-              color: kPrimaryColor,
+              color: context.colors.accentText,
               backgroundColor: context.colors.surface,
               onRefresh: () async {
                 ref.invalidate(smartEventResolvedEventsProvider);

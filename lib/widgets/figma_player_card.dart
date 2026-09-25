@@ -1,7 +1,7 @@
 import 'package:chessever2/screens/favorites/tabs/favorites_players_tab.dart';
+import 'package:chessever2/screens/player_profile/widgets/lifted_row_menu.dart';
 import 'package:chessever2/screens/standings/player_standing_model.dart';
 import 'package:chessever2/theme/app_colors.dart';
-import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 
 import 'package:chessever2/utils/responsive_helper.dart';
@@ -188,7 +188,16 @@ class FigmaPlayerCard extends ConsumerWidget {
         padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 12.h),
         decoration: BoxDecoration(
           border: Border(
-            bottom: BorderSide(color: context.colors.divider, width: 1),
+            // The rule separates rows in a list. A lifted copy is one whole
+            // object, so it keeps the rule's height (the copy stays in
+            // register over the original) but draws nothing.
+            bottom: BorderSide(
+              color:
+                  LiftedRowSurface.isLifted(context)
+                      ? Colors.transparent
+                      : context.colors.divider,
+              width: 1,
+            ),
           ),
         ),
         child: Row(
@@ -276,7 +285,9 @@ class FigmaPlayerCard extends ConsumerWidget {
                           color: context.colors.textSecondary,
                         ),
                       ),
-                      // Rating change (if any)
+                      // Rating change (if any), set flush against the rating
+                      // exactly as shipped. The tokens are kGreenColor /
+                      // kRedColor in dark and the deeper paper inks in light.
                       if (player.scoreChange != 0)
                         Text(
                           player.scoreChange > 0
@@ -285,8 +296,8 @@ class FigmaPlayerCard extends ConsumerWidget {
                           style: AppTypography.textSmMedium.copyWith(
                             color:
                                 player.scoreChange > 0
-                                    ? kGreenColor
-                                    : kRedColor,
+                                    ? context.colors.successStrong
+                                    : context.colors.danger,
                           ),
                         ),
                     ],
@@ -350,7 +361,7 @@ class _MatchScoreText extends StatelessWidget {
         children: [
           TextSpan(
             text: '${match.group(1)}W',
-            style: base.copyWith(color: kPrimaryColor),
+            style: base.copyWith(color: context.colors.accentText),
           ),
           TextSpan(
             text: '-',

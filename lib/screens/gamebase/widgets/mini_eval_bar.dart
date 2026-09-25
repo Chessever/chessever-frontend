@@ -55,7 +55,7 @@ class MiniEvalBar extends ConsumerWidget {
                     color:
                         effectiveEval >= 0
                             ? context.colors.textPrimary
-                            : context.colors.textPrimary.withValues(alpha: 0.6),
+                            : context.textInk(0.6),
                     fontSize: 9.f,
                     fontWeight: FontWeight.w600,
                   ),

@@ -13,6 +13,7 @@ import 'package:chessever2/repository/supabase/game/game_repository.dart';
 import 'package:chessever2/screens/chessboard/analysis/chess_game.dart';
 import 'package:chessever2/screens/chessboard/analysis/chess_game_navigator.dart';
 import 'package:chessever2/screens/chessboard/analysis/chess_game_navigator_state_manager.dart';
+import 'package:chessever2/screens/chessboard/classification_fx/classification_fx.dart';
 import 'package:chessever2/screens/chessboard/provider/board_eval_restart_policy.dart';
 import 'package:chessever2/screens/chessboard/provider/analysis_view_session.dart';
 import 'package:chessever2/screens/chessboard/provider/current_eval_provider.dart';
@@ -28,7 +29,6 @@ import 'package:chessever2/screens/library/utils/gamebase_pgn_builder.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/utils/live_game_position_resolver.dart';
 import 'package:chessever2/theme/app_theme.dart';
-import 'package:chessever2/utils/audio_player_service.dart';
 import 'package:chessever2/utils/chess_title_utils.dart';
 import 'package:chessever2/utils/pgn_clock_utils.dart';
 import 'package:chessever2/utils/pgn_time_control.dart';
@@ -5422,7 +5422,13 @@ class ChessBoardScreenNotifierNew
       return; // Sound disabled, skip playing
     }
 
-    AudioPlayerService.instance.playSfxForSan(san);
+    // Always the ordinary move sound. When this move is classified, the board
+    // screen's audio listener has already announced it: that listener resolves
+    // the class from the same badge the board draws, and it runs synchronously
+    // on the state change that precedes every call here. A classification
+    // sound wins over the ordinary one for the same move, so this call yields.
+    // (Engine-line steps that never enter the game tree are never classified.)
+    ClassificationSfx.playMove(san: san);
   }
 
   bool _ensureVariantSelection() {

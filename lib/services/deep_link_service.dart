@@ -44,6 +44,9 @@ import 'package:chessever2/screens/player_profile/player_profile_data_source.dar
     show PlayerProfileDataSource;
 import 'package:chessever2/screens/player_profile/player_profile_screen.dart'
     show PlayerProfileScreen;
+import 'package:chessever2/screens/streaks/models/streak_models.dart';
+import 'package:chessever2/screens/streaks/streak_player_screen.dart';
+import 'package:chessever2/screens/streaks/streaks_screen.dart';
 import 'package:chessever2/services/pgn_file_intake_service.dart';
 import 'package:chessever2/widgets/event_card/event_context_menu.dart'
     show kEventTabQueryParam;
@@ -51,6 +54,64 @@ import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:sentry_flutter/sentry_flutter.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+
+/// Where a streaks link points: the wall ([fideId] null) or one player's
+/// card, optionally on a time class (`?tc=standard|rapid|blitz`).
+typedef StreakLinkTarget = ({int? fideId, StreakTimeClass? timeClass});
+
+// Streak links are WEB-ONLY from outside the app, so [handleDeepLink] has no
+// streaks branch. The OS never hands a streaks.chessever.com link to the app:
+// no Runner*.entitlements lists `applinks:streaks.chessever.com`, the Android
+// manifest has no intent filter for that host, and the streaks-site worker
+// serves no apple-app-site-association / assetlinks.json. Shared card links
+// (`https://streaks.chessever.com/p/<fideId>?tc=`) therefore always open the
+// site. To make them open the app, land all three platform pieces first, then
+// route [streakLinkTarget] from [handleDeepLink] to [streakLinkScreen].
+// Until then the parser below serves in-app links only (My Space shortcuts).
+
+const _streakLinkHosts = {
+  'streaks.chessever.com',
+  'www.streaks.chessever.com',
+  'streak.chessever.com',
+  'www.streak.chessever.com',
+};
+
+final _streakFideIdPattern = RegExp(r'^\d{1,12}$');
+
+/// Reads a streaks.chessever.com link the way the site's router does:
+/// `/p/<fideId>` is a player, every other path is the wall, and `?tc=` picks
+/// the time class. Null for any other link. In-app only; see the note above.
+StreakLinkTarget? streakLinkTarget(Uri uri) {
+  final scheme = uri.scheme.toLowerCase();
+  final host = uri.host.toLowerCase();
+  final isWeb =
+      (scheme == 'https' || scheme == 'http') &&
+      _streakLinkHosts.contains(host);
+  if (!isWeb) return null;
+
+  final segments = [
+    for (final s in uri.pathSegments)
+      if (s.trim().isNotEmpty) s.trim(),
+  ];
+  int? fideId;
+  if (segments.length == 2 &&
+      segments[0] == 'p' &&
+      _streakFideIdPattern.hasMatch(segments[1])) {
+    final parsed = int.tryParse(segments[1]);
+    if (parsed != null && parsed > 0) fideId = parsed;
+  }
+  return (
+    fideId: fideId,
+    timeClass: StreakTimeClassX.tryParse(uri.queryParameters['tc']),
+  );
+}
+
+/// The in-app screen for a streaks link.
+Widget streakLinkScreen(StreakLinkTarget target) {
+  final fideId = target.fideId;
+  if (fideId == null) return StreaksScreen(initialClass: target.timeClass);
+  return StreakPlayerScreen(fideId: fideId, initialClass: target.timeClass);
+}
 
 /// Gamebase archive ids are uuids; Supabase-native share links use uuids too,
 /// but Lichess short ids are 8 alphanumerics — this only gates the gamebase
@@ -204,6 +265,130 @@ class DeepLinkService {
         preserveCurrentRoute: true,
       ),
     );
+    return true;
+  }
+
+  /// Awaitable twin of [openGameFromApp] for My Space shortcuts. Resolves the
+  /// game exactly like a shared link and pushes the board above the current
+  /// route. Returns false only when the game could not be resolved or opened;
+  /// a tap swallowed by the in-flight/debounce guard counts as handled.
+  Future<bool> openGameForShortcut(
+    String gameId, {
+    String? initialFen,
+    bool preferGamebase = false,
+  }) async {
+    final navigatorKey = _routerNavigatorKey;
+    final ref = _routerRef;
+    final normalizedId = gameId.trim();
+    if (navigatorKey == null || ref == null || normalizedId.isEmpty) {
+      return false;
+    }
+    return _navigateToGame(
+      normalizedId,
+      navigatorKey,
+      ref,
+      initialFen: initialFen,
+      preferGamebase: preferGamebase,
+      preserveCurrentRoute: true,
+    );
+  }
+
+  /// Awaitable twin of [openEventFromApp] for My Space shortcuts: same event
+  /// and round resolution as a shared link (tour ids, group broadcast ids and
+  /// bare round ids all work), with the round preselected. [tab] is a link's
+  /// `?tab=` value (standings, bracket); absent opens Games. Returns false
+  /// when the event could not be resolved.
+  Future<bool> openEventForShortcut({
+    String? eventId,
+    String? tourId,
+    String? roundId,
+    String? tab,
+  }) async {
+    final navigatorKey = _routerNavigatorKey;
+    final ref = _routerRef;
+    final normalizedEventId = _asNonEmptyString(eventId);
+    final normalizedTourId = _asNonEmptyString(tourId);
+    final normalizedRoundId = _asNonEmptyString(roundId);
+    if (navigatorKey == null ||
+        ref == null ||
+        (normalizedEventId == null &&
+            normalizedTourId == null &&
+            normalizedRoundId == null)) {
+      return false;
+    }
+    return _navigateToEvent(
+      normalizedEventId,
+      navigatorKey,
+      ref,
+      tourId: normalizedTourId,
+      roundId: normalizedRoundId,
+      tab: _asNonEmptyString(tab),
+      preserveCurrentRoute: true,
+    );
+  }
+
+  /// Awaitable, in-app twin of a shared player-scorecard link
+  /// (`/broadcast/<slug>/<id>/player/<fideId>`) for My Space shortcuts. Opens
+  /// the event on Standings above the current route, then the player's
+  /// scorecard. Returns false only when the event could not be opened; a
+  /// player missing from the standings leaves the event open and counts.
+  Future<bool> openPlayerScorecardForShortcut({
+    required String eventId,
+    required int fideId,
+  }) async {
+    final navigatorKey = _routerNavigatorKey;
+    final ref = _routerRef;
+    final normalizedEventId = _asNonEmptyString(eventId);
+    if (navigatorKey == null ||
+        ref == null ||
+        normalizedEventId == null ||
+        fideId <= 0) {
+      return false;
+    }
+    return _navigateToPlayerScorecard(
+      normalizedEventId,
+      fideId,
+      navigatorKey,
+      ref,
+      preserveCurrentRoute: true,
+    );
+  }
+
+  /// Awaitable, in-app twin of a shared team-page link
+  /// (`/broadcast/<slug>/<id>/team/<name>`) for My Space shortcuts. Opens the
+  /// event on Standings above the current route, then the team's scorecard.
+  /// Returns false only when the event could not be opened.
+  Future<bool> openTeamScorecardForShortcut({
+    required String eventId,
+    required String teamName,
+  }) async {
+    final navigatorKey = _routerNavigatorKey;
+    final ref = _routerRef;
+    final normalizedEventId = _asNonEmptyString(eventId);
+    final normalizedTeam = _asNonEmptyString(teamName);
+    if (navigatorKey == null ||
+        ref == null ||
+        normalizedEventId == null ||
+        normalizedTeam == null) {
+      return false;
+    }
+    return _navigateToTeamScorecard(
+      normalizedEventId,
+      normalizedTeam,
+      navigatorKey,
+      ref,
+      preserveCurrentRoute: true,
+    );
+  }
+
+  /// Routes a chessever.com (or app-scheme) link from inside the app exactly
+  /// like one tapped outside it. Returns false while the router is not yet
+  /// attached.
+  bool openLinkFromApp(Uri uri) {
+    final navigatorKey = _routerNavigatorKey;
+    final ref = _routerRef;
+    if (navigatorKey == null || ref == null) return false;
+    handleDeepLink(uri, navigatorKey, ref);
     return true;
   }
 
@@ -705,7 +890,10 @@ class DeepLinkService {
   /// [preferGamebase] marks `src=gamebase` links: the id is a gamebase
   /// (TWIC archive) uuid, so skip the Supabase lookup and resolve through
   /// the gamebase API instead.
-  Future<void> _navigateToGame(
+  ///
+  /// Returns false when the game could not be opened. A call swallowed by the
+  /// in-flight or debounce guard returns true: the earlier call owns it.
+  Future<bool> _navigateToGame(
     String gameId,
     GlobalKey<NavigatorState> navigatorKey,
     WidgetRef ref, {
@@ -716,7 +904,7 @@ class DeepLinkService {
     // Guard: Prevent concurrent navigation
     if (_isNavigating) {
       debugPrint('DeepLinkService: Navigation already in progress, ignoring');
-      return;
+      return true;
     }
 
     // Guard: Debounce duplicate links (same game within short time)
@@ -725,7 +913,7 @@ class DeepLinkService {
       final timeSinceLastHandle = now.difference(_lastHandledTime!);
       if (timeSinceLastHandle < _debounceDuration) {
         debugPrint('DeepLinkService: Duplicate link ignored (debounce)');
-        return;
+        return true;
       }
     }
 
@@ -771,7 +959,7 @@ class DeepLinkService {
           '/auth_screen',
           (route) => false,
         );
-        return;
+        return false;
       }
 
       if (preferGamebase) {
@@ -781,8 +969,9 @@ class DeepLinkService {
           ref,
           initialFen: initialFen,
           appReadyFuture: appReadyFuture,
+          preserveCurrentRoute: preserveCurrentRoute,
         );
-        return;
+        return true;
       }
 
       final gameRepo = ref.read(gameRepositoryProvider);
@@ -800,8 +989,9 @@ class DeepLinkService {
           ref,
           initialFen: initialFen,
           appReadyFuture: appReadyFuture,
+          preserveCurrentRoute: preserveCurrentRoute,
         );
-        return;
+        return true;
       }
       final resolvedGameId = game.id;
       final gameTourModel = GamesTourModel.fromGame(game);
@@ -921,6 +1111,7 @@ class DeepLinkService {
           navigator.pushAndRemoveUntil(route, (route) => route.isFirst);
         }
       }
+      return navigator != null;
     } catch (e, stackTrace) {
       debugPrint('DeepLinkService: Failed to load game: $e');
       // Slow network (10s timeout, CHESSEVER-15M) or a stale/deleted game link
@@ -951,6 +1142,7 @@ class DeepLinkService {
           (route) => false,
         );
       }
+      return false;
     } finally {
       _isNavigating = false;
     }
@@ -965,6 +1157,7 @@ class DeepLinkService {
     WidgetRef ref, {
     String? initialFen,
     required Future<void> appReadyFuture,
+    bool preserveCurrentRoute = false,
   }) async {
     final gamebaseGame = await ref
         .read(gamebaseRepositoryProvider)
@@ -993,22 +1186,29 @@ class DeepLinkService {
       ),
     );
 
-    navigatorKey.currentState?.pushAndRemoveUntil(
-      MaterialPageRoute(
-        builder:
-            (_) => ChessBoardScreenNew(
-              key: ValueKey('deep-link-gamebase-$gameId'),
-              games: [gameTourModel],
-              currentIndex: 0,
-              viewSource: ChessboardView.forYou,
-              playerProfileDataSource: PlayerProfileDataSource.twic,
-              initialFen: initialFen,
-              showGamebaseButton: false,
-              showClock: false,
-            ),
-      ),
-      (route) => route.isFirst,
+    final route = MaterialPageRoute<void>(
+      builder:
+          (_) => ChessBoardScreenNew(
+            key: ValueKey('deep-link-gamebase-$gameId'),
+            games: [gameTourModel],
+            currentIndex: 0,
+            viewSource: ChessboardView.forYou,
+            playerProfileDataSource: PlayerProfileDataSource.twic,
+            initialFen: initialFen,
+            showGamebaseButton: false,
+            showClock: false,
+          ),
     );
+    // In-app references open above the screen that asked, like the
+    // Supabase-game path does; shared links still reset to the root.
+    if (preserveCurrentRoute) {
+      navigatorKey.currentState?.push(route);
+    } else {
+      navigatorKey.currentState?.pushAndRemoveUntil(
+        route,
+        (route) => route.isFirst,
+      );
+    }
   }
 
   Future<bool> _waitForAuthenticatedSession(WidgetRef ref) async {
@@ -1205,7 +1405,9 @@ class DeepLinkService {
   }
 
   /// Fetch event by group_broadcast_id and navigate to tournament detail screen
-  Future<void> _navigateToEvent(
+  /// Returns false when the event could not be opened. A call swallowed by the
+  /// in-flight guard returns true: the earlier call owns it.
+  Future<bool> _navigateToEvent(
     String? groupBroadcastId,
     GlobalKey<NavigatorState> navigatorKey,
     WidgetRef ref, {
@@ -1216,7 +1418,7 @@ class DeepLinkService {
   }) async {
     if (_isNavigating) {
       debugPrint('DeepLinkService: Navigation already in progress, ignoring');
-      return;
+      return true;
     }
     _isNavigating = true;
 
@@ -1260,7 +1462,7 @@ class DeepLinkService {
           '/auth_screen',
           (route) => false,
         );
-        return;
+        return false;
       }
 
       final routeContext = await _resolveEventRouteContext(
@@ -1296,7 +1498,7 @@ class DeepLinkService {
             report: false, // captured above as an exception
           );
         }
-        return;
+        return false;
       }
 
       debugPrint(
@@ -1332,6 +1534,7 @@ class DeepLinkService {
           (route) => route.isFirst,
         );
       }
+      return navigatorKey.currentState != null;
     } catch (e, stackTrace) {
       debugPrint('DeepLinkService: Failed to load event: $e');
       // A slow/offline network makes the 10s fetch timeout (or socket failure)
@@ -1360,6 +1563,7 @@ class DeepLinkService {
           (route) => false,
         );
       }
+      return false;
     } finally {
       _isNavigating = false;
     }
@@ -1399,17 +1603,24 @@ class DeepLinkService {
   /// so the scorecard has a back-stack, then matches the player by FIDE id in
   /// the standings and pushes the scorecard. If the player can't be resolved
   /// (standings still loading, no FIDE id) it degrades gracefully to the event.
-  Future<void> _navigateToPlayerScorecard(
+  ///
+  /// [preserveCurrentRoute] (in-app shortcuts) opens the event above the
+  /// current route and never falls back to Home. Returns false when the event
+  /// could not be opened. A call swallowed by the in-flight guard returns
+  /// true: the earlier call owns it.
+  Future<bool> _navigateToPlayerScorecard(
     String groupBroadcastId,
     int fideId,
     GlobalKey<NavigatorState> navigatorKey,
-    WidgetRef ref,
-  ) async {
+    WidgetRef ref, {
+    bool preserveCurrentRoute = false,
+  }) async {
     if (_isNavigating) {
       debugPrint('DeepLinkService: Navigation already in progress, ignoring');
-      return;
+      return true;
     }
     _isNavigating = true;
+    var landedOnEvent = false;
 
     try {
       try {
@@ -1436,7 +1647,7 @@ class DeepLinkService {
           '/auth_screen',
           (route) => false,
         );
-        return;
+        return false;
       }
 
       final routeContext = await _resolveEventRouteContext(
@@ -1448,12 +1659,19 @@ class DeepLinkService {
           'DeepLinkService: Could not resolve event for player scorecard '
           '(group_broadcast_id=$groupBroadcastId)',
         );
-        _navigateToHome(
-          navigatorKey,
-          reason: 'player_scorecard_event_unresolved',
-          extras: {'groupBroadcastId': groupBroadcastId, 'fideId': fideId},
-        );
-        return;
+        if (preserveCurrentRoute) {
+          _addBreadcrumb(
+            'in-app player scorecard reference failed',
+            data: {'groupBroadcastId': _maskedValue(groupBroadcastId)},
+          );
+        } else {
+          _navigateToHome(
+            navigatorKey,
+            reason: 'player_scorecard_event_unresolved',
+            extras: {'groupBroadcastId': groupBroadcastId, 'fideId': fideId},
+          );
+        }
+        return false;
       }
 
       final broadcastRepo = ref.read(groupBroadcastRepositoryProvider);
@@ -1474,10 +1692,11 @@ class DeepLinkService {
 
       // Land on the event first so the scorecard has a back-stack and the
       // standings providers are scoped to this broadcast.
-      navigatorKey.currentState?.pushNamedAndRemoveUntil(
-        '/tournament_detail_screen',
-        (route) => route.isFirst,
-      );
+      final eventRoute = _pushEventRoute(navigatorKey, preserveCurrentRoute);
+      if (eventRoute == null) return false;
+      landedOnEvent = true;
+      var eventClosed = false;
+      unawaited(eventRoute.whenComplete(() => eventClosed = true));
 
       // Resolve the player from the tournament standings, then open the
       // scorecard. `playerTourScreenProvider` returns synchronously with `[]`
@@ -1495,8 +1714,11 @@ class DeepLinkService {
           'DeepLinkService: Player $fideId not found in standings; '
           'staying on event',
         );
-        return;
+        return true;
       }
+      // Backed out of the event while standings loaded: the scorecard would
+      // land on whatever screen is left.
+      if (eventClosed) return true;
 
       ref.read(selectedPlayerProvider.notifier).state = matched;
       ref.read(scoreCardGamesContextProvider.notifier).state = null;
@@ -1507,6 +1729,7 @@ class DeepLinkService {
           ChessboardView.tour;
 
       navigatorKey.currentState?.pushNamed('/scorecard_screen');
+      return true;
     } catch (e, stackTrace) {
       debugPrint('DeepLinkService: Failed to open player scorecard: $e');
       _captureDeepLinkException(
@@ -1518,10 +1741,14 @@ class DeepLinkService {
           'fideId': fideId.toString(),
         },
       );
-      navigatorKey.currentState?.pushNamedAndRemoveUntil(
-        '/home_screen',
-        (route) => false,
-      );
+      if (!preserveCurrentRoute) {
+        navigatorKey.currentState?.pushNamedAndRemoveUntil(
+          '/home_screen',
+          (route) => false,
+        );
+      }
+      // In-app: an event that already opened is not a dead shortcut.
+      return preserveCurrentRoute && landedOnEvent;
     } finally {
       _isNavigating = false;
     }
@@ -1531,17 +1758,22 @@ class DeepLinkService {
   /// `chessever.com/broadcast/<slug>/<id>/team/<teamName>`. Lands on the event
   /// first (standings tab for team events), resolves the team from standings,
   /// then pushes `/team_scorecard_screen`.
-  Future<void> _navigateToTeamScorecard(
+  ///
+  /// [preserveCurrentRoute] and the result behave as in
+  /// [_navigateToPlayerScorecard].
+  Future<bool> _navigateToTeamScorecard(
     String groupBroadcastId,
     String teamName,
     GlobalKey<NavigatorState> navigatorKey,
-    WidgetRef ref,
-  ) async {
+    WidgetRef ref, {
+    bool preserveCurrentRoute = false,
+  }) async {
     if (_isNavigating) {
       debugPrint('DeepLinkService: Navigation already in progress, ignoring');
-      return;
+      return true;
     }
     _isNavigating = true;
+    var landedOnEvent = false;
 
     try {
       try {
@@ -1568,7 +1800,7 @@ class DeepLinkService {
           '/auth_screen',
           (route) => false,
         );
-        return;
+        return false;
       }
 
       final routeContext = await _resolveEventRouteContext(
@@ -1580,12 +1812,22 @@ class DeepLinkService {
           'DeepLinkService: Could not resolve event for team scorecard '
           '(group_broadcast_id=$groupBroadcastId)',
         );
-        _navigateToHome(
-          navigatorKey,
-          reason: 'team_scorecard_event_unresolved',
-          extras: {'groupBroadcastId': groupBroadcastId, 'teamName': teamName},
-        );
-        return;
+        if (preserveCurrentRoute) {
+          _addBreadcrumb(
+            'in-app team scorecard reference failed',
+            data: {'groupBroadcastId': _maskedValue(groupBroadcastId)},
+          );
+        } else {
+          _navigateToHome(
+            navigatorKey,
+            reason: 'team_scorecard_event_unresolved',
+            extras: {
+              'groupBroadcastId': groupBroadcastId,
+              'teamName': teamName,
+            },
+          );
+        }
+        return false;
       }
 
       final broadcastRepo = ref.read(groupBroadcastRepositoryProvider);
@@ -1604,10 +1846,11 @@ class DeepLinkService {
       ref.read(selectedTourModeProvider.notifier).state =
           TournamentDetailScreenMode.standings;
 
-      navigatorKey.currentState?.pushNamedAndRemoveUntil(
-        '/tournament_detail_screen',
-        (route) => route.isFirst,
-      );
+      final eventRoute = _pushEventRoute(navigatorKey, preserveCurrentRoute);
+      if (eventRoute == null) return false;
+      landedOnEvent = true;
+      var eventClosed = false;
+      unawaited(eventRoute.whenComplete(() => eventClosed = true));
 
       final matched = await _awaitTeamInStandings(
         ref,
@@ -1635,8 +1878,13 @@ class DeepLinkService {
         );
       }
 
+      // Backed out of the event while standings loaded: the scorecard would
+      // land on whatever screen is left.
+      if (eventClosed) return true;
+
       ref.read(selectedTeamProvider.notifier).state = team;
       navigatorKey.currentState?.pushNamed('/team_scorecard_screen');
+      return true;
     } catch (e, stackTrace) {
       debugPrint('DeepLinkService: Failed to open team scorecard: $e');
       _captureDeepLinkException(
@@ -1645,13 +1893,35 @@ class DeepLinkService {
         stage: 'navigate_to_team_scorecard',
         extras: {'groupBroadcastId': groupBroadcastId, 'teamName': teamName},
       );
-      navigatorKey.currentState?.pushNamedAndRemoveUntil(
-        '/home_screen',
-        (route) => false,
-      );
+      if (!preserveCurrentRoute) {
+        navigatorKey.currentState?.pushNamedAndRemoveUntil(
+          '/home_screen',
+          (route) => false,
+        );
+      }
+      // In-app: an event that already opened is not a dead shortcut.
+      return preserveCurrentRoute && landedOnEvent;
     } finally {
       _isNavigating = false;
     }
+  }
+
+  /// Pushes the tournament detail screen for a scorecard link: above the
+  /// current route for in-app references, over the root for shared links.
+  /// Returns the route's pop future, or null when there is no navigator.
+  Future<Object?>? _pushEventRoute(
+    GlobalKey<NavigatorState> navigatorKey,
+    bool preserveCurrentRoute,
+  ) {
+    final navigator = navigatorKey.currentState;
+    if (navigator == null) return null;
+    if (preserveCurrentRoute) {
+      return navigator.pushNamed<Object?>('/tournament_detail_screen');
+    }
+    return navigator.pushNamedAndRemoveUntil<Object?>(
+      '/tournament_detail_screen',
+      (route) => route.isFirst,
+    );
   }
 
   /// Opens a player's overall profile from a shared link
@@ -2028,7 +2298,7 @@ class DeepLinkService {
   }
 
   Map<String, String> _whitelistedQueryParameters(Uri uri) {
-    final allowed = <String>{'stop_live', kEventTabQueryParam};
+    final allowed = <String>{'stop_live', kEventTabQueryParam, 'tc'};
     final safe = <String, String>{};
     for (final entry in uri.queryParameters.entries) {
       if (allowed.contains(entry.key)) {

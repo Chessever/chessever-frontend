@@ -35,6 +35,8 @@ class _SplashScreenProvider {
 
   _SplashScreenProvider(this.ref);
 
+  /// Refreshes the Events caches the app opens on: Current (the default
+  /// Events tab) and Upcoming (one swipe away).
   Future<void> _warmTournamentDataInBackground() async {
     unawaited(
       Future(() async {
@@ -44,12 +46,37 @@ class _SplashScreenProvider {
                 .read(groupBroadcastLocalStorage(GroupEventCategory.current))
                 .fetchAndSaveGroupBroadcasts(),
             ref
-                .read(groupBroadcastLocalStorage(GroupEventCategory.forYou))
+                .read(groupBroadcastLocalStorage(GroupEventCategory.upcoming))
                 .fetchAndSaveGroupBroadcasts(),
           ]);
         } catch (e) {
           if (kDebugMode) {
             print('⚠️ Background tournament refresh failed: $e');
+          }
+        }
+      }),
+    );
+  }
+
+  /// Upcoming is never on the cold-start critical path: first launch blocks
+  /// on Current only and fills this in behind it.
+  Future<void> _warmUpcomingTournamentDataInBackground() async {
+    unawaited(
+      Future(() async {
+        try {
+          await Future.wait([
+            ref
+                .read(groupBroadcastLocalStorage(GroupEventCategory.upcoming))
+                .fetchAndSaveGroupBroadcasts(),
+            ref
+                .read(
+                  starredProvider(GroupEventCategory.upcoming.name).notifier,
+                )
+                .init(),
+          ]);
+        } catch (e) {
+          if (kDebugMode) {
+            print('⚠️ Failed to load upcoming tournaments: $e');
           }
         }
       }),
@@ -186,9 +213,6 @@ class _SplashScreenProvider {
     final currentStorage = ref.read(
       groupBroadcastLocalStorage(GroupEventCategory.current),
     );
-    final forYouStorage = ref.read(
-      groupBroadcastLocalStorage(GroupEventCategory.forYou),
-    );
 
     bool hasCachedData = false;
     try {
@@ -207,12 +231,8 @@ class _SplashScreenProvider {
       try {
         await Future.wait([
           currentStorage.fetchAndSaveGroupBroadcasts(),
-          forYouStorage.fetchAndSaveGroupBroadcasts(),
           ref
               .read(starredProvider(GroupEventCategory.current.name).notifier)
-              .init(),
-          ref
-              .read(starredProvider(GroupEventCategory.forYou.name).notifier)
               .init(),
         ]).timeout(const Duration(seconds: 15));
       } on TimeoutException {
@@ -234,11 +254,15 @@ class _SplashScreenProvider {
       // Cache exists — proceed immediately, refresh in background.
       // Warm up starred providers (constructor calls init).
       ref.read(starredProvider(GroupEventCategory.current.name).notifier);
-      ref.read(starredProvider(GroupEventCategory.forYou.name).notifier);
+      ref.read(starredProvider(GroupEventCategory.upcoming.name).notifier);
       _warmTournamentDataInBackground();
     }
 
-    // Non-critical: Load past tournaments in background
+    // Non-critical: Upcoming (first launch only; the cached path above already
+    // refreshed it) and Past load in the background.
+    if (!hasCachedData) {
+      _warmUpcomingTournamentDataInBackground();
+    }
     _warmPastTournamentDataInBackground();
     if (!context.mounted) {
       DeepLinkService.notifyAppReady();

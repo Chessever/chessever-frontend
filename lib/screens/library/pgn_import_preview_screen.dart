@@ -240,7 +240,7 @@ class _PgnImportPreviewScreenState
                       ? '1 game'
                       : '${widget.games.length} games',
                   style: AppTypography.textXsRegular.copyWith(
-                    color: context.colors.textPrimary.withValues(alpha: 0.5),
+                    color: context.textInk(0.5),
                     height: 1.2,
                   ),
                 ),
@@ -267,7 +267,10 @@ class _PgnImportPreviewScreenState
             Icon(
               Icons.search_rounded,
               size: 18.sp,
-              color: const Color(0xFFA1A1AA),
+              color:
+                  context.isLightTheme
+                      ? context.colors.iconSecondary
+                      : const Color(0xFFA1A1AA),
             ),
             SizedBox(width: 8.w),
             Expanded(
@@ -278,8 +281,12 @@ class _PgnImportPreviewScreenState
                 ),
                 decoration: InputDecoration(
                   hintText: 'Search games...',
+                  // The field is ink-tinted; tertiary drops under AA there.
                   hintStyle: AppTypography.textSmRegular.copyWith(
-                    color: const Color(0xFFA1A1AA),
+                    color:
+                        context.isLightTheme
+                            ? context.colors.textSecondary
+                            : const Color(0xFFA1A1AA),
                   ),
                   border: InputBorder.none,
                   contentPadding: EdgeInsets.zero,
@@ -293,7 +300,10 @@ class _PgnImportPreviewScreenState
                 child: Icon(
                   Icons.close,
                   size: 20.sp,
-                  color: const Color(0xFFA1A1AA),
+                  color:
+                      context.isLightTheme
+                          ? context.colors.iconSecondary
+                          : const Color(0xFFA1A1AA),
                 ),
               ),
               SizedBox(width: 8.w),

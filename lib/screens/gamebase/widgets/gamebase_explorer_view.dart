@@ -245,11 +245,23 @@ class _HorizontalPvLines extends ConsumerWidget {
           final Color evalBgColor;
           final Color evalTextColor;
           if (isWhiteWinning) {
-            evalBgColor = context.colors.textPrimary;
-            evalTextColor = context.colors.surface;
+            // Light keeps the eval-bar semantics: White's edge is the paper
+            // slab, Black's the ink one. Dark is unchanged.
+            evalBgColor =
+                context.isLightTheme ? Colors.white : context.colors.textPrimary;
+            evalTextColor =
+                context.isLightTheme
+                    ? context.colors.textPrimary
+                    : context.colors.surface;
           } else if (isBlackWinning) {
-            evalBgColor = context.colors.divider;
-            evalTextColor = context.colors.textPrimary;
+            evalBgColor =
+                context.isLightTheme
+                    ? context.colors.surfaceInverse
+                    : context.colors.divider;
+            evalTextColor =
+                context.isLightTheme
+                    ? context.colors.textInverse
+                    : context.colors.textPrimary;
           } else {
             evalBgColor = context.colors.textSecondary.withValues(alpha: 0.3);
             evalTextColor = context.colors.textPrimary;
@@ -332,7 +344,7 @@ class _GamebaseMovesTable extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final headerStyle = AppTypography.textSmMedium.copyWith(
-      color: context.colors.textPrimary.withValues(alpha: 0.5),
+      color: context.textInk(0.5),
     );
     return Column(
       children: [
@@ -458,7 +470,7 @@ class _GamebaseEmptyState extends StatelessWidget {
             subtitle,
             textAlign: TextAlign.center,
             style: AppTypography.textSmRegular.copyWith(
-              color: context.colors.textPrimary.withValues(alpha: 0.6),
+              color: context.textInk(0.6),
             ),
           ),
           if (primaryAction != null) ...[
@@ -567,7 +579,7 @@ class _MoveRow extends ConsumerWidget {
                   Text(
                     moveNumberLabel,
                     style: AppTypography.textSmRegular.copyWith(
-                      color: context.colors.textPrimary.withValues(alpha: 0.55),
+                      color: context.textInk(0.55),
                     ),
                   ),
                   SizedBox(width: 4.w),

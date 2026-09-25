@@ -542,7 +542,7 @@ class _GameFilterDialogState extends State<GameFilterDialog> {
                 child: Text(
                   'Clear',
                   style: AppTypography.textXsBold.copyWith(
-                    color: kPrimaryColor,
+                    color: context.colors.accentText,
                   ),
                 ),
               ),

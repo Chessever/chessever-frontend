@@ -2,7 +2,6 @@ import 'dart:convert';
 import 'package:chessever2/repository/local_storage/local_storage_repository.dart';
 import 'package:chessever2/screens/standings/player_standing_model.dart';
 import 'package:flutter/foundation.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 /// Migrates old SharedPreferences favorites to Supabase
@@ -13,7 +12,7 @@ class FavoritesMigration {
   static const String _oldPlayersKey = 'favorite_players';
   static const List<String> _oldEventKeys = [
     'current', // GroupEventCategory.current.name
-    'upcoming', // GroupEventCategory.forYou.name
+    'upcoming', // GroupEventCategory.upcoming.name
     'past', // GroupEventCategory.past.name
   ];
 

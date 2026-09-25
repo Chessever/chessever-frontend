@@ -34,6 +34,16 @@ class UserAvatar extends HookConsumerWidget {
     this.showPremiumBorder = true,
   });
 
+  /// One full turn of the premium ring.
+  static const Duration _ringPeriod = Duration(seconds: 3);
+
+  /// Where the ring is in its turn right now, 0 to 1, shared by every avatar
+  /// on screen and across remounts.
+  static double _ringPhaseNow() {
+    final period = _ringPeriod.inMilliseconds;
+    return (DateTime.now().millisecondsSinceEpoch % period) / period;
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final user = ref.watch(currentUserProvider);
@@ -46,18 +56,25 @@ class UserAvatar extends HookConsumerWidget {
 
     // Animation controller for the rotating gradient border
     final animationController = useAnimationController(
-      duration: const Duration(seconds: 3),
+      duration: _ringPeriod,
     );
+    final reduceMotion = MediaQuery.disableAnimationsOf(context);
 
     useEffect(() {
-      if (isPremium && showPremiumBorder) {
+      if (isPremium && showPremiumBorder && !reduceMotion) {
+        // Each home tab mounts its own avatar. Taking the ring's phase from
+        // the wall clock keeps it turning through a tab switch instead of
+        // snapping back to its start angle, so the avatar reads as one
+        // object that never left the screen.
+        animationController.value = _ringPhaseNow();
         animationController.repeat();
       } else {
         animationController.stop();
-        animationController.reset();
+        animationController.value =
+            isPremium && showPremiumBorder ? _ringPhaseNow() : 0;
       }
       return null;
-    }, [isPremium, showPremiumBorder]);
+    }, [isPremium, showPremiumBorder, reduceMotion]);
 
     final avatarWidget = AnimatedContainer(
       duration: const Duration(milliseconds: 300),
@@ -65,7 +82,7 @@ class UserAvatar extends HookConsumerWidget {
       height: size.w,
       decoration: BoxDecoration(
         shape: BoxShape.circle,
-        gradient: avatarUrl == null ? kProfileInitialsGradient : null,
+        gradient: avatarUrl == null ? context.colors.profileGradient : null,
         color: avatarUrl != null ? context.colors.surfaceRecessed : null,
         boxShadow: [
           BoxShadow(
@@ -89,6 +106,7 @@ class UserAvatar extends HookConsumerWidget {
               painter: _PremiumBorderPainter(
                 progress: animationController.value,
                 borderWidth: 2.5,
+                light: context.isLightTheme,
               ),
               child: Padding(padding: EdgeInsets.all(7.sp), child: child),
             );
@@ -136,7 +154,7 @@ class UserAvatar extends HookConsumerWidget {
             ));
 
     return Container(
-      decoration: BoxDecoration(gradient: kProfileInitialsGradient),
+      decoration: BoxDecoration(gradient: context.colors.profileGradient),
       child: Center(
         child: Text(
           content,
@@ -167,7 +185,41 @@ class _PremiumBorderPainter extends CustomPainter {
   final double progress;
   final double borderWidth;
 
-  _PremiumBorderPainter({required this.progress, this.borderWidth = 3.0});
+  /// Paper draws the ring in the accent-text teal family (brand cyan sits
+  /// near 2:1 there) and skips the blurred glow stroke, which on paper is a
+  /// cyan haze. Dark is unchanged.
+  final bool light;
+
+  _PremiumBorderPainter({
+    required this.progress,
+    this.borderWidth = 3.0,
+    this.light = false,
+  });
+
+  static const _stageSweep = SweepGradient(
+    colors: [
+      Color(0xFF0FB4E5), // Primary cyan
+      Color(0xFF17AAD6), // Dark blue
+      Color(0xFF08647F), // Deep teal
+      Color(0xFF0FB4E5), // Primary cyan
+      Color(0xFF68D3FF), // Light cyan (calendar active color)
+      Color(0xFF0FB4E5), // Primary cyan (loop back seamlessly)
+    ],
+    stops: [0.0, 0.2, 0.4, 0.6, 0.8, 1.0],
+  );
+
+  /// The same rotation on paper: every stop clears 3:1 on the mint
+  /// background, the lightest (#0D92AF) at ~3.0:1.
+  static const _paperSweep = SweepGradient(
+    colors: [
+      Color(0xFF087A9C),
+      Color(0xFF005F7D),
+      Color(0xFF087A9C),
+      Color(0xFF0D92AF),
+      Color(0xFF087A9C),
+    ],
+    stops: [0.0, 0.25, 0.5, 0.75, 1.0],
+  );
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -186,19 +238,8 @@ class _PremiumBorderPainter extends CustomPainter {
     canvas.rotate(progress * 2 * math.pi);
     canvas.translate(-center.dx, -center.dy);
 
-    // Create gradient with app brand colors (cyan/teal tones)
-    // Using fixed angles so rotation is handled by canvas transform
-    const sweepGradient = SweepGradient(
-      colors: [
-        Color(0xFF0FB4E5), // Primary cyan
-        Color(0xFF17AAD6), // Dark blue
-        Color(0xFF08647F), // Deep teal
-        Color(0xFF0FB4E5), // Primary cyan
-        Color(0xFF68D3FF), // Light cyan (calendar active color)
-        Color(0xFF0FB4E5), // Primary cyan (loop back seamlessly)
-      ],
-      stops: [0.0, 0.2, 0.4, 0.6, 0.8, 1.0],
-    );
+    // Fixed angles: the rotation is handled by the canvas transform.
+    final sweepGradient = light ? _paperSweep : _stageSweep;
 
     final paint =
         Paint()
@@ -212,7 +253,11 @@ class _PremiumBorderPainter extends CustomPainter {
     // Draw the border
     canvas.drawCircle(center, radius, paint);
 
-    // Add a subtle glow effect
+    // Add a subtle glow effect (the dark stage only)
+    if (light) {
+      canvas.restore();
+      return;
+    }
     final glowPaint =
         Paint()
           ..shader = sweepGradient.createShader(
@@ -230,6 +275,6 @@ class _PremiumBorderPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant _PremiumBorderPainter oldDelegate) {
-    return oldDelegate.progress != progress;
+    return oldDelegate.progress != progress || oldDelegate.light != light;
   }
 }

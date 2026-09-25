@@ -31,6 +31,7 @@ import 'package:flutter_animate/flutter_animate.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:motor/motor.dart';
 import 'package:smooth_sheets/smooth_sheets.dart';
+import 'package:chessever2/screens/chessboard/utils/legible_ink.dart';
 
 /// Configuration for save analysis sheet
 class SaveAnalysisSheetConfig {
@@ -1304,7 +1305,7 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
                       : (_isEditMode
                           ? Icons.edit_rounded
                           : Icons.bookmark_add_rounded),
-                  color: kPrimaryColor,
+                  color: context.colors.accentText,
                   size: 22.sp,
                 ),
               ),
@@ -1334,9 +1335,7 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
                                   ? 'Update title, folder & metadata'
                                   : 'Keep your variations & comments')),
                       style: AppTypography.textSmRegular.copyWith(
-                        color: context.colors.textPrimary.withValues(
-                          alpha: 0.5,
-                        ),
+                        color: context.textInk(0.5),
                       ),
                     ),
                   ],
@@ -1420,8 +1419,8 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
               size: 14.sp,
               color:
                   selected
-                      ? kPrimaryColor
-                      : context.colors.textPrimary.withValues(alpha: 0.5),
+                      ? context.colors.accentText
+                      : context.textInk(0.5),
             ),
             SizedBox(width: 6.w),
             Text(
@@ -1429,8 +1428,8 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
               style: AppTypography.textXsMedium.copyWith(
                 color:
                     selected
-                        ? kPrimaryColor
-                        : context.colors.textPrimary.withValues(alpha: 0.6),
+                        ? context.colors.accentText
+                        : context.textInk(0.6),
               ),
             ),
           ],
@@ -1463,7 +1462,7 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
                 children: [
                   Icon(
                     Icons.edit_note_rounded,
-                    color: context.colors.textPrimary.withValues(alpha: 0.6),
+                    color: context.textInk(0.6),
                     size: 20.sp,
                   ),
                   SizedBox(width: 12.w),
@@ -1480,7 +1479,7 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
                   Text(
                     _showGameDetails ? 'Hide' : 'Show',
                     style: AppTypography.textXsMedium.copyWith(
-                      color: kPrimaryColor,
+                      color: context.colors.accentText,
                     ),
                   ),
                   SizedBox(width: 4.w),
@@ -1488,7 +1487,7 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
                     _showGameDetails
                         ? Icons.keyboard_arrow_up_rounded
                         : Icons.keyboard_arrow_down_rounded,
-                    color: kPrimaryColor,
+                    color: context.colors.accentText,
                     size: 18.sp,
                   ),
                 ],
@@ -1567,12 +1566,12 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
                 icon: Icon(
                   Icons.refresh_rounded,
                   size: 14.sp,
-                  color: context.colors.textPrimary.withValues(alpha: 0.4),
+                  color: context.textInk(0.4),
                 ),
                 label: Text(
                   'Reset Details',
                   style: AppTypography.textXsMedium.copyWith(
-                    color: context.colors.textPrimary.withValues(alpha: 0.4),
+                    color: context.textInk(0.4),
                   ),
                 ),
               ),
@@ -1594,7 +1593,7 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
         Text(
           label,
           style: AppTypography.textXsMedium.copyWith(
-            color: context.colors.textPrimary.withValues(alpha: 0.5),
+            color: context.textInk(0.5),
             letterSpacing: 0.5,
           ),
         ),
@@ -1629,7 +1628,7 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
         decoration: InputDecoration(
           hintText: hint,
           hintStyle: AppTypography.textXsRegular.copyWith(
-            color: context.colors.textPrimary.withValues(alpha: 0.2),
+            color: context.textInk(0.2),
           ),
           border: InputBorder.none,
           contentPadding: EdgeInsets.symmetric(horizontal: 10.w, vertical: 8.h),
@@ -1650,7 +1649,7 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
         Text(
           label,
           style: AppTypography.textXsMedium.copyWith(
-            color: context.colors.textPrimary.withValues(alpha: 0.5),
+            color: context.textInk(0.5),
           ),
         ),
         SizedBox(height: 6.h),
@@ -1702,7 +1701,7 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
           dropdownColor: context.colors.surface,
           icon: Icon(
             Icons.arrow_drop_down,
-            color: context.colors.textPrimary.withValues(alpha: 0.4),
+            color: context.textInk(0.4),
           ),
           style: AppTypography.textSmRegular.copyWith(
             color: context.colors.textPrimary,
@@ -1734,7 +1733,7 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
         Text(
           'Date (YYYY.MM.DD)',
           style: AppTypography.textXsMedium.copyWith(
-            color: context.colors.textPrimary.withValues(alpha: 0.5),
+            color: context.textInk(0.5),
           ),
         ),
         SizedBox(height: 6.h),
@@ -1780,7 +1779,7 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
                 child: Text(
                   'Today',
                   style: AppTypography.textXsMedium.copyWith(
-                    color: kPrimaryColor,
+                    color: context.colors.accentText,
                   ),
                 ),
               ),
@@ -2072,10 +2071,8 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
                         size: 14.sp,
                         color:
                             _isCreatingNewFolder
-                                ? kPrimaryColor
-                                : context.colors.textPrimary.withValues(
-                                  alpha: 0.6,
-                                ),
+                                ? context.colors.accentText
+                                : context.textInk(0.6),
                       ),
                       SizedBox(width: 6.w),
                       Text(
@@ -2085,10 +2082,8 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
                         style: AppTypography.textXsMedium.copyWith(
                           color:
                               _isCreatingNewFolder
-                                  ? kPrimaryColor
-                                  : context.colors.textPrimary.withValues(
-                                    alpha: 0.6,
-                                  ),
+                                  ? context.colors.accentText
+                                  : context.textInk(0.6),
                         ),
                       ),
                     ],
@@ -2136,7 +2131,9 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
             border: Border.all(
               color:
                   _newFolderNameFocusNode.hasFocus
-                      ? kPrimaryColor.withValues(alpha: 0.5)
+                      ? (context.isLightTheme
+                          ? context.colors.accentText
+                          : kPrimaryColor.withValues(alpha: 0.5))
                       : context.colors.textPrimary.withValues(alpha: 0.08),
               width: 1.5,
             ),
@@ -2152,7 +2149,7 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
             decoration: InputDecoration(
               hintText: 'Folder name',
               hintStyle: AppTypography.textMdRegular.copyWith(
-                color: context.colors.textPrimary.withValues(alpha: 0.3),
+                color: context.textInk(0.3),
               ),
               border: InputBorder.none,
               contentPadding: EdgeInsets.symmetric(
@@ -2192,7 +2189,7 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
         Text(
           'Folder Color',
           style: AppTypography.textXsRegular.copyWith(
-            color: context.colors.textPrimary.withValues(alpha: 0.5),
+            color: context.textInk(0.5),
           ),
         ),
         SizedBox(height: 10.h),
@@ -2231,14 +2228,23 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
                             alpha: 0.2 + (animValue * 0.3),
                           ),
                           shape: BoxShape.circle,
+                          // Paper: the preset hues are near the page's own
+                          // value, so the ring takes the same hue at 3:1.
                           border: Border.all(
-                            color: color.withValues(
-                              alpha: 0.5 + (animValue * 0.5),
-                            ),
+                            color:
+                                context.isLightTheme
+                                    ? legibleHueInk(
+                                      context,
+                                      color,
+                                      minContrast: 3,
+                                    )
+                                    : color.withValues(
+                                      alpha: 0.5 + (animValue * 0.5),
+                                    ),
                             width: 2 + animValue,
                           ),
                           boxShadow:
-                              isSelected
+                              isSelected && !context.isLightTheme
                                   ? [
                                     BoxShadow(
                                       color: color.withValues(alpha: 0.4),
@@ -2252,7 +2258,11 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
                             isSelected
                                 ? Icon(
                                   Icons.check_rounded,
-                                  color: color,
+                                  color: legibleHueInk(
+                                    context,
+                                    color,
+                                    minContrast: 3,
+                                  ),
                                   size: 18.sp,
                                 )
                                 : null,
@@ -2352,7 +2362,7 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
               ),
               child: Icon(
                 Icons.dataset_outlined,
-                color: kPrimaryColor,
+                color: context.colors.accentText,
                 size: 28.sp,
               ),
             ),
@@ -2367,7 +2377,7 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
             Text(
               'Create a database to store your games',
               style: AppTypography.textXsRegular.copyWith(
-                color: context.colors.textPrimary.withValues(alpha: 0.5),
+                color: context.textInk(0.5),
               ),
               textAlign: TextAlign.center,
             ),
@@ -2387,12 +2397,12 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Icon(Icons.add_rounded, size: 16.sp, color: kPrimaryColor),
+                    Icon(Icons.add_rounded, size: 16.sp, color: context.colors.accentText),
                     SizedBox(width: 6.w),
                     Text(
                       'Create Database',
                       style: AppTypography.textSmMedium.copyWith(
-                        color: kPrimaryColor,
+                        color: context.colors.accentText,
                       ),
                     ),
                   ],
@@ -2482,7 +2492,9 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
             child: CircularProgressIndicator(
               strokeWidth: 2,
               valueColor: AlwaysStoppedAnimation<Color>(
-                kPrimaryColor.withValues(alpha: 0.6),
+                context.isLightTheme
+                    ? context.colors.accentText
+                    : kPrimaryColor.withValues(alpha: 0.6),
               ),
             ),
           ),
@@ -2490,7 +2502,7 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
           Text(
             'Loading folders...',
             style: AppTypography.textSmRegular.copyWith(
-              color: context.colors.textPrimary.withValues(alpha: 0.5),
+              color: context.textInk(0.5),
             ),
           ),
         ],
@@ -2517,7 +2529,7 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
             ),
             child: Icon(
               Icons.error_outline_rounded,
-              color: kRedColor,
+              color: context.colors.danger,
               size: 18.sp,
             ),
           ),
@@ -2526,7 +2538,7 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
             child: Text(
               'Failed to load folders',
               style: AppTypography.textSmRegular.copyWith(
-                color: kRedColor.withValues(alpha: 0.9),
+                color: context.colors.danger.withValues(alpha: 0.9),
               ),
             ),
           ),
@@ -2555,7 +2567,7 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
               ),
               child: Icon(
                 Icons.warning_amber_rounded,
-                color: kRedColor,
+                color: context.colors.danger,
                 size: 16.sp,
               ),
             ),
@@ -2564,7 +2576,7 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
               child: Text(
                 _errorMessage ?? '',
                 style: AppTypography.textSmRegular.copyWith(
-                  color: kRedColor.withValues(alpha: 0.9),
+                  color: context.colors.danger.withValues(alpha: 0.9),
                 ),
               ),
             ),
@@ -2659,11 +2671,19 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
                         boxShadow:
                             canSave
                                 ? [
-                                  BoxShadow(
-                                    color: kPrimaryColor.withValues(alpha: 0.3),
-                                    blurRadius: 20,
-                                    offset: const Offset(0, 8),
-                                  ),
+                                  context.isLightTheme
+                                      ? BoxShadow(
+                                        color: context.colors.shadow,
+                                        blurRadius: 4,
+                                        offset: const Offset(0, 1),
+                                      )
+                                      : BoxShadow(
+                                        color: kPrimaryColor.withValues(
+                                          alpha: 0.3,
+                                        ),
+                                        blurRadius: 20,
+                                        offset: const Offset(0, 8),
+                                      ),
                                 ]
                                 : null,
                       ),
@@ -2692,8 +2712,7 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
                                       color:
                                           canSave
                                               ? context.colors.textPrimary
-                                              : context.colors.textPrimary
-                                                  .withValues(alpha: 0.3),
+                                              : context.textInk(0.3),
                                       size: 18.sp,
                                     ),
                                     SizedBox(width: 8.w),
@@ -2715,8 +2734,7 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
                                         color:
                                             canSave
                                                 ? context.colors.textPrimary
-                                                : context.colors.textPrimary
-                                                    .withValues(alpha: 0.3),
+                                                : context.textInk(0.3),
                                         letterSpacing: 0.3,
                                       ),
                                     ),
@@ -2800,7 +2818,7 @@ class _FolderListItem extends ConsumerWidget {
                   Icon(
                     Icons.subdirectory_arrow_right_rounded,
                     size: 16.sp,
-                    color: context.colors.textPrimary.withValues(alpha: 0.3),
+                    color: context.textInk(0.3),
                   ),
                   SizedBox(width: 8.w),
                 ],
@@ -2824,10 +2842,15 @@ class _FolderListItem extends ConsumerWidget {
                         ? Icons.favorite_rounded
                         : Icons.dataset_rounded,
                     size: 18.sp,
+                    // Render-only ink: the stored preset hex never changes.
                     color:
                         folder.isLikedGames
                             ? context.colors.danger
-                            : folderColor,
+                            : legibleHueInk(
+                              context,
+                              folderColor,
+                              minContrast: 3,
+                            ),
                   ),
                 ),
                 SizedBox(width: 14.w),
@@ -3004,7 +3027,9 @@ class _TagChip extends StatelessWidget {
                   color:
                       Color.lerp(
                         colors.textPrimary.withValues(alpha: 0.1),
-                        tag.color.withValues(alpha: 0.75),
+                        context.isLightTheme
+                            ? tag.inkIn(context)
+                            : tag.color.withValues(alpha: 0.75),
                         t,
                       )!,
                   width: 1,

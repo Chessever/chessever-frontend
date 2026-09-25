@@ -50,17 +50,19 @@ class KnockoutMatchCard extends StatelessWidget {
               border: Border.all(
                 color:
                     isFocused
-                        ? colors.brand.withValues(alpha: 0.78)
+                        ? colors.accentText.withValues(alpha: 0.78)
                         : colors.divider,
                 width: isFocused ? 1.4 : 0.8,
               ),
+              // Paper lifts the card with one tight, ink-tinted shadow cast
+              // from above; dark gets its lift from tone alone.
               boxShadow:
                   context.isLightTheme
                       ? [
                         BoxShadow(
                           color: colors.shadow,
-                          blurRadius: 10,
-                          offset: const Offset(0, 2),
+                          blurRadius: 4,
+                          offset: const Offset(0, 1),
                         ),
                       ]
                       : null,
@@ -108,7 +110,7 @@ class KnockoutMatchCard extends StatelessWidget {
                       child: Container(
                         width: 3,
                         decoration: BoxDecoration(
-                          color: colors.brand,
+                          color: colors.accentText,
                           borderRadius: const BorderRadius.horizontal(
                             right: Radius.circular(2),
                           ),
@@ -123,14 +125,19 @@ class KnockoutMatchCard extends StatelessWidget {
                         width: 5,
                         height: 5,
                         decoration: BoxDecoration(
-                          color: colors.brand,
+                          color: colors.accentText,
                           shape: BoxShape.circle,
-                          boxShadow: [
-                            BoxShadow(
-                              color: colors.brand.withValues(alpha: 0.42),
-                              blurRadius: 5,
-                            ),
-                          ],
+                          boxShadow:
+                              context.isLightTheme
+                                  ? null
+                                  : [
+                                    BoxShadow(
+                                      color: colors.brand.withValues(
+                                        alpha: 0.42,
+                                      ),
+                                      blurRadius: 5,
+                                    ),
+                                  ],
                         ),
                       ),
                     ),
@@ -210,7 +217,7 @@ class _ParticipantRow extends StatelessWidget {
                     ),
                     if (isWinner) ...[
                       const SizedBox(width: 3),
-                      Icon(Icons.check_rounded, size: 13, color: colors.brand),
+                      Icon(Icons.check_rounded, size: 13, color: context.colors.accentText),
                     ],
                   ],
                 ),
@@ -224,7 +231,10 @@ class _ParticipantRow extends StatelessWidget {
                       fontFamily: 'InterDisplay',
                       color:
                           isEliminated
-                              ? colors.textTertiary.withValues(alpha: 0.72)
+                              // 0.72 of the tertiary ink is 3:1 on paper.
+                              ? (context.isLightTheme
+                                  ? colors.textTertiary
+                                  : colors.textTertiary.withValues(alpha: 0.72))
                               : colors.textSecondary,
                       fontSize: 10,
                       height: 1,
@@ -243,11 +253,11 @@ class _ParticipantRow extends StatelessWidget {
               fontFamily: 'InterDisplay',
               color:
                   isWinner
-                      ? colors.brand
+                      ? context.colors.accentText
                       : isEliminated
                       ? colors.textTertiary
                       : isLeader
-                      ? colors.brand
+                      ? context.colors.accentText
                       : colors.textPrimary,
               fontSize: 15,
               height: 1,

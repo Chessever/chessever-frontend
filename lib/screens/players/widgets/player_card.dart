@@ -215,7 +215,7 @@ class _PlayerCardState extends State<PlayerCard>
                 child: Icon(
                   Icons.library_add_outlined,
                   size: 16.h,
-                  color: context.colors.textPrimary.withValues(alpha: 0.5),
+                  color: context.textInk(0.5),
                 ),
               ),
             ),

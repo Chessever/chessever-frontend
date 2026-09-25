@@ -36,8 +36,14 @@ class KnockoutBracketCanvas extends StatelessWidget {
                   edges: bracket.edges,
                   matchRects: layout.matchRects,
                   focusedMatchKey: focusedMatchKey,
-                  lineColor: context.colors.dividerStrong,
-                  focusedColor: context.colors.brand,
+                  // The divider token fades to 1.2:1 on paper; light draws
+                  // the connectors in secondary ink so the tree reads (3.7:1).
+                  lineColor:
+                      context.isLightTheme
+                          ? context.colors.textSecondary
+                          : context.colors.dividerStrong,
+                  lineAlpha: context.isLightTheme ? 0.8 : 0.62,
+                  focusedColor: context.colors.accentText,
                 ),
               ),
             ),
@@ -91,7 +97,7 @@ class _StageHeader extends StatelessWidget {
             decoration: BoxDecoration(
               color:
                   isCurrent
-                      ? colors.brand
+                      ? colors.accentText
                       : colors.dividerStrong.withValues(alpha: 0.75),
               borderRadius: BorderRadius.circular(2),
             ),
@@ -117,14 +123,17 @@ class _StageHeader extends StatelessWidget {
               width: 6,
               height: 6,
               decoration: BoxDecoration(
-                color: colors.brand,
+                color: colors.accentText,
                 shape: BoxShape.circle,
-                boxShadow: [
-                  BoxShadow(
-                    color: colors.brand.withValues(alpha: 0.4),
-                    blurRadius: 5,
-                  ),
-                ],
+                boxShadow:
+                    context.isLightTheme
+                        ? null
+                        : [
+                          BoxShadow(
+                            color: colors.brand.withValues(alpha: 0.4),
+                            blurRadius: 5,
+                          ),
+                        ],
               ),
             ),
             const SizedBox(width: 4),
@@ -132,7 +141,7 @@ class _StageHeader extends StatelessWidget {
               'LIVE',
               style: TextStyle(
                 fontFamily: 'InterDisplay',
-                color: colors.brand,
+                color: context.colors.accentText,
                 fontSize: 9.5,
                 height: 1,
                 fontWeight: FontWeight.w700,
@@ -153,6 +162,7 @@ class _BracketConnectorPainter extends CustomPainter {
     required this.focusedMatchKey,
     required this.lineColor,
     required this.focusedColor,
+    this.lineAlpha = 0.62,
   });
 
   final List<KnockoutEdge> edges;
@@ -161,11 +171,15 @@ class _BracketConnectorPainter extends CustomPainter {
   final Color lineColor;
   final Color focusedColor;
 
+  /// Opacity of the resting connectors. Paper needs more than the 0.62 the
+  /// dark canvas uses before the lines clear 3:1.
+  final double lineAlpha;
+
   @override
   void paint(Canvas canvas, Size size) {
     final basePaint =
         Paint()
-          ..color = lineColor.withValues(alpha: 0.62)
+          ..color = lineColor.withValues(alpha: lineAlpha)
           ..style = PaintingStyle.stroke
           ..strokeWidth = 1.2
           ..strokeCap = StrokeCap.round
@@ -214,5 +228,6 @@ class _BracketConnectorPainter extends CustomPainter {
       oldDelegate.matchRects != matchRects ||
       oldDelegate.focusedMatchKey != focusedMatchKey ||
       oldDelegate.lineColor != lineColor ||
+      oldDelegate.lineAlpha != lineAlpha ||
       oldDelegate.focusedColor != focusedColor;
 }

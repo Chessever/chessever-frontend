@@ -7,7 +7,6 @@ import 'package:chessever2/screens/library/providers/library_combined_search_pro
 import 'package:chessever2/utils/chess_title_utils.dart';
 import 'package:chessever2/utils/user_error_message.dart';
 import 'package:chessever2/theme/app_colors.dart';
-import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/federation_flag.dart';
@@ -61,11 +60,17 @@ class LibrarySearchOverlay extends ConsumerWidget {
         borderRadius: BorderRadius.circular(16.br),
         border: Border.all(color: context.colors.surfaceRecessed), // Zinc 800
         boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.5),
-            blurRadius: 16,
-            offset: const Offset(0, 8),
-          ),
+          context.isLightTheme
+              ? BoxShadow(
+                color: context.colors.shadow,
+                blurRadius: 6,
+                offset: const Offset(0, 2),
+              )
+              : BoxShadow(
+                color: Colors.black.withValues(alpha: 0.5),
+                blurRadius: 16,
+                offset: const Offset(0, 8),
+              ),
         ],
       ),
       child: ClipRRect(
@@ -74,7 +79,7 @@ class LibrarySearchOverlay extends ConsumerWidget {
           constraints: BoxConstraints(maxHeight: maxH),
           child: searchAsync.when(
             loading: () => _buildLoadingState(context, maxH),
-            error: (e, _) => _buildErrorState(userFacingError(e), maxH),
+            error: (e, _) => _buildErrorState(context, userFacingError(e), maxH),
             data: (result) {
               if (result.isEmpty) return _buildEmptyState(context, maxH);
               return _buildResultsList(context, result);
@@ -192,7 +197,11 @@ class LibrarySearchOverlay extends ConsumerWidget {
               child: Text(
                 count.toString(),
                 style: AppTypography.textXsRegular.copyWith(
-                  color: context.colors.textTertiary,
+                  // On the recessed plate tertiary reads 3.8:1 on paper.
+                  color:
+                      context.isLightTheme
+                          ? context.colors.textSecondary
+                          : context.colors.textTertiary,
                   fontSize: 10.sp,
                 ),
               ),
@@ -337,7 +346,7 @@ class LibrarySearchOverlay extends ConsumerWidget {
     );
   }
 
-  Widget _buildErrorState(String error, double h) {
+  Widget _buildErrorState(BuildContext context, String error, double h) {
     return SizedBox(
       height: math.min(h, 160.h),
       child: Center(
@@ -345,7 +354,7 @@ class LibrarySearchOverlay extends ConsumerWidget {
           padding: EdgeInsets.all(16.sp),
           child: Text(
             'Search failed',
-            style: AppTypography.textSmMedium.copyWith(color: kRedColor),
+            style: AppTypography.textSmMedium.copyWith(color: context.colors.danger),
           ),
         ),
       ),

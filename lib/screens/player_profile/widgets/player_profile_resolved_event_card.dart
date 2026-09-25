@@ -42,6 +42,13 @@ class PlayerProfileResolvedEventCard extends ConsumerWidget {
             heroTagSuffix: heroTagSuffix,
             forceCompactLayout: true,
             trailingWidget: trailingWidget,
+            // A card resolved to a real ChessEver event handles its own tap,
+            // which also gives it the event card's long-press focus menu
+            // (open, share, My Space...), the same menu as every other event
+            // card. A database-only (TWIC) fallback has no broadcast id that
+            // menu's share link or My Space pin could reopen, so it stays
+            // tap-only through the wrapper above.
+            onTap: resolvedCard == null ? null : () => onTap(displayCard),
           ),
           statsRow,
         ],

@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:chessever2/e2e/e2e_ids.dart';
 import 'package:chessever2/main.dart' show routeObserver;
 import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
+import 'package:chessever2/screens/chessboard/utils/legible_ink.dart';
 import 'package:chessever2/screens/chessboard/widgets/chess_board_from_fen_new.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_list_view_mode_provider.dart';
@@ -596,6 +597,14 @@ class _GamesAppBarWidgetState extends ConsumerState<CountrymanGamesAppBar> {
                                           SvgAsset.unpine,
                                           height: 13.h,
                                           width: 13.w,
+                                          // White art: ink it on paper.
+                                          colorFilter:
+                                              context.isLightTheme
+                                                  ? ColorFilter.mode(
+                                                    context.colors.iconPrimary,
+                                                    BlendMode.srcIn,
+                                                  )
+                                                  : null,
                                         ),
                                       ],
                                     ),
@@ -620,10 +629,15 @@ class _GamesAppBarWidgetState extends ConsumerState<CountrymanGamesAppBar> {
                                             color: context.colors.textPrimary,
                                           ),
                                     ),
-                                    SvgPicture.asset(
+                                    // White-and-green art: on paper the
+                                    // white re-inks and the arrow keeps its
+                                    // green, darkened to 3:1 on the menu.
+                                    inkedSvgAsset(
+                                      context,
                                       SvgAsset.active,
                                       height: 13.h,
                                       width: 13.w,
+                                      on: context.colors.surface,
                                     ),
                                   ],
                                 ),

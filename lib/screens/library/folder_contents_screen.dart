@@ -42,6 +42,7 @@ import 'package:flutter_animate/flutter_animate.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
+import 'package:chessever2/screens/chessboard/utils/legible_ink.dart';
 
 class FolderContentsScreen extends ConsumerStatefulWidget {
   final LibraryFolder folder;
@@ -683,7 +684,7 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
                   Text(
                     totalCount == 1 ? '1 game' : '$totalCount games',
                     style: AppTypography.textXsRegular.copyWith(
-                      color: context.colors.textPrimary.withValues(alpha: 0.5),
+                      color: context.textInk(0.5),
                       height: 1.1,
                     ),
                   ),
@@ -952,7 +953,8 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
                   padding: EdgeInsets.only(bottom: 12.h),
                   child: SwipeActionCard(
                     dismissKey: ValueKey(analysis.id),
-                    backgroundColor: kRedColor,
+                    backgroundColor:
+                        context.isLightTheme ? context.colors.danger : kRedColor,
                     icon: Icons.delete_outline_rounded,
                     onAction: () async => _removeAnalysis(analysis),
                     behavior: SwipeActionBehavior.dismiss,
@@ -1004,7 +1006,7 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
             (e, _) => Center(
               child: Text(
                 userFacingError(e),
-                style: AppTypography.textSmRegular.copyWith(color: kRedColor),
+                style: AppTypography.textSmRegular.copyWith(color: context.colors.danger),
               ),
             ),
       ),
@@ -1036,7 +1038,7 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
                   ? 'Create a folder or database here.'
                   : 'Save your first game here!',
               style: AppTypography.textSmRegular.copyWith(
-                color: context.colors.textPrimary.withValues(alpha: 0.5),
+                color: context.textInk(0.5),
               ),
             ),
           ],
@@ -1075,7 +1077,7 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
                 ? 'Try adjusting your search or filters'
                 : 'Try a different search term',
             style: AppTypography.textSmRegular.copyWith(
-              color: context.colors.textPrimary.withValues(alpha: 0.5),
+              color: context.textInk(0.5),
             ),
           ),
         ],
@@ -1111,7 +1113,14 @@ class _DatabaseTagFilterChip extends StatelessWidget {
             : color.withValues(alpha: 0.08);
     final borderColor =
         selected
-            ? color.withValues(alpha: 0.85)
+            ? (context.isLightTheme
+                ? legibleHueInk(
+                  context,
+                  color,
+                  minContrast: 3,
+                  on: Color.alphaBlend(background, colors.background),
+                )
+                : color.withValues(alpha: 0.85))
             : color.withValues(alpha: 0.32);
 
     return AnimatedScale(
@@ -1172,7 +1181,7 @@ class _DatabaseTagFilterChip extends StatelessWidget {
                         color:
                             selected
                                 ? colors.textPrimary
-                                : colors.textPrimary.withValues(alpha: 0.55),
+                                : context.textInk(0.55),
                         fontSize: 10.sp,
                       ),
                     ),
@@ -1268,7 +1277,12 @@ class _ExportProgressDialogState extends State<_ExportProgressDialog> {
       decoration: BoxDecoration(
         color: context.colors.surface,
         borderRadius: BorderRadius.circular(16.br),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+        border: Border.all(
+          color:
+              context.isLightTheme
+                  ? context.colors.divider
+                  : Colors.white.withValues(alpha: 0.08),
+        ),
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -1279,9 +1293,9 @@ class _ExportProgressDialogState extends State<_ExportProgressDialog> {
               SizedBox(
                 width: 16.sp,
                 height: 16.sp,
-                child: const CircularProgressIndicator(
+                child: CircularProgressIndicator(
                   strokeWidth: 2,
-                  color: kPrimaryColor,
+                  color: context.colors.accentText,
                 ),
               ),
               SizedBox(width: 10.w),
@@ -1303,7 +1317,9 @@ class _ExportProgressDialogState extends State<_ExportProgressDialog> {
               backgroundColor: context.colors.textPrimary.withValues(
                 alpha: 0.08,
               ),
-              valueColor: const AlwaysStoppedAnimation<Color>(kPrimaryColor),
+              valueColor: AlwaysStoppedAnimation<Color>(
+                context.colors.accentText,
+              ),
               minHeight: 6.h,
             ),
           ),
@@ -1313,7 +1329,7 @@ class _ExportProgressDialogState extends State<_ExportProgressDialog> {
                 ? '${(progress.fraction * 100).toStringAsFixed(0)}%'
                 : '',
             style: AppTypography.textXsRegular.copyWith(
-              color: context.colors.textPrimary.withValues(alpha: 0.55),
+              color: context.textInk(0.55),
             ),
           ),
         ],

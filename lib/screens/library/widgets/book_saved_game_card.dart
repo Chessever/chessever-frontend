@@ -5,9 +5,11 @@ import 'package:chessever2/screens/library/widgets/library_game_card.dart';
 import 'package:chessever2/screens/library/widgets/saved_game_actions.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/screens/chessboard/analysis/chess_game.dart';
+import 'package:chessever2/widgets/card_context_menu.dart';
 import 'package:flutter/material.dart';
+import 'package:hooks_riverpod/hooks_riverpod.dart';
 
-class BookSavedGameCard extends StatelessWidget {
+class BookSavedGameCard extends ConsumerWidget {
   const BookSavedGameCard({
     super.key,
     required this.analysis,
@@ -39,7 +41,7 @@ class BookSavedGameCard extends StatelessWidget {
   final bool readOnly;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     void open() {
       final handler = onTap;
       if (handler != null) {
@@ -49,22 +51,30 @@ class BookSavedGameCard extends StatelessWidget {
       }
     }
 
-    return _card(
-      context,
-      onLongPress:
-          () => showSavedGameActions(
-            context: context,
+    // Long-press and the 3-dot open one menu, with this card lifted in place
+    // as its own preview. The 3-dot sits in the tag slot's empty end, sized
+    // to the footer's time-control coin; it takes no room, so the card lays
+    // out exactly as it would without it.
+    return CardContextMenu(
+      onPreviewTap: open,
+      actions:
+          (cardContext) => savedGameMenuActions(
+            context: cardContext,
+            ref: ref,
             analysis: analysis,
             onOpen: open,
-            previewBuilder: (previewContext) => _card(previewContext),
             onDelete: onDelete,
             onChanged: onChanged,
             readOnly: readOnly,
           ),
+      child: _card(
+        context,
+        trailing: CardMoreButton(size: LibraryGameCard.trailingGlyphSize),
+      ),
     );
   }
 
-  Widget _card(BuildContext context, {VoidCallback? onLongPress}) {
+  Widget _card(BuildContext context, {Widget? trailing}) {
     final game = _bookAnalysisToGamesTourModel(analysis);
     final eventName = _eventNameFromMetadata(
       analysis.chessGame.metadata,
@@ -79,7 +89,7 @@ class BookSavedGameCard extends StatelessWidget {
       reserveTagSlot: true,
       tagCounts: tagCounts,
       onTap: onTap ?? () => loadSavedAnalysis(context, analysis),
-      onLongPress: onLongPress,
+      trailing: trailing,
     );
   }
 

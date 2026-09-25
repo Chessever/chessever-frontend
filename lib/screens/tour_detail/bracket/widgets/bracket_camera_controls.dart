@@ -105,7 +105,7 @@ class _CameraButton extends StatelessWidget {
               icon,
               size: 20,
               color:
-                  isAccent ? context.colors.brand : context.colors.iconPrimary,
+                  isAccent ? context.colors.accentText : context.colors.iconPrimary,
             ),
           ),
         ),

@@ -53,6 +53,7 @@ class _AllEventsTabWidgetState extends ConsumerState<AllEventsTabWidget> {
       countSingular: smartData.request.countSingular,
       countPlural: smartData.request.countPlural,
       accentColor: smartEventAccentColor(smartData.request.scopeId),
+      spaceDraft: smartEventSpaceDraft(smartData.request),
       onTap:
           () => Navigator.of(context).push(
             MaterialPageRoute(
@@ -134,7 +135,7 @@ class _AllEventsTabWidgetState extends ConsumerState<AllEventsTabWidget> {
               padding: EdgeInsets.only(bottom: bottomPadding + 20),
               child: Center(
                 child: CircularProgressIndicator(
-                  color: context.colors.brand,
+                  color: context.colors.accentText,
                 ),
               ),
             ),
@@ -169,7 +170,9 @@ class _AllEventsTabWidgetState extends ConsumerState<AllEventsTabWidget> {
           return Padding(
             padding: EdgeInsets.only(bottom: bottomPadding + 20),
             child: Center(
-              child: CircularProgressIndicator(color: context.colors.brand),
+              child: CircularProgressIndicator(
+                color: context.colors.accentText,
+              ),
             ),
           );
         }

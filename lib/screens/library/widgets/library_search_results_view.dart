@@ -16,7 +16,6 @@ import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_mode
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_list_view_mode_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrapper/game_card_wrapper_provider.dart';
 import 'package:chessever2/theme/app_colors.dart';
-import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/chess_title_utils.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
@@ -397,7 +396,7 @@ class _LibrarySearchResultsViewState
           padding: EdgeInsets.only(top: 4.h, bottom: 12.h),
           child: Text(
             'Failed to load games',
-            style: AppTypography.textSmRegular.copyWith(color: kRedColor),
+            style: AppTypography.textSmRegular.copyWith(color: context.colors.danger),
           ),
         )
       else
@@ -625,6 +624,9 @@ class _LibraryGridGame extends ConsumerWidget {
       },
       pinnedIds: const [],
       onPinToggle: (_) {},
+      // Search results have no tour to pin into; drop the row rather than
+      // offer a Pin that does nothing.
+      showPin: false,
       scoreCardViewSource: ChessboardView.tour,
       scoreCardGamesContext: allGames,
       playerProfileDataSource: PlayerProfileDataSource.twic,
@@ -670,6 +672,9 @@ class _LibraryBoardGame extends ConsumerWidget {
       },
       pinnedIds: const [],
       onPinToggle: (_) {},
+      // Search results have no tour to pin into; drop the row rather than
+      // offer a Pin that does nothing.
+      showPin: false,
       scoreCardViewSource: ChessboardView.tour,
       scoreCardGamesContext: allGames,
       playerProfileDataSource: PlayerProfileDataSource.twic,

@@ -1,4 +1,7 @@
 import 'package:chessever2/repository/supabase/players/players_repository.dart';
+import 'package:chessever2/screens/library/widgets/library_context_menu.dart';
+import 'package:chessever2/screens/player_profile/utils/player_menu_actions.dart';
+import 'package:chessever2/screens/player_profile/widgets/lifted_row_menu.dart';
 import 'package:chessever2/screens/standings/player_standing_model.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/utils/app_typography.dart';
@@ -187,16 +190,38 @@ class _FavoritePlayerSearchSuggestionState
           // search result holds no rank in this list. A successful add makes
           // the player a favourite, which drops the row from `addable` on the
           // next build — that disappearance is the confirmation.
+          //
+          // Long-press lifts the row into the shared focus menu with the same
+          // open / follow actions plus My Space and share.
           for (final player in addable)
-            FigmaPlayerCard(
+            LiftedRowMenu(
               key: ValueKey<int?>(player.fideId),
-              player: player,
-              rank: null,
-              showRank: false,
-              isFavorite: false,
-              showFavoriteButton: true,
-              onTap: () => widget.onOpenPlayer(player),
-              onToggleFavorite: () => _add(player),
+              onPreviewTap: () => widget.onOpenPlayer(player),
+              actions:
+                  (rowContext) => playerStandingMenuActions(
+                    rowContext,
+                    ref,
+                    player,
+                    onOpen: () => widget.onOpenPlayer(player),
+                    extra: [
+                      LibraryMenuAction(
+                        icon: Icons.favorite_border_rounded,
+                        label: 'Add to favorites',
+                        onSelected: () {
+                          if (mounted) return _add(player);
+                        },
+                      ),
+                    ],
+                  ),
+              child: FigmaPlayerCard(
+                player: player,
+                rank: null,
+                showRank: false,
+                isFavorite: false,
+                showFavoriteButton: true,
+                onTap: () => widget.onOpenPlayer(player),
+                onToggleFavorite: () => _add(player),
+              ),
             ),
         ],
       ),
@@ -239,7 +264,7 @@ class _FavoritePlayerSearchSuggestionState
           height: 24.h,
           child: CircularProgressIndicator(
             strokeWidth: 2,
-            color: context.colors.textPrimary.withValues(alpha: 0.5),
+            color: context.textInk(0.5),
           ),
         ),
       ),
@@ -262,7 +287,7 @@ class _FavoritePlayerSearchSuggestionState
             Icon(
               icon,
               size: 48.ic,
-              color: context.colors.textPrimary.withValues(alpha: 0.5),
+              color: context.textInk(0.5),
             ),
             SizedBox(height: 16.h),
             Text(
@@ -279,7 +304,7 @@ class _FavoritePlayerSearchSuggestionState
                   subtitle,
                   textAlign: TextAlign.center,
                   style: AppTypography.textSmRegular.copyWith(
-                    color: context.colors.textPrimary.withValues(alpha: 0.5),
+                    color: context.textInk(0.5),
                   ),
                 ),
               ),

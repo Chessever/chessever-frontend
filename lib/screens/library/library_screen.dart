@@ -12,7 +12,6 @@ import 'package:chessever2/screens/library/twic_contents_screen.dart';
 import 'package:chessever2/screens/library/widgets/add_to_library_sheet.dart';
 import 'package:chessever2/screens/library/widgets/create_folder_dialog.dart';
 import 'package:chessever2/screens/library/widgets/folder_card.dart';
-import 'package:chessever2/screens/library/widgets/library_search_bar.dart';
 import 'package:chessever2/revenue_cat_service/subscribe_state.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
@@ -29,11 +28,14 @@ import 'package:file_picker/file_picker.dart';
 import 'package:chessever2/widgets/board_navigation_icon.dart';
 import 'package:chessever2/widgets/skeleton_widget.dart';
 import 'package:chessever2/widgets/screen_wrapper.dart';
+import 'package:chessever2/widgets/home_top_bar.dart';
+import 'package:chessever2/widgets/simple_search_bar.dart';
+import 'package:chessever2/widgets/search/search_motion.dart';
 import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
-import 'package:motor/motor.dart';
 
 class LibraryScreen extends ConsumerStatefulWidget {
   const LibraryScreen({super.key});
@@ -47,12 +49,10 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
   final FocusNode _searchFocusNode = FocusNode();
   final ScrollController _scrollController = ScrollController();
   String _searchQuery = '';
-  bool _isSearchFocused = false;
 
   @override
   void initState() {
     super.initState();
-    _searchFocusNode.addListener(_onSearchFocusChange);
 
     // Ensure default folders for new users
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -60,15 +60,8 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
     });
   }
 
-  void _onSearchFocusChange() {
-    setState(() {
-      _isSearchFocused = _searchFocusNode.hasFocus;
-    });
-  }
-
   @override
   void dispose() {
-    _searchFocusNode.removeListener(_onSearchFocusChange);
     _searchFocusNode.dispose();
     _searchController.dispose();
     _scrollController.dispose();
@@ -303,79 +296,99 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
     );
   }
 
+  /// The home bar every main tab wears (see [HomeTopBar]): the avatar and
+  /// the search field in the same place at the same size as on Events, with
+  /// Library's own Board and Add tiles after the field. Focusing the field
+  /// hands it the whole row; the avatar and the tiles squeeze out on the
+  /// field's spring. The bar listens to the focus node itself, so the
+  /// keyboard coming up never rebuilds this screen.
   Widget _buildTopBar() {
-    final topPadding = MediaQuery.of(context).viewPadding.top;
+    // The sidebar (and the calendar inside it) must be reachable from every
+    // main section. Library is mounted under the home Scaffold, so the avatar
+    // opens the same drawer as the Events / For You headers. Outside that
+    // shell there is no drawer to open, so the avatar is not offered at all
+    // rather than shown as a dead control.
+    final canOpenSidebar = Scaffold.maybeOf(context)?.hasDrawer ?? false;
+    // Pushed as My Space's My Prep, the page backs out where the avatar was.
+    final canPop = !canOpenSidebar && Navigator.of(context).canPop();
 
-    // CSS: padding: 12px 16px
-    return Container(
-      padding: EdgeInsets.fromLTRB(16.w, topPadding + 12.h, 16.w, 12.h),
-      child: SingleMotionBuilder(
-        motion: CupertinoMotion.snappy(),
-        value: _isSearchFocused ? 1.0 : 0.0,
-        builder: (context, value, child) {
-          final clamped = value.clamp(0.0, 1.0);
-          // One canonical Board entry plus Add. The budget must be the exact
-          // sum of the children's units (two 36.h square tiles + 8.w gap) —
-          // width and height scale differently per device, so a flat 80.w
-          // under-budgets and overflows by a few pixels.
-          final buttonsFullWidth = 36.h + 8.w + 36.h;
-          final buttonsMaxWidth = buttonsFullWidth * (1 - clamped);
-          final gapWidth = (8.w * (1 - clamped)).clamp(0.0, 8.w);
-          final opacity = (1 - clamped).clamp(0.0, 1.0);
-
-          return Row(
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              Expanded(child: _buildSearchField()),
-
-              // Buttons group
-              SizedBox(width: gapWidth),
-              ClipRect(
-                child: Opacity(
-                  opacity: opacity,
-                  child: SizedBox(
-                    width: buttonsMaxWidth.clamp(0.0, double.infinity),
-                    child:
-                        buttonsMaxWidth > 1
-                            ? Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                KeyedSubtree(
-                                  key: e2eKey(E2eIds.libraryBoardButton),
-                                  child: _BoardButton(
-                                    onTap: _navigateToBoard,
-                                  ),
-                                ),
-                                SizedBox(width: 8.w),
-                                KeyedSubtree(
-                                  key: e2eKey(E2eIds.libraryCreateFolderButton),
-                                  child: _PlusButton(onTap: _handlePlusButton),
-                                ),
-                              ],
-                            )
-                            : const SizedBox.shrink(),
-                  ),
-                ),
-              ),
-            ],
-          );
-        },
+    return Padding(
+      padding: EdgeInsets.only(bottom: 12.h),
+      child: HomeTopBar(
+        onOpenSidebar:
+            canOpenSidebar
+                ? () => Scaffold.maybeOf(context)?.openDrawer()
+                : null,
+        leading: canPop ? const HomeTopBarBackButton() : null,
+        focusNode: _searchFocusNode,
+        content: _buildSearchField(),
+        // One canonical Board entry plus Add, on the avatar's centre line.
+        trailing: [
+          SizedBox(width: 8.w),
+          KeyedSubtree(
+            key: e2eKey(E2eIds.libraryBoardButton),
+            child: _BoardButton(onTap: _navigateToBoard),
+          ),
+          SizedBox(width: 8.w),
+          KeyedSubtree(
+            key: e2eKey(E2eIds.libraryCreateFolderButton),
+            child: _PlusButton(onTap: _handlePlusButton),
+          ),
+        ],
       ),
     );
   }
 
+  /// The same field as the Events bar: its surface, its height, its type.
+  /// Only the behaviour is Library's, filtering folders by name as you type.
   Widget _buildSearchField() {
-    return LibrarySearchBar(
-      controller: _searchController,
-      focusNode: _searchFocusNode,
-      textFieldKey: e2eKey(E2eIds.librarySearchField),
-      enableOverlay: false,
-      showFilterIcon: false,
-      hintText: 'Search',
-      onChanged: (query) {
-        setState(() => _searchQuery = query.trim().toLowerCase());
-      },
+    return TextFieldTapRegion(
+      onTapOutside: (_) => _searchFocusNode.unfocus(),
+      child: ListenableBuilder(
+        listenable: _searchFocusNode,
+        // Built once; focus only repaints the surface around it.
+        child: ConstrainedBox(
+          constraints: BoxConstraints(
+            minHeight: HomeTopBarMetrics.fieldHeight,
+          ),
+          child: SimpleSearchBar(
+            textFieldKey: e2eKey(E2eIds.librarySearchField),
+            hintText: 'Search',
+            controller: _searchController,
+            focusNode: _searchFocusNode,
+            onOpenFilter: null,
+            onChanged: _onSearchChanged,
+            onCloseTap: _clearSearch,
+          ),
+        ),
+        builder:
+            (context, child) => ParkedMotionBuilder(
+              value: _searchFocusNode.hasFocus ? 1.0 : 0.0,
+              motion: SearchMotion.morph,
+              child: child,
+              builder:
+                  (context, lift, child) => HomeSearchFieldSurface(
+                    lift: lift,
+                    child: RepaintBoundary(child: child),
+                  ),
+            ),
+      ),
     );
+  }
+
+  void _onSearchChanged(String query) {
+    final next = query.trim().toLowerCase();
+    if (next == _searchQuery) return;
+    setState(() => _searchQuery = next);
+  }
+
+  /// The field's clear button: empties the query and lets go of the field.
+  /// `TextField.onChanged` does not fire for a programmatic clear, so the
+  /// filter is reset here.
+  void _clearSearch() {
+    _searchController.clear();
+    _searchFocusNode.unfocus();
+    _onSearchChanged('');
   }
 
   Widget _buildContent() {
@@ -386,46 +399,49 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
       subscribedFoldersAsync: subscribedFoldersAsync,
     );
 
-    return Stack(
-      children: [
-        // Subtle background decoration - only when user has personal folders
-        if (contentState.hasFolders)
-          const Positioned.fill(child: _LibraryBackgroundDecoration()),
-        // Main content
-        RefreshIndicator(
-          onRefresh: () async {
-            HapticFeedbackService.medium();
-            ref.invalidate(libraryFoldersStreamProvider);
-            ref.invalidate(subscribedBooksProvider);
-            ref.invalidate(folderAnalysisCountProvider);
-            // Await the refetch so the spinner stays visible until data
-            // actually arrives. Without the await, RefreshIndicator dismisses
-            // immediately and the user thinks nothing happened.
-            await Future.wait([
-              ref.read(libraryFoldersStreamProvider.future),
-              ref.read(subscribedBooksProvider.future),
-            ]);
-          },
-          color: context.colors.textPrimary,
-          backgroundColor: context.colors.surface,
-          child: CustomScrollView(
-            controller: _scrollController,
-            physics: const AlwaysScrollableScrollPhysics(
-              parent: BouncingScrollPhysics(),
-            ),
-            slivers: [
-              SliverToBoxAdapter(child: SizedBox(height: 4.h)),
-              if (contentState.isLoading)
-                _buildLoadingSliver()
-              else if (contentState.hasError)
-                _buildErrorSliver(userFacingError(contentState.error))
-              else
-                _buildFoldersSliver(contentState.folders),
-              SliverToBoxAdapter(child: SizedBox(height: 24.h)),
-            ],
-          ),
+    return RefreshIndicator(
+      onRefresh: () async {
+        HapticFeedbackService.medium();
+        ref.invalidate(libraryFoldersStreamProvider);
+        ref.invalidate(subscribedBooksProvider);
+        ref.invalidate(folderAnalysisCountProvider);
+        // Await the refetch so the spinner stays visible until data
+        // actually arrives. Without the await, RefreshIndicator dismisses
+        // immediately and the user thinks nothing happened.
+        await Future.wait([
+          ref.read(libraryFoldersStreamProvider.future),
+          ref.read(subscribedBooksProvider.future),
+        ]);
+      },
+      color: context.colors.textPrimary,
+      backgroundColor: context.colors.surface,
+      child: CustomScrollView(
+        controller: _scrollController,
+        physics: const AlwaysScrollableScrollPhysics(
+          parent: BouncingScrollPhysics(),
         ),
-      ],
+        slivers: [
+          SliverToBoxAdapter(child: SizedBox(height: 4.h)),
+          if (contentState.isLoading)
+            _buildLoadingSliver()
+          else if (contentState.hasError)
+            _buildErrorSliver(userFacingError(contentState.error))
+          else
+            _buildFoldersSliver(contentState.folders),
+          SliverToBoxAdapter(child: SizedBox(height: 24.h)),
+          // The ghosted decoration lives BELOW the last card, in whatever
+          // space the list leaves free. It used to be a Positioned.fill layer
+          // behind the list, where the 8dp gaps between cards sliced its
+          // headline into glyph fragments. It never extends the scroll: when
+          // the free space is shorter than the decoration it is not drawn.
+          if (contentState.hasFolders && _searchQuery.isEmpty)
+            const SliverFillRemaining(
+              hasScrollBody: false,
+              fillOverscroll: false,
+              child: _FitOrHide(child: _LibraryBackgroundDecoration()),
+            ),
+        ],
+      ),
     );
   }
 
@@ -566,7 +582,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
             Icon(
               Icons.search_off_outlined,
               size: 56.sp,
-              color: context.colors.textPrimary.withValues(alpha: 0.4),
+              color: context.textInk(0.4),
             ),
             SizedBox(height: 12.h),
             Text(
@@ -640,7 +656,10 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
             Icon(
               Icons.error_outline,
               size: 64.sp,
-              color: kRedColor.withValues(alpha: 0.7),
+              color:
+                  context.isLightTheme
+                      ? context.colors.danger
+                      : kRedColor.withValues(alpha: 0.7),
             ),
             SizedBox(height: 16.h),
             Text(
@@ -734,8 +753,66 @@ class _PlusButton extends StatelessWidget {
   }
 }
 
-/// Subtle background decoration shown behind folder cards
-/// Displays a ghosted version of the empty state messaging
+/// Lays [child] out at its natural height and centers it in the space it is
+/// given, or draws nothing when that space is too short to hold it whole.
+///
+/// Reports zero intrinsic height, so a `SliverFillRemaining(hasScrollBody:
+/// false)` parent sizes it to exactly the free space left under the list and
+/// never grows the scroll extent to make room for it. The decoration is
+/// either whole or absent; it is never cropped by a card or a viewport edge.
+class _FitOrHide extends SingleChildRenderObjectWidget {
+  const _FitOrHide({required Widget super.child});
+
+  @override
+  RenderObject createRenderObject(BuildContext context) => _RenderFitOrHide();
+}
+
+class _RenderFitOrHide extends RenderShiftedBox {
+  _RenderFitOrHide() : super(null);
+
+  bool _fits = false;
+
+  @override
+  double computeMinIntrinsicHeight(double width) => 0;
+
+  @override
+  double computeMaxIntrinsicHeight(double width) => 0;
+
+  @override
+  Size computeDryLayout(BoxConstraints constraints) => constraints.biggest;
+
+  @override
+  void performLayout() {
+    size = constraints.biggest;
+    final child = this.child;
+    if (child == null) {
+      _fits = false;
+      return;
+    }
+    child.layout(BoxConstraints(maxWidth: size.width), parentUsesSize: true);
+    _fits = child.size.height <= size.height;
+    (child.parentData! as BoxParentData).offset = Offset(
+      (size.width - child.size.width) / 2,
+      (size.height - child.size.height) / 2,
+    );
+  }
+
+  @override
+  void paint(PaintingContext context, Offset offset) {
+    if (_fits) super.paint(context, offset);
+  }
+
+  // Purely decorative: never hit-testable, never read by a screen reader.
+  @override
+  bool hitTestChildren(BoxHitTestResult result, {required Offset position}) =>
+      false;
+
+  @override
+  void visitChildrenForSemantics(RenderObjectVisitor visitor) {}
+}
+
+/// Ghosted echo of the empty-state message, drawn in the free space under
+/// the folder list (see [_FitOrHide]).
 class _LibraryBackgroundDecoration extends StatelessWidget {
   const _LibraryBackgroundDecoration();
 
@@ -744,49 +821,43 @@ class _LibraryBackgroundDecoration extends StatelessWidget {
     return IgnorePointer(
       child: Opacity(
         opacity: 0.25,
-        child: Center(
-          child: Padding(
-            padding: EdgeInsets.symmetric(horizontal: 24.w),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                // Decorative chess pattern - larger for background presence
-                _buildChessPatternVisual(context),
-                SizedBox(height: 32.h),
-
-                // Main headline
-                Text(
-                  'Millions of games',
-                  style: AppTypography.displayXsMedium.copyWith(
+        child: Padding(
+          padding: EdgeInsets.symmetric(horizontal: 24.w),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              _buildChessPatternVisual(context),
+              SizedBox(height: 32.h),
+              Text(
+                'Millions of games',
+                textAlign: TextAlign.center,
+                style: AppTypography.displayXsMedium.copyWith(
+                  color: context.colors.textPrimary,
+                  letterSpacing: -0.5,
+                ),
+              ),
+              SizedBox(height: 4.h),
+              Text(
+                'at your fingertips',
+                textAlign: TextAlign.center,
+                style: AppTypography.displayXsMedium.copyWith(
+                  color: context.colors.textPrimary,
+                  letterSpacing: -0.5,
+                ),
+              ),
+              SizedBox(height: 20.h),
+              Padding(
+                padding: EdgeInsets.symmetric(horizontal: 20.w),
+                child: Text(
+                  'Search any player, opening, or tournament. Save games to your personal folders for study.',
+                  style: AppTypography.textSmRegular.copyWith(
                     color: context.colors.textPrimary,
-                    letterSpacing: -0.5,
+                    height: 1.5,
                   ),
+                  textAlign: TextAlign.center,
                 ),
-                SizedBox(height: 4.h),
-                Text(
-                  'at your fingertips',
-                  style: AppTypography.displayXsMedium.copyWith(
-                    color: context.colors.textPrimary,
-                    letterSpacing: -0.5,
-                  ),
-                ),
-
-                SizedBox(height: 20.h),
-
-                // Description
-                Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 20.w),
-                  child: Text(
-                    'Search any player, opening, or tournament. Save games to your personal folders for study.',
-                    style: AppTypography.textSmRegular.copyWith(
-                      color: context.colors.textPrimary,
-                      height: 1.5,
-                    ),
-                    textAlign: TextAlign.center,
-                  ),
-                ),
-              ],
-            ),
+              ),
+            ],
           ),
         ),
       ),

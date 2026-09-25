@@ -1,5 +1,4 @@
 import 'package:chessever2/theme/app_colors.dart';
-import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:flutter/material.dart';
@@ -19,7 +18,7 @@ class LibraryFolderLoadError extends StatelessWidget {
         children: [
           Text(
             'Couldn’t load your databases',
-            style: AppTypography.textSmMedium.copyWith(color: kRedColor),
+            style: AppTypography.textSmMedium.copyWith(color: context.colors.danger),
             textAlign: TextAlign.center,
           ),
           SizedBox(height: 6.h),

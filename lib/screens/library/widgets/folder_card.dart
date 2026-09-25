@@ -9,8 +9,10 @@ import 'package:chessever2/screens/library/providers/gamebase_database_games_pro
 import 'package:chessever2/screens/library/providers/library_folders_provider.dart';
 import 'package:chessever2/screens/library/providers/miniatures_provider.dart';
 import 'package:chessever2/screens/library/widgets/create_folder_dialog.dart';
+import 'package:chessever2/screens/library/widgets/library_context_menu.dart';
+import 'package:chessever2/screens/my_space/actions/space_menu_action.dart';
+import 'package:chessever2/screens/my_space/models/space_shortcut.dart';
 import 'package:chessever2/theme/app_colors.dart';
-import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/logger/logger.dart';
@@ -20,6 +22,7 @@ import 'package:chessever2/utils/svg_asset.dart';
 import 'package:chessever2/utils/user_error_message.dart';
 import 'package:chessever2/widgets/alert_dialog/alert_modal.dart';
 import 'package:chessever2/widgets/app_snack.dart';
+import 'package:chessever2/widgets/card_context_menu.dart';
 import 'package:chessever2/widgets/svg_widget.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -27,6 +30,9 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:motor/motor.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
+
+/// The platform minimum tap target the trailing 3-dot is sized to.
+const double _kMoreTarget = 44.0;
 
 String _formatGameCount(int count) {
   if (count == 0) return 'Empty database';
@@ -257,16 +263,18 @@ class FolderCard extends ConsumerWidget {
       );
     }
 
-    return _PressableMotionCard(
-      onTap: onTap ?? () => _navigateToFolder(context),
-      onLongPress: isProtected ? null : () => _showOverlayMenu(context, ref),
-      child: Container(
-        padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 14.h),
-        decoration: BoxDecoration(
-          color: context.colors.surface,
-          borderRadius: BorderRadius.circular(12.br),
-        ),
-        child: Row(
+    // The 3-dot takes exactly the footprint the old dots had in the row (an
+    // 8.w lead, then a 24.sp glyph flush to the content edge), so the card's
+    // height, the name column and the glyph never move. Its 44dp target
+    // floats over the card, centred on that glyph, instead of widening or
+    // heightening the row.
+    final moreFootprint = 8.w + 24.sp;
+    final moreGlyphFromRight = 12.w + 12.sp;
+    final open = onTap ?? () => _navigateToFolder(context);
+
+    final row = Padding(
+      padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 14.h),
+      child: Row(
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
             // Folder icon squircle with optional shared badge
@@ -371,10 +379,55 @@ class FolderCard extends ConsumerWidget {
                 ],
               )
             else
-              _DotsMenuButton(onTap: () => _showOverlayMenu(context, ref)),
+              // The old dots' footprint; the glyph itself is drawn by the
+              // floating target below, over this exact spot.
+              SizedBox(width: moreFootprint, height: 24.sp),
           ],
         ),
+    );
+
+    final card = _PressableMotionCard(
+      onTap: open,
+      child: Container(
+        decoration: BoxDecoration(
+          color: context.colors.surface,
+          borderRadius: BorderRadius.circular(12.br),
+        ),
+        child:
+            isProtected
+                ? row
+                : Stack(
+                  clipBehavior: Clip.none,
+                  children: [
+                    row,
+                    Positioned(
+                      top: 0,
+                      bottom: 0,
+                      right: moreGlyphFromRight - _kMoreTarget / 2,
+                      width: _kMoreTarget,
+                      child: Center(
+                        child: CardMoreButton(
+                          vertical: true,
+                          tooltip: 'Folder actions',
+                          color: context.colors.textPrimary.withValues(
+                            alpha: 0.7,
+                          ),
+                          size: 24.sp,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
       ),
+    );
+
+    // Long-press and the 3-dot open one menu: the card lifts in place with
+    // its actions. Built-in collections have nothing to rename or delete, so
+    // theirs offers only the My Space shortcut.
+    return CardContextMenu(
+      onPreviewTap: open,
+      actions: (cardContext) => _menuActions(cardContext, ref),
+      child: card,
     );
   }
 
@@ -502,7 +555,7 @@ class FolderCard extends ConsumerWidget {
             Text(
               url,
               style: AppTypography.textXsRegular.copyWith(
-                color: kPrimaryColor.withValues(alpha: 0.9),
+                color: context.colors.accentText.withValues(alpha: 0.9),
               ),
             ),
           ],
@@ -511,37 +564,124 @@ class FolderCard extends ConsumerWidget {
     );
   }
 
-  void _showOverlayMenu(BuildContext context, WidgetRef ref) {
-    HapticFeedbackService.light();
-
-    final isNonShareable = folder.parentId != null || folder.isFolder;
-
-    if (folder.isSubscribed) {
-      // Subscribed books: only show Unsubscribe
-      showSubscribedFolderOverlayMenu(
-        context: context,
-        onUnsubscribe: () => _unsubscribeFromBook(context, ref),
-      );
-    } else if (folder.shareToken != null) {
-      // Already shared: show Copy Link, Stop Sharing, Rename, Delete
-      showSharedFolderOverlayMenu(
-        context: context,
-        onCopyLink: () => _copyShareLink(context, folder.shareToken!),
-        onStopSharing: () => _stopSharing(context, ref),
-        onRename: () => _renameFolder(context, ref),
-        onDelete: () => _deleteFolder(context, ref),
-        isSubFolder: isNonShareable,
-      );
-    } else {
-      // Not shared: show Share, Rename, Delete
-      showFolderOverlayMenu(
-        context: context,
-        onShare: () => _shareFolder(context, ref),
-        onRename: () => _renameFolder(context, ref),
-        onDelete: () => _deleteFolder(context, ref),
-        isSubFolder: isNonShareable,
+  /// This node as a My Space shortcut. The synthetic collections map to their
+  /// own kinds so My Space opens the same screen the card does.
+  SpaceShortcut _spaceDraft() {
+    if (folder.isLikedGames) {
+      return SpaceShortcut.draft(
+        kind: SpaceShortcutKind.likes,
+        targetId: 'me',
+        title: folder.displayName,
       );
     }
+    if (folder.id == kMiniaturesBookId) {
+      return SpaceShortcut.draft(
+        kind: SpaceShortcutKind.miniatures,
+        targetId: 'today',
+        title: folder.displayName,
+        subtitle: 'Short decisive games',
+      );
+    }
+    return SpaceShortcut.draft(
+      kind: SpaceShortcutKind.folder,
+      targetId: folder.id,
+      title: folder.displayName,
+      subtitle:
+          folder.id == kTwicBookId
+              ? 'Master games'
+              : folder.isSubscribed && folder.ownerDisplayName != null
+              ? 'by ${folder.ownerDisplayName}'
+              : folder.isFolder
+              ? 'Folder'
+              : 'Database',
+      params: {
+        'nodeType': folder.nodeType,
+        if (folder.isSubscribed) 'subscribed': true,
+      },
+    );
+  }
+
+  LibraryMenuAction _spaceAction(BuildContext context, WidgetRef ref) =>
+      spaceMenuAction(context: context, ref: ref, draft: _spaceDraft());
+
+  /// Every action the old overlay menus offered, in the same order and with
+  /// the same labels, now raised through the shared focus menu.
+  List<LibraryMenuAction> _menuActions(BuildContext context, WidgetRef ref) {
+    final isProtected =
+        folder.id == kTwicBookId ||
+        folder.id == kMiniaturesBookId ||
+        folder.isLikedGames;
+    final spaceAction = _spaceAction(context, ref);
+    if (isProtected) return [spaceAction];
+
+    if (folder.isSubscribed) {
+      // Subscribed books: My Space and Unsubscribe
+      return [
+        spaceAction,
+        LibraryMenuAction(
+          icon: Icons.link_off_rounded,
+          label: 'Unsubscribe',
+          destructive: true,
+          onSelected: () => _unsubscribeFromBook(context, ref),
+        ),
+      ];
+    }
+
+    final isNonShareable = folder.parentId != null || folder.isFolder;
+    // Only a root database can be shared. A nested one keeps the row so the
+    // tap explains why, exactly as before.
+    void explainRootOnly() {
+      HapticFeedbackService.error();
+      showAppSnack(context, 'only root-level folder can be shared with others');
+    }
+
+    final delete = LibraryMenuAction(
+      icon: Icons.delete_outline_rounded,
+      label: 'Delete',
+      destructive: true,
+      onSelected: () => _deleteFolder(context, ref),
+    );
+    final rename = LibraryMenuAction(
+      icon: Icons.edit_rounded,
+      label: 'Rename',
+      onSelected: () => _renameFolder(context, ref),
+    );
+
+    final shareToken = folder.shareToken;
+    if (shareToken != null) {
+      // Already shared: Copy Link, Stop Sharing, Rename, My Space, Delete
+      return [
+        LibraryMenuAction(
+          icon: Icons.copy_rounded,
+          label: 'Copy Link',
+          onSelected:
+              isNonShareable
+                  ? explainRootOnly
+                  : () => _copyShareLink(context, shareToken),
+        ),
+        LibraryMenuAction(
+          icon: Icons.link_off_rounded,
+          label: 'Stop Sharing',
+          onSelected: () => _stopSharing(context, ref),
+        ),
+        rename,
+        spaceAction,
+        delete,
+      ];
+    }
+
+    // Not shared: Share, Rename, My Space, Delete
+    return [
+      LibraryMenuAction(
+        icon: Icons.ios_share_rounded,
+        label: 'Share',
+        onSelected:
+            isNonShareable ? explainRootOnly : () => _shareFolder(context, ref),
+      ),
+      rename,
+      spaceAction,
+      delete,
+    ];
   }
 
   Future<void> _shareFolder(BuildContext context, WidgetRef ref) async {
@@ -693,13 +833,8 @@ class FolderCard extends ConsumerWidget {
 class _PressableMotionCard extends StatefulWidget {
   final Widget child;
   final VoidCallback? onTap;
-  final VoidCallback? onLongPress;
 
-  const _PressableMotionCard({
-    required this.child,
-    this.onTap,
-    this.onLongPress,
-  });
+  const _PressableMotionCard({required this.child, this.onTap});
 
   @override
   State<_PressableMotionCard> createState() => _PressableMotionCardState();
@@ -716,10 +851,7 @@ class _PressableMotionCardState extends State<_PressableMotionCard> {
       onTapUp: (_) => setState(() => _isPressed = false),
       onTapCancel: () => setState(() => _isPressed = false),
       onTap: widget.onTap,
-      onLongPress: () {
-        HapticFeedback.mediumImpact();
-        widget.onLongPress?.call();
-      },
+      // No long-press here: the enclosing CardContextMenu owns it.
       child: SingleMotionBuilder(
         motion: CupertinoMotion.bouncy(),
         value: _isPressed ? 0.97 : 1.0,
@@ -727,407 +859,6 @@ class _PressableMotionCardState extends State<_PressableMotionCard> {
           return Transform.scale(scale: value, child: child);
         },
         child: widget.child,
-      ),
-    );
-  }
-}
-
-/// 3-dot menu button — CSS: 24x24, rotated 90deg, white 70% opacity
-class _DotsMenuButton extends StatelessWidget {
-  final VoidCallback onTap;
-
-  const _DotsMenuButton({required this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: onTap,
-      child: Padding(
-        padding: EdgeInsets.only(left: 8.w),
-        child: RotatedBox(
-          quarterTurns: 1,
-          child: Icon(
-            Icons.more_horiz_rounded,
-            color: context.colors.textPrimary.withValues(alpha: 0.7),
-            size: 24.sp,
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-// ============ OVERLAY MENUS ============
-
-/// Shows the folder overlay menu for unshared folders: Share, Rename, Delete.
-void showFolderOverlayMenu({
-  required BuildContext context,
-  required VoidCallback onShare,
-  required VoidCallback onRename,
-  required VoidCallback onDelete,
-  bool isSubFolder = false,
-}) {
-  _showOverlay(
-    context: context,
-    items: [
-      _OverlayMenuItemData(
-        Icons.ios_share_rounded,
-        'Share',
-        isSubFolder
-            ? () {
-              HapticFeedbackService.error();
-              showAppSnack(
-                context,
-                'only root-level folder can be shared with others',
-              );
-            }
-            : onShare,
-        _MenuItemPosition.top,
-        isEnabled: !isSubFolder,
-      ),
-      _OverlayMenuItemData(
-        Icons.edit_rounded,
-        'Rename',
-        onRename,
-        _MenuItemPosition.middle,
-      ),
-      _OverlayMenuItemData(
-        Icons.delete_outline_rounded,
-        'Delete',
-        onDelete,
-        _MenuItemPosition.bottom,
-      ),
-    ],
-  );
-}
-
-/// Shows the overlay menu for already-shared folders: Copy Link, Stop Sharing, Rename, Delete.
-void showSharedFolderOverlayMenu({
-  required BuildContext context,
-  required VoidCallback onCopyLink,
-  required VoidCallback onStopSharing,
-  required VoidCallback onRename,
-  required VoidCallback onDelete,
-  bool isSubFolder = false,
-}) {
-  _showOverlay(
-    context: context,
-    items: [
-      _OverlayMenuItemData(
-        Icons.copy_rounded,
-        'Copy Link',
-        isSubFolder
-            ? () {
-              HapticFeedbackService.error();
-              showAppSnack(
-                context,
-                'only root-level folder can be shared with others',
-              );
-            }
-            : onCopyLink,
-        _MenuItemPosition.top,
-        isEnabled: !isSubFolder,
-      ),
-      _OverlayMenuItemData(
-        Icons.link_off_rounded,
-        'Stop Sharing',
-        onStopSharing,
-        _MenuItemPosition.middle,
-        isEnabled: !isSubFolder,
-      ),
-      _OverlayMenuItemData(
-        Icons.edit_rounded,
-        'Rename',
-        onRename,
-        _MenuItemPosition.middle,
-      ),
-      _OverlayMenuItemData(
-        Icons.delete_outline_rounded,
-        'Delete',
-        onDelete,
-        _MenuItemPosition.bottom,
-      ),
-    ],
-  );
-}
-
-/// Shows the overlay menu for subscribed folders: just Unsubscribe.
-void showSubscribedFolderOverlayMenu({
-  required BuildContext context,
-  required VoidCallback onUnsubscribe,
-}) {
-  _showOverlay(
-    context: context,
-    items: [
-      _OverlayMenuItemData(
-        Icons.link_off_rounded,
-        'Unsubscribe',
-        onUnsubscribe,
-        _MenuItemPosition.top,
-      ),
-    ],
-  );
-}
-
-class _OverlayMenuItemData {
-  final IconData icon;
-  final String label;
-  final VoidCallback onTap;
-  final _MenuItemPosition position;
-  final bool isEnabled;
-
-  _OverlayMenuItemData(
-    this.icon,
-    this.label,
-    this.onTap,
-    this.position, {
-    this.isEnabled = true,
-  });
-}
-
-void _showOverlay({
-  required BuildContext context,
-  required List<_OverlayMenuItemData> items,
-}) {
-  final overlay = Overlay.of(context);
-  final renderBox = context.findRenderObject() as RenderBox;
-  final cardRect = renderBox.localToGlobal(Offset.zero) & renderBox.size;
-
-  late OverlayEntry entry;
-
-  entry = OverlayEntry(
-    builder:
-        (_) => _FolderOverlayMenu(
-          anchorRect: cardRect,
-          onDismiss: () => entry.remove(),
-          items:
-              items
-                  .map(
-                    (item) => _OverlayMenuItemData(
-                      item.icon,
-                      item.label,
-                      () {
-                        entry.remove();
-                        item.onTap();
-                      },
-                      item.position,
-                      isEnabled: item.isEnabled,
-                    ),
-                  )
-                  .toList(),
-        ),
-  );
-
-  overlay.insert(entry);
-}
-
-class _FolderOverlayMenu extends StatefulWidget {
-  final Rect anchorRect;
-  final VoidCallback onDismiss;
-  final List<_OverlayMenuItemData> items;
-
-  const _FolderOverlayMenu({
-    required this.anchorRect,
-    required this.onDismiss,
-    required this.items,
-  });
-
-  @override
-  State<_FolderOverlayMenu> createState() => _FolderOverlayMenuState();
-}
-
-class _FolderOverlayMenuState extends State<_FolderOverlayMenu>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _controller;
-  late final Animation<double> _scaleAnim;
-  late final Animation<double> _opacityAnim;
-
-  @override
-  void initState() {
-    super.initState();
-    _controller = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 200),
-    );
-    _scaleAnim = CurvedAnimation(
-      parent: _controller,
-      curve: Curves.easeOutCubic,
-    );
-    _opacityAnim = CurvedAnimation(parent: _controller, curve: Curves.easeOut);
-    _controller.forward();
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  Future<void> _dismiss() async {
-    await _controller.reverse();
-    widget.onDismiss();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final screenSize = MediaQuery.of(context).size;
-    const menuWidth = 240.0;
-    final menuHeight = widget.items.length * 40.0;
-
-    // Position: right-aligned to the card, below the anchor
-    double left = widget.anchorRect.right - menuWidth;
-    double top = widget.anchorRect.bottom + 4.h;
-
-    // Clamp to screen bounds
-    if (left < 8) left = 8;
-    if (left + menuWidth > screenSize.width - 8) {
-      left = screenSize.width - menuWidth - 8;
-    }
-    if (top + menuHeight > screenSize.height - 8) {
-      top = widget.anchorRect.top - menuHeight - 4.h;
-    }
-
-    return Material(
-      type: MaterialType.transparency,
-      child: Stack(
-        children: [
-          // Scrim
-          Positioned.fill(
-            child: GestureDetector(
-              behavior: HitTestBehavior.translucent,
-              onTap: _dismiss,
-              child: FadeTransition(
-                opacity: _opacityAnim,
-                child: Container(color: Colors.black.withValues(alpha: 0.3)),
-              ),
-            ),
-          ),
-          // Menu
-          Positioned(
-            left: left,
-            top: top,
-            child: FadeTransition(
-              opacity: _opacityAnim,
-              child: ScaleTransition(
-                scale: _scaleAnim,
-                alignment: Alignment.topRight,
-                child: Container(
-                  width: menuWidth,
-                  decoration: BoxDecoration(
-                    color: context.colors.surface,
-                    borderRadius: BorderRadius.circular(12.br),
-                    boxShadow: const [
-                      BoxShadow(
-                        color: Color(0x40000000),
-                        blurRadius: 12,
-                        offset: Offset(0, 6),
-                      ),
-                    ],
-                  ),
-                  clipBehavior: Clip.antiAlias,
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      for (final item in widget.items)
-                        _OverlayMenuItem(
-                          icon: item.icon,
-                          label: item.label,
-                          onTap: item.onTap,
-                          position: item.position,
-                          isEnabled: item.isEnabled,
-                        ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-enum _MenuItemPosition { top, middle, bottom }
-
-/// CSS: 240×40, bg #111111, padding 8px, gap 11px
-/// Icon: 24×24 container bg #1A1A1C radius 3px, icon 15px white
-/// Text: Inter 500 16px white
-/// Divider: 1px solid rgba(226,226,226,0.075)
-class _OverlayMenuItem extends StatefulWidget {
-  final IconData icon;
-  final String label;
-  final VoidCallback onTap;
-  final _MenuItemPosition position;
-  final bool isEnabled;
-
-  const _OverlayMenuItem({
-    required this.icon,
-    required this.label,
-    required this.onTap,
-    required this.position,
-    this.isEnabled = true,
-  });
-
-  @override
-  State<_OverlayMenuItem> createState() => _OverlayMenuItemState();
-}
-
-class _OverlayMenuItemState extends State<_OverlayMenuItem> {
-  bool _isPressed = false;
-
-  @override
-  Widget build(BuildContext context) {
-    final textColor =
-        widget.isEnabled ? context.colors.textPrimary : const Color(0xFF4D4D4D);
-    final iconColor =
-        widget.isEnabled ? context.colors.textPrimary : const Color(0xFF4D4D4D);
-
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTapDown:
-          (_) => setState(() => _isPressed = widget.isEnabled ? true : false),
-      onTapUp: (_) => setState(() => _isPressed = false),
-      onTapCancel: () => setState(() => _isPressed = false),
-      onTap: widget.onTap,
-      child: Container(
-        decoration: BoxDecoration(
-          color: _isPressed ? context.colors.surface : context.colors.surface,
-          border:
-              widget.position != _MenuItemPosition.top
-                  ? const Border(
-                    top: BorderSide(
-                      color: Color(0x13E2E2E2), // rgba(226,226,226,0.075)
-                    ),
-                  )
-                  : null,
-        ),
-        padding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 8.h),
-        child: Row(
-          children: [
-            // Icon container: 24×24, bg #1A1A1C, radius 3px
-            Container(
-              width: 24.sp,
-              height: 24.sp,
-              decoration: BoxDecoration(
-                color: context.colors.surface,
-                borderRadius: BorderRadius.circular(3.br),
-              ),
-              child: Center(
-                child: Icon(widget.icon, color: iconColor, size: 15.sp),
-              ),
-            ),
-            SizedBox(width: 11.w),
-            Expanded(
-              child: Text(
-                widget.label,
-                style: AppTypography.textMdMedium.copyWith(color: textColor),
-                overflow: TextOverflow.ellipsis,
-              ),
-            ),
-          ],
-        ),
       ),
     );
   }

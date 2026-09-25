@@ -1,26 +1,28 @@
+import 'dart:async';
+
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:chessever2/providers/event_favorite_players_provider.dart';
 import 'package:chessever2/providers/favorite_events_provider.dart';
 import 'package:chessever2/screens/group_event/model/tour_event_card_model.dart';
 import 'package:chessever2/screens/group_event/providers/live_group_broadcast_id_provider.dart';
-import 'package:chessever2/services/analytics/analytics_service.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
-import 'package:chessever2/utils/favorite_event_ids.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/location_service_provider.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/svg_asset.dart';
 import 'package:chessever2/utils/time_utils.dart';
 import 'package:chessever2/widgets/app_button.dart';
-import 'package:chessever2/widgets/auth/auth_upgrade_sheet.dart';
+import 'package:chessever2/widgets/card_context_menu.dart';
 import 'package:chessever2/widgets/event_card/event_context_menu.dart';
 import 'package:chessever2/widgets/event_card/event_image_provider.dart';
 import 'package:chessever2/widgets/event_card/event_next_round_provider.dart';
 import 'package:chessever2/widgets/heroine/no_padding_fade_shuttle_builder.dart';
 import 'package:chessever2/widgets/svg_widget.dart';
+import 'package:chessever2/widgets/time_control_glyph.dart';
 import 'package:country_flags/country_flags.dart';
+import 'package:flutter/gestures.dart' show LongPressDownDetails;
 import 'package:flutter/material.dart';
 import 'package:heroine/heroine.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -65,21 +67,32 @@ class EventCard extends ConsumerWidget {
       return _buildCard(context, ref);
     }
 
+    // The long-press sits inside the press-scale: the menu measures the card
+    // as it is painted, mid-squeeze, and the lifted copy rises from exactly
+    // that size instead of jumping back to rest first.
     return TappableScale(
       onTap: () {
         HapticFeedbackService.cardTap();
         onTap!();
       },
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onLongPressStart: (details) {
-          onEventCardLongPress(
-            context: context,
-            ref: ref,
-            model: tourEventCardModel,
-            globalPosition: details.globalPosition,
-          );
-        },
+      child: _EventCardMenuTrigger(
+        model: tourEventCardModel,
+        onOpen: onTap!,
+        previewBuilder:
+            (size) => SizedBox.fromSize(
+              size: size,
+              // A second, inert copy of this card: no gestures (onTap null)
+              // and no Heroine (a suffix switches the hero off), so the
+              // menu's copy can never fly or claim this card's hero tag.
+              child: EventCard(
+                tourEventCardModel: tourEventCardModel,
+                showHeartIndicator: showHeartIndicator,
+                favoritePlayersSource: favoritePlayersSource,
+                trailingWidget: trailingWidget,
+                heroTagSuffix: '${heroTagSuffix ?? 'card'}-menu',
+                forceCompactLayout: forceCompactLayout,
+              ),
+            ),
         child: _buildCard(context, ref),
       ),
     );
@@ -192,6 +205,7 @@ class EventCard extends ConsumerWidget {
                           AppTypography.textXsMedium.copyWith(
                             color: Colors.white.withValues(alpha: 0.9),
                           ),
+                          overImage: true,
                         ),
                         showLocation: false,
                         location: null,
@@ -336,17 +350,15 @@ class EventCard extends ConsumerWidget {
 
   /// Inline time-control glyph for the [_MetaLine] [Text.rich] — lets the
   /// icon participate in ellipsizing so meta always fits one line.
-  InlineSpan _timeControlSpan(TextStyle fallbackStyle) {
-    final timeControl = tourEventCardModel.timeControl.toLowerCase();
-    String? assetPath;
-    if (timeControl.contains('blitz')) {
-      assetPath = 'assets/pngs/blitz.png';
-    } else if (timeControl.contains('rapid')) {
-      assetPath = 'assets/pngs/rapid.png';
-    } else if (timeControl.contains('classic') ||
-        timeControl.contains('standard')) {
-      assetPath = 'assets/pngs/classical.png';
-    }
+  /// [overImage] marks the tablet card, whose meta sits on a black photo
+  /// scrim in both themes and so keeps the original (dark-stage) art.
+  InlineSpan _timeControlSpan(
+    TextStyle fallbackStyle, {
+    bool overImage = false,
+  }) {
+    final assetPath = TimeControlGlyph.assetForLabel(
+      tourEventCardModel.timeControl,
+    );
 
     if (assetPath == null) {
       return TextSpan(
@@ -357,12 +369,164 @@ class EventCard extends ConsumerWidget {
 
     return WidgetSpan(
       alignment: PlaceholderAlignment.middle,
-      child: Image.asset(
+      child: TimeControlGlyph(
         assetPath,
-        width: 14.sp,
-        height: 14.sp,
-        fit: BoxFit.contain,
+        size: 14.sp,
+        onDark: overImage ? true : null,
       ),
+    );
+  }
+}
+
+/// Owns an event card's long-press: the card lifts in place into the shared
+/// focus menu ([CardContextMenu.open]) with Open, favorite, No Spoilers,
+/// Share, Copy PGN and My Space.
+///
+/// The menu opens the instant the long-press fires; nothing waits on the
+/// network, so the press is always answered (haptic, lift, veil) on time.
+///
+/// The No Spoilers row needs the event's tours, a network lookup. It starts
+/// once a finger has rested on the card past any ordinary tap
+/// ([_kWarmAfter]), so the answer is usually in hand by the long-press and the
+/// row carries its real label. If it is still in flight, the row opens in its
+/// default "Turn on" form and settles the tours when chosen
+/// ([eventMenuActions]' `pendingTourIds`), so it is never dropped. A scroll
+/// never rests, so scrolling a list costs no lookups. Tour ids are kept for
+/// the life of this card; No Spoilers states are read live at every open, so
+/// the label is never stale.
+class _EventCardMenuTrigger extends ConsumerStatefulWidget {
+  const _EventCardMenuTrigger({
+    required this.model,
+    required this.onOpen,
+    required this.previewBuilder,
+    required this.child,
+  });
+
+  final GroupEventCardModel model;
+  final VoidCallback onOpen;
+
+  /// The lifted copy of the card, sized to the card as it sits on screen.
+  final Widget Function(Size size) previewBuilder;
+  final Widget child;
+
+  @override
+  ConsumerState<_EventCardMenuTrigger> createState() =>
+      _EventCardMenuTriggerState();
+}
+
+/// How long a finger must rest before the tour lookup starts: past any
+/// ordinary tap (so taps never reach the backend), and still ~220ms ahead of
+/// the 500ms long-press deadline, so the answer is usually in hand when the
+/// menu opens.
+const Duration _kWarmAfter = Duration(milliseconds: 280);
+
+class _EventCardMenuTriggerState extends ConsumerState<_EventCardMenuTrigger> {
+  Timer? _warmTimer;
+
+  /// The lookup for [widget.model], in flight or landed. Cleared when it
+  /// lands empty (possibly a failure), so the next press asks again.
+  Future<List<String>>? _tourIds;
+
+  /// The tours once a lookup has landed with some: what the menu labels the
+  /// No Spoilers row from without waiting.
+  List<String>? _knownTourIds;
+
+  @override
+  void didUpdateWidget(covariant _EventCardMenuTrigger oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // A recycled list slot can now hold a different event. An answer still in
+    // flight for the old one is ignored when it lands (see [_loadTourIds]).
+    if (oldWidget.model.id != widget.model.id) {
+      _warmTimer?.cancel();
+      _tourIds = null;
+      _knownTourIds = null;
+    }
+  }
+
+  @override
+  void dispose() {
+    _warmTimer?.cancel();
+    super.dispose();
+  }
+
+  Future<List<String>> _loadTourIds() {
+    final pending = _tourIds;
+    if (pending != null) return pending;
+    late final Future<List<String>> future;
+    future = loadEventMenuTourIds(ref, widget.model)
+        // Belt and braces: the loader never throws, but a stored failed
+        // future would break every later press on this card.
+        .catchError((Object _) => const <String>[])
+        .then((ids) {
+          // Only this card's current lookup may write back.
+          if (mounted && identical(_tourIds, future)) {
+            if (ids.isEmpty) {
+              _tourIds = null;
+            } else {
+              _knownTourIds = ids;
+            }
+          }
+          return ids;
+        });
+    _tourIds = future;
+    return future;
+  }
+
+  void _onPressDown(LongPressDownDetails _) {
+    _warmTimer?.cancel();
+    if (!hasBroadcastActions(widget.model) || _knownTourIds != null) return;
+    _warmTimer = Timer(_kWarmAfter, () {
+      if (mounted) _loadTourIds();
+    });
+  }
+
+  void _onPressCancel() => _warmTimer?.cancel();
+
+  void _openMenu(LongPressStartDetails details) {
+    _warmTimer?.cancel();
+    final box = context.findRenderObject();
+    if (box is! RenderBox || !box.hasSize) return;
+    final model = widget.model;
+    final knownTourIds = _knownTourIds;
+    // Tours not in hand yet keep loading behind the open menu (a screen
+    // reader's long-press starts the lookup here); the No Spoilers row
+    // settles them if it is chosen first.
+    final pendingTourIds =
+        hasBroadcastActions(model) && knownTourIds == null
+            ? _loadTourIds()
+            : null;
+    unawaited(
+      CardContextMenu.open(
+        context,
+        actions:
+            (menuContext) => eventMenuActions(
+              context: menuContext,
+              ref: ref,
+              model: model,
+              tourIds: knownTourIds ?? const <String>[],
+              pendingTourIds: pendingTourIds,
+              onOpen: widget.onOpen,
+            ),
+        preview: widget.previewBuilder(box.size),
+        onPreviewTap: widget.onOpen,
+        // A press on the card's right half opens the menu against that edge.
+        // A screen reader's long-press action reports no position.
+        origin:
+            details.globalPosition == Offset.zero
+                ? null
+                : details.globalPosition,
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onLongPressDown: _onPressDown,
+      onLongPressCancel: _onPressCancel,
+      onLongPressStart: _openMenu,
+      child: widget.child,
     );
   }
 }
@@ -419,6 +583,10 @@ class _MetaLine extends StatelessWidget {
       if (dates.isNotEmpty) {
         prefix.add(TextSpan(text: dates));
       }
+      // Layout is the shipped one, deliberately: dot, glyph and the
+      // dot + Elo tail are separate paragraphs. Merging them into one line
+      // box moved the title, glyph, dots and the LIVE/next-round line by
+      // ~1px, which the no-layout-shift rule forbids.
       return Row(
         children: [
           Flexible(
@@ -575,10 +743,16 @@ class _EventImage extends ConsumerWidget {
                     ),
                 errorWidget:
                     (context, url, error) =>
-                        _buildFallbackFlag(imageData.fallbackCountryCode),
+                        _buildFallbackFlag(
+                          context,
+                          imageData.fallbackCountryCode,
+                        ),
               );
             }
-            return _buildFallbackFlag(imageData.fallbackCountryCode);
+            return _buildFallbackFlag(
+              context,
+              imageData.fallbackCountryCode,
+            );
           },
           loading:
               () => Skeletonizer(
@@ -605,19 +779,15 @@ class _EventImage extends ConsumerWidget {
   }
 
   /// Builds a fallback widget - country flag if available, otherwise generic icon
-  Widget _buildFallbackFlag(String? countryCode) {
+  Widget _buildFallbackFlag(BuildContext context, String? countryCode) {
     if (countryCode != null && countryCode.isNotEmpty) {
       // Use the same flag style as community events
       return Stack(
         fit: StackFit.expand,
         children: [
           Container(
-            decoration: const BoxDecoration(
-              gradient: LinearGradient(
-                colors: [Color(0xFF1F1C2C), Color(0xFF2C5364)],
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-              ),
+            decoration: BoxDecoration(
+              gradient: _thumbnailGround(context),
             ),
           ),
           CountryFlag.fromCountryCode(
@@ -626,16 +796,7 @@ class _EventImage extends ConsumerWidget {
           ),
           Positioned.fill(
             child: DecoratedBox(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  colors: [
-                    Colors.black.withValues(alpha: 0.35),
-                    Colors.black.withValues(alpha: 0.6),
-                  ],
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                ),
-              ),
+              decoration: BoxDecoration(gradient: _thumbnailScrim(context)),
             ),
           ),
         ],
@@ -692,13 +853,7 @@ class _FlagEventImage extends StatelessWidget {
           fit: StackFit.expand,
           children: [
             Container(
-              decoration: const BoxDecoration(
-                gradient: LinearGradient(
-                  colors: [Color(0xFF1F1C2C), Color(0xFF2C5364)],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                ),
-              ),
+              decoration: BoxDecoration(gradient: _thumbnailGround(context)),
             ),
             if (countryCode != null)
               CountryFlag.fromCountryCode(
@@ -710,16 +865,7 @@ class _FlagEventImage extends StatelessWidget {
               ),
             Positioned.fill(
               child: DecoratedBox(
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: [
-                      Colors.black.withValues(alpha: 0.35),
-                      Colors.black.withValues(alpha: 0.6),
-                    ],
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                  ),
-                ),
+                decoration: BoxDecoration(gradient: _thumbnailScrim(context)),
               ),
             ),
             if (countryCode == null)
@@ -731,17 +877,70 @@ class _FlagEventImage extends StatelessWidget {
   }
 }
 
+/// Dark ground under a flag (phone thumbnail and tablet background): the
+/// shipped dark-mode colours, unchanged.
+const List<Color> _kDarkFlagGround = [Color(0xFF1F1C2C), Color(0xFF2C5364)];
+
+/// Dark ground under the initials fallback artwork: the shipped dark-mode
+/// colours, unchanged.
+const List<Color> _kDarkFallbackGround = [
+  Color(0xFF202329),
+  Color(0xFF303846),
+];
+
+/// Ground behind a phone thumbnail's flag: the shipped ground in dark, a
+/// recessed mint step on paper so a flag-less card is not a dark hole.
+LinearGradient _thumbnailGround(BuildContext context) {
+  final colors = context.colors;
+  return LinearGradient(
+    colors:
+        context.isLightTheme
+            ? [colors.surfaceRecessed, colors.background]
+            : _kDarkFlagGround,
+    begin: Alignment.topLeft,
+    end: Alignment.bottomRight,
+  );
+}
+
+/// Dim over a phone thumbnail's flag. Nothing is written on it, so paper
+/// only needs a whisper of ink to seat the flag; the black 0.35–0.6 wash
+/// turned every flag muddy on the light card.
+LinearGradient _thumbnailScrim(BuildContext context) {
+  final ink = context.colors.textPrimary;
+  return LinearGradient(
+    colors:
+        context.isLightTheme
+            ? [ink.withValues(alpha: 0.04), ink.withValues(alpha: 0.12)]
+            : [
+              Colors.black.withValues(alpha: 0.35),
+              Colors.black.withValues(alpha: 0.6),
+            ],
+    begin: Alignment.topCenter,
+    end: Alignment.bottomCenter,
+  );
+}
+
 class _EventFallbackArtwork extends StatelessWidget {
-  const _EventFallbackArtwork({required this.title});
+  const _EventFallbackArtwork({required this.title, this.overImage = false});
 
   final String title;
 
+  /// Tablet cards write white titles over this artwork under a black scrim,
+  /// so there it stays the dark slab in both themes.
+  final bool overImage;
+
   @override
   Widget build(BuildContext context) {
+    final paper = context.isLightTheme && !overImage;
+    final colors = context.colors;
+    final ink = paper ? colors.textPrimary : Colors.white;
     return DecoratedBox(
-      decoration: const BoxDecoration(
+      decoration: BoxDecoration(
         gradient: LinearGradient(
-          colors: [Color(0xFF202329), Color(0xFF303846)],
+          colors:
+              paper
+                  ? [colors.surfaceRecessed, colors.background]
+                  : _kDarkFallbackGround,
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
@@ -752,16 +951,18 @@ class _EventFallbackArtwork extends StatelessWidget {
           height: 42.w,
           alignment: Alignment.center,
           decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: 0.12),
+            color: ink.withValues(alpha: paper ? 0.06 : 0.12),
             shape: BoxShape.circle,
-            border: Border.all(color: Colors.white.withValues(alpha: 0.22)),
+            border: Border.all(
+              color: ink.withValues(alpha: paper ? 0.16 : 0.22),
+            ),
           ),
           child: Text(
             _eventInitials(title),
             maxLines: 1,
             overflow: TextOverflow.clip,
             style: AppTypography.textSmSemiBold.copyWith(
-              color: Colors.white,
+              color: ink,
               fontSize: 15.sp,
             ),
           ),
@@ -829,7 +1030,8 @@ class _TabletEventBackground extends ConsumerWidget {
         );
       },
       loading: () => _buildLoadingBackground(context),
-      error: (_, __) => _EventFallbackArtwork(title: event.title),
+      error:
+          (_, __) => _EventFallbackArtwork(title: event.title, overImage: true),
     );
   }
 
@@ -864,7 +1066,7 @@ class _TabletEventBackground extends ConsumerWidget {
         Container(
           decoration: const BoxDecoration(
             gradient: LinearGradient(
-              colors: [Color(0xFF1F1C2C), Color(0xFF2C5364)],
+              colors: _kDarkFlagGround,
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
             ),
@@ -876,7 +1078,7 @@ class _TabletEventBackground extends ConsumerWidget {
             theme: ImageTheme(height: double.infinity, width: double.infinity),
           ),
         if (countryCode == null || countryCode.isEmpty)
-          _EventFallbackArtwork(title: fallbackTitle),
+          _EventFallbackArtwork(title: fallbackTitle, overImage: true),
       ],
     );
   }
@@ -917,7 +1119,9 @@ class _LiveLabel extends StatelessWidget {
       child: Text(
         'LIVE',
         style: AppTypography.textXxsMedium.copyWith(
-          color: kPrimaryColor,
+          // Over the dark image keep raw brand cyan; on the theme surface use
+          // the contrast-safe accent ink (identical to cyan in dark mode).
+          color: onLight ? kPrimaryColor : context.colors.accentText,
           fontSize: 11.sp,
           fontWeight: FontWeight.w700,
           letterSpacing: 0.6,
@@ -954,23 +1158,11 @@ class _StarWidget extends ConsumerWidget {
     final favoritesAsync = ref.watch(favoriteEventsProvider);
 
     final isStarred = favoritesAsync.maybeWhen(
-      data:
-          (events) => events.any(
-            (e) =>
-                favoriteEventMatchesId(
-                  storedEventId: e.eventId,
-                  candidateId: tourEventCardModel.id,
-                  eventName: e.eventName,
-                  metadata: e.metadata,
-                ) ||
-                e.eventName.trim().toLowerCase() ==
-                    tourEventCardModel.title.trim().toLowerCase(),
-          ),
+      data: (events) => eventIsFavorited(events, tourEventCardModel),
       orElse: () => false,
       skipLoadingOnRefresh: true,
       skipLoadingOnReload: true,
     );
-    final favoritesCount = favoritesAsync.valueOrNull?.length ?? 0;
 
     final shouldResolveFavoritePlayers =
         !isStarred &&
@@ -995,59 +1187,13 @@ class _StarWidget extends ConsumerWidget {
       );
     }
     return InkWell(
-      onTap: () async {
-        final allowed = await requireFullAuthGuard(context);
-        if (!allowed) return;
-
-        HapticFeedbackService.pin();
-
-        ref
-            .read(favoriteEventsProvider.notifier)
-            .toggleFavorite(
-              eventId: tourEventCardModel.id,
-              eventName: tourEventCardModel.title,
-              timeControl: tourEventCardModel.timeControl,
-              maxAvgElo:
-                  tourEventCardModel.maxAvgElo > 0
-                      ? tourEventCardModel.maxAvgElo
-                      : null,
-              dates:
-                  tourEventCardModel.dates.isNotEmpty
-                      ? tourEventCardModel.dates
-                      : null,
-            )
-            // Same path for Current / For You / Calendar cards — remaps
-            // synthetic cal_event_* ids to group_broadcasts.id when possible.
-            .then((isFavorited) {
-              final nextCount =
-                  isFavorited
-                      ? favoritesCount + 1
-                      : (favoritesCount - 1).clamp(0, favoritesCount);
-              AnalyticsService.instance.trackEventDetached(
-                'Event Favorite Toggled',
-                properties: {
-                  'event_id': tourEventCardModel.id,
-                  'event_name': tourEventCardModel.title,
-                  'time_control': tourEventCardModel.timeControl,
-                  'event_source': tourEventCardModel.eventSource.name,
-                  'tour_category': tourEventCardModel.tourEventCategory.name,
-                  'is_favorited': isFavorited,
-                  'new_favorites_total': nextCount,
-                  if (tourEventCardModel.location != null &&
-                      tourEventCardModel.location!.isNotEmpty)
-                    'location': tourEventCardModel.location,
-                  if (tourEventCardModel.maxAvgElo > 0)
-                    'max_avg_elo': tourEventCardModel.maxAvgElo,
-                },
-              );
-              return isFavorited;
-            })
-            .catchError((e) {
-              debugPrint('[EventCard] Error toggling favorite: $e');
-              // Silently handle error - state will be corrected on next refresh
-              return false;
-            });
-      },
+      // Same path as the focus menu's "Add to favorites" row.
+      onTap:
+          () => toggleEventFavorite(
+            context: context,
+            ref: ref,
+            model: tourEventCardModel,
+          ),
       child: Padding(
         padding: EdgeInsets.fromLTRB(6.w, 6.h, 2.w, 6.h),
         child: SvgWidget(

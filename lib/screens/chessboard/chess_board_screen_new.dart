@@ -1,3 +1,4 @@
+import 'package:chessever2/config/feature_flags.dart';
 import 'package:chessever2/providers/country_dropdown_provider.dart';
 import 'widgets/notation_scroll.dart';
 import 'dart:async';
@@ -18,6 +19,8 @@ import 'package:chessever2/screens/chessboard/analysis/chess_game.dart';
 // import 'package:chessever2/screens/chessboard/analysis/move_impact_analyzer.dart';
 // import 'package:chessever2/screens/chessboard/analysis/simple_move_impact.dart';
 import 'package:chessever2/screens/chessboard/analysis/chess_game_navigator.dart';
+import 'package:chessever2/screens/chessboard/classification_fx/classification_fx.dart';
+import 'package:chessever2/screens/chessboard/classification_fx/move_class.dart';
 import 'package:chessever2/screens/chessboard/game_review/classification_style.dart';
 import 'package:chessever2/screens/chessboard/game_review/game_analysis_report.dart';
 import 'package:chessever2/screens/chessboard/provider/analysis_view_session.dart';
@@ -39,8 +42,16 @@ import 'package:chessever2/screens/chessboard/utils/engine_pv_arrows.dart';
 import 'package:chessever2/providers/gamebase_overlay_settings_provider.dart';
 import 'package:chessever2/screens/chessboard/widgets/chess_board_bottom_nav_bar.dart';
 import 'package:chessever2/screens/chessboard/widgets/chess_board_context_menu.dart';
+import 'package:chessever2/screens/chessboard/widgets/board_focus_menus.dart';
+import 'package:chessever2/screens/library/widgets/library_context_menu.dart';
+import 'package:chessever2/screens/my_space/actions/space_menu_action.dart';
+import 'package:chessever2/screens/my_space/providers/space_shortcuts_provider.dart';
+import 'package:chessever2/widgets/space_shortcut_drafts.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/utils/game_space_shortcut.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/utils/round_space_shortcut.dart'
+    show spaceRoundLabelName, tournamentEventSpaceDraft;
 import 'package:chessever2/screens/chessboard/widgets/chess_board_from_fen_new.dart'
-    show GameCardChessboard;
+    show GameCardChessboard, showGameShareOverlay;
 import 'package:chessever2/screens/chessboard/widgets/engine_pv_layouts.dart';
 import 'package:chessever2/screens/chessboard/video/video_widgets.dart';
 import 'package:chessever2/providers/event_video_provider.dart';
@@ -134,6 +145,7 @@ import 'package:showcaseview/showcaseview.dart';
 import 'package:chessever2/repository/local_storage/local_storage_repository.dart';
 import 'package:chessever2/services/lichess_move_annotations_service.dart';
 import 'package:chessever2/main.dart' show routeObserver, pageRouteObserver;
+import 'package:chessever2/screens/chessboard/utils/legible_ink.dart';
 
 const Color kGameEndingRedColor = Color(0xCCF53236);
 
@@ -554,6 +566,254 @@ ChessMovePointer? resolveBoardMovePointerForAnnotations({
   return pointer;
 }
 
+/// Which of the board's annotation sources are on screen for this visit.
+///
+/// The board badge and the classified-move sound both read this, so the sound
+/// can never announce a verdict the board is hiding (raw PGN mode, a cleared
+/// analysis, hidden source symbols).
+({bool source, bool report, bool local}) boardAnnotationVisibility({
+  required AnalysisViewSession viewSession,
+  required bool rawPgnMode,
+  required bool analysisCleared,
+}) {
+  final source = viewSession.showSourceAnnotations(
+    rawPgn: rawPgnMode,
+    analysisCleared: analysisCleared,
+  );
+  final report = viewSession.showReport(
+    rawPgn: rawPgnMode,
+    analysisCleared: analysisCleared,
+  );
+  // The cleared tree contains only new edits. Keep Annotate usable while
+  // imported/cached annotations remain suppressed.
+  final local = source || (analysisCleared && !rawPgnMode);
+  return (source: source, report: report, local: local);
+}
+
+/// What the board draws on the displayed move: a classification badge, a
+/// literal glyph badge, or nothing.
+///
+/// One resolution feeds the badge, the classified-move sound and the landing
+/// animation, so the three can never disagree about a move.
+@immutable
+class BoardMoveBadge {
+  const BoardMoveBadge({this.annotation, this.glyphNag});
+
+  static const BoardMoveBadge none = BoardMoveBadge();
+
+  /// Path A: a classification badge. Our report's verdict (live, or carried by
+  /// the PGN's `$240`–`$247` block), Lichess's analysis, or a quality NAG
+  /// (`$1`–`$4`, `$6`) that stands for one.
+  final LichessMoveAnnotation? annotation;
+
+  /// Path B: a NAG drawn as its literal glyph because no classification badge
+  /// stands for it (`!?`, `□`, evaluation and observation symbols). Only set
+  /// when [annotation] is null.
+  final int? glyphNag;
+
+  /// The classification this badge announces, or null for an ordinary move.
+  MoveClass? get moveClass => moveClassForBoardBadge(
+    annotationType: annotation?.type,
+    glyphNag: glyphNag,
+  );
+}
+
+/// Badge → move class.
+///
+/// A classification badge resolves back through the report verdict it draws
+/// ([moveClassFromClassification]), so a hand-applied `?`, a PGN `$245` and a
+/// live report's Mistake all land on the same class. `forced` (□) is the one
+/// badge with no class: it says how many moves there were, not how good this
+/// one was. Of the glyph badges only `!?` carries a class.
+MoveClass? moveClassForBoardBadge({
+  LichessMoveAnnotationType? annotationType,
+  int? glyphNag,
+}) {
+  if (annotationType != null) {
+    for (final classification in GameMoveClassification.values) {
+      if (annotationTypeForClassification(classification) == annotationType) {
+        return moveClassFromClassification(classification);
+      }
+    }
+    return null;
+  }
+  return glyphNag == null ? null : moveClassFromGlyphNag(glyphNag);
+}
+
+/// Resolves the badge for the move at [movePointer], in the board's order of
+/// precedence.
+///
+/// The reader's own NAGs and the PGN's NAGs come first (a PGN verdict yields
+/// once our report has judged the move), then our report's verdict on the
+/// mainline moves it judged, otherwise Lichess's analysis. A NAG with no
+/// classification badge falls through to its literal glyph.
+///
+/// The two sources that live in providers are read through callbacks, which
+/// are only called when that source is on screen: the board passes
+/// `ref.watch`, a one-off lookup passes a read that never spins a provider up.
+/// A null [reviewStateFor] result means no report covers this game.
+BoardMoveBadge resolveBoardMoveBadge({
+  required ChessGame? analysisGame,
+  required ChessMovePointer movePointer,
+  required bool isPvPreviewActive,
+  required Map<String, List<int>> userMoveNags,
+  required bool showReportAnnotations,
+  required bool showSourceAnnotations,
+  required bool showLocalAnnotations,
+  required Map<int, LichessMoveAnnotation> Function(ChessGame analysisGame)
+  lichessAnnotationsFor,
+  required MobileGameReviewState? Function() reviewStateFor,
+}) {
+  final activeMove = resolveBoardMoveForAnnotations(
+    game: analysisGame,
+    pointer: movePointer,
+    isPvPreviewActive: isPvPreviewActive,
+  );
+  final annotationMovePointer = resolveBoardMovePointerForAnnotations(
+    pointer: movePointer,
+    isPvPreviewActive: isPvPreviewActive,
+  );
+
+  // Assigned by the resolver below so the Unicode-glyph fallback (Path B) can
+  // tell whether our own report has judged this move — a move we analysed and
+  // left unlabelled included.
+  var moveIsReportJudged = false;
+  final annotation =
+      (() {
+        if (analysisGame == null || isPvPreviewActive) {
+          return null;
+        }
+        if (!showReportAnnotations) {
+          if (!showLocalAnnotations) return null;
+          final nags = _mergeUserNagsForMovePointer(
+            activeMove,
+            annotationMovePointer,
+            userMoveNags,
+          );
+          final nag = primaryBoardNag(nags);
+          final type = nag == null ? null : annotationTypeForQualityNag(nag);
+          return type == null
+              ? null
+              : LichessMoveAnnotation(type: type, comment: '');
+        }
+        final lichessAnnotations = lichessAnnotationsFor(analysisGame);
+        final reviewState = reviewStateFor();
+        final boardFingerprint = gameReportFingerprint(analysisGame);
+        final reportClassifications =
+            reviewState == null
+                ? const <int, GameMoveClassification>{}
+                : reportClassificationsForNotationAttach(
+                  reviewState: reviewState,
+                  boardGameFingerprint: boardFingerprint,
+                );
+        final reportAnnotations = <int, LichessMoveAnnotation>{
+          // PGN-carried classifications first: a live report on the same
+          // plies is fresher and overwrites them.
+          ...pgnClassificationAnnotations(analysisGame),
+          for (final entry in reportClassifications.entries)
+            entry.key: LichessMoveAnnotation(
+              type: _annotationTypeForGameReport(entry.value),
+              comment: '',
+              useClassificationIcon: true,
+            ),
+        };
+        final isOnMainline = movePointer.isEmpty || movePointer.length == 1;
+        final currentMoveIndex =
+            (isOnMainline && movePointer.isNotEmpty)
+                ? movePointer[0].toInt()
+                : -1;
+        // Whether our report has looked at this move at all — a move it
+        // analysed and left unlabelled included. Within that reach the report
+        // *replaces* the imported annotations rather than layering over them:
+        // on a move we deliberately gave no symbol, Lichess's opinion of it
+        // must not show through the hole.
+        final reportJudgedThisMove = reportJudgedMainlineMove(
+          isMainline: isOnMainline,
+          moveIndex: currentMoveIndex >= 0 ? currentMoveIndex : null,
+          pointerIndex: null,
+          reportedMoveCount:
+              reviewState == null
+                  ? 0
+                  : reportClassificationCoverage(
+                    reviewState: reviewState,
+                    boardGameFingerprint: boardFingerprint,
+                  ),
+        );
+        moveIsReportJudged = reportJudgedThisMove;
+        final moveAnnotations =
+            reportJudgedThisMove
+                ? reportAnnotations
+                : <int, LichessMoveAnnotation>{
+                  if (showSourceAnnotations) ...lichessAnnotations,
+                  ...reportAnnotations,
+                };
+        final reportVerdict =
+            currentMoveIndex >= 0 ? reportAnnotations[currentMoveIndex] : null;
+        if (!showLocalAnnotations) return reportVerdict;
+        final userNags = userNagsForMovePointer(
+          annotationMovePointer,
+          userMoveNags,
+        );
+
+        // 1. Author/user NAGs win — they reflect explicit intent and must
+        // override Lichess analysis classifications. Quality NAGs ($1–$4)
+        // get the high-fidelity SVG badge here; non-mappable NAGs ($5–$7,
+        // $10+) return null so Path B renders the Unicode glyph badge.
+        //
+        // The exception is the PGN's own move verdict once our report has
+        // judged the move: a broadcast PGN's baked-in `?!` is the Lichess
+        // database's opinion, not the reader's, and our report supersedes it.
+        final mergedNags = _mergeUserNagsForMovePointer(
+          activeMove,
+          annotationMovePointer,
+          userMoveNags,
+          reportJudgedMove: reportJudgedThisMove,
+        );
+        if (mergedNags.isNotEmpty) {
+          final nag = primaryBoardNag(mergedNags) ?? mergedNags.first;
+          final type = annotationTypeForQualityNag(nag);
+          if (type != null) {
+            return LichessMoveAnnotation(type: type, comment: '');
+          }
+          // Non-mappable NAG. A glyph the reader applied themselves keeps the
+          // badge (Path B draws it); one that only came from the PGN yields to
+          // our report — to its verdict if it gave one, and to a bare square
+          // if it judged the move unremarkable.
+          if (reportJudgedThisMove && userNags.isEmpty) return reportVerdict;
+          return null;
+        }
+
+        // 2. No explicit NAGs → our report verdict on the moves it judged,
+        // otherwise the Lichess fetched analysis, on mainline only.
+        if (currentMoveIndex >= 0 && moveAnnotations.isNotEmpty) {
+          final annotation = moveAnnotations[currentMoveIndex];
+          if (annotation != null) return annotation;
+        }
+
+        return null;
+      })();
+  if (annotation != null) return BoardMoveBadge(annotation: annotation);
+  if (!showLocalAnnotations) return BoardMoveBadge.none;
+
+  // Path B: any other NAG ($7, $10, $13–$22, $32, $36, $40, $44, $132, $138,
+  // $140, $146) → the literal Unicode glyph. Includes user-applied NAGs. The
+  // PGN's own move verdicts are filtered out once our report has judged the
+  // move, so a broadcast `?!` cannot come back as a text badge here after
+  // Path A stepped aside for our verdict — or for our silence.
+  final mergedNags = _mergeUserNagsForMovePointer(
+    activeMove,
+    annotationMovePointer,
+    userMoveNags,
+    reportJudgedMove: moveIsReportJudged,
+  );
+  final nag = primaryBoardNag(mergedNags);
+  if (nag == null) return BoardMoveBadge.none;
+  // Skip if it would have been an SVG type (already handled above).
+  if (annotationTypeForQualityNag(nag) != null) return BoardMoveBadge.none;
+  if (getNagDisplay(nag) == null) return BoardMoveBadge.none;
+  return BoardMoveBadge(glyphNag: nag);
+}
+
 String _moveSansSignature(List<String> moveSans) {
   // Normalize: strip check indicators (+, #) for consistent signature matching
   // Different PGN parsers may or may not include these symbols
@@ -626,6 +886,19 @@ String? _extractLichessGameId(ChessGame game) {
   }
 
   return null;
+}
+
+/// The Lichess-analysis lookup for [game]'s mainline, shared by the board
+/// badge and the classified-move sound so both read the same provider entry.
+LichessMoveAnnotationsParams _lichessAnnotationsParamsFor(ChessGame game) {
+  final mainlineSans = game.mainline.map((move) => move.san).toList();
+  return LichessMoveAnnotationsParams(
+    lichessGameId: _extractLichessGameId(game),
+    siteUrl: _extractLichessSiteUrl(game),
+    signature: _moveSansSignature(mainlineSans),
+    moveSans: mainlineSans,
+    isLiveGame: game.isLiveGame,
+  );
 }
 
 // DISABLED: Local move impact calculation - we get move impact from Supabase edge function
@@ -1090,6 +1363,7 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
   int _pageSettleGeneration = 0;
   ProviderSubscription<AsyncValue<ChessBoardStateNew>>? _audioSub;
   ChessBoardProviderParams? _audioParams;
+  Timer? _classificationWarmUpTimer;
   ProviderSubscription<AsyncValue<ChessBoardStateNew>>? _pipSub;
   ChessBoardProviderParams? _pipParams;
   bool _didInitialBoardBootstrap = false;
@@ -1944,6 +2218,25 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
         },
         fireImmediately: true,
       );
+      if (FeatureFlags.boardClassificationSounds) {
+        _warmUpClassificationSounds();
+      }
+    });
+  }
+
+  /// Loads the classified-move sounds before the first classified move needs
+  /// one (otherwise that first sound waits on a decode). Deferred past the
+  /// board's opening frames, skipped while Sound is off, idempotent across
+  /// page changes.
+  void _warmUpClassificationSounds() {
+    _classificationWarmUpTimer?.cancel();
+    _classificationWarmUpTimer = Timer(const Duration(milliseconds: 600), () {
+      _classificationWarmUpTimer = null;
+      if (!mounted) return;
+      final soundEnabled =
+          ref.read(boardSettingsProviderNew).valueOrNull?.soundEnabled == true;
+      if (!soundEnabled) return;
+      unawaited(ClassificationSfx.warmUp());
     });
   }
 
@@ -2017,7 +2310,17 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
         state.isAnalysisMode ? state.analysisState.moveSans : state.moveSans;
 
     if (moveIndexForSound >= 0 && moveIndexForSound < movesSan.length) {
-      audioService.playSfxForSan(movesSan[moveIndexForSound]);
+      // With classified-move sounds on, a move landing forward announces its
+      // classification (the board badges it and plays its landing animation
+      // on the same ply); undoing a move keeps the ordinary sound of the move
+      // it takes back. With them off, every move plays its ordinary sound.
+      ClassificationSfx.playMove(
+        san: movesSan[moveIndexForSound],
+        moveClass:
+            FeatureFlags.boardClassificationSounds && isMovingForward
+                ? _landedMoveClass(state)
+                : null,
+      );
     } else if (currentIndex == -1 && prevIndex >= 0) {
       // Moving back to the starting position
       audioService.playSound(SfxType.move);
@@ -2034,6 +2337,46 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
     } else {
       audioService.playSound(SfxType.move);
     }
+  }
+
+  /// The classification the board badges on [state]'s displayed move, or null.
+  ///
+  /// Resolved exactly as the board badge is ([resolveBoardMoveBadge]), but with
+  /// reads instead of watches: this runs inside the provider listener, before
+  /// the board rebuilds. The two provider-held sources are only read when
+  /// already alive (the board keeps them alive while it shows them), so a
+  /// sound never spins up a report controller or a Lichess fetch.
+  MoveClass? _landedMoveClass(ChessBoardStateNew state) {
+    final params = _audioParams;
+    if (params == null) return null;
+    final analysis = state.analysisState;
+    final visibility = boardAnnotationVisibility(
+      viewSession: ref.read(analysisViewSessionProvider(state.game.gameId)),
+      rawPgnMode:
+          ref.read(boardSettingsProviderNew).valueOrNull?.rawPgnMode ?? true,
+      analysisCleared: analysis.game?.analysisCleared ?? false,
+    );
+    return resolveBoardMoveBadge(
+      analysisGame: analysis.game,
+      movePointer: analysis.movePointer,
+      isPvPreviewActive: state.isPvPreviewActive,
+      userMoveNags: state.moveNags,
+      showReportAnnotations: visibility.report,
+      showSourceAnnotations: visibility.source,
+      showLocalAnnotations: visibility.local,
+      lichessAnnotationsFor: (game) {
+        final provider = lichessMoveAnnotationsProvider(
+          _lichessAnnotationsParamsFor(game),
+        );
+        if (!ref.exists(provider)) return const <int, LichessMoveAnnotation>{};
+        return ref.read(provider).valueOrNull ??
+            const <int, LichessMoveAnnotation>{};
+      },
+      reviewStateFor: () {
+        final provider = mobileGameReviewProvider(params);
+        return ref.exists(provider) ? ref.read(provider) : null;
+      },
+    ).moveClass;
   }
 
   // Guards so the PiP provider listener does NOT hit the native channel on every
@@ -2681,6 +3024,7 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
     _pipRecoveryGeneration++;
     _boardKeepAliveSub?.close();
     _audioSub?.close();
+    _classificationWarmUpTimer?.cancel();
     _pipSub?.close();
     unawaited(PipService.instance.clearActiveGame());
     _pageSettleTimer?.cancel();
@@ -3538,15 +3882,18 @@ class _SwipeTutorialOverlayState extends State<_SwipeTutorialOverlay>
                                   decoration: BoxDecoration(
                                     color: kPrimaryColor,
                                     shape: BoxShape.circle,
-                                    boxShadow: [
-                                      BoxShadow(
-                                        color: kPrimaryColor.withValues(
-                                          alpha: 0.4,
-                                        ),
-                                        blurRadius: 12,
-                                        offset: const Offset(0, 6),
-                                      ),
-                                    ],
+                                    boxShadow:
+                                        context.isLightTheme
+                                            ? null
+                                            : [
+                                              BoxShadow(
+                                                color: kPrimaryColor.withValues(
+                                                  alpha: 0.4,
+                                                ),
+                                                blurRadius: 12,
+                                                offset: const Offset(0, 6),
+                                              ),
+                                            ],
                                     border: Border.all(
                                       color: Colors.white,
                                       width: 3,
@@ -3554,7 +3901,11 @@ class _SwipeTutorialOverlayState extends State<_SwipeTutorialOverlay>
                                   ),
                                   child: Icon(
                                     Icons.view_carousel_rounded,
-                                    color: Colors.white,
+                                    // Paper: accent ink (white on cyan is 2.4:1).
+                                    color:
+                                        context.isLightTheme
+                                            ? context.colors.inkOnAccent
+                                            : Colors.white,
                                     size: 22.sp,
                                   ),
                                 ),
@@ -4472,7 +4823,7 @@ class _AppBarState extends ConsumerState<_AppBar> {
             innerIcon = Icon(
               Icons.check_circle_outline_rounded,
               key: const ValueKey('save-check'),
-              color: kPrimaryColor,
+              color: context.colors.accentText,
               size: 20.sp,
             );
             break;
@@ -4618,7 +4969,7 @@ class _AppBarState extends ConsumerState<_AppBar> {
           message:
               'Remove all variations, comments, and annotations from this game? You can bring them back with Restore Analysis. Live engine analysis will stay on.',
           confirmLabel: 'Clear',
-          confirmColor: kRedColor,
+          confirmColor: context.colors.danger,
         ) ??
         false;
     if (!confirmed || !mounted) return;
@@ -5508,7 +5859,7 @@ class _GameChipButton extends StatelessWidget {
               child: Text(
                 label,
                 style: AppTypography.textXsMedium.copyWith(
-                  color: isOpen ? kPrimaryColor : context.colors.textPrimary,
+                  color: isOpen ? context.colors.accentText : context.colors.textPrimary,
                 ),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
@@ -5526,7 +5877,7 @@ class _GameChipButton extends StatelessWidget {
                   Icons.keyboard_arrow_down_rounded,
                   color:
                       isOpen
-                          ? kPrimaryColor
+                          ? context.colors.accentText
                           : context.colors.textPrimary.withValues(alpha: 0.7),
                   size: 16.ic,
                 ),
@@ -5554,7 +5905,7 @@ class _GameStatusIndicator extends StatelessWidget {
         height: 10.sp,
         child: CircularProgressIndicator(
           strokeWidth: 1.5,
-          color: kPrimaryColor,
+          color: context.colors.accentText,
         ),
       );
     }
@@ -5577,7 +5928,7 @@ class _GameStatusIndicator extends StatelessWidget {
   Color _getStatusColor(BuildContext context) {
     switch (status) {
       case GameStatus.ongoing:
-        return kPrimaryColor;
+        return context.colors.accentText;
       case GameStatus.whiteWins:
       case GameStatus.blackWins:
       case GameStatus.draw:
@@ -6156,7 +6507,10 @@ class _GameDropdownContentState extends ConsumerState<_GameDropdownContent> {
       child: Center(
         child: _DashedVerticalLine(
           height: _cardRowHeight,
-          color: kPrimaryColor.withValues(alpha: 0.5),
+          color:
+              context.isLightTheme
+                  ? context.colors.accentText.withValues(alpha: 0.6)
+                  : kPrimaryColor.withValues(alpha: 0.5),
           dashLength: 5,
           gapLength: 4,
           thickness: 1.4,
@@ -6454,10 +6808,8 @@ class _StickyRoundTimelineState extends State<_StickyRoundTimeline> {
                       style: AppTypography.textXsMedium.copyWith(
                         color:
                             isActive
-                                ? kPrimaryColor
-                                : context.colors.textPrimary.withValues(
-                                  alpha: 0.5,
-                                ),
+                                ? context.colors.accentText
+                                : context.textInk(0.5),
                         fontWeight:
                             isActive ? FontWeight.w700 : FontWeight.w500,
                       ),
@@ -6482,7 +6834,10 @@ class _StickyRoundTimelineState extends State<_StickyRoundTimeline> {
                       height: 2,
                       width: 16.w,
                       decoration: BoxDecoration(
-                        color: isActive ? kPrimaryColor : Colors.transparent,
+                        color:
+                            isActive
+                                ? context.colors.accentText
+                                : Colors.transparent,
                         borderRadius: BorderRadius.circular(1.br),
                       ),
                     ),
@@ -6586,7 +6941,48 @@ class _GameSelectorCard extends ConsumerWidget {
     required this.gamesContext,
     required this.playerProfileDataSource,
     this.liveBatchKey,
+    this.isPreview = false,
   });
+
+  /// The copy the long-press menu lifts: same card, no gestures, no test key.
+  final bool isPreview;
+
+  /// Long-press: the same game menu every other game card raises, with this
+  /// thumbnail lifted in place.
+  void _showMenu(BuildContext cardContext, WidgetRef ref, GamesTourModel live) {
+    final spaceDraft = gameSpaceShortcutDraft(live);
+    // The strip builds the one live card per game; this is only its copy.
+    final selected = isSelected;
+    showLibraryContextMenu(
+      context: cardContext,
+      previewBuilder:
+          (_) => _GameSelectorCard(
+            game: game,
+            isSelected: selected,
+            onTap: onTap,
+            viewSource: viewSource,
+            gamesContext: gamesContext,
+            playerProfileDataSource: playerProfileDataSource,
+            liveBatchKey: liveBatchKey,
+            isPreview: true,
+          ),
+      onPreviewTap: onTap,
+      actions: [
+        LibraryMenuAction(
+          icon: Icons.open_in_new_rounded,
+          label: 'Open game',
+          onSelected: onTap,
+        ),
+        LibraryMenuAction(
+          icon: Icons.ios_share_rounded,
+          label: 'Share',
+          onSelected: () => showGameShareOverlay(cardContext, ref, live),
+        ),
+        if (spaceDraft != null)
+          spaceMenuAction(context: cardContext, ref: ref, draft: spaceDraft),
+      ],
+    );
+  }
 
   final GamesTourModel game;
   final bool isSelected;
@@ -6672,9 +7068,10 @@ class _GameSelectorCard extends ConsumerWidget {
     final evalBarWidth = 10.w;
 
     return GestureDetector(
-      key: boardGameDropdownCardTestKey(game.gameId),
+      key: isPreview ? null : boardGameDropdownCardTestKey(game.gameId),
       behavior: HitTestBehavior.opaque,
-      onTap: onTap,
+      onTap: isPreview ? null : onTap,
+      onLongPress: isPreview ? null : () => _showMenu(context, ref, liveGame),
       child: SizedBox(
         width: boardOuter,
         child: Column(
@@ -6701,7 +7098,10 @@ class _GameSelectorCard extends ConsumerWidget {
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(8.br),
                 border: Border.all(
-                  color: isSelected ? kPrimaryColor : Colors.transparent,
+                  color:
+                      isSelected
+                          ? context.colors.accentText
+                          : Colors.transparent,
                   width: _gameSelectorBoardBorderWidth,
                 ),
               ),
@@ -6757,6 +7157,9 @@ class _GameSelectorCard extends ConsumerWidget {
                                     orientation: Side.white,
                                     showCoordinates: false,
                                     gameStatus: liveGame.gameStatus,
+                                    // The lifted copy matches the pressed
+                                    // thumbnail: game-end marks at rest.
+                                    animateEnding: !isPreview,
                                   ),
                                 );
                               },
@@ -6838,7 +7241,7 @@ class _RoundSeparator extends StatelessWidget {
             Text(
               _formatRoundName(roundSlug),
               style: AppTypography.textXxsMedium.copyWith(
-                color: context.colors.textPrimary.withValues(alpha: 0.4),
+                color: context.textInk(0.4),
                 letterSpacing: 0.8,
                 fontSize: 9.sp,
               ),
@@ -7026,14 +7429,21 @@ class _GameItemState extends State<_GameItem> {
                         height: 6.h,
                         decoration: BoxDecoration(
                           shape: BoxShape.circle,
-                          color: kPrimaryColor,
-                          boxShadow: [
-                            BoxShadow(
-                              color: kPrimaryColor.withValues(alpha: 0.4),
-                              blurRadius: 4,
-                              spreadRadius: 1,
-                            ),
-                          ],
+                          color: context.colors.accentText,
+                          // The bloom only reads on black; paper gets the
+                          // flat dot.
+                          boxShadow:
+                              context.isLightTheme
+                                  ? null
+                                  : [
+                                    BoxShadow(
+                                      color: kPrimaryColor.withValues(
+                                        alpha: 0.4,
+                                      ),
+                                      blurRadius: 4,
+                                      spreadRadius: 1,
+                                    ),
+                                  ],
                         ),
                       )
                       : null,
@@ -7045,7 +7455,7 @@ class _GameItemState extends State<_GameItem> {
                 style: AppTypography.textXsMedium.copyWith(
                   color:
                       widget.isSelected
-                          ? kPrimaryColor
+                          ? context.colors.accentText
                           : context.colors.textPrimary.withValues(alpha: 0.9),
                   fontWeight:
                       widget.isSelected ? FontWeight.w600 : FontWeight.w500,
@@ -7063,9 +7473,7 @@ class _GameItemState extends State<_GameItem> {
                       ? Text(
                         resultText,
                         style: AppTypography.textXxsMedium.copyWith(
-                          color: context.colors.textPrimary.withValues(
-                            alpha: 0.5,
-                          ),
+                          color: context.textInk(0.5),
                           fontWeight: FontWeight.w500,
                           letterSpacing: -0.2,
                         ),
@@ -7073,9 +7481,7 @@ class _GameItemState extends State<_GameItem> {
                       : Text(
                         'vs',
                         style: AppTypography.textXxsRegular.copyWith(
-                          color: context.colors.textPrimary.withValues(
-                            alpha: 0.35,
-                          ),
+                          color: context.textInk(0.35),
                           fontStyle: FontStyle.italic,
                         ),
                       ),
@@ -7087,7 +7493,7 @@ class _GameItemState extends State<_GameItem> {
                 style: AppTypography.textXsMedium.copyWith(
                   color:
                       widget.isSelected
-                          ? kPrimaryColor
+                          ? context.colors.accentText
                           : context.colors.textPrimary.withValues(alpha: 0.9),
                   fontWeight:
                       widget.isSelected ? FontWeight.w600 : FontWeight.w500,
@@ -7107,13 +7513,13 @@ class _GameItemState extends State<_GameItem> {
                         height: 12.sp,
                         child: CircularProgressIndicator(
                           strokeWidth: 1.5,
-                          color: kPrimaryColor,
+                          color: context.colors.accentText,
                         ),
                       )
                       : widget.isSelected
                       ? Icon(
                         Icons.check_rounded,
-                        color: kPrimaryColor,
+                        color: context.colors.accentText,
                         size: 14.ic,
                       )
                       : null,
@@ -8489,6 +8895,20 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard>
     with TickerProviderStateMixin {
   bool _showDelayedGameEndingEffect = false;
   bool _wasAtEnd = false;
+
+  // Classified-move landing. [_landingSerial] bumps once per forward landing
+  // on the page the user is looking at (a step or jump forward, autoplay, a
+  // live move, a move played on the board), never on a rebuild or a backward
+  // step, and is the [ClassificationLanding] trigger. [_landingPlyKey] names
+  // the ply that landed, so the animation only draws while it is displayed.
+  // [_landingClass] is the class that ply carried on the frame it landed,
+  // latched once per serial: a class that resolves later (a finished report,
+  // Lichess annotations, a hand-applied NAG) never turns a past landing into
+  // a new one.
+  int _landingSerial = 0;
+  String? _landingPlyKey;
+  MoveClass? _landingClass;
+  bool _landingClassLatched = true;
   bool _selectionRestoreScheduled = false;
   int? _lastSelectionClearRequestId;
 
@@ -8601,16 +9021,44 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard>
     );
   }
 
-  // Map a quality NAG — the reader's own or the PGN author's — to the
-  // classification badge that stands for that glyph.
-  //
-  // The map lives in classification_style.dart so the board, the notation chip
-  // and the Annotate picker cannot drift: a hand-applied `!` draws the same
-  // mark as a `!` the report earned. $5 (!?) and $7 (□) have no badge and fall
-  // through to the caller's Unicode-glyph path, rendered in the author colour
-  // from nag_display.dart so it still matches the SAN text exactly.
-  LichessMoveAnnotationType? _mapNagToAnnotationType(int nag) =>
-      annotationTypeForQualityNag(nag);
+  /// Identity of the displayed ply: where it sits in the tree and the move
+  /// that produced it (a replaced move at the same pointer is a new ply).
+  static String _classifiedLandingPlyKey(AnalysisBoardState analysis) =>
+      '${NotationPointer.encode(analysis.movePointer)}|${analysis.lastMove?.uci}';
+
+  /// Records a forward landing for [ClassificationLanding]. Mirrors the move
+  /// sound's own rule (the screen's audio listener announces a move only when
+  /// the ply index advances), so a classified move's sound and its landing
+  /// arrive together; opening a board is the one exception (see below).
+  void _trackClassifiedLanding(_AnalysisBoard oldWidget) {
+    if (widget.game.gameId != oldWidget.game.gameId) {
+      // The board was handed another game: nothing of the old one landed here.
+      _landingPlyKey = null;
+      return;
+    }
+    final before = oldWidget.chessBoardState.analysisState;
+    final after = widget.chessBoardState.analysisState;
+    // A landing lasts only while its ply is displayed. Coming back to it
+    // without advancing (a same-index jump, closing a PV preview) is not a
+    // new landing, so the ply is forgotten the moment the board leaves it.
+    if (_landingPlyKey != null &&
+        _landingPlyKey != _classifiedLandingPlyKey(after)) {
+      _landingPlyKey = null;
+    }
+    if (!widget.isActivePage) return;
+    // Opening a board is not a landing: the first parse jumps from the
+    // loading placeholder (no moves, index -1) straight to the shown move.
+    if (oldWidget.chessBoardState.isLoadingMoves ||
+        (before.lastMove == null && before.allMoves.isEmpty)) {
+      return;
+    }
+    if (after.currentMoveIndex <= before.currentMoveIndex) return;
+    if (after.lastMove == null) return;
+    _landingSerial++;
+    _landingPlyKey = _classifiedLandingPlyKey(after);
+    _landingClass = null;
+    _landingClassLatched = false;
+  }
 
   Square? _lastMoveDestinationSquare(Move? lastMove) {
     if (lastMove == null) return null;
@@ -8833,6 +9281,8 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard>
     if (widget.game.gameId != oldWidget.game.gameId) {
       _cancelLikeInteraction(resetAnchor: true);
     }
+
+    _trackClassifiedLanding(oldWidget);
 
     // We used to bump a _selectionEpoch and re-key the Chessboard on every
     // external FEN change to clear chessground's tap-selection — but the
@@ -9853,18 +10303,12 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard>
     );
     final analysisCleared =
         widget.chessBoardState.analysisState.game?.analysisCleared ?? false;
-    final showSourceAnnotations = viewSession.showSourceAnnotations(
-      rawPgn: rawPgnMode,
+    final annotationVisibility = boardAnnotationVisibility(
+      viewSession: viewSession,
+      rawPgnMode: rawPgnMode,
       analysisCleared: analysisCleared,
     );
-    final showReportAnnotations = viewSession.showReport(
-      rawPgn: rawPgnMode,
-      analysisCleared: analysisCleared,
-    );
-    // The cleared tree contains only new edits. Keep Annotate usable while
-    // imported/cached annotations remain suppressed.
-    final showLocalAnnotations =
-        showSourceAnnotations || (analysisCleared && !rawPgnMode);
+    final showLocalAnnotations = annotationVisibility.local;
     final boardShareBoundaryKey = ref.watch(boardShareBoundaryKeyProvider);
     final notifier = ref.read(chessBoardScreenProviderNew(params).notifier);
     // chessground v10: the board's tap-selection is cleared via the controller
@@ -9874,10 +10318,6 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard>
     final activeMovePointer = widget.chessBoardState.analysisState.movePointer;
     final activeMove = resolveBoardMoveForAnnotations(
       game: analysisGame,
-      pointer: activeMovePointer,
-      isPvPreviewActive: widget.chessBoardState.isPvPreviewActive,
-    );
-    final annotationMovePointer = resolveBoardMovePointerForAnnotations(
       pointer: activeMovePointer,
       isPvPreviewActive: widget.chessBoardState.isPvPreviewActive,
     );
@@ -9914,141 +10354,31 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard>
         _showDelayedGameEndingEffect &&
         canShowFinishedSpoilers;
 
-    // Assigned by the resolver below so the Unicode-glyph fallback (Path B) can
-    // tell whether our own report has judged this move — a move we analysed and
-    // left unlabelled included.
-    var boardMoveIsReportJudged = false;
-    final boardAnnotation =
-        (() {
-          if (analysisGame == null ||
-              widget.chessBoardState.isPvPreviewActive) {
-            return null;
-          }
-          if (!showReportAnnotations) {
-            if (!showLocalAnnotations) return null;
-            final nags = _mergeUserNagsForMovePointer(
-              activeMove,
-              annotationMovePointer,
-              widget.chessBoardState.moveNags,
-            );
-            final nag = primaryBoardNag(nags);
-            final type = nag == null ? null : _mapNagToAnnotationType(nag);
-            return type == null
-                ? null
-                : LichessMoveAnnotation(type: type, comment: '');
-          }
-          final mainlineSans =
-              analysisGame.mainline.map((move) => move.san).toList();
-          final lichessGameId = _extractLichessGameId(analysisGame);
-          final lichessSiteUrl = _extractLichessSiteUrl(analysisGame);
-          final lichessAnnotationsAsync = ref.watch(
-            lichessMoveAnnotationsProvider(
-              LichessMoveAnnotationsParams(
-                lichessGameId: lichessGameId,
-                siteUrl: lichessSiteUrl,
-                signature: _moveSansSignature(mainlineSans),
-                moveSans: mainlineSans,
-                isLiveGame: analysisGame.isLiveGame,
-              ),
-            ),
-          );
-          final lichessAnnotations =
-              lichessAnnotationsAsync.valueOrNull ??
-              const <int, LichessMoveAnnotation>{};
-          // Watch immutable [MobileGameReviewState] so report completion rebuilds
-          // board badges (StateNotifierProvider — not ChangeNotifier).
-          final reviewState = ref.watch(mobileGameReviewProvider(params));
-          final boardFingerprint = gameReportFingerprint(analysisGame);
-          final reportClassifications = reportClassificationsForNotationAttach(
-            reviewState: reviewState,
-            boardGameFingerprint: boardFingerprint,
-          );
-          final reportAnnotations = <int, LichessMoveAnnotation>{
-            // PGN-carried classifications first: a live report on the same
-            // plies is fresher and overwrites them.
-            ...pgnClassificationAnnotations(analysisGame),
-            for (final entry in reportClassifications.entries)
-              entry.key: LichessMoveAnnotation(
-                type: _annotationTypeForGameReport(entry.value),
-                comment: '',
-                useClassificationIcon: true,
-              ),
-          };
-          final isOnMainline =
-              activeMovePointer.isEmpty || activeMovePointer.length == 1;
-          final currentMoveIndex =
-              (isOnMainline && activeMovePointer.isNotEmpty)
-                  ? activeMovePointer[0].toInt()
-                  : -1;
-          // Whether our report has looked at this move at all — a move it
-          // analysed and left unlabelled included. Within that reach the report
-          // *replaces* the imported annotations rather than layering over them:
-          // on a move we deliberately gave no symbol, Lichess's opinion of it
-          // must not show through the hole.
-          final reportJudgedThisMove = reportJudgedMainlineMove(
-            isMainline: isOnMainline,
-            moveIndex: currentMoveIndex >= 0 ? currentMoveIndex : null,
-            pointerIndex: null,
-            reportedMoveCount: reportClassificationCoverage(
-              reviewState: reviewState,
-              boardGameFingerprint: boardFingerprint,
-            ),
-          );
-          boardMoveIsReportJudged = reportJudgedThisMove;
-          final moveAnnotations =
-              reportJudgedThisMove
-                  ? reportAnnotations
-                  : <int, LichessMoveAnnotation>{
-                    if (showSourceAnnotations) ...lichessAnnotations,
-                    ...reportAnnotations,
-                  };
-          final reportVerdict =
-              currentMoveIndex >= 0
-                  ? reportAnnotations[currentMoveIndex]
-                  : null;
-          if (!showLocalAnnotations) return reportVerdict;
-          final userNags = userNagsForMovePointer(
-            annotationMovePointer,
-            widget.chessBoardState.moveNags,
-          );
-
-          // 1. Author/user NAGs win — they reflect explicit intent and must
-          // override Lichess analysis classifications. Quality NAGs ($1–$4)
-          // get the high-fidelity SVG badge here; non-mappable NAGs ($5–$7,
-          // $10+) return null so Path B renders the Unicode glyph badge.
-          //
-          // The exception is the PGN's own move verdict once our report has
-          // judged the move: a broadcast PGN's baked-in `?!` is the Lichess
-          // database's opinion, not the reader's, and our report supersedes it.
-          final mergedNags = _mergeUserNagsForMovePointer(
-            activeMove,
-            annotationMovePointer,
-            widget.chessBoardState.moveNags,
-            reportJudgedMove: reportJudgedThisMove,
-          );
-          if (mergedNags.isNotEmpty) {
-            final nag = primaryBoardNag(mergedNags) ?? mergedNags.first;
-            final type = _mapNagToAnnotationType(nag);
-            if (type != null) {
-              return LichessMoveAnnotation(type: type, comment: '');
-            }
-            // Non-mappable NAG. A glyph the reader applied themselves keeps the
-            // badge (Path B draws it); one that only came from the PGN yields to
-            // our report — to its verdict if it gave one, and to a bare square
-            // if it judged the move unremarkable.
-            if (reportJudgedThisMove && userNags.isEmpty) return reportVerdict;
-            return null;
-          }
-
-          // 2. No explicit NAGs → our report verdict on the moves it judged,
-          // otherwise the Lichess fetched analysis, on mainline only.
-          if (currentMoveIndex >= 0 && moveAnnotations.isNotEmpty) {
-            final annotation = moveAnnotations[currentMoveIndex];
-            if (annotation != null) return annotation;
-          }
-
-          return null;
-        })();
+    // One resolution feeds the badge, the classified-move sound (see
+    // _ChessBoardScreenState._landedMoveClass) and the landing animation.
+    final boardBadge = resolveBoardMoveBadge(
+      analysisGame: analysisGame,
+      movePointer: activeMovePointer,
+      isPvPreviewActive: widget.chessBoardState.isPvPreviewActive,
+      userMoveNags: widget.chessBoardState.moveNags,
+      showReportAnnotations: annotationVisibility.report,
+      showSourceAnnotations: annotationVisibility.source,
+      showLocalAnnotations: showLocalAnnotations,
+      lichessAnnotationsFor:
+          (game) =>
+              ref
+                  .watch(
+                    lichessMoveAnnotationsProvider(
+                      _lichessAnnotationsParamsFor(game),
+                    ),
+                  )
+                  .valueOrNull ??
+              const <int, LichessMoveAnnotation>{},
+      // Watch immutable [MobileGameReviewState] so report completion rebuilds
+      // board badges (StateNotifierProvider — not ChangeNotifier).
+      reviewStateFor: () => ref.watch(mobileGameReviewProvider(params)),
+    );
+    final boardAnnotation = boardBadge.annotation;
     final boardAnnotationSquare = _lastMoveDestinationSquare(
       widget.chessBoardState.analysisState.lastMove,
     );
@@ -10062,32 +10392,52 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard>
               annotation: boardAnnotation,
             );
           }
-          if (!showLocalAnnotations) return null;
           // Path B: any other NAG ($7, $10, $13–$22, $32, $36, $40, $44, $132,
           // $138, $140, $146) → render the literal Unicode glyph in a circular
           // badge. This is what fixes "exclamation symbols don't show on the
-          // board" for NAGs that don't have a Lichess SVG mapping. Includes
-          // user-applied NAGs from widget.state.moveNags. The PGN's own move
-          // verdicts are filtered out once our report has judged the move, so a
-          // broadcast `?!` cannot come back as a text badge here after Path A
-          // stepped aside for our verdict — or for our silence.
-          final mergedNags = _mergeUserNagsForMovePointer(
-            activeMove,
-            annotationMovePointer,
-            widget.chessBoardState.moveNags,
-            reportJudgedMove: boardMoveIsReportJudged,
-          );
-          final nag = primaryBoardNag(mergedNags);
-          if (nag == null) return null;
-          // Skip if it would have been an SVG type (already handled above).
-          if (_mapNagToAnnotationType(nag) != null) return null;
-          final display = getNagDisplay(nag);
+          // board" for NAGs that don't have a Lichess SVG mapping.
+          final glyphNag = boardBadge.glyphNag;
+          if (glyphNag == null) return null;
+          final display = getNagDisplay(glyphNag);
           if (display == null) return null;
           return _buildBoardNagTextBadge(
             square: boardAnnotationSquare,
             display: display,
           );
         })();
+
+    // Classified-move landing: drawn only on the ply that just landed (see
+    // [_trackClassifiedLanding]) and only while it is still the displayed one,
+    // so rebuilds and first opens draw nothing. The trigger drops to null the
+    // moment that ply is left, which also cuts a gesture still in flight: the
+    // landing latches its square when it starts and would otherwise finish on
+    // a square the piece just stepped back off.
+    final landingIsCurrent =
+        _landingPlyKey != null &&
+        _landingPlyKey ==
+            _classifiedLandingPlyKey(widget.chessBoardState.analysisState);
+    if (!_landingClassLatched) {
+      // First build of this landing: latch the class the ply carries now.
+      _landingClassLatched = true;
+      _landingClass =
+          landingIsCurrent && boardAnnotationSquare != null
+              ? boardBadge.moveClass
+              : null;
+    }
+    final landingClass =
+        landingIsCurrent && boardAnnotationSquare != null
+            ? _landingClass
+            : null;
+    final classificationLanding = Positioned.fill(
+      child: IgnorePointer(
+        child: ClassificationLanding(
+          square: boardAnnotationSquare,
+          moveClass: landingClass,
+          orientation: widget.isFlipped ? Side.black : Side.white,
+          trigger: landingIsCurrent ? _landingSerial : null,
+        ),
+      ),
+    );
 
     // Calculate square highlights and annotations for game ending
     final gameEndingData =
@@ -10155,6 +10505,14 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard>
       ),
       orientation: widget.isFlipped ? Side.black : Side.white,
       shapes: allShapes,
+      // The landed piece of a classified move settles on its square (the
+      // vendored chessground's landing patch), on the same ply and serial as
+      // the [ClassificationLanding] overlay. The key is the landing alone: it
+      // changes only on a real forward landing, so a class change, a
+      // visibility toggle or any other rebuild never replays the settle. A
+      // null square (ply left, or it landed unclassified) cancels it.
+      landingSquare: landingClass != null ? boardAnnotationSquare : null,
+      landingKey: _landingSerial,
       // chessground v10: promotion is resolved inside the board, so onMove
       // receives the fully-resolved move (promotion role already set).
       onMove: (Move move, {bool? viaDragAndDrop}) {
@@ -10196,6 +10554,7 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard>
           child: Stack(
             children: [
               chessboard,
+              classificationLanding,
               if (boardAnnotationBadge != null) boardAnnotationBadge,
               // Animated falling king overlay using motor springs
               _FallenKingOverlay(
@@ -10253,6 +10612,7 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard>
             child: Stack(
               children: [
                 chessboard,
+                classificationLanding,
                 if (boardAnnotationBadge != null) boardAnnotationBadge,
                 // Mint tint behind each king (re-draws the king on top)
                 if (pieceAssets[PieceKind.whiteKing] != null)
@@ -10286,6 +10646,7 @@ class _AnalysisBoardState extends ConsumerState<_AnalysisBoard>
         child: Stack(
           children: [
             chessboard,
+            classificationLanding,
             if (boardAnnotationBadge != null) boardAnnotationBadge,
           ],
         ),
@@ -10904,13 +11265,13 @@ class _NextMoveOptionsPanel extends StatelessWidget {
     final isMain = option.isLineContinuation;
 
     final textStyle = AppTypography.textXsMedium.copyWith(
-      color: isMain ? kPrimaryColor : context.colors.textPrimary,
+      color: isMain ? context.colors.accentText : context.colors.textPrimary,
       fontSize: 12.f,
       fontWeight: isMain ? FontWeight.w700 : FontWeight.w600,
       height: 1.2,
     );
     final numberStyle = AppTypography.textXsMedium.copyWith(
-      color: context.colors.textPrimary.withValues(alpha: 0.55),
+      color: context.textInk(0.55),
       fontSize: 10.f,
       fontWeight: FontWeight.w500,
       fontFeatures: const [FontFeature.tabularFigures()],
@@ -11372,7 +11733,7 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
             children: [
               Icon(
                 Icons.south_east_rounded,
-                color: context.colors.textPrimary.withValues(alpha: 0.45),
+                color: context.textInk(0.45),
                 size: 22.sp,
               ),
               SizedBox(height: 8.h),
@@ -11389,7 +11750,7 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
                 'Tap → to play the engine’s top move, or swipe ← to see games at this position.',
                 textAlign: TextAlign.center,
                 style: AppTypography.textXsMedium.copyWith(
-                  color: context.colors.textPrimary.withValues(alpha: 0.45),
+                  color: context.textInk(0.45),
                   fontWeight: FontWeight.normal,
                 ),
               ),
@@ -11506,7 +11867,16 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
                               BackdropFilter(
                                 filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
                                 child: Container(
-                                  color: Colors.black.withValues(alpha: 0.55),
+                                  // Paper frost in light: a black veil there
+                                  // leaves the ink copy below at ~2.9:1.
+                                  color:
+                                      context.isLightTheme
+                                          ? context.colors.surface.withValues(
+                                            alpha: 0.82,
+                                          )
+                                          : Colors.black.withValues(
+                                            alpha: 0.55,
+                                          ),
                                 ),
                               ),
                               Align(
@@ -11537,9 +11907,12 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
                                       children: [
                                         Icon(
                                           Icons.visibility_outlined,
-                                          color: Colors.white.withValues(
-                                            alpha: 0.95,
-                                          ),
+                                          color:
+                                              context.isLightTheme
+                                                  ? context.colors.iconPrimary
+                                                  : Colors.white.withValues(
+                                                    alpha: 0.95,
+                                                  ),
                                           size: 20.sp,
                                         ),
                                         SizedBox(height: 8.sp),
@@ -11548,7 +11921,8 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
                                           textAlign: TextAlign.center,
                                           style: AppTypography.textSmMedium
                                               .copyWith(
-                                                color: Colors.white,
+                                                color:
+                                                    context.colors.textPrimary,
                                                 letterSpacing: 0.4,
                                               ),
                                         ),
@@ -11558,9 +11932,7 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
                                           textAlign: TextAlign.center,
                                           style: AppTypography.textXsRegular
                                               .copyWith(
-                                                color: Colors.white.withValues(
-                                                  alpha: 0.85,
-                                                ),
+                                                color: context.textInk(0.85),
                                               ),
                                         ),
                                         SizedBox(height: 12.sp),
@@ -11613,8 +11985,15 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
                                                 borderRadius:
                                                     BorderRadius.circular(8.sp),
                                                 border: Border.all(
-                                                  color: kPrimaryColor
-                                                      .withValues(alpha: 0.4),
+                                                  color:
+                                                      context.isLightTheme
+                                                          ? context
+                                                              .colors
+                                                              .accentText
+                                                          : kPrimaryColor
+                                                              .withValues(
+                                                                alpha: 0.4,
+                                                              ),
                                                   width: 1.5,
                                                 ),
                                               ),
@@ -11805,15 +12184,33 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
     final isMainline = token.node?.isMainline ?? (depth <= 0);
     final ladder = _moveLadderForDepth(depth, isMainline: isMainline);
     final baseColor = _resolveMoveColor(token, currentPly);
-    final qualityColor = firstQualityNag?.color;
-    final annotationColor = annotation?.type.color;
+    // Palette hues are tuned on black; on paper they resolve to the same hue
+    // darkened to AA (identity in dark).
+    final qualityColor =
+        firstQualityNag == null ? null : nagInk(context, firstQualityNag);
+    final annotationColor =
+        annotation == null ? null : moveAnnotationInk(context, annotation.type);
     // Report classification color must tint the SAN even when author NAGs
     // suppressed the inline-annotation path above.
-    final classificationColor = classificationAnnotation?.type.color;
+    final classificationColor =
+        classificationAnnotation == null
+            ? null
+            : moveAnnotationInk(context, classificationAnnotation.type);
     // Badge first: it is the verdict on the move, so it owns the SAN colour.
     // A leftover text glyph ($5/$7) only tints when nothing badged it.
-    final color =
-        classificationColor ?? qualityColor ?? annotationColor ?? baseColor;
+    // The current move sits on its own plate. On paper that plate is a hair
+    // darker than the page, so coloured SAN is re-inked against it.
+    final isLight = context.isLightTheme;
+    final currentPlate =
+        isLight
+            ? context.colors.textPrimary.withValues(alpha: 0.08)
+            : context.colors.textPrimaryMuted.withValues(alpha: 0.25);
+    final plateSolid = Color.alphaBlend(currentPlate, context.colors.background);
+    Color onPlate(Color ink) =>
+        isCurrent && isLight ? legibleHueInkOn(ink, plateSolid) : ink;
+    final color = onPlate(
+      classificationColor ?? qualityColor ?? annotationColor ?? baseColor,
+    );
 
     final textStyle = AppTypography.textXsMedium.copyWith(
       color: color,
@@ -11823,7 +12220,7 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
       height: 1.2,
     );
     final numberStyle = AppTypography.textXsMedium.copyWith(
-      color: context.colors.textPrimary.withValues(alpha: ladder.numberAlpha),
+      color: context.textInk(ladder.numberAlpha),
       fontSize: ladder.numberSize,
       fontWeight: FontWeight.w500,
       fontFeatures: const [FontFeature.tabularFigures()],
@@ -11873,7 +12270,7 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
         TextSpan(
           text: annotation!.type.symbol,
           style: textStyle.copyWith(
-            color: annotation.type.color,
+            color: onPlate(moveAnnotationInk(context, annotation.type)),
             fontWeight: FontWeight.bold,
           ),
         ),
@@ -11897,7 +12294,7 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
             TextSpan(
               text: d.symbol,
               style: textStyle.copyWith(
-                color: d.color,
+                color: onPlate(nagInk(context, d)),
                 fontWeight: FontWeight.w800,
                 letterSpacing: -0.2,
               ),
@@ -11908,7 +12305,7 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
             TextSpan(
               text: ' ${d.symbol}',
               style: textStyle.copyWith(
-                color: d.color,
+                color: onPlate(nagInk(context, d)),
                 fontWeight: FontWeight.w500,
                 fontSize: ladder.sanSize - 0.5,
                 letterSpacing: 0.0,
@@ -11987,10 +12384,7 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
           Container(
             padding: EdgeInsets.symmetric(horizontal: 6.sp, vertical: 2.sp),
             decoration: BoxDecoration(
-              color:
-                  isCurrent
-                      ? context.colors.textPrimaryMuted.withValues(alpha: 0.25)
-                      : Colors.transparent,
+              color: isCurrent ? currentPlate : Colors.transparent,
               borderRadius: BorderRadius.circular(4.sp),
               border: Border.all(
                 color:
@@ -12226,14 +12620,14 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
                       Icon(
                         Icons.subdirectory_arrow_right_rounded,
                         size: 11.sp,
-                        color: accent.withValues(alpha: 0.85),
+                        color: _variationInk(accent, 0.85),
                       ),
                       SizedBox(width: 3.sp),
                       Flexible(
                         child: Text(
                           headerText,
                           style: AppTypography.textXsRegular.copyWith(
-                            color: accent.withValues(alpha: 0.85),
+                            color: _variationInk(accent, 0.85),
                             fontSize: 10.sp,
                             fontStyle: FontStyle.italic,
                             letterSpacing: 0.2,
@@ -12252,7 +12646,7 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
                         child: Icon(
                           Icons.unfold_less_rounded,
                           size: 12.sp,
-                          color: accent.withValues(alpha: 0.55),
+                          color: _variationInk(accent, 0.55),
                         ),
                       ),
                     ],
@@ -12297,13 +12691,13 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
                 Icon(
                   Icons.unfold_more_rounded,
                   size: 11.sp,
-                  color: accent.withValues(alpha: 0.85),
+                  color: _variationInk(accent, 0.85),
                 ),
                 SizedBox(width: 4.sp),
                 Text(
                   token.text,
                   style: AppTypography.textXsMedium.copyWith(
-                    color: accent.withValues(alpha: 0.95),
+                    color: _variationInk(accent, 0.95),
                     fontSize: 10.5.sp,
                     fontStyle: FontStyle.italic,
                     letterSpacing: 0.2,
@@ -12394,7 +12788,7 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
                   TextSpan(
                     text: isExpanded ? '   Show less' : '   Read more',
                     style: AppTypography.textXsMedium.copyWith(
-                      color: accent.withValues(alpha: 0.95),
+                      color: _variationInk(accent, 0.95),
                       fontSize: 11.sp,
                       fontWeight: FontWeight.w600,
                       letterSpacing: 0.1,
@@ -12472,7 +12866,7 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
         child: Text(
           text,
           style: AppTypography.textXsRegular.copyWith(
-            color: context.colors.textPrimary.withValues(alpha: 0.6),
+            color: context.textInk(0.6),
             fontSize: 12.sp,
             height: 1.4,
             fontStyle: FontStyle.italic,
@@ -12610,6 +13004,12 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
     Color(0xFF8EB2CB),
   ];
 
+  /// A variation accent drawn as text or a glyph. Dark keeps the tuned
+  /// alpha; on paper the accent is already the AA ink and any alpha on top
+  /// would sink it back under 4.5:1, so it is drawn solid.
+  Color _variationInk(Color accent, double alpha) =>
+      context.isLightTheme ? accent : accent.withValues(alpha: alpha);
+
   Color _accentColorForToken(NotationDisplayToken token) {
     final depth = math.max(1, token.depth);
     final seed = token.variationColorKey ?? token.variation?.id;
@@ -12617,10 +13017,13 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
   }
 
   Color _colorForVariationAccent(int depth, {String? seed}) {
-    if (seed == null || seed.isEmpty) {
-      return _colorForVariationDepth(depth);
-    }
-    return _colorFromSeed(seed);
+    final hue =
+        (seed == null || seed.isEmpty)
+            ? _colorForVariationDepth(depth)
+            : _colorFromSeed(seed);
+    // The depth palette is pale on purpose (it reads on black). On paper the
+    // same hue is darkened until chip text, "Read more" and rails clear AA.
+    return legibleHueInk(context, hue);
   }
 
   Color _colorFromSeed(String seed) {
@@ -12653,7 +13056,7 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
 
     final isPast = currentPly >= 0 && node.ply <= currentPly;
     if (node.isMainline || token.depth <= 0) {
-      return context.colors.textPrimary.withValues(alpha: isPast ? 0.95 : 0.95);
+      return context.textInk(0.95);
     }
 
     // Variation moves: white with alpha that decays by depth — readable
@@ -12663,7 +13066,7 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
       2 => isPast ? 0.70 : 0.62,
       _ => isPast ? 0.58 : 0.50,
     };
-    return context.colors.textPrimary.withValues(alpha: alpha);
+    return context.textInk(alpha);
   }
 
   /// Typography ladder per variation depth — the visual hierarchy that lets
@@ -13074,12 +13477,26 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
       },
     );
 
+    // "Add position" pins the position after this move, with the line that
+    // reaches it, as the same shortcut the explorer's own menu makes.
+    final analysisGame = widget.state.analysisState.game;
+    final positionDraft =
+        isNullMove || analysisGame == null
+            ? null
+            : boardNotationPositionDraft(
+              game: ref.read(chessGameNavigatorProvider(analysisGame)).game,
+              pointer: pointer,
+            );
+    final positionInSpace =
+        positionDraft != null &&
+        ref.read(spaceShortcutExistsProvider(positionDraft.key));
+
     final actions = <_NotationActionItem>[
       if (!isMainlineMove)
         _NotationActionItem(
           icon: Icons.upgrade_rounded,
           label: 'Promote',
-          color: kPrimaryColor,
+          color: context.colors.accentText,
           onSelected: (_) async {
             await notifier.promoteBranchToMainVariant(List<Number>.of(pointer));
           },
@@ -13094,7 +13511,10 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
       _NotationActionItem(
         icon: Icons.label_important_outline_rounded,
         label: 'Annotate (!? ± ∞ =)',
-        color: const Color(0xFF22AC38),
+        color:
+            context.isLightTheme
+                ? context.colors.success
+                : const Color(0xFF22AC38),
         onSelected: (_) async {
           if (!mounted) return;
           await _showNagPicker(
@@ -13105,10 +13525,30 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
           );
         },
       ),
+      if (positionDraft != null)
+        _NotationActionItem(
+          icon:
+              positionInSpace
+                  ? Icons.dashboard_customize
+                  : Icons.dashboard_customize_outlined,
+          label:
+              positionInSpace
+                  ? 'Remove position from My Space'
+                  : 'Add position to My Space',
+          color: context.colors.textPrimary,
+          onSelected: (sheetHost) async {
+            if (!sheetHost.mounted) return;
+            await toggleSpaceShortcut(
+              context: sheetHost,
+              ref: ref,
+              draft: positionDraft,
+            );
+          },
+        ),
       _NotationActionItem(
         icon: Icons.delete_outline,
         label: 'Delete',
-        color: kRedColor,
+        color: context.colors.danger,
         onSelected: (_) async {
           await notifier.deleteContinuationFromPointer(
             List<Number>.of(pointer),
@@ -13194,7 +13634,7 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
       _NotationActionItem(
         icon: Icons.upgrade_rounded,
         label: 'Promote',
-        color: kPrimaryColor,
+        color: context.colors.accentText,
         onSelected: (_) async {
           await notifier.promoteBranchToMainVariant(
             List<Number>.of(headPointer),
@@ -13211,7 +13651,7 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
       _NotationActionItem(
         icon: Icons.delete_forever,
         label: 'Delete',
-        color: kRedColor,
+        color: context.colors.danger,
         onSelected: (_) async {
           final snapshot = notifier.navigatorStateSnapshot();
           await notifier.deleteVariationAtPointer(List<Number>.of(headPointer));
@@ -14219,7 +14659,7 @@ class _PrincipalVariationListState
                           children: [
                             Icon(
                               Icons.flag_outlined,
-                              color: kPrimaryColor,
+                              color: context.colors.accentText,
                               size: 20.sp,
                             ),
                             SizedBox(width: 8.w),
@@ -14365,10 +14805,13 @@ class _PrincipalVariationListState
             Border? border;
 
             if (isLockedDot) {
+              // Paper: a 35% ink dot sits near 2:1; 50% clears 3:1.
               dotColor =
                   isActive
                       ? context.colors.textPrimary.withValues(alpha: 0.95)
-                      : context.colors.textPrimary.withValues(alpha: 0.35);
+                      : context.colors.textPrimary.withValues(
+                        alpha: context.isLightTheme ? 0.5 : 0.35,
+                      );
               border = Border.all(
                 color: context.colors.textPrimary.withValues(
                   alpha: isActive ? 1.0 : 0.65,
@@ -14388,7 +14831,9 @@ class _PrincipalVariationListState
               dotColor =
                   isActive
                       ? context.colors.textPrimary.withValues(alpha: 0.85)
-                      : context.colors.textPrimary.withValues(alpha: 0.3);
+                      : context.colors.textPrimary.withValues(
+                        alpha: context.isLightTheme ? 0.5 : 0.3,
+                      );
             }
 
             final double size = isLockedDot ? 8.w : 6.w;
@@ -14583,7 +15028,7 @@ class _PrincipalVariationListState
       _NotationActionItem(
         icon: Icons.playlist_add_check_circle_rounded,
         label: 'Insert entire line',
-        color: kPrimaryColor,
+        color: context.colors.accentText,
         onSelected: (_) async {
           notifier.clearPvPreview();
           notifier.insertPvMoves(line);
@@ -14592,7 +15037,7 @@ class _PrincipalVariationListState
       _NotationActionItem(
         icon: isThreatsMode ? Icons.gps_off : Icons.gps_fixed,
         label: isThreatsMode ? 'Hide Threats' : 'Show Threats',
-        color: Colors.red,
+        color: context.isLightTheme ? context.colors.danger : Colors.red,
         onSelected: (_) async {
           notifier.toggleThreatsMode();
         },
@@ -14600,7 +15045,7 @@ class _PrincipalVariationListState
       _NotationActionItem(
         icon: Icons.block,
         label: 'Add null move after',
-        color: kPrimaryColor,
+        color: context.colors.accentText,
         onSelected: (_) async {
           await notifier.insertNullMoveAfterPvMove(line, moveIndex);
         },
@@ -14636,7 +15081,11 @@ class _PrincipalVariationListState
         child: Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.flag_outlined, color: kPrimaryColor, size: 20.sp),
+            Icon(
+              Icons.flag_outlined,
+              color: context.colors.accentText,
+              size: 20.sp,
+            ),
             SizedBox(width: 8.w),
             Text(
               'Game Over',
@@ -14896,15 +15345,23 @@ class _BlinkingRedDotState extends State<_BlinkingRedDot>
           width: widget.size,
           height: widget.size,
           decoration: BoxDecoration(
-            color: Colors.red.withValues(alpha: _animation.value),
+            color:
+                context.isLightTheme
+                    ? context.colors.danger.withValues(alpha: _animation.value)
+                    : Colors.red.withValues(alpha: _animation.value),
             shape: BoxShape.circle,
-            boxShadow: [
-              BoxShadow(
-                color: Colors.red.withValues(alpha: _animation.value * 0.5),
-                blurRadius: 4,
-                spreadRadius: 1,
-              ),
-            ],
+            boxShadow:
+                context.isLightTheme
+                    ? null
+                    : [
+                      BoxShadow(
+                        color: Colors.red.withValues(
+                          alpha: _animation.value * 0.5,
+                        ),
+                        blurRadius: 4,
+                        spreadRadius: 1,
+                      ),
+                    ],
           ),
         );
       },
@@ -15299,7 +15756,7 @@ class _NotationActionTileState extends State<_NotationActionTile>
                       widget.action.triggersCommentEditor
                           ? Icons.drive_file_rename_outline
                           : Icons.arrow_forward_ios_rounded,
-                      color: context.colors.textPrimary.withValues(alpha: 0.35),
+                      color: context.textInk(0.35),
                       size: 14.ic,
                     ),
                   ],
@@ -15477,7 +15934,10 @@ class _NotationCommentPageState extends ConsumerState<_NotationCommentPage> {
                 focusedBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12.sp),
                   borderSide: BorderSide(
-                    color: kPrimaryColor.withValues(alpha: 0.8),
+                    color:
+                        context.isLightTheme
+                            ? context.colors.accentText
+                            : kPrimaryColor.withValues(alpha: 0.8),
                   ),
                 ),
               ),
@@ -15535,7 +15995,10 @@ class _NotationCommentPageState extends ConsumerState<_NotationCommentPage> {
                           },
                   icon: Icon(
                     Icons.delete_outline,
-                    color: kRedColor.withValues(alpha: 0.8),
+                    color:
+                        context.isLightTheme
+                            ? context.colors.danger
+                            : kRedColor.withValues(alpha: 0.8),
                   ),
                   tooltip: 'Remove comment',
                 ),
@@ -15682,7 +16145,12 @@ class _CommentDialogState extends ConsumerState<_CommentDialog>
               opacity: _fadeAnimation,
               child: BackdropFilter(
                 filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
-                child: Container(color: Colors.black.withValues(alpha: 0.6)),
+                child: Container(
+                  color:
+                      context.isLightTheme
+                          ? context.colors.scrim
+                          : Colors.black.withValues(alpha: 0.6),
+                ),
               ),
             ),
             Positioned.fill(
@@ -15762,14 +16230,23 @@ class _CommentDialogState extends ConsumerState<_CommentDialog>
           color: kPrimaryColor.withValues(alpha: 0.3),
           width: 2,
         ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.7),
-            blurRadius: 40,
-            offset: const Offset(0, -10),
-            spreadRadius: 5,
-          ),
-        ],
+        boxShadow:
+            context.isLightTheme
+                ? [
+                  BoxShadow(
+                    color: context.colors.shadow,
+                    blurRadius: 8,
+                    offset: const Offset(0, -1),
+                  ),
+                ]
+                : [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.7),
+                    blurRadius: 40,
+                    offset: const Offset(0, -10),
+                    spreadRadius: 5,
+                  ),
+                ],
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -15798,7 +16275,7 @@ class _CommentDialogState extends ConsumerState<_CommentDialog>
                   ),
                   child: Icon(
                     Icons.comment_outlined,
-                    color: kPrimaryColor,
+                    color: context.colors.accentText,
                     size: 20.sp,
                   ),
                 ),
@@ -15817,7 +16294,7 @@ class _CommentDialogState extends ConsumerState<_CommentDialog>
                       Text(
                         'Share your thoughts on this position',
                         style: AppTypography.textXsRegular.copyWith(
-                          color: context.colors.textPrimary.withValues(alpha: 0.6),
+                          color: context.textInk(0.6),
                         ),
                       ),
                     ],
@@ -15856,13 +16333,13 @@ class _CommentDialogState extends ConsumerState<_CommentDialog>
                 decoration: InputDecoration(
                   hintText: 'What do you think about this position?',
                   hintStyle: AppTypography.textMdRegular.copyWith(
-                    color: context.colors.textPrimary.withValues(alpha: 0.4),
+                    color: context.textInk(0.4),
                   ),
                   filled: true,
                   fillColor: context.colors.textPrimary.withValues(alpha: 0.03),
                   contentPadding: EdgeInsets.all(16.sp),
                   counterStyle: AppTypography.textXsRegular.copyWith(
-                    color: context.colors.textPrimary.withValues(alpha: 0.5),
+                    color: context.textInk(0.5),
                   ),
                   enabledBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(16.sp),
@@ -15874,7 +16351,10 @@ class _CommentDialogState extends ConsumerState<_CommentDialog>
                   focusedBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(16.sp),
                     borderSide: BorderSide(
-                      color: kPrimaryColor.withValues(alpha: 0.6),
+                      color:
+                          context.isLightTheme
+                              ? context.colors.accentText
+                              : kPrimaryColor.withValues(alpha: 0.6),
                       width: 2,
                     ),
                   ),
@@ -15955,7 +16435,9 @@ class _CommentDialogState extends ConsumerState<_CommentDialog>
                       padding: EdgeInsets.symmetric(vertical: 14.sp),
                       elevation: _hasChanges ? 4 : 0,
                       shadowColor: _hasChanges
-                          ? kPrimaryColor.withValues(alpha: 0.5)
+                          ? (context.isLightTheme
+                              ? context.colors.shadow
+                              : kPrimaryColor.withValues(alpha: 0.5))
                           : null,
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(12.sp),
@@ -16346,7 +16828,7 @@ class _EventInfoSheet extends ConsumerWidget {
                       isLoading
                           ? Center(
                             child: CircularProgressIndicator(
-                              color: kPrimaryColor,
+                              color: context.colors.accentText,
                               strokeWidth: 2,
                             ),
                           )
@@ -16384,33 +16866,44 @@ class _EventInfoSheet extends ConsumerWidget {
 
     final eventName = _fallbackEventName();
 
+    // Only a live broadcast game has a real tour id to reopen here; the
+    // lookup that would have named its group broadcast failed.
+    final eventTourId = game.source == GameSource.supabase ? game.tourId : null;
+
     return ListView(
       controller: scrollController,
       padding: EdgeInsets.symmetric(horizontal: 20.sp),
       children: [
         // Game header
-        Text(
-          eventName,
-          style: AppTypography.textLgBold.copyWith(
-            color: context.colors.textPrimary,
+        _eventFocus(
+          eventName: eventName,
+          tourId: eventTourId,
+          child: Text(
+            eventName,
+            style: AppTypography.textLgBold.copyWith(
+              color: context.colors.textPrimary,
+            ),
           ),
         ),
         SizedBox(height: 4.h),
         Text(
           writerLabel,
           style: AppTypography.textXsRegular.copyWith(
-            color: context.colors.textPrimary.withValues(alpha: 0.52),
+            color: context.textInk(0.52),
           ),
         ),
         SizedBox(height: 16.h),
         // Round info
-        _EventInfoRow(
-          icon: Icons.format_list_numbered_rounded,
-          label: 'Round',
-          value:
-              game.roundSlug != null
-                  ? StringUtils.formatRoundLabel(game.roundSlug)
-                  : (headers['Round'] ?? game.roundDisplayName),
+        _roundFocus(
+          eventName: eventName,
+          child: _EventInfoRow(
+            icon: Icons.format_list_numbered_rounded,
+            label: 'Round',
+            value:
+                game.roundSlug != null
+                    ? StringUtils.formatRoundLabel(game.roundSlug)
+                    : (headers['Round'] ?? game.roundDisplayName),
+          ),
         ),
         SizedBox(height: 12.h),
         // Board number
@@ -16468,7 +16961,7 @@ class _EventInfoSheet extends ConsumerWidget {
         Text(
           'Players',
           style: AppTypography.textSmMedium.copyWith(
-            color: context.colors.textPrimary.withValues(alpha: 0.6),
+            color: context.textInk(0.6),
           ),
         ),
         SizedBox(height: 12.h),
@@ -16502,12 +16995,31 @@ class _EventInfoSheet extends ConsumerWidget {
       }
 
       if (openingDisplay.isNotEmpty) {
+        final row = _EventInfoRow(
+          icon: Icons.menu_book_rounded,
+          label: 'Opening',
+          value: openingDisplay,
+        );
+        final openingDraft = boardOpeningSpaceDraft(
+          eco: eco,
+          openingName: opening,
+        );
         rows.add(
-          _EventInfoRow(
-            icon: Icons.menu_book_rounded,
-            label: 'Opening',
-            value: openingDisplay,
-          ),
+          openingDraft == null
+              ? row
+              : BoardInfoFocusRow(
+                actions:
+                    (rowContext, ref) => [
+                      labeledSpaceMenuAction(
+                        context: rowContext,
+                        ref: ref,
+                        draft: openingDraft,
+                        addLabel: 'Add opening to My Space',
+                        removeLabel: 'Remove opening from My Space',
+                      ),
+                    ],
+                child: row,
+              ),
         );
         rows.add(SizedBox(height: 12.h));
       }
@@ -16523,6 +17035,28 @@ class _EventInfoSheet extends ConsumerWidget {
             : player.federation.trim();
     final showFlag = FederationFlag.hasVisibleFlag(federationForFlag);
 
+    // Long-press: open the profile, pin the player or their Games tab, share.
+    return BoardInfoFocusRow(
+      actions:
+          (rowContext, ref) => boardPlayerMenuActions(rowContext, ref, player),
+      onOpen: () => openBoardPlayerProfile(context, player),
+      child: _buildPlayerRowBody(
+        context,
+        player,
+        side,
+        federationForFlag,
+        showFlag,
+      ),
+    );
+  }
+
+  Widget _buildPlayerRowBody(
+    BuildContext context,
+    PlayerCard player,
+    String side,
+    String federationForFlag,
+    bool showFlag,
+  ) {
     return Container(
       padding: EdgeInsets.symmetric(horizontal: 12.sp, vertical: 10.sp),
       decoration: BoxDecoration(
@@ -16560,7 +17094,7 @@ class _EventInfoSheet extends ConsumerWidget {
           if (player.title.isNotEmpty) ...[
             Text(
               player.title,
-              style: AppTypography.textSmMedium.copyWith(color: kPrimaryColor),
+              style: AppTypography.textSmMedium.copyWith(color: context.colors.accentText),
             ),
             SizedBox(width: 6.w),
           ],
@@ -16632,43 +17166,57 @@ class _EventInfoSheet extends ConsumerWidget {
             ),
           ),
         SizedBox(height: 16.h),
-        // Event name - clickable to navigate to tournament
-        GestureDetector(
-          onTap: () => _navigateToTournament(context, ref, aboutModel),
-          child: Row(
-            children: [
-              Expanded(
-                child: Text(
-                  aboutModel.name,
-                  style: AppTypography.textLgBold.copyWith(
-                    color: context.colors.textPrimary,
+        // Event name - clickable to navigate to tournament; long-press for
+        // the event menu (open, share, My Space).
+        _eventFocus(
+          eventName: aboutModel.name,
+          about: aboutModel,
+          groupBroadcastId: aboutModel.groupBroadcastId,
+          tourId: aboutModel.id.isNotEmpty ? aboutModel.id : game.tourId,
+          tourSlug: aboutModel.slug,
+          dates: aboutModel.date,
+          onOpen: () => _navigateToTournament(context, ref, aboutModel),
+          child: GestureDetector(
+            onTap: () => _navigateToTournament(context, ref, aboutModel),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    aboutModel.name,
+                    style: AppTypography.textLgBold.copyWith(
+                      color: context.colors.textPrimary,
+                    ),
                   ),
                 ),
-              ),
-              Icon(
-                Icons.chevron_right_rounded,
-                color: context.colors.textPrimary.withValues(alpha: 0.5),
-                size: 20.sp,
-              ),
-            ],
+                Icon(
+                  Icons.chevron_right_rounded,
+                  color: context.textInk(0.5),
+                  size: 20.sp,
+                ),
+              ],
+            ),
           ),
         ),
         SizedBox(height: 4.h),
         Text(
           writerLabel,
           style: AppTypography.textXsRegular.copyWith(
-            color: context.colors.textPrimary.withValues(alpha: 0.52),
+            color: context.textInk(0.52),
           ),
         ),
         SizedBox(height: 12.h),
         // Round info from game
-        _EventInfoRow(
-          icon: Icons.format_list_numbered_rounded,
-          label: 'Round',
-          value:
-              game.roundSlug != null
-                  ? StringUtils.formatRoundLabel(game.roundSlug)
-                  : game.roundDisplayName,
+        _roundFocus(
+          eventName: aboutModel.name,
+          groupBroadcastId: aboutModel.groupBroadcastId,
+          child: _EventInfoRow(
+            icon: Icons.format_list_numbered_rounded,
+            label: 'Round',
+            value:
+                game.roundSlug != null
+                    ? StringUtils.formatRoundLabel(game.roundSlug)
+                    : game.roundDisplayName,
+          ),
         ),
         SizedBox(height: 12.h),
         // Board number
@@ -16716,7 +17264,7 @@ class _EventInfoSheet extends ConsumerWidget {
         Text(
           'Players',
           style: AppTypography.textSmMedium.copyWith(
-            color: context.colors.textPrimary.withValues(alpha: 0.6),
+            color: context.textInk(0.6),
           ),
         ),
         SizedBox(height: 8.h),
@@ -16731,7 +17279,7 @@ class _EventInfoSheet extends ConsumerWidget {
           Text(
             'Top Players in Event',
             style: AppTypography.textSmMedium.copyWith(
-              color: context.colors.textPrimary.withValues(alpha: 0.6),
+              color: context.textInk(0.6),
             ),
           ),
           SizedBox(height: 8.h),
@@ -16763,14 +17311,14 @@ class _EventInfoSheet extends ConsumerWidget {
                 children: [
                   Icon(
                     Icons.language_rounded,
-                    color: kPrimaryColor,
+                    color: context.colors.accentText,
                     size: 18.sp,
                   ),
                   SizedBox(width: 8.w),
                   Text(
                     aboutModel.extractDomain(),
                     style: AppTypography.textSmMedium.copyWith(
-                      color: kPrimaryColor,
+                      color: context.colors.accentText,
                     ),
                   ),
                 ],
@@ -16780,6 +17328,91 @@ class _EventInfoSheet extends ConsumerWidget {
         ],
         SizedBox(height: MediaQuery.of(context).viewPadding.bottom + 16.h),
       ],
+    );
+  }
+
+  /// The event row, long-pressable into open / share / My Space when the
+  /// event is a real broadcast the app can reopen. Otherwise [child] as is.
+  Widget _eventFocus({
+    required String eventName,
+    required Widget child,
+    AboutTourModel? about,
+    String? groupBroadcastId,
+    String? tourId,
+    String? tourSlug,
+    String? dates,
+    FutureOr<void> Function()? onOpen,
+  }) {
+    // The event card's own shortcut when the group broadcast is known, so a
+    // pin made here is the one the card and the event screen show.
+    final draft =
+        (about == null
+            ? null
+            : tournamentEventSpaceDraft(broadcast: null, about: about)) ??
+        boardEventSpaceDraft(
+          eventName: eventName,
+          groupBroadcastId: groupBroadcastId,
+          tourId: tourId,
+          dates: dates,
+        );
+    if (draft == null) return child;
+    return BoardInfoFocusRow(
+      onOpen: onOpen,
+      actions:
+          (rowContext, ref) => [
+            if (onOpen != null)
+              LibraryMenuAction(
+                icon: Icons.open_in_new_rounded,
+                label: 'Open event',
+                onSelected: onOpen,
+              ),
+            if (boardShareEventAction(
+                  rowContext,
+                  eventName: eventName,
+                  groupBroadcastId: groupBroadcastId,
+                  tourId: tourId,
+                  tourSlug: tourSlug,
+                )
+                case final share?)
+              share,
+            labeledSpaceMenuAction(
+              context: rowContext,
+              ref: ref,
+              draft: draft,
+              addLabel: 'Add event to My Space',
+              removeLabel: 'Remove event from My Space',
+            ),
+          ],
+      child: child,
+    );
+  }
+
+  /// The round row, long-pressable into "Add round to My Space" for a live
+  /// broadcast game. Archive games keep the plain row.
+  Widget _roundFocus({
+    required Widget child,
+    String? eventName,
+    String? groupBroadcastId,
+  }) {
+    final draft = boardRoundSpaceDraft(
+      game: game,
+      groupBroadcastId: groupBroadcastId,
+      eventName: eventName,
+    );
+    if (draft == null) return child;
+    return BoardInfoFocusRow(
+      actions:
+          (rowContext, ref) => [
+            labeledSpaceMenuAction(
+              context: rowContext,
+              ref: ref,
+              draft: draft,
+              addLabel: 'Add ${spaceRoundLabelName(draft.title)} to My Space',
+              removeLabel:
+                  'Remove ${spaceRoundLabelName(draft.title)} from My Space',
+            ),
+          ],
+      child: child,
     );
   }
 
@@ -16832,7 +17465,7 @@ class _EventInfoRow extends StatelessWidget {
       children: [
         Icon(
           icon,
-          color: context.colors.textPrimary.withValues(alpha: 0.5),
+          color: context.textInk(0.5),
           size: 18.sp,
         ),
         SizedBox(width: 10.w),
@@ -16843,7 +17476,7 @@ class _EventInfoRow extends StatelessWidget {
               Text(
                 label,
                 style: AppTypography.textXsRegular.copyWith(
-                  color: context.colors.textPrimary.withValues(alpha: 0.5),
+                  color: context.textInk(0.5),
                 ),
               ),
               SizedBox(height: 2.h),
@@ -16940,15 +17573,16 @@ class _NagPickerSheet extends ConsumerWidget {
                     Icon(
                       Icons.label_important_outline_rounded,
                       size: 16.sp,
-                      color: const Color(0xFF22AC38),
+                      color:
+                          context.isLightTheme
+                              ? context.colors.success
+                              : const Color(0xFF22AC38),
                     ),
                     SizedBox(width: 6.sp),
                     Text(
                       'Annotate',
                       style: AppTypography.textSmMedium.copyWith(
-                        color: context.colors.textPrimary.withValues(
-                          alpha: 0.55,
-                        ),
+                        color: context.textInk(0.55),
                         letterSpacing: 1.2,
                         fontSize: 11.sp,
                       ),
@@ -17028,7 +17662,7 @@ class _NagPickerSheet extends ConsumerWidget {
                   child: Text(
                     'One glyph per category. Tap a glyph again to remove it.',
                     style: AppTypography.textXsRegular.copyWith(
-                      color: context.colors.textPrimary.withValues(alpha: 0.4),
+                      color: context.textInk(0.4),
                       fontSize: 10.5.sp,
                       letterSpacing: 0.1,
                     ),
@@ -17111,7 +17745,7 @@ class _NagGroup extends StatelessWidget {
               Text(
                 label.toUpperCase(),
                 style: AppTypography.textXsMedium.copyWith(
-                  color: context.colors.textPrimary.withValues(alpha: 0.55),
+                  color: context.textInk(0.55),
                   fontSize: 10.sp,
                   letterSpacing: 1.4,
                 ),
@@ -17121,7 +17755,7 @@ class _NagGroup extends StatelessWidget {
                 child: Text(
                   hint,
                   style: AppTypography.textXsRegular.copyWith(
-                    color: context.colors.textPrimary.withValues(alpha: 0.32),
+                    color: context.textInk(0.32),
                     fontSize: 10.sp,
                     letterSpacing: 0.0,
                   ),
@@ -17220,7 +17854,7 @@ class _NagChip extends StatelessWidget {
                               textAlign: TextAlign.center,
                               style: TextStyle(
                                 fontSize: 15.sp,
-                                color: Colors.white,
+                                color: labelOnFill(context, display.color),
                                 fontWeight: FontWeight.w800,
                                 height: 1.0,
                                 letterSpacing: -0.4,
@@ -17235,9 +17869,25 @@ class _NagChip extends StatelessWidget {
       );
     }
 
+    final isLight = context.isLightTheme;
     final activeBg = display.color;
     final inactiveBg = display.color.withValues(alpha: 0.10);
-    final inactiveBorder = display.color.withValues(alpha: 0.45);
+    // Paper: the pale slate/observation hues vanish at 45%, so the edge and
+    // glyph take the same hue darkened to AA against the tinted well.
+    final inactiveWell = Color.alphaBlend(inactiveBg, context.colors.background);
+    final inactiveBorder =
+        isLight
+            ? legibleHueInk(
+              context,
+              display.color,
+              minContrast: 3,
+              on: inactiveWell,
+            )
+            : display.color.withValues(alpha: 0.45);
+    final inactiveInk =
+        isLight
+            ? nagInk(context, display, on: inactiveWell)
+            : display.color.withValues(alpha: 0.95);
     final width = display.symbol.length > 1 ? 50.sp : 42.sp;
 
     return GestureDetector(
@@ -17259,7 +17909,7 @@ class _NagChip extends StatelessWidget {
             width: 1,
           ),
           boxShadow:
-              isActive
+              isActive && !isLight
                   ? [
                     BoxShadow(
                       color: display.color.withValues(alpha: 0.45),
@@ -17276,9 +17926,7 @@ class _NagChip extends StatelessWidget {
             style: TextStyle(
               fontSize: display.symbol.length > 1 ? 14.sp : 17.sp,
               color:
-                  isActive
-                      ? Colors.white
-                      : display.color.withValues(alpha: 0.95),
+                  isActive ? labelOnFill(context, display.color) : inactiveInk,
               fontWeight: FontWeight.w800,
               height: 1.0,
               letterSpacing: -0.2,

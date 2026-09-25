@@ -1,6 +1,6 @@
 import 'package:chessever2/main.dart' show pageRouteObserver;
 import 'package:chessever2/providers/for_you_games_provider.dart';
-import 'package:chessever2/screens/group_event/group_event_screen.dart';
+import 'package:chessever2/screens/for_you/providers/for_you_tab_provider.dart';
 import 'package:chessever2/screens/group_event/widget/for_you_games_widget.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -14,9 +14,8 @@ void main() {
       addTearDown(scrollController.dispose);
       final container = ProviderContainer(
         overrides: [
-          selectedGroupCategoryProvider.overrideWith(
-            (ref) => GroupEventCategory.current,
-          ),
+          // Another For You page (or another section) is showing.
+          forYouTodayTabActiveProvider.overrideWith((ref) => false),
           forYouSurfaceVisibleProvider.overrideWith((ref) => true),
         ],
       );

@@ -71,8 +71,10 @@ class _GamebaseDatabaseSearchScreenState
           ),
           child: searchAsync.when(
             loading:
-                () => const Center(
-                  child: CircularProgressIndicator(color: kPrimaryColor),
+                () => Center(
+                  child: CircularProgressIndicator(
+                    color: context.colors.accentText,
+                  ),
                 ),
             error: (error, _) => _ErrorState(message: userFacingError(error)),
             data: (state) {
@@ -205,7 +207,7 @@ class _SearchBar extends StatelessWidget {
                   isDense: true,
                   hintText: 'Search',
                   hintStyle: AppTypography.textSmRegular.copyWith(
-                    color: context.colors.textPrimary.withValues(alpha: 0.5),
+                    color: context.textInk(0.5),
                   ),
                   border: InputBorder.none,
                 ),
@@ -248,7 +250,7 @@ class _SearchBar extends StatelessWidget {
                 child: Icon(
                   Icons.tune_rounded,
                   size: 18.ic,
-                  color: hasActiveFilters ? kPrimaryColor : context.colors.textPrimary,
+                  color: hasActiveFilters ? context.colors.accentText : context.colors.textPrimary,
                 ),
               ),
             ),
@@ -292,8 +294,8 @@ class _MetaRow extends StatelessWidget {
                 SizedBox(
                   width: 18.sp,
                   height: 18.sp,
-                  child: const CircularProgressIndicator(
-                    color: kPrimaryColor,
+                  child: CircularProgressIndicator(
+                    color: context.colors.accentText,
                     strokeWidth: 2,
                   ),
                 ),
@@ -306,7 +308,7 @@ class _MetaRow extends StatelessWidget {
               child: Text(
                 'Exact count',
                 style: AppTypography.textXsRegular.copyWith(
-                  color: kPrimaryColor.withValues(
+                  color: context.colors.accentText.withValues(
                     alpha: state.isQueryLoading ? 0.6 : 0.9,
                   ),
                 ),
@@ -340,7 +342,7 @@ class _GamesList extends ConsumerWidget {
       onRefresh:
           () async =>
               ref.read(gamebaseDatabaseSearchProvider.notifier).refresh(),
-      color: kPrimaryColor,
+      color: context.colors.accentText,
       backgroundColor: context.colors.surface,
       child:
           games.isEmpty
@@ -544,7 +546,7 @@ class _PaginationBar extends StatelessWidget {
           Text(
             rightText,
             style: AppTypography.textXsRegular.copyWith(
-              color: context.colors.textPrimary.withValues(alpha: 0.6),
+              color: context.textInk(0.6),
             ),
           ),
         ],
@@ -582,7 +584,7 @@ class _IconPillButton extends StatelessWidget {
           color:
               enabled
                   ? context.colors.textPrimary.withValues(alpha: 0.9)
-                  : context.colors.textPrimary.withValues(alpha: 0.35),
+                  : context.textInk(0.35),
           size: 22.ic,
         ),
       ),
@@ -603,7 +605,7 @@ class _EmptyState extends StatelessWidget {
             Icon(
               Icons.search_off_outlined,
               size: 56.sp,
-              color: context.colors.textPrimary.withValues(alpha: 0.4),
+              color: context.textInk(0.4),
             ),
             SizedBox(height: 12.h),
             Text(
@@ -616,7 +618,7 @@ class _EmptyState extends StatelessWidget {
             Text(
               'Try another query or filters.',
               style: AppTypography.textSmRegular.copyWith(
-                color: context.colors.textPrimary.withValues(alpha: 0.55),
+                color: context.textInk(0.55),
               ),
               textAlign: TextAlign.center,
             ),
@@ -665,7 +667,10 @@ class _ErrorState extends StatelessWidget {
             Icon(
               Icons.error_outline_rounded,
               size: 56.sp,
-              color: kRedColor.withValues(alpha: 0.85),
+              color:
+                  context.isLightTheme
+                      ? context.colors.danger
+                      : kRedColor.withValues(alpha: 0.85),
             ),
             SizedBox(height: 12.h),
             Text(
@@ -676,7 +681,7 @@ class _ErrorState extends StatelessWidget {
             Text(
               message,
               style: AppTypography.textSmRegular.copyWith(
-                color: context.colors.textPrimary.withValues(alpha: 0.6),
+                color: context.textInk(0.6),
               ),
               textAlign: TextAlign.center,
             ),

@@ -182,7 +182,7 @@ class EventFavoriteCard extends ConsumerWidget {
                 },
                 child: Container(
                   padding: EdgeInsets.all(8.sp),
-                  child: Icon(Icons.star, size: 20.ic, color: kPrimaryColor),
+                  child: Icon(Icons.star, size: 20.ic, color: context.colors.accentText),
                 ),
               ),
             ],
