@@ -186,18 +186,32 @@ final discoveryStreakRowsProvider = Provider.autoDispose
 
 // -------------------------------------------------------------- Miniatures
 
+/// Today's miniatures, the first few the Discovery preview shows. Each read
+/// also sets [discoveryTodayMiniaturesTotalProvider].
 final discoveryTodayMiniaturesProvider =
     FutureProvider.autoDispose<List<DiscoveryMiniature>>((ref) async {
       final close = _keepWarm(ref);
+      final total = ref.read(discoveryTodayMiniaturesTotalProvider.notifier);
       try {
-        return await ref
+        final day = await ref
             .watch(discoveryRepositoryProvider)
-            .fetchTodayMiniatures();
+            .fetchTodayMiniaturesDay();
+        total.state = day.total;
+        return day.items;
       } catch (_) {
+        total.state = null;
         close();
         rethrow;
       }
     });
+
+/// How many miniatures today holds in all, as the last read of
+/// [discoveryTodayMiniaturesProvider] counted them: the count beside the
+/// section's name (the preview shows only the first few). Null until a read
+/// has answered, and after one failed.
+final discoveryTodayMiniaturesTotalProvider = StateProvider<int?>(
+  (ref) => null,
+);
 
 // --------------------------------------------------------- Analyzed games
 

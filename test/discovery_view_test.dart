@@ -21,6 +21,7 @@ import 'package:chessever2/screens/for_you/discovery/widgets/most_liked_controls
 import 'package:chessever2/screens/for_you/discovery/widgets/most_liked_section.dart'
     show kMostLikedNotLive;
 import 'package:chessever2/screens/group_event/smart_event/smart_aggregate_event_provider.dart';
+import 'package:chessever2/screens/library/miniatures_screen.dart';
 import 'package:chessever2/screens/library/providers/miniatures_provider.dart';
 import 'package:chessever2/screens/streaks/models/streak_models.dart';
 import 'package:chessever2/screens/streaks/providers/streak_providers.dart';
@@ -187,6 +188,7 @@ Future<ProviderContainer> _pump(
   Future<List<Collection>> Function()? collections,
   GamesListViewMode? mode,
   List<Override> extra = const [],
+  List<NavigatorObserver> observers = const [],
 }) async {
   // Tall enough that every section builds without scrolling.
   tester.view.physicalSize = size;
@@ -244,6 +246,7 @@ Future<ProviderContainer> _pump(
       container: container,
       child: MaterialApp(
         theme: theme ?? AppTheme.darkTheme,
+        navigatorObservers: observers,
         builder: (context, child) => MediaQuery(
           data: MediaQuery.of(context).copyWith(
             textScaler: TextScaler.linear(textScale),
@@ -264,6 +267,21 @@ Future<ProviderContainer> _pump(
   );
   await _settle(tester);
   return container;
+}
+
+/// Records the page each push would open, without opening it (a page with
+/// reads of its own the test does not stand up): the route is taken back
+/// off before its first frame.
+class _PushedPages extends NavigatorObserver {
+  final pages = <Widget>[];
+
+  @override
+  void didPush(Route<dynamic> route, Route<dynamic>? previousRoute) {
+    if (previousRoute == null || route is! MaterialPageRoute) return;
+    final nav = navigator!;
+    pages.add(route.builder(nav.context));
+    scheduleMicrotask(() => nav.removeRoute(route));
+  }
 }
 
 /// The flames flicker forever, so never pumpAndSettle.
@@ -921,6 +939,59 @@ void main() {
       await _teardownCards(tester, container);
     });
 
+    testWidgets('each section\'s title opens what its See all opens, and '
+        'Most liked counts today\'s ranked games after its name', (
+      tester,
+    ) async {
+      final container = await _pump(
+        tester,
+        mostLiked: (_) async => MostLikedResult.ranked(twelve()),
+      );
+      // The count reads as Miniatures' and the My Space groups' do.
+      expect(find.bySemanticsLabel('Most liked, 12'), findsOneWidget);
+      await tester.tap(find.bySemanticsLabel('Most liked, 12'));
+      await _settle(tester);
+      expect(find.byType(MostLikedScreen), findsOneWidget);
+      expect(tester.takeException(), isNull);
+      await _teardownCards(tester, container);
+    });
+
+    testWidgets('Most liked claims no count while nothing is ranked today', (
+      tester,
+    ) async {
+      final container = await _pump(
+        tester,
+        mostLiked: (_) async => MostLikedResult.ranked(const []),
+      );
+      expect(find.bySemanticsLabel('Most liked'), findsOneWidget);
+      expect(find.bySemanticsLabel(RegExp(r'^Most liked, ')), findsNothing);
+      expect(tester.takeException(), isNull);
+      await _teardownCards(tester, container);
+    });
+
+    testWidgets('Miniatures\' title opens what its See all opens, and the '
+        'count after it is today\'s whole count', (tester) async {
+      final pushed = _PushedPages();
+      final container = await _pump(
+        tester,
+        miniatures: minis(6),
+        observers: [pushed],
+        extra: [
+          discoveryTodayMiniaturesTotalProvider.overrideWith((ref) => 37),
+        ],
+      );
+      // The count reads as the My Space groups' do: "Miniatures 37".
+      expect(find.bySemanticsLabel('Miniatures, 37'), findsOneWidget);
+      await tester.tap(find.bySemanticsLabel('Miniatures, 37'));
+      await _settle(tester);
+      await tester.tap(find.bySemanticsLabel('See all Miniatures'));
+      await _settle(tester);
+      expect(pushed.pages, hasLength(2));
+      expect(pushed.pages.every((p) => p is MiniaturesScreen), isTrue);
+      expect(tester.takeException(), isNull);
+      await _teardownCards(tester, container);
+    });
+
     testWidgets('empty and not-live states keep the page honest', (
       tester,
     ) async {
@@ -936,8 +1007,8 @@ void main() {
 
       container = await _pump(tester);
       expect(find.text(kMostLikedNotLive), findsOneWidget);
-      // Nothing to see all of while ranking is not live.
-      expect(seeAll(), findsOneWidget);
+      // See all is always there: the page says ranking is not live yet.
+      expect(seeAll(), findsNWidgets(2));
       await _teardownCards(tester, container);
     });
   });

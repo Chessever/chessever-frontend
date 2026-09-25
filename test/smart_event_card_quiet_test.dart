@@ -1,6 +1,7 @@
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/event_card/smart_event_card.dart';
+import 'package:chessever2/widgets/event_card/smart_event_deck.dart';
 import 'package:chessever2/widgets/time_control_glyph.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -145,6 +146,26 @@ void main() {
       ),
       findsNothing,
     );
+  });
+
+  testWidgets('every card deals its own deck: level on the front board, '
+      'fan by the fastest control, one board behind per event', (
+    tester,
+  ) async {
+    await _pump(tester, quiet: true);
+    final gm = tester.widget<SmartEventDeck>(find.byType(SmartEventDeck));
+    expect(gm.label, 'GM');
+    expect(gm.pace, SmartDeckPace.rapid);
+    expect(gm.behind, 3);
+
+    await _pump(tester, quiet: true, minElo: 0, formats: const {'blitz'});
+    final blitz = tester.widget<SmartEventDeck>(find.byType(SmartEventDeck));
+    expect(blitz.label, isNull);
+    expect(blitz.pace, SmartDeckPace.blitz);
+    expect(blitz.seed, isNot(gm.seed));
+    // The seed holds across launches: it never leans on String.hashCode.
+    expect(smartDeckSeed(['GM', 2500]), smartDeckSeed(['GM', 2500]));
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('a live member event reads LIVE, as an event card does', (

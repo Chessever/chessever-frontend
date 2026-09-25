@@ -1,10 +1,12 @@
 import 'dart:async';
 
+import 'package:chessever2/providers/auth_state_provider.dart';
+import 'package:chessever2/providers/favorite_players_provider.dart';
+import 'package:chessever2/repository/favorites/models/favorite_player.dart';
 import 'package:chessever2/screens/group_event/providers/live_group_broadcast_id_provider.dart';
 import 'package:chessever2/screens/my_space/models/space_shortcut.dart';
 import 'package:chessever2/screens/my_space/providers/space_shortcuts_provider.dart';
 import 'package:chessever2/screens/my_space/widgets/space_database.dart';
-import 'package:chessever2/screens/tour_detail/games_tour/providers/games_list_view_mode_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/live_rounds_id_provider.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -25,6 +27,11 @@ class _Store extends SpaceShortcutsNotifier {
 
   @override
   Future<List<SpaceShortcut>> build() async => seed;
+}
+
+class _NoFavorites extends FavoritePlayersNotifierNew {
+  @override
+  Future<List<FavoritePlayer>> build() async => const [];
 }
 
 void main() {
@@ -98,22 +105,27 @@ void main() {
     });
   });
 
-  test('a group shows its cap, games and openings half in board view', () {
-    expect(spaceGroupCap(SpaceSection.events), 3);
-    expect(spaceGroupCap(SpaceSection.library), 3);
-    expect(spaceGroupCap(SpaceSection.links), 3);
-    expect(spaceGroupCap(SpaceSection.smartEvents), 2);
-    expect(
-      spaceGroupCap(SpaceSection.games, mode: GamesListViewMode.chessBoardGrid),
-      4,
+  test('the Players group takes the players My Space shows, follows '
+      'included, in place of its pins alone', () {
+    final groups = spaceDatabaseGroups(
+      [_s(SpaceShortcutKind.player, 'p1'), _s(SpaceShortcutKind.event, 'e')],
+      players: [
+        _s(SpaceShortcutKind.player, 'f1'),
+        _s(SpaceShortcutKind.player, 'p1'),
+      ],
     );
+    expect([for (final g in groups) g.section], [
+      SpaceSection.events,
+      SpaceSection.players,
+    ]);
+    expect([for (final s in groups[1].items) s.targetId], ['f1', 'p1']);
+    // Follows alone make a Players group with no pin at all.
     expect(
-      spaceGroupCap(SpaceSection.games, mode: GamesListViewMode.chessBoard),
-      2,
-    );
-    expect(
-      spaceGroupCap(SpaceSection.openings, mode: GamesListViewMode.chessBoard),
-      2,
+      spaceDatabaseGroups(
+        const [],
+        players: [_s(SpaceShortcutKind.player, 'f1')],
+      ).single.section,
+      SpaceSection.players,
     );
   });
 
@@ -137,6 +149,8 @@ void main() {
           liveRoundsIdProvider.overrideWith(
             (ref) => Stream.value(const <String>[]),
           ),
+          currentUserProvider.overrideWithValue(null),
+          favoritePlayersProviderNew.overrideWith(_NoFavorites.new),
         ],
       );
       addTearDown(container.dispose);

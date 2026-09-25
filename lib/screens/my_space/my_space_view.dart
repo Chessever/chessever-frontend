@@ -1,8 +1,6 @@
 import 'package:chessever2/providers/favorite_events_provider.dart';
 import 'package:chessever2/providers/for_you_games_provider.dart';
 import 'package:chessever2/repository/liked_games/liked_games_provider.dart';
-import 'package:chessever2/screens/for_you/discovery/widgets/discovery_common.dart'
-    show DiscoveryAction, DiscoveryActionLead;
 import 'package:chessever2/screens/for_you/open_for_you_event.dart';
 import 'package:chessever2/screens/library/providers/gamebase_database_games_provider.dart'
     show twicDatabaseTotalGamesProvider;
@@ -19,7 +17,6 @@ import 'package:chessever2/screens/my_space/providers/space_hub_providers.dart';
 import 'package:chessever2/screens/my_space/providers/space_shortcuts_provider.dart';
 import 'package:chessever2/screens/my_space/sheets/space_add_sheet.dart';
 import 'package:chessever2/screens/my_space/widgets/space_database.dart';
-import 'package:chessever2/screens/my_space/widgets/space_door_actions.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
@@ -38,8 +35,10 @@ import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 /// What My Database says while it holds nothing: one line (the suggested
-/// events under it speak for themselves).
-const String kMyDatabaseEmptyText = 'Hold any card and choose Add to My Space.';
+/// events under it speak for themselves). "tap +" is held together (a
+/// no-break space), so the "+" never stands alone on a line of its own.
+const String kMyDatabaseEmptyText =
+    'Hold any card and choose Add to My Space, or tap +.';
 
 /// How many live events a new user is offered to save.
 const int kMySpaceSuggestions = 3;
@@ -76,51 +75,30 @@ class MySpaceView extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     spaceTakeLiveFirstLatch(ref);
     final groups = ref.watch(spaceDatabaseGroupsProvider);
+    // Whether the user has saved anything the groups show. The Players
+    // group stands without a pin (the followed players are in it by
+    // default), so a new user who followed players while onboarding still
+    // has nothing saved: they keep the explainer and the events offered
+    // to save, above the faces.
+    final pinned = ref.watch(
+      spaceShortcutsProvider.select(
+        (s) => s.valueOrNull?.any(spaceShowsInDatabase) ?? false,
+      ),
+    );
     final tablet = ResponsiveHelper.isTablet;
     final gutter = hubGutter;
 
-    // The body: the groups (paired into two columns on a tablet), the empty
-    // state, or its skeleton while the saved list loads.
+    // The body: the explainer and the suggested events while nothing is
+    // saved, then the groups (each one sideways rail, on a tablet too, where
+    // a rail simply shows more), or a skeleton while the saved list loads.
     final body = <({String key, Widget child})>[];
     if (groups == null) {
       body.add((key: 'space_skeleton', child: const _DatabaseSkeleton()));
-    } else if (groups.isEmpty) {
-      body.add((key: 'space_empty_text', child: const _DatabaseEmpty()));
-      body.add((key: 'space_suggestions', child: const _Suggestions()));
-    } else if (tablet) {
-      // Two columns, each group joining the shorter one in page order, so
-      // a long Events group never leaves the other column half empty.
-      final columns = spaceTabletColumns(groups);
-      body.add((
-        key: 'space_groups_tablet',
-        child: Padding(
-          padding: EdgeInsets.symmetric(horizontal: gutter),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              for (final (i, column) in columns.indexed) ...[
-                if (i > 0) SizedBox(width: 16.sp),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      for (final (j, g) in column.indexed)
-                        Padding(
-                          key: ValueKey<String>(
-                            'space_group_${g.section.name}',
-                          ),
-                          padding: EdgeInsets.only(top: j == 0 ? 0 : 12.sp),
-                          child: SpaceDatabaseGroupView(group: g, gutter: 0),
-                        ),
-                    ],
-                  ),
-                ),
-              ],
-            ],
-          ),
-        ),
-      ));
     } else {
+      if (!pinned) {
+        body.add((key: 'space_empty_text', child: const _DatabaseEmpty()));
+        body.add((key: 'space_suggestions', child: const _Suggestions()));
+      }
       for (final g in groups) {
         body.add((
           key: 'space_group_${g.section.name}',
@@ -128,7 +106,7 @@ class MySpaceView extends ConsumerWidget {
         ));
       }
     }
-    final lead = 2;
+    final lead = 1;
     final count = lead + body.length + 1;
 
     Widget padded(Widget child) => Padding(
@@ -143,7 +121,9 @@ class MySpaceView extends ConsumerWidget {
       physics: const AlwaysScrollableScrollPhysics(
         parent: BouncingScrollPhysics(),
       ),
-      padding: EdgeInsets.only(top: 16.sp, bottom: 24.sp),
+      // The foot clears the floating add button (home's FAB slot), so the
+      // Build a Smart Event tile can scroll fully above it.
+      padding: EdgeInsets.only(top: 16.sp, bottom: 24.sp + 72),
       itemCount: count,
       // Groups keep their state as saved things come and go around them.
       findChildIndexCallback: (key) {
@@ -158,12 +138,6 @@ class MySpaceView extends ConsumerWidget {
             child: padded(const _MySpaceTiles()),
           );
         }
-        if (index == 1) {
-          return KeyedSubtree(
-            key: const ValueKey<String>('my_space_db_header'),
-            child: padded(const _DatabaseHeader()),
-          );
-        }
         if (index == count - 1) {
           return Padding(
             key: const ValueKey<String>('my_space_build'),
@@ -176,9 +150,10 @@ class MySpaceView extends ConsumerWidget {
         return Padding(
           key: ValueKey<String>(item.key),
           // A group opens on its 44 sub-header, whose own air above the
-          // words finishes the gap to the group before it.
+          // words finishes the gap to what stands before it. The explainer
+          // and the suggestions set their own.
           padding: EdgeInsets.only(
-            top: at == 0 || groups == null || groups.isEmpty ? 0 : 12.sp,
+            top: at == 0 || !item.key.startsWith('space_group_') ? 0 : 12.sp,
           ),
           child: item.child,
         );
@@ -202,37 +177,6 @@ class MySpaceView extends ConsumerWidget {
       child: framed,
     );
   }
-}
-
-/// How tall a group roughly stands, in compact-card units, for balancing
-/// the tablet's two columns.
-double _groupWeight(SpaceDatabaseGroup g) {
-  final n = g.items.length;
-  return switch (g.section) {
-        SpaceSection.events => 2.2 * n.clamp(0, 3),
-        SpaceSection.players => 2.5,
-        SpaceSection.games ||
-        SpaceSection.openings => 2.0 * ((n.clamp(0, 4) + 1) ~/ 2),
-        SpaceSection.smartEvents => 1.0 * n.clamp(0, 2),
-        _ => 1.0 * n.clamp(0, 3),
-      } +
-      0.5;
-}
-
-/// [groups] split into the tablet's two columns: each group, in page order,
-/// joins the column that is shorter so far.
-@visibleForTesting
-List<List<SpaceDatabaseGroup>> spaceTabletColumns(
-  List<SpaceDatabaseGroup> groups,
-) {
-  final columns = [<SpaceDatabaseGroup>[], <SpaceDatabaseGroup>[]];
-  final heights = [0.0, 0.0];
-  for (final g in groups) {
-    final at = heights[1] < heights[0] ? 1 : 0;
-    columns[at].add(g);
-    heights[at] += _groupWeight(g);
-  }
-  return columns;
 }
 
 // ------------------------------------------------------------------ tiles
@@ -299,11 +243,8 @@ class _MyPrepTile extends ConsumerWidget {
           CardContextMenu.open(
             anchor,
             onPreviewTap: () => openMyPrep(context),
-            previewBuilder: (_) => HubTileFace(
-              title: 'My Prep',
-              caption: caption,
-              artwork: art,
-            ),
+            previewBuilder: (_) =>
+                HubTileFace(title: 'My Prep', caption: caption, artwork: art),
             actions: (menuContext) => [
               if (!guest)
                 for (final folder in ref.read(recentDatabasesProvider))
@@ -329,50 +270,6 @@ class _MyPrepTile extends ConsumerWidget {
             ],
           );
         },
-      ),
-    );
-  }
-}
-
-// ------------------------------------------------------------------ header
-
-/// "My Database", with Add: one menu for every type the page groups.
-class _DatabaseHeader extends ConsumerWidget {
-  const _DatabaseHeader();
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    return HubSectionHeader(
-      title: 'My Database',
-      trailing: Builder(
-        builder: (anchor) => DiscoveryAction(
-          label: 'Add',
-          lead: DiscoveryActionLead.plus,
-          semanticsLabel: 'Add to My Database',
-          onTap: () {
-            CardContextMenu.open(
-              anchor,
-              actions: (menuContext) => [
-                for (final (icon, label, section) in const [
-                  (Icons.emoji_events_outlined, 'Event', SpaceSection.events),
-                  (
-                    Icons.person_outline_rounded,
-                    'Player',
-                    SpaceSection.players,
-                  ),
-                  (Icons.grid_view_rounded, 'Game', SpaceSection.games),
-                  (Icons.menu_book_outlined, 'Opening', SpaceSection.openings),
-                  (Icons.storage_rounded, 'Database', SpaceSection.library),
-                ])
-                  LibraryMenuAction(
-                    icon: icon,
-                    label: label,
-                    onSelected: () => openSpaceAdd(context, ref, section),
-                  ),
-              ],
-            );
-          },
-        ),
       ),
     );
   }

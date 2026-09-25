@@ -454,15 +454,6 @@ class DiscoveryGameList extends ConsumerWidget {
     return cap.clamp(0, left);
   }
 
-  Widget _badged(int index, Widget card) {
-    final badge = badgeFor;
-    if (badge == null) return card;
-    return BoardCornerBadge(
-      builder: (boardSize) => badge(index, boardSize),
-      child: card,
-    );
-  }
-
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final viewMode = ref.watch(gamesListViewModeProvider);
@@ -478,149 +469,31 @@ class DiscoveryGameList extends ConsumerWidget {
     // Which cards subscribe, and on which batch. A caller's batch serves
     // its group; without one, a capped list keys a batch over the games it
     // shows, so the cards past the cap never join a channel.
-    final batchFor = liveBatchKeyFor;
     final shownBatch =
-        batchFor == null && streamEnabled && shown < games.length
+        liveBatchKeyFor == null && streamEnabled && shown < games.length
             ? liveBatchKeysForGames(
               games: games.sublist(start, end),
               scopePrefix: 'discovery_list',
             )
             : null;
-    bool streams(GamesTourModel game) =>
-        streamEnabled &&
-        (batchFor == null || shouldSubscribeToLiveGame(game));
-    LiveGamesBatchKey? batch(int index) {
-      final game = games[index];
-      if (!streams(game) || !shouldSubscribeToLiveGame(game)) return null;
-      return batchFor != null ? batchFor(index) : shownBatch?[game.gameId];
-    }
-
-    final rows = viewMode == GamesListViewMode.gamesCard;
-    final label = rows ? rowLabelFor : labelFor;
-    final labelled = label != null || lockedFor != null;
-    final slot = labelled ? _labelSlotHeight(context) : 0.0;
-    final menu = menuActionsFor;
-
-    bool locked(int index) => lockedFor?.call(index) ?? false;
-
-    Widget? labelOf(int index) {
-      final line = label?.call(index);
-      if (!locked(index)) return line;
-      return Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          if (line != null) ...[
-            Flexible(child: line),
-            SizedBox(width: DiscoveryPadlock.gap),
-          ],
-          const DiscoveryPadlock(),
-        ],
-      );
-    }
-
-    Widget finish(int index, Widget card) {
-      var out = card;
-      if (locked(index)) {
-        out = Semantics(
-          label: 'Premium game',
-          child: ColorFiltered(colorFilter: _greyscale, child: out),
-        );
-      }
-      final wrap = wrapCard;
-      return wrap == null ? out : wrap(index, out);
-    }
-
-    Widget listCard(int index, {required bool board}) {
-      final game = games[index];
-      final open = onOpen;
-      final rowLabelled = !board && labelled;
-      final card = _badged(
-        index,
-        GameCardWrapperWidget(
-          key: ValueKey('discovery_${board ? 'board' : 'row'}_${game.gameId}'),
-          game: game,
-          gamesData: GamesScreenModel(
-            gamesTourModels: games,
-            pinnedGamedIs: const [],
-          ),
-          gameIndex: index,
-          isChessBoardVisible: board,
-          viewSource: ChessboardView.forYou,
-          navigationListPolicy: BoardNavigationListPolicy.preserve,
-          playerProfileDataSource: discoveryProfileSource(game),
-          streamEnabled: streams(game),
-          liveBatchKey: batch(index),
-          allowStockfishFallback: allowStockfishFallback,
-          // The strip's own line for a game with no clock or move to show.
-          // A row that says its piece over itself fills it with the opening
-          // and the day rather than leaving it blank.
-          footerDetail:
-              footerFor?.call(index) ??
-              (rowLabelled
-                  ? _defaultFooterDetail(game)
-                  : null),
-          // No tour scope to pin into, so the menu drops the row.
-          showPin: false,
-          onPinToggle: (_) async {},
-          menuActions:
-              menu == null ? null : (menuContext) => menu(menuContext, index),
-          onBeforeOpen:
-              open == null
-                  ? null
-                  : () async {
-                    open(games, index);
-                    return false;
-                  },
-          onReturnFromChessboard: (_) {},
-        ),
-      );
-      if (!labelled) return finish(index, card);
-      return finish(
-        index,
-        _labelled(
-          slot: slot,
-          label: labelOf(index),
-          card: card,
-          inset: board ? _boardCardInset : _rowInset,
-        ),
-      );
-    }
-
-    Widget gridCard(int index) {
-      final game = games[index];
-      final card = _badged(
-        index,
-        GridGameCardWrapperWidget(
-          key: ValueKey('discovery_grid_${game.gameId}'),
-          game: game,
-          orderedGames: games,
-          gameIndex: index,
-          streamEnabled: streams(game),
-          liveBatchKey: batch(index),
-          allowStockfishFallback: allowStockfishFallback,
-          viewSource: ChessboardView.forYou,
-          playerProfileDataSource: discoveryProfileSource(game),
-          pinnedIds: const [],
-          showPin: false,
-          onPinToggle: (_) {},
-          menuActions:
-              menu == null ? null : (menuContext) => menu(menuContext, index),
-          onChangedWithLiveGames: (updated) {
-            final open = onOpen;
-            if (open != null) {
-              open(updated, index);
-            } else {
-              openDiscoveryGame(context, ref, updated, index);
-            }
-          },
-        ),
-      );
-      if (!labelled) return finish(index, card);
-      return finish(
-        index,
-        _labelled(slot: slot, label: labelOf(index), card: card),
-      );
-    }
+    final kit = _CardKit(
+      context: context,
+      ref: ref,
+      viewMode: viewMode,
+      games: games,
+      badgeFor: badgeFor,
+      footerFor: footerFor,
+      onOpen: onOpen,
+      streamEnabled: streamEnabled,
+      labelFor: labelFor,
+      rowLabelFor: rowLabelFor,
+      liveBatchKeyFor: liveBatchKeyFor,
+      shownBatch: shownBatch,
+      allowStockfishFallback: allowStockfishFallback,
+      menuActionsFor: menuActionsFor,
+      wrapCard: wrapCard,
+      lockedFor: lockedFor,
+    );
 
     final out = <Widget>[];
     if (viewMode == GamesListViewMode.chessBoardGrid) {
@@ -637,10 +510,13 @@ class DiscoveryGameList extends ConsumerWidget {
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Expanded(child: gridCard(left)),
+              Expanded(child: kit.gridCard(left)),
               SizedBox(width: _cardGap),
               Expanded(
-                child: right == null ? const SizedBox.shrink() : gridCard(right),
+                child:
+                    right == null
+                        ? const SizedBox.shrink()
+                        : kit.gridCard(right),
               ),
             ],
           ),
@@ -657,7 +533,7 @@ class DiscoveryGameList extends ConsumerWidget {
       // List rows or full boards, exactly as chosen, for every game.
       final boardView = viewMode == GamesListViewMode.chessBoard;
       for (var i = start; i < end; i++) {
-        out.add(listCard(i, board: boardView));
+        out.add(kit.listCard(i, board: boardView));
       }
     }
     final column = Column(
@@ -674,6 +550,268 @@ class DiscoveryGameList extends ConsumerWidget {
     return Padding(
       padding: EdgeInsets.symmetric(horizontal: discoveryGutter),
       child: column,
+    );
+  }
+}
+
+/// One game of [games] exactly as [DiscoveryGameList] draws it, on its own:
+/// the card of the viewer's games view (the grid card, the compact row or
+/// the full board card) with the list's label slot, badge, long-press rows
+/// and opening, filling the width it is given. For a rail, where every card
+/// is an item of its own; opening it still hands the board all of [games].
+///
+/// Streaming works as the list's: with [liveBatchKeyFor] a game that can
+/// stream subscribes on the batch the caller keys over the rail's games.
+class DiscoveryGameCard extends ConsumerWidget {
+  const DiscoveryGameCard({
+    super.key,
+    required this.games,
+    required this.index,
+    this.badgeFor,
+    this.footerFor,
+    this.onOpen,
+    this.streamEnabled = true,
+    this.labelFor,
+    this.rowLabelFor,
+    this.liveBatchKeyFor,
+    this.allowStockfishFallback = false,
+    this.menuActionsFor,
+    this.lockedFor,
+  });
+
+  final List<GamesTourModel> games;
+  final int index;
+  final Widget Function(int index, double boardSize)? badgeFor;
+  final String? Function(int index)? footerFor;
+  final void Function(List<GamesTourModel> games, int index)? onOpen;
+  final bool streamEnabled;
+  final Widget? Function(int index)? labelFor;
+  final Widget? Function(int index)? rowLabelFor;
+  final LiveGamesBatchKey? Function(int index)? liveBatchKeyFor;
+  final bool allowStockfishFallback;
+  final List<LibraryMenuAction> Function(BuildContext context, int index)?
+  menuActionsFor;
+  final bool Function(int index)? lockedFor;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final viewMode = ref.watch(gamesListViewModeProvider);
+    final kit = _CardKit(
+      context: context,
+      ref: ref,
+      viewMode: viewMode,
+      games: games,
+      badgeFor: badgeFor,
+      footerFor: footerFor,
+      onOpen: onOpen,
+      streamEnabled: streamEnabled,
+      labelFor: labelFor,
+      rowLabelFor: rowLabelFor,
+      liveBatchKeyFor: liveBatchKeyFor,
+      shownBatch: null,
+      allowStockfishFallback: allowStockfishFallback,
+      menuActionsFor: menuActionsFor,
+      wrapCard: null,
+      lockedFor: lockedFor,
+    );
+    return switch (viewMode) {
+      GamesListViewMode.chessBoardGrid => kit.gridCard(index),
+      GamesListViewMode.gamesCard => kit.listCard(index, board: false),
+      GamesListViewMode.chessBoard => kit.listCard(index, board: true),
+    };
+  }
+}
+
+/// The card builders [DiscoveryGameList] and [DiscoveryGameCard] share, so a
+/// rail's card and a list's card can never differ.
+class _CardKit {
+  _CardKit({
+    required this.context,
+    required this.ref,
+    required this.viewMode,
+    required this.games,
+    required this.badgeFor,
+    required this.footerFor,
+    required this.onOpen,
+    required this.streamEnabled,
+    required this.labelFor,
+    required this.rowLabelFor,
+    required this.liveBatchKeyFor,
+    required this.shownBatch,
+    required this.allowStockfishFallback,
+    required this.menuActionsFor,
+    required this.wrapCard,
+    required this.lockedFor,
+  }) : labelled =
+           (viewMode == GamesListViewMode.gamesCard ? rowLabelFor : labelFor) !=
+               null ||
+           lockedFor != null {
+    slot = labelled ? _labelSlotHeight(context) : 0.0;
+  }
+
+  final BuildContext context;
+  final WidgetRef ref;
+  final GamesListViewMode viewMode;
+  final List<GamesTourModel> games;
+  final Widget Function(int index, double boardSize)? badgeFor;
+  final String? Function(int index)? footerFor;
+  final void Function(List<GamesTourModel> games, int index)? onOpen;
+  final bool streamEnabled;
+  final Widget? Function(int index)? labelFor;
+  final Widget? Function(int index)? rowLabelFor;
+  final LiveGamesBatchKey? Function(int index)? liveBatchKeyFor;
+  final Map<String, LiveGamesBatchKey>? shownBatch;
+  final bool allowStockfishFallback;
+  final List<LibraryMenuAction> Function(BuildContext context, int index)?
+  menuActionsFor;
+  final Widget Function(int index, Widget card)? wrapCard;
+  final bool Function(int index)? lockedFor;
+
+  /// Whether every card keeps the one-line label slot over it.
+  final bool labelled;
+  late final double slot;
+
+  Widget? Function(int index)? get _label =>
+      viewMode == GamesListViewMode.gamesCard ? rowLabelFor : labelFor;
+
+  bool _streams(GamesTourModel game) =>
+      streamEnabled &&
+      (liveBatchKeyFor == null || shouldSubscribeToLiveGame(game));
+
+  LiveGamesBatchKey? _batch(int index) {
+    final game = games[index];
+    if (!_streams(game) || !shouldSubscribeToLiveGame(game)) return null;
+    final batchFor = liveBatchKeyFor;
+    return batchFor != null ? batchFor(index) : shownBatch?[game.gameId];
+  }
+
+  bool _locked(int index) => lockedFor?.call(index) ?? false;
+
+  Widget _badged(int index, Widget card) {
+    final badge = badgeFor;
+    if (badge == null) return card;
+    return BoardCornerBadge(
+      builder: (boardSize) => badge(index, boardSize),
+      child: card,
+    );
+  }
+
+  Widget? _labelOf(int index) {
+    final line = _label?.call(index);
+    if (!_locked(index)) return line;
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (line != null) ...[
+          Flexible(child: line),
+          SizedBox(width: DiscoveryPadlock.gap),
+        ],
+        const DiscoveryPadlock(),
+      ],
+    );
+  }
+
+  Widget _finish(int index, Widget card) {
+    var out = card;
+    if (_locked(index)) {
+      out = Semantics(
+        label: 'Premium game',
+        child: ColorFiltered(colorFilter: _greyscale, child: out),
+      );
+    }
+    final wrap = wrapCard;
+    return wrap == null ? out : wrap(index, out);
+  }
+
+  Widget listCard(int index, {required bool board}) {
+    final game = games[index];
+    final open = onOpen;
+    final menu = menuActionsFor;
+    final rowLabelled = !board && labelled;
+    final card = _badged(
+      index,
+      GameCardWrapperWidget(
+        key: ValueKey('discovery_${board ? 'board' : 'row'}_${game.gameId}'),
+        game: game,
+        gamesData: GamesScreenModel(
+          gamesTourModels: games,
+          pinnedGamedIs: const [],
+        ),
+        gameIndex: index,
+        isChessBoardVisible: board,
+        viewSource: ChessboardView.forYou,
+        navigationListPolicy: BoardNavigationListPolicy.preserve,
+        playerProfileDataSource: discoveryProfileSource(game),
+        streamEnabled: _streams(game),
+        liveBatchKey: _batch(index),
+        allowStockfishFallback: allowStockfishFallback,
+        // The strip's own line for a game with no clock or move to show.
+        // A row that says its piece over itself fills it with the opening
+        // and the day rather than leaving it blank.
+        footerDetail:
+            footerFor?.call(index) ??
+            (rowLabelled ? _defaultFooterDetail(game) : null),
+        // No tour scope to pin into, so the menu drops the row.
+        showPin: false,
+        onPinToggle: (_) async {},
+        menuActions:
+            menu == null ? null : (menuContext) => menu(menuContext, index),
+        onBeforeOpen:
+            open == null
+                ? null
+                : () async {
+                  open(games, index);
+                  return false;
+                },
+        onReturnFromChessboard: (_) {},
+      ),
+    );
+    if (!labelled) return _finish(index, card);
+    return _finish(
+      index,
+      _labelled(
+        slot: slot,
+        label: _labelOf(index),
+        card: card,
+        inset: board ? _boardCardInset : _rowInset,
+      ),
+    );
+  }
+
+  Widget gridCard(int index) {
+    final game = games[index];
+    final menu = menuActionsFor;
+    final card = _badged(
+      index,
+      GridGameCardWrapperWidget(
+        key: ValueKey('discovery_grid_${game.gameId}'),
+        game: game,
+        orderedGames: games,
+        gameIndex: index,
+        streamEnabled: _streams(game),
+        liveBatchKey: _batch(index),
+        allowStockfishFallback: allowStockfishFallback,
+        viewSource: ChessboardView.forYou,
+        playerProfileDataSource: discoveryProfileSource(game),
+        pinnedIds: const [],
+        showPin: false,
+        onPinToggle: (_) {},
+        menuActions:
+            menu == null ? null : (menuContext) => menu(menuContext, index),
+        onChangedWithLiveGames: (updated) {
+          final open = onOpen;
+          if (open != null) {
+            open(updated, index);
+          } else {
+            openDiscoveryGame(context, ref, updated, index);
+          }
+        },
+      ),
+    );
+    if (!labelled) return _finish(index, card);
+    return _finish(
+      index,
+      _labelled(slot: slot, label: _labelOf(index), card: card),
     );
   }
 }

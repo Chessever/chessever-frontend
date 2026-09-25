@@ -1,9 +1,10 @@
+import 'dart:math' as math;
+
 import 'package:chessever2/screens/group_event/widget/filter_popup/group_event_filter_provider.dart'
     show EventFormat;
 import 'package:chessever2/screens/library/widgets/library_context_menu.dart';
 import 'package:chessever2/screens/my_space/actions/space_menu_action.dart';
 import 'package:chessever2/screens/my_space/models/space_shortcut.dart';
-import 'package:chessever2/screens/my_space/widgets/space_glyphs.dart';
 import 'package:chessever2/screens/my_space/widgets/space_tile_content.dart'
     show spaceText;
 import 'package:chessever2/theme/app_colors.dart';
@@ -13,6 +14,7 @@ import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/app_button.dart';
 import 'package:chessever2/widgets/game_filter/rating_tier_filter.dart';
+import 'package:chessever2/widgets/event_card/smart_event_deck.dart';
 import 'package:chessever2/widgets/hub_tile.dart' show kHubTileInk;
 import 'package:chessever2/widgets/time_control_glyph.dart';
 import 'package:flutter/material.dart';
@@ -117,39 +119,32 @@ class SmartEventCard extends StatelessWidget {
 
     final draft = spaceDraft;
     return TappableScale(
-        onTap: () {
-          HapticFeedbackService.cardTap();
-          onTap!();
-        },
-        child:
-            draft == null
-                ? card
-                : Consumer(
-                  child: card,
-                  builder:
-                      (context, ref, child) => GestureDetector(
-                        behavior: HitTestBehavior.opaque,
-                        onLongPress:
-                            () => showLibraryContextMenu(
-                              context: context,
-                              previewBuilder: _buildCard,
-                              onPreviewTap: onTap,
-                              actions: [
-                                LibraryMenuAction(
-                                  icon: Icons.open_in_new_rounded,
-                                  label: 'Open smart event',
-                                  onSelected: onTap!,
-                                ),
-                                spaceMenuAction(
-                                  context: context,
-                                  ref: ref,
-                                  draft: draft,
-                                ),
-                              ],
-                            ),
-                        child: child,
-                      ),
+      onTap: () {
+        HapticFeedbackService.cardTap();
+        onTap!();
+      },
+      child: draft == null
+          ? card
+          : Consumer(
+              child: card,
+              builder: (context, ref, child) => GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onLongPress: () => showLibraryContextMenu(
+                  context: context,
+                  previewBuilder: _buildCard,
+                  onPreviewTap: onTap,
+                  actions: [
+                    LibraryMenuAction(
+                      icon: Icons.open_in_new_rounded,
+                      label: 'Open smart event',
+                      onSelected: onTap!,
+                    ),
+                    spaceMenuAction(context: context, ref: ref, draft: draft),
+                  ],
                 ),
+                child: child,
+              ),
+            ),
     );
   }
 
@@ -165,20 +160,18 @@ class SmartEventCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(8.br),
         // The event card's own treatment: paper lifts with a hairline and
         // a tight shadow, dark stands on its tone.
-        border:
-            light
-                ? Border.all(color: colors.divider.withValues(alpha: 0.4))
-                : null,
-        boxShadow:
-            light
-                ? [
-                  BoxShadow(
-                    color: colors.shadow,
-                    blurRadius: 8,
-                    offset: const Offset(0, 1),
-                  ),
-                ]
-                : null,
+        border: light
+            ? Border.all(color: colors.divider.withValues(alpha: 0.4))
+            : null,
+        boxShadow: light
+            ? [
+                BoxShadow(
+                  color: colors.shadow,
+                  blurRadius: 8,
+                  offset: const Offset(0, 1),
+                ),
+              ]
+            : null,
       ),
       padding: EdgeInsets.all(6.sp),
       child: ConstrainedBox(
@@ -191,6 +184,13 @@ class SmartEventCard extends StatelessWidget {
               height: imageH,
               minElo: minElo,
               formatsAndStates: formatsAndStates,
+              events: liveCount,
+              seed: smartDeckSeed([
+                tierLabel,
+                titleSuffix,
+                minElo,
+                ...formatsAndStates.toList()..sort(),
+              ]),
             ),
             SizedBox(width: 10.w),
             Expanded(
@@ -263,7 +263,9 @@ class _MetaLine extends StatelessWidget {
           fontFeatures: const [FontFeature.tabularFigures()],
         ),
         children: [
-          TextSpan(text: count == 1 ? '1 $countSingular' : '$count $countPlural'),
+          TextSpan(
+            text: count == 1 ? '1 $countSingular' : '$count $countPlural',
+          ),
           if (avgElo > 0) ...[
             WidgetSpan(
               alignment: PlaceholderAlignment.middle,
@@ -305,14 +307,13 @@ class _ThirdLine extends StatelessWidget {
         live ? 'LIVE' : text,
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
-        style:
-            live
-                ? style.copyWith(
-                  color: context.colors.accentText,
-                  fontWeight: FontWeight.w700,
-                  letterSpacing: 0.6,
-                )
-                : style,
+        style: live
+            ? style.copyWith(
+                color: context.colors.accentText,
+                fontWeight: FontWeight.w700,
+                letterSpacing: 0.6,
+              )
+            : style,
       ),
     );
   }
@@ -320,9 +321,11 @@ class _ThirdLine extends StatelessWidget {
 
 /// The smart event's plate: a neutral panel (the hub tiles' ink in dark, the
 /// recessed surface on paper) with a hairline in its own colour, holding the
-/// combination as the builder draws it: the level ("GM" over "2500+", or
-/// "2700+" alone off the tiers) and under it the chosen time controls'
-/// glyphs. With neither, the stacked-boards glyph.
+/// smart event's deck ([SmartEventDeck]), dealt from its combination: a
+/// board behind the front one per gathered event, the fan opened by the
+/// fastest time control, and the level ("GM", or an off-tier floor such as
+/// "2700+") printed on the front board. Under the deck, the builder's
+/// vocabulary: the tier's floor and the chosen time controls' glyphs.
 class SmartEventPlate extends StatelessWidget {
   const SmartEventPlate({
     super.key,
@@ -330,12 +333,20 @@ class SmartEventPlate extends StatelessWidget {
     required this.height,
     required this.minElo,
     this.formatsAndStates = const <String>{},
+    this.events = 2,
+    this.seed = 0,
   });
 
   final double width;
   final double height;
   final int minElo;
   final Set<String> formatsAndStates;
+
+  /// How many events the smart event gathers: the deck's thickness.
+  final int events;
+
+  /// Deals the deck (see [smartDeckSeed]).
+  final int seed;
 
   /// The level track's code for [minElo] ("GM"), when it is one of its tiers.
   static String? levelCode(int minElo) {
@@ -358,67 +369,53 @@ class SmartEventPlate extends StatelessWidget {
     ];
     final level = minElo > 0;
     final code = level ? levelCode(minElo) : null;
-    final glyphSide = 18.w;
+    // The floor rides under the deck when the front board shows its code.
+    final floor = code != null;
+    final row = floor || glyphs.isNotEmpty;
+    final side = math.min(width * 0.86, height * (row ? 0.66 : 0.84));
+    final glyphSide = height * 0.15;
 
-    final Widget content;
-    if (!level && glyphs.isEmpty) {
-      content = SpaceGlyph(
-        SpaceGlyphKind.boards,
-        size: 40.w,
-        ink: colors.iconPrimary,
-        background: plate,
-      );
-    } else {
-      content = Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          if (level) ...[
-            if (code != null)
-              Text(
-                code,
-                maxLines: 1,
-                style: spaceText(
-                  context,
-                  size: 15,
-                  line: 20,
-                  weight: FontWeight.w700,
-                ),
-              ),
-            Text(
-              '$minElo+',
-              maxLines: 1,
-              style:
-                  code != null
-                      ? spaceText(
-                        context,
-                        size: 12,
-                        line: 16,
-                        color: colors.textSecondary,
-                        tabular: true,
-                      )
-                      : spaceText(
-                        context,
-                        size: 15,
-                        line: 20,
-                        weight: FontWeight.w700,
-                        tabular: true,
-                      ),
-            ),
-          ],
-          if (level && glyphs.isNotEmpty) SizedBox(height: 6.w),
-          if (glyphs.isNotEmpty)
-            Row(
+    final content = Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        SmartEventDeck(
+          size: side,
+          ink: colors.iconPrimary,
+          background: plate,
+          seed: seed,
+          behind: events.clamp(1, 3),
+          pace: smartDeckPace(formatsAndStates),
+          label: level ? (code ?? '$minElo+') : null,
+        ),
+        if (row) ...[
+          SizedBox(height: height * 0.04),
+          SizedBox(
+            height: glyphSide,
+            child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
+                if (floor)
+                  Text(
+                    '$minElo+',
+                    maxLines: 1,
+                    style: spaceText(
+                      context,
+                      size: 11,
+                      line: 14,
+                      color: colors.textSecondary,
+                      tabular: true,
+                    ),
+                  ),
                 for (final (i, asset) in glyphs.indexed) ...[
-                  if (i > 0) SizedBox(width: 6.w),
+                  if (floor || i > 0) SizedBox(width: 5.w),
                   TimeControlGlyph(asset, size: glyphSide),
                 ],
               ],
             ),
+          ),
         ],
-      );
-    }
+      ],
+    );
 
     return Container(
       width: width,

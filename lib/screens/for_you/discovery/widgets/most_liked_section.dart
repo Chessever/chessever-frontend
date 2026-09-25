@@ -101,10 +101,10 @@ Future<void> _openWeeklyRanking(BuildContext context, WidgetRef ref) {
 /// Discovery's Most liked: today's ranking as a short preview, laid out the
 /// way an event's Games tab lays out its games (the viewer's own games view
 /// setting), each board holding its like count in a heart. Four cards (two
-/// boards in board view) in rank order; "See all" opens the whole ranking,
-/// with its periods, dates and players, on the Most liked page. Opening any
-/// card hands the board the whole ranking, so previous/next walks past the
-/// preview.
+/// boards in board view) in rank order; the title and "See all" open the
+/// whole ranking, with its periods, dates and players, on the Most liked
+/// page. Opening any card hands the board the whole ranking, so
+/// previous/next walks past the preview.
 ///
 /// Always today's ranking: a period picked on the page never moves the hub.
 /// The preview is archive-cheap: no card streams or runs the engine.
@@ -122,9 +122,19 @@ class MostLikedPreview extends ConsumerWidget {
     final query = MostLikedQuery(MostLikedPeriod.today, now ?? DateTime.now());
     final result = ref.watch(mostLikedProvider(query));
     final labelled = ResponsiveHelper.isTablet;
-    // Nothing to rank anywhere while the function is missing: no See all to
-    // an empty page, and nothing sold.
+    // Nothing is sold while ranking is not live. The header still opens the
+    // ranking page, which says so itself.
     final notLive = result.valueOrNull?.status == MostLikedStatus.notLive;
+    // Today's ranked games: the ranking this preview is cut from, and what
+    // See all lists for today, so the header counts like every other
+    // section's. None before the ranking answers, or while it has none.
+    final ranked = result.valueOrNull;
+    final count =
+        ranked != null &&
+            ranked.status == MostLikedStatus.ranked &&
+            ranked.entries.isNotEmpty
+        ? ranked.entries.length
+        : null;
     final upgrade = subscribed || notLive
         ? null
         : DiscoveryUpgradeLine(
@@ -181,16 +191,14 @@ class MostLikedPreview extends ConsumerWidget {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       mainAxisSize: MainAxisSize.min,
       children: [
-        DiscoverySectionHeader(
+        // The hub's one section head: the title and See all both open the
+        // whole ranking (which says so itself while ranking is not live),
+        // the count after the name.
+        DiscoverySeeAllHeader(
           title: 'Most liked',
-          trailing: notLive
-              ? null
-              : DiscoveryAction(
-                  label: 'See all',
-                  arrow: true,
-                  semanticsLabel: 'See all of Most liked',
-                  onTap: () => MostLikedScreen.open(context),
-                ),
+          count: count,
+          seeAllSemanticsLabel: 'See all of Most liked',
+          onOpen: () => MostLikedScreen.open(context),
         ),
         SizedBox(height: 8.w),
         body,

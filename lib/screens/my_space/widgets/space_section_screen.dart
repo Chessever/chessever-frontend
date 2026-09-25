@@ -12,7 +12,7 @@ import 'package:chessever2/screens/my_space/providers/space_auto_provider.dart';
 import 'package:chessever2/screens/my_space/providers/space_shortcuts_provider.dart';
 import 'package:chessever2/screens/my_space/widgets/space_auto_tile.dart';
 import 'package:chessever2/screens/my_space/widgets/space_database.dart'
-    show SpaceGroupPage, SpaceSavedRow;
+    show SpaceGroupPage, SpaceSavedRow, spaceDatabaseGroupsProvider;
 import 'package:chessever2/screens/my_space/widgets/space_door_actions.dart';
 import 'package:chessever2/screens/my_space/widgets/space_metrics.dart';
 import 'package:chessever2/screens/my_space/widgets/space_reorder.dart';
@@ -282,7 +282,22 @@ class _SpaceSectionScreenState extends ConsumerState<SpaceSectionScreen> {
       _order = null;
     }
     final items = spacePreviewOrder(stored, _order);
-    final shown = auto.leading.length + items.length + auto.trailing.length;
+    // My Space's own group counts what the group shows (the Players group
+    // holds the followed players too).
+    final group = widget.pinsOnly
+        ? ref.watch(
+            spaceDatabaseGroupsProvider.select(
+              (groups) => groups
+                  ?.where((g) => g.section == section)
+                  .fold<int>(0, (n, g) => n + g.items.length),
+            ),
+          )
+        : null;
+    final shown =
+        group ?? auto.leading.length + items.length + auto.trailing.length;
+    // The Players group orders itself (the latest visited first), so it has
+    // nothing to put in order by hand.
+    final reorderable = widget.pinsOnly && section != SpaceSection.players;
 
     return Scaffold(
       backgroundColor: context.colors.background,
@@ -334,7 +349,7 @@ class _SpaceSectionScreenState extends ConsumerState<SpaceSectionScreen> {
                   ),
                   // See all orders its things in a plain list with handles,
                   // the cards themselves staying what they are.
-                  if (widget.pinsOnly && (stored.length >= 2 || _editing)) ...[
+                  if (reorderable && (stored.length >= 2 || _editing)) ...[
                     DiscoveryAction(
                       label: _editing ? 'Done' : 'Reorder',
                       onTap: () {

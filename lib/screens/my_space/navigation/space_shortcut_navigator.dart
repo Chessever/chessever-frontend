@@ -98,6 +98,11 @@ Future<void> markSpaceShortcutOpened(WidgetRef ref, SpaceShortcut s) {
   return _afterTransition().then((_) => shortcuts.markOpened(s.id));
 }
 
+/// Resolves once the page an open pushed has finished sliding in: the moment
+/// a write that reorders My Space may land without moving anything under a
+/// transition.
+Future<void> spaceAfterOpenTransition() => _afterTransition();
+
 /// Longest wait for the frames to go quiet: a destination that animates for
 /// good (a live clock, a spinner) never idles.
 const _kTransitionWait = Duration(milliseconds: 900);

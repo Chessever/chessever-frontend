@@ -1,5 +1,9 @@
+import 'package:chessever2/providers/favorite_players_provider.dart';
+import 'package:chessever2/repository/favorites/models/favorite_player.dart';
 import 'package:chessever2/screens/library/widgets/library_context_menu.dart';
 import 'package:chessever2/screens/my_space/models/space_shortcut.dart';
+import 'package:chessever2/screens/my_space/providers/space_auto_provider.dart';
+import 'package:chessever2/screens/my_space/providers/space_players_provider.dart';
 import 'package:chessever2/screens/my_space/providers/space_shortcuts_provider.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/widgets/app_snack.dart';
@@ -20,6 +24,9 @@ LibraryMenuAction spaceMenuAction({
   required WidgetRef ref,
   required SpaceShortcut draft,
 }) {
+  if (draft.kind == SpaceShortcutKind.player) {
+    return _playerMenuAction(context: context, ref: ref, draft: draft);
+  }
   final inSpace = ref.read(spaceShortcutExistsProvider(draft.key));
   final notifier = ref.read(spaceShortcutsProvider.notifier);
   final messenger = ScaffoldMessenger.maybeOf(context);
@@ -55,6 +62,73 @@ LibraryMenuAction spaceMenuAction({
   );
 }
 
+/// A player's row. My Space's Players show every followed player by
+/// default, so a player is in My Space when pinned or when followed and not
+/// taken out of it ([spaceShortcutExistsProvider]). Remove takes out both:
+/// the pin leaves and the follow is hidden from My Space on this device,
+/// never unfollowed; one Undo brings both back. Add brings a hidden follow
+/// back as the follow it is, and pins a player nobody follows.
+LibraryMenuAction _playerMenuAction({
+  required BuildContext context,
+  required WidgetRef ref,
+  required SpaceShortcut draft,
+}) {
+  final inSpace = ref.read(spaceShortcutExistsProvider(draft.key));
+  final store = ref.read(spaceShortcutsProvider.notifier);
+  final hidden = ref.read(spaceHiddenAutoKeysProvider.notifier);
+  final follow = spaceFollowOfPinKey(
+    ref.read(favoritePlayersProviderNew).valueOrNull ??
+        const <FavoritePlayer>[],
+    draft.key,
+  );
+  final followKey = follow == null ? null : spaceHiddenFavoriteKey(follow);
+  final messenger = ScaffoldMessenger.maybeOf(context);
+  return LibraryMenuAction(
+    icon: inSpace
+        ? Icons.dashboard_customize
+        : Icons.dashboard_customize_outlined,
+    label: inSpace ? 'Remove from My Space' : 'Add to My Space',
+    onSelected: () async {
+      if (inSpace) {
+        if (followKey != null) hidden.hide(followKey);
+        final removed = await store.removeTarget(draft.kind, draft.targetId);
+        HapticFeedbackService.light();
+        if (messenger == null || !messenger.mounted) return;
+        showAppSnackOn(
+          messenger,
+          'Removed from My Space',
+          actionLabel: 'Undo',
+          onAction: () async {
+            if (followKey != null) hidden.unhide(followKey);
+            if (removed != null) await store.restore(removed);
+          },
+        );
+        return;
+      }
+      if (followKey != null) {
+        // Followed but taken out of My Space: back as the follow it is.
+        hidden.unhide(followKey);
+        HapticFeedbackService.success();
+        if (messenger == null || !messenger.mounted) return;
+        showAppSnackOn(
+          messenger,
+          'Added to My Space',
+          tone: AppSnackTone.success,
+        );
+        return;
+      }
+      final added = await store.add(draft);
+      HapticFeedbackService.success();
+      if (messenger == null || !messenger.mounted) return;
+      showAppSnackOn(
+        messenger,
+        added ? 'Added to My Space' : 'Already in My Space',
+        tone: added ? AppSnackTone.success : AppSnackTone.neutral,
+      );
+    },
+  );
+}
+
 /// Same as [spaceMenuAction] for surfaces that are not a context menu (an
 /// app-bar button, a sheet row). Returns whether the target is now in My Space.
 ///
@@ -66,7 +140,10 @@ Future<bool> toggleSpaceShortcut({
   required SpaceShortcut draft,
 }) async {
   final notifier = ref.read(spaceShortcutsProvider.notifier);
+  final wasIn = ref.read(spaceShortcutExistsProvider(draft.key));
   final action = spaceMenuAction(context: context, ref: ref, draft: draft);
   await action.onSelected();
+  // A player can be in My Space by a follow alone, which no pin records.
+  if (draft.kind == SpaceShortcutKind.player) return !wasIn;
   return notifier.contains(draft.kind, draft.targetId);
 }

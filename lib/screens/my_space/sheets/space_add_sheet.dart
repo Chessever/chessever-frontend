@@ -1,8 +1,14 @@
 import 'dart:async';
 
+import 'package:chessever2/providers/favorite_players_provider.dart';
 import 'package:chessever2/screens/board_editor/board_editor_screen.dart';
+import 'package:chessever2/screens/my_space/actions/space_player_actions.dart'
+    show spacePlayerRemover;
 import 'package:chessever2/screens/group_event/smart_event/smart_event_builder_sheet.dart';
 import 'package:chessever2/screens/my_space/models/space_shortcut.dart';
+import 'package:chessever2/screens/my_space/providers/space_auto_provider.dart'
+    show spaceHiddenAutoKeysProvider;
+import 'package:chessever2/screens/my_space/providers/space_players_provider.dart';
 import 'package:chessever2/screens/my_space/providers/space_sheet_session_provider.dart';
 import 'package:chessever2/screens/my_space/providers/space_shortcuts_provider.dart';
 import 'package:chessever2/screens/my_space/sheets/space_add_sources.dart';
@@ -58,9 +64,11 @@ Future<void> showSpaceAddSheet(
     );
   } finally {
     final added = session.state?.added ?? const <String>{};
+    final unhidden = session.state?.unhidden ?? const <String>{};
     session.state = null;
     if (added.isNotEmpty && messenger != null && messenger.mounted) {
       final store = container.read(spaceShortcutsProvider.notifier);
+      final hidden = container.read(spaceHiddenAutoKeysProvider.notifier);
       final message = added.length == 1
           ? 'Added ${titles[added.first] ?? 'it'} to My Space'
           : 'Added ${added.length} to My Space';
@@ -70,6 +78,7 @@ Future<void> showSpaceAddSheet(
         tone: AppSnackTone.success,
         actionLabel: 'Undo',
         onAction: () async {
+          unhidden.forEach(hidden.hide);
           final list =
               container.read(spaceShortcutsProvider).valueOrNull ?? const [];
           for (final s in list) {
@@ -137,6 +146,9 @@ class _SpaceAddSheetState extends ConsumerState<SpaceAddSheet> {
     final store = ref.read(spaceShortcutsProvider.notifier);
     final session = ref.read(spaceSheetSessionProvider.notifier);
     if (_notice != null) setState(() => _notice = null);
+    if (draft.kind == SpaceShortcutKind.player && await _togglePlayer(draft)) {
+      return;
+    }
     if (ref.read(spaceShortcutExistsProvider(draft.key))) {
       session.update((s) => s?.withoutAdded(draft.key));
       HapticFeedbackService.light();
@@ -149,6 +161,35 @@ class _SpaceAddSheetState extends ConsumerState<SpaceAddSheet> {
     HapticFeedbackService.success();
     widget.onAdded?.call(draft);
     await store.add(draft);
+  }
+
+  /// A player row works on My Space's Players, not on a pin alone: a player
+  /// shown there (pinned, or followed) leaves it (pins removed, the follow
+  /// hidden, never unfollowed), and a followed player hidden from it comes
+  /// back as the follow it is. False when it is an ordinary pin to add.
+  Future<bool> _togglePlayer(SpaceShortcut draft) async {
+    final session = ref.read(spaceSheetSessionProvider.notifier);
+    final identity = spacePlayerIdentityOf(draft);
+    if (ref.read(spacePlayerShownProvider(identity))) {
+      session.update((s) => s?.withoutAdded(draft.key));
+      HapticFeedbackService.light();
+      final players = ref.read(spacePlayersProvider) ?? const [];
+      for (final e in players) {
+        if (e.identity == identity) await spacePlayerRemover(ref, e)();
+      }
+      return true;
+    }
+    final follow = spaceFollowOf(
+      ref.read(favoritePlayersProviderNew).valueOrNull ?? const [],
+      identity,
+    );
+    if (follow == null) return false;
+    final key = spaceHiddenFavoriteKey(follow);
+    ref.read(spaceHiddenAutoKeysProvider.notifier).unhide(key);
+    session.update((s) => s?.withAdded(draft.key).withUnhidden(key));
+    HapticFeedbackService.success();
+    widget.onAdded?.call(draft);
+    return true;
   }
 
   void _say(String notice) {

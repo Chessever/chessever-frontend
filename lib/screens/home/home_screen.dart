@@ -13,6 +13,7 @@ import 'package:chessever2/screens/favorites/provider/favorites_mode_provider.da
 import 'package:chessever2/screens/for_you/for_you_screen.dart';
 import 'package:chessever2/screens/for_you/providers/for_you_tab_provider.dart';
 import 'package:chessever2/screens/gamebase/gamebase_explorer_screen.dart';
+import 'package:chessever2/screens/my_space/widgets/space_add_fab.dart';
 import 'package:chessever2/providers/favorite_events_provider.dart';
 import 'package:chessever2/providers/favorite_players_provider.dart';
 import 'package:chessever2/repository/favorites/models/favorite_event.dart';
@@ -30,6 +31,7 @@ import 'package:chessever2/services/review_prompt_service.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:motor/motor.dart';
 import 'package:shorebird_code_push/shorebird_code_push.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../group_event/group_event_screen.dart';
@@ -226,13 +228,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     },
   );
 
-  Widget get _chatButton {
-    return BotvinnikChatButton(
-      heroTag: 'botvinnik',
-      screenContext: const ChatScreenContext(screen: 'home'),
-      iconOnly: true,
-    );
-  }
+  Widget get _chatButton => const _HomeFab();
 
   @override
   Widget build(BuildContext context) {
@@ -307,6 +303,76 @@ class BottomNavBarView extends ConsumerWidget {
     return GestureDetector(
       onTap: FocusScope.of(context).unfocus,
       child: _buildScreen(currentItem),
+    );
+  }
+}
+
+/// Home's floating slot: Botvinnik's launcher everywhere, and My Space's
+/// add button while My Space is the page in view. Both stay mounted and
+/// trade places on one spring (the outgoing one shrinks and fades as the
+/// incoming one grows in), so the slot never empties and never shifts.
+class _HomeFab extends ConsumerWidget {
+  const _HomeFab();
+
+  static const _swap = CupertinoMotion.snappy(snapToEnd: true);
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final onForYou = ref.watch(
+      selectedBottomNavBarItemProvider.select(
+        (item) => item == BottomNavBarItem.forYou,
+      ),
+    );
+    // Watched only while For You is up, so the search query (which resets
+    // whenever For You leaves the tree) is not kept alive from here.
+    final onSpace =
+        onForYou &&
+        ref.watch(selectedForYouTabProvider) == ForYouTab.mySpace &&
+        ref.watch(forYouSearchQueryProvider.select((q) => q.isEmpty));
+    final reduce = MediaQuery.disableAnimationsOf(context);
+
+    // The hidden one also sits out hero flights: the launcher's hero would
+    // otherwise fly, fully drawn, out of a slot that shows the "+".
+    Widget slot(bool active, Widget child) => IgnorePointer(
+      ignoring: !active,
+      child: ExcludeSemantics(
+        excluding: !active,
+        child: HeroMode(
+          enabled: active,
+          child: SingleMotionBuilder(
+            motion: _swap,
+            value: active ? 1.0 : 0.0,
+            active: !reduce,
+            child: child,
+            builder: (context, value, child) {
+              final t = value.clamp(0.0, 1.0);
+              final scale = 0.7 + 0.3 * t;
+              return Opacity(
+                opacity: t,
+                child: Transform.scale(
+                  scale: (scale - 1).abs() < 0.002 ? 1.0 : scale,
+                  child: child,
+                ),
+              );
+            },
+          ),
+        ),
+      ),
+    );
+
+    return Stack(
+      alignment: Alignment.center,
+      children: [
+        slot(
+          !onSpace,
+          const BotvinnikChatButton(
+            heroTag: 'botvinnik',
+            screenContext: ChatScreenContext(screen: 'home'),
+            iconOnly: true,
+          ),
+        ),
+        slot(onSpace, const SpaceAddFab()),
+      ],
     );
   }
 }

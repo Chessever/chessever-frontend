@@ -395,6 +395,9 @@ class DiscoverySectionHeader extends StatelessWidget {
     required this.title,
     this.trailing,
     this.trailingReachesEdge = false,
+    this.count,
+    this.onTitleTap,
+    this.gutter,
   });
 
   final String title;
@@ -407,22 +410,91 @@ class DiscoverySectionHeader extends StatelessWidget {
   /// target keeps its full width without pulling the ink off the gutter.
   final bool trailingReachesEdge;
 
+  /// How many the section holds, in quiet ink right after the title. Left
+  /// out where no honest total is known.
+  final int? count;
+
+  /// Makes the title (and its count) a target of its own: the same place
+  /// the section's See all opens, 44 tall, giving under the finger.
+  final VoidCallback? onTitleTap;
+
+  /// The side inset; [discoveryGutter] unless the header already stands
+  /// inside one (a tablet column).
+  final double? gutter;
+
   @override
   Widget build(BuildContext context) {
-    final heading = Semantics(
-      header: true,
-      child: Text(
-        title,
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-        style: discoveryType(context, DiscoveryType.title),
-      ),
+    final style = discoveryType(context, DiscoveryType.title);
+    final number = count;
+    final words = Row(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.baseline,
+      textBaseline: TextBaseline.alphabetic,
+      children: [
+        Flexible(
+          child: Text(
+            title,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: style,
+          ),
+        ),
+        if (number != null) ...[
+          SizedBox(width: 8.w),
+          Text(
+            '$number',
+            maxLines: 1,
+            style: style.copyWith(
+              fontWeight: FontWeight.w500,
+              color: context.colors.textSecondary,
+              fontFeatures: const [FontFeature.tabularFigures()],
+            ),
+          ),
+        ],
+      ],
     );
+    final open = onTitleTap;
+    final said = number == null ? title : '$title, $number';
+    // The title is its own node (never merged into the section's list item,
+    // which would make the whole section one button), fixed for the life of
+    // the head: whether it is a target is set by the section, not toggled.
+    final Widget heading = open == null
+        ? Semantics(
+            container: true,
+            header: true,
+            label: said,
+            excludeSemantics: true,
+            child: words,
+          )
+        : Align(
+            alignment: AlignmentDirectional.centerStart,
+            child: Semantics(
+              container: true,
+              header: true,
+              button: true,
+              label: said,
+              onTap: open,
+              excludeSemantics: true,
+              child: WallPressable(
+                pressScale: 0.97,
+                onTap: open,
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(minHeight: 44.w),
+                  child: Align(
+                    alignment: AlignmentDirectional.centerStart,
+                    widthFactor: 1,
+                    child: words,
+                  ),
+                ),
+              ),
+            ),
+          );
     final end = trailing;
+    final side = gutter ?? discoveryGutter;
     return Padding(
       padding: EdgeInsets.only(
-        left: discoveryGutter,
-        right: end != null && trailingReachesEdge ? 0 : discoveryGutter,
+        left: side,
+        right: end != null && trailingReachesEdge ? 0 : side,
       ),
       child: ConstrainedBox(
         constraints: BoxConstraints(minHeight: 44.w),
@@ -448,6 +520,46 @@ class DiscoverySectionHeader extends StatelessWidget {
             );
           },
         ),
+      ),
+    );
+  }
+}
+
+/// The one head every hub section that leads somewhere wears, on Discovery
+/// and on My Space alike: the title (a target of its own), the count after
+/// it where one is known, and "See all" with the up-right arrow at the far
+/// end. The title and See all open the same place, so the whole line reads
+/// as one way in. See all is always there, whatever the section shows.
+class DiscoverySeeAllHeader extends StatelessWidget {
+  const DiscoverySeeAllHeader({
+    super.key,
+    required this.title,
+    required this.onOpen,
+    this.count,
+    this.gutter,
+    this.seeAllSemanticsLabel,
+  });
+
+  final String title;
+  final VoidCallback onOpen;
+  final int? count;
+  final double? gutter;
+
+  /// What a screen reader says for See all; "See all [title]" by default.
+  final String? seeAllSemanticsLabel;
+
+  @override
+  Widget build(BuildContext context) {
+    return DiscoverySectionHeader(
+      title: title,
+      count: count,
+      gutter: gutter,
+      onTitleTap: onOpen,
+      trailing: DiscoveryAction(
+        label: 'See all',
+        arrow: true,
+        onTap: onOpen,
+        semanticsLabel: seeAllSemanticsLabel ?? 'See all $title',
       ),
     );
   }

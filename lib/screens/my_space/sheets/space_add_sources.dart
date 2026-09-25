@@ -27,6 +27,8 @@ import 'package:chessever2/screens/my_space/models/space_game_card.dart';
 import 'package:chessever2/screens/my_space/models/space_shortcut.dart';
 import 'package:chessever2/screens/my_space/navigation/space_shortcut_navigator.dart';
 import 'package:chessever2/screens/my_space/providers/space_auto_provider.dart';
+import 'package:chessever2/screens/my_space/providers/space_players_provider.dart'
+    show watchSpaceDraftAdded;
 import 'package:chessever2/screens/my_space/providers/space_shortcuts_provider.dart';
 import 'package:chessever2/screens/my_space/sheets/space_add_sheet.dart';
 import 'package:chessever2/screens/my_space/widgets/space_game_rows.dart';
@@ -554,7 +556,7 @@ class _Row extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final added = ref.watch(spaceShortcutExistsProvider(row.draft.key));
+    final added = watchSpaceDraftAdded(ref, row.draft);
     final colors = context.colors;
     final gutter = SpaceMetricsSheet.gutter;
     final fen = row.editorFen;

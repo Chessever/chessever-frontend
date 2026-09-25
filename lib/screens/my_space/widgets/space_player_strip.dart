@@ -35,6 +35,10 @@ int? spacePinFideId(SpaceShortcut s) {
   final raw = s.params['fideId'];
   final fromParams = raw is num ? raw.toInt() : int.tryParse('${raw ?? ''}');
   if (fromParams != null && fromParams > 0) return fromParams;
+  // A pin keyed on the game database's id is not keyed on a FIDE id, even
+  // where that id is a number.
+  final gamebase = s.params['gamebasePlayerId']?.toString().trim() ?? '';
+  if (gamebase.isNotEmpty && gamebase == s.targetId.trim()) return null;
   final fromTarget = int.tryParse(s.targetId);
   return fromTarget != null && fromTarget > 0 ? fromTarget : null;
 }
@@ -63,12 +67,19 @@ class SpacePlayerStrip extends StatelessWidget {
     required this.liveFideIds,
     required this.padding,
     this.wrap = false,
+    this.faceBuilder,
   });
 
   final List<SpaceShortcut> players;
   final Set<int> liveFideIds;
   final double padding;
   final bool wrap;
+
+  /// Builds one face ([live]: the player is at the board); a plain
+  /// [SpacePlayerFace] when null. My Space's Players pass their own open and
+  /// menu this way.
+  final Widget Function(SpaceShortcut shortcut, double? width, bool live)?
+  faceBuilder;
 
   /// Width of one face and its two lines.
   static double get itemWidth => 80.w;
@@ -79,15 +90,25 @@ class SpacePlayerStrip extends StatelessWidget {
   /// The circle.
   static double get face => 56.w;
 
-  Widget _face(SpaceShortcut s, {double? width}) => SpacePlayerFace(
-    key: ValueKey<String>('space_player_${s.key}'),
-    shortcut: s,
-    width: width,
-    live: switch (spacePinFideId(s)) {
+  Widget _face(SpaceShortcut s, {double? width}) {
+    final live = switch (spacePinFideId(s)) {
       final id? => liveFideIds.contains(id),
       null => false,
-    },
-  );
+    };
+    final build = faceBuilder;
+    if (build != null) {
+      return KeyedSubtree(
+        key: ValueKey<String>('space_player_${s.key}'),
+        child: build(s, width, live),
+      );
+    }
+    return SpacePlayerFace(
+      key: ValueKey<String>('space_player_${s.key}'),
+      shortcut: s,
+      width: width,
+      live: live,
+    );
+  }
 
   /// The width each face takes on a phone rail [available] wide that holds
   /// more faces than fit: whole faces, then the next one cut through the
@@ -167,6 +188,8 @@ class SpacePlayerFace extends ConsumerWidget {
     required this.shortcut,
     this.live = false,
     this.width,
+    this.onOpen,
+    this.menuAction,
   });
 
   final SpaceShortcut shortcut;
@@ -176,7 +199,19 @@ class SpacePlayerFace extends ConsumerWidget {
   /// sizes its faces to end on a half face.
   final double? width;
 
+  /// Replaces opening the pin (My Space's Players also record the visit).
+  final VoidCallback? onOpen;
+
+  /// Replaces the menu's My Space row (My Space's Players hide a follow
+  /// rather than unpin it).
+  final LibraryMenuAction Function(BuildContext menuContext)? menuAction;
+
   void _open(BuildContext context, WidgetRef ref) {
+    final open = onOpen;
+    if (open != null) {
+      open();
+      return;
+    }
     HapticFeedbackService.cardTap();
     openSpaceShortcut(context, ref, shortcut);
   }
@@ -187,6 +222,8 @@ class SpacePlayerFace extends ConsumerWidget {
     final s = shortcut;
     final countrymen = s.kind == SpaceShortcutKind.countrymen;
     final fideId = countrymen ? null : spacePinFideId(s);
+    // Its own photo, the moment it lands (the rail asks for a page's
+    // photos together).
     final photo = fideId == null
         ? null
         : ref.watch(playerPhotoProvider(fideId)).valueOrNull;
@@ -274,7 +311,8 @@ class SpacePlayerFace extends ConsumerWidget {
               label: 'Open',
               onSelected: () => _open(context, ref),
             ),
-            spaceMenuAction(context: menuContext, ref: ref, draft: s),
+            menuAction?.call(menuContext) ??
+                spaceMenuAction(context: menuContext, ref: ref, draft: s),
           ],
           child: ColoredBox(color: Colors.transparent, child: body),
         ),

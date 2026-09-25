@@ -8,6 +8,8 @@ import 'package:chessever2/repository/sqlite/app_database.dart';
 import 'package:chessever2/screens/my_space/defaults/space_defaults.dart';
 import 'package:chessever2/screens/my_space/defaults/space_seed_gate.dart';
 import 'package:chessever2/screens/my_space/models/space_shortcut.dart';
+import 'package:chessever2/screens/my_space/providers/space_players_provider.dart'
+    show spaceFollowShownProvider, spacePlayerPinTarget;
 import 'package:collection/collection.dart';
 import 'package:flutter/foundation.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -28,6 +30,10 @@ final spaceShortcutsProvider =
 /// Whether a target is already in My Space. Drives the long-press menu label
 /// ("Add to My Space" vs "Remove from My Space").
 ///
+/// A player is in My Space when pinned, and also when the user follows them
+/// and has not taken them out of it ([spaceFollowShownProvider]): My Space's
+/// Players show the follows by default.
+///
 /// Auto-disposed: callers watch a fresh key per search row or per Smart Event
 /// filter combination, and a keep-alive family would hold every one of them
 /// for the session, each re-scanning the list on every add or remove.
@@ -36,7 +42,9 @@ final spaceShortcutExistsProvider = Provider.autoDispose.family<bool, String>((
   key,
 ) {
   final list = ref.watch(spaceShortcutsProvider).valueOrNull ?? const [];
-  return list.any((s) => s.key == key);
+  if (list.any((s) => s.key == key)) return true;
+  if (spacePlayerPinTarget(key) == null) return false;
+  return ref.watch(spaceFollowShownProvider(key));
 });
 
 /// Shortcuts grouped by section, in display order.

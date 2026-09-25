@@ -27,6 +27,9 @@ class MyPrepScreen extends StatelessWidget {
 
   static const List<String> tabs = ['Databases', 'Openings'];
 
+  /// The Openings tab: where My Space's Openings group leads.
+  static int get openingsTab => tabs.indexOf('Openings');
+
   static Future<void> open(BuildContext context, {int initialTab = 0}) {
     return Navigator.of(context).push(
       MaterialPageRoute<void>(

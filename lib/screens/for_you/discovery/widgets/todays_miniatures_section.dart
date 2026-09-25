@@ -22,9 +22,9 @@ const String kMiniaturesUpgradeCta = kMiniaturesArchiveCta;
 /// open, as a short preview laid out the way an event's Games tab lays out
 /// its games (the viewer's own games view setting). Each grid or board card
 /// carries one line over it, "19 moves · Ø 2751": the length is what makes a
-/// miniature. Four cards (two boards in board view); "See all" opens the
-/// Miniatures screen, where today is free and every earlier day is the
-/// Premium archive, and opening any card walks the whole day.
+/// miniature. Four cards (two boards in board view); the title and "See
+/// all" open the Miniatures screen, where today is free and every earlier
+/// day is the Premium archive, and opening any card walks the whole day.
 class TodaysMiniaturesSection extends ConsumerWidget {
   const TodaysMiniaturesSection({super.key});
 
@@ -55,19 +55,19 @@ class TodaysMiniaturesSection extends ConsumerWidget {
       subscriptionProvider.select((s) => s.isSubscribed),
     );
     final minis = ref.watch(discoveryTodayMiniaturesProvider);
+    // Today's whole count, like every My Space group's; none while today
+    // has none (the notice says so) or before the read answers.
+    final total = ref.watch(discoveryTodayMiniaturesTotalProvider);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       mainAxisSize: MainAxisSize.min,
       children: [
-        DiscoverySectionHeader(
+        DiscoverySeeAllHeader(
           title: 'Miniatures',
-          trailing: DiscoveryAction(
-            label: 'See all',
-            arrow: true,
-            semanticsLabel: 'See all Miniatures',
-            onTap: () => open(context),
-          ),
+          count: total != null && total > 0 ? total : null,
+          seeAllSemanticsLabel: 'See all Miniatures',
+          onOpen: () => open(context),
         ),
         SizedBox(height: 8.w),
         minis.when(

@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:chessever2/repository/gamebase/gamebase_repository.dart';
 import 'package:chessever2/repository/gamebase/miniatures/miniatures_models.dart';
 import 'package:chessever2/repository/supabase/game/game_repository.dart';
@@ -252,7 +254,12 @@ class DiscoveryRepository {
   Future<List<DiscoveryMiniature>> fetchTodayMiniatures({
     int limit = 12,
     DateTime? now,
-  }) async {
+  }) async => (await fetchTodayMiniaturesDay(limit: limit, now: now)).items;
+
+  /// [fetchTodayMiniatures], with how many miniatures today holds in all:
+  /// the index counts the whole day while only the first [limit] are read.
+  Future<({List<DiscoveryMiniature> items, int total})>
+  fetchTodayMiniaturesDay({int limit = 12, DateTime? now}) async {
     final page = await gamebase.getMiniatures(
       filter: MiniatureGamesFilter.defaultFilter.copyWith(
         window: MiniatureGamesWindow.today,
@@ -260,7 +267,7 @@ class DiscoveryRepository {
       limit: limit,
     );
     final reference = now ?? DateTime.now();
-    return orderMiniaturesByDayAndAverageRating(page.items)
+    final items = orderMiniaturesByDayAndAverageRating(page.items)
         .where(
           (item) => !isMiniatureGameLocked(
             item.date,
@@ -276,6 +283,7 @@ class DiscoveryRepository {
           ),
         )
         .toList(growable: false);
+    return (items: items, total: math.max(page.total, items.length));
   }
 }
 
