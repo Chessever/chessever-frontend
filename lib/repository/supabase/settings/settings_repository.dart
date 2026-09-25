@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:chessever2/repository/supabase/base_repository.dart';
 import 'package:chessever2/repository/supabase/settings/settings.dart';
+import 'package:chessever2/utils/owned_stream.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 // providers.dart
@@ -9,7 +10,10 @@ final settingsRepositoryProvider = AutoDisposeProvider<SettingsRepository>(
 );
 
 final liveSettingsProvider = AutoDisposeStreamProvider<Settings?>(
-  (ref) => ref.read(settingsRepositoryProvider).subscribeToSettings(),
+  (ref) => ownedStream(
+    ref,
+    ref.read(settingsRepositoryProvider).subscribeToSettings(),
+  ),
 );
 
 class SettingsRepository extends BaseRepository {
