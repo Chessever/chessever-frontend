@@ -20,8 +20,6 @@ import 'package:chessever2/screens/my_space/providers/space_shortcuts_provider.d
 import 'package:chessever2/screens/my_space/sheets/space_add_sheet.dart';
 import 'package:chessever2/screens/my_space/widgets/space_database.dart';
 import 'package:chessever2/screens/my_space/widgets/space_door_actions.dart';
-import 'package:chessever2/screens/my_space/widgets/space_tile_content.dart'
-    show spaceOpeningFace;
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
@@ -286,10 +284,8 @@ class _MyPrepTile extends ConsumerWidget {
       databases: databases,
       masterTotal: master,
     );
-    final saved = ref.watch(spaceShortcutsProvider).valueOrNull;
-    // A wall of the user's own lines on boards; the classic openings until
-    // they save one.
-    final art = HubBoardMosaic(positions: myPrepPositions(saved));
+    // The Library's own pixel object, animated like the other hub tiles.
+    const art = HubPixelBackdrop(section: SpaceSection.library);
 
     return Builder(
       builder: (anchor) => HubTile(
@@ -558,47 +554,4 @@ class _BuildSmartEventTile extends ConsumerWidget {
       },
     );
   }
-}
-
-/// The classic lines My Prep's tile shows before the user saves any.
-const List<({String eco, String name})> _kClassicLines = [
-  (eco: 'B90', name: 'Sicilian Najdorf'),
-  (eco: 'C84', name: 'Ruy Lopez'),
-  (eco: 'D37', name: "Queen's Gambit Declined"),
-  (eco: 'E97', name: "King's Indian"),
-  (eco: 'C42', name: 'Petrov'),
-  (eco: 'B12', name: 'Caro-Kann'),
-];
-
-/// The positions My Prep's tile draws: the user's saved openings,
-/// positions and player lines, newest first, else the classic lines.
-List<({String fen, String? lastMove})> myPrepPositions(
-  List<SpaceShortcut>? saved,
-) {
-  ({String fen, String? lastMove})? position(SpaceShortcut s) {
-    final face = spaceOpeningFace(s);
-    final fen = face.fen;
-    if (fen == null || fen.isEmpty) return null;
-    return (fen: fen, lastMove: face.lastMove?.uci);
-  }
-
-  final own = [
-    for (final s in saved ?? const <SpaceShortcut>[])
-      if (s.kind == SpaceShortcutKind.opening ||
-          s.kind == SpaceShortcutKind.position ||
-          s.kind == SpaceShortcutKind.playerOpenings)
-        ?position(s),
-  ];
-  if (own.length >= 3) return own;
-  return [
-    ...own,
-    for (final line in _kClassicLines)
-      ?position(
-        SpaceShortcut.draft(
-          kind: SpaceShortcutKind.opening,
-          targetId: line.eco,
-          title: line.name,
-        ),
-      ),
-  ];
 }

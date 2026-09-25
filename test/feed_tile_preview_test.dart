@@ -1,17 +1,10 @@
-import 'package:chessever2/providers/board_settings_provider_new.dart';
 import 'package:chessever2/screens/feed/feed_screen.dart'
     show feedCurrentEntryKeyProvider;
 import 'package:chessever2/screens/feed/feed_visibility.dart';
 import 'package:chessever2/screens/feed/models/feed_models.dart';
 import 'package:chessever2/screens/feed/providers/feed_provider.dart';
 import 'package:chessever2/screens/feed/widgets/feed_tile_board.dart';
-import 'package:chessever2/screens/for_you/discovery/widgets/discovery_common.dart'
-    show DiscoveryMiniBoard;
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
-import 'package:chessever2/theme/app_theme.dart';
-import 'package:chessever2/utils/responsive_helper.dart';
-import 'package:chessever2/widgets/hub_tile.dart';
-import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
@@ -25,11 +18,6 @@ class _LoadedFeed extends FeedNotifier {
 
   @override
   Future<List<FeedItem>> build() async => items;
-}
-
-class _BoardSettings extends BoardSettingsNotifierNew {
-  @override
-  Future<BoardSettingsNew> build() async => const BoardSettingsNew();
 }
 
 const _start = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
@@ -181,67 +169,6 @@ void main() {
       );
       expect(feedTilePly(plain)!.fen, _afterE5);
       expect(feedTilePly(_item('e', plies: const [])), isNull);
-    });
-  });
-
-  group('picture marks', () {
-    test('a board side lands its squares on whole device pixels', () {
-      // 44 at 3x is 16.5 device pixels a square: snapped down to 16.
-      expect(hubPictureMarkSide(44, 3), closeTo(128 / 3, 1e-9));
-      expect(hubPictureMarkSide(44, 2), 44);
-      for (final dpr in const [1.0, 2.0, 2.625, 3.0, 3.5]) {
-        final side = hubPictureMarkSide(44, dpr);
-        final square = side * dpr / 8;
-        expect(square, closeTo(square.roundToDouble(), 1e-6));
-        expect(side, lessThanOrEqualTo(44));
-        expect(44 - side, lessThan(8 / dpr));
-      }
-    });
-
-    testWidgets('the Feed mark draws the board centred in the tile slot, '
-        'or the pixel object before Feed has a page', (tester) async {
-      Future<void> pump(FeedItem? item) async {
-        await tester.pumpWidget(
-          ProviderScope(
-            overrides: [
-              boardSettingsProviderNew.overrideWith(_BoardSettings.new),
-            ],
-            child: MaterialApp(
-              theme: AppTheme.darkTheme,
-              home: Builder(
-                builder: (context) {
-                  ResponsiveHelper.init(context);
-                  return Center(
-                    child: SizedBox.square(
-                      dimension: 44,
-                      child: FeedTileBoard(item: item),
-                    ),
-                  );
-                },
-              ),
-            ),
-          ),
-        );
-        await tester.pump();
-      }
-
-      tester.view.devicePixelRatio = 3;
-      addTearDown(tester.view.resetDevicePixelRatio);
-
-      await pump(_item('a'));
-      final board = find.byType(DiscoveryMiniBoard);
-      expect(board, findsOneWidget);
-      expect(tester.widget<DiscoveryMiniBoard>(board).fen, _afterE4);
-      expect(tester.widget<DiscoveryMiniBoard>(board).lastMove, 'e2e4');
-      final slot = tester.getRect(find.byType(FeedTileBoard));
-      final drawn = tester.getRect(board);
-      expect(drawn.width, closeTo(128 / 3, 1e-6));
-      expect(drawn.center.dx, closeTo(slot.center.dx, 1e-6));
-      expect(drawn.center.dy, closeTo(slot.center.dy, 1e-6));
-
-      await pump(null);
-      expect(find.byType(DiscoveryMiniBoard), findsNothing);
-      expect(find.byType(HubPixelArtwork), findsOneWidget);
     });
   });
 }

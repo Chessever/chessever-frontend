@@ -144,7 +144,7 @@ class _DiscoveryTiles extends ConsumerWidget {
         right: HubTile(
           key: const ValueKey('discovery_collection_tile'),
           title: 'Collection',
-          artwork: _collectionArt(collections),
+          artwork: _collectionArt(),
           caption: hubCollectionsCaption(collections),
           onTap: () => CollectionsScreen.open(context),
         ),
@@ -158,14 +158,9 @@ class _DiscoveryTiles extends ConsumerWidget {
 /// blocks glinting, as the heart moves on My Likes.
 Widget _feedArt() => const HubPixelBackdrop(section: SpaceSection.games);
 
-/// The Collection tile's picture: the newest cover, filling the tile; the
-/// pixel trophy while nothing with a cover is published.
-Widget _collectionArt(AsyncValue<List<Collection>> collections) {
-  const fallback = HubPixelBackdrop(section: SpaceSection.events);
-  final url = CollectionTileCover.coverOf(collections.valueOrNull);
-  if (url == null) return fallback;
-  return HubPhotoBackdrop(url: url, fallback: fallback);
-}
+/// The Collection tile's picture: the trophy, animated like the other hub
+/// tiles (the newest cover stays inside Collection itself).
+Widget _collectionArt() => const HubPixelBackdrop(section: SpaceSection.events);
 
 /// Most liked and Miniatures side by side (tablets): two columns with one
 /// gap between them, each section drawn exactly as on a phone.

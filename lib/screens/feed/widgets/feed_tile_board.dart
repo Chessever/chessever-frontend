@@ -5,13 +5,6 @@ import 'package:chessever2/screens/feed/feed_screen.dart'
 import 'package:chessever2/screens/feed/feed_visibility.dart';
 import 'package:chessever2/screens/feed/models/feed_models.dart';
 import 'package:chessever2/screens/feed/providers/feed_provider.dart';
-import 'package:chessever2/screens/for_you/discovery/widgets/discovery_common.dart'
-    show DiscoveryMiniBoard;
-import 'package:chessever2/screens/my_space/models/space_shortcut.dart';
-import 'package:chessever2/theme/app_colors.dart';
-import 'package:chessever2/utils/responsive_helper.dart';
-import 'package:chessever2/widgets/hub_tile.dart';
-import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 /// Reads the first page Feed cached on disk. The seam tests override so the
@@ -79,80 +72,4 @@ FeedPly? feedTilePly(FeedItem item) {
     if (index > 0 && index < plies.length) return plies[index];
   }
   return plies.last;
-}
-
-/// The side of a hub tile's picture mark in a [slot]-wide square, snapped so
-/// a board's eight squares land on whole device pixels: at 3x a 44-point
-/// board would put every other square edge on half a pixel and blur it. The
-/// picture sits centred in the slot, less than a point in from its edges.
-double hubPictureMarkSide(double slot, double devicePixelRatio) {
-  if (slot <= 0 || devicePixelRatio <= 0) return slot;
-  final pixels = (slot * devicePixelRatio / 8).floorToDouble() * 8;
-  return pixels <= 0 ? slot : pixels / devicePixelRatio;
-}
-
-/// The corner of a picture set in a hub tile's mark slot: the game cards'
-/// board corner, so the preview reads as the board it opens.
-double get hubPictureMarkRadius => 4.br;
-
-/// A picture in a hub tile's mark slot: clipped to [hubPictureMarkRadius]
-/// with a self-coloured 1px edge (white at 10% on the dark tile, ink at 10%
-/// on paper), so a board or a photo whose own edge matches the tile's ink
-/// still reads as an object. Nothing is drawn behind it.
-class HubPictureMark extends StatelessWidget {
-  const HubPictureMark({super.key, required this.child, required this.side});
-
-  final Widget child;
-  final double side;
-
-  @override
-  Widget build(BuildContext context) {
-    final radius = BorderRadius.circular(hubPictureMarkRadius);
-    final edge = context.isLightTheme
-        ? Colors.black.withValues(alpha: 0.10)
-        : Colors.white.withValues(alpha: 0.10);
-    return Center(
-      child: SizedBox.square(
-        dimension: side,
-        child: DecoratedBox(
-          position: DecorationPosition.foreground,
-          decoration: BoxDecoration(
-            borderRadius: radius,
-            border: Border.all(color: edge),
-          ),
-          child: ClipRRect(borderRadius: radius, child: child),
-        ),
-      ),
-    );
-  }
-}
-
-/// The Feed tile's mark: the board of the game Feed opens on, still, in the
-/// viewer's own board theme with no coordinates, white at the bottom. The
-/// tile's pixel object stands in until Feed has a page cached.
-class FeedTileBoard extends StatelessWidget {
-  const FeedTileBoard({super.key, required this.item});
-
-  final FeedItem? item;
-
-  @override
-  Widget build(BuildContext context) {
-    final current = item;
-    final ply = current == null ? null : feedTilePly(current);
-    if (ply == null) return const HubPixelArtwork(section: SpaceSection.games);
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final slot = constraints.biggest.shortestSide;
-        if (!slot.isFinite || slot <= 0) return const SizedBox.shrink();
-        final side = hubPictureMarkSide(
-          slot,
-          MediaQuery.devicePixelRatioOf(context),
-        );
-        return HubPictureMark(
-          side: side,
-          child: DiscoveryMiniBoard(fen: ply.fen, size: side, lastMove: ply.uci),
-        );
-      },
-    );
-  }
 }

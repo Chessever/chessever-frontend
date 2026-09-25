@@ -3,8 +3,6 @@ import 'package:chessever2/screens/chessboard/chess_board_screen_new.dart';
 import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
 import 'package:chessever2/screens/collections/collections_data.dart';
 import 'package:chessever2/screens/collections/event_view_shell.dart';
-import 'package:chessever2/screens/feed/widgets/feed_tile_board.dart'
-    show HubPictureMark, hubPictureMarkSide;
 import 'package:chessever2/screens/for_you/discovery/widgets/discovery_common.dart'
     show discoveryGutter;
 import 'package:chessever2/screens/for_you/discovery/widgets/discovery_game_cards.dart';
@@ -278,68 +276,6 @@ class _Cover extends StatelessWidget {
       fit: BoxFit.cover,
       placeholder: (_, __) => plate,
       errorWidget: (_, __, ___) => plate,
-    );
-  }
-}
-
-/// Discovery's Collection tile mark: the cover of the first collection, in
-/// the team's order, that has one, cropped square into the tile's mark slot
-/// (see [HubPictureMark]). The events pixel object stands in while the list
-/// loads, when it fails, when nothing has a cover yet, and while the cover
-/// itself downloads or if it cannot; the cover replaces it in one frame.
-class CollectionTileCover extends StatelessWidget {
-  const CollectionTileCover({super.key, required this.collections});
-
-  final AsyncValue<List<Collection>> collections;
-
-  /// The cover the tile shows from [list], or null.
-  static String? coverOf(List<Collection>? list) {
-    if (list == null) return null;
-    for (final c in list) {
-      final url = c.coverUrl?.trim();
-      if (url != null && url.isNotEmpty) return url;
-    }
-    return null;
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    const fallback = HubPixelArtwork(section: SpaceSection.events);
-    final url = coverOf(collections.valueOrNull);
-    if (url == null) return fallback;
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final slot = constraints.biggest.shortestSide;
-        if (!slot.isFinite || slot <= 0) return const SizedBox.shrink();
-        final dpr = MediaQuery.devicePixelRatioOf(context);
-        // The same side as the Feed tile's board, so the pair matches.
-        final side = hubPictureMarkSide(slot, dpr);
-        // Decoded at twice the slot's device width: a cover crops to a
-        // square, so a landscape photo up to 2:1 keeps its short side at
-        // full resolution while nothing near the source size is decoded.
-        final cacheWidth = (side * dpr * 2).round();
-        return CachedNetworkImage(
-          imageUrl: url,
-          memCacheWidth: cacheWidth,
-          fadeInDuration: Duration.zero,
-          fadeOutDuration: Duration.zero,
-          placeholderFadeInDuration: Duration.zero,
-          // The builder is handed the undecoded provider; asking for the
-          // same resize the widget decoded reuses that decode.
-          imageBuilder: (context, image) => HubPictureMark(
-            side: side,
-            child: Image(
-              image: ResizeImage.resizeIfNeeded(cacheWidth, null, image),
-              width: side,
-              height: side,
-              fit: BoxFit.cover,
-              filterQuality: FilterQuality.medium,
-            ),
-          ),
-          placeholder: (_, __) => fallback,
-          errorWidget: (_, __, ___) => fallback,
-        );
-      },
     );
   }
 }
