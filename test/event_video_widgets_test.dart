@@ -212,7 +212,7 @@ void main() {
     },
   );
 
-  testWidgets('flags minimize above paused video and expand again on tap', (
+  testWidgets('flags stay above paused video while browsing games', (
     tester,
   ) async {
     final session = EventVideoSession(
@@ -236,24 +236,22 @@ void main() {
     expect(session.streams.map((s) => s.id), order);
     await tester.pump(const Duration(seconds: 3));
     await tester.pumpAndSettle();
-    expect(flags, findsNothing);
+    expect(flags, findsOneWidget);
     await tester.pumpWidget(harness(session, player, game: 'g2'));
     await tester.pump();
-    expect(flags, findsNothing);
+    expect(flags, findsOneWidget);
     await tester.tap(find.text('Player'));
     await tester.pump();
     expect(flags, findsOneWidget);
-    session.setScrolling(true);
     await tester.pump(const Duration(seconds: 4));
     expect(flags, findsOneWidget);
-    session.setScrolling(false);
     await tester.pump(const Duration(seconds: 2));
     await chooseStream(tester, 'english-main');
     await tester.pump(const Duration(seconds: 2));
     expect(flags, findsOneWidget);
     await tester.pump(const Duration(seconds: 1));
     await tester.pumpAndSettle();
-    expect(flags, findsNothing);
+    expect(flags, findsOneWidget);
     await tester.pumpWidget(const SizedBox());
   });
 

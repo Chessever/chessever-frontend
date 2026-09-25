@@ -38,6 +38,7 @@ import 'package:chessever2/providers/engine_settings_provider.dart';
 import 'package:chessever2/screens/chessboard/utils/engine_pv_arrows.dart';
 import 'package:chessever2/providers/gamebase_overlay_settings_provider.dart';
 import 'package:chessever2/screens/chessboard/widgets/chess_board_bottom_nav_bar.dart';
+import 'package:chessever2/screens/chessboard/widgets/board_pinch_coachmark.dart';
 import 'package:chessever2/screens/chessboard/widgets/chess_board_context_menu.dart';
 import 'package:chessever2/screens/chessboard/widgets/chess_board_from_fen_new.dart'
     show GameCardChessboard;
@@ -4753,12 +4754,13 @@ class _AppBarState extends ConsumerState<_AppBar> {
                       await _toggleAnalysis();
                     }
                   },
-                  itemBuilder: (context) => chessBoardContextMenuItems(
-                    context,
-                    videoSession: EventVideoScope.sessionOf(this.context),
-                    analysisCleared: analysisCleared,
-                    onCopyPgn: copyPgnBtnClicked,
-                  ),
+                  itemBuilder:
+                      (context) => chessBoardContextMenuItems(
+                        context,
+                        videoSession: EventVideoScope.sessionOf(this.context),
+                        analysisCleared: analysisCleared,
+                        onCopyPgn: copyPgnBtnClicked,
+                      ),
                 )
               else
                 PopupMenuButton<String>(
@@ -4795,12 +4797,13 @@ class _AppBarState extends ConsumerState<_AppBar> {
                       await _toggleAnalysis();
                     }
                   },
-                  itemBuilder: (context) => chessBoardContextMenuItems(
-                    context,
-                    videoSession: EventVideoScope.sessionOf(this.context),
-                    analysisCleared: analysisCleared,
-                    onCopyPgn: copyPgnBtnClicked,
-                  ),
+                  itemBuilder:
+                      (context) => chessBoardContextMenuItems(
+                        context,
+                        videoSession: EventVideoScope.sessionOf(this.context),
+                        analysisCleared: analysisCleared,
+                        onCopyPgn: copyPgnBtnClicked,
+                      ),
                 ),
             ],
           ),
@@ -8290,7 +8293,7 @@ class _TabletBoardWithSidebar extends ConsumerWidget {
   }
 }
 
-class _BoardWithSidebar extends ConsumerWidget {
+class _BoardWithSidebar extends ConsumerStatefulWidget {
   final int index;
   final ChessBoardStateNew state;
   final int currentPageIndex;
@@ -8302,6 +8305,65 @@ class _BoardWithSidebar extends ConsumerWidget {
     required this.currentPageIndex,
     required this.game,
   });
+
+  @override
+  ConsumerState<_BoardWithSidebar> createState() => _BoardWithSidebarState();
+}
+
+class _BoardWithSidebarState extends ConsumerState<_BoardWithSidebar> {
+  static const _pinchCoachmarkSeenKey = 'board_pinch_coachmark_seen';
+  static bool _dismissedThisSession = false;
+
+  final Map<int, Offset> _touches = {};
+  double? _boardWidth;
+  double? _pinchDistance;
+  double? _pinchBoardWidth;
+  bool _showPinchCoachmark = false;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) unawaited(_loadPinchCoachmark());
+    });
+  }
+
+  Future<void> _loadPinchCoachmark() async {
+    if (_dismissedThisSession) return;
+    final seen =
+        await ref
+            .read(sharedPreferencesRepository)
+            .getBool(_pinchCoachmarkSeenKey) ??
+        false;
+    if (mounted && !seen && !_dismissedThisSession) {
+      setState(() => _showPinchCoachmark = true);
+    }
+  }
+
+  void _dismissPinchCoachmark() {
+    if (!_showPinchCoachmark) return;
+    _dismissedThisSession = true;
+    setState(() => _showPinchCoachmark = false);
+    unawaited(
+      ref
+          .read(sharedPreferencesRepository)
+          .setBool(_pinchCoachmarkSeenKey, true),
+    );
+  }
+
+  void _startPinch(double boardWidth) {
+    if (_touches.length != 2) return;
+    _dismissPinchCoachmark();
+    final points = _touches.values.toList();
+    _pinchDistance = (points[0] - points[1]).distance;
+    _pinchBoardWidth = boardWidth;
+  }
+
+  void _endTouch(int pointer) {
+    _touches.remove(pointer);
+    _pinchDistance = null;
+    _pinchBoardWidth = null;
+  }
 
   // DISABLED: Only used for move annotation overlay
   // String? _getLastMoveSquare() {
@@ -8315,7 +8377,7 @@ class _BoardWithSidebar extends ConsumerWidget {
   // }
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  Widget build(BuildContext context) {
     // PERF: Use .select() to only rebuild when showEngineGauge changes
     final engineGaugeEnabled = ref.watch(
       engineSettingsProviderNew.select(
@@ -8326,9 +8388,9 @@ class _BoardWithSidebar extends ConsumerWidget {
     // practice — same pattern as the game card; avoids rebuilding the board
     // sidebar when unrelated EventNoSpoilersState fields change).
     final hideEventEvaluation =
-        game.source == GameSource.supabase &&
+        widget.game.source == GameSource.supabase &&
         ref.watch(
-          eventNoSpoilersProvider(game.tourId).select(
+          eventNoSpoilersProvider(widget.game.tourId).select(
             (state) => shouldHideEventEvaluation(
               isBroadcastGame: true,
               spoilerState: state,
@@ -8339,17 +8401,25 @@ class _BoardWithSidebar extends ConsumerWidget {
         engineGaugeEnabled &&
         // Engine toggle (bottom-nav laptop) gates the eval bar too: turning the
         // engine off in the game view hides the bar, not just the PV cards.
-        state.showEngineAnalysis &&
+        widget.state.showEngineAnalysis &&
         !hideEventEvaluation;
 
     return LayoutBuilder(
       builder: (context, constraints) {
         // Use consistent .sp units for all sizing
         final sideBarWidth = showEngineGauge ? 20.sp : 0.0;
-        final horizontalMargin = 16.sp * 2; // Matches Container margin below
-        // Use constraints.maxWidth to respect parent constraints (e.g. tablet max width)
+        final horizontalMargin = 16.sp * 2;
+        // Respect the available column on tablets while filling the phone
+        // width at maximum zoom.
         final screenWidth = constraints.maxWidth;
-        final boardSize = screenWidth - sideBarWidth - horizontalMargin;
+        final maxBoardWidth = math.max(1.0, screenWidth - sideBarWidth);
+        final minBoardWidth = math.min(
+          maxBoardWidth,
+          MediaQuery.sizeOf(context).width / 3,
+        );
+        final boardSize = (_boardWidth ??
+                math.max(minBoardWidth, maxBoardWidth - horizontalMargin))
+            .clamp(minBoardWidth, maxBoardWidth);
 
         // Analysis mode is always active, always use analysis state
         // DISABLED: currentIndex only used for move impact analysis
@@ -8375,63 +8445,97 @@ class _BoardWithSidebar extends ConsumerWidget {
         //   currentMoveImpact = impactAsync.whenOrNull(data: (data) => data);
         // }
 
-        return Container(
-          margin: EdgeInsets.symmetric(horizontal: 16.sp),
-          child: Row(
-            children: [
-              // Conditionally show evaluation bar based on settings
-              if (showEngineGauge)
-                SizedBox(
-                  width: sideBarWidth,
-                  height: boardSize,
-                  child: Builder(
-                    builder: (context) {
-                      final activePosition =
-                          state.isAnalysisMode
-                              ? state.analysisState.position
-                              : state.position;
-                      final bool isWhiteToMove =
-                          activePosition?.turn != Side.black;
+        return Listener(
+          onPointerDown: (event) {
+            _touches[event.pointer] = event.localPosition;
+            _startPinch(boardSize);
+          },
+          onPointerMove: (event) {
+            if (!_touches.containsKey(event.pointer)) return;
+            _touches[event.pointer] = event.localPosition;
+            if (_touches.length != 2 ||
+                _pinchDistance == null ||
+                _pinchDistance! <= 0 ||
+                _pinchBoardWidth == null) {
+              return;
+            }
+            final points = _touches.values.toList();
+            final distance = (points[0] - points[1]).distance;
+            final next = (_pinchBoardWidth! * distance / _pinchDistance!).clamp(
+              minBoardWidth,
+              maxBoardWidth,
+            );
+            if (next != boardSize) setState(() => _boardWidth = next);
+          },
+          onPointerUp: (event) => _endTouch(event.pointer),
+          onPointerCancel: (event) => _endTouch(event.pointer),
+          child: Align(
+            alignment: Alignment.topCenter,
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // Conditionally show evaluation bar based on settings
+                if (showEngineGauge)
+                  SizedBox(
+                    width: sideBarWidth,
+                    height: boardSize,
+                    child: Builder(
+                      builder: (context) {
+                        final activePosition =
+                            widget.state.isAnalysisMode
+                                ? widget.state.analysisState.position
+                                : widget.state.position;
+                        final bool isWhiteToMove =
+                            activePosition?.turn != Side.black;
 
-                      return EvaluationBarWidget(
-                        key: e2eKey(E2eIds.boardEvalBar),
-                        width: sideBarWidth,
-                        height: boardSize,
-                        evaluation: state.evaluation,
-                        mate: state.mate,
-                        isEvaluating: state.isEvaluating,
-                        isFlipped: state.isBoardFlipped,
-                        isWhiteToMove: isWhiteToMove,
-                        positionKey: activePosition?.fen,
-                      );
-                    },
+                        return EvaluationBarWidget(
+                          key: e2eKey(E2eIds.boardEvalBar),
+                          width: sideBarWidth,
+                          height: boardSize,
+                          evaluation: widget.state.evaluation,
+                          mate: widget.state.mate,
+                          isEvaluating: widget.state.isEvaluating,
+                          isFlipped: widget.state.isBoardFlipped,
+                          isWhiteToMove: isWhiteToMove,
+                          positionKey: activePosition?.fen,
+                        );
+                      },
+                    ),
                   ),
+                Stack(
+                  children: [
+                    // Analysis mode is always active, always use analysis board
+                    _AnalysisBoard(
+                      size: boardSize,
+                      chessBoardState: widget.state,
+                      isFlipped: widget.state.isBoardFlipped,
+                      isActivePage: widget.index == widget.currentPageIndex,
+                      index: widget.index,
+                      game: widget.state.game,
+                    ),
+                    if (_showPinchCoachmark &&
+                        !_dismissedThisSession &&
+                        widget.index == widget.currentPageIndex)
+                      Positioned.fill(
+                        child: BoardPinchCoachmark(
+                          onDismiss: _dismissPinchCoachmark,
+                        ),
+                      ),
+                    // DISABLED: Move annotation overlay (requires move impact analysis)
+                    // // Add move annotation overlay - only show if impact is not normal and not exploring a variant
+                    // if (currentMoveImpact != null &&
+                    //     currentMoveImpact.impact != MoveImpactType.normal &&
+                    //     state.selectedVariantIndex == null)
+                    //   BoardMoveAnnotation(
+                    //     moveImpact: currentMoveImpact,
+                    //     boardSize: boardSize,
+                    //     isFlipped: state.isBoardFlipped,
+                    //     lastMoveSquare: _getLastMoveSquare(),
+                    //   ),
+                  ],
                 ),
-              Stack(
-                children: [
-                  // Analysis mode is always active, always use analysis board
-                  _AnalysisBoard(
-                    size: boardSize,
-                    chessBoardState: state,
-                    isFlipped: state.isBoardFlipped,
-                    isActivePage: index == currentPageIndex,
-                    index: index,
-                    game: state.game,
-                  ),
-                  // DISABLED: Move annotation overlay (requires move impact analysis)
-                  // // Add move annotation overlay - only show if impact is not normal and not exploring a variant
-                  // if (currentMoveImpact != null &&
-                  //     currentMoveImpact.impact != MoveImpactType.normal &&
-                  //     state.selectedVariantIndex == null)
-                  //   BoardMoveAnnotation(
-                  //     moveImpact: currentMoveImpact,
-                  //     boardSize: boardSize,
-                  //     isFlipped: state.isBoardFlipped,
-                  //     lastMoveSquare: _getLastMoveSquare(),
-                  //   ),
-                ],
-              ),
-            ],
+              ],
+            ),
           ),
         );
       },
