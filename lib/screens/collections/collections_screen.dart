@@ -65,31 +65,33 @@ class CollectionsScreen extends ConsumerWidget {
               color: context.colors.textPrimary,
               backgroundColor: context.colors.surface,
               onRefresh: () => ref.refresh(collectionsProvider.future),
-              child: ListView.builder(
-                physics: const AlwaysScrollableScrollPhysics(
-                  parent: BouncingScrollPhysics(),
-                ),
-                padding: EdgeInsets.fromLTRB(
-                  16.sp,
-                  16.sp,
-                  16.sp,
-                  24.sp + MediaQuery.viewPaddingOf(context).bottom,
-                ),
-                itemCount: shown.isEmpty ? 1 : shown.length,
-                itemBuilder: (context, i) {
-                  if (shown.isEmpty) {
-                    return _Notice(
+              // An empty tab's notice is a list of its own (it still pulls
+              // to refresh), so it IS the tab's scrollable, never an item
+              // of the card list: there it gets unbounded height, fails
+              // layout, and the half-laid-out subtree then fails the
+              // semantics parent-data check on every later frame.
+              child: shown.isEmpty
+                  ? _Notice(
                       text: kind == CollectionKind.event
                           ? 'No annotated events yet.'
                           : 'No books yet.',
-                    );
-                  }
-                  return Padding(
-                    padding: EdgeInsets.only(bottom: 12.sp),
-                    child: CollectionCard(collection: shown[i]),
-                  );
-                },
-              ),
+                    )
+                  : ListView.builder(
+                      physics: const AlwaysScrollableScrollPhysics(
+                        parent: BouncingScrollPhysics(),
+                      ),
+                      padding: EdgeInsets.fromLTRB(
+                        16.sp,
+                        16.sp,
+                        16.sp,
+                        24.sp + MediaQuery.viewPaddingOf(context).bottom,
+                      ),
+                      itemCount: shown.length,
+                      itemBuilder: (context, i) => Padding(
+                        padding: EdgeInsets.only(bottom: 12.sp),
+                        child: CollectionCard(collection: shown[i]),
+                      ),
+                    ),
             );
           },
           loading: () => const _CardsSkeleton(),
