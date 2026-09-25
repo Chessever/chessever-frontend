@@ -3,6 +3,8 @@ import 'package:chessever2/screens/chessboard/chess_board_screen_new.dart';
 import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
 import 'package:chessever2/screens/collections/collections_data.dart';
 import 'package:chessever2/screens/collections/event_view_shell.dart';
+import 'package:chessever2/screens/for_you/discovery/widgets/discovery_common.dart'
+    show discoveryGutter;
 import 'package:chessever2/screens/for_you/discovery/widgets/discovery_game_cards.dart';
 import 'package:chessever2/screens/my_space/models/space_shortcut.dart';
 import 'package:chessever2/screens/my_space/widgets/pixel_art.dart';
@@ -20,6 +22,7 @@ import 'package:chessever2/widgets/hub_tile.dart';
 import 'package:chessever2/widgets/skeleton_widget.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:intl/intl.dart';
 
 /// Discovery › Collection: the collections, laid out as an event is, with
 /// events and books on their own tabs and each entry drawn as an event card.
@@ -108,11 +111,12 @@ class CollectionCard extends StatelessWidget {
     final isLight = context.isLightTheme;
     final c = collection;
     final games = c.gameCount == 1 ? '1 game' : '${c.gameCount} games';
+    final where = c.subtitle ?? collectionPlaceAndDates(c);
     // The count first, so a long place or name is what gives way.
     final meta = [
       games,
       if (c.kind == CollectionKind.book && c.author != null) 'by ${c.author}',
-      if (c.kind == CollectionKind.event && c.subtitle != null) c.subtitle!,
+      if (c.kind == CollectionKind.event && where != null) where,
     ].join(' · ');
     final plateWidth = 108.w;
     final plateHeight = plateWidth * 4 / 5;
@@ -230,12 +234,43 @@ class _Cover extends StatelessWidget {
   }
 }
 
-/// One collection, laid out as an event: About, Games (the annotated games,
-/// as an event's Games tab lists them) and Players (everyone in it and how
-/// many games each played; picking one shows their games).
+/// "Saint Louis · Oct 2-14, 2025": an event's place and dates, or null when
+/// it has neither.
+String? collectionPlaceAndDates(Collection c) {
+  final dates = collectionDateRange(c.dateStart, c.dateEnd);
+  final parts = [?c.location, ?dates];
+  return parts.isEmpty ? null : parts.join(' · ');
+}
+
+/// "Oct 2, 2025", "Oct 2-14, 2025", "Sep 28 - Oct 3, 2025".
+String? collectionDateRange(DateTime? start, DateTime? end) {
+  final from = start ?? end;
+  if (from == null) return null;
+  final to = start == null ? null : end;
+  final full = DateFormat('MMM d, yyyy');
+  if (to == null ||
+      (from.year == to.year && from.month == to.month && from.day == to.day)) {
+    return full.format(from);
+  }
+  if (from.year == to.year && from.month == to.month) {
+    return '${DateFormat('MMM d').format(from)}-${to.day}, ${to.year}';
+  }
+  if (from.year == to.year) {
+    return '${DateFormat('MMM d').format(from)} - ${full.format(to)}';
+  }
+  return '${full.format(from)} - ${full.format(to)}';
+}
+
+/// Where section headers and the player line start: the game cards' edge.
+double get _headerInset => discoveryGutter + 4.sp;
+
+/// One collection, laid out as an event: About, Games (the annotated games
+/// under their rounds, or a book's parts and chapters) and Players (everyone
+/// in it and their games; picking one shows those games).
 class CollectionScreen extends ConsumerStatefulWidget {
   const CollectionScreen({super.key, required this.collection});
 
+  /// The list row it was opened from; the detail read fills in the rest.
   final Collection collection;
 
   @override
@@ -248,7 +283,7 @@ class _CollectionScreenState extends ConsumerState<CollectionScreen> {
   final EventViewController _tabs = EventViewController();
 
   /// The player whose games the Games tab shows, or null for all.
-  String? _player;
+  CollectionPlayer? _player;
 
   @override
   void dispose() {
@@ -256,14 +291,15 @@ class _CollectionScreenState extends ConsumerState<CollectionScreen> {
     super.dispose();
   }
 
-  void _showPlayer(String? name) {
+  void _showPlayer(CollectionPlayer? player) {
     HapticFeedbackService.selection();
-    setState(() => _player = name);
-    if (name != null) _tabs.showTab(_gamesTab);
+    setState(() => _player = player);
+    if (player != null) _tabs.showTab(_gamesTab);
   }
 
   /// Collection games carry their whole PGN, so the board replays them as it
-  /// replays an imported file.
+  /// replays an imported file. [games] is the whole list in the order shown,
+  /// so prev/next walks the collection.
   void _openGame(List<GamesTourModel> games, int index) {
     HapticFeedbackService.cardTap();
     ref.read(chessboardViewFromProviderNew.notifier).state =
@@ -283,8 +319,11 @@ class _CollectionScreenState extends ConsumerState<CollectionScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final c = widget.collection;
-    final games = ref.watch(collectionGamesProvider(c.id));
+    final slug = widget.collection.slug;
+    final detail = ref.watch(collectionDetailProvider(slug));
+    final c = detail.valueOrNull ?? widget.collection;
+    final contents = ref.watch(collectionContentsProvider(slug));
+    final players = ref.watch(collectionPlayersProvider(slug));
     return EventViewShell(
       title: c.title,
       tabs: const ['About', 'Games', 'Players'],
@@ -292,10 +331,19 @@ class _CollectionScreenState extends ConsumerState<CollectionScreen> {
       controller: _tabs,
       pageBuilder: (context, index) {
         return switch (index) {
-          0 => _AboutPage(collection: c, games: games.valueOrNull),
-          1 => games.when(
-            data: (list) => _GamesPage(
-              games: list,
+          0 => _AboutPage(
+            collection: c,
+            playerCount: players.valueOrNull?.length,
+            // Only when there is nothing better than the list row to show;
+            // hidden while a retry is in flight so the tap reads as taken.
+            error: detail.hasError && !detail.hasValue && !detail.isLoading
+                ? detail.error
+                : null,
+            onRetry: () => ref.invalidate(collectionDetailProvider(slug)),
+          ),
+          1 => contents.when(
+            data: (data) => _GamesPage(
+              contents: data,
               player: _player,
               onClearPlayer: () => _showPlayer(null),
               onOpen: _openGame,
@@ -307,14 +355,14 @@ class _CollectionScreenState extends ConsumerState<CollectionScreen> {
                 fallback: "Couldn't load the games.",
               ),
               actionLabel: 'Try again',
-              onAction: () => ref.invalidate(collectionGamesProvider(c.id)),
+              onAction: () {
+                ref.invalidate(collectionDetailProvider(slug));
+                ref.invalidate(collectionGamesProvider(slug));
+              },
             ),
           ),
-          _ => games.when(
-            data: (list) => _PlayersPage(
-              players: collectionPlayers(list),
-              onPick: _showPlayer,
-            ),
+          _ => players.when(
+            data: (list) => _PlayersPage(players: list, onPick: _showPlayer),
             loading: () => const _CardsSkeleton(),
             error: (error, _) => _Notice(
               text: userFacingError(
@@ -322,7 +370,7 @@ class _CollectionScreenState extends ConsumerState<CollectionScreen> {
                 fallback: "Couldn't load the players.",
               ),
               actionLabel: 'Try again',
-              onAction: () => ref.invalidate(collectionGamesProvider(c.id)),
+              onAction: () => ref.invalidate(collectionPlayersProvider(slug)),
             ),
           ),
         };
@@ -332,28 +380,47 @@ class _CollectionScreenState extends ConsumerState<CollectionScreen> {
 }
 
 class _AboutPage extends StatelessWidget {
-  const _AboutPage({required this.collection, required this.games});
+  const _AboutPage({
+    required this.collection,
+    required this.playerCount,
+    this.error,
+    this.onRetry,
+  });
 
   final Collection collection;
-  final List<CollectionGame>? games;
+
+  /// Null until the Players read lands.
+  final int? playerCount;
+
+  /// Why the detail read failed, when [collection] is still just the list
+  /// row (no About text, credits or edition).
+  final Object? error;
+  final VoidCallback? onRetry;
 
   @override
   Widget build(BuildContext context) {
     final colors = context.colors;
     final c = collection;
-    final paragraphs = [
-      for (final p in (c.about ?? '').split(RegExp(r'\n\s*\n')))
-        if (p.trim().isNotEmpty) p.trim(),
-    ];
-    final players = games == null ? null : collectionPlayers(games!).length;
+    final paragraphs = _paragraphs(c.about);
+    final players = playerCount;
     final facts = [
       c.gameCount == 1 ? '1 game' : '${c.gameCount} games',
-      if (players != null) players == 1 ? '1 player' : '$players players',
+      if (players != null && players > 0)
+        players == 1 ? '1 player' : '$players players',
     ].join(' · ');
+    final isBook = c.kind == CollectionKind.book;
+    final credit = isBook ? c.author : c.annotator ?? c.author;
+    final annotator = isBook && c.annotator != c.author ? c.annotator : null;
+    final edition = isBook
+        ? [?c.publisher, if (c.publishedYear != null) '${c.publishedYear}']
+        : [?collectionPlaceAndDates(c)];
     final body = AppTypography.textSmRegular.copyWith(
       color: colors.textPrimary,
       fontSize: 15.f,
       height: 22 / 15,
+    );
+    final secondary = AppTypography.textSmRegular.copyWith(
+      color: colors.textSecondary,
     );
     return ListView(
       padding: EdgeInsets.fromLTRB(
@@ -383,34 +450,56 @@ class _AboutPage extends StatelessWidget {
             letterSpacing: -0.2,
           ),
         ),
-        if (c.author != null) ...[
+        if (credit != null) ...[
           SizedBox(height: 4.sp),
           Text(
-            c.kind == CollectionKind.book
-                ? 'by ${c.author}'
-                : 'Annotated by ${c.author}',
+            isBook ? 'by $credit' : 'Annotated by $credit',
             style: AppTypography.textSmMedium.copyWith(
               color: colors.textPrimary,
               fontWeight: FontWeight.w600,
             ),
           ),
         ],
+        if (annotator != null) ...[
+          SizedBox(height: 4.sp),
+          Text('Annotated by $annotator', style: secondary),
+        ],
         if (c.subtitle != null) ...[
           SizedBox(height: 4.sp),
-          Text(
-            c.subtitle!,
-            style: AppTypography.textSmRegular.copyWith(
-              color: colors.textSecondary,
-            ),
-          ),
+          Text(c.subtitle!, style: secondary),
+        ],
+        if (edition.isNotEmpty) ...[
+          SizedBox(height: 4.sp),
+          Text(edition.join(' · '), style: secondary),
         ],
         SizedBox(height: 4.sp),
-        Text(
-          facts,
-          style: AppTypography.textSmRegular.copyWith(
-            color: colors.textSecondary,
+        Text(facts, style: secondary),
+        if (error != null) ...[
+          SizedBox(height: 16.sp),
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  userFacingError(
+                    error,
+                    fallback: "Couldn't load the rest of this collection.",
+                  ),
+                  style: secondary,
+                ),
+              ),
+              if (onRetry != null)
+                TextButton(
+                  onPressed: onRetry,
+                  child: Text(
+                    'Try again',
+                    style: AppTypography.textSmMedium.copyWith(
+                      color: colors.accentText,
+                    ),
+                  ),
+                ),
+            ],
           ),
-        ),
+        ],
         for (final p in paragraphs) ...[
           SizedBox(height: 16.sp),
           Text(p, style: body),
@@ -420,71 +509,256 @@ class _AboutPage extends StatelessWidget {
   }
 }
 
+/// [text]'s paragraphs: blank lines separate them.
+List<String> _paragraphs(String? text) => [
+  for (final p in (text ?? '').split(RegExp(r'\n\s*\n')))
+    if (p.trim().isNotEmpty) p.trim(),
+];
+
 class _GamesPage extends StatelessWidget {
   const _GamesPage({
-    required this.games,
+    required this.contents,
     required this.player,
     required this.onClearPlayer,
     required this.onOpen,
   });
 
-  final List<CollectionGame> games;
-  final String? player;
+  final CollectionContents contents;
+  final CollectionPlayer? player;
   final VoidCallback onClearPlayer;
   final void Function(List<GamesTourModel> games, int index) onOpen;
 
-  bool _plays(GamesTourModel g, String name) {
-    final key = name.toLowerCase();
-    return g.whitePlayer.name.trim().toLowerCase() == key ||
-        g.blackPlayer.name.trim().toLowerCase() == key;
-  }
+  /// By key only: cards and player rows share it (`fide:<id>` or
+  /// `name:<lower>`), and the Players tab counts games the same way. A name
+  /// match across different keys is a namesake, not the same player.
+  static bool _plays(CollectionGame g, CollectionPlayer p) =>
+      g.card.involves(p.key);
 
   @override
   Widget build(BuildContext context) {
-    final picked = player;
-    final shown = [
-      for (final g in games)
-        if (picked == null || _plays(g.game, picked)) g.game,
-    ];
-    if (games.isEmpty) {
+    if (contents.games.isEmpty) {
       return const _Notice(text: 'No games in this collection yet.');
     }
-    return ListView(
+    final picked = player;
+    final groups = groupCollectionGames(contents.sections, [
+      for (final g in contents.games)
+        if (picked == null || _plays(g, picked)) g,
+    ]);
+    // The order the board steps through: exactly the order drawn.
+    final ordered = [
+      for (final group in groups)
+        for (final g in group.games) g.game,
+    ];
+    // A collection with no sections lists its games with no headers at all.
+    final headed = groups.any((g) => g.section != null);
+    final lead = picked == null ? 0 : 1;
+    return ListView.builder(
       padding: EdgeInsets.only(
         top: 16.sp,
         bottom: 24.sp + MediaQuery.viewPaddingOf(context).bottom,
       ),
-      children: [
-        if (picked != null)
-          Padding(
-            padding: EdgeInsets.fromLTRB(20.sp, 0, 8.sp, 8.sp),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    'Games of $picked',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: AppTypography.textSmMedium.copyWith(
-                      color: context.colors.textPrimary,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
+      itemCount: lead + (groups.isEmpty ? 1 : groups.length),
+      itemBuilder: (context, i) {
+        if (picked != null && i == 0) {
+          return _PlayerLine(name: picked.name, onClear: onClearPlayer);
+        }
+        if (groups.isEmpty) {
+          // Inline, not a _Notice: that one is a scrollable of its own.
+          return Padding(
+            padding: EdgeInsets.fromLTRB(20.sp, 24.sp, 20.sp, 0),
+            child: Text(
+              'No games of this player here.',
+              textAlign: TextAlign.center,
+              style: AppTypography.textSmRegular.copyWith(
+                color: context.colors.textSecondary,
+              ),
+            ),
+          );
+        }
+        final index = i - lead;
+        final group = groups[index];
+        final intro = _paragraphs(group.section?.intro);
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (headed)
+              _SectionHeader(section: group.section, first: index == 0),
+            if (intro.isNotEmpty) _SectionIntro(paragraphs: intro),
+            if (group.games.isNotEmpty)
+              Padding(
+                padding: EdgeInsets.only(bottom: 4.sp),
+                child: DiscoveryGameList(
+                  games: [for (final g in group.games) g.game],
+                  streamEnabled: false,
+                  onOpen: (_, local) => onOpen(ordered, group.offset + local),
                 ),
-                TextButton(
-                  onPressed: onClearPlayer,
-                  child: Text(
-                    'Show all',
-                    style: AppTypography.textSmMedium.copyWith(
-                      color: context.colors.accentText,
-                    ),
-                  ),
-                ),
-              ],
+              ),
+          ],
+        );
+      },
+    );
+  }
+}
+
+/// The picked player's name over their games, and the way back to all.
+class _PlayerLine extends StatelessWidget {
+  const _PlayerLine({required this.name, required this.onClear});
+
+  final String name;
+  final VoidCallback onClear;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: EdgeInsets.fromLTRB(_headerInset, 0, 8.sp, 8.sp),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              'Games of $name',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: AppTypography.textSmMedium.copyWith(
+                color: context.colors.textPrimary,
+                fontWeight: FontWeight.w600,
+              ),
             ),
           ),
-        DiscoveryGameList(games: shown, streamEnabled: false, onOpen: onOpen),
-      ],
+          TextButton(
+            onPressed: onClear,
+            child: Text(
+              'Show all',
+              style: AppTypography.textSmMedium.copyWith(
+                color: context.colors.accentText,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// The header over a run of games: a round and its date, a book's part, a
+/// chapter's number and title, or "Other games" for those in no section.
+class _SectionHeader extends StatelessWidget {
+  const _SectionHeader({required this.section, required this.first});
+
+  /// Null for the games in no section.
+  final CollectionSection? section;
+
+  /// The first header sits right under the list's own top padding.
+  final bool first;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.colors;
+    final s = section;
+    final isPart = s?.kind == CollectionSectionKind.part;
+    final main = isPart
+        ? AppTypography.textSmMedium.copyWith(
+            color: colors.textPrimary,
+            fontSize: 17.f,
+            height: 22 / 17,
+            fontWeight: FontWeight.w700,
+          )
+        : AppTypography.textSmMedium.copyWith(
+            color: colors.textPrimary,
+            fontWeight: FontWeight.w600,
+          );
+    final muted = main.copyWith(
+      color: colors.textSecondary,
+      fontFeatures: const [FontFeature.tabularFigures()],
+    );
+
+    String? lead;
+    var title = 'Other games';
+    String? date;
+    if (s != null) {
+      final named = s.title != null && s.title != s.label;
+      switch (s.kind) {
+        case CollectionSectionKind.part:
+          lead = named ? s.label : null;
+          title = named ? s.title! : s.label;
+        case CollectionSectionKind.chapter:
+          lead = named ? s.number ?? s.label : null;
+          title = named ? s.title! : s.label;
+        case CollectionSectionKind.round:
+        case CollectionSectionKind.stage:
+        case CollectionSectionKind.other:
+          title = named ? '${s.label} · ${s.title}' : s.label;
+          final day = s.startsOn;
+          date = day == null ? null : DateFormat('MMM d, yyyy').format(day);
+      }
+      if (title.isEmpty) title = s.number ?? 'Games';
+    }
+
+    return Semantics(
+      header: true,
+      child: Padding(
+        padding: EdgeInsets.fromLTRB(
+          _headerInset,
+          first ? 0 : (isPart ? 28.sp : 20.sp),
+          _headerInset,
+          10.sp,
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.baseline,
+          textBaseline: TextBaseline.alphabetic,
+          children: [
+            Expanded(
+              child: Text.rich(
+                TextSpan(
+                  children: [
+                    if (lead != null) TextSpan(text: '$lead  ', style: muted),
+                    TextSpan(text: title),
+                  ],
+                ),
+                style: main,
+              ),
+            ),
+            if (date != null) ...[
+              SizedBox(width: 12.sp),
+              Text(
+                date,
+                style: AppTypography.textXsMedium.copyWith(
+                  color: colors.textSecondary,
+                  fontFeatures: const [FontFeature.tabularFigures()],
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// A chapter's introduction, read before its games.
+class _SectionIntro extends StatelessWidget {
+  const _SectionIntro({required this.paragraphs});
+
+  final List<String> paragraphs;
+
+  @override
+  Widget build(BuildContext context) {
+    final style = AppTypography.textSmRegular.copyWith(
+      color: context.colors.textSecondary,
+      height: 20 / 14,
+    );
+    return Padding(
+      padding: EdgeInsets.fromLTRB(_headerInset, 0, _headerInset, 12.sp),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          for (var i = 0; i < paragraphs.length; i++) ...[
+            if (i > 0) SizedBox(height: 8.sp),
+            Text(paragraphs[i], style: style),
+          ],
+        ],
+      ),
     );
   }
 }
@@ -493,7 +767,7 @@ class _PlayersPage extends StatelessWidget {
   const _PlayersPage({required this.players, required this.onPick});
 
   final List<CollectionPlayer> players;
-  final ValueChanged<String> onPick;
+  final ValueChanged<CollectionPlayer> onPick;
 
   @override
   Widget build(BuildContext context) {
@@ -513,13 +787,13 @@ class _PlayersPage extends StatelessWidget {
       itemBuilder: (context, i) {
         final p = players[i];
         final count = p.games == 1 ? '1 game' : '${p.games} games';
-        final hasFlag = FederationFlag.hasVisibleFlag(p.federation);
+        final hasFlag = FederationFlag.hasVisibleFlag(p.fed);
         return Semantics(
           button: true,
           label: '${p.title ?? ''} ${p.name}, $count. Show their games'.trim(),
           excludeSemantics: true,
           child: TappableScale(
-            onTap: () => onPick(p.name),
+            onTap: () => onPick(p),
             child: Container(
               constraints: BoxConstraints(minHeight: 56.sp),
               padding: EdgeInsets.symmetric(horizontal: 14.sp, vertical: 10.sp),
@@ -531,7 +805,7 @@ class _PlayersPage extends StatelessWidget {
                 children: [
                   if (hasFlag) ...[
                     FederationFlag(
-                      federation: p.federation,
+                      federation: p.fed,
                       width: 20.sp,
                       height: 14.sp,
                       borderRadius: BorderRadius.circular(2),
@@ -551,9 +825,9 @@ class _PlayersPage extends StatelessWidget {
                               ),
                             ),
                           TextSpan(text: p.name),
-                          if (p.rating != null)
+                          if (p.bestElo != null)
                             TextSpan(
-                              text: '  ${p.rating}',
+                              text: '  ${p.bestElo}',
                               style: TextStyle(color: colors.textSecondary),
                             ),
                         ],

@@ -8,51 +8,83 @@ About, Games and Players tabs.
 
 ## Where they live
 
-Supabase, both projects (test `odmekzlfunfocvedqusl`, production
-`oelbsuggrzyqwzmvidju`), migration
-`supabase/migrations/20260925120000_create_discovery_collections.sql`:
+In **chessever_gamebase** (the `service.chessever.com` API and its Postgres),
+not in Supabase. A collection has:
 
-| table | what |
+- its metadata: slug, kind, title, subtitle, author, annotator, about, cover,
+  location and dates (events), publisher and year (books), sort order and a
+  status (`draft`, `published`, `archived`);
+- a **section tree**: rounds (or stages) for an event; parts holding chapters
+  for a book. A section carries a label ("Round 5", "Chapter 7", "Part I"),
+  the printed number, a title, a round date, and for a chapter an intro text;
+- its **games**, each with its whole PGN (comments, NAGs and variations
+  intact), the section it sits in (or none: "unsorted") and its order there;
+- derived data the importer rebuilds on every change: the players table
+  (games, W/D/L, best rating per player), counts, player names and ECOs.
+
+The app only ever sees `published` collections. The old Supabase tables
+(`discovery_collections`, `discovery_collection_games`, migration
+`supabase/migrations/20260925120000_create_discovery_collections.sql`) are no
+longer read by the app, and `scripts/collections/upload_collection.py`, which
+filled them, has been removed. The migration stays so the schema history is
+intact, which is why its header still names that script.
+
+## How the app reads them
+
+`lib/repository/gamebase/gamebase_repository.dart` (`getCollections`,
+`getCollection`, `getCollectionGames`, `getCollectionPlayers`) with the models
+in `lib/repository/gamebase/collections/collections_models.dart`. Same Dio
+client, base URL and `X-API-Key` as every other gamebase call (the
+`GAMEBASE_API_KEY` dart-define, or `.env` in debug builds).
+
+| Endpoint | Used for |
 | --- | --- |
-| `discovery_collections` | one row per collection: `slug`, `kind`, `title`, `subtitle`, `author`, `about`, `cover_url`, `sort_order`, `published` |
-| `discovery_collection_games` | one row per game: the whole `pgn`, plus header fields copied beside it |
+| `GET /api/collections?limit=100&offset=…` | the Events / Books lists (paged until `total`) |
+| `GET /api/collections/:slug` | About text and the section tree |
+| `GET /api/collections/:slug/games?include=pgn&limit=200&offset=…` | every game with its PGN (paged until `total`) |
+| `GET /api/collections/:slug/players` | the Players tab |
 
-Everyone can read published collections and their games. Nobody can write
-with the app's keys; uploads use the service role key.
+Every response is the gamebase envelope `{ "status": "success", "data": … }`.
+`lib/screens/collections/collections_data.dart` turns each PGN into the game
+card / board model and groups the games under the tree for the Games tab: an
+event's games under their rounds (label and date), a book's under its parts
+and chapters (each chapter's number, title and intro above its games), games
+in no section last. Opening a game hands the board the whole list in that
+order, so prev/next walks the collection.
 
 ## Uploading one
 
-1. Put the games in one PGN file, in the order they should appear. Keep the
+Use the admin console on chessever.com: **Content › Collections**.
+
+1. **Create** the collection: pick Event or Book, give it a title (the slug is
+   made from it) and fill in what applies: subtitle, author, annotator,
+   location and dates, publisher and year, cover URL, sort order (lower comes
+   first), and the About text (blank lines separate paragraphs). It starts as
+   a **draft**, which the app does not show.
+2. **Import** a PGN file (up to 10 MB / 1,000 games per import). Keep the
    annotations in the PGN: comments `{...}`, NAGs (`$1`, `!?`) and variations
-   all reach the board as they are. `WhiteTitle`, `WhiteElo`, `WhiteFed`
-   (and the Black ones) fill the players' titles, ratings and flags.
-2. Write the About text in a plain text file; blank lines separate
-   paragraphs.
-3. Run, with the target project's URL and service role key in the
-   environment (never commit them):
+   all reach the board as they are. `WhiteTitle`, `WhiteElo`, `WhiteFed`,
+   `WhiteFideId` (and the Black ones) fill the players' titles, ratings, flags
+   and identities. Choose how games are grouped:
+   - **Round**: one section per `[Round]` (its major part: "5.3" is round 5,
+     board 3). The usual choice for an event.
+   - **Chapter**: one section per `[Chapter]` tag. Games without the tag go to
+     Unsorted.
+   - **Single**: every game into one chosen section.
+   - **None**: everything into Unsorted.
 
-   ```bash
-   SUPABASE_URL=https://oelbsuggrzyqwzmvidju.supabase.co \
-   SUPABASE_SERVICE_ROLE_KEY=... \
-   python3 scripts/collections/upload_collection.py us-champ-2025.pgn \
-     --slug us-championship-2025 --kind event \
-     --title "US Championship 2025" \
-     --subtitle "Saint Louis · October 2025" \
-     --author "GM Name" --about-file about.txt
-   ```
+   and what to do with games already in the collection (matched by players,
+   round, start position and moves): **update** replaces their PGN, **keep**
+   leaves them. Run the **dry run** first: it shows, per section, how many
+   games would be added, updated, left unchanged or failed (an illegal move
+   holds that one game back; the rest still import). Then apply it. Imports
+   never delete games, and each one is recorded in the collection's import
+   history.
+3. **Arrange** the sections: labels, numbers, titles, round dates and chapter
+   intros; put chapters under parts; reorder sections and move games between
+   them. Deleting a section moves its games to Unsorted.
+4. **Publish** it (status → published). To take it down, set it back to
+   draft or archive it.
 
-   The collection is saved **unpublished**. Check it, then publish it by
-   running the same command with `--publish` (the slug makes it an update,
-   not a second collection), or in SQL:
-
-   ```sql
-   update public.discovery_collections set published = true
-   where slug = 'us-championship-2025';
-   ```
-
-- `--replace` swaps a collection's games for the file's (only that
-  collection's games are dropped).
-- `--sort-order` orders collections; lower comes first.
-- `--cover-url` sets the card and About image; without one the card shows
-  its pixel object (a trophy for an event, stacked boards for a book).
-- To take a collection down, set `published = false`.
+The app picks up changes on the next load or pull-to-refresh; the API caches
+responses and clears that cache after every admin write.

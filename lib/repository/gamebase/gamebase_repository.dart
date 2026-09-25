@@ -8,6 +8,7 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:dart_mappable/dart_mappable.dart';
 import 'package:dartchess/dartchess.dart';
 import 'package:chessever2/screens/gamebase/models/models.dart';
+import 'package:chessever2/repository/gamebase/collections/collections_models.dart';
 import 'package:chessever2/repository/gamebase/miniatures/miniatures_models.dart';
 import 'package:chessever2/repository/gamebase/search/gamebase_search_models.dart';
 import 'package:chessever2/repository/gamebase/search/gamebase_search_models_extra.dart';
@@ -809,6 +810,111 @@ class GamebaseRepository {
       );
     } catch (e) {
       throw Exception('Failed to load miniature players: $e');
+    }
+  }
+
+  /// One page of the published collections (`GET /api/collections`),
+  /// ordered by the team's sort order, newest first within it.
+  Future<CollectionsPage> getCollections({
+    CollectionKind? kind,
+    String? query,
+    int limit = 30,
+    int offset = 0,
+  }) async {
+    final q = (query ?? '').trim();
+    final data = await _getCollectionsData(
+      '/api/collections',
+      what: 'collections',
+      queryParameters: {
+        if (kind != null) 'kind': kind.apiValue,
+        if (q.isNotEmpty) 'q': q,
+        'limit': limit,
+        'offset': offset,
+      },
+    );
+    return CollectionsPage.fromJson(data);
+  }
+
+  /// A published collection with its About text and section tree
+  /// (`GET /api/collections/:slug`).
+  Future<Collection> getCollection(String slug) async {
+    final data = await _getCollectionsData(
+      '/api/collections/${Uri.encodeComponent(slug)}',
+      what: 'collection',
+    );
+    if (data is! Map) {
+      throw const FormatException('Unexpected collection response format');
+    }
+    return Collection.fromJson(Map<String, dynamic>.from(data));
+  }
+
+  /// One page of a collection's games in section-tree order
+  /// (`GET /api/collections/:slug/games`). [includePgn] adds each game's
+  /// whole PGN, which the board needs to replay it.
+  Future<CollectionGamesPage> getCollectionGames(
+    String slug, {
+    String? section,
+    String? playerKey,
+    bool includePgn = false,
+    int limit = 100,
+    int offset = 0,
+  }) async {
+    final data = await _getCollectionsData(
+      '/api/collections/${Uri.encodeComponent(slug)}/games',
+      what: 'collection games',
+      queryParameters: {
+        if (section != null && section.isNotEmpty) 'section': section,
+        if (playerKey != null && playerKey.isNotEmpty) 'player': playerKey,
+        if (includePgn) 'include': 'pgn',
+        'limit': limit,
+        'offset': offset,
+      },
+    );
+    return CollectionGamesPage.fromJson(data);
+  }
+
+  /// Everyone who played in a collection, most games first
+  /// (`GET /api/collections/:slug/players`).
+  Future<List<CollectionPlayer>> getCollectionPlayers(String slug) async {
+    final data = await _getCollectionsData(
+      '/api/collections/${Uri.encodeComponent(slug)}/players',
+      what: 'collection players',
+    );
+    return CollectionPlayer.listFromJson(data);
+  }
+
+  /// GETs a collections endpoint and returns its envelope's `data`.
+  Future<Object?> _getCollectionsData(
+    String path, {
+    required String what,
+    Map<String, dynamic>? queryParameters,
+  }) async {
+    try {
+      final response = await _dio.get(
+        '$_baseUrl$path',
+        queryParameters: queryParameters,
+        options: Options(headers: _headers),
+      );
+      return unwrapCollectionsEnvelope(
+        response.data,
+        statusCode: response.statusCode,
+      );
+    } on DioException catch (e) {
+      if (kDebugMode) {
+        debugPrint('[GamebaseRepository] $what DioException:');
+        debugPrint('  Status: ${e.response?.statusCode}');
+        debugPrint('  Message: ${e.message}');
+      }
+      // Gamebase answers every refusal (404 unpublished slug, 400 validation)
+      // with a 4xx/5xx `{status: "error"}` envelope, which Dio throws on.
+      // Surface that message; fall back only when the body is not one.
+      final body = e.response?.data;
+      if (body is Map && body['status'] == 'error') {
+        unwrapCollectionsEnvelope(body, statusCode: e.response?.statusCode);
+      }
+      throw Exception(
+        'Failed to load $what: ${e.response?.statusCode ?? 'network error'} - ${e.message}',
+      );
     }
   }
 
