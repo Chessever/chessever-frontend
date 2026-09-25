@@ -56,16 +56,15 @@ void main() {
       expect(sub.read(), BottomNavBarItem.forYou);
     });
 
-    test('the bar reads Events, Feed, For You, Library', () {
+    test('the bar reads Events, For You, Library', () {
       expect(BottomNavBarItem.values.map((item) => item.name), [
         'tournaments',
-        'feed',
         'forYou',
         'library',
       ]);
       expect(
         BottomNavBarItem.values.map((item) => namesBottomNavBarIcons[item]),
-        ['Events', 'Feed', 'For You', 'Library'],
+        ['Events', 'For You', 'Library'],
       );
     });
 
@@ -163,8 +162,8 @@ void main() {
         isSemantics(label: 'For You', isButton: true, isSelected: true),
       );
       expect(
-        tester.getSemantics(find.byKey(e2eKey(E2eIds.navFeed))),
-        isSemantics(label: 'Feed', isButton: true, isSelected: false),
+        tester.getSemantics(find.byKey(e2eKey(E2eIds.navLibrary))),
+        isSemantics(label: 'Library', isButton: true, isSelected: false),
       );
       handle.dispose();
     });
@@ -206,13 +205,12 @@ void main() {
       expect(tester.takeException(), isNull);
       for (final id in [
         E2eIds.navEvents,
-        E2eIds.navFeed,
         E2eIds.navForYou,
         E2eIds.navLibrary,
       ]) {
         final size = tester.getSize(find.byKey(e2eKey(id)));
         expect(size.height, greaterThanOrEqualTo(44));
-        expect(size.width, closeTo(90, 0.01));
+        expect(size.width, closeTo(120, 0.01));
       }
     });
   });

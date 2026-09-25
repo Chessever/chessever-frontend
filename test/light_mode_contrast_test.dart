@@ -339,15 +339,18 @@ void main() {
       await prefs?.remove('app.theme_mode.v1');
     });
 
-    testWidgets('offers Dark / Auto / Light with Dark selected by default',
+    testWidgets('offers Dark / Light, marked Beta, with Dark by default',
         (tester) async {
       await pumpThemed(tester, const SettingsAppearanceSection());
       await tester.pump(const Duration(milliseconds: 50));
 
       expect(find.text('Appearance'), findsOneWidget);
-      for (final label in ['Dark', 'Auto', 'Light']) {
+      for (final label in ['Dark', 'Light']) {
         expect(find.text(label), findsOneWidget);
       }
+      // Auto is not offered for now.
+      expect(find.text('Auto'), findsNothing);
+      expect(find.byKey(const ValueKey('settings_light_beta')), findsOneWidget);
       // A user who never chose sees Dark selected, announced as such.
       expect(
         tester.getSemantics(find.text('Dark')),
@@ -377,12 +380,28 @@ void main() {
       expect(capturedRef.read(themeModeProvider), ThemeMode.dark);
 
       await tester.tap(find.text('Light'));
-      await tester.pumpAndSettle();
+      await tester.pump();
       expect(capturedRef.read(themeModeProvider), ThemeMode.light);
-
-      await tester.tap(find.text('Auto'));
+      // Picking Light says it is not finished yet.
+      expect(find.text(kLightModeBetaNotice), findsOneWidget);
+      await tester.pump(const Duration(seconds: 5));
       await tester.pumpAndSettle();
-      expect(capturedRef.read(themeModeProvider), ThemeMode.system);
+
+      await tester.tap(find.text('Dark'));
+      await tester.pumpAndSettle();
+      expect(capturedRef.read(themeModeProvider), ThemeMode.dark);
+    });
+
+    testWidgets('the Beta mark explains that Light is not finished',
+        (tester) async {
+      await pumpThemed(tester, const SettingsAppearanceSection());
+      await tester.pump(const Duration(milliseconds: 50));
+
+      await tester.tap(find.byKey(const ValueKey('settings_light_beta')));
+      await tester.pump();
+      expect(find.text(kLightModeBetaNotice), findsOneWidget);
+      await tester.pump(const Duration(seconds: 5));
+      await tester.pumpAndSettle();
     });
 
     testWidgets('segment labels clear AA against the track in light mode',
@@ -395,7 +414,6 @@ void main() {
           tester.widget<Text>(find.text(label)).style!.color!;
       // Selected label sits on the white thumb, the rest on the inset track.
       expectReadable(inkOf('Dark'), Colors.white, what: 'selected label');
-      expectReadable(inkOf('Auto'), track, what: 'unselected Auto');
       expectReadable(inkOf('Light'), track, what: 'unselected Light');
       expectReadable(
         tester.widget<Text>(find.text('Appearance')).style!.color!,

@@ -12,42 +12,20 @@ import 'package:chessever2/screens/my_space/models/space_shortcut.dart';
 import 'package:chessever2/screens/premium_games/premium_games_screen.dart';
 import 'package:chessever2/services/fide_photo_service.dart';
 import 'package:chessever2/theme/app_colors.dart';
-import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/card_context_menu.dart';
 
+import 'package:chessever2/widgets/hub_tile.dart';
 import 'package:country_flags/country_flags.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
-import 'package:motor/motor.dart';
 
-/// Opaque ink the collection tiles are printed on.
-///
-/// These tiles are a **media surface**, not a page surface: artwork (the photo
-/// mosaic / the country flag) under a dark ramp with white type on top. That
-/// composition only works over a dark base, so the base — and every ink inside
-/// the tile — is pinned here rather than resolved from [AppColors].
-///
-/// Before this was pinned, the Stack had no fill and the tile's top half was
-/// simply the scaffold showing through the artwork. In dark mode that happened
-/// to equal this exact ink, so it read as intended; in light mode the mint page
-/// showed through instead, the photo rings (drawn from `textPrimary`, which is
-/// near-black on light) turned into black halos, and the scrim hit the page in
-/// a hard seam at the bottom edge. Same value as the dark scaffold, so dark
-/// mode is unchanged.
-const Color _kTileInk = Color(0xFF0C0C0E);
+/// On-media ink and the tile's own ink, from the shared hub tile.
+const Color _kOnTile = kHubTileOnMedia;
 
-/// On-media inks. White-based because they always sit on [_kTileInk] or on
-/// darkened artwork — in dark mode these are exactly what `textPrimary`
-/// resolved to, so nothing there moves.
-const Color _kOnTile = Color(0xFFFFFFFF);
-
-/// Ink drawn ON the tile's artwork: white on the dark media tile, the page's
-/// own ink on the light paper tile.
-Color _onTile(BuildContext context) =>
-    context.isLightTheme ? context.colors.textPrimary : _kOnTile;
+Color _onTile(BuildContext context) => hubTileOnTile(context);
 
 /// Collection cards displayed at the top of For You tab.
 /// Shows "Favorites" and "Countrymen" cards that navigate to combined game lists.
@@ -56,24 +34,14 @@ class PremiumCollectionCards extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: EdgeInsets.only(bottom: 20.sp),
-      child: Row(
-        children: [
-          Expanded(
-            child: _PremiumCollectionCard(
-              type: PremiumGamesType.favorites,
-              title: 'Favorites',
-            ),
-          ),
-          SizedBox(width: 12.sp),
-          Expanded(
-            child: _PremiumCollectionCard(
-              type: PremiumGamesType.countrymen,
-              title: 'Countrymen',
-            ),
-          ),
-        ],
+    return const HubTileRow(
+      left: _PremiumCollectionCard(
+        type: PremiumGamesType.favorites,
+        title: 'Favorites',
+      ),
+      right: _PremiumCollectionCard(
+        type: PremiumGamesType.countrymen,
+        title: 'Countrymen',
       ),
     );
   }
@@ -87,7 +55,7 @@ class _PremiumCollectionCard extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final tile = _PressScale(
+    final tile = HubTilePress(
       onTap: () => _handleTap(context, ref),
       child: _buildTile(context, ref),
     );
@@ -150,151 +118,15 @@ class _PremiumCollectionCard extends ConsumerWidget {
   }
 
   Widget _buildTile(BuildContext context, WidgetRef ref) {
-    final isLight = context.isLightTheme;
-    final onTile = _onTile(context);
-    // Light: a paper card on the mint page, its artwork washed into paper at
-    // the label. Dark: the original media tile, pixel for pixel.
-    final base = isLight ? context.colors.surface : _kTileInk;
-    return Container(
-        height: 108.sp,
-        decoration: BoxDecoration(
-          color: base,
-          borderRadius: BorderRadius.circular(14.br),
-          // The edge is the only part of the tile that meets the page, so it
-          // is the only part that follows the theme. On dark the page and the
-          // tile share an ink, so a divider-toned lip is what separates them.
-          // On light the near-black tile already cuts cleanly against the mint
-          // page — any hairline there only muddies an edge that reads better
-          // from tone alone.
-          // On light the paper tile sits one tonal step above the page; a
-          // faint self-coloured ink lip draws its edge without a hard rule.
-          border: Border.all(
-            color:
-                isLight
-                    ? context.colors.textPrimary.withValues(alpha: 0.08)
-                    : context.colors.divider,
-            width: 1,
-          ),
-        ),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(14.br),
-          child: Stack(
-            clipBehavior: Clip.hardEdge,
-            children: [
-              // Full background fill - player grid for favorites, flag for countrymen
-              if (type == PremiumGamesType.favorites)
-                const Positioned.fill(child: _FavoritePlayersGridBackground())
-              else
-                _FlagFullBackground(ref: ref),
-              // Readability ramp for the label. One ramp in both themes: it
-              // grades the tile's own artwork down to its own ink, and never
-              // touches the page behind it.
-              Positioned.fill(
-                child: DecoratedBox(
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.topCenter,
-                      end: Alignment.bottomCenter,
-                      colors:
-                          isLight
-                              ? [
-                                base.withValues(alpha: 0),
-                                base.withValues(alpha: 0.72),
-                                base.withValues(alpha: 0.96),
-                              ]
-                              : [
-                                Colors.transparent,
-                                Colors.black.withValues(alpha: 0.6),
-                                Colors.black.withValues(alpha: 0.95),
-                              ],
-                      stops: const [0.0, 0.5, 1.0],
-                    ),
-                  ),
-                ),
-              ),
-              // Foreground content - clean text-only design.
-              Padding(
-                padding: EdgeInsets.all(14.sp),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisAlignment: MainAxisAlignment.end,
-                  children: [
-                    Text(
-                      title,
-                      style: AppTypography.textMdBold.copyWith(
-                        color: onTile,
-                        letterSpacing: 0.3,
-                        // A pale FIDE headshot can land right under the label.
-                        // On dark the ramp alone does not always clear it, so
-                        // the type carries its own contrast. Dark ink on paper
-                        // needs none (a shadow under it only muddies it).
-                        shadows:
-                            isLight
-                                ? null
-                                : [
-                                  Shadow(
-                                    color: Colors.black.withValues(alpha: 0.45),
-                                    blurRadius: 4,
-                                    offset: const Offset(0, 1),
-                                  ),
-                                ],
-                      ),
-                    ),
-                    SizedBox(height: 2.sp),
-                    Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(
-                          'Tap to view',
-                          style: AppTypography.textXsRegular.copyWith(
-                            color:
-                                isLight
-                                    ? context.colors.textSecondary
-                                    : _kOnTile.withValues(alpha: 0.85),
-                            shadows:
-                                isLight
-                                    ? null
-                                    : [
-                                      Shadow(
-                                        color: Colors.black.withValues(
-                                          alpha: 0.4,
-                                        ),
-                                        blurRadius: 3,
-                                      ),
-                                    ],
-                          ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                        SizedBox(width: 4.w),
-                        Icon(
-                          Icons.arrow_forward_rounded,
-                          size: 12.sp,
-                          color:
-                              isLight
-                                  ? context.colors.textSecondary
-                                  : _kOnTile.withValues(alpha: 0.85),
-                          shadows:
-                              isLight
-                                  ? null
-                                  : [
-                                    Shadow(
-                                      color: Colors.black.withValues(
-                                        alpha: 0.4,
-                                      ),
-                                      blurRadius: 3,
-                                    ),
-                                  ],
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
-      );
+    return HubTileFace(
+      title: title,
+      // Full background: the player grid for Favorites, the flag for
+      // Countrymen.
+      artwork:
+          type == PremiumGamesType.favorites
+              ? const _FavoritePlayersGridBackground()
+              : _FlagFullBackground(ref: ref),
+    );
   }
 
   void _handleTap(BuildContext context, WidgetRef ref) {
@@ -823,52 +655,6 @@ class _FlagPlaceholder extends StatelessWidget {
           size: 48.sp,
           color: _onTile(context).withValues(alpha: 0.15),
         ),
-      ),
-    );
-  }
-}
-
-
-/// Press feedback for a collection tile: it settles to 0.97 under the finger
-/// on a spring and springs back on release, so the tap is felt before the
-/// route pushes. No scale under reduced motion.
-class _PressScale extends StatefulWidget {
-  const _PressScale({required this.onTap, required this.child});
-
-  final VoidCallback onTap;
-  final Widget child;
-
-  @override
-  State<_PressScale> createState() => _PressScaleState();
-}
-
-class _PressScaleState extends State<_PressScale> {
-  bool _pressed = false;
-
-  void _set(bool value) {
-    if (_pressed == value) return;
-    setState(() => _pressed = value);
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final reduce = MediaQuery.disableAnimationsOf(context);
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTapDown: (_) => _set(true),
-      onTapUp: (_) => _set(false),
-      onTapCancel: () => _set(false),
-      onTap: widget.onTap,
-      child: SingleMotionBuilder(
-        motion: const CupertinoMotion.snappy(),
-        value: _pressed && !reduce ? 0.97 : 1.0,
-        builder: (context, value, child) {
-          // A spring only asymptotes to 1; settle on exact identity so the
-          // artwork is never resampled a hair soft at rest.
-          final scale = (value - 1).abs() < 0.001 ? 1.0 : value;
-          return Transform.scale(scale: scale, child: child);
-        },
-        child: widget.child,
       ),
     );
   }

@@ -23,7 +23,6 @@ import 'package:chessever2/screens/feed/widgets/feed_live_board.dart';
 import 'package:chessever2/screens/feed/widgets/feed_move_sound.dart';
 import 'package:chessever2/screens/feed/widgets/feed_scrub.dart';
 import 'package:chessever2/screens/feed/widgets/feed_sfx_provider.dart';
-import 'package:chessever2/screens/home/widget/bottom_nav_bar.dart';
 import 'package:chessever2/screens/my_space/models/space_shortcut.dart';
 import 'package:chessever2/screens/my_space/providers/space_shortcuts_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
@@ -151,7 +150,7 @@ Rect _pageRect(WidgetTester tester) {
   final pages = find.byKey(const ValueKey('feed_pages'));
   if (pages.evaluate().isNotEmpty) return tester.getRect(pages);
   final root = tester.getRect(find.byType(FeedScreen));
-  final bar = find.byType(HomeTopBar);
+  final bar = find.byType(HomeTopBarFrame);
   if (bar.evaluate().isEmpty) return root;
   return Rect.fromLTRB(
     root.left,
@@ -261,9 +260,6 @@ Future<void> _pump(
         ),
         feedSfxProvider.overrideWithValue(sfx),
         feedMoveSoundProvider.overrideWithValue(FeedMoveSound(sfx)),
-        selectedBottomNavBarItemProvider.overrideWith(
-          (ref) => BottomNavBarItem.feed,
-        ),
         boardSettingsProviderNew.overrideWith(_BoardSettings.new),
         likedGamesProvider.overrideWith(_NoLikes.new),
         spaceShortcutsProvider.overrideWith(_NoShortcuts.new),

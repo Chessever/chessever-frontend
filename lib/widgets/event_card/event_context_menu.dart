@@ -152,9 +152,8 @@ bool eventIsFavorited(
   );
 }
 
-/// Stars or unstars [model]: the one path behind the card's star and the
-/// "Add to favorites" menu row, so both write the same row and the same
-/// analytics event.
+/// Stars or unstars [model]: the one path behind every event star, so each
+/// writes the same row and the same analytics event.
 Future<void> toggleEventFavorite({
   required BuildContext context,
   required WidgetRef ref,
@@ -227,8 +226,8 @@ Future<List<String>> loadEventMenuTourIds(
 const Duration _kNoSpoilersResolveCap = Duration(seconds: 5);
 
 /// The rows of an event's focus menu, in one order everywhere an event card
-/// can be long-pressed: Open, favorite, No Spoilers, Share, Copy PGN, My
-/// Space.
+/// can be long-pressed: Open, No Spoilers, Share, Copy PGN, My Space. The
+/// card's own star is where an event is favorited.
 ///
 /// [tourIds] comes from [loadEventMenuTourIds]. Once they are known the No
 /// Spoilers row reads the live per-tour state, so it is never stale after a
@@ -236,8 +235,8 @@ const Duration _kNoSpoilersResolveCap = Duration(seconds: 5);
 /// [pendingTourIds]: the menu opens at once with the row in its default
 /// "Turn on" form, and the row settles the tours when chosen (see
 /// [_turnOnNoSpoilersOnceResolved]). With neither, the row is left out.
-/// Community (calendar) events only get Open, favorite and My Space: they
-/// have no broadcast to act on.
+/// Community (calendar) events only get Open and My Space: they have no
+/// broadcast to act on.
 List<LibraryMenuAction> eventMenuActions({
   required BuildContext context,
   required WidgetRef ref,
@@ -247,9 +246,6 @@ List<LibraryMenuAction> eventMenuActions({
   VoidCallback? onOpen,
 }) {
   final broadcastActions = hasBroadcastActions(model);
-  final favorites =
-      ref.read(favoriteEventsProvider).valueOrNull ?? const <FavoriteEvent>[];
-  final isFavorited = eventIsFavorited(favorites, model);
   final spoilerStates = [
     for (final tourId in tourIds) ref.read(eventNoSpoilersProvider(tourId)),
   ];
@@ -263,12 +259,6 @@ List<LibraryMenuAction> eventMenuActions({
         label: 'Open event',
         onSelected: onOpen,
       ),
-    LibraryMenuAction(
-      icon: isFavorited ? Icons.star_rounded : Icons.star_outline_rounded,
-      label: isFavorited ? 'Remove from favorites' : 'Add to favorites',
-      onSelected:
-          () => toggleEventFavorite(context: context, ref: ref, model: model),
-    ),
     if (broadcastActions && tourIds.isNotEmpty)
       LibraryMenuAction(
         icon:

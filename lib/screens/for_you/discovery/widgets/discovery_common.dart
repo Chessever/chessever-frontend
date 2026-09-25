@@ -22,7 +22,7 @@ import 'package:motor/motor.dart';
 /// tablets the For You header's own inset (its search field and segments
 /// sit at 32.sp), so titles and rails start on the header's left edge.
 double get discoveryGutter =>
-    ResponsiveHelper.adaptive(phone: 16.w, tablet: 32.sp);
+    ResponsiveHelper.adaptive(phone: 16.sp, tablet: 32.sp);
 
 /// InterDisplay at an exact size and line, the same way the streak wall and
 /// My Space set theirs. Sections reach it through [discoveryType], never

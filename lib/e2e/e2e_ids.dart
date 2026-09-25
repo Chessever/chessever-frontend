@@ -16,7 +16,6 @@ class E2eIds {
   static const navEvents = 'e2e_nav_events';
   static const navForYou = 'e2e_nav_for_you';
   static const navLibrary = 'e2e_nav_library';
-  static const navFeed = 'e2e_nav_feed';
 
   static const drawerSettings = 'e2e_drawer_settings';
   static const drawerPlayers = 'e2e_drawer_players';

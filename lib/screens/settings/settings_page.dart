@@ -11,7 +11,9 @@ import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/svg_asset.dart';
+import 'package:chessever2/widgets/app_snack.dart';
 import 'package:chessever2/widgets/hamburger_menu/hamburger_menu_dialogs.dart';
+import 'package:chessever2/widgets/notification_settings/beta_badge.dart';
 import 'package:chessever2/widgets/svg_widget.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -198,17 +200,25 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
   }
 }
 
-/// Dark / Auto / Light picker. Plain text segments on an inset track with a
-/// sliding thumb: no icon tile, no accent flood. Dark stays the default for
-/// anyone who never opens this card.
+/// What the Beta mark says: Light is usable but not finished.
+const String kLightModeBetaNotice =
+    "Light mode is in beta. Some screens aren't finished yet.";
+
+/// Dark / Light picker. Plain text segments on an inset track with a sliding
+/// thumb: no icon tile, no accent flood. Dark stays the default for anyone
+/// who never opens this card. Light carries a Beta mark over its segment;
+/// tapping the mark, or picking Light, says it is not finished yet.
 class SettingsAppearanceSection extends ConsumerWidget {
   const SettingsAppearanceSection({super.key});
 
   static const _modes = <(ThemeMode, String)>[
     (ThemeMode.dark, 'Dark'),
-    (ThemeMode.system, 'Auto'),
     (ThemeMode.light, 'Light'),
   ];
+
+  static void _explainBeta(BuildContext context) {
+    showAppSnack(context, kLightModeBetaNotice);
+  }
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -237,15 +247,47 @@ class SettingsAppearanceSection extends ConsumerWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            'Appearance',
-            style: AppTypography.textMdMedium.copyWith(
-              color: context.colors.textPrimary,
-              fontSize: 14.f,
-              fontWeight: FontWeight.w600,
-            ),
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  'Appearance',
+                  style: AppTypography.textMdMedium.copyWith(
+                    color: context.colors.textPrimary,
+                    fontSize: 14.f,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+              // Over the Light segment, which ends the track on the right.
+              Semantics(
+                button: true,
+                label: 'Light mode is in beta',
+                excludeSemantics: true,
+                child: GestureDetector(
+                  key: const ValueKey('settings_light_beta'),
+                  behavior: HitTestBehavior.opaque,
+                  onTap: () {
+                    HapticFeedbackService.selection();
+                    _explainBeta(context);
+                  },
+                  // A bigger reach than the mark, without moving it: the
+                  // padding spills into the card's own inset.
+                  child: Transform.translate(
+                    offset: Offset(8.sp, 0),
+                    child: Padding(
+                      padding: EdgeInsets.symmetric(
+                        horizontal: 8.sp,
+                        vertical: 6.sp,
+                      ),
+                      child: const BetaBadge(),
+                    ),
+                  ),
+                ),
+              ),
+            ],
           ),
-          SizedBox(height: 12.h),
+          SizedBox(height: 6.h),
           _ThemeModeSegments(
             labels: [for (final m in _modes) m.$2],
             selectedIndex: selectedIndex < 0 ? 0 : selectedIndex,
@@ -254,6 +296,7 @@ class SettingsAppearanceSection extends ConsumerWidget {
               if (mode == selected) return;
               HapticFeedbackService.selection();
               ref.read(themeModeProvider.notifier).setTheme(mode);
+              if (mode == ThemeMode.light) _explainBeta(context);
             },
           ),
         ],

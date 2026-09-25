@@ -9,8 +9,8 @@ import 'package:chessever2/screens/streaks/widgets/wall_common.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/widgets/board_like_heart.dart';
 import 'package:chessever2/widgets/player_initials_avatar.dart';
-import 'package:chessever2/widgets/time_control_glyph.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -296,78 +296,55 @@ class _Body extends StatelessWidget {
   }
 }
 
-/// The ranking in rank order: every game with a real position as the app's
-/// grid card on one rail, then any game without one as its compact card
-/// (players and result, no made-up board). One list behind both, so the
-/// board's previous/next walks the ranking.
-class _Ranking extends ConsumerWidget {
+/// The ranking in rank order, listed as an event's Games tab lists its
+/// games, each board carrying its like count in a heart (a list row says it
+/// under the players). The first ten show; the rest open in place. One list
+/// behind every card, so the board's previous/next walks the ranking.
+class _Ranking extends StatefulWidget {
   const _Ranking({required this.entries});
 
   final List<MostLikedEntry> entries;
 
-  static Widget _meta(MostLikedEntry entry) {
-    final event = discoveryShortEventName(entry.eventName);
-    final timeControl = entry.game.timeControl?.trim();
-    return DiscoveryCardMeta(
-      timeControlAsset: TimeControlGlyph.assetForLabel(entry.game.timeControl),
-      parts: [
-        DiscoveryMetaPart.figure('${entry.rank}'),
-        DiscoveryMetaPart.likes(entry.likes),
-        if (event != null) DiscoveryMetaPart.text(event),
-      ],
-      semanticsLabel: [
-        if (timeControl != null && timeControl.isNotEmpty) timeControl,
-        'Rank ${entry.rank}',
-        discoveryLikes(entry.likes),
-        if (entry.eventName != null) entry.eventName!,
-      ].join(', '),
-    );
-  }
+  static const int _initial = 10;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final withBoard = [
-      for (final e in entries)
-        if (discoveryHasRealPosition(e.game)) e,
-    ];
-    final withoutBoard = [
-      for (final e in entries)
-        if (!discoveryHasRealPosition(e.game)) e,
-    ];
+  State<_Ranking> createState() => _RankingState();
+}
 
-    final games = <GamesTourModel>[for (final e in entries) e.game];
-    int indexOf(MostLikedEntry e) => entries.indexOf(e);
-    void open(List<GamesTourModel> list, int index) =>
-        openDiscoveryGame(context, ref, list, index);
+class _RankingState extends State<_Ranking> {
+  bool _all = false;
 
+  @override
+  Widget build(BuildContext context) {
+    final entries = widget.entries;
+    final shown =
+        _all || entries.length <= _Ranking._initial
+            ? entries
+            : entries.take(_Ranking._initial).toList(growable: false);
+    final rest = entries.length - shown.length;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       mainAxisSize: MainAxisSize.min,
       children: [
-        if (withBoard.isNotEmpty)
-          DiscoveryRail(
-            children: [
-              for (final entry in withBoard)
-                DiscoveryGridGame(
-                  key: ValueKey('most_liked_${entry.game.gameId}'),
-                  games: games,
-                  index: indexOf(entry),
-                  label: _meta(entry),
-                  onOpen: open,
-                ),
-            ],
-          ),
-        for (final entry in withoutBoard) ...[
-          if (withBoard.isNotEmpty || entry != withoutBoard.first)
-            SizedBox(height: 12.w),
+        DiscoveryGameList(
+          games: [for (final e in shown) e.game],
+          badgeFor:
+              (i, boardSize) => LikeCountHeart(
+                likes: shown[i].likes,
+                size: likeHeartSizeFor(boardSize),
+              ),
+          footerFor: (i) => discoveryLikes(shown[i].likes),
+        ),
+        if (rest > 0) ...[
+          SizedBox(height: 4.w),
           Padding(
             padding: EdgeInsets.symmetric(horizontal: discoveryGutter),
-            child: DiscoveryWideGame(
-              key: ValueKey('most_liked_compact_${entry.game.gameId}'),
-              games: games,
-              index: indexOf(entry),
-              showBoard: false,
-              label: _meta(entry),
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: DiscoveryAction(
+                label: rest == 1 ? 'Show 1 more' : 'Show $rest more',
+                onTap: () => setState(() => _all = true),
+              ),
             ),
           ),
         ],

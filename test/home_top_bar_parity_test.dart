@@ -9,13 +9,6 @@ import 'package:chessever2/repository/library/models/saved_analysis.dart';
 import 'package:chessever2/repository/liked_games/liked_games_provider.dart';
 import 'package:chessever2/repository/local_storage/local_storage_repository.dart';
 import 'package:chessever2/revenue_cat_service/subscribe_state.dart';
-import 'package:chessever2/screens/feed/audio/feed_sfx.dart';
-import 'package:chessever2/screens/feed/feed_screen.dart';
-import 'package:chessever2/screens/feed/models/feed_models.dart';
-import 'package:chessever2/screens/feed/news/feed_news.dart';
-import 'package:chessever2/screens/feed/providers/feed_provider.dart';
-import 'package:chessever2/screens/feed/puzzles/feed_puzzle.dart';
-import 'package:chessever2/screens/feed/widgets/feed_sfx_provider.dart';
 import 'package:chessever2/screens/for_you/for_you_screen.dart';
 import 'package:chessever2/screens/for_you/providers/for_you_tab_provider.dart';
 import 'package:chessever2/screens/group_event/group_event_screen.dart';
@@ -144,18 +137,11 @@ void main() {
               );
             }
           }
-          // Feed's title starts where the other tabs' field starts.
-          expect(
-            bars[BottomNavBarItem.feed]!.controls['title']!.left,
-            closeTo(events.field!.left, 0.5),
-          );
-
           // Events' shipped geometry, unchanged at every text size.
           _expectShippedEvents(size, textScale, premium, events);
 
-          // The field's text follows the system text size on every tab that
-          // has one; the chrome (avatar initials, Feed's title) stops at the
-          // bar's cap.
+          // The field's text follows the system text size on every tab; the
+          // chrome (the avatar's initials) stops at the bar's cap.
           for (final tab in homeTabs) {
             await shell.show(tab);
             final chromeScale = math.min(
@@ -168,16 +154,12 @@ void main() {
               chromeScale,
               '${tab.name} avatar',
             );
-            if (tab == BottomNavBarItem.feed) {
-              _expectScale(tester, find.text('Feed'), chromeScale, 'title');
-            } else {
-              _expectScale(
-                tester,
-                find.byType(EditableText),
-                textScale,
-                '${tab.name} field',
-              );
-            }
+            _expectScale(
+              tester,
+              find.byType(EditableText),
+              textScale,
+              '${tab.name} field',
+            );
           }
 
           await shell.dispose();
@@ -186,7 +168,7 @@ void main() {
     }
   }
 
-  // 360 draws the avatar and Feed's glyphs 40.3pt tall and Library's tiles
+  // 360 draws the avatar 40.3pt tall and Library's tiles
   // 33pt; 350 draws them 39.2pt and 32.1pt, so a tap 2pt past each one's
   // edge is still inside its 44pt target.
   for (final size in const [Size(350, 760), Size(360, 780)]) {
@@ -198,7 +180,6 @@ void main() {
         light: true,
         premium: false,
       );
-      final sfx = shell.read(feedSfxProvider);
       for (final tab in homeTabs) {
         await shell.show(tab);
         final layout = measureTopBar(tester).toString();
@@ -304,58 +285,12 @@ void main() {
         await tester.pump();
         await tester.pump(const Duration(milliseconds: 400));
 
-        if (tab == BottomNavBarItem.feed) {
-          // And one under Feed's speaker toggles the sound.
-          final speaker = tester.getRect(
-            find.byKey(const ValueKey('feed_sound_toggle')),
-          );
-          final muted = sfx.muted;
-          await tester.tapAt(
-            Offset(
-              speaker.center.dx,
-              speaker.bottom + math.min(2.0, (44 - speaker.height) / 2 - 0.25),
-            ),
-          );
-          await tester.pump();
-          expect(sfx.muted, !muted);
-        }
-
         // The targets change no layout.
         expect(measureTopBar(tester).toString(), layout, reason: tab.name);
       }
       await shell.dispose();
     });
   }
-
-  testWidgets('Feed titles its two streams and switches between them', (
-    tester,
-  ) async {
-    final shell = await pumpHomeShell(
-      tester,
-      size: const Size(393, 852),
-      light: true,
-      premium: false,
-    );
-    await shell.show(BottomNavBarItem.feed);
-    expect(find.byKey(const ValueKey('feed_tab_feed')), findsOneWidget);
-    expect(find.byKey(const ValueKey('feed_tab_puzzle')), findsOneWidget);
-    expect(find.byKey(const ValueKey('feed_puzzle_race')), findsNothing);
-    expect(shell.read(feedTabProvider), FeedTab.feed);
-    final before = measureTopBar(tester).toString();
-
-    await tester.tap(find.byKey(const ValueKey('feed_tab_puzzle')));
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 400));
-    expect(shell.read(feedTabProvider), FeedTab.puzzle);
-    // Switching streams moves nothing in the bar.
-    expect(measureTopBar(tester).toString(), before);
-
-    await tester.tap(find.byKey(const ValueKey('feed_tab_feed')));
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 400));
-    expect(shell.read(feedTabProvider), FeedTab.feed);
-    await shell.dispose();
-  });
 
   testWidgets('the avatar opens the sidebar from every tab', (tester) async {
     final shell = await pumpHomeShell(
@@ -420,10 +355,9 @@ void main() {
   });
 }
 
-/// The four home tabs, in bottom-nav order.
+/// The home tabs, in bottom-nav order.
 const homeTabs = <BottomNavBarItem>[
   BottomNavBarItem.tournaments,
-  BottomNavBarItem.feed,
   BottomNavBarItem.forYou,
   BottomNavBarItem.library,
 ];
@@ -512,11 +446,6 @@ List<(String, Finder)> _tapControls(BottomNavBarItem tab) {
       find.descendant(of: find.byType(_ShellBody), matching: finder);
   return [
     ('avatar', inTab(find.byType(HomeTopBarAvatar))),
-    if (tab == BottomNavBarItem.feed) ...[
-      ('feed tab', inTab(find.byKey(const ValueKey('feed_tab_feed')))),
-      ('puzzle tab', inTab(find.byKey(const ValueKey('feed_tab_puzzle')))),
-      ('sound', inTab(find.byKey(const ValueKey('feed_sound_toggle')))),
-    ],
     if (tab == BottomNavBarItem.library) ...[
       ('board', inTab(find.byKey(const ValueKey('e2e_library_board_button')))),
       (
@@ -609,7 +538,7 @@ class TopBarRects {
 }
 
 TopBarRects measureTopBar(WidgetTester tester) {
-  // The open tab only: the bottom nav carries its own "Feed" label.
+  // The open tab only: the bottom nav carries its own labels.
   Finder inTab(Finder finder) =>
       find.descendant(of: find.byType(_ShellBody), matching: finder);
 
@@ -627,9 +556,6 @@ TopBarRects measureTopBar(WidgetTester tester) {
 
   final controls = <String, Rect>{
     for (final (name, finder) in [
-      ('title', find.text('Feed')),
-      ('puzzle tab', find.byKey(const ValueKey('feed_tab_puzzle'))),
-      ('sound', find.byKey(const ValueKey('feed_sound_toggle'))),
       ('board', find.byKey(const ValueKey('e2e_library_board_button'))),
       ('add', find.byKey(const ValueKey('e2e_library_create_folder_button'))),
     ])
@@ -646,8 +572,8 @@ TopBarRects measureTopBar(WidgetTester tester) {
 
 /// One home shell with every tab offline: the real tab screens under one
 /// Scaffold (sidebar drawer, bottom nav), switched the way the nav switches
-/// them. Events and For You get stand-in list pages; Feed opens empty;
-/// Library has no folders.
+/// them. Events and For You get stand-in list pages; Library has no
+/// folders.
 class HomeShell {
   HomeShell._(this._tester, this._container);
 
@@ -713,10 +639,6 @@ Future<HomeShell> pumpHomeShell(
           subscriptionProvider.overrideWith(
             (ref) => _FixedSubscription(premium: premium),
           ),
-          feedProvider.overrideWith(_EmptyFeed.new),
-          feedPuzzlesProvider.overrideWith((ref) async => const <FeedPuzzle>[]),
-          feedNewsProvider.overrideWith((ref) async => const <FeedNews>[]),
-          feedSfxProvider.overrideWithValue(_SilentSfx()),
           boardSettingsProviderNew.overrideWith(_TestBoardSettings.new),
           likedGamesProvider.overrideWith(_NoLikes.new),
           spaceShortcutsProvider.overrideWith(_NoShortcuts.new),
@@ -769,7 +691,6 @@ class _ShellBody extends ConsumerWidget {
         BottomNavBarItem.tournaments => const GroupEventScreen(
           pageBuilder: _eventsPage,
         ),
-        BottomNavBarItem.feed => const FeedScreen(),
         BottomNavBarItem.forYou => const ForYouScreen(pageBuilder: _forYouPage),
         BottomNavBarItem.library => const LibraryScreen(),
       },
@@ -810,31 +731,6 @@ class _FixedSubscription extends SubscriptionNotifier {
   @override
   set state(SubscriptionState value) =>
       super.state = value.copyWith(isSubscribed: premium, isLoading: false);
-}
-
-class _EmptyFeed extends FeedNotifier {
-  @override
-  Future<List<FeedItem>> build() async => const <FeedItem>[];
-
-  @override
-  Future<void> loadMore() async {}
-
-  @override
-  void onVisible(int index) {}
-}
-
-class _SilentSfx implements FeedSfx {
-  @override
-  bool muted = false;
-
-  @override
-  bool boardSoundEnabled = true;
-
-  @override
-  Future<void> warmUp() async {}
-
-  @override
-  dynamic noSuchMethod(Invocation invocation) => null;
 }
 
 class _TestBoardSettings extends BoardSettingsNotifierNew {

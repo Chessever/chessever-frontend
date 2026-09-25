@@ -7,7 +7,7 @@ import 'package:chessever2/screens/feed/news/news_reader_screen.dart';
 import 'package:chessever2/screens/feed/news/news_repository.dart';
 import 'package:chessever2/screens/feed/widgets/feed_action_row.dart';
 import 'package:chessever2/screens/feed/widgets/feed_glyphs.dart';
-import 'package:chessever2/screens/home/widget/bottom_nav_bar.dart';
+import 'package:chessever2/screens/feed/feed_visibility.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:flutter/material.dart';
@@ -25,10 +25,10 @@ export 'package:chessever2/screens/feed/news/news_models.dart' show FeedNews;
 /// (unchanged items keep their instances, so Feed pages do not remount).
 /// Never errors: a failed first fetch is an empty list, retried shortly.
 ///
-/// Later refreshes run only while the Feed can be seen (its tab selected, the
-/// app in the foreground): the provider outlives the Feed tab, and a list
+/// Later refreshes run only while the Feed can be seen (its page open, the
+/// app in the foreground): the provider outlives the Feed page, and a list
 /// nobody is looking at is not worth the network. One that falls due while
-/// the Feed is hidden runs as soon as it is back.
+/// the Feed is closed runs as soon as it is back.
 final feedNewsProvider = FutureProvider<List<FeedNews>>((ref) async {
   final repository = ref.watch(feedNewsRepositoryProvider);
   final schedule = _FeedNewsRefreshSchedule(
@@ -36,9 +36,9 @@ final feedNewsProvider = FutureProvider<List<FeedNews>>((ref) async {
     onDue: ref.invalidateSelf,
   );
   ref.onDispose(schedule.dispose);
-  ref.listen<BottomNavBarItem>(
-    selectedBottomNavBarItemProvider,
-    (_, item) => schedule.feedTabSelected = item == BottomNavBarItem.feed,
+  ref.listen<bool>(
+    feedScreenOpenProvider,
+    (_, open) => schedule.feedTabSelected = open,
     fireImmediately: true,
   );
 

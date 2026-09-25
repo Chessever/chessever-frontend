@@ -224,15 +224,9 @@ void main() {
         ],
         settle: false,
       );
-      expect(find.textContaining('Gujrathi'), findsWidgets);
+      expect(find.text('Collection'), findsOneWidget);
       expectNoContrastMisses(
-        auditTextContrast(
-          tester,
-          fallbackGround: light.background,
-          // The streak wall's avatar belongs to (and is audited with) the
-          // streaks screens.
-          ignoreWithin: const {'WallAvatar'},
-        ),
+        auditTextContrast(tester, fallbackGround: light.background),
         where: 'DiscoveryView',
       );
     });

@@ -1,4 +1,3 @@
-import 'dart:ui' show Tristate;
 
 import 'package:chessever2/providers/board_settings_provider_new.dart';
 import 'package:chessever2/providers/engine_settings_provider.dart';
@@ -10,29 +9,21 @@ import 'package:chessever2/screens/for_you/discovery/data/discovery_repository.d
 import 'package:chessever2/screens/for_you/discovery/discovery_view.dart';
 import 'package:chessever2/screens/for_you/discovery/models/discovery_models.dart';
 import 'package:chessever2/screens/for_you/discovery/providers/discovery_providers.dart';
-import 'package:chessever2/screens/for_you/discovery/widgets/analyzed_games_section.dart';
-import 'package:chessever2/screens/for_you/discovery/widgets/discovery_common.dart';
-import 'package:chessever2/screens/for_you/discovery/widgets/most_liked_controls.dart';
-import 'package:chessever2/screens/for_you/discovery/widgets/most_liked_section.dart';
-import 'package:chessever2/screens/for_you/discovery/widgets/premium_tour_section.dart';
-import 'package:chessever2/screens/for_you/discovery/widgets/todays_miniatures_section.dart';
-import 'package:chessever2/screens/for_you/discovery/widgets/whos_hot_section.dart';
+import 'package:chessever2/screens/for_you/discovery/widgets/discovery_game_cards.dart';
 import 'package:chessever2/screens/group_event/smart_event/smart_aggregate_event_provider.dart';
 import 'package:chessever2/screens/library/providers/miniatures_provider.dart';
 import 'package:chessever2/screens/streaks/models/streak_models.dart';
 import 'package:chessever2/screens/streaks/providers/streak_providers.dart';
-import 'package:chessever2/screens/streaks/widgets/wall_common.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/event_no_spoilers_provider.dart';
-import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/widgets/board_like_heart.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-import 'support/contrast_audit.dart';
 
 // ---------------------------------------------------------------- doubles
 
@@ -530,20 +521,6 @@ void main() {
       expect(ranked.map((g) => g.gameId), ['strong-new', 'strong-old', 'weak']);
     });
 
-    test('the Premium tour is for free accounts only', () {
-      expect(
-        discoverySections(subscribed: false),
-        contains(DiscoverySection.premiumTour),
-      );
-      expect(
-        discoverySections(subscribed: true),
-        isNot(contains(DiscoverySection.premiumTour)),
-      );
-      expect(
-        discoverySections(subscribed: true).last,
-        DiscoverySection.smartEvents,
-      );
-    });
   });
 
   group('card meta', () {
@@ -594,578 +571,77 @@ void main() {
   });
 
   group('DiscoveryView', () {
-    testWidgets('free: every section renders with its boundary in place', (
-      tester,
-    ) async {
-      final semantics = tester.ensureSemantics();
+    testWidgets('opens with the Feed and Collection tiles, then Most liked '
+        'and Miniatures, nothing else', (tester) async {
       final container = await _pump(tester);
 
-      // Most liked: honest line while the ranking is not deployed.
+      expect(find.text('Feed'), findsOneWidget);
+      expect(find.text('Collection'), findsOneWidget);
       expect(find.text('Most liked'), findsOneWidget);
-      expect(find.text(kMostLikedNotLive), findsOneWidget);
-      // Nothing sells a ranking that is not live: no periods, no CTA line in
-      // the section, no rankings tile on the tour, only the notice.
-      expect(
-        find.bySemanticsLabel(RegExp(r'^Most liked, (Today|Week|Month|Year)')),
-        findsNothing,
-      );
-      expect(find.byKey(const ValueKey('tour_rankings')), findsNothing);
-      expect(container.read(mostLikedPeriodProvider), MostLikedPeriod.today);
-
-      // Streaks: 2400+ classical runs only.
-      expect(find.text('Streaks'), findsOneWidget);
-      expect(find.text("Who's hot"), findsNothing);
-      expect(find.text('Gujrathi'), findsOneWidget);
-      expect(find.text('Abdusattorov'), findsOneWidget);
-      expect(find.text('Young'), findsNothing);
-
-      // With Premium: each tile states its outcome, with its one padlock
-      // after the words; the picture on the tile carries none.
-      expect(find.text('With Premium'), findsOneWidget);
-      final tour = find.byType(PremiumTourSection);
-      for (final (id, cta) in const [
-        ('reviews', 'Review a top game'),
-        ('prep', 'Prepare for this player'),
-        ('miniatures', 'Browse past days'),
-        ('tree', 'Explore this position'),
-        ('countrymen', "Follow your country's players"),
-        ('library', 'Save to a synced personal database'),
-        ('desktop', 'Continue on your computer'),
-      ]) {
-        final tile = find.byKey(ValueKey('tour_$id'));
-        final words = find.descendant(
-          of: tile,
-          matching: find.textContaining(cta),
-        );
-        expect(words, findsOneWidget, reason: cta);
-        final lock = find.descendant(
-          of: tile,
-          matching: find.byType(DiscoveryPadlock),
-        );
-        expect(lock, findsOneWidget, reason: cta);
-        final at = tester.getRect(lock);
-        final line = tester.getRect(words);
-        expect(at.left, greaterThan(line.left), reason: cta);
-        expect(at.center.dy, inInclusiveRange(line.top, line.bottom));
-      }
-      expect(
-        find.descendant(of: tour, matching: find.byType(DiscoveryLockNotch)),
-        findsNothing,
-      );
-      // The prep tile's flag is cut out of the tile's own fill, not boxed
-      // in the page colour.
-      final prepFace = tester.widget<WallAvatar>(
-        find.descendant(
-          of: find.byKey(const ValueKey('tour_prep')),
-          matching: find.byType(WallAvatar),
-        ),
-      );
-      expect(prepFace.ringColor, AppColors.dark.surface);
-      expect(find.text('566,112'), findsOneWidget);
-
-      // Miniatures: the archive boundary shows even on an empty day, once
-      // on the page, sold by the section's own line without a second lock
-      // (the earlier-days arrow carries it).
       expect(find.text('Miniatures'), findsOneWidget);
-      expect(find.text('No miniatures yet today'), findsOneWidget);
-      expect(find.textContaining(kMiniaturesUpgradeCta), findsOneWidget);
+      // Hidden or moved elsewhere.
+      expect(find.text('Streaks'), findsNothing);
+      expect(find.text('Smart Events'), findsNothing);
+      expect(find.text('Analyzed games'), findsNothing);
+      expect(find.text('With Premium'), findsNothing);
+      // The tiles lead the page.
       expect(
-        find.descendant(
-          of: find.byType(DiscoveryUpgradeLine),
-          matching: find.byType(DiscoveryPadlock),
-        ),
-        findsNothing,
+        tester.getTopLeft(find.text('Feed')).dy,
+        lessThan(tester.getTopLeft(find.text('Most liked')).dy),
       );
-
-      // Creating a Smart Event is the section's header action, Premium.
-      expect(
-        find.bySemanticsLabel('Create a Smart Event, Premium'),
-        findsOneWidget,
-      );
-      expect(find.textContaining('Create', findRichText: true), findsWidgets);
-      expect(
-        find.text('No analyzed games in the last three days'),
-        findsOneWidget,
-      );
-      expect(find.textContaining('coming later'), findsNothing);
       expect(tester.takeException(), isNull);
-      semantics.dispose();
+      await _teardownCards(tester, container);
     });
 
-    testWidgets('subscribers see no Premium tour and no upgrade lines', (
-      tester,
-    ) async {
-      await _pump(
+    testWidgets('Most liked lists its games as game cards, each board '
+        'holding its likes in a heart', (tester) async {
+      final container = await _pump(
         tester,
         subscribed: true,
-        mostLiked: (_) async => const MostLikedResult.ranked([]),
+        mostLiked: (_) async => MostLikedResult.ranked([
+          MostLikedEntry(
+            rank: 1,
+            likes: 40,
+            game: _game('m1', fen: _fenA, lastMove: 'e2e4'),
+          ),
+          MostLikedEntry(
+            rank: 2,
+            likes: 1184,
+            game: _game('m2', fen: _fenB, lastMove: 'e2e4'),
+          ),
+        ]),
+        miniatures: [
+          DiscoveryMiniature(
+            game: _game('mi1', fen: _fenB, lastMove: 'e2e4'),
+            moves: 19,
+          ),
+        ],
       );
 
-      expect(find.text('With Premium'), findsNothing);
-      expect(find.text('Explore the Miniatures archive'), findsNothing);
-      expect(find.text(kMostLikedUpgradeCta), findsNothing);
-      expect(find.text('No games liked yet today'), findsOneWidget);
-      expect(find.text('Most liked'), findsOneWidget);
+      expect(find.byType(DiscoveryGameList), findsNWidgets(2));
+      final hearts = tester
+          .widgetList<LikeCountHeart>(find.byType(LikeCountHeart))
+          .map((h) => h.likes)
+          .toList();
+      expect(hearts, containsAll(<int>[40, 1184]));
+      // A miniature carries no heart.
+      expect(hearts, hasLength(2));
       expect(tester.takeException(), isNull);
+      await _teardownCards(tester, container);
     });
 
     testWidgets('a failing section never blanks the others', (tester) async {
-      await _pump(tester, mostLiked: (_) => Future.error(Exception('offline')));
+      final container = await _pump(
+        tester,
+        mostLiked: (_) => Future.error(Exception('offline')),
+      );
 
       expect(find.text("Couldn't load Most liked"), findsOneWidget);
-      expect(find.text('Retry'), findsWidgets);
-      expect(find.text('Gujrathi'), findsOneWidget);
-      expect(find.text('Smart Events'), findsOneWidget);
-      expect(tester.takeException(), isNull);
-    });
-
-    testWidgets('free Today ranking offers the Week/Month/Year boundary', (
-      tester,
-    ) async {
-      final semantics = tester.ensureSemantics();
-      final asked = <MostLikedPeriod>[];
-      final container = await _pump(
-        tester,
-        mostLiked: (period) async {
-          asked.add(period);
-          return period.isPremium
-              ? const MostLikedResult.premiumRequired()
-              : const MostLikedResult.ranked([]);
-        },
-      );
-
-      expect(find.text('No games liked yet today'), findsOneWidget);
-      // The outcome is sold once on the page: here, not on the tour tile.
-      expect(find.textContaining(kMostLikedUpgradeCta), findsOneWidget);
-      expect(
-        find.descendant(
-          of: find.byKey(const ValueKey('tour_rankings')),
-          matching: find.textContaining("See the week's top games"),
-        ),
-        findsOneWidget,
-      );
-
-      // Each locked period carries its padlock after its label; the line
-      // under them sells the same boundary without a lock of its own.
-      final segments = find.byType(DiscoverySegments<MostLikedPeriod>);
-      expect(
-        find.descendant(of: segments, matching: find.byType(DiscoveryPadlock)),
-        findsNWidgets(3),
-      );
-      expect(
-        find.descendant(
-          of: find.byType(DiscoveryUpgradeLine),
-          matching: find.byType(DiscoveryPadlock),
-        ),
-        findsNothing,
-      );
-
-      // The locked periods say so, as tabs: Today is picked and free.
-      final today = tester.getSemantics(
-        find.bySemanticsLabel('Most liked, Today'),
-      );
-      expect(today.flagsCollection.isSelected, Tristate.isTrue);
-      expect(today.flagsCollection.isInMutuallyExclusiveGroup, isTrue);
-      final week = find.bySemanticsLabel('Most liked, Week, Premium');
-      expect(week, findsOneWidget);
-
-      // Debug builds pass the premium guard, so the pick goes through and
-      // the server's refusal lands as the boundary line, not an error.
-      await tester.tap(week);
-      await _settle(tester);
-      expect(container.read(mostLikedPeriodProvider), MostLikedPeriod.week);
-      expect(asked, contains(MostLikedPeriod.week));
-      expect(find.text("Couldn't load Most liked"), findsNothing);
-      expect(find.textContaining(kMostLikedUpgradeCta), findsOneWidget);
-      semantics.dispose();
-    });
-
-    testWidgets('each outcome sentence once, every way into Premium kept', (
-      tester,
-    ) async {
-      final semantics = tester.ensureSemantics();
-      final container = await _pump(
-        tester,
-        mostLiked: (_) async => MostLikedResult.ranked([
-          MostLikedEntry(
-            rank: 1,
-            likes: 40,
-            game: _game('m1', fen: _fenA, lastMove: 'e2e4'),
-          ),
-        ]),
-        miniatures: [
-          DiscoveryMiniature(
-            game: _game('mi1', fen: _fenB, lastMove: 'e2e4'),
-            moves: 19,
-          ),
-        ],
-        analyzed: [_game('an1', fen: _fenA, lastMove: 'e2e4')],
-      );
-
-      // The sections sell their own outcomes, and nothing repeats them.
-      for (final sentence in const [
-        kMostLikedUpgradeCta,
-        kAnalyzedGamesUpgradeCta,
-        kMiniaturesUpgradeCta,
-      ]) {
-        expect(find.textContaining(sentence), findsOneWidget, reason: sentence);
-        expect(
-          find.bySemanticsLabel('$sentence, Premium'),
-          findsOneWidget,
-          reason: sentence,
-        );
-      }
-      // Every tour tile is still there, still a Premium button.
-      for (final id in const [
-        'reviews',
-        'rankings',
-        'prep',
-        'miniatures',
-        'tree',
-        'countrymen',
-        'library',
-        'desktop',
-      ]) {
-        final tile = find.byKey(ValueKey('tour_$id'));
-        expect(tile, findsOneWidget, reason: id);
-        expect(
-          find.descendant(
-            of: tile,
-            matching: find.bySemanticsLabel(RegExp(r', Premium$')),
-          ),
-          findsWidgets,
-          reason: id,
-        );
-      }
-      expect(tester.takeException(), isNull);
-      semantics.dispose();
-      await _teardownCards(tester, container);
-    });
-
-    testWidgets('sections keep one rhythm, measured from their last ink', (
-      tester,
-    ) async {
-      final container = await _pump(
-        tester,
-        mostLiked: (_) async => MostLikedResult.ranked([
-          MostLikedEntry(
-            rank: 1,
-            likes: 40,
-            game: _game('m1', fen: _fenA, lastMove: 'e2e4'),
-          ),
-        ]),
-      );
-
-      // Most liked ends on its upgrade line, Streaks on its tiles: the next
-      // title sits the same distance below either.
-      final line = tester.getRect(find.textContaining(kMostLikedUpgradeCta));
-      final streaks = tester.getRect(find.text('Streaks'));
-      final tile = tester.getRect(find.byType(DiscoveryStreakTile).first);
-      final miniatures = tester.getRect(find.text('Miniatures'));
-      expect(
-        streaks.top - line.bottom,
-        moreOrLessEquals(miniatures.top - tile.bottom, epsilon: 0.5),
-      );
-
-      // The line's 44 target still reaches past the trimmed edge, into the
-      // gap: a tap just under the words is still the line's.
-      expect(container.read(mostLikedPeriodProvider), MostLikedPeriod.today);
-      await tester.tapAt(Offset(line.center.dx, line.bottom + 10));
-      await _settle(tester);
-      expect(container.read(mostLikedPeriodProvider), MostLikedPeriod.week);
+      expect(find.text('Feed'), findsOneWidget);
+      expect(find.text('Miniatures'), findsOneWidget);
       expect(tester.takeException(), isNull);
       await _teardownCards(tester, container);
     });
-
-    testWidgets(
-      'the date walks the archive and the players row opens in place',
-      (tester) async {
-        final semantics = tester.ensureSemantics();
-        final queries = <MostLikedQuery>[];
-        // The ranking starts empty, so the date walk runs with no card built.
-        var withGame = false;
-        final container = await _pump(
-          tester,
-          subscribed: true,
-          mostLikedQueries: queries,
-          mostLiked: (_) async => MostLikedResult.ranked([
-            if (withGame) MostLikedEntry(rank: 1, likes: 12, game: _game('g1')),
-          ]),
-        );
-        final now = DateTime.now();
-        final today = MostLikedQuery(MostLikedPeriod.today, now);
-        final yesterday = today.previous!;
-
-        // Today's date sits between the arrows; the next day does not exist.
-        expect(find.text(today.label(now)), findsWidgets);
-        expect(queries, contains(today));
-        expect(find.text('No games liked yet today'), findsOneWidget);
-
-        Finder arrow(String label) => find.descendant(
-          of: find.byType(MostLikedDateControl),
-          matching: find.bySemanticsLabel(label),
-        );
-
-        await tester.tap(arrow('Previous day'));
-        await _settle(tester);
-        expect(container.read(mostLikedDayProvider), yesterday.start);
-        expect(queries, contains(yesterday));
-        expect(find.text(yesterday.label(now)), findsOneWidget);
-        expect(find.text('No games liked that day'), findsOneWidget);
-
-        await tester.tap(arrow('Next day'));
-        await _settle(tester);
-        // Back on the current day the pick clears and follows the clock.
-        expect(container.read(mostLikedDayProvider), isNull);
-
-        // Once the ranking has a game, the players in it sit under it as a
-        // row of faces; opening it lists them in place.
-        withGame = true;
-        container.invalidate(mostLikedProvider);
-        await _settle(tester);
-        final row = find.byKey(const ValueKey('most_liked_players_row'));
-        expect(row, findsOneWidget);
-        expect(find.text('2 players in this ranking'), findsOneWidget);
-        // The game itself is the app's own card, names and all.
-        expect(
-          find.byKey(const ValueKey('most_liked_compact_g1')),
-          findsOneWidget,
-        );
-        final firstPlayer = find.byKey(const ValueKey('most_liked_player_1'));
-        expect(firstPlayer, findsNothing);
-
-        await tester.tap(row);
-        await _settle(tester);
-        expect(container.read(mostLikedViewProvider), MostLikedView.players);
-        expect(firstPlayer, findsOneWidget);
-        expect(
-          find.byKey(const ValueKey('most_liked_player_2')),
-          findsOneWidget,
-        );
-        // Likes are drawn, and heard as a sentence.
-        expect(
-          find.bySemanticsLabel(RegExp(r'White, Player.*12 likes$')),
-          findsOneWidget,
-        );
-        expect(
-          find.bySemanticsLabel(RegExp(r'^Rank 1, 12 likes')),
-          findsWidgets,
-        );
-        expect(find.text('12 likes'), findsNothing);
-        expect(tester.takeException(), isNull);
-
-        // And closes again.
-        await tester.tap(row);
-        await _settle(tester);
-        expect(container.read(mostLikedViewProvider), MostLikedView.games);
-        expect(firstPlayer, findsNothing);
-        semantics.dispose();
-        await _teardownCards(tester, container);
-      },
-    );
-
-    testWidgets('Streaks switches time class without touching the wall', (
-      tester,
-    ) async {
-      final container = await _pump(tester);
-
-      await tester.tap(find.text('Rapid').last);
-      await _settle(tester);
-      expect(find.text('Nakamura'), findsOneWidget);
-      expect(find.text('Gujrathi'), findsNothing);
-      expect(container.read(discoveryHotClassProvider), StreakTimeClass.rapid);
-      expect(
-        container.read(streakSelectedClassProvider),
-        StreakTimeClass.standard,
-      );
-    });
-
-    testWidgets("an empty class says so instead of showing nothing", (
-      tester,
-    ) async {
-      await _pump(
-        tester,
-        wall: [
-          _row(3, StreakTimeClass.standard, 'Young, Prodigy', 9, rating: 1900),
-        ],
-      );
-      expect(
-        find.text('No live classical runs at 2400+ right now'),
-        findsOneWidget,
-      );
-    });
-
-    testWidgets('followed players lead the Streaks rail at any rating', (
-      tester,
-    ) async {
-      final semantics = tester.ensureSemantics();
-      // Young (1900) is under every floor, but the viewer follows them.
-      final container = await _pump(tester, followed: {3, 2});
-      final items = container.read(
-        discoveryStreakRowsProvider(StreakTimeClass.standard),
-      );
-      expect(items.map((i) => i.row.fideId), [3, 2, 1]);
-      expect(items.map((i) => i.followed), [true, true, false]);
-      expect(find.text('Young'), findsOneWidget);
-      expect(find.bySemanticsLabel(RegExp(r', following, ')), findsNWidgets(2));
-      // The follow star is information: the name's own ink, stepped back,
-      // never the accent that means "tap here".
-      final stars = tester.widgetList<CustomPaint>(
-        find.byWidgetPredicate(
-          (w) => w is CustomPaint && '${w.painter.runtimeType}' == '_StarPainter',
-        ),
-      );
-      expect(stars, hasLength(2));
-      for (final star in stars) {
-        final ink = (star.painter as dynamic).color as Color;
-        expect(ink, isNot(AppColors.dark.accentText));
-        expect(ink, AppColors.dark.textPrimary.withValues(alpha: 0.55));
-      }
-      semantics.dispose();
-    });
-
-    testWidgets('a full page holds together at 360 wide and 1.3x text', (
-      tester,
-    ) async {
-      PlayerCard p(String name, int rating) => PlayerCard(
-        name: name,
-        federation: 'NOR',
-        title: 'GM',
-        rating: rating,
-        countryCode: 'NO',
-        team: null,
-      );
-      GamesTourModel g(String id, String fen) =>
-          _game(id, fen: fen, lastMove: 'e2e4').copyWith(
-            whitePlayer: p('Carlsen, Magnus', 2837),
-            blackPlayer: p('Praggnanandhaa, Rameshbabu', 2766),
-          );
-      final container = await _pump(
-        tester,
-        size: const Size(360, 6400),
-        phone: const Size(360, 780),
-        textScale: 1.3,
-        mostLiked: (_) async => MostLikedResult.ranked([
-          MostLikedEntry(
-            rank: 1,
-            likes: 1184,
-            game: g('m1', _fenA),
-            eventName:
-                'FIDE World Rapid & Blitz Championships 2026 | Open Blitz 14',
-          ),
-          MostLikedEntry(rank: 2, likes: 12, game: g('m2', _fenB)),
-        ]),
-        miniatures: [
-          DiscoveryMiniature(game: g('mi1', _fenA), moves: 19),
-          DiscoveryMiniature(game: g('mi2', _fenB), moves: 24),
-        ],
-        analyzed: [g('an1', _fenA), g('an2', _fenB)],
-      );
-
-      expect(find.byKey(const ValueKey('most_liked_m1')), findsOneWidget);
-      expect(find.byKey(const ValueKey('mini_mi1')), findsOneWidget);
-      expect(find.byKey(const ValueKey('analyzed_an1')), findsOneWidget);
-      expect(find.text('Streaks'), findsOneWidget);
-      expect(find.text('Smart Events'), findsOneWidget);
-      expect(find.text('With Premium'), findsOneWidget);
-      expect(tester.takeException(), isNull);
-      await _teardownCards(tester, container);
-    });
-
-    testWidgets('a live ranking reads on paper: tabs, likes, meta, faces', (
-      tester,
-    ) async {
-      final container = await _pump(
-        tester,
-        theme: AppTheme.lightTheme,
-        mostLiked: (_) async => MostLikedResult.ranked([
-          MostLikedEntry(
-            rank: 1,
-            likes: 1184,
-            game: _game('m1', fen: _fenA, lastMove: 'e2e4'),
-            eventName: 'Tata Steel Chess Tournament 2026 | Masters',
-          ),
-        ]),
-        miniatures: [
-          DiscoveryMiniature(
-            game: _game('mi1', fen: _fenB, lastMove: 'e2e4'),
-            moves: 19,
-          ),
-        ],
-      );
-      expect(find.byKey(const ValueKey('most_liked_m1')), findsOneWidget);
-      expectNoContrastMisses(
-        auditTextContrast(
-          tester,
-          fallbackGround: AppColors.light.background,
-          // The app's own cards and avatars are audited with their screens.
-          ignoreWithin: const {
-            'GridGameCardWrapperWidget',
-            'GameCardWrapperWidget',
-            'WallAvatar',
-            'PlayerInitialsAvatar',
-            'SmartEventCard',
-          },
-        ),
-        where: 'DiscoveryView (ranked, light)',
-      );
-      await _teardownCards(tester, container);
-    });
-
-    testWidgets(
-      'meta lines: one bold figure, plain ratings, month-first days',
-      (tester) async {
-        final container = await _pump(
-          tester,
-          // The test font sets every glyph a full em wide; smaller text
-          // keeps each whole meta line on its card, as real type does.
-          textScale: 0.6,
-          miniatures: [
-            DiscoveryMiniature(
-              game: _game('mi1', fen: _fenB, lastMove: 'e2e4'),
-              moves: 19,
-            ),
-          ],
-          analyzed: [
-            _game(
-              'an1',
-              fen: _fenA,
-              lastMove: 'e2e4',
-              whiteRating: 2760,
-              blackRating: 2755,
-              lastMoveTime: DateTime(DateTime.now().year, 9, 23, 12),
-            ),
-          ],
-        );
-
-        /// The bold spans of the one meta line that reads [plain].
-        List<String?> boldIn(String plain) {
-          final lines = tester
-              .widgetList<RichText>(find.byType(RichText))
-              .where((r) => r.text.toPlainText() == plain)
-              .toList();
-          expect(lines, hasLength(1), reason: plain);
-          final bold = <String?>[];
-          lines.single.text.visitChildren((span) {
-            if (span is TextSpan &&
-                span.text != null &&
-                span.style?.fontWeight == FontWeight.w700) {
-              bold.add(span.text);
-            }
-            return true;
-          });
-          return bold;
-        }
-
-        // Miniatures: the length is the figure, the average stays quiet.
-        expect(boldIn('19 moves · Ø 2700'), ['19']);
-        // Analyzed games: the average, never comma-grouped, then the day.
-        expect(boldIn('Ø 2757 · Sep 23'), ['2757']);
-        // The Miniatures stepper reads its day month first too.
-        expect(find.text(discoveryWeekday(DateTime.now())), findsOneWidget);
-        expect(tester.takeException(), isNull);
-        await _teardownCards(tester, container);
-      },
-    );
   });
+
 }

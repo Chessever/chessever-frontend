@@ -25,6 +25,7 @@ import 'package:chessever2/screens/player_profile/tabs/player_events_tab.dart';
 import 'package:chessever2/screens/player_profile/tabs/player_games_tab.dart';
 import 'package:chessever2/screens/standings/providers/player_utils_provider.dart';
 import 'package:chessever2/screens/my_space/widgets/pixel_flame.dart';
+import 'package:chessever2/config/feature_flags.dart';
 import 'package:chessever2/screens/streaks/models/streak_models.dart';
 import 'package:chessever2/screens/streaks/providers/streak_providers.dart';
 import 'package:chessever2/screens/streaks/streak_player_screen.dart';
@@ -161,8 +162,9 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
       widget.memorialSourceIdentity?.trim().isNotEmpty == true;
 
   /// The FIDE id the live-streak line reads, or null for memorial and id-less
-  /// profiles, which are never on a wall.
+  /// profiles, which are never on a wall, and while streaks are hidden.
   int? get _streakFideId {
+    if (!FeatureFlags.streaks) return null;
     final id = widget.fideId;
     return id != null && id > 0 && !_isMemorial ? id : null;
   }
@@ -1227,7 +1229,8 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
             : null;
 
     // The live streak card, opening on the player's hottest class.
-    final streakFideId = _isMemorial ? null : widget.fideId;
+    final streakFideId =
+        _isMemorial || !FeatureFlags.streaks ? null : widget.fideId;
     SpaceShortcut? streakDraft;
     if (streakFideId != null && streakFideId > 0) {
       final hottest =

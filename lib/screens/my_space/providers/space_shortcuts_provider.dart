@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:math' as math;
 
+import 'package:chessever2/config/feature_flags.dart';
 import 'package:chessever2/providers/auth_state_provider.dart';
 import 'package:chessever2/repository/sqlite/app_database.dart';
 import 'package:chessever2/screens/my_space/defaults/space_defaults.dart';
@@ -281,6 +282,7 @@ class SpaceShortcutsNotifier extends AsyncNotifier<List<SpaceShortcut>> {
   /// arrive as ordinary shortcuts, after anything already pinned, so remove,
   /// reorder and Undo work on them like on any pin. Never removes anything.
   Future<void> _maybeSeed(String? uid, {bool serverKnown = false}) async {
+    if (!FeatureFlags.mySpaceDefaults) return;
     if (_seedRunning || _seedSettledFor == (uid ?? '')) return;
     _seedRunning = true;
     try {

@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:math' as math;
 
+import 'package:chessever2/config/feature_flags.dart';
 import 'package:chessever2/providers/board_settings_provider_new.dart';
 import 'package:chessever2/providers/favorite_players_provider.dart';
 import 'package:chessever2/repository/gamebase/gamebase_repository.dart';
@@ -203,14 +204,16 @@ class FeedNotifier extends AsyncNotifier<List<FeedItem>> {
     // Warm the streak wall so winners on a run can say so in their caption.
     // The wall usually lands after the first page is on screen, so items
     // already shown are recaptioned then.
-    ref.listen<AsyncValue<List<StreakRow>>>(streakWallProvider, (
-      previous,
-      next,
-    ) {
-      final rows = next.valueOrNull;
-      if (rows == null || identical(rows, previous?.valueOrNull)) return;
-      unawaited(_recaptionWhenBuilt(_generation));
-    });
+    if (FeatureFlags.streaks) {
+      ref.listen<AsyncValue<List<StreakRow>>>(streakWallProvider, (
+        previous,
+        next,
+      ) {
+        final rows = next.valueOrNull;
+        if (rows == null || identical(rows, previous?.valueOrNull)) return;
+        unawaited(_recaptionWhenBuilt(_generation));
+      });
+    }
 
     // The sources start now, alongside the disk reads, not after them.
     final sources = _refillAll(generation);
@@ -990,6 +993,7 @@ class FeedNotifier extends AsyncNotifier<List<FeedItem>> {
     String? result, {
     String? event,
   }) {
+    if (!FeatureFlags.streaks) return null;
     final winner = switch (result) {
       '1-0' => game.whitePlayer,
       '0-1' => game.blackPlayer,

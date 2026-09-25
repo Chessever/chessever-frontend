@@ -22,6 +22,7 @@ import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/pgn_clock_utils.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/string_utils.dart';
+import 'package:chessever2/widgets/board_like_heart.dart';
 import 'package:chessground/chessground.dart';
 import 'package:dartchess/dartchess.dart';
 import 'package:flutter/foundation.dart';
@@ -1001,6 +1002,25 @@ class GameCardChessboard extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final board = _buildBoard(context, ref);
+    // A host can set a mark on the board's top-left corner (Most Liked's like
+    // count), the one corner the coordinates never use.
+    final badge = BoardCornerBadge.maybeOf(context);
+    if (badge == null) return board;
+    final inset = boardSize / 40;
+    return SizedBox(
+      width: boardSize,
+      height: boardSize,
+      child: Stack(
+        children: [
+          board,
+          Positioned(top: inset, left: inset, child: badge(boardSize)),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildBoard(BuildContext context, WidgetRef ref) {
     final boardSettingsAsync = ref.watch(boardSettingsProviderNew);
     final boardSettings =
         boardSettingsAsync.valueOrNull ?? const BoardSettingsNew();

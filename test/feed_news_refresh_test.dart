@@ -1,7 +1,7 @@
+import 'package:chessever2/screens/feed/feed_visibility.dart';
 import 'package:chessever2/screens/feed/news/feed_news.dart';
 import 'package:chessever2/screens/feed/news/news_content.dart';
 import 'package:chessever2/screens/feed/news/news_repository.dart';
-import 'package:chessever2/screens/home/widget/bottom_nav_bar.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -155,18 +155,17 @@ void main() {
         await settle();
       }
 
-      void selectTab(BottomNavBarItem item) =>
-          container.read(selectedBottomNavBarItemProvider.notifier).state =
-              item;
+      void feedOpen(bool open) =>
+          container.read(feedScreenOpenProvider.notifier).state = open;
 
       expect((await container.read(feedNewsProvider.future)).single.id, 7);
 
-      // Another tab: the list goes stale and nobody fetches it.
+      // Feed closed: the list goes stale and nobody fetches it.
       await elapse(const Duration(minutes: 45));
       expect(fetch.calls, 0);
 
-      // Back on the Feed: the overdue refresh runs at once.
-      selectTab(BottomNavBarItem.feed);
+      // Feed opened: the overdue refresh runs at once.
+      feedOpen(true);
       await settle();
       expect(fetch.calls, 1);
       expect((await container.read(feedNewsProvider.future)).single.id, 9);
@@ -183,8 +182,8 @@ void main() {
       await elapse(const Duration(minutes: 31));
       expect(fetch.calls, 3);
 
-      // Left the Feed again: quiet.
-      selectTab(BottomNavBarItem.library);
+      // Feed closed again: quiet.
+      feedOpen(false);
       await elapse(const Duration(hours: 3));
       expect(fetch.calls, 3);
 

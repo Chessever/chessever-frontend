@@ -57,11 +57,12 @@ void main() {
       expect(notifier.state, ThemeMode.light);
     });
 
-    test('restores a saved Auto (system) choice', () async {
+    test('a saved Auto (system) choice reads as dark while Auto is not '
+        'offered', () async {
       await (await _prefs()).setString(_key, 'system');
       final notifier = ThemeModeNotifier();
       await _settle();
-      expect(notifier.state, ThemeMode.system);
+      expect(notifier.state, ThemeMode.dark);
     });
 
     test('an unknown stored value falls back to dark', () async {

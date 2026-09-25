@@ -6,6 +6,7 @@ import 'package:chessever2/providers/favorite_players_provider.dart';
 import 'package:chessever2/repository/supabase/group_broadcast/group_broadcast.dart';
 import 'package:chessever2/repository/supabase/group_broadcast/group_tour_repository.dart';
 import 'package:chessever2/repository/favorites/models/favorite_player.dart';
+import 'package:chessever2/screens/collections/collections_data.dart';
 import 'package:chessever2/screens/for_you/discovery/data/discovery_repository.dart';
 import 'package:chessever2/screens/for_you/discovery/models/discovery_models.dart';
 import 'package:chessever2/screens/group_event/model/tour_event_card_model.dart';
@@ -356,8 +357,5 @@ final discoveryCountryProvider = Provider.autoDispose<Country?>((ref) {
 void refreshDiscovery(WidgetRef ref) {
   ref.invalidate(mostLikedProvider);
   ref.invalidate(discoveryTodayMiniaturesProvider);
-  ref.invalidate(discoveryAnalyzedGamesProvider);
-  ref.invalidate(discoveryReviewCurveProvider);
-  ref.invalidate(discoveryCurrentBroadcastsProvider);
-  unawaited(ref.read(streakWallProvider.notifier).refresh());
+  ref.invalidate(collectionsProvider);
 }

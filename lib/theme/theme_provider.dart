@@ -9,9 +9,13 @@ const _themeModeStorageKey = 'app.theme_mode.v1';
 /// throw if storage is unavailable: the app simply falls back to dark.
 ///
 /// The saved choice is read synchronously when the prefs cache is already
-/// warm (startup initialises it before the app builds), so a Light or Auto
-/// user's first frame is already in their theme instead of a dark frame
-/// that fades across. Only a cold cache falls back to the async restore.
+/// warm (startup initialises it before the app builds), so a Light user's
+/// first frame is already in their theme instead of a dark frame that fades
+/// across. Only a cold cache falls back to the async restore.
+///
+/// Auto (follow the system) is not offered for now: a stored `system` choice
+/// reads as the default, dark, so nobody is left in a mode the picker cannot
+/// show.
 class ThemeModeNotifier extends StateNotifier<ThemeMode> {
   ThemeModeNotifier() : super(_cachedMode() ?? ThemeMode.dark) {
     if (SharedPreferencesService.instance.prefsOrNull == null) _restore();
@@ -86,8 +90,6 @@ class ThemeModeNotifier extends StateNotifier<ThemeMode> {
         return ThemeMode.dark;
       case 'light':
         return ThemeMode.light;
-      case 'system':
-        return ThemeMode.system;
       default:
         return null;
     }

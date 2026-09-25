@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:chessever2/config/feature_flags.dart';
 import 'package:chessever2/repository/gamebase/memorial_tree_scope.dart';
 import 'package:chessever2/repository/library/library_repository.dart';
 import 'package:chessever2/repository/library/models/library_folder.dart';
@@ -582,7 +583,7 @@ Future<bool> _openLink(BuildContext context, String raw) {
     return Future.value(false);
   }
   // streaks.chessever.com: `/` is the wall, `/p/<fideId>?tc=` a player card.
-  final streak = streakLinkTarget(uri);
+  final streak = FeatureFlags.streaks ? streakLinkTarget(uri) : null;
   if (streak != null) return _push(context, streakLinkScreen(streak));
   // handleDeepLink silently ignores links it does not know; only hand over
   // the shapes it routes, so a dead shortcut says so instead of doing nothing.

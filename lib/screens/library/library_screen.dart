@@ -309,6 +309,8 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
     // shell there is no drawer to open, so the avatar is not offered at all
     // rather than shown as a dead control.
     final canOpenSidebar = Scaffold.maybeOf(context)?.hasDrawer ?? false;
+    // Pushed as My Space's My Prep, the page backs out where the avatar was.
+    final canPop = !canOpenSidebar && Navigator.of(context).canPop();
 
     return Padding(
       padding: EdgeInsets.only(bottom: 12.h),
@@ -317,6 +319,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
             canOpenSidebar
                 ? () => Scaffold.maybeOf(context)?.openDrawer()
                 : null,
+        leading: canPop ? const HomeTopBarBackButton() : null,
         focusNode: _searchFocusNode,
         content: _buildSearchField(),
         // One canonical Board entry plus Add, on the avatar's centre line.

@@ -9,7 +9,6 @@ import 'package:chessever2/screens/library/miniatures/miniature_game_launcher.da
 import 'package:chessever2/screens/library/miniatures/miniatures_access.dart';
 import 'package:chessever2/screens/library/miniatures_screen.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
-import 'package:chessever2/widgets/time_control_glyph.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
@@ -75,24 +74,19 @@ class TodaysMiniaturesSection extends ConsumerWidget {
             if (list.isEmpty) {
               return const DiscoveryNotice(text: 'No miniatures yet today');
             }
-            final games = [for (final m in list) m.game];
-            return DiscoveryRail(
-              children: [
-                for (var i = 0; i < list.length; i++)
-                  DiscoveryGridGame(
-                    key: ValueKey('mini_${list[i].game.gameId}'),
-                    games: games,
-                    index: i,
-                    label: _meta(list[i]),
-                    onOpen: (updated, index) => openMiniatureGame(
-                      context: context,
-                      ref: ref,
-                      games: updated,
-                      index: index,
-                      returnTo: discoveryReturnTo('todays_miniatures'),
-                    ),
-                  ),
-              ],
+            // Listed as the Miniatures screen lists them; a miniature needs
+            // its PGN fetched first, so the launcher opens it.
+            return DiscoveryGameList(
+              games: [for (final m in list) m.game],
+              streamEnabled: false,
+              footerFor: (i) => _footer(list[i]),
+              onOpen: (games, index) => openMiniatureGame(
+                context: context,
+                ref: ref,
+                games: games,
+                index: index,
+                returnTo: discoveryReturnTo('todays_miniatures'),
+              ),
             );
           },
           loading: () {
@@ -119,25 +113,14 @@ class TodaysMiniaturesSection extends ConsumerWidget {
     );
   }
 
-  /// "[owl] 19 moves · Ø 2751": the length is what makes a miniature, so
-  /// "19" is the line's one bold figure and the average stays quiet (as
-  /// the day does beside Analyzed games' average). Ratings are never
-  /// comma-grouped.
-  static Widget _meta(DiscoveryMiniature mini) {
+  /// "19 moves · Ø 2751" under a list row: the length is what makes a
+  /// miniature. Ratings are never comma-grouped.
+  static String _footer(DiscoveryMiniature mini) {
     final avg = discoveryAverageRating(mini.game);
-    final unit = mini.moves == 1 ? ' move' : ' moves';
-    return DiscoveryCardMeta(
-      timeControlAsset: TimeControlGlyph.assetForLabel(mini.game.timeControl),
-      parts: [
-        DiscoveryMetaPart.figure('${mini.moves}', unit: unit),
-        if (avg != null) DiscoveryMetaPart.text('Ø $avg'),
-      ],
-      semanticsLabel: [
-        '${mini.moves}$unit',
-        if (mini.game.timeControl?.trim().isNotEmpty ?? false)
-          mini.game.timeControl!.trim(),
-        if (avg != null) 'average rating $avg',
-      ].join(', '),
-    );
+    final unit = mini.moves == 1 ? 'move' : 'moves';
+    return [
+      '${mini.moves} $unit',
+      if (avg != null) 'Ø $avg',
+    ].join(' · ');
   }
 }

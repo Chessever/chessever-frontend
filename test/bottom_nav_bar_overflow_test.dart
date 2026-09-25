@@ -8,7 +8,7 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 void main() {
   testWidgets(
-    'bottom nav bar (Events, Feed, For You, Library) never overflows on a '
+    'bottom nav bar (Events, For You, Library) never overflows on a '
     'short 393px screen at large text scale with a gesture-nav inset',
     (tester) async {
       // The regression: the nav-item Column (icon + label + vertical padding,
@@ -53,21 +53,21 @@ void main() {
 
       FlutterError.onError = previousOnError;
 
-      // Four equal slots at 393px, in bar order: Events, Feed, For You,
+      // Three equal slots at 393px, in bar order: Events, For You,
       // Library.
-      expect(find.byType(BottomNavBarWidget), findsNWidgets(4));
+      expect(find.byType(BottomNavBarWidget), findsNWidgets(3));
       expect(
         tester
             .widgetList<BottomNavBarWidget>(find.byType(BottomNavBarWidget))
             .map((item) => item.title)
             .toList(),
-        ['Events', 'Feed', 'For You', 'Library'],
+        ['Events', 'For You', 'Library'],
       );
       expect(find.text('Calendar'), findsNothing);
       for (final widget in tester.widgetList<BottomNavBarWidget>(
         find.byType(BottomNavBarWidget),
       )) {
-        expect(widget.width, closeTo(393 / 4, 0.001));
+        expect(widget.width, closeTo(393 / 3, 0.001));
       }
 
       final overflowErrors = errors

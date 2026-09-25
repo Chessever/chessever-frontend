@@ -28,7 +28,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 /// Event surfaces on the shared focus menu: an event card lifts itself and
-/// keeps every action its old popup had (plus Open, favorites and My Space),
+/// keeps every action its old popup had (plus Open and My Space),
 /// the round / event pins carry the fields their openers need, and teams
 /// are shared, never pinned (older team pins still open).
 
@@ -255,9 +255,10 @@ void main() {
         expect(find.text('Turn on No Spoilers'), findsOneWidget);
         expect(find.text('Share'), findsOneWidget);
         expect(find.text('Copy PGN'), findsOneWidget);
-        // ...plus Open, favorites and the My Space row.
+        // ...plus Open and the My Space row. Favoriting is the card's own
+        // star, never a menu row.
         expect(find.text('Open event'), findsOneWidget);
-        expect(find.text('Add to favorites'), findsOneWidget);
+        expect(find.text('Add to favorites'), findsNothing);
         expect(find.text('Add to My Space'), findsOneWidget);
         expect(repo.tourIdLookups, 1);
 
@@ -309,7 +310,7 @@ void main() {
         await tester.pumpAndSettle();
 
         expect(find.text('Open event'), findsOneWidget);
-        expect(find.text('Add to favorites'), findsOneWidget);
+        expect(find.text('Add to favorites'), findsNothing);
         expect(find.text('Add to My Space'), findsOneWidget);
         expect(find.text('Share'), findsNothing);
         expect(find.text('Copy PGN'), findsNothing);

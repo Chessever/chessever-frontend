@@ -203,10 +203,15 @@ class HomeTopBarRow extends StatelessWidget {
     this.avatarKey,
     this.focusNode,
     this.trailing = const <Widget>[],
+    this.leading,
   });
 
   final Widget content;
   final bool showAvatar;
+
+  /// Stands where the avatar does on a page pushed over the home shell,
+  /// usually a [HomeTopBarBackButton]. Shown only when the avatar is not.
+  final Widget? leading;
   final VoidCallback? onAvatarTap;
   final Key? avatarKey;
   final FocusNode? focusNode;
@@ -235,6 +240,17 @@ class HomeTopBarRow extends StatelessWidget {
                   ),
                 ),
                 SizedBox(width: HomeTopBarMetrics.gap),
+              ],
+            ),
+          ),
+        if (!showAvatar && leading != null)
+          _FocusSqueeze(
+            focusNode: focusNode,
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                HomeTopBarTapTarget(child: chrome(leading!)),
+                SizedBox(width: 12.w),
               ],
             ),
           ),
@@ -278,10 +294,14 @@ class HomeTopBar extends StatelessWidget {
     this.focusNode,
     this.trailing = const <Widget>[],
     this.trailingOpticalInset = 0,
+    this.leading,
   });
 
   final Widget content;
   final VoidCallback? onOpenSidebar;
+
+  /// Takes the avatar's place when there is no sidebar to open.
+  final Widget? leading;
   final Key? avatarKey;
   final FocusNode? focusNode;
   final List<Widget> trailing;
@@ -298,6 +318,50 @@ class HomeTopBar extends StatelessWidget {
         avatarKey: avatarKey,
         focusNode: focusNode,
         trailing: trailing,
+        leading: leading,
+      ),
+    );
+  }
+}
+
+/// The back chevron a page pushed over the home shell wears where the tabs
+/// keep the avatar. Its glyph's own edge lands on the bar's gutter.
+class HomeTopBarBackButton extends StatelessWidget {
+  const HomeTopBarBackButton({super.key, this.onPressed});
+
+  /// Defaults to popping the page.
+  final VoidCallback? onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      container: true,
+      button: true,
+      label: 'Back',
+      excludeSemantics: true,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: () {
+          HapticFeedbackService.navigation();
+          final press = onPressed;
+          if (press != null) {
+            press();
+          } else {
+            Navigator.of(context).maybePop();
+          }
+        },
+        child: SizedBox(
+          width: 32,
+          height: HomeTopBarMetrics.controlExtent,
+          child: Align(
+            alignment: Alignment.centerLeft,
+            child: Icon(
+              Icons.arrow_back_ios_new_outlined,
+              size: 22,
+              color: context.colors.textPrimary,
+            ),
+          ),
+        ),
       ),
     );
   }

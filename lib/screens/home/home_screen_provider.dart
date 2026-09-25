@@ -1,5 +1,4 @@
 import 'package:chessever2/providers/for_you_games_provider.dart';
-import 'package:chessever2/screens/feed/providers/feed_provider.dart';
 import 'package:chessever2/screens/for_you/providers/for_you_tab_provider.dart';
 import 'package:chessever2/screens/group_event/providers/group_event_screen_provider.dart';
 import 'package:chessever2/screens/home/widget/bottom_nav_bar.dart';
@@ -34,9 +33,6 @@ class _HomeScreenController {
         break;
       case BottomNavBarItem.library:
         debugPrint('Refreshing library...');
-        break;
-      case BottomNavBarItem.feed:
-        ref.invalidate(feedProvider);
         break;
     }
   }

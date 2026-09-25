@@ -9,12 +9,12 @@ import 'package:chessever2/utils/svg_asset.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
-/// Main sections, in bar order: Events, Feed, For You, Library. The calendar
-/// lives as a compact month in the sidebar.
+/// Main sections, in bar order: Events, For You, Library. The calendar opens
+/// from the sidebar, and Feed from For You › Discovery.
 ///
 /// Tabs are only ever addressed by value or by [Enum.name] (analytics sends
 /// the name), never by index, so reordering the bar moves nothing else.
-enum BottomNavBarItem { tournaments, feed, forYou, library }
+enum BottomNavBarItem { tournaments, forYou, library }
 
 /// Emitted whenever the user taps the already-selected bottom nav item.
 /// Screens that own a scrollable surface for [item] should listen and
@@ -50,14 +50,12 @@ final bottomNavBarReTapRequestProvider = StateNotifierProvider<
 
 final Map<BottomNavBarItem, String> bottomNavBarIcons = {
   BottomNavBarItem.tournaments: SvgAsset.tournamentIcon,
-  BottomNavBarItem.feed: SvgAsset.feedNavIcon,
   BottomNavBarItem.forYou: SvgAsset.forYouNavIcon,
   BottomNavBarItem.library: SvgAsset.libraryNavIcon,
 };
 
 final namesBottomNavBarIcons = {
   BottomNavBarItem.tournaments: 'Events',
-  BottomNavBarItem.feed: 'Feed',
   BottomNavBarItem.forYou: 'For You',
   BottomNavBarItem.library: 'Library',
 };
@@ -69,14 +67,6 @@ final selectedBottomNavBarItemProvider =
     StateProvider.autoDispose<BottomNavBarItem>(
       (ref) => BottomNavBarItem.forYou,
     );
-
-/// Whether the home sidebar (the home Scaffold's drawer) is open, however it
-/// was opened: avatar, nav rail or edge swipe. Home reports it through
-/// `Scaffold.onDrawerChanged`. A drawer is not a route, so a tab that must
-/// pause under it (Feed playback) cannot learn this from RouteAware.
-/// Auto-disposed with its last listener, so it can never outlive the shell
-/// reading "open".
-final homeDrawerOpenProvider = StateProvider.autoDispose<bool>((ref) => false);
 
 class BottomNavBar extends ConsumerWidget {
   const BottomNavBar({super.key});
@@ -111,7 +101,6 @@ class BottomNavBar extends ConsumerWidget {
               BottomNavBarWidget(
                 key: switch (item) {
                   BottomNavBarItem.tournaments => e2eKey(E2eIds.navEvents),
-                  BottomNavBarItem.feed => e2eKey(E2eIds.navFeed),
                   BottomNavBarItem.forYou => e2eKey(E2eIds.navForYou),
                   BottomNavBarItem.library => e2eKey(E2eIds.navLibrary),
                 },

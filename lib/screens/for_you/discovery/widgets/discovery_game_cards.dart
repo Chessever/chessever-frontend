@@ -5,11 +5,13 @@ import 'package:chessever2/screens/my_space/widgets/space_glyphs.dart';
 import 'package:chessever2/screens/player_profile/player_profile_data_source.dart';
 import 'package:chessever2/screens/streaks/widgets/wall_common.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/providers/games_list_view_mode_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrapper/game_card_wrapper_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrapper/game_card_wrapper_widget.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrapper/grid_game_card_wrapper_widget.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/widgets/board_like_heart.dart';
 import 'package:chessever2/widgets/time_control_glyph.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -366,6 +368,163 @@ class DiscoveryWideGame extends ConsumerWidget {
           footerDetail: footerDetail ?? _defaultFooterDetail(game),
         ),
       ],
+    );
+  }
+}
+
+/// Games listed the way an event's Games tab lists them: the app's own game
+/// card per game, a board or a list row by the viewer's games view setting,
+/// two boards a row in grid view. A game with no real position to draw keeps
+/// the list row rather than a made-up board.
+///
+/// [badgeFor] sets a mark on a game's board ([BoardCornerBadge]); [footerFor]
+/// adds a line under a list row. [onOpen] replaces the card's own opening
+/// (Miniatures fetch their PGN first); by default a card opens the board on
+/// this list, kept exactly as shown.
+class DiscoveryGameList extends ConsumerWidget {
+  const DiscoveryGameList({
+    super.key,
+    required this.games,
+    this.badgeFor,
+    this.footerFor,
+    this.onOpen,
+    this.streamEnabled = true,
+  });
+
+  final List<GamesTourModel> games;
+  final Widget Function(int index, double boardSize)? badgeFor;
+  final String? Function(int index)? footerFor;
+  final void Function(List<GamesTourModel> games, int index)? onOpen;
+
+  /// False for archive games, which never stream.
+  final bool streamEnabled;
+
+  Widget _badged(int index, Widget card) {
+    final badge = badgeFor;
+    if (badge == null) return card;
+    return BoardCornerBadge(
+      builder: (boardSize) => badge(index, boardSize),
+      child: card,
+    );
+  }
+
+  Widget _card(BuildContext context, WidgetRef ref, int index, bool board) {
+    final game = games[index];
+    final open = onOpen;
+    return _badged(
+      index,
+      GameCardWrapperWidget(
+        key: ValueKey('discovery_${board ? 'board' : 'row'}_${game.gameId}'),
+        game: game,
+        gamesData: GamesScreenModel(
+          gamesTourModels: games,
+          pinnedGamedIs: const [],
+        ),
+        gameIndex: index,
+        isChessBoardVisible: board,
+        viewSource: ChessboardView.forYou,
+        navigationListPolicy: BoardNavigationListPolicy.preserve,
+        playerProfileDataSource: discoveryProfileSource(game),
+        streamEnabled: streamEnabled,
+        footerDetail: footerFor?.call(index),
+        // No tour scope to pin into, so the menu drops the row.
+        showPin: false,
+        onPinToggle: (_) async {},
+        onBeforeOpen:
+            open == null
+                ? null
+                : () async {
+                  open(games, index);
+                  return false;
+                },
+        onReturnFromChessboard: (_) {},
+      ),
+    );
+  }
+
+  Widget _gridCard(BuildContext context, WidgetRef ref, int index) {
+    final game = games[index];
+    return _badged(
+      index,
+      GridGameCardWrapperWidget(
+        key: ValueKey('discovery_grid_${game.gameId}'),
+        game: game,
+        orderedGames: games,
+        gameIndex: index,
+        streamEnabled: streamEnabled,
+        viewSource: ChessboardView.forYou,
+        playerProfileDataSource: discoveryProfileSource(game),
+        pinnedIds: const [],
+        showPin: false,
+        onPinToggle: (_) {},
+        onChangedWithLiveGames: (updated) {
+          final open = onOpen;
+          if (open != null) {
+            open(updated, index);
+          } else {
+            openDiscoveryGame(context, ref, updated, index);
+          }
+        },
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final viewMode = ref.watch(gamesListViewModeProvider);
+    final rows = <Widget>[];
+    if (viewMode == GamesListViewMode.chessBoardGrid) {
+      final boards = [
+        for (var i = 0; i < games.length; i++)
+          if (discoveryHasRealPosition(games[i])) i,
+      ];
+      for (var r = 0; r < boards.length; r += 2) {
+        rows.add(
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(child: _gridCard(context, ref, boards[r])),
+              SizedBox(width: 12.sp),
+              Expanded(
+                child:
+                    r + 1 < boards.length
+                        ? _gridCard(context, ref, boards[r + 1])
+                        : const SizedBox.shrink(),
+              ),
+            ],
+          ),
+        );
+      }
+      for (var i = 0; i < games.length; i++) {
+        if (!discoveryHasRealPosition(games[i])) {
+          rows.add(_card(context, ref, i, false));
+        }
+      }
+    } else {
+      final boardView = viewMode == GamesListViewMode.chessBoard;
+      for (var i = 0; i < games.length; i++) {
+        rows.add(
+          _card(
+            context,
+            ref,
+            i,
+            boardView && discoveryHasRealPosition(games[i]),
+          ),
+        );
+      }
+    }
+    return Padding(
+      padding: EdgeInsets.symmetric(horizontal: discoveryGutter),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          for (var i = 0; i < rows.length; i++) ...[
+            if (i > 0) SizedBox(height: 12.sp),
+            rows[i],
+          ],
+        ],
+      ),
     );
   }
 }

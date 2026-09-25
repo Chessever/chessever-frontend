@@ -1,3 +1,4 @@
+import 'package:chessever2/config/feature_flags.dart';
 import 'package:chessever2/providers/country_dropdown_provider.dart';
 import 'widgets/notation_scroll.dart';
 import 'dart:async';
@@ -2217,7 +2218,9 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
         },
         fireImmediately: true,
       );
-      _warmUpClassificationSounds();
+      if (FeatureFlags.boardClassificationSounds) {
+        _warmUpClassificationSounds();
+      }
     });
   }
 
@@ -2307,12 +2310,16 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
         state.isAnalysisMode ? state.analysisState.moveSans : state.moveSans;
 
     if (moveIndexForSound >= 0 && moveIndexForSound < movesSan.length) {
-      // A move landing forward announces its classification (the board badges
-      // it and plays its landing animation on the same ply); undoing a move
-      // keeps the ordinary sound of the move it takes back.
+      // With classified-move sounds on, a move landing forward announces its
+      // classification (the board badges it and plays its landing animation
+      // on the same ply); undoing a move keeps the ordinary sound of the move
+      // it takes back. With them off, every move plays its ordinary sound.
       ClassificationSfx.playMove(
         san: movesSan[moveIndexForSound],
-        moveClass: isMovingForward ? _landedMoveClass(state) : null,
+        moveClass:
+            FeatureFlags.boardClassificationSounds && isMovingForward
+                ? _landedMoveClass(state)
+                : null,
       );
     } else if (currentIndex == -1 && prevIndex >= 0) {
       // Moving back to the starting position

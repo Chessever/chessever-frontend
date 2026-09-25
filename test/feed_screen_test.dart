@@ -19,7 +19,6 @@ import 'package:chessever2/screens/feed/widgets/feed_live_board.dart';
 import 'package:chessever2/screens/feed/widgets/feed_move_sound.dart';
 import 'package:chessever2/screens/feed/widgets/feed_scrub.dart';
 import 'package:chessever2/screens/feed/widgets/feed_sfx_provider.dart';
-import 'package:chessever2/screens/home/widget/bottom_nav_bar.dart';
 import 'package:chessever2/screens/my_space/models/space_shortcut.dart';
 import 'package:chessever2/screens/my_space/providers/space_shortcuts_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
@@ -350,20 +349,15 @@ void main() {
     await _tearDown(tester);
   });
 
-  testWidgets('the avatar opens the sidebar from Feed', (tester) async {
+  testWidgets('a back button stands where the tabs keep the avatar', (
+    tester,
+  ) async {
     await _pumpFeed(tester, withDrawer: true);
-    expect(find.text('Sidebar'), findsNothing);
-    await tester.tap(find.byKey(const ValueKey('feed_sidebar_avatar')));
-    for (var i = 0; i < 6; i++) {
-      await tester.pump(const Duration(milliseconds: 100));
-    }
-    expect(find.text('Sidebar'), findsOneWidget);
-    await _tearDown(tester);
-  });
-
-  testWidgets('no avatar where there is no sidebar to open', (tester) async {
-    await _pumpFeed(tester);
     expect(find.byKey(const ValueKey('feed_sidebar_avatar')), findsNothing);
+    expect(find.byKey(const ValueKey('feed_back')), findsOneWidget);
+    expect(find.text('Feed'), findsOneWidget);
+    // No stream titles: Feed is games and news, puzzles come later.
+    expect(find.text('Puzzle'), findsNothing);
     await _tearDown(tester);
   });
 
@@ -687,9 +681,6 @@ Future<_Feed> _pumpFeed(
         feedNewsProvider.overrideWith((ref) async => const <FeedNews>[]),
         feedSfxProvider.overrideWithValue(sfx),
         feedMoveSoundProvider.overrideWithValue(sound),
-        selectedBottomNavBarItemProvider.overrideWith(
-          (ref) => BottomNavBarItem.feed,
-        ),
         boardSettingsProviderNew.overrideWith(_TestBoardSettings.new),
         likedGamesProvider.overrideWith(_NoLikes.new),
         spaceShortcutsProvider.overrideWith(_NoShortcuts.new),

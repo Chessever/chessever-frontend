@@ -949,12 +949,44 @@ class PixelScene {
     Size size, {
     double labelReserve = kDoorLabelReserve,
   }) {
-    final w = size.width, h = size.height;
+    final h = size.height;
     final box = doorArtBox(size, labelReserve: labelReserve);
-    final wide = w > 200;
+    final wide = size.width > 200;
     final pad = wide ? 18.0 : 14.0;
     // Everything below the art's gap: the label plus its bottom padding.
     final labelBand = wide ? 22.0 : labelReserve - 8 - pad;
+    return PixelScene._fitted(
+      art,
+      size,
+      box,
+      layout: 'door',
+      sparkleFloor: h - pad - labelBand - 4,
+    );
+  }
+
+  /// [art] fitted and centred in [box] on a tile of [size], with the door's
+  /// sparkles, embers and scan line. For tiles whose label is laid out
+  /// beside the art rather than under it, so no band is kept clear.
+  factory PixelScene.inBox(PixelArt art, Size size, Rect box) {
+    return PixelScene._fitted(
+      art,
+      size,
+      box,
+      layout: 'box',
+      sparkleFloor: size.height - 4,
+    );
+  }
+
+  /// The door layout inside [box]. A sparkle whose "+" would reach below
+  /// [sparkleFloor] or past a side of the tile is left out whole.
+  factory PixelScene._fitted(
+    PixelArt art,
+    Size size,
+    Rect box, {
+    required String layout,
+    required double sparkleFloor,
+  }) {
+    final w = size.width;
     final s = math
         .max(1.0, math.min(box.width / art.cols, box.height / art.rows))
         .floorToDouble();
@@ -988,7 +1020,7 @@ class PixelScene {
         final pt = spots[i];
         // The design only kept the centre block on the tile, which let an arm
         // be sliced off by the edge (Openings); require the whole "+".
-        if (pt.dy + sp * 1.5 > h - pad - labelBand - 4 ||
+        if (pt.dy + sp * 1.5 > sparkleFloor ||
             pt.dx - sp < 2 ||
             pt.dx + sp * 2 > w - 2) {
           continue;
@@ -1039,7 +1071,7 @@ class PixelScene {
     return PixelScene._(
       art: art,
       size: size,
-      layout: 'door',
+      layout: layout,
       origin: Offset(ox, oy),
       cell: s,
       gap: 1.2,

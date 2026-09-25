@@ -10,11 +10,9 @@ import 'package:chessever2/screens/authentication/auth_screen_provider.dart';
 import 'package:chessever2/screens/library/library_screen.dart';
 import 'package:chessever2/screens/favorites/favorites_tab_screen.dart';
 import 'package:chessever2/screens/favorites/provider/favorites_mode_provider.dart';
-import 'package:chessever2/screens/feed/feed_screen.dart';
 import 'package:chessever2/screens/for_you/for_you_screen.dart';
 import 'package:chessever2/screens/for_you/providers/for_you_tab_provider.dart';
 import 'package:chessever2/screens/gamebase/gamebase_explorer_screen.dart';
-import 'package:chessever2/screens/streaks/streaks_screen.dart';
 import 'package:chessever2/providers/favorite_events_provider.dart';
 import 'package:chessever2/providers/favorite_players_provider.dart';
 import 'package:chessever2/repository/favorites/models/favorite_event.dart';
@@ -197,11 +195,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         ),
       );
     },
-    onStreaksPressed: () {
-      Navigator.of(
-        context,
-      ).push(MaterialPageRoute(builder: (_) => const StreaksScreen()));
-    },
     onSupportPressed: () {
       // Handle support action
     },
@@ -233,12 +226,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     },
   );
 
-  /// Lets tabs that pause under an overlay (Feed playback) see the sidebar,
-  /// which is a drawer rather than a route.
-  void _onDrawerChanged(bool open) {
-    ref.read(homeDrawerOpenProvider.notifier).state = open;
-  }
-
   Widget get _chatButton {
     return BotvinnikChatButton(
       heroTag: 'botvinnik',
@@ -252,15 +239,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     // Listen for favorite signals (must be in build method)
     _listenForFavoriteSignals();
 
-    // Flow is a full-bleed player whose scrub line and action row sit where
-    // the chat button floats; it steps aside there.
-    final onFlow = ref.watch(
-      selectedBottomNavBarItemProvider.select(
-        (item) => item == BottomNavBarItem.feed,
-      ),
-    );
-    final chatButton = onFlow ? null : _chatButton;
-
     // Tablet layout: NavigationRail on the side
     if (ResponsiveHelper.isTablet) {
       return Scaffold(
@@ -268,8 +246,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         resizeToAvoidBottomInset: false,
         drawerScrimColor: context.colors.scrim,
         drawer: HamburgerMenu(callbacks: _menuCallbacks),
-        onDrawerChanged: _onDrawerChanged,
-        floatingActionButton: chatButton,
+        floatingActionButton: _chatButton,
         body: BillingIssueGate(
           child: Row(
             children: [
@@ -296,8 +273,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       resizeToAvoidBottomInset: false,
       drawerScrimColor: context.colors.scrim,
       drawer: HamburgerMenu(callbacks: _menuCallbacks),
-      onDrawerChanged: _onDrawerChanged,
-      floatingActionButton: chatButton,
+      floatingActionButton: _chatButton,
       bottomNavigationBar: BottomNavBar(),
       body: BillingIssueGate(
         child: KeyedSubtree(
@@ -318,8 +294,6 @@ class BottomNavBarView extends ConsumerWidget {
     switch (item) {
       case BottomNavBarItem.tournaments:
         return const GroupEventScreen();
-      case BottomNavBarItem.feed:
-        return const FeedScreen();
       case BottomNavBarItem.forYou:
         return const ForYouScreen();
       case BottomNavBarItem.library:
