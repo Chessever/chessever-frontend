@@ -74,8 +74,6 @@ class EventVideoSession extends ChangeNotifier {
   bool playing = false, foreground = true;
 
   bool flagsVisible = false;
-  bool _scrolling = false;
-  Timer? _flagsTimer;
 
   /// Last mute state reported by the embedded provider player. Carried into
   /// every later embed document, so switching streams never resets mute. Only
@@ -189,10 +187,7 @@ class EventVideoSession extends ChangeNotifier {
           stopPlayback(notify: false);
           // The stream the reader was watching no longer exists in this scope:
           // keep the replacement paused and wait for a deliberate video tap.
-          if (previous != null &&
-              !streams.any((s) => s.identity == previous.identity)) {
-            flagsVisible = false;
-          }
+          if (selected != null) revealFlags(notify: false);
         }
       }
       failed = false;
@@ -313,29 +308,15 @@ class EventVideoSession extends ChangeNotifier {
   }
 
   void revealFlags({bool notify = true}) {
-    _flagsTimer?.cancel();
     if (!showVideo || !foreground) return;
     flagsVisible = true;
-    if (!_scrolling) {
-      _flagsTimer = Timer(const Duration(seconds: 3), () {
-        if (_disposed) return;
-        flagsVisible = false;
-        notifyListeners();
-      });
-    }
     if (notify) notifyListeners();
-  }
-
-  void setScrolling(bool value) {
-    _scrolling = value;
-    revealFlags();
   }
 
   @override
   void dispose() {
     _disposed = true;
     _refreshTimer?.cancel();
-    _flagsTimer?.cancel();
     repository?.close();
     super.dispose();
   }

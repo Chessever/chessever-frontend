@@ -7,9 +7,7 @@ import 'event_video_test.dart' show FakeVideoRepository, fixtureVideos;
 import 'event_video_widgets_test.dart' show FakePlayer, harness;
 
 void main() {
-  testWidgets('selector disappears completely, tapping video restores it', (
-    tester,
-  ) async {
+  testWidgets('selector stays visible while the stream plays', (tester) async {
     final session = EventVideoSession(
       repository: FakeVideoRepository(fixtureVideos()),
     );
@@ -19,15 +17,14 @@ void main() {
     final surface = find.byKey(const ValueKey('event_video_surface'));
     final flags = find.byKey(const ValueKey('event_video_flags'));
     final top = tester.getTopLeft(surface).dy;
-    final height = tester.getSize(flags).height;
     final playerElement = player.viewKey.currentContext;
     final loads = player.loads;
     session.reportPlayback(true, session.playerRevision);
     await tester.pump(const Duration(seconds: 3));
-    expect(flags, findsNothing);
+    expect(flags, findsOneWidget);
     expect(find.byKey(const ValueKey('event_video_selector')), findsNothing);
     expect(find.byTooltip('Show stream selector'), findsNothing);
-    expect(tester.getTopLeft(surface).dy, closeTo(top - height, .1));
+    expect(tester.getTopLeft(surface).dy, closeTo(top, .1));
     await tester.tap(find.text('Player'));
     await tester.pump();
     expect(flags, findsOneWidget);

@@ -20,7 +20,7 @@ class EventVideoScope extends InheritedNotifier<EventVideoSession> {
   final VoidCallback? onVideoInteraction;
   EventVideoSession get session => notifier!;
 
-  /// Rebuilds the caller on every session change (flags timers, metadata
+  /// Rebuilds the caller on every session change (flags, metadata
   /// polls, foreground flips). Only the video's own small widgets use this;
   /// the board reads [EventVideoLayoutScope] instead.
   static EventVideoScope? maybeOf(BuildContext context) =>
@@ -35,7 +35,7 @@ class EventVideoScope extends InheritedNotifier<EventVideoSession> {
 ///
 /// Game pages carry the board, notation and explorer, and three of them are
 /// alive at once. Depending on the session itself rebuilt all three on every
-/// metadata poll, flags timer and route change, even with video hidden. This
+/// metadata poll, flag selection and route change, even with video hidden. This
 /// snapshot compares by value, so those events rebuild nothing on the board,
 /// and an event without streams (or with video hidden) never changes it.
 @immutable
@@ -403,78 +403,70 @@ class EventVideoFlags extends StatelessWidget {
     return SizedBox(
       key: const ValueKey('event_video_flags'),
       height: EventVideoFlagSlot.heightFor(context),
-      child: NotificationListener<ScrollNotification>(
-        onNotification: (n) {
-          if (n is ScrollStartNotification) session.setScrolling(true);
-          if (n is ScrollEndNotification) session.setScrolling(false);
-          return false;
-        },
-        child: ListView.separated(
-          scrollDirection: Axis.horizontal,
-          padding: const EdgeInsets.symmetric(horizontal: 8),
-          itemCount: session.streams.length,
-          separatorBuilder: (_, __) => const SizedBox(width: 4),
-          itemBuilder: (context, index) {
-            final stream = session.streams[index];
-            final selected = session.selected?.id == stream.id;
-            final label =
-                '${stream.displayName} · ${stream.source.providerName}';
-            return Semantics(
-              selected: selected,
-              button: true,
-              label: '${stream.languageLabel}: $label',
-              child: Tooltip(
-                message: label,
-                child: InkWell(
-                  key: ValueKey('video_stream_${stream.id}'),
-                  borderRadius: BorderRadius.circular(8),
-                  onTap: () => session.select(stream.id),
-                  child: Container(
-                    width: 112,
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 4,
-                      vertical: 3,
-                    ),
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(8),
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: 8),
+        itemCount: session.streams.length,
+        separatorBuilder: (_, __) => const SizedBox(width: 4),
+        itemBuilder: (context, index) {
+          final stream = session.streams[index];
+          final selected = session.selected?.id == stream.id;
+          final label = '${stream.displayName} · ${stream.source.providerName}';
+          return Semantics(
+            selected: selected,
+            button: true,
+            label: '${stream.languageLabel}: $label',
+            child: Tooltip(
+              message: label,
+              child: InkWell(
+                key: ValueKey('video_stream_${stream.id}'),
+                borderRadius: BorderRadius.circular(8),
+                onTap: () => session.select(stream.id),
+                child: Container(
+                  width: 112,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 4,
+                    vertical: 3,
+                  ),
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(8),
+                    color:
+                        selected
+                            ? Theme.of(
+                              context,
+                            ).colorScheme.primary.withValues(alpha: .14)
+                            : null,
+                    border: Border.all(
                       color:
                           selected
-                              ? Theme.of(
-                                context,
-                              ).colorScheme.primary.withValues(alpha: .14)
-                              : null,
-                      border: Border.all(
-                        color:
-                            selected
-                                ? Theme.of(context).colorScheme.primary
-                                : Colors.transparent,
+                              ? Theme.of(context).colorScheme.primary
+                              : Colors.transparent,
+                    ),
+                  ),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      if (stream.flagCode != null)
+                        CountryFlag.fromCountryCode(
+                          stream.flagCode!,
+                          theme: const ImageTheme(width: 28, height: 20),
+                        )
+                      else
+                        const Icon(Icons.language, size: 20),
+                      const SizedBox(height: 3),
+                      Text(
+                        label,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(fontSize: 10, height: 1.5),
                       ),
-                    ),
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        if (stream.flagCode != null)
-                          CountryFlag.fromCountryCode(
-                            stream.flagCode!,
-                            theme: const ImageTheme(width: 28, height: 20),
-                          )
-                        else
-                          const Icon(Icons.language, size: 20),
-                        const SizedBox(height: 3),
-                        Text(
-                          label,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(fontSize: 10, height: 1.5),
-                        ),
-                      ],
-                    ),
+                    ],
                   ),
                 ),
               ),
-            );
-          },
-        ),
+            ),
+          );
+        },
       ),
     );
   }
@@ -484,7 +476,7 @@ class EventVideoFlagSlot extends StatelessWidget {
   const EventVideoFlagSlot({super.key, this.active = true});
 
   final bool active;
-  // Allow room for large system text while the transient picker is visible.
+  // Allow room for large system text in the stream picker.
   static double heightFor(BuildContext context) =>
       math.max(56, 32 + MediaQuery.textScalerOf(context).scale(10) * 1.5);
 
