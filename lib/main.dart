@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:ui';
+import 'package:chessever2/providers/event_video_provider.dart';
 import 'package:logarte/logarte.dart';
 import 'package:chessever2/e2e/e2e_config.dart';
 import 'package:chessever2/e2e/e2e_ids.dart';
@@ -1166,6 +1167,7 @@ class MyApp extends HookConsumerWidget {
     const themeMode = ThemeMode.dark;
     final locale = ref.watch(localeProvider);
     ref.watch(pushTokenSyncProvider);
+    ref.watch(eventVideoPreloadProvider);
 
     // Listen to auth state changes to set AppsFlyer Customer User ID and
     // ensure the install/launch event fires. startSdk is idempotent — for

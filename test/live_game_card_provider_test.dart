@@ -358,6 +358,11 @@ void main() {
           container.read(baseGameProvider('game-1'))?.whiteClockSeconds,
           100,
         );
+        // The metadata cache is app-owned: dispose it before fake_async checks
+        // for timers, rather than waiting for addTearDown after that check.
+        await tester.pumpWidget(const SizedBox.shrink());
+        container.dispose();
+        await tester.pump(const Duration(milliseconds: 1));
       },
     );
 

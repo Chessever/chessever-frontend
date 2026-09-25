@@ -395,7 +395,16 @@ class _TournamentDetailViewState extends ConsumerState<TournamentDetailScreen>
                                 case TournamentDetailScreenMode.about:
                                   return AboutTourScreen();
                                 case TournamentDetailScreenMode.games:
-                                  return GamesTourScreen();
+                                  // PageView keeps this tab mounted. Release
+                                  // card hydration, clocks and live listeners
+                                  // while another tab is selected, preserving
+                                  // its scroll/expansion state for the return.
+                                  return TickerMode(
+                                    enabled:
+                                        effectiveMode ==
+                                        TournamentDetailScreenMode.games,
+                                    child: const GamesTourScreen(),
+                                  );
                                 case TournamentDetailScreenMode.bracket:
                                   return const KnockoutBracketScreen();
                                 case TournamentDetailScreenMode.standings:

@@ -12,6 +12,7 @@ class TournamentPlayer {
   final double? score;
   final int? performance;
   final String? team;
+
   /// Lichess-supplied 1-based standings position. Present whenever the
   /// broadcast feed has computed an official ranking (including custom
   /// scoring + official tiebreaks like DE/SB/KS that we cannot reproduce
@@ -353,10 +354,15 @@ class TourInfo {
   // ingested before the hub started stamping it, so ABSENT means unknown —
   // never false. Kept nullable to preserve that distinction.
   final bool? teamTable;
+
   /// Lichess `BroadcastTour.customScoring` — `{ white: {win, draw}, black: … }`.
   final Map<String, dynamic>? customScoring;
+
   /// ChessEver `tours.info.teamScoring` — board points plus match points.
   final Map<String, dynamic>? teamScoring;
+
+  /// Complete organizer table with source, round and fetch timestamp.
+  final Map<String, dynamic>? officialTeamStandings;
 
   const TourInfo({
     this.tc,
@@ -372,6 +378,7 @@ class TourInfo {
     this.teamTable,
     this.customScoring,
     this.teamScoring,
+    this.officialTeamStandings,
   });
 
   factory TourInfo.fromJson(Map<String, dynamic> json) {
@@ -389,6 +396,7 @@ class TourInfo {
       teamTable: json['teamTable'] is bool ? json['teamTable'] as bool : null,
       customScoring: _asStringKeyMap(json['customScoring']),
       teamScoring: _asStringKeyMap(json['teamScoring']),
+      officialTeamStandings: _asStringKeyMap(json['officialTeamStandings']),
     );
   }
 
@@ -419,6 +427,8 @@ class TourInfo {
       if (teamTable != null) 'teamTable': teamTable,
       if (customScoring != null) 'customScoring': customScoring,
       if (teamScoring != null) 'teamScoring': teamScoring,
+      if (officialTeamStandings != null)
+        'officialTeamStandings': officialTeamStandings,
     };
   }
 
@@ -491,11 +501,7 @@ class Tour {
       id: id,
       name: name,
       slug: slug,
-      info: TourInfo(
-        format: format,
-        fideTc: timeControl,
-        location: location,
-      ),
+      info: TourInfo(format: format, fideTc: timeControl, location: location),
       createdAt: DateTime.now(),
       url: '',
       tier: 0,

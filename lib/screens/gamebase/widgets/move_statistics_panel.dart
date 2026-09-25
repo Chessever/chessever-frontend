@@ -426,7 +426,10 @@ void _syncExplorerHeaderMode({
     return;
   }
 
-  final position = scrollController.position;
+  // Skeleton/content replacement can briefly attach both scrollables. Wait
+  // for a single, laid-out position instead of reading ScrollController.single.
+  final position = scrollController.positions.singleOrNull;
+  if (position == null || !position.hasContentDimensions) return;
   if (position.pixels <= position.minScrollExtent + 1.0) {
     if (currentlyInGames) setInGames(false);
     return;
@@ -571,12 +574,14 @@ class MoveStatisticsPanel extends HookConsumerWidget {
       final cardHeight = metrics?.cardHeight ?? fallbackCardHeight;
       final pageExtent =
           metrics?.pageExtent ?? cardHeight + ExplorerGameCardGeometry.gap;
-      final position =
-          scrollController.hasClients ? scrollController.position : null;
+      final position = scrollController.positions.singleOrNull;
+      // Keep the previous window during a layout handoff. The new list
+      // publishes its own metrics once attachment/layout has settled.
+      if (position == null || !position.hasContentDimensions) return;
       evalWindow.value = resolveExplorerGamesEvalWindow(
         anchor: anchor,
-        pixels: position?.pixels ?? 0,
-        viewportHeight: position?.viewportDimension ?? 0,
+        pixels: position.pixels,
+        viewportHeight: position.viewportDimension,
         pageExtent: pageExtent,
         cardHeight: cardHeight,
         cardCount: gamesCardCount.value,
@@ -904,42 +909,51 @@ class MoveStatisticsPanel extends HookConsumerWidget {
               // so bottom-nav restore isn't missed when flinging up to the
               // top of the games block.
               Widget wrapScroll(Widget child) {
-                return NotificationListener<ScrollNotification>(
+                return NotificationListener<ScrollMetricsNotification>(
                   onNotification: (notification) {
-                    // Cards carry a horizontal chip strip; its scrolling says
-                    // nothing about where this list is resting.
-                    if (notification.metrics.axis != Axis.vertical) {
-                      return false;
-                    }
-                    // Engine jobs wait for a standstill: a card crossing the
-                    // viewport mid-fling would only take the next one's turn.
-                    final wasSettled = listSettled.value;
-                    if (notification is ScrollStartNotification) {
-                      listSettled.value = false;
-                      // One gesture, one settle decision — taken when this
-                      // gesture ends, from the card the list is resting on now.
-                      snapConfig.beginGesture();
-                    } else if (notification is ScrollEndNotification) {
-                      listSettled.value = true;
-                      // The only place a rest is recorded. Everything the
-                      // physics decide hangs off it, so it must mean a real
-                      // standstill on a real card.
-                      snapConfig.endGesture(
-                        pixels: notification.metrics.pixels,
-                        minScrollExtent: notification.metrics.minScrollExtent,
-                        maxScrollExtent: notification.metrics.maxScrollExtent,
-                      );
-                    }
-                    if (listSettled.value != wasSettled) syncHeaderMode();
-                    if (notification is ScrollUpdateNotification ||
-                        notification is ScrollEndNotification ||
-                        notification is OverscrollNotification) {
-                      // Pin chrome + page-grid measure only — never re-scroll.
+                    if (notification.depth == 0 &&
+                        notification.metrics.axis == Axis.vertical) {
                       syncHeaderMode();
                     }
                     return false;
                   },
-                  child: child,
+                  child: NotificationListener<ScrollNotification>(
+                    onNotification: (notification) {
+                      // Cards carry a horizontal chip strip; its scrolling says
+                      // nothing about where this list is resting.
+                      if (notification.metrics.axis != Axis.vertical) {
+                        return false;
+                      }
+                      // Engine jobs wait for a standstill: a card crossing the
+                      // viewport mid-fling would only take the next one's turn.
+                      final wasSettled = listSettled.value;
+                      if (notification is ScrollStartNotification) {
+                        listSettled.value = false;
+                        // One gesture, one settle decision — taken when this
+                        // gesture ends, from the card the list is resting on now.
+                        snapConfig.beginGesture();
+                      } else if (notification is ScrollEndNotification) {
+                        listSettled.value = true;
+                        // The only place a rest is recorded. Everything the
+                        // physics decide hangs off it, so it must mean a real
+                        // standstill on a real card.
+                        snapConfig.endGesture(
+                          pixels: notification.metrics.pixels,
+                          minScrollExtent: notification.metrics.minScrollExtent,
+                          maxScrollExtent: notification.metrics.maxScrollExtent,
+                        );
+                      }
+                      if (listSettled.value != wasSettled) syncHeaderMode();
+                      if (notification is ScrollUpdateNotification ||
+                          notification is ScrollEndNotification ||
+                          notification is OverscrollNotification) {
+                        // Pin chrome + page-grid measure only — never re-scroll.
+                        syncHeaderMode();
+                      }
+                      return false;
+                    },
+                    child: child,
+                  ),
                 );
               }
 

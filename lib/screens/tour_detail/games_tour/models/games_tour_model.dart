@@ -27,6 +27,12 @@ class GamesScreenModel {
   });
 
   final List<GamesTourModel> gamesTourModels;
+  // Shared by all team match cards. Rebuilding this event-wide map once per
+  // four-board matchup makes an Olympiad list quadratic as it is scrolled.
+  late final Map<String, int> gameIndexById = Map.unmodifiable({
+    for (var i = 0; i < gamesTourModels.length; i++)
+      gamesTourModels[i].gameId: i,
+  });
   final List<String> pinnedGamedIs;
   final bool isSearchMode;
   final String? searchQuery;

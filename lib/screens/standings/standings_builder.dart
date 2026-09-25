@@ -79,11 +79,12 @@ Future<List<PlayerStandingModel>> buildStandingsFromData({
     gamesTourModels: gamesTourModels,
   );
 
-  // Index games by normalized player name
+  // Use the same identity for roster merging, results and opponent scores.
+  final identities = _StandingsIdentities(tournamentPlayers, gamesTourModels);
   final gamesByPlayerKey = <String, List<_PlayerGameRef>>{};
 
   for (final game in gamesTourModels) {
-    for (final ref in _expandGameRefs(game)) {
+    for (final ref in _expandGameRefs(game, identities)) {
       if (ref.key.isEmpty) continue;
       gamesByPlayerKey.putIfAbsent(ref.key, () => []).add(ref);
     }
@@ -112,7 +113,7 @@ Future<List<PlayerStandingModel>> buildStandingsFromData({
   final enrichedPlayers = <TournamentPlayer>[];
 
   for (final player in players) {
-    final key = _canonicalName(player.name);
+    final key = identities.key(player.name, player.fideId, player.team);
     final playerGames = gamesByPlayerKey[key] ?? const <_PlayerGameRef>[];
     final referenceCard =
         playerGames.isNotEmpty ? playerGames.first.playerCard : null;
@@ -240,12 +241,13 @@ Future<List<PlayerStandingModel>> buildStandingsFromData({
   // so it runs as a second pass after the enrichment loop above.
   final scoreByKey = <String, double>{};
   for (final player in enrichedPlayers) {
-    scoreByKey[_canonicalName(player.name)] = player.score ?? 0.0;
+    scoreByKey[identities.key(player.name, player.fideId, player.team)] =
+        player.score ?? 0.0;
   }
 
   final buchholzByKey = <String, double>{};
   for (final player in enrichedPlayers) {
-    final key = _canonicalName(player.name);
+    final key = identities.key(player.name, player.fideId, player.team);
     final playerGames = gamesByPlayerKey[key] ?? const <_PlayerGameRef>[];
 
     final opponentScores = <double>[];
@@ -256,7 +258,11 @@ Future<List<PlayerStandingModel>> buildStandingsFromData({
       }
       final opponentCard =
           gameRef.isWhite ? gameRef.game.blackPlayer : gameRef.game.whitePlayer;
-      final opponentKey = _canonicalGameKey(opponentCard.name);
+      final opponentKey = identities.key(
+        opponentCard.name,
+        opponentCard.fideId,
+        opponentCard.team,
+      );
       if (opponentKey.isEmpty) continue;
       opponentScores.add(scoreByKey[opponentKey] ?? 0.0);
     }
@@ -283,7 +289,7 @@ Future<List<PlayerStandingModel>> buildStandingsFromData({
       singleTourScope &&
       enrichedPlayers.isNotEmpty &&
       enrichedPlayers.every((p) => p.rank != null);
-  if (useExternalOrder || hasUniversalRank) {
+  if (hasUniversalRank) {
     enrichedPlayers.sort((a, b) {
       final aRank = a.rank ?? 1 << 30;
       final bRank = b.rank ?? 1 << 30;
@@ -294,14 +300,16 @@ Future<List<PlayerStandingModel>> buildStandingsFromData({
       if (bScore != aScore) return bScore.compareTo(aScore);
       return (b.rating ?? 0).compareTo(a.rating ?? 0);
     });
-  } else {
+  } else if (!useExternalOrder) {
     enrichedPlayers.sort((a, b) {
       final aScore = a.score ?? 0.0;
       final bScore = b.score ?? 0.0;
       if (bScore != aScore) return bScore.compareTo(aScore);
 
-      final aBuch = buchholzByKey[_canonicalName(a.name)] ?? 0.0;
-      final bBuch = buchholzByKey[_canonicalName(b.name)] ?? 0.0;
+      final aBuch =
+          buchholzByKey[identities.key(a.name, a.fideId, a.team)] ?? 0.0;
+      final bBuch =
+          buchholzByKey[identities.key(b.name, b.fideId, b.team)] ?? 0.0;
       if (bBuch != aBuch) return bBuch.compareTo(aBuch);
 
       return (b.rating ?? 0).compareTo(a.rating ?? 0);
@@ -324,126 +332,117 @@ List<TournamentPlayer> mergeTournamentRosterWithGamePlayers({
   required List<TournamentPlayer> tournamentPlayers,
   required List<GamesTourModel> gamesTourModels,
 }) {
-  final merged = <TournamentPlayer>[];
-  final indexByFideId = <int, int>{};
-  final indexByNameAndTeam = <String, int>{};
+  final identities = _StandingsIdentities(tournamentPlayers, gamesTourModels);
+  final merged = <String, TournamentPlayer>{};
 
-  String nameAndTeamKey(String name, String? team) =>
-      '${_canonicalName(name)}|${_normalizeTeam(team)}';
-
-  void indexPlayer(int index, {TournamentPlayer? previous}) {
-    if (previous != null) {
-      final previousFideId = previous.fideId;
-      if (previousFideId != null && indexByFideId[previousFideId] == index) {
-        indexByFideId.remove(previousFideId);
-      }
-      final previousKey = nameAndTeamKey(previous.name, previous.team);
-      if (indexByNameAndTeam[previousKey] == index) {
-        indexByNameAndTeam.remove(previousKey);
-      }
+  void add(TournamentPlayer player, {bool fromGame = false}) {
+    if (_canonicalName(player.name).isEmpty) return;
+    final key = identities.key(player.name, player.fideId, player.team);
+    final existing = merged[key];
+    if (existing == null) {
+      merged[key] = player;
+      return;
     }
-    final player = merged[index];
-    final fideId = player.fideId;
-    if (fideId != null && fideId > 0) {
-      indexByFideId[fideId] = index;
-    }
-    final name = _canonicalName(player.name);
-    if (name.isNotEmpty) {
-      indexByNameAndTeam[nameAndTeamKey(player.name, player.team)] = index;
-    }
-  }
-
-  int? findPlayer({
-    required String name,
-    required int? fideId,
-    required String? team,
-  }) {
-    final validFideId = _positive(fideId);
-    final hasFideId = validFideId != null;
-    if (validFideId != null) {
-      final byId = indexByFideId[validFideId];
-      if (byId != null) return byId;
-    }
-
-    final exact = indexByNameAndTeam[nameAndTeamKey(name, team)];
-    if (exact != null) {
-      final candidateFideId = merged[exact].fideId;
-      // A name/team match may enrich a roster row that lacks an ID, but two
-      // different positive FIDE IDs must remain two distinct people.
-      if (!hasFideId || candidateFideId == null || candidateFideId <= 0) {
-        return exact;
-      }
-    }
-
-    // A roster entry can know the player but omit the team. A game card with
-    // the same normalized name is then allowed to fill that missing team.
-    if (_normalizeTeam(team).isNotEmpty) {
-      final noTeam = indexByNameAndTeam[nameAndTeamKey(name, null)];
-      if (noTeam != null) {
-        final candidateFideId = merged[noTeam].fideId;
-        if (!hasFideId || candidateFideId == null || candidateFideId <= 0) {
-          return noTeam;
-        }
-      }
-    }
-    return null;
+    // Preserve official standings values, but retain identity fields from
+    // duplicate roster records too. Discarding that ID splits later aliases.
+    merged[key] = existing.copyWith(
+      federation:
+          _nonEmpty(existing.federation) ?? _nonEmpty(player.federation),
+      title: _nonEmpty(existing.title) ?? _nonEmpty(player.title),
+      fideId: _positive(existing.fideId) ?? _positive(player.fideId),
+      rating: _positive(existing.rating) ?? _positive(player.rating),
+      score: existing.score ?? player.score,
+      played: existing.played > 0 ? existing.played : player.played,
+      rank: existing.rank ?? player.rank,
+      performance: existing.performance ?? player.performance,
+      ratingDiff: existing.ratingDiff ?? player.ratingDiff,
+      // Team scores use game labels; official scores still come from the roster.
+      team:
+          fromGame
+              ? _nonEmpty(player.team)?.trim() ?? _nonEmpty(existing.team)
+              : _nonEmpty(existing.team) ?? _nonEmpty(player.team),
+    );
   }
 
   for (final player in tournamentPlayers) {
-    if (_canonicalName(player.name).isEmpty) continue;
-    final existing = findPlayer(
-      name: player.name,
-      fideId: player.fideId,
-      team: player.team,
-    );
-    if (existing != null) continue;
-    merged.add(player);
-    indexPlayer(merged.length - 1);
+    add(player);
   }
-
   for (final game in gamesTourModels) {
     for (final card in [game.whitePlayer, game.blackPlayer]) {
-      if (_canonicalName(card.name).isEmpty) continue;
-      final existingIndex = findPlayer(
-        name: card.name,
-        fideId: card.fideId,
-        team: card.team,
+      add(
+        TournamentPlayer(
+          name: card.name,
+          federation: _nonEmpty(card.federation),
+          title: _nonEmpty(card.title),
+          fideId: _positive(card.fideId),
+          rating: _positive(card.rating),
+          played: 0,
+          team: _nonEmpty(card.team)?.trim(),
+        ),
+        fromGame: true,
       );
+    }
+  }
+  return merged.values.toList();
+}
 
-      if (existingIndex == null) {
-        merged.add(
-          TournamentPlayer(
-            name: card.name,
-            federation: _nonEmpty(card.federation),
-            title: _nonEmpty(card.title),
-            fideId: card.fideId,
-            rating: _positive(card.rating),
-            played: 0,
-            team: _nonEmpty(card.team)?.trim(),
-          ),
-        );
-        indexPlayer(merged.length - 1);
-        continue;
+/// Resolve missing IDs only through unambiguous names, scoped to the team when
+/// known. Build the index before merging so feed order cannot pick a homonym.
+class _StandingsIdentities {
+  _StandingsIdentities(
+    List<TournamentPlayer> players,
+    List<GamesTourModel> games,
+  ) {
+    for (final player in players) {
+      _add(player.name, player.fideId, player.team);
+    }
+    for (final game in games) {
+      for (final card in [game.whitePlayer, game.blackPlayer]) {
+        _add(card.name, card.fideId, card.team);
       }
-
-      final existing = merged[existingIndex];
-      final enriched = existing.copyWith(
-        federation:
-            _nonEmpty(existing.federation) ?? _nonEmpty(card.federation),
-        title: _nonEmpty(existing.title) ?? _nonEmpty(card.title),
-        fideId: _positive(existing.fideId) ?? card.fideId,
-        rating: _positive(existing.rating) ?? _positive(card.rating),
-        // Team standings are computed from game-card team labels, so game
-        // membership wins over a missing/stale roster label. The roster stays
-        // authoritative for official score/rank/performance fields.
-        team: _nonEmpty(card.team)?.trim() ?? _nonEmpty(existing.team),
-      );
-      merged[existingIndex] = enriched;
-      indexPlayer(existingIndex, previous: existing);
     }
   }
 
-  return merged;
+  final _idsByName = <String, Set<int>>{};
+  final _idsByNameAndTeam = <(String, String), Set<int>>{};
+  final _teamsByName = <String, Set<String>>{};
+
+  void _add(String name, int? id, String? team) {
+    final normalized = _canonicalName(name);
+    if (normalized.isEmpty) return;
+    final teamKey = _normalizeTeam(team);
+    if (teamKey.isNotEmpty) {
+      _teamsByName.putIfAbsent(normalized, () => {}).add(teamKey);
+    }
+    if (_positive(id) == null) return;
+    _idsByName.putIfAbsent(normalized, () => {}).add(id!);
+    _idsByNameAndTeam.putIfAbsent((normalized, teamKey), () => {}).add(id);
+  }
+
+  String key(String name, int? id, String? team) {
+    if (_positive(id) != null) return 'fide:$id';
+    final normalized = _canonicalName(name);
+    if (normalized.isEmpty) return '';
+    var teamKey = _normalizeTeam(team);
+    final exact = _idsByNameAndTeam[(normalized, teamKey)];
+    final all = _idsByName[normalized];
+    final teams = _teamsByName[normalized];
+    final hasUniqueTeam = (teams?.length ?? 0) <= 1;
+    if (exact?.length == 1 &&
+        (teamKey.isNotEmpty || (all?.length == 1 && hasUniqueTeam))) {
+      return 'fide:${exact!.single}';
+    }
+    if ((exact == null || exact.isEmpty) && all?.length == 1 && hasUniqueTeam) {
+      // Missing team metadata can join an identified player. A known different
+      // team cannot: two people can have the same name in different teams.
+      final withoutTeam = _idsByNameAndTeam[(normalized, '')];
+      if (teamKey.isEmpty || withoutTeam?.contains(all!.single) == true) {
+        return 'fide:${all!.single}';
+      }
+    }
+    if (teamKey.isEmpty && teams?.length == 1) teamKey = teams!.single;
+    return 'name:${normalized.length}:$normalized:$teamKey';
+  }
 }
 
 Future<Map<int, _FideEloRow>> _fetchFideEloBatch(
@@ -701,39 +700,31 @@ class _PlayerGameRef {
   final bool isWhite;
 }
 
-Iterable<_PlayerGameRef> _expandGameRefs(GamesTourModel game) {
+Iterable<_PlayerGameRef> _expandGameRefs(
+  GamesTourModel game,
+  _StandingsIdentities identities,
+) {
   final whiteRef = _PlayerGameRef(
-    key: _canonicalGameKey(game.whitePlayer.name),
+    key: identities.key(
+      game.whitePlayer.name,
+      game.whitePlayer.fideId,
+      game.whitePlayer.team,
+    ),
     game: game,
     playerCard: game.whitePlayer,
     isWhite: true,
   );
 
   final blackRef = _PlayerGameRef(
-    key: _canonicalGameKey(game.blackPlayer.name),
+    key: identities.key(
+      game.blackPlayer.name,
+      game.blackPlayer.fideId,
+      game.blackPlayer.team,
+    ),
     game: game,
     playerCard: game.blackPlayer,
     isWhite: false,
   );
 
   return <_PlayerGameRef>[whiteRef, blackRef];
-}
-
-String _canonicalGameKey(String name) {
-  final normalized = name
-      .toLowerCase()
-      .replaceAll(',', '')
-      .trim()
-      .split(RegExp(r'\s+'))
-      .where((part) => part.isNotEmpty)
-      .join(' ');
-
-  if (normalized.isEmpty) return normalized;
-
-  final parts = normalized.split(' ');
-  if (parts.length == 2) {
-    final reversed = '${parts[1]} ${parts[0]}';
-    return normalized.compareTo(reversed) <= 0 ? normalized : reversed;
-  }
-  return normalized;
 }

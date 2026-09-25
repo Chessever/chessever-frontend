@@ -7,6 +7,9 @@ class TeamStandingModel {
   final String teamName;
   final int rank;
 
+  /// When set, totals and ordering are the published table after this round.
+  final int? officialRound;
+
   /// Match points — 2 win / 1 draw / 0 loss, counted only for completed
   /// matches. Primary ranking metric (chess team-event standard).
   final int matchPoints;
@@ -26,6 +29,7 @@ class TeamStandingModel {
   const TeamStandingModel({
     required this.teamName,
     required this.rank,
+    this.officialRound,
     required this.matchPoints,
     required this.gamePoints,
     required this.matchesWon,
@@ -56,6 +60,8 @@ class TeamStandingModel {
     if (avg % 1 == 0) return avg.toInt().toString();
     // Two decimals is enough for half-point board averages without noise.
     final fixed = avg.toStringAsFixed(2);
-    return fixed.replaceFirst(RegExp(r'0+$'), '').replaceFirst(RegExp(r'\.$'), '');
+    return fixed
+        .replaceFirst(RegExp(r'0+$'), '')
+        .replaceFirst(RegExp(r'\.$'), '');
   }
 }

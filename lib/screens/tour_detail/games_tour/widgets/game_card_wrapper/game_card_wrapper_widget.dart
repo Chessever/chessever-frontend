@@ -1,4 +1,5 @@
 import 'package:chessever2/screens/chessboard/widgets/chess_board_from_fen_new.dart';
+import 'package:chessever2/screens/chessboard/utils/game_list_snapshot.dart';
 import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
 import 'package:chessever2/screens/chessboard/provider/game_pgn_stream_provider.dart';
 import 'package:chessever2/screens/player_profile/player_profile_data_source.dart';
@@ -100,11 +101,13 @@ class GameCardWrapperWidget extends ConsumerWidget {
 
     // Build updated games list with the live game data for navigation
     List<GamesTourModel> getUpdatedGamesList() {
-      final games = List<GamesTourModel>.from(gamesData.gamesTourModels);
-      if (gameIndex >= 0 && gameIndex < games.length) {
-        games[gameIndex] = liveGame;
-      }
-      return games;
+      return GameListSnapshot(
+        gamesData.gamesTourModels,
+        updates: {
+          if (gameIndex >= 0 && gameIndex < gamesData.gamesTourModels.length)
+            gameIndex: liveGame,
+        },
+      );
     }
 
     Future<void> handlePinToggle(GamesTourModel game) async {

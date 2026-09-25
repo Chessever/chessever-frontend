@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:chessever2/providers/event_video_provider.dart';
 import 'dart:io' show Platform;
 
 import 'package:app_links/app_links.dart';
@@ -804,6 +805,14 @@ class DeepLinkService {
       }
       final resolvedGameId = game.id;
       final gameTourModel = GamesTourModel.fromGame(game);
+      // Warm video alongside the remaining route/context hydration, including
+      // cold links that never visited a tournament list or game card.
+      ref.read(eventVideoMetadataProvider.notifier).prefetch([
+        EventVideoKey(
+          tourId: gameTourModel.tourId,
+          roundId: gameTourModel.roundId,
+        ),
+      ], priority: true);
 
       await appReadyFuture;
 

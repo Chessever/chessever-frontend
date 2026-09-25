@@ -23,8 +23,14 @@ GamesTourModel _game({
   double? blackCustomPoints,
 }) => GamesTourModel(
   gameId: '$round-$whiteTeam-$blackTeam-$board',
-  whitePlayer: _card('W $board', whiteTeam).copyWith(customPoints: whiteCustomPoints),
-  blackPlayer: _card('B $board', blackTeam).copyWith(customPoints: blackCustomPoints),
+  whitePlayer: _card(
+    'W $board',
+    whiteTeam,
+  ).copyWith(customPoints: whiteCustomPoints),
+  blackPlayer: _card(
+    'B $board',
+    blackTeam,
+  ).copyWith(customPoints: blackCustomPoints),
   whiteTimeDisplay: '',
   blackTimeDisplay: '',
   whiteClockCentiseconds: 0,
@@ -36,6 +42,29 @@ GamesTourModel _game({
 );
 
 void main() {
+  test('team pair and round keys cannot collide through concatenation', () {
+    final rows = buildTeamStandings(
+      games: [
+        _game(
+          round: 'r1',
+          whiteTeam: 'A',
+          blackTeam: 'BC',
+          status: GameStatus.whiteWins,
+        ),
+        _game(
+          round: 'r1',
+          whiteTeam: 'AB',
+          blackTeam: 'C',
+          status: GameStatus.whiteWins,
+        ),
+      ],
+      playerStandings: const [],
+    );
+    expect(rows.length, 4);
+    expect(rows.firstWhere((t) => t.teamName == 'A').matchPoints, 2);
+    expect(rows.firstWhere((t) => t.teamName == 'AB').matchPoints, 2);
+  });
+
   test('completed 2-board win: 2 MP + 1.5 GP vs 0 MP + 0.5 GP', () {
     final games = [
       _game(
@@ -316,44 +345,47 @@ void main() {
     });
   });
 
-  test('Lichess customPoints are board points; colour-weighted match is 3 MP', () {
-    const scoring = TeamScoringRules(
-      whiteWin: 3,
-      blackWin: 4,
-      draw: 1,
-      loss: 0,
-      matchWin: 3,
-      matchDraw: 1,
-      matchLoss: 0,
-    );
-    final games = [
-      _game(
-        round: 'r1',
-        whiteTeam: 'A',
-        blackTeam: 'B',
-        status: GameStatus.whiteWins,
-        board: 1,
-        whiteCustomPoints: 3,
-        blackCustomPoints: 0,
-      ),
-      _game(
-        round: 'r1',
-        whiteTeam: 'A',
-        blackTeam: 'B',
-        status: GameStatus.blackWins,
-        board: 2,
-        whiteCustomPoints: 0,
-        blackCustomPoints: 4,
-      ),
-    ];
-    final t = buildTeamStandings(
-      games: games,
-      playerStandings: const [],
-      scoring: scoring,
-    );
-    expect(t.firstWhere((e) => e.teamName == 'A').gamePoints, 3);
-    expect(t.firstWhere((e) => e.teamName == 'B').gamePoints, 4);
-    expect(t.firstWhere((e) => e.teamName == 'B').matchPoints, 3);
-    expect(t.firstWhere((e) => e.teamName == 'A').matchPoints, 0);
-  });
+  test(
+    'Lichess customPoints are board points; colour-weighted match is 3 MP',
+    () {
+      const scoring = TeamScoringRules(
+        whiteWin: 3,
+        blackWin: 4,
+        draw: 1,
+        loss: 0,
+        matchWin: 3,
+        matchDraw: 1,
+        matchLoss: 0,
+      );
+      final games = [
+        _game(
+          round: 'r1',
+          whiteTeam: 'A',
+          blackTeam: 'B',
+          status: GameStatus.whiteWins,
+          board: 1,
+          whiteCustomPoints: 3,
+          blackCustomPoints: 0,
+        ),
+        _game(
+          round: 'r1',
+          whiteTeam: 'A',
+          blackTeam: 'B',
+          status: GameStatus.blackWins,
+          board: 2,
+          whiteCustomPoints: 0,
+          blackCustomPoints: 4,
+        ),
+      ];
+      final t = buildTeamStandings(
+        games: games,
+        playerStandings: const [],
+        scoring: scoring,
+      );
+      expect(t.firstWhere((e) => e.teamName == 'A').gamePoints, 3);
+      expect(t.firstWhere((e) => e.teamName == 'B').gamePoints, 4);
+      expect(t.firstWhere((e) => e.teamName == 'B').matchPoints, 3);
+      expect(t.firstWhere((e) => e.teamName == 'A').matchPoints, 0);
+    },
+  );
 }
