@@ -11,11 +11,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
-// Every My Space group but Smart events is one sideways rail: a lazy list
-// that starts on the page gutter, runs to the screen edge (or fades out at
-// the edge of a page column narrower than the screen), always shows the
-// next item peeking while more is to come, and asks for the next page as the
-// reader nears its end.
+// Every My Space group is one sideways rail: a lazy list that starts on the
+// page gutter, runs to the screen edge (or fades out at the edge of a page
+// column narrower than the screen), always shows the next item peeking while
+// more is to come, and asks for the next page as the reader nears its end.
 
 /// How many things a rail loads at a time.
 const int kSpaceRailPage = 10;

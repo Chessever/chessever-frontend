@@ -58,6 +58,42 @@ final spaceShortcutsBySectionProvider =
       return out;
     });
 
+/// The deletes of My Space pins still on the wire, by pin key. A pin put
+/// back (Undo) goes back into the list at once, but its row is written only
+/// once [settled] says every delete of it has answered, so a delete never
+/// lands after the put-back and takes the pin away again.
+class SpacePendingDeletes {
+  final Map<String, Future<void>> _open = {};
+
+  /// Whether a delete of [key] is still on the wire.
+  bool contains(String key) => _open.containsKey(key);
+
+  /// Runs [delete] for [key] and remembers it until it has answered.
+  /// Completes when this delete has.
+  Future<void> run(String key, Future<void> Function() delete) async {
+    final done = Completer<void>();
+    final before = _open[key];
+    final all = before == null
+        ? done.future
+        : Future.wait([before, done.future]).then((_) {});
+    _open[key] = all;
+    unawaited(
+      all.whenComplete(() {
+        if (identical(_open[key], all)) _open.remove(key);
+      }),
+    );
+    try {
+      await delete();
+    } finally {
+      done.complete();
+    }
+  }
+
+  /// Completes once every delete of [key] begun so far has answered (at
+  /// once when none is open). Never fails.
+  Future<void> settled(String key) => _open[key] ?? Future<void>.value();
+}
+
 class SpaceShortcutsNotifier extends AsyncNotifier<List<SpaceShortcut>> {
   static const _table = 'user_space_shortcuts';
   static const _cacheKey = 'my_space_shortcuts_v1';
@@ -75,6 +111,14 @@ class SpaceShortcutsNotifier extends AsyncNotifier<List<SpaceShortcut>> {
   /// Keys whose upsert is on the wire right now (an [add], an Undo or a
   /// retry), so a retry never races the first attempt for the same row.
   final Set<String> _syncing = {};
+
+  /// The deletes still on the wire: a refresh that predates one never
+  /// brings its pin back, and a put-back waits for it ([restore]).
+  final _deletes = SpacePendingDeletes();
+
+  /// Pins put back (Undo) whose row the server does not hold again yet: a
+  /// refresh keeps them in the list meanwhile.
+  final Set<String> _restoring = {};
 
   /// Times the server refused a retried row this session. A row it keeps
   /// refusing (as opposed to a dropped connection) is left alone after
@@ -137,10 +181,17 @@ class SpaceShortcutsNotifier extends AsyncNotifier<List<SpaceShortcut>> {
           .eq('user_id', uid)
           .order('sort_index', ascending: false)
           .order('created_at', ascending: false);
+      final shown = {
+        for (final s in state.valueOrNull ?? const <SpaceShortcut>[]) s.key,
+      };
       final list = <SpaceShortcut>[];
       for (final row in rows as List) {
         final s = SpaceShortcut.fromJson(Map<String, dynamic>.from(row as Map));
-        if (s != null) list.add(s);
+        // A pin taken out here whose delete has not landed yet stays out.
+        if (s == null || (_deletes.contains(s.key) && !shown.contains(s.key))) {
+          continue;
+        }
+        list.add(s);
       }
       if (_userId != uid) return false;
       final merged = _mergePendingLocals(_reconcile(list));
@@ -195,12 +246,15 @@ class SpaceShortcutsNotifier extends AsyncNotifier<List<SpaceShortcut>> {
     ];
   }
 
-  /// Local drafts that the server has not echoed back yet survive a refresh.
+  /// Local drafts that the server has not echoed back yet survive a
+  /// refresh, and so do pins put back whose row is not written again yet.
   List<SpaceShortcut> _mergePendingLocals(List<SpaceShortcut> remote) {
     final current = state.valueOrNull ?? const <SpaceShortcut>[];
     final remoteKeys = remote.map((s) => s.key).toSet();
     final pending = current.where(
-      (s) => s.isLocal && !remoteKeys.contains(s.key),
+      (s) =>
+          (s.isLocal || _restoring.contains(s.key)) &&
+          !remoteKeys.contains(s.key),
     );
     return _sorted([...pending, ...remote]);
   }
@@ -479,9 +533,15 @@ class SpaceShortcutsNotifier extends AsyncNotifier<List<SpaceShortcut>> {
 
   // ---------------------------------------------------------------- writes
 
-  bool contains(SpaceShortcutKind kind, String targetId) {
+  bool contains(SpaceShortcutKind kind, String targetId) =>
+      pinFor(kind, targetId) != null;
+
+  /// The pin for a target as the list holds it now, or null.
+  SpaceShortcut? pinFor(SpaceShortcutKind kind, String targetId) {
     final key = SpaceShortcut.keyFor(kind, targetId);
-    return (state.valueOrNull ?? const []).any((s) => s.key == key);
+    return (state.valueOrNull ?? const <SpaceShortcut>[]).firstWhereOrNull(
+      (s) => s.key == key,
+    );
   }
 
   /// Adds [draft] to the front of its section. Returns false when the target
@@ -529,7 +589,8 @@ class SpaceShortcutsNotifier extends AsyncNotifier<List<SpaceShortcut>> {
     return true;
   }
 
-  /// Removes a shortcut and returns it so the caller can offer Undo.
+  /// Removes a shortcut and returns it so the caller can offer Undo. It
+  /// leaves the list at once; the returned future waits for the server.
   Future<SpaceShortcut?> remove(String id) async {
     final current = state.valueOrNull ?? const <SpaceShortcut>[];
     final idx = current.indexWhere((s) => s.id == id);
@@ -541,7 +602,7 @@ class SpaceShortcutsNotifier extends AsyncNotifier<List<SpaceShortcut>> {
 
     final uid = _userId;
     if (uid != null && !_remoteUnavailable) {
-      await _deleteRemote(uid, removed);
+      await _deletes.run(removed.key, () => _deleteRemote(uid, removed));
     }
     return removed;
   }
@@ -560,6 +621,13 @@ class SpaceShortcutsNotifier extends AsyncNotifier<List<SpaceShortcut>> {
   /// Puts a removed shortcut back exactly where it was (snack Undo). A seeded
   /// default comes back marked kept ([spaceRestoredShortcut]): putting it
   /// back is a choice, so the one-time trim of retired defaults leaves it.
+  ///
+  /// It is back in the list at once. Its row is written once the delete
+  /// that took it out has answered ([SpacePendingDeletes]), so the delete
+  /// never lands after it; the row written is the pin as the list holds it
+  /// then (moved meanwhile, it is stored where it now stands), and nothing
+  /// is written if it was taken out again. The future completes with the
+  /// write.
   Future<void> restore(SpaceShortcut item) async {
     final current = state.valueOrNull ?? const <SpaceShortcut>[];
     if (current.any((s) => s.key == item.key)) return;
@@ -570,10 +638,14 @@ class SpaceShortcutsNotifier extends AsyncNotifier<List<SpaceShortcut>> {
     final uid = _userId;
     if (uid == null || _remoteUnavailable) return;
     _syncing.add(back.key);
+    _restoring.add(back.key);
     var stored = false;
     try {
+      await _deletes.settled(back.key);
+      final now = pinFor(back.kind, back.targetId);
+      if (now == null || _userId != uid) return;
       await _db.from(_table).upsert({
-        ...back.toInsert(),
+        ...now.toInsert(),
         'user_id': uid,
       }, onConflict: 'user_id,kind,target_id');
       stored = true;
@@ -581,6 +653,7 @@ class SpaceShortcutsNotifier extends AsyncNotifier<List<SpaceShortcut>> {
       debugPrint('[MySpace] restore failed: $e');
     } finally {
       _syncing.remove(back.key);
+      _restoring.remove(back.key);
     }
     if (stored) _retryUnsyncedSoon();
   }
@@ -940,6 +1013,11 @@ class SpaceShortcutsNotifier extends AsyncNotifier<List<SpaceShortcut>> {
       debugPrint('[MySpace] cache write failed: $e');
     }
   }
+
+  /// [list] in the order the store keeps it (sort index high to low, then
+  /// the newest first): the order every write leaves the list in.
+  static List<SpaceShortcut> inDisplayOrder(List<SpaceShortcut> list) =>
+      _sorted(list);
 
   static List<SpaceShortcut> _sorted(List<SpaceShortcut> list) {
     final out = [...list];

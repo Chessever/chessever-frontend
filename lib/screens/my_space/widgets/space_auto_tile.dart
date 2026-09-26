@@ -2,7 +2,6 @@ import 'dart:async';
 
 import 'package:chessever2/repository/library/models/saved_analysis.dart';
 import 'package:chessever2/repository/liked_games/liked_games_provider.dart';
-import 'package:chessever2/screens/board_editor/board_editor_screen.dart';
 import 'package:chessever2/screens/library/utils/load_saved_analysis.dart';
 import 'package:chessever2/screens/library/widgets/library_context_menu.dart';
 import 'package:chessever2/screens/library/widgets/saved_game_actions.dart';
@@ -128,7 +127,6 @@ class SpaceAutoTile extends ConsumerWidget {
     final store = ref.read(spaceShortcutsProvider.notifier);
     final hidden = ref.read(spaceHiddenAutoKeysProvider.notifier);
     final url = spaceShortcutShareUrl(draft);
-    final fen = spaceShortcutFen(draft);
 
     void say(
       String message, {
@@ -147,19 +145,6 @@ class SpaceAutoTile extends ConsumerWidget {
 
     return [
       openRow,
-      if (fen != null)
-        LibraryMenuAction(
-          icon: Icons.grid_on_rounded,
-          label: 'Open in board editor',
-          onSelected: () {
-            if (!context.mounted) return;
-            unawaited(
-              Navigator.of(context).push(
-                MaterialPageRoute<void>(builder: (_) => boardEditorAt(fen)),
-              ),
-            );
-          },
-        ),
       LibraryMenuAction(
         icon: Icons.push_pin_outlined,
         label: 'Pin to My Space',

@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:chessever2/screens/chessboard/widgets/chess_board_from_fen_new.dart'
     show PositionCardBoard, gameBoardCardPadding, gameGridCardPhoneWidth;
 import 'package:chessever2/screens/chessboard/widgets/player_first_row_detail_widget.dart'
@@ -165,7 +167,9 @@ class _CaptionLine extends StatelessWidget {
 /// the players stand: its name over the board, the line under it, and the
 /// board beside the engine gauge exactly as a grid game card sets it
 /// ([PositionCardBoard]), so an opening sits level with the games around it.
-/// The two lines start on the board's edge.
+/// The two lines start on the board's edge, each as tall as the grid card's
+/// player row, or as its text needs once the reader's text size asks for
+/// more, so no descender is ever cut.
 class _GridFace extends ConsumerWidget {
   const _GridFace({required this.face});
 
@@ -184,13 +188,20 @@ class _GridFace extends ConsumerWidget {
       fontWeight: FontWeight.w500,
       color: context.colors.textSecondary,
     );
+    // The line box the text itself takes at the reader's text size.
+    final scaler = MediaQuery.textScalerOf(context);
+    final textLine = math.max(
+      scaler.scale(strong.fontSize!) * strong.height!,
+      scaler.scale(quiet.fontSize!) * quiet.height!,
+    );
+    final lineHeight = math.max(20.h, textLine.ceilToDouble() + 2);
     return LayoutBuilder(
       builder: (context, constraints) {
         final width = ResponsiveHelper.isPhone
             ? gameGridCardPhoneWidth(context).clamp(0.0, constraints.maxWidth)
             : constraints.maxWidth;
         Widget line(Widget child) => SizedBox(
-          height: 20.h,
+          height: lineHeight,
           child: Padding(
             padding: EdgeInsets.only(left: lane),
             child: Align(alignment: Alignment.centerLeft, child: child),

@@ -14,7 +14,13 @@ import 'package:chessever2/screens/my_space/providers/space_players_provider.dar
 import 'package:chessever2/screens/my_space/providers/space_shortcuts_provider.dart';
 import 'package:chessever2/screens/my_space/sheets/space_add_sheet.dart';
 import 'package:chessever2/screens/my_space/sheets/space_add_sources.dart'
-    show SpaceAddSources, kSpaceSheetAddedLabel;
+    show SpaceAddSources, kSpaceSheetAddedLabel, kSpaceSheetExplorerLabel;
+import 'package:chessever2/screens/my_space/navigation/space_shortcut_navigator.dart';
+import 'package:chessever2/screens/gamebase/gamebase_explorer_screen.dart'
+    show GamebaseExplorerScreen;
+import 'package:chessever2/utils/eco_openings.dart';
+import 'package:chessever2/widgets/search/opening_search_suggestion.dart'
+    show searchOpeningSuggestions;
 import 'package:chessever2/screens/my_space/widgets/space_first_run_hint.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
@@ -150,6 +156,7 @@ class _RetiredHint extends SpaceFirstRunHintStore {
 Future<_Store> _pumpSheet(
   WidgetTester tester, {
   List<SpaceShortcut> pinned = const [],
+  ValueChanged<SpaceLine>? onOpenExplorer,
 }) async {
   tester.view.physicalSize = const Size(390, 844);
   tester.view.devicePixelRatio = 1;
@@ -164,8 +171,11 @@ Future<_Store> _pumpSheet(
         home: Builder(
           builder: (context) {
             ResponsiveHelper.init(context);
-            return const Scaffold(
-              body: SpaceAddSheet(section: SpaceSection.openings),
+            return Scaffold(
+              body: SpaceAddSheet(
+                section: SpaceSection.openings,
+                onOpenExplorer: onOpenExplorer,
+              ),
             );
           },
         ),
@@ -175,6 +185,31 @@ Future<_Store> _pumpSheet(
   await tester.pump(const Duration(milliseconds: 100));
   return store;
 }
+
+/// The explorer button on the row titled [title].
+Finder _explorerOf(String title) => find.descendant(
+  of: find
+      .ancestor(of: find.text(title), matching: find.byType(GestureDetector))
+      .first,
+  matching: find.byTooltip('Opening explorer'),
+);
+
+/// Records the routes pushed and popped.
+class _Routes extends NavigatorObserver {
+  final pushed = <Route<dynamic>>[];
+  final popped = <Route<dynamic>>[];
+
+  @override
+  void didPush(Route<dynamic> route, Route<dynamic>? previousRoute) =>
+      pushed.add(route);
+
+  @override
+  void didPop(Route<dynamic> route, Route<dynamic>? previousRoute) =>
+      popped.add(route);
+}
+
+/// The FEN's position fields (no clocks), to compare positions.
+String _position(String fen) => fen.split(' ').take(4).join(' ');
 
 /// The add toggle on the row titled [title].
 Finder _toggleOf(String title) => find.descendant(
@@ -259,6 +294,127 @@ void main() {
     expect(tester.getTopLeft(lead), before);
     expect(tester.takeException(), isNull);
     await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  testWidgets('a line\'s button opens the opening explorer on the line, its '
+      'moves played (never the board editor), and adds nothing', (
+    tester,
+  ) async {
+    final lines = <SpaceLine>[];
+    final store = await _pumpSheet(tester, onOpenExplorer: lines.add);
+
+    expect(find.bySemanticsLabel('Open in board editor'), findsNothing);
+    expect(find.byTooltip('Board editor'), findsNothing);
+    expect(find.bySemanticsLabel(kSpaceSheetExplorerLabel), findsWidgets);
+
+    // Every Popular line on screen carries it.
+    final picks = spacePickerOpenings(const {}).fresh;
+    final lead = picks.first;
+    expect(_explorerOf(lead.opening.tileName), findsOneWidget);
+
+    await tester.tap(_explorerOf(lead.opening.tileName));
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(lines, hasLength(1));
+    final line = lines.single;
+    // The whole line, from the start, reaching the position the pin is
+    // keyed by: the explorer lands on it with the notation filled in.
+    final moves = EcoOpenings.moveTokens(lead.opening.moves);
+    expect(line.ucis, hasLength(moves.length));
+    expect(_position(line.fen), _position(lead.draft.targetId));
+    final replay = resolveSpaceLine(moves: line.ucis)!;
+    expect(_position(replay.fen), _position(line.fen));
+    // The button is not the row's toggle.
+    expect(store.added, isEmpty);
+    expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  testWidgets('a searched line opens the explorer on its own moves', (
+    tester,
+  ) async {
+    final lines = <SpaceLine>[];
+    await _pumpSheet(tester, onOpenExplorer: lines.add);
+    const query = 'Najdorf English';
+    await tester.enterText(find.byType(TextField), query);
+    await tester.pump(const Duration(milliseconds: 400));
+    final hit = searchOpeningSuggestions(
+      query,
+      limit: 60,
+    ).firstWhere((s) => s.movePath.isNotEmpty);
+    expect(find.text(hit.fullTitle), findsOneWidget);
+    await tester.tap(_explorerOf(hit.fullTitle));
+    await tester.pump(const Duration(milliseconds: 100));
+    final expected = resolveSpaceLine(moves: hit.movePath)!;
+    expect(lines.single.ucis, expected.ucis);
+    expect(lines.single.fen, expected.fen);
+    expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  testWidgets('from My Space, the button closes the sheet and pushes the '
+      'opening explorer on that line', (tester) async {
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final routes = _Routes();
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          spaceShortcutsProvider.overrideWith(() => _Store()),
+          spaceHiddenAutoKeysProvider.overrideWith(_Hidden.new),
+          spaceAutoRowProvider.overrideWith((ref, s) => SpaceAutoRow.empty),
+          spaceFirstRunHintStoreProvider.overrideWithValue(_RetiredHint()),
+        ],
+        child: MaterialApp(
+          theme: AppTheme.darkTheme,
+          navigatorObservers: [routes],
+          home: Builder(
+            builder: (context) {
+              ResponsiveHelper.init(context);
+              return Scaffold(
+                body: Consumer(
+                  builder: (context, ref, _) => Center(
+                    child: TextButton(
+                      onPressed: () => showSpaceAddSheet(
+                        context,
+                        ref,
+                        SpaceSection.openings,
+                      ),
+                      child: const Text('open'),
+                    ),
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.tap(find.text('open'));
+    for (var i = 0; i < 8; i++) {
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+    final lead = spacePickerOpenings(const {}).fresh.first;
+    final sheet = routes.pushed.last;
+    routes.pushed.clear();
+
+    await tester.tap(_explorerOf(lead.opening.tileName));
+    // The sheet went, and the explorer came, at once.
+    expect(routes.popped, contains(sheet));
+    expect(routes.pushed, hasLength(1));
+    final route = routes.pushed.single as MaterialPageRoute<void>;
+    final page = route.builder(tester.element(find.text('open')));
+    final scope = page as ProviderScope;
+    final explorer = scope.child as GamebaseExplorerScreen;
+    final line = spaceShortcutLine(lead.draft)!;
+    expect(explorer.initialFen, line.fen);
+    expect(explorer.initialMoves, line.ucis);
+    expect(explorer.initialMoves, isNotEmpty);
+    // Torn down before the explorer builds: it needs a real backend.
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump(const Duration(seconds: 10));
   });
 
   testWidgets('rows hold at 360dp and 1.3x text', (tester) async {

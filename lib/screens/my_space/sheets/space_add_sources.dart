@@ -47,12 +47,13 @@ import 'package:chessever2/widgets/space_shortcut_drafts.dart';
 import 'package:chessever2/widgets/federation_flag.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:motor/motor.dart';
 
 /// The group the Openings suggestions list what My Space already holds under.
 const String kSpaceSheetAddedLabel = 'In My Space';
 
-/// What a row's board editor button says to a screen reader.
-const String kSpaceSheetEditorLabel = 'Open in board editor';
+/// What a line's explorer button says to a screen reader.
+const String kSpaceSheetExplorerLabel = 'Open in opening explorer';
 
 /// What the search field offers to find, per row.
 String spaceSheetSearchHint(SpaceSection section) => switch (section) {
@@ -88,7 +89,7 @@ class SpaceSheetRow extends SpaceSheetEntry {
     required this.title,
     this.meta,
     this.leading,
-    this.editorFen,
+    this.explorerLine,
     this.addLabel,
   });
 
@@ -97,8 +98,9 @@ class SpaceSheetRow extends SpaceSheetEntry {
   final String? meta;
   final Widget? leading;
 
-  /// A position the row can also open in the board editor.
-  final String? editorFen;
+  /// The line the row can also open in the opening explorer: its moves
+  /// played from the start, so the notation holds them.
+  final SpaceLine? explorerLine;
 
   /// Overrides "Add {title}" for a screen reader.
   final String? addLabel;
@@ -123,7 +125,7 @@ class SpaceAddSources extends ConsumerWidget {
     required this.section,
     required this.query,
     required this.onToggle,
-    this.onOpenEditor,
+    this.onOpenExplorer,
     this.onNotice,
     this.pinnedAtOpen = const <String>{},
   });
@@ -131,7 +133,7 @@ class SpaceAddSources extends ConsumerWidget {
   final SpaceSection section;
   final String query;
   final Future<void> Function(SpaceShortcut draft) onToggle;
-  final ValueChanged<String>? onOpenEditor;
+  final ValueChanged<SpaceLine>? onOpenExplorer;
   final ValueChanged<String>? onNotice;
 
   /// The keys My Space held when the sheet opened. The Openings suggestions
@@ -161,7 +163,7 @@ class SpaceAddSources extends ConsumerWidget {
           key: ValueKey<String>('row:${row.draft.key}:$i'),
           row: row,
           onToggle: onToggle,
-          onOpenEditor: onOpenEditor,
+          onOpenExplorer: onOpenExplorer,
         ),
         final SpaceSheetGame game => _GameRow(
           key: ValueKey<String>('game:${game.draft.key}:$i'),
@@ -435,14 +437,17 @@ class SpaceAddSources extends ConsumerWidget {
         title: o.tileName,
         meta: spaceUnbrokenMoves(o.moves),
         leading: _Code(o.eco),
-        // A position pin is keyed by the FEN its line reaches.
-        editorFen: draft.targetId,
+        // The line the pin replays to the FEN it is keyed by.
+        explorerLine: spaceShortcutLine(draft),
         addLabel: 'Save ${o.tileName} to My Space',
       );
 
   SpaceSheetRow _searchOpeningRow(OpeningSearchSuggestion s) {
     final draft = openingSearchSpaceDraft(s.selection, name: s.fullTitle);
-    final line = resolveSpaceLine(moves: s.movePath);
+    // The row's own line; a family or range with none of its own opens on
+    // its main line.
+    final line =
+        resolveSpaceLine(moves: s.movePath) ?? spaceShortcutLine(draft);
     return SpaceSheetRow(
       draft: draft,
       title: s.fullTitle,
@@ -450,8 +455,7 @@ class SpaceAddSources extends ConsumerWidget {
           ? s.subtitle
           : spaceUnbrokenMoves(formatOpeningMovePath(s.movePath)),
       leading: _Code(s.codeLabel),
-      // A family or range with no line of its own opens on its main line.
-      editorFen: line?.fen ?? spaceShortcutFen(draft),
+      explorerLine: line,
       addLabel: 'Save ${s.fullTitle} to My Space',
     );
   }
@@ -547,24 +551,24 @@ class _Row extends ConsumerWidget {
     super.key,
     required this.row,
     required this.onToggle,
-    this.onOpenEditor,
+    this.onOpenExplorer,
   });
 
   final SpaceSheetRow row;
   final Future<void> Function(SpaceShortcut draft) onToggle;
-  final ValueChanged<String>? onOpenEditor;
+  final ValueChanged<SpaceLine>? onOpenExplorer;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final added = watchSpaceDraftAdded(ref, row.draft);
     final colors = context.colors;
     final gutter = SpaceMetricsSheet.gutter;
-    final fen = row.editorFen;
-    final editor = onOpenEditor;
+    final line = row.explorerLine;
+    final explore = onOpenExplorer;
     void toggle() => onToggle(row.draft);
 
-    // The toggle and the editor button each speak for themselves; the row's
-    // own tap is the toggle's, made bigger.
+    // The toggle and the explorer button each speak for themselves; the
+    // row's own tap is the toggle's, made bigger.
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: toggle,
@@ -612,8 +616,8 @@ class _Row extends ConsumerWidget {
                   ],
                 ),
               ),
-              if (fen != null && editor != null)
-                _EditorButton(onTap: () => editor(fen)),
+              if (line != null && explore != null)
+                _ExplorerButton(onTap: () => explore(line)),
               SpaceAddToggle(
                 added: added,
                 onTap: toggle,
@@ -759,35 +763,61 @@ class _GameRow extends ConsumerWidget {
   }
 }
 
-class _EditorButton extends StatelessWidget {
-  const _EditorButton({required this.onTap});
+/// Opens the row's line in the opening explorer: the house explorer mark,
+/// bare, in the accent ink, a 44 target that gives under the finger on a
+/// spring.
+class _ExplorerButton extends StatefulWidget {
+  const _ExplorerButton({required this.onTap});
 
   final VoidCallback onTap;
 
   @override
+  State<_ExplorerButton> createState() => _ExplorerButtonState();
+}
+
+class _ExplorerButtonState extends State<_ExplorerButton> {
+  bool _pressed = false;
+
+  void _press(bool value) {
+    if (_pressed != value) setState(() => _pressed = value);
+  }
+
+  @override
   Widget build(BuildContext context) {
     final colors = context.colors;
+    final still = MediaQuery.maybeDisableAnimationsOf(context) ?? false;
     return Tooltip(
-      message: 'Board editor',
+      message: 'Opening explorer',
       excludeFromSemantics: true,
       // excludeSemantics drops the detector's own tap action, so the button
       // carries it for TalkBack and Switch Access.
       child: Semantics(
         button: true,
-        label: kSpaceSheetEditorLabel,
+        label: kSpaceSheetExplorerLabel,
         excludeSemantics: true,
-        onTap: onTap,
+        onTap: widget.onTap,
         child: GestureDetector(
           behavior: HitTestBehavior.opaque,
-          onTap: onTap,
+          onTap: widget.onTap,
+          onTapDown: (_) => _press(true),
+          onTapUp: (_) => _press(false),
+          onTapCancel: () => _press(false),
           child: SizedBox.square(
             dimension: SpaceMetricsSheet.toggle,
             child: Center(
-              child: SpaceGlyph(
-                SpaceGlyphKind.editBoard,
-                size: 22,
-                ink: colors.accentText,
-                background: colors.surface,
+              child: SingleMotionBuilder(
+                motion: still
+                    ? const Motion.none()
+                    : const CupertinoMotion.snappy(),
+                value: _pressed ? 0.9 : 1.0,
+                builder: (context, scale, child) =>
+                    Transform.scale(scale: scale, child: child),
+                child: SpaceGlyph(
+                  SpaceGlyphKind.explorer,
+                  size: 22,
+                  ink: colors.accentText,
+                  background: colors.surface,
+                ),
               ),
             ),
           ),

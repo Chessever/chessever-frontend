@@ -512,31 +512,47 @@ Future<bool> _openOpening(BuildContext context, SpaceShortcut s) {
   );
 }
 
-/// The board a board-carrying shortcut (a position, an opening, a player's
-/// opening tree) shows, resolved exactly as opening it would resolve it, so
-/// "Open in board editor" sets up the position the tile draws. Null for
-/// every other kind, or a line that no longer replays.
-String? spaceShortcutFen(SpaceShortcut s) {
+/// The line a board-carrying shortcut (a position, an opening, a player's
+/// opening tree) stands for, resolved exactly as opening it would resolve
+/// it: the board it shows and the moves that reach it. Null for every other
+/// kind, or a line that no longer replays.
+SpaceLine? spaceShortcutLine(SpaceShortcut s) {
   final p = s.params;
-  final SpaceLine? line;
   switch (s.kind) {
     case SpaceShortcutKind.position:
-      line = resolveSpaceLine(fen: s.targetId, moves: p['moves'] ?? p['sans']);
+      return resolveSpaceLine(fen: s.targetId, moves: p['moves'] ?? p['sans']);
     case SpaceShortcutKind.opening:
       final code = s.targetId.trim().toUpperCase();
-      line =
-          resolveSpaceLine(fen: _str(p['fen']), moves: p['moves']) ??
+      return resolveSpaceLine(fen: _str(p['fen']), moves: p['moves']) ??
           resolveSpaceLine(
             moves: EcoOpenings.canonicalRecordForCode(code)?.moves,
           ) ??
           resolveSpaceLine(moves: EcoOpenings.getFamily(code)?.moves);
     case SpaceShortcutKind.playerOpenings:
-      line = resolveSpaceLine(fen: _str(p['fen']), moves: p['moves']);
+      return resolveSpaceLine(fen: _str(p['fen']), moves: p['moves']);
     default:
-      line = null;
+      return null;
   }
-  return line?.fen;
 }
+
+/// The board [spaceShortcutLine] reaches: the position the card draws.
+String? spaceShortcutFen(SpaceShortcut s) => spaceShortcutLine(s)?.fen;
+
+/// The opening explorer on [line]: its moves played from the start, so the
+/// notation holds the whole line and the explorer shows the position it
+/// reaches, on the Explorer view (where a fresh explorer always lands). A
+/// bare position (no moves) opens on its board alone.
+MaterialPageRoute<void> spaceExplorerRoute(SpaceLine line) =>
+    MaterialPageRoute<void>(
+      builder: (_) => GamebaseExplorerScreen.scoped(
+        initialFen: line.fen,
+        initialMoves: line.ucis,
+      ),
+    );
+
+/// Pushes [spaceExplorerRoute] for [line] on [navigator].
+Future<void> openSpaceExplorerLine(NavigatorState navigator, SpaceLine line) =>
+    navigator.push(spaceExplorerRoute(line));
 
 /// The optional player filter a position was saved under.
 GamebasePlayer? _filterPlayer(Map<String, dynamic> p) {

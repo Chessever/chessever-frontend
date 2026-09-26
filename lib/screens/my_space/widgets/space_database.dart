@@ -31,6 +31,7 @@ import 'package:chessever2/screens/my_space/providers/space_hub_providers.dart';
 import 'package:chessever2/screens/my_space/providers/space_players_provider.dart';
 import 'package:chessever2/screens/my_space/providers/space_shortcuts_provider.dart';
 import 'package:chessever2/screens/my_space/widgets/pixel_art.dart';
+import 'package:chessever2/screens/my_space/widgets/space_edit_grid.dart';
 import 'package:chessever2/screens/my_space/widgets/space_opening_card.dart';
 import 'package:chessever2/screens/my_space/widgets/space_player_strip.dart';
 import 'package:chessever2/screens/my_space/widgets/space_rail.dart';
@@ -76,10 +77,6 @@ const List<SpaceSection> kSpaceDatabaseOrder = [
   SpaceSection.links,
   SpaceSection.smartEvents,
 ];
-
-/// How many Smart Events the page stacks before See all takes over: the
-/// one group that stays a vertical stack of full-width cards.
-const int kSpaceSmartEventsShown = 2;
 
 /// Whether a saved thing belongs on My Space's groups: My Likes has its own
 /// tile, and streak cards stay out while streaks are hidden.
@@ -143,6 +140,27 @@ List<SpaceDatabaseGroup> spaceDatabaseGroups(
 /// shows its boards), so nothing jumps under the reader's finger.
 final spaceLiveFirstLatchProvider = StateProvider<Set<String>?>((ref) => null);
 
+/// The saved events that lead the Events group, by key: the latch once
+/// taken, else what is live now. The page and its Edit both read it, so
+/// Edit shows the order the page does.
+final spaceLiveFirstKeysProvider = Provider.autoDispose<Set<String>>((ref) {
+  final list =
+      ref.watch(spaceShortcutsProvider).valueOrNull ?? const <SpaceShortcut>[];
+  final latch = ref.watch(spaceLiveFirstLatchProvider);
+  // Watched even while latched, so the live feeds stay subscribed and a
+  // cleared latch (pull to refresh) reads them at once.
+  final liveEvents = ref.watch(liveGroupBroadcastIdsProvider).valueOrNull;
+  final liveRounds = ref.watch(liveRoundsIdProvider).valueOrNull;
+  // Until the latch is taken, lead with what is live now, so taking it
+  // changes nothing on screen.
+  return latch ??
+      spaceLiveKeys(
+        list,
+        liveEventIds: liveEvents ?? const <String>[],
+        liveRoundIds: liveRounds ?? const <String>[],
+      );
+});
+
 /// What My Space shows: the saved things in their groups, the Players group
 /// holding the followed players too. Null until the saved list has loaded;
 /// a list that failed to load reads as empty.
@@ -151,20 +169,7 @@ final spaceDatabaseGroupsProvider =
       final saved = ref.watch(spaceShortcutsProvider);
       final list = saved.valueOrNull;
       if (list == null) return saved.hasError ? const [] : null;
-      final latch = ref.watch(spaceLiveFirstLatchProvider);
-      // Watched even while latched, so the live feeds stay subscribed and a
-      // cleared latch (pull to refresh) reads them at once.
-      final liveEvents = ref.watch(liveGroupBroadcastIdsProvider).valueOrNull;
-      final liveRounds = ref.watch(liveRoundsIdProvider).valueOrNull;
-      // Until the latch is taken, lead with what is live now, so taking it
-      // changes nothing on screen.
-      final liveFirst =
-          latch ??
-          spaceLiveKeys(
-            list,
-            liveEventIds: liveEvents ?? const <String>[],
-            liveRoundIds: liveRounds ?? const <String>[],
-          );
+      final liveFirst = ref.watch(spaceLiveFirstKeysProvider);
       final players = ref.watch(spacePlayersProvider);
       return spaceDatabaseGroups(
         list,
@@ -172,6 +177,20 @@ final spaceDatabaseGroupsProvider =
         players: players == null ? null : [for (final e in players) e.shortcut],
       );
     });
+
+/// [pins] (one group's saved events, in store order) as the page orders
+/// them, each with its Edit band: the events in [liveFirst] first (band 0),
+/// then the rest (band 1), each run in store order. A drag in Edit stays in
+/// its run, so a card dropped anywhere is where the page shows it.
+List<({SpaceShortcut pin, int band})> spaceEventsEditOrder(
+  List<SpaceShortcut> pins,
+  Set<String> liveFirst,
+) => [
+  for (final s in pins)
+    if (liveFirst.contains(s.key)) (pin: s, band: 0),
+  for (final s in pins)
+    if (!liveFirst.contains(s.key)) (pin: s, band: 1),
+];
 
 /// Takes the live-first latch once both live feeds have answered. Called
 /// from the page's build; the write lands after the frame.
@@ -265,8 +284,8 @@ void spaceOpenGroup(BuildContext context, SpaceSection section) {
 /// One group of My Space: the hub's section head (a tappable name, the
 /// count, See all) over the group as one sideways rail of the cards the rest
 /// of the app gives that kind of thing, loading more as it nears its end.
-/// Smart events alone stay a short stack of full-width cards. [gutter] is
-/// the page's side inset; the rail runs past it to the screen edge.
+/// [gutter] is the page's side inset; the rail runs past it to the screen
+/// edge.
 class SpaceDatabaseGroupView extends ConsumerWidget {
   const SpaceDatabaseGroupView({
     super.key,
@@ -292,11 +311,9 @@ class SpaceDatabaseGroupView extends ConsumerWidget {
         library: true,
       ),
       SpaceSection.links => _RowsRail(items: items, gutter: gutter),
-      SpaceSection.smartEvents => Padding(
-        padding: EdgeInsets.fromLTRB(gutter, 4.sp, gutter, 0),
-        child: _SmartEventsBody(
-          shown: items.take(kSpaceSmartEventsShown).toList(),
-        ),
+      SpaceSection.smartEvents => _SmartEventsRail(
+        items: items,
+        gutter: gutter,
       ),
       SpaceSection.likes => const SizedBox.shrink(),
     };
@@ -348,14 +365,20 @@ int _previewCount(GamesListViewMode mode, int length) =>
 /// What the Events group knows about its saved events, page by page: their
 /// fresh card models (one read per page), which are live now, and those
 /// events' current boards (one read per page's live events). With [pages]
-/// null (See all) every event is one page.
+/// null (See all) every event is one page. With [boards] false (Edit) the
+/// live events' boards are never asked for.
 ///
 /// The first page draws at once from what each pin saved; a later page
 /// joins once its read has answered, [loading] meanwhile. The Players group
 /// reads the Events rail's loaded pages the same way (the same provider
 /// keys), to leave out the boards the Events rail already draws.
 class _SavedEvents {
-  _SavedEvents(WidgetRef ref, List<SpaceShortcut> items, {int? pages}) {
+  _SavedEvents(
+    WidgetRef ref,
+    List<SpaceShortcut> items, {
+    int? pages,
+    bool boards = true,
+  }) {
     _liveIds = {...?ref.watch(liveGroupBroadcastIdsProvider).valueOrNull};
     final size = pages == null ? math.max(1, items.length) : kSpaceRailPage;
     final asked = pages ?? 1;
@@ -379,6 +402,7 @@ class _SavedEvents {
     }
     shown = [for (final c in chunks) ...c];
     hasMore = shown.length < items.length;
+    if (!boards) return;
     for (final page in chunks) {
       final live = SpaceIds([
         for (final s in page)
@@ -449,17 +473,23 @@ class _SavedEvents {
   }
 }
 
-/// A saved event's own card (a round's row).
+/// A saved event's own card (a round's row). In Edit ([editing]) a tap
+/// selects, so the card draws none of its own controls: no star, no
+/// chevron. The star's room goes to the dates (the circle's lane has
+/// already narrowed the card), keeping only the air the card leaves after
+/// its photo.
 Widget _savedEventCard(
   BuildContext context,
   WidgetRef ref,
   SpaceShortcut s,
-  _SavedEvents saved,
-) {
+  _SavedEvents saved, {
+  bool editing = false,
+}) {
   if (s.kind == SpaceShortcutKind.round) {
     return SpaceSavedRow(
       shortcut: s,
       meta: _RoundMeta(shortcut: s),
+      disclosure: !editing,
     );
   }
   return EventCard(
@@ -467,6 +497,7 @@ Widget _savedEventCard(
     tourEventCardModel: saved.modelOf(s),
     heroTagSuffix: '_myspace',
     forceCompactLayout: true,
+    trailingWidget: editing ? SizedBox(width: 4.w) : null,
     onTap: () => openSpaceShortcut(context, ref, s),
   );
 }
@@ -1403,12 +1434,14 @@ Widget _savedRow(
   SpaceShortcut s, {
   required bool library,
   required List<LibraryFolder> folders,
+  bool editing = false,
 }) {
   if (!library) {
     final host = Uri.tryParse(s.targetId)?.host;
     return SpaceSavedRow(
       shortcut: s,
       meta: host == null || host.isEmpty ? null : Text(host),
+      disclosure: !editing,
     );
   }
   LibraryFolder? folder;
@@ -1423,6 +1456,7 @@ Widget _savedRow(
   return SpaceSavedRow(
     shortcut: s,
     meta: found == null ? null : SpaceLibraryCountText(folder: found),
+    disclosure: !editing,
     menuActions: found == null
         ? null
         : (menuContext) => spaceLibraryFolderActions(menuContext, ref, found),
@@ -1499,25 +1533,57 @@ class _RowsBody extends ConsumerWidget {
 
 // ------------------------------------------------------------------ smart
 
-class _SmartEventsBody extends StatelessWidget {
-  const _SmartEventsBody({required this.shown});
+/// The Smart events rail: every saved smart event as its card, ten a page,
+/// in the Events rail's geometry. A smart event card is an event card in
+/// all but its plate (the same surface, plate and lines), so it stands as
+/// one does there: up to [kSpaceRailEventWideMax] wide, never narrowed to
+/// fit one more on the screen, so its summary line is not cut to make
+/// room; the next card shows more of itself instead.
+class _SmartEventsRail extends ConsumerStatefulWidget {
+  const _SmartEventsRail({required this.items, required this.gutter});
 
-  final List<SpaceShortcut> shown;
+  final List<SpaceShortcut> items;
+  final double gutter;
+
+  @override
+  ConsumerState<_SmartEventsRail> createState() => _SmartEventsRailState();
+}
+
+class _SmartEventsRailState extends ConsumerState<_SmartEventsRail>
+    with SpaceRailPaging {
+  @override
+  String get pagingId => 'smart_events';
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      mainAxisSize: MainAxisSize.min,
-      children: _spaced([for (final s in shown) _SavedSmartEvent(shortcut: s)]),
+    final shown = widget.items.take(pages * kSpaceRailPage).toList();
+    return SpaceRail(
+      storageId: pagingId,
+      items: [
+        for (final s in shown)
+          SpaceRailItem(
+            id: 'smart:${s.key}',
+            slot: SpaceRailSlot.wide,
+            builder: (context, _) => _SavedSmartEvent(shortcut: s),
+          ),
+      ],
+      gutter: widget.gutter,
+      hasMore: shown.length < widget.items.length,
+      trailingSlot: SpaceRailSlot.wide,
+      onLoadMore: loadMore,
+      wideMax: kSpaceRailEventWideMax,
+      wideNarrows: false,
     );
   }
 }
 
 class _SavedSmartEvent extends ConsumerWidget {
-  const _SavedSmartEvent({required this.shortcut});
+  const _SavedSmartEvent({required this.shortcut, this.disclosure = true});
 
   final SpaceShortcut shortcut;
+
+  /// The card's open chevron; off in Edit, where a tap selects.
+  final bool disclosure;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -1552,6 +1618,7 @@ class _SavedSmartEvent extends ConsumerWidget {
       summary: smartEventCardSummary(request),
       live: watchSmartEventLive(ref, request),
       spaceDraft: smartEventSpaceDraft(request),
+      disclosure: disclosure,
       onTap: () => openSpaceShortcut(context, ref, shortcut),
     );
   }
@@ -1565,9 +1632,13 @@ class _SavedSmartEvent extends ConsumerWidget {
 /// games and lines in the viewer's games view, the rows, the smart events.
 /// Games and lines are built a row at a time as they scroll in.
 class SpaceGroupPage extends ConsumerWidget {
-  const SpaceGroupPage({super.key, required this.section});
+  const SpaceGroupPage({super.key, required this.section, this.controller});
 
   final SpaceSection section;
+
+  /// Drives the list (a [SpaceStartController]: the page opens where the
+  /// reader left Edit, and Edit where the reader was on the page).
+  final ScrollController? controller;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -1679,6 +1750,7 @@ class SpaceGroupPage extends ConsumerWidget {
     }
 
     return ListView.builder(
+      controller: controller,
       physics: const AlwaysScrollableScrollPhysics(
         parent: BouncingScrollPhysics(),
       ),
@@ -1699,6 +1771,250 @@ class SpaceGroupPage extends ConsumerWidget {
           child: block.build(),
         );
       },
+    );
+  }
+}
+
+// ------------------------------------------------------------------ edit
+
+/// See all's Edit for one group: the saved things ([pins], in store order)
+/// in the order See all draws them, each the very card See all draws it
+/// with, with its selection circle ([SpaceEditGrid]), in the viewer's games
+/// view. Where the page keeps some ahead of the rest, Edit keeps the same
+/// runs and a drag stays in its run (events live first; games whose players
+/// are still loading, then those that are missing, after the rest, as their
+/// saved rows), so what Edit shows is what the page will. What only
+/// accompanies the saved things stays out while editing: a live event's
+/// boards, the games the players are playing, the cards' own controls.
+///
+/// Games and lines keep their width and their place wherever they draw a
+/// board (two to a row in grid view, one to a row in board view), the
+/// circle on the board's top-left square; the rows of a list (the events,
+/// the databases, the compact game rows) stand behind a lane that opens
+/// before them for their circles. The Players are faces, circled on the rim,
+/// in the order they keep themselves (the latest visited first): they
+/// select, and nothing reorders them by hand.
+///
+/// Keys are the pins' keys, or for Players each face's
+/// [SpacePlayerEntry.identity]. [onReorder] gets a key and the new order of
+/// its run. The See all page's own gutter and air are the defaults; My Prep
+/// passes its own. [controller], [header], [closing] and [onClosed] are
+/// [SpaceEditGrid]'s.
+class SpaceGroupEdit extends ConsumerWidget {
+  const SpaceGroupEdit({
+    super.key,
+    required this.section,
+    required this.pins,
+    required this.selected,
+    required this.onToggle,
+    this.onReorder,
+    this.gutter,
+    this.top,
+    this.bottom,
+    this.header,
+    this.controller,
+    this.closing = false,
+    this.onClosed,
+  });
+
+  final SpaceSection section;
+  final List<SpaceShortcut> pins;
+  final Set<String> selected;
+  final ValueChanged<String> onToggle;
+  final void Function(String key, List<String> order)? onReorder;
+  final double? gutter;
+  final double? top;
+  final double? bottom;
+  final Widget? header;
+  final ScrollController? controller;
+  final bool closing;
+  final VoidCallback? onClosed;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final gutter = this.gutter ?? hubGutter;
+    final top = this.top ?? 8.sp;
+    final bottom =
+        this.bottom ?? 32.sp + MediaQuery.viewPaddingOf(context).bottom;
+    final mode = ref.watch(gamesListViewModeProvider);
+    final gridView = mode == GamesListViewMode.chessBoardGrid;
+    // Game and line cards draw a board in every view but the compact row.
+    final boardCards = mode != GamesListViewMode.gamesCard;
+
+    if (section == SpaceSection.players) {
+      final entries = ref.watch(spacePlayersProvider) ?? const [];
+      final fides = [
+        for (final e in entries)
+          if (e.fideId case final id?) '$id',
+      ];
+      final live = fides.isEmpty
+          ? const <GamesTourModel>[]
+          : ref
+                    .watch(spacePlayersLiveGamesProvider(SpaceIds(fides)))
+                    .valueOrNull ??
+                const <GamesTourModel>[];
+      final atBoard = _playersLive(entries, live).atBoard;
+      return SpaceEditGrid(
+        controller: controller,
+        items: [
+          for (final e in entries)
+            SpaceEditItem(
+              key: e.identity,
+              label: _playerName(e.shortcut),
+              builder: (context, width) => SpacePlayerFace(
+                key: ValueKey<String>('space_edit_player_${e.identity}'),
+                shortcut: e.shortcut,
+                width: width,
+                live: e.fideId != null && atBoard.contains(e.fideId),
+              ),
+            ),
+        ],
+        selected: selected,
+        onToggle: onToggle,
+        gutter: gutter,
+        itemWidth: SpacePlayerStrip.itemWidth,
+        gap: SpacePlayerStrip.gap,
+        runSpacing: 12.w,
+        mark: SpaceEditMark.face,
+        faceCircle: SpacePlayerStrip.face,
+        faceTop: 4.w,
+        top: top,
+        bottom: bottom,
+        header: header,
+        closing: closing,
+        onClosed: onClosed,
+      );
+    }
+
+    // A saved row standing for a game the page cannot draw as a card (its
+    // players still loading, or gone): the row the page shows, full width.
+    SpaceEditItem savedRow(SpaceShortcut s, int band) => SpaceEditItem(
+      key: s.key,
+      label: s.title,
+      band: band,
+      wide: true,
+      builder: (context, _) => SpaceSavedRow(
+        key: ValueKey<String>('space_edit_row_${s.key}'),
+        shortcut: s,
+        disclosure: false,
+      ),
+    );
+
+    final List<SpaceEditItem> items;
+    var columns = 1;
+    var onBoards = false;
+    switch (section) {
+      case SpaceSection.events:
+        final ordered = spaceEventsEditOrder(
+          pins,
+          ref.watch(spaceLiveFirstKeysProvider),
+        );
+        final saved = _SavedEvents(ref, [
+          for (final o in ordered) o.pin,
+        ], boards: false);
+        items = [
+          for (final o in ordered)
+            SpaceEditItem(
+              key: o.pin.key,
+              label: o.pin.title,
+              band: o.band,
+              builder: (context, _) =>
+                  _savedEventCard(context, ref, o.pin, saved, editing: true),
+            ),
+        ];
+      case SpaceSection.games:
+        columns = gridView ? 2 : 1;
+        onBoards = boardCards;
+        final faces = [
+          for (final s in pins) (pin: s, face: watchSpaceGameFace(ref, s)),
+        ];
+        final ready = [
+          for (final f in faces)
+            if (f.face.players == SpaceGamePlayers.ready) f,
+        ];
+        final games = [for (final f in ready) f.face.game];
+        items = [
+          for (final (i, f) in ready.indexed)
+            SpaceEditItem(
+              key: f.pin.key,
+              label: f.pin.title,
+              builder: (context, _) => DiscoveryGameCard(
+                key: ValueKey<String>('space_edit_game_${f.pin.key}'),
+                games: games,
+                index: i,
+                // Edit orders the saved games; nothing streams meanwhile.
+                streamEnabled: false,
+              ),
+            ),
+          for (final f in faces)
+            if (f.face.players == SpaceGamePlayers.loading) savedRow(f.pin, 1),
+          for (final f in faces)
+            if (f.face.players == SpaceGamePlayers.missing) savedRow(f.pin, 2),
+        ];
+      case SpaceSection.openings:
+        columns = gridView ? 2 : 1;
+        onBoards = boardCards;
+        items = [
+          for (final s in pins)
+            SpaceEditItem(
+              key: s.key,
+              label: s.title,
+              builder: (context, _) => SpaceOpeningCard(
+                key: ValueKey<String>('space_edit_opening_${s.key}'),
+                shortcut: s,
+              ),
+            ),
+        ];
+      case SpaceSection.library:
+      case SpaceSection.links:
+        final library = section == SpaceSection.library;
+        final folders = library
+            ? ref.watch(spaceLibraryFoldersProvider).folders
+            : const <LibraryFolder>[];
+        items = [
+          for (final s in pins)
+            SpaceEditItem(
+              key: s.key,
+              label: s.title,
+              builder: (context, _) => _savedRow(
+                ref,
+                s,
+                library: library,
+                folders: folders,
+                editing: true,
+              ),
+            ),
+        ];
+      case SpaceSection.smartEvents:
+        items = [
+          for (final s in pins)
+            SpaceEditItem(
+              key: s.key,
+              label: s.title,
+              builder: (context, _) =>
+                  _SavedSmartEvent(shortcut: s, disclosure: false),
+            ),
+        ];
+      case SpaceSection.players:
+      case SpaceSection.likes:
+        items = const [];
+    }
+
+    return SpaceEditGrid(
+      controller: controller,
+      items: items,
+      selected: selected,
+      onToggle: onToggle,
+      onReorder: onReorder,
+      gutter: gutter,
+      columns: columns,
+      mark: onBoards ? SpaceEditMark.board : SpaceEditMark.lane,
+      gap: _itemGap,
+      top: top,
+      bottom: bottom,
+      header: header,
+      closing: closing,
+      onClosed: onClosed,
     );
   }
 }
@@ -1783,9 +2099,14 @@ class SpaceSavedRow extends ConsumerWidget {
     required this.shortcut,
     this.meta,
     this.menuActions,
+    this.disclosure = true,
   });
 
   final SpaceShortcut shortcut;
+
+  /// The chevron that says a tap opens the thing. Off in Edit, where a tap
+  /// selects.
+  final bool disclosure;
 
   /// The second line, live (a database's count); the saved kind and
   /// subtitle when null.
@@ -1871,8 +2192,13 @@ class SpaceSavedRow extends ConsumerWidget {
     final colors = context.colors;
     final isLight = context.isLightTheme;
     final saved = savedMeta(shortcut);
-    final plateWidth = 108.w;
-    final plateHeight = plateWidth * 4 / 5;
+    // A book's jacket is portrait: its plate keeps the row's height and
+    // takes the jacket's 2:3 width, so the cover shows whole, not its middle.
+    final book =
+        shortcut.kind == SpaceShortcutKind.collection &&
+        shortcut.params['collectionKind'] == 'book';
+    final plateHeight = 108.w * 4 / 5;
+    final plateWidth = book ? plateHeight * 2 / 3 : 108.w;
     final metaStyle = AppTypography.textXsMedium.copyWith(
       color: colors.textPrimaryMuted,
       fontFeatures: const [FontFeature.tabularFigures()],
@@ -1928,12 +2254,14 @@ class SpaceSavedRow extends ConsumerWidget {
             ),
           ),
           SizedBox(width: 4.w),
-          Icon(
-            Icons.chevron_right_rounded,
-            size: 20.ic,
-            color: colors.iconSecondary,
-          ),
-          SizedBox(width: 4.w),
+          if (disclosure) ...[
+            Icon(
+              Icons.chevron_right_rounded,
+              size: 20.ic,
+              color: colors.iconSecondary,
+            ),
+            SizedBox(width: 4.w),
+          ],
         ],
       ),
     );

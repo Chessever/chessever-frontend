@@ -379,4 +379,46 @@ void main() {
       expect(spaceCountrymenDraft('???'), isNull);
     });
   });
+
+  group('explorer lines', () {
+    const najdorf = [
+      'e2e4', 'c7c5', 'g1f3', 'd7d6', 'd2d4', 'c5d4', //
+      'f3d4', 'g8f6', 'b1c3', 'a7a6',
+    ];
+
+    test('a saved position is its moves from the start, reaching its FEN', () {
+      final line = resolveSpaceLine(moves: najdorf)!;
+      final pin = _s(
+        SpaceShortcutKind.position,
+        line.fen,
+        params: {'moves': najdorf},
+      );
+      final got = spaceShortcutLine(pin)!;
+      expect(got.fen, line.fen);
+      expect(got.ucis, najdorf);
+      expect(spaceShortcutFen(pin), line.fen);
+    });
+
+    test('a saved opening code plays its catalogue line', () {
+      final got = spaceShortcutLine(_s(SpaceShortcutKind.opening, 'B90'))!;
+      expect(got.ucis, isNotEmpty);
+      expect(got.ucis.take(4), ['e2e4', 'c7c5', 'g1f3', 'd7d6']);
+    });
+
+    test('moves that do not reach the saved FEN are dropped, not trusted', () {
+      final pin = _s(
+        SpaceShortcutKind.position,
+        resolveSpaceLine(moves: najdorf)!.fen,
+        params: {
+          'moves': ['d2d4', 'd7d5'],
+        },
+      );
+      expect(spaceShortcutLine(pin)!.ucis, isEmpty);
+    });
+
+    test('everything else has no line', () {
+      expect(spaceShortcutLine(_s(SpaceShortcutKind.event, 'ev')), isNull);
+      expect(spaceShortcutLine(_s(SpaceShortcutKind.game, 'g')), isNull);
+    });
+  });
 }

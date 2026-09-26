@@ -5,6 +5,7 @@ import 'package:chessever2/config/feature_flags.dart';
 import 'package:chessever2/repository/library/models/saved_analysis.dart';
 import 'package:chessever2/screens/for_you/discovery/widgets/discovery_common.dart'
     show DiscoveryAction, DiscoveryActionLead;
+import 'package:chessever2/screens/my_space/actions/space_edit_actions.dart';
 import 'package:chessever2/screens/my_space/models/space_auto_item.dart';
 import 'package:chessever2/screens/my_space/models/space_shortcut.dart';
 import 'package:chessever2/screens/my_space/navigation/space_shortcut_navigator.dart';
@@ -12,8 +13,10 @@ import 'package:chessever2/screens/my_space/providers/space_auto_provider.dart';
 import 'package:chessever2/screens/my_space/providers/space_shortcuts_provider.dart';
 import 'package:chessever2/screens/my_space/widgets/space_auto_tile.dart';
 import 'package:chessever2/screens/my_space/widgets/space_database.dart'
-    show SpaceGroupPage, SpaceSavedRow, spaceDatabaseGroupsProvider;
+    show SpaceGroupEdit, SpaceGroupPage, spaceDatabaseGroupsProvider;
 import 'package:chessever2/screens/my_space/widgets/space_door_actions.dart';
+import 'package:chessever2/screens/my_space/widgets/space_edit_grid.dart'
+    show SpaceStartController;
 import 'package:chessever2/screens/my_space/widgets/space_metrics.dart';
 import 'package:chessever2/screens/my_space/widgets/space_reorder.dart';
 import 'package:chessever2/screens/my_space/widgets/space_section_header.dart';
@@ -23,7 +26,6 @@ import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/app_snack.dart';
-import 'package:chessever2/widgets/hub_tile.dart' show hubGutter;
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
@@ -37,6 +39,10 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 /// nothing else: no mirror, no suggestions. Then it is the group itself at
 /// full length ([SpaceGroupPage]): the same cards My Database draws for the
 /// group's first few, in the viewer's games view, never the rail's tiles.
+/// Its Edit keeps those cards, in the page's order, and circles each one
+/// ([SpaceGroupEdit]): tap to select, hold to move (Players order
+/// themselves, so they only select), Remove takes the selected out with one
+/// Undo, Done (or back) ends it, the circles going the way they came.
 class SpaceSectionScreen extends ConsumerStatefulWidget {
   const SpaceSectionScreen({
     super.key,
@@ -57,9 +63,35 @@ class _SpaceSectionScreenState extends ConsumerState<SpaceSectionScreen> {
   /// The grid as a drag in progress shows it; null when nothing is lifted.
   List<String>? _order;
 
-  /// See all is putting its things in order (a plain list with handles).
+  /// See all is in Edit: every card circled, selectable and movable.
   bool _editing = false;
+
+  /// Edit has ended and its circles are on their way out; the page takes
+  /// their place once they have gone.
+  bool _closing = false;
+
+  /// What Edit has selected, by [spaceEditKeys].
+  final Set<String> _selected = {};
   String? _dragKey;
+
+  /// The page's list and Edit's: Edit opens where the reader is on the
+  /// page, and Done brings the page back where the reader left it, or where
+  /// they left Edit when the two lay the group out alike.
+  final _pageScroll = SpaceStartController();
+  final _editScroll = SpaceStartController();
+
+  /// Whether Edit lays the group out as the page does, so a place in one is
+  /// the same place in the other: every group but the events (Edit leaves
+  /// out a live event's boards) and the players (and their games).
+  bool get _editMirrorsPage =>
+      section != SpaceSection.events && section != SpaceSection.players;
+
+  @override
+  void dispose() {
+    _pageScroll.dispose();
+    _editScroll.dispose();
+    super.dispose();
+  }
 
   SpaceSection get section => widget.section;
 
@@ -72,25 +104,13 @@ class _SpaceSectionScreenState extends ConsumerState<SpaceSectionScreen> {
   List<SpaceShortcut> get _stored => _pins;
 
   /// Store index for a pin that lands where [visible] shows it; pins the
-  /// grid holds back keep their places. See the rail's twin.
-  int _storeIndex(String key, List<String> visible) {
-    final store = [
-      for (final s
-          in ref.read(spaceShortcutsBySectionProvider)[section] ??
-              const <SpaceShortcut>[])
-        if (s.key != key) s.key,
-    ];
-    final at = visible.indexOf(key);
-    if (at > 0) {
-      final before = store.indexOf(visible[at - 1]);
-      if (before >= 0) return before + 1;
-    }
-    if (at + 1 < visible.length) {
-      final after = store.indexOf(visible[at + 1]);
-      if (after >= 0) return after;
-    }
-    return at <= 0 ? 0 : store.length;
-  }
+  /// grid holds back keep their places ([spaceStoreIndexFor]).
+  int _storeIndex(String key, List<String> visible) => spaceStoreIndexFor(
+    ref.read(spaceShortcutsBySectionProvider)[section] ??
+        const <SpaceShortcut>[],
+    key,
+    visible,
+  );
 
   DateTime? _openingSince;
 
@@ -222,19 +242,47 @@ class _SpaceSectionScreenState extends ConsumerState<SpaceSectionScreen> {
     );
   }
 
-  /// See all's reorder list moved [s] to [to] among the pins it shows.
-  void _moveTo(SpaceShortcut s, int to) {
-    final stored = _stored;
-    final from = stored.indexWhere((item) => item.key == s.key);
-    if (from < 0 || to == from) return;
+  void _setEditing(bool value) {
     HapticFeedbackService.selection();
-    final order = [for (final p in stored) p.key]
-      ..removeAt(from)
-      ..insert(to.clamp(0, stored.length - 1), s.key);
-    unawaited(
-      ref
-          .read(spaceShortcutsProvider.notifier)
-          .moveWithinSection(s.key, _storeIndex(s.key, order)),
+    if (value) {
+      _pageScroll.start = _pageScroll.at ?? _pageScroll.start;
+      _editScroll.start = _pageScroll.start;
+    } else if (_editing && _editMirrorsPage) {
+      _pageScroll.start = _editScroll.at ?? _pageScroll.start;
+    }
+    setState(() {
+      _closing = !value && (_editing || _closing);
+      _editing = value;
+      _selected.clear();
+    });
+  }
+
+  void _closed() {
+    if (mounted && _closing) setState(() => _closing = false);
+  }
+
+  void _toggleSelected(String key) {
+    setState(() {
+      if (!_selected.remove(key)) _selected.add(key);
+    });
+  }
+
+  /// Takes the selected things out of My Space (Undo on the snack); Edit
+  /// ends once nothing is left to edit.
+  Future<void> _removeSelected(Set<String> all) async {
+    final keys = {..._selected};
+    if (keys.isEmpty) return;
+    final emptied = keys.containsAll(all);
+    setState(() {
+      _selected.clear();
+      // Nothing left to edit: the empty page at once, no circles to see off.
+      if (emptied) _editing = _closing = false;
+    });
+    await spaceRemoveSelected(
+      context: context,
+      ref: ref,
+      section: section,
+      keys: keys,
     );
   }
 
@@ -295,10 +343,55 @@ class _SpaceSectionScreenState extends ConsumerState<SpaceSectionScreen> {
         : null;
     final shown =
         group ?? auto.leading.length + items.length + auto.trailing.length;
-    // The Players group orders itself (the latest visited first), so it has
-    // nothing to put in order by hand.
-    final reorderable = widget.pinsOnly && section != SpaceSection.players;
+    // What Edit can select: the pins, or for Players every face (a follow
+    // needs no pin). A selection whose thing has left is dropped.
+    final editKeys = widget.pinsOnly
+        ? spaceEditKeys(ref, section, stored)
+        : const <String>{};
+    _selected.retainAll(editKeys);
+    final editing = _editing && widget.pinsOnly;
+    final closing = _closing && widget.pinsOnly && !editing;
+    final picked = _selected.length;
 
+    // Back in Edit ends Edit, as a selection's back does, before it leaves.
+    return PopScope(
+      canPop: !editing,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop && _editing) _setEditing(false);
+      },
+      // The page's list is the one a tap on the status bar takes to the top.
+      child: PrimaryScrollController(
+        controller: _pageScroll,
+        child: _scaffold(
+          context,
+          title: title,
+          count: auto.total ?? shown,
+          editing: editing,
+          closing: closing,
+          picked: picked,
+          editKeys: editKeys,
+          stored: stored,
+          auto: auto,
+          items: items,
+          shown: shown,
+        ),
+      ),
+    );
+  }
+
+  Widget _scaffold(
+    BuildContext context, {
+    required String title,
+    required int count,
+    required bool editing,
+    required bool closing,
+    required int picked,
+    required Set<String> editKeys,
+    required List<SpaceShortcut> stored,
+    required SpaceAutoRow auto,
+    required List<SpaceShortcut> items,
+    required int shown,
+  }) {
     return Scaffold(
       backgroundColor: context.colors.background,
       body: SafeArea(
@@ -338,7 +431,7 @@ class _SpaceSectionScreenState extends ConsumerState<SpaceSectionScreen> {
                         ),
                         SizedBox(width: 8.w),
                         Text(
-                          '${auto.total ?? shown}',
+                          '$count',
                           style: AppTypography.textLgMedium.copyWith(
                             color: context.colors.textSecondary,
                             fontFeatures: const [FontFeature.tabularFigures()],
@@ -347,22 +440,38 @@ class _SpaceSectionScreenState extends ConsumerState<SpaceSectionScreen> {
                       ],
                     ),
                   ),
-                  // See all orders its things in a plain list with handles,
-                  // the cards themselves staying what they are.
-                  if (reorderable && (stored.length >= 2 || _editing)) ...[
+                  // The count never runs into the actions on a narrow screen.
+                  SizedBox(width: 12.w),
+                  // Edit keeps the cards and circles them; Remove takes
+                  // Edit's side and Done Add's.
+                  if (editing) ...[
                     DiscoveryAction(
-                      label: _editing ? 'Done' : 'Reorder',
-                      onTap: () {
-                        HapticFeedbackService.selection();
-                        setState(() => _editing = !_editing);
-                      },
-                      semanticsLabel: _editing
-                          ? 'Done reordering'
-                          : 'Reorder $title',
+                      key: const ValueKey<String>('space_edit_remove'),
+                      label: picked == 0 ? 'Remove' : 'Remove $picked',
+                      onTap: picked == 0
+                          ? null
+                          : () => unawaited(_removeSelected(editKeys)),
+                      semanticsLabel: picked == 0
+                          ? 'Remove, select something first'
+                          : 'Remove $picked from My Space',
                     ),
-                    if (!_editing) SizedBox(width: 16.w),
+                    SizedBox(width: 16.w),
+                    DiscoveryAction(
+                      key: const ValueKey<String>('space_edit_done'),
+                      label: 'Done',
+                      onTap: () => _setEditing(false),
+                      semanticsLabel: 'Done editing',
+                    ),
+                  ] else if (widget.pinsOnly && editKeys.isNotEmpty) ...[
+                    DiscoveryAction(
+                      key: const ValueKey<String>('space_edit'),
+                      label: 'Edit',
+                      onTap: () => _setEditing(true),
+                      semanticsLabel: 'Edit $title',
+                    ),
+                    SizedBox(width: 16.w),
                   ],
-                  if (!_editing &&
+                  if (!editing &&
                       section != SpaceSection.links &&
                       section != SpaceSection.likes)
                     DiscoveryAction(
@@ -376,9 +485,31 @@ class _SpaceSectionScreenState extends ConsumerState<SpaceSectionScreen> {
             ),
             Expanded(
               child: widget.pinsOnly
-                  ? (_editing
-                        ? _OrderList(items: stored, onMove: _moveTo)
-                        : SpaceGroupPage(section: section))
+                  // The page's list and Edit's hold their own controllers,
+                  // and no list inside a card takes the page's.
+                  ? PrimaryScrollController.none(
+                      child: editing || closing
+                          ? SpaceGroupEdit(
+                              section: section,
+                              pins: stored,
+                              selected: {..._selected},
+                              onToggle: _toggleSelected,
+                              closing: closing,
+                              onClosed: _closed,
+                              // The Players order themselves (the latest
+                              // visited first): nothing to move by hand.
+                              onReorder: section == SpaceSection.players
+                                  ? null
+                                  : (key, order) => unawaited(
+                                      spaceReorderPin(ref, section, key, order),
+                                    ),
+                              controller: _editScroll,
+                            )
+                          : SpaceGroupPage(
+                              section: section,
+                              controller: _pageScroll,
+                            ),
+                    )
                   : shown == 0
                   ? Center(
                       child: Text(
@@ -497,99 +628,6 @@ class _SpaceSectionScreenState extends ConsumerState<SpaceSectionScreen> {
               )
             : null,
       ),
-    );
-  }
-}
-
-/// See all's order: every saved thing of the group as a plain row (its name,
-/// what it is) with a handle to drag it by. The group's cards come back when
-/// the reader is done.
-class _OrderList extends StatelessWidget {
-  const _OrderList({required this.items, required this.onMove});
-
-  final List<SpaceShortcut> items;
-  final void Function(SpaceShortcut item, int to) onMove;
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = context.colors;
-    final gutter = hubGutter;
-    return ReorderableListView.builder(
-      buildDefaultDragHandles: false,
-      padding: EdgeInsets.fromLTRB(
-        gutter,
-        8.sp,
-        gutter,
-        32.sp + MediaQuery.viewPaddingOf(context).bottom,
-      ),
-      itemCount: items.length,
-      onReorderItem: (from, to) => onMove(items[from], to),
-      proxyDecorator: (child, index, animation) =>
-          Material(color: Colors.transparent, child: child),
-      itemBuilder: (context, i) {
-        final s = items[i];
-        return Padding(
-          key: ValueKey<String>('order_${s.key}'),
-          padding: EdgeInsets.only(bottom: 8.sp),
-          child: DecoratedBox(
-            decoration: BoxDecoration(
-              color: colors.surface,
-              borderRadius: BorderRadius.circular(8.br),
-              border: context.isLightTheme
-                  ? Border.all(color: colors.divider.withValues(alpha: 0.4))
-                  : null,
-            ),
-            child: Row(
-              children: [
-                SizedBox(width: 12.w),
-                Expanded(
-                  child: Padding(
-                    padding: EdgeInsets.symmetric(vertical: 10.sp),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(
-                          s.title,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: AppTypography.textSmMedium.copyWith(
-                            color: colors.textPrimary,
-                          ),
-                        ),
-                        SizedBox(height: 2.h),
-                        Text(
-                          SpaceSavedRow.savedMeta(s),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: AppTypography.textXsMedium.copyWith(
-                            color: colors.textPrimaryMuted,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-                ReorderableDragStartListener(
-                  index: i,
-                  child: Semantics(
-                    label: 'Drag to move ${s.title}',
-                    child: SizedBox.square(
-                      dimension: 44,
-                      child: Icon(
-                        Icons.drag_handle_rounded,
-                        size: 22.ic,
-                        color: colors.iconSecondary,
-                      ),
-                    ),
-                  ),
-                ),
-                SizedBox(width: 4.w),
-              ],
-            ),
-          ),
-        );
-      },
     );
   }
 }

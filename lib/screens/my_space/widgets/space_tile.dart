@@ -1,12 +1,9 @@
 import 'dart:async';
 import 'dart:math' as math;
 
-import 'package:chessever2/screens/board_editor/board_editor_screen.dart';
 import 'package:chessever2/screens/library/widgets/library_context_menu.dart';
 import 'package:chessever2/screens/my_space/actions/space_share.dart';
 import 'package:chessever2/screens/my_space/models/space_shortcut.dart';
-import 'package:chessever2/screens/my_space/navigation/space_shortcut_navigator.dart'
-    show spaceShortcutFen;
 import 'package:chessever2/screens/my_space/widgets/space_glyphs.dart';
 import 'package:chessever2/screens/my_space/widgets/space_metrics.dart';
 import 'package:chessever2/screens/my_space/widgets/space_reorder.dart';
@@ -916,16 +913,10 @@ class _SpaceTileState extends State<SpaceTile>
           ),
       ];
     }
-    final fen = spaceShortcutFen(widget.shortcut);
-
+    // A line or a position opens in the explorer, its moves played: Open
+    // is the only way in.
     return [
       open,
-      if (fen != null)
-        LibraryMenuAction(
-          icon: Icons.grid_on_rounded,
-          label: 'Open in board editor',
-          onSelected: chosen(() => _openInEditor(fen)),
-        ),
       if (widget.canMoveToFront)
         LibraryMenuAction(
           icon: Icons.first_page_rounded,
@@ -953,16 +944,6 @@ class _SpaceTileState extends State<SpaceTile>
         }, moves: true),
       ),
     ];
-  }
-
-  void _openInEditor(String fen) {
-    if (!mounted) return;
-    HapticFeedbackService.navigation();
-    unawaited(
-      Navigator.of(
-        context,
-      ).push(MaterialPageRoute<void>(builder: (_) => boardEditorAt(fen))),
-    );
   }
 
   void _copyLink(String url, ScaffoldMessengerState? messenger) {
@@ -1153,12 +1134,6 @@ class _SpaceTileState extends State<SpaceTile>
                                     unawaited(Future.sync(action.onSelected)),
                           }
                         : {
-                            if (spaceShortcutFen(widget.shortcut)
-                                case final fen?)
-                              const CustomSemanticsAction(
-                                label: 'Open in board editor',
-                              ): () =>
-                                  _openInEditor(fen),
                             if (widget.canMoveToFront)
                               const CustomSemanticsAction(
                                 label: 'Move to front',

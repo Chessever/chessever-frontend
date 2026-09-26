@@ -56,6 +56,7 @@ class SmartEventCard extends StatelessWidget {
     this.formatsAndStates = const <String>{},
     this.summary,
     this.live = false,
+    this.disclosure = true,
     super.key,
   });
 
@@ -103,6 +104,10 @@ class SmartEventCard extends StatelessWidget {
   /// Whether one of the gathered events is live now: the third line reads
   /// LIVE, as an event card's does.
   final bool live;
+
+  /// The trailing "open" chevron. Off where a tap selects instead of opens
+  /// (My Space's Edit mode).
+  final bool disclosure;
 
   static double _imageWidth(BuildContext context) {
     double w = 108.w;
@@ -222,13 +227,15 @@ class SmartEventCard extends StatelessWidget {
                 ],
               ),
             ),
-            SizedBox(width: 4.w),
-            Icon(
-              Icons.chevron_right_rounded,
-              size: 20.ic,
-              color: colors.iconSecondary,
-            ),
-            SizedBox(width: 4.w),
+            if (disclosure) ...[
+              SizedBox(width: 4.w),
+              Icon(
+                Icons.chevron_right_rounded,
+                size: 20.ic,
+                color: colors.iconSecondary,
+              ),
+              SizedBox(width: 4.w),
+            ],
           ],
         ),
       ),

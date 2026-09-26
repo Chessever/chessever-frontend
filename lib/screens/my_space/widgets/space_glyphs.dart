@@ -22,6 +22,10 @@ enum SpaceGlyphKind {
 
   /// A board being set up: the board editor.
   editBoard,
+
+  /// The two-square board with the opening tree growing out of it, the
+  /// main line heaviest: the opening explorer.
+  explorer,
 }
 
 class SpaceGlyph extends StatelessWidget {
@@ -75,6 +79,7 @@ class SpaceGlyph extends StatelessWidget {
     SpaceGlyphKind.trash => _trash,
     SpaceGlyphKind.arrowUpRight => _arrowUpRight,
     SpaceGlyphKind.editBoard => _editBoard,
+    SpaceGlyphKind.explorer => _explorer,
   };
 }
 
@@ -163,5 +168,20 @@ const _editBoard = '''
 <path d="M9.6 13.4 16.2 6.8" stroke="#BG" stroke-width="5.2" stroke-linecap="round"/>
 <path d="M9.6 13.4 16.2 6.8" stroke="#INK" stroke-width="2.3" stroke-linecap="round"/>
 <path d="M8.3 14.7 9.1 13.9" stroke="#INK" stroke-width="1.3" stroke-linecap="round"/>
+</svg>
+''';
+
+/// The database drum's two-square board with the opening tree growing out
+/// of it: one stem, three moves, each landing on the square it reaches; the
+/// main line (the middle) lands on a filled one.
+const _explorer = '''
+<svg viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+<rect x="6.2" y="11" width="7.6" height="7.6" rx="1.2" fill="#INK" fill-opacity="0.14" stroke="#INK" stroke-width="1.3"/>
+<rect x="6.85" y="11.65" width="3.15" height="3.15" fill="#INK" fill-opacity="0.42"/>
+<rect x="10" y="14.8" width="3.15" height="3.15" fill="#INK" fill-opacity="0.42"/>
+<path d="M10 11V8.2M10 8.2 6.4 5.3M10 8.2V4.7M10 8.2 13.6 5.3" stroke="#INK" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>
+<rect x="2.9" y="2.1" width="3.4" height="3.4" rx="0.9" fill="#INK" fill-opacity="0.14" stroke="#INK" stroke-width="1.1"/>
+<rect x="8.3" y="1.3" width="3.4" height="3.4" rx="0.9" fill="#INK" stroke="#INK" stroke-width="1.1"/>
+<rect x="13.7" y="2.1" width="3.4" height="3.4" rx="0.9" fill="#INK" fill-opacity="0.14" stroke="#INK" stroke-width="1.1"/>
 </svg>
 ''';

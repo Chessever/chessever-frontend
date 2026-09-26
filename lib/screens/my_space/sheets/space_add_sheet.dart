@@ -1,11 +1,12 @@
 import 'dart:async';
 
 import 'package:chessever2/providers/favorite_players_provider.dart';
-import 'package:chessever2/screens/board_editor/board_editor_screen.dart';
 import 'package:chessever2/screens/my_space/actions/space_player_actions.dart'
     show spacePlayerRemover;
 import 'package:chessever2/screens/group_event/smart_event/smart_event_builder_sheet.dart';
 import 'package:chessever2/screens/my_space/models/space_shortcut.dart';
+import 'package:chessever2/screens/my_space/navigation/space_shortcut_navigator.dart'
+    show SpaceLine, openSpaceExplorerLine;
 import 'package:chessever2/screens/my_space/providers/space_auto_provider.dart'
     show spaceHiddenAutoKeysProvider;
 import 'package:chessever2/screens/my_space/providers/space_players_provider.dart';
@@ -26,8 +27,10 @@ import 'package:motor/motor.dart';
 
 /// Opens the add sheet for one My Space row, over My Space itself: search and
 /// suggestions for what the row holds, each added (or taken back) with one
-/// tap. Nothing navigates away. What was added waits behind the sheet and
-/// springs into the row as it closes, with one Undo for all of it.
+/// tap. What was added waits behind the sheet and springs into the row as it
+/// closes, with one Undo for all of it. The one way out is a line's explorer
+/// button (Openings): the sheet closes and the opening explorer opens on
+/// that line, its moves played.
 Future<void> showSpaceAddSheet(
   BuildContext context,
   WidgetRef ref,
@@ -40,13 +43,9 @@ Future<void> showSpaceAddSheet(
   session.state = SpaceSheetSession(section: section);
   final titles = <String, String>{};
 
-  void openEditor(String fen) {
+  void openExplorer(SpaceLine line) {
     HapticFeedbackService.navigation();
-    unawaited(
-      navigator.push(
-        MaterialPageRoute<void>(builder: (_) => boardEditorAt(fen)),
-      ),
-    );
+    unawaited(openSpaceExplorerLine(navigator, line));
   }
 
   try {
@@ -56,9 +55,9 @@ Future<void> showSpaceAddSheet(
       builder: (sheetContext) => SpaceAddSheet(
         section: section,
         onAdded: (draft) => titles[draft.key] = draft.title,
-        onOpenEditor: (fen) {
+        onOpenExplorer: (line) {
           Navigator.of(sheetContext).pop();
-          openEditor(fen);
+          openExplorer(line);
         },
       ),
     );
@@ -99,7 +98,7 @@ class SpaceAddSheet extends ConsumerStatefulWidget {
     super.key,
     required this.section,
     this.onAdded,
-    this.onOpenEditor,
+    this.onOpenExplorer,
   });
 
   final SpaceSection section;
@@ -107,8 +106,9 @@ class SpaceAddSheet extends ConsumerStatefulWidget {
   /// Told about every shortcut the sheet adds, for the closing snack.
   final ValueChanged<SpaceShortcut>? onAdded;
 
-  /// Closes the sheet and opens the board editor on a position.
-  final ValueChanged<String>? onOpenEditor;
+  /// Closes the sheet and opens the opening explorer on a line, its moves
+  /// played.
+  final ValueChanged<SpaceLine>? onOpenExplorer;
 
   @override
   ConsumerState<SpaceAddSheet> createState() => _SpaceAddSheetState();
@@ -175,7 +175,7 @@ class _SpaceAddSheetState extends ConsumerState<SpaceAddSheet> {
       HapticFeedbackService.light();
       final players = ref.read(spacePlayersProvider) ?? const [];
       for (final e in players) {
-        if (e.identity == identity) await spacePlayerRemover(ref, e)();
+        if (e.identity == identity) await spacePlayerRemover(ref, e)().written;
       }
       return true;
     }
@@ -199,7 +199,7 @@ class _SpaceAddSheetState extends ConsumerState<SpaceAddSheet> {
 
   void _close() => Navigator.of(context).maybePop();
 
-  void _openEditor(String fen) => widget.onOpenEditor?.call(fen);
+  void _openExplorer(SpaceLine line) => widget.onOpenExplorer?.call(line);
 
   // The sheet rebuilds on every frame of the keyboard slide (its own inset,
   // and the host sheet reads the whole MediaQuery). Handing back the same
@@ -226,9 +226,9 @@ class _SpaceAddSheetState extends ConsumerState<SpaceAddSheet> {
   }
 
   Widget _content() {
-    final editor = widget.onOpenEditor != null;
+    final explorer = widget.onOpenExplorer != null;
     final pinned = _pinned();
-    final key = (widget.section, _query, editor, pinned);
+    final key = (widget.section, _query, explorer, pinned);
     if (_body case final body? when _bodyKey == key) return body;
     _bodyKey = key;
     return _body = widget.section == SpaceSection.smartEvents
@@ -237,7 +237,7 @@ class _SpaceAddSheetState extends ConsumerState<SpaceAddSheet> {
             section: widget.section,
             query: _query,
             onToggle: _toggle,
-            onOpenEditor: editor ? _openEditor : null,
+            onOpenExplorer: explorer ? _openExplorer : null,
             onNotice: _say,
             pinnedAtOpen: pinned ?? const <String>{},
           );

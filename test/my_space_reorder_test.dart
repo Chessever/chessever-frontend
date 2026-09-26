@@ -1,8 +1,13 @@
+import 'package:chessever2/screens/my_space/actions/space_edit_actions.dart'
+    show spaceStoreIndexFor;
 import 'package:chessever2/screens/my_space/models/space_shortcut.dart';
 import 'package:chessever2/screens/my_space/providers/space_shortcuts_provider.dart';
+import 'package:chessever2/screens/my_space/widgets/space_database.dart'
+    show spaceEventsEditOrder;
+import 'package:chessever2/screens/my_space/widgets/space_edit_grid.dart'
+    show SpaceEditItem, spaceEditBand, spaceEditPreviewOrder, spaceEditRows;
+import 'package:flutter/widgets.dart' show SizedBox;
 import 'package:chessever2/screens/my_space/widgets/space_reorder.dart';
-import 'package:flutter/material.dart';
-import 'package:flutter/semantics.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 SpaceShortcut _playerTile(String id, String name, double sort) => SpaceShortcut(
@@ -126,4 +131,112 @@ void main() {
     });
   });
 
+  group('Edit', () {
+    test('a drag holds its preview order through store changes', () {
+      // The store added "x" and dropped "c" while the finger was down.
+      expect(
+        spaceEditPreviewOrder(['x', 'a', 'b', 'd'], ['b', 'a', 'c', 'd']),
+        ['x', 'b', 'a', 'd'],
+      );
+      expect(spaceEditPreviewOrder(['a', 'b'], null), ['a', 'b']);
+    });
+
+    test('a dropped card lands in the store beside its new neighbour', () {
+      final row = [_a, _b, _c, _d];
+      // Alpha dropped after Charlie: after Charlie in the row without it.
+      final to = spaceStoreIndexFor(row, _a.key, [
+        _b.key,
+        _c.key,
+        _a.key,
+        _d.key,
+      ]);
+      expect(to, 2);
+      final plan = SpaceShortcutsNotifier.planSectionMove(row, _a.key, to)!;
+      expect(plan.list.map((s) => s.title), [
+        'Bravo',
+        'Charlie',
+        'Alpha',
+        'Delta',
+      ]);
+      // To the front, and to the end.
+      expect(spaceStoreIndexFor(row, _d.key, [_d.key, _a.key]), 0);
+      expect(
+        spaceStoreIndexFor(row, _a.key, [_b.key, _c.key, _d.key, _a.key]),
+        3,
+      );
+    });
+
+    test('Edit keeps the page\'s runs: live events first, each run in '
+        'store order', () {
+      final order = spaceEventsEditOrder([_a, _b, _c, _d], {_c.key});
+      expect(
+        [for (final o in order) o.pin.key],
+        [_c.key, _a.key, _b.key, _d.key],
+      );
+      expect([for (final o in order) o.band], [0, 1, 1, 1]);
+      // Nothing live: one run, in store order.
+      final flat = spaceEventsEditOrder([_a, _b], const {});
+      expect([for (final o in flat) o.pin.key], [_a.key, _b.key]);
+    });
+
+    test('a card moves among its own run only', () {
+      final bands = {'l': 0, 'a': 1, 'b': 1, 'c': 1, 'x': 2};
+      expect(spaceEditBand(['l', 'a', 'b', 'c', 'x'], bands, 'b'), [
+        'a',
+        'b',
+        'c',
+      ]);
+      expect(spaceEditBand(['l', 'a'], bands, 'l'), ['l']);
+    });
+
+    test('a drop within a run lands in the store beside its neighbour in '
+        'that run, so the page shows it where it was dropped', () {
+      // Store: Alpha, Bravo, Charlie (live), Delta. The page: Charlie first,
+      // then Alpha, Bravo, Delta. Delta dropped at the top of its run.
+      final row = [_a, _b, _c, _d];
+      final run = [_d.key, _a.key, _b.key];
+      final to = spaceStoreIndexFor(row, _d.key, run);
+      final plan = SpaceShortcutsNotifier.planSectionMove(row, _d.key, to)!;
+      final page = spaceEventsEditOrder(plan.list, {_c.key});
+      expect(
+        [for (final o in page) o.pin.title],
+        ['Charlie', 'Delta', 'Alpha', 'Bravo'],
+      );
+    });
+
+    test('the grid\'s rows: a run starts its own row, a wide card stands '
+        'alone', () {
+      SpaceEditItem item(String key, int band, {bool wide = false}) =>
+          SpaceEditItem(
+            key: key,
+            label: key,
+            band: band,
+            wide: wide,
+            builder: (_, _) => const SizedBox(),
+          );
+      final items = {
+        for (final i in [
+          item('a', 0),
+          item('b', 0),
+          item('c', 0),
+          item('m', 1, wide: true),
+          item('n', 1, wide: true),
+          item('x', 2),
+        ])
+          i.key: i,
+      };
+      expect(spaceEditRows(['a', 'b', 'c', 'm', 'n', 'x'], items, 2), [
+        ['a', 'b'],
+        ['c'],
+        ['m'],
+        ['n'],
+        ['x'],
+      ]);
+      expect(spaceEditRows(['a', 'b', 'c'], items, 1), [
+        ['a'],
+        ['b'],
+        ['c'],
+      ]);
+    });
+  });
 }
