@@ -1126,6 +1126,7 @@ class _ChatComposerState extends State<_ChatComposer> {
   static const _betweenPhrasesPause = Duration(milliseconds: 250);
 
   Timer? _placeholderTimer;
+  final FocusNode _inputFocusNode = FocusNode();
   int _placeholderIndex = 0;
   int _visibleCharacterCount = 0;
   bool _isDeleting = false;
@@ -1238,7 +1239,29 @@ class _ChatComposerState extends State<_ChatComposer> {
   void dispose() {
     _placeholderTimer?.cancel();
     widget.controller.removeListener(_onTextChanged);
+    _inputFocusNode.dispose();
     super.dispose();
+  }
+
+  Future<void> _pasteFromClipboard() async {
+    final clipboard = await Clipboard.getData(Clipboard.kTextPlain);
+    final text = clipboard?.text;
+    if (!mounted || text == null || text.isEmpty) return;
+
+    final value = widget.controller.value;
+    final selection =
+        value.selection.isValid
+            ? value.selection
+            : TextSelection.collapsed(offset: value.text.length);
+    final pasted = value.copyWith(
+      text: value.text.replaceRange(selection.start, selection.end, text),
+      selection: TextSelection.collapsed(offset: selection.start + text.length),
+      composing: TextRange.empty,
+    );
+    widget.controller.value = LengthLimitingTextInputFormatter(
+      2000,
+    ).formatEditUpdate(value, pasted);
+    _inputFocusNode.requestFocus();
   }
 
   @override
@@ -1266,6 +1289,7 @@ class _ChatComposerState extends State<_ChatComposer> {
                 Expanded(
                   child: TextField(
                     controller: widget.controller,
+                    focusNode: _inputFocusNode,
                     minLines: 1,
                     maxLines: 5,
                     maxLength: 2000,
@@ -1282,6 +1306,11 @@ class _ChatComposerState extends State<_ChatComposer> {
                   ),
                 ),
                 const SizedBox(width: 6),
+                IconButton(
+                  tooltip: 'Paste',
+                  onPressed: _pasteFromClipboard,
+                  icon: const Icon(Icons.content_paste_rounded),
+                ),
                 Padding(
                   padding: const EdgeInsets.only(bottom: 3),
                   child: ValueListenableBuilder<TextEditingValue>(
@@ -1644,6 +1673,7 @@ class _CopyableMessageContent extends StatelessWidget {
         return AdaptiveTextSelectionToolbar.buttonItems(
           anchors: selectableRegionState.contextMenuAnchors,
           buttonItems: [
+            ...selectableRegionState.contextMenuButtonItems,
             ContextMenuButtonItem(
               label: 'Copy message',
               onPressed: () => unawaited(_copyMessage(context)),
