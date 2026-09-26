@@ -1013,9 +1013,8 @@ final explorerGamesDiskStoreProvider = Provider<ExplorerGamesDiskStore>((ref) {
 /// a page, outside a build: the list then shows the held rows as a copy being
 /// checked, and the fresh answer replaces them.
 ///
-/// Only a settled answer is refreshed: one in flight is about to be current,
-/// and a failed one is released and fetched again on its own. Returns whether
-/// it asked.
+/// Settled failures are retried too: a warm-up listener may still hold the
+/// failed provider. Requests in flight are left alone. Returns whether it asked.
 bool refreshExplorerGamesIfStale(
   WidgetRef ref,
   GamebasePositionGamesQuery query,
@@ -1023,8 +1022,10 @@ bool refreshExplorerGamesIfStale(
   final provider = positionGamesProvider(query);
   if (!ref.exists(provider)) return false;
   final held = ref.read(provider);
-  if (held.isLoading || held.hasError || !held.hasValue) return false;
-  if (ref.read(explorerGamesCacheProvider).isFresh(held.requireValue)) {
+  if (held.isLoading) return false;
+  if (!held.hasError &&
+      (!held.hasValue ||
+          ref.read(explorerGamesCacheProvider).isFresh(held.requireValue))) {
     return false;
   }
   ref.invalidate(provider);

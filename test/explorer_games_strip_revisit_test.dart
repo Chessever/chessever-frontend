@@ -368,6 +368,48 @@ void main() {
   });
 
   group('refreshExplorerGamesIfStale', () {
+    testWidgets('a held failed refresh is retried while its listener remains', (
+      tester,
+    ) async {
+      final repo = _Repo();
+      var now = DateTime(2026, 9, 26, 12);
+      final container = _container(repo, () => now);
+      late WidgetRef widgetRef;
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: container,
+          child: Consumer(
+            builder: (context, ref, _) {
+              widgetRef = ref;
+              return const SizedBox.shrink();
+            },
+          ),
+        ),
+      );
+      final query = _inline(_fenP);
+      final provider = positionGamesProvider(query);
+      final sub = container.listen(provider, (_, __) {});
+      addTearDown(sub.close);
+      await container.read(provider.future);
+      expect(repo.requests, ['P']);
+
+      now = now.add(kExplorerGamesFreshFor + const Duration(seconds: 1));
+      repo.failFrom = 2;
+      expect(refreshExplorerGamesIfStale(widgetRef, query), isTrue);
+      await expectLater(container.read(provider.future), throwsException);
+      await _settle(tester);
+      expect(sub.read().hasError, isTrue);
+      expect(repo.requests, ['P', 'P']);
+
+      repo.failFrom = null;
+      expect(refreshExplorerGamesIfStale(widgetRef, query), isTrue);
+      await container.read(provider.future);
+      await _settle(tester);
+      expect(repo.requests, ['P', 'P', 'P']);
+      expect(sub.read().requireValue.data.first['id'], 'Pv3-1');
+      await _tearDown(tester);
+    });
+
     testWidgets('asks again only for a settled answer past fresh', (
       tester,
     ) async {
