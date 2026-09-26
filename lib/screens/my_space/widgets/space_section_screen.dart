@@ -17,6 +17,8 @@ import 'package:chessever2/screens/my_space/widgets/space_database.dart'
 import 'package:chessever2/screens/my_space/widgets/space_door_actions.dart';
 import 'package:chessever2/screens/my_space/widgets/space_edit_grid.dart'
     show SpaceStartController;
+import 'package:chessever2/screens/my_space/widgets/space_edit_tutorial.dart'
+    show maybeShowSpaceEditTutorial;
 import 'package:chessever2/screens/my_space/widgets/space_metrics.dart';
 import 'package:chessever2/screens/my_space/widgets/space_reorder.dart';
 import 'package:chessever2/screens/my_space/widgets/space_section_header.dart';
@@ -244,6 +246,8 @@ class _SpaceSectionScreenState extends ConsumerState<SpaceSectionScreen> {
 
   void _setEditing(bool value) {
     HapticFeedbackService.selection();
+    // The first Edit ever walks the reader through itself, once.
+    if (value && !_editing) maybeShowSpaceEditTutorial(context, ref, section);
     if (value) {
       _pageScroll.start = _pageScroll.at ?? _pageScroll.start;
       _editScroll.start = _pageScroll.start;

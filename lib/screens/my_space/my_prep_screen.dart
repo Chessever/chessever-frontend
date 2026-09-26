@@ -10,6 +10,8 @@ import 'package:chessever2/screens/my_space/widgets/space_database.dart'
 import 'package:chessever2/screens/my_space/widgets/space_door_actions.dart';
 import 'package:chessever2/screens/my_space/widgets/space_edit_grid.dart'
     show SpaceStartController;
+import 'package:chessever2/screens/my_space/widgets/space_edit_tutorial.dart'
+    show maybeShowSpaceEditTutorial;
 import 'package:chessever2/screens/my_space/widgets/space_opening_card.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_list_view_mode_provider.dart';
 import 'package:chessever2/theme/app_colors.dart';
@@ -128,6 +130,10 @@ class _MyPrepOpeningsPageState extends ConsumerState<MyPrepOpeningsPage> {
 
   void _setEditing(bool value) {
     HapticFeedbackService.selection();
+    // The first Edit ever walks the reader through itself, once.
+    if (value && !_editing) {
+      maybeShowSpaceEditTutorial(context, ref, SpaceSection.openings);
+    }
     if (value) {
       _listScroll.start = _listScroll.at ?? _listScroll.start;
       _editScroll.start = _listScroll.start;

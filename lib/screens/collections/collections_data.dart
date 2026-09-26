@@ -429,6 +429,19 @@ final collectionBooksForEventProvider = FutureProvider.autoDispose
       }
     });
 
+/// The published books bound to one event collection (by its id), for that
+/// collection's Books tab. Unlike [collectionBooksForEventProvider] a
+/// failed read stays an error: on a tab of their own, "no books" would be a
+/// wrong answer, so the tab says it could not load them and offers a retry.
+final collectionBooksOfEventCollectionProvider = FutureProvider.autoDispose
+    .family<List<Collection>, String>((ref, collectionId) {
+      final anchors = CollectionEventAnchors(collections: [collectionId]);
+      if (anchors.isEmpty) return Future.value(const <Collection>[]);
+      return ref
+          .watch(collectionsRepositoryProvider)
+          .fetchBooksForEvent(anchors);
+    });
+
 /// Whether [error] is the server keeping a Premium collection's games from
 /// this viewer (the paywall, not an error).
 bool isCollectionPremiumGate(Object? error) =>

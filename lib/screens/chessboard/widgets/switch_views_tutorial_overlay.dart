@@ -148,7 +148,7 @@ class _SwitchViewsTutorialOverlayState extends State<SwitchViewsTutorialOverlay>
                               animation: _timerController,
                               builder: (context, _) {
                                 return CustomPaint(
-                                  foregroundPainter: _BorderProgressPainter(
+                                  foregroundPainter: TutorialBorderProgressPainter(
                                     progress: _timerController.value,
                                     color: kPrimaryColor,
                                     strokeWidth: 3.0,
@@ -383,10 +383,15 @@ class TutorialStepIndicator extends StatelessWidget {
     super.key,
     required this.currentStep,
     required this.totalSteps,
+    this.duration = const Duration(milliseconds: 220),
   });
 
   final int currentStep;
   final int totalSteps;
+
+  /// How long the active dot takes to move; [Duration.zero] jumps (reduced
+  /// motion).
+  final Duration duration;
 
   @override
   Widget build(BuildContext context) {
@@ -397,7 +402,7 @@ class TutorialStepIndicator extends StatelessWidget {
         return Padding(
           padding: EdgeInsets.symmetric(horizontal: 3.w),
           child: AnimatedContainer(
-            duration: const Duration(milliseconds: 220),
+            duration: duration,
             curve: Curves.easeOutCubic,
             width: isActive ? 18.w : 6.w,
             height: 6.h,
@@ -415,8 +420,11 @@ class TutorialStepIndicator extends StatelessWidget {
   }
 }
 
-class _BorderProgressPainter extends CustomPainter {
-  _BorderProgressPainter({
+/// The teaching cards' timer border: two strokes growing symmetrically from
+/// the top-centre down to the bottom as [progress] runs 0 to 1. Shared with
+/// My Space's Edit tips.
+class TutorialBorderProgressPainter extends CustomPainter {
+  TutorialBorderProgressPainter({
     required this.progress,
     required this.color,
     required this.strokeWidth,
@@ -485,7 +493,7 @@ class _BorderProgressPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(covariant _BorderProgressPainter oldDelegate) {
+  bool shouldRepaint(covariant TutorialBorderProgressPainter oldDelegate) {
     return oldDelegate.progress != progress ||
         oldDelegate.color != color ||
         oldDelegate.strokeWidth != strokeWidth ||

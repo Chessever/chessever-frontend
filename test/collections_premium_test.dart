@@ -32,6 +32,7 @@ import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart'
     show PremiumResume;
+import 'package:chessever2/widgets/segmented_switcher.dart';
 import 'package:chessever2/widgets/skeleton_widget.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:dio/dio.dart';
@@ -193,11 +194,18 @@ Collection _event({
 // ------------------------------------------------------------------ doubles
 
 class _Repo extends CollectionsRepository {
-  _Repo({required this.detail, this.gamesError, this.books = const []})
-    : super(GamebaseRepository(Dio(), apiKey: 'test'));
+  _Repo({
+    required this.detail,
+    this.gamesError,
+    this.books = const [],
+    this.booksError,
+  }) : super(GamebaseRepository(Dio(), apiKey: 'test'));
 
   Collection detail;
   Object? gamesError;
+
+  /// Thrown by [fetchBooksForEvent] while set.
+  Object? booksError;
   final List<Collection> books;
   int detailCalls = 0;
   int gamesCalls = 0;
@@ -242,6 +250,8 @@ class _Repo extends CollectionsRepository {
     CollectionEventAnchors anchors,
   ) async {
     bookAnchors.add(anchors);
+    final e = booksError;
+    if (e != null) throw e;
     return books;
   }
 }
@@ -936,8 +946,12 @@ void main() {
       expect(find.byType(DiscoveryPadlock), findsWidgets);
       expect(find.byType(DiscoveryGameList), findsNothing);
 
-      await _showTab(tester, 'Players');
-      expect(find.byKey(const ValueKey('collection_unlock')), findsOneWidget);
+      // A book's tabs: no Players tab; its Events are its credits, open to
+      // everyone, locked or not.
+      expect(find.text('Players'), findsNothing);
+      await _showTab(tester, 'Events');
+      expect(find.text('World Championship 1985'), findsOneWidget);
+      expect(find.text('Game 16 is the octopus knight.'), findsOneWidget);
 
       // Nothing behind the paywall was asked for.
       expect(repo.gamesCalls, 0);
@@ -1576,7 +1590,7 @@ void main() {
   });
 
   group('bindings', () {
-    _widgetTest('a book lists its events with their notes; one opens', (
+    _widgetTest('a book lists its events on its Events tab; one opens', (
       tester,
     ) async {
       final repo = _Repo(detail: _book(contentLocked: false, events: _events));
@@ -1586,8 +1600,10 @@ void main() {
         subscribed: true,
         home: () => CollectionScreen(collection: _book()),
       );
+      // On their own tab now, not under the About text.
       await _showTab(tester, 'About');
-      expect(find.text('Event'), findsOneWidget);
+      expect(find.text('World Championship 1985'), findsNothing);
+      await _showTab(tester, 'Events');
       expect(find.text('World Championship 1985'), findsOneWidget);
       expect(find.text('Game 16 is the octopus knight.'), findsOneWidget);
 
@@ -1775,6 +1791,367 @@ void main() {
       );
       expect(find.text('Books'), findsOneWidget);
       expect(find.text('Book'), findsNothing);
+    });
+  });
+
+  group('cards, tabs and missing fields', () {
+    test('foreword and bookCount parse when present, null when not', () {
+      Collection parse(Map<String, dynamic> extra) =>
+          Collection.fromJson({'id': 'x', 'slug': 'x', ...extra});
+      final full = parse({
+        'kind': 'book',
+        'foreword': '  I wrote this book for you.\n\nRead it slowly.  ',
+      });
+      expect(full.foreword, 'I wrote this book for you.\n\nRead it slowly.');
+      expect(parse({'kind': 'book'}).foreword, isNull);
+      expect(parse({'kind': 'book', 'foreword': null}).foreword, isNull);
+      expect(parse({'kind': 'book', 'foreword': '   '}).foreword, isNull);
+
+      expect(parse({'kind': 'event', 'bookCount': 3}).bookCount, 3);
+      expect(parse({'kind': 'event', 'bookCount': '2'}).bookCount, 2);
+      // Not said is unknown, never "no books".
+      expect(parse({'kind': 'event'}).bookCount, isNull);
+      expect(parse({'kind': 'event', 'bookCount': null}).bookCount, isNull);
+      expect(parse({'kind': 'event', 'bookCount': 'many'}).bookCount, isNull);
+
+      // A row with nothing but its identity still reads.
+      final bare = Collection.fromJson({'id': 'y'});
+      expect(bare.slug, 'y');
+      expect(bare.title, 'Untitled');
+      expect(bare.author, isNull);
+      expect(bare.coverUrl, isNull);
+      expect(bare.bookCount, isNull);
+      expect(bare.foreword, isNull);
+      expect(bare.events, isEmpty);
+    });
+
+    _widgetTest('an event card: place and dates always, then games and '
+        'books', (tester) async {
+      final subtitled = Collection.fromJson({
+        'id': 'e1',
+        'slug': 'tata-2024',
+        'kind': 'event',
+        'title': 'Tata Steel Masters 2024',
+        'subtitle': 'Fourteen players, one round-robin',
+        'location': 'Wijk aan Zee',
+        'dateStart': '2024-01-13',
+        'dateEnd': '2024-01-28',
+        'gameCount': 91,
+        'bookCount': 2,
+      });
+      final bare = Collection.fromJson({
+        'id': 'e2',
+        'slug': 'unknown',
+        'kind': 'event',
+        'title': 'An event with no place or dates',
+        'subtitle': 'Played online',
+        'gameCount': 1,
+        'bookCount': 0,
+      });
+      await _pump(
+        tester,
+        repo: _Repo(detail: _book()),
+        subscribed: false,
+        home: () => Scaffold(
+          body: ListView(
+            padding: const EdgeInsets.all(16),
+            children: [
+              CollectionCard(collection: subtitled),
+              CollectionCard(collection: bare),
+            ],
+          ),
+        ),
+      );
+      // The subtitle never hides where and when it was played.
+      expect(
+        find.text('Wijk aan Zee · Jan 13-28, 2024'),
+        findsOneWidget,
+      );
+      expect(find.text('Fourteen players, one round-robin'), findsNothing);
+      expect(find.text('91 games · 2 books'), findsOneWidget);
+      // Neither place nor dates: the subtitle stands in; no books, no count.
+      expect(find.text('Played online'), findsOneWidget);
+      expect(find.text('1 game'), findsOneWidget);
+      expect(find.textContaining('book'), findsOneWidget);
+    });
+
+    _widgetTest('a book card: the author, its bound events, a 2:3 plate '
+        'whatever it lacks', (tester) async {
+      final counted = Collection.fromJson({
+        'id': 'b1',
+        'slug': 'kk',
+        'kind': 'book',
+        'title': 'Kasparov vs Karpov',
+        'author': 'Garry Kasparov',
+        'gameCount': 55,
+        'eventCount': 2,
+      });
+      final named = Collection.fromJson({
+        'id': 'b2',
+        'slug': 'kk2',
+        'kind': 'book',
+        'title': 'The Match',
+        'author': 'Anatoly Karpov',
+        'gameCount': 24,
+        'events': [
+          {'linkId': 'l1', 'title': 'World Championship 1985'},
+          {'linkId': 'l2', 'title': 'World Championship 1986'},
+        ],
+      });
+      // No author, no cover, no events: title and count only.
+      final bare = Collection.fromJson({
+        'id': 'b3',
+        'slug': 'bare',
+        'kind': 'book',
+        'title': 'Anonymous notes',
+        'gameCount': 1,
+      });
+      await _pump(
+        tester,
+        repo: _Repo(detail: _book()),
+        subscribed: true,
+        size: const Size(320, 1200),
+        textScale: 1.3,
+        home: () => Scaffold(
+          body: ListView(
+            padding: const EdgeInsets.all(16),
+            children: [
+              CollectionCard(collection: counted),
+              CollectionCard(collection: named),
+              CollectionCard(collection: bare),
+            ],
+          ),
+        ),
+      );
+      expect(find.text('by Garry Kasparov'), findsOneWidget);
+      expect(find.text('55 games · 2 events'), findsOneWidget);
+      expect(find.text('by Anatoly Karpov'), findsOneWidget);
+      // Named when the row carries them, and then not counted as well.
+      expect(find.text('World Championship 1985 and 1 more'), findsOneWidget);
+      expect(find.text('24 games'), findsOneWidget);
+      expect(find.text('1 game'), findsOneWidget);
+      expect(find.textContaining('by '), findsNWidgets(2));
+      // Every plate is a whole 2:3 book, the placeholder included.
+      final plates = find.descendant(
+        of: find.byType(CollectionPlateRow),
+        matching: find.byType(ClipRRect),
+      );
+      expect(plates, findsNWidgets(3));
+      for (var i = 0; i < 3; i++) {
+        final size = tester.getSize(plates.at(i));
+        expect(size.height / size.width, closeTo(1.5, 0.01));
+      }
+      // Nothing is cut at 320 pt and 1.3x text.
+      for (final text in [
+        'by Garry Kasparov',
+        '55 games · 2 events',
+        'World Championship 1985 and 1 more',
+      ]) {
+        expect(
+          tester.renderObject<RenderParagraph>(find.text(text)).didExceedMaxLines,
+          isFalse,
+          reason: text,
+        );
+      }
+      for (final card in tester.widgetList<CollectionPlateRow>(
+        find.byType(CollectionPlateRow),
+      )) {
+        final row = find.byWidget(card);
+        final rect = tester.getRect(row);
+        for (final t in tester.widgetList<Text>(
+          find.descendant(of: row, matching: find.byType(Text)),
+        )) {
+          final r = tester.getRect(find.byWidget(t));
+          expect(rect.contains(r.topLeft) && rect.contains(r.bottomRight),
+              isTrue, reason: t.data);
+        }
+      }
+    });
+
+    List<String> tabLabels(WidgetTester tester) => [
+      for (final t in tester.widgetList<Text>(
+        find.descendant(
+          of: find.byType(SegmentedSwitcher),
+          matching: find.byType(Text),
+        ),
+      ))
+        t.data!,
+    ];
+
+    _widgetTest('a book reads About · Games · Events; an event About · Games '
+        '· Books · Players', (tester) async {
+      await _pump(
+        tester,
+        repo: _Repo(detail: _book(contentLocked: false)),
+        subscribed: true,
+        home: () => CollectionScreen(collection: _book()),
+      );
+      expect(tabLabels(tester), ['About', 'Games', 'Events']);
+      await _teardown(tester);
+
+      await _pump(
+        tester,
+        repo: _Repo(detail: _event()),
+        subscribed: false,
+        home: () => CollectionScreen(collection: _event()),
+      );
+      expect(tabLabels(tester), ['About', 'Games', 'Books', 'Players']);
+      // A free event opens on its games, as it always did.
+      expect(find.byType(DiscoveryGameList), findsWidgets);
+      await _showTab(tester, 'Players');
+      expect(find.text('No players in this collection yet.'), findsOneWidget);
+    });
+
+    _widgetTest('a book\'s About: every credit, the description, then the '
+        'foreword', (tester) async {
+      final book = Collection(
+        id: 'b1',
+        slug: 'kasparov-karpov',
+        kind: CollectionKind.book,
+        title: 'Kasparov vs Karpov',
+        author: 'Garry Kasparov',
+        annotator: 'Dmitry Plisetsky',
+        publisher: 'Everyman Chess',
+        publishedYear: 2008,
+        // The team's own publish time is never the book's printed date.
+        publishedAt: DateTime.utc(2026, 9, 1),
+        gameCount: 4,
+        contentLocked: true,
+        about: 'The first two matches.',
+        foreword: 'I owe this book to my trainers.\n\nAnd to Anatoly.',
+        sections: _sections,
+      );
+      await _pump(
+        tester,
+        repo: _Repo(detail: book),
+        subscribed: false,
+        home: () => CollectionScreen(collection: book),
+      );
+      expect(find.text('by Garry Kasparov'), findsOneWidget);
+      expect(find.text('Annotated by Dmitry Plisetsky'), findsOneWidget);
+      expect(find.text('Everyman Chess · 2008'), findsOneWidget);
+      expect(find.textContaining('2026'), findsNothing);
+      expect(find.text('Foreword'), findsOneWidget);
+      expect(find.text('I owe this book to my trainers.'), findsOneWidget);
+      expect(find.text('And to Anatoly.'), findsOneWidget);
+      // The description leads; the foreword follows it.
+      expect(
+        tester.getTopLeft(find.text('The first two matches.')).dy,
+        lessThan(tester.getTopLeft(find.text('Foreword')).dy),
+      );
+      // The preview is free: About, foreword and all, with the way in.
+      expect(find.byKey(const ValueKey('collection_unlock')), findsOneWidget);
+    });
+
+    _widgetTest('a book with none of the optional fields: About shows what '
+        'there is, Events says there are none', (tester) async {
+      const bare = Collection(
+        id: 'b9',
+        slug: 'bare',
+        kind: CollectionKind.book,
+        title: 'Anonymous notes',
+        contentLocked: false,
+      );
+      await _pump(
+        tester,
+        repo: _Repo(detail: bare),
+        subscribed: true,
+        home: () => CollectionScreen(collection: bare),
+      );
+      await _showTab(tester, 'About');
+      expect(find.text('Anonymous notes'), findsWidgets);
+      expect(find.text('Foreword'), findsNothing);
+      expect(find.textContaining('by '), findsNothing);
+      expect(find.byKey(const ValueKey('collection_foreword')), findsNothing);
+      await _showTab(tester, 'Events');
+      expect(find.text('No events for this book yet.'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+
+    _widgetTest('an event\'s Books tab lists its books with their notes; '
+        'one opens on its page', (tester) async {
+      final repo = _Repo(
+        detail: _event(),
+        books: [
+          Collection.fromJson({
+            'id': 'b1',
+            'slug': 'kasparov-karpov',
+            'kind': 'book',
+            'title': 'Kasparov vs Karpov',
+            'author': 'Garry Kasparov',
+            'gameCount': 4,
+            'note': 'Timman annotates round 7.',
+          }),
+        ],
+      );
+      await _pump(
+        tester,
+        repo: repo,
+        subscribed: false,
+        home: () => CollectionScreen(collection: _event()),
+      );
+      await _showTab(tester, 'Books');
+      expect(repo.bookAnchors.single.collections, ['e-Wijk aan Zee']);
+      expect(find.text('Kasparov vs Karpov'), findsOneWidget);
+      expect(find.text('by Garry Kasparov'), findsOneWidget);
+      expect(find.text('Timman annotates round 7.'), findsOneWidget);
+      // A Premium book for a viewer without Premium: the padlock.
+      expect(find.byType(DiscoveryPadlock), findsOneWidget);
+
+      repo.detail = _book();
+      await tester.tap(find.text('Kasparov vs Karpov'));
+      await _settle(tester);
+      // The book's own page, on its preview.
+      expect(
+        find.byType(CollectionScreen, skipOffstage: false),
+        findsNWidgets(2),
+      );
+      expect(find.byKey(const ValueKey('collection_unlock')), findsOneWidget);
+    });
+
+    _widgetTest('an event\'s Books tab: none, and a failure with a retry', (
+      tester,
+    ) async {
+      final repo = _Repo(
+        detail: _event(),
+        booksError: Exception('offline'),
+      );
+      await _pump(
+        tester,
+        repo: repo,
+        subscribed: true,
+        home: () => CollectionScreen(collection: _event()),
+      );
+      await _showTab(tester, 'Books');
+      expect(find.text('Try again'), findsOneWidget);
+      expect(find.text('No books about this event yet.'), findsNothing);
+
+      repo.booksError = null;
+      await tester.tap(find.text('Try again'));
+      await _settle(tester);
+      expect(repo.bookAnchors, hasLength(2));
+      expect(find.text('No books about this event yet.'), findsOneWidget);
+    });
+
+    _widgetTest('an event opened from a book waits for its id, then asks '
+        'for its books', (tester) async {
+      final repo = _Repo(detail: _event());
+      // As a book's event link opens it: by slug, the id still to come.
+      final bySlug = Collection(
+        id: '',
+        slug: 'event-Wijk aan Zee',
+        kind: CollectionKind.event,
+        title: 'Tata Steel Masters',
+      );
+      await _pump(
+        tester,
+        repo: repo,
+        subscribed: true,
+        home: () => CollectionScreen(collection: bySlug),
+      );
+      await _showTab(tester, 'Books');
+      expect(repo.bookAnchors.single.collections, ['e-Wijk aan Zee']);
+      expect(find.text('No books about this event yet.'), findsOneWidget);
     });
   });
 }

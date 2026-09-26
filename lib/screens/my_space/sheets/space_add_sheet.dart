@@ -500,9 +500,6 @@ class _SpaceAddToggleState extends State<SpaceAddToggle> {
   Widget build(BuildContext context) {
     final colors = context.colors;
     final still = MediaQuery.maybeDisableAnimationsOf(context) ?? false;
-    final Motion morph = still
-        ? const Motion.none()
-        : const CupertinoMotion.snappy();
     return Semantics(
       // No `toggled`: the label already names the action ("Add X" /
       // "Remove X from My Space"), and an "on" state beside "Remove" reads
@@ -527,7 +524,10 @@ class _SpaceAddToggleState extends State<SpaceAddToggle> {
             builder: (context, scale, child) =>
                 Transform.scale(scale: scale, child: child),
             child: SingleMotionBuilder(
-              motion: morph,
+              motion: const CupertinoMotion.snappy(),
+              // Reduced motion turns it at once. (`Motion.none()` would
+              // hold the plus it started as: an add would never show.)
+              active: !still,
               value: widget.added ? 1.0 : 0.0,
               builder: (context, t, _) => CustomPaint(
                 painter: _PlusCheckPainter(

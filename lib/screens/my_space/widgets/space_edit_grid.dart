@@ -1249,11 +1249,12 @@ class SpaceEditCheck extends StatelessWidget {
     return SizedBox.square(
       dimension: size,
       child: SingleMotionBuilder(
-        motion: still
-            ? const Motion.none()
-            : const CupertinoMotion.snappy(
-                duration: Duration(milliseconds: 300),
-              ),
+        motion: const CupertinoMotion.snappy(
+          duration: Duration(milliseconds: 300),
+        ),
+        // Reduced motion fills or empties it at once. (`Motion.none()`
+        // would hold it where it was: a tap would never fill it.)
+        active: !still,
         value: selected ? 1.0 : 0.0,
         builder: (context, t, _) => CustomPaint(
           painter: _CheckPainter(

@@ -161,6 +161,18 @@ class _EventViewShellState extends State<EventViewShell> {
                     key: ValueKey('event_view_tabs_${widget.tabs.join('_')}'),
                     backgroundColor: colors.popup,
                     selectedBackgroundColor: colors.popup,
+                    // The strip is a fixed height: the body line height
+                    // (22/14) would outgrow it at larger text sizes and cut
+                    // a label's descenders ("Players"). A tight line keeps
+                    // every label whole and still centred.
+                    textStyle: AppTypography.textSmMedium.copyWith(
+                      color: colors.tabInactive,
+                      height: 1.2,
+                    ),
+                    selectedTextStyle: AppTypography.textSmMedium.copyWith(
+                      color: colors.textPrimary,
+                      height: 1.2,
+                    ),
                     options: widget.tabs,
                     initialSelection: widget.initialTab,
                     currentSelection: _selected,

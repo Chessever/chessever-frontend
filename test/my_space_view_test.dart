@@ -63,6 +63,9 @@ import 'package:chessever2/screens/group_event/smart_event/smart_aggregate_event
 import 'package:chessever2/screens/group_event/smart_event/smart_event_screen.dart'
     show smartEventSpaceDraft;
 import 'package:chessever2/screens/my_space/widgets/space_edit_grid.dart';
+import 'package:chessever2/screens/my_space/widgets/space_edit_tutorial.dart';
+import 'package:chessever2/screens/chessboard/widgets/switch_views_tutorial_overlay.dart'
+    show TutorialStepIndicator;
 import 'package:chessever2/widgets/event_card/smart_event_card.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart' show RenderParagraph;
@@ -171,6 +174,36 @@ class _SlowRemoveStore extends _FakeSpaceShortcuts {
     await _deletes.settled(item.key);
     serverWrites.add(item.key);
   }
+}
+
+/// Edit's tips' memory in memory: due until shown or skipped; the Players'
+/// tips kept apart, as they leave holding to reorder untaught.
+class _Tips extends SpaceEditTutorialStore {
+  bool _due = true;
+  bool _players = false;
+  int shown = 0;
+  int playersShownCount = 0;
+
+  @override
+  bool due() => _due;
+
+  @override
+  bool playersShown() => _players;
+
+  @override
+  void markShown() {
+    shown++;
+    _due = false;
+  }
+
+  @override
+  void markPlayersShown() {
+    playersShownCount++;
+    _players = true;
+  }
+
+  @override
+  void markSkipped() => _due = false;
 }
 
 class _NoLikes extends LikedGamesNotifier {
@@ -1226,6 +1259,90 @@ void main() {
     await _settleEdit(tester);
     expect(find.text('Carlsen'), findsOneWidget);
     expect(favorites.unfollows, 0);
+    expect(tester.takeException(), isNull);
+    await _drain(tester);
+  });
+
+  testWidgets('a See all page\'s first Edit teaches itself once: Players '
+      'start at selecting (they order themselves), Edit works after, and '
+      'the next page that reorders still teaches holding', (tester) async {
+    final tips = _Tips();
+    final favorites = _Favorites([
+      _follow('Carlsen, Magnus', 1503014, 2837),
+      _follow('Gukesh D', 46616543, 2787, day: 2),
+    ]);
+    await _openSeeAll(
+      tester,
+      const [],
+      SpaceSection.players,
+      favorites: favorites,
+      extra: [spaceEditTutorialStoreProvider.overrideWithValue(tips)],
+    );
+    await tester.tap(find.byKey(const ValueKey<String>('space_edit')));
+    await _settleEdit(tester);
+    expect(find.byType(SpaceEditTutorial), findsOneWidget);
+    expect(tips.playersShownCount, 1);
+    // The Players' tips do not retire the whole tips.
+    expect(tips.shown, 0);
+    final dots = tester.widget<TutorialStepIndicator>(
+      find.byType(TutorialStepIndicator),
+    );
+    expect(dots.totalSteps, 3);
+    expect(find.text('Hold to Reorder'), findsNothing);
+
+    final next = find.byKey(const ValueKey<String>('space_edit_tips_next'));
+    for (var i = 0; i < 3; i++) {
+      await tester.tap(next);
+      await _settleEdit(tester);
+    }
+    await tester.pump(SpaceEditTutorial.fadeOut);
+    await _settleEdit(tester);
+    expect(find.byType(SpaceEditTutorial), findsNothing);
+
+    // The face takes the tap over its name.
+    await tester.tap(find.text('Carlsen'), warnIfMissed: false);
+    await _settleEdit(tester);
+    await tester.tap(find.byKey(const ValueKey<String>('space_edit_remove')));
+    await _settleEdit(tester);
+    expect(find.text('Carlsen'), findsNothing);
+    await tester.tap(find.byKey(const ValueKey<String>('space_edit_done')));
+    await _settleEdit(tester);
+    await tester.tap(find.byKey(const ValueKey<String>('space_edit')));
+    await _settleEdit(tester);
+    expect(find.byType(SpaceEditTutorial), findsNothing);
+    expect(tips.playersShownCount, 1);
+    expect(tester.takeException(), isNull);
+    await _drain(tester);
+
+    // Events reorder: their first Edit teaches the one step the Players'
+    // tips left out, alone, and then no more.
+    await _openSeeAll(
+      tester,
+      [_pin(eventSpaceDraft(_feed.first), 'e0', 20)],
+      SpaceSection.events,
+      extra: [spaceEditTutorialStoreProvider.overrideWithValue(tips)],
+    );
+    await tester.tap(find.byKey(const ValueKey<String>('space_edit')));
+    await _settleEdit(tester);
+    expect(find.byType(SpaceEditTutorial), findsOneWidget);
+    expect(find.text('Hold to Reorder'), findsOneWidget);
+    expect(find.text('Tap to Select'), findsNothing);
+    expect(find.byType(TutorialStepIndicator), findsNothing);
+    expect(
+      find.descendant(of: next, matching: find.text('Got it')),
+      findsOneWidget,
+    );
+    expect(tips.shown, 1);
+    await tester.tap(next);
+    await tester.pump(SpaceEditTutorial.fadeOut);
+    await _settleEdit(tester);
+    expect(find.byType(SpaceEditTutorial), findsNothing);
+    await tester.tap(find.byKey(const ValueKey<String>('space_edit_done')));
+    await _settleEdit(tester);
+    await tester.tap(find.byKey(const ValueKey<String>('space_edit')));
+    await _settleEdit(tester);
+    expect(find.byType(SpaceEditTutorial), findsNothing);
+    expect(tips.shown, 1);
     expect(tester.takeException(), isNull);
     await _drain(tester);
   });

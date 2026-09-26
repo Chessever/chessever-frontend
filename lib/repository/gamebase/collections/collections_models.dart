@@ -164,12 +164,14 @@ class Collection {
     this.contentVersion,
     this.updatedAt,
     this.about,
+    this.foreword,
     this.sections = const [],
     this.unsortedCount = 0,
     CollectionAccess? access,
     this.contentLocked,
     this.lockReason,
     this.eventCount = 0,
+    this.bookCount,
     this.events = const [],
     this.note,
     this.linkId,
@@ -223,6 +225,11 @@ class Collection {
   /// The About tab's text; blank lines separate paragraphs. Detail only.
   final String? about;
 
+  /// A book's foreword, as its author wrote it; blank lines separate
+  /// paragraphs. Null when the book has none, and from a server that does
+  /// not send one yet. Detail only.
+  final String? foreword;
+
   /// Rounds / stages of an event, parts (holding chapters) / chapters of a
   /// book, ordered by [CollectionSection.orderIndex]. Detail only.
   final List<CollectionSection> sections;
@@ -253,6 +260,11 @@ class Collection {
 
   /// How many real-world events the collection is bound to.
   final int eventCount;
+
+  /// How many published books are bound to this event collection, on a
+  /// list row. Null when the server did not say (a server from before the
+  /// count, or a book's row): unknown, never "no books".
+  final int? bookCount;
 
   /// The events a book is bound to, in the team's order. Detail only.
   final List<CollectionEventRef> events;
@@ -301,6 +313,7 @@ class Collection {
       contentVersion: _nullableString(json['contentVersion']),
       updatedAt: _timestamp(json['updatedAt']),
       about: _nullableString(json['about']),
+      foreword: _nullableString(json['foreword']),
       sections: _sortedSections(sections),
       unsortedCount: _int(json['unsortedCount']),
       access: CollectionAccess.parse(json['access'], kind),
@@ -309,6 +322,7 @@ class Collection {
       eventCount: json.containsKey('eventCount')
           ? _int(json['eventCount'])
           : events.length,
+      bookCount: _nullableInt(json['bookCount']),
       events: events,
       note: _nullableString(json['note']),
       linkId: _nullableString(json['linkId']),

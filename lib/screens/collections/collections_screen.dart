@@ -142,8 +142,10 @@ SpaceShortcut collectionSpaceDraft(Collection c) {
 
 /// A collection as the Events list draws an event: its cover (or its pixel
 /// object) on the left, the title, who wrote it (a book) or where and when
-/// it was played (an event), and how many games it holds. Held, it lifts
-/// into the focus menu with Open and My Space.
+/// it was played (an event), and how many games it holds with what it is
+/// bound to ("91 games · 2 books"; a book names its events when its row
+/// carries them). Held, it lifts into the focus menu with Open and My
+/// Space.
 ///
 /// A book stands as a book does, on a portrait cover; an event keeps its
 /// landscape picture. A Premium collection the viewer cannot read yet
@@ -167,13 +169,24 @@ class CollectionCard extends ConsumerWidget {
       subscriptionLoading: subscription.isLoading,
     );
     final isBook = c.kind == CollectionKind.book;
-    final games = c.gameCount == 1 ? '1 game' : '${c.gameCount} games';
     // Who wrote it, or where and when it was played: what tells this one
     // from its neighbours (two Sinquefield Cups differ by their year), on a
-    // line of its own so the count never pushes the year off the end.
+    // line of its own so the count never pushes the year off the end. An
+    // event's subtitle stands in only when it has neither place nor dates.
     final identity = isBook
         ? (c.author == null ? null : 'by ${c.author}')
-        : c.subtitle ?? collectionEventLine(c.location, c.dateStart, c.dateEnd);
+        : collectionEventLine(c.location, c.dateStart, c.dateEnd) ??
+              c.subtitle;
+    // A book names the events it covers when its row carries them; counted
+    // otherwise, as an event counts the books written about it.
+    final named = isBook && note == null ? collectionEventsLine(c.events) : null;
+    final bindings = isBook
+        ? (named == null && c.eventCount > 0
+              ? _plural(c.eventCount, 'event')
+              : null)
+        : ((c.bookCount ?? 0) > 0 ? _plural(c.bookCount!, 'book') : null);
+    final tally = [_plural(c.gameCount, 'game'), ?bindings].join(' · ');
+    final caption = note ?? named;
 
     void open() {
       HapticFeedbackService.cardTap();
@@ -192,15 +205,15 @@ class CollectionCard extends ConsumerWidget {
       title: c.title,
       meta: identity,
       metaMaxLines: 2,
-      tally: games,
+      tally: tally,
       locked: locked,
-      note: note,
+      note: caption,
       semanticsLabel: [
         c.title,
         ?identity,
-        games,
+        tally,
         if (locked) 'Premium',
-        ?note,
+        ?caption,
       ].join(', '),
       onTap: open,
       menuActions: (menuContext) => [
@@ -526,6 +539,18 @@ String? collectionEventLine(String? location, DateTime? start, DateTime? end) {
   return parts.isEmpty ? null : parts.join(' · ');
 }
 
+/// "1 game", "55 games".
+String _plural(int n, String one) => n == 1 ? '1 $one' : '$n ${one}s';
+
+/// "World Championship 1985", or "World Championship 1984 and 1 more": the
+/// events a book covers, as its card names them; null when it names none.
+String? collectionEventsLine(List<CollectionEventRef> events) {
+  if (events.isEmpty) return null;
+  final first = events.first.title;
+  final more = events.length - 1;
+  return more == 0 ? first : '$first and $more more';
+}
+
 /// "Saint Louis · Oct 2-14, 2025": an event's place and dates, or null when
 /// it has neither.
 String? collectionPlaceAndDates(Collection c) {
@@ -556,9 +581,10 @@ String? collectionDateRange(DateTime? start, DateTime? end) {
 /// Where section headers and the player line start: the game cards' edge.
 double get _headerInset => discoveryGutter + 4.sp;
 
-/// One collection, laid out as an event: About, Games (the annotated games
-/// under their rounds, or a book's parts and chapters) and Players (everyone
-/// in it and their games; picking one shows those games).
+/// One collection, laid out as an event. A book: About, Games (its parts
+/// and chapters) and Events (the events it covers). An event: About, Games
+/// (the annotated games under their rounds), Books (the books written about
+/// it) and Players (everyone in it; picking one shows their games).
 class CollectionScreen extends ConsumerStatefulWidget {
   const CollectionScreen({super.key, required this.collection});
 
@@ -572,6 +598,13 @@ class CollectionScreen extends ConsumerStatefulWidget {
 class _CollectionScreenState extends ConsumerState<CollectionScreen> {
   static const int _aboutTab = 0;
   static const int _gamesTab = 1;
+
+  static const List<String> _bookTabs = ['About', 'Games', 'Events'];
+  static const List<String> _eventTabs = ['About', 'Games', 'Books', 'Players'];
+
+  /// Fixed by the kind the page opened as, so the tab strip never changes
+  /// under the viewer.
+  late final bool _isBook = widget.collection.kind == CollectionKind.book;
 
   final EventViewController _tabs = EventViewController();
 
@@ -803,9 +836,23 @@ class _CollectionScreenState extends ConsumerState<CollectionScreen> {
         ? null
         : unlock;
 
+    // The detail read, when it has nothing better than the list row to show
+    // yet: the Events tab waits on it, the Books tab when it opened by slug.
+    final detailPending = detail.isLoading && !detail.hasValue;
+    final detailError = detail.hasError && !detail.hasValue && !detail.isLoading
+        ? detail.error
+        : null;
+    void retryDetail() => ref.invalidate(collectionDetailProvider(slug));
+    // Held for the page's life, as its games and players are: the tabs'
+    // pages come and go as the viewer swipes, and the Books tab should not
+    // ask again (nor flash its skeleton) each time it comes back.
+    if (!_isBook && c.id.isNotEmpty) {
+      ref.watch(collectionBooksOfEventCollectionProvider(c.id));
+    }
+
     return EventViewShell(
       title: c.title,
-      tabs: const ['About', 'Games', 'Players'],
+      tabs: _isBook ? _bookTabs : _eventTabs,
       initialTab: _initialTab,
       controller: _tabs,
       pageBuilder: (context, index) {
@@ -822,10 +869,8 @@ class _CollectionScreenState extends ConsumerState<CollectionScreen> {
             onUnlock: () => _unlock(c, openGames: true),
             // Only when there is nothing better than the list row to show;
             // hidden while a retry is in flight so the tap reads as taken.
-            error: detail.hasError && !detail.hasValue && !detail.isLoading
-                ? detail.error
-                : null,
-            onRetry: () => ref.invalidate(collectionDetailProvider(slug)),
+            error: detailError,
+            onRetry: retryDetail,
           ),
           1 =>
             contents == null
@@ -870,6 +915,20 @@ class _CollectionScreenState extends ConsumerState<CollectionScreen> {
                             },
                           ),
                   ),
+          // Public on both kinds, locked or not: what a book covers and
+          // what was written about an event are its credits, not its games.
+          2 when _isBook => _EventsPage(
+            events: c.events,
+            pending: detailPending,
+            error: detailError,
+            onRetry: retryDetail,
+          ),
+          2 => _BooksPage(
+            collectionId: c.id,
+            pending: detailPending,
+            error: detailError,
+            onRetry: retryDetail,
+          ),
           _ =>
             players == null
                 ? _LockedPlayers(collection: c, phase: phase, onUnlock: unlock)
@@ -1171,6 +1230,7 @@ class _AboutPage extends ConsumerWidget {
     final colors = context.colors;
     final c = collection;
     final paragraphs = _paragraphs(c.about);
+    final foreword = _paragraphs(c.foreword);
     final players = playerCount;
     // The offered way in says how many games wait behind it ("Read all 55
     // games in this book"), so the facts do not say it again right above.
@@ -1194,15 +1254,6 @@ class _AboutPage extends ConsumerWidget {
     final secondary = AppTypography.textSmRegular.copyWith(
       color: colors.textSecondary,
     );
-    // An event collection lists the books written about it; a book lists
-    // the events it covers.
-    final Widget bindings = isBook
-        ? CollectionEventsSection(events: c.events)
-        : CollectionBooksSection(
-            anchors: CollectionEventAnchors(collections: [c.id]),
-            titleStyle: _aboutHeadingStyle(context),
-            topGap: 28.sp,
-          );
     return ListView(
       padding: EdgeInsets.fromLTRB(
         20.sp,
@@ -1294,7 +1345,23 @@ class _AboutPage extends ConsumerWidget {
           SizedBox(height: 16.sp),
           Text(p, style: body),
         ],
-        bindings,
+        // The author's own foreword, when the book has one: after the
+        // description, under a heading of the page's own voice.
+        if (foreword.isNotEmpty) ...[
+          SizedBox(height: 28.sp),
+          Semantics(
+            header: true,
+            child: Text('Foreword', style: _aboutHeadingStyle(context)),
+          ),
+          for (var i = 0; i < foreword.length; i++) ...[
+            SizedBox(height: i == 0 ? 10.sp : 16.sp),
+            Text(
+              foreword[i],
+              key: i == 0 ? const ValueKey('collection_foreword') : null,
+              style: body,
+            ),
+          ],
+        ],
       ],
     );
   }
@@ -1364,43 +1431,134 @@ TextStyle _aboutHeadingStyle(BuildContext context) =>
       fontWeight: FontWeight.w600,
     );
 
-/// The events a book covers, under its About text: each drawn as the
-/// Collection list draws an event (its image or the trophy, the name, the
-/// dates and place) with the team's note under it. A tap opens the event
-/// wherever it lives: its broadcast, its database page, or its annotated
-/// collection.
-class CollectionEventsSection extends ConsumerWidget {
-  const CollectionEventsSection({super.key, required this.events});
+/// A book's Events tab: the events it covers, each drawn as the Collection
+/// list draws an event (its image or the trophy, the name, the place and
+/// dates) with the team's note under it. A tap opens the event wherever it
+/// lives: its broadcast, its database page, or its annotated collection.
+/// The events arrive with the detail read, so the tab waits on it (or says
+/// it failed, with a retry) while it has none from the list row.
+class _EventsPage extends StatelessWidget {
+  const _EventsPage({
+    required this.events,
+    required this.pending,
+    required this.error,
+    required this.onRetry,
+  });
 
   final List<CollectionEventRef> events;
+  final bool pending;
+  final Object? error;
+  final VoidCallback onRetry;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    if (events.isEmpty) return const SizedBox.shrink();
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        SizedBox(height: 28.sp),
-        Semantics(
-          header: true,
-          child: Text(
-            events.length == 1 ? 'Event' : 'Events',
-            style: _aboutHeadingStyle(context),
+  Widget build(BuildContext context) {
+    if (events.isEmpty) {
+      if (pending) return const _CardsSkeleton();
+      final failed = error;
+      if (failed != null) {
+        return _Notice(
+          text: userFacingError(
+            failed,
+            fallback: "Couldn't load this book's events.",
           ),
+          actionLabel: 'Try again',
+          onAction: onRetry,
+        );
+      }
+      return const _Notice(text: 'No events for this book yet.');
+    }
+    return ListView.builder(
+      key: const PageStorageKey<String>('collection_events'),
+      padding: _tabListPadding(context),
+      itemCount: events.length,
+      itemBuilder: (context, i) => Padding(
+        padding: EdgeInsets.only(bottom: 12.sp),
+        child: _EventRefRow(
+          key: ValueKey<String>('collection_event_${events[i].linkId}'),
+          event: events[i],
         ),
-        SizedBox(height: 10.sp),
-        for (var i = 0; i < events.length; i++) ...[
-          if (i > 0) SizedBox(height: 8.sp),
-          _EventRefRow(
-            key: ValueKey<String>('collection_event_${events[i].linkId}'),
-            event: events[i],
-          ),
-        ],
-      ],
+      ),
     );
   }
 }
+
+/// An event collection's Books tab: the books written about it, each drawn
+/// as the Books list draws a book, with the team's note on why it belongs
+/// here. A book opens on its own page (its preview, for a viewer without
+/// Premium). [collectionId] is empty while a page opened by slug (from a
+/// book's event) waits on its detail read.
+class _BooksPage extends ConsumerWidget {
+  const _BooksPage({
+    required this.collectionId,
+    required this.pending,
+    required this.error,
+    required this.onRetry,
+  });
+
+  final String collectionId;
+  final bool pending;
+
+  /// The detail read's failure, when the page still has no id to ask with.
+  final Object? error;
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    if (collectionId.isEmpty) {
+      final failed = error;
+      if (failed != null && !pending) {
+        return _Notice(
+          text: userFacingError(
+            failed,
+            fallback: "Couldn't load the books about this event.",
+          ),
+          actionLabel: 'Try again',
+          onAction: onRetry,
+        );
+      }
+      return const _CardsSkeleton();
+    }
+    final books = ref.watch(
+      collectionBooksOfEventCollectionProvider(collectionId),
+    );
+    return books.when(
+      data: (list) => list.isEmpty
+          ? const _Notice(text: 'No books about this event yet.')
+          : ListView.builder(
+              key: const PageStorageKey<String>('collection_books'),
+              padding: _tabListPadding(context),
+              itemCount: list.length,
+              itemBuilder: (context, i) => Padding(
+                padding: EdgeInsets.only(bottom: 12.sp),
+                child: CollectionCard(
+                  key: ValueKey<String>('event_book_${list[i].id}'),
+                  collection: list[i],
+                  note: list[i].note,
+                ),
+              ),
+            ),
+      loading: () => const _CardsSkeleton(),
+      error: (error, _) => _Notice(
+        text: userFacingError(
+          error,
+          fallback: "Couldn't load the books about this event.",
+        ),
+        actionLabel: 'Try again',
+        onAction: () => ref.invalidate(
+          collectionBooksOfEventCollectionProvider(collectionId),
+        ),
+      ),
+    );
+  }
+}
+
+/// A card list on a collection's tab: the Collection list's own gutters.
+EdgeInsets _tabListPadding(BuildContext context) => EdgeInsets.fromLTRB(
+  16.sp,
+  16.sp,
+  16.sp,
+  12.sp + MediaQuery.viewPaddingOf(context).bottom,
+);
 
 class _EventRefRow extends ConsumerWidget {
   const _EventRefRow({super.key, required this.event});

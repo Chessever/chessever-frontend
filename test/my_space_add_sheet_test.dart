@@ -612,7 +612,10 @@ void main() {
     // Back: the follow shows again, with no pin made for it.
     await tester.tap(_toggleOf('Gukesh D'));
     await tester.pump(const Duration(milliseconds: 300));
-    expect(container.read(spaceHiddenAutoKeysProvider), isNot(contains(hidden)));
+    expect(
+      container.read(spaceHiddenAutoKeysProvider),
+      isNot(contains(hidden)),
+    );
     expect(shown(), ['Carlsen, Magnus', 'Gukesh D']);
     expect(store.added, isEmpty);
     expect(
@@ -630,4 +633,72 @@ void main() {
     await tester.pump(const Duration(seconds: 10));
     await tester.pumpWidget(const SizedBox.shrink());
   });
+
+  for (final reduced in [false, true]) {
+    testWidgets('the add mark turns from plus to check and back'
+        '${reduced ? ' at once under reduced motion' : ' on its spring'}', (
+      tester,
+    ) async {
+      var added = false;
+      late StateSetter update;
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: AppTheme.darkTheme,
+          builder: (context, child) => MediaQuery(
+            data: MediaQuery.of(context).copyWith(disableAnimations: reduced),
+            child: child!,
+          ),
+          home: Builder(
+            builder: (context) {
+              ResponsiveHelper.init(context);
+              return Scaffold(
+                body: Center(
+                  child: StatefulBuilder(
+                    builder: (context, setState) {
+                      update = setState;
+                      return SpaceAddToggle(
+                        added: added,
+                        onTap: () {},
+                        label: 'Add Carlsen',
+                      );
+                    },
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+      );
+      // How far the plus has turned into the check, as it paints it.
+      double turned() {
+        final paint = tester.widget<CustomPaint>(
+          find
+              .descendant(
+                of: find.byType(SpaceAddToggle),
+                matching: find.byType(CustomPaint),
+              )
+              .first,
+        );
+        // The painter is private; its progress is all this reads.
+        // ignore: avoid_dynamic_calls
+        return (paint.painter! as dynamic).t as double;
+      }
+
+      expect(turned(), 0);
+      update(() => added = true);
+      await tester.pump();
+      if (reduced) {
+        expect(turned(), 1);
+      } else {
+        expect(turned(), lessThan(1));
+        await tester.pump(const Duration(seconds: 1));
+        expect(turned(), moreOrLessEquals(1, epsilon: 0.01));
+      }
+      update(() => added = false);
+      await tester.pump();
+      if (!reduced) await tester.pump(const Duration(seconds: 1));
+      expect(turned(), moreOrLessEquals(0, epsilon: 0.01));
+      expect(tester.takeException(), isNull);
+    });
+  }
 }
