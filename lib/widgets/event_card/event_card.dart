@@ -10,6 +10,7 @@ import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/favorite_event_ids.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/location_service_provider.dart';
+import 'package:chessever2/utils/owned_stream.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/svg_asset.dart';
 import 'package:chessever2/utils/time_utils.dart';
@@ -1148,9 +1149,14 @@ class _HeartIconWithCount extends StatelessWidget {
 /// periodic stream across every visible card avoids spawning N timers in a
 /// long event list.
 final _eventCountdownTickProvider = StreamProvider.autoDispose<DateTime>((ref) {
-  return Stream<DateTime>.periodic(
-    const Duration(seconds: 1),
-    (_) => DateTime.now(),
+  // The first tick is a second away, so a list scrolled or closed within that
+  // second disposes this while loading; see [ownedStream].
+  return ownedStream(
+    ref,
+    Stream<DateTime>.periodic(
+      const Duration(seconds: 1),
+      (_) => DateTime.now(),
+    ),
   );
 });
 

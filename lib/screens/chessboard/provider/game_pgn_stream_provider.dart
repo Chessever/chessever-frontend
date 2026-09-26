@@ -1,16 +1,7 @@
-import 'dart:async';
-
 import 'package:chessever2/repository/supabase/game/game_stream_repository.dart';
+import 'package:chessever2/utils/owned_stream.dart';
 import 'package:flutter/foundation.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
-
-/// Stream provider for PGN updates of a specific game.
-/// Auto-disposes when the widget is no longer in view.
-final gamePgnStreamProvider = AutoDisposeStreamProvider.family<String?, String>(
-  (ref, gameId) {
-    return ref.read(gameStreamRepositoryProvider).subscribeToPgn(gameId);
-  },
-);
 
 /// Comprehensive game updates stream for live data (FEN, PGN, clocks, status).
 ///
@@ -21,14 +12,19 @@ final gameUpdatesStreamProvider = AutoDisposeStreamProvider.family<
   Map<String, dynamic>?,
   String
 >((ref, gameId) {
-  return ref.read(gameStreamRepositoryProvider).subscribeToGameUpdates(gameId);
+  // Board pages are built and disposed while swiping; see [ownedStream].
+  return ownedStream(
+    ref,
+    ref.read(gameStreamRepositoryProvider).subscribeToGameUpdates(gameId),
+  );
 });
 
 final liveGameUpdateStreamProvider =
     AutoDisposeStreamProvider.family<LiveGameUpdate?, String>((ref, gameId) {
-      return ref
-          .read(gameStreamRepositoryProvider)
-          .subscribeToLiveGameUpdate(gameId);
+      return ownedStream(
+        ref,
+        ref.read(gameStreamRepositoryProvider).subscribeToLiveGameUpdate(gameId),
+      );
     });
 
 @immutable
@@ -92,18 +88,6 @@ final gameUpdatesBatchStreamProvider = AutoDisposeStreamProvider.family<
     source = repository.subscribeToLiveGameUpdatesBatch(key.gameIds);
   }
 
-  // Riverpod 2 can keep a disposed StreamProvider subscribed until its first
-  // event resolves `.future`. Own the upstream subscription explicitly so a
-  // slow initial snapshot cannot leave off-screen Realtime channels running.
-  final controller = StreamController<Map<String, LiveGameUpdate>>();
-  final subscription = source.listen(
-    controller.add,
-    onError: controller.addError,
-    onDone: controller.close,
-  );
-  ref.onDispose(() {
-    unawaited(subscription.cancel());
-    unawaited(controller.close());
-  });
-  return controller.stream;
+  // Cards scroll out before a slow initial snapshot; see [ownedStream].
+  return ownedStream(ref, source);
 });

@@ -8,6 +8,7 @@ import 'package:chessever2/repository/supabase/chess_player/chess_player_reposit
 import 'package:chessever2/screens/gamebase/models/models.dart';
 import 'package:chessever2/screens/library/providers/library_folders_provider.dart';
 import 'package:chessever2/utils/chess_title_utils.dart';
+import 'package:chessever2/utils/owned_stream.dart';
 import 'package:chessever2/utils/player_name_search.dart';
 import 'package:flutter/foundation.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -93,7 +94,7 @@ class LibrarySearchResult {
 
 final libraryAnalysesProvider = StreamProvider<List<SavedAnalysis>>((ref) {
   final repository = ref.watch(libraryRepositoryProvider);
-  return repository.subscribeAnalyses();
+  return ownedStream(ref, repository.subscribeAnalyses());
 });
 
 final libraryCombinedSearchProvider = StateNotifierProvider.autoDispose.family<
