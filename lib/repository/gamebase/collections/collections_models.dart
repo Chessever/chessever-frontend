@@ -20,8 +20,32 @@ enum CollectionKind {
 
   static CollectionKind parse(Object? raw) =>
       raw?.toString().trim().toLowerCase() == 'book'
-          ? CollectionKind.book
-          : CollectionKind.event;
+      ? CollectionKind.book
+      : CollectionKind.event;
+}
+
+/// Who may read a collection's games.
+enum CollectionAccess {
+  /// Everyone.
+  free,
+
+  /// Premium subscribers only; everyone else sees the cover, the credits and
+  /// the table of contents, and the paywall.
+  premium;
+
+  /// The value the server applies when a row has none of its own: books are
+  /// Premium, everything else is free. An unknown value reads as that default
+  /// too, so a later server value never opens a Premium book by accident.
+  static CollectionAccess parse(Object? raw, CollectionKind kind) {
+    return switch (raw?.toString().trim().toLowerCase()) {
+      'free' => CollectionAccess.free,
+      'premium' => CollectionAccess.premium,
+      _ =>
+        kind == CollectionKind.book
+            ? CollectionAccess.premium
+            : CollectionAccess.free,
+    };
+  }
 }
 
 /// What a node of a collection's section tree stands for.
@@ -52,16 +76,37 @@ enum CollectionSectionKind {
   }
 }
 
+/// The lock reason (and error code) for a session the server did not
+/// accept: none was sent, or it was spent or refused.
+const String kCollectionLockAuthRequired = 'auth_required';
+
 /// A collections request gamebase refused, carrying its own `error.message`.
 ///
 /// [toString] keeps the HTTP status (" (HTTP 404)") so `userFacingError`
 /// still classifies it; the UI never shows this text verbatim.
 @immutable
 class CollectionsRequestException implements Exception {
-  const CollectionsRequestException(this.message, {this.statusCode});
+  const CollectionsRequestException(this.message, {this.statusCode, this.code});
 
   final String message;
   final int? statusCode;
+
+  /// The envelope's machine-readable `error.code` ("premium_required",
+  /// "auth_required", "access_check_unavailable", ...), when it has one.
+  final String? code;
+
+  /// The server kept a Premium collection's games from this viewer: no
+  /// entitlement ("premium_required"), or no account to check
+  /// ("auth_required"). A reason to show the paywall, never an error.
+  bool get isPremiumGate =>
+      code == 'premium_required' || code == kCollectionLockAuthRequired;
+
+  /// The gate is the session: none was sent, or the server refused it.
+  bool get isSignInGate => code == kCollectionLockAuthRequired;
+
+  /// The server could not reach the entitlement check just now. The viewer
+  /// may well be entitled, so this is a retry, not a paywall.
+  bool get isAccessCheckUnavailable => code == 'access_check_unavailable';
 
   @override
   String toString() =>
@@ -78,11 +123,13 @@ Object? unwrapCollectionsEnvelope(Object? body, {int? statusCode}) {
   }
   if (body['status'] == 'error') {
     final error = body['error'];
-    final message =
-        error is Map ? _nullableString(error['message']) : _nullableString(error);
+    final message = error is Map
+        ? _nullableString(error['message'])
+        : _nullableString(error);
     throw CollectionsRequestException(
       message ?? 'Collections request failed',
       statusCode: statusCode,
+      code: error is Map ? _nullableString(error['code']) : null,
     );
   }
   return body['data'];
@@ -119,7 +166,18 @@ class Collection {
     this.about,
     this.sections = const [],
     this.unsortedCount = 0,
-  });
+    CollectionAccess? access,
+    this.contentLocked,
+    this.lockReason,
+    this.eventCount = 0,
+    this.events = const [],
+    this.note,
+    this.linkId,
+  }) : access =
+           access ??
+           (kind == CollectionKind.book
+               ? CollectionAccess.premium
+               : CollectionAccess.free);
 
   final String id;
 
@@ -172,15 +230,56 @@ class Collection {
   /// Games that sit in no section. Detail only.
   final int unsortedCount;
 
+  /// Who may read the games: [CollectionAccess.premium] for books unless the
+  /// team opened one up.
+  final CollectionAccess access;
+
+  /// The server's verdict for this viewer, on a detail read: true when the
+  /// games are closed to them (a Premium collection and no verified
+  /// entitlement), false when they may read them. Null when the server did
+  /// not say (a list row, or a server from before the Premium gate).
+  final bool? contentLocked;
+
+  /// Why the server keeps the games from this viewer, when it does (or
+  /// could not tell): the code the games route answers with,
+  /// "premium_required", "auth_required" (no session, or one it refused),
+  /// "access_check_unavailable". Null when the viewer reads the games, and
+  /// from a server that does not say.
+  final String? lockReason;
+
+  /// The server refused (or never got) this viewer's session: signing in
+  /// again is the way in, not waiting for a purchase to sync.
+  bool get lockedForSignIn => lockReason == kCollectionLockAuthRequired;
+
+  /// How many real-world events the collection is bound to.
+  final int eventCount;
+
+  /// The events a book is bound to, in the team's order. Detail only.
+  final List<CollectionEventRef> events;
+
+  /// The team's line on why this book belongs to the event it was listed
+  /// for (`GET /api/collections/for-event` rows only).
+  final String? note;
+
+  /// The binding a `for-event` row came through.
+  final String? linkId;
+
+  bool get isPremium => access == CollectionAccess.premium;
+
   factory Collection.fromJson(Map<String, dynamic> json) {
     final id = _string(json['id']);
-    final sections = _maps(json['sections'])
-        .map(CollectionSection.fromJson)
-        .toList(growable: false);
+    final kind = CollectionKind.parse(json['kind']);
+    final sections = _maps(
+      json['sections'],
+    ).map(CollectionSection.fromJson).toList(growable: false);
+    final events = [
+      for (final e in _maps(json['events'])) ?CollectionEventRef.fromJson(e),
+    ];
+    final locked = json['contentLocked'];
     return Collection(
       id: id,
       slug: _nullableString(json['slug']) ?? id,
-      kind: CollectionKind.parse(json['kind']),
+      kind: kind,
       title: _nullableString(json['title']) ?? 'Untitled',
       subtitle: _nullableString(json['subtitle']),
       author: _nullableString(json['author']),
@@ -204,8 +303,289 @@ class Collection {
       about: _nullableString(json['about']),
       sections: _sortedSections(sections),
       unsortedCount: _int(json['unsortedCount']),
+      access: CollectionAccess.parse(json['access'], kind),
+      contentLocked: locked == null ? null : _bool(locked),
+      lockReason: _nullableString(json['lockReason']),
+      eventCount: json.containsKey('eventCount')
+          ? _int(json['eventCount'])
+          : events.length,
+      events: events,
+      note: _nullableString(json['note']),
+      linkId: _nullableString(json['linkId']),
     );
   }
+}
+
+/// How the app opens one of a book's events, as the server resolved it.
+enum CollectionEventOpenKind {
+  /// A ChessEver broadcast: [CollectionEventOpen.groupBroadcastId], with the
+  /// tour to land on when known.
+  broadcast,
+
+  /// A broadcast known only by its slug (`tours.slug`).
+  broadcastSlug,
+
+  /// A database (TWIC) event, by its PGN Event name, and its Site when the
+  /// server knows one (today it binds a database event by name alone, so
+  /// the event opens under its name).
+  database,
+
+  /// A curated event collection, by its slug.
+  collection,
+}
+
+/// Where one of a book's events opens (`CollectionEventRef.open`).
+@immutable
+class CollectionEventOpen {
+  const CollectionEventOpen._({
+    required this.kind,
+    this.groupBroadcastId,
+    this.tourId,
+    this.slug,
+    this.eventName,
+    this.site,
+  });
+
+  const CollectionEventOpen.broadcast({
+    required String groupBroadcastId,
+    String? tourId,
+  }) : this._(
+         kind: CollectionEventOpenKind.broadcast,
+         groupBroadcastId: groupBroadcastId,
+         tourId: tourId,
+       );
+
+  const CollectionEventOpen.broadcastSlug(String slug)
+    : this._(kind: CollectionEventOpenKind.broadcastSlug, slug: slug);
+
+  const CollectionEventOpen.database({required String eventName, String? site})
+    : this._(
+        kind: CollectionEventOpenKind.database,
+        eventName: eventName,
+        site: site,
+      );
+
+  const CollectionEventOpen.collection(String slug)
+    : this._(kind: CollectionEventOpenKind.collection, slug: slug);
+
+  final CollectionEventOpenKind kind;
+  final String? groupBroadcastId;
+  final String? tourId;
+
+  /// [CollectionEventOpenKind.broadcastSlug]'s tour slug, or
+  /// [CollectionEventOpenKind.collection]'s collection slug.
+  final String? slug;
+  final String? eventName;
+
+  /// [CollectionEventOpenKind.database]'s Site; null when the server binds
+  /// the event by its name alone.
+  final String? site;
+
+  /// Null for a kind this build does not know, or one missing the id it
+  /// needs: the row then shows, but does not open.
+  static CollectionEventOpen? fromJson(Object? raw) {
+    if (raw is! Map) return null;
+    final kind = _nullableString(raw['kind'])?.toLowerCase();
+    switch (kind) {
+      case 'broadcast':
+        final group = _nullableString(raw['groupBroadcastId']);
+        final tour = _nullableString(raw['tourId']);
+        if (group == null && tour == null) return null;
+        return CollectionEventOpen.broadcast(
+          // A tour id resolves to its group as well (the deep-link resolver
+          // probes both), so a row with only the tour still opens.
+          groupBroadcastId: group ?? tour!,
+          tourId: tour,
+        );
+      case 'broadcast_slug':
+        final slug = _nullableString(raw['slug']);
+        return slug == null ? null : CollectionEventOpen.broadcastSlug(slug);
+      case 'database':
+        final name = _nullableString(raw['eventName']);
+        return name == null
+            ? null
+            : CollectionEventOpen.database(
+                eventName: name,
+                site: _nullableString(raw['site']),
+              );
+      case 'collection':
+        final slug = _nullableString(raw['slug']);
+        return slug == null ? null : CollectionEventOpen.collection(slug);
+    }
+    return null;
+  }
+}
+
+/// One real-world event a book is bound to, as its detail lists it.
+@immutable
+class CollectionEventRef {
+  const CollectionEventRef({
+    required this.linkId,
+    required this.title,
+    this.location,
+    this.dateStart,
+    this.dateEnd,
+    this.imageUrl,
+    this.note,
+    this.open,
+  });
+
+  final String linkId;
+  final String title;
+  final String? location;
+  final DateTime? dateStart;
+  final DateTime? dateEnd;
+  final String? imageUrl;
+
+  /// The team's caption for the binding.
+  final String? note;
+
+  /// Null when the server could not resolve the event to anything the app
+  /// opens (the row still shows what the book covers).
+  final CollectionEventOpen? open;
+
+  /// Null for a row with neither a link id nor a title.
+  static CollectionEventRef? fromJson(Map<String, dynamic> json) {
+    final title = _nullableString(json['title']);
+    final linkId =
+        _nullableString(json['linkId']) ?? _nullableString(json['id']);
+    if (title == null || linkId == null) return null;
+    return CollectionEventRef(
+      linkId: linkId,
+      title: title,
+      location: _nullableString(json['location']),
+      dateStart: _day(json['dateStart']),
+      dateEnd: _day(json['dateEnd']),
+      imageUrl: _nullableString(json['imageUrl']),
+      note: _nullableString(json['note']),
+      open: CollectionEventOpen.fromJson(json['open']),
+    );
+  }
+}
+
+/// Every identity one event page is known by, as
+/// `GET /api/collections/for-event` takes them: the server expands each
+/// through its mirror of the broadcast tables, so a re-minted group or a
+/// database twin of the same event still finds the books bound to it.
+///
+/// Values are trimmed, deduplicated and sorted, so two pages naming the same
+/// event share one cache entry; each list keeps at most [maxValues] values of
+/// at most [maxLength] characters, as the endpoint accepts.
+@immutable
+class CollectionEventAnchors {
+  CollectionEventAnchors({
+    Iterable<String?> groups = const [],
+    Iterable<String?> tours = const [],
+    Iterable<String?> slugs = const [],
+    Iterable<String?> events = const [],
+    String? site,
+    Iterable<String?> collections = const [],
+  }) : groups = _clean(groups),
+       tours = _clean(tours),
+       slugs = _clean(slugs, lower: true),
+       events = _clean(events),
+       site = _clip(site),
+       collections = _clean(collections);
+
+  static const int maxValues = 20;
+  static const int maxLength = 200;
+
+  /// Group broadcast ids (`gb_<tourId>` or a data-hub slug).
+  final List<String> groups;
+
+  /// Lichess tour ids.
+  final List<String> tours;
+
+  /// Tour slugs (lower case, as `game.broadcast_slug` stores them).
+  final List<String> slugs;
+
+  /// PGN Event names of database events.
+  final List<String> events;
+
+  /// The database event's Site. It does not narrow [events]: a database
+  /// event's books match on its Event name alone. The server reads a Lichess
+  /// broadcast URL here as that broadcast's slug, so the database twin of a
+  /// broadcast finds the books bound to the broadcast.
+  final String? site;
+
+  /// Ids of curated event collections.
+  final List<String> collections;
+
+  bool get isEmpty =>
+      groups.isEmpty &&
+      tours.isEmpty &&
+      slugs.isEmpty &&
+      events.isEmpty &&
+      collections.isEmpty;
+
+  /// The query string, each value repeated under its key.
+  Map<String, List<String>> toQuery({
+    CollectionKind kind = CollectionKind.book,
+  }) {
+    return {
+      if (groups.isNotEmpty) 'group': groups,
+      if (tours.isNotEmpty) 'tour': tours,
+      if (slugs.isNotEmpty) 'slug': slugs,
+      if (events.isNotEmpty) 'event': events,
+      if (events.isNotEmpty && site != null) 'site': [site!],
+      if (collections.isNotEmpty) 'collection': collections,
+      'kind': [kind.apiValue],
+    };
+  }
+
+  static List<String> _clean(Iterable<String?> raw, {bool lower = false}) {
+    final out = <String>{};
+    for (final value in raw) {
+      var v = _clip(value);
+      if (v == null) continue;
+      if (lower) v = v.toLowerCase();
+      out.add(v);
+    }
+    final sorted = out.toList()..sort();
+    return List.unmodifiable(sorted.take(maxValues));
+  }
+
+  static String? _clip(String? value) {
+    final v = value?.trim();
+    if (v == null || v.isEmpty) return null;
+    return v.length > maxLength ? v.substring(0, maxLength) : v;
+  }
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is CollectionEventAnchors &&
+          listEquals(groups, other.groups) &&
+          listEquals(tours, other.tours) &&
+          listEquals(slugs, other.slugs) &&
+          listEquals(events, other.events) &&
+          site == other.site &&
+          listEquals(collections, other.collections);
+
+  @override
+  int get hashCode => Object.hash(
+    Object.hashAll(groups),
+    Object.hashAll(tours),
+    Object.hashAll(slugs),
+    Object.hashAll(events),
+    site,
+    Object.hashAll(collections),
+  );
+
+  @override
+  String toString() => 'CollectionEventAnchors(${toQuery()})';
+}
+
+/// The `{books}` payload of `GET /api/collections/for-event`: the published
+/// books bound to one event, in the team's order, each with its [note].
+List<Collection> collectionsForEventFromJson(Object? data) {
+  final items = data is Map ? (data['books'] ?? data['items']) : data;
+  return [
+    for (final item in _maps(items))
+      if (_nullableString(item['id']) != null ||
+          _nullableString(item['slug']) != null)
+        Collection.fromJson(item),
+  ];
 }
 
 /// One node of a collection's section tree.
@@ -254,9 +634,9 @@ class CollectionSection {
   final List<CollectionSection> children;
 
   factory CollectionSection.fromJson(Map<String, dynamic> json) {
-    final children = _maps(json['children'])
-        .map(CollectionSection.fromJson)
-        .toList(growable: false);
+    final children = _maps(
+      json['children'],
+    ).map(CollectionSection.fromJson).toList(growable: false);
     final number = _nullableString(json['number']);
     final title = _nullableString(json['title']);
     return CollectionSection(

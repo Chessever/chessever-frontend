@@ -268,6 +268,8 @@ void main() {
           kind: CollectionKind.book,
           title: 'My System',
           gameCount: 2,
+          // The server's verdict: this viewer reads the book.
+          contentLocked: false,
           sections: [
             CollectionSection(
               id: 'p1',

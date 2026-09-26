@@ -836,11 +836,21 @@ class GamebaseRepository {
   }
 
   /// A published collection with its About text and section tree
-  /// (`GET /api/collections/:slug`).
-  Future<Collection> getCollection(String slug) async {
+  /// (`GET /api/collections/:slug`; an id works too). [bearer] is the
+  /// viewer's session token: with it the server judges a Premium
+  /// collection's `contentLocked` for them. [fresh] asks it to judge anew
+  /// rather than repeat a "not Premium" it still holds (right after a
+  /// purchase).
+  Future<Collection> getCollection(
+    String slug, {
+    String? bearer,
+    bool fresh = false,
+  }) async {
     final data = await _getCollectionsData(
       '/api/collections/${Uri.encodeComponent(slug)}',
       what: 'collection',
+      bearer: bearer,
+      fresh: fresh,
     );
     if (data is! Map) {
       throw const FormatException('Unexpected collection response format');
@@ -850,7 +860,10 @@ class GamebaseRepository {
 
   /// One page of a collection's games in section-tree order
   /// (`GET /api/collections/:slug/games`). [includePgn] adds each game's
-  /// whole PGN, which the board needs to replay it.
+  /// whole PGN, which the board needs to replay it. A Premium collection
+  /// answers only a [bearer] whose account is entitled; anyone else gets a
+  /// [CollectionsRequestException] with [CollectionsRequestException.isPremiumGate].
+  /// [fresh] as for [getCollection].
   Future<CollectionGamesPage> getCollectionGames(
     String slug, {
     String? section,
@@ -858,10 +871,14 @@ class GamebaseRepository {
     bool includePgn = false,
     int limit = 100,
     int offset = 0,
+    String? bearer,
+    bool fresh = false,
   }) async {
     final data = await _getCollectionsData(
       '/api/collections/${Uri.encodeComponent(slug)}/games',
       what: 'collection games',
+      bearer: bearer,
+      fresh: fresh,
       queryParameters: {
         if (section != null && section.isNotEmpty) 'section': section,
         if (playerKey != null && playerKey.isNotEmpty) 'player': playerKey,
@@ -874,26 +891,63 @@ class GamebaseRepository {
   }
 
   /// Everyone who played in a collection, most games first
-  /// (`GET /api/collections/:slug/players`).
-  Future<List<CollectionPlayer>> getCollectionPlayers(String slug) async {
+  /// (`GET /api/collections/:slug/players`). Gated like the games;
+  /// [fresh] as for [getCollection].
+  Future<List<CollectionPlayer>> getCollectionPlayers(
+    String slug, {
+    String? bearer,
+    bool fresh = false,
+  }) async {
     final data = await _getCollectionsData(
       '/api/collections/${Uri.encodeComponent(slug)}/players',
       what: 'collection players',
+      bearer: bearer,
+      fresh: fresh,
     );
     return CollectionPlayer.listFromJson(data);
   }
 
-  /// GETs a collections endpoint and returns its envelope's `data`.
+  /// The published collections (books unless [kind] says otherwise) bound
+  /// to the event [anchors] name (`GET /api/collections/for-event`), each
+  /// with the team's note for the binding. Public: covers and titles are
+  /// the preview.
+  Future<List<Collection>> getCollectionsForEvent(
+    CollectionEventAnchors anchors, {
+    CollectionKind kind = CollectionKind.book,
+  }) async {
+    if (anchors.isEmpty) return const [];
+    final data = await _getCollectionsData(
+      '/api/collections/for-event',
+      what: 'event collections',
+      queryParameters: anchors.toQuery(kind: kind),
+    );
+    return collectionsForEventFromJson(data);
+  }
+
+  /// GETs a collections endpoint and returns its envelope's `data`. List
+  /// values in [queryParameters] repeat their key (`?tour=a&tour=b`).
+  /// [fresh] sends `Cache-Control: no-cache` (and `Pragma` for proxies that
+  /// only read that), which gamebase takes as "check my Premium again".
   Future<Object?> _getCollectionsData(
     String path, {
     required String what,
     Map<String, dynamic>? queryParameters,
+    String? bearer,
+    bool fresh = false,
   }) async {
     try {
       final response = await _dio.get(
         '$_baseUrl$path',
         queryParameters: queryParameters,
-        options: Options(headers: _headers),
+        options: Options(
+          headers: {
+            ..._headers,
+            if (bearer != null && bearer.isNotEmpty)
+              'Authorization': 'Bearer $bearer',
+            if (fresh) ...{'Cache-Control': 'no-cache', 'Pragma': 'no-cache'},
+          },
+          listFormat: ListFormat.multi,
+        ),
       );
       return unwrapCollectionsEnvelope(
         response.data,

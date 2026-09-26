@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:chessever2/repository/gamebase/collections/collections_models.dart';
 import 'package:chessever2/repository/gamebase/gamebase_repository.dart';
 import 'package:chessever2/screens/chessboard/analysis/chess_game.dart';
@@ -6,6 +8,7 @@ import 'package:chessever2/services/pgn_file_intake_service.dart';
 import 'package:dartchess/dartchess.dart';
 import 'package:flutter/foundation.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 export 'package:chessever2/repository/gamebase/collections/collections_models.dart';
 
@@ -28,7 +31,10 @@ class CollectionGame {
     final pgn = card.pgn;
     if (card.id.isEmpty || pgn == null || pgn.trim().isEmpty) return null;
     try {
-      return CollectionGame(card: card, game: collectionGameModel(card.id, pgn));
+      return CollectionGame(
+        card: card,
+        game: collectionGameModel(card.id, pgn),
+      );
     } catch (e) {
       debugPrint('[Collections] game ${card.id} unreadable: $e');
       return null;
@@ -154,13 +160,83 @@ void _sortByOrderIndex(List<CollectionGame> games) {
     ..addAll([for (final e in indexed) e.$2]);
 }
 
+/// The signed-in viewer's session token, or null (signed out, or Supabase
+/// not initialised, as in tests). Gamebase verifies it to decide whether a
+/// Premium collection's games are theirs to read.
+Future<String?> collectionsSessionToken() {
+  final GoTrueClient auth;
+  try {
+    auth = Supabase.instance.client.auth;
+  } catch (_) {
+    return Future.value(null);
+  }
+  return freshSessionToken(
+    current: () => auth.currentSession,
+    changes: auth.onAuthStateChange,
+  );
+}
+
+/// How long [freshSessionToken] waits for the SDK to replace a spent token.
+const Duration kSessionTokenRefreshWait = Duration(seconds: 4);
+
+/// The [current] session's access token, never a spent one when a fresh one
+/// is on its way.
+///
+/// A token that has run out (or runs out within [margin], as it travels) is
+/// refused by the server, and a Premium viewer would read as locked. That
+/// happens when the app comes back from the background and asks before the
+/// SDK's own resume refresh has landed. The SDK is the one refresh
+/// authority (the app never refreshes a session itself: two refreshers
+/// revoke the whole session), so this waits up to [wait] for the SDK to
+/// announce a live session on [changes], then sends whatever it holds.
+Future<String?> freshSessionToken({
+  required Session? Function() current,
+  required Stream<AuthState> changes,
+  Duration wait = kSessionTokenRefreshWait,
+  Duration margin = const Duration(seconds: 5),
+  DateTime Function() now = DateTime.now,
+}) async {
+  bool spent(Session s) {
+    final expiresAt = s.expiresAt;
+    if (expiresAt == null) return false;
+    return now()
+        .add(margin)
+        .isAfter(DateTime.fromMillisecondsSinceEpoch(expiresAt * 1000));
+  }
+
+  var session = current();
+  if (session != null && spent(session)) {
+    try {
+      // The stream replays what it already said: only a session that is
+      // live now ends the wait.
+      await changes
+          .where((state) {
+            final s = state.session;
+            return s != null && !spent(s);
+          })
+          .first
+          .timeout(wait);
+    } catch (_) {
+      // No refresh in time (offline, or the app is about to sign out): the
+      // server says so, and the page offers a retry.
+    }
+    session = current();
+  }
+  final token = session?.accessToken;
+  return token == null || token.isEmpty ? null : token;
+}
+
 /// Reads published collections from the gamebase API. Everyone may read
-/// them; nothing here writes (uploads happen in the chessever.com admin
-/// console, Content > Collections).
+/// the list, the covers and the tables of contents; a Premium collection's
+/// games and players need an entitled session, sent as [accessToken]'s
+/// bearer. Nothing here writes: superadmins edit collections on
+/// chessever.com.
 class CollectionsRepository {
-  CollectionsRepository(this._api);
+  CollectionsRepository(this._api, {FutureOr<String?> Function()? accessToken})
+    : _accessToken = accessToken ?? collectionsSessionToken;
 
   final GamebaseRepository _api;
+  final FutureOr<String?> Function() _accessToken;
 
   /// The list endpoint's page cap.
   static const int listPageSize = 100;
@@ -173,6 +249,33 @@ class CollectionsRepository {
 
   /// A ceiling on pages, so a server that keeps reporting more never loops.
   static const int _maxPages = 100;
+
+  /// Slugs whose reads ask the server to judge the viewer's Premium anew,
+  /// with how many holds each has (see [holdFreshAccess]).
+  final Map<String, int> _freshHolds = {};
+
+  /// Makes [slug]'s reads skip the "not Premium" answer the server keeps
+  /// for a few seconds, until the returned release runs (once; a second
+  /// call does nothing). The Premium confirm holds it around each re-check,
+  /// so a purchase opens the book on the first read that can see it.
+  VoidCallback holdFreshAccess(String slug) {
+    _freshHolds[slug] = (_freshHolds[slug] ?? 0) + 1;
+    var released = false;
+    return () {
+      if (released) return;
+      released = true;
+      final left = (_freshHolds[slug] ?? 1) - 1;
+      if (left > 0) {
+        _freshHolds[slug] = left;
+      } else {
+        _freshHolds.remove(slug);
+      }
+    };
+  }
+
+  /// Whether [slug]'s reads are held fresh right now.
+  @visibleForTesting
+  bool isFreshAccess(String slug) => _freshHolds.containsKey(slug);
 
   /// Every published collection, in the team's order.
   Future<List<Collection>> fetchCollections() async {
@@ -193,11 +296,25 @@ class CollectionsRepository {
     ];
   }
 
-  /// One collection with its About text and section tree.
-  Future<Collection> fetchCollection(String slug) => _api.getCollection(slug);
+  /// One collection with its About text, section tree, bound events and,
+  /// for a Premium one, the server's verdict for this viewer.
+  Future<Collection> fetchCollection(String slug) async {
+    // Read before the token wait: a hold covers the reads it started.
+    final fresh = isFreshAccess(slug);
+    return _api.getCollection(
+      slug,
+      bearer: await _accessToken(),
+      fresh: fresh,
+    );
+  }
 
-  /// All of a collection's games with their PGN, in the API's order.
+  /// All of a collection's games with their PGN, in the API's order. A
+  /// Premium collection the viewer is not entitled to throws a
+  /// [CollectionsRequestException] with
+  /// [CollectionsRequestException.isPremiumGate].
   Future<List<CollectionGame>> fetchGames(String slug) async {
+    final fresh = isFreshAccess(slug);
+    final bearer = await _accessToken();
     final cards = await _allPages<CollectionGameCard>(
       pageSize: gamesPageSize,
       fetch: (offset) async {
@@ -206,6 +323,8 @@ class CollectionsRepository {
           includePgn: true,
           limit: gamesPageSize,
           offset: offset,
+          bearer: bearer,
+          fresh: fresh,
         );
         return (page.items, page.total);
       },
@@ -217,9 +336,23 @@ class CollectionsRepository {
     ];
   }
 
-  /// Everyone in a collection, most games first, then by name.
-  Future<List<CollectionPlayer>> fetchPlayers(String slug) =>
-      _api.getCollectionPlayers(slug);
+  /// Everyone in a collection, most games first, then by name. Gated like
+  /// [fetchGames].
+  Future<List<CollectionPlayer>> fetchPlayers(String slug) async {
+    final fresh = isFreshAccess(slug);
+    return _api.getCollectionPlayers(
+      slug,
+      bearer: await _accessToken(),
+      fresh: fresh,
+    );
+  }
+
+  /// The published books bound to the event [anchors] name, in the team's
+  /// order, each carrying the team's note for the binding.
+  Future<List<Collection>> fetchBooksForEvent(CollectionEventAnchors anchors) {
+    if (anchors.isEmpty) return Future.value(const []);
+    return _api.getCollectionsForEvent(anchors);
+  }
 
   /// Reads the first page, then the rest (a few at a time) until the total
   /// the first page reported.
@@ -275,8 +408,61 @@ final collectionGamesProvider = FutureProvider.autoDispose
 /// One collection's players, by slug.
 final collectionPlayersProvider = FutureProvider.autoDispose
     .family<List<CollectionPlayer>, String>(
-      (ref, slug) => ref.watch(collectionsRepositoryProvider).fetchPlayers(slug),
+      (ref, slug) =>
+          ref.watch(collectionsRepositoryProvider).fetchPlayers(slug),
     );
+
+/// The published books bound to one event page, for its About tab. An
+/// event with no books, or a request that fails, is an empty list: the
+/// books are a companion to the event, never a reason for it to show an
+/// error.
+final collectionBooksForEventProvider = FutureProvider.autoDispose
+    .family<List<Collection>, CollectionEventAnchors>((ref, anchors) async {
+      if (anchors.isEmpty) return const [];
+      try {
+        return await ref
+            .watch(collectionsRepositoryProvider)
+            .fetchBooksForEvent(anchors);
+      } catch (e) {
+        debugPrint('[Collections] books for event unavailable: $e');
+        return const [];
+      }
+    });
+
+/// Whether [error] is the server keeping a Premium collection's games from
+/// this viewer (the paywall, not an error).
+bool isCollectionPremiumGate(Object? error) =>
+    error is CollectionsRequestException && error.isPremiumGate;
+
+/// Whether this viewer reads [collection]'s games, or sees its preview and
+/// the paywall.
+///
+/// The server decides: once a detail read carries its verdict
+/// ([Collection.contentLocked]) that is the answer, whatever the app
+/// believes about the subscription (a subscriber whose store purchase has
+/// not reached the server yet is still locked; a web subscriber the app
+/// does not know about is not). Until then (the list row, or a server from
+/// before the gate) a Premium collection is locked for a viewer the app
+/// knows is not subscribed, and open while the subscription is still
+/// loading, so a subscriber never sees a lock flash.
+bool isCollectionLocked(
+  Collection collection, {
+  required bool isSubscribed,
+  required bool subscriptionLoading,
+}) {
+  if (!collection.isPremium) return false;
+  final verdict = collection.contentLocked;
+  if (verdict != null) return verdict;
+  return !isSubscribed && !subscriptionLoading;
+}
+
+/// The paywall's feature id for a Premium collection: a fixed identifier
+/// for the upgrade analytics, never the collection's own name or id.
+String collectionPaywallFeatureId(CollectionKind kind) =>
+    kind == CollectionKind.book ? 'collection_books' : 'collection_events';
+
+/// Where a collection's paywall resumes: the collection page it opened on.
+const String kCollectionPaywallReturnTo = 'collections/collection';
 
 /// What the Games tab draws: the section tree and the games, read together
 /// so the list never shows ungrouped and then regroups.

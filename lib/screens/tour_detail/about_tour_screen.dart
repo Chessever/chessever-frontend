@@ -1,4 +1,6 @@
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:chessever2/repository/supabase/tour/tour.dart';
+import 'package:chessever2/screens/collections/collection_bindings.dart';
 import 'package:chessever2/screens/group_event/model/about_tour_model.dart';
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_mode_provider.dart';
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_screen_provider.dart';
@@ -26,7 +28,7 @@ String _writerAttributionBrand(WidgetRef ref) {
 }
 
 class AboutTourScreen extends ConsumerStatefulWidget {
-   AboutTourScreen({super.key});
+  const AboutTourScreen({super.key});
 
   @override
   ConsumerState<AboutTourScreen> createState() => _AboutTourScreenState();
@@ -258,6 +260,28 @@ class _AboutTourScreenState extends ConsumerState<AboutTourScreen>
                           flag: locationLeading,
                           description: locationDescription,
                         ),
+                        // The books the team bound to this event, each with
+                        // its note, under "Book" or "Books" as they number;
+                        // nothing at all for an event without.
+                        if (!isSkeleton)
+                          CollectionBooksSection(
+                            anchors: collectionAnchorsForEvent(
+                              broadcast: ref.watch(
+                                selectedBroadcastModelProvider,
+                              ),
+                              tours: [
+                                for (final t
+                                    in tourDetailAsync.valueOrNull?.tours ??
+                                        const <TourModel>[])
+                                  t.tour,
+                              ],
+                            ),
+                            titleStyle: AppTypography.textXsMedium.copyWith(
+                              color: context.colors.textPrimaryMuted,
+                            ),
+                            topGap: 20.h,
+                            titleGap: 8,
+                          ),
                         if (aboutModel.tourUrl.trim().isNotEmpty ||
                             isSkeleton) ...[
                           SizedBox(height: 12.h),
@@ -429,7 +453,6 @@ class _TitleDescWidget extends StatelessWidget {
   const _TitleDescWidget({
     required this.title,
     required this.description,
-    super.key,
   });
 
   final String title;
@@ -459,7 +482,6 @@ class _InlineLinkRow extends StatelessWidget {
     required this.prefix,
     required this.linkLabel,
     this.onTap,
-    super.key,
   });
 
   final String prefix;
@@ -501,7 +523,6 @@ class _CountryFlag extends StatelessWidget {
     required this.title,
     required this.flag,
     required this.description,
-    super.key,
   });
 
   final String title;

@@ -180,6 +180,8 @@ class _FakeGamebase extends GamebaseRepository {
     bool includePgn = false,
     int limit = 100,
     int offset = 0,
+    String? bearer,
+    bool fresh = false,
   }) async {
     gameCalls.add((offset: offset, limit: limit, includePgn: includePgn));
     final take = limit < serverPageCap ? limit : serverPageCap;
