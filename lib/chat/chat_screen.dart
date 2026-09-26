@@ -1650,38 +1650,69 @@ class _CopyableMessageContent extends StatefulWidget {
 class _CopyableMessageContentState extends State<_CopyableMessageContent> {
   String? _selectedText;
 
-  Future<void> _copyMessage(BuildContext context) async {
-    ContextMenuController.removeAny();
-    await _copyChatMessage(context, widget.text);
+  @override
+  void didUpdateWidget(covariant _CopyableMessageContent oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.text != widget.text) _selectedText = null;
   }
 
   @override
   Widget build(BuildContext context) {
     return SelectionArea(
-      onSelectionChanged: (content) => _selectedText = content?.plainText,
-      contextMenuBuilder: (context, selectableRegionState) {
-        return AdaptiveTextSelectionToolbar.buttonItems(
+      onSelectionChanged: (content) {
+        final selected = content?.plainText;
+        // Closing the toolbar can clear the selection before Copy runs.
+        if (selected != null && selected.isNotEmpty) _selectedText = selected;
+      },
+      contextMenuBuilder: (menuContext, selectableRegionState) {
+        var copied = false;
+        void copyOnce(String text) {
+          if (copied) return;
+          copied = true;
+          ContextMenuController.removeAny();
+          unawaited(_copyChatMessage(context, text));
+        }
+
+        final buttons = <ContextMenuButtonItem>[
+          for (final item in selectableRegionState.contextMenuButtonItems)
+            if (item.type == ContextMenuButtonType.copy)
+              item.copyWith(
+                onPressed: () {
+                  final selectedText = _selectedText;
+                  copyOnce(
+                    selectedText == null || selectedText.isEmpty
+                        ? widget.text
+                        : selectedText,
+                  );
+                },
+              )
+            else
+              item,
+          ContextMenuButtonItem(
+            label: 'Copy message',
+            onPressed: () => copyOnce(widget.text),
+          ),
+        ];
+        final adaptiveButtons = AdaptiveTextSelectionToolbar.getAdaptiveButtons(
+          menuContext,
+          buttons,
+        ).toList();
+        final isIos = Theme.of(menuContext).platform == TargetPlatform.iOS;
+        return AdaptiveTextSelectionToolbar(
           anchors: selectableRegionState.contextMenuAnchors,
-          buttonItems: [
-            for (final item in selectableRegionState.contextMenuButtonItems)
-              if (item.type == ContextMenuButtonType.copy)
-                item.copyWith(
-                  onPressed: () {
-                    final selected = _selectedText;
-                    if (selected == null || selected.isEmpty) {
-                      item.onPressed?.call();
-                      return;
-                    }
-                    ContextMenuController.removeAny();
-                    unawaited(_copyChatMessage(context, selected));
-                  },
+          children: [
+            for (var index = 0; index < buttons.length; index++)
+              if (isIos &&
+                  (buttons[index].type == ContextMenuButtonType.copy ||
+                      buttons[index].label == 'Copy message'))
+                Listener(
+                  // iOS can dismiss selection between pointer down and tap up,
+                  // cancelling the Cupertino toolbar button's onPressed.
+                  onPointerDown: (_) => buttons[index].onPressed?.call(),
+                  child: adaptiveButtons[index],
                 )
               else
-                item,
-            ContextMenuButtonItem(
-              label: 'Copy message',
-              onPressed: () => unawaited(_copyMessage(context)),
-            ),
+                adaptiveButtons[index],
           ],
         );
       },
