@@ -1,4 +1,5 @@
 // repositories/game_repository.dart
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:chessever2/repository/supabase/game/games.dart';
@@ -8,6 +9,7 @@ import 'package:chessever2/repository/supabase/base_repository.dart';
 import 'package:chessever2/widgets/game_filter/game_filter_model.dart';
 import 'package:flutter/foundation.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 final gameRepositoryProvider = AutoDisposeProvider<GameRepository>((ref) {
   return GameRepository();
@@ -53,6 +55,8 @@ class TourGameSafetyNetSnapshot {
     this.roundId,
     this.roundSlug,
     this.status,
+    this.players,
+    this.boardNr,
   });
 
   factory TourGameSafetyNetSnapshot.fromJson(Map<String, dynamic> json) {
@@ -61,6 +65,10 @@ class TourGameSafetyNetSnapshot {
       roundId: json['round_id'] as String?,
       roundSlug: json['round_slug'] as String?,
       status: json['status'] as String?,
+      players: (json['players'] as List?)
+          ?.map((p) => Player.fromJson(Map<String, dynamic>.from(p as Map)))
+          .toList(growable: false),
+      boardNr: (json['board_nr'] as num?)?.toInt(),
     );
   }
 
@@ -68,6 +76,31 @@ class TourGameSafetyNetSnapshot {
   final String? roundId;
   final String? roundSlug;
   final String? status;
+  final List<Player>? players;
+  final int? boardNr;
+
+  bool differsFrom(Games game) =>
+      (status != null && status != game.status) ||
+      roundId != game.roundId ||
+      roundSlug != game.roundSlug ||
+      (boardNr != null && boardNr != game.boardNr) ||
+      (players != null &&
+          jsonEncode(
+                players!.map((p) => (p.toJson()..remove('clock'))).toList(),
+              ) !=
+              jsonEncode(
+                game.players
+                    ?.map((p) => (p.toJson()..remove('clock')))
+                    .toList(),
+              ));
+
+  Games mergeInto(Games game) => game.copyWith(
+    roundId: roundId,
+    roundSlug: roundSlug,
+    status: status,
+    players: players,
+    boardNr: boardNr,
+  );
 }
 
 const String _gameListSelectColumns = '''
@@ -894,8 +927,53 @@ class GameRepository extends BaseRepository {
     });
   }
 
-  /// Lightweight set/status snapshot used by the tournament safety net.
-  /// Full game rows contain PGN, FEN, players, clocks, and joined tour data;
+  /// One tour channel for result consumers, never one subscription per board.
+  /// A null emission requests reconciliation after subscribe/reconnect. Deletes
+  /// with only a primary key are recovered by the paginated safety net: Realtime
+  /// cannot reliably scope those to a tour. No PGN/move ticks enter provider state.
+  Stream<TourGameSafetyNetSnapshot?> watchTourStandingsChanges(String tourId) {
+    late final StreamController<TourGameSafetyNetSnapshot?> controller;
+    late final RealtimeChannel channel;
+    controller = StreamController<TourGameSafetyNetSnapshot?>(
+      onListen: () {
+        channel = supabase
+            .channel('standings-$tourId-${identityHashCode(controller)}')
+            .onPostgresChanges(
+              event: PostgresChangeEvent.all,
+              schema: 'public',
+              table: 'games',
+              filter: PostgresChangeFilter(
+                type: PostgresChangeFilterType.eq,
+                column: 'tour_id',
+                value: tourId,
+              ),
+              callback: (payload) {
+                if (controller.isClosed) return;
+                final row = payload.newRecord;
+                if (payload.eventType == PostgresChangeEvent.delete) {
+                  if (payload.oldRecord['tour_id'] == tourId) {
+                    controller.add(null);
+                  }
+                } else if (row['tour_id'] == tourId) {
+                  controller.add(TourGameSafetyNetSnapshot.fromJson(row));
+                }
+              },
+            )
+            .subscribe((status, error) {
+              if (controller.isClosed) return;
+              if (status == RealtimeSubscribeStatus.subscribed) {
+                controller.add(null);
+              }
+              // The client reconnects; polling remains active during failures.
+            });
+      },
+      onCancel: () => supabase.removeChannel(channel),
+    );
+    return controller.stream;
+  }
+
+  /// Lightweight standings snapshot used by the tournament safety net.
+  /// Full game rows contain PGN, FEN, clocks, and joined tour data;
   /// downloading all of that every few seconds caused avoidable UI-isolate
   /// encode/decode and cache work even when nothing changed.
   Future<List<TourGameSafetyNetSnapshot>> getTourGamesSafetyNet(
@@ -908,7 +986,7 @@ class GameRepository extends BaseRepository {
       while (true) {
         final response = await supabase
             .from('games')
-            .select('id,round_id,round_slug,status')
+            .select('id,round_id,round_slug,status,players,board_nr')
             .eq('tour_id', tourId)
             .order('id', ascending: true)
             .range(pageOffset, pageOffset + _tourGamesFetchPageSize - 1);

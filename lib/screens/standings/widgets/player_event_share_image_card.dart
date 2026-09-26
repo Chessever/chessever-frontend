@@ -24,6 +24,7 @@ class PlayerEventShareGameRow {
     required this.result,
     required this.outcome,
     required this.isWhite,
+    this.ratingPool,
   });
 
   final String? roundLabel;
@@ -35,6 +36,7 @@ class PlayerEventShareGameRow {
   final String result;
   final PlayerEventGameOutcome outcome;
   final bool isWhite;
+  final String? ratingPool;
 }
 
 /// A self-contained, brand-forward image of a player's tournament run, built to

@@ -274,12 +274,13 @@ class _ScoreCardScreenState extends ConsumerState<ScoreCardScreen> {
 
     // No pageable list (e.g. favorites/countrymen single-player context) or a
     // player that isn't part of the current standings → static single card.
-    final selectedIndex =
-        players == null
-            ? -1
-            : findScoreCardPlayerIndex(players, selectedPlayer);
+    final selectedIndex = players == null
+        ? -1
+        : findScoreCardPlayerIndex(players, selectedPlayer);
     if (players == null || players.length < 2 || selectedIndex < 0) {
-      return _ScoreCardPage(player: selectedPlayer);
+      return _ScoreCardPage(
+        player: selectedIndex >= 0 ? players![selectedIndex] : selectedPlayer,
+      );
     }
 
     // Lazily create the controller once the pageable list is known.
@@ -405,13 +406,14 @@ class _ScoreCardPage extends ConsumerWidget {
       return pgnRating;
     }
 
-    return 1500.0;
+    // Missing Elo is not a rated 1500 player. Leave the change unavailable so
+    // an incomplete calculation cannot replace the source's event total.
+    return 0;
   }
 
   // Calculate FIDE Elo rating change.
   // Pass [fideK] from `chess_players` for the event's time control to use
-  // FIDE's authoritative K. Pass [playerRatingOverride] to use the player's
-  // FIDE rating for that same time control instead of the per-game PGN value.
+  // FIDE's published K; retain the rating published with this event's game.
   double _calculateFideRatingChange(
     double playerRating,
     double opponentRating,
@@ -419,7 +421,6 @@ class _ScoreCardPage extends ConsumerWidget {
     bool isWhite,
     GamesTourModel game, {
     int? fideK,
-    double? playerRatingOverride,
   }) {
     double actualScore;
 
@@ -437,13 +438,14 @@ class _ScoreCardPage extends ConsumerWidget {
         return 0;
     }
 
-    final effectivePlayerRating = playerRatingOverride ?? playerRating;
-    final playerTitle =
-        isWhite ? game.whitePlayer.title : game.blackPlayer.title;
+    final effectivePlayerRating = playerRating;
+    final playerTitle = isWhite
+        ? game.whitePlayer.title
+        : game.blackPlayer.title;
     final fallbackKFactor = scoreCardFallbackKFactorForSelectedRating(
       effectivePlayerRating,
       title: playerTitle,
-      timeControl: game.timeControl,
+      timeControl: ratingPoolForGame(game),
     );
 
     return calculateFideRatingChange(
@@ -707,115 +709,76 @@ class _ScoreCardPage extends ConsumerWidget {
     }
 
     final nameParts = player.name.split(',');
-    final initials =
-        nameParts.length > 1
-            ? '${nameParts[0].trim().isNotEmpty ? nameParts[0].trim()[0] : ''}'
-                '${nameParts[1].trim().isNotEmpty ? nameParts[1].trim()[0] : ''}'
-            : player.name.trim().isNotEmpty
-            ? player.name.trim().substring(
-              0,
-              math.min(2, player.name.trim().length),
-            )
-            : '';
+    final initials = nameParts.length > 1
+        ? '${nameParts[0].trim().isNotEmpty ? nameParts[0].trim()[0] : ''}'
+              '${nameParts[1].trim().isNotEmpty ? nameParts[1].trim()[0] : ''}'
+        : player.name.trim().isNotEmpty
+        ? player.name.trim().substring(
+            0,
+            math.min(2, player.name.trim().length),
+          )
+        : '';
 
-    // Calculate performance rating and total rating diff only when we have event context
+    // Calculate performance rating only when we have event context.
     // Without event context (e.g., from Favorites tab), we can't calculate meaningful performance
     int? performanceRating;
     double? eventScore;
     int? eventTotalGames;
-    double totalRatingDiff = 0.0; // Sum of rating changes from all games
 
     if (hasEventContext) {
-      // Calculate performance rating using standard chess formula:
-      // Performance = Average Opponent Rating + DP (delta points based on score percentage)
-      double totalOpponentRating = 0.0;
-      double playerScore = 0.0;
-      int validGamesCount = 0;
-
+      final opponentRatings = <double>[];
+      final pools = <String>{};
+      var standardScore = 0.0;
+      var calculatedScore = 0.0;
+      var finishedGames = 0;
+      var canCalculatePerformance = true;
       for (final game in playerGames) {
-        // Skip ongoing/unknown games for performance calculation
-        if (game.gameStatus == GameStatus.ongoing ||
-            game.gameStatus == GameStatus.unknown) {
-          continue;
-        }
-
-        // Use fuzzy/fide-aware matching: some broadcasts emit the same
-        // player with different name spellings across rounds
-        // (e.g. "IM Sargsyan, Anna" on one board, "Sargsyan, Anna" on
-        // another). Exact equality would mis-classify such rows.
+        if (!game.gameStatus.isFinished) continue;
+        finishedGames++;
         final isWhite = playerUtils.isSamePlayerWithFideId(
           game.whitePlayer.name,
           player.name,
           fideId1: game.whitePlayer.fideId,
           fideId2: player.fideId,
         );
-        final playerRating = _getPlayerRatingForSide(game, isWhite);
+        final whiteScore = standardResultValueForSide(
+          game.gameStatus,
+          isWhite: true,
+        )!;
+        final blackScore = standardResultValueForSide(
+          game.gameStatus,
+          isWhite: false,
+        )!;
+        final points = aggregateBroadcastResultPoints(
+          standardWhitePoints: whiteScore,
+          standardBlackPoints: blackScore,
+          whiteCustomPoints: game.whitePlayer.customPoints,
+          blackCustomPoints: game.blackPlayer.customPoints,
+        );
+        calculatedScore += isWhite ? points.white : points.black;
+        standardScore += isWhite ? whiteScore : blackScore;
+        pools.add(ratingPoolForGame(game));
         final opponentRating = _getPlayerRatingForSide(game, !isWhite);
-
-        if (opponentRating > 0) {
-          totalOpponentRating += opponentRating;
-          validGamesCount++;
-
-          // Calculate player score for this game
-          switch (game.gameStatus) {
-            case GameStatus.whiteWins:
-              playerScore += isWhite ? 1.0 : 0.0;
-              break;
-            case GameStatus.blackWins:
-              playerScore += isWhite ? 0.0 : 1.0;
-              break;
-            case GameStatus.draw:
-              playerScore += 0.5;
-              break;
-            default:
-              break;
-          }
-
-          // Calculate rating change for this game and add to total.
-          // Prefer FIDE per-time-control rating + K from chess_players over
-          // the per-game PGN rating; PGN values often reflect a different
-          // time control than the event (e.g. standard rating in a blitz PGN).
-          if (playerRating > 0) {
-            final tc = game.timeControl;
-            final fideK = tc != null ? playerRatings?.getK(tc) : null;
-            final fidePlayerRating =
-                tc != null ? playerRatings?.getRating(tc)?.toDouble() : null;
-            final ratingChange = _calculateFideRatingChange(
-              playerRating,
-              opponentRating,
-              game.gameStatus,
-              isWhite,
-              game,
-              fideK: fideK,
-              playerRatingOverride: fidePlayerRating,
-            );
-            totalRatingDiff += ratingChange;
-          }
+        if (opponentRating <= 0 || isArmageddonGame(game)) {
+          canCalculatePerformance = false;
         }
+        opponentRatings.add(opponentRating);
       }
-
-      // Calculate performance rating
-      if (validGamesCount > 0) {
-        final avgOpponentRating = totalOpponentRating / validGamesCount;
-        final scorePercentage = playerScore / validGamesCount;
-        double dp;
-        if (scorePercentage >= 1.0) {
-          dp = 800; // Perfect score cap
-        } else if (scorePercentage <= 0.0) {
-          dp = -800; // Zero score cap
-        } else {
-          dp = 400 * (2 * scorePercentage - 1);
-        }
-        performanceRating = (avgOpponentRating + dp).round();
-        eventScore = playerScore;
-        eventTotalGames = validGamesCount;
-      } else {
-        // No valid games in event - use player's current rating
-        performanceRating = player.score.round();
-        final displayScore = player.matchScore ?? "0 / 0";
-        final parsedScore = _parseScoreValues(displayScore);
-        eventScore = parsedScore.$1;
-        eventTotalGames = parsedScore.$2;
+      final sourceScore = _parseScoreValues(player.matchScore ?? '');
+      final sourcePlayed = sourceScore.$2 ?? 0;
+      // Source scores include byes and scoring adaptations that may not exist
+      // on individual boards. Only use the game total when it is newer.
+      final sourceCoversGames =
+          sourcePlayed >= finishedGames && sourceScore.$1 != null;
+      eventScore = sourceCoversGames ? sourceScore.$1 : calculatedScore;
+      eventTotalGames = sourceCoversGames ? sourcePlayed : finishedGames;
+      if (canCalculatePerformance &&
+          pools.length == 1 &&
+          sourcePlayed <= finishedGames) {
+        performanceRating = calculateFidePerformanceRating(
+          opponentRatings: opponentRatings,
+          score: standardScore,
+        );
       }
     }
     // When !hasEventContext: performanceRating, eventScore, eventTotalGames remain null
@@ -858,6 +821,28 @@ class _ScoreCardPage extends ConsumerWidget {
       playerRatings: playerRatings,
       hasEventContext: hasEventContext,
     );
+    final eventRatingDiff = hasEventContext
+        ? resolvePlayerEventRatingDiff(
+            rows: shareRows,
+            preferSource:
+                ref
+                    .read(tourDetailScreenProvider)
+                    .valueOrNull
+                    ?.tours
+                    .any(
+                      (tour) =>
+                          playerGames.any(
+                            (game) => game.tourId == tour.tour.id,
+                          ) &&
+                          tour.tour.info.customScoring?.isNotEmpty == true,
+                    ) ==
+                true,
+            sourcePlayed: _parseScoreValues(player.matchScore ?? '').$2 ?? 0,
+            fallbackRatingDiff: player.hasRatingDiff
+                ? player.scoreChange
+                : null,
+          )
+        : null;
     Future<void> sharePlayerProfile() => _sharePlayerEventProfile(
       context: context,
       player: player,
@@ -867,12 +852,7 @@ class _ScoreCardPage extends ConsumerWidget {
       performanceRating: performanceRating,
       eventScore: eventScore,
       eventTotalGames: eventTotalGames,
-      ratingDiff:
-          hasEventContext
-              ? (player.scoreChange != 0
-                  ? player.scoreChange
-                  : (totalRatingDiff != 0.0 ? totalRatingDiff.round() : null))
-              : null,
+      ratingDiff: eventRatingDiff,
       standardRating:
           playerRatings?.getRating('standard') ?? player.score.round(),
       rapidRating: playerRatings?.getRating('rapid'),
@@ -1008,16 +988,7 @@ class _ScoreCardPage extends ConsumerWidget {
                             performanceRating: performanceRating,
                             score: eventScore,
                             totalGames: eventTotalGames,
-                            // Prefer server-provided ratingDiff (accounts for FIDE K-factor history);
-                            // fall back to locally calculated sum when server value is unavailable.
-                            ratingDiff:
-                                hasEventContext
-                                    ? (player.scoreChange != 0
-                                        ? player.scoreChange
-                                        : (totalRatingDiff != 0.0
-                                            ? totalRatingDiff.round()
-                                            : null))
-                                    : null,
+                            ratingDiff: eventRatingDiff,
                           ),
                         ),
                         SizedBox(height: 10.h),
@@ -1100,38 +1071,10 @@ class _ScoreCardPage extends ConsumerWidget {
                         fideId1: game.whitePlayer.fideId,
                         fideId2: player.fideId,
                       );
-                      final opponent =
-                          isWhite ? game.blackPlayer : game.whitePlayer;
+                      final opponent = isWhite
+                          ? game.blackPlayer
+                          : game.whitePlayer;
                       final result = _getPlayerResult(game, isWhite);
-
-                      final playerRating = _getPlayerRatingForSide(
-                        game,
-                        isWhite,
-                      );
-                      final opponentRating = _getPlayerRatingForSide(
-                        game,
-                        !isWhite,
-                      );
-
-                      double ratingChange = 0.0;
-                      if (playerRating > 0 && opponentRating > 0) {
-                        final tc = game.timeControl;
-                        final fideK =
-                            tc != null ? playerRatings?.getK(tc) : null;
-                        final fidePlayerRating =
-                            tc != null
-                                ? playerRatings?.getRating(tc)?.toDouble()
-                                : null;
-                        ratingChange = _calculateFideRatingChange(
-                          playerRating,
-                          opponentRating,
-                          game.gameStatus,
-                          isWhite,
-                          game,
-                          fideK: fideK,
-                          playerRatingOverride: fidePlayerRating,
-                        );
-                      }
 
                       void openGame() {
                         final navigation = scoreCardGameNavigationContext(
@@ -1173,8 +1116,7 @@ class _ScoreCardPage extends ConsumerWidget {
                             title: opponent.title,
                             name: opponent.name,
                             score: opponent.rating,
-                            scoreChange:
-                                ratingChange != 0.0 ? ratingChange : null,
+                            scoreChange: shareRows[index].ratingChange,
                             matchScore: result,
                             isWhite: isWhite,
                             index: index,
@@ -1428,12 +1370,14 @@ class _ScoreCardPage extends ConsumerWidget {
     final opponent = isWhite ? game.blackPlayer : game.whitePlayer;
     final playerRating = _getPlayerRatingForSide(game, isWhite);
     final opponentRating = _getPlayerRatingForSide(game, !isWhite);
-    double ratingChange = 0.0;
-    if (playerRating > 0 && opponentRating > 0) {
-      final tc = game.timeControl;
-      final fideK = tc != null ? playerRatings?.getK(tc) : null;
-      final fidePlayerRating =
-          tc != null ? playerRatings?.getRating(tc)?.toDouble() : null;
+    final outcome = _shareOutcomeFor(game.gameStatus, isWhite);
+    double? ratingChange;
+    if (!isArmageddonGame(game) &&
+        outcome != PlayerEventGameOutcome.other &&
+        playerRating > 0 &&
+        opponentRating > 0) {
+      final tc = ratingPoolForGame(game);
+      final fideK = playerRatings?.getK(tc);
       ratingChange = _calculateFideRatingChange(
         playerRating,
         opponentRating,
@@ -1441,7 +1385,6 @@ class _ScoreCardPage extends ConsumerWidget {
         isWhite,
         game,
         fideK: fideK,
-        playerRatingOverride: fidePlayerRating,
       );
     }
 
@@ -1451,9 +1394,10 @@ class _ScoreCardPage extends ConsumerWidget {
       title: opponent.title,
       name: opponent.name,
       rating: opponent.rating,
-      ratingChange: ratingChange != 0.0 ? ratingChange : null,
+      ratingChange: ratingChange,
+      ratingPool: ratingPoolForGame(game),
       result: _getPlayerResult(game, isWhite),
-      outcome: _shareOutcomeFor(game.gameStatus, isWhite),
+      outcome: outcome,
       isWhite: isWhite,
     );
   }

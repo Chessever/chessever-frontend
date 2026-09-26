@@ -1,7 +1,87 @@
 import 'package:chessever2/screens/standings/utils/fide_rating_change.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 
 void main() {
+  test('performance uses the same FIDE dp table as Direct', () {
+    expect(
+      calculateFidePerformanceRating(
+        opponentRatings: [2344, 2665, 2453, 2469, 2743, 2644, 2642, 2391, 2676],
+        score: 6.5,
+      ),
+      2725,
+    );
+    expect(
+      calculateFidePerformanceRating(opponentRatings: [2728], score: 1),
+      3528,
+    );
+    expect(
+      calculateFidePerformanceRating(opponentRatings: [2792], score: 0),
+      1992,
+    );
+    expect(
+      calculateFidePerformanceRating(opponentRatings: [0], score: 1),
+      isNull,
+    );
+  });
+
+  test(
+    'a PGN tiebreak time control overrides the enclosing classical event',
+    () {
+      final game = GamesTourModel(
+        gameId: 'g',
+        roundId: 'r',
+        tourId: 't',
+        whitePlayer: PlayerCard(
+          name: 'A',
+          federation: '',
+          title: '',
+          rating: 2400,
+          countryCode: '',
+          team: null,
+        ),
+        blackPlayer: PlayerCard(
+          name: 'B',
+          federation: '',
+          title: '',
+          rating: 2400,
+          countryCode: '',
+          team: null,
+        ),
+        whiteTimeDisplay: '',
+        blackTimeDisplay: '',
+        whiteClockCentiseconds: 0,
+        blackClockCentiseconds: 0,
+        gameStatus: GameStatus.draw,
+        timeControl: 'standard',
+      );
+      expect(
+        ratingPoolForGame(game.copyWith(pgn: '[TimeControl "900+10"]')),
+        'rapid',
+      );
+      expect(
+        ratingPoolForGame(game.copyWith(pgn: '[TimeControl "300+3"]')),
+        'blitz',
+      );
+      expect(
+        ratingPoolForGame(game.copyWith(pgn: '[TimeControl "5400+30"]')),
+        'standard',
+      );
+      expect(
+        ratingPoolForGame(game.copyWith(pgn: '[TimeControl "600"]')),
+        'blitz',
+      );
+      expect(
+        ratingPoolForGame(game.copyWith(pgn: '[TimeControl "600+1"]')),
+        'rapid',
+      );
+      expect(
+        ratingPoolForGame(game.copyWith(timeControl: 'classical')),
+        'standard',
+      );
+    },
+  );
+
   group('fideKFactorForSelectedRating', () {
     test('uses K=10 when the selected rating is 2400 or higher', () {
       expect(fideKFactorForSelectedRating(2400), 10);

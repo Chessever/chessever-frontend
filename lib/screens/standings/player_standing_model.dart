@@ -6,6 +6,7 @@ class PlayerStandingModel {
   final String name;
   final int score;
   final int scoreChange;
+  final bool hasRatingDiff;
   final String? matchScore;
   final int? fideId;
   final String? gamebasePlayerId;
@@ -27,6 +28,7 @@ class PlayerStandingModel {
     required this.name,
     required this.score,
     required this.scoreChange,
+    this.hasRatingDiff = true,
     required this.matchScore,
     this.fideId,
     this.gamebasePlayerId,
@@ -43,6 +45,7 @@ class PlayerStandingModel {
       name: player.name,
       score: player.rating ?? 0, // ELO rating for display
       scoreChange: player.ratingDiff ?? 0,
+      hasRatingDiff: player.ratingDiff != null,
       matchScore: _formatTournamentScore(player.score, player.played),
       fideId: player.fideId,
       gamebasePlayerId: null,
@@ -69,6 +72,7 @@ class PlayerStandingModel {
     String? name,
     int? score,
     int? scoreChange,
+    bool? hasRatingDiff,
     String? matchScore,
     int? fideId,
     String? gamebasePlayerId,
@@ -83,6 +87,7 @@ class PlayerStandingModel {
       name: name ?? this.name,
       score: score ?? this.score,
       scoreChange: scoreChange ?? this.scoreChange,
+      hasRatingDiff: hasRatingDiff ?? this.hasRatingDiff,
       matchScore: matchScore ?? this.matchScore,
       fideId: fideId ?? this.fideId,
       gamebasePlayerId: gamebasePlayerId ?? this.gamebasePlayerId,
@@ -101,6 +106,8 @@ class PlayerStandingModel {
       name: (json['name'] as String?) ?? 'Unknown',
       score: (json['score'] as int?) ?? 0,
       scoreChange: (json['scoreChange'] as int?) ?? 0,
+      hasRatingDiff:
+          json['hasRatingDiff'] as bool? ?? json['scoreChange'] != null,
       matchScore: json['matchScore'] as String?,
       fideId: json['fideId'] as int?,
       gamebasePlayerId: json['gamebasePlayerId'] as String?,
@@ -119,6 +126,7 @@ class PlayerStandingModel {
       'name': name,
       'score': score,
       'scoreChange': scoreChange,
+      'hasRatingDiff': hasRatingDiff,
       'matchScore': matchScore,
       'fideId': fideId,
       'gamebasePlayerId': gamebasePlayerId,
@@ -138,6 +146,7 @@ class PlayerStandingModel {
         other.name == name &&
         other.score == score &&
         other.scoreChange == scoreChange &&
+        other.hasRatingDiff == hasRatingDiff &&
         other.matchScore == matchScore &&
         other.fideId == fideId &&
         other.gamebasePlayerId == gamebasePlayerId &&
@@ -155,6 +164,7 @@ class PlayerStandingModel {
       name,
       score,
       scoreChange,
+      hasRatingDiff,
       matchScore,
       fideId,
       gamebasePlayerId,
