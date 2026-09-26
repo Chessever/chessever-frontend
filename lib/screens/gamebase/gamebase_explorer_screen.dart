@@ -50,6 +50,8 @@ import 'package:chessever2/screens/gamebase/providers/gamebase_providers.dart';
 import 'package:chessever2/screens/gamebase/providers/gamebase_explorer_state.dart';
 import 'package:chessever2/screens/gamebase/widgets/widgets.dart';
 import 'package:chessever2/screens/gamebase/widgets/board_workspace_controls.dart';
+import 'package:chessever2/screens/gamebase/widgets/position_games_sheet.dart'
+    show explorerSheetSurface;
 import 'package:chessever2/screens/gamebase/models/models.dart';
 import 'package:chessever2/main.dart' show routeObserver;
 import 'package:chessever2/screens/my_space/actions/space_menu_action.dart';
@@ -627,7 +629,7 @@ class _GamebaseExplorerScreenState extends ConsumerState<GamebaseExplorerScreen>
             Expanded(
               child: Container(
                 decoration: BoxDecoration(
-                  color: context.colors.surfaceRecessed,
+                  color: explorerSheetSurface(context),
                   borderRadius: BorderRadius.vertical(
                     top: Radius.circular(16.br),
                   ),
@@ -710,7 +712,7 @@ class _GamebaseExplorerScreenState extends ConsumerState<GamebaseExplorerScreen>
             child: Container(
               height: availableHeight - verticalPadding,
               decoration: BoxDecoration(
-                color: context.colors.surfaceRecessed,
+                color: explorerSheetSurface(context),
                 borderRadius: BorderRadius.circular(12.sp),
                 border: Border.all(color: context.colors.divider),
               ),
@@ -781,7 +783,7 @@ class _GamebaseExplorerScreenState extends ConsumerState<GamebaseExplorerScreen>
               Expanded(
                 child: Container(
                   decoration: BoxDecoration(
-                    color: context.colors.surfaceRecessed,
+                    color: explorerSheetSurface(context),
                     borderRadius: BorderRadius.vertical(
                       top: Radius.circular(16.br),
                     ),
@@ -1459,7 +1461,7 @@ void showExplorerFilterSheet(
   showModalBottomSheet(
     context: context,
     isScrollControlled: true,
-    backgroundColor: context.colors.surfaceRecessed,
+    backgroundColor: explorerSheetSurface(context),
     shape: RoundedRectangleBorder(
       borderRadius: BorderRadius.vertical(top: Radius.circular(16.br)),
     ),
@@ -2069,6 +2071,10 @@ class _ExplorerFilterSheetState extends ConsumerState<ExplorerFilterSheet> {
                   Padding(
                     padding: EdgeInsets.symmetric(horizontal: 4.w),
                     child: RatingTierFilter(
+                      // The sheet is the recessed tone in dark: the chips
+                      // take the surface a step darker so they show.
+                      unselectedColor:
+                          context.isLightTheme ? null : context.colors.surface,
                       selectedMinRating: _selectedMinRating,
                       onChanged:
                           (value) => setState(() => _selectedMinRating = value),
@@ -2953,7 +2959,7 @@ class _ExplorerBottomPanelsState extends ConsumerState<_ExplorerBottomPanels>
       children: [
         pageView,
         Material(
-          color: context.colors.surfaceRecessed.withValues(alpha: 0.94),
+          color: explorerSheetSurface(context).withValues(alpha: 0.94),
           child: Semantics(
             button: true,
             label: 'Exit engine line preview',

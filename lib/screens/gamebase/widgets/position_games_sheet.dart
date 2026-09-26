@@ -30,6 +30,21 @@ import '../providers/gamebase_providers.dart';
 typedef GamebaseSortChanged =
     void Function(GamebaseSortField field, GamebaseSortDirection direction);
 
+/// The surface every Opening Explorer sheet and panel is painted on: the games
+/// sheet, its sort sheet, the filter sheet and the panel under the board.
+///
+/// Dark keeps the historic recessed tone. Light cannot: the explorer's game
+/// cards are built from `surfaceRecessed` (the player band) and `surface` (the
+/// footer, chips and fields), so a `surfaceRecessed` sheet swallowed the whole
+/// player band and left only loose footer strips floating on it. On the page
+/// [AppColors.background] the band sits a step darker and the paper a step
+/// lighter, the footing those cards have on every other light-mode list and
+/// on the board screen's explorer page.
+Color explorerSheetSurface(BuildContext context) =>
+    context.isLightTheme
+        ? context.colors.background
+        : context.colors.surfaceRecessed;
+
 Future<void> showGamebaseSortOptions({
   required BuildContext context,
   required GamebaseSortField sortBy,
@@ -58,7 +73,7 @@ Future<void> showGamebaseSortOptions({
 
             return Container(
               decoration: BoxDecoration(
-                color: context.colors.surfaceRecessed,
+                color: explorerSheetSurface(context),
                 borderRadius: BorderRadius.vertical(
                   top: Radius.circular(20.br),
                 ),
@@ -366,7 +381,7 @@ class _PositionGamesSheetState extends ConsumerState<PositionGamesSheet> {
 
     return Container(
       decoration: BoxDecoration(
-        color: context.colors.surfaceRecessed,
+        color: explorerSheetSurface(context),
         borderRadius: BorderRadius.vertical(top: Radius.circular(16.br)),
       ),
       child: ConstrainedBox(
