@@ -667,7 +667,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                         padding: const EdgeInsets.fromLTRB(16, 20, 16, 24),
                         itemCount: _messages.length,
                         itemBuilder:
-                            (context, index) => _MessageBubble(
+                            (context, index) => ChatMessageBubble(
+                              key: ValueKey(_messages[index].id),
                               message: _messages[index],
                               isStreaming:
                                   _sending && index == _messages.length - 1,
@@ -1126,7 +1127,6 @@ class _ChatComposerState extends State<_ChatComposer> {
   static const _betweenPhrasesPause = Duration(milliseconds: 250);
 
   Timer? _placeholderTimer;
-  final FocusNode _inputFocusNode = FocusNode();
   int _placeholderIndex = 0;
   int _visibleCharacterCount = 0;
   bool _isDeleting = false;
@@ -1239,29 +1239,7 @@ class _ChatComposerState extends State<_ChatComposer> {
   void dispose() {
     _placeholderTimer?.cancel();
     widget.controller.removeListener(_onTextChanged);
-    _inputFocusNode.dispose();
     super.dispose();
-  }
-
-  Future<void> _pasteFromClipboard() async {
-    final clipboard = await Clipboard.getData(Clipboard.kTextPlain);
-    final text = clipboard?.text;
-    if (!mounted || text == null || text.isEmpty) return;
-
-    final value = widget.controller.value;
-    final selection =
-        value.selection.isValid
-            ? value.selection
-            : TextSelection.collapsed(offset: value.text.length);
-    final pasted = value.copyWith(
-      text: value.text.replaceRange(selection.start, selection.end, text),
-      selection: TextSelection.collapsed(offset: selection.start + text.length),
-      composing: TextRange.empty,
-    );
-    widget.controller.value = LengthLimitingTextInputFormatter(
-      2000,
-    ).formatEditUpdate(value, pasted);
-    _inputFocusNode.requestFocus();
   }
 
   @override
@@ -1289,7 +1267,6 @@ class _ChatComposerState extends State<_ChatComposer> {
                 Expanded(
                   child: TextField(
                     controller: widget.controller,
-                    focusNode: _inputFocusNode,
                     minLines: 1,
                     maxLines: 5,
                     maxLength: 2000,
@@ -1306,11 +1283,6 @@ class _ChatComposerState extends State<_ChatComposer> {
                   ),
                 ),
                 const SizedBox(width: 6),
-                IconButton(
-                  tooltip: 'Paste',
-                  onPressed: _pasteFromClipboard,
-                  icon: const Icon(Icons.content_paste_rounded),
-                ),
                 Padding(
                   padding: const EdgeInsets.only(bottom: 3),
                   child: ValueListenableBuilder<TextEditingValue>(
@@ -1475,8 +1447,9 @@ List<ChatSuggestion> chatSuggestionsForScreen(String? screen) {
   ];
 }
 
-class _MessageBubble extends StatelessWidget {
-  const _MessageBubble({
+class ChatMessageBubble extends StatefulWidget {
+  const ChatMessageBubble({
+    super.key,
     required this.message,
     required this.isStreaming,
     required this.feedbackPending,
@@ -1491,9 +1464,39 @@ class _MessageBubble extends StatelessWidget {
   final void Function(ChatMessage message, String feedback) onFeedbackPressed;
 
   @override
+  State<ChatMessageBubble> createState() => _ChatMessageBubbleState();
+}
+
+class _ChatMessageBubbleState extends State<ChatMessageBubble> {
+  ThemeData? _markdownTheme;
+  MarkdownStyleSheet? _markdownStyleSheet;
+
+  MarkdownStyleSheet _styleSheetFor(ThemeData theme) {
+    // Markdown reparses and replaces selectable text when this object changes.
+    // Keep it stable across message rebuilds so selection handles stay attached.
+    if (_markdownStyleSheet != null && _markdownTheme == theme) {
+      return _markdownStyleSheet!;
+    }
+    _markdownTheme = theme;
+    return _markdownStyleSheet = MarkdownStyleSheet.fromTheme(theme).copyWith(
+      p: theme.textTheme.bodyMedium?.copyWith(height: 1.45),
+      h1: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
+      h2: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+      h3: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
+      blockSpacing: 12,
+      tableCellsPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+      tableBorder: TableBorder.all(color: theme.colorScheme.outlineVariant),
+    );
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final message = widget.message;
+    final isStreaming = widget.isStreaming;
+    final feedbackPending = widget.feedbackPending;
     final isUser = message.role == 'user';
-    final colorScheme = Theme.of(context).colorScheme;
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
     final linkedContent =
         integrateChatReferences(
           normalizeChatMarkdown(message.content),
@@ -1567,7 +1570,7 @@ class _MessageBubble extends StatelessWidget {
                     message.references,
                   );
                   if (reference != null) {
-                    onReferencePressed(reference);
+                    widget.onReferencePressed(reference);
                     return;
                   }
                   final uri = safeChatSourceUri(href);
@@ -1575,30 +1578,7 @@ class _MessageBubble extends StatelessWidget {
                     unawaited(launchUrl(uri, mode: LaunchMode.platformDefault));
                   }
                 },
-                styleSheet: MarkdownStyleSheet.fromTheme(
-                  Theme.of(context),
-                ).copyWith(
-                  p: Theme.of(
-                    context,
-                  ).textTheme.bodyMedium?.copyWith(height: 1.45),
-                  h1: Theme.of(
-                    context,
-                  ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
-                  h2: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w700,
-                  ),
-                  h3: Theme.of(
-                    context,
-                  ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
-                  blockSpacing: 12,
-                  tableCellsPadding: const EdgeInsets.symmetric(
-                    horizontal: 8,
-                    vertical: 6,
-                  ),
-                  tableBorder: TableBorder.all(
-                    color: Theme.of(context).colorScheme.outlineVariant,
-                  ),
-                ),
+                styleSheet: _styleSheetFor(theme),
               ),
             ),
         ],
@@ -1608,13 +1588,19 @@ class _MessageBubble extends StatelessWidget {
     final feedbackActions = Row(
       mainAxisSize: MainAxisSize.min,
       children: [
+        IconButton(
+          tooltip: 'Copy message',
+          icon: const Icon(Icons.copy_rounded, size: 18),
+          onPressed: () => unawaited(_copyChatMessage(context, message.content)),
+          visualDensity: VisualDensity.compact,
+        ),
         _FeedbackButton(
           tooltip: 'Helpful',
           icon: Icons.thumb_up_outlined,
           selectedIcon: Icons.thumb_up_rounded,
           selected: message.feedback == 'like',
           disabled: feedbackPending,
-          onPressed: () => onFeedbackPressed(message, 'like'),
+          onPressed: () => widget.onFeedbackPressed(message, 'like'),
         ),
         _FeedbackButton(
           tooltip: 'Not helpful',
@@ -1622,7 +1608,7 @@ class _MessageBubble extends StatelessWidget {
           selectedIcon: Icons.thumb_down_rounded,
           selected: message.feedback == 'dislike',
           disabled: feedbackPending,
-          onPressed: () => onFeedbackPressed(message, 'dislike'),
+          onPressed: () => widget.onFeedbackPressed(message, 'dislike'),
         ),
       ],
     );
@@ -1651,29 +1637,47 @@ class _MessageBubble extends StatelessWidget {
   }
 }
 
-class _CopyableMessageContent extends StatelessWidget {
+class _CopyableMessageContent extends StatefulWidget {
   const _CopyableMessageContent({required this.text, required this.child});
 
   final String text;
   final Widget child;
 
+  @override
+  State<_CopyableMessageContent> createState() => _CopyableMessageContentState();
+}
+
+class _CopyableMessageContentState extends State<_CopyableMessageContent> {
+  String? _selectedText;
+
   Future<void> _copyMessage(BuildContext context) async {
-    final messenger = ScaffoldMessenger.maybeOf(context);
     ContextMenuController.removeAny();
-    await Clipboard.setData(ClipboardData(text: text));
-    await HapticFeedback.lightImpact();
-    if (messenger == null || !messenger.mounted) return;
-    showAppSnackOn(messenger, 'Message copied', tone: AppSnackTone.success);
+    await _copyChatMessage(context, widget.text);
   }
 
   @override
   Widget build(BuildContext context) {
     return SelectionArea(
+      onSelectionChanged: (content) => _selectedText = content?.plainText,
       contextMenuBuilder: (context, selectableRegionState) {
         return AdaptiveTextSelectionToolbar.buttonItems(
           anchors: selectableRegionState.contextMenuAnchors,
           buttonItems: [
-            ...selectableRegionState.contextMenuButtonItems,
+            for (final item in selectableRegionState.contextMenuButtonItems)
+              if (item.type == ContextMenuButtonType.copy)
+                item.copyWith(
+                  onPressed: () {
+                    final selected = _selectedText;
+                    if (selected == null || selected.isEmpty) {
+                      item.onPressed?.call();
+                      return;
+                    }
+                    ContextMenuController.removeAny();
+                    unawaited(_copyChatMessage(context, selected));
+                  },
+                )
+              else
+                item,
             ContextMenuButtonItem(
               label: 'Copy message',
               onPressed: () => unawaited(_copyMessage(context)),
@@ -1681,9 +1685,17 @@ class _CopyableMessageContent extends StatelessWidget {
           ],
         );
       },
-      child: child,
+      child: widget.child,
     );
   }
+}
+
+Future<void> _copyChatMessage(BuildContext context, String text) async {
+  final messenger = ScaffoldMessenger.maybeOf(context);
+  await Clipboard.setData(ClipboardData(text: text));
+  await HapticFeedback.lightImpact();
+  if (messenger == null || !messenger.mounted) return;
+  showAppSnackOn(messenger, 'Message copied', tone: AppSnackTone.success);
 }
 
 List<List<ChatReference>> structureChatReferences(
