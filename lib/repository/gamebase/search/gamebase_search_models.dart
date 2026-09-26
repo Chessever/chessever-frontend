@@ -23,6 +23,17 @@ class GamebasePaginationMetadata {
     );
   }
 
+  /// The inverse of [GamebasePaginationMetadata.fromJson]: absent values stay
+  /// absent, so a round trip rebuilds the same metadata, including an unknown
+  /// `hasMore` that [hasMore] still has to derive.
+  Map<String, dynamic> toJson() => <String, dynamic>{
+    'pageNumber': pageNumber,
+    'pageSize': pageSize,
+    if (totalCount != null) 'totalCount': totalCount,
+    if (hasMoreValue != null) 'hasMore': hasMoreValue,
+    'totalCountIsEstimate': totalCountIsEstimate,
+  };
+
   bool get hasTotal => totalCount != null;
 
   bool get hasMore {
@@ -196,6 +207,14 @@ class GamebaseSearchQueryResponse {
       ),
     );
   }
+
+  /// The inverse of [GamebaseSearchQueryResponse.fromJson]. Rows are the
+  /// server's own JSON maps and are written back untouched.
+  Map<String, dynamic> toJson() => <String, dynamic>{
+    'status': status,
+    'data': data,
+    'metadata': metadata.toJson(),
+  };
 }
 
 /// Sort fields for Gamebase explorer queries.

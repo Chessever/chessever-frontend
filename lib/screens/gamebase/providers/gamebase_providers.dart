@@ -17,6 +17,7 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'dart:async';
 import 'dart:collection';
 
+import 'explorer_games_cache.dart';
 import 'gamebase_explorer_state.dart';
 
 /// Normalize a FEN string for Gamebase lookups.
@@ -1150,11 +1151,16 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
         );
       }
 
+      // A position the explorer answered minutes ago is answered again from
+      // memory in this same frame, exactly as the debounced fetch would do a
+      // moment later, so the table (and the games warm-ups behind it) never
+      // blanks on a revisit or a back-step.
+      final cachedAggregates = _freshCachedAggregatesFor(normalized);
       state = state.copyWith(
         currentFen: normalized,
-        isLoading: true,
+        isLoading: cachedAggregates == null,
         error: null,
-        moveAggregates: const [],
+        moveAggregates: cachedAggregates ?? const [],
         game: ChessGame(
           gameId: 'explorer_sync_${DateTime.now().millisecondsSinceEpoch}',
           // Desktop uses actualStartingFen when path matches; when it does
@@ -1175,11 +1181,35 @@ class GamebaseExplorerNotifier extends StateNotifier<GamebaseExplorerState> {
             ? [mainline.length - 1]
             : const [],
       );
+      if (cachedAggregates != null) {
+        // Nothing left to fetch: drop a pending debounce and let any request
+        // still in flight for an earlier position land as stale.
+        _debounceTimer?.cancel();
+        _fetchToken++;
+        return;
+      }
       _scheduleFetch();
     } catch (e, st) {
       debugPrint('[GamebaseExplorer] setPosition error: $e\n$st');
       state = state.copyWith(error: 'Invalid FEN: $fen', isLoading: false);
     }
+  }
+
+  /// The aggregates `_fetchMoveAggregates` would install for [fen] straight
+  /// from its memory cache, or null when it would have to ask the server (or
+  /// read a local player tree).
+  List<MoveAggregate>? _freshCachedAggregatesFor(String fen) {
+    final localPlayerId = _localTreePlayerId(state.filters);
+    if (localPlayerId != null && isLocalPlayerTreeEnabledFor(localPlayerId)) {
+      return null;
+    }
+    return _getFreshCacheEntry(
+      _buildCacheKey(
+        fen: fen,
+        exploredMoves: _queryFromInitial ? _queryMoves : const <String>[],
+        filters: state.filters,
+      ),
+    );
   }
 
   /// King-to-rook ↔ king-to-g/c castling when the other spelling is legal.
@@ -1715,6 +1745,9 @@ final gameWithPgnByIdProvider = FutureProvider.autoDispose
       return repository.getGameWithPgn(gameId.trim());
     });
 
+/// Rows per page in a games sheet (`PositionGamesSheet`).
+const int kExplorerGamesSheetPageSize = 20;
+
 class GamebasePositionGamesQuery {
   final String fen;
   final List<String> moves;
@@ -1792,7 +1825,10 @@ class GamebasePositionGamesQuery {
   }) {
     return GamebasePositionGamesQuery(
       fen: fen,
-      moves: moves,
+      // The FEN endpoint never sends a move line, so its answer cannot depend
+      // on one. Dropping it here lets the inline strip, the warm-ups and the
+      // exact-FEN sheet reached through different lines share one entry.
+      moves: useFenEndpoint ? const <String>[] : moves,
       uci: uci,
       timeControl:
           filters.timeControls.isNotEmpty ? filters.timeControls.first : null,
@@ -1809,6 +1845,33 @@ class GamebasePositionGamesQuery {
       pageNumber: pageNumber,
       pageSize: pageSize,
       notationPlies: notationPlies,
+      useFenEndpoint: useFenEndpoint,
+    );
+  }
+
+  /// The page a games sheet (`PositionGamesSheet`) asks for, in its opening
+  /// sort. Every entry point that warms a sheet (the move rows, the '∑' row,
+  /// long-press, "View all N games", book mode) builds its query here, so the
+  /// warmed entry is the one the sheet reads.
+  factory GamebasePositionGamesQuery.sheetPage({
+    required String fen,
+    required GamebaseFilters filters,
+    List<String> moves = const <String>[],
+    String? uci,
+    GamebaseSortField? sortBy,
+    GamebaseSortDirection? sortDirection,
+    int pageNumber = 0,
+    bool useFenEndpoint = false,
+  }) {
+    return GamebasePositionGamesQuery.fromFilters(
+      fen: fen,
+      filters: filters,
+      moves: moves,
+      uci: uci,
+      sortBy: sortBy,
+      sortDirection: sortDirection,
+      pageNumber: pageNumber,
+      pageSize: kExplorerGamesSheetPageSize,
       useFenEndpoint: useFenEndpoint,
     );
   }
@@ -1859,61 +1922,30 @@ class GamebasePositionGamesQuery {
   );
 }
 
+/// One page of games for a position, straight from the server.
+///
+/// Requests go through [ExplorerGamesCache.fetch], so an identical request
+/// already in flight (a warm-up, the inline strip, a sheet) is shared, and
+/// first pages are remembered for an instant paint next time. The value here
+/// is always a server answer, never a saved copy: callers that want to paint
+/// a saved first page first ask [ExplorerGamesCache.peek] themselves.
+///
+/// A settled page stays alive for [kExplorerGamesRetainFor] with nothing
+/// watching it (every page, first pages included), so stepping back through
+/// a line answers from memory with no request, and is released after that.
+/// A value held longer (something kept watching it) is older than
+/// [kExplorerGamesFreshFor]: lists that re-attach to it check it with the
+/// server first (see [refreshExplorerGamesIfStale]).
 final positionGamesProvider = FutureProvider.autoDispose
     .family<GamebaseSearchQueryResponse, GamebasePositionGamesQuery>((
       ref,
       query,
     ) async {
-      final repository = ref.read(gamebaseRepositoryProvider);
-      // Retain completed pages across board navigation, including exact-FEN
-      // searches that the move-row prefetcher cannot warm. Match desktop's TTL.
+      final cache = ref.read(explorerGamesCacheProvider);
       final keepAliveLink = ref.keepAlive();
-      Timer? cacheTimer;
-      ref.onDispose(() => cacheTimer?.cancel());
       try {
-        final response =
-            await (() {
-              if (query.useFenEndpoint) {
-                return repository.getFenPositionGames(
-                  fen: query.fen,
-                  uci: query.uci,
-                  timeControl: query.timeControl,
-                  playerId: query.playerId,
-                  color: query.color,
-                  result: query.result,
-                  isOnline: query.isOnline,
-                  minRating: query.minRating,
-                  maxRating: query.maxRating,
-                  yearFrom: query.yearFrom,
-                  yearTo: query.yearTo,
-                  sortBy: query.sortBy,
-                  sortDirection: query.sortDirection,
-                  notationPlies: query.notationPlies,
-                  pageNumber: query.pageNumber,
-                  pageSize: query.pageSize,
-                );
-              }
-              return repository.getPositionGames(
-                fen: query.fen,
-                moves: query.moves,
-                uci: query.uci,
-                timeControl: query.timeControl,
-                playerId: query.playerId,
-                color: query.color,
-                result: query.result,
-                isOnline: query.isOnline,
-                minRating: query.minRating,
-                maxRating: query.maxRating,
-                yearFrom: query.yearFrom,
-                yearTo: query.yearTo,
-                sortBy: query.sortBy,
-                sortDirection: query.sortDirection,
-                notationPlies: query.notationPlies,
-                pageNumber: query.pageNumber,
-                pageSize: query.pageSize,
-              );
-            })();
-        cacheTimer = Timer(const Duration(minutes: 2), keepAliveLink.close);
+        final response = await cache.fetch(query);
+        cache.retain(keepAliveLink);
         return response;
       } catch (_) {
         keepAliveLink.close();

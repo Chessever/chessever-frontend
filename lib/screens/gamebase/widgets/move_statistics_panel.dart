@@ -29,6 +29,7 @@ import '../providers/gamebase_explorer_state.dart';
 
 import 'package:motor/motor.dart';
 
+import '../providers/explorer_games_cache.dart';
 import '../providers/explorer_games_prefetch.dart';
 import '../providers/gamebase_providers.dart';
 import '../utils/explorer_games_paging.dart';
@@ -96,6 +97,32 @@ int _explorerPliesFromFen(String fen) {
   final fullMove = int.tryParse(parts[5]) ?? 1;
   final base = (fullMove - 1) * 2;
   return base + (turn == 'b' ? 1 : 0);
+}
+
+/// How long a position must stay on screen before its inline page is asked
+/// for and the saved games behind its rows are read from disk.
+const Duration _kExplorerGamesWarmSettle = Duration(milliseconds: 120);
+
+/// How long a position must stay on screen before the games behind its '∑'
+/// and move rows are warmed from the server.
+///
+/// Counted from when the position appeared, not from when its table
+/// arrived. Stepping through a line a few moves a second (400 ms a move and
+/// quicker) never stops this long, so it sends no warm-ups for positions the
+/// reader only passes through; stopping to read warms well before a tap. A
+/// tap that comes sooner starts its own request on tap-down.
+const Duration _kExplorerGamesRowWarmDwell = Duration(milliseconds: 450);
+
+/// How long the position on screen has been up, for the warm-ups above.
+enum _PositionUptime {
+  /// Just appeared.
+  shown,
+
+  /// Up for [_kExplorerGamesWarmSettle].
+  settled,
+
+  /// Up for [_kExplorerGamesRowWarmDwell].
+  dwelled,
 }
 
 /// Whether the aggregate endpoint's silence about [state]'s position can be
@@ -717,8 +744,13 @@ class MoveStatisticsPanel extends HookConsumerWidget {
     final requestedInlineQuery = useState<GamebasePositionGamesQuery?>(null);
     useEffect(() {
       if (showGate || state.currentFen.trim().isEmpty) return null;
-      final timer = Timer(const Duration(milliseconds: 120), () {
+      final timer = Timer(_kExplorerGamesWarmSettle, () {
+        // Back on a position whose page is still held from minutes ago: ask
+        // again before attaching, so neither the table's layout nor the
+        // strip treats that old answer as current.
+        refreshExplorerGamesIfStale(ref, inlineQuery);
         requestedInlineQuery.value = inlineQuery;
+        ref.read(explorerGamesPrefetchProvider).preload([inlineQuery]);
       });
       return timer.cancel;
     }, [inlineQuery, showGate]);
@@ -738,36 +770,89 @@ class MoveStatisticsPanel extends HookConsumerWidget {
     // that request is slow enough on the backend (player-filtered position
     // lookups run seconds warm and have been measured past 40s cold) that
     // starting it on the tap is what leaves the sheet spinning. Starting it
-    // when the table renders turns the usual tap into a cache read.
+    // once the reader has stopped on the position turns the usual tap into a
+    // cache read.
     //
-    // Debounced, because stepping through a line rebuilds this panel per ply
-    // and only the position the reader actually stops on is worth warming.
-    final prefetchSignature = showGate || state.isLoading
-        ? null
-        : Object.hash(
-            state.currentFen,
-            state.filters,
-            Object.hashAll(
-              sortedAggregates
-                  .take(kExplorerGamesPrefetchRows)
-                  .map((aggregate) => aggregate.uci),
-            ),
-          );
+    // * Saved pages for every row are read from disk once the position has
+    //   been up for the inline page's short settle: a local read, no request.
+    // * The network warm-up (the '∑' row, then the top rows) waits until the
+    //   position has been up for [_kExplorerGamesRowWarmDwell], counted from
+    //   when it appeared, so a table that arrives late adds no wait of its
+    //   own. Reading through a line a few positions a second never fans out.
+    // * Leaving the position, or the panel closing, drops whatever of its
+    //   warm-up is still waiting for a slot.
+    // * The move line is part of the signature: a transposition onto the
+    //   same FEN asks with a different line, so it needs its own warm-up.
+    //
+    // Timers, not timestamps, so a test's fake clock sees what a phone does.
+    final positionUptime = useValueNotifier<_PositionUptime>(
+      _PositionUptime.shown,
+    );
     useEffect(() {
-      if (prefetchSignature == null || sortedAggregates.isEmpty) return null;
-      final timer = Timer(const Duration(milliseconds: 350), () {
-        ref
-            .read(explorerGamesPrefetchProvider)
-            .warm(
-              buildExplorerGamesPrefetchQueries(
-                fen: state.currentFen,
-                moves: state.exploredMoves,
-                aggregates: sortedAggregates,
-                filters: state.filters,
-              ),
-            );
+      positionUptime.value = _PositionUptime.shown;
+      final settle = Timer(_kExplorerGamesWarmSettle, () {
+        positionUptime.value = _PositionUptime.settled;
       });
-      return timer.cancel;
+      final dwell = Timer(_kExplorerGamesRowWarmDwell, () {
+        positionUptime.value = _PositionUptime.dwelled;
+      });
+      return () {
+        settle.cancel();
+        dwell.cancel();
+      };
+    }, [state.currentFen]);
+    final prefetchSignature =
+        showGate ||
+                exactFenSession ||
+                state.isLoading ||
+                sortedAggregates.isEmpty
+            ? null
+            : explorerGamesPrefetchSignature(
+              fen: state.currentFen,
+              moves: state.exploredMoves,
+              filters: state.filters,
+              aggregates: sortedAggregates,
+            );
+    useEffect(() {
+      if (prefetchSignature == null) return null;
+      final everyRow = buildExplorerGamesPrefetchQueries(
+        fen: state.currentFen,
+        moves: state.exploredMoves,
+        aggregates: sortedAggregates,
+        filters: state.filters,
+        rows: sortedAggregates.length,
+      );
+      final network =
+          kExplorerGamesPrefetchEveryRow
+              ? everyRow
+              : everyRow
+                  .take(1 + kExplorerGamesPrefetchRows)
+                  .toList(growable: false);
+      var preloaded = false;
+      ExplorerGamesPrefetcher? warmedWith;
+      void advance() {
+        final uptime = positionUptime.value;
+        if (!preloaded && uptime.index >= _PositionUptime.settled.index) {
+          preloaded = true;
+          ref.read(explorerGamesPrefetchProvider).preload(everyRow);
+        }
+        if (warmedWith == null && uptime == _PositionUptime.dwelled) {
+          final prefetcher = ref.read(explorerGamesPrefetchProvider);
+          warmedWith = prefetcher;
+          prefetcher.warm(network);
+        }
+      }
+
+      // Never called from here: this runs while the panel builds, and
+      // warming reads providers. The uptime timers call it, or this zero
+      // timer does when the position has been up long enough already.
+      positionUptime.addListener(advance);
+      final catchUp = Timer(Duration.zero, advance);
+      return () {
+        catchUp.cancel();
+        positionUptime.removeListener(advance);
+        warmedWith?.cancel(network);
+      };
     }, [prefetchSignature]);
 
     // Empty aggregates do NOT always mean the position is unknown. Move
@@ -1174,7 +1259,7 @@ class MoveStatisticsPanel extends HookConsumerWidget {
 /// Totals row summing every move row above it ('∑'): weighted W/D/L bar,
 /// aggregate game count, and the most recent last-played date. Mirrors the
 /// per-row column geometry so it reads as part of the table.
-class _MoveStatisticsSummaryRow extends StatelessWidget {
+class _MoveStatisticsSummaryRow extends ConsumerWidget {
   const _MoveStatisticsSummaryRow({
     required this.aggregates,
     required this.currentFen,
@@ -1188,9 +1273,21 @@ class _MoveStatisticsSummaryRow extends StatelessWidget {
   final GamebaseFilters filters;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final summary = MoveAggregatesSummary.fromAggregates(aggregates);
     final moveNumberLabel = explorerMoveNumberLabelFromFen(currentFen);
+
+    // The finger landing on the chip starts the sheet's request a beat
+    // before the tap opens it.
+    void warmGames() => ref
+        .read(explorerGamesPrefetchProvider)
+        .warmNow(
+          explorerGamesTotalsQuery(
+            fen: currentFen,
+            moves: exploredMoves,
+            filters: filters,
+          ),
+        );
 
     void openGames() {
       showModalBottomSheet(
@@ -1261,6 +1358,7 @@ class _MoveStatisticsSummaryRow extends StatelessWidget {
                     child: Material(
                       color: Colors.transparent,
                       child: InkWell(
+                        onTapDown: (_) => warmGames(),
                         onTap: openGames,
                         borderRadius: BorderRadius.circular(20.br),
                         child: Container(
@@ -1586,6 +1684,19 @@ class _MoveStatisticsRow extends ConsumerWidget {
       fontWeight: FontWeight.w500,
     );
 
+    // The finger landing on the chip (or the long-press menu opening) starts
+    // the sheet's request a beat before the tap that opens it.
+    void warmGames() => ref
+        .read(explorerGamesPrefetchProvider)
+        .warmNow(
+          GamebasePositionGamesQuery.sheetPage(
+            fen: currentFen,
+            filters: filters,
+            moves: exploredMoves,
+            uci: aggregate.uci,
+          ),
+        );
+
     void openGames() {
       showModalBottomSheet(
         context: context,
@@ -1607,13 +1718,15 @@ class _MoveStatisticsRow extends ConsumerWidget {
 
     return InkWell(
       onTap: onTap,
-      onLongPress:
-          () => _showMenu(
-            context,
-            ref,
-            moveLabel: '$moveNumberLabel$sanMove',
-            openGames: openGames,
-          ),
+      onLongPress: () {
+        warmGames();
+        _showMenu(
+          context,
+          ref,
+          moveLabel: '$moveNumberLabel$sanMove',
+          openGames: openGames,
+        );
+      },
       child: Padding(
         padding: EdgeInsets.symmetric(horizontal: 12.sp, vertical: 10.sp),
         child: Row(
@@ -1676,6 +1789,7 @@ class _MoveStatisticsRow extends ConsumerWidget {
                       child: Material(
                         color: Colors.transparent,
                         child: InkWell(
+                          onTapDown: (_) => warmGames(),
                           onTap: openGames,
                           borderRadius: BorderRadius.circular(20.br),
                           child: Container(

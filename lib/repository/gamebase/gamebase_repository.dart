@@ -1,5 +1,9 @@
+import 'dart:convert';
+import 'dart:io' show HttpClient;
+
 import 'package:chessever2/repository/lichess/cloud_eval/cloud_eval.dart';
 import 'package:dio/dio.dart';
+import 'package:dio/io.dart';
 import 'package:chessever2/main.dart';
 import 'package:logarte/logarte.dart';
 import 'package:flutter/foundation.dart';
@@ -44,6 +48,50 @@ class MissingGamebaseApiKeyException implements Exception {
         'https://chessever.com/developers and pass it with --dart-define or '
         '--dart-define-from-file.';
   }
+}
+
+/// One HTTP request exactly as a [GamebaseRepository] method sends it: the
+/// method, the full URL (base URL included) and the body or query map.
+@immutable
+class GamebaseWireRequest {
+  const GamebaseWireRequest({
+    required this.method,
+    required this.url,
+    required this.payload,
+  });
+
+  /// `GET` or `POST`.
+  final String method;
+  final String url;
+
+  /// The POST body, or the GET query parameters.
+  final Map<String, dynamic> payload;
+
+  /// A stable text form of the whole request, with map keys sorted at every
+  /// level, so two requests that would put the same bytes on the wire always
+  /// produce the same identity whatever order their fields were built in.
+  String get identity =>
+      jsonEncode(<String, Object?>{
+        'method': method,
+        'url': url,
+        'payload': _canonicalJson(payload),
+      });
+
+  static Object? _canonicalJson(Object? value) {
+    if (value is Map) {
+      final keys = value.keys.map((key) => key.toString()).toList()..sort();
+      return <String, Object?>{
+        for (final key in keys) key: _canonicalJson(value[key]),
+      };
+    }
+    if (value is Iterable) {
+      return value.map(_canonicalJson).toList(growable: false);
+    }
+    return value;
+  }
+
+  @override
+  String toString() => 'GamebaseWireRequest($method $url $payload)';
 }
 
 class GamebaseRepository {
@@ -1601,6 +1649,107 @@ class GamebaseRepository {
     }
   }
 
+  /// The request [getPositionGames] puts on the wire for these arguments:
+  /// a POST of the body to `/games/query` when the move line survives
+  /// sanitization, otherwise a GET of the same map to `/games`.
+  ///
+  /// Anything that caches position-games pages keys them by this, so a page
+  /// is only ever reused for a request that is byte-for-byte the same.
+  GamebaseWireRequest positionGamesRequest({
+    required String fen,
+    List<String> moves = const [],
+    String? uci,
+    TimeControl? timeControl,
+    String? playerId,
+    String? color,
+    String? result,
+    int? minRating,
+    int? maxRating,
+    int? yearFrom,
+    int? yearTo,
+    GamebaseSortField? sortBy,
+    GamebaseSortDirection? sortDirection,
+    bool? isOnline,
+    int notationPlies = 0,
+    int pageNumber = 0,
+    int pageSize = 20,
+  }) {
+    final body = buildPositionGamesQueryBody(
+      fen: fen,
+      moves: moves,
+      uci: uci,
+      timeControl: timeControl,
+      playerId: playerId,
+      color: color,
+      result: result,
+      minRating: minRating,
+      maxRating: maxRating,
+      yearFrom: yearFrom,
+      yearTo: yearTo,
+      sortBy: sortBy,
+      sortDirection: sortDirection,
+      isOnline: isOnline,
+      notationPlies: notationPlies,
+      pageNumber: pageNumber,
+      pageSize: pageSize,
+    );
+    final normalizedMoves = (body['moves'] as List?) ?? const [];
+    return normalizedMoves.isNotEmpty
+        ? GamebaseWireRequest(
+          method: 'POST',
+          url: '$_baseUrl/api/game-position/games/query',
+          payload: body,
+        )
+        : GamebaseWireRequest(
+          method: 'GET',
+          url: '$_baseUrl/api/game-position/games',
+          payload: body,
+        );
+  }
+
+  /// The request [getFenPositionGames] puts on the wire for these arguments.
+  GamebaseWireRequest fenPositionGamesRequest({
+    required String fen,
+    String? uci,
+    TimeControl? timeControl,
+    String? playerId,
+    String? color,
+    String? result,
+    int? minRating,
+    int? maxRating,
+    int? yearFrom,
+    int? yearTo,
+    GamebaseSortField? sortBy,
+    GamebaseSortDirection? sortDirection,
+    bool? isOnline,
+    int notationPlies = 0,
+    int pageNumber = 0,
+    int pageSize = 20,
+  }) {
+    return GamebaseWireRequest(
+      method: 'GET',
+      url: '$_baseUrl/api/game-position/fen/games',
+      payload: buildFenPositionGamesQueryParameters(
+        fen: fen,
+        uci: uci,
+        timeControl: timeControl,
+        playerId: playerId,
+        color: color,
+        result: result,
+        minRating: minRating,
+        maxRating: maxRating,
+        yearFrom: yearFrom,
+        yearTo: yearTo,
+        sortBy: sortBy,
+        sortDirection: sortDirection,
+        isOnline: isOnline,
+        notationPlies: notationPlies,
+        pageNumber: pageNumber,
+        pageSize: pageSize,
+      ),
+    );
+  }
+
   /// List example games for a given position (and optionally a specific move from that position).
   ///
   /// Pagination is 0-indexed per the API spec for this endpoint.
@@ -1628,7 +1777,7 @@ class GamebaseRepository {
     int pageSize = 20,
   }) async {
     try {
-      final body = buildPositionGamesQueryBody(
+      final request = positionGamesRequest(
         fen: fen,
         moves: moves,
         uci: uci,
@@ -1647,7 +1796,7 @@ class GamebaseRepository {
         pageNumber: pageNumber,
         pageSize: pageSize,
       );
-      final normalizedMoves = (body['moves'] as List?) ?? const [];
+      final normalizedMoves = (request.payload['moves'] as List?) ?? const [];
 
       if (kDebugMode &&
           moves.isNotEmpty &&
@@ -1658,15 +1807,15 @@ class GamebaseRepository {
       }
 
       final response =
-          normalizedMoves.isNotEmpty
+          request.method == 'POST'
               ? await _dio.post(
-                '$_baseUrl/api/game-position/games/query',
-                data: body,
+                request.url,
+                data: request.payload,
                 options: Options(headers: _headers),
               )
               : await _dio.get(
-                '$_baseUrl/api/game-position/games',
-                queryParameters: body,
+                request.url,
+                queryParameters: request.payload,
                 options: Options(headers: _headers),
               );
 
@@ -1708,26 +1857,27 @@ class GamebaseRepository {
     int pageSize = 20,
   }) async {
     try {
+      final request = fenPositionGamesRequest(
+        fen: fen,
+        uci: uci,
+        timeControl: timeControl,
+        playerId: playerId,
+        color: color,
+        result: result,
+        minRating: minRating,
+        maxRating: maxRating,
+        yearFrom: yearFrom,
+        yearTo: yearTo,
+        sortBy: sortBy,
+        sortDirection: sortDirection,
+        isOnline: isOnline,
+        notationPlies: notationPlies,
+        pageNumber: pageNumber,
+        pageSize: pageSize,
+      );
       final response = await _dio.get(
-        '$_baseUrl/api/game-position/fen/games',
-        queryParameters: buildFenPositionGamesQueryParameters(
-          fen: fen,
-          uci: uci,
-          timeControl: timeControl,
-          playerId: playerId,
-          color: color,
-          result: result,
-          minRating: minRating,
-          maxRating: maxRating,
-          yearFrom: yearFrom,
-          yearTo: yearTo,
-          sortBy: sortBy,
-          sortDirection: sortDirection,
-          isOnline: isOnline,
-          notationPlies: notationPlies,
-          pageNumber: pageNumber,
-          pageSize: pageSize,
-        ),
+        request.url,
+        queryParameters: request.payload,
         options: Options(headers: _headers),
       );
 
@@ -1763,6 +1913,15 @@ final gamebaseRepositoryProvider = Provider<GamebaseRepository>((ref) {
       connectTimeout: const Duration(seconds: 10),
       receiveTimeout: const Duration(seconds: 30),
     ),
+  );
+  // Dio's own adapter drops an idle connection after 3 s, so a reader who
+  // pauses between taps pays a fresh TCP + TLS handshake (100-300 ms on a
+  // phone) on the next explorer request. A minute of idle keep-alive covers
+  // ordinary reading pauses; the socket still closes the moment the server
+  // closes its end.
+  dio.httpClientAdapter = IOHttpClientAdapter(
+    createHttpClient:
+        () => HttpClient()..idleTimeout = const Duration(seconds: 60),
   );
   dio.interceptors.add(LogarteDioInterceptor(logarte));
   return GamebaseRepository(dio);
