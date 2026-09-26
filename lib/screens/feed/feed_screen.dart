@@ -21,7 +21,6 @@ import 'package:chessever2/screens/feed/widgets/feed_states.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
-import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/user_error_message.dart';
 import 'package:chessever2/widgets/app_snack.dart';
 import 'package:chessever2/widgets/home_top_bar.dart';
@@ -37,7 +36,8 @@ import 'package:motor/motor.dart';
 ///
 /// Swipe for the next page, pull down on the first one for a fresh draw;
 /// everything else happens on the board (see [FeedClip] for the gesture
-/// set).
+/// set). The title answers a tap: back to the first post from anywhere down
+/// the feed, and a fresh draw (the pull, run for you) when already there.
 ///
 /// A page pushed from For You › Discovery: it follows the app theme (light
 /// or dark surfaces, status bar icons to match) and wears the home bar's
@@ -47,13 +47,10 @@ import 'package:motor/motor.dart';
 /// not on their way out (Back, a back swipe). Leaving stops every Feed sound
 /// at once ([FeedSeen]), not when the page has finished animating away.
 ///
+/// Every page is the whole screen: one post to a page, composed as its own
+/// frame ([FeedLayout]), with nothing of the next post showing under it.
 /// After the last post stands one more page ([FeedTail]): the next post's
 /// skeleton while more can load, the end of the feed once nothing is left.
-/// So the space under the last post is never empty, and the last post
-/// settles at the top like every other. Where the tail is itself a page to
-/// land on (the skeleton, or a note too tall for the space under the last
-/// post) a spacer page follows it, so it too settles at the top rather than
-/// stopping short with a slice of the post before it showing above.
 class FeedScreen extends ConsumerStatefulWidget {
   const FeedScreen({super.key});
 
@@ -78,16 +75,22 @@ final feedCurrentEntryKeyProvider = StateProvider<String?>((ref) => null);
 
 class _FeedScreenState extends ConsumerState<FeedScreen>
     with WidgetsBindingObserver, RouteAware {
-  late PageController _pages;
-
-  /// Each page's share of the viewport: one post tall, so a screen taller
-  /// than a post shows the next one under it rather than an empty band.
-  double _pageFraction = 1;
-
-  /// The blank under each post that keeps the next post's peek from ending
-  /// through one of its rows ([FeedLayout.pageFit]).
-  double _pageFoot = 0;
+  late final PageController _pages;
   int _index = 0;
+
+  /// The pull to refresh, so the title can run it.
+  final GlobalKey<FeedPullRefreshState> _refresh =
+      GlobalKey<FeedPullRefreshState>();
+
+  /// The title is taking the viewer back to the first post: the pages it
+  /// passes on the way are not visits (no swipe sound, nothing marked seen,
+  /// nothing loaded for them).
+  bool _homing = false;
+
+  /// The title's ride made the first post current but was taken over by a
+  /// touch before it got there: the first post is reported as reached when
+  /// the page comes to rest on it (or a swipe reports another).
+  bool _homeUnreported = false;
   bool _appResumed = true;
   bool _routeCurrent = true;
   bool _scrollLocked = false;
@@ -107,15 +110,6 @@ class _FeedScreenState extends ConsumerState<FeedScreen>
   bool _backSwipe = false;
   NavigatorState? _navigator;
 
-  /// The last page the pages may rest on, from the last layout; null when
-  /// every page may (see [FeedPagePhysics]). The last post while the end
-  /// note shows in full under it; the tail while a spacer stands after it.
-  int? _restLimit;
-
-  /// The tail's end-of-feed note shows in full under the last post, from the
-  /// last layout.
-  bool _noteFits = false;
-
   /// The post the feed was last found to end under (the tail said stalled
   /// or exhausted while it was the last). It counts down to no next game
   /// until a post actually lands after it: a load asked for meanwhile (Try
@@ -123,26 +117,9 @@ class _FeedScreenState extends ConsumerState<FeedScreen>
   /// the viewer onto a skeleton and, when the load fails, back again.
   String? _endedUnder;
 
-  /// The page the viewer was just sent back to from the tail
-  /// ([_leaveNoteTail]): it stands as they left it rather than starting
-  /// over. Only for the frame that makes it current.
-  int? _returnedTo;
-
-  /// Page physics, made once: they ask [_restLimit] at every settle.
-  late final FeedPagePhysics _pagePhysics = FeedPagePhysics(
-    lastPage: () => _restLimit,
-    parent: const ClampingScrollPhysics(),
-  );
-
   /// The tail's key: its own, so it keeps its place (and never becomes a
   /// post's page) when posts arrive in front of it.
   static const ValueKey<String> _tailKey = ValueKey<String>('feed:tail');
-
-  /// The spacer's key: the page after the tail, never rested on, that lets
-  /// the tail reach the top.
-  static const ValueKey<String> _spacerKey = ValueKey<String>(
-    'feed:tail-spacer',
-  );
 
   bool get _isSeen => _appResumed && _routeCurrent && !_leaving && !_backSwipe;
 
@@ -339,12 +316,12 @@ class _FeedScreenState extends ConsumerState<FeedScreen>
   }
 
   void _onPageChanged(int index, List<FeedEntry> entries) {
-    if (index == _index) return;
-    // A page past the last one to rest on (the end note under the last
-    // post, the spacer after the tail) is looked at, never stayed on: the
-    // pages spring back, and the page before keeps playing meanwhile.
-    final limit = _restLimit;
-    if (limit != null && index > limit) return;
+    if (_homing) return;
+    if (index == _index) {
+      _reportHomeIfPending(index, entries);
+      return;
+    }
+    _homeUnreported = false;
     setState(() {
       _index = index;
       _scrollLocked = false;
@@ -377,41 +354,35 @@ class _FeedScreenState extends ConsumerState<FeedScreen>
     if (notifier.more != _builtMore) _rebuildSoon();
     await load;
     if (!mounted) return;
-    if (notifier.more != _builtMore) {
-      _rebuildSoon();
-      _leaveNoteTail();
-    }
+    if (notifier.more != _builtMore) _rebuildSoon();
   }
 
   /// The [FeedMore] the tail was last built with.
   FeedMore _builtMore = FeedMore.open;
 
-  /// The viewer sat on the tail's skeleton and the feed turned out to end
-  /// there: once the note fits under the last post, back to that post.
-  void _leaveNoteTail() {
-    SchedulerBinding.instance.addPostFrameCallback((_) {
-      if (!mounted || !_pages.hasClients) return;
-      final last = _restLimit;
-      if (last == null || last < 0 || _index <= last) return;
-      // Back where they were: the post is not restarted, so a game that had
-      // ended shows its result again instead of replaying from move 1.
-      setState(() {
-        _index = last;
-        _returnedTo = last;
-      });
-      SchedulerBinding.instance.addPostFrameCallback((_) => _returnedTo = null);
-      if (MediaQuery.disableAnimationsOf(context)) {
-        _pages.jumpToPage(last);
-      } else {
-        unawaited(
-          _pages.animateToPage(
-            last,
-            duration: const Duration(milliseconds: 420),
-            curve: _pageCurve,
-          ),
-        );
-      }
-    });
+  /// A scroll came to rest: the page it rests on is the current one. Page
+  /// changes are normally reported mid-swipe; this catches the one a swipe
+  /// that interrupted the title's ride home could leave unreported.
+  bool _onScrollEnd(ScrollEndNotification end, List<FeedEntry> entries) {
+    if (end.depth != 0 || _homing || !_pages.hasClients) return false;
+    final page = _pages.page;
+    if (page == null) return false;
+    final settled = page.round();
+    if ((page - settled).abs() >= 0.01) return false;
+    if (settled != _index) {
+      _onPageChanged(settled, entries);
+    } else {
+      _reportHomeIfPending(settled, entries);
+    }
+    return false;
+  }
+
+  /// The first post, reached at last after the title's ride was held up
+  /// ([_homeUnreported]).
+  void _reportHomeIfPending(int index, List<FeedEntry> entries) {
+    if (!_homeUnreported || index != 0) return;
+    _homeUnreported = false;
+    _reportVisible(0, entries);
   }
 
   /// Posts arrived while the viewer sat on the tail: the skeleton they were
@@ -433,10 +404,8 @@ class _FeedScreenState extends ConsumerState<FeedScreen>
   void _goNext() {
     if (!mounted || !_pages.hasClients) return;
     final entries = ref.read(feedEntriesProvider);
-    // On the tail already, or on the last page to rest on (the tail is only
-    // the note under this post).
-    final limit = _restLimit;
-    if (_index >= entries.length || (limit != null && _index >= limit)) {
+    // On the tail already: nothing to move on to until more arrives.
+    if (_index >= entries.length) {
       unawaited(_loadMore());
       return;
     }
@@ -452,6 +421,68 @@ class _FeedScreenState extends ConsumerState<FeedScreen>
         curve: _pageCurve,
       ),
     );
+  }
+
+  // ----------------------------------------------------------------- title
+
+  /// The title: back to the first post from anywhere down the feed; on the
+  /// first post already, the pull to refresh, run for the viewer (its rank
+  /// shown, a real fresh draw).
+  void _onTitleTap() {
+    if (!mounted || !_pages.hasClients || _homing) return;
+    final entries = ref.read(feedEntriesProvider);
+    if (entries.isEmpty) return;
+    final page = _pages.page ?? _index.toDouble();
+    final onFirst = _index == 0 && page.abs() < 0.01;
+    if (onFirst) {
+      final pull = _refresh.currentState;
+      if (pull == null || pull.isRefreshing || _scrollLocked) return;
+      HapticFeedbackService.selection();
+      unawaited(pull.show());
+      return;
+    }
+    HapticFeedbackService.navigation();
+    unawaited(_rideHome(entries, from: page));
+  }
+
+  /// Back to the first post on a spring. The first post is the current page
+  /// from the first frame (the one being left stops at once, and nothing in
+  /// between is visited); from further down than two pages the ride starts
+  /// one page away, so it is always short and nothing in between is built.
+  Future<void> _rideHome(
+    List<FeedEntry> entries, {
+    required double from,
+  }) async {
+    _homing = true;
+    _homeUnreported = false;
+    setState(() {
+      _index = 0;
+      _scrollLocked = false;
+    });
+    ref.read(feedCurrentEntryKeyProvider.notifier).state = entries.first.key;
+    if (_seen.value) feedSfxSafely(ref.read(feedSfxProvider).playSwipe);
+    try {
+      if (MediaQuery.disableAnimationsOf(context)) {
+        _pages.jumpToPage(0);
+      } else {
+        if (from > 2) _pages.jumpToPage(1);
+        await _pages.animateToPage(
+          0,
+          duration: const Duration(milliseconds: 520),
+          curve: _pageCurve,
+        );
+      }
+    } finally {
+      _homing = false;
+    }
+    if (!mounted || !_pages.hasClients) return;
+    if ((_pages.page ?? 0).abs() < 0.01) {
+      _reportVisible(0, ref.read(feedEntriesProvider));
+    } else {
+      // A touch took over on the way: the page it comes to rest on is
+      // reported then, the first post included.
+      _homeUnreported = true;
+    }
   }
 
   // ------------------------------------------------------ pull to refresh
@@ -480,6 +511,7 @@ class _FeedScreenState extends ConsumerState<FeedScreen>
     if (!mounted) return;
     // The fresh page has landed: one light tap to say so.
     unawaited(HapticFeedbackService.light());
+    _homeUnreported = false;
     setState(() {
       _index = 0;
       _scrollLocked = false;
@@ -533,47 +565,17 @@ class _FeedScreenState extends ConsumerState<FeedScreen>
     await ref.read(boardSettingsProviderNew.notifier).toggleSound(true);
   }
 
-  /// Sizes the pages to one post for [constraints], swapping in a controller
-  /// with the new fraction (on the same page) when it changes.
-  void _fitPages(BoxConstraints constraints, TextScaler scaler) {
-    final height = constraints.maxHeight;
-    if (!height.isFinite || height <= 0) return;
-    final fit = FeedLayout.pageFit(
-      constraints.maxWidth,
-      height,
-      scaler,
-      evalWidth: 20.w,
-    );
-    _pageFoot = fit.foot;
-    final fraction = (fit.extent / height).clamp(0.5, 1.0).toDouble();
-    if ((fraction - _pageFraction).abs() < 0.002) return;
-    _pageFraction = fraction;
-    final old = _pages;
-    _pages = PageController(initialPage: _index, viewportFraction: fraction);
-    WidgetsBinding.instance.addPostFrameCallback((_) => old.dispose());
-  }
-
-  /// Page [i]: a post, then the tail ([FeedTail]) and the spacer after it.
+  /// Page [i]: a post, then the tail ([FeedTail]).
   Widget _page(
     int i, {
     required List<FeedEntry> entries,
     required FeedMore more,
     required bool visible,
-    required double peek,
   }) {
-    if (i > entries.length) {
-      return more == FeedMore.open
-          ? const ExcludeSemantics(
-              key: _spacerKey,
-              child: FeedSkeletonPost(),
-            )
-          : const SizedBox.shrink(key: _spacerKey);
-    }
-    if (i == entries.length) {
+    if (i >= entries.length) {
       return FeedTail(
         key: _tailKey,
         more: more,
-        peek: _noteFits ? peek : 0,
         onFreshDraw: _freshDraw,
         onRetry: _retryMore,
       );
@@ -592,7 +594,6 @@ class _FeedScreenState extends ConsumerState<FeedScreen>
         hasNext:
             i < entries.length - 1 ||
             (more == FeedMore.open && entry.key != _endedUnder),
-        resumeOnReturn: i == _returnedTo,
         onRequestNext: _goNext,
         onScrollLock: _setScrollLock,
       ),
@@ -649,85 +650,38 @@ class _FeedScreenState extends ConsumerState<FeedScreen>
     final Widget body;
     if (entries.isNotEmpty) {
       body = FeedPullRefresh(
-        key: const ValueKey('feed_refresh'),
+        key: _refresh,
         onRefresh: _refreshFeed,
         // Never while a clip holds the pages (a piece or the scrub bar
         // under the finger).
         enabled: !_scrollLocked,
-        child: LayoutBuilder(
-          builder: (context, constraints) {
-            final scaler = MediaQuery.textScalerOf(context);
-            _fitPages(constraints, scaler);
-            // How much of the page after a post shows under it at rest.
-            final peek = math.max(
-              0.0,
-              constraints.maxHeight * (1 - _pageFraction),
-            );
-            _noteFits = peek >= FeedTail.noteExtent(scaler);
-            // The end note, shown in full under the last post, is looked at
-            // there; the last post stays the page to rest on.
-            final noteUnder = more != FeedMore.open && _noteFits;
-            // Otherwise the tail is a page to land on. A PageView's last page
-            // stops [peek] short of the top, so where there is a peek a
-            // spacer follows the tail: under the skeleton it is the post
-            // after, as a skeleton too; after the end of the feed, nothing.
-            final spacer = !noteUnder && peek > 0.5;
-            _restLimit = noteUnder
-                ? entries.length - 1
-                : spacer
-                ? entries.length
-                : null;
-            return PageView.builder(
-              key: const ValueKey('feed_pages'),
-              controller: _pages,
-              // Pages start at the top, one post tall; the next post shows
-              // under the current one on a screen taller than a post.
-              padEnds: false,
-              scrollDirection: Axis.vertical,
-              // Keeps the neighbours built (current ± 1) so the next board is
-              // already painted when the swipe lands.
-              allowImplicitScrolling: true,
-              // The physics snap pages themselves, so they can stop at the
-              // last post (see FeedPagePhysics).
-              pageSnapping: false,
-              physics: _scrollLocked
-                  ? NeverScrollableScrollPhysics(parent: _pagePhysics)
-                  : _pagePhysics,
-              onPageChanged: (i) => _onPageChanged(i, entries),
-              // One page more than there are posts, the tail, and the
-              // spacer after it when it has one.
-              itemCount: entries.length + (spacer ? 2 : 1),
-              // Pages keep their state by identity, not position, so an entry that
-              // is recaptioned (or a list that grows) never restarts a clip.
-              findChildIndexCallback: (slot) {
-                if (slot is! _SlotKey) return null;
-                final key = slot.page;
-                if (key == _tailKey) return entries.length;
-                if (key == _spacerKey) {
-                  return spacer ? entries.length + 1 : null;
-                }
-                if (key is! ValueKey<String>) return null;
-                final index = entries.indexWhere((e) => e.key == key.value);
-                return index < 0 ? null : index;
-              },
-              // Every page stands in the same slot: the page, then the foot
-              // that keeps the peek under it clear of the next post's rows.
-              itemBuilder: (context, i) {
-                final page = _page(
-                  i,
-                  entries: entries,
-                  more: more,
-                  visible: visible,
-                  peek: peek,
-                );
-                return Padding(
-                  key: _SlotKey(page.key),
-                  padding: EdgeInsets.only(bottom: _pageFoot),
-                  child: page,
-                );
-              },
-            );
-          },
+        child: NotificationListener<ScrollEndNotification>(
+          onNotification: (end) => _onScrollEnd(end, entries),
+          child: PageView.builder(
+            key: const ValueKey('feed_pages'),
+            controller: _pages,
+            scrollDirection: Axis.vertical,
+            // Keeps the neighbours built (current ± 1) so the next board is
+            // already painted when the swipe lands.
+            allowImplicitScrolling: true,
+            physics: _scrollLocked
+                ? const NeverScrollableScrollPhysics(parent: feedPagePhysics)
+                : feedPagePhysics,
+            onPageChanged: (i) => _onPageChanged(i, entries),
+            // One page more than there are posts: the tail.
+            itemCount: entries.length + 1,
+            // Pages keep their state by identity, not position, so an entry
+            // that is recaptioned (or a list that grows) never restarts a
+            // clip.
+            findChildIndexCallback: (key) {
+              if (key == _tailKey) return entries.length;
+              if (key is! ValueKey<String>) return null;
+              final index = entries.indexWhere((e) => e.key == key.value);
+              return index < 0 ? null : index;
+            },
+            itemBuilder: (context, i) =>
+                _page(i, entries: entries, more: more, visible: visible),
+          ),
         ),
       );
     } else if (feed.hasError && !feed.isLoading) {
@@ -774,6 +728,7 @@ class _FeedScreenState extends ConsumerState<FeedScreen>
                 soundOn: boardSoundOn && !sfx.muted,
                 soundHint: boardSoundOn ? null : _boardSoundOffHint,
                 onToggleSound: () => _toggleSound(boardSoundOn: boardSoundOn),
+                onTitleTap: _onTitleTap,
               ),
               Expanded(
                 child: MediaQuery.withClampedTextScaling(
@@ -793,6 +748,7 @@ class _FeedHeader extends StatelessWidget {
   const _FeedHeader({
     required this.soundOn,
     required this.onToggleSound,
+    required this.onTitleTap,
     this.soundHint,
   });
 
@@ -800,6 +756,9 @@ class _FeedHeader extends StatelessWidget {
   /// board's Sound setting is on.
   final bool soundOn;
   final VoidCallback onToggleSound;
+
+  /// Back to the first post, or a fresh draw when already there.
+  final VoidCallback onTitleTap;
 
   /// Why the speaker reads off when Feed's own mute is not the reason.
   final String? soundHint;
@@ -824,7 +783,7 @@ class _FeedHeader extends StatelessWidget {
           leading: const HomeTopBarBackButton(key: ValueKey('feed_back')),
           content: MediaQuery.withClampedTextScaling(
             maxScaleFactor: HomeTopBarMetrics.maxTextScale,
-            child: const _FeedTitle(),
+            child: _FeedTitle(onTap: onTitleTap),
           ),
           trailing: [
             Semantics(
@@ -859,39 +818,48 @@ class _FeedHeader extends StatelessWidget {
   }
 }
 
-/// The page title, set as the tabs set theirs.
+/// The page title, set as the tabs set theirs. A tap takes the viewer back
+/// to the first post, or refreshes when they are already on it, as a tap
+/// on an app's status bar does: so it is a button as wide as its word and
+/// the full height of the bar, which gives a little under the finger.
 class _FeedTitle extends StatelessWidget {
-  const _FeedTitle();
+  const _FeedTitle({required this.onTap});
+
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    return Semantics(
-      header: true,
-      child: Text(
-        'Feed',
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-        style: AppTypography.textXlBold.copyWith(
-          fontSize: 22,
-          height: 28 / 22,
-          color: context.colors.textPrimary,
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: Semantics(
+        header: true,
+        // Drawn no taller than the avatar, so the shared row keeps its
+        // height; the bar's tap target still answers across a full 44pt.
+        child: HomeTopBarTapTarget(
+          child: FeedPressable(
+            key: const ValueKey('feed_title'),
+            semanticsLabel: 'Feed',
+            semanticsHint: 'Back to the first post, or refresh',
+            onTap: onTap,
+            child: SizedBox(
+              height: HomeTopBarMetrics.controlExtent,
+              child: Center(
+                widthFactor: 1,
+                child: Text(
+                  'Feed',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: AppTypography.textXlBold.copyWith(
+                    fontSize: 22,
+                    height: 28 / 22,
+                    color: context.colors.textPrimary,
+                  ),
+                ),
+              ),
+            ),
+          ),
         ),
       ),
     );
   }
-}
-
-/// The key of the slot a Feed page stands in: the page's own key, so the
-/// pages keep their state by identity through the slot around them.
-@immutable
-class _SlotKey extends LocalKey {
-  const _SlotKey(this.page);
-
-  final Key? page;
-
-  @override
-  bool operator ==(Object other) => other is _SlotKey && other.page == page;
-
-  @override
-  int get hashCode => Object.hash(_SlotKey, page);
 }

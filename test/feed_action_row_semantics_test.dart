@@ -72,10 +72,12 @@ void main() {
           height: 56,
           liked: state,
           inSpace: state,
+          saved: state,
           likeIconKey: GlobalKey(),
           onLike: () => tapped.add('like'),
           onSpace: () => tapped.add('space'),
           onShare: () => tapped.add('share'),
+          onSave: () => tapped.add('save'),
           onAnalyze: () => tapped.add('analyze'),
         ),
       );
@@ -107,6 +109,19 @@ void main() {
         isSemantics(label: 'Share', isButton: true, hasTapAction: true),
       );
       expect(
+        node('feed_save_button'),
+        isSemantics(
+          label: state ? 'Saved' : 'Save',
+          hint: state
+              ? 'Choose the databases it is saved in'
+              : 'Save to a database',
+          isButton: true,
+          hasSelectedState: true,
+          isSelected: state,
+          hasTapAction: true,
+        ),
+      );
+      expect(
         node('feed_like_button'),
         isSemantics(
           label: state ? 'Liked' : 'Like',
@@ -121,12 +136,13 @@ void main() {
         'feed_analyze_button',
         'feed_space_button',
         'feed_share_button',
+        'feed_save_button',
         'feed_like_button',
       ]) {
         final n = node(key);
         n.owner!.performAction(n.id, SemanticsAction.tap);
       }
-      expect(tapped, ['analyze', 'space', 'share', 'like']);
+      expect(tapped, ['analyze', 'space', 'share', 'save', 'like']);
       handle.dispose();
     });
   }

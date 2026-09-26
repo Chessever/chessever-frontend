@@ -758,7 +758,7 @@ class _FeedPuzzlePageState extends ConsumerState<FeedPuzzlePage> {
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const SizedBox(height: FeedLayout.topGap),
+            SizedBox(height: l.scrublessTop),
             fullRow(_Meta(puzzle: puzzle, height: l.metaHeight)),
             const SizedBox(height: FeedLayout.gap),
             content(
@@ -794,7 +794,7 @@ class _FeedPuzzlePageState extends ConsumerState<FeedPuzzlePage> {
                 isSolver: true,
               ),
             ),
-            const SizedBox(height: FeedLayout.infoGap),
+            SizedBox(height: l.scrublessInfoSpace),
             fullRow(
               _Status(
                 phase: _phase,
@@ -803,11 +803,12 @@ class _FeedPuzzlePageState extends ConsumerState<FeedPuzzlePage> {
                 height: l.infoHeight,
               ),
             ),
-            const SizedBox(height: FeedLayout.actionsGap),
+            SizedBox(height: l.scrublessActionsSpace),
             fullRow(SizedBox(height: l.actionsHeight, child: _actions())),
-            // The game pages' scrub line has no counterpart here: the spare
-            // height below the action row stays empty, so the board and the
-            // buttons sit exactly where they do on a game page.
+            // The game pages' scrub line has no counterpart here; its room
+            // is spread through the page ([FeedLayout.scrublessTop]), so the
+            // puzzle is composed on its own frame and ends where a game
+            // post does, with no idle band under the buttons.
           ],
         );
       },

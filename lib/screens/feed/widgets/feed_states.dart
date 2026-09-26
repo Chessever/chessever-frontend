@@ -1,5 +1,3 @@
-import 'dart:math' as math;
-
 import 'package:chessever2/providers/engine_settings_provider.dart';
 import 'package:chessever2/screens/feed/providers/feed_provider.dart';
 import 'package:chessever2/screens/feed/widgets/feed_action_row.dart';
@@ -11,11 +9,9 @@ import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
-/// First-load placeholder: skeleton posts stacked exactly as Feed's pages
-/// will stand ([FeedLayout.pageFit]: one post, within the same half-to-full
-/// screen bounds, and the same foot under it), so the first board drops
-/// into the space the skeleton board already occupies and the space under
-/// it is the next post's skeleton, never an empty band.
+/// First-load placeholder: one skeleton post on the whole page, exactly as
+/// Feed's pages stand, so the first board drops into the space the skeleton
+/// board already occupies.
 ///
 /// [puzzles] is for the Puzzle tab, whose boards always have the progress
 /// rail beside them; Feed's game posts show the eval bar only when the
@@ -29,42 +25,7 @@ class FeedSkeleton extends StatelessWidget {
   Widget build(BuildContext context) {
     return Semantics(
       label: 'Loading Feed',
-      child: ExcludeSemantics(
-        child: LayoutBuilder(
-          builder: (context, constraints) {
-            final height = constraints.maxHeight;
-            final fit = FeedLayout.pageFit(
-              constraints.maxWidth,
-              height,
-              MediaQuery.textScalerOf(context),
-              evalWidth: 20.w,
-            );
-            final extent = fit.extent;
-            final count = height.isFinite
-                ? math.max(1, (height / extent).ceil())
-                : 1;
-            return ClipRect(
-              child: OverflowBox(
-                alignment: Alignment.topCenter,
-                minHeight: 0,
-                maxHeight: extent * count,
-                child: Column(
-                  children: [
-                    for (var i = 0; i < count; i++)
-                      SizedBox(
-                        height: extent,
-                        child: Padding(
-                          padding: EdgeInsets.only(bottom: fit.foot),
-                          child: FeedSkeletonPost(evalColumn: puzzles),
-                        ),
-                      ),
-                  ],
-                ),
-              ),
-            );
-          },
-        ),
-      ),
+      child: ExcludeSemantics(child: FeedSkeletonPost(evalColumn: puzzles)),
     );
   }
 }
@@ -162,7 +123,7 @@ class FeedSkeletonPost extends ConsumerWidget {
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const SizedBox(height: FeedLayout.topGap),
+            SizedBox(height: l.top),
             fullRow(
               SizedBox(
                 height: l.metaHeight,
@@ -185,6 +146,7 @@ class FeedSkeletonPost extends ConsumerWidget {
                       color: toneDeep,
                     ),
                   SizedBox.square(
+                    key: const ValueKey('feed_skeleton_board'),
                     dimension: l.board,
                     child: CustomPaint(
                       painter: _SkeletonBoardPainter(
@@ -198,7 +160,7 @@ class FeedSkeletonPost extends ConsumerWidget {
             ),
             const SizedBox(height: FeedLayout.gap),
             content(playerRow(170)),
-            const SizedBox(height: FeedLayout.infoGap),
+            SizedBox(height: l.infoSpace),
             fullRow(
               SizedBox(
                 height: l.infoHeight,
@@ -208,13 +170,15 @@ class FeedSkeletonPost extends ConsumerWidget {
                 ),
               ),
             ),
-            const SizedBox(height: FeedLayout.actionsGap),
+            SizedBox(height: l.actionsSpace),
             fullRow(
               SizedBox(
                 height: l.actionsHeight,
-                child: Row(children: [action(), action(), action(), action()]),
+                // Analyze · My Space · Share · Save · Like.
+                child: Row(children: [for (var i = 0; i < 5; i++) action()]),
               ),
             ),
+            // [FeedLayout.scrubSpace], as on a post.
             const Spacer(),
             // The scrub line at rest, laid out on the real line's run
             // ([FeedScrubRun]): its track, round-capped, ending where the
@@ -259,6 +223,7 @@ class FeedSkeletonPost extends ConsumerWidget {
                 },
               ),
             ),
+            SizedBox(height: l.foot),
           ],
         );
       },
@@ -292,55 +257,28 @@ class _SkeletonBoardPainter extends CustomPainter {
       old.light != light || old.dark != dark;
 }
 
-/// The page after the last post, so the space under that post is never
-/// empty.
+/// The page after the last post: every post is a page of its own, and so
+/// is this one.
 ///
 /// * While more can load ([FeedMore.open]) it is the next post's skeleton on
 ///   the post's own geometry; when the post arrives it takes this place.
 /// * When the feed has ended ([FeedMore.exhausted]) it is one quiet line and
 ///   one action, a refresh; when the last load failed ([FeedMore.stalled]),
-///   one line and "Try again".
-///
-/// The note stands in the [peek], the part of this page that shows under
-/// the last post at rest, whenever it fits there (Feed then keeps the viewer
-/// on the last post): stacked when the peek is tall enough, on one row when
-/// it is short. Where no peek can hold it (a screen one post fills), the
-/// page is swiped to and the note is centred in it.
+///   one line and "Try again". Centred on the page.
 class FeedTail extends StatelessWidget {
   const FeedTail({
     required this.more,
     required this.onFreshDraw,
     required this.onRetry,
-    this.peek = 0,
     super.key,
   });
 
   final FeedMore more;
-
-  /// How much of this page shows under the last post, when the note fits in
-  /// it; 0 to centre the note in the whole page.
-  final double peek;
   final VoidCallback onFreshDraw;
   final VoidCallback onRetry;
 
-  static const double _stackPad = 12;
-  static const double _rowPad = 6;
   static const double _gap = 8;
   static const double _actionHeight = 44;
-
-  static double _lineHeight(TextScaler scaler) =>
-      math.max(20.0, scaler.scale(14) * 20 / 14);
-
-  static double _stackedExtent(TextScaler scaler) =>
-      _stackPad + _lineHeight(scaler) + _gap + _actionHeight + _stackPad;
-
-  /// On a row the line may take two lines at a large text size.
-  static double _rowExtent(TextScaler scaler) =>
-      _rowPad + math.max(_actionHeight, 2 * _lineHeight(scaler)) + _rowPad;
-
-  /// The least height the note needs at [scaler]'s text size (on one row),
-  /// its breathing room included: a peek this tall holds it.
-  static double noteExtent(TextScaler scaler) => _rowExtent(scaler);
 
   @override
   Widget build(BuildContext context) {
@@ -353,52 +291,23 @@ class FeedTail extends StatelessWidget {
     final ended = more == FeedMore.exhausted;
     final line = ended ? 'No more games for now.' : "More games didn't load.";
     final actionLabel = ended ? 'Refresh' : 'Try again';
-    final action = FeedPressable(
-      key: ValueKey(ended ? 'feed_end_refresh' : 'feed_end_retry'),
-      semanticsLabel: actionLabel,
-      onTap: ended ? onFreshDraw : onRetry,
-      child: _FeedNoteAction(label: actionLabel),
-    );
-    final scaler = MediaQuery.textScalerOf(context);
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final region = peek > 0
-            ? math.min(peek, constraints.maxHeight)
-            : constraints.maxHeight;
-        final stacked = region >= _stackedExtent(scaler);
-        return Align(
-          alignment: Alignment.topCenter,
-          child: SizedBox(
-            height: region,
-            width: constraints.maxWidth,
-            child: Center(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: FeedLayout.sidePadding,
-                ),
-                child: stacked
-                    ? Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          _FeedNoteLine(line, textAlign: TextAlign.center),
-                          const SizedBox(height: _gap),
-                          action,
-                        ],
-                      )
-                    // A short peek: the line and its action side by side,
-                    // on the post's gutters like the rows above them.
-                    : Row(
-                        children: [
-                          Expanded(child: _FeedNoteLine(line, maxLines: 2)),
-                          const SizedBox(width: 12),
-                          action,
-                        ],
-                      ),
-              ),
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: FeedLayout.sidePadding),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _FeedNoteLine(line, textAlign: TextAlign.center, maxLines: 2),
+            const SizedBox(height: _gap),
+            FeedPressable(
+              key: ValueKey(ended ? 'feed_end_refresh' : 'feed_end_retry'),
+              semanticsLabel: actionLabel,
+              onTap: ended ? onFreshDraw : onRetry,
+              child: _FeedNoteAction(label: actionLabel),
             ),
-          ),
-        );
-      },
+          ],
+        ),
+      ),
     );
   }
 }

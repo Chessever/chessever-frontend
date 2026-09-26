@@ -3,6 +3,7 @@ import 'package:chessever2/screens/feed/models/feed_models.dart';
 import 'package:chessever2/screens/feed/puzzles/puzzle_widgets.dart';
 import 'package:chessever2/screens/feed/widgets/feed_action_row.dart';
 import 'package:chessever2/screens/feed/widgets/feed_classification.dart';
+import 'package:chessever2/screens/feed/widgets/feed_glyphs.dart';
 import 'package:chessever2/screens/feed/widgets/feed_post_header.dart';
 import 'package:chessever2/screens/feed/widgets/feed_scrub.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
@@ -64,10 +65,12 @@ void main() {
           height: 56,
           liked: true,
           inSpace: false,
+          saved: true,
           likeIconKey: GlobalKey(),
           onLike: () {},
           onSpace: () {},
           onShare: () {},
+          onSave: () {},
           onAnalyze: () {},
         ),
       );
@@ -79,8 +82,17 @@ void main() {
           reason: text.data,
         );
       }
-      // The liked heart is a mark: 3:1.
+      // The liked heart is a mark: 3:1. The saved disk is in ink, as the
+      // words are and as My Space's tick is: the heart is the row's one
+      // colour.
       expect(feedContrast(colors().danger, page), greaterThanOrEqualTo(3));
+      final disk = tester.widget<FeedGlyph>(
+        find.byWidgetPredicate(
+          (w) => w is FeedGlyph && w.svg == FeedGlyphs.saved,
+        ),
+      );
+      expect(disk.color, colors().textPrimary);
+      expect(feedContrast(disk.color, page), greaterThanOrEqualTo(4.5));
     });
 
     testWidgets('$name: move-class words on the scrub report', (tester) async {

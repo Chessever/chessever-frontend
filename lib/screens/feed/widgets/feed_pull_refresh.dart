@@ -27,6 +27,11 @@ import 'package:motor/motor.dart';
 /// The indicator is a rank of eight board squares, not a spinner: they fill
 /// one by one with the pull and, while waiting, a light travels along them
 /// like a rook down a rank. Content is never hidden: only its offset moves.
+///
+/// [FeedPullRefreshState.show] runs the same pull without a finger (the Feed
+/// title tapped on the first post): the page springs down to the hold with
+/// the rank lit, the refresh runs once it is down there, and the page springs
+/// home with the new post once that has landed.
 class FeedPullRefresh extends StatefulWidget {
   const FeedPullRefresh({
     required this.onRefresh,
@@ -43,7 +48,7 @@ class FeedPullRefresh extends StatefulWidget {
   final Widget child;
 
   @override
-  State<FeedPullRefresh> createState() => _FeedPullRefreshState();
+  State<FeedPullRefresh> createState() => FeedPullRefreshState();
 }
 
 /// Page physics that pair with [FeedPullRefresh]: pages snap as usual but
@@ -53,69 +58,8 @@ const ScrollPhysics feedPagePhysics = PageScrollPhysics(
   parent: ClampingScrollPhysics(),
 );
 
-/// [feedPagePhysics] with a last page to rest on. Dragged or flung past it,
-/// the pages spring back to it; the pages after it can be looked at, not
-/// stayed on. Feed rests on its last post when the page after it is only a
-/// short note (the end of the feed) that already shows in full under that
-/// post, so the viewer is never left on a page that is mostly empty.
-///
-/// A PageView given these physics must set `pageSnapping: false`: its own
-/// snapping would wrap them and never ask where to stop.
-class FeedPagePhysics extends PageScrollPhysics {
-  const FeedPagePhysics({required this.lastPage, super.parent});
-
-  /// The last page to rest on, or null when every page may be rested on.
-  /// Asked at every settle, so it follows the feed without new physics (a
-  /// Scrollable keeps its first physics while the type stays the same).
-  final int? Function() lastPage;
-
-  @override
-  FeedPagePhysics applyTo(ScrollPhysics? ancestor) =>
-      FeedPagePhysics(lastPage: lastPage, parent: buildParent(ancestor));
-
-  @override
-  Simulation? createBallisticSimulation(
-    ScrollMetrics position,
-    double velocity,
-  ) {
-    final last = lastPage();
-    if (last != null && position is PageMetrics) {
-      final extent = position.viewportDimension * position.viewportFraction;
-      if (extent > 0) {
-        final stop = math.min(
-          position.maxScrollExtent,
-          math.max(0, last) * extent,
-        );
-        final tolerance = toleranceFor(position);
-        // Where plain page physics would settle: the page under the
-        // finger, or the next one either way when flung.
-        var page = position.pixels / extent;
-        if (velocity < -tolerance.velocity) {
-          page -= 0.5;
-        } else if (velocity > tolerance.velocity) {
-          page += 0.5;
-        }
-        final target = page.roundToDouble() * extent;
-        if (target > stop + tolerance.distance) {
-          if ((position.pixels - stop).abs() < tolerance.distance &&
-              velocity.abs() < tolerance.velocity) {
-            return null;
-          }
-          return ScrollSpringSimulation(
-            spring,
-            position.pixels,
-            stop,
-            velocity,
-            tolerance: tolerance,
-          );
-        }
-      }
-    }
-    return super.createBallisticSimulation(position, velocity);
-  }
-}
-
-class _FeedPullRefreshState extends State<FeedPullRefresh>
+/// Reach it with a `GlobalKey<FeedPullRefreshState>` to [show] the pull.
+class FeedPullRefreshState extends State<FeedPullRefresh>
     with TickerProviderStateMixin {
   /// Displayed offset at which a release refreshes.
   static const double _trigger = 64;
@@ -154,6 +98,30 @@ class _FeedPullRefreshState extends State<FeedPullRefresh>
 
   /// The refresh just landed: the rank shows full while the page settles.
   bool _landed = false;
+
+  /// How long a pull run from code ([show]) stays down at least: long enough
+  /// to be seen, even when the new page is ready at once.
+  static const Duration _shownFor = Duration(milliseconds: 520);
+
+  /// How far into a pull run from code ([show]) the refresh starts: once the
+  /// page is most of the way down, so the new post lands at the hold rather
+  /// than under a page that has not moved yet.
+  static const Duration _dipFor = Duration(milliseconds: 280);
+
+  /// A refresh is running, from a finger or from [show].
+  bool get isRefreshing => _refreshing;
+
+  /// Pulls the page down and refreshes, as a pull past the trigger does:
+  /// the page springs to the hold with the rank lit, [FeedPullRefresh.
+  /// onRefresh] runs once the page is down, and the page springs home once
+  /// the refresh has landed. Does nothing while a refresh or a pull is
+  /// already under way, or while the pull is off ([FeedPullRefresh.enabled]).
+  Future<void> show() async {
+    if (_refreshing || _pulling || !widget.enabled) return;
+    _pull = 0;
+    _armed = false;
+    await _refresh(drawn: true);
+  }
 
   @override
   void dispose() {
@@ -257,19 +225,39 @@ class _FeedPullRefreshState extends State<FeedPullRefresh>
     }
   }
 
-  Future<void> _refresh() async {
+  /// Runs [FeedPullRefresh.onRefresh] and lets go. [drawn]: no finger
+  /// brought the page down ([show]), so it goes down to the hold itself, the
+  /// refresh starts when it is most of the way there ([_dipFor]), and it
+  /// stays down at least [_shownFor], however fast the refresh lands. The
+  /// viewer sees the page they were on go down and the new one come up.
+  Future<void> _refresh({bool drawn = false}) async {
     setState(() {
       _refreshing = true;
       _landed = false;
     });
     final reduceMotion = MediaQuery.disableAnimationsOf(context);
+    if (drawn) {
+      if (reduceMotion) {
+        _offset.value = _hold;
+      } else {
+        unawaited(_wave.repeat());
+        _springTo(_hold);
+      }
+      await Future<void>.delayed(_dipFor);
+      if (!mounted) return;
+    }
     final task = widget.onRefresh();
     var done = false;
-    // A reserve lands within a frame: no hold, no wave, straight home.
-    await Future.any([
-      task.then((_) => done = true, onError: (_) => done = true),
-      Future<void>.delayed(const Duration(milliseconds: 90)),
-    ]);
+    final settled = task.then((_) => done = true, onError: (_) => done = true);
+    if (drawn) {
+      await Future.wait([settled, Future<void>.delayed(_shownFor - _dipFor)]);
+    } else {
+      // A reserve lands within a frame: no hold, no wave, straight home.
+      await Future.any([
+        settled,
+        Future<void>.delayed(const Duration(milliseconds: 90)),
+      ]);
+    }
     if (!done && mounted) {
       if (!reduceMotion) {
         unawaited(_wave.repeat());

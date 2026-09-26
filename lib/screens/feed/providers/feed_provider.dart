@@ -49,7 +49,9 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 ///   grace); the rest of the opening pages follow behind it.
 ///
 /// Games shown in earlier sessions are remembered and demoted, so the feed
-/// is new every time it opens. [refresh] re-rolls it with a new seed.
+/// is new every time it opens. [refresh] re-rolls it with a new seed, and
+/// its first page is never one the viewer has seen: nothing that was on
+/// screen, and nothing shown before while anything unseen is left.
 final feedProvider = AsyncNotifierProvider<FeedNotifier, List<FeedItem>>(
   FeedNotifier.new,
 );
@@ -113,11 +115,35 @@ class _FeedReserve {
     required this.items,
     required this.ranker,
     required this.leftovers,
+    required this.drawnAt,
   });
 
   final List<FeedItem> items;
   final FeedRanker ranker;
   final Map<String, _FeedCandidate> leftovers;
+
+  /// When it was drawn: see [feedReserveLanding].
+  final DateTime drawnAt;
+}
+
+/// The games of a ready reserve that a refresh may land on at [now]: the
+/// ones not in [exclude] (what is on screen, what was shown before), and
+/// only while the reserve is younger than [maxAge], since a feed that sat
+/// open for a while has had new games finish. Empty when the refresh must
+/// draw from the sources instead.
+@visibleForTesting
+List<FeedItem> feedReserveLanding({
+  required List<FeedItem> items,
+  required DateTime drawnAt,
+  required DateTime now,
+  required Set<String> exclude,
+  Duration maxAge = FeedNotifier.reserveMaxAge,
+}) {
+  if (now.difference(drawnAt) > maxAge) return const [];
+  return [
+    for (final item in items)
+      if (!exclude.contains(item.game.gameId)) item,
+  ];
 }
 
 /// The account the Feed's disk cache is kept under: the signed-in user, or
@@ -180,6 +206,9 @@ class FeedNotifier extends AsyncNotifier<List<FeedItem>> {
   /// Games in a reserve: the page a refresh lands on, before any request.
   static const int _reserveSize = 3;
 
+  /// A reserve older than this is drawn again rather than landed on.
+  static const Duration reserveMaxAge = Duration(minutes: 10);
+
   /// Refresh draws explore the week in slices of [_topLimit] rows, up to
   /// this many slices back from the newest.
   static const int _sliceCount = 24;
@@ -236,7 +265,11 @@ class FeedNotifier extends AsyncNotifier<List<FeedItem>> {
 
   /// Ready for the next pull; see [_prepareReserve].
   _FeedReserve? _reserve;
-  bool _preparingReserve = false;
+
+  /// The generation a reserve is being drawn for, if any. Per generation: a
+  /// draw still running for a feed that has since been refreshed must not
+  /// stop the new feed from drawing its own.
+  int? _preparingReserveFor;
   final math.Random _slices = math.Random();
   int _miniatureOffset = 0;
   MiniatureGamesWindow _miniatureWindow = MiniatureGamesWindow.today;
@@ -302,12 +335,17 @@ class FeedNotifier extends AsyncNotifier<List<FeedItem>> {
   /// Pull-to-refresh: a new draw over fresh sources.
   ///
   /// With a reserve ready (the usual case) the new page lands in the same
-  /// frame, no request in the way, and fresh sources are read behind it.
-  /// Without one, the current page stays on screen while the fetch runs and
-  /// is swapped only when the fresh page is ready, so a failed refresh keeps
-  /// the old content (and rethrows, for the screen to say so). What the
-  /// viewer was shown is demoted either way, and the refreshed feed explores
-  /// a random slice of the week rather than re-reading the newest games.
+  /// frame, no request in the way, and fresh sources are read behind it; but
+  /// only a recent reserve, and only its games the viewer has not seen
+  /// ([feedReserveLanding]). Otherwise the current page stays on screen
+  /// while the fetch runs and is swapped only when the fresh page is ready,
+  /// so a failed refresh keeps the old content (and rethrows, for the screen
+  /// to say so).
+  ///
+  /// Either way the new first page is new: none of the games the feed held
+  /// (on screen or loaded behind it), and none shown before while anything
+  /// unseen is left. The refreshed feed explores a random slice of the week
+  /// rather than re-reading the newest games.
   Future<void> refresh() async {
     final generation = ++_generation;
     final showing = [
@@ -323,7 +361,15 @@ class FeedNotifier extends AsyncNotifier<List<FeedItem>> {
     _seen.addAll(showing);
     _topOffset = _randomSlice();
 
-    if (reserve != null && reserve.items.isNotEmpty) {
+    final landing = reserve == null
+        ? const <FeedItem>[]
+        : feedReserveLanding(
+            items: reserve.items,
+            drawnAt: reserve.drawnAt,
+            now: now(),
+            exclude: {...showing, ..._shownBefore},
+          );
+    if (reserve != null && landing.isNotEmpty) {
       _ranker = reserve.ranker;
       for (final item in reserve.items) {
         _seen.add(item.game.gameId);
@@ -331,9 +377,9 @@ class FeedNotifier extends AsyncNotifier<List<FeedItem>> {
       for (final candidate in reserve.leftovers.values) {
         _offer(candidate);
       }
-      state = AsyncData(List.unmodifiable(reserve.items));
+      state = AsyncData(List.unmodifiable(landing));
       _recaption();
-      unawaited(_afterInstantRefresh(generation, reserve.items));
+      unawaited(_afterInstantRefresh(generation, landing));
       return;
     }
 
@@ -390,34 +436,38 @@ class FeedNotifier extends AsyncNotifier<List<FeedItem>> {
   /// a share of what the running events and the viewer's own sources have
   /// in the pool. Its games leave this feed's draw, so the refresh is new.
   Future<void> _prepareReserve(int generation) async {
-    if (_reserve != null || _preparingReserve) return;
-    _preparingReserve = true;
+    if (generation != _generation) return;
+    if (_reserve != null || _preparingReserveFor == generation) return;
+    _preparingReserveFor = generation;
     try {
       final slice = <String, _FeedCandidate>{};
       final repository = ref.read(gameRepositoryProvider);
       final since = DateTime.now().subtract(_topAge);
-      var rows = await repository.getFeedCandidateGames(
-        since: since,
-        minRating: _topMinRating,
-        limit: _topLimit,
-        offset: _randomSlice(),
-      );
-      if (rows.isEmpty) {
-        rows = await repository.getFeedCandidateGames(
+      // A slice this feed has already used up is no draw: another one.
+      for (var attempt = 0; attempt < 3 && slice.isEmpty; attempt++) {
+        var rows = await repository.getFeedCandidateGames(
           since: since,
           minRating: _topMinRating,
           limit: _topLimit,
+          offset: _randomSlice(),
         );
-      }
-      if (generation != _generation) return;
-      for (final row in rows) {
-        final game = _tourModel(row);
-        if (game == null || _seen.contains(game.gameId)) continue;
-        if (!game.gameStatus.isFinished) continue;
-        slice[game.gameId] = _FeedCandidate(
-          game: game,
-          signals: _signalsOf(game, FeedPool.top),
-        );
+        if (rows.isEmpty) {
+          rows = await repository.getFeedCandidateGames(
+            since: since,
+            minRating: _topMinRating,
+            limit: _topLimit,
+          );
+        }
+        if (generation != _generation) return;
+        for (final row in rows) {
+          final game = _tourModel(row);
+          if (game == null || _seen.contains(game.gameId)) continue;
+          if (!game.gameStatus.isFinished) continue;
+          slice[game.gameId] = _FeedCandidate(
+            game: game,
+            signals: _signalsOf(game, FeedPool.top),
+          );
+        }
       }
       // Some of the pool's own flavour: current events, followed players,
       // likes and miniatures, a few each, taken out of this feed's draw.
@@ -438,15 +488,21 @@ class FeedNotifier extends AsyncNotifier<List<FeedItem>> {
         _reserveSize,
         from: slice,
         ranker: ranker,
+        unseenFirst: true,
       );
       if (generation != _generation || items.isEmpty) return;
       // The whole slice stays out of this feed: it is the next one's.
       _seen.addAll(slice.keys);
-      _reserve = _FeedReserve(items: items, ranker: ranker, leftovers: slice);
+      _reserve = _FeedReserve(
+        items: items,
+        ranker: ranker,
+        leftovers: slice,
+        drawnAt: now(),
+      );
     } catch (error) {
       debugPrint('[Feed] reserve failed: $error');
     } finally {
-      _preparingReserve = false;
+      if (_preparingReserveFor == generation) _preparingReserveFor = null;
     }
   }
 
@@ -506,7 +562,37 @@ class FeedNotifier extends AsyncNotifier<List<FeedItem>> {
     if (items.length - 1 - index <= _prefetchAhead + 1) {
       unawaited(loadMore());
     }
+    _redrawStaleReserve();
   }
+
+  /// A reserve the viewer has scrolled past [reserveMaxAge] with is drawn
+  /// again behind them, so the next pull still lands at once, on games that
+  /// finished since.
+  void _redrawStaleReserve() {
+    final reserve = _reserve;
+    if (reserve == null || _preparingReserveFor == _generation) return;
+    if (now().difference(reserve.drawnAt) <= reserveMaxAge) return;
+    _reserve = null;
+    // Nothing of it was shown: its games go back to this feed's draw.
+    for (final item in reserve.items) {
+      _seen.remove(item.game.gameId);
+    }
+    for (final candidate in reserve.leftovers.values) {
+      _seen.remove(candidate.game.gameId);
+      _offer(candidate);
+    }
+    unawaited(_prepareReserve(_generation));
+  }
+
+  /// The time, for the reserve's age. A seam for tests.
+  @protected
+  @visibleForTesting
+  DateTime now() => DateTime.now();
+
+  /// The games of the ready reserve, if there is one.
+  @visibleForTesting
+  List<String>? get reserveIds =>
+      _reserve?.items.map((item) => item.game.gameId).toList(growable: false);
 
   // ---------------------------------------------------------------------------
   // First page
@@ -528,10 +614,19 @@ class FeedNotifier extends AsyncNotifier<List<FeedItem>> {
       if (generation != _generation) return const [];
     }
 
-    var items = await _materialize(generation, _firstPageSize);
+    // The first page is games the viewer has not seen, while any are left.
+    var items = await _materialize(
+      generation,
+      _firstPageSize,
+      unseenFirst: true,
+    );
     if (items.isEmpty && generation == _generation && _pool.isNotEmpty) {
       // The first picks all failed to load or parse: one more batch.
-      items = await _materialize(generation, _firstPageSize + 2);
+      items = await _materialize(
+        generation,
+        _firstPageSize + 2,
+        unseenFirst: true,
+      );
     }
     if (generation != _generation) return const [];
     if (items.isEmpty && _publicSourceFailures >= 2) {
@@ -892,11 +987,16 @@ class FeedNotifier extends AsyncNotifier<List<FeedItem>> {
   /// Draws up to [count] games from the pool, fetches the PGNs they still
   /// need (one batched read for every `games` row, in parallel with any
   /// others), then parses them all in one background isolate.
+  ///
+  /// [unseenFirst]: games shown before are not drawn at all while any other
+  /// is left (elsewhere they are only demoted). For a first page, which is
+  /// what a new session or a refresh opens on.
   Future<List<FeedItem>> _materialize(
     int generation,
     int count, {
     Map<String, _FeedCandidate>? from,
     FeedRanker? ranker,
+    bool unseenFirst = false,
   }) async {
     final pool = from ?? _pool;
     final draw = ranker ?? _ranker;
@@ -906,9 +1006,17 @@ class FeedNotifier extends AsyncNotifier<List<FeedItem>> {
         c.signals.withSeenBefore(_shownBefore.contains(c.game.gameId)),
     ];
     final picked = <_FeedCandidate>[];
+    var unseenOnly = unseenFirst;
     while (picked.length < count) {
-      final next = draw.next(signals);
-      if (next == null) break;
+      final next = draw.next(
+        signals,
+        eligible: unseenOnly ? (s) => !s.seenBefore : null,
+      );
+      if (next == null) {
+        if (!unseenOnly) break;
+        unseenOnly = false;
+        continue;
+      }
       final candidate = pool.remove(next.id);
       if (candidate == null || !_seen.add(next.id)) continue;
       picked.add(candidate);
@@ -1283,7 +1391,8 @@ class FeedNotifier extends AsyncNotifier<List<FeedItem>> {
 
   String? get _userId => feedCacheUserId();
 
-  Future<List<FeedItem>> _readCache() => readFeedFirstPageCache(userId: _userId);
+  Future<List<FeedItem>> _readCache() =>
+      readFeedFirstPageCache(userId: _userId);
 
   Future<void> _writeCache(List<FeedItem> items) async {
     try {

@@ -18,6 +18,7 @@ import 'package:chessever2/screens/feed/providers/feed_eval_provider.dart';
 import 'package:chessever2/screens/feed/providers/feed_provider.dart';
 import 'package:chessever2/screens/feed/puzzles/feed_puzzle.dart';
 import 'package:chessever2/screens/feed/widgets/feed_clip.dart';
+import 'package:chessever2/screens/feed/widgets/feed_live_board.dart';
 import 'package:chessever2/screens/feed/widgets/feed_move_sound.dart';
 import 'package:chessever2/screens/feed/widgets/feed_move_strip.dart';
 import 'package:chessever2/screens/feed/widgets/feed_scrub.dart';
@@ -38,24 +39,45 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 /// The page after the last post (the tail) and the scrub line.
 void main() {
   group('the tail', () {
-    testWidgets('stands under the last post: the next post, as a skeleton', (
-      tester,
-    ) async {
+    testWidgets('every post is a page of its own: nothing of the next one '
+        'shows under it', (tester) async {
+      await _pump(tester, games: 2);
+      final pages = tester.getRect(_pages);
+      final post = tester.getRect(_post('g0'));
+      expect(post.top, closeTo(pages.top, 0.5));
+      expect(post.bottom, closeTo(pages.bottom, 0.5));
+      // The next post stands wholly below the screen.
+      final next = find.byKey(const ValueKey('game:g1'), skipOffstage: false);
+      expect(
+        tester.getRect(next).top,
+        greaterThanOrEqualTo(pages.bottom - 0.5),
+      );
+      await _tearDown(tester);
+    });
+
+    testWidgets('after the last post, the next post as a skeleton, on the '
+        "post's own geometry", (tester) async {
       await _pump(tester, games: 1);
       final pages = tester.getRect(_pages);
-      final post = tester.getRect(find.byType(FeedClip));
-      final tail = tester.getRect(_tail);
+      final board = tester.getRect(find.byType(FeedLiveBoard));
+      await _fling(tester);
 
+      final tail = tester.getRect(_tail);
       expect(
         find.descendant(of: _tail, matching: find.byType(FeedSkeletonPost)),
         findsOneWidget,
       );
-      // Right under the post and down past the bottom: no empty band.
-      expect(post.bottom, lessThan(pages.bottom));
-      expect(tail.top, closeTo(post.bottom, 0.5));
-      expect(tail.bottom, greaterThanOrEqualTo(pages.bottom));
-      // The skeleton is a post: exactly as tall.
-      expect(tail.height, closeTo(post.height, 0.5));
+      // The whole page, and its board exactly where a post's board stands.
+      expect(tail.top, closeTo(pages.top, 0.5));
+      expect(tail.bottom, closeTo(pages.bottom, 0.5));
+      final squares = tester.getRect(
+        find.descendant(
+          of: _tail,
+          matching: find.byKey(const ValueKey('feed_skeleton_board')),
+        ),
+      );
+      expect(squares.top, closeTo(board.top, 0.5));
+      expect(squares.width, closeTo(board.width, 0.5));
       await _tearDown(tester);
     });
 
@@ -78,7 +100,7 @@ void main() {
     ) async {
       final arrives = Completer<void>();
       final feed = await _pump(tester, games: 1, adds: arrives.future);
-      final top = tester.getRect(_pages).top;
+      final pages = tester.getRect(_pages);
       await _fling(tester);
 
       // On the skeleton: more is asked for; the remembered page is still
@@ -93,69 +115,52 @@ void main() {
             .isCurrent,
         isFalse,
       );
-      // It settled at the top like a post, no slice of the post before it
-      // showing above, and the post after it peeks under it as a skeleton
-      // too: no empty band while the load runs.
-      for (var i = 0; i < 10; i++) {
-        await tester.pump(const Duration(milliseconds: 50));
-      }
-      final pages = tester.getRect(_pages);
-      final tail = tester.getRect(_tail);
-      expect(tail.top, closeTo(top, 0.5));
-      expect(tail.bottom, lessThan(pages.bottom));
-      expect(tester.getRect(_spacer).top, closeTo(tail.bottom, 0.5));
-      expect(
-        find.descendant(of: _spacer, matching: find.byType(FeedSkeletonPost)),
-        findsOneWidget,
-      );
+      // It is the page: top to bottom, no slice of the post before it.
+      expect(tester.getRect(_tail).top, closeTo(pages.top, 0.5));
+      expect(tester.getRect(_tail).bottom, closeTo(pages.bottom, 0.5));
       // A fling past it springs back: the skeleton stays the page.
       await _fling(tester);
-      for (var i = 0; i < 10; i++) {
-        await tester.pump(const Duration(milliseconds: 50));
-      }
-      expect(tester.getRect(_tail).top, closeTo(top, 0.5));
+      expect(tester.getRect(_tail).top, closeTo(pages.top, 0.5));
 
       arrives.complete();
-      for (var i = 0; i < 20; i++) {
-        await tester.pump(const Duration(milliseconds: 50));
-      }
-      // The post stands where the skeleton stood, settled at the top, and
-      // it is the page the viewer is on.
-      expect(tester.getRect(_post('more0')).top, closeTo(top, 0.5));
+      await _settle(tester);
+      // The post stands where the skeleton stood, and it is the page the
+      // viewer is on.
+      expect(tester.getRect(_post('more0')).top, closeTo(pages.top, 0.5));
       expect(tester.widget<FeedClip>(_post('more0')).isCurrent, isTrue);
       expect(_currentKey(tester), 'game:more0');
-      // And a new tail stands under it.
+      // And a new tail stands under it, off the screen.
       expect(
-        tester.getRect(_tail).top,
-        closeTo(tester.getRect(_post('more0')).bottom, 0.5),
+        tester
+            .getRect(
+              find.byKey(const ValueKey('feed:tail'), skipOffstage: false),
+            )
+            .top,
+        closeTo(pages.bottom, 0.5),
       );
       await _tearDown(tester);
     });
 
-    testWidgets('at the end of the feed, a note under the last post, which '
-        'stays the page to rest on', (tester) async {
+    testWidgets('at the end of the feed, one line and Refresh, centred on a '
+        'page of their own', (tester) async {
       await _pump(tester, games: 2, more: FeedMore.exhausted);
       final pages = tester.getRect(_pages);
+      await _fling(tester);
+      // The last post fills its page: no note squeezed under it.
+      expect(find.text('No more games for now.'), findsNothing);
       await _fling(tester);
 
       final line = tester.getRect(find.text('No more games for now.'));
       final refresh = tester.getRect(
         find.byKey(const ValueKey('feed_end_refresh')),
       );
-      final post = tester.getRect(_post('g1'));
-      // In full, in the space under the last post.
-      expect(line.top, greaterThanOrEqualTo(post.bottom));
-      expect(refresh.top, greaterThanOrEqualTo(post.bottom));
-      expect(refresh.bottom, lessThanOrEqualTo(pages.bottom));
+      expect(line.center.dx, closeTo(pages.center.dx, 1));
+      expect(refresh.center.dx, closeTo(pages.center.dx, 1));
+      // The pair stands in the middle of the page.
+      final middle = (line.top + refresh.bottom) / 2;
+      expect(middle, closeTo(pages.center.dy, 1));
       expect(refresh.height, greaterThanOrEqualTo(44));
-
-      // A fling past it springs back: the last post stays on, at the top.
-      await _fling(tester);
-      for (var i = 0; i < 20; i++) {
-        await tester.pump(const Duration(milliseconds: 50));
-      }
-      expect(tester.getRect(_post('g1')).top, closeTo(pages.top, 0.5));
-      expect(tester.widget<FeedClip>(_post('g1')).isCurrent, isTrue);
+      // Nothing was written for a page that is not a post.
       expect(_currentKey(tester), 'game:g1');
       await _tearDown(tester);
     });
@@ -166,17 +171,17 @@ void main() {
       final feed = await _pump(tester, games: 2, more: FeedMore.exhausted);
       final top = tester.getRect(_pages).top;
       await _fling(tester);
+      await _fling(tester);
 
       await tester.tap(find.byKey(const ValueKey('feed_end_refresh')));
-      for (var i = 0; i < 10; i++) {
-        await tester.pump(const Duration(milliseconds: 50));
-      }
+      await _settle(tester);
       expect(feed.refreshes, 1);
       expect(tester.getRect(_post('fresh0')).top, closeTo(top, 0.5));
       expect(tester.widget<FeedClip>(_post('fresh0')).isCurrent, isTrue);
       expect(_currentKey(tester), 'game:fresh0');
-      // A fresh draw can load more again: under its last post, the skeleton
-      // is back.
+      // A fresh draw can load more again: after its last post, the
+      // skeleton is back.
+      await _fling(tester);
       await _fling(tester);
       expect(
         find.descendant(of: _tail, matching: find.byType(FeedSkeletonPost)),
@@ -190,6 +195,7 @@ void main() {
     ) async {
       final feed = await _pump(tester, games: 2, more: FeedMore.stalled);
       await _fling(tester);
+      await _fling(tester);
       expect(find.text("More games didn't load."), findsOneWidget);
 
       final before = feed.loads;
@@ -199,8 +205,8 @@ void main() {
       await _tearDown(tester);
     });
 
-    testWidgets('Try again under a finished last game starts no countdown, '
-        'and a failed retry leaves the game as it was', (tester) async {
+    testWidgets('while a retry is loading, the last game counts down to '
+        'nothing, and a failed retry says so again', (tester) async {
       late _RetryingFeed feed;
       final pumped = await _pump(
         tester,
@@ -209,6 +215,14 @@ void main() {
         makeFeed: (items, more) => feed = _RetryingFeed(items, more),
       );
       await _fling(tester);
+      await _fling(tester);
+      // A slow retry: longer than a countdown would run.
+      feed.hold = true;
+      await tester.tap(find.byKey(const ValueKey('feed_end_retry')));
+      await tester.pump();
+      // Back to the last game, which plays to its end.
+      await tester.fling(_pages, const Offset(0, 400), 1500);
+      await _settle(tester);
       expect(_currentKey(tester), 'game:g1');
       for (var i = 0; i < 14; i++) {
         await tester.pump(const Duration(milliseconds: 700));
@@ -216,42 +230,34 @@ void main() {
       final card = find.byKey(const ValueKey('feed_end_card'));
       expect(card, findsOneWidget);
       expect(find.text('Next game'), findsNothing);
-
-      // A slow retry: longer than the countdown would run.
-      feed.hold = true;
-      await tester.tap(find.byKey(const ValueKey('feed_end_retry')));
-      await tester.pump();
-      expect(find.text('Next game'), findsNothing);
       await tester.pump(const Duration(milliseconds: 5500));
-      expect(_currentKey(tester), 'game:g1');
       expect(tester.widget<FeedClip>(_post('g1')).isCurrent, isTrue);
 
       final heard = pumped.sound.played.length;
       feed.fail();
-      for (var i = 0; i < 20; i++) {
-        await tester.pump(const Duration(milliseconds: 100));
-      }
+      await _settle(tester);
       expect(tester.widget<FeedClip>(_post('g1')).isCurrent, isTrue);
       expect(card, findsOneWidget);
-      expect(find.text("More games didn't load."), findsOneWidget);
       expect(
         pumped.sound.played.skip(heard),
         isEmpty,
         reason: 'the finished game replayed',
       );
+      // Landing on the tail asks again; this time it fails at once.
+      feed.hold = false;
+      await _fling(tester);
+      expect(find.text("More games didn't load."), findsOneWidget);
       await _tearDown(tester);
     });
 
-    testWidgets('counted on to a skeleton that never fills, the viewer is '
-        'sent back to the game as they left it, not to a replay', (
-      tester,
-    ) async {
+    testWidgets('counted on to a skeleton that never fills, the page says '
+        'why and offers Try again; the game stays quiet', (tester) async {
       late _RetryingFeed feed;
       final pumped = await _pump(
         tester,
         games: 2,
-        makeFeed: (items, more) => feed = _RetryingFeed(items, more)
-          ..hold = true,
+        makeFeed: (items, more) =>
+            feed = _RetryingFeed(items, more)..hold = true,
       );
       await _fling(tester);
       expect(_currentKey(tester), 'game:g1');
@@ -261,51 +267,45 @@ void main() {
         await tester.pump(const Duration(milliseconds: 700));
       }
       await tester.pump(const Duration(seconds: 5));
+      await _settle(tester);
       final g1 = find.byKey(const ValueKey('game:g1'), skipOffstage: false);
       expect(tester.widget<FeedClip>(g1).isCurrent, isFalse);
+      expect(
+        find.descendant(of: _tail, matching: find.byType(FeedSkeletonPost)),
+        findsOneWidget,
+      );
 
       final heard = pumped.sound.played.length;
       feed.fail();
-      for (var i = 0; i < 20; i++) {
-        await tester.pump(const Duration(milliseconds: 100));
-      }
-      expect(tester.widget<FeedClip>(_post('g1')).isCurrent, isTrue);
-      expect(find.byKey(const ValueKey('feed_end_card')), findsOneWidget);
-      expect(find.text('Next game'), findsNothing);
-      expect(
-        pumped.sound.played.skip(heard),
-        isEmpty,
-        reason: 'the finished game replayed',
-      );
+      await _settle(tester);
+      expect(find.text("More games didn't load."), findsOneWidget);
+      expect(find.byKey(const ValueKey('feed_end_retry')), findsOneWidget);
+      expect(tester.widget<FeedClip>(g1).isCurrent, isFalse);
+      expect(pumped.sound.played.skip(heard), isEmpty);
       await _tearDown(tester);
     });
 
-    testWidgets(
-      'where a post fills the screen, the note is a page of its own',
-      (tester) async {
-        // Shorter than a post: every page is the whole screen, nothing peeks.
-        await _pump(
-          tester,
-          games: 1,
-          more: FeedMore.exhausted,
-          size: const Size(393, 600),
-        );
-        final pages = tester.getRect(_pages);
-        expect(
-          tester.getRect(find.byType(FeedClip)).bottom,
-          closeTo(pages.bottom, 0.5),
-        );
+    testWidgets('where a post fills the screen, the note is a page of its '
+        'own as well', (tester) async {
+      await _pump(
+        tester,
+        games: 1,
+        more: FeedMore.exhausted,
+        size: const Size(393, 600),
+      );
+      final pages = tester.getRect(_pages);
+      expect(
+        tester.getRect(find.byType(FeedClip)).bottom,
+        closeTo(pages.bottom, 0.5),
+      );
 
-        await _fling(tester);
-        final line = tester.getRect(find.text('No more games for now.'));
-        expect(pages.contains(line.center), isTrue);
-        // Centred on its page.
-        expect(line.center.dx, closeTo(pages.center.dx, 1));
-        // Nothing was written for a page that is not a post.
-        expect(_currentKey(tester), 'game:g0');
-        await _tearDown(tester);
-      },
-    );
+      await _fling(tester);
+      final line = tester.getRect(find.text('No more games for now.'));
+      expect(pages.contains(line.center), isTrue);
+      expect(line.center.dx, closeTo(pages.center.dx, 1));
+      expect(_currentKey(tester), 'game:g0');
+      await _tearDown(tester);
+    });
 
     testWidgets('the end note\'s action is as wide as its word, on every '
         'screen', (tester) async {
@@ -318,11 +318,8 @@ void main() {
       ]) {
         await _pump(tester, games: 1, more: FeedMore.exhausted, size: size);
         final pages = tester.getRect(_pages);
+        await _fling(tester);
         final note = find.byKey(const ValueKey('feed_end_refresh'));
-        // Under the last post where it fits; on a page of its own where not.
-        if (note.evaluate().isEmpty || !pages.overlaps(tester.getRect(note))) {
-          await _fling(tester);
-        }
         expect(pages.contains(tester.getRect(note).center), isTrue);
         final action = tester.getRect(note);
         expect(action.height, greaterThanOrEqualTo(44), reason: '$size');
@@ -403,9 +400,7 @@ void main() {
       final top = tester.getRect(_pages).top;
       final strip = tester.getRect(find.byType(FeedScrubStrip).first);
       await tester.flingFrom(strip.center, const Offset(0, -300), 1500);
-      for (var i = 0; i < 16; i++) {
-        await tester.pump(const Duration(milliseconds: 50));
-      }
+      await _settle(tester);
       expect(tester.getRect(_post('g1')).top, closeTo(top, 0.5));
       expect(_currentKey(tester), 'game:g1');
       await _tearDown(tester);
@@ -729,7 +724,6 @@ void main() {
 
 final Finder _pages = find.byKey(const ValueKey('feed_pages'));
 final Finder _tail = find.byKey(const ValueKey('feed:tail'));
-final Finder _spacer = find.byKey(const ValueKey('feed:tail-spacer'));
 
 Finder _post(String id) => find.byKey(ValueKey('game:$id'));
 
@@ -756,7 +750,12 @@ double _counterWidth(WidgetTester tester) {
 
 Future<void> _fling(WidgetTester tester) async {
   await tester.fling(_pages, const Offset(0, -400), 1500);
-  for (var i = 0; i < 16; i++) {
+  await _settle(tester);
+}
+
+/// Long enough for a full-screen page to come to rest.
+Future<void> _settle(WidgetTester tester) async {
+  for (var i = 0; i < 30; i++) {
     await tester.pump(const Duration(milliseconds: 50));
   }
 }

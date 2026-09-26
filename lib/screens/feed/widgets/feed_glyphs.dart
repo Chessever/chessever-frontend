@@ -55,6 +55,30 @@ abstract final class FeedGlyphs {
       '<path d="M6.2 10.3l2.6 2.6 5-5.4" stroke="#FFFFFF" stroke-width="1.6" '
       'stroke-linecap="round" stroke-linejoin="round"/></svg>';
 
+  static const _diskBody =
+      '<path d="M4.3 2.4h9.3l4 4v9.3a1.9 1.9 0 0 1-1.9 1.9H4.3a1.9 1.9 0 0 '
+      '1-1.9-1.9V4.3a1.9 1.9 0 0 1 1.9-1.9Z" stroke="#FFFFFF" '
+      'stroke-width="1.6" stroke-linejoin="round"/>'
+      '<path d="M6.3 2.6v2.9c0 .5.4.9.9.9h4.4c.5 0 .9-.4.9-.9V2.6" '
+      'stroke="#FFFFFF" stroke-width="1.6" stroke-linecap="round" '
+      'stroke-linejoin="round"/>';
+
+  /// The board screen's Save: a disk, its corner cut, the label slot on top
+  /// and the hub below.
+  static const save =
+      '<svg viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">'
+      '$_diskBody'
+      '<circle cx="10" cy="12.5" r="2.2" stroke="#FFFFFF" '
+      'stroke-width="1.6"/></svg>';
+
+  /// Same disk, the hub resolved into a tick once the game is in one of the
+  /// viewer's databases, as My Space's plus does.
+  static const saved =
+      '<svg viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">'
+      '$_diskBody'
+      '<path d="M7.2 12.6l2 2 3.7-4" stroke="#FFFFFF" stroke-width="1.6" '
+      'stroke-linecap="round" stroke-linejoin="round"/></svg>';
+
   static const share =
       '<svg viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">'
       '<path d="M10 12.5V2.5M6.2 6 10 2.2 13.8 6" stroke="#FFFFFF" '

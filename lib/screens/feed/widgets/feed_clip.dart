@@ -27,6 +27,7 @@ import 'package:chessever2/screens/feed/widgets/feed_move_sound.dart';
 import 'package:chessever2/screens/feed/widgets/feed_move_strip.dart';
 import 'package:chessever2/screens/feed/widgets/feed_playback.dart';
 import 'package:chessever2/screens/feed/widgets/feed_post_header.dart';
+import 'package:chessever2/screens/feed/widgets/feed_save.dart';
 import 'package:chessever2/screens/feed/widgets/feed_scrub.dart';
 import 'package:chessever2/screens/feed/widgets/feed_sfx_provider.dart';
 import 'package:chessever2/screens/feed/widgets/feed_share.dart';
@@ -56,6 +57,7 @@ import 'package:dartchess/dartchess.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/physics.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
@@ -80,6 +82,7 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 ///   window); once the clip has ended, it moves the result card off the
 ///   board and back
 /// * double-tap: like, with the board screen's heart burst flying into Like
+///   (the Like button plays the same heart, and the heartbreak to unlike)
 /// * hold the right third 280ms: 2x while held
 /// * long-press the rest of the board: Open game / Share / My Space menu
 /// * the move strip under the board: tap a move to jump there, or step
@@ -96,7 +99,6 @@ class FeedClip extends ConsumerStatefulWidget {
     required this.onRequestNext,
     required this.onScrollLock,
     this.hasNext = true,
-    this.resumeOnReturn = false,
     super.key,
   });
 
@@ -114,12 +116,6 @@ class FeedClip extends ConsumerStatefulWidget {
   /// coming. False on the last post of a feed that has ended, where the
   /// result card offers no "Next game" and runs no countdown to one.
   final bool hasNext;
-
-  /// When this page becomes the settled one again, it carries on as the
-  /// viewer left it rather than starting over: Feed sent them back to it
-  /// (the next page turned out not to come). A game that had ended shows
-  /// its result again, one mid-way plays on from there.
-  final bool resumeOnReturn;
 
   @override
   ConsumerState<FeedClip> createState() => _FeedClipState();
@@ -261,7 +257,39 @@ class _FeedClipState extends ConsumerState<FeedClip>
   Offset? _ripple;
   int _rippleSeq = 0;
   bool _menuOpen = false;
+
+  /// Save's sheet is up (or being opened): the clip holds until it closes.
+  bool _saveOpen = false;
   OverlayEntry? _flight;
+
+  // Like state: the board screen's heart, played on this board.
+  /// A like or an unlike is playing out (its burst, its flight, its write).
+  /// Held for the board screen's own floors, so a quick second tap can
+  /// neither stack the animation nor undo a like before it has landed.
+  bool _likeBusy = false;
+  int _likeToken = 0;
+  Timer? _likeFloor;
+
+  /// A heart is on its way to the Like button: the button keeps its outline
+  /// until the heart docks, and fills as it lands.
+  bool _heartInbound = false;
+
+  /// Counts the hearts that docked; the button's heart pops at each.
+  int _heartDocks = 0;
+
+  /// Marks the playing like as played out when its heart docks; see
+  /// [_playLike].
+  VoidCallback? _onHeartDocked;
+
+  /// What the viewer last asked Like to be while a write of it is still on
+  /// its way: the button shows it and the next tap reads it. Null once every
+  /// write has landed, and the likes are the truth again (a failed write has
+  /// rolled them back, and said so).
+  bool? _likeIntent;
+
+  /// The viewer's like writes, one after the other; see [_writeLike].
+  Future<void> _likeWrites = Future<void>.value();
+  int _likeWritesOut = 0;
 
   // Board-play state.
   /// The viewer's own line, while they are playing one.
@@ -322,6 +350,9 @@ class _FeedClipState extends ConsumerState<FeedClip>
   // Zone geometry from the last layout, in zone-local coordinates.
   double _zoneWidth = 0;
   Rect _boardRect = Rect.zero;
+
+  /// The board screen's heart: its [HeartBurstLayer] default on a board
+  /// this size, which the flight also starts at.
   double _heartSize = 150;
 
   FeedItem get _item => widget.item;
@@ -421,6 +452,10 @@ class _FeedClipState extends ConsumerState<FeedClip>
     if (!identical(oldWidget.item.plies, widget.item.plies)) _tokens = null;
     if (!identical(oldWidget.item, widget.item)) _openingFenResolved = false;
     _syncing = true;
+    // Back on Feed (from the board, say): what was saved meanwhile shows.
+    if (widget.isCurrent && widget.isVisible && !oldWidget.isVisible) {
+      ref.invalidate(feedGameSavedProvider(_game.likeId));
+    }
     if (widget.isCurrent != oldWidget.isCurrent) {
       _cancelGestures();
       _line = null;
@@ -429,11 +464,10 @@ class _FeedClipState extends ConsumerState<FeedClip>
       _cardAside = false;
       if (widget.isCurrent) {
         // Swiped onto: a fresh start, and whatever an earlier Feed left
-        // behind no longer applies. Sent back to: where it was, with a
-        // spent countdown starting over.
+        // behind no longer applies.
         _resume.clear();
         _countdown.value = 0;
-        if (!widget.resumeOnReturn) _playback.restart();
+        _playback.restart();
       }
     }
     _syncSuspended();
@@ -455,6 +489,7 @@ class _FeedClipState extends ConsumerState<FeedClip>
     }
     _flight?.remove();
     _flight = null;
+    _likeFloor?.cancel();
     _playback
       ..removeListener(_onPlayback)
       ..dispose();
@@ -473,7 +508,7 @@ class _FeedClipState extends ConsumerState<FeedClip>
   void _syncSuspended() {
     final seen = _seen?.value ?? true;
     _playback.setSuspended(
-      !(widget.isCurrent && widget.isVisible && seen) || _menuOpen,
+      !(widget.isCurrent && widget.isVisible && seen) || _menuOpen || _saveOpen,
     );
     _syncCountdown();
   }
@@ -1079,67 +1114,214 @@ class _FeedClipState extends ConsumerState<FeedClip>
 
   // ------------------------------------------------------------------ likes
 
-  void _doubleTapLike(Offset zoneLocal) {
-    final liked = ref.read(isGameLikedProvider(_game.likeId));
-    HapticFeedbackService.medium();
-    final zoneBox = _zoneKey.currentContext?.findRenderObject() as RenderBox?;
-    final from = zoneBox != null && zoneBox.hasSize
-        ? zoneBox.localToGlobal(zoneLocal)
-        : null;
-    _burst.spawn(
-      position: zoneLocal,
-      onFinished: () {
-        if (from != null) _flyHeart(from);
-      },
+  /// The board screen's floors: how long a like and an unlike take to play
+  /// out ([_likeBusy]). A like's heart docks well before its floor, and the
+  /// like counts as played out from then.
+  static const Duration _likeFloorDuration = Duration(milliseconds: 1650);
+  static const Duration _unlikeFloorDuration = Duration(milliseconds: 900);
+
+  /// The heart's flight into the button, the board screen's.
+  static const Duration _flightDuration = Duration(milliseconds: 470);
+
+  /// How far into its flight the heart is on the button to the eye:
+  /// [FlyingHeart]'s spring (its 0.1 bounce over [_flightDuration]) within
+  /// 0.2% of the way, some 420ms before the spring settles inside its own
+  /// tolerance and calls `onArrived`. The heart docks here, so the fill, the
+  /// pop, the click and the next tap all meet the landing the viewer saw.
+  static final Duration _flightHome = _springHome(
+    _flightDuration,
+    bounce: 0.1,
+  );
+
+  static Duration _springHome(Duration duration, {required double bounce}) {
+    final spring = SpringSimulation(
+      SpringDescription.withDurationAndBounce(
+        duration: duration,
+        bounce: bounce,
+      ),
+      0,
+      1,
+      0,
     );
-    // Double-tap only ever likes; unliking is the button's job.
-    if (!liked) unawaited(_toggleLike(haptic: false));
+    for (var ms = 0; ms < duration.inMilliseconds * 4; ms++) {
+      if (spring.x(ms / 1000) >= 0.998) return Duration(milliseconds: ms);
+    }
+    return duration * 2;
   }
 
-  void _flyHeart(Offset from) {
+  /// Double-tap: a heart bursts where the finger landed and flies into Like.
+  /// It only ever likes; a double-tap on a liked game plays the heart again
+  /// and changes nothing.
+  void _doubleTapLike(Offset zoneLocal) =>
+      _playLike(at: zoneLocal, fromButton: false);
+
+  /// The Like button plays the double-tap's heart over the middle of the
+  /// board and flies it into the button. On a liked game it plays the board
+  /// screen's heartbreak there instead, and unlikes.
+  void _likeFromButton() => _playLike(at: _boardRect.center, fromButton: true);
+
+  /// Whether the game is liked as far as the viewer can tell: what they last
+  /// asked for, until its write has landed.
+  bool get _likedNow =>
+      _likeIntent ?? ref.read(isGameLikedProvider(_game.likeId));
+
+  /// The board screen's like choreography (`_handleDoubleTapLike`): the
+  /// burst at [at] in the zone, then the flight into the button for a like;
+  /// the heartbreak for an unlike, with no flight and, as there, no haptic.
+  ///
+  /// Only the animation holds the next tap ([_likeBusy]), never the write:
+  /// once the heart is on the button the next tap is the unlike, and its
+  /// write waits its turn behind the like's.
+  void _playLike({required Offset at, required bool fromButton}) {
+    if (_likeBusy) return;
+    final wasLiked = _likedNow;
+    final unlike = fromButton && wasLiked;
+    final writes = fromButton || !wasLiked;
+    final token = ++_likeToken;
+    _likeBusy = true;
+    _flight?.remove();
+    _flight = null;
+
+    final zoneBox = _zoneKey.currentContext?.findRenderObject() as RenderBox?;
+    final from = zoneBox != null && zoneBox.hasSize
+        ? zoneBox.localToGlobal(at)
+        : null;
+    final reduceMotion = MediaQuery.disableAnimationsOf(context);
+    // A fresh like fills the button when the heart lands on it, not before.
+    final inbound = !wasLiked && !reduceMotion && from != null;
+    if (inbound != _heartInbound) setState(() => _heartInbound = inbound);
+    if (!unlike) HapticFeedbackService.medium();
+
+    _burst.spawn(
+      position: at,
+      isUnlike: unlike,
+      onFinished: () {
+        if (!mounted || token != _likeToken || unlike) return;
+        if (from != null && !reduceMotion) {
+          _flyHeart(from, token);
+        } else {
+          _dockHeart(token);
+        }
+      },
+    );
+
+    void playedOut() {
+      if (token == _likeToken) _likeBusy = false;
+    }
+
+    // A like has played out once its heart is on the button: from then the
+    // button looks liked, so the next tap is the unlike, not a dead one.
+    _onHeartDocked = unlike ? null : playedOut;
+    _likeFloor?.cancel();
+    _likeFloor = Timer(unlike ? _unlikeFloorDuration : _likeFloorDuration, () {
+      // Whatever happened to the flight, the button shows the truth now.
+      if (mounted && _heartInbound && token == _likeToken) {
+        setState(() => _heartInbound = false);
+      }
+      playedOut();
+    });
+    if (writes) _writeLike(liked: !wasLiked);
+  }
+
+  void _flyHeart(Offset from, int token) {
     if (!mounted) return;
     final target =
         _likeIconKey.currentContext?.findRenderObject() as RenderBox?;
-    if (target == null || !target.hasSize) return;
+    if (target == null || !target.attached || !target.hasSize) {
+      _dockHeart(token);
+      return;
+    }
     final to = target.localToGlobal(target.size.center(Offset.zero));
     _flight?.remove();
     late final OverlayEntry entry;
+    // Home: the flight gives way to the button's own heart. Once, whichever
+    // comes first: the eye's landing, or the spring's settling.
+    void land() {
+      if (_flight != entry) return;
+      entry.remove();
+      _flight = null;
+      if (!mounted) return;
+      // The board screen's "click into place".
+      HapticFeedbackService.selection();
+      _dockHeart(token);
+    }
+
     entry = OverlayEntry(
-      builder: (_) => FlyingHeart(
-        from: from,
-        to: to,
-        color: context.colors.danger,
-        startSize: _heartSize,
-        endSize: 22,
-        duration: const Duration(milliseconds: 470),
-        onArrived: () {
-          if (_flight == entry) {
-            entry.remove();
-            _flight = null;
-          }
-          HapticFeedbackService.selection();
-        },
+      builder: (_) => _FlightClock(
+        home: _flightHome,
+        onHome: land,
+        child: FlyingHeart(
+          from: from,
+          to: to,
+          color: context.colors.danger,
+          // Where the burst left off: 55% of the board, as on the board
+          // screen.
+          startSize: _boardRect.width * 0.55,
+          // The glyph's own heart: it draws the same heart in a box as wide
+          // as the flight's 24-unit one, so the heart lands at its size.
+          endSize: target.size.width,
+          duration: _flightDuration,
+          onArrived: land,
+        ),
       ),
     );
     _flight = entry;
     Overlay.of(context, rootOverlay: true).insert(entry);
   }
 
-  Future<void> _toggleLike({bool haptic = true}) async {
-    if (haptic) HapticFeedbackService.light();
+  /// The heart reached the button: it fills, with a small pop.
+  void _dockHeart(int token) {
+    if (!mounted || token != _likeToken) return;
+    setState(() {
+      _heartInbound = false;
+      _heartDocks++;
+    });
+    final docked = _onHeartDocked;
+    _onHeartDocked = null;
+    docked?.call();
+  }
+
+  /// Likes ([liked]) or unlikes the game once every write before it has
+  /// landed: the notifier drops a toggle while one for the game is still
+  /// out, so a quick unlike would otherwise be lost. Each write is the
+  /// notifier's own (optimistic, rolled back on failure), and the viewer is
+  /// told when one fails. Captures what it needs, so a write outlives the
+  /// post being paged away.
+  void _writeLike({required bool liked}) {
+    final notifier = ref.read(likedGamesProvider.notifier);
+    final game = _game;
     final messenger = ScaffoldMessenger.maybeOf(context);
-    try {
-      await ref.read(likedGamesProvider.notifier).toggle(_game);
-    } catch (error) {
-      debugPrint('[Feed] like toggle failed: $error');
-      if (messenger != null) {
+    setState(() => _likeIntent = liked);
+    _likeWritesOut++;
+    final write = _likeWrites.then((_) async {
+      // Already so (an earlier write failed and rolled back, say).
+      if (notifier.isLiked(game.likeId) == liked) return;
+      var written = false;
+      Object? error;
+      try {
+        // The notifier answers with the state it left, rolled back or not.
+        written = await notifier.toggle(game) == liked;
+      } catch (thrown) {
+        error = thrown;
+      }
+      if (written) return;
+      debugPrint('[Feed] like toggle failed: ${error ?? 'rolled back'}');
+      if (messenger != null && messenger.mounted) {
         showAppSnackOn(
           messenger,
           userFacingError(error, fallback: "Couldn't update your like."),
           tone: AppSnackTone.danger,
         );
       }
-    }
+    });
+    _likeWrites = write;
+    unawaited(
+      write.whenComplete(() {
+        if (--_likeWritesOut == 0 && mounted) {
+          setState(() => _likeIntent = null);
+        }
+      }),
+    );
   }
 
   // --------------------------------------------------------------- actions
@@ -1182,6 +1364,34 @@ class _FeedClipState extends ConsumerState<FeedClip>
         eval: line == null ? _shownEval : null,
       ),
     );
+  }
+
+  /// Save: the board screen's own Save sheet for this game (its databases,
+  /// a new one, tags). The clip holds from the tap until the sheet has
+  /// closed, then plays on where it was.
+  Future<void> _save() async {
+    if (_saveOpen) return;
+    HapticFeedbackService.buttonPress();
+    setState(() => _saveOpen = true);
+    _syncSuspended();
+    try {
+      await openFeedSaveSheet(context: context, ref: ref, game: _game);
+    } catch (error) {
+      debugPrint('[Feed] save failed: $error');
+      if (mounted) {
+        showAppSnack(
+          context,
+          userFacingError(error, fallback: "Couldn't open Save."),
+          tone: AppSnackTone.danger,
+        );
+      }
+    } finally {
+      if (mounted) {
+        ref.invalidate(feedGameSavedProvider(_game.likeId));
+        setState(() => _saveOpen = false);
+        _syncSuspended();
+      }
+    }
   }
 
   Future<void> _toggleSpace(SpaceShortcut draft) async {
@@ -1762,12 +1972,15 @@ class _FeedClipState extends ConsumerState<FeedClip>
     }
 
     final colors = context.colors;
-    final liked = ref.watch(isGameLikedProvider(_game.likeId));
-    _likedAtOpen ??= liked;
+    final likedStored = ref.watch(isGameLikedProvider(_game.likeId));
+    _likedAtOpen ??= likedStored;
+    final liked = _likeIntent ?? likedStored;
     final draft = _spaceDraft;
     final inSpace = draft == null
         ? null
         : ref.watch(spaceShortcutExistsProvider(draft.key));
+    final saved =
+        ref.watch(feedGameSavedProvider(_game.likeId)).valueOrNull ?? false;
     final evalVisibility = _watchEvalVisibility();
     final showBar = evalVisibility.bar;
 
@@ -1819,7 +2032,7 @@ class _FeedClipState extends ConsumerState<FeedClip>
         );
         _zoneWidth = l.contentWidth;
         _boardRect = Rect.fromLTWH(l.evalWidth, 0, l.board, l.board);
-        _heartSize = l.board * 0.45;
+        _heartSize = l.board.clamp(160.0, 480.0) * 0.55;
 
         final n = math.max(1, _item.plyCount);
         final progress = _item.plyCount <= 0 ? 1.0 : shown / n;
@@ -1991,7 +2204,7 @@ class _FeedClipState extends ConsumerState<FeedClip>
             Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const SizedBox(height: FeedLayout.topGap),
+                SizedBox(height: l.top),
                 fullRow(_buildHeader(l)),
                 const SizedBox(height: FeedLayout.gap),
                 content(
@@ -2001,7 +2214,7 @@ class _FeedClipState extends ConsumerState<FeedClip>
                 content(zone),
                 const SizedBox(height: FeedLayout.gap),
                 content(_playerRow(l, white: true, revealResult: revealResult)),
-                const SizedBox(height: FeedLayout.infoGap),
+                SizedBox(height: l.infoSpace),
                 fullRow(
                   IgnorePointer(
                     ignoring: showChart,
@@ -2013,7 +2226,7 @@ class _FeedClipState extends ConsumerState<FeedClip>
                     ),
                   ),
                 ),
-                const SizedBox(height: FeedLayout.actionsGap),
+                SizedBox(height: l.actionsSpace),
                 fullRow(
                   Opacity(
                     opacity: actionsOpacity,
@@ -2021,17 +2234,26 @@ class _FeedClipState extends ConsumerState<FeedClip>
                       height: l.actionsHeight,
                       liked: liked,
                       likes: _likesShown(liked),
+                      // Until an incoming heart lands, the button shows the
+                      // game as it was.
+                      shownLiked: liked && !_heartInbound,
+                      shownLikes: _likesShown(liked && !_heartInbound),
+                      heartPop: _heartDocks,
                       inSpace: inSpace,
+                      saved: saved,
                       likeIconKey: _likeIconKey,
-                      onLike: () => unawaited(_toggleLike()),
+                      onLike: _likeFromButton,
                       onSpace: () {
                         if (draft != null) unawaited(_toggleSpace(draft));
                       },
                       onShare: _share,
+                      onSave: () => unawaited(_save()),
                       onAnalyze: _openGame,
                     ),
                   ),
                 ),
+                // [FeedLayout.scrubSpace]: what the rows leave, so the page
+                // never overflows by a rounding error.
                 const Spacer(),
                 FeedScrubStrip(
                   progress: progress,
@@ -2058,6 +2280,7 @@ class _FeedClipState extends ConsumerState<FeedClip>
                   onSeek: _onScrubTap,
                   onStep: (delta) => _stepTo(shown + delta),
                 ),
+                SizedBox(height: l.foot),
               ],
             ),
             if (showChart)
@@ -2065,7 +2288,7 @@ class _FeedClipState extends ConsumerState<FeedClip>
                 left: 0,
                 right: 0,
                 top: l.boardBottom - 10,
-                bottom: FeedLayout.scrubHeight,
+                bottom: FeedLayout.scrubHeight + l.foot,
                 child: FeedReportOverlay(
                   item: _item,
                   ply: shown,
@@ -2126,4 +2349,48 @@ class _FeedClipState extends ConsumerState<FeedClip>
     return (asset: PngAsset.classicalIcon, label: 'Classical');
   }
   return null;
+}
+
+/// Calls [onHome] once [home] into the flight of the [FlyingHeart] it holds,
+/// frame for frame with it: both clocks start in the frame the flight is
+/// built in.
+class _FlightClock extends StatefulWidget {
+  const _FlightClock({
+    required this.home,
+    required this.onHome,
+    required this.child,
+  });
+
+  final Duration home;
+  final VoidCallback onHome;
+  final Widget child;
+
+  @override
+  State<_FlightClock> createState() => _FlightClockState();
+}
+
+class _FlightClockState extends State<_FlightClock>
+    with SingleTickerProviderStateMixin {
+  late final Ticker _ticker = createTicker(_tick);
+
+  @override
+  void initState() {
+    super.initState();
+    _ticker.start();
+  }
+
+  void _tick(Duration elapsed) {
+    if (elapsed < widget.home) return;
+    _ticker.stop();
+    widget.onHome();
+  }
+
+  @override
+  void dispose() {
+    _ticker.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => widget.child;
 }
