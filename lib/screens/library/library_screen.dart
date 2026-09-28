@@ -1,7 +1,6 @@
 import 'package:chessever2/e2e/e2e_ids.dart';
 import 'package:chessever2/repository/library/library_repository.dart';
 import 'package:chessever2/repository/library/models/library_folder.dart';
-import 'package:chessever2/screens/home/widget/bottom_nav_bar.dart';
 import 'package:chessever2/screens/library/folder_contents_screen.dart';
 import 'package:chessever2/screens/my_likes/my_likes_screen.dart';
 import 'package:chessever2/screens/for_you/discovery/widgets/discovery_common.dart'
@@ -40,7 +39,15 @@ import 'package:flutter/services.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 class LibraryScreen extends ConsumerStatefulWidget {
-  const LibraryScreen({super.key, this.embedded = false});
+  const LibraryScreen({
+    super.key,
+    this.embedded = false,
+    this.databasesOnly = false,
+  });
+
+  /// My Space exposes databases only. Other Library entry points retain
+  /// their existing shortcuts and contents.
+  final bool databasesOnly;
 
   /// The databases list alone, as a page inside another screen's frame (My
   /// Prep's Databases tab): no home bar, and Add on a line of its own above
@@ -73,15 +80,6 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
     _searchController.dispose();
     _scrollController.dispose();
     super.dispose();
-  }
-
-  void _scrollToTop() {
-    if (!_scrollController.hasClients) return;
-    _scrollController.animateTo(
-      0,
-      duration: const Duration(milliseconds: 300),
-      curve: Curves.easeOutCubic,
-    );
   }
 
   void _navigateToBoard() {
@@ -130,7 +128,10 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
         if (!mounted) return;
         showAppSnack(
           context,
-          userFacingError(e2, fallback: 'Could not open the file picker. Please try again.'),
+          userFacingError(
+            e2,
+            fallback: 'Could not open the file picker. Please try again.',
+          ),
           tone: AppSnackTone.danger,
         );
         return;
@@ -170,11 +171,10 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
     if (!mounted) return;
     await Navigator.of(context).push(
       MaterialPageRoute(
-        builder:
-            (_) => PgnImportPreviewScreen(
-              games: parsed.map((e) => e.chessGame).toList(),
-              sourceLabel: 'clipboard',
-            ),
+        builder: (_) => PgnImportPreviewScreen(
+          games: parsed.map((e) => e.chessGame).toList(),
+          sourceLabel: 'clipboard',
+        ),
       ),
     );
   }
@@ -183,12 +183,9 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
     final isPremium = ref.read(subscriptionProvider).isSubscribed;
     if (!isPremium) {
       final folders = await ref.read(libraryFoldersStreamProvider.future);
-      final ownedBookCount =
-          folders
-              .where(
-                (f) => !f.isSubscribed && f.id != kTwicBookId && f.isDatabase,
-              )
-              .length;
+      final ownedBookCount = folders
+          .where((f) => !f.isSubscribed && f.id != kTwicBookId && f.isDatabase)
+          .length;
       if (ownedBookCount >= kFreeBookCreationLimit) {
         if (!mounted) return;
         await showPremiumPaywallSheet(context: context);
@@ -236,7 +233,10 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
         HapticFeedback.lightImpact();
         showAppSnack(
           context,
-          userFacingError(e, fallback: 'Could not create this item. Please try again.'),
+          userFacingError(
+            e,
+            fallback: 'Could not create this item. Please try again.',
+          ),
           tone: AppSnackTone.danger,
         );
       }
@@ -277,15 +277,6 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
 
   @override
   Widget build(BuildContext context) {
-    ref.listen<BottomNavBarReTapRequest>(bottomNavBarReTapRequestProvider, (
-      previous,
-      next,
-    ) {
-      if (next.item == BottomNavBarItem.library) {
-        _scrollToTop();
-      }
-    });
-
     return ScreenWrapper(
       child: KeyedSubtree(
         key: e2eKey(E2eIds.libraryRoot),
@@ -325,10 +316,9 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
     return Padding(
       padding: EdgeInsets.only(bottom: 12.h),
       child: HomeTopBar(
-        onOpenSidebar:
-            canOpenSidebar
-                ? () => Scaffold.maybeOf(context)?.openDrawer()
-                : null,
+        onOpenSidebar: canOpenSidebar
+            ? () => Scaffold.maybeOf(context)?.openDrawer()
+            : null,
         leading: canPop ? const HomeTopBarBackButton() : null,
         focusNode: _searchFocusNode,
         content: _buildSearchField(),
@@ -358,9 +348,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
         listenable: _searchFocusNode,
         // Built once; focus only repaints the surface around it.
         child: ConstrainedBox(
-          constraints: BoxConstraints(
-            minHeight: HomeTopBarMetrics.fieldHeight,
-          ),
+          constraints: BoxConstraints(minHeight: HomeTopBarMetrics.fieldHeight),
           child: SimpleSearchBar(
             textFieldKey: e2eKey(E2eIds.librarySearchField),
             hintText: 'Search',
@@ -371,17 +359,15 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
             onCloseTap: _clearSearch,
           ),
         ),
-        builder:
-            (context, child) => ParkedMotionBuilder(
-              value: _searchFocusNode.hasFocus ? 1.0 : 0.0,
-              motion: SearchMotion.morph,
-              child: child,
-              builder:
-                  (context, lift, child) => HomeSearchFieldSurface(
-                    lift: lift,
-                    child: RepaintBoundary(child: child),
-                  ),
-            ),
+        builder: (context, child) => ParkedMotionBuilder(
+          value: _searchFocusNode.hasFocus ? 1.0 : 0.0,
+          motion: SearchMotion.morph,
+          child: child,
+          builder: (context, lift, child) => HomeSearchFieldSurface(
+            lift: lift,
+            child: RepaintBoundary(child: child),
+          ),
+        ),
       ),
     );
   }
@@ -547,14 +533,13 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
     // folder first (auto-created via ensureDefaultFolders), then TWIC, then
     // the rest in normal order.
     final likedIdx = folders.indexWhere((f) => f.isLikedGames);
-    final rest =
-        likedIdx == -1
-            ? folders
-            : (List<LibraryFolder>.from(folders)..removeAt(likedIdx));
+    final rest = likedIdx == -1
+        ? folders
+        : (List<LibraryFolder>.from(folders)..removeAt(likedIdx));
     final allFolders = <LibraryFolder>[
-      if (likedIdx != -1) folders[likedIdx],
+      if (!widget.databasesOnly && likedIdx != -1) folders[likedIdx],
       kTwicFolder,
-      kMiniaturesFolder,
+      if (!widget.databasesOnly) kMiniaturesFolder,
       ...rest,
     ];
     final filteredFolders = _filterFolders(allFolders);
@@ -587,7 +572,8 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
             (context, index) => FolderCard(
               folder: filteredFolders[index],
               isExpanded: true,
-              isFeatured: filteredFolders[index].id == kTwicBookId ||
+              isFeatured:
+                  filteredFolders[index].id == kTwicBookId ||
                   filteredFolders[index].id == kMiniaturesBookId ||
                   filteredFolders[index].isLikedGames,
               onTap: () => _navigateToFolder(filteredFolders[index]),
@@ -608,7 +594,8 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
             child: FolderCard(
               folder: filteredFolders[index],
               isExpanded: true,
-              isFeatured: filteredFolders[index].id == kTwicBookId ||
+              isFeatured:
+                  filteredFolders[index].id == kTwicBookId ||
                   filteredFolders[index].id == kMiniaturesBookId ||
                   filteredFolders[index].isLikedGames,
               onTap: () => _navigateToFolder(filteredFolders[index]),
@@ -663,32 +650,30 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
           vertical: 8.h,
         ),
         child: SkeletonWidget(
-          child:
-              ResponsiveHelper.isTablet
-                  ? GridView.builder(
-                    shrinkWrap: true,
-                    physics: const NeverScrollableScrollPhysics(),
-                    gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                      crossAxisCount: ResponsiveHelper.tabletGridColumns.clamp(
-                        2,
-                        3,
-                      ),
-                      crossAxisSpacing: 16.sp,
-                      mainAxisSpacing: 16.sp,
-                      childAspectRatio:
-                          ResponsiveHelper.isLandscape ? 2.5 : 2.0,
+          child: ResponsiveHelper.isTablet
+              ? GridView.builder(
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: ResponsiveHelper.tabletGridColumns.clamp(
+                      2,
+                      3,
                     ),
-                    itemCount: loadingCards.length,
-                    itemBuilder: (context, index) => loadingCards[index],
-                  )
-                  : Column(
-                    children: [
-                      for (final card in loadingCards) ...[
-                        card,
-                        SizedBox(height: 8.h),
-                      ],
-                    ],
+                    crossAxisSpacing: 16.sp,
+                    mainAxisSpacing: 16.sp,
+                    childAspectRatio: ResponsiveHelper.isLandscape ? 2.5 : 2.0,
                   ),
+                  itemCount: loadingCards.length,
+                  itemBuilder: (context, index) => loadingCards[index],
+                )
+              : Column(
+                  children: [
+                    for (final card in loadingCards) ...[
+                      card,
+                      SizedBox(height: 8.h),
+                    ],
+                  ],
+                ),
         ),
       ),
     );
@@ -704,10 +689,9 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
             Icon(
               Icons.error_outline,
               size: 64.sp,
-              color:
-                  context.isLightTheme
-                      ? context.colors.danger
-                      : kRedColor.withValues(alpha: 0.7),
+              color: context.isLightTheme
+                  ? context.colors.danger
+                  : kRedColor.withValues(alpha: 0.7),
             ),
             SizedBox(height: 16.h),
             Text(
@@ -953,8 +937,9 @@ class _LibraryBackgroundDecoration extends StatelessWidget {
       width: size,
       height: size,
       decoration: BoxDecoration(
-        color:
-            isLight ? context.colors.divider : context.colors.surfaceRecessed,
+        color: isLight
+            ? context.colors.divider
+            : context.colors.surfaceRecessed,
         borderRadius: _getCornerRadius(row, col, gridSize, 6.br),
       ),
     );

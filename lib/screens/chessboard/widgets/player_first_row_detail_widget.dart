@@ -1341,6 +1341,7 @@ class _PlayerClock extends StatelessWidget {
     // Only countdown for live games when at the latest move and it's this player's turn
     // NEVER countdown when exploring analysis variations - always show static clock time
     final isClockRunning =
+        effectiveGameModel.source == GameSource.supabase &&
         effectiveGameModel.gameStatus.isOngoing &&
         effectiveGameModel.lastMoveTime != null &&
         shouldCountForThisPlayer &&

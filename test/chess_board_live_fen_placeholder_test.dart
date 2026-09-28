@@ -1,5 +1,8 @@
 import 'dart:async';
+import 'package:chessever2/screens/chessboard/analysis/chess_game.dart';
 import 'package:chessever2/screens/chessboard/provider/analysis_view_session.dart';
+import 'package:chessever2/screens/chessboard/provider/current_eval_provider.dart';
+import 'package:chessever2/repository/lichess/cloud_eval/cloud_eval.dart';
 import 'package:chessever2/screens/chessboard/notation/notation_tree.dart';
 
 import 'package:chessever2/providers/engine_settings_provider.dart';
@@ -133,6 +136,7 @@ GamesTourModel _dummyGame({
 ProviderContainer _createContainer({
   Stream<Map<String, dynamic>?>? updates,
   GameRepository? gameRepository,
+  bool stubEvaluation = false,
 }) {
   return ProviderContainer(
     overrides: [
@@ -147,6 +151,11 @@ ProviderContainer _createContainer({
         _FakeGameStreamRepository(updates),
       ),
       chessBoardPersistenceEnabledProvider.overrideWithValue(false),
+      if (stubEvaluation)
+        cascadeEvalProviderForBoard.overrideWith(
+          (ref, params) async =>
+              CloudEval(fen: params.fen, knodes: 0, depth: 0, pvs: const []),
+        ),
     ],
   );
 }
@@ -181,6 +190,121 @@ class _FakeEngineSettingsNotifier extends AsyncNotifier<EngineSettings>
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+
+  for (final ply in [0, 5]) {
+    test(
+      'an analysis handoff restores exact ply $ply of a repeated position',
+      () async {
+        const pgn = '1. Nf3 Nf6 2. Ng1 Ng8 3. Nf3 Nf6 *';
+        final game = _dummyGame(pgn: pgn);
+        final analysis = ChessGame.fromPgn(game.gameId, pgn);
+        final pointer = ply == 0 ? <int>[] : [ply - 1];
+        final expectedFen = ply == 0
+            ? analysis.startingFen
+            : analysis.mainline[ply - 1].fen;
+        final container = _createContainer(
+          gameRepository: _StaticGameRepository(pgn),
+          stubEvaluation: true,
+        );
+        addTearDown(container.dispose);
+        container.read(currentlyVisiblePageIndexProvider.notifier).state = 99;
+        final params = ChessBoardProviderParams(
+          game: game,
+          index: 0,
+          savedAnalysisData: SavedAnalysisData(
+            chessGame: analysis,
+            variationComments: const {},
+            movePointer: pointer,
+            isBoardFlipped: false,
+            lastViewedPosition: ply - 1,
+          ),
+        );
+        final watch = container.listen(
+          chessBoardScreenProviderNew(params),
+          (_, __) {},
+        );
+        addTearDown(watch.close);
+        await _waitFor(container, params, () {
+          final state = container
+              .read(chessBoardScreenProviderNew(params))
+              .valueOrNull;
+          return state?.analysisState.game != null &&
+              state?.analysisState.currentMoveIndex == ply - 1;
+        });
+        final state = container
+            .read(chessBoardScreenProviderNew(params))
+            .requireValue;
+        expect(state.analysisState.movePointer, pointer);
+        expect(state.analysisState.position.fen, expectedFen);
+      },
+    );
+  }
+
+  test(
+    'board arrow holds visit intermediate moves and stop on release',
+    () async {
+      const pgn = '''[Result "1-0"]
+
+1. e4 e5 2. Nf3 Nc6 3. Bb5 a6 4. Ba4 Nf6 5. O-O Be7
+6. Re1 b5 7. Bb3 d6 8. c3 O-O 9. h3 Nb8 10. d4 Nbd7 1-0''';
+      final game = _dummyGame(pgn: pgn, gameStatus: GameStatus.whiteWins);
+      final container = _createContainer(
+        gameRepository: _StaticGameRepository(pgn),
+        stubEvaluation: true,
+      );
+      addTearDown(container.dispose);
+      // Keep real engine/evaluation IO out of the navigation regression.
+      container.read(currentlyVisiblePageIndexProvider.notifier).state = 99;
+      final params = ChessBoardProviderParams(game: game, index: 0);
+      final watch = container.listen(
+        chessBoardScreenProviderNew(params),
+        (_, __) {},
+      );
+      addTearDown(watch.close);
+      final notifier = container.read(
+        chessBoardScreenProviderNew(params).notifier,
+      );
+      await _waitFor(
+        container,
+        params,
+        () =>
+            container
+                .read(chessBoardScreenProviderNew(params))
+                .valueOrNull
+                ?.analysisState
+                .game !=
+            null,
+      );
+      int current() => container
+          .read(chessBoardScreenProviderNew(params))
+          .requireValue
+          .analysisState
+          .currentMoveIndex;
+
+      for (final forward in [true, false]) {
+        final start = forward ? 1 : 15;
+        await notifier.goToMove(start);
+        expect(current(), start);
+        if (forward) {
+          notifier.startLongPressForward();
+        } else {
+          notifier.startLongPressBackward();
+        }
+        for (var i = 0; i < 40 && current() == start; i++) {
+          await Future<void>.delayed(const Duration(milliseconds: 10));
+        }
+        notifier.stopLongPress();
+        expect(current(), start + (forward ? 1 : -1));
+        final releasedAt = current();
+        await Future<void>.delayed(const Duration(milliseconds: 200));
+        expect(
+          current(),
+          releasedAt,
+          reason: 'Releasing never queues another step.',
+        );
+      }
+    },
+  );
 
   test(
     'clear analysis deletes custom PGN work without changing engine state',
@@ -224,23 +348,26 @@ void main() {
       );
       notifier.toggleMoveNag(pointerId: '0', nag: 2);
 
-      final before =
-          container.read(chessBoardScreenProviderNew(params)).requireValue;
+      final before = container
+          .read(chessBoardScreenProviderNew(params))
+          .requireValue;
       expect(before.variationComments, isNotEmpty);
       expect(before.moveNags, isNotEmpty);
       final engineVisibleBefore = before.showEngineAnalysis;
       final principalVariationsBefore = before.principalVariations;
       final engineShapesBefore = before.shapes;
-      final mainlineSanBefore =
-          before.analysisState.game!.mainline.map((move) => move.san).toList();
+      final mainlineSanBefore = before.analysisState.game!.mainline
+          .map((move) => move.san)
+          .toList();
 
       await notifier.clearUserAnalysis();
       // Let the navigator's 120 ms evaluation debounce settle while the
       // provider is still mounted; the game is intentionally non-visible.
       await Future<void>.delayed(const Duration(milliseconds: 150));
 
-      final after =
-          container.read(chessBoardScreenProviderNew(params)).requireValue;
+      final after = container
+          .read(chessBoardScreenProviderNew(params))
+          .requireValue;
       expect(after.variationComments, isEmpty);
       expect(after.moveNags, isEmpty);
       expect(after.pgnData?.split('\n\n').last.trim(), '1. e4 e5 2. Nf3 *');
@@ -275,64 +402,68 @@ void main() {
     // written turned the stored `GM` into `-` on every re-parse while the live
     // card path restored it on every clock tick, so the board rows flipped
     // for the whole game.
-    test('a "-" title tag keeps the stored title, a real one still wins', () async {
-      const pgn =
-          '[WhiteTitle "-"]\n[BlackTitle "im"]\n[WhiteFed "-"]\n[BlackFed "?"]\n'
-          '[Result "*"]\n\n1. e4 e5 2. Nf3 *';
-      final game = _dummyGame(
-        pgn: pgn,
-        whitePlayer: PlayerCard(
-          name: 'Dominguez Perez, Leinier',
-          federation: 'USA',
-          title: 'GM',
-          rating: 2657,
-          countryCode: 'USA',
-          team: null,
-        ),
-        blackPlayer: PlayerCard(
-          name: 'Mamedyarov, Shakhriyar',
-          federation: 'AZE',
-          title: 'GM',
-          rating: 2664,
-          countryCode: 'AZE',
-          team: null,
-        ),
-      );
-      final container = _createContainer(
-        gameRepository: _StaticGameRepository(pgn),
-      );
-      addTearDown(container.dispose);
-      final params = ChessBoardProviderParams(game: game, index: 0);
-      container.read(currentlyVisiblePageIndexProvider.notifier).state = 99;
-      final boardWatch = container.listen(
-        chessBoardScreenProviderNew(params),
-        (_, __) {},
-      );
-      addTearDown(boardWatch.close);
-      await _waitFor(
-        container,
-        params,
-        () =>
-            container
-                .read(chessBoardScreenProviderNew(params))
-                .valueOrNull
-                ?.pgnData !=
-            null,
-      );
+    test(
+      'a "-" title tag keeps the stored title, a real one still wins',
+      () async {
+        const pgn =
+            '[WhiteTitle "-"]\n[BlackTitle "im"]\n[WhiteFed "-"]\n[BlackFed "?"]\n'
+            '[Result "*"]\n\n1. e4 e5 2. Nf3 *';
+        final game = _dummyGame(
+          pgn: pgn,
+          whitePlayer: PlayerCard(
+            name: 'Dominguez Perez, Leinier',
+            federation: 'USA',
+            title: 'GM',
+            rating: 2657,
+            countryCode: 'USA',
+            team: null,
+          ),
+          blackPlayer: PlayerCard(
+            name: 'Mamedyarov, Shakhriyar',
+            federation: 'AZE',
+            title: 'GM',
+            rating: 2664,
+            countryCode: 'AZE',
+            team: null,
+          ),
+        );
+        final container = _createContainer(
+          gameRepository: _StaticGameRepository(pgn),
+        );
+        addTearDown(container.dispose);
+        final params = ChessBoardProviderParams(game: game, index: 0);
+        container.read(currentlyVisiblePageIndexProvider.notifier).state = 99;
+        final boardWatch = container.listen(
+          chessBoardScreenProviderNew(params),
+          (_, __) {},
+        );
+        addTearDown(boardWatch.close);
+        await _waitFor(
+          container,
+          params,
+          () =>
+              container
+                  .read(chessBoardScreenProviderNew(params))
+                  .valueOrNull
+                  ?.pgnData !=
+              null,
+        );
 
-      // The header merge lands on the notifier's model, which every later
-      // stream tick and navigation hydrate copies into the published state;
-      // the first parse itself keeps the state's initial model. Read the
-      // model the next tick will publish.
-      final parsed =
-          container.read(chessBoardScreenProviderNew(params).notifier).game;
-      expect(parsed.whitePlayer.title, 'GM');
-      expect(parsed.whitePlayer.federation, 'USA');
-      expect(parsed.whitePlayer.countryCode, 'USA');
-      // A header that carries a value still outranks the row, normalised.
-      expect(parsed.blackPlayer.title, 'IM');
-      expect(parsed.blackPlayer.federation, 'AZE');
-    });
+        // The header merge lands on the notifier's model, which every later
+        // stream tick and navigation hydrate copies into the published state;
+        // the first parse itself keeps the state's initial model. Read the
+        // model the next tick will publish.
+        final parsed = container
+            .read(chessBoardScreenProviderNew(params).notifier)
+            .game;
+        expect(parsed.whitePlayer.title, 'GM');
+        expect(parsed.whitePlayer.federation, 'USA');
+        expect(parsed.whitePlayer.countryCode, 'USA');
+        // A header that carries a value still outranks the row, normalised.
+        expect(parsed.blackPlayer.title, 'IM');
+        expect(parsed.blackPlayer.federation, 'AZE');
+      },
+    );
   });
 
   group('Live FEN placeholder initialization', () {
@@ -467,8 +598,9 @@ void main() {
         });
 
         await _waitFor(container, params, () {
-          final state =
-              container.read(chessBoardScreenProviderNew(params)).valueOrNull;
+          final state = container
+              .read(chessBoardScreenProviderNew(params))
+              .valueOrNull;
           return state != null &&
               !state.isLoadingMoves &&
               state.analysisState.game != null &&
@@ -480,8 +612,9 @@ void main() {
         );
         await notifier.moveBackward();
 
-        var state =
-            container.read(chessBoardScreenProviderNew(params)).valueOrNull!;
+        var state = container
+            .read(chessBoardScreenProviderNew(params))
+            .valueOrNull!;
         expect(state.analysisState.currentMoveIndex, 0);
         expect(state.analysisState.position.fen, afterE4);
         expect(
@@ -499,13 +632,15 @@ void main() {
         });
 
         await _waitFor(container, params, () {
-          final state =
-              container.read(chessBoardScreenProviderNew(params)).valueOrNull;
+          final state = container
+              .read(chessBoardScreenProviderNew(params))
+              .valueOrNull;
           return state?.moveSans.length == 3;
         });
 
-        state =
-            container.read(chessBoardScreenProviderNew(params)).valueOrNull!;
+        state = container
+            .read(chessBoardScreenProviderNew(params))
+            .valueOrNull!;
         expect(state.position!.fen, afterNf3);
         expect(state.moveSans, ['e4', 'e5', 'Nf3']);
         expect(state.analysisState.currentMoveIndex, 0);
@@ -555,8 +690,9 @@ void main() {
         });
 
         await _waitFor(container, params, () {
-          final state =
-              container.read(chessBoardScreenProviderNew(params)).valueOrNull;
+          final state = container
+              .read(chessBoardScreenProviderNew(params))
+              .valueOrNull;
           return state != null &&
               !state.isLoadingMoves &&
               state.analysisState.game != null &&
@@ -571,13 +707,15 @@ void main() {
         });
 
         await _waitFor(container, params, () {
-          final state =
-              container.read(chessBoardScreenProviderNew(params)).valueOrNull;
+          final state = container
+              .read(chessBoardScreenProviderNew(params))
+              .valueOrNull;
           return state?.analysisState.game?.mainline.length == 1;
         });
 
-        final state =
-            container.read(chessBoardScreenProviderNew(params)).valueOrNull!;
+        final state = container
+            .read(chessBoardScreenProviderNew(params))
+            .valueOrNull!;
         expect(state.pgnData, headerOnlyPgn);
         expect(state.moveSans, ['e4']);
         expect(state.position?.fen, afterE4);
@@ -637,8 +775,9 @@ void main() {
         });
 
         await _waitFor(container, params, () {
-          final state =
-              container.read(chessBoardScreenProviderNew(params)).valueOrNull;
+          final state = container
+              .read(chessBoardScreenProviderNew(params))
+              .valueOrNull;
           return state != null &&
               !state.isLoadingMoves &&
               state.analysisState.game != null &&
@@ -654,8 +793,9 @@ void main() {
         });
 
         await _waitFor(container, params, () {
-          final state =
-              container.read(chessBoardScreenProviderNew(params)).valueOrNull;
+          final state = container
+              .read(chessBoardScreenProviderNew(params))
+              .valueOrNull;
           return state?.game.whiteClockSeconds == 123;
         });
         // The clock is copied before the asynchronous PGN upgrade attempt.
@@ -664,8 +804,9 @@ void main() {
           await Future<void>.delayed(Duration.zero);
         }
 
-        final state =
-            container.read(chessBoardScreenProviderNew(params)).valueOrNull!;
+        final state = container
+            .read(chessBoardScreenProviderNew(params))
+            .valueOrNull!;
         expect(state.game.whiteClockSeconds, 123);
         expect(state.pgnData, pgnAfterNf3);
         expect(state.moveSans, ['e4', 'e5', 'Nf3']);
@@ -737,8 +878,9 @@ void main() {
         });
 
         await _waitFor(container, params, () {
-          final state =
-              container.read(chessBoardScreenProviderNew(params)).valueOrNull;
+          final state = container
+              .read(chessBoardScreenProviderNew(params))
+              .valueOrNull;
           return state != null &&
               state.analysisState.game != null &&
               state.moveSans.length == 2;
@@ -759,8 +901,9 @@ void main() {
           'status': '*',
         });
         await _waitFor(container, params, () {
-          final state =
-              container.read(chessBoardScreenProviderNew(params)).valueOrNull;
+          final state = container
+              .read(chessBoardScreenProviderNew(params))
+              .valueOrNull;
           return state?.moveSans.length == 3;
         });
 
@@ -769,8 +912,9 @@ void main() {
           await Future<void>.delayed(Duration.zero);
         }
 
-        final state =
-            container.read(chessBoardScreenProviderNew(params)).valueOrNull!;
+        final state = container
+            .read(chessBoardScreenProviderNew(params))
+            .valueOrNull!;
         expect(state.pgnData, pgnAfterNf3);
         expect(state.moveSans, ['e4', 'e5', 'Nf3']);
         expect(state.analysisState.position.fen, afterNf3);

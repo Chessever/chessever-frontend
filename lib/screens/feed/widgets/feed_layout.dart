@@ -9,7 +9,8 @@ import 'package:flutter/widgets.dart';
 /// Every page is the whole viewport, one post to a screen: nothing of the
 /// next post shows under it. Top to bottom: the one-line post header, a
 /// player row, the board (with the eval bar or the puzzle rail on its
-/// left), a player row, the move strip, the action row and the scrub line.
+/// left), a player row, optional variation controls, the action row, the
+/// evaluation chart and the scrub line.
 ///
 /// The header, the player rows and the board are one block and never come
 /// apart. Row heights grow with the (clamped) text scale so no label is ever
@@ -29,6 +30,7 @@ class FeedLayout {
     required this.metaHeight,
     required this.rowHeight,
     required this.infoHeight,
+    required this.chartHeight,
     required this.actionsHeight,
     required this.top,
     required this.infoSpace,
@@ -43,15 +45,17 @@ class FeedLayout {
     BoxConstraints constraints,
     TextScaler scaler, {
     double evalWidth = defaultEvalWidth,
+    double? infoHeight,
+    double chartHeight = 0,
   }) {
-    final rows = _Rows.of(scaler);
+    final rows = _Rows.of(scaler, infoHeight: infoHeight);
     final width = constraints.maxWidth;
     final height = constraints.maxHeight;
-    final fixed = rows.fixed;
+    final fixed = rows.fixed + chartHeight;
     final byWidth = width - 2 * sidePadding - evalWidth;
     final byHeight = height - fixed;
     final board = math
-        .max(minBoard, math.min(byWidth, byHeight))
+        .max(infoHeight == null ? minBoard : 0, math.min(byWidth, byHeight))
         .floorToDouble();
     final spare = height.isFinite ? math.max(0.0, height - fixed - board) : 0.0;
     final split = spread(spare);
@@ -64,6 +68,7 @@ class FeedLayout {
       metaHeight: rows.meta,
       rowHeight: rows.row,
       infoHeight: rows.info,
+      chartHeight: chartHeight,
       actionsHeight: rows.actions,
       top: topGap + split.top,
       infoSpace: infoGap + split.info,
@@ -150,7 +155,7 @@ class FeedLayout {
   /// The least space between the move strip and the actions.
   static const double actionsGap = 8;
 
-  /// The least space between the actions and the scrub line.
+  /// The least space between the actions and the chart (or scrub line).
   static const double minSpacer = 8;
 
   /// The scrub line's row: a full 44pt touch target across the page.
@@ -164,6 +169,11 @@ class FeedLayout {
   static const double scrubTrack = 6;
   static const double minBoard = 160;
 
+  /// A variation's move line keeps its 44pt controls and enough room for
+  /// the same 15/20 text line at the viewer's reading size.
+  static double moveStripHeightFor(TextScaler scaler) =>
+      math.max(44.0, math.max(20.0, scaler.scale(15) * 20 / 15) + 12);
+
   final double width;
   final double height;
   final double board;
@@ -173,6 +183,9 @@ class FeedLayout {
   final double metaHeight;
   final double rowHeight;
   final double infoHeight;
+
+  /// Persistent evaluation chart immediately above the scrub row, when used.
+  final double chartHeight;
   final double actionsHeight;
 
   /// Space above the header.
@@ -184,7 +197,7 @@ class FeedLayout {
   /// Space between the move strip and the action row.
   final double actionsSpace;
 
-  /// Space between the action row and the scrub line.
+  /// Space between the action row and the chart (or scrub line).
   final double scrubSpace;
 
   /// Space under the scrub line: only where the page is taller than every
@@ -214,8 +227,12 @@ class FeedLayout {
   double get actionsBottom =>
       infoTop + infoHeight + actionsSpace + actionsHeight;
 
+  /// Top of the chart. The spare room stays above it, keeping chart and scrub
+  /// together even on a tall screen.
+  double get chartTop => actionsBottom + scrubSpace;
+
   /// Top of the scrub line's row.
-  double get scrubTop => actionsBottom + scrubSpace;
+  double get scrubTop => chartTop + chartHeight;
 
   // ---------------------------------------------------------- no scrub line
 
@@ -250,7 +267,7 @@ class FeedLayout {
 class _Rows {
   const _Rows(this.meta, this.row, this.info, this.actions);
 
-  factory _Rows.of(TextScaler scaler) {
+  factory _Rows.of(TextScaler scaler, {double? infoHeight}) {
     double line(double fontSize, double lineHeight) =>
         math.max(lineHeight, scaler.scale(fontSize) * lineHeight / fontSize);
     return _Rows(
@@ -261,7 +278,7 @@ class _Rows {
       // scale.
       math.max(20.0, scaler.scale(10) * 1.15 + 6),
       // The move strip: 44pt transport controls, moves at 15/20.
-      math.max(44.0, line(15, 20) + 12),
+      infoHeight ?? FeedLayout.moveStripHeightFor(scaler),
       math.max(56.0, 22 + 5 + line(12, 14) + 12),
     );
   }

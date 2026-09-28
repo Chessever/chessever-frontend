@@ -74,6 +74,10 @@ class FeedSkeletonPost extends ConsumerWidget {
           constraints,
           MediaQuery.textScalerOf(context),
           evalWidth: showBar ? 20.w : 0,
+          infoHeight: evalColumn ? null : 0,
+          chartHeight: evalColumn
+              ? 0
+              : FeedEvaluationGraph.heightFor(MediaQuery.textScalerOf(context)),
         );
         Widget bar(double width, double height, {double radius = 3}) =>
             Container(
@@ -93,13 +97,12 @@ class FeedSkeletonPost extends ConsumerWidget {
               SizedBox(width: 20.w + 5),
               bar(12, 10),
               const SizedBox(width: 8),
-              bar(nameWidth, 10),
+              Flexible(child: bar(nameWidth, 10)),
             ],
           ),
         );
-        // The board column (eval bar, board, player rows) and the text rows
-        // (header, move strip, actions) keep their own left edges, as in a
-        // real post.
+        // Game controls share the board column; the header and puzzle rows
+        // keep the page gutter, as in a real post.
         Widget content(Widget child) => Padding(
           padding: EdgeInsets.only(left: l.contentLeft),
           child: SizedBox(width: l.contentWidth, child: child),
@@ -113,9 +116,9 @@ class FeedSkeletonPost extends ConsumerWidget {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              bar(20, 20, radius: 5),
-              const SizedBox(height: 7),
-              bar(34, 8),
+              bar(22, 22, radius: 5),
+              const SizedBox(height: 5),
+              SizedBox(height: 14, child: Center(child: bar(34, 8))),
             ],
           ),
         );
@@ -171,15 +174,26 @@ class FeedSkeletonPost extends ConsumerWidget {
               ),
             ),
             SizedBox(height: l.actionsSpace),
-            fullRow(
+            (evalColumn ? fullRow : content)(
               SizedBox(
                 height: l.actionsHeight,
-                // Analyze · My Space · Share · Save · Like.
-                child: Row(children: [for (var i = 0; i < 5; i++) action()]),
+                // Game posts offer Analyze, Share, Save and Like.
+                child: Row(children: [for (var i = 0; i < 4; i++) action()]),
               ),
             ),
             // [FeedLayout.scrubSpace], as on a post.
             const Spacer(),
+            if (!evalColumn)
+              SizedBox(
+                height: l.chartHeight,
+                child: Padding(
+                  padding: EdgeInsets.only(left: l.contentLeft),
+                  child: Align(
+                    alignment: Alignment.topLeft,
+                    child: bar(72, 14),
+                  ),
+                ),
+              ),
             // The scrub line at rest, laid out on the real line's run
             // ([FeedScrubRun]): its track, round-capped, ending where the
             // real track ends, and the counter's digits where they stand.

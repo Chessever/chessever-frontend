@@ -1,69 +1,109 @@
-import 'package:chessever2/providers/favorite_events_provider.dart';
-import 'package:chessever2/providers/for_you_games_provider.dart';
-import 'package:chessever2/repository/liked_games/liked_games_provider.dart';
-import 'package:chessever2/screens/for_you/open_for_you_event.dart';
-import 'package:chessever2/screens/library/providers/gamebase_database_games_provider.dart'
-    show twicDatabaseTotalGamesProvider;
-import 'package:chessever2/screens/library/providers/library_auth_provider.dart';
-import 'package:chessever2/screens/library/providers/library_folders_provider.dart'
-    show recentDatabasesProvider;
-import 'package:chessever2/screens/library/widgets/library_context_menu.dart';
-import 'package:chessever2/screens/my_likes/my_likes_screen.dart';
-import 'package:chessever2/screens/my_space/library/space_library_bridge.dart';
+import 'dart:async';
+
+// import 'package:chessever2/providers/favorite_events_provider.dart';
+// import 'package:chessever2/providers/for_you_games_provider.dart';
+// import 'package:chessever2/repository/liked_games/liked_games_provider.dart';
+// import 'package:chessever2/screens/for_you/open_for_you_event.dart';
+import 'package:chessever2/screens/for_you/discovery/widgets/discovery_common.dart'
+    show DiscoveryAction;
+import 'package:chessever2/screens/my_space/actions/space_edit_actions.dart';
+// import 'package:chessever2/screens/my_likes/my_likes_screen.dart';
 import 'package:chessever2/screens/my_space/models/space_shortcut.dart';
 import 'package:chessever2/screens/my_space/my_prep_screen.dart';
-import 'package:chessever2/screens/my_space/providers/space_auto_provider.dart';
+import 'package:chessever2/screens/library/library_screen.dart';
+import 'package:chessever2/widgets/hub_context_art.dart';
+// import 'package:chessever2/screens/my_space/providers/space_auto_provider.dart';
+import 'package:chessever2/screens/my_space/providers/space_edit_mode_provider.dart';
 import 'package:chessever2/screens/my_space/providers/space_hub_providers.dart';
 import 'package:chessever2/screens/my_space/providers/space_shortcuts_provider.dart';
 import 'package:chessever2/screens/my_space/sheets/space_add_sheet.dart';
 import 'package:chessever2/screens/my_space/widgets/space_database.dart';
+import 'package:chessever2/screens/my_space/widgets/space_edit_grid.dart';
+import 'package:chessever2/screens/my_space/widgets/space_edit_tutorial.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/scroll_cache.dart';
-import 'package:chessever2/widgets/auth/auth_upgrade_sheet.dart';
-import 'package:chessever2/widgets/card_context_menu.dart';
-import 'package:chessever2/widgets/event_card/event_card.dart';
-import 'package:chessever2/widgets/event_card/event_context_menu.dart'
-    show eventSpaceDraft;
+// import 'package:chessever2/widgets/event_card/event_card.dart';
+// import 'package:chessever2/widgets/event_card/event_context_menu.dart'
+//     show eventSpaceDraft;
 import 'package:chessever2/widgets/hub_tile.dart';
-import 'package:chessever2/widgets/hub_tile_art.dart';
-import 'package:chessever2/widgets/hub_tile_captions.dart';
+// import 'package:chessever2/widgets/hub_tile_art.dart';
+// import 'package:chessever2/widgets/hub_tile_captions.dart';
 import 'package:chessever2/widgets/skeleton_widget.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
-/// What My Database says while it holds nothing: one line (the suggested
-/// events under it speak for themselves). "tap +" is held together (a
-/// no-break space), so the "+" never stands alone on a line of its own.
+/// Guidance for the two supported My Space products.
 const String kMyDatabaseEmptyText =
-    'Hold any card and choose Add to My Space, or tap +.';
+    'Add a database or build a smart event using +.';
 
 /// How many live events a new user is offered to save.
 const int kMySpaceSuggestions = 3;
 
-/// Opens My Prep: the user's databases and saved openings, in the event
-/// view's frame.
+/// Opens the My Prep placeholder in its existing route.
 Future<void> openMyPrep(BuildContext context) {
   HapticFeedbackService.cardTap();
   return MyPrepScreen.open(context);
 }
 
-/// The My Space tab, laid out like Today: the My Likes and My Prep tiles on
-/// top (Today's Favorites and Countrymen pair), then My Database: what the
-/// user saved, grouped by type under quiet sub-headers, each group drawn
-/// with the app's own cards (and live games where there are any), and the
+/// The My Space tab, with Smart Events and Databases tiles above what the
+/// user saved, in compact event-style cards without category headers, and the
 /// tile that builds a Smart Event at the foot.
 ///
 /// Works signed out too: the shortcuts provider keeps a device-local list
 /// for guests.
-class MySpaceView extends ConsumerWidget {
+class MySpaceView extends ConsumerStatefulWidget {
   const MySpaceView({super.key, this.scrollController});
 
   final ScrollController? scrollController;
 
-  Future<void> _refresh(WidgetRef ref) async {
+  @override
+  ConsumerState<MySpaceView> createState() => _MySpaceViewState();
+}
+
+class _MySpaceViewState extends ConsumerState<MySpaceView> {
+  final _pageScroll = SpaceStartController();
+  final _editScroll = SpaceStartController();
+  final Set<String> _selected = {};
+  bool _closing = false;
+
+  @override
+  void dispose() {
+    _pageScroll.dispose();
+    _editScroll.dispose();
+    super.dispose();
+  }
+
+  void _setEditing(bool value) {
+    HapticFeedbackService.buttonPress();
+    ref.read(spaceEditModeProvider.notifier).state = value;
+  }
+
+  void _toggle(String key) {
+    setState(() {
+      if (!_selected.remove(key)) _selected.add(key);
+    });
+  }
+
+  Future<void> _removeSelected(Set<String> all) async {
+    final keys = _selected.intersection(all);
+    if (keys.isEmpty) return;
+    setState(_selected.clear);
+    final removed = spaceRemovePinsSelected(
+      context: context,
+      ref: ref,
+      keys: keys,
+    );
+    if (keys.containsAll(all)) {
+      _setEditing(false);
+      setState(() => _closing = false);
+    }
+    await removed;
+  }
+
+  Future<void> _refresh() async {
     HapticFeedbackService.medium();
     ref.invalidate(spaceEventBroadcastsProvider);
     ref.invalidate(spaceLiveEventGamesProvider);
@@ -72,37 +112,152 @@ class MySpaceView extends ConsumerWidget {
   }
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    spaceTakeLiveFirstLatch(ref);
-    final groups = ref.watch(spaceDatabaseGroupsProvider);
-    // Whether the user has saved anything the groups show. The Players
-    // group stands without a pin (the followed players are in it by
-    // default), so a new user who followed players while onboarding still
-    // has nothing saved: they keep the explainer and the events offered
-    // to save, above the faces.
+  Widget build(BuildContext context) {
+    ref.listen(spaceEditModeProvider, (previous, next) {
+      if (previous == next) return;
+      setState(() {
+        _selected.clear();
+        _closing = !next;
+        if (next) {
+          _pageScroll.start = _pageScroll.at ?? _pageScroll.start;
+          _editScroll.start = 0;
+        }
+      });
+      if (next &&
+          (ref.read(spaceCompactDatabaseGroupsProvider)?.isNotEmpty ?? false)) {
+        // Teach selection and reordering for the visible products.
+        maybeShowSpaceEditTutorial(context, ref, SpaceSection.library);
+      }
+    });
+    final editing = ref.watch(spaceEditModeProvider);
+    final groups = ref.watch(spaceCompactDatabaseGroupsProvider);
+    final pins = [
+      for (final group in groups ?? <SpaceDatabaseGroup>[]) ...group.items,
+    ];
+    final keys = {for (final pin in pins) pin.key};
+    _selected.retainAll(keys);
+    // Automatic follows and legacy pins do not replace the empty state.
     final pinned = ref.watch(
       spaceShortcutsProvider.select(
-        (s) => s.valueOrNull?.any(spaceShowsInDatabase) ?? false,
+        (s) => s.valueOrNull?.any((pin) => pin.canAddToMySpace) ?? false,
       ),
     );
     final tablet = ResponsiveHelper.isTablet;
     final gutter = hubGutter;
 
-    // The body: the explainer and the suggested events while nothing is
-    // saved, then the groups (each one sideways rail, on a tablet too, where
-    // a rail simply shows more), or a skeleton while the saved list loads.
+    Widget frame(Widget child) => tablet
+        ? Center(
+            child: ConstrainedBox(
+              constraints: BoxConstraints(
+                maxWidth: ResponsiveHelper.contentMaxWidth,
+              ),
+              child: child,
+            ),
+          )
+        : child;
+
+    if (editing || _closing) {
+      return PopScope(
+        canPop: !editing,
+        onPopInvokedWithResult: (didPop, _) {
+          if (!didPop && editing) _setEditing(false);
+        },
+        child: frame(
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Padding(
+                padding: EdgeInsets.fromLTRB(gutter, 8.sp, gutter, 4.sp),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        'My Space',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: AppTypography.textLgMedium.copyWith(
+                          color: context.colors.textPrimary,
+                        ),
+                      ),
+                    ),
+                    SizedBox(width: 12.w),
+                    DiscoveryAction(
+                      key: const ValueKey<String>('space_edit_remove'),
+                      label: _selected.isEmpty
+                          ? 'Remove'
+                          : 'Remove ${_selected.length}',
+                      semanticsLabel: _selected.isEmpty
+                          ? 'Remove, select something first'
+                          : 'Remove ${_selected.length} from My Space',
+                      onTap: !editing || _selected.isEmpty
+                          ? null
+                          : () => unawaited(_removeSelected(keys)),
+                    ),
+                    SizedBox(width: 16.w),
+                    DiscoveryAction(
+                      key: const ValueKey<String>('space_edit_done'),
+                      label: 'Done',
+                      semanticsLabel: 'Done editing',
+                      onTap: editing ? () => _setEditing(false) : null,
+                    ),
+                  ],
+                ),
+              ),
+              Expanded(
+                child: editing && pins.isEmpty
+                    ? Center(
+                        child: Padding(
+                          padding: EdgeInsets.all(gutter),
+                          child: Text(
+                            groups == null
+                                ? 'Loading My Space…'
+                                : 'Nothing to edit yet.',
+                            style: AppTypography.textSmMedium.copyWith(
+                              color: context.colors.textSecondary,
+                            ),
+                          ),
+                        ),
+                      )
+                    : SpaceHomeEdit(
+                        pins: pins,
+                        selected: _selected,
+                        onToggle: _toggle,
+                        onReorder: (key, order) => unawaited(
+                          ref
+                              .read(spaceShortcutsProvider.notifier)
+                              .moveWithinVisible(key, order),
+                        ),
+                        controller: widget.scrollController ?? _editScroll,
+                        closing: _closing,
+                        onClosed: () {
+                          if (mounted) setState(() => _closing = false);
+                        },
+                      ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    // Only supported pins participate in the empty state and editable list.
     final body = <({String key, Widget child})>[];
     if (groups == null) {
       body.add((key: 'space_skeleton', child: const _DatabaseSkeleton()));
     } else {
       if (!pinned) {
         body.add((key: 'space_empty_text', child: const _DatabaseEmpty()));
-        body.add((key: 'space_suggestions', child: const _Suggestions()));
+        // Product scope: event suggestions are retained below for later.
+        // body.add((key: 'space_suggestions', child: const _Suggestions()));
       }
       for (final g in groups) {
         body.add((
-          key: 'space_group_${g.section.name}',
-          child: SpaceDatabaseGroupView(group: g, gutter: gutter),
+          key: 'space_group_${g.section.name}_${g.items.first.key}',
+          child: SpaceDatabaseGroupView(
+            group: g,
+            gutter: gutter,
+            compact: true,
+          ),
         ));
       }
     }
@@ -116,13 +271,12 @@ class MySpaceView extends ConsumerWidget {
 
     final list = ListView.builder(
       key: const PageStorageKey<String>('my_space_list'),
-      controller: scrollController,
+      controller: widget.scrollController ?? _pageScroll,
       scrollCacheExtent: kListScrollCacheExtent,
       physics: const AlwaysScrollableScrollPhysics(
         parent: BouncingScrollPhysics(),
       ),
-      // The foot clears the floating add button (home's FAB slot), so the
-      // Build a Smart Event tile can scroll fully above it.
+      // Keep the last row above My Space's restored add button.
       padding: EdgeInsets.only(top: 16.sp, bottom: 24.sp + 72),
       itemCount: count,
       // Groups keep their state as saved things come and go around them.
@@ -149,9 +303,8 @@ class MySpaceView extends ConsumerWidget {
         final item = body[at];
         return Padding(
           key: ValueKey<String>(item.key),
-          // A group opens on its 44 sub-header, whose own air above the
-          // words finishes the gap to what stands before it. The explainer
-          // and the suggestions set their own.
+          // Every saved card uses the Events list's gap. The explanation
+          // and suggested cards set their own spacing.
           padding: EdgeInsets.only(
             top: at == 0 || !item.key.startsWith('space_group_') ? 0 : 12.sp,
           ),
@@ -160,27 +313,35 @@ class MySpaceView extends ConsumerWidget {
       },
     );
 
-    final framed = tablet
-        ? Center(
-            child: ConstrainedBox(
-              constraints: BoxConstraints(
-                maxWidth: ResponsiveHelper.contentMaxWidth,
-              ),
-              child: list,
-            ),
-          )
-        : list;
     return RefreshIndicator(
-      onRefresh: () => _refresh(ref),
+      onRefresh: _refresh,
       color: context.colors.textPrimary,
       backgroundColor: context.colors.surface,
-      child: framed,
+      child: frame(list),
     );
   }
 }
 
 // ------------------------------------------------------------------ tiles
 
+class _MySpaceTiles extends StatelessWidget {
+  const _MySpaceTiles();
+
+  @override
+  Widget build(BuildContext context) => HubTileRow(
+    left: HubTile(
+      key: const ValueKey('my_space_smart_events_tile'),
+      title: 'Smart Events',
+      caption: 'Your saved events',
+      artwork: const HubSceneBackdrop(scene: HubScene.smartEvents),
+      onTap: () => spaceOpenGroup(context, SpaceSection.smartEvents),
+    ),
+    right: const _LibraryTile(),
+  );
+}
+
+// My Likes is temporarily outside My Space's product scope.
+/*
 class _MySpaceTiles extends ConsumerWidget {
   const _MySpaceTiles();
 
@@ -192,8 +353,8 @@ class _MySpaceTiles extends ConsumerWidget {
         key: const ValueKey('my_space_likes_tile'),
         title: 'My Likes',
         caption: hubLikesCaption(likes),
-        // The pixel heart, large, filling the tile's right side.
-        artwork: const HubPixelBackdrop(section: SpaceSection.likes),
+        ramp: false,
+        artwork: const HubLikesBackdrop(),
         onTap: () {
           HapticFeedbackService.cardTap();
           Navigator.of(context).push(
@@ -201,78 +362,33 @@ class _MySpaceTiles extends ConsumerWidget {
           );
         },
       ),
-      right: const _MyPrepTile(),
+      right: const _LibraryTile(),
     );
   }
 }
 
-/// My Prep: how many databases the user keeps (or the master database's
-/// size); held, the three most recent databases one tap away.
-class _MyPrepTile extends ConsumerWidget {
-  const _MyPrepTile();
+*/
+
+/// Library is the private workspace; publishing is an explicit action inside it.
+class _LibraryTile extends StatelessWidget {
+  const _LibraryTile();
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final guest = ref.watch(libraryFolderAuthenticatedUserIdProvider) == null;
-    final library = ref.watch(spaceLibraryFoldersProvider);
-    final databases = library.folders
-        .where((f) => !spaceIsProtectedFolder(f) && f.isDatabase)
-        .length;
-    final wantsMaster = guest || (library.settled && databases == 0);
-    final master = wantsMaster
-        ? ref.watch(twicDatabaseTotalGamesProvider)
-        : null;
-    final caption = hubPrepCaption(
-      guest: guest,
-      settled: library.settled,
-      databases: databases,
-      masterTotal: master,
-    );
-    // The Library's own pixel object, animated like the other hub tiles.
-    const art = HubPixelBackdrop(section: SpaceSection.library);
-
-    return Builder(
-      builder: (anchor) => HubTile(
-        key: const ValueKey('my_space_prep_tile'),
-        title: 'My Prep',
-        caption: caption,
-        artwork: art,
-        onTap: () => openMyPrep(context),
-        onLongPressStart: (_) {
-          HapticFeedbackService.buttonPress();
-          CardContextMenu.open(
-            anchor,
-            onPreviewTap: () => openMyPrep(context),
-            previewBuilder: (_) =>
-                HubTileFace(title: 'My Prep', caption: caption, artwork: art),
-            actions: (menuContext) => [
-              if (!guest)
-                for (final folder in ref.read(recentDatabasesProvider))
-                  LibraryMenuAction(
-                    icon: Icons.storage_rounded,
-                    label: folder.name,
-                    onSelected: () => spaceOpenLibraryFolder(context, folder),
-                  ),
-              LibraryMenuAction(
-                icon: Icons.add_rounded,
-                label: 'New database or PGN',
-                onSelected: () async {
-                  if (!await requireFullAuthGuard(context)) return;
-                  if (!context.mounted) return;
-                  await spaceLibraryAdd(context, ref);
-                },
-              ),
-              LibraryMenuAction(
-                icon: Icons.open_in_new_rounded,
-                label: 'Open My Prep',
-                onSelected: () => openMyPrep(context),
-              ),
-            ],
-          );
-        },
-      ),
-    );
-  }
+  Widget build(BuildContext context) => HubTile(
+    key: const ValueKey('my_space_library_tile'),
+    title: 'Databases',
+    caption: 'Your databases',
+    artwork: const HubLibraryBackdrop(),
+    onTap: () {
+      HapticFeedbackService.cardTap();
+      Navigator.of(context).push(
+        MaterialPageRoute<void>(
+          builder: (_) =>
+              const Scaffold(body: LibraryScreen(databasesOnly: true)),
+        ),
+      );
+    },
+  );
 }
 
 // ------------------------------------------------------------------ empty
@@ -295,6 +411,8 @@ class _DatabaseEmpty extends StatelessWidget {
   }
 }
 
+// Event suggestions are temporarily outside My Space's product scope.
+/*
 /// A new user's first saves: live and upcoming events from the For You
 /// feed (followed ones first), each savable in one tap. Nothing is saved
 /// until the user taps.
@@ -383,6 +501,8 @@ class _Suggestions extends ConsumerWidget {
   }
 }
 
+*/
+
 /// The compact event card's footprint, for a card still loading: its 6
 /// padding around a 108 x 86.4 image.
 class _EventPlate extends StatelessWidget {
@@ -442,9 +562,8 @@ class _BuildSmartEventTile extends ConsumerWidget {
     return HubTile(
       key: const ValueKey('my_space_build_smart_event'),
       title: 'Build smart event',
-      titleIcon: Icons.add_rounded,
       caption: kBuildSmartEventCaption,
-      artwork: const HubPixelBackdrop(section: SpaceSection.smartEvents),
+      artwork: const HubSceneBackdrop(scene: HubScene.smartEvents),
       onTap: () {
         HapticFeedbackService.buttonPress();
         showSpaceAddSheet(context, ref, SpaceSection.smartEvents);

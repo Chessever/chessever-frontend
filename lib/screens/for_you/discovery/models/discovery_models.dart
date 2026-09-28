@@ -4,6 +4,18 @@ import 'package:flutter/foundation.dart';
 import 'package:intl/intl.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+/// The last candidate read, including candidates rejected by report validation.
+/// Keeping the raw timestamp preserves database precision across page boundaries.
+typedef AnalyzedGamesCursor = ({String? lastMoveTime, String gameId});
+
+@immutable
+class AnalyzedGamesPage {
+  const AnalyzedGamesPage({required this.items, this.nextCursor});
+
+  final List<GamesTourModel> items;
+  final AnalyzedGamesCursor? nextCursor;
+}
+
 // ---------------------------------------------------------------- Most Liked
 
 /// The ranking periods of Most Liked. The current day is free; every other

@@ -20,7 +20,6 @@ import 'package:chessever2/screens/feed/puzzles/feed_puzzle.dart';
 import 'package:chessever2/screens/feed/widgets/feed_clip.dart';
 import 'package:chessever2/screens/feed/widgets/feed_live_board.dart';
 import 'package:chessever2/screens/feed/widgets/feed_move_sound.dart';
-import 'package:chessever2/screens/feed/widgets/feed_move_strip.dart';
 import 'package:chessever2/screens/feed/widgets/feed_scrub.dart';
 import 'package:chessever2/screens/feed/widgets/feed_sfx_provider.dart';
 import 'package:chessever2/screens/feed/widgets/feed_states.dart';
@@ -582,33 +581,109 @@ void main() {
       });
     }
 
-    testWidgets('the report chart stands over the track, on the thumb\'s run', (
-      tester,
-    ) async {
-      await _pump(tester, games: 1, evals: true);
-      final strip = tester.getRect(find.byType(FeedScrubStrip));
-      final counter = tester.getRect(
-        find.byKey(const ValueKey('feed_scrub_counter')),
-      );
-      final trackLeft = strip.left + 16;
-      final trackRight =
-          counter.right - _counterWidth(tester) - FeedScrubStrip.counterGap;
-      final gesture = await tester.startGesture(
-        Offset(trackLeft + 30, strip.top + 18),
-      );
-      await tester.pump(const Duration(milliseconds: 200));
-      final chart = tester.getRect(
-        find.byKey(const ValueKey('feed_report_chart')),
-      );
-      expect(chart.left, closeTo(trackLeft, 0.5));
-      expect(chart.right, closeTo(trackRight, 0.5));
-      // The move and its eval once, above the chart; where it sits in the
-      // game only in the counter.
-      expect(find.textContaining('move '), findsNothing);
-      await gesture.up();
-      await tester.pump();
-      await _tearDown(tester);
-    });
+    testWidgets(
+      'the evaluation graph stays visible before, during and after scrubbing',
+      (tester) async {
+        await _pump(tester, games: 1, evals: true);
+        final strip = tester.getRect(find.byType(FeedScrubStrip));
+        final trackLeft = strip.left + 16;
+        final chartFinder = find.byKey(const ValueKey('feed_report_chart'));
+        final resting = tester.getRect(chartFinder);
+        final graph = tester.getRect(find.byType(FeedEvaluationGraph));
+        final actions = tester.getRect(
+          find.byKey(const ValueKey('feed_like_button')),
+        );
+        final run = FeedScrubRun.resolve(
+          tester.element(find.byType(FeedScrubStrip)),
+          width: strip.width,
+          inset: tester
+              .widget<FeedScrubStrip>(find.byType(FeedScrubStrip))
+              .inset,
+          counterWidest: '4/4',
+        );
+        expect(resting.left, closeTo(strip.left + run.trackLeft, 0.5));
+        expect(
+          resting.right,
+          closeTo(tester.getRect(find.byType(FeedLiveBoard)).right, 0.01),
+        );
+        expect(graph.top, greaterThanOrEqualTo(actions.bottom));
+        expect(graph.bottom, closeTo(strip.top, 0.5));
+        final gesture = await tester.startGesture(
+          Offset(trackLeft + 30, strip.top + 18),
+        );
+        await gesture.moveTo(Offset(strip.left + run.xAt(0.5), strip.top + 18));
+        await tester.pump(const Duration(milliseconds: 16));
+        final scrubbing = tester.widget<FeedScrubStrip>(
+          find.byType(FeedScrubStrip),
+        );
+        expect(scrubbing.scrubbing, isTrue);
+        expect(
+          tester
+              .widget<FeedEvaluationGraph>(find.byType(FeedEvaluationGraph))
+              .ply,
+          (scrubbing.progress * 7).round(),
+        );
+        expect(tester.getRect(chartFinder), resting);
+        expect(find.byType(FeedMoveBubble), findsNothing);
+        expect(
+          find.byKey(const ValueKey('feed_like_button')).hitTestable(),
+          findsOneWidget,
+        );
+        // The move and its eval once, above the chart; where it sits in the
+        // game only in the counter.
+        expect(find.textContaining('move '), findsNothing);
+        await gesture.up();
+        await tester.pump();
+        expect(tester.getRect(chartFinder), resting);
+        expect(
+          tester.widget<FeedScrubStrip>(find.byType(FeedScrubStrip)).scrubbing,
+          isFalse,
+        );
+        // The graph uses its full width; the timeline leaves room for its
+        // counter. Tapping the graph's end still chooses the final move.
+        await tester.tapAt(
+          Offset(resting.right - FeedScrubStrip.thumbInset, resting.center.dy),
+        );
+        await tester.pump();
+        expect(
+          tester.widget<FeedScrubStrip>(find.byType(FeedScrubStrip)).progress,
+          1,
+        );
+        await _tearDown(tester);
+      },
+    );
+
+    for (final setting in ['missing', 'engine off', 'no spoilers']) {
+      testWidgets('persistent graph respects $setting evaluations', (
+        tester,
+      ) async {
+        await _pump(
+          tester,
+          games: 1,
+          evals: setting != 'missing',
+          analysis: setting != 'engine off',
+          noSpoilers: setting == 'no spoilers',
+        );
+        expect(find.bySemanticsLabel('Game evaluation graph'), findsNothing);
+        expect(
+          find.text(
+            setting == 'missing'
+                ? 'No recorded evaluation'
+                : 'Evaluation hidden',
+          ),
+          findsOneWidget,
+        );
+        final strip = tester.getRect(find.byType(FeedScrubStrip));
+        final gesture = await tester.startGesture(strip.center);
+        await gesture.moveBy(const Offset(60, 0));
+        await tester.pump();
+        expect(find.bySemanticsLabel('Game evaluation graph'), findsNothing);
+        expect(find.byType(FeedMoveBubble), findsOneWidget);
+        await gesture.up();
+        await tester.pump();
+        await _tearDown(tester);
+      });
+    }
 
     testWidgets('at a large text size the chart\'s move line is whole', (
       tester,
@@ -681,15 +756,12 @@ void main() {
       final left = strip.left + 16;
       final right =
           counter.right - _counterWidth(tester) - FeedScrubStrip.counterGap;
-      final line = find.descendant(
-        of: find.byType(FeedMoveStrip),
-        matching: find.byType(SingleChildScrollView),
+      final row = find.byType(FeedMoveInfoRow);
+      Finder move(String san) => find.descendant(
+        of: row,
+        matching: find.textContaining(san, findRichText: true),
       );
-      Rect move(String san) =>
-          tester.getRect(find.descendant(of: line, matching: find.text(san)));
-      // The line is longer than its room: the game's last move starts out
-      // of sight.
-      expect(move('Qxf7#').right, greaterThan(tester.getRect(line).right));
+      expect(move('Start'), findsOneWidget);
 
       // A quick scrub to the end, a frame per move or two.
       final gesture = await tester.startGesture(Offset(left, strip.center.dy));
@@ -698,12 +770,15 @@ void main() {
         await tester.pump(const Duration(milliseconds: 16));
       }
       expect(find.text('4/4'), findsOneWidget);
-      // One frame on, the move under the finger is in the line already,
-      // not somewhere on its way there.
+      // The current move updates on the same frame as the scrub counter.
       await tester.pump(const Duration(milliseconds: 16));
-      final view = tester.getRect(line);
-      expect(move('Qxf7#').left, greaterThanOrEqualTo(view.left));
-      expect(move('Qxf7#').right, lessThanOrEqualTo(view.right));
+      expect(move('Qxf7#'), findsOneWidget);
+      expect(
+        tester
+            .widget<FeedEvaluationGraph>(find.byType(FeedEvaluationGraph))
+            .ply,
+        7,
+      );
 
       // Back to the start just as fast: "Start" is back in sight.
       for (var x = right; x >= left - 24; x -= 24) {
@@ -712,7 +787,13 @@ void main() {
       }
       await tester.pump(const Duration(milliseconds: 16));
       expect(find.text('0/4'), findsOneWidget);
-      expect(move('Start').left, greaterThanOrEqualTo(view.left));
+      expect(move('Start'), findsOneWidget);
+      expect(
+        tester
+            .widget<FeedEvaluationGraph>(find.byType(FeedEvaluationGraph))
+            .ply,
+        0,
+      );
       await gesture.up();
       await tester.pump();
       await _tearDown(tester);
@@ -777,6 +858,8 @@ Future<_Feed> _pump(
   Future<void>? adds,
   Size size = const Size(393, 852),
   bool evals = false,
+  bool analysis = true,
+  bool noSpoilers = false,
   _FakeFeed Function(List<FeedItem> items, FeedMore more)? makeFeed,
 }) async {
   tester.view.devicePixelRatio = 3;
@@ -805,8 +888,12 @@ Future<_Feed> _pump(
         spaceShortcutsProvider.overrideWith(_NoShortcuts.new),
         currentUserProvider.overrideWithValue(null),
         subscriptionProvider.overrideWith((ref) => _FreeSubscription()),
-        engineSettingsProviderNew.overrideWith(_TestEngineSettings.new),
-        eventNoSpoilersProvider.overrideWith(_MemoryNoSpoilers.new),
+        engineSettingsProviderNew.overrideWith(
+          () => _TestEngineSettings(analysis),
+        ),
+        eventNoSpoilersProvider.overrideWith(
+          (ref, tourId) => _MemoryNoSpoilers(ref, tourId, noSpoilers),
+        ),
         feedCachedEvalProvider.overrideWith((ref, fen) async => null),
         feedEngineProvider.overrideWithValue(_NoEngine()),
       ],
@@ -977,16 +1064,21 @@ class _RecordingMoveSound extends FeedMoveSound {
 }
 
 class _TestEngineSettings extends EngineSettingsNotifierNew {
+  _TestEngineSettings(this.analysis);
+  final bool analysis;
   @override
-  Future<EngineSettings> build() async => const EngineSettings();
+  Future<EngineSettings> build() async =>
+      EngineSettings(showEngineAnalysis: analysis);
 }
 
 class _MemoryNoSpoilers extends EventNoSpoilersController {
-  _MemoryNoSpoilers(Ref ref, String tourId) : super(ref: ref, tourId: tourId);
+  _MemoryNoSpoilers(Ref ref, String tourId, this.enabled)
+    : super(ref: ref, tourId: tourId);
+  final bool enabled;
 
   @override
   Future<void> load() async {
-    state = const EventNoSpoilersState(enabled: false, isLoading: false);
+    state = EventNoSpoilersState(enabled: enabled, isLoading: false);
   }
 }
 

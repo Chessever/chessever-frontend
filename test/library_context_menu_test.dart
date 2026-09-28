@@ -22,32 +22,29 @@ void main() {
           return Scaffold(
             body: Center(
               child: Builder(
-                builder:
-                    (cardContext) => GestureDetector(
-                      onLongPress:
-                          () => showLibraryContextMenu(
-                            context: cardContext,
-                            actions: actions,
-                            previewBuilder:
-                                withPreview
-                                    // Sizes itself, like a real card: the
-                                    // layer must not impose a height that
-                                    // could crop the copy.
-                                    ? (_) => Container(
-                                      key: const ValueKey('preview'),
-                                      height: 90,
-                                      color: const Color(0xFF222222),
-                                    )
-                                    : null,
-                            onPreviewTap: onPreviewTap,
-                          ),
-                      child: const SizedBox(
-                        key: cardKey,
-                        width: 320,
-                        height: 90,
-                        child: ColoredBox(color: Color(0xFF444444)),
-                      ),
-                    ),
+                builder: (cardContext) => GestureDetector(
+                  onLongPress: () => showLibraryContextMenu(
+                    context: cardContext,
+                    actions: actions,
+                    previewBuilder: withPreview
+                        // Sizes itself, like a real card: the
+                        // layer must not impose a height that
+                        // could crop the copy.
+                        ? (_) => Container(
+                            key: const ValueKey('preview'),
+                            height: 90,
+                            color: const Color(0xFF222222),
+                          )
+                        : null,
+                    onPreviewTap: onPreviewTap,
+                  ),
+                  child: const SizedBox(
+                    key: cardKey,
+                    width: 320,
+                    height: 90,
+                    child: ColoredBox(color: Color(0xFF444444)),
+                  ),
+                ),
               ),
             ),
           );
@@ -83,6 +80,57 @@ void main() {
     expect(find.byKey(const ValueKey('preview')), findsOneWidget);
     expect(find.text('Open game'), findsOneWidget);
     expect(find.text('Delete game'), findsOneWidget);
+  });
+
+  testWidgets('hidden actions are omitted before menu layout', (tester) async {
+    var opens = 0;
+    await tester.pumpWidget(
+      host(
+        actions: [
+          LibraryMenuAction(
+            icon: Icons.add_rounded,
+            label: 'Add forbidden target',
+            visible: false,
+            onSelected: () => fail('A hidden action must not run'),
+          ),
+          LibraryMenuAction(
+            icon: Icons.open_in_new_rounded,
+            label: 'Open game',
+            onSelected: () => opens++,
+          ),
+        ],
+      ),
+    );
+    await tester.longPress(find.byKey(cardKey));
+    await tester.pumpAndSettle();
+    expect(find.text('Add forbidden target'), findsNothing);
+    expect(find.text('Open game'), findsOneWidget);
+    await tester.tap(find.text('Open game'));
+    await tester.pumpAndSettle();
+    expect(opens, 1);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('an entirely hidden action list opens no empty menu', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      host(
+        actions: [
+          LibraryMenuAction(
+            icon: Icons.add_rounded,
+            label: 'Add forbidden target',
+            visible: false,
+            onSelected: () {},
+          ),
+        ],
+      ),
+    );
+    await tester.longPress(find.byKey(cardKey));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('preview')), findsNothing);
+    expect(find.text('Add forbidden target'), findsNothing);
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('choosing an action closes the menu and runs it once', (

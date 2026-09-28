@@ -909,6 +909,7 @@ class _SpaceTileState extends State<SpaceTile>
             destructive: action.destructive,
             enabled: action.enabled,
             prominent: action.prominent,
+            visible: action.visible,
             onSelected: chosen(action.onSelected),
           ),
       ];
@@ -1126,7 +1127,9 @@ class _SpaceTileState extends State<SpaceTile>
                         ? {
                             // Opening is the tile's own tap.
                             for (final action in widget.menuActions!(context))
-                              if (action.label != 'Open' &&
+                              if (action.visible &&
+                                  action.enabled &&
+                                  action.label != 'Open' &&
                                   action.label != 'Open game')
                                 CustomSemanticsAction(
                                   label: action.label,

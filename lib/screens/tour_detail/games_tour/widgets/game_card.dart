@@ -498,9 +498,16 @@ class _CenterContent extends ConsumerWidget {
       return Center(child: StatusText(status: 'LIVE', color: context.colors.accentText));
     }
 
-    // If engine gauge is disabled, show "LIVE" indicator instead of progress bar
+    // A stored unfinished PGN is a recorded position, not a live broadcast.
     if (!showEngineGauge) {
-      return Center(child: StatusText(status: 'LIVE', color: context.colors.accentText));
+      return Center(
+        child: StatusText(
+          status: matchWithComparison.game.source == GameSource.supabase
+              ? 'LIVE'
+              : '*',
+          color: context.colors.accentText,
+        ),
+      );
     }
 
     // Show the eval progress bar
@@ -539,8 +546,16 @@ class _BottomSection extends ConsumerWidget {
       ),
     );
 
-    // When clocks are hidden or game hasn't started, handle accordingly
-    if (!showClock || !matchComparison.game.hasStarted) {
+    final game = matchComparison.game;
+    final storedWithoutClocks =
+        game.source != GameSource.supabase &&
+        game.whiteClockSeconds == null &&
+        game.blackClockSeconds == null &&
+        game.whiteClockCentiseconds == 0 &&
+        game.blackClockCentiseconds == 0;
+    // A stored game may have real moves but no recorded clocks. Its move
+    // notation remains useful; placeholder timers do not.
+    if (!showClock || !game.hasStarted || storedWithoutClocks) {
       final detail = footerDetail?.trim() ?? '';
       final hasNotation =
           formatGameCardLastMoveNotation(
@@ -717,6 +732,7 @@ class _TimerWidget extends StatelessWidget {
     final isGameFinished = effectiveStatus.isFinished;
 
     final isClockRunning =
+        gamesTourModel.source == GameSource.supabase &&
         !isGameFinished &&
         gamesTourModel.gameStatus.isOngoing &&
         gamesTourModel.lastMoveTime != null &&
@@ -734,6 +750,12 @@ class _TimerWidget extends StatelessWidget {
         isWhitePlayer
             ? gamesTourModel.whiteClockSeconds
             : gamesTourModel.blackClockSeconds;
+
+    if (gamesTourModel.source != GameSource.supabase &&
+        clockSeconds == null &&
+        clockCentiseconds == 0) {
+      return const SizedBox.shrink();
+    }
 
     return Center(
       child: Container(

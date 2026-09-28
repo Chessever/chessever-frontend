@@ -581,59 +581,58 @@ void main() {
     await _settle(tester);
   });
 
-  testWidgets('the add sheet lists games with the card rows; a tap toggles', (
-    tester,
-  ) async {
-    final toggled = <SpaceShortcut>[];
-    await _pump(
-      tester,
-      liked: [_liked()],
-      left: SizedBox(
-        height: 700,
-        child: SpaceAddSources(
-          section: SpaceSection.games,
-          query: '',
-          onToggle: (d) async => toggled.add(d),
+  testWidgets(
+    'legacy game source rows preserve details but cannot add unsupported pins',
+    (tester) async {
+      final toggled = <SpaceShortcut>[];
+      await _pump(
+        tester,
+        liked: [_liked()],
+        left: SizedBox(
+          height: 700,
+          child: SpaceAddSources(
+            section: SpaceSection.games,
+            query: '',
+            onToggle: (d) async => toggled.add(d),
+          ),
         ),
-      ),
-    );
-    final rows = tester
-        .widgetList<PlayerFirstRowDetailWidget>(
-          find.byType(PlayerFirstRowDetailWidget),
-        )
-        .toList();
-    // Two per game: the liked one and the most liked one.
-    expect(rows, hasLength(4));
-    expect(rows.every((r) => r.playerView == PlayerView.boardView), isTrue);
-    // Title, name (shortened to fit the test font's wide glyphs) and rating.
-    final lines = _lines(find.byKey(const ValueKey('left')));
-    bool shows(String title, String surname, int rating) => lines.any(
-      (l) => l.startsWith('$title $surname') && l.endsWith(' $rating'),
-    );
-    expect(shows('GM', 'Carlsen', 2830), isTrue, reason: '$lines');
-    expect(shows('GM', 'Nakamura', 2802), isTrue, reason: '$lines');
-    expect(shows('GM', 'Praggnanandhaa', 2758), isTrue, reason: '$lines');
-    expect(shows('GM', 'Caruana', 2795), isTrue, reason: '$lines');
-    expect(find.byType(FederationFlag), findsNWidgets(4));
-    expect(find.text('Sinquefield Cup 2026'), findsOneWidget);
+      );
+      final rows = tester
+          .widgetList<PlayerFirstRowDetailWidget>(
+            find.byType(PlayerFirstRowDetailWidget),
+          )
+          .toList();
+      // Two per game: the liked one and the most liked one.
+      expect(rows, hasLength(4));
+      expect(rows.every((r) => r.playerView == PlayerView.boardView), isTrue);
+      // Title, name (shortened to fit the test font's wide glyphs) and rating.
+      final lines = _lines(find.byKey(const ValueKey('left')));
+      bool shows(String title, String surname, int rating) => lines.any(
+        (l) => l.startsWith('$title $surname') && l.endsWith(' $rating'),
+      );
+      expect(shows('GM', 'Carlsen', 2830), isTrue, reason: '$lines');
+      expect(shows('GM', 'Nakamura', 2802), isTrue, reason: '$lines');
+      expect(shows('GM', 'Praggnanandhaa', 2758), isTrue, reason: '$lines');
+      expect(shows('GM', 'Caruana', 2795), isTrue, reason: '$lines');
+      expect(find.byType(FederationFlag), findsNWidgets(4));
+      expect(find.text('Sinquefield Cup 2026'), findsOneWidget);
 
-    // The name is not a way into the scorecard here: the row toggles.
-    final nav = tester.state<NavigatorState>(find.byType(Navigator).first);
-    final before = nav.canPop();
-    await tester.tap(find.text('Sinquefield Cup 2026'));
-    await tester.pump();
-    final name = find.byWidgetPredicate(
-      (w) => w is RichText && w.text.toPlainText().startsWith('GM Carlsen'),
-    );
-    await tester.tap(name, warnIfMissed: false);
-    await tester.pump();
-    expect(toggled, hasLength(2));
-    expect(toggled.every((d) => d.kind == SpaceShortcutKind.game), isTrue);
-    expect(nav.canPop(), before);
-    // What it adds carries the card snapshot.
-    expect(spaceGameHasCard(toggled.first), isTrue);
-    await _settle(tester);
-  });
+      // Games remain readable for existing data, but new My Space additions
+      // are restricted to Databases and Smart Events.
+      final nav = tester.state<NavigatorState>(find.byType(Navigator).first);
+      final before = nav.canPop();
+      await tester.tap(find.text('Sinquefield Cup 2026'));
+      await tester.pump();
+      final name = find.byWidgetPredicate(
+        (w) => w is RichText && w.text.toPlainText().startsWith('GM Carlsen'),
+      );
+      await tester.tap(name, warnIfMissed: false);
+      await tester.pump();
+      expect(toggled, isEmpty);
+      expect(nav.canPop(), before);
+      await _settle(tester);
+    },
+  );
 
   for (final light in [true, false]) {
     testWidgets('tiles and sheet fit at 360pt and 1.3x text, '

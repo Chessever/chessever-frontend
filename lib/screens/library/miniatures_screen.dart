@@ -202,6 +202,7 @@ class _MiniaturesScreenState extends ConsumerState<MiniaturesScreen> {
       subtitle: 'Short decisive games',
     );
     final inSpace = ref.watch(spaceShortcutExistsProvider(draft.key));
+    if (!inSpace && !draft.canAddToMySpace) return const SizedBox.shrink();
     return IconButton(
       tooltip: inSpace ? 'Remove from My Space' : 'Add to My Space',
       onPressed:

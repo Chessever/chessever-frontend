@@ -84,6 +84,24 @@ void main() {
       SemanticsNode node(String key) =>
           tester.getSemantics(find.byKey(ValueKey(key)));
 
+      // The optional fifth action follows the same centered spacing as
+      // the four-action row, even when Save changes to Saved.
+      final row = tester.getRect(find.byType(FeedActionRow));
+      final labels = find.byType(FeedActionLabel);
+      final cellWidth = row.width / labels.evaluate().length;
+      for (var i = 0; i < labels.evaluate().length; i++) {
+        final label = labels.at(i);
+        final center = row.left + cellWidth * (i + 0.5);
+        final word = tester.getRect(
+          find.descendant(of: label, matching: find.byType(Text)),
+        );
+        final icon = tester.getRect(
+          find.byWidget(tester.widget<FeedActionLabel>(label).icon),
+        );
+        expect(word.center.dx, closeTo(center, 0.01));
+        expect(icon.center.dx, closeTo(center, 0.01));
+      }
+
       expect(
         node('feed_analyze_button'),
         isSemantics(

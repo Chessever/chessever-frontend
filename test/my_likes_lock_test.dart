@@ -501,7 +501,7 @@ void main() {
       testWidgets(
         locked
             ? 'a locked like cannot be added to My Space'
-            : 'an open like can be added to My Space',
+            : 'an open like keeps its actions without My Space or share',
         (tester) async {
           await pumpCard(tester, locked: locked);
           await tester.longPress(find.byType(MyLikesGameCard));
@@ -510,10 +510,9 @@ void main() {
 
           expect(find.text('Open game'), findsOneWidget);
           expect(find.text('Remove from likes'), findsOneWidget);
-          expect(
-            find.text('Add to My Space'),
-            locked ? findsNothing : findsOneWidget,
-          );
+          expect(find.text('Add to My Space'), findsNothing);
+          expect(find.text('Share game'), findsNothing);
+          expect(find.text('Copy PGN'), locked ? findsNothing : findsOneWidget);
         },
       );
     }

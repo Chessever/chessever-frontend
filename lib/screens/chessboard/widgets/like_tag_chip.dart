@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:chessever2/repository/liked_games/liked_games_provider.dart';
 import 'package:chessever2/screens/chessboard/models/like_tag.dart';
@@ -13,7 +14,7 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:motor/motor.dart';
 import 'package:chessever2/screens/chessboard/utils/legible_ink.dart';
 
-/// The post-like tag picker that lives *in the AppBar*.
+/// The shared post-like tag picker for the board toolbar and Feed actions.
 ///
 /// Replaces the roulette wheel: instead of a full-screen casino spinner sliding
 /// in from the right, the toolbar's action icons quietly hand over to a single
@@ -22,9 +23,12 @@ import 'package:chessever2/screens/chessboard/utils/legible_ink.dart';
 /// checking one or more tags writes the full tag list, letting the countdown
 /// elapse leaves the like untagged.
 class LikeTagChip extends ConsumerStatefulWidget {
-  const LikeTagChip({super.key, required this.offer});
+  const LikeTagChip({super.key, required this.offer, this.onDismiss});
 
   final TagOffer offer;
+
+  /// Feed owns its offer locally; the board uses [tagChipOfferProvider].
+  final VoidCallback? onDismiss;
 
   @override
   ConsumerState<LikeTagChip> createState() => _LikeTagChipState();
@@ -40,11 +44,13 @@ class _LikeTagChipState extends ConsumerState<LikeTagChip>
   final GlobalKey _chipKey = GlobalKey();
 
   late final AnimationController _countdown;
-  late final AnimationController _menu;
+  late final SingleMotionController _menu;
   OverlayEntry? _menuEntry;
+  Timer? _confirmationTimer;
 
   bool _pressed = false;
   bool _menuOpen = false;
+  bool _menuClosing = false;
 
   // After a pick the chip flips to a confirmation face and the countdown stops;
   // the offer is closed after a short beat so the confirmation is seen.
@@ -57,9 +63,16 @@ class _LikeTagChipState extends ConsumerState<LikeTagChip>
   void initState() {
     super.initState();
     _draftLabels = _initialLabels;
-    _countdown = AnimationController(vsync: this, duration: _countdownDuration)
-      ..addStatusListener(_onCountdownStatus);
-    _menu = AnimationController(vsync: this, duration: _menuDuration);
+    _countdown = AnimationController(
+      vsync: this,
+      duration: _countdownDuration,
+      // This is time to act, not decorative motion.
+      animationBehavior: AnimationBehavior.preserve,
+    )..addStatusListener(_onCountdownStatus);
+    _menu = SingleMotionController(
+      vsync: this,
+      motion: const CupertinoMotion.bouncy(duration: _menuDuration),
+    );
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) _countdown.forward();
     });
@@ -70,7 +83,9 @@ class _LikeTagChipState extends ConsumerState<LikeTagChip>
     // Synchronous teardown — no setState — so a chip swapped out mid-menu by
     // the AppBar's AnimatedSwitcher can't leak its overlay entry.
     _menuEntry?.remove();
+    _menuEntry?.dispose();
     _menuEntry = null;
+    _confirmationTimer?.cancel();
     _countdown.dispose();
     _menu.dispose();
     super.dispose();
@@ -82,6 +97,15 @@ class _LikeTagChipState extends ConsumerState<LikeTagChip>
       // any in-flight draft picks. Tags only persist via the explicit Save
       // button in the dropdown. Token-guarded close in case a newer offer
       // already replaced us.
+      _dismiss();
+    }
+  }
+
+  void _dismiss() {
+    final onDismiss = widget.onDismiss;
+    if (onDismiss != null) {
+      onDismiss();
+    } else {
       ref.read(tagChipOfferProvider).close(widget.offer.token);
     }
   }
@@ -122,25 +146,43 @@ class _LikeTagChipState extends ConsumerState<LikeTagChip>
     HapticFeedback.selectionClick();
     _countdown.stop(); // pause: never time out with the menu open.
     setState(() => _menuOpen = true);
-    _menuEntry = OverlayEntry(builder: (ctx) => _buildMenu(ctx, rect));
+    final media = MediaQuery.of(context);
+    _menuEntry = OverlayEntry(
+      builder: (ctx) => MediaQuery(data: media, child: _buildMenu(ctx, rect)),
+    );
     Overlay.of(context, rootOverlay: true).insert(_menuEntry!);
-    _menu.forward(from: 0);
+    if (MediaQuery.disableAnimationsOf(context)) {
+      _menu.value = 1;
+    } else {
+      unawaited(_menu.animateTo(1, from: 0));
+    }
   }
 
   void _closeMenu() {
-    if (!_menuOpen) return;
-    _menu.reverse();
-    Future.delayed(_menuDuration, () {
-      _menuEntry?.remove();
-      _menuEntry = null;
+    if (!_menuOpen || _menuClosing) return;
+    _menuClosing = true;
+    void finish() {
       if (!mounted) return;
-      setState(() => _menuOpen = false);
+      _menuEntry?.remove();
+      _menuEntry?.dispose();
+      _menuEntry = null;
+      setState(() {
+        _menuOpen = false;
+        _menuClosing = false;
+      });
       // Closing the menu without Save never persists. Resume the countdown
       // from where it paused so the chip still self-dismisses if ignored.
       if (!_committed && _countdown.status != AnimationStatus.completed) {
         _countdown.forward();
       }
-    });
+    }
+
+    if (MediaQuery.disableAnimationsOf(context)) {
+      _menu.value = 0;
+      finish();
+    } else {
+      unawaited(_menu.animateTo(0).then((_) => finish()));
+    }
   }
 
   void _commit(List<String> labels, {bool haptic = true}) {
@@ -163,8 +205,8 @@ class _LikeTagChipState extends ConsumerState<LikeTagChip>
           .setTagsForLikeId(widget.offer.likeId, normalized),
     );
 
-    Future.delayed(const Duration(milliseconds: 640), () {
-      if (mounted) ref.read(tagChipOfferProvider).close(widget.offer.token);
+    _confirmationTimer = Timer(const Duration(milliseconds: 640), () {
+      if (mounted) _dismiss();
     });
   }
 
@@ -226,13 +268,14 @@ class _LikeTagChipState extends ConsumerState<LikeTagChip>
   @override
   Widget build(BuildContext context) {
     final colors = context.colors;
-    return GestureDetector(
+    final reduceMotion = MediaQuery.disableAnimationsOf(context);
+    final chip = GestureDetector(
       behavior: HitTestBehavior.opaque,
+      onTap: _toggleMenu,
       onTapDown: (_) => setState(() => _pressed = true),
       onTapCancel: () => setState(() => _pressed = false),
       onTapUp: (_) {
         setState(() => _pressed = false);
-        _toggleMenu();
       },
       child: SingleMotionBuilder(
         // Bouncy press feedback — spring beats AnimatedScale's linear ease.
@@ -240,18 +283,34 @@ class _LikeTagChipState extends ConsumerState<LikeTagChip>
         value: _pressed ? 1.0 : 0.0,
         builder: (context, pressT, _) {
           return Transform.scale(
-            scale: 1.0 - 0.05 * pressT,
+            scale: reduceMotion ? 1 : 1.0 - 0.05 * pressT,
             child: AnimatedBuilder(
               animation: _countdown,
               builder: (context, _) {
-                final remaining =
-                    _committed ? 1.0 : (1 - _countdown.value).clamp(0.0, 1.0);
+                final remaining = _committed
+                    ? 1.0
+                    : (1 - _countdown.value).clamp(0.0, 1.0);
                 return _chipBody(colors, _faceFor(colors), remaining);
               },
             ),
           );
         },
-      ).animate(target: 1).fadeIn(duration: 260.ms, curve: Curves.easeOutCubic),
+      ),
+    );
+    if (reduceMotion) return chip;
+    return SingleMotionBuilder(
+      motion: const CupertinoMotion.bouncy(),
+      from: 0,
+      value: 1,
+      child: chip,
+      builder: (context, t, child) => Transform.translate(
+        offset: Offset(0, 6 * (1 - t)),
+        child: Transform.scale(
+          scale: 0.92 + 0.08 * t,
+          alignment: Alignment.centerRight,
+          child: child,
+        ),
+      ),
     );
   }
 
@@ -260,8 +319,9 @@ class _LikeTagChipState extends ConsumerState<LikeTagChip>
     // Subtle accent glow under the chip, brightest while the countdown is
     // still draining, faded once the user commits.
     // Paper gets no bloom at all.
-    final glowAlpha =
-        _committed || context.isLightTheme ? 0.0 : 0.22 * remaining;
+    final glowAlpha = _committed || context.isLightTheme
+        ? 0.0
+        : 0.22 * remaining;
     // Tag hues are tuned on black; on paper the glyph, check and countdown
     // take the same hue darkened to 3:1 against the chip's recessed well.
     final ink = legibleHueInk(
@@ -340,25 +400,25 @@ class _LikeTagChipState extends ConsumerState<LikeTagChip>
                 SizedBox(width: 4.w),
                 face.showCheck
                     ? Icon(
-                      Icons.check_rounded,
-                      size: 17.sp,
-                      color: ink,
-                    ).animate().scale(
-                      duration: 240.ms,
-                      curve: Curves.elasticOut,
-                      begin: const Offset(0.4, 0.4),
-                      end: const Offset(1.0, 1.0),
-                    )
+                        Icons.check_rounded,
+                        size: 17.sp,
+                        color: ink,
+                      ).animate().scale(
+                        duration: 240.ms,
+                        curve: Curves.elasticOut,
+                        begin: const Offset(0.4, 0.4),
+                        end: const Offset(1.0, 1.0),
+                      )
                     : AnimatedRotation(
-                      turns: _menuOpen ? 0.5 : 0.0,
-                      duration: const Duration(milliseconds: 220),
-                      curve: Curves.easeOutCubic,
-                      child: Icon(
-                        Icons.keyboard_arrow_down_rounded,
-                        size: 18.sp,
-                        color: colors.textSecondary,
+                        turns: _menuOpen ? 0.5 : 0.0,
+                        duration: const Duration(milliseconds: 220),
+                        curve: Curves.easeOutCubic,
+                        child: Icon(
+                          Icons.keyboard_arrow_down_rounded,
+                          size: 18.sp,
+                          color: colors.textSecondary,
+                        ),
                       ),
-                    ),
               ],
             ),
           ),
@@ -372,19 +432,32 @@ class _LikeTagChipState extends ConsumerState<LikeTagChip>
   Widget _buildMenu(BuildContext overlayContext, Rect chipRect) {
     final media = MediaQuery.of(overlayContext);
     final screenW = media.size.width;
-    final panelWidth = 332.w;
-    // Right-align under the chip, clamped on-screen.
+    final gutter = math.max(12.0, 8.w);
+    final leftEdge = media.padding.left + gutter;
+    final rightEdge = media.padding.right + gutter;
+    final panelWidth = math.min(332.w, screenW - leftEdge - rightEdge);
+    // The board toolbar opens down; Feed's action row opens up. Keep the
+    // same panel inside the safe area, with a scrollable grid on short screens.
     final right = (screenW - chipRect.right).clamp(
-      8.w,
-      (screenW - panelWidth - 8.w).clamp(8.w, screenW),
+      rightEdge,
+      math.max(rightEdge, screenW - panelWidth - leftEdge),
     );
-    final top = chipRect.bottom + 8.h;
-    final maxHeight = (media.size.height - top - 24.h).clamp(120.h, 540.h);
+    final below = math.max(
+      0.0,
+      media.size.height -
+          math.max(media.padding.bottom, media.viewInsets.bottom) -
+          chipRect.bottom -
+          16.h,
+    );
+    final above = math.max(0.0, chipRect.top - media.padding.top - 16.h);
+    final opensUp = above > below;
+    final maxHeight = math.min(opensUp ? above : below, 540.h);
 
     return _TagDropdown(
       animation: _menu,
-      top: top,
-      right: right,
+      top: opensUp ? null : chipRect.bottom + 8.h,
+      bottom: opensUp ? media.size.height - chipRect.top + 8.h : null,
+      right: right.toDouble(),
       width: panelWidth,
       maxHeight: maxHeight,
       initialLabels: _draftLabels,
@@ -507,6 +580,7 @@ class _TagDropdown extends StatefulWidget {
   const _TagDropdown({
     required this.animation,
     required this.top,
+    required this.bottom,
     required this.right,
     required this.width,
     required this.maxHeight,
@@ -517,7 +591,8 @@ class _TagDropdown extends StatefulWidget {
   });
 
   final Animation<double> animation;
-  final double top;
+  final double? top;
+  final double? bottom;
   final double right;
   final double width;
   final double maxHeight;
@@ -597,13 +672,6 @@ class _TagDropdownState extends State<_TagDropdown> {
   @override
   Widget build(BuildContext context) {
     final colors = context.colors;
-    // Two curves: easeOutCubic for the panel enter (opens decisively), and
-    // a sharper easeInCubic on reverse for a tight exit.
-    final shellCurve = CurvedAnimation(
-      parent: widget.animation,
-      curve: Curves.easeOutCubic,
-      reverseCurve: Curves.easeInCubic,
-    );
     return Stack(
       children: [
         Positioned.fill(
@@ -614,25 +682,25 @@ class _TagDropdownState extends State<_TagDropdown> {
         ),
         Positioned(
           top: widget.top,
+          bottom: widget.bottom,
           right: widget.right,
           width: widget.width,
           child: AnimatedBuilder(
-            animation: shellCurve,
+            animation: widget.animation,
             builder: (context, child) {
-              final t = shellCurve.value.clamp(0.0, 1.0);
-              // Anchor the scale at top-right (under the chip), so the panel
-              // visually "grows out of" the trigger pill instead of dropping
-              // from above.
+              final t = widget.animation.value;
+              final opensUp = widget.bottom != null;
+              // Pop from the trigger on a spring. Content is readable even
+              // at the first frame; an entrance never gates visibility.
               final scale = 0.86 + 0.14 * t;
-              return Opacity(
-                opacity: t,
-                child: Transform.translate(
-                  offset: Offset(0, (1 - t) * -8),
-                  child: Transform.scale(
-                    scale: scale,
-                    alignment: Alignment.topRight,
-                    child: child,
-                  ),
+              return Transform.translate(
+                offset: Offset(0, (1 - t) * (opensUp ? 8 : -8)),
+                child: Transform.scale(
+                  scale: scale,
+                  alignment: opensUp
+                      ? Alignment.bottomRight
+                      : Alignment.topRight,
+                  child: child,
                 ),
               );
             },
@@ -659,10 +727,9 @@ class _TagDropdownState extends State<_TagDropdown> {
     return Material(
       color: colors.surfaceElevated,
       elevation: context.isLightTheme ? 4 : 12,
-      shadowColor:
-          context.isLightTheme
-              ? colors.shadow
-              : Colors.black.withValues(alpha: 0.45),
+      shadowColor: context.isLightTheme
+          ? colors.shadow
+          : Colors.black.withValues(alpha: 0.45),
       borderRadius: BorderRadius.circular(16.br),
       child: Container(
         decoration: BoxDecoration(
@@ -781,18 +848,16 @@ class _TagDropdownState extends State<_TagDropdown> {
                             // stagger. Rows below the fold are built as the user
                             // scrolls, and a delayed fade there would pop in
                             // under the thumb.
-                            if (i >= _pageSize) return square;
+                            if (i >= _pageSize ||
+                                MediaQuery.disableAnimationsOf(context)) {
+                              return square;
+                            }
                             final delay = Duration(milliseconds: 60 + i * 22);
                             return square
                                 // Stagger reveal — each chip arrives ~22ms after
                                 // the previous so the grid feels assembled, not
                                 // slammed.
                                 .animate()
-                                .fadeIn(
-                                  delay: delay,
-                                  duration: 200.ms,
-                                  curve: Curves.easeOutCubic,
-                                )
                                 .moveY(
                                   begin: 6,
                                   end: 0,
@@ -906,15 +971,14 @@ class _TagSquare extends StatelessWidget {
     final Color textColor;
     if (selected) {
       fill = accent.withValues(alpha: 0.18);
-      border =
-          context.isLightTheme
-              ? legibleHueInk(
-                context,
-                accent,
-                minContrast: 3,
-                on: Color.alphaBlend(fill, colors.surfaceElevated),
-              )
-              : accent.withValues(alpha: 0.9);
+      border = context.isLightTheme
+          ? legibleHueInk(
+              context,
+              accent,
+              minContrast: 3,
+              on: Color.alphaBlend(fill, colors.surfaceElevated),
+            )
+          : accent.withValues(alpha: 0.9);
       textColor = colors.textPrimary;
     } else {
       fill = colors.surfaceRecessed;

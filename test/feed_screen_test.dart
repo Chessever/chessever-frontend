@@ -27,6 +27,7 @@ import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessground/chessground.dart';
 import 'package:dartchess/dartchess.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/semantics.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
@@ -272,6 +273,7 @@ void main() {
   });
 
   testWidgets('Play puts a picked-up piece down and plays on', (tester) async {
+    final semantics = tester.ensureSemantics();
     final feed = await _pumpFeed(tester);
     final board = tester.getRect(find.byType(FeedLiveBoard));
 
@@ -280,10 +282,14 @@ void main() {
     await tester.pump(const Duration(milliseconds: 600));
     expect(feed.sound.played, isEmpty);
 
-    await tester.tap(find.byKey(const ValueKey('feed_play_toggle')));
+    final control = tester.getSemantics(
+      find.bySemanticsLabel(RegExp(r'^Board,')),
+    );
+    control.owner!.performAction(control.id, SemanticsAction.tap);
     await tester.pump(const Duration(milliseconds: 500));
     expect(feed.sound.played, [('e4', null)]);
 
+    semantics.dispose();
     await _tearDown(tester);
   });
 
@@ -336,24 +342,38 @@ void main() {
     await _tearDown(tester);
   });
 
-  testWidgets('the move strip steps through the game', (tester) async {
-    final feed = await _pumpFeed(tester);
+  testWidgets(
+    'the progress control steps through the game and the board resumes it',
+    (tester) async {
+      final semantics = tester.ensureSemantics();
+      final feed = await _pumpFeed(tester);
 
-    await tester.tap(find.bySemanticsLabel('Next move'));
-    await tester.pump(const Duration(milliseconds: 100));
-    await tester.tap(find.bySemanticsLabel('Next move'));
-    await tester.pump(const Duration(milliseconds: 100));
-    expect(feed.sound.played, [('e4', null), ('e5', null)]);
+      void nextMove() {
+        final control = tester.getSemantics(
+          find.bySemanticsLabel('Move through the game'),
+        );
+        control.owner!.performAction(control.id, SemanticsAction.increase);
+      }
 
-    // Stepped by hand: autoplay waits for Play.
-    await tester.pump(const Duration(seconds: 2));
-    expect(feed.sound.played, hasLength(2));
-    await tester.tap(find.byKey(const ValueKey('feed_play_toggle')));
-    await tester.pump(const Duration(milliseconds: 700));
-    expect(feed.sound.played, hasLength(3));
+      nextMove();
+      await tester.pump(const Duration(milliseconds: 100));
+      nextMove();
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(feed.sound.played, [('e4', null), ('e5', null)]);
 
-    await _tearDown(tester);
-  });
+      // Stepped by hand: autoplay waits for a board tap.
+      await tester.pump(const Duration(seconds: 2));
+      expect(feed.sound.played, hasLength(2));
+      final board = tester.getRect(find.byType(FeedLiveBoard));
+      await tester.tapAt(_squareCenter(board, 'a5'));
+      await tester.pump(const Duration(milliseconds: 300));
+      await tester.pump(const Duration(milliseconds: 700));
+      expect(feed.sound.played, hasLength(3));
+
+      semantics.dispose();
+      await _tearDown(tester);
+    },
+  );
 
   testWidgets('a back button stands where the tabs keep the avatar', (
     tester,
@@ -441,6 +461,7 @@ void main() {
     final board = tester.getRect(find.byType(FeedLiveBoard).first);
 
     // Pause before the first beat (the centre squares are empty).
+    final page = tester.getRect(find.byKey(const ValueKey('feed_pages')));
     await tester.tapAt(board.center);
     await tester.pump(const Duration(milliseconds: 300));
     expect(find.byKey(const ValueKey('feed_paused')), findsOneWidget);
@@ -459,30 +480,32 @@ void main() {
 
     expect(feed.sound.played.last, ('Nf3', null));
     expect(find.byKey(const ValueKey('feed_back_to_game')), findsOneWidget);
-    expect(tester.getRect(find.byType(FeedLiveBoard).first), board);
+    expect(tester.getRect(find.byKey(const ValueKey('feed_pages'))), page);
+    expect(tester.getRect(find.byType(FeedLiveBoard).first).size, board.size);
     await tester.pump(const Duration(seconds: 1));
-    expect(tester.getRect(find.byType(FeedLiveBoard).first), board);
+    expect(tester.getRect(find.byKey(const ValueKey('feed_pages'))), page);
     await _tearDown(tester);
   });
 
-  testWidgets('the post actions read Analyze, My Space, Share, Like', (
-    tester,
-  ) async {
-    await _pumpFeed(tester);
-    final xs = [
-      for (final key in [
-        'feed_analyze_button',
-        'feed_space_button',
-        'feed_share_button',
-        'feed_like_button',
-      ])
-        tester.getCenter(find.byKey(ValueKey(key))).dx,
-    ];
-    for (var i = 1; i < xs.length; i++) {
-      expect(xs[i], greaterThan(xs[i - 1]));
-    }
-    await _tearDown(tester);
-  });
+  testWidgets(
+    'the post actions retain Analyze, Share and Like without adding game pins',
+    (tester) async {
+      await _pumpFeed(tester);
+      final xs = [
+        for (final key in [
+          'feed_analyze_button',
+          'feed_share_button',
+          'feed_like_button',
+        ])
+          tester.getCenter(find.byKey(ValueKey(key))).dx,
+      ];
+      expect(find.byKey(const ValueKey('feed_space_button')), findsNothing);
+      for (var i = 1; i < xs.length; i++) {
+        expect(xs[i], greaterThan(xs[i - 1]));
+      }
+      await _tearDown(tester);
+    },
+  );
 
   group('eval bar follows the engine settings', () {
     testWidgets('shown by default, beside the board', (tester) async {

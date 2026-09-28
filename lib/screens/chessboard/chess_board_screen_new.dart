@@ -13525,7 +13525,7 @@ class _MovesDisplayState extends ConsumerState<_MovesDisplay> {
           );
         },
       ),
-      if (positionDraft != null)
+      if (positionDraft != null && positionInSpace)
         _NotationActionItem(
           icon:
               positionInSpace

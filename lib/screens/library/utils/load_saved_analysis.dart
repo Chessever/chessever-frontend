@@ -8,6 +8,9 @@ import 'package:chessever2/screens/chessboard/notation/notation_tree.dart';
 import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
 import 'package:chessever2/screens/chessboard/utils/game_share_utils.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
+import 'package:chessever2/screens/chessboard/analysis/chess_game.dart'
+    show ChessColor, ChessMove;
+import 'package:chessever2/utils/pgn_clock_utils.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
@@ -253,14 +256,16 @@ GamesTourModel convertSavedAnalysisToGame(SavedAnalysis analysis) {
 
   final whiteTimeDisplay = md['WhiteTimeDisplay']?.toString() ?? '--:--';
   final blackTimeDisplay = md['BlackTimeDisplay']?.toString() ?? '--:--';
-  final whiteClockSeconds =
-      md['WhiteClockSeconds'] != null
-          ? int.tryParse(md['WhiteClockSeconds'].toString())
-          : null;
-  final blackClockSeconds =
-      md['BlackClockSeconds'] != null
-          ? int.tryParse(md['BlackClockSeconds'].toString())
-          : null;
+  final whiteClockSeconds = _savedClockSeconds(
+    md,
+    chessGame.mainline,
+    isWhite: true,
+  );
+  final blackClockSeconds = _savedClockSeconds(
+    md,
+    chessGame.mainline,
+    isWhite: false,
+  );
   final boardNr =
       md['BoardNr'] != null ? int.tryParse(md['BoardNr'].toString()) : null;
   final tourSlug = md['TourSlug']?.toString();
@@ -376,6 +381,8 @@ GamesTourModel savedAnalysisToCardGame(SavedAnalysis analysis) {
   // so a card of it can draw the real board rather than a list row.
   final mainline = analysis.chessGame.mainline;
   final last = mainline.isEmpty ? null : mainline.last;
+  final whiteClockSeconds = _savedClockSeconds(md, mainline, isWhite: true);
+  final blackClockSeconds = _savedClockSeconds(md, mainline, isWhite: false);
 
   return GamesTourModel(
     gameId: analysis.id,
@@ -399,10 +406,18 @@ GamesTourModel savedAnalysisToCardGame(SavedAnalysis analysis) {
       team: null,
       fideId: _parseFideId(md['BlackFideId']),
     ),
-    whiteTimeDisplay: '--:--',
-    blackTimeDisplay: '--:--',
-    whiteClockCentiseconds: 0,
-    blackClockCentiseconds: 0,
+    whiteTimeDisplay:
+        whiteClockSeconds == null
+            ? '--:--'
+            : formatClockDisplayFromSeconds(whiteClockSeconds),
+    blackTimeDisplay:
+        blackClockSeconds == null
+            ? '--:--'
+            : formatClockDisplayFromSeconds(blackClockSeconds),
+    whiteClockCentiseconds: (whiteClockSeconds ?? 0) * 100,
+    blackClockCentiseconds: (blackClockSeconds ?? 0) * 100,
+    whiteClockSeconds: whiteClockSeconds,
+    blackClockSeconds: blackClockSeconds,
     gameStatus: GameStatus.fromString(result),
     roundId: round,
     tourId: tourId,
@@ -414,6 +429,28 @@ GamesTourModel savedAnalysisToCardGame(SavedAnalysis analysis) {
     fen: last?.fen ?? analysis.chessGame.startingFen,
     lastMove: last?.uci,
   );
+}
+
+/// A clock captured when liking the game, or the latest real PGN sample for
+/// that side. Missing data stays null; even 00:00 is a real recorded clock.
+int? _savedClockSeconds(
+  Map<String, dynamic> metadata,
+  List<ChessMove> mainline, {
+  required bool isWhite,
+}) {
+  final side = isWhite ? 'White' : 'Black';
+  final snapshot = int.tryParse('${metadata['${side}ClockSeconds'] ?? ''}');
+  if (snapshot != null && snapshot >= 0) return snapshot;
+  final display = parsePgnClockToSeconds(
+    metadata['${side}TimeDisplay']?.toString(),
+  );
+  if (display != null && display >= 0) return display;
+  for (var i = mainline.length - 1; i >= 0; i--) {
+    if ((mainline[i].turn == ChessColor.white) != isWhite) continue;
+    final seconds = parsePgnClockToSeconds(mainline[i].clockTime);
+    if (seconds != null && seconds >= 0) return seconds;
+  }
+  return null;
 }
 
 int _parseRating(Object? raw) {

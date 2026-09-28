@@ -1,0 +1,139 @@
+import 'dart:async';
+
+import 'package:chessever2/screens/for_you/discovery/data/discovery_repository.dart';
+import 'package:chessever2/screens/for_you/discovery/models/discovery_models.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
+import 'package:hooks_riverpod/hooks_riverpod.dart';
+
+const kReportsFirstPageMaxAge = Duration(minutes: 2);
+
+/// Discovery warms the real first page, including parsed cards, before a tap.
+/// Only this page survives leaving Reports; the rest of the list is released.
+/// An idle cache expires even when Discovery stays mounted, and failures are
+/// released immediately so a later visit can retry.
+final reportsFirstPageProvider = FutureProvider.autoDispose<AnalyzedGamesPage>((
+  ref,
+) async {
+  final link = ref.keepAlive();
+  final expiry = Timer(kReportsFirstPageMaxAge, link.close);
+  ref.onDispose(expiry.cancel);
+  try {
+    return await ref
+        .watch(discoveryRepositoryProvider)
+        .fetchAnalyzedGamesPage();
+  } catch (_) {
+    expiry.cancel();
+    link.close();
+    rethrow;
+  }
+});
+
+class ReportsPaginationState {
+  const ReportsPaginationState({
+    this.items = const [],
+    this.isLoading = false,
+    this.isRefreshing = false,
+    this.hasMore = true,
+    this.error,
+  });
+
+  final List<GamesTourModel> items;
+  final bool isLoading;
+  final bool isRefreshing;
+  final bool hasMore;
+  final String? error;
+}
+
+final reportsPaginationProvider =
+    StateNotifierProvider.autoDispose<
+      ReportsPaginationNotifier,
+      ReportsPaginationState
+    >(
+      (ref) => ReportsPaginationNotifier(
+        ref.watch(discoveryRepositoryProvider),
+        firstPage: ref.read(reportsFirstPageProvider.future),
+        reloadFirstPage: () => ref.refresh(reportsFirstPageProvider.future),
+      ),
+    );
+
+/// One in-flight page at a time. Refresh supersedes earlier requests without
+/// letting a late response replace the fresh list or advance its cursor.
+class ReportsPaginationNotifier extends StateNotifier<ReportsPaginationState> {
+  ReportsPaginationNotifier(
+    this._repository, {
+    Future<AnalyzedGamesPage>? firstPage,
+    this.reloadFirstPage,
+  }) : super(const ReportsPaginationState()) {
+    unawaited(_fetch(reset: true, firstPage: firstPage));
+  }
+
+  final DiscoveryRepository _repository;
+  final Future<AnalyzedGamesPage> Function()? reloadFirstPage;
+  AnalyzedGamesCursor? _cursor;
+  final Set<String> _seenIds = {};
+  int _request = 0;
+  bool _retryRefresh = true;
+
+  Future<void> refresh() => _fetch(reset: true);
+
+  Future<void> loadNextPage() async {
+    if (!mounted || state.isLoading || !state.hasMore || state.error != null) {
+      return;
+    }
+    await _fetch(reset: false);
+  }
+
+  Future<void> retry() async {
+    if (!mounted || state.isLoading || state.error == null) return;
+    await _fetch(reset: _retryRefresh);
+  }
+
+  Future<void> _fetch({
+    required bool reset,
+    Future<AnalyzedGamesPage>? firstPage,
+  }) async {
+    if (!mounted) return;
+    final request = ++_request;
+    final after = reset ? null : _cursor;
+    _retryRefresh = reset;
+    state = ReportsPaginationState(
+      items: state.items,
+      isLoading: true,
+      isRefreshing: reset && state.items.isNotEmpty,
+      hasMore: state.hasMore,
+    );
+    try {
+      final page =
+          await (firstPage ??
+              (reset && reloadFirstPage != null
+                  ? reloadFirstPage!()
+                  : _repository.fetchAnalyzedGamesPage(after: after)));
+      if (!mounted || request != _request) return;
+      if (page.nextCursor != null && page.nextCursor == after) {
+        throw StateError('Report pagination did not advance');
+      }
+      if (reset) _seenIds.clear();
+      final items = <GamesTourModel>[
+        if (!reset) ...state.items,
+        for (final game in page.items)
+          if (_seenIds.add(game.gameId)) game,
+      ];
+      _cursor = page.nextCursor;
+      state = ReportsPaginationState(
+        items: List.unmodifiable(items),
+        hasMore: page.nextCursor != null,
+      );
+    } catch (_) {
+      if (!mounted || request != _request) return;
+      state = ReportsPaginationState(
+        items: state.items,
+        hasMore: state.hasMore,
+        error: state.items.isEmpty
+            ? "Couldn't load reports"
+            : reset
+            ? "Couldn't refresh reports"
+            : "Couldn't load more reports",
+      );
+    }
+  }
+}

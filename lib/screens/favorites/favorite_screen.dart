@@ -398,12 +398,13 @@ class _FavoriteScreenState extends ConsumerState<FavoriteScreen> {
       color: context.colors.surface,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8.br)),
       items: [
+        if (playerInSpace)
         _spaceMenuItem(
           value: 'space_player',
           inSpace: playerInSpace,
           label: playerInSpace ? 'Remove from My Space' : 'Add to My Space',
         ),
-        _spaceMenuItem(
+        if (gamesInSpace) _spaceMenuItem(
           value: 'space_games',
           inSpace: gamesInSpace,
           label:

@@ -36,16 +36,15 @@ import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 /// My Likes in the event view's frame (back, a centred title, segments that
-/// swipe), as Favorites and Countrymen open from Today: the liked games
-/// (every search, filter, tag and export My Likes always had), the players
-/// in them and the events they came from. A player or an event opens the
-/// Games page narrowed to it.
+/// swipe), as Favorites and Countrymen open from Today: the liked games,
+/// their players, and a short explanation of how likes work.
+/// A player opens the Games page narrowed to them.
 class MyLikesHubScreen extends ConsumerStatefulWidget {
   const MyLikesHubScreen({super.key, this.initialTab = 0});
 
   final int initialTab;
 
-  static const List<String> tabs = ['Games', 'Players', 'Events'];
+  static const List<String> tabs = ['Games', 'Players', 'About'];
 
   @override
   ConsumerState<MyLikesHubScreen> createState() => _MyLikesHubScreenState();
@@ -53,6 +52,7 @@ class MyLikesHubScreen extends ConsumerStatefulWidget {
 
 class _MyLikesHubScreenState extends ConsumerState<MyLikesHubScreen> {
   final _tabs = EventViewController();
+  bool _landingTabResolved = false;
 
   @override
   void dispose() {
@@ -73,10 +73,24 @@ class _MyLikesHubScreenState extends ConsumerState<MyLikesHubScreen> {
     // Held for the hub's lifetime: the pages share one search and filter,
     // whichever of them is on screen.
     ref.watch(myLikesFilterProvider);
+    final likes = ref.watch(likedGamesProvider);
+    // Choose the landing page once, after the initial list has resolved.
+    // Later removals/refreshes must not pull the reader off their chosen tab.
+    final list = likes.valueOrNull;
+    var initialTab = widget.initialTab;
+    if (!_landingTabResolved && list != null) {
+      _landingTabResolved = true;
+      if (widget.initialTab == 0 && list.isEmpty) {
+        initialTab = 2;
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) _tabs.showTab(2);
+        });
+      }
+    }
     return EventViewShell(
       title: 'My Likes',
       tabs: MyLikesHubScreen.tabs,
-      initialTab: widget.initialTab,
+      initialTab: initialTab,
       controller: _tabs,
       pageBuilder: (context, index) => switch (index) {
         0 => const MyLikesGamesPage(key: PageStorageKey('my_likes_games')),
@@ -84,11 +98,66 @@ class _MyLikesHubScreenState extends ConsumerState<MyLikesHubScreen> {
           key: const PageStorageKey('my_likes_players'),
           onPick: _showGames,
         ),
-        _ => MyLikesEventsPage(
-          key: const PageStorageKey('my_likes_events'),
-          onPick: _showGames,
-        ),
+        _ => const MyLikesAboutPage(key: PageStorageKey('my_likes_about')),
       },
+    );
+  }
+}
+
+/// Guidance lives beside the games rather than in a collection of events.
+/// Scrollable at larger text sizes, with the same heart as the My Likes tile.
+class MyLikesAboutPage extends StatelessWidget {
+  const MyLikesAboutPage({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.colors;
+    final gutter = ResponsiveHelper.adaptive(phone: 24.w, tablet: 32.w);
+    return ListView(
+      padding: EdgeInsets.fromLTRB(gutter, 36.h, gutter, 40.h),
+      children: [
+        Align(
+          alignment: AlignmentDirectional.centerStart,
+          child: SizedBox.square(
+            dimension: 72.w,
+            child: const HubPixelArtwork(section: SpaceSection.likes),
+          ),
+        ),
+        SizedBox(height: 24.h),
+        Text(
+          'Keep the games you love',
+          style: AppTypography.textLgMedium.copyWith(color: colors.textPrimary),
+        ),
+        SizedBox(height: 12.h),
+        Text(
+          'Double-tap the chessboard to like a game, or tap the heart on the '
+          'board. Your liked games are saved here so you can come back to them.',
+          style: AppTypography.textSmRegular.copyWith(
+            color: colors.textSecondary,
+          ),
+        ),
+        SizedBox(height: 24.h),
+        Text(
+          'Find a game again',
+          style: AppTypography.textMdMedium.copyWith(color: colors.textPrimary),
+        ),
+        SizedBox(height: 8.h),
+        Text(
+          'Search, filter, or choose a player to find your likes. Swipe left '
+          'on a game to remove it from My Likes.',
+          style: AppTypography.textSmRegular.copyWith(
+            color: colors.textSecondary,
+          ),
+        ),
+        SizedBox(height: 24.h),
+        Text(
+          'Your latest $kFreeMyLikesVisibleLimit likes are free. Premium opens '
+          'your full history. Older likes stay saved.',
+          style: AppTypography.textSmRegular.copyWith(
+            color: colors.textSecondary,
+          ),
+        ),
+      ],
     );
   }
 }
@@ -126,13 +195,14 @@ String? _tag(SavedAnalysis a, String key) {
 /// A name with its parts in a fixed order, so "Carlsen, Magnus" and
 /// "Magnus Carlsen" are one person.
 String _nameKey(String name) {
-  final parts = name
-      .toLowerCase()
-      .replaceAll(RegExp(r'[,.]'), ' ')
-      .split(RegExp(r'\s+'))
-      .where((p) => p.isNotEmpty)
-      .toList()
-    ..sort();
+  final parts =
+      name
+          .toLowerCase()
+          .replaceAll(RegExp(r'[,.]'), ' ')
+          .split(RegExp(r'\s+'))
+          .where((p) => p.isNotEmpty)
+          .toList()
+        ..sort();
   return parts.join(' ');
 }
 
@@ -347,7 +417,6 @@ class _PlayerRow extends ConsumerWidget {
               label: 'Open profile',
               onSelected: () => openSpaceShortcut(context, ref, draft),
             ),
-            spaceMenuAction(context: menuContext, ref: ref, draft: draft),
           ],
           child: row,
         ),

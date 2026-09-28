@@ -178,6 +178,31 @@ final spaceDatabaseGroupsProvider =
       );
     });
 
+/// Adjacent items of one kind share a rail, without changing saved order.
+/// A kind can appear in several runs after a cross-kind drag.
+List<SpaceDatabaseGroup> spaceCompactDatabaseGroups(List<SpaceShortcut> list) {
+  final groups = <SpaceDatabaseGroup>[];
+  for (final pin in list) {
+    if (!pin.canAddToMySpace || !spaceShowsInDatabase(pin)) continue;
+    if (groups.isNotEmpty && groups.last.section == pin.section) {
+      groups.last.items.add(pin);
+    } else {
+      groups.add((section: pin.section, items: [pin]));
+    }
+  }
+  return groups;
+}
+
+/// Home and its editor share the store's global order. Live status and
+/// visits update content without moving anything the reader has placed.
+final spaceCompactDatabaseGroupsProvider =
+    Provider.autoDispose<List<SpaceDatabaseGroup>?>((ref) {
+      final saved = ref.watch(spaceShortcutsProvider);
+      final list = saved.valueOrNull;
+      if (list == null) return saved.hasError ? const [] : null;
+      return spaceCompactDatabaseGroups(list);
+    });
+
 /// [pins] (one group's saved events, in store order) as the page orders
 /// them, each with its Edit band: the events in [liveFirst] first (band 0),
 /// then the rest (band 1), each run in store order. A drag in Edit stays in
@@ -291,15 +316,52 @@ class SpaceDatabaseGroupView extends ConsumerWidget {
     super.key,
     required this.group,
     required this.gutter,
+    this.compact = false,
   });
 
   final SpaceDatabaseGroup group;
   final double gutter;
+  final bool compact;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final section = group.section;
     final items = group.items;
+    if (compact) {
+      if (section == SpaceSection.players) {
+        return _PlayersRail(gutter: gutter, pins: items);
+      }
+      if (section == SpaceSection.games) {
+        return _GamesRail(
+          items: items,
+          gutter: gutter,
+          storageId: 'home_games_${items.first.key}',
+        );
+      }
+      final events = section == SpaceSection.events
+          ? _SavedEvents(ref, items, boards: false)
+          : null;
+      return Padding(
+        padding: EdgeInsets.symmetric(horizontal: gutter),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            for (var i = 0; i < items.length; i++) ...[
+              if (i > 0) SizedBox(height: 12.sp),
+              if (events != null)
+                _savedEventCard(context, ref, items[i], events)
+              else if (section == SpaceSection.openings)
+                SpaceOpeningCard(shortcut: items[i])
+              else if (section == SpaceSection.smartEvents)
+                _SavedSmartEvent(shortcut: items[i])
+              else
+                _RowsBody(shown: [items[i]], library: true),
+            ],
+          ],
+        ),
+      );
+    }
     final Widget body = switch (section) {
       SpaceSection.events => _EventsRail(items: items, gutter: gutter),
       SpaceSection.players => _PlayersRail(gutter: gutter),
@@ -1052,9 +1114,10 @@ Widget _playerFace(
 /// shown players are playing as a rail of the viewer's game cards, in the
 /// faces' order (a game a saved live event already draws is left out).
 class _PlayersRail extends ConsumerStatefulWidget {
-  const _PlayersRail({required this.gutter});
+  const _PlayersRail({required this.gutter, this.pins});
 
   final double gutter;
+  final List<SpaceShortcut>? pins;
 
   @override
   ConsumerState<_PlayersRail> createState() => _PlayersRailState();
@@ -1063,11 +1126,18 @@ class _PlayersRail extends ConsumerStatefulWidget {
 class _PlayersRailState extends ConsumerState<_PlayersRail>
     with SpaceRailPaging {
   @override
-  String get pagingId => 'players';
+  String get pagingId => widget.pins == null
+      ? 'players'
+      : 'home_players_${widget.pins!.first.key}';
 
   @override
   Widget build(BuildContext context) {
-    final entries = ref.watch(spacePlayersProvider) ?? const [];
+    final entries = widget.pins == null
+        ? ref.watch(spacePlayersProvider) ?? const <SpacePlayerEntry>[]
+        : [
+            for (final pin in widget.pins!)
+              SpacePlayerEntry(identity: pin.key, shortcut: pin, pins: [pin]),
+          ];
     const size = kSpacePlayersRailPage;
     final shown = entries.take(pages * size).toList();
 
@@ -1089,9 +1159,11 @@ class _PlayersRailState extends ConsumerState<_PlayersRail>
       );
     }
 
-    // A game already drawn under a saved live event is not drawn twice: the
-    // Events rail's loaded pages, read through the same provider keys.
-    final groups = ref.watch(spaceDatabaseGroupsProvider) ?? const [];
+    // Only the legacy Events rail draws boards. Compact home draws the event
+    // card alone, so its pinned player's live game must remain visible here.
+    final groups = widget.pins == null
+        ? ref.watch(spaceDatabaseGroupsProvider) ?? const <SpaceDatabaseGroup>[]
+        : const <SpaceDatabaseGroup>[];
     final events = [
       for (final g in groups)
         if (g.section == SpaceSection.events) ...g.items,
@@ -1143,7 +1215,7 @@ class _PlayersRailState extends ConsumerState<_PlayersRail>
     ];
     return _withLiveRail(
       SpaceRail(
-        storageId: 'players',
+        storageId: pagingId,
         items: faces,
         gutter: widget.gutter,
         faces: shown.length,
@@ -1155,7 +1227,7 @@ class _PlayersRailState extends ConsumerState<_PlayersRail>
           ? null
           : SpaceRail(
               key: const ValueKey<String>('space_players_live_rail'),
-              storageId: 'players_live',
+              storageId: '${pagingId}_live',
               items: boards,
               gutter: widget.gutter,
               labelledGames: true,
@@ -1267,10 +1339,15 @@ _gamePages(WidgetRef ref, List<SpaceShortcut> items, {required int pages}) {
 /// the whole row (previous/next walks the saved games). A game that could
 /// not be found keeps its saved names and opens its pin. Ten a page.
 class _GamesRail extends ConsumerStatefulWidget {
-  const _GamesRail({required this.items, required this.gutter});
+  const _GamesRail({
+    required this.items,
+    required this.gutter,
+    this.storageId = 'games',
+  });
 
   final List<SpaceShortcut> items;
   final double gutter;
+  final String storageId;
 
   @override
   ConsumerState<_GamesRail> createState() => _GamesRailState();
@@ -1278,7 +1355,7 @@ class _GamesRail extends ConsumerStatefulWidget {
 
 class _GamesRailState extends ConsumerState<_GamesRail> with SpaceRailPaging {
   @override
-  String get pagingId => 'games';
+  String get pagingId => widget.storageId;
 
   @override
   Widget build(BuildContext context) {
@@ -1328,7 +1405,7 @@ class _GamesRailState extends ConsumerState<_GamesRail> with SpaceRailPaging {
               ),
           ];
     return SpaceRail(
-      storageId: 'games',
+      storageId: pagingId,
       items: rail,
       gutter: widget.gutter,
       hasMore: shown.isNotEmpty && shown.length < widget.items.length,
@@ -1367,7 +1444,7 @@ class _OpeningsRailState extends ConsumerState<_OpeningsRail>
         for (final s in shown)
           SpaceRailItem(
             id: 'opening:${s.key}',
-            slot: SpaceRailSlot.game,
+            slot: SpaceRailSlot.wide,
             builder: (context, _) => SpaceOpeningCard(
               key: ValueKey<String>('space_opening_${s.key}'),
               shortcut: s,
@@ -1376,7 +1453,7 @@ class _OpeningsRailState extends ConsumerState<_OpeningsRail>
       ],
       gutter: widget.gutter,
       hasMore: shown.length < widget.items.length,
-      trailingSlot: SpaceRailSlot.game,
+      trailingSlot: SpaceRailSlot.wide,
       onLoadMore: loadMore,
     );
   }
@@ -1384,45 +1461,22 @@ class _OpeningsRailState extends ConsumerState<_OpeningsRail>
 
 /// See all's openings, a row at a time: one card each, two to a row in
 /// grid view.
-class _OpeningsBody extends ConsumerWidget {
+class _OpeningsBody extends StatelessWidget {
   const _OpeningsBody({required this.shown});
-
   final List<SpaceShortcut> shown;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final mode = ref.watch(gamesListViewModeProvider);
-    Widget card(SpaceShortcut s) => SpaceOpeningCard(
-      key: ValueKey<String>('space_opening_${s.key}'),
-      shortcut: s,
-    );
-    final rows = <Widget>[];
-    if (mode == GamesListViewMode.chessBoardGrid) {
-      for (var i = 0; i < shown.length; i += 2) {
-        rows.add(
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Expanded(child: card(shown[i])),
-              SizedBox(width: _itemGap),
-              Expanded(
-                child: i + 1 < shown.length
-                    ? card(shown[i + 1])
-                    : const SizedBox.shrink(),
-              ),
-            ],
-          ),
-        );
-      }
-    } else {
-      rows.addAll([for (final s in shown) card(s)]);
-    }
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      mainAxisSize: MainAxisSize.min,
-      children: _spaced(rows),
-    );
-  }
+  Widget build(BuildContext context) => Column(
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    mainAxisSize: MainAxisSize.min,
+    children: _spaced([
+      for (final shortcut in shown)
+        SpaceOpeningCard(
+          key: ValueKey('space_opening_${shortcut.key}'),
+          shortcut: shortcut,
+        ),
+    ]),
+  );
 }
 
 // ------------------------------------------------------------------ rows
@@ -1729,9 +1783,8 @@ class SpaceGroupPage extends ConsumerWidget {
           }
         }
       case SpaceSection.openings:
-        for (var at = 0; at < items.length; at += per) {
-          final row = items.sublist(at, math.min(items.length, at + per));
-          add(() => _OpeningsBody(shown: row));
+        for (final item in items) {
+          add(() => _OpeningsBody(shown: [item]));
         }
       case SpaceSection.library:
       case SpaceSection.links:
@@ -1776,6 +1829,102 @@ class SpaceGroupPage extends ConsumerWidget {
 }
 
 // ------------------------------------------------------------------ edit
+
+/// Home's saved pins in one movable list, using the existing Edit circles,
+/// hold gesture and real card faces. Every kind shares the same drag band.
+class SpaceHomeEdit extends ConsumerWidget {
+  const SpaceHomeEdit({
+    super.key,
+    required this.pins,
+    required this.selected,
+    required this.onToggle,
+    required this.onReorder,
+    required this.controller,
+    this.closing = false,
+    this.onClosed,
+  });
+
+  final List<SpaceShortcut> pins;
+  final Set<String> selected;
+  final ValueChanged<String> onToggle;
+  final void Function(String key, List<String> order) onReorder;
+  final ScrollController controller;
+  final bool closing;
+  final VoidCallback? onClosed;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final events = _SavedEvents(ref, [
+      for (final pin in pins)
+        if (pin.section == SpaceSection.events) pin,
+    ], boards: false);
+    final folders = pins.any((pin) => pin.section == SpaceSection.library)
+        ? ref.watch(spaceLibraryFoldersProvider).folders
+        : const <LibraryFolder>[];
+
+    Widget card(SpaceShortcut pin) {
+      switch (pin.section) {
+        case SpaceSection.events:
+          return _savedEventCard(context, ref, pin, events, editing: true);
+        case SpaceSection.players:
+          return Align(
+            alignment: AlignmentDirectional.centerStart,
+            child: SpacePlayerFace(
+              shortcut: pin,
+              width: SpacePlayerStrip.itemWidth,
+            ),
+          );
+        case SpaceSection.games:
+          final face = watchSpaceGameFace(ref, pin);
+          return face.players == SpaceGamePlayers.ready
+              ? DiscoveryGameCard(
+                  key: ValueKey<String>('space_edit_game_${pin.key}'),
+                  games: [face.game],
+                  index: 0,
+                  streamEnabled: false,
+                )
+              : SpaceSavedRow(shortcut: pin, disclosure: false);
+        case SpaceSection.openings:
+          return SpaceOpeningCard(shortcut: pin);
+        case SpaceSection.smartEvents:
+          return _SavedSmartEvent(shortcut: pin, disclosure: false);
+        case SpaceSection.library:
+        case SpaceSection.links:
+        case SpaceSection.likes:
+          return _savedRow(
+            ref,
+            pin,
+            library: pin.section == SpaceSection.library,
+            folders: folders,
+            editing: true,
+          );
+      }
+    }
+
+    // Read providers during build, before the grid's deferred builders run.
+    final cards = {for (final pin in pins) pin.key: card(pin)};
+    return SpaceEditGrid(
+      controller: controller,
+      items: [
+        for (final pin in pins)
+          SpaceEditItem(
+            key: pin.key,
+            label: pin.title,
+            builder: (_, _) => cards[pin.key]!,
+          ),
+      ],
+      selected: selected,
+      onToggle: onToggle,
+      onReorder: onReorder,
+      gutter: hubGutter,
+      gap: 12.sp,
+      top: 8.sp,
+      bottom: 24.sp + 72,
+      closing: closing,
+      onClosed: onClosed,
+    );
+  }
+}
 
 /// See all's Edit for one group: the saved things ([pins], in store order)
 /// in the order See all draws them, each the very card See all draws it
@@ -1952,8 +2101,8 @@ class SpaceGroupEdit extends ConsumerWidget {
             if (f.face.players == SpaceGamePlayers.missing) savedRow(f.pin, 2),
         ];
       case SpaceSection.openings:
-        columns = gridView ? 2 : 1;
-        onBoards = boardCards;
+        columns = 1;
+        onBoards = false;
         items = [
           for (final s in pins)
             SpaceEditItem(

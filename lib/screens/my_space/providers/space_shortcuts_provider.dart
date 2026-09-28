@@ -94,6 +94,34 @@ class SpacePendingDeletes {
   Future<void> settled(String key) => _open[key] ?? Future<void>.value();
 }
 
+/// Sort writes run in gesture order. A queued renumber reads current pins when
+/// it starts, so it never upserts a pin removed while an earlier write waited.
+class SpacePendingSortWrites {
+  Future<void> _tail = Future<void>.value();
+
+  /// Every write queued so far has finished, successfully or otherwise.
+  /// Deletes capture this barrier before starting their remote removal.
+  Future<void> get settled => _tail;
+
+  Future<void> run({
+    required Iterable<String> keys,
+    required List<SpaceShortcut> Function() current,
+    required bool Function(String key) blocked,
+    required Future<void> Function(List<SpaceShortcut> rows) write,
+  }) {
+    final wanted = keys.toSet();
+    final result = _tail.then((_) async {
+      final rows = [
+        for (final pin in current())
+          if (wanted.contains(pin.key) && !blocked(pin.key)) pin,
+      ];
+      if (rows.isNotEmpty) await write(rows);
+    });
+    _tail = result.then<void>((_) {}, onError: (Object _, StackTrace _) {});
+    return result;
+  }
+}
+
 class SpaceShortcutsNotifier extends AsyncNotifier<List<SpaceShortcut>> {
   static const _table = 'user_space_shortcuts';
   static const _cacheKey = 'my_space_shortcuts_v1';
@@ -115,6 +143,8 @@ class SpaceShortcutsNotifier extends AsyncNotifier<List<SpaceShortcut>> {
   /// The deletes still on the wire: a refresh that predates one never
   /// brings its pin back, and a put-back waits for it ([restore]).
   final _deletes = SpacePendingDeletes();
+  final _sortWrites = SpacePendingSortWrites();
+  int _sortEpoch = 0;
 
   /// Pins put back (Undo) whose row the server does not hold again yet: a
   /// refresh keeps them in the list meanwhile.
@@ -331,6 +361,7 @@ class SpaceShortcutsNotifier extends AsyncNotifier<List<SpaceShortcut>> {
   }
 
   void _teardown() {
+    _sortEpoch++;
     _refetchDebounce?.cancel();
     final ch = _channel;
     _channel = null;
@@ -547,6 +578,9 @@ class SpaceShortcutsNotifier extends AsyncNotifier<List<SpaceShortcut>> {
   /// Adds [draft] to the front of its section. Returns false when the target
   /// is already in My Space (the caller shows "Already in My Space").
   Future<bool> add(SpaceShortcut draft) async {
+    // Enforced at the write boundary too: deep links, alternate menus and
+    // add sheets cannot create unsupported pins. Legacy rows are untouched.
+    if (!draft.canAddToMySpace) return false;
     final current = state.valueOrNull ?? const <SpaceShortcut>[];
     if (current.any((s) => s.key == draft.key)) return false;
 
@@ -602,7 +636,11 @@ class SpaceShortcutsNotifier extends AsyncNotifier<List<SpaceShortcut>> {
 
     final uid = _userId;
     if (uid != null && !_remoteUnavailable) {
-      await _deletes.run(removed.key, () => _deleteRemote(uid, removed));
+      final sorted = _sortWrites.settled;
+      await _deletes.run(removed.key, () async {
+        await sorted;
+        await _deleteRemote(uid, removed);
+      });
     }
     return removed;
   }
@@ -639,23 +677,34 @@ class SpaceShortcutsNotifier extends AsyncNotifier<List<SpaceShortcut>> {
     if (uid == null || _remoteUnavailable) return;
     _syncing.add(back.key);
     _restoring.add(back.key);
-    var stored = false;
+    final epoch = _sortEpoch;
+    SpaceShortcut? stored;
     try {
       await _deletes.settled(back.key);
       final now = pinFor(back.kind, back.targetId);
-      if (now == null || _userId != uid) return;
+      if (now == null || _userId != uid || epoch != _sortEpoch) return;
       await _db.from(_table).upsert({
         ...now.toInsert(),
         'user_id': uid,
       }, onConflict: 'user_id,kind,target_id');
-      stored = true;
+      stored = now;
     } catch (e) {
       debugPrint('[MySpace] restore failed: $e');
     } finally {
       _syncing.remove(back.key);
       _restoring.remove(back.key);
     }
-    if (stored) _retryUnsyncedSoon();
+    if (stored != null && _userId == uid && epoch == _sortEpoch) {
+      // Sort writes skip a restoring pin until its upsert has settled. A
+      // drag during that upsert still needs to follow it with the latest sort.
+      final latest = pinFor(back.kind, back.targetId);
+      if (latest != null &&
+          !_deletes.contains(back.key) &&
+          latest.sortIndex != stored.sortIndex) {
+        await _writeSort([latest]);
+      }
+      _retryUnsyncedSoon();
+    }
   }
 
   /// Moves a shortcut to the front of its row.
@@ -689,6 +738,57 @@ class SpaceShortcutsNotifier extends AsyncNotifier<List<SpaceShortcut>> {
     await _writeSort(plan.changed);
   }
 
+  /// Moves a saved item across types in the home screen's visible order.
+  /// The plan reads the latest store, so a pin added or removed during the
+  /// gesture is preserved rather than replaced by a stale screen snapshot.
+  Future<void> moveWithinVisible(String key, List<String> visibleOrder) async {
+    final plan = planVisibleMove(
+      state.valueOrNull ?? const <SpaceShortcut>[],
+      key,
+      visibleOrder,
+    );
+    if (plan == null) return;
+    state = AsyncData(plan.list);
+    unawaited(_writeCache(plan.list));
+    await _writeSort(plan.changed);
+  }
+
+  /// Places [key] after its nearest surviving predecessor in [visibleOrder],
+  /// or before its successor when it leads. Only this pin moves; hidden pins
+  /// and pins added concurrently keep their order. Deleted keys are ignored.
+  @visibleForTesting
+  static ({List<SpaceShortcut> list, List<SpaceShortcut> changed})?
+  planVisibleMove(
+    List<SpaceShortcut> list,
+    String key,
+    List<String> visibleOrder,
+  ) {
+    final row = _sorted(list);
+    final item = row.where((pin) => pin.key == key).firstOrNull;
+    if (item == null) return null;
+    final known = {for (final pin in row) pin.key};
+    final seen = <String>{};
+    final visible = [
+      for (final candidate in visibleOrder)
+        if (known.contains(candidate) && seen.add(candidate)) candidate,
+    ];
+    final at = visible.indexOf(key);
+    if (at < 0 || visible.length < 2) return null;
+    final currentVisible = [
+      for (final pin in row)
+        if (seen.contains(pin.key)) pin.key,
+    ];
+    if (listEquals(visible, currentVisible)) return null;
+    final others = [
+      for (final pin in row)
+        if (pin.key != key) pin,
+    ];
+    final to = at > 0
+        ? others.indexWhere((pin) => pin.key == visible[at - 1]) + 1
+        : others.indexWhere((pin) => pin.key == visible[at + 1]);
+    return _planRowMove(list, item, row, to);
+  }
+
   /// The list after moving [key] to [toIndex] inside its section, and the
   /// rows whose sort value changed. Null when nothing moves.
   ///
@@ -705,6 +805,17 @@ class SpaceShortcutsNotifier extends AsyncNotifier<List<SpaceShortcut>> {
       for (final s in list)
         if (s.section == item.section) s,
     ];
+    return _planRowMove(list, item, row, toIndex);
+  }
+
+  static ({List<SpaceShortcut> list, List<SpaceShortcut> changed})?
+  _planRowMove(
+    List<SpaceShortcut> list,
+    SpaceShortcut item,
+    List<SpaceShortcut> row,
+    int toIndex,
+  ) {
+    final key = item.key;
     final from = row.indexWhere((s) => s.key == key);
     if (row.length < 2) return null;
     final to = toIndex.clamp(0, row.length - 1);
@@ -835,22 +946,37 @@ class SpaceShortcutsNotifier extends AsyncNotifier<List<SpaceShortcut>> {
     }
     final uid = _userId;
     if (uid == null || _remoteUnavailable) return;
-    final stamp = now.toUtc().toIso8601String();
+    final epoch = _sortEpoch;
     try {
-      if (rows.length == 1) {
-        final s = rows.single;
-        await _db
-            .from(_table)
-            .update({'sort_index': s.sortIndex, 'updated_at': stamp})
-            .eq('user_id', uid)
-            .eq('kind', s.kind.name)
-            .eq('target_id', s.targetId);
-      } else {
-        await _db.from(_table).upsert([
-          for (final s in rows)
-            {...s.toInsert(), 'user_id': uid, 'updated_at': stamp},
-        ], onConflict: 'user_id,kind,target_id');
-      }
+      await _sortWrites.run(
+        keys: rows.map((pin) => pin.key),
+        current: () =>
+            epoch == _sortEpoch && _userId == uid && !_remoteUnavailable
+            ? state.valueOrNull ?? const []
+            : const [],
+        blocked: (key) => _deletes.contains(key) || _restoring.contains(key),
+        write: (latest) async {
+          final now = DateTime.now();
+          final stamp = now.toUtc().toIso8601String();
+          for (final pin in latest) {
+            _pendingSort[pin.key] = (value: pin.sortIndex, at: now);
+          }
+          if (latest.length == 1) {
+            final s = latest.single;
+            await _db
+                .from(_table)
+                .update({'sort_index': s.sortIndex, 'updated_at': stamp})
+                .eq('user_id', uid)
+                .eq('kind', s.kind.name)
+                .eq('target_id', s.targetId);
+          } else {
+            await _db.from(_table).upsert([
+              for (final s in latest)
+                {...s.toInsert(), 'user_id': uid, 'updated_at': stamp},
+            ], onConflict: 'user_id,kind,target_id');
+          }
+        },
+      );
     } on PostgrestException catch (e) {
       if (_isMissingTable(e)) {
         _remoteUnavailable = true;

@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:math' as math;
 
 import 'package:chessever2/repository/gamebase/gamebase_repository.dart';
@@ -5,6 +6,8 @@ import 'package:chessever2/repository/gamebase/miniatures/miniatures_models.dart
 import 'package:chessever2/repository/supabase/game/game_repository.dart';
 import 'package:chessever2/repository/supabase/game/games.dart';
 import 'package:chessever2/repository/supabase/tour/tour_repository.dart';
+import 'package:chessever2/screens/chessboard/utils/game_share_utils.dart'
+    show classificationFromNags, legacyClassificationFromComments;
 import 'package:chessever2/screens/for_you/discovery/models/discovery_models.dart';
 import 'package:chessever2/screens/library/miniatures/miniatures_access.dart';
 import 'package:chessever2/screens/library/utils/gamebase_game_to_games_tour_model.dart';
@@ -206,28 +209,85 @@ class DiscoveryRepository {
 
   // --------------------------------------------------------- Analyzed games
 
-  /// Finished broadcast games whose PGN already carries engine evaluations
-  /// (`[%eval]`), written by the hourly report prewarm. Strongest first
-  /// (players' average rating), most recent as the tie-break.
-  ///
-  /// The PGN itself is not downloaded here: the filter runs server-side and
-  /// opening a game fetches its full PGN on the way to the board.
+  /// A small recent preview for older Discovery surfaces. The Reports screen
+  /// uses [fetchAnalyzedGamesPage] and has no age or total-result limit.
   Future<List<GamesTourModel>> fetchAnalyzedGames({
     int limit = 10,
     DateTime? now,
   }) async {
+    if (limit <= 0) return const [];
     final since = (now ?? DateTime.now()).subtract(kAnalyzedGamesWindow);
-    final rows = await client()
+    final page = await fetchAnalyzedGamesPage(
+      pageSize: limit * 3,
+      since: since,
+    );
+    return rankAnalyzedGames(page.items).take(limit).toList(growable: false);
+  }
+
+  /// Saved ChessEver reports, newest first, using only existing game columns.
+  /// The cursor advances over raw candidates even if none pass PGN validation.
+  /// Null timestamps follow dated games; id breaks ties in both groups.
+  /// These predicates/order match `games_saved_reports_page_idx`: changing
+  /// either requires checking the database plan, not only mocked HTTP tests.
+  Future<AnalyzedGamesPage> fetchAnalyzedGamesPage({
+    int pageSize = 30,
+    AnalyzedGamesCursor? after,
+    DateTime? since,
+  }) async {
+    if (pageSize <= 0) return const AnalyzedGamesPage(items: []);
+    var query = client()
         .from('games')
         .select(_analyzedGameColumns)
-        .gte('last_move_time', since.toUtc().toIso8601String())
+        .inFilter('status', _kFinalStatuses.toList(growable: false))
         .like('pgn', r'%[\%eval %')
-        .order('last_move_time', ascending: false)
-        .limit(limit * 3);
+        .or(r'pgn.like.%$24%,pgn.ilike.%chessever_annotation%');
+    if (since != null) {
+      query = query.gte('last_move_time', since.toUtc().toIso8601String());
+    }
+    if (after != null) {
+      final time = after.lastMoveTime;
+      if (time == null) {
+        query = query.isFilter('last_move_time', null).gt('id', after.gameId);
+      } else {
+        // Quoted PostgREST literals keep punctuation in ids/timestamps from
+        // changing the filter grammar. This OR is ANDed with the report filter.
+        final timestamp = jsonEncode(time);
+        final id = jsonEncode(after.gameId);
+        query = query.or(
+          'last_move_time.lt.$timestamp,'
+          'and(last_move_time.eq.$timestamp,id.gt.$id),'
+          'last_move_time.is.null',
+        );
+      }
+    }
+    final stopwatch = Stopwatch()..start();
+    final List<Map<String, dynamic>> rows;
+    try {
+      rows = await query
+          .order('last_move_time', ascending: false)
+          .order('id', ascending: true)
+          .limit(pageSize)
+          // The list has an explicit Retry action. Bound a stalled connection
+          // and avoid repeating unavailable-server requests behind the loader.
+          .retry(enabled: false, requestTimeout: const Duration(seconds: 10));
+    } catch (error) {
+      final cause = error is PostgrestException
+          ? 'database ${error.code ?? 'unknown'}'
+          : error.runtimeType.toString();
+      talker.warning(
+        '[Reports] Page request failed: $cause '
+        '(${stopwatch.elapsedMilliseconds} ms)',
+      );
+      rethrow;
+    }
 
     final finished = <GamesTourModel>[];
     for (final raw in rows) {
       try {
+        if (!_kFinalStatuses.contains(raw['status']) ||
+            !_hasSavedReport(raw['pgn'])) {
+          continue;
+        }
         final game = GamesTourModel.fromGame(
           Games.fromJson(Map<String, dynamic>.from(raw)),
         );
@@ -236,7 +296,15 @@ class DiscoveryRepository {
         talker.debug('[Discovery] skipped unreadable analyzed game: $e');
       }
     }
-    return rankAnalyzedGames(finished).take(limit).toList(growable: false);
+    return AnalyzedGamesPage(
+      items: finished,
+      nextCursor: rows.length < pageSize
+          ? null
+          : (
+              lastMoveTime: rows.last['last_move_time'] as String?,
+              gameId: rows.last['id'] as String,
+            ),
+    );
   }
 
   /// White-side engine evaluation after every annotated move of [gameId],
@@ -285,6 +353,25 @@ class DiscoveryRepository {
         .toList(growable: false);
     return (items: items, total: math.max(page.total, items.length));
   }
+}
+
+/// Shares the board's current and legacy classification readers. An evaluation
+/// and a ChessEver verdict must belong to the same played move: ordinary evals,
+/// quality glyphs and a quoted/variation-only report are not enough.
+bool _hasSavedReport(Object? pgn) {
+  if (pgn is! String || pgn.trim().isEmpty) return false;
+  final parsed = PgnGame.parseMultiGamePgn(pgn);
+  if (parsed.length != 1) return false;
+  return parsed.single.moves.mainline().any((move) {
+    final classification =
+        classificationFromNags(move.nags) ??
+        legacyClassificationFromComments(move.comments);
+    return classification != null &&
+        (move.comments?.any(
+              (comment) => PgnComment.fromPgn(comment).eval != null,
+            ) ??
+            false);
+  });
 }
 
 /// Strongest first by the two players' average rating, then most recent,
@@ -405,10 +492,10 @@ const String _gameListColumnsWithoutPgn = '''
           )
         ''';
 
-/// The broadcast game list columns (as `GameRepository` selects them) minus
-/// the PGN, plus the event names for the card's context.
+/// Broadcast card metadata and the existing PGN used to recognize saved reports.
 const String _analyzedGameColumns = '''
           id,
+          pgn,
           round_id,
           round_slug,
           tour_id,

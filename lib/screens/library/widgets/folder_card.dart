@@ -1,4 +1,7 @@
 import 'dart:math' as math;
+import 'package:chessever2/screens/collections/collections_data.dart';
+import 'package:chessever2/repository/library/library_book_publication.dart';
+import 'package:chessever2/screens/library/library_book_screen.dart';
 
 import 'package:chessever2/repository/library/library_repository.dart';
 import 'package:chessever2/repository/library/models/library_folder.dart';
@@ -83,10 +86,9 @@ class FolderCard extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     return Material(
       type: MaterialType.transparency,
-      child:
-          isExpanded
-              ? _buildExpandedCard(context, ref)
-              : _buildCompactCard(context),
+      child: isExpanded
+          ? _buildExpandedCard(context, ref)
+          : _buildCompactCard(context),
     );
   }
 
@@ -109,19 +111,15 @@ class FolderCard extends ConsumerWidget {
       );
     }
     if (folder.isDatabase) {
-      return _ChessDatabaseGlyph(
-        color: context.colors.iconPrimary,
-        size: size,
-      );
+      return _ChessDatabaseGlyph(color: context.colors.iconPrimary, size: size);
     }
     return SvgWidget(
       SvgAsset.folderOutline,
       width: size,
       height: size,
-      colorFilter:
-          context.isLightTheme
-              ? ColorFilter.mode(context.colors.iconPrimary, BlendMode.srcIn)
-              : null,
+      colorFilter: context.isLightTheme
+          ? ColorFilter.mode(context.colors.iconPrimary, BlendMode.srcIn)
+          : null,
     );
   }
 
@@ -190,13 +188,12 @@ class FolderCard extends ConsumerWidget {
         height: 16 / 12,
       );
       countWidget = twicTotalAsync.when(
-        data:
-            (count) => Text(
-              count > 0
-                  ? '${formatCompactCount(count)} master games'
-                  : 'Master games',
-              style: twicLabelStyle,
-            ),
+        data: (count) => Text(
+          count > 0
+              ? '${formatCompactCount(count)} master games'
+              : 'Master games',
+          style: twicLabelStyle,
+        ),
         loading: () => Text('Master games', style: twicLabelStyle),
         error: (_, __) => Text('Master games', style: twicLabelStyle),
       );
@@ -207,19 +204,21 @@ class FolderCard extends ConsumerWidget {
         height: 16 / 12,
       );
       countWidget = miniaturesTotalAsync.when(
-        data:
-            (count) => Text(
-              count > 0
-                  ? '${formatCompactCount(count)} miniatures'
-                  : 'Short decisive games',
-              style: miniaturesLabelStyle,
-            ),
-        loading: () => Text('Short decisive games', style: miniaturesLabelStyle),
-        error: (_, __) => Text('Short decisive games', style: miniaturesLabelStyle),
+        data: (count) => Text(
+          count > 0
+              ? '${formatCompactCount(count)} miniatures'
+              : 'Short decisive games',
+          style: miniaturesLabelStyle,
+        ),
+        loading: () =>
+            Text('Short decisive games', style: miniaturesLabelStyle),
+        error: (_, __) =>
+            Text('Short decisive games', style: miniaturesLabelStyle),
       );
     } else if (folder.isFolder) {
-      final childCount =
-          ref.watch(childLibraryFoldersProvider(folder.id)).length;
+      final childCount = ref
+          .watch(childLibraryFoldersProvider(folder.id))
+          .length;
       countWidget = Text(
         _formatChildCount(childCount),
         style: AppTypography.textXsRegular.copyWith(
@@ -230,21 +229,19 @@ class FolderCard extends ConsumerWidget {
     } else {
       final countAsync = ref.watch(folderAnalysisCountProvider(folder.id));
       countWidget = countAsync.when(
-        data:
-            (count) => Text(
-              _formatGameCount(count),
-              style: AppTypography.textXsRegular.copyWith(
-                color: context.colors.textSecondary,
-                height: 16 / 12,
-              ),
-            ),
-        loading:
-            () => Text(
-              '...',
-              style: AppTypography.textXsRegular.copyWith(
-                color: context.colors.textSecondary,
-              ),
-            ),
+        data: (count) => Text(
+          _formatGameCount(count),
+          style: AppTypography.textXsRegular.copyWith(
+            color: context.colors.textSecondary,
+            height: 16 / 12,
+          ),
+        ),
+        loading: () => Text(
+          '...',
+          style: AppTypography.textXsRegular.copyWith(
+            color: context.colors.textSecondary,
+          ),
+        ),
         error: (_, __) => const SizedBox.shrink(),
       );
     }
@@ -275,115 +272,127 @@ class FolderCard extends ConsumerWidget {
     final row = Padding(
       padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 14.h),
       child: Row(
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: [
-            // Folder icon squircle with optional shared badge
-            Stack(
-              clipBehavior: Clip.none,
-              children: [
-                Container(
-                  width: iconSize,
-                  height: iconSize,
-                  decoration: BoxDecoration(
-                    color: context.colors.surfaceRecessed,
-                    borderRadius: BorderRadius.circular(iconRadius),
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          // Folder icon squircle with optional shared badge
+          Stack(
+            clipBehavior: Clip.none,
+            children: [
+              Container(
+                width: iconSize,
+                height: iconSize,
+                decoration: BoxDecoration(
+                  color: context.colors.surfaceRecessed,
+                  borderRadius: BorderRadius.circular(iconRadius),
+                ),
+                child: Center(
+                  child: _buildNodeIcon(
+                    context,
+                    size: svgSize,
+                    isLiked: isLiked,
                   ),
-                  child: Center(
-                    child: _buildNodeIcon(
-                      context,
-                      size: svgSize,
-                      isLiked: isLiked,
+                ),
+              ),
+              // Shared link badge for subscribed books
+              if (folder.isSubscribed)
+                Positioned(
+                  right: -4,
+                  bottom: -4,
+                  child: Container(
+                    width: 18.sp,
+                    height: 18.sp,
+                    decoration: BoxDecoration(
+                      color: context.colors.surfaceRecessed,
+                      shape: BoxShape.circle,
+                      border: Border.all(
+                        color: context.colors.surface,
+                        width: 2,
+                      ),
+                    ),
+                    child: Center(
+                      child: Icon(
+                        Icons.link_rounded,
+                        size: 10.sp,
+                        color: context.colors.textSecondary,
+                      ),
                     ),
                   ),
                 ),
-                // Shared link badge for subscribed books
-                if (folder.isSubscribed)
-                  Positioned(
-                    right: -4,
-                    bottom: -4,
-                    child: Container(
-                      width: 18.sp,
-                      height: 18.sp,
-                      decoration: BoxDecoration(
-                        color: context.colors.surfaceRecessed,
-                        shape: BoxShape.circle,
-                        border: Border.all(
-                          color: context.colors.surface,
-                          width: 2,
-                        ),
-                      ),
-                      child: Center(
-                        child: Icon(
-                          Icons.link_rounded,
-                          size: 10.sp,
-                          color: context.colors.textSecondary,
-                        ),
-                      ),
-                    ),
+            ],
+          ),
+
+          SizedBox(width: 8.w),
+
+          // Folder info
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  folder.displayName,
+                  style: AppTypography.textSmMedium.copyWith(
+                    color: context.colors.textPrimary,
                   ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                if (subtitleWidget != null) subtitleWidget,
+                countWidget,
               ],
             ),
+          ),
 
-            SizedBox(width: 8.w),
-
-            // Folder info
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    folder.displayName,
-                    style: AppTypography.textSmMedium.copyWith(
-                      color: context.colors.textPrimary,
-                    ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  if (subtitleWidget != null) subtitleWidget,
-                  countWidget,
-                ],
+          if (libraryFolderCanPublish(folder))
+            IconButton(
+              key: ValueKey('publish_book_${folder.id}'),
+              tooltip: 'Publish / edit book',
+              constraints: const BoxConstraints(minWidth: 44, minHeight: 44),
+              onPressed: () => openLibraryBookEditor(context, folder),
+              icon: Icon(
+                Icons.publish_rounded,
+                size: 21.sp,
+                color: context.colors.textSecondary,
               ),
             ),
-
-            // Right arrow for protected collections (TWIC, Liked Games),
-            // plus a source-links affordance for the ChessEver master DB.
-            if (isProtected)
-              Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  if (isTwic)
-                    GestureDetector(
-                      behavior: HitTestBehavior.opaque,
-                      onTap: () {
-                        HapticFeedbackService.light();
-                        _showChessEverSourceLinksDialog(context);
-                      },
-                      child: Padding(
-                        padding: EdgeInsets.only(left: 8.w, right: 6.w),
-                        child: Icon(
-                          Icons.info_outline_rounded,
-                          color: context.colors.textPrimary.withValues(
-                            alpha: 0.7,
-                          ),
-                          size: 20.sp,
+          // Right arrow for protected collections (TWIC, Liked Games),
+          // plus a source-links affordance for the ChessEver master DB.
+          if (isProtected)
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (isTwic)
+                  GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: () {
+                      HapticFeedbackService.light();
+                      _showChessEverSourceLinksDialog(context);
+                    },
+                    child: Padding(
+                      padding: EdgeInsets.only(left: 8.w, right: 6.w),
+                      child: Icon(
+                        Icons.info_outline_rounded,
+                        color: context.colors.textPrimary.withValues(
+                          alpha: 0.7,
                         ),
+                        size: 20.sp,
                       ),
                     ),
-                  Icon(
-                    Icons.arrow_forward_ios_rounded,
-                    color: context.colors.textPrimary.withValues(alpha: 0.7),
-                    size: 20.sp,
-                    weight: 700,
                   ),
-                ],
-              )
-            else
-              // The old dots' footprint; the glyph itself is drawn by the
-              // floating target below, over this exact spot.
-              SizedBox(width: moreFootprint, height: 24.sp),
-          ],
-        ),
+                Icon(
+                  Icons.arrow_forward_ios_rounded,
+                  color: context.colors.textPrimary.withValues(alpha: 0.7),
+                  size: 20.sp,
+                  weight: 700,
+                ),
+              ],
+            )
+          else
+            // The old dots' footprint; the glyph itself is drawn by the
+            // floating target below, over this exact spot.
+            SizedBox(width: moreFootprint, height: 24.sp),
+        ],
+      ),
     );
 
     final card = _PressableMotionCard(
@@ -393,31 +402,30 @@ class FolderCard extends ConsumerWidget {
           color: context.colors.surface,
           borderRadius: BorderRadius.circular(12.br),
         ),
-        child:
-            isProtected
-                ? row
-                : Stack(
-                  clipBehavior: Clip.none,
-                  children: [
-                    row,
-                    Positioned(
-                      top: 0,
-                      bottom: 0,
-                      right: moreGlyphFromRight - _kMoreTarget / 2,
-                      width: _kMoreTarget,
-                      child: Center(
-                        child: CardMoreButton(
-                          vertical: true,
-                          tooltip: 'Folder actions',
-                          color: context.colors.textPrimary.withValues(
-                            alpha: 0.7,
-                          ),
-                          size: 24.sp,
+        child: isProtected
+            ? row
+            : Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  row,
+                  Positioned(
+                    top: 0,
+                    bottom: 0,
+                    right: moreGlyphFromRight - _kMoreTarget / 2,
+                    width: _kMoreTarget,
+                    child: Center(
+                      child: CardMoreButton(
+                        vertical: true,
+                        tooltip: 'Folder actions',
+                        color: context.colors.textPrimary.withValues(
+                          alpha: 0.7,
                         ),
+                        size: 24.sp,
                       ),
                     ),
-                  ],
-                ),
+                  ),
+                ],
+              ),
       ),
     );
 
@@ -435,76 +443,73 @@ class FolderCard extends ConsumerWidget {
     showAlertModal<void>(
       context: context,
       child: Builder(
-        builder:
-            (dialogContext) => Container(
-              constraints: BoxConstraints(
-                maxWidth: ResponsiveHelper.isTablet ? 400.w : double.infinity,
-              ),
-              padding: EdgeInsets.all(20.sp),
-              decoration: BoxDecoration(
-                color: context.colors.surface,
-                borderRadius: BorderRadius.circular(16.br),
-                border: Border.all(
-                  color: context.colors.textPrimary.withValues(alpha: 0.1),
-                  width: 1,
+        builder: (dialogContext) => Container(
+          constraints: BoxConstraints(
+            maxWidth: ResponsiveHelper.isTablet ? 400.w : double.infinity,
+          ),
+          padding: EdgeInsets.all(20.sp),
+          decoration: BoxDecoration(
+            color: context.colors.surface,
+            borderRadius: BorderRadius.circular(16.br),
+            border: Border.all(
+              color: context.colors.textPrimary.withValues(alpha: 0.1),
+              width: 1,
+            ),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'ChessEver source databases',
+                style: AppTypography.textMdMedium.copyWith(
+                  color: context.colors.textPrimary,
                 ),
               ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'ChessEver source databases',
-                    style: AppTypography.textMdMedium.copyWith(
-                      color: context.colors.textPrimary,
-                    ),
-                  ),
-                  SizedBox(height: 16.h),
-                  Text(
-                    'Links',
+              SizedBox(height: 16.h),
+              Text(
+                'Links',
+                style: AppTypography.textSmMedium.copyWith(
+                  color: context.colors.textPrimary.withValues(alpha: 0.8),
+                ),
+              ),
+              SizedBox(height: 12.h),
+              _buildSourceLink(
+                dialogContext,
+                'Lichess',
+                'https://lichess.org/',
+              ),
+              _buildSourceLink(
+                dialogContext,
+                'TWIC',
+                'https://theweekinchess.com/',
+              ),
+              _buildSourceLink(
+                dialogContext,
+                'Lumbra\'s Gigabase',
+                'https://lumbrasgigabase.com/en/download-in-pgn-format-en/',
+              ),
+              _buildSourceLink(
+                dialogContext,
+                'ChessEver',
+                'https://chessever.com/',
+              ),
+              SizedBox(height: 16.h),
+              Align(
+                alignment: Alignment.centerRight,
+                child: TextButton(
+                  onPressed: () => Navigator.of(dialogContext).pop(),
+                  child: Text(
+                    'Close',
                     style: AppTypography.textSmMedium.copyWith(
                       color: context.colors.textPrimary.withValues(alpha: 0.8),
                     ),
                   ),
-                  SizedBox(height: 12.h),
-                  _buildSourceLink(
-                    dialogContext,
-                    'Lichess',
-                    'https://lichess.org/',
-                  ),
-                  _buildSourceLink(
-                    dialogContext,
-                    'TWIC',
-                    'https://theweekinchess.com/',
-                  ),
-                  _buildSourceLink(
-                    dialogContext,
-                    'Lumbra\'s Gigabase',
-                    'https://lumbrasgigabase.com/en/download-in-pgn-format-en/',
-                  ),
-                  _buildSourceLink(
-                    dialogContext,
-                    'ChessEver',
-                    'https://chessever.com/',
-                  ),
-                  SizedBox(height: 16.h),
-                  Align(
-                    alignment: Alignment.centerRight,
-                    child: TextButton(
-                      onPressed: () => Navigator.of(dialogContext).pop(),
-                      child: Text(
-                        'Close',
-                        style: AppTypography.textSmMedium.copyWith(
-                          color: context.colors.textPrimary.withValues(
-                            alpha: 0.8,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
+                ),
               ),
-            ),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -586,14 +591,13 @@ class FolderCard extends ConsumerWidget {
       kind: SpaceShortcutKind.folder,
       targetId: folder.id,
       title: folder.displayName,
-      subtitle:
-          folder.id == kTwicBookId
-              ? 'Master games'
-              : folder.isSubscribed && folder.ownerDisplayName != null
-              ? 'by ${folder.ownerDisplayName}'
-              : folder.isFolder
-              ? 'Folder'
-              : 'Database',
+      subtitle: folder.id == kTwicBookId
+          ? 'Master games'
+          : folder.isSubscribed && folder.ownerDisplayName != null
+          ? 'by ${folder.ownerDisplayName}'
+          : folder.isFolder
+          ? 'Folder'
+          : 'Database',
       params: {
         'nodeType': folder.nodeType,
         if (folder.isSubscribed) 'subscribed': true,
@@ -647,17 +651,22 @@ class FolderCard extends ConsumerWidget {
       onSelected: () => _renameFolder(context, ref),
     );
 
+    final publication = LibraryMenuAction(
+      icon: Icons.publish_rounded,
+      label: 'Publish / edit book',
+      onSelected: () => openLibraryBookEditor(context, folder),
+    );
     final shareToken = folder.shareToken;
     if (shareToken != null) {
       // Already shared: Copy Link, Stop Sharing, Rename, My Space, Delete
       return [
+        publication,
         LibraryMenuAction(
           icon: Icons.copy_rounded,
           label: 'Copy Link',
-          onSelected:
-              isNonShareable
-                  ? explainRootOnly
-                  : () => _copyShareLink(context, shareToken),
+          onSelected: isNonShareable
+              ? explainRootOnly
+              : () => _copyShareLink(context, shareToken),
         ),
         LibraryMenuAction(
           icon: Icons.link_off_rounded,
@@ -670,13 +679,15 @@ class FolderCard extends ConsumerWidget {
       ];
     }
 
-    // Not shared: Share, Rename, My Space, Delete
+    // Publication is distinct from existing link sharing.
     return [
+      publication,
       LibraryMenuAction(
         icon: Icons.ios_share_rounded,
         label: 'Share',
-        onSelected:
-            isNonShareable ? explainRootOnly : () => _shareFolder(context, ref),
+        onSelected: isNonShareable
+            ? explainRootOnly
+            : () => _shareFolder(context, ref),
       ),
       rename,
       spaceAction,
@@ -693,10 +704,9 @@ class FolderCard extends ConsumerWidget {
       if (!context.mounted) return;
       final url = 'https://chessever.com/books/${updatedFolder.shareToken}';
       final box = context.findRenderObject() as RenderBox?;
-      final origin =
-          box != null
-              ? box.localToGlobal(Offset.zero) & box.size
-              : const Rect.fromLTWH(0, 0, 1, 1);
+      final origin = box != null
+          ? box.localToGlobal(Offset.zero) & box.size
+          : const Rect.fromLTWH(0, 0, 1, 1);
       await Share.share(url, sharePositionOrigin: origin);
     } catch (e, st) {
       talker.handle(e, st);
@@ -732,7 +742,10 @@ class FolderCard extends ConsumerWidget {
       HapticFeedbackService.error();
       showAppSnack(
         context,
-        userFacingError(e, fallback: 'Could not stop sharing. Please try again.'),
+        userFacingError(
+          e,
+          fallback: 'Could not stop sharing. Please try again.',
+        ),
         tone: AppSnackTone.danger,
       );
     }
@@ -754,7 +767,10 @@ class FolderCard extends ConsumerWidget {
       HapticFeedbackService.error();
       showAppSnack(
         context,
-        userFacingError(e, fallback: 'Could not unsubscribe. Please try again.'),
+        userFacingError(
+          e,
+          fallback: 'Could not unsubscribe. Please try again.',
+        ),
         tone: AppSnackTone.danger,
       );
     }
@@ -783,20 +799,24 @@ class FolderCard extends ConsumerWidget {
       HapticFeedbackService.error();
       showAppSnack(
         context,
-        userFacingError(e, fallback: 'Could not rename this item. Please try again.'),
+        userFacingError(
+          e,
+          fallback: 'Could not rename this item. Please try again.',
+        ),
         tone: AppSnackTone.danger,
       );
     }
   }
 
   Future<void> _deleteFolder(BuildContext context, WidgetRef ref) async {
+    // The source stream can remove this card before the delete future returns.
+    final container = ProviderScope.containerOf(context, listen: false);
     final confirmed = await showSmoothConfirmDialog(
       context: context,
       title: 'Delete ${folder.isFolder ? 'folder' : 'database'}?',
-      message:
-          folder.isFolder
-              ? 'This permanently deletes the folder and every database inside it. This cannot be undone.'
-              : 'This permanently deletes the database and every game inside it. This cannot be undone.',
+      message: folder.isFolder
+          ? 'This permanently deletes the folder and every database inside it. This cannot be undone.'
+          : 'This permanently deletes the database and every game inside it. This cannot be undone.',
       confirmText: 'Delete',
       isDangerous: true,
     );
@@ -804,12 +824,17 @@ class FolderCard extends ConsumerWidget {
     if (confirmed != true) return;
 
     try {
-      final repo = ref.read(libraryRepositoryProvider);
-      await repo.deleteFolder(folder.id);
-      ref.invalidate(libraryFoldersStreamProvider);
+      final repo = container.read(libraryRepositoryProvider);
+      await deleteLibraryFolderWithPublications(
+        folder: folder,
+        publisher: container.read(libraryBookPublisherProvider),
+        deleteFolder: repo.deleteFolder,
+      );
+      container.invalidate(collectionsRepositoryProvider);
+      container.invalidate(libraryFoldersStreamProvider);
       // Deleting a folder cascades its analyses; any parent folder's
       // recursive count must be re-queried.
-      ref.invalidate(folderAnalysisCountProvider);
+      container.invalidate(folderAnalysisCountProvider);
       if (!context.mounted) return;
       HapticFeedbackService.success();
       showAppSnack(
@@ -822,7 +847,12 @@ class FolderCard extends ConsumerWidget {
       HapticFeedbackService.error();
       showAppSnack(
         context,
-        userFacingError(e, fallback: 'Could not delete this item. Please try again.'),
+        e is LibraryBookPublicationException
+            ? e.message
+            : userFacingError(
+                e,
+                fallback: 'Could not delete this item. Please try again.',
+              ),
         tone: AppSnackTone.danger,
       );
     }
@@ -891,32 +921,28 @@ class _ChessDatabaseGlyphPainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     canvas.save();
     canvas.scale(size.width / 20, size.height / 20);
-    final stroke =
-        Paint()
-          ..color = color
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = 1.45
-          ..strokeCap = StrokeCap.round
-          ..strokeJoin = StrokeJoin.round;
-    final fill =
-        Paint()
-          ..color = color.withValues(alpha: 0.14)
-          ..style = PaintingStyle.fill;
-    final squareFill =
-        Paint()
-          ..color = color.withValues(alpha: 0.42)
-          ..style = PaintingStyle.fill;
+    final stroke = Paint()
+      ..color = color
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.45
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round;
+    final fill = Paint()
+      ..color = color.withValues(alpha: 0.14)
+      ..style = PaintingStyle.fill;
+    final squareFill = Paint()
+      ..color = color.withValues(alpha: 0.42)
+      ..style = PaintingStyle.fill;
 
     final body = Rect.fromLTWH(3.2, 4.4, 13.6, 11.8);
     final top = Rect.fromLTWH(3.2, 2.2, 13.6, 5.0);
     final bottom = Rect.fromLTWH(3.2, 13.7, 13.6, 4.8);
 
-    final path =
-        Path()
-          ..moveTo(body.left, top.center.dy)
-          ..lineTo(body.left, bottom.center.dy)
-          ..arcTo(bottom, math.pi, -math.pi, false)
-          ..lineTo(body.right, top.center.dy);
+    final path = Path()
+      ..moveTo(body.left, top.center.dy)
+      ..lineTo(body.left, bottom.center.dy)
+      ..arcTo(bottom, math.pi, -math.pi, false)
+      ..lineTo(body.right, top.center.dy);
 
     canvas.drawPath(path, fill);
     canvas.drawOval(top, fill);
@@ -927,11 +953,10 @@ class _ChessDatabaseGlyphPainter extends CustomPainter {
     const cell = 2.25;
     final boardLeft = body.left + 4.55;
     final boardTop = body.top + 5.25;
-    final boardStroke =
-        Paint()
-          ..color = color.withValues(alpha: 0.72)
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = 0.75;
+    final boardStroke = Paint()
+      ..color = color.withValues(alpha: 0.72)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 0.75;
     final board = Rect.fromLTWH(boardLeft, boardTop, cell * 2, cell * 2);
     canvas.drawRect(board, boardStroke);
     canvas.drawRect(Rect.fromLTWH(boardLeft, boardTop, cell, cell), squareFill);

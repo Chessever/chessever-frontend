@@ -1,6 +1,5 @@
 import 'dart:async';
 
-import 'package:chessever2/providers/favorite_players_provider.dart';
 import 'package:chessever2/screens/my_space/actions/space_player_actions.dart'
     show spacePlayerRemover;
 import 'package:chessever2/screens/group_event/smart_event/smart_event_builder_sheet.dart';
@@ -36,6 +35,9 @@ Future<void> showSpaceAddSheet(
   WidgetRef ref,
   SpaceSection section,
 ) async {
+  if (!section.supportsAddingToMySpace) {
+    return;
+  }
   final messenger = ScaffoldMessenger.maybeOf(context);
   final navigator = Navigator.of(context);
   final container = ProviderScope.containerOf(context, listen: false);
@@ -143,6 +145,10 @@ class _SpaceAddSheetState extends ConsumerState<SpaceAddSheet> {
   }
 
   Future<void> _toggle(SpaceShortcut draft) async {
+    if (!draft.canAddToMySpace &&
+        !ref.read(spaceShortcutExistsProvider(draft.key))) {
+      return;
+    }
     final store = ref.read(spaceShortcutsProvider.notifier);
     final session = ref.read(spaceSheetSessionProvider.notifier);
     if (_notice != null) setState(() => _notice = null);
@@ -164,9 +170,8 @@ class _SpaceAddSheetState extends ConsumerState<SpaceAddSheet> {
   }
 
   /// A player row works on My Space's Players, not on a pin alone: a player
-  /// shown there (pinned, or followed) leaves it (pins removed, the follow
-  /// hidden, never unfollowed), and a followed player hidden from it comes
-  /// back as the follow it is. False when it is an ordinary pin to add.
+  /// shown there (pinned, or followed) leaves it: pins removed, the follow
+  /// hidden, never unfollowed. A player not shown is added by _toggle.
   Future<bool> _togglePlayer(SpaceShortcut draft) async {
     final session = ref.read(spaceSheetSessionProvider.notifier);
     final identity = spacePlayerIdentityOf(draft);
@@ -179,17 +184,7 @@ class _SpaceAddSheetState extends ConsumerState<SpaceAddSheet> {
       }
       return true;
     }
-    final follow = spaceFollowOf(
-      ref.read(favoritePlayersProviderNew).valueOrNull ?? const [],
-      identity,
-    );
-    if (follow == null) return false;
-    final key = spaceHiddenFavoriteKey(follow);
-    ref.read(spaceHiddenAutoKeysProvider.notifier).unhide(key);
-    session.update((s) => s?.withAdded(draft.key).withUnhidden(key));
-    HapticFeedbackService.success();
-    widget.onAdded?.call(draft);
-    return true;
+    return false;
   }
 
   void _say(String notice) {

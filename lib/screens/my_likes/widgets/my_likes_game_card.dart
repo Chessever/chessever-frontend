@@ -112,6 +112,8 @@ class MyLikesGameCard extends ConsumerWidget {
           deleteLabel: 'Remove from likes',
           deleteIcon: Icons.heart_broken_rounded,
           locked: true,
+          showSpaceAction: false,
+          showShareAction: false,
         ),
       );
     } else {
@@ -127,6 +129,8 @@ class MyLikesGameCard extends ConsumerWidget {
           onDelete: onRemove,
           deleteLabel: 'Remove from likes',
           deleteIcon: Icons.heart_broken_rounded,
+          showSpaceAction: false,
+          showShareAction: false,
         ),
         child: buildCard(
           trailing: CardMoreButton(size: LibraryGameCard.trailingGlyphSize),
@@ -138,8 +142,7 @@ class MyLikesGameCard extends ConsumerWidget {
       dismissKey: ValueKey('mylikes_remove_${analysis.id}'),
       icon: Icons.heart_broken_rounded,
       label: 'Remove',
-      backgroundColor:
-          context.isLightTheme ? context.colors.danger : kRedColor,
+      backgroundColor: context.isLightTheme ? context.colors.danger : kRedColor,
       behavior: SwipeActionBehavior.dismiss,
       onAction: onRemove,
       child: content,

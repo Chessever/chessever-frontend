@@ -24,10 +24,19 @@ LibraryMenuAction spaceMenuAction({
   required WidgetRef ref,
   required SpaceShortcut draft,
 }) {
+  final inSpace = ref.read(spaceShortcutExistsProvider(draft.key));
+  if (!inSpace && !draft.canAddToMySpace) {
+    return LibraryMenuAction(
+      icon: Icons.dashboard_customize_outlined,
+      label: 'Add to My Space',
+      visible: false,
+      enabled: false,
+      onSelected: () {},
+    );
+  }
   if (draft.kind == SpaceShortcutKind.player) {
     return _playerMenuAction(context: context, ref: ref, draft: draft);
   }
-  final inSpace = ref.read(spaceShortcutExistsProvider(draft.key));
   final notifier = ref.read(spaceShortcutsProvider.notifier);
   final messenger = ScaffoldMessenger.maybeOf(context);
   return LibraryMenuAction(
@@ -66,8 +75,8 @@ LibraryMenuAction spaceMenuAction({
 /// default, so a player is in My Space when pinned or when followed and not
 /// taken out of it ([spaceShortcutExistsProvider]). Remove takes out both:
 /// the pin leaves and the follow is hidden from My Space on this device,
-/// never unfollowed; one Undo brings both back. Add brings a hidden follow
-/// back as the follow it is, and pins a player nobody follows.
+/// never unfollowed; one Undo brings both back. Only existing entries reach
+/// this action: new player additions are hidden by [spaceMenuAction].
 LibraryMenuAction _playerMenuAction({
   required BuildContext context,
   required WidgetRef ref,
@@ -141,6 +150,7 @@ Future<bool> toggleSpaceShortcut({
 }) async {
   final notifier = ref.read(spaceShortcutsProvider.notifier);
   final wasIn = ref.read(spaceShortcutExistsProvider(draft.key));
+  if (!wasIn && !draft.canAddToMySpace) return false;
   final action = spaceMenuAction(context: context, ref: ref, draft: draft);
   await action.onSelected();
   // A player can be in My Space by a follow alone, which no pin records.

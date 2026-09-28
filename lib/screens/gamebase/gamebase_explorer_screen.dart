@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:math' as math;
 
+import 'package:chessever2/screens/chessboard/utils/move_hold_repeater.dart';
 import 'package:chessever2/e2e/e2e_ids.dart';
 import 'package:chessever2/revenue_cat_service/subscribe_state.dart';
 import 'package:chessever2/screens/board_editor/board_editor_screen.dart';
@@ -133,8 +134,8 @@ class _GamebaseExplorerScreenState extends ConsumerState<GamebaseExplorerScreen>
   bool _isFlipped = false;
   bool _routeActive = true;
   bool _appIsResumed = true;
-  Timer? _backwardLongPressTimer;
-  Timer? _forwardLongPressTimer;
+  final _backwardMoveHold = MoveHoldRepeater();
+  final _forwardMoveHold = MoveHoldRepeater();
   final GlobalKey<TooltipState> _viewsCoachmarkKey = GlobalKey<TooltipState>();
   final GlobalKey<TooltipState> _editorCoachmarkKey = GlobalKey<TooltipState>();
 
@@ -337,87 +338,57 @@ class _GamebaseExplorerScreenState extends ConsumerState<GamebaseExplorerScreen>
   }
 
   void _startLongPressBackward() {
-    _backwardLongPressTimer?.cancel();
-    _backwardLongPressTimer = Timer.periodic(
-      const Duration(milliseconds: 130),
-      (_) {
-        final focusState = ref.read(explorerFocusedGameProvider);
-        if (focusState != null) {
-          if (!focusState.canGoBackward) {
-            _stopLongPressBackward();
-            return;
-          }
-          ref.read(explorerFocusedGameProvider.notifier).backward();
-          return;
-        }
-        final preview = ref.read(explorerEvalProvider).pvPreview;
-        if (preview != null) {
-          if (!preview.canMoveBackward) {
-            _stopLongPressBackward();
-            return;
-          }
-          ref.read(explorerEvalProvider.notifier).navigateLockedPvBackward();
-          return;
-        }
-        final currentState = ref.read(gamebaseExplorerProvider);
-        if (!currentState.canGoBack) {
-          _stopLongPressBackward();
-          return;
-        }
-        ref.read(gamebaseExplorerProvider.notifier).goBack();
-      },
-    );
-  }
-
-  void _stopLongPressBackward() {
-    _backwardLongPressTimer?.cancel();
-    _backwardLongPressTimer = null;
-  }
-
-  void _startLongPressForward() {
-    _forwardLongPressTimer?.cancel();
-    _forwardLongPressTimer = Timer.periodic(const Duration(milliseconds: 130), (
-      _,
-    ) {
+    _forwardMoveHold.stop();
+    _backwardMoveHold.start(() {
       final focusState = ref.read(explorerFocusedGameProvider);
       if (focusState != null) {
-        if (!focusState.canGoForward) {
-          _stopLongPressForward();
-          return;
-        }
-        ref.read(explorerFocusedGameProvider.notifier).forward();
-        return;
+        if (!focusState.canGoBackward) return MoveHoldStep.end;
+        ref.read(explorerFocusedGameProvider.notifier).backward();
+        return MoveHoldStep.moved;
       }
       final preview = ref.read(explorerEvalProvider).pvPreview;
       if (preview != null) {
-        if (!preview.canMoveForward) {
-          _stopLongPressForward();
-          return;
-        }
-        ref.read(explorerEvalProvider.notifier).navigateLockedPvForward();
-        return;
+        if (!preview.canMoveBackward) return MoveHoldStep.end;
+        ref.read(explorerEvalProvider.notifier).navigateLockedPvBackward();
+        return MoveHoldStep.moved;
       }
-      final currentState = ref.read(gamebaseExplorerProvider);
-      if (!currentState.canGoForward) {
-        _stopLongPressForward();
-        return;
-      }
-      // About to cross the free-tier boundary — halt the auto-repeat and
-      // surface the paywall instead of silently parking the user on a
-      // blurred panel.
-      if (_forwardStepWouldCrossFreeLimit()) {
-        _stopLongPressForward();
-        unawaited(requirePremiumGuard(context, ref));
-        return;
-      }
-      ref.read(gamebaseExplorerProvider.notifier).goForward();
+      final current = ref.read(gamebaseExplorerProvider);
+      if (!current.canGoBack) return MoveHoldStep.end;
+      ref.read(gamebaseExplorerProvider.notifier).goBack();
+      return MoveHoldStep.moved;
     });
   }
 
-  void _stopLongPressForward() {
-    _forwardLongPressTimer?.cancel();
-    _forwardLongPressTimer = null;
+  void _stopLongPressBackward() => _backwardMoveHold.stop();
+
+  void _startLongPressForward() {
+    _backwardMoveHold.stop();
+    _forwardMoveHold.start(() {
+      final focusState = ref.read(explorerFocusedGameProvider);
+      if (focusState != null) {
+        if (!focusState.canGoForward) return MoveHoldStep.end;
+        ref.read(explorerFocusedGameProvider.notifier).forward();
+        return MoveHoldStep.moved;
+      }
+      final preview = ref.read(explorerEvalProvider).pvPreview;
+      if (preview != null) {
+        if (!preview.canMoveForward) return MoveHoldStep.end;
+        ref.read(explorerEvalProvider.notifier).navigateLockedPvForward();
+        return MoveHoldStep.moved;
+      }
+      final current = ref.read(gamebaseExplorerProvider);
+      if (!current.canGoForward) return MoveHoldStep.end;
+      // Retain the free-tier boundary: a hold cannot run past the paywall.
+      if (_forwardStepWouldCrossFreeLimit()) {
+        unawaited(requirePremiumGuard(context, ref));
+        return MoveHoldStep.end;
+      }
+      ref.read(gamebaseExplorerProvider.notifier).goForward();
+      return MoveHoldStep.moved;
+    });
   }
+
+  void _stopLongPressForward() => _forwardMoveHold.stop();
 
   /// Returns true when a single forward ply from the current explorer state
   /// would land past the free-tier move limit for a non-subscriber.
@@ -888,6 +859,7 @@ class _GamebaseExplorerScreenState extends ConsumerState<GamebaseExplorerScreen>
             return [
               for (final item in [
                 ...explorerBoardMenuItems,
+                if (inSpace)
                 ExplorerBoardMenuItem(
                   action: ExplorerBoardMenuAction.addToSpace,
                   label:

@@ -2,6 +2,7 @@ import 'dart:math' as math;
 
 import 'package:chessever2/chat/botvinnik_icon.dart';
 import 'package:chessever2/screens/my_space/models/space_shortcut.dart';
+import 'package:chessever2/screens/my_space/providers/space_edit_mode_provider.dart';
 import 'package:chessever2/screens/my_space/widgets/space_door_actions.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/utils/app_typography.dart';
@@ -14,33 +15,37 @@ import 'package:motor/motor.dart';
 /// What the add button offers, in the order the page lists its groups.
 const List<({IconData icon, String label, SpaceSection section})>
 kSpaceAddChoices = [
-  (
-    icon: Icons.emoji_events_outlined,
-    label: 'Event',
-    section: SpaceSection.events,
-  ),
-  (
-    icon: Icons.person_outline_rounded,
-    label: 'Player',
-    section: SpaceSection.players,
-  ),
-  (icon: Icons.grid_view_outlined, label: 'Game', section: SpaceSection.games),
-  (
-    icon: Icons.auto_stories_outlined,
-    label: 'Opening',
-    section: SpaceSection.openings,
-  ),
-  (
-    icon: Icons.dns_outlined,
-    label: 'Database',
-    section: SpaceSection.library,
-  ),
+  // Product scope: retain these entry points for later re-enablement.
+  // (
+  //   icon: Icons.emoji_events_outlined,
+  //   label: 'Event',
+  //   section: SpaceSection.events,
+  // ),
+  // (
+  //   icon: Icons.person_outline_rounded,
+  //   label: 'Player',
+  //   section: SpaceSection.players,
+  // ),
+  // (icon: Icons.grid_view_outlined, label: 'Game', section: SpaceSection.games),
+  // (
+  //   icon: Icons.auto_stories_outlined,
+  //   label: 'Opening',
+  //   section: SpaceSection.openings,
+  // ),
+  (icon: Icons.dns_outlined, label: 'Database', section: SpaceSection.library),
   (
     icon: Icons.filter_none_outlined,
     label: 'Smart event',
     section: SpaceSection.smartEvents,
   ),
 ];
+
+class _SpaceAddAction {
+  const _SpaceAddAction.add(this.section) : edit = false;
+  const _SpaceAddAction.edit() : section = null, edit = true;
+  final SpaceSection? section;
+  final bool edit;
+}
 
 /// My Space's add button, in the floating slot Botvinnik's launcher holds on
 /// the other pages and cut from the same ink (surface, lit lip, one-light
@@ -97,17 +102,27 @@ class _SpaceAddFabState extends ConsumerState<SpaceAddFab>
     final anchor = box.localToGlobal(Offset.zero) & box.size;
     setState(() => _open = true);
     _setTurn(1);
-    final picked = await Navigator.of(
-      context,
-    ).push<SpaceSection?>(_SpaceAddPopoverRoute(anchor: anchor));
+    final picked = await Navigator.of(context).push<_SpaceAddAction>(
+      _SpaceAddPopoverRoute(
+        anchor: anchor,
+        editing: ref.read(spaceEditModeProvider),
+      ),
+    );
     if (!mounted) return;
     setState(() => _open = false);
     _setTurn(0);
-    if (picked != null) await openSpaceAdd(context, ref, picked);
+    if (picked?.edit == true) {
+      final mode = ref.read(spaceEditModeProvider.notifier);
+      mode.state = !mode.state;
+    } else if (picked?.section case final section?) {
+      ref.read(spaceEditModeProvider.notifier).state = false;
+      await openSpaceAdd(context, ref, section);
+    }
   }
 
   @override
   Widget build(BuildContext context) {
+    ref.watch(spaceEditModeProvider);
     final light = context.isLightTheme;
     final reduce = MediaQuery.disableAnimationsOf(context);
     // The launcher's own side, so the swap between the two never shifts.
@@ -248,11 +263,12 @@ class _RoundLipPainter extends CustomPainter {
 
 /// The popover as a route: back and the scrim both close it, and it sits
 /// over the whole page (bottom bar included) while it is open.
-class _SpaceAddPopoverRoute extends PopupRoute<SpaceSection?> {
-  _SpaceAddPopoverRoute({required this.anchor});
+class _SpaceAddPopoverRoute extends PopupRoute<_SpaceAddAction> {
+  _SpaceAddPopoverRoute({required this.anchor, required this.editing});
 
   /// The add button's rect in global coordinates.
   final Rect anchor;
+  final bool editing;
 
   @override
   Color? get barrierColor => null;
@@ -275,13 +291,14 @@ class _SpaceAddPopoverRoute extends PopupRoute<SpaceSection?> {
     BuildContext context,
     Animation<double> animation,
     Animation<double> secondaryAnimation,
-  ) => _SpaceAddPopover(anchor: anchor);
+  ) => _SpaceAddPopover(anchor: anchor, editing: editing);
 }
 
 class _SpaceAddPopover extends StatefulWidget {
-  const _SpaceAddPopover({required this.anchor});
+  const _SpaceAddPopover({required this.anchor, required this.editing});
 
   final Rect anchor;
+  final bool editing;
 
   @override
   State<_SpaceAddPopover> createState() => _SpaceAddPopoverState();
@@ -320,7 +337,7 @@ class _SpaceAddPopoverState extends State<_SpaceAddPopover>
     super.dispose();
   }
 
-  void _close([SpaceSection? picked]) {
+  void _close([_SpaceAddAction? picked]) {
     if (_closing) return;
     _closing = true;
     if (picked != null) HapticFeedbackService.selection();
@@ -373,26 +390,43 @@ class _SpaceAddPopoverState extends State<_SpaceAddPopover>
         ],
       ),
       padding: const EdgeInsets.symmetric(vertical: 8),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 6, 16, 6),
-            child: Text(
-              'Add to My Space',
-              style: AppTypography.textXsMedium.copyWith(
-                color: colors.textSecondary,
+      constraints: BoxConstraints(
+        maxHeight: math.max(
+          44,
+          anchor.top -
+              MediaQuery.paddingOf(context).top -
+              _gap -
+              _pointerHeight -
+              8,
+        ),
+      ),
+      child: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 6, 16, 6),
+              child: Text(
+                'Add to My Space',
+                style: AppTypography.textXsMedium.copyWith(
+                  color: colors.textSecondary,
+                ),
               ),
             ),
-          ),
-          for (final choice in kSpaceAddChoices)
+            for (final choice in kSpaceAddChoices)
+              _PopoverRow(
+                icon: choice.icon,
+                label: choice.label,
+                onTap: () => _close(_SpaceAddAction.add(choice.section)),
+              ),
             _PopoverRow(
-              icon: choice.icon,
-              label: choice.label,
-              onTap: () => _close(choice.section),
+              icon: widget.editing ? Icons.check_rounded : Icons.edit_outlined,
+              label: widget.editing ? 'Done editing' : 'Edit',
+              onTap: () => _close(const _SpaceAddAction.edit()),
             ),
-        ],
+          ],
+        ),
       ),
     );
 

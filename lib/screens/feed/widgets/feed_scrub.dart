@@ -400,8 +400,9 @@ class _FeedScrubStripState extends State<FeedScrubStrip> {
                         TapGestureRecognizer
                       >(
                         () => TapGestureRecognizer(debugOwner: this),
-                        (recognizer) => recognizer.onTapUp = ((d) =>
-                            _seek(d.localPosition.dx)),
+                        (recognizer) =>
+                            recognizer.onTapUp = ((d) =>
+                                _seek(d.localPosition.dx)),
                       ),
                 HorizontalDragGestureRecognizer:
                     GestureRecognizerFactoryWithHandlers<
@@ -419,9 +420,8 @@ class _FeedScrubStripState extends State<FeedScrubStrip> {
                         // Parenthesised: an unwrapped arrow body swallows the
                         // following cascade sections.
                         ..onStart = ((d) => _begin(d.localPosition.dx))
-                        ..onUpdate = ((d) => widget.onUpdate(
-                          _fractionFor(d.localPosition.dx),
-                        ))
+                        ..onUpdate = ((d) =>
+                            widget.onUpdate(_fractionFor(d.localPosition.dx)))
                         ..onEnd = ((_) => widget.onEnd())
                         ..onCancel = (() {
                           if (widget.scrubbing) widget.onEnd();
@@ -439,11 +439,9 @@ class _FeedScrubStripState extends State<FeedScrubStrip> {
                       ),
                       (recognizer) => recognizer
                         ..gestureSettings = gestureSettings
-                        ..onLongPressStart = ((d) =>
-                            _begin(d.localPosition.dx))
-                        ..onLongPressMoveUpdate = ((d) => widget.onUpdate(
-                          _fractionFor(d.localPosition.dx),
-                        ))
+                        ..onLongPressStart = ((d) => _begin(d.localPosition.dx))
+                        ..onLongPressMoveUpdate = ((d) =>
+                            widget.onUpdate(_fractionFor(d.localPosition.dx)))
                         ..onLongPressEnd = ((_) => widget.onEnd())
                         // Only a pointer cancelled mid-scrub lands here with
                         // a scrub to end.
@@ -673,14 +671,105 @@ class _BubbleLayout extends SingleChildLayoutDelegate {
       old.x != x || old.min != min || old.max != max;
 }
 
-/// Report chart that rises over the lower half of a clip while scrubbing a
-/// game that has evals: the eval curve, the error dots and a cursor on the
-/// scrubbed ply, under one line that says the move, its class and the eval.
-///
-/// It stands right over the scrub track ([run]) and lays its x axis on the
-/// thumb's run, so the cursor is always straight above the thumb the finger
-/// drives. Each fact is said once: the move and its eval here, where it
-/// sits in the game in the counter under it.
+/// The recorded game evaluation, always in its own slot above the scrub bar.
+/// Missing or hidden evaluations are stated explicitly instead of drawing a
+/// synthetic flat curve. The existing scrub strip remains the move control.
+class FeedEvaluationGraph extends StatelessWidget {
+  const FeedEvaluationGraph({
+    required this.item,
+    required this.ply,
+    required this.showEvaluations,
+    required this.onSeek,
+    super.key,
+  });
+
+  final FeedItem item;
+  final int ply;
+  final bool showEvaluations;
+  final ValueChanged<double> onSeek;
+
+  static double heightFor(TextScaler scaler) =>
+      FeedReportOverlay.infoHeightFor(scaler) +
+      10 +
+      FeedReportOverlay.chartHeight +
+      9;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.colors;
+    final hasCurve = showEvaluations && item.hasEvals;
+    final unavailable = showEvaluations
+        ? 'No recorded evaluation'
+        : 'Evaluation hidden';
+    return SizedBox(
+      key: const ValueKey('feed_evaluation_graph'),
+      height: heightFor(MediaQuery.textScalerOf(context)),
+      child: Column(
+        children: [
+          FeedMoveInfoRow(
+            item: item,
+            ply: ply,
+            trailing: hasCurve ? feedEvalText(item, ply) : '',
+            height: FeedReportOverlay.infoHeightFor(
+              MediaQuery.textScalerOf(context),
+            ),
+          ),
+          const SizedBox(height: 10),
+          SizedBox(
+            key: const ValueKey('feed_report_chart'),
+            height: FeedReportOverlay.chartHeight,
+            width: double.infinity,
+            child: hasCurve
+                ? LayoutBuilder(
+                    builder: (context, constraints) {
+                      double fraction(double x) =>
+                          ((x - FeedScrubStrip.thumbInset) /
+                                  math.max(
+                                    1.0,
+                                    constraints.maxWidth -
+                                        2 * FeedScrubStrip.thumbInset,
+                                  ))
+                              .clamp(0.0, 1.0);
+                      return Semantics(
+                        label: 'Game evaluation graph',
+                        hint:
+                            'Tap to choose a move. Drag the progress bar to scrub.',
+                        child: GestureDetector(
+                          behavior: HitTestBehavior.opaque,
+                          onTapUp: (details) =>
+                              onSeek(fraction(details.localPosition.dx)),
+                          child: CustomPaint(
+                            painter: _ReportChartPainter(
+                              item: item,
+                              ply: ply,
+                              inset: FeedScrubStrip.thumbInset,
+                              surface: colors.surfaceRecessed,
+                              grid: colors.divider,
+                              ink: colors.textPrimary,
+                              cursor: colors.accentText,
+                            ),
+                          ),
+                        ),
+                      );
+                    },
+                  )
+                : Center(
+                    child: Text(
+                      unavailable,
+                      textAlign: TextAlign.center,
+                      style: AppTypography.textSmRegular.copyWith(
+                        color: colors.textSecondary,
+                      ),
+                    ),
+                  ),
+          ),
+          const SizedBox(height: 9),
+        ],
+      ),
+    );
+  }
+}
+
 class FeedReportOverlay extends StatelessWidget {
   const FeedReportOverlay({
     required this.item,

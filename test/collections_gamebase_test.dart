@@ -177,6 +177,7 @@ class _FakeGamebase extends GamebaseRepository {
     String slug, {
     String? section,
     String? playerKey,
+    String? eco,
     bool includePgn = false,
     int limit = 100,
     int offset = 0,
@@ -288,7 +289,9 @@ void main() {
             'result': null,
             'plyCount': null,
           },
-          {'white': {'name': 'no id'}},
+          {
+            'white': {'name': 'no id'},
+          },
         ],
         'total': '2',
         'limit': 100,
@@ -506,10 +509,7 @@ void main() {
       expect(groups.map((g) => g.depth), [0, 1, 0, 1, 0]);
       expect(groups[0].games, isEmpty, reason: 'a part only leads');
       expect(groups.map((g) => g.offset), [0, 0, 1, 1, 2]);
-      expect(
-        groups.expand((g) => g.games).map((g) => g.id),
-        ['g1', 'g3', 'u'],
-      );
+      expect(groups.expand((g) => g.games).map((g) => g.id), ['g1', 'g3', 'u']);
     });
 
     test('no sections: one headerless group', () {

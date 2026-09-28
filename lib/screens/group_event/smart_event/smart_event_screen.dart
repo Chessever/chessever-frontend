@@ -729,7 +729,7 @@ class _AppBar extends ConsumerWidget {
                   ? (isDirty
                       ? Icons.check_circle_outline_rounded
                       : Icons.remove_circle_outline_rounded)
-                  : Icons.add_circle_outline_rounded,
+                  : Icons.bookmark_border_rounded,
               color: context.colors.textPrimary,
             ),
             onPressed: () async {

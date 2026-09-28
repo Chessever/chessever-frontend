@@ -182,8 +182,11 @@ class EcoFilterDropdown extends StatefulWidget {
     super.key,
     required this.value,
     required this.onChanged,
+    this.exactCodesOnly = false,
   });
 
+  /// Limit choices to exact codes for catalogs that do not accept ECO families.
+  final bool exactCodesOnly;
   final GameEcoFilter value;
   final ValueChanged<GameEcoFilter> onChanged;
 
@@ -222,7 +225,9 @@ class _EcoFilterDropdownState extends State<EcoFilterDropdown>
   @override
   void initState() {
     super.initState();
-    _browseRoots = _buildEcoBrowseTree(browseOpeningSuggestions());
+    _browseRoots = _buildEcoBrowseTree(
+      _supportedSuggestions(browseOpeningSuggestions()),
+    );
     _resetBrowseDisclosure(widget.value);
     _animationController = AnimationController(
       duration: const Duration(milliseconds: 250),
@@ -360,10 +365,16 @@ class _EcoFilterDropdownState extends State<EcoFilterDropdown>
     return wcagContrast(white, fill) >= wcagContrast(ink, fill) ? white : ink;
   }
 
+  List<OpeningSearchSuggestion> _supportedSuggestions(
+    List<OpeningSearchSuggestion> suggestions,
+  ) => widget.exactCodesOnly
+      ? suggestions.where((s) => !s.isFamily).toList(growable: false)
+      : suggestions;
+
   List<OpeningSearchSuggestion> _getOpeningSuggestions() {
     final query = _searchQuery.trim();
     if (query.isEmpty) return browseOpeningSuggestions();
-    return searchOpeningSuggestions(query);
+    return _supportedSuggestions(searchOpeningSuggestions(query));
   }
 
   @override

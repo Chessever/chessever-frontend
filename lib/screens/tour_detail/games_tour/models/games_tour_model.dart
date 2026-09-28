@@ -559,8 +559,8 @@ class GamesTourModel {
   /// Effective game status with fallback detection for finished games
   /// When DB hasn't updated but game is actually finished (clock at 00:00 with moves played)
   GameStatus get effectiveGameStatus {
-    // If game is already marked as finished, return that status
-    if (gameStatus.isFinished) {
+    // Stored PGNs keep their supplied result; missing clocks cannot decide it.
+    if (gameStatus.isFinished || source != GameSource.supabase) {
       return gameStatus;
     }
 

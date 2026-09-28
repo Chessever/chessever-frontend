@@ -968,6 +968,7 @@ class DiscoveryAction extends StatelessWidget {
     );
     final row = Row(
       mainAxisSize: MainAxisSize.min,
+      mainAxisAlignment: MainAxisAlignment.center,
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         if (lead == DiscoveryActionLead.plus) ...[
@@ -981,11 +982,15 @@ class DiscoveryAction extends StatelessWidget {
     );
     // A 44 floor, the text centred in it on one line; a second line grows
     // the target downwards.
+    final target = math.max(44.0, 44.w);
     final body = DiscoveryInkFloor(
-      minHeight: 44.w,
-      inset: math.max(0, (44.w - line) / 2),
+      minHeight: target,
+      inset: math.max(0, (target - line) / 2),
       endsSection: endsSection,
-      child: row,
+      child: ConstrainedBox(
+        constraints: BoxConstraints(minWidth: target),
+        child: row,
+      ),
     );
 
     return Semantics(
@@ -1511,8 +1516,7 @@ class DiscoverySectionSlot extends SingleChildRenderObjectWidget {
   const DiscoverySectionSlot({super.key, super.child});
 
   @override
-  RenderObject createRenderObject(BuildContext context) =>
-      _RenderSectionSlot();
+  RenderObject createRenderObject(BuildContext context) => _RenderSectionSlot();
 }
 
 class _RenderSectionSlot extends RenderProxyBox {
@@ -1564,8 +1568,7 @@ class _RenderSectionSlot extends RenderProxyBox {
     // included.
     final reach = child?.size ?? size;
     if (!(Offset.zero & reach).contains(position)) return false;
-    if (hitTestChildren(result, position: position) ||
-        hitTestSelf(position)) {
+    if (hitTestChildren(result, position: position) || hitTestSelf(position)) {
       result.add(BoxHitTestEntry(this, position));
       return true;
     }

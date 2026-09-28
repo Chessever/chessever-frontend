@@ -27,6 +27,7 @@ import 'package:chessever2/screens/my_space/providers/space_game_card_provider.d
 import 'package:chessever2/screens/my_space/providers/space_players_provider.dart';
 import 'package:chessever2/screens/my_space/providers/space_shortcuts_provider.dart';
 import 'package:chessever2/screens/my_space/widgets/space_database.dart';
+import 'package:chessever2/screens/my_space/widgets/space_add_fab.dart';
 import 'package:chessever2/screens/my_space/widgets/space_player_strip.dart'
     show SpacePlayerFace;
 import 'package:chessever2/screens/my_space/widgets/space_section_header.dart';
@@ -123,6 +124,16 @@ class _FakeSpaceShortcuts extends SpaceShortcutsNotifier {
   @override
   Future<void> moveWithinSection(String key, int toIndex) async {
     final plan = SpaceShortcutsNotifier.planSectionMove(_list, key, toIndex);
+    if (plan != null) state = AsyncData(plan.list);
+  }
+
+  @override
+  Future<void> moveWithinVisible(String key, List<String> visibleOrder) async {
+    final plan = SpaceShortcutsNotifier.planVisibleMove(
+      _list,
+      key,
+      visibleOrder,
+    );
     if (plan != null) state = AsyncData(plan.list);
   }
 
@@ -412,6 +423,7 @@ Future<_FakeSpaceShortcuts> _pumpSpace(
   _FakeSpaceShortcuts? store,
   Size screen = const Size(390, 844),
   double textScale = 1,
+  bool withAddFab = false,
 }) async {
   tester.view.physicalSize = Size(screen.width, height);
   tester.view.devicePixelRatio = 1;
@@ -496,6 +508,7 @@ Future<_FakeSpaceShortcuts> _pumpSpace(
             return Scaffold(
               backgroundColor: context.colors.background,
               body: body,
+              floatingActionButton: withAddFab ? const SpaceAddFab() : null,
             );
           },
         ),
@@ -507,6 +520,50 @@ Future<_FakeSpaceShortcuts> _pumpSpace(
   await tester.pump(const Duration(milliseconds: 16));
   return store;
 }
+
+/// Legacy groups remain available to saved-data routes. Exercise their
+/// rails directly so their regression coverage does not require the compact
+/// home screen to expose players, positions or live game previews again.
+class _LegacySpaceGroups extends ConsumerWidget {
+  const _LegacySpaceGroups();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    spaceTakeLiveFirstLatch(ref);
+    final groups = ref.watch(spaceDatabaseGroupsProvider) ?? const [];
+    return ListView(
+      children: [
+        for (final group in groups)
+          SpaceDatabaseGroupView(group: group, gutter: 16.sp),
+      ],
+    );
+  }
+}
+
+Future<_FakeSpaceShortcuts> _pumpLegacyGroups(
+  WidgetTester tester,
+  List<SpaceShortcut> seed, {
+  List<String> liveEvents = const [],
+  Map<String, List<GamesTourModel>> eventGames = const {},
+  List<GamesTourModel> playerGames = const [],
+  _Favorites? favorites,
+  Map<String, int> visits = const {},
+  GamesListViewMode mode = GamesListViewMode.chessBoardGrid,
+  double height = 2400,
+  List<Override> extra = const [],
+}) => _pumpSpace(
+  tester,
+  seed,
+  liveEvents: liveEvents,
+  eventGames: eventGames,
+  playerGames: playerGames,
+  favorites: favorites,
+  visits: visits,
+  mode: mode,
+  height: height,
+  extra: extra,
+  body: const _LegacySpaceGroups(),
+);
 
 /// No Spoilers off, without a Supabase read.
 class _NoSpoilers extends EventNoSpoilersController {
@@ -571,6 +628,13 @@ Future<void> _settleEdit(WidgetTester tester) async {
   for (var i = 0; i < 12; i++) {
     await tester.pump(const Duration(milliseconds: 60));
   }
+}
+
+Future<void> _openHomeEdit(WidgetTester tester) async {
+  await tester.tap(find.byType(SpaceAddFab));
+  await _settleEdit(tester);
+  await tester.tap(find.bySemanticsLabel('Edit'));
+  await _settleEdit(tester);
 }
 
 /// My Space over [seed], then [section]'s See all pushed over it.
@@ -668,54 +732,389 @@ final Override _noSmartMembers = discoverySmartEventMembersProvider
     .overrideWith((ref, criteria) async => const <GroupEventCardModel>[]);
 
 void main() {
-  testWidgets(
-    'an empty space: captioned tiles, the explainer, three live events to save, and the Smart Event tile last',
-    (tester) async {
-      await _pumpSpace(tester, const []);
-
-      expect(find.text('My Likes'), findsOneWidget);
-      expect(find.text('No likes yet'), findsOneWidget);
-      expect(find.text('My Prep'), findsOneWidget);
-      // A guest's My Prep counts the master database.
-      expect(find.text('9.8M master games'), findsOneWidget);
-      // Adding lives on the floating "+" (home's FAB slot), not a header row.
-      expect(find.text('My Database'), findsNothing);
-      expect(find.text('Add'), findsNothing);
-      expect(find.text(kMyDatabaseEmptyText), findsOneWidget);
-      // Live and upcoming only, at most three, finished events left out.
-      expect(find.byType(EventCard), findsNWidgets(kMySpaceSuggestions));
-      expect(find.byType(SpaceSaveToggle), findsNWidgets(kMySpaceSuggestions));
-      expect(find.text('Norway Chess 2026'), findsNothing);
-      expect(find.byType(SpaceSectionHeader), findsNothing);
-      final build = tester.getTopLeft(find.text('Build smart event')).dy;
-      final lastCard = tester.getBottomLeft(find.byType(EventCard).last).dy;
-      expect(build, greaterThan(lastCard));
-      expect(find.text(kBuildSmartEventCaption), findsOneWidget);
-      expect(tester.takeException(), isNull);
-      await _drain(tester);
-    },
-  );
-
-  testWidgets('saving a suggested event makes it the Events group', (
+  testWidgets('empty My Space can enter Edit and Done returns to its home', (
     tester,
   ) async {
-    final store = await _pumpSpace(tester, const []);
+    final tips = _Tips()..markSkipped();
+    await _pumpSpace(
+      tester,
+      const [],
+      height: 844,
+      withAddFab: true,
+      extra: [spaceEditTutorialStoreProvider.overrideWithValue(tips)],
+    );
 
-    await tester.tap(find.byType(SpaceSaveToggle).first);
-    for (var i = 0; i < 6; i++) {
-      await tester.pump(const Duration(milliseconds: 50));
-    }
-    final saved = store.state.valueOrNull ?? const [];
-    expect(saved.map((s) => s.key), [eventSpaceDraft(_feed.first).key]);
-    expect(_groupTitles(tester), ['Events']);
-    expect(find.text(kMyDatabaseEmptyText), findsNothing);
-    expect(find.text('Sinquefield Cup 2026'), findsOneWidget);
+    await _openHomeEdit(tester);
+    expect(find.text('Nothing to edit yet.'), findsOneWidget);
+    expect(find.byType(SpaceEditCheck), findsNothing);
+    final done = find.byKey(const ValueKey<String>('space_edit_done'));
+    expect(done.hitTestable(), findsOneWidget);
+    await tester.tap(done);
+    await _settleEdit(tester);
+    expect(find.text('Nothing to edit yet.'), findsNothing);
+    expect(find.byKey(const ValueKey<String>('space_edit_done')), findsNothing);
+    expect(find.text('My Likes'), findsNothing);
+    expect(find.text('Smart Events'), findsOneWidget);
+    expect(find.text(kMyDatabaseEmptyText), findsOneWidget);
     expect(tester.takeException(), isNull);
     await _drain(tester);
   });
 
-  testWidgets('saved things are grouped by type in page order; My Likes and '
-      'streak pins stay out; every group is one sideways rail with See all', (
+  testWidgets('My Space back clears selection; Edit actions stay reachable '
+      'while a short phone with large text scrolls', (tester) async {
+    final hostScroll = ScrollController();
+    addTearDown(hostScroll.dispose);
+    final game = _pin(
+      SpaceShortcut.draft(
+        kind: SpaceShortcutKind.folder,
+        targetId: 'first-db',
+        title: 'First database',
+      ),
+      'saved-grid-game',
+      30,
+    );
+    final lines = [
+      for (var i = 0; i < 10; i++)
+        _pin(
+          SpaceShortcut.draft(
+            kind: SpaceShortcutKind.folder,
+            targetId: 'db-$i',
+            title: 'Saved database $i',
+          ),
+          'opening-$i',
+          20.0 - i,
+        ),
+    ];
+    final tips = _Tips()..markSkipped();
+    await _pumpSpace(
+      tester,
+      [game, ...lines],
+      height: 568,
+      screen: const Size(320, 568),
+      textScale: 1.8,
+      withAddFab: true,
+      body: MySpaceView(scrollController: hostScroll),
+      extra: [spaceEditTutorialStoreProvider.overrideWithValue(tips)],
+    );
+
+    await _openHomeEdit(tester);
+    expect(hostScroll.hasClients, isTrue);
+    expect(hostScroll.positions, hasLength(1));
+    final gameCard = tester.getRect(find.text(game.title));
+    final gameCheck = tester.getRect(
+      find.byKey(ValueKey<String>('space_edit_check_${game.key}')),
+    );
+    expect(gameCard.left, greaterThan(0));
+    expect(gameCard.right, lessThanOrEqualTo(320));
+    expect(gameCheck.left, greaterThanOrEqualTo(0));
+    expect(gameCheck.right, lessThan(gameCard.left));
+    await tester.tap(
+      find.byKey(ValueKey<String>('space_edit_check_${game.key}')),
+    );
+    await _settleEdit(tester);
+    expect(_selectedKeys(tester), {game.key});
+    await tester.state<NavigatorState>(find.byType(Navigator)).maybePop();
+    await _settleEdit(tester);
+    expect(find.byType(MySpaceView), findsOneWidget);
+    expect(find.byType(SpaceEditCheck), findsNothing);
+
+    await _openHomeEdit(tester);
+    expect(_selectedKeys(tester), isEmpty);
+    final done = find.byKey(const ValueKey<String>('space_edit_done'));
+    final doneRect = tester.getRect(done);
+    final edit = find.descendant(
+      of: find.byType(SpaceEditGrid),
+      matching: find.byType(CustomScrollView),
+    );
+    await tester.drag(edit, const Offset(0, -30000));
+    await _settleEdit(tester);
+    await tester.tap(
+      find.byKey(ValueKey<String>('space_edit_check_${lines.last.key}')),
+    );
+    await _settleEdit(tester);
+    expect(_selectedKeys(tester), {lines.last.key});
+    expect(tester.getRect(done), doneRect);
+    for (final key in ['space_edit_remove', 'space_edit_done']) {
+      final action = find.byKey(ValueKey<String>(key));
+      expect(action.hitTestable(), findsOneWidget);
+      final rect = tester.getRect(action);
+      expect(rect.left, greaterThanOrEqualTo(0));
+      expect(rect.right, lessThanOrEqualTo(320));
+      expect(rect.top, greaterThanOrEqualTo(0));
+      expect(rect.bottom, lessThanOrEqualTo(568));
+      expect(rect.height, greaterThanOrEqualTo(44));
+    }
+    expect(hostScroll.offset, greaterThan(0));
+    hostScroll.jumpTo(0);
+    await _settleEdit(tester);
+    expect(hostScroll.offset, 0);
+    expect(
+      find
+          .byKey(ValueKey<String>('space_edit_check_${game.key}'))
+          .hitTestable(),
+      findsOneWidget,
+    );
+    await tester.tap(done);
+    await _settleEdit(tester);
+    expect(find.byType(SpaceEditCheck), findsNothing);
+    expect(hostScroll.hasClients, isTrue);
+    expect(hostScroll.positions, hasLength(1));
+    expect(tester.takeException(), isNull);
+    await _drain(tester);
+  });
+
+  testWidgets('compact My Space hides saved players despite '
+      'follow order or a newer visit, without adding unpinned follows', (
+    tester,
+  ) async {
+    final gukesh = _pin(
+      spacePlayerDraft(playerName: 'Gukesh D', fideId: 46616543, title: 'GM'),
+      'gukesh',
+      10,
+    );
+    final favorites = _Favorites([
+      _follow('Praggnanandhaa R', 25059530, 2765),
+      _follow('Carlsen, Magnus', 1503014, 2837),
+      _follow('Gukesh D', 46616543, 2787),
+    ]);
+    await _pumpSpace(
+      tester,
+      [gukesh, _player],
+      favorites: favorites,
+      visits: {'fide:1503014': DateTime(2026, 9, 28).millisecondsSinceEpoch},
+      extra: [spacePlayerPhotosProvider.overrideWith((ref, ids) {})],
+    );
+    List<String> shown() => [
+      for (final face in tester.widgetList<SpacePlayerFace>(
+        find.byType(SpacePlayerFace),
+      ))
+        face.shortcut.key,
+    ];
+    expect(shown(), isEmpty);
+    final container = ProviderScope.containerOf(
+      tester.element(find.byType(MySpaceView)),
+    );
+    container
+        .read(spacePlayerVisitsProvider.notifier)
+        .visit('fide:1503014', at: DateTime(2026, 9, 29));
+    await _settleEdit(tester);
+    expect(shown(), isEmpty);
+    expect(tester.takeException(), isNull);
+    await _drain(tester);
+  });
+
+  testWidgets('legacy events and player games stay hidden because '
+      'the event card does not draw boards', (tester) async {
+    final liveGame = _game('saved-event-live-game', whiteFide: 1503014);
+    await _pumpSpace(
+      tester,
+      [_pin(eventSpaceDraft(_feed.first), 'event', 20), _player],
+      liveEvents: [_feed.first.id],
+      eventGames: {
+        _feed.first.id: [liveGame],
+      },
+      playerGames: [liveGame],
+      extra: [spacePlayerPhotosProvider.overrideWith((ref, ids) {})],
+    );
+    await _settleEdit(tester);
+    expect(find.byType(EventCard), findsNothing);
+    expect(find.byType(SpacePlayerFace), findsNothing);
+    expect(
+      find.byKey(ValueKey<String>('space_player_board_${liveGame.gameId}')),
+      findsNothing,
+    );
+    expect(find.byType(GridGameCardWrapperWidget), findsNothing);
+    expect(tester.takeException(), isNull);
+    await _drain(tester);
+  });
+
+  testWidgets('My Space plus Edit selects databases and smart events and bulk '
+      'removes their pins with one Undo, without unfollowing a player', (
+    tester,
+  ) async {
+    final opening = _pin(
+      spaceOpeningDraft(targetId: 'C67', name: 'Berlin Defence'),
+      'opening',
+      3,
+    );
+    final smart = _pin(_smartDraft(2600), 'smart', 2);
+    final seed = [_folder, _player, opening, smart];
+    final favorites = _Favorites([_follow('Carlsen, Magnus', 1503014, 2837)]);
+    final tips = _Tips()..markSkipped();
+    final store = await _pumpSpace(
+      tester,
+      seed,
+      favorites: favorites,
+      height: 844,
+      withAddFab: true,
+      extra: [
+        spaceEditTutorialStoreProvider.overrideWithValue(tips),
+        _noSmartMembers,
+      ],
+    );
+
+    await _openHomeEdit(tester);
+    expect(find.byType(SpaceEditCheck), findsNWidgets(2));
+    expect(
+      find.byKey(const ValueKey<String>('space_edit_done')),
+      findsOneWidget,
+    );
+    for (final pin in [_folder, smart]) {
+      await tester.tap(
+        find.byKey(ValueKey<String>('space_edit_check_${pin.key}')),
+      );
+      await _settleEdit(tester);
+    }
+    expect(_selectedKeys(tester), {_folder.key, smart.key});
+    expect(find.text('Remove 2', findRichText: true), findsOneWidget);
+    expect(find.byType(PlayerProfileScreen), findsNothing);
+
+    await tester.tap(find.byKey(const ValueKey<String>('space_edit_remove')));
+    await _settleEdit(tester);
+    expect(store.state.requireValue.map((pin) => pin.key), [
+      _player.key,
+      opening.key,
+    ]);
+    expect(find.byType(SpaceEditCheck), findsNothing);
+    expect(_selectedKeys(tester), isEmpty);
+    expect(find.text('Removed 2 from My Space'), findsOneWidget);
+    expect(find.text('Undo'), findsOneWidget);
+    expect(favorites.unfollows, 0);
+
+    await tester.tap(find.text('Undo'));
+    await _settleEdit(tester);
+    expect(store.state.requireValue, seed);
+    await _openHomeEdit(tester);
+    expect(find.byType(SpaceEditCheck), findsNWidgets(2));
+    expect(favorites.unfollows, 0);
+
+    await tester.tap(find.byKey(const ValueKey<String>('space_edit_done')));
+    await _settleEdit(tester);
+    expect(find.byType(SpaceEditCheck), findsNothing);
+    expect(find.text('Najdorf prep'), findsOneWidget);
+    expect(find.text('Carlsen'), findsNothing);
+    expect(tester.takeException(), isNull);
+    await _drain(tester);
+  });
+
+  testWidgets('My Space drag places a smart event between databases and keeps '
+      'that mixed order after Done and a rebuild', (tester) async {
+    final first = _pin(
+      SpaceShortcut.draft(
+        kind: SpaceShortcutKind.folder,
+        targetId: 'a',
+        title: 'Database A',
+      ),
+      'a',
+      30,
+    );
+    final second = _pin(
+      SpaceShortcut.draft(
+        kind: SpaceShortcutKind.folder,
+        targetId: 'b',
+        title: 'Database B',
+      ),
+      'b',
+      20,
+    );
+    final opening = _pin(_smartDraft(2600), 'opening', 10);
+    final seed = [first, second, opening, _folder];
+    final tips = _Tips()..markSkipped();
+    final store = await _pumpSpace(
+      tester,
+      seed,
+      liveEvents: [_feed[1].id],
+      height: 844,
+      withAddFab: true,
+      extra: [
+        spaceEditTutorialStoreProvider.overrideWithValue(tips),
+        _noSmartMembers,
+      ],
+    );
+    List<String> shown() {
+      final titles = [first.title, second.title, opening.title, _folder.title];
+      final y = {
+        for (final title in titles)
+          title: tester.getCenter(find.text(title)).dy,
+      };
+      return titles..sort((a, b) => y[a]!.compareTo(y[b]!));
+    }
+
+    expect(shown(), [first.title, second.title, opening.title, _folder.title]);
+    await _openHomeEdit(tester);
+    expect(find.byType(SpaceEditCheck), findsNWidgets(4));
+    final from = tester.getCenter(find.byType(SmartEventCard));
+    final to = tester.getCenter(
+      find.ancestor(
+        of: find.text(second.title),
+        matching: find.byType(SpaceSavedRow),
+      ),
+    );
+    final gesture = await tester.startGesture(from);
+    await tester.pump(kSpaceEditLiftDelay + const Duration(milliseconds: 60));
+    expect(
+      find.byKey(ValueKey<String>('space_edit_socket_${opening.key}')),
+      findsOneWidget,
+    );
+    for (var i = 0; i < 8; i++) {
+      await gesture.moveBy(Offset(0, (to.dy - from.dy) / 8));
+      await tester.pump(const Duration(milliseconds: 16));
+    }
+    await gesture.up();
+    await _settleEdit(tester);
+    expect(store.state.requireValue.map((pin) => pin.key), [
+      first.key,
+      opening.key,
+      second.key,
+      _folder.key,
+    ]);
+    expect(_selectedKeys(tester), isEmpty);
+    final expected = [first.title, opening.title, second.title, _folder.title];
+    expect(shown(), expected);
+
+    await tester.tap(find.byKey(const ValueKey<String>('space_edit_done')));
+    await _settleEdit(tester);
+    expect(find.byType(SpaceEditCheck), findsNothing);
+    expect(shown(), expected);
+    // Entering and leaving again rebuilds both representations from storage.
+    await _openHomeEdit(tester);
+    expect(shown(), expected);
+    await tester.tap(find.byKey(const ValueKey<String>('space_edit_done')));
+    await _settleEdit(tester);
+    expect(shown(), expected);
+    expect(tester.takeException(), isNull);
+    await _drain(tester);
+  });
+
+  testWidgets('empty My Space shows only the supported products and builder', (
+    tester,
+  ) async {
+    await _pumpSpace(
+      tester,
+      const [],
+      extra: [
+        likedGamesProvider.overrideWith(
+          () => throw StateError('Hidden likes must not load'),
+        ),
+        forYouEventsProvider.overrideWith(
+          (ref) => throw StateError('Hidden suggestions must not load'),
+        ),
+      ],
+    );
+    expect(find.text('Smart Events'), findsOneWidget);
+    expect(find.text('Databases'), findsOneWidget);
+    expect(find.text('My Likes'), findsNothing);
+    expect(find.text(kMyDatabaseEmptyText), findsOneWidget);
+    expect(find.byType(EventCard), findsNothing);
+    expect(find.byType(SpaceSaveToggle), findsNothing);
+    expect(find.text('Build smart event'), findsOneWidget);
+    expect(find.text(kBuildSmartEventCaption), findsOneWidget);
+    expect(tester.takeException(), isNull);
+    await _drain(tester);
+  });
+
+  testWidgets('databases use compact cards without headings; '
+      'legacy players, openings and events remain stored but hidden', (
     tester,
   ) async {
     final events = [
@@ -727,45 +1126,17 @@ void main() {
       'o',
       6,
     );
-    await _pumpSpace(tester, [
-      _link,
-      _folder,
-      _likes,
-      _player,
-      _streak,
-      opening,
-      ...events,
-    ]);
-
-    expect(_groupTitles(tester), [
-      'Events',
-      'Players',
-      'Openings',
-      'Databases',
-      'Shortcuts',
-    ]);
-    expect(find.text('Liked games'), findsNothing);
-    expect(find.text('Magnus Carlsen'), findsNothing);
-    // Every group offers See all, whatever it shows.
-    expect(
-      find.textContaining('See all', findRichText: true),
-      findsNWidgets(5),
-    );
-    // Events: one sideways rail, the first card on screen and the next
-    // peeking at its edge.
-    final rail = find.byKey(const PageStorageKey<String>('space_rail_events'));
-    expect(rail, findsOneWidget);
-    expect(tester.widget<ListView>(rail).scrollDirection, Axis.horizontal);
-    final cards = find.descendant(of: rail, matching: find.byType(EventCard));
-    expect(cards, findsWidgets);
-    final screen = tester.getSize(find.byType(MySpaceView)).width;
-    final second = tester.getTopLeft(cards.at(1)).dx;
-    expect(second, lessThan(screen));
-    expect(screen - second, greaterThan(40), reason: 'a peek, not a sliver');
-    // A player is a face with a surname, never a pixel row.
-    expect(find.text('Carlsen'), findsOneWidget);
-    expect(find.text('2837'), findsOneWidget);
-    expect(find.byType(SpaceSavedRow), findsNWidgets(2));
+    final seed = [_link, _folder, _likes, _player, _streak, opening, ...events];
+    final store = await _pumpSpace(tester, seed);
+    expect(_groupTitles(tester), isEmpty);
+    expect(find.textContaining('See all', findRichText: true), findsNothing);
+    expect(find.byType(SpaceRail), findsNothing);
+    expect(find.byType(EventCard), findsNothing);
+    expect(find.byType(SpaceSavedRow), findsOneWidget);
+    expect(find.text('Najdorf prep'), findsOneWidget);
+    expect(find.text('Carlsen'), findsNothing);
+    expect(find.text('Berlin Defence'), findsNothing);
+    expect(store.state.requireValue, seed);
     expect(tester.takeException(), isNull);
     await _drain(tester);
   });
@@ -776,7 +1147,7 @@ void main() {
       'the board', (tester) async {
     final underEvent = _game('g-event', whiteFide: 1503014);
     final elsewhere = _game('g-other', whiteFide: 1503014, blackFide: 9);
-    await _pumpSpace(
+    await _pumpLegacyGroups(
       tester,
       [_pin(eventSpaceDraft(_feed.first), 'e0', 20), _player],
       liveEvents: ['ev-a'],
@@ -858,7 +1229,7 @@ void main() {
   testWidgets('each live event\'s card stands over its own boards in the '
       'Events rail and holds at the gutter while they scroll; the events that '
       'are not live stand stacked beside them', (tester) async {
-    await _pumpSpace(
+    await _pumpLegacyGroups(
       tester,
       [
         _pin(eventSpaceDraft(_feed[0]), 'e0', 20),
@@ -923,28 +1294,24 @@ void main() {
     await _drain(tester);
   });
 
-  testWidgets('a new user who follows players keeps the explainer and the '
-      'live events to save until they save something', (tester) async {
+  testWidgets('followed players do not populate the clean first screen', (
+    tester,
+  ) async {
     final store = await _pumpSpace(
       tester,
       const [],
       favorites: _Favorites([_follow('Carlsen, Magnus', 1503014, 2837)]),
     );
-    expect(_groupTitles(tester), ['Players']);
+    expect(_groupTitles(tester), isEmpty);
+    expect(find.text('Carlsen'), findsNothing);
     expect(find.text(kMyDatabaseEmptyText), findsOneWidget);
-    expect(find.byType(SpaceSaveToggle), findsNWidgets(kMySpaceSuggestions));
-    // The suggestions stand where the Events group will, above the faces.
-    expect(
-      tester.getTopLeft(find.byType(SpaceSaveToggle).last).dy,
-      lessThan(tester.getTopLeft(find.text('Players')).dy),
-    );
-
-    // Anything saved and they give way.
+    expect(find.byType(SpaceSaveToggle), findsNothing);
     await store.add(_folder);
     for (var i = 0; i < 6; i++) {
       await tester.pump(const Duration(milliseconds: 50));
     }
-    expect(_groupTitles(tester), ['Players', 'Databases']);
+    expect(_groupTitles(tester), isEmpty);
+    expect(find.text('Najdorf prep'), findsOneWidget);
     expect(find.text(kMyDatabaseEmptyText), findsNothing);
     expect(find.byType(SpaceSaveToggle), findsNothing);
     expect(tester.takeException(), isNull);
@@ -981,12 +1348,7 @@ void main() {
       for (final (i, e) in _feed.take(4).indexed)
         _pin(eventSpaceDraft(e), 'e$i', 20.0 - i),
     ];
-    await _pumpSpace(tester, events);
-
-    await tester.tap(find.textContaining('See all', findRichText: true));
-    for (var i = 0; i < 10; i++) {
-      await tester.pump(const Duration(milliseconds: 100));
-    }
+    await _openSeeAll(tester, events, SpaceSection.events);
     expect(find.byType(SpaceSectionScreen), findsOneWidget);
     Finder cards() => find.descendant(
       of: find.byType(SpaceSectionScreen),
@@ -1410,7 +1772,8 @@ void main() {
     await tester.pump(const Duration(milliseconds: 100));
     expect(find.byType(SpaceOpeningCard), findsNWidgets(3));
     expect(find.text('Edit', findRichText: true), findsOneWidget);
-    expect(find.text('Add', findRichText: true), findsOneWidget);
+    expect(find.text('Add', findRichText: true), findsNothing);
+    expect(find.bySemanticsLabel('Add an opening'), findsNothing);
 
     await tester.tap(find.byKey(const ValueKey<String>('space_edit')));
     await _settleEdit(tester);
@@ -1785,7 +2148,7 @@ void main() {
     expect(tester.takeException(), isNull);
     await _drain(tester);
 
-    // My Prep's lines in board view do the same.
+    // Opening event rows use the same selection lane as other event rows.
     final lines = [
       _pin(spaceOpeningDraft(targetId: 'C67', name: 'Berlin Defence'), 'o1', 7),
       _pin(
@@ -1806,17 +2169,15 @@ void main() {
     await tester.tap(find.byKey(const ValueKey<String>('space_edit')));
     await _settleEdit(tester);
     for (var i = 0; i < 2; i++) {
-      expect(tester.getRect(openings.at(i)), rectMoreOrLessEquals(list[i]));
+      final card = tester.getRect(openings.at(i));
+      expect(card.top, closeTo(list[i].top, 0.5));
+      expect(card.left, closeTo(list[i].left + kSpaceEditLane, 0.5));
+      expect(card.right, closeTo(list[i].right, 0.5));
       final check = tester.getRect(
         find.byKey(ValueKey<String>('space_edit_check_${lines[i].key}')),
       );
-      expect(
-        check,
-        rectMoreOrLessEquals(
-          _expectedCheck(tester, openings.at(i)),
-          epsilon: 0.5,
-        ),
-      );
+      expect(check.right, lessThanOrEqualTo(card.left));
+      expect(check.center.dy, inInclusiveRange(card.top, card.bottom));
     }
     expect(tester.takeException(), isNull);
     await _drain(tester);
@@ -1937,7 +2298,14 @@ void main() {
     final edit = find.byType(SpaceGroupEdit);
     await tester.drag(edit, const Offset(0, -2000));
     await _settleEdit(tester);
-    expect(_listOf(tester, edit).pixels, greaterThan(1500));
+    final position = _listOf(tester, edit);
+    for (var i = 0; i < 30 && position.isScrollingNotifier.value; i++) {
+      await tester.pump(const Duration(milliseconds: 60));
+    }
+    // Event-style opening rows are compact even when games use board view.
+    // Prove the list reaches its end without assuming full-board row heights.
+    expect(position.maxScrollExtent, greaterThan(0));
+    expect(position.pixels, closeTo(position.maxScrollExtent, 1));
     expect(
       tester.getRect(find.byKey(const ValueKey<String>('space_edit_done'))),
       done,
@@ -2107,7 +2475,12 @@ void main() {
       for (var i = 0; i < 12; i++)
         _pin(_smartDraft(2000 + 100 * i), 'se$i', 30.0 - i),
     ];
-    await _pumpSpace(tester, smart, extra: [_noSmartMembers], height: 1600);
+    await _pumpLegacyGroups(
+      tester,
+      smart,
+      extra: [_noSmartMembers],
+      height: 1600,
+    );
     await tester.pump(const Duration(milliseconds: 100));
     final rail = find.byKey(
       const PageStorageKey<String>('space_rail_smart_events'),
@@ -2176,7 +2549,7 @@ void main() {
 
   testWidgets('Players are the followed players by default, the most '
       'recently visited first, the rest in Favorites\' order', (tester) async {
-    await _pumpSpace(
+    await _pumpLegacyGroups(
       tester,
       const [],
       favorites: _Favorites([
@@ -2210,7 +2583,7 @@ void main() {
       _follow('Carlsen, Magnus', 1503014, 2837),
       _follow('Gukesh D', 46616543, 2787, day: 2),
     ]);
-    await _pumpSpace(tester, const [], favorites: favorites);
+    await _pumpLegacyGroups(tester, const [], favorites: favorites);
     expect(find.text('Carlsen'), findsOneWidget);
 
     await tester.longPress(find.text('Carlsen'));
@@ -2237,7 +2610,7 @@ void main() {
 
   testWidgets('opening a face records the visit, and the player leads the '
       'row when the user comes back', (tester) async {
-    await _pumpSpace(
+    await _pumpLegacyGroups(
       tester,
       const [],
       favorites: _Favorites([
@@ -2249,7 +2622,7 @@ void main() {
     double x(String name) => tester.getTopLeft(find.text(name)).dx;
     expect(x('Carlsen'), lessThan(x('Praggnanandhaa')));
     final container = ProviderScope.containerOf(
-      tester.element(find.byType(MySpaceView)),
+      tester.element(find.byType(_LegacySpaceGroups)),
     );
     final pragg = spacePlayerIdentity(
       fideId: 25059530,
@@ -2278,7 +2651,7 @@ void main() {
   testWidgets('every group heads the same way, and its name opens what its '
       'See all opens: the See all page, or My Prep on its Openings tab for '
       'Openings', (tester) async {
-    await _pumpSpace(tester, [
+    await _pumpLegacyGroups(tester, [
       _pin(eventSpaceDraft(_feed.first), 'e0', 20),
       _pin(spaceOpeningDraft(targetId: 'C67', name: 'Berlin Defence'), 'o', 6),
       _folder,
@@ -2345,7 +2718,7 @@ void main() {
     testWidgets('inside every rail every game is the viewer\'s ${mode.name} '
         'card: live event boards, saved games, saved lines and the games '
         'followed players are playing', (tester) async {
-      await _pumpSpace(
+      await _pumpLegacyGroups(
         tester,
         [
           _pin(eventSpaceDraft(_feed.first), 'e0', 20),
@@ -2425,16 +2798,9 @@ void main() {
       );
       expect(lines, findsNWidgets(2));
       final line = tester.getSize(lines.first);
-      switch (mode) {
-        case GamesListViewMode.chessBoardGrid:
-          expect(line.width, closeTo(phoneGrid, 0.5));
-        case GamesListViewMode.gamesCard:
-          expect(line.width, greaterThan(phoneGrid + 60));
-          expect(line.height, lessThan(line.width / 2));
-        case GamesListViewMode.chessBoard:
-          expect(line.width, greaterThan(phoneGrid + 60));
-          expect(line.height, greaterThan(line.width * 0.8));
-      }
+      // Openings keep their core board in a wide event row in every view.
+      expect(line.width, greaterThan(phoneGrid + 60));
+      expect(line.height, lessThan(line.width / 2));
       expect(tester.takeException(), isNull);
       await _drain(tester);
     });
@@ -2446,7 +2812,7 @@ void main() {
       for (var i = 0; i < 25; i++)
         _follow('Player $i, Test', 900000 + i, 2600 + i, day: 1 + i % 27),
     ];
-    await _pumpSpace(
+    await _pumpLegacyGroups(
       tester,
       [
         for (var i = 0; i < 23; i++)
@@ -2514,9 +2880,7 @@ void main() {
         _player,
       ], theme: light ? AppTheme.lightTheme : AppTheme.darkTheme);
       final colors = light ? AppColors.light : AppColors.dark;
-      final title = tester.widget<Text>(
-        find.text(_groupTitles(tester).first).first,
-      );
+      final title = tester.widget<Text>(find.text('Najdorf prep').first);
       expect(title.style!.color, colors.textPrimary);
       expectNoContrastMisses(
         auditTextContrast(tester, fallbackGround: colors.background),

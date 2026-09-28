@@ -22,6 +22,7 @@ import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/scroll_cache.dart';
 import 'package:chessever2/utils/svg_asset.dart';
+import 'package:chessever2/widgets/game_date_header.dart';
 import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
 import 'package:chessever2/widgets/scroll_to_top_bus.dart';
 import 'package:chessever2/widgets/scroll_to_top_button.dart';
@@ -715,7 +716,7 @@ class _MiniaturesGamesTabState extends ConsumerState<MiniaturesGamesTab>
     if (entry is _MiniatureDateHeaderEntry) {
       return Padding(
         padding: EdgeInsets.only(bottom: 12.h),
-        child: _DateHeader(
+        child: GameDateHeader(
           dateLabel: miniatureDateHeaderLabel(_formatDateHeader(entry.dateKey)),
           isExpanded: entry.isExpanded,
           onToggle: () => _toggleDateSection(entry.dateKey),
@@ -955,75 +956,6 @@ class _MiniatureFooterEntry extends _MiniatureListEntry {
 }
 
 // ---- Widgets ----
-
-class _DateHeader extends StatelessWidget {
-  const _DateHeader({
-    required this.dateLabel,
-    required this.isExpanded,
-    this.onToggle,
-  });
-
-  final String dateLabel;
-  final bool isExpanded;
-  final VoidCallback? onToggle;
-
-  @override
-  Widget build(BuildContext context) {
-    return InkWell(
-      onTap: onToggle,
-      borderRadius: BorderRadius.circular(12.br),
-      child: Container(
-        padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 10.h),
-        decoration: BoxDecoration(
-          color: context.colors.surfaceRecessed,
-          borderRadius: BorderRadius.circular(12.br),
-          border: Border.all(
-            color: context.colors.textPrimary.withValues(alpha: 0.1),
-          ),
-          // Matches the day headers in Favorites and Countrymen exactly.
-          boxShadow: const [
-            BoxShadow(
-              color: Color(0x1A000000),
-              blurRadius: 4,
-              offset: Offset(0, 2),
-            ),
-          ],
-        ),
-        child: Row(
-          children: [
-            Container(
-              width: 4.w,
-              height: 20.h,
-              decoration: BoxDecoration(
-                color: kPrimaryColor,
-                borderRadius: BorderRadius.circular(2),
-              ),
-            ),
-            SizedBox(width: 12.w),
-            Expanded(
-              child: Text(
-                // Date only — never an in-memory page-subset game count.
-                dateLabel,
-                style: AppTypography.textSmMedium.copyWith(
-                  color: context.colors.textPrimary,
-                  fontSize: 16.sp,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ),
-            Icon(
-              isExpanded
-                  ? Icons.keyboard_arrow_up_rounded
-                  : Icons.keyboard_arrow_down_rounded,
-              size: 20.sp,
-              color: context.textInk(0.5),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
 
 class _SquareIconButton extends StatelessWidget {
   const _SquareIconButton({

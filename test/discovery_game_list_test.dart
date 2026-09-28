@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:chessever2/providers/board_settings_provider_new.dart';
 import 'package:chessever2/providers/engine_settings_provider.dart';
 import 'package:chessever2/repository/lichess/cloud_eval/cloud_eval.dart';
@@ -7,6 +9,10 @@ import 'package:chessever2/screens/favorites/tabs/favorites_players_tab.dart';
 import 'package:chessever2/screens/for_you/discovery/widgets/discovery_common.dart'
     show DiscoveryPadlock;
 import 'package:chessever2/screens/for_you/discovery/widgets/discovery_game_cards.dart';
+import 'package:chessever2/screens/for_you/discovery/data/discovery_repository.dart';
+import 'package:chessever2/screens/for_you/discovery/models/discovery_models.dart';
+import 'package:chessever2/screens/for_you/discovery/providers/reports_provider.dart';
+import 'package:chessever2/screens/for_you/discovery/reports_screen.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/event_no_spoilers_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_list_view_mode_provider.dart';
@@ -14,6 +20,7 @@ import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrap
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrapper/grid_game_card_wrapper_widget.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/widgets/game_date_header.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -49,6 +56,26 @@ class _NoSpoilers extends EventNoSpoilersController {
   }
 }
 
+class _ReportsRepository implements DiscoveryRepository {
+  final requests =
+      <({AnalyzedGamesCursor? after, Completer<AnalyzedGamesPage> result})>[];
+
+  @override
+  Future<AnalyzedGamesPage> fetchAnalyzedGamesPage({
+    int pageSize = 30,
+    AnalyzedGamesCursor? after,
+    DateTime? since,
+  }) {
+    final result = Completer<AnalyzedGamesPage>();
+    requests.add((after: after, result: result));
+    return result.future;
+  }
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) =>
+      throw StateError('Unexpected call');
+}
+
 CloudEval _eval(String fen) => CloudEval(
   fen: fen,
   knodes: 0,
@@ -66,6 +93,7 @@ GamesTourModel _game(
   bool position = true,
   GameSource source = GameSource.supabase,
   GameStatus status = GameStatus.whiteWins,
+  DateTime? lastMoveTime,
 }) {
   PlayerCard player(String name) => PlayerCard(
     name: name,
@@ -89,6 +117,7 @@ GamesTourModel _game(
     tourId: 'tour-1',
     fen: position ? _fen : null,
     lastMove: position ? 'e2e4' : null,
+    lastMoveTime: lastMoveTime,
   );
 }
 
@@ -109,9 +138,11 @@ Future<ProviderContainer> _pump(
   double textScale = 1,
   EngineSettings engine = const EngineSettings(),
   bool tickers = true,
+  bool scrollingPage = false,
+  List<Override> extraOverrides = const [],
 }) async {
   // Tall enough that every card builds; the page believes it is [screen].
-  tester.view.physicalSize = Size(screen.width, 4000);
+  tester.view.physicalSize = scrollingPage ? screen : Size(screen.width, 4000);
   tester.view.devicePixelRatio = 1;
   addTearDown(tester.view.resetPhysicalSize);
   addTearDown(tester.view.resetDevicePixelRatio);
@@ -131,6 +162,7 @@ Future<ProviderContainer> _pump(
       gameCardEvalCacheOnlyProvider.overrideWith(
         (ref, fen) async => _eval(fen),
       ),
+      ...extraOverrides,
     ],
   );
 
@@ -151,7 +183,9 @@ Future<ProviderContainer> _pump(
             return Scaffold(
               body: TickerMode(
                 enabled: tickers,
-                child: SingleChildScrollView(child: child),
+                child: scrollingPage
+                    ? child
+                    : SingleChildScrollView(child: child),
               ),
             );
           },
@@ -185,6 +219,274 @@ double _height(WidgetTester tester, Type type) =>
     tester.getSize(find.byType(type)).height;
 
 void main() {
+  group('Reports infinite scrolling', () {
+    final scrollView = find.byKey(const PageStorageKey('reports_scroll'));
+
+    ScrollPosition position(WidgetTester tester) => tester
+        .state<ScrollableState>(
+          find
+              .descendant(of: scrollView, matching: find.byType(Scrollable))
+              .first,
+        )
+        .position;
+
+    Future<ProviderContainer> open(
+      WidgetTester tester,
+      _ReportsRepository repository, {
+      GamesListViewMode mode = GamesListViewMode.chessBoardGrid,
+      Size screen = _phone,
+      double textScale = 1,
+    }) => _pump(
+      tester,
+      const ReportsScreen(),
+      mode: mode,
+      screen: screen,
+      textScale: textScale,
+      scrollingPage: true,
+      extraOverrides: [
+        discoveryRepositoryProvider.overrideWithValue(repository),
+      ],
+    );
+
+    Future<void> complete(
+      WidgetTester tester,
+      _ReportsRepository repository,
+      int request,
+      List<GamesTourModel> items, {
+      String? next,
+    }) async {
+      repository.requests[request].result.complete(
+        AnalyzedGamesPage(
+          items: items,
+          nextCursor: next == null
+              ? null
+              : (lastMoveTime: '2026-09-28T12:00:00Z', gameId: next),
+        ),
+      );
+      await _settle(tester);
+    }
+
+    for (final mode in GamesListViewMode.values) {
+      testWidgets(
+        'prefetches near the bottom and builds only visible cards: ${mode.name}',
+        (tester) async {
+          final repository = _ReportsRepository();
+          final container = await open(tester, repository, mode: mode);
+          await complete(tester, repository, 0, _games(30), next: 'g29');
+          expect(repository.requests, hasLength(1));
+          expect(
+            find.byType(DiscoveryGameCard).evaluate().length,
+            lessThan(30),
+          );
+
+          final scroll = position(tester);
+          // Lazy lists revise their extent estimate when a distant row lays
+          // out. Reach the actual threshold after that correction, just as
+          // continued scrolling does, without requiring eager board layout.
+          for (
+            var attempt = 0;
+            attempt < 3 && scroll.extentAfter > 600;
+            attempt++
+          ) {
+            scroll.jumpTo(scroll.maxScrollExtent - 400);
+            await _settle(tester);
+          }
+          expect(
+            repository.requests,
+            hasLength(2),
+            reason: 'Remaining extent after layout: ${scroll.extentAfter}',
+          );
+          expect(scroll.extentAfter, greaterThan(0));
+          expect(
+            container.read(reportsPaginationProvider).items,
+            hasLength(30),
+          );
+          await _settle(tester);
+          expect(repository.requests, hasLength(2));
+
+          final offset = scroll.pixels;
+          await complete(
+            tester,
+            repository,
+            1,
+            List.generate(30, (i) => _game('g${i + 30}')),
+          );
+          expect(
+            container.read(reportsPaginationProvider).items,
+            hasLength(60),
+          );
+          expect(scroll.pixels, moreOrLessEquals(offset));
+          scroll.jumpTo(scroll.maxScrollExtent);
+          await _settle(tester);
+          expect(repository.requests, hasLength(2));
+          expect(
+            find.byType(DiscoveryGameCard).evaluate().length,
+            lessThan(30),
+          );
+          final visible = tester.widgetList<DiscoveryGameCard>(
+            find.byType(DiscoveryGameCard),
+          );
+          expect(visible.any((card) => card.index >= 30), isTrue);
+          expect(visible.every((list) => list.games.length == 60), isTrue);
+          expect(tester.takeException(), isNull);
+          await _teardown(tester, container);
+        },
+      );
+    }
+
+    testWidgets(
+      'Miniatures day headers collapse and keep paging into older days',
+      (tester) async {
+        final now = DateTime.now();
+        final today = DateTime.utc(now.year, now.month, now.day);
+        final yesterday = today.subtract(const Duration(days: 1));
+        final repository = _ReportsRepository();
+        final container = await open(tester, repository);
+        await complete(
+          tester,
+          repository,
+          0,
+          _games(30).map((g) => g.copyWith(lastMoveTime: today)).toList(),
+          next: 'g29',
+        );
+        expect(find.byType(GameDateHeader), findsOneWidget);
+        expect(find.text('Today'), findsOneWidget);
+        await tester.tap(find.text('Today'));
+        await _settle(tester);
+        expect(find.byType(DiscoveryGameCard), findsNothing);
+        expect(repository.requests, hasLength(2));
+
+        await complete(tester, repository, 1, [
+          _game('same-day', lastMoveTime: today),
+        ], next: 'same-day');
+        expect(find.byType(DiscoveryGameCard), findsNothing);
+        expect(repository.requests, hasLength(3));
+        await complete(tester, repository, 2, [
+          _game('older-day', lastMoveTime: yesterday),
+        ]);
+        expect(find.text('Today'), findsOneWidget);
+        expect(find.text('Yesterday'), findsOneWidget);
+        final card = tester.widget<DiscoveryGameCard>(
+          find.byType(DiscoveryGameCard),
+        );
+        expect(card.index, 31);
+        expect(card.games, hasLength(32));
+
+        await tester.tap(find.text('Today'));
+        await _settle(tester);
+        expect(
+          tester
+              .widgetList<DiscoveryGameCard>(find.byType(DiscoveryGameCard))
+              .any((card) => card.index == 0),
+          isTrue,
+        );
+        expect(repository.requests, hasLength(3));
+        expect(tester.takeException(), isNull);
+        await _teardown(tester, container);
+      },
+    );
+
+    for (final screen in [_phone, const Size(1366, 1024)]) {
+      testWidgets(
+        'matches Miniatures grid columns at $screen with large text',
+        (tester) async {
+          final repository = _ReportsRepository();
+          final container = await open(
+            tester,
+            repository,
+            screen: screen,
+            textScale: 1.3,
+          );
+          await complete(tester, repository, 0, _games(8));
+          final columns = screen.width > 1000 ? 4 : 2;
+          final top = tester.getTopLeft(
+            find.byKey(const ValueKey('discovery_grid_g0')),
+          );
+          for (var i = 1; i < columns; i++) {
+            final cell = tester.getTopLeft(
+              find.byKey(ValueKey('discovery_grid_g$i')),
+            );
+            expect(cell.dy, top.dy);
+            expect(cell.dx, greaterThan(top.dx));
+          }
+          final nextRow = tester.getTopLeft(
+            find.byKey(ValueKey('discovery_grid_g$columns')),
+          );
+          expect(nextRow.dy, greaterThan(top.dy));
+          expect(nextRow.dx, top.dx);
+          expect(tester.takeException(), isNull);
+          await _teardown(tester, container);
+        },
+      );
+    }
+
+    testWidgets(
+      'continues through empty candidate pages and fills a short viewport',
+      (tester) async {
+        final repository = _ReportsRepository();
+        final container = await open(
+          tester,
+          repository,
+          mode: GamesListViewMode.chessBoard,
+        );
+        await complete(tester, repository, 0, [], next: 'filtered');
+        expect(repository.requests, hasLength(2));
+        await complete(tester, repository, 1, [_game('a')], next: 'a');
+        expect(repository.requests, hasLength(3));
+        await complete(tester, repository, 2, [_game('b'), _game('c')]);
+        expect(container.read(reportsPaginationProvider).items, hasLength(3));
+        expect(container.read(reportsPaginationProvider).hasMore, isFalse);
+        expect(tester.takeException(), isNull);
+        await _teardown(tester, container);
+      },
+    );
+
+    testWidgets(
+      'footer Retry keeps the loaded collection and resumes the failed page',
+      (tester) async {
+        final repository = _ReportsRepository();
+        final container = await open(tester, repository);
+        await complete(tester, repository, 0, _games(30), next: 'g29');
+        final scroll = position(tester);
+        scroll.jumpTo(scroll.maxScrollExtent);
+        await _settle(tester);
+        repository.requests[1].result.completeError(StateError('offline'));
+        await _settle(tester);
+        scroll.jumpTo(scroll.maxScrollExtent);
+        await _settle(tester);
+        expect(container.read(reportsPaginationProvider).items, hasLength(30));
+        expect(repository.requests, hasLength(2));
+        expect(find.text("Couldn't load more reports"), findsOneWidget);
+        await tester.tap(find.text('Retry'));
+        await _settle(tester);
+        expect(repository.requests, hasLength(3));
+        expect(repository.requests[2].after, repository.requests[1].after);
+        await complete(tester, repository, 2, [_game('last')]);
+        expect(container.read(reportsPaginationProvider).items, hasLength(31));
+        expect(find.text('Retry'), findsNothing);
+        expect(tester.takeException(), isNull);
+        await _teardown(tester, container);
+      },
+    );
+
+    testWidgets('pull to refresh starts from the newest page', (tester) async {
+      final repository = _ReportsRepository();
+      final container = await open(tester, repository);
+      await complete(tester, repository, 0, _games(30), next: 'g29');
+      await tester.drag(scrollView, const Offset(0, 400));
+      await _settle(tester);
+      expect(repository.requests, hasLength(2));
+      expect(repository.requests[1].after, isNull);
+      await complete(tester, repository, 1, [_game('fresh')]);
+      expect(
+        container.read(reportsPaginationProvider).items.single.gameId,
+        'fresh',
+      );
+      expect(tester.takeException(), isNull);
+      await _teardown(tester, container);
+    });
+  });
+
   group('limit', () {
     testWidgets('grid: draws 4 of 12, and opening the 4th hands the board '
         'all 12', (tester) async {
@@ -289,11 +591,7 @@ void main() {
 
     testWidgets('board and list views draw every game as the chosen type, '
         'positions or not', (tester) async {
-      final games = [
-        _game('a'),
-        _game('b', position: false),
-        _game('c'),
-      ];
+      final games = [_game('a'), _game('b', position: false), _game('c')];
       for (final (mode, boards) in [
         (GamesListViewMode.chessBoard, true),
         (GamesListViewMode.gamesCard, false),

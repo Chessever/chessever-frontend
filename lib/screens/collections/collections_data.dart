@@ -1,3 +1,4 @@
+import 'package:chessever2/repository/gamebase/collections/collection_search_query.dart';
 import 'dart:async';
 
 import 'package:chessever2/repository/gamebase/collections/collections_models.dart';
@@ -5,7 +6,6 @@ import 'package:chessever2/repository/gamebase/gamebase_repository.dart';
 import 'package:chessever2/screens/chessboard/analysis/chess_game.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/services/pgn_file_intake_service.dart';
-import 'package:dartchess/dartchess.dart';
 import 'package:flutter/foundation.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -47,16 +47,9 @@ class CollectionGame {
 @visibleForTesting
 GamesTourModel collectionGameModel(String id, String pgn) {
   final base = chessGameToImportedGamesTourModel(ChessGame.fromPgn(id, pgn));
-  final parsed = PgnGame.parsePgn(pgn);
-  Position position = PgnGame.startingPosition(parsed.headers);
-  String? last;
-  for (final node in parsed.moves.mainline()) {
-    final move = position.parseSan(node.san);
-    if (move == null) break;
-    position = position.play(move);
-    last = move.uci;
-  }
-  return base.copyWith(pgn: pgn, fen: position.fen, lastMove: last);
+  // The shared PGN mapper already hydrates the card's final position and
+  // metadata. Keep the exact source text for annotations and board replay.
+  return base.copyWith(pgn: pgn);
 }
 
 /// One run of games under one header of the Games tab: a round, a part, a
@@ -301,11 +294,7 @@ class CollectionsRepository {
   Future<Collection> fetchCollection(String slug) async {
     // Read before the token wait: a hold covers the reads it started.
     final fresh = isFreshAccess(slug);
-    return _api.getCollection(
-      slug,
-      bearer: await _accessToken(),
-      fresh: fresh,
-    );
+    return _api.getCollection(slug, bearer: await _accessToken(), fresh: fresh);
   }
 
   /// All of a collection's games with their PGN, in the API's order. A
@@ -334,6 +323,100 @@ class CollectionsRepository {
       for (final card in cards)
         if (seen.add(card.id)) ?CollectionGame.fromCard(card),
     ];
+  }
+
+  /// Public opening metadata stays available even when game access is gated.
+  Future<List<CollectionOpening>> fetchOpenings({String? slug}) =>
+      _allPages<CollectionOpening>(
+        pageSize: listPageSize,
+        fetch: (offset) async {
+          final page = await _api.getCollectionOpenings(
+            slug: slug,
+            limit: listPageSize,
+            offset: offset,
+          );
+          return (page.items, page.total);
+        },
+      );
+
+  Future<List<Collection>> fetchBooksForOpening(String eco) =>
+      _allPages<Collection>(
+        pageSize: listPageSize,
+        fetch: (offset) async {
+          final page = await _api.getBooksForOpening(
+            eco,
+            limit: listPageSize,
+            offset: offset,
+          );
+          return (page.items, page.total);
+        },
+      );
+
+  Future<List<CollectionGame>> fetchGamesForOpening(
+    String slug,
+    String eco,
+  ) async {
+    final bearer = await _accessToken();
+    final fresh = isFreshAccess(slug);
+    final cards = await _allPages<CollectionGameCard>(
+      pageSize: gamesPageSize,
+      fetch: (offset) async {
+        final page = await _api.getCollectionGames(
+          slug,
+          eco: eco,
+          includePgn: true,
+          limit: gamesPageSize,
+          offset: offset,
+          bearer: bearer,
+          fresh: fresh,
+        );
+        return (page.items, page.total);
+      },
+    );
+    final seen = <String>{};
+    return [
+      for (final card in cards)
+        if (seen.add(card.id)) ?CollectionGame.fromCard(card),
+    ];
+  }
+
+  Future<List<String>> fetchAuthors() => _allPages<String>(
+    pageSize: listPageSize,
+    fetch: (offset) async {
+      final page = await _api.getCollectionAuthors(
+        offset: offset,
+        limit: listPageSize,
+      );
+      return (page.items, page.total);
+    },
+  );
+
+  Future<CollectionsPage> searchBooks(
+    CollectionSearchQuery query,
+    int offset,
+  ) => _api.searchCollectionBooks(search: query, offset: offset);
+
+  Future<CollectionOpeningsPage> searchOpenings(
+    CollectionSearchQuery query,
+    int offset,
+  ) => _api.getCollectionOpenings(search: query, offset: offset, limit: 40);
+
+  Future<PublishedGamesBatch> fetchPublishedGames({
+    int offset = 0,
+    CollectionSearchQuery search = const CollectionSearchQuery(),
+  }) async {
+    final page = await _api.getPublishedCollectionGames(
+      search: search,
+      limit: 40,
+      offset: offset,
+      bearer: await _accessToken(),
+    );
+    return PublishedGamesBatch(
+      games: [for (final card in page.items) ?CollectionGame.fromCard(card)],
+      total: page.total,
+      nextOffset: offset + page.items.length,
+      hasMore: page.items.isNotEmpty && offset + page.items.length < page.total,
+    );
   }
 
   /// Everyone in a collection, most games first, then by name. Gated like
@@ -391,6 +474,46 @@ final collectionsRepositoryProvider = Provider<CollectionsRepository>(
 final collectionsProvider = FutureProvider.autoDispose<List<Collection>>(
   (ref) => ref.watch(collectionsRepositoryProvider).fetchCollections(),
 );
+
+final collectionOpeningsProvider = FutureProvider.autoDispose
+    .family<List<CollectionOpening>, String?>(
+      (ref, slug) =>
+          ref.watch(collectionsRepositoryProvider).fetchOpenings(slug: slug),
+    );
+
+final collectionBooksForOpeningProvider = FutureProvider.autoDispose
+    .family<List<Collection>, String>(
+      (ref, eco) =>
+          ref.watch(collectionsRepositoryProvider).fetchBooksForOpening(eco),
+    );
+
+final collectionOpeningContentsProvider = FutureProvider.autoDispose
+    .family<CollectionContents, ({String slug, String eco})>((ref, key) async {
+      final results = await Future.wait<Object>([
+        ref.watch(collectionDetailProvider(key.slug).future),
+        ref
+            .watch(collectionsRepositoryProvider)
+            .fetchGamesForOpening(key.slug, key.eco),
+      ]);
+      return CollectionContents(
+        sections: (results[0] as Collection).sections,
+        games: results[1] as List<CollectionGame>,
+      );
+    });
+
+@immutable
+class PublishedGamesBatch {
+  const PublishedGamesBatch({
+    required this.games,
+    required this.total,
+    required this.nextOffset,
+    required this.hasMore,
+  });
+  final List<CollectionGame> games;
+  final int total;
+  final int nextOffset;
+  final bool hasMore;
+}
 
 /// One collection by slug, with its About text and section tree.
 final collectionDetailProvider = FutureProvider.autoDispose
@@ -471,8 +594,11 @@ bool isCollectionLocked(
 
 /// The paywall's feature id for a Premium collection: a fixed identifier
 /// for the upgrade analytics, never the collection's own name or id.
-String collectionPaywallFeatureId(CollectionKind kind) =>
-    kind == CollectionKind.book ? 'collection_books' : 'collection_events';
+String collectionPaywallFeatureId(CollectionKind kind) => switch (kind) {
+  CollectionKind.book => 'collection_books',
+  CollectionKind.event => 'collection_events',
+  CollectionKind.analysis => 'collection_analysis',
+};
 
 /// Where a collection's paywall resumes: the collection page it opened on.
 const String kCollectionPaywallReturnTo = 'collections/collection';

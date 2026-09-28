@@ -224,7 +224,10 @@ class _StreakPlayerScreenState extends ConsumerState<StreakPlayerScreen> {
         children: [
           PlayerStreakTopBar(
             inSpace: inSpace,
-            onToggleSpace: draft == null ? null : () => _toggleSpace(draft),
+            onToggleSpace:
+                draft == null || (!inSpace && !draft.canAddToMySpace)
+                    ? null
+                    : () => _toggleSpace(draft),
             onOpenProfile: hasName ? () => _openProfile(player) : null,
           ),
           Expanded(

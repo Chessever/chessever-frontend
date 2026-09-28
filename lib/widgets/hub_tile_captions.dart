@@ -93,12 +93,15 @@ String hubCollectionsCaption(AsyncValue<List<Collection>> collections) {
   final list = collections.valueOrNull;
   if (list == null) return kHubTileCaption;
   final events = list.where((c) => c.kind == CollectionKind.event).length;
-  final books = list.length - events;
-  if (events == 0 && books == 0) return 'Nothing published yet';
-  if (books == 0) {
+  final books = list.where((c) => c.kind == CollectionKind.book).length;
+  final analyses = list.where((c) => c.kind == CollectionKind.analysis).length;
+  if (list.isEmpty) return 'Nothing published yet';
+  if (books == 0 && analyses == 0) {
     return _count(events, 'annotated event', 'annotated events');
   }
-  if (events == 0) return _count(books, 'book', 'books');
-  return '${_count(events, 'event', 'events')} · '
-      '${_count(books, 'book', 'books')}';
+  return [
+    if (events > 0) _count(events, 'event', 'events'),
+    if (books > 0) _count(books, 'book', 'books'),
+    if (analyses > 0) _count(analyses, 'analysis', 'analyses'),
+  ].join(' · ');
 }

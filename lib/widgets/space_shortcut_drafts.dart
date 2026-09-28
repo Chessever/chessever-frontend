@@ -258,6 +258,8 @@ LibraryMenuAction labeledSpaceMenuAction({
     icon: base.icon,
     label: inSpace ? removeLabel : addLabel,
     onSelected: base.onSelected,
+    enabled: base.enabled,
+    visible: base.visible,
   );
 }
 

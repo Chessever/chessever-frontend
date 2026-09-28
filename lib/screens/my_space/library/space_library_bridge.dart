@@ -1,3 +1,6 @@
+import 'package:chessever2/repository/library/library_book_publication.dart';
+import 'package:chessever2/screens/collections/collections_data.dart';
+import 'package:chessever2/screens/library/library_book_screen.dart';
 import 'package:chessever2/repository/library/library_repository.dart';
 import 'package:chessever2/repository/library/models/library_folder.dart';
 import 'package:chessever2/revenue_cat_service/subscribe_state.dart';
@@ -225,7 +228,12 @@ List<LibraryMenuAction> spaceLibraryFolderActions(
   void fail(Object e, StackTrace st, String fallback) {
     talker.handle(e, st);
     HapticFeedbackService.error();
-    say(userFacingError(e, fallback: fallback), tone: AppSnackTone.danger);
+    say(
+      e is LibraryBookPublicationException
+          ? e.message
+          : userFacingError(e, fallback: fallback),
+      tone: AppSnackTone.danger,
+    );
   }
 
   if (folder.isSubscribed) {
@@ -255,6 +263,11 @@ List<LibraryMenuAction> spaceLibraryFolderActions(
     say('only root-level folder can be shared with others');
   }
 
+  final publication = LibraryMenuAction(
+    icon: Icons.publish_rounded,
+    label: 'Publish / edit book',
+    onSelected: () => openLibraryBookEditor(context, folder),
+  );
   final rename = LibraryMenuAction(
     icon: Icons.edit_rounded,
     label: 'Rename',
@@ -296,7 +309,12 @@ List<LibraryMenuAction> spaceLibraryFolderActions(
       );
       if (confirmed != true) return;
       try {
-        await repo().deleteFolder(folder.id);
+        await deleteLibraryFolderWithPublications(
+          folder: folder,
+          publisher: container.read(libraryBookPublisherProvider),
+          deleteFolder: repo().deleteFolder,
+        );
+        container.invalidate(collectionsRepositoryProvider);
         container.invalidate(libraryFoldersStreamProvider);
         container.invalidate(folderAnalysisCountProvider);
         HapticFeedbackService.success();
@@ -339,6 +357,7 @@ List<LibraryMenuAction> spaceLibraryFolderActions(
           }
         },
       ),
+      publication,
       rename,
       delete,
     ];
@@ -368,6 +387,7 @@ List<LibraryMenuAction> spaceLibraryFolderActions(
               }
             },
     ),
+    publication,
     rename,
     delete,
   ];

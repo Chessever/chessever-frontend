@@ -29,6 +29,7 @@ class LibraryMenuAction {
     this.destructive = false,
     this.enabled = true,
     this.prominent = false,
+    this.visible = true,
   });
 
   final IconData icon;
@@ -43,6 +44,10 @@ class LibraryMenuAction {
   final bool destructive;
 
   final bool enabled;
+
+  /// Shared actions may be unavailable for a target without requiring every
+  /// card to repeat that policy. Hidden actions are omitted before layout.
+  final bool visible;
 
   /// Promotes the action into the quick row above the list: equal-width
   /// buttons with the icon over the label. The first four prominent actions
@@ -201,6 +206,7 @@ Future<void> showLibraryContextMenu({
   Offset? origin,
   ValueChanged<bool>? onPreviewLiftChanged,
 }) async {
+  actions = actions.where((action) => action.visible).toList();
   if (actions.isEmpty) return;
   // One focus menu at a time: a second press while one is up is a no-op.
   if (_FocusMenuRoute._active?.isActive ?? false) return;

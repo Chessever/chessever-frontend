@@ -1,8 +1,8 @@
 import 'package:flutter/foundation.dart';
 
 /// Models for the gamebase Collections API (`/api/collections…`): curated
-/// sets of annotated games, either one tournament's (`event`) or a book's
-/// (`book`). The ChessEver team uploads them in the chessever.com admin
+/// sets of annotated games from a tournament, a book or an analysis.
+/// The ChessEver team uploads them in the chessever.com admin
 /// console (Content > Collections); the app only reads published ones.
 ///
 /// Every parser here tolerates nulls, wrong scalar types and unknown keys, so
@@ -14,14 +14,19 @@ enum CollectionKind {
   event,
 
   /// The games of a book.
-  book;
+  book,
+
+  /// An author's selected analysis games.
+  analysis;
 
   String get apiValue => name;
 
   static CollectionKind parse(Object? raw) =>
-      raw?.toString().trim().toLowerCase() == 'book'
-      ? CollectionKind.book
-      : CollectionKind.event;
+      switch (raw?.toString().trim().toLowerCase()) {
+        'book' => CollectionKind.book,
+        'analysis' => CollectionKind.analysis,
+        _ => CollectionKind.event,
+      };
 }
 
 /// Who may read a collection's games.
@@ -147,6 +152,8 @@ class Collection {
     this.subtitle,
     this.author,
     this.annotator,
+    this.authorBio,
+    this.annotatorBio,
     this.coverUrl,
     this.location,
     this.dateStart,
@@ -175,6 +182,7 @@ class Collection {
     this.events = const [],
     this.note,
     this.linkId,
+    this.matchedGameCount,
   }) : access =
            access ??
            (kind == CollectionKind.book
@@ -196,6 +204,11 @@ class Collection {
 
   /// Who annotated the games.
   final String? annotator;
+
+  /// Optional editorial biographies. Only supplied facts are shown; a
+  /// missing biography is never filled with an inferred player identity.
+  final String? authorBio;
+  final String? annotatorBio;
   final String? coverUrl;
 
   /// Where an event was played.
@@ -276,6 +289,9 @@ class Collection {
   /// The binding a `for-event` row came through.
   final String? linkId;
 
+  /// Games studying the selected opening, on a for-opening result.
+  final int? matchedGameCount;
+
   bool get isPremium => access == CollectionAccess.premium;
 
   factory Collection.fromJson(Map<String, dynamic> json) {
@@ -296,6 +312,8 @@ class Collection {
       subtitle: _nullableString(json['subtitle']),
       author: _nullableString(json['author']),
       annotator: _nullableString(json['annotator']),
+      authorBio: _nullableString(json['authorBio']),
+      annotatorBio: _nullableString(json['annotatorBio']),
       coverUrl: _nullableString(json['coverUrl']),
       location: _nullableString(json['location']),
       dateStart: _day(json['dateStart']),
@@ -326,6 +344,7 @@ class Collection {
       events: events,
       note: _nullableString(json['note']),
       linkId: _nullableString(json['linkId']),
+      matchedGameCount: _nullableInt(json['matchedGameCount']),
     );
   }
 }
@@ -744,6 +763,8 @@ class CollectionGameCard {
     this.contentHash,
     this.updatedAt,
     this.pgn,
+    this.collectionSlug,
+    this.collectionTitle,
   });
 
   final String id;
@@ -779,6 +800,8 @@ class CollectionGameCard {
   final String? contentHash;
   final DateTime? updatedAt;
   final String? pgn;
+  final String? collectionSlug;
+  final String? collectionTitle;
 
   /// Whether [playerKey] (a [CollectionPlayer.key]) played this game.
   bool involves(String playerKey) =>
@@ -818,6 +841,8 @@ class CollectionGameCard {
       contentHash: _nullableString(json['contentHash']),
       updatedAt: _timestamp(json['updatedAt']),
       pgn: pgn is String && pgn.trim().isNotEmpty ? pgn : null,
+      collectionSlug: _nullableString(json['collectionSlug']),
+      collectionTitle: _nullableString(json['collectionTitle']),
     );
   }
 }
@@ -880,6 +905,67 @@ class CollectionPlayer {
         if (_nullableString(item['name']) != null)
           CollectionPlayer.fromJson(item),
     ];
+  }
+}
+
+/// A searchable ECO opening represented in published books. Counts come from
+/// indexed game memberships; the position is the opening's core position,
+/// never a game's final board.
+@immutable
+class CollectionOpening {
+  const CollectionOpening({
+    required this.eco,
+    this.name,
+    this.fen,
+    this.gameCount = 0,
+    this.bookCount = 0,
+  });
+
+  final String eco;
+  final String? name;
+  final String? fen;
+  final int gameCount;
+  final int bookCount;
+
+  factory CollectionOpening.fromJson(Map<String, dynamic> json) =>
+      CollectionOpening(
+        eco: _string(json['eco']).toUpperCase(),
+        name: _nullableString(json['name']),
+        fen: _nullableString(json['fen']),
+        gameCount: _int(json['gameCount']),
+        bookCount: _int(json['bookCount']),
+      );
+}
+
+@immutable
+class CollectionOpeningsPage {
+  const CollectionOpeningsPage({
+    required this.items,
+    required this.total,
+    required this.limit,
+    required this.offset,
+  });
+
+  final List<CollectionOpening> items;
+  final int total;
+  final int limit;
+  final int offset;
+
+  factory CollectionOpeningsPage.fromJson(Object? data) {
+    final map = data is Map ? data : const {};
+    final items = [
+      for (final item in _maps(map['items']))
+        if (RegExp(
+          r'^[A-E][0-9]{2}$',
+        ).hasMatch(_string(item['eco']).toUpperCase()))
+          CollectionOpening.fromJson(item),
+    ];
+    return CollectionOpeningsPage(
+      items: items,
+      total: map.containsKey('total') ? _int(map['total']) : items.length,
+      limit: _int(map['limit']),
+      offset: _int(map['offset']),
+    );
   }
 }
 

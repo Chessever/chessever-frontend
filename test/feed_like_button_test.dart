@@ -8,6 +8,8 @@ import 'package:chessever2/revenue_cat_service/subscribe_state.dart';
 import 'package:chessever2/screens/chessboard/analysis/chess_game.dart';
 import 'package:chessever2/screens/chessboard/classification_fx/move_class.dart';
 import 'package:chessever2/screens/chessboard/widgets/heart_burst.dart';
+import 'package:chessever2/screens/chessboard/widgets/like_tag_chip.dart';
+import 'package:chessever2/screens/chessboard/widgets/like_tag_offer.dart';
 import 'package:chessever2/screens/feed/audio/feed_sfx.dart';
 import 'package:chessever2/screens/feed/feed_screen.dart';
 import 'package:chessever2/screens/feed/models/feed_models.dart';
@@ -23,6 +25,7 @@ import 'package:chessever2/screens/my_space/models/space_shortcut.dart';
 import 'package:chessever2/screens/my_space/providers/space_shortcuts_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/event_no_spoilers_provider.dart';
+import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:dartchess/dartchess.dart';
 import 'package:flutter/material.dart';
@@ -33,6 +36,154 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 /// The Feed's Like button plays the board screen's heart: the double-tap's
 /// burst and flight for a like, the heartbreak for an unlike.
 void main() {
+  for (final reduceMotion in [false, true]) {
+    testWidgets('fresh like offers the board picker for 5.2 seconds '
+        '(reduced motion: $reduceMotion)', (tester) async {
+      final feed = await _pump(tester, reduceMotion: reduceMotion);
+      final likeRect = tester.getRect(_likeButton);
+      await tester.tap(_likeButton);
+      await _frames(tester, 400);
+      expect(find.byType(LikeTagChip), findsNothing);
+      await _waitForTag(tester);
+      expect(find.text('Tag this game'), findsOneWidget);
+      expect(tester.getRect(_likeButton), likeRect);
+      final container = ProviderScope.containerOf(
+        tester.element(find.byType(FeedScreen)),
+      );
+      expect(container.read(tagChipOfferProvider).current.value, isNull);
+
+      await _frames(tester, 5000);
+      expect(find.byType(LikeTagChip), findsOneWidget);
+      await _frames(tester, 300);
+      expect(find.byType(LikeTagChip), findsNothing);
+      expect(find.byKey(const ValueKey('feed_analyze_button')), findsOneWidget);
+      expect(_liked(tester), isTrue);
+      expect(feed.likes.tagWrites, isEmpty);
+      await _tearDown(tester);
+    });
+  }
+
+  for (final light in [false, true]) {
+    testWidgets('shared picker opens above Feed actions and saves multiple '
+        'tags on a small phone (light: $light)', (tester) async {
+      final feed = await _pump(
+        tester,
+        size: const Size(360, 640),
+        textScale: 1.3,
+        light: light,
+      );
+      await tester.tap(_likeButton);
+      await _waitForTag(tester);
+      await _frames(tester, 600);
+      final chip = tester.getRect(find.byType(LikeTagChip));
+      await tester.tap(find.text('Tag this game'));
+      await _frames(tester, 700);
+      expect(find.text('Opening'), findsOneWidget);
+      final panel = tester.getRect(
+        find
+            .ancestor(
+              of: find.byType(GridView),
+              matching: find.byType(Material),
+            )
+            .first,
+      );
+      expect(panel.top, greaterThanOrEqualTo(8));
+      expect(panel.bottom, lessThanOrEqualTo(chip.top));
+      expect(panel.left, greaterThanOrEqualTo(8));
+      expect(panel.right, lessThanOrEqualTo(352));
+      await tester.tap(find.text('Opening'));
+      await tester.tap(find.text('Middlegame'));
+      await _frames(tester, 5500);
+      expect(find.text('2 selected'), findsOneWidget);
+      expect(feed.likes.tagWrites, isEmpty);
+      await tester.tap(find.text('Save'));
+      await _frames(tester, 800);
+      expect(feed.likes.tagWrites, hasLength(1));
+      expect(feed.likes.tagWrites.single.$1, 'g0');
+      expect(feed.likes.tagWrites.single.$2, ['Opening', 'Middlegame']);
+      expect(feed.likes.tagsFor('g0'), ['Opening', 'Middlegame']);
+      expect(find.byType(LikeTagChip), findsNothing);
+      expect(find.text('Opening'), findsNothing);
+      expect(tester.takeException(), isNull);
+      await _tearDown(tester);
+    });
+  }
+
+  testWidgets('dismissing a draft resumes the window without writing tags', (
+    tester,
+  ) async {
+    final feed = await _pump(tester);
+    await tester.tap(_likeButton);
+    await _waitForTag(tester);
+    await _frames(tester, 600);
+    await tester.tap(find.text('Tag this game'));
+    await _frames(tester, 700);
+    await tester.tap(find.text('Opening'));
+    await tester.tapAt(const Offset(5, 5));
+    await _frames(tester, 800);
+    expect(find.byType(GridView), findsNothing);
+    expect(find.byType(LikeTagChip), findsOneWidget);
+    await _frames(tester, 5200);
+    expect(find.byType(LikeTagChip), findsNothing);
+    expect(feed.likes.tagWrites, isEmpty);
+    await _tearDown(tester);
+  });
+
+  testWidgets('unlike removes the tag offer', (tester) async {
+    await _pump(tester);
+    await tester.tap(_likeButton);
+    await _waitForTag(tester);
+    await tester.tap(_likeButton);
+    await _frames(tester, 32);
+    expect(find.byType(LikeTagChip), findsNothing);
+    expect(_liked(tester), isFalse);
+    await _tearDown(tester);
+  });
+
+  testWidgets('swiping away cancels a pending or open tag offer', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      items: [
+        _scholarsMate(),
+        _scholarsMate(id: 'g1'),
+      ],
+    );
+    await tester.tap(_likeButton.first);
+    await _frames(tester, 200);
+    await tester.drag(find.byType(PageView), const Offset(0, -750));
+    await _frames(tester, 1800);
+    expect(find.byType(LikeTagChip), findsNothing);
+    await tester.tap(_likeButton.hitTestable());
+    await _waitForTag(tester);
+    await tester.drag(find.byType(PageView), const Offset(0, 750));
+    await _frames(tester, 1800);
+    expect(find.byType(LikeTagChip), findsNothing);
+    await _tearDown(tester);
+  });
+
+  testWidgets(
+    'leaving Feed removes an open menu and does not revive it on return',
+    (tester) async {
+      await _pump(tester);
+      await tester.tap(_likeButton);
+      await _waitForTag(tester);
+      await _frames(tester, 600);
+      await tester.tap(find.text('Tag this game'));
+      await _frames(tester, 700);
+      expect(find.text('Opening'), findsOneWidget);
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+      await _frames(tester, 32);
+      expect(find.byType(LikeTagChip), findsNothing);
+      expect(find.text('Opening'), findsNothing);
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      await _frames(tester, 300);
+      expect(find.byType(LikeTagChip), findsNothing);
+      await _tearDown(tester);
+    },
+  );
+
   testWidgets('Like plays the double-tap heart over the board, flies it into '
       'the button, and the button fills as it lands', (tester) async {
     final feed = await _pump(tester);
@@ -204,6 +355,7 @@ void main() {
     expect(_liked(tester), isFalse);
     expect(_likeGlyph(tester), FeedGlyphs.heartOutline);
     expect(find.text("Couldn't update your like."), findsOneWidget);
+    expect(find.byType(LikeTagChip), findsNothing);
     await _tearDown(tester);
   });
 
@@ -230,6 +382,8 @@ void main() {
 
     // Played out, a second double-tap plays the heart and changes nothing.
     await _frames(tester, 1700);
+    expect(find.byType(LikeTagChip), findsOneWidget);
+    final offer = tester.widget<LikeTagChip>(find.byType(LikeTagChip)).offer;
     await tester.tapAt(square);
     await tester.pump(const Duration(milliseconds: 80));
     await tester.tapAt(square);
@@ -240,6 +394,10 @@ void main() {
     );
     expect(feed.likes.toggles, 1);
     expect(_liked(tester), isTrue);
+    expect(
+      tester.widget<LikeTagChip>(find.byType(LikeTagChip)).offer,
+      same(offer),
+    );
     await _tearDown(tester);
   });
 
@@ -302,6 +460,17 @@ Future<void> _frames(WidgetTester tester, int ms) async {
   }
 }
 
+Future<void> _waitForTag(WidgetTester tester) async {
+  for (
+    var t = 0;
+    t < 2200 && find.byType(LikeTagChip).evaluate().isEmpty;
+    t += 16
+  ) {
+    await tester.pump(const Duration(milliseconds: 16));
+  }
+  expect(find.byType(LikeTagChip), findsOneWidget);
+}
+
 class _Feed {
   _Feed(this.likes, this.haptics);
 
@@ -316,9 +485,13 @@ Future<_Feed> _pump(
   bool failing = false,
   bool rollsBack = false,
   Duration writeTime = Duration.zero,
+  Size size = const Size(393, 852),
+  double textScale = 1,
+  bool light = false,
+  List<FeedItem>? items,
 }) async {
   tester.view.devicePixelRatio = 3;
-  tester.view.physicalSize = const Size(393 * 3, 852 * 3);
+  tester.view.physicalSize = size * 3;
   addTearDown(tester.view.resetDevicePixelRatio);
   addTearDown(tester.view.resetPhysicalSize);
 
@@ -349,7 +522,7 @@ Future<_Feed> _pump(
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
-        feedProvider.overrideWith(() => _FakeFeed([_scholarsMate()])),
+        feedProvider.overrideWith(() => _FakeFeed(items ?? [_scholarsMate()])),
         feedPuzzlesProvider.overrideWith((ref) async => const <FeedPuzzle>[]),
         feedNewsProvider.overrideWith((ref) async => const <FeedNews>[]),
         feedSfxProvider.overrideWithValue(sfx),
@@ -365,12 +538,16 @@ Future<_Feed> _pump(
         feedEngineProvider.overrideWithValue(_NoEngine()),
       ],
       child: MaterialApp(
+        theme: light ? AppTheme.lightTheme : AppTheme.darkTheme,
         home: Builder(
           builder: (context) {
             ResponsiveHelper.init(context);
             final media = MediaQuery.of(context);
             return MediaQuery(
-              data: media.copyWith(disableAnimations: reduceMotion),
+              data: media.copyWith(
+                disableAnimations: reduceMotion,
+                textScaler: TextScaler.linear(textScale),
+              ),
               child: const Scaffold(body: FeedScreen()),
             );
           },
@@ -390,7 +567,7 @@ Future<void> _tearDown(WidgetTester tester) async {
 
 const _pgn = '1. e4 e5 2. Bc4 Nc6 3. Qh5 Nf6 4. Qxf7# 1-0';
 
-FeedItem _scholarsMate() {
+FeedItem _scholarsMate({String id = 'g0'}) {
   final parsed = PgnGame.parsePgn(_pgn);
   Position position = PgnGame.startingPosition(parsed.headers);
   final plies = <FeedPly>[FeedPly(fen: position.fen)];
@@ -409,7 +586,7 @@ FeedItem _scholarsMate() {
   );
   return FeedItem(
     game: GamesTourModel(
-      gameId: 'g0',
+      gameId: id,
       whitePlayer: player('Carlsen, Magnus', 2830),
       blackPlayer: player('Nakamura, Hikaru', 2802),
       whiteTimeDisplay: '--:--',
@@ -450,6 +627,20 @@ class _MemoryLikes extends LikedGamesNotifier {
   final Duration writeTime;
   int toggles = 0;
   bool writing = false;
+  final tagWrites = <(String, List<String>)>[];
+
+  List<String> tagsFor(String likeId) =>
+      state.valueOrNull!.firstWhere((row) => row.sourceGameId == likeId).tags;
+
+  @override
+  Future<bool> setTagsForLikeId(String likeId, List<String> tags) async {
+    tagWrites.add((likeId, tags));
+    state = AsyncData([
+      for (final row in state.valueOrNull ?? <SavedAnalysis>[])
+        row.sourceGameId == likeId ? row.copyWith(tags: tags) : row,
+    ]);
+    return true;
+  }
 
   @override
   Future<List<SavedAnalysis>> build() async => [

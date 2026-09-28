@@ -37,6 +37,7 @@ class FeedActionRow extends StatelessWidget {
     this.shownLiked,
     this.shownLikes,
     this.heartPop = 0,
+    this.tagPrompt,
     required this.inSpace,
     this.saved = false,
     required this.likeIconKey,
@@ -66,6 +67,10 @@ class FeedActionRow extends StatelessWidget {
 
   /// Bumped when a heart lands on the button: the filled heart pops once.
   final int heartPop;
+
+  /// The board's temporary tag picker takes the other actions' space while
+  /// Like stays in place, so it can still be undone immediately.
+  final Widget? tagPrompt;
 
   /// Null when this game cannot be saved to My Space; the button is dropped.
   final bool? inSpace;
@@ -109,39 +114,30 @@ class FeedActionRow extends StatelessWidget {
         likeLabel,
       ],
     );
+    // Equal cells with centered contents read as one balanced toolbar.
+    // Labels do not need to touch the board's outer edges.
     return Row(
       children: [
-        Expanded(
-          child: FeedPressable(
-            key: const ValueKey('feed_analyze_button'),
-            semanticsLabel: 'Analyze',
-            semanticsHint: 'Open game on the board',
-            onTap: onAnalyze,
-            child: FeedActionLabel(
-              fontSize: fontSize,
-              label: 'Analyze',
-              icon: FeedGlyph(
-                FeedGlyphs.analyze,
-                width: 22,
-                height: 22,
-                color: ink,
-              ),
+        if (tagPrompt != null)
+          Expanded(
+            flex: space != null ? 4 : 3,
+            child: Padding(
+              padding: const EdgeInsets.only(right: 12),
+              child: Align(alignment: Alignment.centerRight, child: tagPrompt),
             ),
           ),
-        ),
-        if (space != null)
+        if (tagPrompt == null) ...[
           Expanded(
             child: FeedPressable(
-              key: const ValueKey('feed_space_button'),
-              semanticsLabel: 'My Space',
-              semanticsHint: space ? 'Remove from My Space' : 'Add to My Space',
-              selected: space,
-              onTap: onSpace,
+              key: const ValueKey('feed_analyze_button'),
+              semanticsLabel: 'Analyze',
+              semanticsHint: 'Open game on the board',
+              onTap: onAnalyze,
               child: FeedActionLabel(
                 fontSize: fontSize,
-                label: 'My Space',
+                label: 'Analyze',
                 icon: FeedGlyph(
-                  space ? FeedGlyphs.mySpaceAdded : FeedGlyphs.mySpaceAdd,
+                  FeedGlyphs.analyze,
                   width: 22,
                   height: 22,
                   color: ink,
@@ -149,47 +145,71 @@ class FeedActionRow extends StatelessWidget {
               ),
             ),
           ),
-        Expanded(
-          child: FeedPressable(
-            key: const ValueKey('feed_share_button'),
-            semanticsLabel: 'Share',
-            onTap: onShare,
-            child: FeedActionLabel(
-              fontSize: fontSize,
-              label: 'Share',
-              icon: FeedGlyph(
-                FeedGlyphs.share,
-                width: 22,
-                height: 22,
-                color: ink,
+          if (space != null)
+            Expanded(
+              child: FeedPressable(
+                key: const ValueKey('feed_space_button'),
+                semanticsLabel: 'My Space',
+                semanticsHint: space
+                    ? 'Remove from My Space'
+                    : 'Add to My Space',
+                selected: space,
+                onTap: onSpace,
+                child: FeedActionLabel(
+                  fontSize: fontSize,
+                  label: 'My Space',
+                  icon: FeedGlyph(
+                    space ? FeedGlyphs.mySpaceAdded : FeedGlyphs.mySpaceAdd,
+                    width: 22,
+                    height: 22,
+                    color: ink,
+                  ),
+                ),
+              ),
+            ),
+          Expanded(
+            child: FeedPressable(
+              key: const ValueKey('feed_share_button'),
+              semanticsLabel: 'Share',
+              onTap: onShare,
+              child: FeedActionLabel(
+                fontSize: fontSize,
+                label: 'Share',
+                icon: FeedGlyph(
+                  FeedGlyphs.share,
+                  width: 22,
+                  height: 22,
+                  color: ink,
+                ),
               ),
             ),
           ),
-        ),
-        Expanded(
-          child: FeedPressable(
-            key: const ValueKey('feed_save_button'),
-            semanticsLabel: feedSaveLabel(saved: saved),
-            semanticsHint: saved
-                ? 'Choose the databases it is saved in'
-                : 'Save to a database',
-            selected: saved,
-            onTap: onSave,
-            child: FeedActionLabel(
-              fontSize: fontSize,
-              label: saveLabel,
-              icon: FeedGlyph(
-                saved ? FeedGlyphs.saved : FeedGlyphs.save,
-                width: 22,
-                height: 22,
-                // The tick says saved, in ink as My Space's does: the heart
-                // stays the row's one colour.
-                color: ink,
+          Expanded(
+            child: FeedPressable(
+              key: const ValueKey('feed_save_button'),
+              semanticsLabel: feedSaveLabel(saved: saved),
+              semanticsHint: saved
+                  ? 'Choose the databases it is saved in'
+                  : 'Save to a database',
+              selected: saved,
+              onTap: onSave,
+              child: FeedActionLabel(
+                fontSize: fontSize,
+                label: saveLabel,
+                icon: FeedGlyph(
+                  saved ? FeedGlyphs.saved : FeedGlyphs.save,
+                  width: 22,
+                  height: 22,
+                  // The tick says saved, in ink as My Space's does: the heart
+                  // stays the row's one colour.
+                  color: ink,
+                ),
               ),
             ),
           ),
-        ),
+        ],
         Expanded(
+          key: const ValueKey('feed_like_action'),
           child: FeedPressable(
             key: const ValueKey('feed_like_button'),
             semanticsLabel: feedLikeSemantics(liked: liked, likes: likes),
@@ -298,7 +318,7 @@ class FeedActionLabel extends StatelessWidget {
   /// The words' size before text scaling, when they fit.
   static const double restSize = 12;
 
-  /// Space kept clear each side of the word.
+  /// Space reserved per side when sizing labels to their action cells.
   static const double gutter = 4;
 
   static TextStyle styleOf(BuildContext context, double fontSize) =>
@@ -313,16 +333,13 @@ class FeedActionLabel extends StatelessWidget {
     return Column(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
-        SizedBox(height: 22, child: Center(child: icon)),
+        SizedBox(height: 22, child: Center(widthFactor: 1, child: icon)),
         const SizedBox(height: 5),
-        // Never cut, never touching a neighbour: the label keeps [gutter]
-        // clear each side and shrinks before it would.
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: gutter),
-          child: FittedBox(
-            fit: BoxFit.scaleDown,
-            child: Text(label, maxLines: 1, style: styleOf(context, fontSize)),
-          ),
+        // Font sizing reserves space between neighbouring labels while
+        // each icon and word stay centered in the same full tap target.
+        FittedBox(
+          fit: BoxFit.scaleDown,
+          child: Text(label, maxLines: 1, style: styleOf(context, fontSize)),
         ),
       ],
     );

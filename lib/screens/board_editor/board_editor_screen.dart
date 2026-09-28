@@ -773,6 +773,7 @@ class _AddToSpaceButton extends ConsumerWidget {
     final draft = boardEditorSpaceDraft(fen, index);
     final inSpace =
         draft != null && ref.watch(spaceShortcutExistsProvider(draft.key));
+    if (!inSpace) return const SizedBox.shrink();
     final ink = context.colors.textPrimary;
     return Semantics(
       button: true,
@@ -782,7 +783,6 @@ class _AddToSpaceButton extends ConsumerWidget {
         key: const ValueKey('board_editor_space_button'),
         behavior: HitTestBehavior.opaque,
         onTap: () async {
-          if (draft == null) return;
           final error = boardEditorValidationError(
             ref.read(boardEditorProvider),
           );

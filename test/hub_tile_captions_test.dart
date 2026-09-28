@@ -140,10 +140,7 @@ void main() {
     });
 
     test('no likes invites the first one', () {
-      expect(
-        hubLikesCaption(const AsyncData((0, 0))),
-        'No likes yet',
-      );
+      expect(hubLikesCaption(const AsyncData((0, 0))), 'No likes yet');
     });
 
     test('loading and failure keep the tile fallback', () {
@@ -261,10 +258,7 @@ void main() {
         hubFeedCaption(_feed('Gukesh D', 'Praggnanandhaa R')),
         'Gukesh vs Praggnanandhaa',
       );
-      expect(
-        hubFeedCaption(_feed('Ramesh R.B.', 'Wesley So')),
-        'Ramesh vs So',
-      );
+      expect(hubFeedCaption(_feed('Ramesh R.B.', 'Wesley So')), 'Ramesh vs So');
     });
 
     test('no cached first page, or a nameless side, falls back', () {
@@ -274,6 +268,27 @@ void main() {
   });
 
   group('hubCollectionsCaption', () {
+    test('analysis counts independently from books', () {
+      expect(
+        hubCollectionsCaption(
+          AsyncData([
+            _collection('event', CollectionKind.event),
+            _collection('book', CollectionKind.book),
+            _collection('analysis', CollectionKind.analysis),
+          ]),
+        ),
+        '1 event · 1 book · 1 analysis',
+      );
+      expect(
+        hubCollectionsCaption(
+          AsyncData([
+            _collection('one', CollectionKind.analysis),
+            _collection('two', CollectionKind.analysis),
+          ]),
+        ),
+        '2 analyses',
+      );
+    });
     test('events and books, by kind and number', () {
       expect(
         hubCollectionsCaption(AsyncData(_shelf(events: 6, books: 2))),

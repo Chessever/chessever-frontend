@@ -1653,6 +1653,7 @@ class _MessageBubble extends StatelessWidget {
     final feedbackActions = Row(
       mainAxisSize: MainAxisSize.min,
       children: [
+        ChatMessageCopyButton(text: message.content),
         _FeedbackButton(
           tooltip: 'Helpful',
           icon: Icons.thumb_up_outlined,
@@ -1702,15 +1703,6 @@ class _CopyableMessageContent extends StatelessWidget {
   final String text;
   final Widget child;
 
-  Future<void> _copyMessage(BuildContext context) async {
-    final messenger = ScaffoldMessenger.maybeOf(context);
-    ContextMenuController.removeAny();
-    await Clipboard.setData(ClipboardData(text: text));
-    await HapticFeedback.lightImpact();
-    if (messenger == null || !messenger.mounted) return;
-    showAppSnackOn(messenger, 'Message copied', tone: AppSnackTone.success);
-  }
-
   @override
   Widget build(BuildContext context) {
     return SelectionArea(
@@ -1718,9 +1710,10 @@ class _CopyableMessageContent extends StatelessWidget {
         return AdaptiveTextSelectionToolbar.buttonItems(
           anchors: selectableRegionState.contextMenuAnchors,
           buttonItems: [
+            ...selectableRegionState.contextMenuButtonItems,
             ContextMenuButtonItem(
               label: 'Copy message',
-              onPressed: () => unawaited(_copyMessage(context)),
+              onPressed: () => unawaited(copyChatMessage(context, text)),
             ),
           ],
         );
@@ -1728,6 +1721,45 @@ class _CopyableMessageContent extends StatelessWidget {
       child: child,
     );
   }
+}
+
+/// Copies the complete answer independently of text selection. Native Copy
+/// still copies only the selection, including keyboard shortcuts.
+Future<void> copyChatMessage(BuildContext context, String text) async {
+  final messenger = ScaffoldMessenger.maybeOf(context);
+  ContextMenuController.removeAny();
+  try {
+    await Clipboard.setData(ClipboardData(text: text));
+  } catch (_) {
+    if (messenger != null && messenger.mounted) {
+      showAppSnackOn(
+        messenger,
+        "Couldn't copy this message. Try again.",
+        tone: AppSnackTone.danger,
+      );
+    }
+    return;
+  }
+  unawaited(HapticFeedback.lightImpact());
+  if (messenger == null || !messenger.mounted) return;
+  showAppSnackOn(messenger, 'Message copied', tone: AppSnackTone.success);
+}
+
+class ChatMessageCopyButton extends StatelessWidget {
+  const ChatMessageCopyButton({super.key, required this.text});
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) => IconButton(
+    tooltip: 'Copy message',
+    icon: const Icon(Icons.content_copy_rounded, size: 18),
+    constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
+    visualDensity: VisualDensity.standard,
+    onPressed: text.isEmpty
+        ? null
+        : () => unawaited(copyChatMessage(context, text)),
+  );
 }
 
 List<List<ChatReference>> structureChatReferences(

@@ -7,79 +7,88 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 void main() {
-  testWidgets(
-    'bottom nav bar (Events, For You, Library) never overflows on a '
-    'short 393px screen at large text scale with a gesture-nav inset',
-    (tester) async {
-      // The regression: the nav-item Column (icon + label + vertical padding,
-      // whose label height rides MediaQuery.textScaler) was placed in a fixed
-      // height slot — clamp(70.h + inset, 70, 120) minus the inset. On a short
-      // screen and/or large accessibility text scale and/or a large safe-area
-      // inset, that slot dropped a few pixels below the Column's intrinsic
-      // height and the bottom overflowed. This combination forces it.
-      final mediaQuery = const MediaQueryData(
-        size: Size(393, 600),
-        devicePixelRatio: 3,
-        viewPadding: EdgeInsets.only(bottom: 34),
-        padding: EdgeInsets.only(bottom: 34),
-      ).copyWith(textScaler: const TextScaler.linear(3));
+  testWidgets('bottom nav bar (Home, Events, Collections) never overflows on a '
+      'short 393px screen at large text scale with a gesture-nav inset', (
+    tester,
+  ) async {
+    // The regression: the nav-item Column (icon + label + vertical padding,
+    // whose label height rides MediaQuery.textScaler) was placed in a fixed
+    // height slot — clamp(70.h + inset, 70, 120) minus the inset. On a short
+    // screen and/or large accessibility text scale and/or a large safe-area
+    // inset, that slot dropped a few pixels below the Column's intrinsic
+    // height and the bottom overflowed. This combination forces it.
+    final mediaQuery = const MediaQueryData(
+      size: Size(393, 600),
+      devicePixelRatio: 3,
+      viewPadding: EdgeInsets.only(bottom: 34),
+      padding: EdgeInsets.only(bottom: 34),
+    ).copyWith(textScaler: const TextScaler.linear(3));
 
-      // Capture overflow specifically; svg assets aren't bundled in the unit
-      // test, so SvgWidget's errorBuilder fires — we must not let that noise
-      // mask (or fake) the layout assertion.
-      final errors = <FlutterErrorDetails>[];
-      final previousOnError = FlutterError.onError;
-      FlutterError.onError = errors.add;
+    // Capture overflow specifically; svg assets aren't bundled in the unit
+    // test, so SvgWidget's errorBuilder fires — we must not let that noise
+    // mask (or fake) the layout assertion.
+    final errors = <FlutterErrorDetails>[];
+    final previousOnError = FlutterError.onError;
+    FlutterError.onError = errors.add;
 
-      await tester.pumpWidget(
-        ProviderScope(
-          child: MaterialApp(
-            theme: AppTheme.darkTheme,
-            home: MediaQuery(
-              data: mediaQuery,
-              child: Builder(
-                builder: (context) {
-                  ResponsiveHelper.init(context);
-                  return const Scaffold(
-                    bottomNavigationBar: BottomNavBar(),
-                    body: SizedBox.shrink(),
-                  );
-                },
-              ),
+    await tester.pumpWidget(
+      ProviderScope(
+        child: MaterialApp(
+          theme: AppTheme.darkTheme,
+          home: MediaQuery(
+            data: mediaQuery,
+            child: Builder(
+              builder: (context) {
+                ResponsiveHelper.init(context);
+                return const Scaffold(
+                  bottomNavigationBar: BottomNavBar(),
+                  body: SizedBox.shrink(),
+                );
+              },
             ),
           ),
         ),
-      );
+      ),
+    );
 
-      FlutterError.onError = previousOnError;
+    FlutterError.onError = previousOnError;
 
-      // Three equal slots at 393px, in bar order: Events, For You,
-      // Library.
-      expect(find.byType(BottomNavBarWidget), findsNWidgets(3));
-      expect(
-        tester
-            .widgetList<BottomNavBarWidget>(find.byType(BottomNavBarWidget))
-            .map((item) => item.title)
-            .toList(),
-        ['Events', 'For You', 'Library'],
-      );
-      expect(find.text('Calendar'), findsNothing);
-      for (final widget in tester.widgetList<BottomNavBarWidget>(
-        find.byType(BottomNavBarWidget),
-      )) {
-        expect(widget.width, closeTo(393 / 3, 0.001));
-      }
+    // Three equal slots at 393px, in bar order: Events, For You,
+    // Library.
+    expect(find.byType(BottomNavBarWidget), findsNWidgets(3));
+    expect(
+      tester
+          .widgetList<BottomNavBarWidget>(find.byType(BottomNavBarWidget))
+          .map((item) => item.title)
+          .toList(),
+      ['Home', 'Events', 'Collections'],
+    );
+    expect(find.text('Calendar'), findsNothing);
+    expect(find.text('Home'), findsNothing);
+    expect(find.text('Events'), findsNothing);
+    expect(find.text('Collections'), findsNothing);
+    expect(find.byIcon(Icons.home_rounded), findsOneWidget);
+    final semantics = tester.ensureSemantics();
+    expect(find.bySemanticsLabel('Home'), findsOneWidget);
+    semantics.dispose();
+    for (final widget in tester.widgetList<BottomNavBarWidget>(
+      find.byType(BottomNavBarWidget),
+    )) {
+      expect(widget.width, closeTo(393 / 3, 0.001));
+    }
 
-      final overflowErrors = errors
-          .map((e) => e.exceptionAsString())
-          .where((e) => e.contains('overflowed'))
-          .toList();
+    // The bar is 48dp plus the gesture area; each icon keeps a 44dp target.
+    expect(tester.getSize(find.byType(BottomNavBar)).height, closeTo(82, 2));
+    for (final item in tester.widgetList<BottomNavBarWidget>(
+      find.byType(BottomNavBarWidget),
+    )) {
+      expect(item.width, greaterThanOrEqualTo(44));
+    }
+    final overflowErrors = errors
+        .map((e) => e.exceptionAsString())
+        .where((e) => e.contains('overflowed'))
+        .toList();
 
-      expect(
-        overflowErrors,
-        isEmpty,
-        reason: overflowErrors.join('\n'),
-      );
-    },
-  );
+    expect(overflowErrors, isEmpty, reason: overflowErrors.join('\n'));
+  });
 }

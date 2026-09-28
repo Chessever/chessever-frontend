@@ -1,25 +1,19 @@
 import 'dart:async';
-import 'dart:io';
 
 import 'package:chessever2/repository/liked_games/liked_games_provider.dart';
 import 'package:chessever2/repository/library/models/saved_analysis.dart';
 import 'package:chessever2/revenue_cat_service/subscribe_state.dart';
 import 'package:chessever2/screens/chessboard/models/like_tag.dart';
-import 'package:chessever2/screens/library/utils/folder_pgn_exporter.dart';
 import 'package:chessever2/screens/library/utils/load_saved_analysis.dart';
 import 'package:chessever2/screens/my_likes/provider/my_likes_provider.dart';
 import 'package:chessever2/screens/my_likes/my_likes_hub_screen.dart';
 import 'package:chessever2/screens/my_likes/widgets/date_section_header.dart'
-    show formatLikedDateHeader;
+    show DateSectionHeader, formatLikedDateHeader;
 import 'package:chessever2/screens/my_likes/widgets/my_likes_archive_boundary.dart';
-import 'package:chessever2/screens/my_space/actions/space_menu_action.dart';
 import 'package:chessever2/screens/my_space/models/space_shortcut.dart';
-import 'package:chessever2/screens/my_space/providers/space_shortcuts_provider.dart';
 import 'package:chessever2/repository/library/library_game_event.dart';
 import 'package:chessever2/screens/for_you/discovery/models/discovery_models.dart'
     show discoveryShortEventName;
-import 'package:chessever2/screens/for_you/discovery/widgets/discovery_common.dart'
-    show DiscoveryType, discoveryType;
 import 'package:chessever2/screens/for_you/discovery/widgets/discovery_game_cards.dart';
 import 'package:chessever2/screens/library/widgets/saved_game_actions.dart'
     show savedGameMenuActions;
@@ -31,7 +25,6 @@ import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart' show kRedColor;
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
-import 'package:chessever2/utils/logger/logger.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/user_error_message.dart';
 import 'package:chessever2/widgets/app_snack.dart';
@@ -42,8 +35,6 @@ import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
-import 'package:path_provider/path_provider.dart';
-import 'package:share_plus/share_plus.dart';
 import 'package:chessever2/screens/chessboard/utils/legible_ink.dart';
 
 /// My Likes, from anywhere that opens it (the My Likes tile, the Library's
@@ -66,7 +57,7 @@ class MyLikesScreen extends StatelessWidget {
 /// stay stored behind the archive boundary until Premium brings them back.
 ///
 /// A page of [MyLikesHubScreen]: the hub's frame carries back and the title;
-/// this page's first line keeps the count, the My Space pin and the export.
+/// this page starts with the same search and filters as Favorites.
 class MyLikesGamesPage extends ConsumerStatefulWidget {
   const MyLikesGamesPage({super.key});
 
@@ -265,74 +256,7 @@ class _MyLikesGamesPageState extends ConsumerState<MyLikesGamesPage>
       body = _buildLoadingState();
     }
 
-    return Column(
-      children: [
-        _buildHeader(),
-        Expanded(child: body),
-      ],
-    );
-  }
-
-  /// The page's first line: how many games are liked, then the My Space pin
-  /// and the PGN export the old My Likes bar carried.
-  Widget _buildHeader() {
-    final totalLiked =
-        ref.watch(myLikesViewProvider).valueOrNull?.totalLiked ??
-        _lastData?.totalLiked ??
-        0;
-    return Padding(
-      padding: EdgeInsets.fromLTRB(16.w, 4.h, 4.w, 0),
-      child: Row(
-        children: [
-          Expanded(
-            child: Text(
-              totalLiked == 0
-                  ? 'Games you like'
-                  : totalLiked == 1
-                  ? '1 liked game'
-                  : '$totalLiked liked games',
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: AppTypography.textSmRegular.copyWith(
-                color: context.colors.textSecondary,
-                fontFeatures: const [FontFeature.tabularFigures()],
-              ),
-            ),
-          ),
-          _buildSpaceButton(),
-          if (totalLiked > 0)
-            IconButton(
-              onPressed: _handleExportPgn,
-              tooltip: 'Export as PGN',
-              icon: Icon(
-                Icons.ios_share_rounded,
-                color: context.colors.textPrimary,
-                size: 20.sp,
-              ),
-            ),
-        ],
-      ),
-    );
-  }
-
-  /// Pins My Likes to My Space; filled once it is there.
-  Widget _buildSpaceButton() {
-    final draft = SpaceShortcut.draft(
-      kind: SpaceShortcutKind.likes,
-      targetId: 'me',
-      title: 'My Likes',
-    );
-    final inSpace = ref.watch(spaceShortcutExistsProvider(draft.key));
-    return IconButton(
-      tooltip: inSpace ? 'Remove from My Space' : 'Add to My Space',
-      onPressed:
-          () => toggleSpaceShortcut(context: context, ref: ref, draft: draft),
-      icon: Icon(
-        inSpace ? Icons.dashboard_customize : Icons.dashboard_customize_outlined,
-        color: context.colors.textPrimary,
-        size: 20.sp,
-      ),
-    );
+    return body;
   }
 
   /// Opens the paywall from the archive boundary. The sheet sits over My
@@ -359,154 +283,6 @@ class _MyLikesGamesPageState extends ConsumerState<MyLikesGamesPage>
     );
   }
 
-  /// Returns true if the user accepted the upgrade and actually subscribed.
-  /// Renders a non-blocking soft-wall snackbar with an "Export all" action; we
-  /// use this instead of immediately raising the paywall so the user still
-  /// gets their latest likes by ignoring the snackbar's action.
-  Future<bool> _promptExportUpgrade(int lockedCount) async {
-    if (!mounted) return false;
-    final completer = Completer<bool>();
-    // Set once "Export all" is tapped: from then on the paywall, not the
-    // snack's timer, decides the answer.
-    var upgrading = false;
-    final older =
-        lockedCount == 1
-            ? '1 older like needs'
-            : '$lockedCount older likes need';
-    final controller = showAppSnack(
-      context,
-      'Exporting your latest $kFreeMyLikesVisibleLimit likes. $older Premium.',
-      actionLabel: 'Export all',
-      duration: const Duration(seconds: 6),
-      onAction: () async {
-        if (completer.isCompleted || upgrading) return;
-        upgrading = true;
-        final unlocked = await requirePremiumGuard(
-          context,
-          ref,
-          featureId: kMyLikesExportFeatureId,
-          returnTo: kMyLikesReturnTo,
-          // A confirmed purchase resumes the export with every like.
-          onEntitled: () {
-            if (!completer.isCompleted) completer.complete(true);
-          },
-        );
-        if (!completer.isCompleted) completer.complete(unlocked);
-      },
-    );
-    if (controller == null) return false;
-    // Resolve to false when the snack dismisses without the Upgrade action
-    // being tapped — caller proceeds with the unlocked slice. This is exactly
-    // why the snack must never be persistent: `closed` is the gate. Once the
-    // action is tapped the snack timing out must not answer for the paywall
-    // still open over it.
-    unawaited(
-      controller.closed.then((_) {
-        if (!upgrading && !completer.isCompleted) completer.complete(false);
-      }),
-    );
-    return completer.future;
-  }
-
-  Future<void> _handleExportPgn() async {
-    HapticFeedbackService.medium();
-
-    final allAnalyses =
-        ref.read(likedGamesProvider).valueOrNull ?? const <SavedAnalysis>[];
-    if (allAnalyses.isEmpty) {
-      showAppSnack(context, 'Nothing to export yet');
-      return;
-    }
-
-    // Policy C: free users export the same latest likes they can see; premium
-    // gets everything. Slice the list at tap time so a sub picked up mid-
-    // session takes effect immediately.
-    final window = freeLikesWindow(
-      allAnalyses,
-      unlimited: ref.read(myLikesUnlimitedProvider),
-    );
-    List<SavedAnalysis> analyses;
-    if (window == null) {
-      analyses = allAnalyses;
-    } else {
-      analyses =
-          allAnalyses
-              .where((a) => !isLikedGameLocked(a.id, window: window))
-              .toList();
-      final lockedCount = allAnalyses.length - analyses.length;
-      if (lockedCount > 0) {
-        final proceed = await _promptExportUpgrade(lockedCount);
-        if (!mounted) return;
-        if (proceed) {
-          // User just subscribed via the export prompt — re-read state
-          // and export everything.
-          final refreshed = ref.read(subscriptionProvider);
-          if (refreshed.isSubscribed) {
-            analyses = allAnalyses;
-          }
-        } else if (analyses.isEmpty) {
-          // Nothing unlocked AND user declined upgrade — bail out cleanly.
-          return;
-        }
-      }
-    }
-
-    List<FolderPgnFile> files;
-    try {
-      files = exportSavedAnalysesAsPgnFiles(
-        analyses: analyses,
-        databaseName: 'My Likes',
-      );
-    } catch (e, st) {
-      talker.handle(e, st);
-      if (!mounted) return;
-      showAppSnack(
-        context,
-        userFacingError(e, fallback: 'Export failed. Please try again.'),
-        tone: AppSnackTone.danger,
-      );
-      return;
-    }
-
-    if (!mounted) return;
-    if (files.isEmpty) {
-      showAppSnack(context, 'Nothing to export yet');
-      return;
-    }
-
-    try {
-      final tempDir = await getTemporaryDirectory();
-      final xFiles = <XFile>[];
-      for (final entry in files) {
-        final file = File('${tempDir.path}/${entry.filename}');
-        await file.writeAsString(entry.pgn);
-        xFiles.add(XFile(file.path, mimeType: 'application/x-chess-pgn'));
-      }
-
-      if (!mounted) return;
-      final box = context.findRenderObject() as RenderBox?;
-      final origin =
-          box != null
-              ? box.localToGlobal(Offset.zero) & box.size
-              : const Rect.fromLTWH(0, 0, 1, 1);
-
-      await Share.shareXFiles(
-        xFiles,
-        subject: 'My Likes - Chessever PGN',
-        sharePositionOrigin: origin,
-      );
-      HapticFeedbackService.success();
-    } catch (e, st) {
-      talker.handle(e, st);
-      if (!mounted) return;
-      showAppSnack(
-        context,
-        userFacingError(e, fallback: 'Could not share this. Please try again.'),
-        tone: AppSnackTone.danger,
-      );
-    }
-  }
-
   Widget _buildBody(MyLikesData data) {
     if (data.isEmpty) return _buildEmptyState();
 
@@ -528,6 +304,17 @@ class _MyLikesGamesPageState extends ConsumerState<MyLikesGamesPage>
                   padding: EdgeInsets.symmetric(horizontal: 16.w),
                   child: _buildSearchBar(),
                 ),
+                if (data.totalLiked <= 5) ...[
+                  Padding(
+                    padding: EdgeInsets.fromLTRB(16.w, 12.h, 16.w, 0),
+                    child: Text(
+                      'Double-tap the chessboard to like a game.',
+                      style: AppTypography.textSmRegular.copyWith(
+                        color: context.colors.textSecondary,
+                      ),
+                    ),
+                  ),
+                ],
                 // Filter row is edge-to-edge so the horizontal scroll runs
                 // under the screen edges instead of being clipped by parent
                 // padding.
@@ -540,10 +327,9 @@ class _MyLikesGamesPageState extends ConsumerState<MyLikesGamesPage>
           SliverFillRemaining(
             hasScrollBody: false,
             child: _buildNoMatchesState(
-              subtitle:
-                  selectedTags.isEmpty
-                      ? 'Try adjusting your search or filters'
-                      : 'Try another tag or clear the tag filter',
+              subtitle: selectedTags.isEmpty
+                  ? 'Try adjusting your search or filters'
+                  : 'Try another tag or clear the tag filter',
             ),
           )
         else
@@ -671,10 +457,10 @@ class _MyLikesGamesPageState extends ConsumerState<MyLikesGamesPage>
       final isSortedBucket = dateKey.startsWith('__');
       if (!isSortedBucket) {
         items.add(
-          () => _LikedDateLine(
-            label: formatLikedDateHeader(dateKey),
-            count: list.length,
-            expanded: !isCollapsed,
+          () => DateSectionHeader(
+            dateLabel: formatLikedDateHeader(dateKey),
+            gameCount: list.length,
+            isExpanded: !isCollapsed,
             onToggle: () => _toggleDateSection(dateKey),
           ),
         );
@@ -751,6 +537,8 @@ class _MyLikesGamesPageState extends ConsumerState<MyLikesGamesPage>
           deleteLabel: 'Remove from likes',
           deleteIcon: Icons.heart_broken_rounded,
           locked: entries[index].isLocked,
+          showSpaceAction: false,
+          showShareAction: false,
         );
       },
       wrapCard: (index, card) {
@@ -759,8 +547,9 @@ class _MyLikesGamesPageState extends ConsumerState<MyLikesGamesPage>
           dismissKey: ValueKey('mylikes_remove_${analysis.id}'),
           icon: Icons.heart_broken_rounded,
           label: 'Remove',
-          backgroundColor:
-              context.isLightTheme ? context.colors.danger : kRedColor,
+          backgroundColor: context.isLightTheme
+              ? context.colors.danger
+              : kRedColor,
           behavior: SwipeActionBehavior.dismiss,
           onAction: () => _removeAnalysis(analysis),
           child: card,
@@ -785,9 +574,8 @@ class _MyLikesGamesPageState extends ConsumerState<MyLikesGamesPage>
     final short = discoveryShortEventName(event) ?? event;
     final tags = entry.isLocked
         ? const <String>[]
-        : ([...analysis.tags]..sort(
-            (a, b) => (tagCounts[b] ?? 0).compareTo(tagCounts[a] ?? 0),
-          ));
+        : ([...analysis.tags]
+            ..sort((a, b) => (tagCounts[b] ?? 0).compareTo(tagCounts[a] ?? 0)));
     final parts = [
       if (short != null && short.trim().isNotEmpty)
         DiscoveryMetaPart.text(short),
@@ -795,7 +583,9 @@ class _MyLikesGamesPageState extends ConsumerState<MyLikesGamesPage>
     ];
     return DiscoveryCardMeta(
       timeControlAsset: TimeControlGlyph.assetForLabel(entry.game.timeControl),
-      parts: parts.isEmpty ? const [DiscoveryMetaPart.text('Liked game')] : parts,
+      parts: parts.isEmpty
+          ? const [DiscoveryMetaPart.text('Liked game')]
+          : parts,
       semanticsLabel: [
         ?event,
         ...tags,
@@ -889,10 +679,9 @@ class _MyLikesGamesPageState extends ConsumerState<MyLikesGamesPage>
           children: [
             Icon(
               Icons.error_outline_rounded,
-              color:
-                  context.isLightTheme
-                      ? context.colors.danger
-                      : const Color(0xFFEF4444),
+              color: context.isLightTheme
+                  ? context.colors.danger
+                  : const Color(0xFFEF4444),
               size: 32.ic,
             ),
             SizedBox(height: 12.h),
@@ -953,27 +742,25 @@ class _LikeTagFilterChip extends StatelessWidget {
     // No dot anymore — chip carries its tag identity via a low-key tinted
     // fill + colored border. Unselected sits quiet; selected pops with a
     // brighter fill and a stronger border.
-    final background =
-        Color.lerp(
-          color.withValues(alpha: 0.08),
-          color.withValues(alpha: 0.22),
-          t,
-        )!;
+    final background = Color.lerp(
+      color.withValues(alpha: 0.08),
+      color.withValues(alpha: 0.22),
+      t,
+    )!;
     // Paper: the selected edge takes the tag hue darkened to 3:1 so the
     // chosen state reads without leaning on the pale swatch alone.
-    final borderColor =
-        Color.lerp(
-          color.withValues(alpha: 0.32),
-          context.isLightTheme
-              ? legibleHueInk(
-                context,
-                color,
-                minContrast: 3,
-                on: Color.alphaBlend(background, colors.background),
-              )
-              : color.withValues(alpha: 0.85),
-          t,
-        )!;
+    final borderColor = Color.lerp(
+      color.withValues(alpha: 0.32),
+      context.isLightTheme
+          ? legibleHueInk(
+              context,
+              color,
+              minContrast: 3,
+              on: Color.alphaBlend(background, colors.background),
+            )
+          : color.withValues(alpha: 0.85),
+      t,
+    )!;
 
     return AnimatedScale(
       duration: const Duration(milliseconds: 160),
@@ -1002,10 +789,9 @@ class _LikeTagFilterChip extends StatelessWidget {
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: AppTypography.textXsMedium.copyWith(
-                    color:
-                        selected
-                            ? colors.textPrimary
-                            : colors.textPrimary.withValues(alpha: 0.72),
+                    color: selected
+                        ? colors.textPrimary
+                        : colors.textPrimary.withValues(alpha: 0.72),
                     fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
                   ),
                 ),
@@ -1014,94 +800,23 @@ class _LikeTagFilterChip extends StatelessWidget {
                   duration: const Duration(milliseconds: 180),
                   padding: EdgeInsets.symmetric(horizontal: 6.w, vertical: 2.h),
                   decoration: BoxDecoration(
-                    color:
-                        selected
-                            ? color.withValues(alpha: 0.18)
-                            : colors.textPrimary.withValues(alpha: 0.06),
+                    color: selected
+                        ? color.withValues(alpha: 0.18)
+                        : colors.textPrimary.withValues(alpha: 0.06),
                     borderRadius: BorderRadius.circular(999.br),
                   ),
                   child: Text(
                     count.toString(),
                     style: AppTypography.textXsMedium.copyWith(
-                      color:
-                          selected
-                              ? colors.textPrimary
-                              : context.textInk(0.55),
+                      color: selected
+                          ? colors.textPrimary
+                          : context.textInk(0.55),
                       fontSize: 10.sp,
                     ),
                   ),
                 ),
               ],
             ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-/// A day of likes: the day and how many, on the quiet line a My Database
-/// group opens with. Tapping it folds the day away or back.
-class _LikedDateLine extends StatelessWidget {
-  const _LikedDateLine({
-    required this.label,
-    required this.count,
-    required this.expanded,
-    required this.onToggle,
-  });
-
-  final String label;
-  final int count;
-  final bool expanded;
-  final VoidCallback onToggle;
-
-  @override
-  Widget build(BuildContext context) {
-    final name = discoveryType(context, DiscoveryType.body);
-    final quiet = discoveryType(
-      context,
-      DiscoveryType.body,
-      weight: FontWeight.w500,
-      tabular: true,
-    ).copyWith(color: discoveryType(context, DiscoveryType.meta).color);
-    return Semantics(
-      button: true,
-      expanded: expanded,
-      label: '$label, $count ${count == 1 ? 'game' : 'games'}',
-      excludeSemantics: true,
-      onTap: onToggle,
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: onToggle,
-        child: SizedBox(
-          height: 44.w,
-          child: Row(
-            children: [
-              Expanded(
-                child: Row(
-                  children: [
-                    Flexible(
-                      child: Text(
-                        label,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: name,
-                      ),
-                    ),
-                    SizedBox(width: 6.w),
-                    Text('$count', maxLines: 1, style: quiet),
-                  ],
-                ),
-              ),
-              SizedBox(width: 12.w),
-              Icon(
-                expanded
-                    ? Icons.expand_less_rounded
-                    : Icons.expand_more_rounded,
-                size: 20.ic,
-                color: context.colors.iconSecondary,
-              ),
-            ],
           ),
         ),
       ),

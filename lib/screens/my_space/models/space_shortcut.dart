@@ -84,6 +84,26 @@ enum SpaceSection {
 }
 
 extension SpaceShortcutKindX on SpaceShortcutKind {
+  /// My Space currently exposes only databases and smart events. Keep the
+  /// other kinds and their navigation intact for previously saved data.
+  bool get canAddToMySpace => switch (this) {
+    // Product scope: temporarily disabled, not removed from persistence.
+    // SpaceShortcutKind.event ||
+    // SpaceShortcutKind.player ||
+    // SpaceShortcutKind.playerGames ||
+    // SpaceShortcutKind.countrymen ||
+    // SpaceShortcutKind.streak ||
+    // SpaceShortcutKind.game ||
+    // SpaceShortcutKind.miniatures ||
+    // SpaceShortcutKind.opening ||
+    // SpaceShortcutKind.position ||
+    // SpaceShortcutKind.playerOpenings ||
+    SpaceShortcutKind.folder ||
+    SpaceShortcutKind.collection ||
+    SpaceShortcutKind.smartEvent => true,
+    _ => false,
+  };
+
   SpaceSection get section => switch (this) {
     SpaceShortcutKind.player ||
     SpaceShortcutKind.playerGames ||
@@ -112,6 +132,14 @@ extension SpaceShortcutKindX on SpaceShortcutKind {
 }
 
 extension SpaceSectionX on SpaceSection {
+  bool get supportsAddingToMySpace =>
+      // this == SpaceSection.events ||
+      this == SpaceSection.library ||
+      // this == SpaceSection.players ||
+      // this == SpaceSection.games ||
+      // this == SpaceSection.openings ||
+      this == SpaceSection.smartEvents;
+
   /// Row title on My Space.
   String get title => switch (this) {
     SpaceSection.library => 'Library',
@@ -157,6 +185,12 @@ class SpaceShortcut {
   /// assigns a uuid.
   final String id;
   final SpaceShortcutKind kind;
+
+  /// A library folder is not a database. Older database drafts omitted
+  /// nodeType, so those still qualify; published collections hold games too.
+  bool get canAddToMySpace =>
+      kind.canAddToMySpace &&
+      (kind != SpaceShortcutKind.folder || params['nodeType'] != 'folder');
   final String targetId;
   final String title;
   final String? subtitle;

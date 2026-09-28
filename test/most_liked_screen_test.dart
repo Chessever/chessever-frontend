@@ -245,11 +245,7 @@ void main() {
     tester,
   ) async {
     final queries = <MostLikedQuery>[];
-    final container = await _pump(
-      tester,
-      subscribed: true,
-      queries: queries,
-    );
+    final container = await _pump(tester, subscribed: true, queries: queries);
 
     // The label sits under the segment's own target.
     await tester.tap(find.text('Week').first, warnIfMissed: false);
@@ -265,8 +261,10 @@ void main() {
     );
     expect(queries, isNotEmpty);
     expect(queries.every((q) => q.period == MostLikedPeriod.today), isTrue);
-    // The preview draws four of the twelve.
-    expect(find.byType(GridGameCardWrapperWidget), findsNWidgets(4));
+    // Discovery now keeps the ranking inside its event-style destination
+    // card; the full game list remains on the page above.
+    expect(find.text('Most liked'), findsOneWidget);
+    expect(find.byType(GridGameCardWrapperWidget), findsNothing);
     await _teardown(tester, container);
   });
 }

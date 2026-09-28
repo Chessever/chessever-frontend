@@ -1201,6 +1201,8 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
         icon: icon,
         label: inSpace ? 'Remove $noun from My Space' : 'Add $noun to My Space',
         onSelected: base.onSelected,
+        enabled: base.enabled,
+        visible: base.visible,
       );
     }
 

@@ -9,12 +9,29 @@ import 'package:chessever2/utils/svg_asset.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
-/// Main sections, in bar order: Events, For You, Library. The calendar opens
+/// Main sections: Home, Events, Collections. The calendar opens
 /// from the sidebar, and Feed from For You › Discovery.
 ///
 /// Tabs are only ever addressed by value or by [Enum.name] (analytics sends
 /// the name), never by index, so reordering the bar moves nothing else.
-enum BottomNavBarItem { tournaments, forYou, library }
+enum BottomNavBarItem {
+  tournaments,
+  forYou,
+  collections;
+
+  // Source compatibility for integrations compiled against the previous tab.
+  @Deprecated(
+    'Library is reached through My Space; use collections for the main tab',
+  )
+  static const library = collections;
+}
+
+/// Keep enum identities stable for callers; presentation has its own order.
+const bottomNavBarOrder = [
+  BottomNavBarItem.forYou,
+  BottomNavBarItem.tournaments,
+  BottomNavBarItem.collections,
+];
 
 /// Emitted whenever the user taps the already-selected bottom nav item.
 /// Screens that own a scrollable surface for [item] should listen and
@@ -43,21 +60,22 @@ class BottomNavBarReTapRequestNotifier
   }
 }
 
-final bottomNavBarReTapRequestProvider = StateNotifierProvider<
-  BottomNavBarReTapRequestNotifier,
-  BottomNavBarReTapRequest
->((ref) => BottomNavBarReTapRequestNotifier());
+final bottomNavBarReTapRequestProvider =
+    StateNotifierProvider<
+      BottomNavBarReTapRequestNotifier,
+      BottomNavBarReTapRequest
+    >((ref) => BottomNavBarReTapRequestNotifier());
 
 final Map<BottomNavBarItem, String> bottomNavBarIcons = {
   BottomNavBarItem.tournaments: SvgAsset.tournamentIcon,
   BottomNavBarItem.forYou: SvgAsset.forYouNavIcon,
-  BottomNavBarItem.library: SvgAsset.libraryNavIcon,
+  BottomNavBarItem.collections: 'assets/svgs/collections_nav.svg',
 };
 
 final namesBottomNavBarIcons = {
   BottomNavBarItem.tournaments: 'Events',
-  BottomNavBarItem.forYou: 'For You',
-  BottomNavBarItem.library: 'Library',
+  BottomNavBarItem.forYou: 'Home',
+  BottomNavBarItem.collections: 'Collections',
 };
 
 /// The section Home shows. The app opens on For You (its Today page); deep
@@ -86,27 +104,20 @@ class BottomNavBar extends ConsumerWidget {
           top: BorderSide(color: context.colors.divider, width: 1.w),
         ),
       ),
-      // Design height (70.h) is a floor, not a fixed slot: each nav item is a
-      // Column (icon + label + vertical padding) whose label height rides
-      // MediaQuery.textScaler. A fixed height that also had the safe-area inset
-      // carved out of a capped total starved that Column on short screens /
-      // large text scales / large insets and overflowed the bottom. Flooring
-      // the row content (so it can grow when it must) and adding the inset on
-      // top via padding keeps the normal-device look while never overflowing.
+      // Keep comfortable touch targets plus the device's bottom safe area.
       child: ConstrainedBox(
-        constraints: BoxConstraints(minHeight: 70.h),
+        constraints: const BoxConstraints(minHeight: 48),
         child: Row(
           children: [
-            for (final item in BottomNavBarItem.values)
+            for (final item in bottomNavBarOrder)
               BottomNavBarWidget(
                 key: switch (item) {
                   BottomNavBarItem.tournaments => e2eKey(E2eIds.navEvents),
                   BottomNavBarItem.forYou => e2eKey(E2eIds.navForYou),
-                  BottomNavBarItem.library => e2eKey(E2eIds.navLibrary),
+                  BottomNavBarItem.collections => e2eKey(E2eIds.navCollections),
                 },
                 width:
-                    MediaQuery.sizeOf(context).width /
-                    BottomNavBarItem.values.length,
+                    MediaQuery.sizeOf(context).width / bottomNavBarOrder.length,
                 isSelected: selectedItem == item,
                 onTap: () {
                   final previous = ref.read(selectedBottomNavBarItemProvider);
@@ -134,6 +145,9 @@ class BottomNavBar extends ConsumerWidget {
                   );
                 },
                 svgIcon: bottomNavBarIcons[item]!,
+                icon: item == BottomNavBarItem.forYou
+                    ? Icons.home_rounded
+                    : null,
                 title: namesBottomNavBarIcons[item]!,
               ),
           ],

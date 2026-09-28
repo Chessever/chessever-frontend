@@ -267,7 +267,7 @@ class SpaceAddSources extends ConsumerWidget {
   // ------------------------------------------------------------- library
 
   /// The Library tab's destinations, in its order, to save into My Database.
-  /// Liked Games is left out: My Likes has its own tile on My Space.
+  /// Only databases are offered, including when unsupported legacy pins exist.
   List<SpaceSheetEntry> _library(WidgetRef ref, String query) {
     final library = ref.watch(spaceLibraryFoldersProvider);
     final needle = query.toLowerCase();
@@ -275,10 +275,11 @@ class SpaceAddSources extends ConsumerWidget {
       for (final f in library.folders)
         if (!f.isLikedGames &&
             (needle.length < 2 || f.name.toLowerCase().contains(needle)))
-          _libraryRow(spaceLibraryFolderDraft(f)),
+          if (spaceLibraryFolderDraft(f) case final draft)
+            if (draft.canAddToMySpace) _libraryRow(draft),
     ];
     return [
-      const SpaceSheetLabel('Your Library'),
+      const SpaceSheetLabel('Your databases'),
       if (rows.isNotEmpty)
         ...rows
       else
@@ -286,7 +287,7 @@ class SpaceAddSources extends ConsumerWidget {
           !library.settled
               ? 'Loading'
               : needle.length < 2
-              ? 'Nothing in your Library yet'
+              ? 'No databases yet'
               : 'No results',
         ),
     ];
@@ -561,6 +562,7 @@ class _Row extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final added = watchSpaceDraftAdded(ref, row.draft);
+    final canToggle = added || row.draft.canAddToMySpace;
     final colors = context.colors;
     final gutter = SpaceMetricsSheet.gutter;
     final line = row.explorerLine;
@@ -571,7 +573,7 @@ class _Row extends ConsumerWidget {
     // row's own tap is the toggle's, made bigger.
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
-      onTap: toggle,
+      onTap: canToggle ? toggle : null,
       child: ConstrainedBox(
         constraints: const BoxConstraints(minHeight: SpaceMetricsSheet.rowMin),
         child: Padding(
@@ -618,13 +620,14 @@ class _Row extends ConsumerWidget {
               ),
               if (line != null && explore != null)
                 _ExplorerButton(onTap: () => explore(line)),
-              SpaceAddToggle(
-                added: added,
-                onTap: toggle,
-                label: added
-                    ? 'Remove ${row.title} from My Space'
-                    : row.addLabel ?? 'Add ${row.title}',
-              ),
+              if (canToggle)
+                SpaceAddToggle(
+                  added: added,
+                  onTap: toggle,
+                  label: added
+                      ? 'Remove ${row.title} from My Space'
+                      : row.addLabel ?? 'Add ${row.title}',
+                ),
             ],
           ),
         ),
@@ -650,6 +653,7 @@ class _GameRow extends ConsumerWidget {
     final draft = entry.draft;
     final game = entry.game;
     final added = ref.watch(spaceShortcutExistsProvider(draft.key));
+    final canToggle = added || draft.canAddToMySpace;
     final gutter = SpaceMetricsSheet.gutter;
     // The board-view row carries its own 16pt side margin.
     final margin = 16.sp;
@@ -685,7 +689,7 @@ class _GameRow extends ConsumerWidget {
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       excludeFromSemantics: true,
-      onTap: toggle,
+      onTap: canToggle ? toggle : null,
       child: ConstrainedBox(
         constraints: const BoxConstraints(minHeight: SpaceMetricsSheet.rowMin),
         child: Padding(
@@ -719,13 +723,14 @@ class _GameRow extends ConsumerWidget {
                         ),
                       ),
                     ),
-                    SpaceAddToggle(
-                      added: added,
-                      onTap: toggle,
-                      label: added
-                          ? 'Remove ${draft.title} from My Space'
-                          : 'Add ${draft.title}',
-                    ),
+                    if (canToggle)
+                      SpaceAddToggle(
+                        added: added,
+                        onTap: toggle,
+                        label: added
+                            ? 'Remove ${draft.title} from My Space'
+                            : 'Add ${draft.title}',
+                      ),
                   ],
                 ),
                 if (meta.isNotEmpty)
@@ -792,6 +797,7 @@ class _ExplorerButtonState extends State<_ExplorerButton> {
       // excludeSemantics drops the detector's own tap action, so the button
       // carries it for TalkBack and Switch Access.
       child: Semantics(
+        container: true,
         button: true,
         label: kSpaceSheetExplorerLabel,
         excludeSemantics: true,

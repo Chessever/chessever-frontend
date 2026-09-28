@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io' as io;
 import 'dart:math' as math;
 
+import 'package:chessever2/config/app_environment.dart';
 import 'package:chessever2/config/puzzle_service_config.dart';
 import 'package:chessever2/providers/board_settings_provider_new.dart';
 import 'package:chessever2/screens/chessboard/classification_fx/move_class.dart';
@@ -343,6 +344,32 @@ void main() {
   });
 
   group('resolveRaceApiUrl', () {
+    test('test flavor never reads a shared dotenv fallback', () {
+      for (final define in ['', 'not-a-url']) {
+        expect(
+          resolveRaceApiUrl(
+            define: define,
+            flavor: AppFlavor.test,
+            allowDebugEnv: true,
+            debugEnvValue: () => throw StateError('Shared .env was read'),
+          ),
+          isEmpty,
+        );
+      }
+    });
+
+    test('test flavor accepts its explicit service define', () {
+      expect(
+        resolveRaceApiUrl(
+          define: ' https://race-test.example.invalid/ ',
+          flavor: AppFlavor.test,
+          allowDebugEnv: true,
+          debugEnvValue: () => throw StateError('Shared .env was read'),
+        ),
+        'https://race-test.example.invalid',
+      );
+    });
+
     test('a dart-define wins and loses its trailing slash', () {
       expect(
         resolveRaceApiUrl(

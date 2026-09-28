@@ -30,6 +30,54 @@ Set<String> spaceEditKeys(
   return {for (final s in pins) s.key};
 }
 
+/// Removes saved shortcuts across sections. The source events, games, folders
+/// and followed players are untouched. One Undo restores every captured pin at
+/// its original sort position, through the store's pending-delete protection.
+Future<int> spaceRemovePinsSelected({
+  required BuildContext context,
+  required WidgetRef ref,
+  required Set<String> keys,
+}) async {
+  final store = ref.read(spaceShortcutsProvider.notifier);
+  final doomed = [
+    for (final pin in ref.read(spaceShortcutsProvider).valueOrNull ?? const [])
+      if (keys.contains(pin.key)) pin,
+  ];
+  if (doomed.isEmpty) return 0;
+  final messenger = ScaffoldMessenger.maybeOf(context);
+  HapticFeedbackService.light();
+  final written = Future.wait([
+    for (final pin in doomed) store.removeTarget(pin.kind, pin.targetId),
+  ]);
+  Future<void> undo() async {
+    await Future.wait([for (final pin in doomed) store.restore(pin)]);
+  }
+
+  if (messenger != null && messenger.mounted) {
+    showAppSnackOn(
+      messenger,
+      doomed.length == 1
+          ? 'Removed from My Space'
+          : 'Removed ${doomed.length} from My Space',
+      actionLabel: 'Undo',
+      onAction: () {
+        HapticFeedbackService.light();
+        unawaited(
+          undo().catchError((Object error) {
+            debugPrint('[MySpace] undo failed: $error');
+          }),
+        );
+      },
+    );
+  }
+  try {
+    await written;
+  } catch (error) {
+    debugPrint('[MySpace] remove failed: $error');
+  }
+  return doomed.length;
+}
+
 /// Takes the things of [section] under [keys] out of My Space and offers one
 /// Undo that puts every one of them back where it stood. A player leaves My
 /// Space only: their pins go and their follow is hidden here, never

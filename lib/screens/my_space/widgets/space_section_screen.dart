@@ -475,9 +475,7 @@ class _SpaceSectionScreenState extends ConsumerState<SpaceSectionScreen> {
                     ),
                     SizedBox(width: 16.w),
                   ],
-                  if (!editing &&
-                      section != SpaceSection.links &&
-                      section != SpaceSection.likes)
+                  if (!editing && section.supportsAddingToMySpace)
                     DiscoveryAction(
                       label: 'Add',
                       lead: DiscoveryActionLead.plus,

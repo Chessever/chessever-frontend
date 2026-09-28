@@ -16,8 +16,6 @@ import 'package:chessever2/screens/my_space/sheets/space_add_sheet.dart';
 import 'package:chessever2/screens/my_space/sheets/space_add_sources.dart'
     show SpaceAddSources, kSpaceSheetAddedLabel, kSpaceSheetExplorerLabel;
 import 'package:chessever2/screens/my_space/navigation/space_shortcut_navigator.dart';
-import 'package:chessever2/screens/gamebase/gamebase_explorer_screen.dart'
-    show GamebaseExplorerScreen;
 import 'package:chessever2/utils/eco_openings.dart';
 import 'package:chessever2/widgets/search/opening_search_suggestion.dart'
     show searchOpeningSuggestions;
@@ -237,7 +235,7 @@ void main() {
     final lead = kSpacePopularOpenings.first.tileName;
     expect(find.text('Popular at 2700+'), findsOneWidget);
     expect(find.text(lead), findsOneWidget);
-    expect(find.bySemanticsLabel('Save $lead to My Space'), findsOneWidget);
+    expect(find.bySemanticsLabel('Save $lead to My Space'), findsNothing);
 
     // The two defaults sit under their own label, after every new line,
     // each already checked.
@@ -261,40 +259,45 @@ void main() {
     await tester.pumpWidget(const SizedBox.shrink());
   });
 
-  testWidgets('a removed default is a new option again, and re-adds', (
-    tester,
-  ) async {
-    // Only the Rossolimo is left; the QGD Three Knights was removed.
-    final seeded = SpaceShortcutsNotifier.planSeed(
-      const [],
-      spaceSeedDrafts(),
-    ).where((s) => s.title != kSpaceDefaultOpenings.first.tileName).toList();
-    final store = await _pumpSheet(tester, pinned: seeded);
+  testWidgets(
+    'a removed opening cannot be re-added while its product is disabled',
+    (tester) async {
+      // Only the Rossolimo is left; the QGD Three Knights was removed.
+      final seeded = SpaceShortcutsNotifier.planSeed(
+        const [],
+        spaceSeedDrafts(),
+      ).where((s) => s.title != kSpaceDefaultOpenings.first.tileName).toList();
+      final store = await _pumpSheet(tester, pinned: seeded);
 
-    final removed = kSpaceDefaultOpenings.first;
-    final lead = find.text(removed.tileName);
-    expect(lead, findsOneWidget);
-    expect(
-      tester.getTopLeft(lead).dy,
-      lessThan(
-        tester.getTopLeft(find.text(kSpacePopularOpenings.first.tileName)).dy,
-      ),
-    );
+      final removed = kSpaceDefaultOpenings.first;
+      final lead = find.text(removed.tileName);
+      expect(lead, findsOneWidget);
+      expect(
+        tester.getTopLeft(lead).dy,
+        lessThan(
+          tester.getTopLeft(find.text(kSpacePopularOpenings.first.tileName)).dy,
+        ),
+      );
 
-    // Adding it keeps it where it is, now checked: the order holds while
-    // the sheet is open.
-    final before = tester.getTopLeft(lead);
-    await tester.tap(_toggleOf(removed.tileName));
-    await tester.pump(const Duration(milliseconds: 300));
-    expect(store.added, [spaceEliteOpeningDraft(removed)!.key]);
-    expect(
-      find.bySemanticsLabel('Remove ${removed.tileName} from My Space'),
-      findsOneWidget,
-    );
-    expect(tester.getTopLeft(lead), before);
-    expect(tester.takeException(), isNull);
-    await tester.pumpWidget(const SizedBox.shrink());
-  });
+      final before = tester.getTopLeft(lead);
+      expect(
+        find.bySemanticsLabel('Save ${removed.tileName} to My Space'),
+        findsNothing,
+      );
+      await tester.tap(lead);
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(store.added, isEmpty);
+      expect(
+        store.state.requireValue.where(
+          (item) => item.title == removed.tileName,
+        ),
+        isEmpty,
+      );
+      expect(tester.getTopLeft(lead), before);
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox.shrink());
+    },
+  );
 
   testWidgets('a line\'s button opens the opening explorer on the line, its '
       'moves played (never the board editor), and adds nothing', (
@@ -351,8 +354,9 @@ void main() {
     await tester.pumpWidget(const SizedBox.shrink());
   });
 
-  testWidgets('from My Space, the button closes the sheet and pushes the '
-      'opening explorer on that line', (tester) async {
+  testWidgets('unsupported sections cannot open the add sheet from My Space', (
+    tester,
+  ) async {
     tester.view.physicalSize = const Size(390, 844);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetPhysicalSize);
@@ -376,11 +380,13 @@ void main() {
                 body: Consumer(
                   builder: (context, ref, _) => Center(
                     child: TextButton(
-                      onPressed: () => showSpaceAddSheet(
-                        context,
-                        ref,
-                        SpaceSection.openings,
-                      ),
+                      onPressed: () async {
+                        for (final section in SpaceSection.values) {
+                          if (!section.supportsAddingToMySpace) {
+                            await showSpaceAddSheet(context, ref, section);
+                          }
+                        }
+                      },
                       child: const Text('open'),
                     ),
                   ),
@@ -392,27 +398,13 @@ void main() {
       ),
     );
     await tester.pump();
-    await tester.tap(find.text('open'));
-    for (var i = 0; i < 8; i++) {
-      await tester.pump(const Duration(milliseconds: 100));
-    }
-    final lead = spacePickerOpenings(const {}).fresh.first;
-    final sheet = routes.pushed.last;
     routes.pushed.clear();
-
-    await tester.tap(_explorerOf(lead.opening.tileName));
-    // The sheet went, and the explorer came, at once.
-    expect(routes.popped, contains(sheet));
-    expect(routes.pushed, hasLength(1));
-    final route = routes.pushed.single as MaterialPageRoute<void>;
-    final page = route.builder(tester.element(find.text('open')));
-    final scope = page as ProviderScope;
-    final explorer = scope.child as GamebaseExplorerScreen;
-    final line = spaceShortcutLine(lead.draft)!;
-    expect(explorer.initialFen, line.fen);
-    expect(explorer.initialMoves, line.ucis);
-    expect(explorer.initialMoves, isNotEmpty);
-    // Torn down before the explorer builds: it needs a real backend.
+    await tester.tap(find.text('open'));
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(routes.pushed, isEmpty);
+    expect(routes.popped, isEmpty);
+    expect(find.byType(SpaceAddSheet), findsNothing);
+    expect(tester.takeException(), isNull);
     await tester.pumpWidget(const SizedBox.shrink());
     await tester.pump(const Duration(seconds: 10));
   });
@@ -530,10 +522,11 @@ void main() {
         'own tile) and saves a database', (tester) async {
       final store = await pumpLibrary(tester);
 
-      expect(find.text('Your Library'), findsOneWidget);
+      expect(find.text('Your databases'), findsOneWidget);
       expect(find.text('Najdorf prep'), findsOneWidget);
       expect(find.text('ChessEver'), findsOneWidget);
-      expect(find.text('Miniatures'), findsOneWidget);
+      expect(find.text('Miniatures'), findsNothing);
+
       expect(find.text('My Likes'), findsNothing);
       expect(find.text('Liked Games'), findsNothing);
 
@@ -553,9 +546,8 @@ void main() {
     });
   });
 
-  testWidgets('a followed player taken out of My Space comes back from the '
-      'sheet\'s Following list as the follow it is; one shown leaves it; '
-      'neither ever unfollows', (tester) async {
+  testWidgets('hidden followed players cannot be saved, and disabling players '
+      'from My Space never unfollows them', (tester) async {
     tester.view.physicalSize = const Size(390, 844);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetPhysicalSize);
@@ -603,30 +595,12 @@ void main() {
     ];
     expect(shown(), ['Carlsen, Magnus']);
     expect(find.text('Following'), findsOneWidget);
-    expect(find.bySemanticsLabel('Add Gukesh D'), findsOneWidget);
-    expect(
-      find.bySemanticsLabel('Remove Carlsen, Magnus from My Space'),
-      findsOneWidget,
-    );
-
-    // Back: the follow shows again, with no pin made for it.
-    await tester.tap(_toggleOf('Gukesh D'));
+    expect(find.bySemanticsLabel('Add Gukesh D'), findsNothing);
+    await tester.tap(find.text('Gukesh D'));
     await tester.pump(const Duration(milliseconds: 300));
-    expect(
-      container.read(spaceHiddenAutoKeysProvider),
-      isNot(contains(hidden)),
-    );
-    expect(shown(), ['Carlsen, Magnus', 'Gukesh D']);
+    expect(container.read(spaceHiddenAutoKeysProvider), contains(hidden));
+    expect(shown(), ['Carlsen, Magnus']);
     expect(store.added, isEmpty);
-    expect(
-      find.bySemanticsLabel('Remove Gukesh D from My Space'),
-      findsOneWidget,
-    );
-
-    // Out: hidden here, still followed.
-    await tester.tap(_toggleOf('Carlsen, Magnus'));
-    await tester.pump(const Duration(milliseconds: 300));
-    expect(shown(), ['Gukesh D']);
     expect(favorites.writes, 0);
     expect(favorites.state.valueOrNull, hasLength(2));
     expect(tester.takeException(), isNull);

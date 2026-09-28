@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:chessever2/screens/my_space/models/space_shortcut.dart';
 import 'package:chessever2/screens/my_space/widgets/pixel_art.dart';
 import 'package:chessever2/screens/my_space/widgets/space_glyphs.dart';
@@ -75,8 +77,7 @@ class HubTile extends StatelessWidget {
   final VoidCallback onTap;
 
   /// Grades the artwork down to the tile's ink under the label. Artwork that
-  /// already keeps clear of the label (a pixel object in the top-right
-  /// corner) goes without.
+  /// already keeps clear of the label, or a tile with no artwork, goes without.
   final bool ramp;
 
   /// Long-press, for tiles that lift into the focus menu.
@@ -182,7 +183,7 @@ class HubTileFace extends StatelessWidget {
     // On paper the type needs no help; on the media tile a pale photo can
     // land right under the label, so the type carries its own contrast. A
     // mark never sits under the type, so its label needs no shadow either.
-    final shadowed = !isLight && mark == null;
+    final shadowed = !isLight && mark == null && ramp;
     List<Shadow>? shadow(double alpha, double blur, [Offset? offset]) =>
         shadowed
         ? [
@@ -207,6 +208,19 @@ class HubTileFace extends StatelessWidget {
       fontSize: captionSize,
       color: quiet,
       shadows: shadow(0.4, 3),
+    );
+    final scaler = MediaQuery.textScalerOf(context);
+    final titleHeight = math.max(
+      scaler.scale(titleStyle.fontSize!) * titleStyle.height!,
+      mark != null ? markSide : (titleIcon != null ? 18.sp : 0.0),
+    );
+    final captionHeight =
+        scaler.scale(captionStyle.fontSize!) * captionStyle.height!;
+    // Grow both one-line tiles by the same type metrics at accessibility
+    // sizes. Keep the text clear of the padding and the two border pixels.
+    final height = math.max(
+      108.sp,
+      (30.sp + titleHeight + captionHeight + 2).ceilToDouble(),
     );
 
     final titleRow = Row(
@@ -338,7 +352,7 @@ class HubTileFace extends StatelessWidget {
           );
 
     return Container(
-      height: 108.sp,
+      height: height,
       decoration: BoxDecoration(
         color: base,
         borderRadius: BorderRadius.circular(14.br),

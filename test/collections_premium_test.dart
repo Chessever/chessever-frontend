@@ -238,6 +238,10 @@ class _Repo extends CollectionsRepository {
   }
 
   @override
+  Future<List<CollectionOpening>> fetchOpenings({String? slug}) async =>
+      const [];
+
+  @override
   Future<List<CollectionPlayer>> fetchPlayers(String slug) async {
     playersCalls++;
     final e = gamesError;
@@ -392,6 +396,19 @@ Future<void> _settle(WidgetTester tester) async {
 }
 
 Future<void> _showTab(WidgetTester tester, String tab) async {
+  if (const ['Events', 'Books', 'Players'].contains(tab)) {
+    final strip = find.descendant(
+      of: find.byType(SegmentedSwitcher),
+      matching: find.text('About'),
+    );
+    await tester.tap(strip.first);
+    await _settle(tester);
+    final action = find.widgetWithText(TextButton, tab);
+    await tester.ensureVisible(action);
+    await tester.tap(action);
+    await _settle(tester);
+    return;
+  }
   await tester.tap(find.text(tab).first);
   await _settle(tester);
 }
@@ -1194,6 +1211,44 @@ void main() {
       expect(find.byKey(const ValueKey('collection_unlock')), findsNothing);
     });
 
+    _widgetTest(
+      'related Players shows confirmation and retry on its own route',
+      (tester) async {
+        const collection = Collection(
+          id: 'premium-event',
+          slug: 'premium-event',
+          kind: CollectionKind.event,
+          title: 'Selected event games',
+          access: CollectionAccess.premium,
+          contentLocked: true,
+          gameCount: 4,
+        );
+        final unlocks = <_Unlock>[];
+        await _pump(
+          tester,
+          repo: _Repo(detail: collection),
+          subscribed: false,
+          unlocks: unlocks,
+          home: () => const CollectionScreen(collection: collection),
+        );
+        await _showTab(tester, 'Players');
+        await tester.tap(find.byKey(const ValueKey('collection_unlock')));
+        await _settle(tester);
+        expect(unlocks, hasLength(1));
+        await unlocks.single.then!();
+        await tester.pump();
+        expect(find.text(_confirming), findsOneWidget);
+        expect(find.byKey(const ValueKey('collection_unlock')), findsNothing);
+        await _wait(tester, const Duration(seconds: 40));
+        expect(find.text(_confirmFailed), findsOneWidget);
+        expect(
+          find.byKey(const ValueKey('collection_unlock_retry')),
+          findsOneWidget,
+        );
+        expect(tester.takeException(), isNull);
+      },
+    );
+
     _widgetTest('a purchase the server sees late: the page confirms it', (
       tester,
     ) async {
@@ -1226,53 +1281,58 @@ void main() {
     });
 
     for (final opened in [_book(), _book(contentLocked: true)]) {
-    _widgetTest('a subscriber the server locks never sees the offer, '
-        'not even for a frame (opened ${opened.contentLocked == null ? 'from the list' : 'on About'})', (tester) async {
-      final repo = _Repo(detail: _book(contentLocked: true));
-      tester.view.physicalSize = const Size(390, 2400);
-      tester.view.devicePixelRatio = 1;
-      addTearDown(tester.view.resetPhysicalSize);
-      addTearDown(tester.view.resetDevicePixelRatio);
-      final container = ProviderContainer(
-        overrides: [
-          collectionsRepositoryProvider.overrideWithValue(repo),
-          subscriptionProvider.overrideWith((ref) => _Subscription(true)),
-          spaceShortcutsProvider.overrideWith(_NoShortcuts.new),
-        ],
-      );
-      addTearDown(container.dispose);
-      await tester.pumpWidget(
-        UncontrolledProviderScope(
-          container: container,
-          child: MaterialApp(
-            theme: AppTheme.darkTheme,
-            home: Builder(
-              builder: (context) {
-                ResponsiveHelper.init(context);
-                return CollectionScreen(collection: opened);
-              },
+      _widgetTest(
+        'a subscriber the server locks never sees the offer, '
+        'not even for a frame (opened ${opened.contentLocked == null ? 'from the list' : 'on About'})',
+        (tester) async {
+          final repo = _Repo(detail: _book(contentLocked: true));
+          tester.view.physicalSize = const Size(390, 2400);
+          tester.view.devicePixelRatio = 1;
+          addTearDown(tester.view.resetPhysicalSize);
+          addTearDown(tester.view.resetDevicePixelRatio);
+          final container = ProviderContainer(
+            overrides: [
+              collectionsRepositoryProvider.overrideWithValue(repo),
+              subscriptionProvider.overrideWith((ref) => _Subscription(true)),
+              spaceShortcutsProvider.overrideWith(_NoShortcuts.new),
+              boardSettingsProviderNew.overrideWith(_BoardSettings.new),
+              engineSettingsProviderNew.overrideWith(_EngineSettings.new),
+            ],
+          );
+          addTearDown(container.dispose);
+          await tester.pumpWidget(
+            UncontrolledProviderScope(
+              container: container,
+              child: MaterialApp(
+                theme: AppTheme.darkTheme,
+                home: Builder(
+                  builder: (context) {
+                    ResponsiveHelper.init(context);
+                    return CollectionScreen(collection: opened);
+                  },
+                ),
+              ),
             ),
-          ),
-        ),
+          );
+          final onAbout = opened.contentLocked == true;
+          // Frame by frame, from the first one to the server's verdict and on.
+          var confirmingSeen = false;
+          for (var i = 0; i < 30; i++) {
+            expect(
+              find.byKey(const ValueKey('collection_unlock')),
+              findsNothing,
+              reason: 'frame $i',
+            );
+            // About's facts keep the count: the line under them never jumps.
+            if (onAbout) {
+              expect(find.text('4 games'), findsOneWidget, reason: 'frame $i');
+            }
+            confirmingSeen |= find.text(_confirming).evaluate().isNotEmpty;
+            await tester.pump(const Duration(milliseconds: 16));
+          }
+          expect(confirmingSeen, isTrue);
+        },
       );
-      final onAbout = opened.contentLocked == true;
-      // Frame by frame, from the first one to the server's verdict and on.
-      var confirmingSeen = false;
-      for (var i = 0; i < 30; i++) {
-        expect(
-          find.byKey(const ValueKey('collection_unlock')),
-          findsNothing,
-          reason: 'frame $i',
-        );
-        // About's facts keep the count: the line under them never jumps.
-        if (onAbout) {
-          expect(find.text('4 games'), findsOneWidget, reason: 'frame $i');
-        }
-        confirmingSeen |= find.text(_confirming).evaluate().isNotEmpty;
-        await tester.pump(const Duration(milliseconds: 16));
-      }
-      expect(confirmingSeen, isTrue);
-    });
     }
 
     _widgetTest('the games stay the preview while the page re-checks, '
@@ -1470,9 +1530,7 @@ void main() {
       );
       // The credit has a line of its own and the count one of its own, the
       // padlock after it: neither is cut to make room for the other.
-      final count = tester.renderObject<RenderParagraph>(
-        find.text('55 games'),
-      );
+      final count = tester.renderObject<RenderParagraph>(find.text('55 games'));
       expect(count.didExceedMaxLines, isFalse);
       final credit = tester.renderObject<RenderParagraph>(
         find.text('by Garry Kasparov and Dmitry Plisetsky'),
@@ -1481,7 +1539,8 @@ void main() {
       expect(
         tester.getRect(find.text('55 games')).top,
         greaterThanOrEqualTo(
-          tester.getRect(find.text('by Garry Kasparov and Dmitry Plisetsky'))
+          tester
+              .getRect(find.text('by Garry Kasparov and Dmitry Plisetsky'))
               .bottom,
         ),
       );
@@ -1863,10 +1922,7 @@ void main() {
         ),
       );
       // The subtitle never hides where and when it was played.
-      expect(
-        find.text('Wijk aan Zee · Jan 13-28, 2024'),
-        findsOneWidget,
-      );
+      expect(find.text('Wijk aan Zee · Jan 13-28, 2024'), findsOneWidget);
       expect(find.text('Fourteen players, one round-robin'), findsNothing);
       expect(find.text('91 games · 2 books'), findsOneWidget);
       // Neither place nor dates: the subtitle stands in; no books, no count.
@@ -1948,7 +2004,9 @@ void main() {
         'World Championship 1985 and 1 more',
       ]) {
         expect(
-          tester.renderObject<RenderParagraph>(find.text(text)).didExceedMaxLines,
+          tester
+              .renderObject<RenderParagraph>(find.text(text))
+              .didExceedMaxLines,
           isFalse,
           reason: text,
         );
@@ -1962,8 +2020,11 @@ void main() {
           find.descendant(of: row, matching: find.byType(Text)),
         )) {
           final r = tester.getRect(find.byWidget(t));
-          expect(rect.contains(r.topLeft) && rect.contains(r.bottomRight),
-              isTrue, reason: t.data);
+          expect(
+            rect.contains(r.topLeft) && rect.contains(r.bottomRight),
+            isTrue,
+            reason: t.data,
+          );
         }
       }
     });
@@ -1978,15 +2039,15 @@ void main() {
         t.data!,
     ];
 
-    _widgetTest('a book reads About · Games · Events; an event About · Games '
-        '· Books · Players', (tester) async {
+    _widgetTest('books and events share About · Games · Openings, and players '
+        'remain accessible from About', (tester) async {
       await _pump(
         tester,
         repo: _Repo(detail: _book(contentLocked: false)),
         subscribed: true,
         home: () => CollectionScreen(collection: _book()),
       );
-      expect(tabLabels(tester), ['About', 'Games', 'Events']);
+      expect(tabLabels(tester), ['About', 'Games', 'Openings']);
       await _teardown(tester);
 
       await _pump(
@@ -1995,7 +2056,7 @@ void main() {
         subscribed: false,
         home: () => CollectionScreen(collection: _event()),
       );
-      expect(tabLabels(tester), ['About', 'Games', 'Books', 'Players']);
+      expect(tabLabels(tester), ['About', 'Games', 'Openings']);
       // A free event opens on its games, as it always did.
       expect(find.byType(DiscoveryGameList), findsWidgets);
       await _showTab(tester, 'Players');
@@ -2112,10 +2173,7 @@ void main() {
     _widgetTest('an event\'s Books tab: none, and a failure with a retry', (
       tester,
     ) async {
-      final repo = _Repo(
-        detail: _event(),
-        booksError: Exception('offline'),
-      );
+      final repo = _Repo(detail: _event(), booksError: Exception('offline'));
       await _pump(
         tester,
         repo: repo,

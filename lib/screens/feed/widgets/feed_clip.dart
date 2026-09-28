@@ -8,8 +8,11 @@ import 'package:chessever2/screens/chessboard/classification_fx/move_class.dart'
 import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
 import 'package:chessever2/screens/chessboard/widgets/evaluation_bar_widget.dart';
 import 'package:chessever2/screens/chessboard/widgets/heart_burst.dart';
+import 'package:chessever2/screens/chessboard/widgets/like_tag_chip.dart';
+import 'package:chessever2/screens/chessboard/widgets/like_tag_offer.dart';
 import 'package:chessever2/screens/chessboard/widgets/player_first_row_detail_widget.dart';
 import 'package:chessever2/screens/feed/feed_visibility.dart';
+import 'package:chessever2/screens/feed/logic/feed_analysis.dart';
 import 'package:chessever2/screens/feed/logic/feed_exploration.dart';
 import 'package:chessever2/screens/feed/logic/feed_opening.dart';
 import 'package:chessever2/screens/feed/models/feed_entry.dart';
@@ -85,7 +88,7 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 ///   (the Like button plays the same heart, and the heartbreak to unlike)
 /// * hold the right third 280ms: 2x while held
 /// * long-press the rest of the board: Open game / Share / My Space menu
-/// * the move strip under the board: tap a move to jump there, or step
+/// * the evaluation graph: tap to choose a move
 /// * drag the bottom line: scrub, with the report chart when evals exist
 ///
 /// While the clip plays, a swipe always belongs to the feed's PageView: a
@@ -291,6 +294,11 @@ class _FeedClipState extends ConsumerState<FeedClip>
   Future<void> _likeWrites = Future<void>.value();
   int _likeWritesOut = 0;
 
+  // Local to this post: Feed must never open a board toolbar's tag offer.
+  TagOffer? _tagOffer;
+  int? _tagLikeToken;
+  Timer? _tagDelay;
+
   // Board-play state.
   /// The viewer's own line, while they are playing one.
   FeedExploration? _line;
@@ -490,6 +498,7 @@ class _FeedClipState extends ConsumerState<FeedClip>
     _flight?.remove();
     _flight = null;
     _likeFloor?.cancel();
+    _tagDelay?.cancel();
     _playback
       ..removeListener(_onPlayback)
       ..dispose();
@@ -507,8 +516,10 @@ class _FeedClipState extends ConsumerState<FeedClip>
 
   void _syncSuspended() {
     final seen = _seen?.value ?? true;
+    final visible = widget.isCurrent && widget.isVisible && seen;
+    if (!visible) _retireTagOffer();
     _playback.setSuspended(
-      !(widget.isCurrent && widget.isVisible && seen) || _menuOpen || _saveOpen,
+      !visible || _menuOpen || _saveOpen || _tagLikeToken != null,
     );
     _syncCountdown();
   }
@@ -518,6 +529,7 @@ class _FeedClipState extends ConsumerState<FeedClip>
   void _onSeenChanged() {
     if (!mounted) return;
     _syncSuspended();
+    _rebuild();
   }
 
   void _onPlayback() {
@@ -1128,10 +1140,7 @@ class _FeedClipState extends ConsumerState<FeedClip>
   /// 0.2% of the way, some 420ms before the spring settles inside its own
   /// tolerance and calls `onArrived`. The heart docks here, so the fill, the
   /// pop, the click and the next tap all meet the landing the viewer saw.
-  static final Duration _flightHome = _springHome(
-    _flightDuration,
-    bounce: 0.1,
-  );
+  static final Duration _flightHome = _springHome(_flightDuration, bounce: 0.1);
 
   static Duration _springHome(Duration duration, {required double bounce}) {
     final spring = SpringSimulation(
@@ -1178,6 +1187,11 @@ class _FeedClipState extends ConsumerState<FeedClip>
     final unlike = fromButton && wasLiked;
     final writes = fromButton || !wasLiked;
     final token = ++_likeToken;
+    if (writes) {
+      _retireTagOffer();
+      if (!wasLiked) _tagLikeToken = token;
+      _syncSuspended();
+    }
     _likeBusy = true;
     _flight?.remove();
     _flight = null;
@@ -1279,6 +1293,33 @@ class _FeedClipState extends ConsumerState<FeedClip>
     final docked = _onHeartDocked;
     _onHeartDocked = null;
     docked?.call();
+    if (_tagLikeToken == token && _tagOffer == null) {
+      _tagDelay?.cancel();
+      // The same short beat as the board: let the heart land, then offer tags.
+      _tagDelay = Timer(const Duration(milliseconds: 280), () {
+        if (!mounted || _tagLikeToken != token || !_likedNow) return;
+        setState(() {
+          _tagOffer = TagOffer(
+            likeId: _game.likeId,
+            initialTags: ref.read(likedGameTagsProvider(_game.likeId)),
+            token: token,
+          );
+        });
+      });
+    }
+  }
+
+  void _retireTagOffer() {
+    _tagDelay?.cancel();
+    _tagDelay = null;
+    _tagLikeToken = null;
+    _tagOffer = null;
+  }
+
+  void _dismissTagOffer(int token) {
+    if (_tagOffer?.token != token) return;
+    setState(_retireTagOffer);
+    _syncSuspended();
   }
 
   /// Likes ([liked]) or unlikes the game once every write before it has
@@ -1318,7 +1359,11 @@ class _FeedClipState extends ConsumerState<FeedClip>
     unawaited(
       write.whenComplete(() {
         if (--_likeWritesOut == 0 && mounted) {
-          setState(() => _likeIntent = null);
+          setState(() {
+            _likeIntent = null;
+            if (!notifier.isLiked(game.likeId)) _retireTagOffer();
+          });
+          _syncSuspended();
         }
       }),
     );
@@ -1330,6 +1375,11 @@ class _FeedClipState extends ConsumerState<FeedClip>
       gameSpaceShortcutDraft(_game, subtitle: _item.eventLabel);
 
   void _openGame() {
+    final snapshot = feedAnalysisSnapshot(
+      item: _item,
+      shownPly: _playback.shownPly,
+      exploration: _line,
+    );
     HapticFeedbackService.cardTap();
     final fromArchive = _game.source != GameSource.supabase;
     ref
@@ -1344,6 +1394,7 @@ class _FeedClipState extends ConsumerState<FeedClip>
               ? PlayerProfileDataSource.twic
               : PlayerProfileDataSource.supabase,
           showClock: !fromArchive,
+          savedAnalysisData: snapshot,
         );
   }
 
@@ -1560,6 +1611,9 @@ class _FeedClipState extends ConsumerState<FeedClip>
   /// transport is the bar's value, so it hides with it (engine off, No
   /// Spoilers, gauge off).
   Widget _buildStrip(FeedLayout l, int shown, {required bool showEval}) {
+    final stripHeight = _line == null
+        ? l.infoHeight
+        : FeedLayout.moveStripHeightFor(MediaQuery.textScalerOf(context));
     final colors = context.colors;
     final line = _line;
     if (line != null) {
@@ -1567,7 +1621,7 @@ class _FeedClipState extends ConsumerState<FeedClip>
       return FeedMoveStrip(
         tokens: _lineTokens(line),
         current: cursor + 1,
-        height: l.infoHeight,
+        height: stripHeight,
         onTokenTap: (i) => _jumpInLine(i - 1),
         trailing: [
           FeedStepButton(
@@ -1583,7 +1637,7 @@ class _FeedClipState extends ConsumerState<FeedClip>
                 : null,
           ),
           const SizedBox(width: 4),
-          FeedBackToGameButton(onTap: _backToGame, height: l.infoHeight),
+          FeedBackToGameButton(onTap: _backToGame, height: stripHeight),
         ],
       );
     }
@@ -1594,7 +1648,7 @@ class _FeedClipState extends ConsumerState<FeedClip>
     return FeedMoveStrip(
       tokens: _gameTokens(),
       current: shown,
-      height: l.infoHeight,
+      height: stripHeight,
       follow: p.isScrubbing,
       onTokenTap: _stepTo,
       trailing: [
@@ -1975,10 +2029,13 @@ class _FeedClipState extends ConsumerState<FeedClip>
     final likedStored = ref.watch(isGameLikedProvider(_game.likeId));
     _likedAtOpen ??= likedStored;
     final liked = _likeIntent ?? likedStored;
+    final tagOffer = _tagOffer;
     final draft = _spaceDraft;
-    final inSpace = draft == null
-        ? null
-        : ref.watch(spaceShortcutExistsProvider(draft.key));
+    final inSpace =
+        draft != null &&
+            (ref.watch(spaceShortcutExistsProvider(draft.key)) == true)
+        ? true
+        : null;
     final saved =
         ref.watch(feedGameSavedProvider(_game.likeId)).valueOrNull ?? false;
     final evalVisibility = _watchEvalVisibility();
@@ -1993,7 +2050,7 @@ class _FeedClipState extends ConsumerState<FeedClip>
     final revealResult = !exploring && shown >= _item.plies.length - 1;
     // The report chart is an eval curve, so it keeps to the same rules as the
     // bar's number; with evals hidden the scrub shows the move bubble.
-    final showChart = p.isScrubbing && _item.hasEvals && evalVisibility.evals;
+    final showChart = _item.hasEvals && evalVisibility.evals;
     final showBubble = p.isScrubbing && !showChart;
     // The result card steps aside while the viewer plays the final position.
     final showEndCard =
@@ -2029,6 +2086,12 @@ class _FeedClipState extends ConsumerState<FeedClip>
           constraints,
           MediaQuery.textScalerOf(context),
           evalWidth: showBar ? 20.w : 0,
+          infoHeight: exploring
+              ? FeedLayout.moveStripHeightFor(MediaQuery.textScalerOf(context))
+              : 0,
+          chartHeight: FeedEvaluationGraph.heightFor(
+            MediaQuery.textScalerOf(context),
+          ),
         );
         _zoneWidth = l.contentWidth;
         _boardRect = Rect.fromLTWH(l.evalWidth, 0, l.board, l.board);
@@ -2037,9 +2100,8 @@ class _FeedClipState extends ConsumerState<FeedClip>
         final n = math.max(1, _item.plyCount);
         final progress = _item.plyCount <= 0 ? 1.0 : shown / n;
         final counterWidest = feedMoveCounter(_item, _item.plyCount);
-
-        // The board column: eval bar, board and the player rows, centred
-        // when the board is height-bound.
+        // One column for the board, player rows and all controls below it,
+        // including when the board is height-bound.
         Widget content(Widget child) => Padding(
           padding: EdgeInsets.only(left: l.contentLeft),
           child: Align(
@@ -2048,8 +2110,7 @@ class _FeedClipState extends ConsumerState<FeedClip>
           ),
         );
 
-        // The text rows (header, move strip, actions) keep the page gutter,
-        // so a height-bound board never squeezes their words.
+        // The post header keeps the page gutter for its title and menu.
         Widget fullRow(Widget child) => Padding(
           padding: const EdgeInsets.only(left: FeedLayout.sidePadding),
           child: Align(
@@ -2065,8 +2126,8 @@ class _FeedClipState extends ConsumerState<FeedClip>
           // two board actions here explicitly.
           child: Semantics(
             label: boardLabel,
-            onTapHint: p.isUserPaused ? 'play' : 'pause',
-            onTap: p.isEnded || exploring ? null : _playback.togglePause,
+            onTapHint: p.isPlaying ? 'pause' : 'play',
+            onTap: p.isEnded || exploring ? null : _togglePlay,
             onLongPressHint: 'game actions',
             onLongPress: () => unawaited(_showMenu()),
             child: Stack(
@@ -2193,12 +2254,6 @@ class _FeedClipState extends ConsumerState<FeedClip>
           ),
         );
 
-        // While the chart is up it carries the move line itself.
-        final lowerOpacity = showChart ? 0.0 : 1.0;
-        // Under a scrub the actions step aside for the move riding the
-        // thumb, as they do for the chart.
-        final actionsOpacity = showChart || showBubble ? 0.0 : 1.0;
-
         return Stack(
           children: [
             Column(
@@ -2215,46 +2270,56 @@ class _FeedClipState extends ConsumerState<FeedClip>
                 const SizedBox(height: FeedLayout.gap),
                 content(_playerRow(l, white: true, revealResult: revealResult)),
                 SizedBox(height: l.infoSpace),
-                fullRow(
-                  IgnorePointer(
-                    ignoring: showChart,
-                    child: Opacity(
-                      opacity: lowerOpacity,
-                      child: RepaintBoundary(
-                        child: _buildStrip(l, shown, showEval: showBar),
-                      ),
+                // Preserve navigation of a viewer-created variation.
+                if (exploring)
+                  content(
+                    RepaintBoundary(
+                      child: _buildStrip(l, shown, showEval: showBar),
                     ),
                   ),
-                ),
                 SizedBox(height: l.actionsSpace),
-                fullRow(
-                  Opacity(
-                    opacity: actionsOpacity,
-                    child: FeedActionRow(
-                      height: l.actionsHeight,
-                      liked: liked,
-                      likes: _likesShown(liked),
-                      // Until an incoming heart lands, the button shows the
-                      // game as it was.
-                      shownLiked: liked && !_heartInbound,
-                      shownLikes: _likesShown(liked && !_heartInbound),
-                      heartPop: _heartDocks,
-                      inSpace: inSpace,
-                      saved: saved,
-                      likeIconKey: _likeIconKey,
-                      onLike: _likeFromButton,
-                      onSpace: () {
-                        if (draft != null) unawaited(_toggleSpace(draft));
-                      },
-                      onShare: _share,
-                      onSave: () => unawaited(_save()),
-                      onAnalyze: _openGame,
-                    ),
+                content(
+                  FeedActionRow(
+                    height: l.actionsHeight,
+                    liked: liked,
+                    likes: _likesShown(liked),
+                    // Until an incoming heart lands, the button shows the
+                    // game as it was.
+                    shownLiked: liked && !_heartInbound,
+                    shownLikes: _likesShown(liked && !_heartInbound),
+                    heartPop: _heartDocks,
+                    tagPrompt: tagOffer != null
+                        ? LikeTagChip(
+                            key: ValueKey(tagOffer.token),
+                            offer: tagOffer,
+                            onDismiss: () => _dismissTagOffer(tagOffer.token),
+                          )
+                        : null,
+                    inSpace: inSpace,
+                    saved: saved,
+                    likeIconKey: _likeIconKey,
+                    onLike: _likeFromButton,
+                    onSpace: () {
+                      if (draft != null) unawaited(_toggleSpace(draft));
+                    },
+                    onShare: _share,
+                    onSave: () => unawaited(_save()),
+                    onAnalyze: _openGame,
                   ),
                 ),
                 // [FeedLayout.scrubSpace]: what the rows leave, so the page
                 // never overflows by a rounding error.
                 const Spacer(),
+                // The graph and its evaluation end at the board edge. The
+                // timeline reserves counter space only within its own row.
+                content(
+                  FeedEvaluationGraph(
+                    item: _item,
+                    ply: shown,
+                    showEvaluations: evalVisibility.evals,
+                    onSeek: _onScrubTap,
+                  ),
+                ),
                 FeedScrubStrip(
                   progress: progress,
                   scrubbing: p.isScrubbing,
@@ -2283,25 +2348,6 @@ class _FeedClipState extends ConsumerState<FeedClip>
                 SizedBox(height: l.foot),
               ],
             ),
-            if (showChart)
-              Positioned(
-                left: 0,
-                right: 0,
-                top: l.boardBottom - 10,
-                bottom: FeedLayout.scrubHeight + l.foot,
-                child: FeedReportOverlay(
-                  item: _item,
-                  ply: shown,
-                  // The strip's own line, so the chart's cursor stands over
-                  // the thumb.
-                  run: FeedScrubRun.resolve(
-                    context,
-                    width: constraints.maxWidth,
-                    inset: l.contentLeft,
-                    counterWidest: counterWidest,
-                  ),
-                ),
-              ),
           ],
         );
       },

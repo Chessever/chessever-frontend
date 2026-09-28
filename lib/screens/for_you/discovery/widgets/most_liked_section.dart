@@ -15,6 +15,8 @@ import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/board_like_heart.dart';
 import 'package:chessever2/widgets/skeleton_widget.dart';
 import 'package:chessever2/widgets/time_control_glyph.dart';
+import 'package:chessever2/screens/my_space/models/space_shortcut.dart';
+import 'package:chessever2/screens/for_you/discovery/widgets/discovery_event_card.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -42,20 +44,9 @@ MostLikedQuery mostLikedActiveQuery(WidgetRef ref, {DateTime? now}) {
   final picked = ref.watch(mostLikedPeriodProvider);
   final period = picked.isPremium && !premium ? MostLikedPeriod.today : picked;
   final day = ref.watch(mostLikedDayProvider);
-  return MostLikedQuery(period, (premium ? day : null) ?? now ?? DateTime.now());
-}
-
-/// "[glyph] Sinquefield Cup" over a card: where the game was played. Only
-/// on tablets, where the preview stands beside Miniatures and its cards
-/// share that section's one-line label slot, so the two columns keep one
-/// grid; on a phone the heart on the board says enough.
-Widget? _eventMeta(MostLikedEntry entry) {
-  final event = discoveryShortEventName(entry.eventName);
-  if (event == null) return null;
-  return DiscoveryCardMeta(
-    timeControlAsset: TimeControlGlyph.assetForLabel(entry.game.timeControl),
-    parts: [DiscoveryMetaPart.text(event)],
-    semanticsLabel: entry.eventName ?? event,
+  return MostLikedQuery(
+    period,
+    (premium ? day : null) ?? now ?? DateTime.now(),
   );
 }
 
@@ -80,130 +71,39 @@ Widget _likesMeta(MostLikedEntry entry) {
 Widget _heart(MostLikedEntry entry, double boardSize) =>
     LikeCountHeart(likes: entry.likes, size: likeHeartSizeFor(boardSize));
 
-/// Sends the viewer through the paywall to the week's ranking on the Most
-/// liked page: what the upgrade line under the free ranking sells.
-Future<void> _openWeeklyRanking(BuildContext context, WidgetRef ref) {
-  return unlockThen(
-    context,
-    ref,
-    () {
-      ref.read(mostLikedPeriodProvider.notifier).state = MostLikedPeriod.week;
-      ref.read(mostLikedDayProvider.notifier).state = null;
-      if (context.mounted) MostLikedScreen.open(context);
-    },
-    featureId: 'most_liked_rankings',
-    returnTo: discoveryReturnTo('most_liked'),
-  );
-}
-
-// ---------------------------------------------------------------- the hub
-
-/// Discovery's Most liked: today's ranking as a short preview, laid out the
-/// way an event's Games tab lays out its games (the viewer's own games view
-/// setting), each board holding its like count in a heart. Four cards (two
-/// boards in board view) in rank order; the title and "See all" open the
-/// whole ranking, with its periods, dates and players, on the Most liked
-/// page. Opening any card hands the board the whole ranking, so
-/// previous/next walks past the preview.
-///
-/// Always today's ranking: a period picked on the page never moves the hub.
-/// The preview is archive-cheap: no card streams or runs the engine.
+/// Discovery's compact event-style door into today's ranking. The full
+/// ranking keeps its existing periods, dates, player tabs and Premium gates.
 class MostLikedPreview extends ConsumerWidget {
   const MostLikedPreview({super.key, this.now});
 
-  /// Pins "today" in tests.
   final DateTime? now;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final subscribed = ref.watch(
-      subscriptionProvider.select((s) => s.isSubscribed),
-    );
     final query = MostLikedQuery(MostLikedPeriod.today, now ?? DateTime.now());
     final result = ref.watch(mostLikedProvider(query));
-    final labelled = ResponsiveHelper.isTablet;
-    // Nothing is sold while ranking is not live. The header still opens the
-    // ranking page, which says so itself.
-    final notLive = result.valueOrNull?.status == MostLikedStatus.notLive;
-    // Today's ranked games: the ranking this preview is cut from, and what
-    // See all lists for today, so the header counts like every other
-    // section's. None before the ranking answers, or while it has none.
-    final ranked = result.valueOrNull;
-    final count =
-        ranked != null &&
-            ranked.status == MostLikedStatus.ranked &&
-            ranked.entries.isNotEmpty
-        ? ranked.entries.length
-        : null;
-    final upgrade = subscribed || notLive
-        ? null
-        : DiscoveryUpgradeLine(
-            label: kMostLikedUpgradeCta,
-            quiet: true,
-            onTap: () => _openWeeklyRanking(context, ref),
-          );
-    void retry() => ref.invalidate(mostLikedProvider(query));
-
-    final body = result.when(
-      data: (value) {
-        switch (value.status) {
-          case MostLikedStatus.notLive:
-            return const DiscoveryNotice(text: kMostLikedNotLive);
-          case MostLikedStatus.premiumRequired:
-            // Today is free; a refusal here is a server hiccup, not a sale.
-            return DiscoveryNotice(
-              text: "Couldn't load Most liked",
-              actionLabel: 'Retry',
-              onAction: retry,
-            );
-          case MostLikedStatus.ranked:
-            break;
-        }
-        final entries = value.entries;
-        if (entries.isEmpty) {
-          return const DiscoveryNotice(text: 'No games liked yet today');
-        }
-        return DiscoveryGameList(
-          games: [for (final e in entries) e.game],
-          limit: kDiscoveryPreviewCards,
-          boardLimit: kDiscoveryPreviewBoards,
-          badgeFor: (i, boardSize) => _heart(entries[i], boardSize),
-          labelFor: labelled ? (i) => _eventMeta(entries[i]) : null,
-          rowLabelFor: (i) => _likesMeta(entries[i]),
-          streamEnabled: false,
-          allowStockfishFallback: false,
-        );
-      },
-      loading: () => DiscoveryGameListSkeleton(
-        count: kDiscoveryPreviewCards,
-        boardCount: kDiscoveryPreviewBoards,
-        labels: labelled,
-        rowLabels: true,
-      ),
-      error: (_, __) => DiscoveryNotice(
-        text: "Couldn't load Most liked",
-        actionLabel: 'Retry',
-        onAction: retry,
-      ),
-    );
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        // The hub's one section head: the title and See all both open the
-        // whole ranking (which says so itself while ranking is not live),
-        // the count after the name.
-        DiscoverySeeAllHeader(
-          title: 'Most liked',
-          count: count,
-          seeAllSemanticsLabel: 'See all of Most liked',
-          onOpen: () => MostLikedScreen.open(context),
-        ),
-        SizedBox(height: 8.w),
-        body,
-        if (upgrade != null) ...[SizedBox(height: 4.w), upgrade],
-      ],
+    final ranking = result.valueOrNull;
+    final ranked = ranking?.status == MostLikedStatus.ranked;
+    final failed =
+        result.hasError || ranking?.status == MostLikedStatus.premiumRequired;
+    final caption = failed
+        ? "Couldn't load Most liked"
+        : ranking?.status == MostLikedStatus.notLive
+        ? kMostLikedNotLive
+        : ranked && ranking!.entries.isEmpty
+        ? 'No games liked yet today'
+        : "Today's community favorites";
+    return DiscoveryEventCard(
+      key: const ValueKey('discovery_most_liked_card'),
+      title: 'Most liked',
+      artSection: SpaceSection.likes,
+      count: ranked ? ranking!.entries.length : null,
+      // The ranking is capped, so this is the returned ranked list's size,
+      // rather than a claim about every game liked today.
+      countQualifier: 'ranked',
+      caption: caption,
+      onOpen: () => MostLikedScreen.open(context),
+      onRetry: failed ? () => ref.invalidate(mostLikedProvider(query)) : null,
     );
   }
 }
@@ -433,7 +333,10 @@ class _PageBody extends StatelessWidget {
         // The server refused a Premium window. A subscriber seeing this has
         // an entitlement that has not reached the server yet.
         return locked
-            ? DiscoveryUpgradeLine(label: kMostLikedUpgradeCta, onTap: onUpgrade)
+            ? DiscoveryUpgradeLine(
+                label: kMostLikedUpgradeCta,
+                onTap: onUpgrade,
+              )
             : DiscoveryNotice(
                 text: 'Your Premium is still syncing',
                 actionLabel: 'Retry',

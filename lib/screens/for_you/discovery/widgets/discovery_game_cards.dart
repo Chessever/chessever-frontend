@@ -391,9 +391,14 @@ class DiscoveryGameList extends ConsumerWidget {
     this.menuActionsFor,
     this.wrapCard,
     this.lockedFor,
+    this.viewMode,
   });
 
   final List<GamesTourModel> games;
+
+  /// A host can keep its own view choice, as a book that opens on list rows.
+  /// Otherwise use the viewer's persisted tournament/Discovery setting.
+  final GamesListViewMode? viewMode;
   final Widget Function(int index, double boardSize)? badgeFor;
   final String? Function(int index)? footerFor;
   final void Function(List<GamesTourModel> games, int index)? onOpen;
@@ -456,7 +461,8 @@ class DiscoveryGameList extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final viewMode = ref.watch(gamesListViewModeProvider);
+    final GamesListViewMode viewMode =
+        this.viewMode ?? ref.watch(gamesListViewModeProvider);
     final shown = shownFor(
       viewMode,
       games.length,
@@ -845,7 +851,9 @@ class DiscoveryGameListSkeleton extends ConsumerWidget {
     this.labels = false,
     this.rowLabels = false,
     this.padded = true,
-  });
+    this.viewMode,
+    this.gridColumns = 2,
+  }) : assert(gridColumns > 0);
 
   /// Cards in list and grid view.
   final int count;
@@ -859,6 +867,10 @@ class DiscoveryGameListSkeleton extends ConsumerWidget {
   /// The label slot over list rows ([DiscoveryGameList.rowLabelFor]).
   final bool rowLabels;
   final bool padded;
+  final GamesListViewMode? viewMode;
+
+  /// Matches a host's responsive grid; existing Discovery previews use two.
+  final int gridColumns;
 
   /// The compact row: its 60.h player strip over its 24.h footer
   /// (`GameCard`).
@@ -877,7 +889,8 @@ class DiscoveryGameListSkeleton extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final mode = ref.watch(gamesListViewModeProvider);
+    final GamesListViewMode mode =
+        viewMode ?? ref.watch(gamesListViewModeProvider);
     // The cards read the same setting to decide on their eval bar.
     final gauge = ref.watch(
       engineSettingsProviderNew.select(
@@ -945,7 +958,7 @@ class DiscoveryGameListSkeleton extends ConsumerWidget {
               );
             }
           case GamesListViewMode.chessBoardGrid:
-            final cell = (width - _cardGap) / 2;
+            final cell = (width - _cardGap * (gridColumns - 1)) / gridColumns;
             // On phones the grid card sizes itself from the screen, whatever
             // its slot ([discoveryGridCardWidth]); on tablets it fills it.
             final cardWidth =
@@ -968,16 +981,19 @@ class DiscoveryGameListSkeleton extends ConsumerWidget {
               ),
               shown,
             );
-            for (var r = 0; r < n; r += 2) {
+            for (var r = 0; r < n; r += gridColumns) {
               rows.add(
                 Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Expanded(child: card()),
-                    SizedBox(width: _cardGap),
-                    Expanded(
-                      child: r + 1 < n ? card() : const SizedBox.shrink(),
-                    ),
+                    for (var column = 0; column < gridColumns; column++) ...[
+                      if (column > 0) SizedBox(width: _cardGap),
+                      Expanded(
+                        child: r + column < n
+                            ? card()
+                            : const SizedBox.shrink(),
+                      ),
+                    ],
                   ],
                 ),
               );

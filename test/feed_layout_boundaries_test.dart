@@ -19,7 +19,11 @@ import 'package:chessever2/screens/feed/puzzles/feed_puzzle.dart';
 import 'package:chessever2/screens/feed/puzzles/puzzle_repository.dart';
 import 'package:chessever2/screens/feed/puzzles/puzzle_service_client.dart';
 import 'package:chessever2/screens/feed/puzzles/puzzle_store.dart';
+import 'package:chessever2/screens/feed/widgets/feed_action_row.dart';
 import 'package:chessever2/screens/feed/widgets/feed_live_board.dart';
+import 'package:chessever2/screens/feed/widgets/feed_clip.dart';
+import 'package:chessever2/screens/feed/widgets/feed_layout.dart';
+import 'package:chessever2/screens/feed/widgets/feed_move_strip.dart';
 import 'package:chessever2/screens/feed/widgets/feed_move_sound.dart';
 import 'package:chessever2/screens/feed/widgets/feed_scrub.dart';
 import 'package:chessever2/screens/feed/widgets/feed_sfx_provider.dart';
@@ -48,6 +52,73 @@ import 'package:http/testing.dart';
 /// neighbouring post peeking in; the news cover dissolves into the page with
 /// no seam under the top bar.
 void main() {
+  for (final scale in [1.8, 2.0]) {
+    testWidgets('exploration keeps its graph, move line and controls whole '
+        'at ${scale}x text', (tester) async {
+      await _pump(
+        tester,
+        // FeedScreen clamps phone chrome to its supported reading size.
+        // A wider direct clip isolates the reusable strip's raw scale contract.
+        (const Size(600, 1100), 24, 64),
+        false,
+        scale,
+        _Kind.game,
+        unclampedClip: true,
+      );
+      final board = tester.getRect(find.byType(FeedLiveBoard));
+      Offset square(String name) {
+        final square = Square.fromName(name);
+        final side = board.width / 8;
+        return Offset(
+          board.left + (square.file + 0.5) * side,
+          board.top + (7 - square.rank + 0.5) * side,
+        );
+      }
+
+      // e3 differs from the recorded e4, so this is a real variation.
+      await tester.tapAt(square('e2'));
+      await tester.pump(const Duration(milliseconds: 100));
+      await tester.tapAt(square('e3'));
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(find.text('Your line'), findsOneWidget);
+      final strip = tester.getRect(find.byType(FeedMoveStrip));
+      expect(
+        strip.height,
+        closeTo(FeedLayout.moveStripHeightFor(TextScaler.linear(scale)), 0.01),
+      );
+      expect(strip.height, greaterThan(44));
+      final page = tester.getRect(find.byType(FeedClip));
+      final graph = tester.getRect(
+        find.byKey(const ValueKey('feed_evaluation_graph')),
+      );
+      expect(strip.bottom, lessThanOrEqualTo(graph.top));
+      expect(strip.bottom, lessThanOrEqualTo(page.bottom));
+      for (final text in tester.widgetList<Text>(
+        find.descendant(
+          of: find.byType(FeedMoveStrip),
+          matching: find.byType(Text),
+        ),
+      )) {
+        final rect = tester.getRect(find.byWidget(text));
+        expect(rect.top, greaterThanOrEqualTo(strip.top), reason: text.data);
+        expect(rect.bottom, lessThanOrEqualTo(strip.bottom), reason: text.data);
+      }
+      await tester.tap(find.bySemanticsLabel('Previous move'));
+      await tester.pump(const Duration(milliseconds: 100));
+      await tester.tap(find.bySemanticsLabel('Next move'));
+      await tester.pump(const Duration(milliseconds: 100));
+      await tester.tap(find.byKey(const ValueKey('feed_back_to_game')));
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(find.byType(FeedMoveStrip), findsNothing);
+      expect(
+        find.byKey(const ValueKey('feed_evaluation_graph')),
+        findsOneWidget,
+      );
+      expect(tester.takeException(), isNull);
+      await _tearDown(tester);
+    });
+  }
+
   const sizes = <String, (Size, double, double)>{
     // size, top inset, bottom nav height
     '360x640': (Size(360, 640), 24, 64),
@@ -64,6 +135,13 @@ void main() {
           await _pump(tester, size.value, light, scale, _Kind.game);
           expect(tester.takeException(), isNull);
           final page = _pageRect(tester);
+          final graph = tester.getRect(
+            find.byKey(const ValueKey('feed_report_chart')),
+          );
+          expect(graph.top, greaterThanOrEqualTo(page.top));
+          expect(graph.bottom, lessThanOrEqualTo(page.bottom));
+          expect(graph.left, greaterThanOrEqualTo(page.left + 16));
+          expect(graph.right, lessThanOrEqualTo(page.right - 16));
           final header = tester.getRect(
             find.byKey(const ValueKey('feed_post_header')),
           );
@@ -78,15 +156,44 @@ void main() {
             find.byKey(const ValueKey('feed_like_button')),
           );
           final scrub = tester.getRect(find.byType(FeedScrubStrip));
+          final actionRow = tester.getRect(find.byType(FeedActionRow));
+          final counter = tester.getRect(
+            find.byKey(const ValueKey('feed_scrub_counter')),
+          );
 
           expect(header.height, 44);
           expect(board.width, closeTo(board.height, 0.01));
+          // Surfaces share the board column; toolbar contents have their
+          // own centered rhythm rather than being pinned to its edges.
+          expect(bottom.right, closeTo(board.right, 0.01));
+          expect(actionRow.left, closeTo(bottom.left, 0.01));
+          expect(actionRow.right, closeTo(board.right, 0.01));
+          expect(graph.left, closeTo(bottom.left, 0.01));
+          expect(graph.right, closeTo(board.right, 0.01));
+          expect(counter.right, closeTo(board.right, 0.01));
+          final buttons = find.descendant(
+            of: find.byType(FeedActionRow),
+            matching: find.byType(FeedActionLabel),
+          );
+          final cellWidth = actionRow.width / buttons.evaluate().length;
+          for (var i = 0; i < buttons.evaluate().length; i++) {
+            final label = buttons.at(i);
+            final expectedCenter = actionRow.left + cellWidth * (i + 0.5);
+            final word = tester.getRect(
+              find.descendant(of: label, matching: find.byType(Text)),
+            );
+            expect(word.center.dx, closeTo(expectedCenter, 0.01));
+          }
           // Header, row, board, row: in order, tight, no stretch between.
           expect(top.top, greaterThanOrEqualTo(header.bottom));
           expect(board.top, greaterThanOrEqualTo(top.bottom));
           expect(board.top - header.bottom, lessThanOrEqualTo(36));
           expect(bottom.top, greaterThanOrEqualTo(board.bottom));
           expect(actions.bottom, lessThanOrEqualTo(scrub.top));
+          final graphSlot = tester.getRect(find.byType(FeedEvaluationGraph));
+          expect(graphSlot.right, closeTo(board.right, 0.01));
+          expect(graphSlot.top, greaterThanOrEqualTo(actions.bottom));
+          expect(graphSlot.bottom, closeTo(scrub.top, 0.5));
           expect(scrub.bottom, lessThanOrEqualTo(page.bottom + 0.5));
           expect(header.top, greaterThanOrEqualTo(page.top));
           _expectTextInside(tester, page);
@@ -193,8 +300,9 @@ Future<void> _pump(
   (Size, double, double) size,
   bool light,
   double scale,
-  _Kind kind,
-) async {
+  _Kind kind, {
+  bool unclampedClip = false,
+}) async {
   final (screen, inset, nav) = size;
   tester.view.devicePixelRatio = 3;
   tester.view.physicalSize = screen * 3;
@@ -276,7 +384,17 @@ Future<void> _pump(
           builder: (context) {
             ResponsiveHelper.init(context);
             return Scaffold(
-              body: const FeedScreen(),
+              body: unclampedClip
+                  ? SafeArea(
+                      child: FeedClip(
+                        item: _game(),
+                        isCurrent: true,
+                        isVisible: true,
+                        onRequestNext: () {},
+                        onScrollLock: (_) {},
+                      ),
+                    )
+                  : const FeedScreen(),
               bottomNavigationBar: SizedBox(height: nav),
             );
           },
@@ -297,11 +415,18 @@ FeedItem _game() {
   const pgn = '1. e4 e5 2. Bc4 Nc6 3. Qh5 Nf6 4. Qxf7# 1-0';
   final parsed = PgnGame.parsePgn(pgn);
   Position position = PgnGame.startingPosition(parsed.headers);
-  final plies = <FeedPly>[FeedPly(fen: position.fen)];
+  final plies = <FeedPly>[FeedPly(fen: position.fen, cp: 0)];
   for (final node in parsed.moves.mainline()) {
     final move = position.parseSan(node.san)!;
     position = position.play(move);
-    plies.add(FeedPly(fen: position.fen, san: node.san, uci: move.uci));
+    plies.add(
+      FeedPly(
+        fen: position.fen,
+        san: node.san,
+        uci: move.uci,
+        cp: plies.length * 15,
+      ),
+    );
   }
   PlayerCard player(String name, int rating) => PlayerCard(
     name: name,

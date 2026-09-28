@@ -115,24 +115,25 @@ FavoritePlayer _follow(String name, int? fide, {String? id}) => FavoritePlayer(
   updatedAt: DateTime(2026, 7, 1),
 );
 
-SpaceShortcut _pin(
-  SpaceShortcut draft,
-  String id, {
-  DateTime? openedAt,
-}) => SpaceShortcut(
-  id: id,
-  kind: draft.kind,
-  targetId: draft.targetId,
-  title: draft.title,
-  subtitle: draft.subtitle,
-  params: draft.params,
-  sortIndex: 1,
-  createdAt: DateTime(2026, 9, 1),
-  lastOpenedAt: openedAt,
-);
+SpaceShortcut _pin(SpaceShortcut draft, String id, {DateTime? openedAt}) =>
+    SpaceShortcut(
+      id: id,
+      kind: draft.kind,
+      targetId: draft.targetId,
+      title: draft.title,
+      subtitle: draft.subtitle,
+      params: draft.params,
+      sortIndex: 1,
+      createdAt: DateTime(2026, 9, 1),
+      lastOpenedAt: openedAt,
+    );
 
 SpaceShortcut _playerPin(String name, int fide, String id, {DateTime? at}) =>
-    _pin(spacePlayerDraft(playerName: name, fideId: fide), id, openedAt: at);
+    _pin(
+      spacePlayerDraft(playerName: name, fideId: fide),
+      id,
+      openedAt: at,
+    );
 
 List<String> _names(List<SpacePlayerEntry> entries) => [
   for (final e in entries) e.shortcut.title,
@@ -253,9 +254,7 @@ void main() {
       spacePlayerIdentity(fideId: 0, name: 'hikaru'),
     );
     final players = spaceComposePlayers(
-      pins: [
-        _pin(spacePlayerDraft(playerName: 'Local Hero'), 'p5'),
-      ],
+      pins: [_pin(spacePlayerDraft(playerName: 'Local Hero'), 'p5')],
       favorites: [_follow('local hero', null)],
       hidden: const {},
       visits: const {},
@@ -362,13 +361,9 @@ void main() {
         e.shortcut.title,
     ];
 
-    testWidgets('a followed player already shows, so the row offers Remove, '
-        'which hides the follow here and never unfollows; Add brings the '
-        'follow back without a pin', (tester) async {
-      final (store, favorites) = await pump(
-        tester,
-        follows: [carlsen, gukesh],
-      );
+    testWidgets('an existing followed player can be removed without '
+        'unfollowing, but new player additions stay disabled', (tester) async {
+      final (store, favorites) = await pump(tester, follows: [carlsen, gukesh]);
       final draft = draftOf(gukesh);
       expect(container.read(spaceShortcutExistsProvider(draft.key)), isTrue);
       final remove = row(draft);
@@ -382,9 +377,10 @@ void main() {
 
       final add = row(draft);
       expect(add.label, 'Add to My Space');
+      expect(add.visible, isFalse);
+      expect(add.enabled, isFalse);
       await run(tester, add);
-      expect(shown(), ['Carlsen, Magnus', 'Gukesh D']);
-      // Back as the follow it is: nothing was pinned.
+      expect(shown(), ['Carlsen, Magnus']);
       expect(store.state.valueOrNull, isEmpty);
       expect(favorites.writes, 0);
       await tester.pump(const Duration(seconds: 10));
@@ -438,19 +434,19 @@ void main() {
       expect(store.state.valueOrNull, isEmpty);
       expect(favorites.writes, 0);
       expect(row(draft).label, 'Add to My Space');
+      expect(row(draft).visible, isFalse);
+      expect(row(draft).enabled, isFalse);
       await tester.pump(const Duration(seconds: 10));
     });
 
-    testWidgets('a player nobody follows is a pin like any other', (
+    testWidgets('a player nobody follows cannot be added as a new pin', (
       tester,
     ) async {
       final (store, _) = await pump(tester, follows: [carlsen]);
       final draft = draftOf(pragg);
       expect(row(draft).label, 'Add to My Space');
-      await run(tester, row(draft));
-      expect(store.state.valueOrNull?.map((s) => s.key), [draft.key]);
-      expect(shown(), ['Carlsen, Magnus', 'Praggnanandhaa R']);
-      expect(row(draft).label, 'Remove from My Space');
+      expect(row(draft).visible, isFalse);
+      expect(row(draft).enabled, isFalse);
       await run(tester, row(draft));
       expect(store.state.valueOrNull, isEmpty);
       expect(shown(), ['Carlsen, Magnus']);

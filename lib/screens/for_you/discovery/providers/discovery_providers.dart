@@ -44,9 +44,8 @@ void Function() _keepWarm(Ref<Object?> ref) {
   return link.close;
 }
 
-/// How long one Analyzed games read is reused. Its query filters the PGN
-/// text of every game of the last three days, and the report prewarm that
-/// annotates them runs hourly, so each viewer asks at most this often.
+/// How long one saved-report list is reused. The query filters existing PGN
+/// annotations, so each viewer asks at most this often.
 /// Pull-to-refresh ([refreshDiscovery]) still reads it again at once.
 const Duration kDiscoveryAnalyzedMaxAge = Duration(minutes: 15);
 
@@ -215,9 +214,8 @@ final discoveryTodayMiniaturesTotalProvider = StateProvider<int?>(
 
 // --------------------------------------------------------- Analyzed games
 
-/// The strongest recently analyzed games. Read at most once per
-/// [kDiscoveryAnalyzedMaxAge] (the query scans PGN text server-side), not
-/// on every visit; pull-to-refresh and Retry read it again.
+/// The strongest games carrying saved ChessEver reports. Read at most once per
+/// [kDiscoveryAnalyzedMaxAge]; pull-to-refresh and Retry read it again.
 final discoveryAnalyzedGamesProvider =
     FutureProvider.autoDispose<List<GamesTourModel>>((ref) async {
       final close = _keepFor(ref, kDiscoveryAnalyzedMaxAge);

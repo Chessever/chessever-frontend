@@ -1,3 +1,4 @@
+import 'package:chessever2/config/app_environment.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 
@@ -14,8 +15,8 @@ import 'package:flutter_dotenv/flutter_dotenv.dart';
 ///     with the value set per flavor in that workflow's environment group.
 ///     `CODEMAGIC_DART_DEFINES.txt` lists it with the other build-time keys.
 ///  2. A `RACE_API_URL` line in the `.env` that `main.dart` loads for local
-///     debug runs, read the way `GAMEBASE_API_KEY` is. Debug builds only: a
-///     release build has no `.env`.
+///     production-flavor debug runs. Test launches never read the shared
+///     `.env`; their service URL must come from an explicit test define.
 ///  3. Otherwise empty. There is no default deployment and no fallback to a
 ///     third-party API: with no URL the Feed carries no puzzles and the
 ///     Puzzle Race is off.
@@ -47,10 +48,13 @@ String resolveRaceApiUrl({
   String define = _raceApiUrlDefine,
   String Function()? debugEnvValue,
   bool allowDebugEnv = kDebugMode,
+  AppFlavor? flavor,
 }) {
   final defined = normalizeRaceApiUrl(define);
   if (defined.isNotEmpty) return defined;
-  if (!allowDebugEnv) return '';
+  if (!allowDebugEnv || (flavor ?? AppEnvironment.flavor) == AppFlavor.test) {
+    return '';
+  }
   return normalizeRaceApiUrl((debugEnvValue ?? _dotenvRaceApiUrl)());
 }
 

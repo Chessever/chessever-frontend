@@ -45,7 +45,9 @@ class AppUser {
           user.email?.split('@').first ??
           (isAnonymous ? 'Guest' : null),
       avatarUrl:
-          user.userMetadata?['avatar_url'] ?? user.userMetadata?['picture'],
+          user.userMetadata?['profile_avatar_url'] ??
+          user.userMetadata?['avatar_url'] ??
+          user.userMetadata?['picture'],
       createdAt: DateTime.parse(user.createdAt),
       isAnonymous: isAnonymous,
       lichessUsername: metadataUsername(

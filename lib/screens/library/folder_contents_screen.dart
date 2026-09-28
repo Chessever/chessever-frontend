@@ -1,5 +1,7 @@
 import 'dart:async';
 import 'dart:io';
+import 'package:chessever2/repository/library/library_book_publication.dart';
+import 'package:chessever2/screens/library/library_book_screen.dart';
 
 import 'package:chessever2/e2e/e2e_ids.dart';
 import 'package:chessever2/repository/library/library_repository.dart';
@@ -87,8 +89,9 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
     final subscription = ref.read(subscriptionProvider);
     final canFilterAndSort =
         subscription.isSubscribed || subscription.isLoading;
-    final effectiveFilter =
-        canFilterAndSort ? filterState.filter : GameFilter.defaultFilter();
+    final effectiveFilter = canFilterAndSort
+        ? filterState.filter
+        : GameFilter.defaultFilter();
     return BookPaginationKey(
       folderId: widget.folder.id,
       isSubscribed: _isSubscribed,
@@ -102,10 +105,10 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
   void initState() {
     super.initState();
     _scrollController = ScrollController()..addListener(_onScroll);
-    _searchController =
-        TextEditingController()..addListener(() {
-          if (mounted) setState(() {});
-        });
+    _searchController = TextEditingController()
+      ..addListener(() {
+        if (mounted) setState(() {});
+      });
     _searchFocusNode = FocusNode();
     // No explicit reset needed: the provider is keyed by folder+filter+search
     // and auto-disposes on pop, so opening the folder loads a fresh page 0.
@@ -281,7 +284,7 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
         userFacingError(
           e,
           fallback: 'Could not remove this item. Please try again.',
-          ),
+        ),
         tone: AppSnackTone.danger,
       );
     }
@@ -328,7 +331,7 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
           userFacingError(
             e,
             fallback: 'Could not open the file picker. Please try again.',
-            ),
+          ),
           tone: AppSnackTone.danger,
         );
         return;
@@ -373,12 +376,11 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
     if (!mounted) return;
     await Navigator.of(context).push(
       MaterialPageRoute(
-        builder:
-            (_) => PgnImportPreviewScreen(
-              games: parsed.map((e) => e.chessGame).toList(),
-              initialFolderId: widget.folder.id,
-              sourceLabel: 'clipboard',
-            ),
+        builder: (_) => PgnImportPreviewScreen(
+          games: parsed.map((e) => e.chessGame).toList(),
+          initialFolderId: widget.folder.id,
+          sourceLabel: 'clipboard',
+        ),
       ),
     );
     if (!mounted) return;
@@ -420,7 +422,7 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
         userFacingError(
           e,
           fallback: 'Could not create this item. Please try again.',
-          ),
+        ),
         tone: AppSnackTone.danger,
       );
     }
@@ -456,7 +458,7 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
         userFacingError(
           e,
           fallback: 'Could not rename this item. Please try again.',
-          ),
+        ),
         tone: AppSnackTone.danger,
       );
     }
@@ -508,11 +510,11 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
       showAppSnack(
         context,
         error != null
-        ? userFacingError(
-          error,
-          fallback: 'Export failed. Please try again.',
-          )
-        : 'Nothing to export here',
+            ? userFacingError(
+                error,
+                fallback: 'Export failed. Please try again.',
+              )
+            : 'Nothing to export here',
         tone: AppSnackTone.danger,
       );
       return;
@@ -529,15 +531,13 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
 
       if (!mounted) return;
       final box = context.findRenderObject() as RenderBox?;
-      final origin =
-          box != null
-              ? box.localToGlobal(Offset.zero) & box.size
-              : const Rect.fromLTWH(0, 0, 1, 1);
+      final origin = box != null
+          ? box.localToGlobal(Offset.zero) & box.size
+          : const Rect.fromLTWH(0, 0, 1, 1);
 
-      final subject =
-          xFiles.length > 1
-              ? '${widget.folder.name} - Chessever PGN (${xFiles.length} files)'
-              : '${widget.folder.name} - Chessever PGN';
+      final subject = xFiles.length > 1
+          ? '${widget.folder.name} - Chessever PGN (${xFiles.length} files)'
+          : '${widget.folder.name} - Chessever PGN';
 
       await Share.shareXFiles(
         xFiles,
@@ -550,10 +550,7 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
       if (!mounted) return;
       showAppSnack(
         context,
-        userFacingError(
-          e,
-          fallback: 'Could not share this. Please try again.',
-          ),
+        userFacingError(e, fallback: 'Could not share this. Please try again.'),
         tone: AppSnackTone.danger,
       );
     }
@@ -579,10 +576,9 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
         child: Center(
           child: ConstrainedBox(
             constraints: BoxConstraints(
-              maxWidth:
-                  ResponsiveHelper.isTablet
-                      ? ResponsiveHelper.contentMaxWidth
-                      : double.infinity,
+              maxWidth: ResponsiveHelper.isTablet
+                  ? ResponsiveHelper.contentMaxWidth
+                  : double.infinity,
             ),
             child: Column(
               children: [
@@ -646,103 +642,125 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
         horizontalPadding,
         8.h,
       ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.center,
+      child: Column(
         children: [
-          IconButton(
-            onPressed: () {
-              HapticFeedbackService.light();
-              Navigator.of(context).pop();
-            },
-            visualDensity: VisualDensity.compact,
-            padding: EdgeInsets.symmetric(horizontal: 6.w),
-            constraints: BoxConstraints(minWidth: 32.w, minHeight: 32.h),
-            icon: Icon(
-              Icons.arrow_back_ios_new_rounded,
-              color: context.colors.textPrimary,
-              size: 20.ic,
-            ),
-          ),
-          SizedBox(width: 4.w),
-          Expanded(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  _currentFolderName,
-                  style: AppTypography.textMdBold.copyWith(
-                    color: context.colors.textPrimary,
-                    height: 1.15,
-                    letterSpacing: -0.2,
-                  ),
-                  textAlign: TextAlign.center,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
+          Row(
+            children: [
+              IconButton(
+                tooltip: 'Back',
+                onPressed: () => Navigator.of(context).pop(),
+                constraints: const BoxConstraints(minWidth: 44, minHeight: 44),
+                icon: Icon(
+                  Icons.arrow_back_ios_new_rounded,
+                  color: context.colors.textPrimary,
+                  size: 20.ic,
                 ),
-                if (totalCount != null) ...[
-                  SizedBox(height: 2.h),
-                  Text(
-                    totalCount == 1 ? '1 game' : '$totalCount games',
-                    style: AppTypography.textXsRegular.copyWith(
-                      color: context.textInk(0.5),
-                      height: 1.1,
+              ),
+              Expanded(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      _currentFolderName,
+                      textAlign: TextAlign.center,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: AppTypography.textMdBold.copyWith(
+                        color: context.colors.textPrimary,
+                        height: 1.25,
+                      ),
+                    ),
+                    if (totalCount != null)
+                      Text(
+                        totalCount == 1 ? '1 game' : '$totalCount games',
+                        style: AppTypography.textXsRegular.copyWith(
+                          color: context.colors.textSecondary,
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+              if (libraryFolderCanPublish(widget.folder))
+                IconButton(
+                  key: const ValueKey('folder_publish_book'),
+                  tooltip: 'Publish / edit book',
+                  constraints: const BoxConstraints(
+                    minWidth: 44,
+                    minHeight: 44,
+                  ),
+                  onPressed: () =>
+                      openLibraryBookEditor(context, widget.folder),
+                  icon: Icon(
+                    Icons.publish_rounded,
+                    color: context.colors.textPrimary,
+                    size: 22.ic,
+                  ),
+                )
+              else
+                const SizedBox(width: 44),
+            ],
+          ),
+          if (_isDatabase || showExport || showRename || showAdd)
+            Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                if (_isDatabase)
+                  IconButton(
+                    key: e2eKey(E2eIds.databaseBoardButton),
+                    onPressed: _openBoard,
+                    tooltip: 'Open Board',
+                    constraints: const BoxConstraints(
+                      minWidth: 44,
+                      minHeight: 44,
+                    ),
+                    icon: BoardNavigationIcon(
+                      size: 20.sp,
+                      semanticsLabel: 'Open Board',
                     ),
                   ),
-                ],
+                if (showExport)
+                  IconButton(
+                    onPressed: _handleExportPgn,
+                    tooltip: 'Export as PGN',
+                    constraints: const BoxConstraints(
+                      minWidth: 44,
+                      minHeight: 44,
+                    ),
+                    icon: Icon(
+                      Icons.ios_share_rounded,
+                      color: context.colors.textPrimary,
+                      size: 20.ic,
+                    ),
+                  ),
+                if (showRename)
+                  IconButton(
+                    onPressed: _handleRename,
+                    tooltip: 'Rename',
+                    constraints: const BoxConstraints(
+                      minWidth: 44,
+                      minHeight: 44,
+                    ),
+                    icon: Icon(
+                      Icons.edit_rounded,
+                      color: context.colors.textPrimary,
+                      size: 20.ic,
+                    ),
+                  ),
+                if (showAdd)
+                  IconButton(
+                    onPressed: _handlePlusButton,
+                    tooltip: 'Add games',
+                    constraints: const BoxConstraints(
+                      minWidth: 44,
+                      minHeight: 44,
+                    ),
+                    icon: Icon(
+                      Icons.add_rounded,
+                      color: context.colors.textPrimary,
+                      size: 26.ic,
+                    ),
+                  ),
               ],
-            ),
-          ),
-          SizedBox(width: 4.w),
-          if (_isDatabase)
-            IconButton(
-              key: e2eKey(E2eIds.databaseBoardButton),
-              onPressed: _openBoard,
-              tooltip: 'Open Board',
-              visualDensity: VisualDensity.compact,
-              padding: EdgeInsets.symmetric(horizontal: 6.w),
-              constraints: BoxConstraints(minWidth: 44.w, minHeight: 44.h),
-              icon: BoardNavigationIcon(
-                size: 20.sp,
-                semanticsLabel: 'Open Board',
-              ),
-            ),
-          if (showExport)
-            IconButton(
-              onPressed: _handleExportPgn,
-              tooltip: 'Export as PGN',
-              visualDensity: VisualDensity.compact,
-              padding: EdgeInsets.symmetric(horizontal: 6.w),
-              constraints: BoxConstraints(minWidth: 32.w, minHeight: 32.h),
-              icon: Icon(
-                Icons.ios_share_rounded,
-                color: context.colors.textPrimary,
-                size: 20.ic,
-              ),
-            ),
-          if (showRename)
-            IconButton(
-              onPressed: _handleRename,
-              tooltip: 'Rename',
-              visualDensity: VisualDensity.compact,
-              padding: EdgeInsets.symmetric(horizontal: 6.w),
-              constraints: BoxConstraints(minWidth: 32.w, minHeight: 32.h),
-              icon: Icon(
-                Icons.edit_rounded,
-                color: context.colors.textPrimary,
-                size: 20.ic,
-              ),
-            ),
-          if (showAdd)
-            IconButton(
-              onPressed: _handlePlusButton,
-              visualDensity: VisualDensity.compact,
-              padding: EdgeInsets.symmetric(horizontal: 6.w),
-              constraints: BoxConstraints(minWidth: 32.w, minHeight: 32.h),
-              icon: Icon(
-                Icons.add_rounded,
-                color: context.colors.textPrimary,
-                size: 26.ic,
-              ),
             ),
         ],
       ),
@@ -767,10 +785,12 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
   }
 
   Widget _buildTagQuickFilters() {
-    final selectedTags =
-        ref.watch(folderFilterProvider(_folderFilterKey)).selectedTags;
-    final liveCounts =
-        ref.watch(folderTagCountsProvider(_tagCountsKey)).valueOrNull;
+    final selectedTags = ref
+        .watch(folderFilterProvider(_folderFilterKey))
+        .selectedTags;
+    final liveCounts = ref
+        .watch(folderTagCountsProvider(_tagCountsKey))
+        .valueOrNull;
     if (liveCounts != null) {
       _lastTagCounts = liveCounts;
     }
@@ -863,8 +883,9 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
           // (library_repository.getSavedAnalysesPaginated over the denormalized
           // columns), so this page is already the final, ordered slice for the
           // WHOLE folder — no client-side filtering/sorting here.
-          final filteredAnalyses =
-              _isDatabase ? bookState.games : const <SavedAnalysis>[];
+          final filteredAnalyses = _isDatabase
+              ? bookState.games
+              : const <SavedAnalysis>[];
           final filterState = ref.watch(folderFilterProvider(_folderFilterKey));
           final subscription = ref.watch(subscriptionProvider);
           final canFilterAndSort =
@@ -875,11 +896,10 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
 
           // Child folders aren't part of the games query, so filter them by the
           // search term here for display.
-          final filteredFolders =
-              childFolders.where((f) {
-                if (query.isEmpty) return true;
-                return f.name.toLowerCase().contains(query);
-              }).toList();
+          final filteredFolders = childFolders.where((f) {
+            if (query.isEmpty) return true;
+            return f.name.toLowerCase().contains(query);
+          }).toList();
 
           if (filteredAnalyses.isEmpty &&
               childFolders.isEmpty &&
@@ -953,8 +973,9 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
                   padding: EdgeInsets.only(bottom: 12.h),
                   child: SwipeActionCard(
                     dismissKey: ValueKey(analysis.id),
-                    backgroundColor:
-                        context.isLightTheme ? context.colors.danger : kRedColor,
+                    backgroundColor: context.isLightTheme
+                        ? context.colors.danger
+                        : kRedColor,
                     icon: Icons.delete_outline_rounded,
                     onAction: () async => _removeAnalysis(analysis),
                     behavior: SwipeActionBehavior.dismiss,
@@ -996,19 +1017,17 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
             },
           );
         },
-        loading:
-            () => Center(
-              child: CircularProgressIndicator(
-                color: context.colors.textPrimary,
-              ),
+        loading: () => Center(
+          child: CircularProgressIndicator(color: context.colors.textPrimary),
+        ),
+        error: (e, _) => Center(
+          child: Text(
+            userFacingError(e),
+            style: AppTypography.textSmRegular.copyWith(
+              color: context.colors.danger,
             ),
-        error:
-            (e, _) => Center(
-              child: Text(
-                userFacingError(e),
-                style: AppTypography.textSmRegular.copyWith(color: context.colors.danger),
-              ),
-            ),
+          ),
+        ),
       ),
     );
   }
@@ -1107,21 +1126,19 @@ class _DatabaseTagFilterChip extends StatelessWidget {
     // No dot anymore — chip carries its tag identity via a low-key tinted
     // fill + colored border. Selected pops with a brighter fill and stronger
     // border.
-    final background =
-        selected
-            ? color.withValues(alpha: 0.22)
-            : color.withValues(alpha: 0.08);
-    final borderColor =
-        selected
-            ? (context.isLightTheme
-                ? legibleHueInk(
+    final background = selected
+        ? color.withValues(alpha: 0.22)
+        : color.withValues(alpha: 0.08);
+    final borderColor = selected
+        ? (context.isLightTheme
+              ? legibleHueInk(
                   context,
                   color,
                   minContrast: 3,
                   on: Color.alphaBlend(background, colors.background),
                 )
-                : color.withValues(alpha: 0.85))
-            : color.withValues(alpha: 0.32);
+              : color.withValues(alpha: 0.85))
+        : color.withValues(alpha: 0.32);
 
     return AnimatedScale(
       duration: const Duration(milliseconds: 160),
@@ -1152,10 +1169,9 @@ class _DatabaseTagFilterChip extends StatelessWidget {
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: AppTypography.textXsMedium.copyWith(
-                      color:
-                          selected
-                              ? colors.textPrimary
-                              : colors.textPrimary.withValues(alpha: 0.72),
+                      color: selected
+                          ? colors.textPrimary
+                          : colors.textPrimary.withValues(alpha: 0.72),
                       fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
                     ),
                   ),
@@ -1169,19 +1185,17 @@ class _DatabaseTagFilterChip extends StatelessWidget {
                       vertical: 2.h,
                     ),
                     decoration: BoxDecoration(
-                      color:
-                          selected
-                              ? color.withValues(alpha: 0.18)
-                              : colors.textPrimary.withValues(alpha: 0.06),
+                      color: selected
+                          ? color.withValues(alpha: 0.18)
+                          : colors.textPrimary.withValues(alpha: 0.06),
                       borderRadius: BorderRadius.circular(999.br),
                     ),
                     child: Text(
                       count.toString(),
                       style: AppTypography.textXsMedium.copyWith(
-                        color:
-                            selected
-                                ? colors.textPrimary
-                                : context.textInk(0.55),
+                        color: selected
+                            ? colors.textPrimary
+                            : context.textInk(0.55),
                         fontSize: 10.sp,
                       ),
                     ),
@@ -1267,10 +1281,9 @@ class _ExportProgressDialogState extends State<_ExportProgressDialog> {
   @override
   Widget build(BuildContext context) {
     final progress = widget.controller.value;
-    final label =
-        progress.total > 0
-            ? 'Exporting ${progress.processed} / ${progress.total} games...'
-            : 'Preparing export...';
+    final label = progress.total > 0
+        ? 'Exporting ${progress.processed} / ${progress.total} games...'
+        : 'Preparing export...';
 
     return Container(
       padding: EdgeInsets.symmetric(horizontal: 20.w, vertical: 20.h),
@@ -1278,10 +1291,9 @@ class _ExportProgressDialogState extends State<_ExportProgressDialog> {
         color: context.colors.surface,
         borderRadius: BorderRadius.circular(16.br),
         border: Border.all(
-          color:
-              context.isLightTheme
-                  ? context.colors.divider
-                  : Colors.white.withValues(alpha: 0.08),
+          color: context.isLightTheme
+              ? context.colors.divider
+              : Colors.white.withValues(alpha: 0.08),
         ),
       ),
       child: Column(

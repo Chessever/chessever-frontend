@@ -45,41 +45,41 @@ class TabletNavRail extends ConsumerWidget {
             Expanded(
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.start,
-                children:
-                    BottomNavBarItem.values.map((item) {
-                      return _NavRailItem(
-                        item: item,
-                        isSelected: selectedItem == item,
-                        onTap: () {
-                          final previous = ref.read(
-                            selectedBottomNavBarItemProvider,
-                          );
-                          if (previous == item) {
-                            // Same contract as the phone bar: a re-tap asks
-                            // the tab to jump (Flow: next clip, lists: top).
-                            ref
-                                .read(bottomNavBarReTapRequestProvider.notifier)
-                                .request(item);
-                            return;
-                          }
-
-                          ref
-                              .read(selectedBottomNavBarItemProvider.notifier)
-                              .state = item;
-
-                          unawaited(
-                            AnalyticsService.instance.trackEvent(
-                              'Tab Changed',
-                              properties: {
-                                'previous_tab': previous.name,
-                                'tab': item.name,
-                                'navigation_type': 'rail',
-                              },
-                            ),
-                          );
-                        },
+                children: bottomNavBarOrder.map((item) {
+                  return _NavRailItem(
+                    item: item,
+                    isSelected: selectedItem == item,
+                    onTap: () {
+                      final previous = ref.read(
+                        selectedBottomNavBarItemProvider,
                       );
-                    }).toList(),
+                      if (previous == item) {
+                        // Same contract as the phone bar: a re-tap asks
+                        // the tab to jump (Flow: next clip, lists: top).
+                        ref
+                            .read(bottomNavBarReTapRequestProvider.notifier)
+                            .request(item);
+                        return;
+                      }
+
+                      ref
+                              .read(selectedBottomNavBarItemProvider.notifier)
+                              .state =
+                          item;
+
+                      unawaited(
+                        AnalyticsService.instance.trackEvent(
+                          'Tab Changed',
+                          properties: {
+                            'previous_tab': previous.name,
+                            'tab': item.name,
+                            'navigation_type': 'rail',
+                          },
+                        ),
+                      );
+                    },
+                  );
+                }).toList(),
               ),
             ),
           ],
@@ -176,20 +176,21 @@ class _NavRailItemState extends State<_NavRailItem> {
               motion: _press,
               value: _pressed ? 0.97 : 1.0,
               active: !MediaQuery.disableAnimationsOf(context),
-              builder:
-                  (context, scale, child) =>
-                      Transform.scale(scale: scale, child: child),
+              builder: (context, scale, child) =>
+                  Transform.scale(scale: scale, child: child),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Padding(
                     padding: const EdgeInsets.symmetric(vertical: 8.0),
-                    child: SvgWidget(
-                      iconPath,
-                      width: iconSize,
-                      height: iconSize,
-                      colorFilter: ColorFilter.mode(ink, BlendMode.srcIn),
-                    ),
+                    child: widget.item == BottomNavBarItem.forYou
+                        ? Icon(Icons.home_rounded, size: iconSize, color: ink)
+                        : SvgWidget(
+                            iconPath,
+                            width: iconSize,
+                            height: iconSize,
+                            colorFilter: ColorFilter.mode(ink, BlendMode.srcIn),
+                          ),
                   ),
                   const SizedBox(height: 4.0),
                   // Label
@@ -200,8 +201,9 @@ class _NavRailItemState extends State<_NavRailItem> {
                     textAlign: TextAlign.center,
                     style: TextStyle(
                       fontSize: 11.0,
-                      fontWeight:
-                          widget.isSelected ? FontWeight.w600 : FontWeight.w400,
+                      fontWeight: widget.isSelected
+                          ? FontWeight.w600
+                          : FontWeight.w400,
                       color: ink,
                     ),
                   ),

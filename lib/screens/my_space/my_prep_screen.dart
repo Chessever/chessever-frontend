@@ -1,19 +1,15 @@
-import 'package:chessever2/screens/collections/event_view_shell.dart';
 import 'package:chessever2/screens/for_you/discovery/widgets/discovery_common.dart'
-    show DiscoveryAction, DiscoveryActionLead;
-import 'package:chessever2/screens/library/library_screen.dart';
+    show DiscoveryAction;
 import 'package:chessever2/screens/my_space/actions/space_edit_actions.dart';
 import 'package:chessever2/screens/my_space/models/space_shortcut.dart';
 import 'package:chessever2/screens/my_space/providers/space_shortcuts_provider.dart';
 import 'package:chessever2/screens/my_space/widgets/space_database.dart'
     show SpaceGroupEdit;
-import 'package:chessever2/screens/my_space/widgets/space_door_actions.dart';
 import 'package:chessever2/screens/my_space/widgets/space_edit_grid.dart'
     show SpaceStartController;
 import 'package:chessever2/screens/my_space/widgets/space_edit_tutorial.dart'
     show maybeShowSpaceEditTutorial;
 import 'package:chessever2/screens/my_space/widgets/space_opening_card.dart';
-import 'package:chessever2/screens/tour_detail/games_tour/providers/games_list_view_mode_provider.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/app_typography.dart';
@@ -24,18 +20,14 @@ import 'package:dartchess/dartchess.dart' show Side, kInitialFEN;
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
-/// My Prep, in the event view's frame (back, a centred title, segments that
-/// swipe), as Favorites and Countrymen open from Today: the user's
-/// databases (the Library's own list, with its Add) and the openings and
-/// positions they saved, each on its board.
+/// My Prep remains addressable while its preparation tools are deferred.
+/// Existing opening/database data is kept in its own stores.
 class MyPrepScreen extends StatelessWidget {
   const MyPrepScreen({super.key, this.initialTab = 0});
 
+  // Retained for existing callers and saved shortcut routes.
   final int initialTab;
-
   static const List<String> tabs = ['Databases', 'Openings'];
-
-  /// The Openings tab: where My Space's Openings group leads.
   static int get openingsTab => tabs.indexOf('Openings');
 
   static Future<void> open(BuildContext context, {int initialTab = 0}) {
@@ -47,22 +39,29 @@ class MyPrepScreen extends StatelessWidget {
   }
 
   @override
-  Widget build(BuildContext context) {
-    return EventViewShell(
-      title: 'My Prep',
-      tabs: tabs,
-      initialTab: initialTab,
-      pageBuilder: (context, index) => switch (index) {
-        0 => const LibraryScreen(
-          key: PageStorageKey<String>('my_prep_databases'),
-          embedded: true,
+  Widget build(BuildContext context) => Scaffold(
+    backgroundColor: context.colors.background,
+    appBar: AppBar(
+      backgroundColor: context.colors.background,
+      foregroundColor: context.colors.textPrimary,
+      title: Text('My Prep', style: AppTypography.textMdMedium),
+      centerTitle: true,
+    ),
+    body: SafeArea(
+      child: Center(
+        child: Padding(
+          padding: const EdgeInsets.all(32),
+          child: Text(
+            'Coming soon',
+            textAlign: TextAlign.center,
+            style: AppTypography.textLgBold.copyWith(
+              color: context.colors.textPrimary,
+            ),
+          ),
         ),
-        _ => const MyPrepOpeningsPage(
-          key: PageStorageKey<String>('my_prep_openings'),
-        ),
-      },
-    );
-  }
+      ),
+    ),
+  );
 }
 
 /// The openings, positions and player lines the user saved, on their
@@ -179,12 +178,10 @@ class _MyPrepOpeningsPageState extends ConsumerState<MyPrepOpeningsPage> {
     final editing = _editing && openings.isNotEmpty;
     final closing = _closing && openings.isNotEmpty && !editing;
     final picked = _selected.length;
-    final mode = ref.watch(gamesListViewModeProvider);
     final gutter = ResponsiveHelper.adaptive(phone: 16.w, tablet: 24.w);
     final gap = 12.sp;
-    // Two to a row on every device, as every other grid of games and
-    // positions (My Database, See all, the Discovery lists).
-    final columns = mode == GamesListViewMode.chessBoardGrid ? 2 : 1;
+    // Openings share the full-width event-card frame in every list.
+    const columns = 1;
 
     final rows = <Widget>[];
     for (var i = 0; i < openings.length; i += columns) {
@@ -228,7 +225,7 @@ class _MyPrepOpeningsPageState extends ConsumerState<MyPrepOpeningsPage> {
             ),
           ),
           SizedBox(width: 12.w),
-          // Remove takes Edit's side and Done Add's.
+          // Editing keeps the existing Remove and Done actions together.
           if (editing) ...[
             DiscoveryAction(
               key: const ValueKey<String>('space_edit_remove'),
@@ -253,14 +250,7 @@ class _MyPrepOpeningsPageState extends ConsumerState<MyPrepOpeningsPage> {
                 onTap: () => _setEditing(true),
                 semanticsLabel: 'Edit openings',
               ),
-              SizedBox(width: 16.w),
             ],
-            DiscoveryAction(
-              label: 'Add',
-              lead: DiscoveryActionLead.plus,
-              semanticsLabel: 'Add an opening',
-              onTap: () => openSpaceAdd(context, ref, SpaceSection.openings),
-            ),
           ],
         ],
       ),
@@ -344,8 +334,7 @@ class _MyPrepOpeningsPageState extends ConsumerState<MyPrepOpeningsPage> {
                 ),
                 SizedBox(height: 16.h),
                 Text(
-                  'Hold a position in the explorer or on a board and choose '
-                  'Add to My Space, or add an opening here.',
+                  'Previously saved openings appear here.',
                   textAlign: TextAlign.center,
                   style: AppTypography.textSmRegular.copyWith(
                     color: context.colors.textSecondary,

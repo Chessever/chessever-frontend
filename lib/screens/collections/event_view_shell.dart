@@ -2,14 +2,15 @@ import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/widgets/home_top_bar.dart';
 import 'package:chessever2/widgets/screen_wrapper.dart';
 import 'package:chessever2/widgets/segmented_switcher.dart';
 import 'package:flutter/material.dart';
 import 'package:motor/motor.dart';
 
-/// The event view's frame, as the tournament screen draws it: back, a
-/// centred title, the segmented tabs and the pages under them, which swipe.
-/// Collections use it so a collection reads exactly like an event.
+/// A pushed collection uses the event detail header; the bottom navigation
+/// destination uses the shared home header so its avatar and tabs stay aligned
+/// with Home and Events. Pages beneath the tabs swipe in either layout.
 class EventViewShell extends StatefulWidget {
   const EventViewShell({
     super.key,
@@ -18,12 +19,24 @@ class EventViewShell extends StatefulWidget {
     required this.pageBuilder,
     this.initialTab = 0,
     this.controller,
+    this.showBackButton = true,
+    this.homeTab = false,
+    this.onOpenSidebar,
+    this.scrollToTopSequence,
+    this.header,
   });
 
+  final Widget? header;
   final String title;
   final List<String> tabs;
   final Widget Function(BuildContext context, int index) pageBuilder;
   final int initialTab;
+  final bool showBackButton;
+
+  /// Uses the home scaffold's header geometry for a bottom navigation page.
+  final bool homeTab;
+  final VoidCallback? onOpenSidebar;
+  final int? scrollToTopSequence;
 
   /// Lets a page switch tabs (a player picked on Players opens their games).
   final EventViewController? controller;
@@ -35,9 +48,11 @@ class EventViewShell extends StatefulWidget {
 /// Moves an [EventViewShell] to a tab.
 class EventViewController extends ChangeNotifier {
   int? _request;
+  bool _resetScroll = false;
 
-  void showTab(int index) {
+  void showTab(int index, {bool scrollToTop = false}) {
     _request = index;
+    _resetScroll = scrollToTop;
     notifyListeners();
   }
 }
@@ -47,6 +62,7 @@ class _EventViewShellState extends State<EventViewShell> {
     initialPage: widget.initialTab,
   );
   late int _selected = widget.initialTab;
+  final Map<int, ScrollController> _scrolls = {};
 
   /// Settles tab moves on a spring rather than a stock easing curve.
   static final Curve _pageCurve = const CupertinoMotion.smooth().toCurve;
@@ -60,6 +76,23 @@ class _EventViewShellState extends State<EventViewShell> {
   @override
   void didUpdateWidget(EventViewShell oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (widget.scrollToTopSequence != null &&
+        oldWidget.scrollToTopSequence != widget.scrollToTopSequence) {
+      final scroll = _scrolls[_selected];
+      if (scroll != null && scroll.hasClients) {
+        for (final position in scroll.positions) {
+          if (MediaQuery.disableAnimationsOf(context)) {
+            position.jumpTo(0);
+          } else {
+            position.animateTo(
+              0,
+              duration: const Duration(milliseconds: 240),
+              curve: Curves.easeOutCubic,
+            );
+          }
+        }
+      }
+    }
     if (oldWidget.controller != widget.controller) {
       oldWidget.controller?.removeListener(_onRequest);
       widget.controller?.addListener(_onRequest);
@@ -70,12 +103,27 @@ class _EventViewShellState extends State<EventViewShell> {
   void dispose() {
     widget.controller?.removeListener(_onRequest);
     _pages.dispose();
+    for (final scroll in _scrolls.values) {
+      scroll.dispose();
+    }
     super.dispose();
   }
 
   void _onRequest() {
     final index = widget.controller?._request;
-    if (index != null) _select(index);
+    if (index == null) return;
+    _select(index);
+    if (widget.controller?._resetScroll ?? false) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        final scroll = _scrolls[index];
+        if (scroll != null && scroll.hasClients) {
+          for (final position in scroll.positions) {
+            position.jumpTo(0);
+          }
+        }
+      });
+    }
   }
 
   void _select(int index) {
@@ -89,7 +137,7 @@ class _EventViewShellState extends State<EventViewShell> {
     }
     _pages.animateToPage(
       index,
-      duration: const Duration(milliseconds: 360),
+      duration: const Duration(milliseconds: 240),
       curve: _pageCurve,
     );
   }
@@ -97,7 +145,7 @@ class _EventViewShellState extends State<EventViewShell> {
   @override
   Widget build(BuildContext context) {
     final colors = context.colors;
-    final side = ResponsiveHelper.adaptive(phone: 20.sp, tablet: 32.sp);
+    final side = HomeTopBarMetrics.horizontalPadding;
     return ScreenWrapper(
       child: Scaffold(
         backgroundColor: colors.background,
@@ -110,61 +158,79 @@ class _EventViewShellState extends State<EventViewShell> {
             ),
             child: Column(
               children: [
-                SizedBox(height: MediaQuery.viewPaddingOf(context).top + 4.h),
-                Padding(
-                  padding: EdgeInsets.symmetric(
-                    horizontal: ResponsiveHelper.adaptive(
-                      phone: 16.w,
-                      tablet: 24.w,
-                    ),
-                  ),
-                  child: Row(
-                    children: [
-                      IconButton(
-                        tooltip: 'Back',
-                        iconSize: 24.ic,
-                        padding: EdgeInsets.zero,
-                        onPressed: () {
-                          HapticFeedbackService.navigation();
-                          Navigator.of(context).maybePop();
-                        },
-                        icon: Icon(
-                          Icons.arrow_back_ios_new_outlined,
-                          size: 24.ic,
+                if (widget.header != null)
+                  widget.header!
+                else if (widget.homeTab)
+                  HomeTopBar(
+                    onOpenSidebar: widget.onOpenSidebar,
+                    content: Semantics(
+                      header: true,
+                      child: Text(
+                        widget.title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: AppTypography.textMdMedium.copyWith(
                           color: colors.textPrimary,
+                          fontWeight: FontWeight.w600,
                         ),
                       ),
-                      Expanded(
-                        child: Semantics(
-                          header: true,
-                          child: Text(
-                            widget.title,
-                            textAlign: TextAlign.center,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: AppTypography.textMdMedium.copyWith(
+                    ),
+                  )
+                else ...[
+                  SizedBox(height: MediaQuery.viewPaddingOf(context).top + 4.h),
+                  Padding(
+                    padding: EdgeInsets.symmetric(
+                      horizontal: ResponsiveHelper.adaptive(
+                        phone: 16.w,
+                        tablet: 24.w,
+                      ),
+                    ),
+                    child: Row(
+                      children: [
+                        if (widget.showBackButton)
+                          IconButton(
+                            tooltip: 'Back',
+                            iconSize: 24.ic,
+                            padding: EdgeInsets.zero,
+                            onPressed: () {
+                              HapticFeedbackService.navigation();
+                              Navigator.of(context).maybePop();
+                            },
+                            icon: Icon(
+                              Icons.arrow_back_ios_new_outlined,
+                              size: 24.ic,
                               color: colors.textPrimary,
-                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        Expanded(
+                          child: Semantics(
+                            header: true,
+                            child: Text(
+                              widget.title,
+                              textAlign: TextAlign.center,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: AppTypography.textMdMedium.copyWith(
+                                color: colors.textPrimary,
+                                fontWeight: FontWeight.w600,
+                              ),
                             ),
                           ),
                         ),
-                      ),
-                      // Balances the back button so the title sits centred.
-                      const SizedBox(width: 48),
-                    ],
+                        if (widget.showBackButton) const SizedBox(width: 48),
+                      ],
+                    ),
                   ),
-                ),
-                SizedBox(height: 8.h),
+                ],
+                SizedBox(height: widget.homeTab ? 16.h : 8.h),
                 Padding(
                   padding: EdgeInsets.symmetric(horizontal: side),
                   child: SegmentedSwitcher(
                     key: ValueKey('event_view_tabs_${widget.tabs.join('_')}'),
                     backgroundColor: colors.popup,
                     selectedBackgroundColor: colors.popup,
-                    // The strip is a fixed height: the body line height
-                    // (22/14) would outgrow it at larger text sizes and cut
-                    // a label's descenders ("Players"). A tight line keeps
-                    // every label whole and still centred.
+                    // Keep the labels inside the fixed-height strip when the
+                    // system text size grows.
                     textStyle: AppTypography.textSmMedium.copyWith(
                       color: colors.tabInactive,
                       height: 1.2,
@@ -174,11 +240,22 @@ class _EventViewShellState extends State<EventViewShell> {
                       height: 1.2,
                     ),
                     options: widget.tabs,
+                    optionLabels: [
+                      for (final tab in widget.tabs)
+                        Padding(
+                          padding: EdgeInsets.symmetric(horizontal: 4.w),
+                          child: FittedBox(
+                            fit: BoxFit.scaleDown,
+                            child: Text(tab, maxLines: 1, softWrap: false),
+                          ),
+                        ),
+                    ],
                     initialSelection: widget.initialTab,
                     currentSelection: _selected,
                     onSelectionChanged: _select,
                   ),
                 ),
+                if (widget.homeTab) SizedBox(height: 12.h),
                 Expanded(
                   child: PageView.builder(
                     controller: _pages,
@@ -188,7 +265,16 @@ class _EventViewShellState extends State<EventViewShell> {
                       FocusScope.of(context).unfocus();
                       setState(() => _selected = index);
                     },
-                    itemBuilder: widget.pageBuilder,
+                    itemBuilder: (context, index) => PrimaryScrollController(
+                      controller: _scrolls.putIfAbsent(
+                        index,
+                        ScrollController.new,
+                      ),
+                      child: Builder(
+                        builder: (context) =>
+                            widget.pageBuilder(context, index),
+                      ),
+                    ),
                   ),
                 ),
               ],

@@ -1,3 +1,9 @@
+import 'package:chessever2/repository/gamebase/collections/collection_search_query.dart';
+import 'package:chessever2/screens/collections/collection_catalog_list.dart';
+import 'package:chessever2/screens/collections/collection_search_filters.dart';
+import 'package:chessever2/widgets/simple_search_bar.dart';
+import 'package:chessever2/widgets/search/search_motion.dart';
+import 'package:chessever2/widgets/home_top_bar.dart';
 import 'dart:async';
 import 'dart:math' as math;
 
@@ -6,8 +12,12 @@ import 'package:chessever2/screens/chessboard/chess_board_screen_new.dart';
 import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
 import 'package:chessever2/revenue_cat_service/subscribe_state.dart';
 import 'package:chessever2/screens/collections/collection_bindings.dart';
+import 'package:chessever2/screens/collections/collection_plate_row.dart';
+import 'package:chessever2/screens/collections/collection_explore.dart';
+export 'package:chessever2/screens/collections/collection_plate_row.dart';
 import 'package:chessever2/screens/collections/collections_data.dart';
 import 'package:chessever2/screens/collections/event_view_shell.dart';
+import 'package:chessever2/screens/home/widget/bottom_nav_bar.dart';
 import 'package:chessever2/screens/for_you/discovery/widgets/discovery_common.dart'
     show
         DiscoveryAction,
@@ -24,6 +34,9 @@ import 'package:chessever2/screens/my_space/widgets/pixel_art.dart';
 import 'package:chessever2/screens/my_space/widgets/space_database.dart'
     show spacePlateArtBox;
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/providers/games_list_view_mode_provider.dart';
+import 'package:chessever2/utils/svg_asset.dart';
+import 'package:chessever2/widgets/svg_widget.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
@@ -33,7 +46,6 @@ import 'package:chessever2/widgets/app_button.dart' show TappableScale;
 import 'package:chessever2/screens/library/widgets/library_context_menu.dart'
     show LibraryMenuAction;
 import 'package:chessever2/screens/my_space/actions/space_menu_action.dart';
-import 'package:chessever2/widgets/card_context_menu.dart';
 import 'package:chessever2/screens/favorites/tabs/favorites_players_tab.dart'
     show playerPhotoProvider;
 import 'package:chessever2/screens/my_space/widgets/space_avatar.dart'
@@ -41,15 +53,18 @@ import 'package:chessever2/screens/my_space/widgets/space_avatar.dart'
 import 'package:chessever2/screens/player_profile/utils/player_menu_actions.dart'
     show playerMenuActions;
 import 'package:chessever2/widgets/hub_tile.dart';
+import 'package:chessever2/widgets/card_context_menu.dart';
 import 'package:chessever2/widgets/skeleton_widget.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:intl/intl.dart';
 
-/// Discovery › Collection: the collections, laid out as an event is, with
-/// events and books on their own tabs and each entry drawn as an event card.
-class CollectionsScreen extends ConsumerWidget {
-  const CollectionsScreen({super.key});
+/// The primary Collections destination: indexed openings, published games
+/// and books in the established event-card language.
+class CollectionsScreen extends ConsumerStatefulWidget {
+  const CollectionsScreen({super.key, this.embedded = false});
+
+  final bool embedded;
 
   static Future<void> open(BuildContext context) {
     HapticFeedbackService.cardTap();
@@ -58,63 +73,142 @@ class CollectionsScreen extends ConsumerWidget {
     ).push(MaterialPageRoute<void>(builder: (_) => const CollectionsScreen()));
   }
 
-  static const _tabs = [CollectionKind.event, CollectionKind.book];
+  @override
+  ConsumerState<CollectionsScreen> createState() => _CollectionsScreenState();
+}
+
+class _CollectionsScreenState extends ConsumerState<CollectionsScreen> {
+  final _search = TextEditingController();
+  final _focus = FocusNode();
+  Timer? _debounce;
+  CollectionSearchQuery _query = const CollectionSearchQuery();
+  bool get embedded => widget.embedded;
+  @override
+  void dispose() {
+    _debounce?.cancel();
+    _search.dispose();
+    _focus.dispose();
+    super.dispose();
+  }
+
+  void _searchChanged(String value) {
+    _debounce?.cancel();
+    _debounce = Timer(const Duration(milliseconds: 300), () {
+      if (mounted) setState(() => _query = _query.withText(value));
+    });
+  }
+
+  Future<void> _filters() async {
+    _focus.unfocus();
+    _debounce?.cancel();
+    setState(() => _query = _query.withText(_search.text));
+    final result = await showCollectionSearchFilters(
+      context,
+      _query,
+      loadAuthors: ref.read(collectionsRepositoryProvider).fetchAuthors,
+    );
+    if (mounted && result != null) setState(() => _query = result);
+  }
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final collections = ref.watch(collectionsProvider);
+  Widget build(BuildContext context) {
+    final repository = ref.watch(collectionsRepositoryProvider);
+    final query = _query;
     return EventViewShell(
-      title: 'Collection',
-      tabs: const ['Events', 'Books'],
-      pageBuilder: (context, index) {
-        final kind = _tabs[index];
-        return collections.when(
-          data: (all) {
-            final shown = [
-              for (final c in all)
-                if (c.kind == kind) c,
-            ];
-            return RefreshIndicator(
-              color: context.colors.textPrimary,
-              backgroundColor: context.colors.surface,
-              onRefresh: () => ref.refresh(collectionsProvider.future),
-              // An empty tab's notice is a list of its own (it still pulls
-              // to refresh), so it IS the tab's scrollable, never an item
-              // of the card list: there it gets unbounded height, fails
-              // layout, and the half-laid-out subtree then fails the
-              // semantics parent-data check on every later frame.
-              child: shown.isEmpty
-                  ? _Notice(
-                      text: kind == CollectionKind.event
-                          ? 'No annotated events yet.'
-                          : 'No books yet.',
-                    )
-                  : ListView.builder(
-                      physics: const AlwaysScrollableScrollPhysics(
-                        parent: BouncingScrollPhysics(),
-                      ),
-                      padding: EdgeInsets.fromLTRB(
-                        16.sp,
-                        16.sp,
-                        16.sp,
-                        24.sp + MediaQuery.viewPaddingOf(context).bottom,
-                      ),
-                      itemCount: shown.length,
-                      itemBuilder: (context, i) => Padding(
-                        padding: EdgeInsets.only(bottom: 12.sp),
-                        child: CollectionCard(collection: shown[i]),
-                      ),
-                    ),
-            );
-          },
-          loading: () => const _CardsSkeleton(),
-          error: (error, _) => _Notice(
-            text: userFacingError(
-              error,
-              fallback: "Couldn't load collections.",
+      title: 'Collections',
+      header: HomeTopBarFrame(
+        child: HomeTopBarRow(
+          showAvatar: embedded,
+          leading: embedded
+              ? null
+              : IconButton(
+                  tooltip: 'Back',
+                  onPressed: () => Navigator.maybePop(context),
+                  icon: const Icon(Icons.arrow_back_ios_new_outlined),
+                ),
+          onAvatarTap:
+              embedded && (Scaffold.maybeOf(context)?.hasDrawer ?? false)
+              ? () => Scaffold.maybeOf(context)?.openDrawer()
+              : null,
+          focusNode: _focus,
+          content: ListenableBuilder(
+            listenable: _focus,
+            child: SimpleSearchBar(
+              controller: _search,
+              focusNode: _focus,
+              hintText: 'Search collections',
+              textFieldKey: const ValueKey('collections_search'),
+              filterButtonKey: const ValueKey('collections_filters'),
+              onChanged: _searchChanged,
+              onOpenFilter: _filters,
+              filterBadgeCount: _query.filterCount,
+              onCloseTap: () {
+                _debounce?.cancel();
+                _search.clear();
+                setState(() => _query = _query.withText(''));
+                _focus.unfocus();
+              },
             ),
-            actionLabel: 'Try again',
-            onAction: () => ref.invalidate(collectionsProvider),
+            builder: (context, child) => ParkedMotionBuilder(
+              value: _focus.hasFocus ? 1.0 : 0.0,
+              motion: SearchMotion.morph,
+              child: child,
+              builder: (context, lift, child) => HomeSearchFieldSurface(
+                lift: lift,
+                child: RepaintBoundary(child: child),
+              ),
+            ),
+          ),
+        ),
+      ),
+      tabs: const ['Openings', 'Games', 'Books'],
+      showBackButton: !embedded,
+      homeTab: embedded,
+      onOpenSidebar: embedded && (Scaffold.maybeOf(context)?.hasDrawer ?? false)
+          ? () => Scaffold.maybeOf(context)?.openDrawer()
+          : null,
+      scrollToTopSequence: embedded
+          ? ref.watch(
+              bottomNavBarReTapRequestProvider.select(
+                (request) => request.item == BottomNavBarItem.collections
+                    ? request.sequence
+                    : null,
+              ),
+            )
+          : null,
+      pageBuilder: (context, index) {
+        if (index == 0) {
+          return CollectionOpeningsView(
+            search: _query,
+            bottomPadding: embedded ? 72 : 0,
+          );
+        }
+        if (index == 1) {
+          return PublishedCollectionGamesView(
+            search: _query,
+            bottomPadding: embedded ? 72 : 0,
+          );
+        }
+        return CollectionCatalogList<Collection>(
+          key: ObjectKey(repository),
+          query: _query,
+          load: (offset) async {
+            final page = await repository.searchBooks(query, offset);
+            return CatalogBatch(page.items, page.total);
+          },
+          identity: (book) => book.id,
+          padding: EdgeInsets.fromLTRB(
+            16.sp,
+            16.sp,
+            16.sp,
+            24.sp +
+                MediaQuery.viewPaddingOf(context).bottom +
+                (embedded ? 72 : 0),
+          ),
+          emptyMessage: 'No books yet.',
+          itemBuilder: (book) => Padding(
+            padding: EdgeInsets.only(bottom: 12.sp),
+            child: CollectionCard(collection: book),
           ),
         );
       },
@@ -154,10 +248,16 @@ SpaceShortcut collectionSpaceDraft(Collection c) {
 /// when the card is listed for an event ("Chapter 7 is this match's
 /// decisive game").
 class CollectionCard extends ConsumerWidget {
-  const CollectionCard({super.key, required this.collection, this.note});
+  const CollectionCard({
+    super.key,
+    required this.collection,
+    this.note,
+    this.opening,
+  });
 
   final Collection collection;
   final String? note;
+  final CollectionOpening? opening;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -173,26 +273,35 @@ class CollectionCard extends ConsumerWidget {
     // from its neighbours (two Sinquefield Cups differ by their year), on a
     // line of its own so the count never pushes the year off the end. An
     // event's subtitle stands in only when it has neither place nor dates.
-    final identity = isBook
-        ? (c.author == null ? null : 'by ${c.author}')
-        : collectionEventLine(c.location, c.dateStart, c.dateEnd) ??
-              c.subtitle;
+    final identity = c.kind == CollectionKind.event
+        ? collectionEventLine(c.location, c.dateStart, c.dateEnd) ?? c.subtitle
+        : (c.author ?? c.annotator) == null
+        ? c.subtitle
+        : 'by ${c.author ?? c.annotator}';
     // A book names the events it covers when its row carries them; counted
     // otherwise, as an event counts the books written about it.
-    final named = isBook && note == null ? collectionEventsLine(c.events) : null;
+    final named = isBook && note == null
+        ? collectionEventsLine(c.events)
+        : null;
     final bindings = isBook
         ? (named == null && c.eventCount > 0
               ? _plural(c.eventCount, 'event')
               : null)
         : ((c.bookCount ?? 0) > 0 ? _plural(c.bookCount!, 'book') : null);
-    final tally = [_plural(c.gameCount, 'game'), ?bindings].join(' · ');
+    final tally = opening == null
+        ? [_plural(c.gameCount, 'game'), ?bindings].join(' · ')
+        : [
+            if (c.matchedGameCount != null)
+              _plural(c.matchedGameCount!, 'game'),
+            opening!.eco,
+          ].join(' · ');
     final caption = note ?? named;
 
     void open() {
       HapticFeedbackService.cardTap();
       Navigator.of(context).push(
         MaterialPageRoute<void>(
-          builder: (_) => CollectionScreen(collection: c),
+          builder: (_) => CollectionScreen(collection: c, opening: opening),
         ),
       );
     }
@@ -232,254 +341,26 @@ class CollectionCard extends ConsumerWidget {
   }
 }
 
-/// The row every collection list draws: the [plate] on the left
-/// ([plateSize]: an event's 5:4 picture or a book's 2:3 cover), the title
-/// (two lines at most), the [meta] line ([metaMaxLines] of them), the
-/// [tally] under it, and the optional [note] last. [locked] trails the
-/// tally (or, without one, the meta) with the Premium padlock, which the
-/// text gives way to. A null [onTap] draws the row with no press and no
-/// target (an event the server could not resolve still shows what the book
-/// covers).
-class CollectionPlateRow extends StatelessWidget {
-  const CollectionPlateRow({
-    super.key,
-    required this.plate,
-    required this.title,
-    required this.meta,
-    required this.semanticsLabel,
-    this.plateSize,
-    this.metaMaxLines = 1,
-    this.tally,
-    this.locked = false,
-    this.note,
-    this.onTap,
-    this.menuActions,
-  });
-
-  /// An event's picture: landscape, 5:4.
-  static Size get eventPlate => Size(108.w, 108.w * 4 / 5);
-
-  /// A book's cover, standing as a book stands: 2:3, the shape most covers
-  /// are printed in, so a jacket keeps its title and its author.
-  static Size get bookPlate => Size(64.w, 96.w);
-
-  final Widget plate;
-
-  /// [eventPlate] when null.
-  final Size? plateSize;
-  final String title;
-  final String? meta;
-  final String semanticsLabel;
-  final int metaMaxLines;
-
-  /// How much the collection holds ("55 games"), on its own line.
-  final String? tally;
-  final bool locked;
-  final String? note;
-  final VoidCallback? onTap;
-  final CardMenuActionsBuilder? menuActions;
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = context.colors;
-    final isLight = context.isLightTheme;
-    final size = plateSize ?? eventPlate;
-    final metaStyle = AppTypography.textXsMedium.copyWith(
-      color: colors.textPrimaryMuted,
-    );
-    final line = meta;
-    final count = tally;
-    final caption = note;
-
-    // The padlock stands outside the text, so a long credit or a larger
-    // text size shortens the words and never cuts the lock off with them.
-    Widget withLock(Widget? text) => Row(
-      children: [
-        if (text != null) Flexible(child: text),
-        if (locked) ...[
-          if (text != null) SizedBox(width: DiscoveryPadlock.gap),
-          const DiscoveryPadlock(
-            key: ValueKey<String>('collection_card_padlock'),
-          ),
-        ],
-      ],
-    );
-
-    final Widget? metaText = line == null
-        ? null
-        : metaMaxLines < 2
-        ? Text(
-            line,
-            maxLines: metaMaxLines,
-            overflow: TextOverflow.ellipsis,
-            style: metaStyle,
-          )
-        : LayoutBuilder(
-            builder: (context, constraints) => Text(
-              _breakAtLastDot(context, line, metaStyle, constraints.maxWidth),
-              maxLines: metaMaxLines,
-              overflow: TextOverflow.ellipsis,
-              style: metaStyle,
-            ),
-          );
-
-    Widget card = Container(
-      decoration: BoxDecoration(
-        color: colors.surface,
-        borderRadius: BorderRadius.circular(8.br),
-        border: isLight
-            ? Border.all(color: colors.divider.withValues(alpha: 0.4))
-            : null,
-      ),
-      padding: EdgeInsets.all(6.sp),
-      child: Row(
-        children: [
-          ClipRRect(
-            borderRadius: BorderRadius.circular(6.br),
-            child: SizedBox(
-              width: size.width,
-              height: size.height,
-              child: plate,
-            ),
-          ),
-          SizedBox(width: 10.w),
-          Expanded(
-            child: Padding(
-              // Clear of the card's right rim, so a long title never runs
-              // into it.
-              padding: EdgeInsets.only(right: 6.sp),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    title,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: AppTypography.textSmMedium.copyWith(
-                      color: colors.textPrimary,
-                      fontSize: 14.f,
-                      height: 1.2,
-                    ),
-                  ),
-                  if (metaText != null) ...[
-                    SizedBox(height: 4.h),
-                    count == null ? withLock(metaText) : metaText,
-                  ],
-                  if (count != null) ...[
-                    SizedBox(height: metaText == null ? 4.h : 2.h),
-                    withLock(
-                      Text(
-                        count,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: metaStyle.copyWith(
-                          color: colors.textSecondary,
-                          fontFeatures: const [FontFeature.tabularFigures()],
-                        ),
-                      ),
-                    ),
-                  ] else if (metaText == null && locked) ...[
-                    SizedBox(height: 4.h),
-                    withLock(null),
-                  ],
-                  if (caption != null) ...[
-                    SizedBox(height: 6.h),
-                    Text(
-                      caption,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: AppTypography.textXsRegular.copyWith(
-                        color: colors.textSecondary,
-                        height: 16 / 12,
-                      ),
-                    ),
-                  ],
-                ],
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-
-    final tap = onTap;
-    if (tap == null) {
-      return Semantics(
-        label: semanticsLabel,
-        excludeSemantics: true,
-        child: card,
-      );
-    }
-    final actions = menuActions;
-    if (actions != null) {
-      card = CardContextMenu(onPreviewTap: tap, actions: actions, child: card);
-    }
-    return Semantics(
-      button: true,
-      label: semanticsLabel,
-      excludeSemantics: true,
-      onTap: tap,
-      child: TappableScale(onTap: tap, child: card),
-    );
-  }
-}
-
-/// [line] as it should wrap in [width]: whole when it fits on one line;
-/// otherwise, when its last part ("Jan 13-28, 2024" after "Wijk aan Zee ·")
-/// and what leads it each fit a line, broken there with the dot dropped, so
-/// no line ends on a dangling separator. Anything longer wraps as it falls.
-String _breakAtLastDot(
-  BuildContext context,
-  String line,
-  TextStyle style,
-  double width,
-) {
-  const dot = ' · ';
-  final at = line.lastIndexOf(dot);
-  if (at <= 0 || !width.isFinite) return line;
-  final scaler = MediaQuery.textScalerOf(context);
-  final direction = Directionality.of(context);
-  // Measured as the Text will draw it: over the ambient style, whose
-  // letter spacing the line inherits.
-  final drawn = DefaultTextStyle.of(context).style.merge(style);
-  bool fits(String text) {
-    final painter = TextPainter(
-      text: TextSpan(text: text, style: drawn),
-      textDirection: direction,
-      textScaler: scaler,
-      maxLines: 1,
-    )..layout(maxWidth: width);
-    final fit = !painter.didExceedMaxLines;
-    painter.dispose();
-    return fit;
-  }
-
-  if (fits(line)) return line;
-  final head = line.substring(0, at);
-  final tail = line.substring(at + dot.length);
-  return fits(head) && fits(tail) ? '$head\n$tail' : line;
-}
-
 /// A collection's cover, or its pixel object (the trophy for an event, the
 /// stacked boards for a book) when it has none.
 class _Cover extends StatelessWidget {
-  const _Cover({required this.collection});
+  const _Cover({required this.collection, this.fit = BoxFit.cover});
 
   final Collection collection;
+  final BoxFit fit;
 
   @override
   Widget build(BuildContext context) {
     final plate = _PixelPlate(
-      section: collection.kind == CollectionKind.book
-          ? SpaceSection.library
-          : SpaceSection.events,
+      section: collection.kind == CollectionKind.event
+          ? SpaceSection.events
+          : SpaceSection.library,
     );
     final url = collection.coverUrl;
     if (url == null) return plate;
     return CachedNetworkImage(
       imageUrl: url,
-      fit: BoxFit.cover,
+      fit: fit,
       placeholder: (_, __) => plate,
       errorWidget: (_, __, ___) => plate,
     );
@@ -581,15 +462,14 @@ String? collectionDateRange(DateTime? start, DateTime? end) {
 /// Where section headers and the player line start: the game cards' edge.
 double get _headerInset => discoveryGutter + 4.sp;
 
-/// One collection, laid out as an event. A book: About, Games (its parts
-/// and chapters) and Events (the events it covers). An event: About, Games
-/// (the annotated games under their rounds), Books (the books written about
-/// it) and Players (everyone in it; picking one shows their games).
+/// Every collection shares About, Games and Openings. Credits, related
+/// events and books, and the player filter remain available from About.
 class CollectionScreen extends ConsumerStatefulWidget {
-  const CollectionScreen({super.key, required this.collection});
+  const CollectionScreen({super.key, required this.collection, this.opening});
 
   /// The list row it was opened from; the detail read fills in the rest.
   final Collection collection;
+  final CollectionOpening? opening;
 
   @override
   ConsumerState<CollectionScreen> createState() => _CollectionScreenState();
@@ -599,8 +479,8 @@ class _CollectionScreenState extends ConsumerState<CollectionScreen> {
   static const int _aboutTab = 0;
   static const int _gamesTab = 1;
 
-  static const List<String> _bookTabs = ['About', 'Games', 'Events'];
-  static const List<String> _eventTabs = ['About', 'Games', 'Books', 'Players'];
+  static const List<String> _collectionTabs = ['About', 'Games', 'Openings'];
+  late CollectionOpening? _opening = widget.opening;
 
   /// Fixed by the kind the page opened as, so the tab strip never changes
   /// under the viewer.
@@ -610,6 +490,18 @@ class _CollectionScreenState extends ConsumerState<CollectionScreen> {
 
   /// The player whose games the Games tab shows, or null for all.
   CollectionPlayer? _player;
+
+  // A book opens on the compact tournament list, even if another screen was
+  // left on a board grid. Switching this page never changes other screens.
+  GamesListViewMode _gamesViewMode = GamesListViewMode.gamesCard;
+
+  void _toggleGamesView() {
+    HapticFeedbackService.buttonPress();
+    setState(() {
+      _gamesViewMode = GamesListViewMode
+          .values[(_gamesViewMode.index + 1) % GamesListViewMode.values.length];
+    });
+  }
 
   /// A preview opens on About (the cover and the credits sell it; the
   /// contents wait on Games); a collection the viewer reads opens on its
@@ -621,6 +513,7 @@ class _CollectionScreenState extends ConsumerState<CollectionScreen> {
   /// Where the way in stands: offered, or the page confirming the viewer's
   /// Premium with the server, or that confirm having run out.
   CollectionUnlockPhase _phase = CollectionUnlockPhase.offer;
+  final _confirmationChanges = ValueNotifier(0);
 
   /// A subscriber the server still has as locked is confirmed once on its
   /// own; after that only a tap asks again.
@@ -638,6 +531,7 @@ class _CollectionScreenState extends ConsumerState<CollectionScreen> {
   @override
   void dispose() {
     _confirm.cancel();
+    _confirmationChanges.dispose();
     _tabs.dispose();
     super.dispose();
   }
@@ -662,6 +556,11 @@ class _CollectionScreenState extends ConsumerState<CollectionScreen> {
         .holdFreshAccess(slug);
     try {
       refreshCollectionAccess(ref, slug);
+      if (_opening != null) {
+        ref.invalidate(
+          collectionOpeningContentsProvider((slug: slug, eco: _opening!.eco)),
+        );
+      }
       final detail = await ref.read(collectionDetailProvider(slug).future);
       // The page closed while the server answered: the run is over.
       if (!mounted) return CollectionAccessCheck.locked;
@@ -714,6 +613,9 @@ class _CollectionScreenState extends ConsumerState<CollectionScreen> {
         break;
     }
     setState(() => _phase = phase);
+    // Related Players is a pushed route, so this page's setState cannot
+    // redraw its confirming, retry or sign-in state.
+    _confirmationChanges.value++;
   }
 
   /// Confirms the viewer's Premium with the server.
@@ -758,6 +660,95 @@ class _CollectionScreenState extends ConsumerState<CollectionScreen> {
     if (player != null) _tabs.showTab(_gamesTab);
   }
 
+  /// Related content keeps its existing views without adding different main
+  /// tabs to different kinds. The route watches detail again, so opening it
+  /// while a request is pending never strands its loading state.
+  void _showRelated(String label) {
+    HapticFeedbackService.navigation();
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => ListenableBuilder(
+          listenable: _confirmationChanges,
+          builder: (context, _) => Consumer(
+            builder: (context, ref, _) {
+              final slug = widget.collection.slug;
+              final detail = ref.watch(collectionDetailProvider(slug));
+              final c = detail.valueOrNull ?? widget.collection;
+              final subscription = ref.watch(subscriptionProvider);
+              final locked = isCollectionLocked(
+                c,
+                isSubscribed: subscription.isSubscribed,
+                subscriptionLoading: subscription.isLoading,
+              );
+              final pending = detail.isLoading && !detail.hasValue;
+              final error = detail.hasError && !detail.hasValue && !pending
+                  ? detail.error
+                  : null;
+              void retry() => ref.invalidate(collectionDetailProvider(slug));
+              final players = label == 'Players' && !locked
+                  ? ref.watch(collectionPlayersProvider(slug))
+                  : null;
+              return EventViewShell(
+                title: c.title,
+                tabs: [label],
+                pageBuilder: (context, _) => switch (label) {
+                  'Events' => _EventsPage(
+                    events: c.events,
+                    pending: pending,
+                    error: error,
+                    onRetry: retry,
+                  ),
+                  'Books' => _BooksPage(
+                    collectionId: c.id,
+                    pending: pending,
+                    error: error,
+                    onRetry: retry,
+                  ),
+                  _ =>
+                    players == null
+                        ? _LockedPlayers(
+                            collection: c,
+                            phase: _phase,
+                            onUnlock: () => _unlock(c),
+                          )
+                        : players.when(
+                            skipLoadingOnReload: isCollectionPremiumGate(
+                              players.error,
+                            ),
+                            data: (list) => _PlayersPage(
+                              players: list,
+                              onPick: (player) {
+                                Navigator.of(context).pop();
+                                _showPlayer(player);
+                              },
+                            ),
+                            loading: () => const _CardsSkeleton(),
+                            error: (error, _) => isCollectionPremiumGate(error)
+                                ? _LockedPlayers(
+                                    collection: c,
+                                    phase: _phase,
+                                    onUnlock: () => _unlock(c),
+                                  )
+                                : _Notice(
+                                    text: _collectionErrorText(
+                                      error,
+                                      fallback: "Couldn't load the players.",
+                                    ),
+                                    actionLabel: 'Try again',
+                                    onAction: () => ref.invalidate(
+                                      collectionPlayersProvider(slug),
+                                    ),
+                                  ),
+                          ),
+                },
+              );
+            },
+          ),
+        ),
+      ),
+    );
+  }
+
   /// Collection games carry their whole PGN, so the board replays them as it
   /// replays an imported file. [games] is the whole list in the order shown,
   /// so prev/next walks the collection.
@@ -793,7 +784,11 @@ class _CollectionScreenState extends ConsumerState<CollectionScreen> {
     // and players are read only once the viewer may see them.
     final contents = locked
         ? null
-        : ref.watch(collectionContentsProvider(slug));
+        : _opening == null
+        ? ref.watch(collectionContentsProvider(slug))
+        : ref.watch(
+            collectionOpeningContentsProvider((slug: slug, eco: _opening!.eco)),
+          );
     final players = locked ? null : ref.watch(collectionPlayersProvider(slug));
     // The server keeps the games from a viewer the app knows as a
     // subscriber (a purchase it has not seen yet, a session it refused, a
@@ -838,7 +833,6 @@ class _CollectionScreenState extends ConsumerState<CollectionScreen> {
 
     // The detail read, when it has nothing better than the list row to show
     // yet: the Events tab waits on it, the Books tab when it opened by slug.
-    final detailPending = detail.isLoading && !detail.hasValue;
     final detailError = detail.hasError && !detail.hasValue && !detail.isLoading
         ? detail.error
         : null;
@@ -846,13 +840,13 @@ class _CollectionScreenState extends ConsumerState<CollectionScreen> {
     // Held for the page's life, as its games and players are: the tabs'
     // pages come and go as the viewer swipes, and the Books tab should not
     // ask again (nor flash its skeleton) each time it comes back.
-    if (!_isBook && c.id.isNotEmpty) {
+    if (c.kind == CollectionKind.event && c.id.isNotEmpty) {
       ref.watch(collectionBooksOfEventCollectionProvider(c.id));
     }
 
     return EventViewShell(
       title: c.title,
-      tabs: _isBook ? _bookTabs : _eventTabs,
+      tabs: _collectionTabs,
       initialTab: _initialTab,
       controller: _tabs,
       pageBuilder: (context, index) {
@@ -871,6 +865,11 @@ class _CollectionScreenState extends ConsumerState<CollectionScreen> {
             // hidden while a retry is in flight so the tap reads as taken.
             error: detailError,
             onRetry: retryDetail,
+            onShowEvents: _isBook ? () => _showRelated('Events') : null,
+            onShowBooks: c.kind == CollectionKind.event
+                ? () => _showRelated('Books')
+                : null,
+            onShowPlayers: _isBook ? null : () => _showRelated('Players'),
           ),
           1 =>
             contents == null
@@ -892,8 +891,20 @@ class _CollectionScreenState extends ConsumerState<CollectionScreen> {
                       player: _player,
                       onClearPlayer: () => _showPlayer(null),
                       onOpen: _openGame,
+                      viewMode: _gamesViewMode,
+                      onToggleView: _toggleGamesView,
+                      opening: _opening,
+                      onClearOpening: () => setState(() => _opening = null),
                     ),
-                    loading: () => const _CardsSkeleton(),
+                    loading: () => ListView(
+                      padding: EdgeInsets.symmetric(vertical: 16.sp),
+                      children: [
+                        DiscoveryGameListSkeleton(
+                          count: 4,
+                          viewMode: _gamesViewMode,
+                        ),
+                      ],
+                    ),
                     error: (error, _) => isCollectionPremiumGate(error)
                         // The server knows better than the app's subscription
                         // state (a purchase it has not seen yet): the preview.
@@ -912,49 +923,27 @@ class _CollectionScreenState extends ConsumerState<CollectionScreen> {
                             onAction: () {
                               ref.invalidate(collectionDetailProvider(slug));
                               ref.invalidate(collectionGamesProvider(slug));
+                              if (_opening != null) {
+                                ref.invalidate(
+                                  collectionOpeningContentsProvider((
+                                    slug: slug,
+                                    eco: _opening!.eco,
+                                  )),
+                                );
+                              }
                             },
                           ),
                   ),
-          // Public on both kinds, locked or not: what a book covers and
-          // what was written about an event are its credits, not its games.
-          2 when _isBook => _EventsPage(
-            events: c.events,
-            pending: detailPending,
-            error: detailError,
-            onRetry: retryDetail,
+          _ => CollectionOpeningsView(
+            slug: slug,
+            onPick: (opening) {
+              setState(() {
+                _opening = opening;
+                _player = null;
+              });
+              _tabs.showTab(_gamesTab, scrollToTop: true);
+            },
           ),
-          2 => _BooksPage(
-            collectionId: c.id,
-            pending: detailPending,
-            error: detailError,
-            onRetry: retryDetail,
-          ),
-          _ =>
-            players == null
-                ? _LockedPlayers(collection: c, phase: phase, onUnlock: unlock)
-                : players.when(
-                    skipLoadingOnReload: isCollectionPremiumGate(
-                      players.error,
-                    ),
-                    data: (list) =>
-                        _PlayersPage(players: list, onPick: _showPlayer),
-                    loading: () => const _CardsSkeleton(),
-                    error: (error, _) => isCollectionPremiumGate(error)
-                        ? _LockedPlayers(
-                            collection: c,
-                            phase: phase,
-                            onUnlock: unlock,
-                          )
-                        : _Notice(
-                            text: _collectionErrorText(
-                              error,
-                              fallback: "Couldn't load the players.",
-                            ),
-                            actionLabel: 'Try again',
-                            onAction: () =>
-                                ref.invalidate(collectionPlayersProvider(slug)),
-                          ),
-                  ),
         };
       },
     );
@@ -1208,6 +1197,9 @@ class _AboutPage extends ConsumerWidget {
     required this.onUnlock,
     this.error,
     this.onRetry,
+    this.onShowEvents,
+    this.onShowBooks,
+    this.onShowPlayers,
   });
 
   final Collection collection;
@@ -1224,12 +1216,16 @@ class _AboutPage extends ConsumerWidget {
   /// row (no About text, credits or edition).
   final Object? error;
   final VoidCallback? onRetry;
+  final VoidCallback? onShowEvents;
+  final VoidCallback? onShowBooks;
+  final VoidCallback? onShowPlayers;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final colors = context.colors;
     final c = collection;
     final paragraphs = _paragraphs(c.about);
+    final summary = collectionContentsSummary(c);
     final foreword = _paragraphs(c.foreword);
     final players = playerCount;
     // The offered way in says how many games wait behind it ("Read all 55
@@ -1241,8 +1237,10 @@ class _AboutPage extends ConsumerWidget {
         players == 1 ? '1 player' : '$players players',
     ].join(' · ');
     final isBook = c.kind == CollectionKind.book;
-    final credit = isBook ? c.author : c.annotator ?? c.author;
-    final annotator = isBook && c.annotator != c.author ? c.annotator : null;
+    final credit = c.author ?? c.annotator;
+    final annotator = c.author != null && c.annotator != c.author
+        ? c.annotator
+        : null;
     final edition = isBook
         ? [?c.publisher, if (c.publishedYear != null) '${c.publishedYear}']
         : [?collectionPlaceAndDates(c)];
@@ -1288,7 +1286,7 @@ class _AboutPage extends ConsumerWidget {
         if (credit != null) ...[
           SizedBox(height: 4.sp),
           Text(
-            isBook ? 'by $credit' : 'Annotated by $credit',
+            c.author != null ? 'by $credit' : 'Annotated by $credit',
             style: AppTypography.textSmMedium.copyWith(
               color: colors.textPrimary,
               fontWeight: FontWeight.w600,
@@ -1298,6 +1296,22 @@ class _AboutPage extends ConsumerWidget {
         if (annotator != null) ...[
           SizedBox(height: 4.sp),
           Text('Annotated by $annotator', style: secondary),
+        ],
+        if (c.authorBio != null) ...[
+          SizedBox(height: 12.sp),
+          for (final paragraph in _paragraphs(c.authorBio))
+            Padding(
+              padding: EdgeInsets.only(bottom: 8.sp),
+              child: Text(paragraph, style: body),
+            ),
+        ],
+        if (c.annotatorBio != null && c.annotatorBio != c.authorBio) ...[
+          SizedBox(height: 12.sp),
+          for (final paragraph in _paragraphs(c.annotatorBio))
+            Padding(
+              padding: EdgeInsets.only(bottom: 8.sp),
+              child: Text(paragraph, style: body),
+            ),
         ],
         if (c.subtitle != null) ...[
           SizedBox(height: 4.sp),
@@ -1341,6 +1355,8 @@ class _AboutPage extends ConsumerWidget {
             ],
           ),
         ],
+        SizedBox(height: 16.sp),
+        Text(summary, style: body),
         for (final p in paragraphs) ...[
           SizedBox(height: 16.sp),
           Text(p, style: body),
@@ -1362,10 +1378,34 @@ class _AboutPage extends ConsumerWidget {
             ),
           ],
         ],
+        SizedBox(height: 20.sp),
+        Wrap(
+          spacing: 8.sp,
+          runSpacing: 4.sp,
+          children: [
+            if (onShowEvents != null)
+              TextButton(onPressed: onShowEvents, child: const Text('Events')),
+            if (onShowBooks != null)
+              TextButton(onPressed: onShowBooks, child: const Text('Books')),
+            if (onShowPlayers != null)
+              TextButton(
+                onPressed: onShowPlayers,
+                child: const Text('Players'),
+              ),
+          ],
+        ),
       ],
     );
   }
 }
+
+/// What the reader is opening, even when the editorial description has
+/// not been supplied. This describes the collection, never the full event.
+String collectionContentsSummary(Collection c) => switch (c.kind) {
+  CollectionKind.event => 'Selected games from ${c.title}.',
+  CollectionKind.book => 'The games collected in ${c.title}.',
+  CollectionKind.analysis => 'Selected game analysis from ${c.title}.',
+};
 
 /// A book's jacket on its About page, whole: standing 2:3 as it was
 /// printed, centred over the title as a shelf would show it, never cropped
@@ -1412,7 +1452,7 @@ class _BookCover extends StatelessWidget {
                   ),
             child: ClipRRect(
               borderRadius: radius,
-              child: _Cover(collection: collection),
+              child: _Cover(collection: collection, fit: BoxFit.contain),
             ),
           ),
         );
@@ -1663,12 +1703,7 @@ class _LockedContents extends StatelessWidget {
       itemBuilder: (context, i) {
         if (i == 0) {
           return Padding(
-            padding: EdgeInsets.fromLTRB(
-              _headerInset,
-              0,
-              _headerInset,
-              4.sp,
-            ),
+            padding: EdgeInsets.fromLTRB(_headerInset, 0, _headerInset, 4.sp),
             child: _UnlockAction(
               collection: collection,
               phase: phase,
@@ -1945,12 +1980,20 @@ class _GamesPage extends StatelessWidget {
     required this.player,
     required this.onClearPlayer,
     required this.onOpen,
+    required this.viewMode,
+    required this.onToggleView,
+    this.opening,
+    this.onClearOpening,
   });
 
   final CollectionContents contents;
   final CollectionPlayer? player;
   final VoidCallback onClearPlayer;
   final void Function(List<GamesTourModel> games, int index) onOpen;
+  final GamesListViewMode viewMode;
+  final VoidCallback onToggleView;
+  final CollectionOpening? opening;
+  final VoidCallback? onClearOpening;
 
   /// By key only: cards and player rows share it (`fide:<id>` or
   /// `name:<lower>`), and the Players tab counts games the same way. A name
@@ -1961,7 +2004,13 @@ class _GamesPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (contents.games.isEmpty) {
-      return const _Notice(text: 'No games in this collection yet.');
+      return _Notice(
+        text: opening == null
+            ? 'No games in this collection yet.'
+            : 'No games study ${opening!.eco} in this book yet.',
+        actionLabel: opening == null ? null : 'All games',
+        onAction: onClearOpening,
+      );
     }
     final picked = player;
     final groups = groupCollectionGames(contents.sections, [
@@ -1975,15 +2024,70 @@ class _GamesPage extends StatelessWidget {
     ];
     // A collection with no sections lists its games with no headers at all.
     final headed = groups.any((g) => g.section != null);
-    final lead = picked == null ? 0 : 1;
+    final lead = 1 + (picked == null ? 0 : 1) + (opening == null ? 0 : 1);
+    final groupGames = [
+      for (final group in groups) [for (final g in group.games) g.game],
+    ];
+    final perRow = viewMode == GamesListViewMode.chessBoardGrid ? 2 : 1;
+    // Each scroll item mounts only a row, like the tournament Games list.
+    // A chapter can contain thousands of games; do not mount them all in
+    // one Column just because its header has entered the viewport.
+    final rows = <({int group, int? start})>[
+      for (var g = 0; g < groups.length; g++) ...[
+        if (headed || _paragraphs(groups[g].section?.intro).isNotEmpty)
+          (group: g, start: null),
+        for (var start = 0; start < groupGames[g].length; start += perRow)
+          (group: g, start: start),
+      ],
+    ];
     return ListView.builder(
       padding: EdgeInsets.only(
         top: 16.sp,
         bottom: 24.sp + MediaQuery.viewPaddingOf(context).bottom,
       ),
-      itemCount: lead + (groups.isEmpty ? 1 : groups.length),
+      itemCount: lead + (groups.isEmpty ? 1 : rows.length),
       itemBuilder: (context, i) {
-        if (picked != null && i == 0) {
+        if (i == 0) {
+          return Padding(
+            padding: EdgeInsets.fromLTRB(_headerInset, 0, _headerInset, 8.sp),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    _plural(ordered.length, 'game'),
+                    style: AppTypography.textSmMedium.copyWith(
+                      color: context.colors.textSecondary,
+                    ),
+                  ),
+                ),
+                Semantics(
+                  value: switch (viewMode) {
+                    GamesListViewMode.gamesCard => 'List view',
+                    GamesListViewMode.chessBoardGrid => 'Board grid view',
+                    GamesListViewMode.chessBoard => 'Board view',
+                  },
+                  child: IconButton(
+                    tooltip: 'Change games view',
+                    onPressed: onToggleView,
+                    icon: SvgWidget(
+                      SvgAsset.chase_grid,
+                      height: 24.ic,
+                      width: 24.ic,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          );
+        }
+        if (opening != null && i == 1) {
+          return _PlayerLine(
+            name: '${opening!.eco} · ${opening!.name ?? 'Opening'}',
+            isOpening: true,
+            onClear: onClearOpening!,
+          );
+        }
+        if (picked != null && i == (opening == null ? 1 : 2)) {
           return _PlayerLine(name: picked.name, onClear: onClearPlayer);
         }
         if (groups.isEmpty) {
@@ -1999,26 +2103,33 @@ class _GamesPage extends StatelessWidget {
             ),
           );
         }
-        final index = i - lead;
-        final group = groups[index];
-        final intro = _paragraphs(group.section?.intro);
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            if (headed)
-              _SectionHeader(section: group.section, first: index == 0),
-            if (intro.isNotEmpty) _SectionIntro(paragraphs: intro),
-            if (group.games.isNotEmpty)
-              Padding(
-                padding: EdgeInsets.only(bottom: 4.sp),
-                child: DiscoveryGameList(
-                  games: [for (final g in group.games) g.game],
-                  streamEnabled: false,
-                  onOpen: (_, local) => onOpen(ordered, group.offset + local),
-                ),
-              ),
-          ],
+        final row = rows[i - lead];
+        final group = groups[row.group];
+        final start = row.start;
+        if (start == null) {
+          final intro = _paragraphs(group.section?.intro);
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (headed)
+                _SectionHeader(section: group.section, first: row.group == 0),
+              if (intro.isNotEmpty) _SectionIntro(paragraphs: intro),
+            ],
+          );
+        }
+        return Padding(
+          padding: EdgeInsets.only(
+            bottom: start + perRow < group.games.length ? 12.sp : 4.sp,
+          ),
+          child: DiscoveryGameList(
+            games: groupGames[row.group],
+            start: start,
+            limit: perRow,
+            viewMode: viewMode,
+            streamEnabled: false,
+            onOpen: (_, local) => onOpen(ordered, group.offset + local),
+          ),
         );
       },
     );
@@ -2027,10 +2138,15 @@ class _GamesPage extends StatelessWidget {
 
 /// The picked player's name over their games, and the way back to all.
 class _PlayerLine extends StatelessWidget {
-  const _PlayerLine({required this.name, required this.onClear});
+  const _PlayerLine({
+    required this.name,
+    required this.onClear,
+    this.isOpening = false,
+  });
 
   final String name;
   final VoidCallback onClear;
+  final bool isOpening;
 
   @override
   Widget build(BuildContext context) {
@@ -2040,7 +2156,7 @@ class _PlayerLine extends StatelessWidget {
         children: [
           Expanded(
             child: Text(
-              'Games of $name',
+              isOpening ? name : 'Games of $name',
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: AppTypography.textSmMedium.copyWith(

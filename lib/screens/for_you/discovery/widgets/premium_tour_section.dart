@@ -8,7 +8,7 @@ import 'package:chessever2/screens/for_you/discovery/providers/discovery_provide
 import 'package:chessever2/screens/for_you/discovery/widgets/discovery_common.dart';
 import 'package:chessever2/screens/for_you/discovery/widgets/discovery_game_cards.dart';
 import 'package:chessever2/screens/gamebase/gamebase_explorer_screen.dart';
-import 'package:chessever2/screens/home/widget/bottom_nav_bar.dart';
+import 'package:chessever2/screens/library/library_screen.dart';
 import 'package:chessever2/screens/library/miniatures_screen.dart';
 import 'package:chessever2/screens/library/providers/miniatures_provider.dart';
 import 'package:chessever2/screens/player_profile/player_profile_screen.dart';
@@ -291,10 +291,7 @@ class PremiumTourSection extends ConsumerWidget {
         title: 'Synced library',
         cta: 'Save to a synced personal database',
         visual: const _DatabaseVisual(),
-        onUnlocked: () {
-          ref.read(selectedBottomNavBarItemProvider.notifier).state =
-              BottomNavBarItem.library;
-        },
+        onUnlocked: () => _push(context, const Scaffold(body: LibraryScreen())),
       ),
       _TourItem(
         id: 'desktop',

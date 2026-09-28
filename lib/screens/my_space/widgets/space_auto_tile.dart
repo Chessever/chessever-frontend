@@ -148,7 +148,10 @@ class SpaceAutoTile extends ConsumerWidget {
       LibraryMenuAction(
         icon: Icons.push_pin_outlined,
         label: 'Pin to My Space',
+        visible: draft.canAddToMySpace,
+        enabled: draft.canAddToMySpace,
         onSelected: () async {
+          if (!draft.canAddToMySpace) return;
           final added = await store.add(draft);
           HapticFeedbackService.success();
           say(

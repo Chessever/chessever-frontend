@@ -71,8 +71,8 @@ class BoardNavigationLaunch {
     required this.immediateGames,
     required this.immediateIndex,
     required this.expanded,
-    required _BoardNavigationSnapshot latest,
-  }) : _latest = latest;
+    required this._latest,
+  });
 
   /// The list currently installed in the deferred board host. Navigation back
   /// uses this snapshot to translate the board's index into the caller's list
@@ -559,6 +559,7 @@ Widget expandingChessBoardScreenForTesting({
   required Future<({List<GamesTourModel> games, int index})> expandedNavigation,
   required ChessboardView viewSource,
   BoardNavigationSnapshotProbe? snapshotProbe,
+  SavedAnalysisData? savedAnalysisData,
 }) {
   final snapshot = _BoardNavigationSnapshot(games: initialGames);
   snapshotProbe?._snapshot = snapshot;
@@ -573,6 +574,7 @@ Widget expandingChessBoardScreenForTesting({
     showGamebaseButton: false,
     disableGamebaseOverlayByDefault: true,
     showClock: true,
+    savedAnalysisData: savedAnalysisData,
   );
 }
 
@@ -580,6 +582,7 @@ class _ExpandingChessBoardScreenState
     extends State<_ExpandingChessBoardScreen> {
   late List<GamesTourModel> _games;
   late int _index;
+  late final String? _openedGameId;
   String? _visibleGameId;
 
   @override
@@ -590,9 +593,8 @@ class _ExpandingChessBoardScreenState
         widget.initialGames.isEmpty
             ? widget.initialIndex
             : widget.initialIndex.clamp(0, widget.initialGames.length - 1);
-    if (_games.isNotEmpty) {
-      _visibleGameId = _games[_index].gameId;
-    }
+    _openedGameId = _games.isEmpty ? null : _games[_index].gameId;
+    _visibleGameId = _openedGameId;
     unawaited(_applyExpandedNavigation());
   }
 
@@ -674,7 +676,12 @@ class _ExpandingChessBoardScreenState
       showGamebaseButton: widget.showGamebaseButton,
       disableGamebaseOverlayByDefault: widget.disableGamebaseOverlayByDefault,
       showClock: widget.showClock,
-      savedAnalysisData: widget.savedAnalysisData,
+      // Expansion may finish after the user swipes to a sibling. Only the
+      // originally opened game owns this position/analysis snapshot.
+      savedAnalysisData:
+          _games.isNotEmpty && _games[_index].gameId == _openedGameId
+              ? widget.savedAnalysisData
+              : null,
       onVisibleGameChanged: (gameId) => _visibleGameId = gameId,
     );
   }

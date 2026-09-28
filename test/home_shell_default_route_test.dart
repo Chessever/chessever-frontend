@@ -56,15 +56,15 @@ void main() {
       expect(sub.read(), BottomNavBarItem.forYou);
     });
 
-    test('the bar reads Events, For You, Library', () {
+    test('the icon bar names Events, Home, Collections', () {
       expect(BottomNavBarItem.values.map((item) => item.name), [
         'tournaments',
         'forYou',
-        'library',
+        'collections',
       ]);
       expect(
         BottomNavBarItem.values.map((item) => namesBottomNavBarIcons[item]),
-        ['Events', 'For You', 'Library'],
+        ['Events', 'Home', 'Collections'],
       );
     });
 
@@ -118,7 +118,7 @@ void main() {
     }
 
     for (final (name, theme, colors) in _themes) {
-      testWidgets('$name: every label and icon clears AA on the bar', (
+      testWidgets('$name: every icon clears AA and its name remains semantic', (
         tester,
       ) async {
         await pumpBar(tester, theme: theme);
@@ -129,11 +129,12 @@ void main() {
                 w is BottomNavBarWidget &&
                 w.title == namesBottomNavBarIcons[item],
           );
-          final label = tester.widget<Text>(
+          expect(
             find.descendant(of: slot, matching: find.byType(Text)),
+            findsNothing,
           );
-          final ink = label.style!.color!;
           final selected = item == BottomNavBarItem.forYou;
+          final ink = selected ? colors.textPrimary : colors.textSecondary;
 
           expect(ink, selected ? colors.textPrimary : colors.textSecondary);
           expect(
@@ -142,11 +143,18 @@ void main() {
             reason: '${item.name} label',
           );
 
-          final icon = tester.widget<SvgWidget>(
-            find.descendant(of: slot, matching: find.byType(SvgWidget)),
-          );
-          expect(icon.colorFilter, ColorFilter.mode(ink, BlendMode.srcIn));
-          expect(icon.width, icon.height, reason: 'square icon box');
+          if (item == BottomNavBarItem.forYou) {
+            final icon = tester.widget<Icon>(
+              find.descendant(of: slot, matching: find.byType(Icon)),
+            );
+            expect(icon.color, ink);
+          } else {
+            final icon = tester.widget<SvgWidget>(
+              find.descendant(of: slot, matching: find.byType(SvgWidget)),
+            );
+            expect(icon.colorFilter, ColorFilter.mode(ink, BlendMode.srcIn));
+            expect(icon.width, icon.height, reason: 'square icon box');
+          }
         }
       });
     }
@@ -159,11 +167,11 @@ void main() {
 
       expect(
         tester.getSemantics(find.byKey(e2eKey(E2eIds.navForYou))),
-        isSemantics(label: 'For You', isButton: true, isSelected: true),
+        isSemantics(label: 'Home', isButton: true, isSelected: true),
       );
       expect(
-        tester.getSemantics(find.byKey(e2eKey(E2eIds.navLibrary))),
-        isSemantics(label: 'Library', isButton: true, isSelected: false),
+        tester.getSemantics(find.byKey(e2eKey(E2eIds.navCollections))),
+        isSemantics(label: 'Collections', isButton: true, isSelected: false),
       );
       handle.dispose();
     });
@@ -172,7 +180,7 @@ void main() {
       tester,
     ) async {
       await pumpBar(tester, theme: AppTheme.darkTheme);
-      final slot = find.byKey(e2eKey(E2eIds.navLibrary));
+      final slot = find.byKey(e2eKey(E2eIds.navCollections));
 
       double scale() {
         final transform = tester.widget<Transform>(
@@ -187,7 +195,8 @@ void main() {
       final gesture = await tester.startGesture(tester.getCenter(slot));
       // A tap reports its down once the press timeout passes.
       await tester.pump(kPressTimeout);
-      await tester.pumpAndSettle();
+      // Inspect the press before the tooltip's long-press gesture wins.
+      await tester.pump(const Duration(milliseconds: 300));
       expect(scale(), closeTo(0.97, 0.002));
       await gesture.up();
       await tester.pumpAndSettle();
@@ -206,7 +215,7 @@ void main() {
       for (final id in [
         E2eIds.navEvents,
         E2eIds.navForYou,
-        E2eIds.navLibrary,
+        E2eIds.navCollections,
       ]) {
         final size = tester.getSize(find.byKey(e2eKey(id)));
         expect(size.height, greaterThanOrEqualTo(44));

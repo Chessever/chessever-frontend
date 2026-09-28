@@ -44,6 +44,8 @@ Future<void> showSavedGameActions({
   VoidCallback? onChanged,
   bool readOnly = false,
   bool locked = false,
+  bool showSpaceAction = true,
+  bool showShareAction = true,
 }) {
   return showLibraryContextMenu(
     context: context,
@@ -58,6 +60,8 @@ Future<void> showSavedGameActions({
       onChanged: onChanged,
       readOnly: readOnly,
       locked: locked,
+      showSpaceAction: showSpaceAction,
+      showShareAction: showShareAction,
     ),
     previewBuilder: previewBuilder,
     onPreviewTap: onOpen,
@@ -78,9 +82,12 @@ List<LibraryMenuAction> savedGameMenuActions({
   VoidCallback? onChanged,
   bool readOnly = false,
   bool locked = false,
+  bool showSpaceAction = true,
+  bool showShareAction = true,
 }) {
-  final spaceDraft =
-      ref == null || locked ? null : _savedGameSpaceDraft(analysis);
+  final spaceDraft = ref == null || locked || !showSpaceAction
+      ? null
+      : _savedGameSpaceDraft(analysis);
   final actions = <LibraryMenuAction>[
     LibraryMenuAction(
       icon: Icons.open_in_new_rounded,
@@ -94,11 +101,12 @@ List<LibraryMenuAction> savedGameMenuActions({
         onSelected: () => _editAndAnnotate(context, analysis, onChanged),
       ),
     if (!locked) ...[
-      LibraryMenuAction(
-        icon: Icons.ios_share_rounded,
-        label: 'Share game',
-        onSelected: () => _shareGame(context, analysis),
-      ),
+      if (showShareAction)
+        LibraryMenuAction(
+          icon: Icons.ios_share_rounded,
+          label: 'Share game',
+          onSelected: () => _shareGame(context, analysis),
+        ),
       LibraryMenuAction(
         icon: Icons.copy_rounded,
         label: 'Copy PGN',
@@ -114,14 +122,13 @@ List<LibraryMenuAction> savedGameMenuActions({
       LibraryMenuAction(
         icon: Icons.drive_file_move_rounded,
         label: 'Move to database',
-        onSelected:
-            () => showMoveGameToDatabaseSheet(
-              context: context,
-              analysis: analysis,
-              onMoved: onChanged,
-            ),
+        onSelected: () => showMoveGameToDatabaseSheet(
+          context: context,
+          analysis: analysis,
+          onMoved: onChanged,
+        ),
       ),
-    if (ref != null && spaceDraft != null)
+    if (ref != null && spaceDraft != null && spaceDraft.canAddToMySpace)
       spaceMenuAction(context: context, ref: ref, draft: spaceDraft),
     if (!readOnly && onDelete != null)
       LibraryMenuAction(
