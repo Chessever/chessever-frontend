@@ -13,8 +13,8 @@ void main() {
       await expectVisible($, E2eIds.homeRoot);
       await expectVisible($, E2eIds.forYouRoot);
       await expectVisible($, E2eIds.navEvents);
-      await expectVisible($, E2eIds.navFeed);
-      await expectVisible($, E2eIds.navLibrary);
+      await expectVisible($, E2eIds.navForYou);
+      await expectVisible($, E2eIds.navCollections);
     },
     config: patrolE2eConfig,
   );

@@ -206,17 +206,10 @@ List<SpaceShortcut> _stored(WidgetTester tester) {
   return container.read(spaceShortcutsProvider).valueOrNull ?? const [];
 }
 
-/// Lets the snack the My Space row raises time out, so no timer outlives the
-/// test.
-Future<void> _drainSnack(WidgetTester tester) async {
-  await tester.pump(const Duration(seconds: 10));
-  await tester.pumpAndSettle();
-}
-
 void main() {
   group('event card focus menu', () {
     testWidgets(
-      'long-press lifts the card and keeps every old action plus My Space',
+      'long-press lifts the card and keeps event actions without unsupported additions',
       (tester) async {
         final repo = _TourIdsRepository();
         var opened = 0;
@@ -259,80 +252,48 @@ void main() {
         // star, never a menu row.
         expect(find.text('Open event'), findsOneWidget);
         expect(find.text('Add to favorites'), findsNothing);
-        expect(find.text('Add to My Space'), findsOneWidget);
+        expect(find.text('Add to My Space'), findsNothing);
         expect(repo.tourIdLookups, 1);
 
-        await tester.tap(find.text('Add to My Space'));
-        await tester.pumpAndSettle();
-
-        final stored = _stored(tester);
-        expect(stored, hasLength(1));
-        expect(stored.single.kind, SpaceShortcutKind.event);
-        expect(stored.single.targetId, 'group-1');
-        expect(stored.single.title, 'Sinquefield Cup 2026');
+        expect(_stored(tester), isEmpty);
         expect(opened, 0);
-        await _drainSnack(tester);
-
-        // Reopening reads live state: the row flips to Remove, and the tour
-        // lookup is reused instead of asked again.
-        await tester.longPress(find.byType(EventCard).first);
-        await tester.pumpAndSettle();
-        expect(find.text('Remove from My Space'), findsOneWidget);
-        expect(repo.tourIdLookups, 1);
-
         await tester.tap(find.text('Open event'));
         await tester.pumpAndSettle();
         expect(opened, 1);
       },
     );
 
-    testWidgets(
-      'calendar events keep only their non-broadcast rows and pin with '
-      'their calendar identity',
-      (tester) async {
-        final repo = _TourIdsRepository();
-        await tester.pumpWidget(
-          _host(
-            overrides: [
-              groupBroadcastRepositoryProvider.overrideWithValue(repo),
-            ],
-            child: EventCard(
-              tourEventCardModel: _calendarEvent(),
-              favoritePlayersSource: EventFavoritePlayersSource.cacheOnly,
-              heroTagSuffix: 'test',
-              onTap: () {},
-            ),
+    testWidgets('calendar events keep their supported non-broadcast actions', (
+      tester,
+    ) async {
+      final repo = _TourIdsRepository();
+      await tester.pumpWidget(
+        _host(
+          overrides: [groupBroadcastRepositoryProvider.overrideWithValue(repo)],
+          child: EventCard(
+            tourEventCardModel: _calendarEvent(),
+            favoritePlayersSource: EventFavoritePlayersSource.cacheOnly,
+            heroTagSuffix: 'test',
+            onTap: () {},
           ),
-        );
-        await tester.pumpAndSettle();
+        ),
+      );
+      await tester.pumpAndSettle();
 
-        await tester.longPress(find.byType(EventCard));
-        await tester.pumpAndSettle();
+      await tester.longPress(find.byType(EventCard));
+      await tester.pumpAndSettle();
 
-        expect(find.text('Open event'), findsOneWidget);
-        expect(find.text('Add to favorites'), findsNothing);
-        expect(find.text('Add to My Space'), findsOneWidget);
-        expect(find.text('Share'), findsNothing);
-        expect(find.text('Copy PGN'), findsNothing);
-        expect(find.textContaining('No Spoilers'), findsNothing);
-        // A calendar event has no tours to look up.
-        expect(repo.tourIdLookups, 0);
+      expect(find.text('Open event'), findsOneWidget);
+      expect(find.text('Add to favorites'), findsNothing);
+      expect(find.text('Add to My Space'), findsNothing);
+      expect(find.text('Share'), findsNothing);
+      expect(find.text('Copy PGN'), findsNothing);
+      expect(find.textContaining('No Spoilers'), findsNothing);
+      // A calendar event has no tours to look up.
+      expect(repo.tourIdLookups, 0);
 
-        await tester.tap(find.text('Add to My Space'));
-        await tester.pumpAndSettle();
-        final pin = _stored(tester).single;
-        expect(pin.kind, SpaceShortcutKind.event);
-        expect(pin.targetId, 'cal_event_fide_grand_swiss_2026');
-        expect(pin.params['source'], 'calendar');
-        expect(
-          pin.params['calendarEventId'],
-          'cal_event_fide_grand_swiss_2026',
-        );
-        expect(pin.params['calendarEventName'], 'FIDE Grand Swiss 2026');
-        expect(pin.params['eventSource'], 'communityEvent');
-        await _drainSnack(tester);
-      },
-    );
+      expect(_stored(tester), isEmpty);
+    });
   });
 
   group('round pins', () {
@@ -376,59 +337,51 @@ void main() {
       expect(roundSpaceDraft(round: _round, tourId: null), isNull);
     });
 
-    testWidgets('round header long-press pins the round into My Space', (
-      tester,
-    ) async {
-      var toggles = 0;
-      await tester.pumpWidget(
-        _host(
-          overrides: [
-            tourDetailScreenProviderOverride(
-              const TourDetailViewModel(
-                aboutTourModel: _about,
-                liveTourIds: [],
-                tours: [],
+    testWidgets(
+      'round header long-press keeps round actions without My Space',
+      (tester) async {
+        var toggles = 0;
+        await tester.pumpWidget(
+          _host(
+            overrides: [
+              tourDetailScreenProviderOverride(
+                const TourDetailViewModel(
+                  aboutTourModel: _about,
+                  liveTourIds: [],
+                  tours: [],
+                ),
               ),
-            ),
-            selectedBroadcastModelProvider.overrideWith(
-              (ref) => GroupBroadcast(
-                id: 'group-1',
-                createdAt: DateTime(2026, 7, 1),
-                name: 'Sinquefield Cup 2026',
-                search: const [],
+              selectedBroadcastModelProvider.overrideWith(
+                (ref) => GroupBroadcast(
+                  id: 'group-1',
+                  createdAt: DateTime(2026, 7, 1),
+                  name: 'Sinquefield Cup 2026',
+                  search: const [],
+                ),
               ),
+            ],
+            child: RoundHeader(
+              round: _round,
+              roundGames: const [],
+              onToggle: () => toggles++,
             ),
-          ],
-          child: RoundHeader(
-            round: _round,
-            roundGames: const [],
-            onToggle: () => toggles++,
           ),
-        ),
-      );
-      await tester.pumpAndSettle();
+        );
+        await tester.pumpAndSettle();
 
-      await tester.longPress(find.byType(RoundHeader));
-      await tester.pumpAndSettle();
+        await tester.longPress(find.byType(RoundHeader));
+        await tester.pumpAndSettle();
 
-      expect(find.text('Collapse round'), findsOneWidget);
-      expect(find.text('Add round to My Space'), findsOneWidget);
+        expect(find.text('Collapse round'), findsOneWidget);
+        expect(find.text('Add round to My Space'), findsNothing);
 
-      await tester.tap(find.text('Add round to My Space'));
-      await tester.pumpAndSettle();
-
-      final pin = _stored(tester).single;
-      expect(pin.kind, SpaceShortcutKind.round);
-      expect(pin.targetId, 'round-5');
-      expect(pin.title, 'Round 5');
-      expect(pin.subtitle, 'Sinquefield Cup 2026');
-      expect(pin.params['tourId'], 'tour-1');
-      expect(pin.params['groupBroadcastId'], 'group-1');
-      expect(pin.params['eventName'], 'Sinquefield Cup 2026');
-      // Long-press never folds the round; only the tap does.
-      expect(toggles, 0);
-      await _drainSnack(tester);
-    });
+        expect(_stored(tester), isEmpty);
+        expect(toggles, 0);
+        await tester.tap(find.text('Collapse round'));
+        await tester.pumpAndSettle();
+        expect(toggles, 1);
+      },
+    );
   });
 
   group('event 3-dot', () {
@@ -451,7 +404,7 @@ void main() {
       ),
     ];
 
-    testWidgets('keeps its rows and adds the event to My Space', (
+    testWidgets('keeps its rows without adding an event to My Space', (
       tester,
     ) async {
       final broadcast = GroupBroadcast(
@@ -482,17 +435,12 @@ void main() {
       expect(find.text('Share event'), findsOneWidget);
       // Games-tab rows stay on the Games tab.
       expect(find.text('Pin all'), findsNothing);
-      expect(find.text('Add event to My Space'), findsOneWidget);
+      expect(find.text('Add event to My Space'), findsNothing);
 
-      await tester.tap(find.text('Add event to My Space'));
-      await tester.pumpAndSettle();
-      final pin = _stored(tester).single;
-      expect(pin.key, eventSpaceDraft(_broadcastEvent()).key);
-      expect(pin.params['tourId'], 'tour-1');
-      await _drainSnack(tester);
+      expect(_stored(tester), isEmpty);
     });
 
-    testWidgets('pins a gamebase-only virtual event by its virtual id', (
+    testWidgets('a gamebase-only event keeps Share without My Space', (
       tester,
     ) async {
       const virtualAbout = AboutTourModel(
@@ -536,17 +484,9 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('Share event'), findsOneWidget);
-      expect(find.text('Add event to My Space'), findsOneWidget);
+      expect(find.text('Add event to My Space'), findsNothing);
 
-      await tester.tap(find.text('Add event to My Space'));
-      await tester.pumpAndSettle();
-      final pin = _stored(tester).single;
-      expect(pin.kind, SpaceShortcutKind.event);
-      expect(pin.targetId, 'gamebase::Tata Steel 2024');
-      expect(pin.title, 'Tata Steel 2024');
-      // A virtual tour id is not a tour the opener could preselect.
-      expect(pin.params.containsKey('tourId'), isFalse);
-      await _drainSnack(tester);
+      expect(_stored(tester), isEmpty);
     });
   });
 
@@ -558,8 +498,10 @@ void main() {
         name: 'Sinquefield Cup 2026',
         search: const [],
       );
-      final draft =
-          tournamentEventSpaceDraft(broadcast: broadcast, about: _about)!;
+      final draft = tournamentEventSpaceDraft(
+        broadcast: broadcast,
+        about: _about,
+      )!;
       expect(draft.key, eventSpaceDraft(_broadcastEvent()).key);
       expect(draft.params['tourId'], 'tour-1');
     });

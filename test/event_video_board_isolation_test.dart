@@ -51,7 +51,7 @@ void main() {
     await tester.pump();
     session.revealFlags();
     await tester.pump();
-    // Flags dismiss themselves after three seconds.
+    // Flags stay visible while the stream is available.
     await tester.pump(const Duration(seconds: 4));
   }
 

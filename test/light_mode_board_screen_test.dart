@@ -115,6 +115,13 @@ void main() {
       await tester.pump(const Duration(milliseconds: 100));
     }
 
+    // The hint's scrim is a sibling layer, which this ancestor-based audit
+    // cannot composite. Its interaction is covered by the coachmark test.
+    final dismissHint = find.byTooltip('Dismiss pinch hint');
+    if (dismissHint.evaluate().isNotEmpty) {
+      await tester.tap(dismissHint);
+      await tester.pump(const Duration(milliseconds: 300));
+    }
     expect(find.textContaining('game-0'), findsWidgets);
     expectNoContrastMisses(
       auditTextContrast(tester, fallbackGround: AppColors.light.background),

@@ -130,18 +130,16 @@ void main() {
       await _tearDown(tester);
     });
 
-    testWidgets('Add to My Space saves the position', (tester) async {
-      final fen = fenAfter(['e4', 'e5']);
+    testWidgets('new positions do not offer My Space additions', (
+      tester,
+    ) async {
       final space = _MemorySpace();
-      await _pumpEditor(tester, boardEditorAt(fen), space);
-      expect(find.bySemanticsLabel('Add position to My Space'), findsOneWidget);
-      await tester.tap(find.byKey(const ValueKey('board_editor_space_button')));
-      await tester.pump(const Duration(milliseconds: 100));
-      expect(space.saved.single.kind, SpaceShortcutKind.position);
-      expect(space.saved.single.targetId, fen);
-      expect(space.saved.single.params['eco'], 'C20');
-      await tester.pump(const Duration(milliseconds: 100));
-      expect(find.bySemanticsLabel('Remove from My Space'), findsOneWidget);
+      await _pumpEditor(tester, boardEditorAt(fenAfter(['e4', 'e5'])), space);
+      expect(
+        find.byKey(const ValueKey('board_editor_space_button')),
+        findsNothing,
+      );
+      expect(space.saved, isEmpty);
       await _tearDown(tester);
     });
 
@@ -167,7 +165,7 @@ void main() {
         boardEditorAt('8/8/8/8/3K4/8/5Q2/8 w - - 0 1'),
         space,
       );
-      await tester.tap(find.byKey(const ValueKey('board_editor_space_button')));
+      await tester.tap(find.text('Analyze'));
       await tester.pump(const Duration(milliseconds: 100));
       expect(space.saved, isEmpty);
       expect(
@@ -218,10 +216,8 @@ void main() {
           natural.dispose();
         }
         expect(
-          tester.getSize(
-            find.byKey(const ValueKey('board_editor_space_button')),
-          ),
-          const Size(44, 44),
+          find.byKey(const ValueKey('board_editor_space_button')),
+          findsNothing,
         );
         await _tearDown(tester);
       });

@@ -6,6 +6,7 @@ import 'package:chessever2/widgets/search/search_motion.dart';
 import 'package:chessever2/widgets/home_top_bar.dart';
 import 'dart:async';
 import 'dart:math' as math;
+import 'package:chessever2/e2e/e2e_ids.dart';
 
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:chessever2/screens/chessboard/chess_board_screen_new.dart';
@@ -115,6 +116,7 @@ class _CollectionsScreenState extends ConsumerState<CollectionsScreen> {
     final repository = ref.watch(collectionsRepositoryProvider);
     final query = _query;
     return EventViewShell(
+      key: e2eKey(E2eIds.collectionsRoot),
       title: 'Collections',
       header: HomeTopBarFrame(
         child: HomeTopBarRow(

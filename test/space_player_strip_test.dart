@@ -186,13 +186,15 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('holding a face offers Open and My Space', (tester) async {
+  testWidgets('holding a face offers Open without unsupported additions', (
+    tester,
+  ) async {
     await _pump(tester, [_carlsen]);
 
     await tester.longPress(find.byType(SpacePlayerFace));
     await tester.pump(const Duration(milliseconds: 600));
     expect(find.text('Open'), findsOneWidget);
-    expect(find.text('Add to My Space'), findsOneWidget);
+    expect(find.text('Add to My Space'), findsNothing);
     await tester.pump(const Duration(seconds: 2));
   });
 }

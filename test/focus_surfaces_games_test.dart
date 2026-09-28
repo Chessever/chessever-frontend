@@ -215,43 +215,38 @@ LibraryFolder _database({String? shareToken}) {
 
 void main() {
   group('game card focus menu', () {
-    testWidgets('lifts the card itself and keeps Pin, Share and My Space', (
-      tester,
-    ) async {
-      var opened = 0;
-      await tester.pumpWidget(
-        _host(
-          child: GameCard(
-            matchComparison: MatchWithComparison(
-              game: _game(),
-              comparison: MatchComparison.sameOrder,
+    testWidgets(
+      'lifts the card itself and keeps Pin and Share without unsupported additions',
+      (tester) async {
+        var opened = 0;
+        await tester.pumpWidget(
+          _host(
+            child: GameCard(
+              matchComparison: MatchWithComparison(
+                game: _game(),
+                comparison: MatchComparison.sameOrder,
+              ),
+              pinnedIds: const [],
+              onPinToggle: (_) {},
+              onTap: () => opened++,
             ),
-            pinnedIds: const [],
-            onPinToggle: (_) {},
-            onTap: () => opened++,
           ),
-        ),
-      );
-      await tester.pump();
+        );
+        await tester.pump();
 
-      await tester.longPress(find.byType(GameCard));
-      await _settleMenu(tester);
+        await tester.longPress(find.byType(GameCard));
+        await _settleMenu(tester);
 
-      // The card is its own preview: its names rise a second time.
-      expect(find.text('Morphy'), findsNWidgets(2));
-      expect(find.text('Pin'), findsOneWidget);
-      expect(find.text('Share'), findsOneWidget);
-      expect(find.text('Add to My Space'), findsOneWidget);
+        // The card is its own preview: its names rise a second time.
+        expect(find.text('Morphy'), findsNWidgets(2));
+        expect(find.text('Pin'), findsOneWidget);
+        expect(find.text('Share'), findsOneWidget);
+        expect(find.text('Add to My Space'), findsNothing);
 
-      await tester.tap(find.text('Add to My Space'));
-      await _settleMenu(tester);
-      final pin = _stored(tester).single;
-      expect(pin.kind, SpaceShortcutKind.game);
-      expect(pin.targetId, 'game-1');
-      expect(pin.params['source'], 'gamebase');
-      expect(opened, 0);
-      await _drainSnack(tester);
-    });
+        expect(_stored(tester), isEmpty);
+        expect(opened, 0);
+      },
+    );
 
     testWidgets('archive hosts drop the Pin row', (tester) async {
       await tester.pumpWidget(
@@ -353,7 +348,9 @@ void main() {
       tester,
     ) async {
       await tester.pumpWidget(
-        _host(child: BookSavedGameCard(analysis: _savedGame(), onTap: () {})),
+        _host(
+          child: BookSavedGameCard(analysis: _savedGame(), onTap: () {}),
+        ),
       );
       await tester.pump();
 
@@ -366,10 +363,10 @@ void main() {
         'Copy PGN',
         'Copy FEN',
         'Move to database',
-        'Add to My Space',
       ]) {
         expect(find.text(label), findsOneWidget, reason: label);
       }
+      expect(find.text('Add to My Space'), findsNothing);
       // No host remove handler: no destructive row.
       expect(find.text('Delete game'), findsNothing);
     });
@@ -434,14 +431,20 @@ void main() {
         groupBroadcastId: 'group-1',
         tourId: 'tour-1',
       )!;
-      expect(event.key, SpaceShortcut.keyFor(SpaceShortcutKind.event, 'group-1'));
+      expect(
+        event.key,
+        SpaceShortcut.keyFor(SpaceShortcutKind.event, 'group-1'),
+      );
       expect(event.params['tourId'], 'tour-1');
       expect(
         boardEventSpaceDraft(eventName: 'Opera', tourId: 'gamebase::Opera'),
         isNull,
       );
 
-      final opening = boardOpeningSpaceDraft(eco: 'c41', openingName: 'Philidor')!;
+      final opening = boardOpeningSpaceDraft(
+        eco: 'c41',
+        openingName: 'Philidor',
+      )!;
       expect(opening.kind, SpaceShortcutKind.opening);
       expect(opening.targetId, 'C41');
       expect(opening.params['ecoCode'], 'C41');

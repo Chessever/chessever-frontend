@@ -33,6 +33,7 @@ class E2eIds {
   static const forYouRoot = 'e2e_for_you_root';
   static const calendarRoot = 'e2e_calendar_root';
   static const libraryRoot = 'e2e_library_root';
+  static const collectionsRoot = 'e2e_collections_root';
   static const feedRoot = 'e2e_feed_root';
   static const playersRoot = 'e2e_players_root';
   static const favoritesRoot = 'e2e_favorites_root';

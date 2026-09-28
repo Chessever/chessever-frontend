@@ -1,4 +1,5 @@
 import 'package:chessever2/repository/gamebase/gamebase_repository.dart';
+import 'package:chessever2/repository/gamebase/collections/collection_search_query.dart';
 import 'package:chessever2/screens/collections/collections_data.dart';
 import 'package:chessever2/screens/collections/collections_screen.dart';
 import 'package:chessever2/screens/my_space/models/space_shortcut.dart';
@@ -32,6 +33,37 @@ class _FakeCollections extends CollectionsRepository {
   Future<List<Collection>> fetchCollections() async {
     fetches++;
     return all;
+  }
+
+  @override
+  Future<CollectionsPage> searchBooks(
+    CollectionSearchQuery query,
+    int offset,
+  ) async {
+    fetches++;
+    final books = all
+        .where((item) => item.kind == CollectionKind.book)
+        .toList();
+    return CollectionsPage(
+      items: books.skip(offset).take(40).toList(),
+      total: books.length,
+      limit: 40,
+      offset: offset,
+    );
+  }
+
+  @override
+  Future<CollectionOpeningsPage> searchOpenings(
+    CollectionSearchQuery query,
+    int offset,
+  ) async {
+    fetches++;
+    return CollectionOpeningsPage(
+      items: const [],
+      total: 0,
+      limit: 40,
+      offset: offset,
+    );
   }
 }
 
@@ -143,7 +175,7 @@ void main() {
     final errors = _Errors();
     try {
       await _pump(tester, const [_event]);
-      expect(find.text('Zurich 1953'), findsOneWidget);
+      expect(find.text('No openings yet.'), findsOneWidget);
 
       await tester.tap(find.text('Books'));
       await tester.pump();
@@ -158,7 +190,7 @@ void main() {
       _expectSemanticsClean(tester);
 
       // Back and forth: the rebuilt tab stays clean too.
-      await tester.tap(find.text('Events'));
+      await tester.tap(find.text('Openings'));
       await tester.pump(const Duration(milliseconds: 400));
       await tester.tap(find.text('Books'));
       await tester.pump(const Duration(milliseconds: 400));
@@ -172,7 +204,7 @@ void main() {
     handle.dispose();
   }, variant: _platforms);
 
-  testWidgets('with no collections at all, the Events tab opens on its '
+  testWidgets('with no collections at all, the Openings tab opens on its '
       'notice cleanly and still pulls to refresh', (tester) async {
     final handle = tester.ensureSemantics();
     final errors = _Errors();
@@ -182,13 +214,13 @@ void main() {
       await _frames(tester);
       expect(errors.seen, isEmpty, reason: errors.describe());
 
-      expect(find.text('No annotated events yet.'), findsOneWidget);
-      expect(find.bySemanticsLabel('No annotated events yet.'), findsOneWidget);
+      expect(find.text('No openings yet.'), findsOneWidget);
+      expect(find.bySemanticsLabel('No openings yet.'), findsOneWidget);
       _expectSemanticsClean(tester);
 
       final before = repo.fetches;
       await tester.fling(
-        find.text('No annotated events yet.'),
+        find.text('No openings yet.'),
         const Offset(0, 320),
         1200,
       );

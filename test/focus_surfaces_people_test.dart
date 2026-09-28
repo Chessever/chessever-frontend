@@ -128,27 +128,13 @@ void main() {
     await tester.longPress(find.text('Mamedyarov, Shakhriyar'));
     await tester.pumpAndSettle();
 
-    for (final label in [
-      'Open profile',
-      'Add player to My Space',
-      'Add Games tab to My Space',
-      'Share profile',
-      'Add to favorites',
-    ]) {
+    for (final label in ['Open profile', 'Share profile', 'Add to favorites']) {
       expect(find.text(label), findsOneWidget, reason: label);
     }
 
-    await tester.tap(find.text('Add player to My Space'));
-    await tester.pumpAndSettle();
-    expect(
-      _pinned(tester).map((s) => s.key),
-      contains(SpaceShortcut.keyFor(SpaceShortcutKind.player, '13401319')),
-    );
-
-    // The same row now offers the removal.
-    await tester.longPress(find.text('Mamedyarov, Shakhriyar').first);
-    await tester.pumpAndSettle();
-    expect(find.text('Remove player from My Space'), findsOneWidget);
+    expect(find.text('Add player to My Space'), findsNothing);
+    expect(find.text('Add Games tab to My Space'), findsNothing);
+    expect(_pinned(tester), isEmpty);
   });
 
   testWidgets('most-liked player row opens the player focus menu', (
@@ -182,24 +168,16 @@ void main() {
     await tester.longPress(find.text('Carlsen, Magnus'));
     await tester.pumpAndSettle();
 
-    for (final label in [
-      'Open profile',
-      'Add player to My Space',
-      'Add Games tab to My Space',
-      'Share profile',
-    ]) {
+    for (final label in ['Open profile', 'Share profile']) {
       expect(find.text(label), findsOneWidget, reason: label);
     }
 
-    await tester.tap(find.text('Add Games tab to My Space'));
-    await tester.pumpAndSettle();
-    expect(
-      _pinned(tester).map((s) => s.key),
-      contains(SpaceShortcut.keyFor(SpaceShortcutKind.playerGames, '1503014')),
-    );
+    expect(find.text('Add Games tab to My Space'), findsNothing);
+    expect(find.text('Add player to My Space'), findsNothing);
+    expect(_pinned(tester), isEmpty);
   });
 
-  testWidgets('streak card recent game row pins and opens the game', (
+  testWidgets('streak card recent game opens without adding unsupported pins', (
     tester,
   ) async {
     _tallView(tester);
@@ -226,19 +204,9 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Open game'), findsOneWidget);
-    expect(find.text('Add to My Space'), findsOneWidget);
+    expect(find.text('Add to My Space'), findsNothing);
 
-    await tester.tap(find.text('Add to My Space'));
-    await tester.pumpAndSettle();
-    final pinned = _pinned(
-      tester,
-    ).firstWhere((s) => s.kind == SpaceShortcutKind.game);
-    expect(pinned.targetId, 'c-w2');
-    expect(pinned.title, 'Ding – Rival');
-
-    await tester.longPress(row);
-    await tester.pumpAndSettle();
-    expect(find.text('Remove from My Space'), findsOneWidget);
+    expect(_pinned(tester), isEmpty);
     await tester.tap(find.text('Open game'));
     await tester.pumpAndSettle();
     expect(opened, ['c-w2']);
@@ -340,14 +308,11 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(cardLongPresses(), 0);
-      for (final label in [
-        'Open scorecard',
-        'Add player to My Space',
-        'Add Games tab to My Space',
-        'Share profile',
-      ]) {
+      for (final label in ['Open scorecard', 'Share profile']) {
         expect(find.text(label), findsOneWidget, reason: label);
       }
+      expect(find.text('Add player to My Space'), findsNothing);
+      expect(find.text('Add Games tab to My Space'), findsNothing);
     });
   });
 

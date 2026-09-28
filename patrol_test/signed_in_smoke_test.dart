@@ -43,22 +43,20 @@ void main() {
       final seed = await seedBaselineData($);
 
       try {
-        // Home opens on For You; the bar reads Events, Feed, For You,
-        // Library. Walk the rest and end on Events for the steps below.
+        // Home opens on For You. Collections is a primary destination;
+        // Library remains available as its own pushed route.
         await expectVisible($, E2eIds.forYouRoot);
 
         await tapBottomNavRoot(
           $,
-          navId: E2eIds.navFeed,
-          expectedRoot: E2eIds.feedRoot,
+          navId: E2eIds.navCollections,
+          expectedRoot: E2eIds.collectionsRoot,
         );
-        await tapBottomNavRoot(
-          $,
-          navId: E2eIds.navLibrary,
-          expectedRoot: E2eIds.libraryRoot,
-        );
+        await pushNamedRoute($, '/library_screen');
+        await expectVisible($, E2eIds.libraryRoot);
         await expectVisible($, E2eIds.libraryBoardButton);
         await expectVisible($, E2eIds.libraryCreateFolderButton);
+        await popRoute($);
         await tapBottomNavRoot(
           $,
           navId: E2eIds.navEvents,
@@ -284,11 +282,8 @@ void main() {
         );
         await popRoute($);
 
-        await tapBottomNavRoot(
-          $,
-          navId: E2eIds.navLibrary,
-          expectedRoot: E2eIds.libraryRoot,
-        );
+        await pushNamedRoute($, '/library_screen');
+        await expectVisible($, E2eIds.libraryRoot);
         await searchFor($, fieldId: E2eIds.librarySearchField, query: query);
         await pumpUntil(
           $,

@@ -84,10 +84,9 @@ class ChatScreen extends ConsumerStatefulWidget {
               // A 20dp black elevation smears a grey cloud across paper; in
               // light the scrim and a hairline edge separate the panel.
               elevation: light ? 0 : 20,
-              shape:
-                  light
-                      ? Border(left: BorderSide(color: colors.divider))
-                      : null,
+              shape: light
+                  ? Border(left: BorderSide(color: colors.divider))
+                  : null,
               child: SizedBox(
                 width: 520,
                 height: double.infinity,
@@ -102,9 +101,7 @@ class ChatScreen extends ConsumerStatefulWidget {
           position: Tween<Offset>(
             begin: const Offset(1, 0),
             end: Offset.zero,
-          ).animate(
-            CurvedAnimation(parent: animation, curve: _panelCurve),
-          ),
+          ).animate(CurvedAnimation(parent: animation, curve: _panelCurve)),
           child: child,
         );
       },
@@ -227,10 +224,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   Future<void> _select(ChatConversation conversation) async {
     if (_sending) return;
     try {
-      final messages =
-          conversation.isDraft
-              ? const <ChatMessage>[]
-              : await _api.messages(conversation.id);
+      final messages = conversation.isDraft
+          ? const <ChatMessage>[]
+          : await _api.messages(conversation.id);
       if (!mounted) return;
       setState(() {
         _selected = conversation;
@@ -254,8 +250,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         await _api.deleteConversation(conversation.id);
       }
       if (!mounted) return;
-      final remaining =
-          _conversations.where((item) => item.id != conversation.id).toList();
+      final remaining = _conversations
+          .where((item) => item.id != conversation.id)
+          .toList();
       setState(() => _conversations = remaining);
       if (_selected?.id == conversation.id) {
         if (remaining.isEmpty) {
@@ -361,11 +358,10 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           case 'references':
             final raw = event.data['references'] as List<dynamic>? ?? const [];
             messages[messages.length - 1] = assistant.copyWith(
-              references:
-                  raw
-                      .whereType<Map<String, dynamic>>()
-                      .map(ChatReference.fromJson)
-                      .toList(),
+              references: raw
+                  .whereType<Map<String, dynamic>>()
+                  .map(ChatReference.fromJson)
+                  .toList(),
             );
             break;
           case 'error':
@@ -388,10 +384,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         unawaited(ref.read(botvinnikQuotaProvider.notifier).refresh());
       }
       setState(() {
-        _error =
-            error.quota != null && error.quota!.remaining <= 0
-                ? null
-                : error.message;
+        _error = error.quota != null && error.quota!.remaining <= 0
+            ? null
+            : error.message;
         if (_messages.isNotEmpty && _messages.last.content.isEmpty) {
           _messages = _messages.sublist(0, _messages.length - 1);
         }
@@ -413,15 +408,12 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     final previousFeedback = message.feedback;
     setState(() {
       _feedbackPending.add(message.id);
-      _messages =
-          _messages
-              .map(
-                (item) =>
-                    item.id == message.id
-                        ? item.withFeedback(nextFeedback)
-                        : item,
-              )
-              .toList();
+      _messages = _messages
+          .map(
+            (item) =>
+                item.id == message.id ? item.withFeedback(nextFeedback) : item,
+          )
+          .toList();
     });
 
     try {
@@ -432,24 +424,21 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       );
       if (!mounted || _selected?.id != selected.id) return;
       setState(() {
-        _messages =
-            _messages
-                .map((item) => item.id == updated.id ? updated : item)
-                .toList();
+        _messages = _messages
+            .map((item) => item.id == updated.id ? updated : item)
+            .toList();
       });
     } on ChatApiException catch (error) {
       if (!mounted || _selected?.id != selected.id) return;
       setState(() {
         _error = error.message;
-        _messages =
-            _messages
-                .map(
-                  (item) =>
-                      item.id == message.id
-                          ? item.withFeedback(previousFeedback)
-                          : item,
-                )
-                .toList();
+        _messages = _messages
+            .map(
+              (item) => item.id == message.id
+                  ? item.withFeedback(previousFeedback)
+                  : item,
+            )
+            .toList();
       });
     } finally {
       if (mounted) setState(() => _feedbackPending.remove(message.id));
@@ -549,14 +538,13 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       final fideId = int.tryParse(reference.id);
       Navigator.of(context).push(
         MaterialPageRoute<void>(
-          builder:
-              (_) => PlayerProfileScreen(
-                fideId: fideId,
-                playerName: reference.label,
-                title: reference.title,
-                federation: reference.federation,
-                rating: reference.rating,
-              ),
+          builder: (_) => PlayerProfileScreen(
+            fideId: fideId,
+            playerName: reference.label,
+            title: reference.title,
+            federation: reference.federation,
+            rating: reference.rating,
+          ),
         ),
       );
       return;
@@ -565,12 +553,11 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         RegExp(r'^[A-E][0-9]{2}$').hasMatch(reference.id.toUpperCase())) {
       Navigator.of(context).push(
         MaterialPageRoute<void>(
-          builder:
-              (_) => SmartEventScreen(
-                request: SmartEventRequest.forOpening(
-                  GameEcoFilter.forCode(reference.id),
-                ),
-              ),
+          builder: (_) => SmartEventScreen(
+            request: SmartEventRequest.forOpening(
+              GameEcoFilter.forCode(reference.id),
+            ),
+          ),
         ),
       );
     }
@@ -671,41 +658,39 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                 ],
               ),
             Expanded(
-              child:
-                  _loading
-                      ? Center(
-                        child: CircularProgressIndicator(
-                          color: context.colors.accentText,
-                        ),
-                      )
-                      : _messages.isEmpty
-                      ? _EmptyChat(
-                        suggestions: chatSuggestionsForScreen(
-                          widget.screenContext?.screen,
-                        ),
-                        isTournamentContext:
-                            widget.screenContext?.screen == 'tournament' ||
-                            widget.screenContext?.screen == 'event',
-                        onSuggestionPressed: _sendSuggestion,
-                      )
-                      : ListView.builder(
-                        controller: _scrollController,
-                        keyboardDismissBehavior:
-                            ScrollViewKeyboardDismissBehavior.onDrag,
-                        padding: const EdgeInsets.fromLTRB(16, 20, 16, 24),
-                        itemCount: _messages.length,
-                        itemBuilder:
-                            (context, index) => _MessageBubble(
-                              message: _messages[index],
-                              isStreaming:
-                                  _sending && index == _messages.length - 1,
-                              feedbackPending: _feedbackPending.contains(
-                                _messages[index].id,
-                              ),
-                              onReferencePressed: _openReference,
-                              onFeedbackPressed: _setFeedback,
-                            ),
+              child: _loading
+                  ? Center(
+                      child: CircularProgressIndicator(
+                        color: context.colors.accentText,
                       ),
+                    )
+                  : _messages.isEmpty
+                  ? _EmptyChat(
+                      suggestions: chatSuggestionsForScreen(
+                        widget.screenContext?.screen,
+                      ),
+                      isTournamentContext:
+                          widget.screenContext?.screen == 'tournament' ||
+                          widget.screenContext?.screen == 'event',
+                      onSuggestionPressed: _sendSuggestion,
+                    )
+                  : ListView.builder(
+                      controller: _scrollController,
+                      keyboardDismissBehavior:
+                          ScrollViewKeyboardDismissBehavior.onDrag,
+                      padding: const EdgeInsets.fromLTRB(16, 20, 16, 24),
+                      itemCount: _messages.length,
+                      itemBuilder: (context, index) => ChatMessageBubble(
+                        key: ValueKey(_messages[index].id),
+                        message: _messages[index],
+                        isStreaming: _sending && index == _messages.length - 1,
+                        feedbackPending: _feedbackPending.contains(
+                          _messages[index].id,
+                        ),
+                        onReferencePressed: _openReference,
+                        onFeedbackPressed: _setFeedback,
+                      ),
+                    ),
             ),
             switch (composerAccess) {
               ChatComposerAccess.signedOut => _ChatLoginGate(
@@ -791,12 +776,11 @@ List<(int, int)> _markdownProtectedRanges(String source) {
   ];
 }
 
-String _chatReferenceHref(ChatReference reference) =>
-    Uri(
-      scheme: 'chessever',
-      host: 'reference',
-      queryParameters: {'type': reference.type, 'id': reference.id},
-    ).toString();
+String _chatReferenceHref(ChatReference reference) => Uri(
+  scheme: 'chessever',
+  host: 'reference',
+  queryParameters: {'type': reference.type, 'id': reference.id},
+).toString();
 
 ChatReference? chatReferenceForHref(
   String? href,
@@ -954,10 +938,8 @@ IntegratedChatReferences integrateChatReferences(
   for (final reference in references) {
     unique.putIfAbsent('${reference.type}:${reference.id}', () => reference);
   }
-  final candidates =
-      unique.values.toList()..sort(
-        (left, right) => right.label.length.compareTo(left.label.length),
-      );
+  final candidates = unique.values.toList()
+    ..sort((left, right) => right.label.length.compareTo(left.label.length));
 
   for (final reference in candidates) {
     var linkedReference = false;
@@ -1216,8 +1198,9 @@ class _ChatComposerState extends State<_ChatComposer> {
     _reduceMotion = reduceMotion;
     _placeholderIndex = 0;
     _isDeleting = false;
-    _visibleCharacterCount =
-        reduceMotion || _hasUserTyped ? _currentRunes.length : 0;
+    _visibleCharacterCount = reduceMotion || _hasUserTyped
+        ? _currentRunes.length
+        : 0;
     if (!reduceMotion && !_hasUserTyped) {
       _schedulePlaceholderTick(_typingDelay);
     }
@@ -1307,10 +1290,9 @@ class _ChatComposerState extends State<_ChatComposer> {
     // Dark lifts the field a step above the surface; paper recesses it one
     // gentle step (the page background) instead of the deep #C5D6D5, which
     // left the hint at a bare 4.5:1.
-    final fieldFill =
-        context.isLightTheme
-            ? context.colors.background
-            : colorScheme.surfaceContainerHighest;
+    final fieldFill = context.isLightTheme
+        ? context.colors.background
+        : colorScheme.surfaceContainerHighest;
     return Material(
       color: colorScheme.surface,
       child: SafeArea(
@@ -1368,16 +1350,15 @@ class _ChatComposerState extends State<_ChatComposer> {
                           minimumSize: const Size.square(40),
                           maximumSize: const Size.square(40),
                         ),
-                        icon:
-                            widget.sending
-                                ? SizedBox.square(
-                                  dimension: 17,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                    color: context.colors.accentText,
-                                  ),
-                                )
-                                : const Icon(Icons.arrow_upward_rounded),
+                        icon: widget.sending
+                            ? SizedBox.square(
+                                dimension: 17,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: context.colors.accentText,
+                                ),
+                              )
+                            : const Icon(Icons.arrow_upward_rounded),
                       );
                     },
                   ),
@@ -1519,8 +1500,9 @@ List<ChatSuggestion> chatSuggestionsForScreen(String? screen) {
   ];
 }
 
-class _MessageBubble extends StatelessWidget {
-  const _MessageBubble({
+class ChatMessageBubble extends StatefulWidget {
+  const ChatMessageBubble({
+    super.key,
     required this.message,
     required this.isStreaming,
     required this.feedbackPending,
@@ -1535,22 +1517,50 @@ class _MessageBubble extends StatelessWidget {
   final void Function(ChatMessage message, String feedback) onFeedbackPressed;
 
   @override
+  State<ChatMessageBubble> createState() => _ChatMessageBubbleState();
+}
+
+class _ChatMessageBubbleState extends State<ChatMessageBubble> {
+  ThemeData? _markdownTheme;
+  MarkdownStyleSheet? _markdownStyleSheet;
+
+  MarkdownStyleSheet _styleSheetFor(ThemeData theme) {
+    // Markdown reparses and replaces selectable text when this object changes.
+    // Keep it stable across message rebuilds so selection handles stay attached.
+    if (_markdownStyleSheet != null && _markdownTheme == theme) {
+      return _markdownStyleSheet!;
+    }
+    _markdownTheme = theme;
+    return _markdownStyleSheet = MarkdownStyleSheet.fromTheme(theme).copyWith(
+      p: theme.textTheme.bodyMedium?.copyWith(height: 1.45),
+      h1: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
+      h2: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+      h3: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
+      blockSpacing: 12,
+      tableCellsPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+      tableBorder: TableBorder.all(color: theme.colorScheme.outlineVariant),
+    );
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final message = widget.message;
+    final isStreaming = widget.isStreaming;
+    final feedbackPending = widget.feedbackPending;
     final isUser = message.role == 'user';
-    final colorScheme = Theme.of(context).colorScheme;
-    final linkedContent =
-        integrateChatReferences(
-          normalizeChatMarkdown(message.content),
-          message.references,
-        ).markdown;
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final linkedContent = integrateChatReferences(
+      normalizeChatMarkdown(message.content),
+      message.references,
+    ).markdown;
     final bubble = Container(
       constraints: BoxConstraints(maxWidth: isUser ? 420 : double.infinity),
       padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 12),
       decoration: BoxDecoration(
-        color:
-            isUser
-                ? colorScheme.primaryContainer
-                : colorScheme.surfaceContainerHigh,
+        color: isUser
+            ? colorScheme.primaryContainer
+            : colorScheme.surfaceContainerHigh,
         borderRadius: BorderRadius.only(
           topLeft: const Radius.circular(18),
           topRight: const Radius.circular(18),
@@ -1614,7 +1624,7 @@ class _MessageBubble extends StatelessWidget {
                     message.references,
                   );
                   if (reference != null) {
-                    onReferencePressed(reference);
+                    widget.onReferencePressed(reference);
                     return;
                   }
                   final uri = safeChatSourceUri(href);
@@ -1622,28 +1632,7 @@ class _MessageBubble extends StatelessWidget {
                     unawaited(launchUrl(uri, mode: LaunchMode.platformDefault));
                   }
                 },
-                styleSheet: chatMarkdownStyleSheet(context).copyWith(
-                  p: Theme.of(
-                    context,
-                  ).textTheme.bodyMedium?.copyWith(height: 1.45),
-                  h1: Theme.of(
-                    context,
-                  ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
-                  h2: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w700,
-                  ),
-                  h3: Theme.of(
-                    context,
-                  ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
-                  blockSpacing: 12,
-                  tableCellsPadding: const EdgeInsets.symmetric(
-                    horizontal: 8,
-                    vertical: 6,
-                  ),
-                  tableBorder: TableBorder.all(
-                    color: Theme.of(context).colorScheme.outlineVariant,
-                  ),
-                ),
+                styleSheet: _styleSheetFor(theme),
               ),
             ),
         ],
@@ -1660,7 +1649,7 @@ class _MessageBubble extends StatelessWidget {
           selectedIcon: Icons.thumb_up_rounded,
           selected: message.feedback == 'like',
           disabled: feedbackPending,
-          onPressed: () => onFeedbackPressed(message, 'like'),
+          onPressed: () => widget.onFeedbackPressed(message, 'like'),
         ),
         _FeedbackButton(
           tooltip: 'Not helpful',
@@ -1668,57 +1657,115 @@ class _MessageBubble extends StatelessWidget {
           selectedIcon: Icons.thumb_down_rounded,
           selected: message.feedback == 'dislike',
           disabled: feedbackPending,
-          onPressed: () => onFeedbackPressed(message, 'dislike'),
+          onPressed: () => widget.onFeedbackPressed(message, 'dislike'),
         ),
       ],
     );
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 18),
-      child:
-          isUser
-              ? Row(
-                mainAxisAlignment: MainAxisAlignment.end,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [Flexible(child: bubble)],
-              )
-              : Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  bubble,
-                  if (message.content.isNotEmpty && !isStreaming)
-                    Padding(
-                      padding: const EdgeInsets.only(left: 2, top: 3),
-                      child: feedbackActions,
-                    ),
-                ],
-              ),
+      child: isUser
+          ? Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [Flexible(child: bubble)],
+            )
+          : Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                bubble,
+                if (message.content.isNotEmpty && !isStreaming)
+                  Padding(
+                    padding: const EdgeInsets.only(left: 2, top: 3),
+                    child: feedbackActions,
+                  ),
+              ],
+            ),
     );
   }
 }
 
-class _CopyableMessageContent extends StatelessWidget {
+class _CopyableMessageContent extends StatefulWidget {
   const _CopyableMessageContent({required this.text, required this.child});
 
   final String text;
   final Widget child;
 
   @override
+  State<_CopyableMessageContent> createState() =>
+      _CopyableMessageContentState();
+}
+
+class _CopyableMessageContentState extends State<_CopyableMessageContent> {
+  String? _selectedText;
+
+  @override
+  void didUpdateWidget(covariant _CopyableMessageContent oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.text != widget.text) _selectedText = null;
+  }
+
+  @override
   Widget build(BuildContext context) {
     return SelectionArea(
-      contextMenuBuilder: (context, selectableRegionState) {
-        return AdaptiveTextSelectionToolbar.buttonItems(
+      onSelectionChanged: (content) {
+        final selected = content?.plainText;
+        // Closing the toolbar can clear the selection before Copy runs.
+        if (selected != null && selected.isNotEmpty) _selectedText = selected;
+      },
+      contextMenuBuilder: (menuContext, selectableRegionState) {
+        var copied = false;
+        void copyOnce(String text) {
+          if (copied) return;
+          copied = true;
+          ContextMenuController.removeAny();
+          unawaited(copyChatMessage(context, text));
+        }
+
+        final buttons = <ContextMenuButtonItem>[
+          for (final item in selectableRegionState.contextMenuButtonItems)
+            if (item.type == ContextMenuButtonType.copy)
+              item.copyWith(
+                onPressed: () {
+                  final selectedText = _selectedText;
+                  copyOnce(
+                    selectedText == null || selectedText.isEmpty
+                        ? widget.text
+                        : selectedText,
+                  );
+                },
+              )
+            else
+              item,
+          ContextMenuButtonItem(
+            label: 'Copy message',
+            onPressed: () => copyOnce(widget.text),
+          ),
+        ];
+        final adaptiveButtons = AdaptiveTextSelectionToolbar.getAdaptiveButtons(
+          menuContext,
+          buttons,
+        ).toList();
+        final isIos = Theme.of(menuContext).platform == TargetPlatform.iOS;
+        return AdaptiveTextSelectionToolbar(
           anchors: selectableRegionState.contextMenuAnchors,
-          buttonItems: [
-            ...selectableRegionState.contextMenuButtonItems,
-            ContextMenuButtonItem(
-              label: 'Copy message',
-              onPressed: () => unawaited(copyChatMessage(context, text)),
-            ),
+          children: [
+            for (var index = 0; index < buttons.length; index++)
+              if (isIos &&
+                  (buttons[index].type == ContextMenuButtonType.copy ||
+                      buttons[index].label == 'Copy message'))
+                Listener(
+                  // iOS can dismiss selection between pointer down and tap up,
+                  // cancelling the Cupertino toolbar button's onPressed.
+                  onPointerDown: (_) => buttons[index].onPressed?.call(),
+                  child: adaptiveButtons[index],
+                )
+              else
+                adaptiveButtons[index],
           ],
         );
       },
-      child: child,
+      child: widget.child,
     );
   }
 }
@@ -1822,8 +1869,9 @@ class _FeedbackButton extends StatelessWidget {
       visualDensity: VisualDensity.compact,
       style: IconButton.styleFrom(
         foregroundColor: colorScheme.onSurfaceVariant,
-        backgroundColor:
-            selected ? colorScheme.secondaryContainer : Colors.transparent,
+        backgroundColor: selected
+            ? colorScheme.secondaryContainer
+            : Colors.transparent,
         disabledForegroundColor: colorScheme.onSurfaceVariant.withValues(
           alpha: 0.45,
         ),
@@ -1958,10 +2006,9 @@ class _ConversationDrawer extends ConsumerWidget {
                       leading: Icon(
                         Icons.chat_bubble_outline_rounded,
                         size: 19,
-                        color:
-                            selected
-                                ? colorScheme.onSecondaryContainer
-                                : colorScheme.onSurfaceVariant,
+                        color: selected
+                            ? colorScheme.onSecondaryContainer
+                            : colorScheme.onSurfaceVariant,
                       ),
                       title: Text(
                         conversation.title,

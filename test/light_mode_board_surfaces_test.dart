@@ -221,22 +221,20 @@ void main() {
           discoveryCountryProvider.overrideWith((ref) => null),
           miniaturesTotalCountProvider.overrideWith((ref) async => 566112),
           // The seam over the viewer's favourites, never the account.
-          discoveryFollowedFideIdsProvider.overrideWith(
-            (ref) => const <int>{},
-          ),
+          discoveryFollowedFideIdsProvider.overrideWith((ref) => const <int>{}),
           // A loading preview's skeleton reads the eval bar setting.
           engineSettingsProviderNew.overrideWith(_EngineSettings.new),
           // The tiles' previews: Feed's disk cache and the collections.
           feedFirstPageCacheReaderProvider.overrideWithValue(
             () async => const <FeedItem>[],
           ),
-          collectionsProvider.overrideWith(
-            (ref) async => const <Collection>[],
-          ),
+          collectionsProvider.overrideWith((ref) async => const <Collection>[]),
         ],
         settle: false,
       );
-      expect(find.text('Collection'), findsOneWidget);
+      for (final label in ['Feed', 'Most Liked', 'Miniatures', 'Reports']) {
+        expect(find.text(label), findsOneWidget);
+      }
       expectNoContrastMisses(
         auditTextContrast(tester, fallbackGround: light.background),
         where: 'DiscoveryView',

@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -30,8 +31,9 @@ void main() {
     });
 
     test('audio service uses flutter_soloud init/play lifecycle', () {
-      final source =
-          File('lib/utils/audio_player_service.dart').readAsStringSync();
+      final source = File(
+        'lib/utils/audio_player_service.dart',
+      ).readAsStringSync();
 
       expect(source, isNot(contains('_prepareAndroidSfx')));
       expect(source, isNot(contains('_playAndroidSfx')));
@@ -94,10 +96,9 @@ void main() {
     });
 
     test('chessboard keeps the SFX listener recoverable', () {
-      final source =
-          File(
-            'lib/screens/chessboard/chess_board_screen_new.dart',
-          ).readAsStringSync();
+      final source = File(
+        'lib/screens/chessboard/chess_board_screen_new.dart',
+      ).readAsStringSync();
 
       expect(source, contains('_audioSub?.closed == false'));
       expect(source, contains('fireImmediately: true'));
@@ -123,16 +124,28 @@ void main() {
       );
     });
 
-    test('Android native code does not own SFX playback', () {
-      final source =
-          File(
-            'android/app/src/main/kotlin/com/chessEver/app/MainActivity.kt',
-          ).readAsStringSync();
+    test('Android native SFX stays scoped to live PiP moves', () {
+      final source = File(
+        'android/app/src/main/kotlin/com/chessEver/app/MainActivity.kt',
+      ).readAsStringSync();
 
       expect(source, isNot(contains('"com.chessever/audio_sfx"')));
-      expect(source, isNot(contains('SoundPool')));
       expect(source, isNot(contains('playNativeSfx')));
-      expect(source, contains('invokeMethod("playSfx"'));
+      expect(source, isNot(contains('invokeMethod("playSfx"')));
+      // Foreground sound stays in the audio service. PiP needs its own pool
+      // while Flutter is suspended, guarded by both PiP state and preference.
+      expect(
+        source,
+        matches(
+          RegExp(
+            r'if \(isCurrentlyInPip\(\) &&\s*'
+            r'payload\["soundEnabled"\] == true &&[^{]+\{\s*'
+            r'lastSoundedMove = newMove[\s\S]+?playPipSfx\(captured\)',
+          ),
+        ),
+      );
+      expect(source, contains('sfxPool?.release()'));
+      expect(source, contains('sfxPool = null'));
     });
 
     test('pubspec keeps .env commented out', () {
@@ -176,28 +189,39 @@ void main() {
         isTrue,
         reason:
             'The lockfile must retain the Android notification click delivery '
-            'fixes. Keep ios/Podfile.lock in step: the plugin pins an exact '
-            'OneSignalXCFramework version, so a stale pod lock fails '
-            '`pod install` outright.',
+            'fixes. Keep the iOS native dependency lock in step too.',
       );
 
-      // PR #290 bumped the Dart package but left ios/Podfile.lock pinned at
-      // OneSignalXCFramework 5.4.0, which makes `pod install` fail resolution
-      // instead of silently drifting. Keep the two locks moving together.
-      final podfileLock = File('ios/Podfile.lock').readAsStringSync();
-      final pod =
-          RegExp(
-            r'^  - OneSignalXCFramework \(([0-9]+\.[0-9]+\.[0-9]+)\):',
-            multiLine: true,
-          ).firstMatch(podfileLock)?.group(1);
+      // The native lock moved to SwiftPM with the iOS plugin migration.
+      // Retain CocoaPods coverage if that configuration is ever restored.
+      final String? nativeVersion;
+      if (pubspec.contains('enable-swift-package-manager: true')) {
+        final resolved =
+            jsonDecode(
+                  File(
+                    'ios/Runner.xcworkspace/xcshareddata/swiftpm/Package.resolved',
+                  ).readAsStringSync(),
+                )
+                as Map<String, dynamic>;
+        final pins = (resolved['pins'] as List).cast<Map<String, dynamic>>();
+        final oneSignal = pins.singleWhere(
+          (pin) => pin['identity'] == 'onesignal-xcframework',
+        );
+        nativeVersion = (oneSignal['state'] as Map)['version'] as String?;
+      } else {
+        final podfileLock = File('ios/Podfile.lock').readAsStringSync();
+        nativeVersion = RegExp(
+          r'^  - OneSignalXCFramework \(([0-9]+\.[0-9]+\.[0-9]+)\):',
+          multiLine: true,
+        ).firstMatch(podfileLock)?.group(1);
+      }
 
       expect(
-        _isAtLeast(pod, '5.5.5'),
+        _isAtLeast(nativeVersion, '5.5.5'),
         isTrue,
         reason:
-            'onesignal_flutter 5.6.7 pins OneSignalXCFramework 5.5.5. Run '
-            '`pod update OneSignalXCFramework` in ios/ after bumping the '
-            'Dart package, or the iOS build fails to resolve.',
+            'onesignal_flutter 5.6.7 requires OneSignalXCFramework 5.5.5. '
+            'Keep the active native dependency lock updated with the plugin.',
       );
     });
 
@@ -238,10 +262,9 @@ void _expectBefore(
   final anchorIndex = source.indexOf(anchor);
   expect(anchorIndex, isNonNegative, reason: 'Missing anchor "$anchor".');
 
-  final firstIndex =
-      searchBackwardsForFirst
-          ? source.lastIndexOf(first, anchorIndex)
-          : source.indexOf(first, anchorIndex);
+  final firstIndex = searchBackwardsForFirst
+      ? source.lastIndexOf(first, anchorIndex)
+      : source.indexOf(first, anchorIndex);
   final secondIndex = source.indexOf(second, anchorIndex);
 
   expect(firstIndex, isNonNegative, reason: 'Missing guard "$first". $reason');

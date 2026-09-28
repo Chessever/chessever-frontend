@@ -341,40 +341,13 @@ void main() {
     expect(opened, ['c-w12']);
   });
 
-  testWidgets('Add to My Space pins a streak shortcut and flips its icon', (
-    tester,
-  ) async {
+  testWidgets('streaks do not offer new My Space pins', (tester) async {
     await _pump(tester, load: () => _ding());
-    final button = find.byKey(const ValueKey('streak-player-space'));
-    expect(
-      find.descendant(
-        of: button,
-        matching: find.byIcon(Icons.dashboard_customize_outlined),
-      ),
-      findsOneWidget,
-    );
-
-    await tester.tap(button);
-    await tester.pump();
+    expect(find.byKey(const ValueKey('streak-player-space')), findsNothing);
     final container = ProviderScope.containerOf(
       tester.element(find.byType(StreakPlayerScreen)),
     );
-    final saved = container.read(spaceShortcutsProvider).valueOrNull!;
-    expect(saved, hasLength(1));
-    expect(saved.single.kind, SpaceShortcutKind.streak);
-    expect(saved.single.targetId, '8603677');
-    expect(saved.single.params['timeClass'], 'standard');
-    expect(saved.single.params['playerName'], 'Ding, Liren');
-    expect(
-      find.descendant(
-        of: button,
-        matching: find.byIcon(Icons.dashboard_customize),
-      ),
-      findsOneWidget,
-    );
-    // Let the confirmation snack run out.
-    await tester.pump(const Duration(seconds: 10));
-    await tester.pump(const Duration(seconds: 1));
+    expect(container.read(spaceShortcutsProvider).valueOrNull, isEmpty);
   });
 
   testWidgets('not found shows the fallback name and no streak data', (
