@@ -12,6 +12,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../config/app_environment.dart';
 import 'deep_link_service.dart';
+import 'direct_push_tap_router.dart';
 
 /// Receipts are persisted locally and flushed after Supabase is ready.
 /// A background callback is evidence of receipt; absence of one is not a failure.
@@ -29,6 +30,7 @@ class DirectPushService with WidgetsBindingObserver {
   static const _testUrl = String.fromEnvironment('CHESSEVER_TEST_NOTIFICATION_URL');
   static String get _url => AppEnvironment.isTest ? _testUrl : _productionUrl;
   final _local = FlutterLocalNotificationsPlugin();
+  final _tapRouter = DirectPushTapRouter();
   bool _ready = false;
   bool _syncing = false;
   bool _syncAgain = false;
@@ -44,6 +46,9 @@ class DirectPushService with WidgetsBindingObserver {
   Future<void> _initialize() async {
     if (!configured || kIsWeb || ![TargetPlatform.iOS, TargetPlatform.android].contains(defaultTargetPlatform)) return;
     try {
+      if (defaultTargetPlatform == TargetPlatform.iOS) {
+        await _tapRouter.initializeNative(_open);
+      }
       if (Firebase.apps.isEmpty) await Firebase.initializeApp();
       FirebaseMessaging.onBackgroundMessage(directPushBackgroundHandler);
       await _local.initialize(
@@ -72,7 +77,7 @@ class DirectPushService with WidgetsBindingObserver {
               importance: Importance.high, priority: Priority.high)), payload: jsonEncode(message.data)));
         }
       });
-      FirebaseMessaging.onMessageOpenedApp.listen((m) => _open(m.data));
+      FirebaseMessaging.onMessageOpenedApp.listen((m) => _tapRouter.open(m.messageId, m.data, _open));
       FirebaseMessaging.instance.onTokenRefresh.listen((_) => unawaited(sync()));
       Supabase.instance.client.auth.onAuthStateChange.listen((state) {
         final next = state.session?.user.id;
@@ -86,7 +91,7 @@ class DirectPushService with WidgetsBindingObserver {
       WidgetsBinding.instance.addObserver(this);
       _ready = true;
       final initial = await FirebaseMessaging.instance.getInitialMessage();
-      if (initial != null) _open(initial.data);
+      if (initial != null) _tapRouter.open(initial.messageId, initial.data, _open);
       final localLaunch = await _local.getNotificationAppLaunchDetails();
       final payload = localLaunch?.notificationResponse?.payload;
       if (localLaunch?.didNotificationLaunchApp == true && payload != null) _open(Map<String,dynamic>.from(jsonDecode(payload) as Map));
