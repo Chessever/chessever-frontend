@@ -232,6 +232,16 @@ class _BoardShareBoundaryScopeState extends State<_BoardShareBoundaryScope> {
   }
 }
 
+/// Shares one pinch size across the game pages in this board route. Keeping
+/// the notifier above the PageView lets an adjacent board resize before the
+/// swipe reveals it, without keeping the size after the route is closed.
+class _BoardZoomScope extends InheritedNotifier<ValueNotifier<double?>> {
+  const _BoardZoomScope({required super.notifier, required super.child});
+
+  static ValueNotifier<double?> of(BuildContext context) =>
+      context.dependOnInheritedWidgetOfExactType<_BoardZoomScope>()!.notifier!;
+}
+
 /// True while the board notation↔explorer PageView is on the explorer page
 /// (left-swipe). Drives a light translucent bottom nav so games under the bar
 /// stay faintly visible — not the persisted gamebase toggle preference.
@@ -1340,6 +1350,7 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
   /// Measured height that stops the sheet's first snap step right under the
   /// board's bottom player row. Published by [GameReviewBoardAnchor].
   final ValueNotifier<double?> _gameReviewAnchor = ValueNotifier<double?>(null);
+  final ValueNotifier<double?> _sharedBoardWidth = ValueNotifier<double?>(null);
 
   /// Last surface size seen by [didChangeMetrics], to tell a real rotation or
   /// resize apart from inset-only metric churn.
@@ -3035,6 +3046,7 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
     _gameSwitcher.dispose();
     _gameReviewTarget.dispose();
     _gameReviewAnchor.dispose();
+    _sharedBoardWidth.dispose();
     _likeFlightAnchor.dispose();
     super.dispose();
   }
@@ -3142,12 +3154,15 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
         ],
         // Every app-bar chip — real page or loading skeleton — reads the one
         // screen-level switcher from here instead of owning its own overlay.
-        child: _GameSwitcherScope(
-          controller: _gameSwitcher,
-          child: GameReviewSheetScope(
-            target: _gameReviewTarget,
-            anchorPixels: _gameReviewAnchor,
-            child: child,
+        child: _BoardZoomScope(
+          notifier: _sharedBoardWidth,
+          child: _GameSwitcherScope(
+            controller: _gameSwitcher,
+            child: GameReviewSheetScope(
+              target: _gameReviewTarget,
+              anchorPixels: _gameReviewAnchor,
+              child: child,
+            ),
           ),
         ),
       );
@@ -8721,7 +8736,6 @@ class _BoardWithSidebarState extends ConsumerState<_BoardWithSidebar> {
   static bool _dismissedThisSession = false;
 
   final Map<int, Offset> _touches = {};
-  double? _boardWidth;
   double? _pinchDistance;
   double? _pinchBoardWidth;
   bool _showPinchCoachmark = false;
@@ -8784,6 +8798,7 @@ class _BoardWithSidebarState extends ConsumerState<_BoardWithSidebar> {
 
   @override
   Widget build(BuildContext context) {
+    final sharedBoardWidth = _BoardZoomScope.of(context);
     // PERF: Use .select() to only rebuild when showEngineGauge changes
     final engineGaugeEnabled = ref.watch(
       engineSettingsProviderNew.select(
@@ -8823,7 +8838,7 @@ class _BoardWithSidebarState extends ConsumerState<_BoardWithSidebar> {
           maxBoardWidth,
           MediaQuery.sizeOf(context).width / 3,
         );
-        final boardSize = (_boardWidth ??
+        final boardSize = (sharedBoardWidth.value ??
                 math.max(minBoardWidth, maxBoardWidth - horizontalMargin))
             .clamp(minBoardWidth, maxBoardWidth);
 
@@ -8871,7 +8886,7 @@ class _BoardWithSidebarState extends ConsumerState<_BoardWithSidebar> {
               minBoardWidth,
               maxBoardWidth,
             );
-            if (next != boardSize) setState(() => _boardWidth = next);
+            if (next != boardSize) sharedBoardWidth.value = next;
           },
           onPointerUp: (event) => _endTouch(event.pointer),
           onPointerCancel: (event) => _endTouch(event.pointer),
