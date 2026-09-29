@@ -866,6 +866,28 @@ class GamebaseRepository {
     }
   }
 
+  Future<Map<String, dynamic>> recordCollectionEngagement(
+    String slug,
+    Map<String, dynamic> body, {
+    String? bearer,
+    bool star = false,
+  }) async {
+    final response = await _dio.request(
+      '$_baseUrl/api/collections/${Uri.encodeComponent(slug)}/${star ? 'star' : 'view'}',
+      data: body,
+      options: Options(
+        method: star ? 'PUT' : 'POST',
+        headers: {
+          ..._headers,
+          if (bearer != null) 'Authorization': 'Bearer $bearer',
+        },
+      ),
+    );
+    return Map<String, dynamic>.from(
+      unwrapCollectionsEnvelope(response.data) as Map,
+    );
+  }
+
   /// One page of the published collections (`GET /api/collections`),
   /// ordered by the team's sort order, newest first within it.
   Future<CollectionsPage> getCollections({

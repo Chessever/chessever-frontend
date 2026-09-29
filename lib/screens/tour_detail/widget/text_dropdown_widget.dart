@@ -1,6 +1,5 @@
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_app_bar_view_model.dart';
 import 'package:chessever2/theme/app_colors.dart';
-import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/svg_asset.dart';
@@ -12,12 +11,14 @@ class TextDropDownWidget extends StatefulWidget {
     required this.items,
     required this.selectedId,
     required this.onChanged,
+    this.multiline = false,
     super.key,
   });
 
   final List<Map<String, String>> items;
   final String selectedId;
   final ValueChanged<String> onChanged;
+  final bool multiline;
 
   @override
   State<TextDropDownWidget> createState() => _TextDropDownWidgetState();
@@ -80,16 +81,17 @@ class _TextDropDownWidgetState extends State<TextDropDownWidget> {
     }
 
     return Container(
-      height: 42.h,
       decoration: BoxDecoration(
-        border:
-            isLast
-                ? null
-                : Border(
-                  bottom: BorderSide(color: context.colors.divider, width: 0.5.h),
-                ),
+        border: isLast
+            ? null
+            : Border(
+                bottom: BorderSide(color: context.colors.divider, width: 0.5.h),
+              ),
       ),
-      constraints: BoxConstraints(maxHeight: 42.h),
+      height: widget.multiline ? null : 42.h,
+      constraints: widget.multiline
+          ? BoxConstraints(minHeight: 44.h)
+          : BoxConstraints(maxHeight: 42.h),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
         mainAxisAlignment: MainAxisAlignment.center,
@@ -99,7 +101,9 @@ class _TextDropDownWidgetState extends State<TextDropDownWidget> {
             child: Text(
               text,
               maxLines: 2,
-              style: AppTypography.textXsRegular.copyWith(color: context.colors.textPrimary),
+              style: AppTypography.textXsRegular.copyWith(
+                color: context.colors.textPrimary,
+              ),
               overflow: TextOverflow.visible,
               softWrap: true,
             ),
@@ -117,10 +121,12 @@ class _TextDropDownWidgetState extends State<TextDropDownWidget> {
     final hasValidSelection = widget.items.any(
       (item) => item['key'] == _selectedId,
     );
-    final currentValue =
-        hasValidSelection ? _selectedId : widget.items.first['key'];
+    final currentValue = hasValidSelection
+        ? _selectedId
+        : widget.items.first['key'];
 
     return DropdownButton<String>(
+      itemHeight: widget.multiline ? null : kMinInteractiveDimension,
       value: currentValue,
       onChanged: (newValue) {
         if (newValue != null) {
@@ -130,23 +136,24 @@ class _TextDropDownWidgetState extends State<TextDropDownWidget> {
           widget.onChanged(newValue);
         }
       },
-      items:
-          widget.items.asMap().entries.map<DropdownMenuItem<String>>((entry) {
-            final index = entry.key;
-            final item = entry.value;
-            final isLast = index == widget.items.length - 1;
+      items: widget.items.asMap().entries.map<DropdownMenuItem<String>>((
+        entry,
+      ) {
+        final index = entry.key;
+        final item = entry.value;
+        final isLast = index == widget.items.length - 1;
 
-            return DropdownMenuItem<String>(
-              value: item['key']!, // Use the key as the value
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: [
-                  _buildDropdownItem(item['value']!, item['status']!, isLast),
-                ],
-              ),
-            );
-          }).toList(),
+        return DropdownMenuItem<String>(
+          value: item['key']!, // Use the key as the value
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              _buildDropdownItem(item['value']!, item['status']!, isLast),
+            ],
+          ),
+        );
+      }).toList(),
       underline: Container(),
       icon: Icon(
         Icons.keyboard_arrow_down_outlined,
@@ -165,7 +172,9 @@ class _TextDropDownWidgetState extends State<TextDropDownWidget> {
             alignment: Alignment.center,
             child: Text(
               item['value']!,
-              style: AppTypography.textXsMedium.copyWith(color: context.colors.textPrimary),
+              style: AppTypography.textXsMedium.copyWith(
+                color: context.colors.textPrimary,
+              ),
               maxLines: 2,
               overflow: TextOverflow.visible,
               softWrap: true,

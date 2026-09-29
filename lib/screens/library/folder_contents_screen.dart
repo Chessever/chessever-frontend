@@ -642,125 +642,97 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
         horizontalPadding,
         8.h,
       ),
-      child: Column(
+      child: Row(
         children: [
-          Row(
-            children: [
-              IconButton(
-                tooltip: 'Back',
-                onPressed: () => Navigator.of(context).pop(),
-                constraints: const BoxConstraints(minWidth: 44, minHeight: 44),
-                icon: Icon(
-                  Icons.arrow_back_ios_new_rounded,
-                  color: context.colors.textPrimary,
-                  size: 20.ic,
-                ),
-              ),
-              Expanded(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      _currentFolderName,
-                      textAlign: TextAlign.center,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: AppTypography.textMdBold.copyWith(
-                        color: context.colors.textPrimary,
-                        height: 1.25,
-                      ),
-                    ),
-                    if (totalCount != null)
-                      Text(
-                        totalCount == 1 ? '1 game' : '$totalCount games',
-                        style: AppTypography.textXsRegular.copyWith(
-                          color: context.colors.textSecondary,
-                        ),
-                      ),
-                  ],
-                ),
-              ),
-              if (libraryFolderCanPublish(widget.folder))
-                IconButton(
-                  key: const ValueKey('folder_publish_book'),
-                  tooltip: 'Publish / edit book',
-                  constraints: const BoxConstraints(
-                    minWidth: 44,
-                    minHeight: 44,
-                  ),
-                  onPressed: () =>
-                      openLibraryBookEditor(context, widget.folder),
-                  icon: Icon(
-                    Icons.publish_rounded,
-                    color: context.colors.textPrimary,
-                    size: 22.ic,
-                  ),
-                )
-              else
-                const SizedBox(width: 44),
-            ],
+          IconButton(
+            tooltip: 'Back',
+            onPressed: () => Navigator.of(context).pop(),
+            constraints: const BoxConstraints(minWidth: 44, minHeight: 44),
+            icon: Icon(
+              Icons.arrow_back_ios_new_rounded,
+              color: context.colors.textPrimary,
+              size: 20.ic,
+            ),
           ),
-          if (_isDatabase || showExport || showRename || showAdd)
-            Row(
-              mainAxisAlignment: MainAxisAlignment.end,
+          Expanded(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
               children: [
-                if (_isDatabase)
-                  IconButton(
-                    key: e2eKey(E2eIds.databaseBoardButton),
-                    onPressed: _openBoard,
-                    tooltip: 'Open Board',
-                    constraints: const BoxConstraints(
-                      minWidth: 44,
-                      minHeight: 44,
-                    ),
-                    icon: BoardNavigationIcon(
-                      size: 20.sp,
-                      semanticsLabel: 'Open Board',
-                    ),
+                Text(
+                  _currentFolderName,
+                  textAlign: TextAlign.center,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: AppTypography.textMdBold.copyWith(
+                    color: context.colors.textPrimary,
+                    height: 1.25,
                   ),
-                if (showExport)
-                  IconButton(
-                    onPressed: _handleExportPgn,
-                    tooltip: 'Export as PGN',
-                    constraints: const BoxConstraints(
-                      minWidth: 44,
-                      minHeight: 44,
-                    ),
-                    icon: Icon(
-                      Icons.ios_share_rounded,
-                      color: context.colors.textPrimary,
-                      size: 20.ic,
-                    ),
-                  ),
-                if (showRename)
-                  IconButton(
-                    onPressed: _handleRename,
-                    tooltip: 'Rename',
-                    constraints: const BoxConstraints(
-                      minWidth: 44,
-                      minHeight: 44,
-                    ),
-                    icon: Icon(
-                      Icons.edit_rounded,
-                      color: context.colors.textPrimary,
-                      size: 20.ic,
-                    ),
-                  ),
-                if (showAdd)
-                  IconButton(
-                    onPressed: _handlePlusButton,
-                    tooltip: 'Add games',
-                    constraints: const BoxConstraints(
-                      minWidth: 44,
-                      minHeight: 44,
-                    ),
-                    icon: Icon(
-                      Icons.add_rounded,
-                      color: context.colors.textPrimary,
-                      size: 26.ic,
+                ),
+                if (totalCount != null)
+                  Text(
+                    totalCount == 1 ? '1 game' : '$totalCount games',
+                    style: AppTypography.textXsRegular.copyWith(
+                      color: context.colors.textSecondary,
                     ),
                   ),
               ],
+            ),
+          ),
+          if (_isDatabase)
+            IconButton(
+              key: e2eKey(E2eIds.databaseBoardButton),
+              onPressed: _openBoard,
+              tooltip: 'Open Board',
+              constraints: const BoxConstraints(minWidth: 44, minHeight: 44),
+              icon: BoardNavigationIcon(
+                size: 20.sp,
+                semanticsLabel: 'Open Board',
+              ),
+            ),
+          if (showExport)
+            IconButton(
+              onPressed: _handleExportPgn,
+              tooltip: 'Export as PGN',
+              constraints: const BoxConstraints(minWidth: 44, minHeight: 44),
+              icon: Icon(
+                Icons.ios_share_rounded,
+                color: context.colors.textPrimary,
+                size: 20.ic,
+              ),
+            ),
+          if (showRename)
+            IconButton(
+              onPressed: _handleRename,
+              tooltip: 'Rename',
+              constraints: const BoxConstraints(minWidth: 44, minHeight: 44),
+              icon: Icon(
+                Icons.edit_rounded,
+                color: context.colors.textPrimary,
+                size: 20.ic,
+              ),
+            ),
+          if (showAdd)
+            IconButton(
+              onPressed: _handlePlusButton,
+              tooltip: 'Add games',
+              constraints: const BoxConstraints(minWidth: 44, minHeight: 44),
+              icon: Icon(
+                Icons.add_rounded,
+                color: context.colors.textPrimary,
+                size: 26.ic,
+              ),
+            ),
+          if (libraryFolderCanPublish(widget.folder))
+            IconButton(
+              key: const ValueKey('folder_publish_book'),
+              tooltip: 'Publish / edit book',
+              constraints: const BoxConstraints(minWidth: 44, minHeight: 44),
+              onPressed: () => openLibraryBookEditor(context, widget.folder),
+              icon: Icon(
+                Icons.publish_rounded,
+                color: context.colors.textPrimary,
+                size: 22.ic,
+              ),
             ),
         ],
       ),

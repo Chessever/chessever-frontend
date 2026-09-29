@@ -433,14 +433,18 @@ class _SpaceSectionScreenState extends ConsumerState<SpaceSectionScreen> {
                             ),
                           ),
                         ),
-                        SizedBox(width: 8.w),
-                        Text(
-                          '$count',
-                          style: AppTypography.textLgMedium.copyWith(
-                            color: context.colors.textSecondary,
-                            fontFeatures: const [FontFeature.tabularFigures()],
+                        if (widget.section != SpaceSection.smartEvents) ...[
+                          SizedBox(width: 8.w),
+                          Text(
+                            '$count',
+                            style: AppTypography.textLgMedium.copyWith(
+                              color: context.colors.textSecondary,
+                              fontFeatures: const [
+                                FontFeature.tabularFigures(),
+                              ],
+                            ),
                           ),
-                        ),
+                        ],
                       ],
                     ),
                   ),

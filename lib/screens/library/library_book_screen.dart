@@ -119,8 +119,11 @@ class _LibraryBookScreenState extends ConsumerState<LibraryBookScreen> {
     coverUrl: _fields['cover']!.text,
   );
 
+  bool _validateForReview = false;
+
   Future<void> _save({bool publish = false}) async {
     if (_busy) return;
+    _validateForReview = publish;
     if (!(_form.currentState?.validate() ?? false)) {
       setState(
         () => _error = 'Check the highlighted book details before saving.',
@@ -155,7 +158,9 @@ class _LibraryBookScreenState extends ConsumerState<LibraryBookScreen> {
       showAppSnack(
         context,
         saved.isPublished
-            ? (publish ? 'Book published in Collections' : 'Book updated')
+            ? 'Book updated'
+            : publish
+            ? 'Submitted for ChessEver approval'
             : 'Book details saved privately',
         tone: AppSnackTone.success,
       );
@@ -259,6 +264,13 @@ class _LibraryBookScreenState extends ConsumerState<LibraryBookScreen> {
       ),
       validator: (raw) {
         final value = raw?.trim() ?? '';
+        if (_validateForReview &&
+            ['author', 'about'].contains(name) &&
+            value.isEmpty) {
+          return name == 'author'
+              ? 'Credit the author by name'
+              : 'Describe this book';
+        }
         if (name == 'title' && value.isEmpty) return 'Enter a book title';
         if (name == 'year' && value.isNotEmpty) {
           final year = int.tryParse(value);
@@ -345,7 +357,7 @@ class _LibraryBookScreenState extends ConsumerState<LibraryBookScreen> {
                             Text(
                               published
                                   ? '${_publication!.gameCount} public games. Your source folder stays private.'
-                                  : 'Publishing makes a public book from this folder, including its games, variations and annotations. Saving details keeps it private.',
+                                  : 'Submit this folder and its games for ChessEver approval. It stays in draft until a superadmin publishes it.',
                               style: TextStyle(
                                 color: context.colors.textSecondary,
                                 height: 1.5,
@@ -381,10 +393,10 @@ class _LibraryBookScreenState extends ConsumerState<LibraryBookScreen> {
                                 controlAffinity:
                                     ListTileControlAffinity.leading,
                                 title: const Text(
-                                  'Update public games from this folder',
+                                  'Update book games from this folder',
                                 ),
                                 subtitle: const Text(
-                                  'Replaces the published snapshot with your current games and annotations.',
+                                  'Includes your current games and annotations in the review.',
                                 ),
                                 value: _refreshGames,
                                 onChanged: _busy
@@ -433,13 +445,15 @@ class _LibraryBookScreenState extends ConsumerState<LibraryBookScreen> {
                               ),
                               onPressed: _busy
                                   ? null
-                                  : () => _save(publish: !published),
+                                  : () => _save(publish: true),
                               child: Padding(
                                 padding: const EdgeInsets.symmetric(
                                   vertical: 12,
                                 ),
                                 child: Text(
-                                  published ? 'Save changes' : 'Publish book',
+                                  published
+                                      ? 'Submit changes'
+                                      : 'Submit for approval',
                                 ),
                               ),
                             ),

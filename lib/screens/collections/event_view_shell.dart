@@ -24,9 +24,13 @@ class EventViewShell extends StatefulWidget {
     this.onOpenSidebar,
     this.scrollToTopSequence,
     this.header,
+    this.actions = const [],
+    this.tabStripOverride,
   });
 
   final Widget? header;
+  final Widget? tabStripOverride;
+  final List<Widget> actions;
   final String title;
   final List<String> tabs;
   final Widget Function(BuildContext context, int index) pageBuilder;
@@ -217,7 +221,10 @@ class _EventViewShellState extends State<EventViewShell> {
                             ),
                           ),
                         ),
-                        if (widget.showBackButton) const SizedBox(width: 48),
+                        if (widget.actions.isNotEmpty)
+                          ...widget.actions
+                        else if (widget.showBackButton)
+                          const SizedBox(width: 48),
                       ],
                     ),
                   ),
@@ -225,35 +232,39 @@ class _EventViewShellState extends State<EventViewShell> {
                 SizedBox(height: widget.homeTab ? 16.h : 8.h),
                 Padding(
                   padding: EdgeInsets.symmetric(horizontal: side),
-                  child: SegmentedSwitcher(
-                    key: ValueKey('event_view_tabs_${widget.tabs.join('_')}'),
-                    backgroundColor: colors.popup,
-                    selectedBackgroundColor: colors.popup,
-                    // Keep the labels inside the fixed-height strip when the
-                    // system text size grows.
-                    textStyle: AppTypography.textSmMedium.copyWith(
-                      color: colors.tabInactive,
-                      height: 1.2,
-                    ),
-                    selectedTextStyle: AppTypography.textSmMedium.copyWith(
-                      color: colors.textPrimary,
-                      height: 1.2,
-                    ),
-                    options: widget.tabs,
-                    optionLabels: [
-                      for (final tab in widget.tabs)
-                        Padding(
-                          padding: EdgeInsets.symmetric(horizontal: 4.w),
-                          child: FittedBox(
-                            fit: BoxFit.scaleDown,
-                            child: Text(tab, maxLines: 1, softWrap: false),
-                          ),
+                  child:
+                      widget.tabStripOverride ??
+                      SegmentedSwitcher(
+                        key: ValueKey(
+                          'event_view_tabs_${widget.tabs.join('_')}',
                         ),
-                    ],
-                    initialSelection: widget.initialTab,
-                    currentSelection: _selected,
-                    onSelectionChanged: _select,
-                  ),
+                        backgroundColor: colors.popup,
+                        selectedBackgroundColor: colors.popup,
+                        // Keep the labels inside the fixed-height strip when the
+                        // system text size grows.
+                        textStyle: AppTypography.textSmMedium.copyWith(
+                          color: colors.tabInactive,
+                          height: 1.2,
+                        ),
+                        selectedTextStyle: AppTypography.textSmMedium.copyWith(
+                          color: colors.textPrimary,
+                          height: 1.2,
+                        ),
+                        options: widget.tabs,
+                        optionLabels: [
+                          for (final tab in widget.tabs)
+                            Padding(
+                              padding: EdgeInsets.symmetric(horizontal: 4.w),
+                              child: FittedBox(
+                                fit: BoxFit.scaleDown,
+                                child: Text(tab, maxLines: 1, softWrap: false),
+                              ),
+                            ),
+                        ],
+                        initialSelection: widget.initialTab,
+                        currentSelection: _selected,
+                        onSelectionChanged: _select,
+                      ),
                 ),
                 if (widget.homeTab) SizedBox(height: 12.h),
                 Expanded(

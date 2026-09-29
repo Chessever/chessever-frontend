@@ -129,8 +129,11 @@ class GamebaseLibraryBookPublisher implements LibraryBookPublisher {
     required this.dio,
     required String? baseUrl,
     required this.accessToken,
+    bool production = false,
   }) : _baseUrl = baseUrl == null
            ? null
+           : production
+           ? (baseUrl == 'https://chessever.com' ? baseUrl : '')
            : GamebaseEnvironment.validateTestBase(baseUrl),
        _configured = baseUrl?.trim().isNotEmpty ?? false;
 
@@ -261,12 +264,11 @@ final libraryBookPublisherProvider = Provider<LibraryBookPublisher>((ref) {
   ref.onDispose(() => dio.close());
   return GamebaseLibraryBookPublisher(
     dio: dio,
-    // Publication is enabled only in the test flavor for this rollout.
+    production: !AppEnvironment.isTest,
     baseUrl: AppEnvironment.isTest
         ? const String.fromEnvironment('LIBRARY_BOOK_PUBLISHING_BASE')
-        : null,
+        : 'https://chessever.com',
     accessToken: () {
-      if (!AppEnvironment.isTest) return null;
       final client = Supabase.instance.client;
       return client.auth.currentSession?.accessToken;
     },

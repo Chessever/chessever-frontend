@@ -14,7 +14,11 @@ class _Publisher implements LibraryBookPublisher {
   Future<void> unpublishTree(LibraryFolder folder) async {}
   LibraryBookPublication publication = const LibraryBookPublication(
     status: 'unpublished',
-    metadata: LibraryBookMetadata(title: 'My study'),
+    metadata: LibraryBookMetadata(
+      title: 'My study',
+      author: 'Owner',
+      about: 'A chess study',
+    ),
   );
   final saves =
       <({LibraryBookMetadata metadata, bool publish, bool refreshGames})>[];
@@ -41,7 +45,7 @@ class _Publisher implements LibraryBookPublisher {
       );
     }
     return publication = LibraryBookPublication(
-      status: publish || publication.isPublished ? 'published' : 'draft',
+      status: 'draft',
       metadata: metadata,
       gameCount: 2,
     );
@@ -118,7 +122,7 @@ void main() {
     final publisher = _Publisher();
     await _pump(tester, publisher, width: 320);
     await tester.enterText(find.byType(TextFormField).first, '');
-    await _tap(tester, 'Publish book');
+    await _tap(tester, 'Submit for approval');
     expect(publisher.saves, isEmpty);
     expect(
       find.text('Check the highlighted book details before saving.'),
@@ -147,32 +151,37 @@ void main() {
       find.byType(TextFormField).first,
       'My Sicilian study',
     );
-    await _tap(tester, 'Publish book');
+    await _tap(tester, 'Submit for approval');
     expect(find.text('Offline. Retry when connected.'), findsOneWidget);
     expect(publisher.saves.single.metadata.title, 'My Sicilian study');
     publisher.fail = false;
-    await _tap(tester, 'Publish book');
+    await _tap(tester, 'Submit for approval');
     expect(publisher.saves.last.publish, isTrue);
     expect(publisher.saves.last.refreshGames, isTrue);
     expect(publisher.publication.metadata.title, 'My Sicilian study');
-    expect(publisher.publication.isPublished, isTrue);
+    expect(publisher.publication.isPublished, isFalse);
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('published metadata update does not replace games by default', (
-    tester,
-  ) async {
-    final publisher = _Publisher()
-      ..publication = const LibraryBookPublication(
-        status: 'published',
-        metadata: LibraryBookMetadata(title: 'Public study'),
-        gameCount: 2,
-      );
-    await _pump(tester, publisher);
-    await _tap(tester, 'Save changes');
-    expect(publisher.saves.single.publish, isFalse);
-    expect(publisher.saves.single.refreshGames, isFalse);
-    expect(publisher.publication.isPublished, isTrue);
-    expect(tester.takeException(), isNull);
-  });
+  testWidgets(
+    'published edits return to review with the current folder games',
+    (tester) async {
+      final publisher = _Publisher()
+        ..publication = const LibraryBookPublication(
+          status: 'published',
+          metadata: LibraryBookMetadata(
+            title: 'Public study',
+            author: 'Owner',
+            about: 'A chess study',
+          ),
+          gameCount: 2,
+        );
+      await _pump(tester, publisher);
+      await _tap(tester, 'Submit changes');
+      expect(publisher.saves.single.publish, isTrue);
+      expect(publisher.saves.single.refreshGames, isTrue);
+      expect(publisher.publication.isPublished, isFalse);
+      expect(tester.takeException(), isNull);
+    },
+  );
 }

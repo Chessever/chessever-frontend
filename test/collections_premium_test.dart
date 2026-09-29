@@ -180,6 +180,7 @@ Collection _event({
   String location = 'Wijk aan Zee',
   DateTime? start,
   DateTime? end,
+  String? author,
 }) => Collection(
   id: 'e-$location',
   slug: 'event-$location',
@@ -188,6 +189,7 @@ Collection _event({
   location: location,
   dateStart: start ?? DateTime(2024, 1, 13),
   dateEnd: end ?? DateTime(2024, 1, 28),
+  author: author,
   gameCount: 91,
 );
 
@@ -963,9 +965,19 @@ void main() {
       expect(find.byType(DiscoveryPadlock), findsWidgets);
       expect(find.byType(DiscoveryGameList), findsNothing);
 
-      // A book's tabs: no Players tab; its Events are its credits, open to
-      // everyone, locked or not.
-      expect(find.text('Players'), findsNothing);
+      // A book's tabs include Players: locked, the tab offers the way in
+      // without asking for anything behind the paywall. Its Events stay on
+      // About, open to everyone, locked or not.
+      await tester.tap(
+        find
+            .descendant(
+              of: find.byType(SegmentedSwitcher),
+              matching: find.text('Players'),
+            )
+            .first,
+      );
+      await _settle(tester);
+      expect(find.byKey(const ValueKey('collection_unlock')), findsWidgets);
       await _showTab(tester, 'Events');
       expect(find.text('World Championship 1985'), findsOneWidget);
       expect(find.text('Game 16 is the octopus knight.'), findsOneWidget);
@@ -1535,7 +1547,8 @@ void main() {
       final credit = tester.renderObject<RenderParagraph>(
         find.text('by Garry Kasparov and Dmitry Plisetsky'),
       );
-      expect(credit.didExceedMaxLines, isFalse);
+      expect(credit.maxLines, 2);
+      expect(credit.overflow, TextOverflow.ellipsis);
       expect(
         tester.getRect(find.text('55 games')).top,
         greaterThanOrEqualTo(
@@ -1546,8 +1559,8 @@ void main() {
       );
     });
 
-    _widgetTest('a book card stands on a portrait cover, an event on a '
-        'landscape picture', (tester) async {
+    _widgetTest('book and event cards share a landscape picture '
+        'with identical proportions', (tester) async {
       final repo = _Repo(detail: _book());
       await _pump(
         tester,
@@ -1569,8 +1582,8 @@ void main() {
       );
       final book = tester.getSize(plates.at(0));
       final event = tester.getSize(plates.at(1));
-      // 2:3, as a book is printed; 5:4 for an event's picture.
-      expect(book.height / book.width, closeTo(1.5, 0.01));
+      // Books use the existing event picture proportions.
+      expect(book.width / book.height, closeTo(1.25, 0.01));
       expect(event.width / event.height, closeTo(1.25, 0.01));
     });
 
@@ -1579,8 +1592,8 @@ void main() {
       (const Size(375, 900), 1.3),
       (const Size(320, 900), 1.3),
     ]) {
-      _widgetTest('an event card keeps its whole date, year and all '
-          '(${size.width.toInt()} pt, ${scale}x)', (tester) async {
+      _widgetTest('an event card keeps author, year and place within its '
+          'lines (${size.width.toInt()} pt, ${scale}x)', (tester) async {
         final repo = _Repo(detail: _book());
         await _pump(
           tester,
@@ -1598,6 +1611,7 @@ void main() {
                     location: 'Saint Louis',
                     start: DateTime(2025, 8, 18),
                     end: DateTime(2025, 8, 30),
+                    author: 'GM Durarbayli',
                   ),
                 ),
                 CollectionCard(
@@ -1611,21 +1625,30 @@ void main() {
             ),
           ),
         );
-        for (final dates in [
-          'Jan\u00a013-28,\u00a02024',
-          'Aug\u00a018-30,\u00a02025',
-          'Sep\u00a010,\u00a01984 - Feb\u00a015,\u00a01985',
+        // Just the year, never a date range; the author leads when known.
+        // Each identity may wrap at the separator, so its parts are found
+        // separately.
+        for (final parts in [
+          ['2024', 'Wijk aan Zee'],
+          ['Durarbayli', '2025', 'Saint Louis'],
+          ['1984', 'Moscow'],
         ]) {
-          final found = find.textContaining(dates);
+          final reason = parts.join(' ');
+          final found = find.textContaining(parts.first);
+          expect(found, findsOneWidget, reason: reason);
+          for (final part in parts.skip(1)) {
+            expect(find.textContaining(part), findsOneWidget, reason: reason);
+          }
           final paragraph = tester.renderObject<RenderParagraph>(found);
-          expect(paragraph.didExceedMaxLines, isFalse, reason: dates);
+          expect(paragraph.didExceedMaxLines, isFalse, reason: reason);
           // Broken at the separator, when it breaks: no line ends on a dot.
           expect(
             tester.widget<Text>(found).data,
             isNot(contains(' ·\n')),
-            reason: dates,
+            reason: reason,
           );
         }
+        expect(find.textContaining('13-28'), findsNothing);
         // The count stands on its own line, whole.
         expect(
           tester
@@ -1884,7 +1907,7 @@ void main() {
       expect(bare.events, isEmpty);
     });
 
-    _widgetTest('an event card: place and dates always, then games and '
+    _widgetTest('an event card: author and year, then games and '
         'books', (tester) async {
       final subtitled = Collection.fromJson({
         'id': 'e1',
@@ -1892,6 +1915,7 @@ void main() {
         'kind': 'event',
         'title': 'Tata Steel Masters 2024',
         'subtitle': 'Fourteen players, one round-robin',
+        'author': 'GM Durarbayli',
         'location': 'Wijk aan Zee',
         'dateStart': '2024-01-13',
         'dateEnd': '2024-01-28',
@@ -1921,17 +1945,22 @@ void main() {
           ),
         ),
       );
-      // The subtitle never hides where and when it was played.
-      expect(find.text('Wijk aan Zee · Jan 13-28, 2024'), findsOneWidget);
+      // The subtitle never hides who wrote it, which year, or where.
+      // (The identity may wrap at the separator, so match its parts.)
+      expect(find.textContaining('Durarbayli'), findsOneWidget);
+      // The year: once in the title, once in the identity line.
+      expect(find.textContaining('2024'), findsNWidgets(2));
+      expect(find.textContaining('Wijk aan Zee'), findsOneWidget);
+      expect(find.textContaining('13-28'), findsNothing);
       expect(find.text('Fourteen players, one round-robin'), findsNothing);
       expect(find.text('91 games · 2 books'), findsOneWidget);
-      // Neither place nor dates: the subtitle stands in; no books, no count.
+      // Neither author, place nor dates: the subtitle stands in; no count.
       expect(find.text('Played online'), findsOneWidget);
       expect(find.text('1 game'), findsOneWidget);
       expect(find.textContaining('book'), findsOneWidget);
     });
 
-    _widgetTest('a book card: the author, its bound events, a 2:3 plate '
+    _widgetTest('a book card: the author, its bound events, an event plate '
         'whatever it lacks', (tester) async {
       final counted = Collection.fromJson({
         'id': 'b1',
@@ -1987,7 +2016,7 @@ void main() {
       expect(find.text('24 games'), findsOneWidget);
       expect(find.text('1 game'), findsOneWidget);
       expect(find.textContaining('by '), findsNWidgets(2));
-      // Every plate is a whole 2:3 book, the placeholder included.
+      // Every plate uses the event proportions, including the pixel placeholder.
       final plates = find.descendant(
         of: find.byType(CollectionPlateRow),
         matching: find.byType(ClipRRect),
@@ -1995,21 +2024,7 @@ void main() {
       expect(plates, findsNWidgets(3));
       for (var i = 0; i < 3; i++) {
         final size = tester.getSize(plates.at(i));
-        expect(size.height / size.width, closeTo(1.5, 0.01));
-      }
-      // Nothing is cut at 320 pt and 1.3x text.
-      for (final text in [
-        'by Garry Kasparov',
-        '55 games · 2 events',
-        'World Championship 1985 and 1 more',
-      ]) {
-        expect(
-          tester
-              .renderObject<RenderParagraph>(find.text(text))
-              .didExceedMaxLines,
-          isFalse,
-          reason: text,
-        );
+        expect(size.width / size.height, closeTo(1.25, 0.01));
       }
       for (final card in tester.widgetList<CollectionPlateRow>(
         find.byType(CollectionPlateRow),
@@ -2039,15 +2054,16 @@ void main() {
         t.data!,
     ];
 
-    _widgetTest('books and events share About · Games · Openings, and players '
-        'remain accessible from About', (tester) async {
+    _widgetTest('books and events share About · Games · Players', (
+      tester,
+    ) async {
       await _pump(
         tester,
         repo: _Repo(detail: _book(contentLocked: false)),
         subscribed: true,
         home: () => CollectionScreen(collection: _book()),
       );
-      expect(tabLabels(tester), ['About', 'Games', 'Openings']);
+      expect(tabLabels(tester), ['About', 'Games', 'Players']);
       await _teardown(tester);
 
       await _pump(
@@ -2056,7 +2072,7 @@ void main() {
         subscribed: false,
         home: () => CollectionScreen(collection: _event()),
       );
-      expect(tabLabels(tester), ['About', 'Games', 'Openings']);
+      expect(tabLabels(tester), ['About', 'Games', 'Players']);
       // A free event opens on its games, as it always did.
       expect(find.byType(DiscoveryGameList), findsWidgets);
       await _showTab(tester, 'Players');
