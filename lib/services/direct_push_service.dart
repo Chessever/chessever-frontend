@@ -59,10 +59,14 @@ class DirectPushService with WidgetsBindingObserver {
               description: 'ChessEver notifications', importance: Importance.high));
       await FirebaseMessaging.instance.setForegroundNotificationPresentationOptions(alert: true, badge: true, sound: true);
       FirebaseMessaging.onMessage.listen((message) {
-        if (message.data['delivery_id'] is! String) return;
-        unawaited(storeEvent(message.data, 'received').then((_) => flushEvents()));
+        // Inline tester pushes intentionally have no persisted delivery ID.
+        if (message.data['delivery_id'] is String) {
+          unawaited(storeEvent(message.data, 'received').then((_) => flushEvents()));
+        }
         if (defaultTargetPlatform == TargetPlatform.android && message.notification != null) {
-          unawaited(_local.show(message.data['delivery_id'].hashCode & 0x7fffffff,
+          final notificationId = message.messageId ?? message.data['delivery_id'] as String? ??
+              DateTime.now().microsecondsSinceEpoch.toString();
+          unawaited(_local.show(notificationId.hashCode & 0x7fffffff,
             message.notification!.title, message.notification!.body,
             const NotificationDetails(android: AndroidNotificationDetails('chessever_direct','ChessEver alerts',
               importance: Importance.high, priority: Priority.high)), payload: jsonEncode(message.data)));
@@ -185,8 +189,9 @@ class DirectPushService with WidgetsBindingObserver {
     await storeEvent(data,'opened'); await flushEvents();
   }
   void _open(Map<String,dynamic> data) {
-    if (data['delivery_id'] is! String) return;
-    unawaited(storeEvent(data,'opened').then((_) => flushEvents()));
+    if (data['delivery_id'] is String) {
+      unawaited(storeEvent(data,'opened').then((_) => flushEvents()));
+    }
     DeepLinkService.instance.ingestNotificationData(data);
   }
   Future<void> flushEvents() async {

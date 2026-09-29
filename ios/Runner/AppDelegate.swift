@@ -25,6 +25,28 @@ import OneSignalFramework
     return super.application(application, didFinishLaunchingWithOptions: launchOptions)
   }
 
+  override func userNotificationCenter(
+    _ center: UNUserNotificationCenter,
+    willPresent notification: UNNotification,
+    withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
+  ) {
+    // Firebase forwards presentation to our existing Flutter delegate. Preserve
+    // plugin handling, then explicitly enable banners for remote FCM messages.
+    let isFirebasePush = notification.request.trigger is UNPushNotificationTrigger
+      && notification.request.content.userInfo["gcm.message_id"] != nil
+    super.userNotificationCenter(center, willPresent: notification) { options in
+      guard isFirebasePush else {
+        completionHandler(options)
+        return
+      }
+      if #available(iOS 14.0, *) {
+        completionHandler(options.union([.banner, .list, .sound, .badge]))
+      } else {
+        completionHandler(options.union([.alert, .sound, .badge]))
+      }
+    }
+  }
+
   override func application(
     _ application: UIApplication,
     continue userActivity: NSUserActivity,
