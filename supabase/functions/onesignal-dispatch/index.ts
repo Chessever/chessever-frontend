@@ -1,3 +1,4 @@
+import { handoffNotification } from "./notification_handoff.ts";
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import { collectFavoriteMatches } from "./favorite_match.ts";
@@ -258,6 +259,21 @@ async function processClaimedItems(items: OutboxItem[]) {
 }
 
 async function processItem(item: OutboxItem) {
+  // Keep targeting and outbox semantics intact; switch only the transport.
+  // Once handed off, an outbox "sent" row means durably accepted by our service.
+  const sendOneSignal = async (userIds: string[], notification: NotificationPayload) => {
+    const enabled = Deno.env.get("NOTIFICATION_SERVICE_ENABLED") === "true";
+    const internal = new Set((Deno.env.get("NOTIFICATION_SERVICE_INTERNAL_USER_IDS") ?? "").split(",").map(id => id.trim()).filter(Boolean));
+    const live = Deno.env.get("NOTIFICATION_SERVICE_MODE") === "live";
+    const migrated = enabled ? userIds.filter(id => live || internal.has(id)) : [];
+    const legacy = userIds.filter(id => !migrated.includes(id));
+    if (migrated.length) {
+      await handoffNotification(Deno.env.get("NOTIFICATION_SERVICE_URL") ?? "",
+        Deno.env.get("NOTIFICATION_SERVICE_SECRET") ?? "", item.id, migrated, notification);
+    }
+    if (legacy.length) await sendLegacyOneSignal(legacy, notification);
+  };
+
   // Skip stale items to prevent sending outdated notifications
   const createdAt = new Date(item.created_at);
   if (Date.now() - createdAt.getTime() > STALE_THRESHOLD_MS) {
@@ -2571,7 +2587,7 @@ async function sendOneSignalPayload(
   return null;
 }
 
-async function sendOneSignal(
+async function sendLegacyOneSignal(
   userIds: string[],
   notification: NotificationPayload,
 ) {

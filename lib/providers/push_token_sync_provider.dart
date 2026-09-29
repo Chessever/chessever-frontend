@@ -1,3 +1,4 @@
+import '../services/direct_push_service.dart';
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
@@ -157,6 +158,7 @@ class PushTokenSyncController {
         'opted_in': optedIn,
         'last_seen_at': DateTime.now().toUtc().toIso8601String(),
       }, onConflict: 'provider,subscription_id');
+      await DirectPushService.instance.mirrorReady(subscriptionId, optedIn);
       _retryState.recordSuccess(signature);
       _retryTimer?.cancel();
       _retryTimer = null;
