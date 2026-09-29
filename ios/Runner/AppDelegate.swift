@@ -79,21 +79,25 @@ import OneSignalFramework
     willPresent notification: UNNotification,
     withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
   ) {
-    // Firebase forwards presentation to our existing Flutter delegate. Preserve
-    // plugin handling, then explicitly enable banners for remote FCM messages.
     let isFirebasePush = notification.request.trigger is UNPushNotificationTrigger
       && notification.request.content.userInfo["gcm.message_id"] != nil
-    super.userNotificationCenter(center, willPresent: notification) { options in
-      guard isFirebasePush else {
-        completionHandler(options)
-        return
-      }
-      if #available(iOS 14.0, *) {
-        completionHandler(options.union([.banner, .list, .sound, .badge]))
-      } else {
-        completionHandler(options.union([.alert, .sound, .badge]))
-      }
+    guard isFirebasePush else {
+      super.userNotificationCenter(center, willPresent: notification,
+                                   withCompletionHandler: completionHandler)
+      return
     }
+
+    // Own the system completion for FCM. Flutter fans this callback out to
+    // plugins, which can call it zero or multiple times; banner presentation
+    // must not depend on a plugin replying (especially with an implicit engine).
+    // Keep forwarding for Firebase's onMessage/receipt handling, but do not let
+    // plugin callbacks complete the system request a second time.
+    if #available(iOS 14.0, *) {
+      completionHandler([.banner, .list, .sound, .badge])
+    } else {
+      completionHandler([.alert, .sound, .badge])
+    }
+    super.userNotificationCenter(center, willPresent: notification) { _ in }
   }
 
   override func application(
