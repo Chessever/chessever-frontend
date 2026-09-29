@@ -81,65 +81,13 @@ class RoundHeader extends ConsumerWidget {
     ];
   }
 
-  Widget _buildHeader(BuildContext context, String displayName) {
-    return InkWell(
-      onTap: onToggle,
-      borderRadius: BorderRadius.circular(12.br),
-      child: Container(
-        padding: EdgeInsets.symmetric(horizontal: 16.sp, vertical: 14.sp),
-        decoration: BoxDecoration(
-          color: context.colors.surfaceRecessed,
-          borderRadius: BorderRadius.circular(12.br),
-          border: Border.all(color: context.colors.textPrimary.withValues(alpha: 0.1)),
-          boxShadow: [
-            BoxShadow(
-              color: context.isLightTheme
-                  ? context.colors.shadow
-                  : Colors.black.withValues(alpha: 0.1),
-              blurRadius: 4,
-              offset: const Offset(0, 2),
-            ),
-          ],
-        ),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: [
-            Container(
-              width: 4.w,
-              height: 20.h,
-              decoration: BoxDecoration(
-                color: context.colors.accentText,
-                borderRadius: BorderRadius.circular(2),
-              ),
-            ),
-            SizedBox(width: 12.w),
-            Expanded(
-              child: Text(
-                '$displayName · ${round.formattedRoundDateTime}',
-                style: TextStyle(
-                  color: context.colors.textPrimary,
-                  fontSize: 16.sp,
-                  fontWeight: FontWeight.w600,
-                ),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
-            ),
-            if (onToggle != null) ...[
-              SizedBox(width: 12.w),
-              Icon(
-                isExpanded
-                    ? Icons.keyboard_arrow_up_rounded
-                    : Icons.keyboard_arrow_down_rounded,
-                color: context.textInk(0.5),
-                size: 20.sp,
-              ),
-            ],
-          ],
-        ),
-      ),
-    );
-  }
+  Widget _buildHeader(BuildContext context, String displayName) =>
+      TournamentRoundHeader(
+        title: displayName,
+        subtitle: round.formattedRoundDateTime,
+        isExpanded: isExpanded,
+        onToggle: onToggle,
+      );
 
   String _formatRoundName(GamesAppBarModel round, List<GamesTourModel> games) {
     final name = round.name;
@@ -173,5 +121,101 @@ class RoundHeader extends ConsumerWidget {
 
     // Default: return the original name
     return name;
+  }
+}
+
+/// Shared round surface. Collection chapters use the same visual component
+/// without subscribing to a live event or offering an unrelated round pin.
+class TournamentRoundHeader extends StatelessWidget {
+  const TournamentRoundHeader({
+    super.key,
+    required this.title,
+    this.subtitle,
+    this.isExpanded = true,
+    this.onToggle,
+  });
+  final String title;
+  final String? subtitle;
+  final bool isExpanded;
+  final VoidCallback? onToggle;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onToggle,
+      borderRadius: BorderRadius.circular(12.br),
+      child: Container(
+        padding: EdgeInsets.symmetric(horizontal: 16.sp, vertical: 14.sp),
+        decoration: BoxDecoration(
+          color: context.colors.surfaceRecessed,
+          borderRadius: BorderRadius.circular(12.br),
+          border: Border.all(
+            color: context.colors.textPrimary.withValues(alpha: 0.1),
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: context.isLightTheme
+                  ? context.colors.shadow
+                  : Colors.black.withValues(alpha: 0.1),
+              blurRadius: 4,
+              offset: const Offset(0, 2),
+            ),
+          ],
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            Container(
+              width: 4.w,
+              height: 20.h,
+              decoration: BoxDecoration(
+                color: context.colors.accentText,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            SizedBox(width: 12.w),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: TextStyle(
+                      color: context.colors.textPrimary,
+                      fontSize: 16.sp,
+                      fontWeight: FontWeight.w600,
+                    ),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  if (subtitle?.isNotEmpty == true) ...[
+                    SizedBox(height: 4.sp),
+                    Text(
+                      subtitle!,
+                      style: TextStyle(
+                        color: context.colors.textSecondary,
+                        fontSize: 12.sp,
+                      ),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
+                ],
+              ),
+            ),
+            if (onToggle != null) ...[
+              SizedBox(width: 12.w),
+              Icon(
+                isExpanded
+                    ? Icons.keyboard_arrow_up_rounded
+                    : Icons.keyboard_arrow_down_rounded,
+                color: context.textInk(0.5),
+                size: 20.sp,
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
   }
 }

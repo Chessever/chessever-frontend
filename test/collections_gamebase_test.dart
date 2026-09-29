@@ -480,7 +480,7 @@ void main() {
         _game('a', sectionId: 'r1', orderIndex: 1),
         _game('u2', sectionId: 'gone'),
       ]);
-      expect(groups.map((g) => g.section?.id), ['r2', 'r1', null]);
+      expect(groups.map((g) => g.section?.id), ['r2', 'r1', 'collection-auto-u1']);
       expect(groups.map((g) => g.games.map((x) => x.id).toList()), [
         ['c'],
         ['a', 'b'],
@@ -504,7 +504,7 @@ void main() {
         'ch1',
         'p2',
         'ch3',
-        null,
+        'collection-auto-u',
       ]);
       expect(groups.map((g) => g.depth), [0, 1, 0, 1, 0]);
       expect(groups[0].games, isEmpty, reason: 'a part only leads');
@@ -512,10 +512,10 @@ void main() {
       expect(groups.expand((g) => g.games).map((g) => g.id), ['g1', 'g3', 'u']);
     });
 
-    test('no sections: one headerless group', () {
+    test('no sections: a fallback round group', () {
       final groups = groupCollectionGames(const [], [_game('a'), _game('b')]);
       expect(groups, hasLength(1));
-      expect(groups.single.section, isNull);
+      expect(groups.single.section?.label, 'Casual');
       expect(groups.single.games.map((g) => g.id), ['a', 'b']);
     });
   });

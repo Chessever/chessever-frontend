@@ -28,6 +28,228 @@ const _pgn = '''[Event "St Louis Summer A"]
 2. Nf3 \$1 Nc6 (2... d6) 3. Bb5 {[%clk 1:28:20]} 0-1''';
 
 void main() {
+  test(
+    'incomplete legacy cards preserve names, ratings and grouping from PGN',
+    () {
+      final card = CollectionGameCard.fromJson({'id': 'legacy', 'pgn': _pgn});
+      final game = CollectionGame.fromCard(card)!;
+      expect(game.game.whitePlayer.name, 'Jumabayev, Rinat');
+      expect(game.game.blackPlayer.name, 'Durarbayli, Vasif');
+      expect(game.game.whitePlayer.rating, 2621);
+      final group = groupCollectionGames([], [game]).single;
+      expect(group.section!.label, 'St Louis Summer A');
+      expect(group.section!.title, 'Round 4.1');
+      expect(group.section!.startsOn, DateTime(2026, 9, 26));
+    },
+  );
+
+  test(
+    'a selected chapter excludes parent and sibling games from board navigation',
+    () {
+      const chapter = CollectionSection(
+        id: 'chapter',
+        parentId: 'part',
+        kind: CollectionSectionKind.chapter,
+        label: 'Chapter 1',
+      );
+      const sibling = CollectionSection(
+        id: 'sibling',
+        parentId: 'part',
+        kind: CollectionSectionKind.chapter,
+        label: 'Chapter 2',
+      );
+      const part = CollectionSection(
+        id: 'part',
+        kind: CollectionSectionKind.part,
+        label: 'Part I',
+        children: [chapter, sibling],
+      );
+      CollectionGame game(String id, String sectionId) =>
+          CollectionGame.fromCard(
+            CollectionGameCard.fromJson({
+              'id': id,
+              'sectionId': sectionId,
+              'pgn': _pgn,
+            }),
+          )!;
+      final groups = groupCollectionGames(
+        [part],
+        [
+          game('intro', 'part'),
+          game('a', 'chapter'),
+          game('b', 'chapter'),
+          game('c', 'sibling'),
+        ],
+      );
+      final picked = selectCollectionGameGroups(groups, 'chapter');
+      expect(picked.map((g) => g.section!.id), ['part', 'chapter']);
+      expect(picked.map((g) => g.offset), [0, 0]);
+      expect(picked.expand((g) => g.games).map((g) => g.id), ['a', 'b']);
+      expect(
+        selectCollectionGameGroups(
+          groups,
+          'part',
+        ).expand((g) => g.games).length,
+        4,
+      );
+      expect(selectCollectionGameGroups(groups, 'all'), groups);
+    },
+  );
+
+  test(
+    'structured card hydration fills catalog links without changing PGN',
+    () {
+      final card = CollectionGameCard(
+        id: 'hydrated',
+        white: const CollectionPlayerSide(
+          name: 'Jumabayev, Rinat',
+          key: 'fide:13702619',
+          fideId: '13702619',
+          title: 'GM',
+          fed: 'KAZ',
+          playerId: 'catalog-player',
+        ),
+        black: const CollectionPlayerSide(
+          name: 'Durarbayli, Vasif',
+          key: 'name:vasif',
+        ),
+        pgn: _pgn
+            .replaceAll('[WhiteFideId "13702619"]', '')
+            .replaceAll('[WhiteTitle "GM"]', '')
+            .replaceAll('[WhiteFederation "KAZ"]', ''),
+      );
+      final game = CollectionGame.fromCard(card)!.game;
+      expect(game.whitePlayer.fideId, 13702619);
+      expect(game.whitePlayer.gamebasePlayerId, 'catalog-player');
+      expect(game.whitePlayer.countryCode, 'KAZ');
+      expect(game.whitePlayer.title, 'GM');
+      expect(game.pgn, card.pgn);
+    },
+  );
+
+  test(
+    'legacy split identities merge once and retain all game-filter keys',
+    () {
+      final rows = deduplicateCollectionPlayers([
+        const CollectionPlayer(
+          key: 'fide:1503014',
+          name: 'Carlsen, Magnus',
+          fideId: '1503014',
+          games: 3,
+          wins: 2,
+        ),
+        const CollectionPlayer(
+          key: 'name:magnus carlsen',
+          name: 'Magnus Carlsen',
+          games: 2,
+          draws: 1,
+        ),
+      ]);
+      expect(rows, hasLength(1));
+      expect(rows.single.games, 5);
+      expect(rows.single.wins, 2);
+      expect(
+        deduplicateCollectionPlayers([
+          const CollectionPlayer(
+            key: 'fide:1',
+            name: 'A Player',
+            fideId: '1',
+            playerId: 'catalog-id',
+            games: 2,
+          ),
+          const CollectionPlayer(
+            key: 'name:a player',
+            name: 'Player, A',
+            playerId: 'catalog-id',
+            games: 1,
+          ),
+        ]).single.games,
+        3,
+      );
+      expect(
+        rows.single.aliasKeys,
+        containsAll(['fide:1503014', 'name:magnus carlsen']),
+      );
+      expect(
+        deduplicateCollectionPlayers([
+          const CollectionPlayer(
+            key: 'fide:1',
+            name: 'Alex Smith',
+            fideId: '1',
+            fed: 'USA',
+          ),
+          const CollectionPlayer(
+            key: 'fide:2',
+            name: 'Smith, Alex',
+            fideId: '2',
+            fed: 'ENG',
+          ),
+          const CollectionPlayer(key: 'name:alex smith', name: 'Alex Smith'),
+        ]),
+        hasLength(3),
+      );
+    },
+  );
+
+  test(
+    'fallback groups separate events and dates while preserving file order',
+    () {
+      CollectionGame entry(String id, String event, DateTime day) =>
+          CollectionGame.fromCard(
+            CollectionGameCard(
+              id: id,
+              event: event,
+              playedOn: day,
+              white: const CollectionPlayerSide(name: 'A', key: 'name:a'),
+              black: const CollectionPlayerSide(name: 'B', key: 'name:b'),
+              pgn: _pgn,
+            ),
+          )!;
+      final groups = groupCollectionGames([], [
+        entry('a', 'Olympiad', DateTime(2024, 9, 12)),
+        entry('b', 'World Cup', DateTime(2024, 9, 12)),
+        entry('c', 'Olympiad', DateTime(2024, 9, 13)),
+        entry('d', 'Olympiad', DateTime(2024, 9, 12)),
+      ]);
+      expect(groups.map((g) => g.games.map((x) => x.id).toList()), [
+        ['a', 'd'],
+        ['b'],
+        ['c'],
+      ]);
+      expect(groups.map((g) => g.offset), [0, 2, 3]);
+      expect(groups.first.section!.label, 'Olympiad');
+    },
+  );
+
+  test(
+    'round timestamps use known instants while date-only imports stay date-only',
+    () {
+      CollectionGame entry(String id, DateTime? instant, {bool date = true}) =>
+          CollectionGame.fromCard(
+            CollectionGameCard(
+              id: id,
+              playedAt: instant,
+              white: const CollectionPlayerSide(name: 'A', key: 'name:a'),
+              black: const CollectionPlayerSide(name: 'B', key: 'name:b'),
+              pgn: date ? _pgn : _pgn.replaceAll('[Date "2026.09.26"]', ''),
+            ),
+          )!;
+      final known = DateTime.utc(2026, 9, 26, 15, 30);
+      final dated = entry('date', null);
+      expect(
+        groupCollectionGames([], [dated]).single.section!.startsAt,
+        isNull,
+      );
+      final groups = groupCollectionGames([], [
+        dated,
+        entry('instant', known, date: false),
+      ]);
+      expect(groups, hasLength(1));
+      expect(groups.single.section!.startsAt, known);
+      expect(groups.single.section!.startsOn, DateTime(2026, 9, 26));
+    },
+  );
+
   test('collection PGN hydrates tournament card data and recorded clocks', () {
     final game = collectionGameModel('book-game', _pgn);
     expect(game.whitePlayer.name, 'Jumabayev, Rinat');

@@ -1,6 +1,5 @@
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_app_bar_view_model.dart';
 import 'package:chessever2/theme/app_colors.dart';
-import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/svg_asset.dart';
@@ -80,7 +79,6 @@ class _TextDropDownWidgetState extends State<TextDropDownWidget> {
     }
 
     return Container(
-      height: 42.h,
       decoration: BoxDecoration(
         border:
             isLast
@@ -89,7 +87,7 @@ class _TextDropDownWidgetState extends State<TextDropDownWidget> {
                   bottom: BorderSide(color: context.colors.divider, width: 0.5.h),
                 ),
       ),
-      constraints: BoxConstraints(maxHeight: 42.h),
+      constraints: BoxConstraints(minHeight: 44.h),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
         mainAxisAlignment: MainAxisAlignment.center,
@@ -121,6 +119,7 @@ class _TextDropDownWidgetState extends State<TextDropDownWidget> {
         hasValidSelection ? _selectedId : widget.items.first['key'];
 
     return DropdownButton<String>(
+      itemHeight: null,
       value: currentValue,
       onChanged: (newValue) {
         if (newValue != null) {

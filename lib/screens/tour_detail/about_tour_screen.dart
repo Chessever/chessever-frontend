@@ -238,19 +238,19 @@ class _AboutTourScreenState extends ConsumerState<AboutTourScreen>
                           ),
                         ),
                         SizedBox(height: 12.h),
-                        _TitleDescWidget(
+                        TournamentAboutField(
                           title: 'Players',
                           description: ratedPlayers
                               .map((e) => e.displayName)
                               .join(', '),
                         ),
                         SizedBox(height: 12),
-                        _TitleDescWidget(
+                        TournamentAboutField(
                           title: 'Time Control',
                           description: aboutModel.timeControl,
                         ),
                         SizedBox(height: 12.h),
-                        _TitleDescWidget(
+                        TournamentAboutField(
                           title: 'Date',
                           description: aboutModel.date,
                         ),
@@ -449,8 +449,9 @@ class _AboutTourScreenState extends ConsumerState<AboutTourScreen>
   }
 }
 
-class _TitleDescWidget extends StatelessWidget {
-  const _TitleDescWidget({
+class TournamentAboutField extends StatelessWidget {
+  const TournamentAboutField({
+    super.key,
     required this.title,
     required this.description,
   });

@@ -634,6 +634,7 @@ class CollectionSection {
     this.intro,
     this.sourceTag,
     this.startsOn,
+    this.startsAt,
     this.orderIndex = 0,
     this.gameCount = 0,
     this.children = const [],
@@ -658,6 +659,7 @@ class CollectionSection {
 
   /// A round's date.
   final DateTime? startsOn;
+  final DateTime? startsAt;
   final int orderIndex;
 
   /// Games directly in this section (not in its children).
@@ -682,6 +684,7 @@ class CollectionSection {
       intro: _nullableString(json['intro']),
       sourceTag: _nullableString(json['sourceTag']),
       startsOn: _day(json['startsOn']),
+      startsAt: _timestamp(json['startsAt']),
       orderIndex: _int(json['orderIndex']),
       gameCount: _int(json['gameCount']),
       children: _sortedSections(children),
@@ -747,6 +750,7 @@ class CollectionGameCard {
     this.roundTag,
     this.board,
     this.playedOn,
+    this.playedAt,
     this.event,
     this.site,
     this.eco,
@@ -780,6 +784,7 @@ class CollectionGameCard {
   final String? roundTag;
   final int? board;
   final DateTime? playedOn;
+  final DateTime? playedAt;
   final String? event;
   final String? site;
   final String? eco;
@@ -825,6 +830,7 @@ class CollectionGameCard {
       roundTag: _nullableString(json['roundTag']),
       board: _nullableInt(json['board']),
       playedOn: _day(json['playedOn']),
+      playedAt: _timestamp(json['playedAt']),
       event: _nullableString(json['event']),
       site: _nullableString(json['site']),
       eco: _nullableString(json['eco']),
@@ -862,6 +868,7 @@ class CollectionPlayer {
     this.wins = 0,
     this.draws = 0,
     this.losses = 0,
+    this.aliasKeys = const [],
   });
 
   /// `fide:<id>` or `name:<lower>`; matches [CollectionPlayerSide.key].
@@ -876,6 +883,9 @@ class CollectionPlayer {
   final int wins;
   final int draws;
   final int losses;
+
+  /// Keys used by older imported cards before canonical identity hydration.
+  final List<String> aliasKeys;
 
   factory CollectionPlayer.fromJson(Map<String, dynamic> json) {
     final name = _string(json['name']);
@@ -900,12 +910,100 @@ class CollectionPlayer {
   /// The `{items}` payload of `GET /api/collections/:slug/players`.
   static List<CollectionPlayer> listFromJson(Object? data) {
     final items = data is Map ? data['items'] : data;
-    return [
+    return deduplicateCollectionPlayers([
       for (final item in _maps(items))
         if (_nullableString(item['name']) != null)
           CollectionPlayer.fromJson(item),
-    ];
+    ]);
   }
+}
+
+/// Tolerate older servers' split name/FIDE rows while preserving namesakes.
+/// Only a unique identity in the same normalized-name group can absorb a
+/// missing-id row; filters retain every original card key.
+List<CollectionPlayer> deduplicateCollectionPlayers(
+  List<CollectionPlayer> players,
+) {
+  String nameKey(String name) {
+    final words =
+        name
+            .toLowerCase()
+            .replaceAll(RegExp(r"[,.'’\-]+"), ' ')
+            .trim()
+            .split(RegExp(r'\s+'))
+          ..sort();
+    return words.join(' ');
+  }
+
+  final fideByPlayer = <String, Set<String>>{};
+  for (final player in players) {
+    if (player.playerId != null && player.fideId != null) {
+      (fideByPlayer[player.playerId!] ??= {}).add(player.fideId!);
+    }
+  }
+  String? identity(CollectionPlayer player) {
+    final linkedIds = fideByPlayer[player.playerId];
+    final fide =
+        player.fideId ?? (linkedIds?.length == 1 ? linkedIds!.single : null);
+    if (fide != null) return 'fide:$fide';
+    return player.playerId == null ? null : 'player:${player.playerId}';
+  }
+
+  final names = <String, ({Set<String> ids, Set<String> feds})>{};
+  for (final player in players) {
+    final evidence = names.putIfAbsent(
+      nameKey(player.name),
+      () => (ids: {}, feds: {}),
+    );
+    final id = identity(player);
+    if (id != null) evidence.ids.add(id);
+    if (player.fed != null) evidence.feds.add(player.fed!.trim().toUpperCase());
+  }
+  final grouped = <String, List<CollectionPlayer>>{};
+  for (final player in players) {
+    final name = nameKey(player.name);
+    final ids = names[name]!.ids;
+    final feds = names[name]!.feds;
+    final id =
+        identity(player) ??
+        (ids.length == 1 && feds.length <= 1 ? ids.single : null);
+    final key =
+        id ??
+        'name:$name${feds.length > 1 ? ':fed:${player.fed?.trim().toUpperCase() ?? 'unknown'}' : ''}';
+    (grouped[key] ??= []).add(player);
+  }
+  return [
+    for (final group in grouped.values)
+      () {
+        final canonical =
+            group.where((p) => p.fideId != null).firstOrNull ?? group.first;
+        final ratings = group.map((p) => p.bestElo).whereType<int>().toList()
+          ..sort();
+        return CollectionPlayer(
+          key: canonical.key,
+          name: canonical.name,
+          title:
+              canonical.title ??
+              group.map((p) => p.title).whereType<String>().firstOrNull,
+          fed:
+              canonical.fed ??
+              group.map((p) => p.fed).whereType<String>().firstOrNull,
+          fideId: canonical.fideId,
+          playerId:
+              canonical.playerId ??
+              group.map((p) => p.playerId).whereType<String>().firstOrNull,
+          bestElo: ratings.lastOrNull,
+          games: group.fold(0, (n, p) => n + p.games),
+          wins: group.fold(0, (n, p) => n + p.wins),
+          draws: group.fold(0, (n, p) => n + p.draws),
+          losses: group.fold(0, (n, p) => n + p.losses),
+          aliasKeys: {
+            for (final p in group) p.key,
+            for (final p in group) ...p.aliasKeys,
+          }.toList(),
+        );
+      }(),
+  ];
 }
 
 /// A searchable ECO opening represented in published books. Counts come from

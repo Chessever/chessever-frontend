@@ -36,6 +36,11 @@ import 'package:chessever2/screens/my_space/widgets/space_database.dart'
     show spacePlateArtBox;
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_list_view_mode_provider.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/widgets/round_header_widget.dart';
+import 'package:chessever2/screens/tour_detail/widget/text_dropdown_widget.dart';
+import 'package:chessever2/screens/tour_detail/about_tour_screen.dart';
+import 'package:chessever2/screens/standings/player_standing_model.dart';
+import 'package:chessever2/widgets/figma_player_card.dart';
 import 'package:chessever2/utils/svg_asset.dart';
 import 'package:chessever2/widgets/svg_widget.dart';
 import 'package:chessever2/theme/app_colors.dart';
@@ -43,15 +48,10 @@ import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/user_error_message.dart';
-import 'package:chessever2/widgets/app_button.dart' show TappableScale;
 import 'package:chessever2/screens/group_event/widget/appbar_icons_widget.dart';
 import 'package:chessever2/screens/library/widgets/library_context_menu.dart'
     show LibraryMenuAction, showLibraryContextMenu;
 import 'package:chessever2/screens/my_space/actions/space_menu_action.dart';
-import 'package:chessever2/screens/favorites/tabs/favorites_players_tab.dart'
-    show playerPhotoProvider;
-import 'package:chessever2/screens/my_space/widgets/space_avatar.dart'
-    show SpacePlayerAvatar;
 import 'package:chessever2/screens/player_profile/utils/player_menu_actions.dart'
     show playerMenuActions;
 import 'package:chessever2/services/analytics/analytics_service.dart';
@@ -259,8 +259,7 @@ List<Collection> _filteredCollections(
         !(c.author ?? c.annotator ?? '').toLowerCase().contains(author)) {
       return false;
     }
-    final year =
-        c.publishedYear ?? c.dateStart?.year ?? c.dateEnd?.year;
+    final year = c.publishedYear ?? c.dateStart?.year ?? c.dateEnd?.year;
     if (query.year != null && year != query.year) return false;
     if (query.minYear != null && (year ?? 1 << 30) < query.minYear!) {
       return false;
@@ -276,7 +275,10 @@ List<Collection> _filteredCollections(
     return true;
   }
 
-  return [for (final c in items) if (matches(c)) c];
+  return [
+    for (final c in items)
+      if (matches(c)) c,
+  ];
 }
 
 /// The favorites identity of a collection. A starred collection is a plain
@@ -284,10 +286,7 @@ List<Collection> _filteredCollections(
 /// same way; `metadata.kind` tells it apart when it opens.
 String collectionFavoriteId(Collection c) => 'collection:${c.slug}';
 
-bool collectionIsFavorited(
-  Iterable<FavoriteEvent> favorites,
-  Collection c,
-) {
+bool collectionIsFavorited(Iterable<FavoriteEvent> favorites, Collection c) {
   final id = collectionFavoriteId(c);
   return favorites.any(
     (e) =>
@@ -478,11 +477,13 @@ class _CollectionStar extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final favorites = ref.watch(favoriteEventsProvider).valueOrNull;
-    final starred = favorites != null &&
-        collectionIsFavorited(favorites, collection);
+    final starred =
+        favorites != null && collectionIsFavorited(favorites, collection);
     return Semantics(
       button: true,
-      label: starred ? 'Unstar ${collection.title}' : 'Star ${collection.title}',
+      label: starred
+          ? 'Unstar ${collection.title}'
+          : 'Star ${collection.title}',
       child: InkWell(
         onTap: () => toggleCollectionFavorite(
           context: context,
@@ -941,8 +942,7 @@ class _CollectionScreenState extends ConsumerState<CollectionScreen> {
     final c = detail.valueOrNull ?? widget.collection;
     final subscription = ref.watch(subscriptionProvider);
     final starred = collectionIsFavorited(
-      ref.watch(favoriteEventsProvider).valueOrNull ??
-          const <FavoriteEvent>[],
+      ref.watch(favoriteEventsProvider).valueOrNull ?? const <FavoriteEvent>[],
       c,
     );
     final locked = isCollectionLocked(
@@ -1020,6 +1020,18 @@ class _CollectionScreenState extends ConsumerState<CollectionScreen> {
       initialTab: _initialTab,
       controller: _tabs,
       actions: [
+        Semantics(
+          value: switch (_gamesViewMode) {
+            GamesListViewMode.gamesCard => 'List view',
+            GamesListViewMode.chessBoardGrid => 'Board grid view',
+            GamesListViewMode.chessBoard => 'Board view',
+          },
+          child: IconButton(
+            tooltip: 'Change games view',
+            onPressed: _toggleGamesView,
+            icon: SvgWidget(SvgAsset.chase_grid, height: 24.ic, width: 24.ic),
+          ),
+        ),
         Builder(
           builder: (menuContext) => AppBarIcons(
             image: SvgAsset.threeDots,
@@ -1095,7 +1107,6 @@ class _CollectionScreenState extends ConsumerState<CollectionScreen> {
                       onClearPlayer: () => _showPlayer(null),
                       onOpen: _openGame,
                       viewMode: _gamesViewMode,
-                      onToggleView: _toggleGamesView,
                       opening: _opening,
                       onClearOpening: () => setState(() => _opening = null),
                     ),
@@ -1137,38 +1148,34 @@ class _CollectionScreenState extends ConsumerState<CollectionScreen> {
                             },
                           ),
                   ),
-          _ => players == null
-              ? _LockedPlayers(
-                  collection: c,
-                  phase: phase,
-                  onUnlock: () => _unlock(c),
-                )
-              : players.when(
-                  skipLoadingOnReload: isCollectionPremiumGate(
-                    players.error,
-                  ),
-                  data: (list) => _PlayersPage(
-                    players: list,
-                    onPick: _showPlayer,
-                  ),
-                  loading: () => const _CardsSkeleton(),
-                  error: (error, _) => isCollectionPremiumGate(error)
-                      ? _LockedPlayers(
-                          collection: c,
-                          phase: phase,
-                          onUnlock: () => _unlock(c),
-                        )
-                      : _Notice(
-                          text: _collectionErrorText(
-                            error,
-                            fallback: "Couldn't load the players.",
+          _ =>
+            players == null
+                ? _LockedPlayers(
+                    collection: c,
+                    phase: phase,
+                    onUnlock: () => _unlock(c),
+                  )
+                : players.when(
+                    skipLoadingOnReload: isCollectionPremiumGate(players.error),
+                    data: (list) =>
+                        _PlayersPage(players: list, onPick: _showPlayer),
+                    loading: () => const _CardsSkeleton(),
+                    error: (error, _) => isCollectionPremiumGate(error)
+                        ? _LockedPlayers(
+                            collection: c,
+                            phase: phase,
+                            onUnlock: () => _unlock(c),
+                          )
+                        : _Notice(
+                            text: _collectionErrorText(
+                              error,
+                              fallback: "Couldn't load the players.",
+                            ),
+                            actionLabel: 'Try again',
+                            onAction: () =>
+                                ref.invalidate(collectionPlayersProvider(slug)),
                           ),
-                          actionLabel: 'Try again',
-                          onAction: () => ref.invalidate(
-                            collectionPlayersProvider(slug),
-                          ),
-                        ),
-                ),
+                  ),
         };
       },
     );
@@ -1544,11 +1551,14 @@ class _AboutPage extends ConsumerWidget {
         ],
         if (edition.isNotEmpty) ...[
           SizedBox(height: 4.sp),
-          Text(edition.join(' · '), style: secondary),
+          TournamentAboutField(
+            title: isBook ? 'Edition' : 'Event',
+            description: edition.join(' · '),
+          ),
         ],
         if (facts.isNotEmpty) ...[
           SizedBox(height: 4.sp),
-          Text(facts, style: secondary),
+          TournamentAboutField(title: 'Contents', description: facts),
         ],
         if (locked) ...[
           SizedBox(height: 4.sp),
@@ -2199,75 +2209,94 @@ List<String> _paragraphs(String? text) => [
     if (p.trim().isNotEmpty) p.trim(),
 ];
 
-class _GamesPage extends StatelessWidget {
+class _GamesPage extends StatefulWidget {
   const _GamesPage({
     required this.contents,
     required this.player,
     required this.onClearPlayer,
     required this.onOpen,
     required this.viewMode,
-    required this.onToggleView,
     this.opening,
     this.onClearOpening,
   });
-
   final CollectionContents contents;
   final CollectionPlayer? player;
   final VoidCallback onClearPlayer;
   final void Function(List<GamesTourModel> games, int index) onOpen;
   final GamesListViewMode viewMode;
-  final VoidCallback onToggleView;
   final CollectionOpening? opening;
   final VoidCallback? onClearOpening;
 
-  /// By key only: cards and player rows share it (`fide:<id>` or
-  /// `name:<lower>`), and the Players tab counts games the same way. A name
-  /// match across different keys is a namesake, not the same player.
-  static bool _plays(CollectionGame g, CollectionPlayer p) =>
-      g.card.involves(p.key);
+  @override
+  State<_GamesPage> createState() => _GamesPageState();
+}
+
+class _GamesPageState extends State<_GamesPage>
+    with AutomaticKeepAliveClientMixin {
+  final Set<String> _collapsed = {};
+  String _selected = 'all';
+  @override
+  bool get wantKeepAlive => true;
 
   @override
   Widget build(BuildContext context) {
+    super.build(context);
+    final contents = widget.contents;
+    final picked = widget.player;
+    final opening = widget.opening;
+    final viewMode = widget.viewMode;
     if (contents.games.isEmpty) {
       return _Notice(
         text: opening == null
             ? 'No games in this collection yet.'
-            : 'No games study ${opening!.eco} in this book yet.',
+            : 'No games study ${opening.eco} in this book yet.',
         actionLabel: opening == null ? null : 'All games',
-        onAction: onClearOpening,
+        onAction: widget.onClearOpening,
       );
     }
-    final picked = player;
     final groups = groupCollectionGames(contents.sections, [
       for (final g in contents.games)
-        if (picked == null || _plays(g, picked)) g,
+        if (picked == null ||
+            g.card.involves(picked.key) ||
+            picked.aliasKeys.any(g.card.involves))
+          g,
     ]);
-    // The order the board steps through: exactly the order drawn.
+    final selected = groups.any((g) => g.section?.id == _selected)
+        ? _selected
+        : 'all';
+    final selectedGroups = selectCollectionGameGroups(groups, selected);
+    final allCount = groups.fold(0, (n, g) => n + g.games.length);
     final ordered = [
-      for (final group in groups)
+      for (final group in selectedGroups)
         for (final g in group.games) g.game,
     ];
-    // A collection with no sections lists its games with no headers at all.
-    final headed = groups.any((g) => g.section != null);
     final lead = 1 + (picked == null ? 0 : 1) + (opening == null ? 0 : 1);
-    final groupGames = [
-      for (final group in groups) [for (final g in group.games) g.game],
-    ];
     final perRow = viewMode == GamesListViewMode.chessBoardGrid ? 2 : 1;
-    // Each scroll item mounts only a row, like the tournament Games list.
-    // A chapter can contain thousands of games; do not mount them all in
-    // one Column just because its header has entered the viewport.
-    final rows = <({int group, int? start})>[
-      for (var g = 0; g < groups.length; g++) ...[
-        if (headed || _paragraphs(groups[g].section?.intro).isNotEmpty)
-          (group: g, start: null),
-        for (var start = 0; start < groupGames[g].length; start += perRow)
-          (group: g, start: start),
-      ],
-    ];
+    final rows = <({int group, int? start})>[];
+    final hiddenParents = <String>{};
+    for (var index = 0; index < selectedGroups.length; index++) {
+      final group = selectedGroups[index];
+      final section = group.section;
+      if (section?.parentId != null &&
+          hiddenParents.contains(section!.parentId)) {
+        hiddenParents.add(section.id);
+        continue;
+      }
+      rows.add((group: index, start: null));
+      if (_collapsed.contains(section?.id)) {
+        if (section?.kind == CollectionSectionKind.part) {
+          hiddenParents.add(section!.id);
+        }
+        continue;
+      }
+      for (var start = 0; start < group.games.length; start += perRow) {
+        rows.add((group: index, start: start));
+      }
+    }
     return ListView.builder(
+      key: const PageStorageKey('collection_games'),
       padding: EdgeInsets.only(
-        top: 16.sp,
+        top: 12.sp,
         bottom: 24.sp + MediaQuery.viewPaddingOf(context).bottom,
       ),
       itemCount: lead + (groups.isEmpty ? 1 : rows.length),
@@ -2275,72 +2304,91 @@ class _GamesPage extends StatelessWidget {
         if (i == 0) {
           return Padding(
             padding: EdgeInsets.fromLTRB(_headerInset, 0, _headerInset, 8.sp),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    _plural(ordered.length, 'game'),
-                    style: AppTypography.textSmMedium.copyWith(
-                      color: context.colors.textSecondary,
-                    ),
-                  ),
-                ),
-                Semantics(
-                  value: switch (viewMode) {
-                    GamesListViewMode.gamesCard => 'List view',
-                    GamesListViewMode.chessBoardGrid => 'Board grid view',
-                    GamesListViewMode.chessBoard => 'Board view',
+            child: Semantics(
+              label: 'Select chapter or round',
+              child: TextDropDownWidget(
+                selectedId: selected,
+                items: [
+                  {
+                    'key': 'all',
+                    'value': 'All games ($allCount)',
+                    'status': 'completed',
                   },
-                  child: IconButton(
-                    tooltip: 'Change games view',
-                    onPressed: onToggleView,
-                    icon: SvgWidget(
-                      SvgAsset.chase_grid,
-                      height: 24.ic,
-                      width: 24.ic,
-                    ),
-                  ),
-                ),
-              ],
+                  for (final group in groups)
+                    if (group.section != null)
+                      {
+                        'key': group.section!.id,
+                        'value': collectionGroupTitle(group.section!),
+                        'status': 'completed',
+                      },
+                ],
+                onChanged: (id) => setState(() {
+                  _selected = id;
+                  _collapsed.remove(id);
+                  final parent = groups
+                      .where((g) => g.section?.id == id)
+                      .firstOrNull
+                      ?.section
+                      ?.parentId;
+                  if (parent != null) _collapsed.remove(parent);
+                }),
+              ),
             ),
           );
         }
         if (opening != null && i == 1) {
           return _PlayerLine(
-            name: '${opening!.eco} · ${opening!.name ?? 'Opening'}',
+            name: '${opening.eco} · ${opening.name ?? 'Opening'}',
             isOpening: true,
-            onClear: onClearOpening!,
+            onClear: widget.onClearOpening!,
           );
         }
         if (picked != null && i == (opening == null ? 1 : 2)) {
-          return _PlayerLine(name: picked.name, onClear: onClearPlayer);
+          return _PlayerLine(name: picked.name, onClear: widget.onClearPlayer);
         }
         if (groups.isEmpty) {
-          // Inline, not a _Notice: that one is a scrollable of its own.
           return Padding(
-            padding: EdgeInsets.fromLTRB(20.sp, 24.sp, 20.sp, 0),
-            child: Text(
-              'No games of this player here.',
-              textAlign: TextAlign.center,
-              style: AppTypography.textSmRegular.copyWith(
-                color: context.colors.textSecondary,
-              ),
-            ),
+            padding: EdgeInsets.all(24.sp),
+            child: const Text('No games of this player here.'),
           );
         }
         final row = rows[i - lead];
-        final group = groups[row.group];
+        final group = selectedGroups[row.group];
         final start = row.start;
         if (start == null) {
-          final intro = _paragraphs(group.section?.intro);
-          return Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              if (headed)
-                _SectionHeader(section: group.section, first: row.group == 0),
-              if (intro.isNotEmpty) _SectionIntro(paragraphs: intro),
-            ],
+          final section = group.section;
+          final expanded = !_collapsed.contains(section?.id);
+          return Padding(
+            padding: EdgeInsets.fromLTRB(
+              16.sp,
+              row.group == 0 ? 0 : 12.sp,
+              16.sp,
+              12.sp,
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                TournamentRoundHeader(
+                  key: ValueKey('collection_round_${section?.id}'),
+                  title: section == null
+                      ? 'Other games'
+                      : collectionGroupTitle(section),
+                  subtitle: section?.startsAt != null
+                      ? '${DateFormat('d MMM yyyy, HH:mm').format(section!.startsAt!.toUtc())} UTC'
+                      : section?.startsOn == null
+                      ? null
+                      : DateFormat('d MMM yyyy').format(section!.startsOn!),
+                  isExpanded: expanded,
+                  onToggle: () => setState(() {
+                    if (!_collapsed.add(section?.id ?? 'unsorted')) {
+                      _collapsed.remove(section?.id ?? 'unsorted');
+                    }
+                  }),
+                ),
+                if (expanded && _paragraphs(section?.intro).isNotEmpty)
+                  _SectionIntro(paragraphs: _paragraphs(section?.intro)),
+              ],
+            ),
           );
         }
         return Padding(
@@ -2348,17 +2396,24 @@ class _GamesPage extends StatelessWidget {
             bottom: start + perRow < group.games.length ? 12.sp : 4.sp,
           ),
           child: DiscoveryGameList(
-            games: groupGames[row.group],
+            games: [for (final g in group.games) g.game],
             start: start,
             limit: perRow,
             viewMode: viewMode,
             streamEnabled: false,
-            onOpen: (_, local) => onOpen(ordered, group.offset + local),
+            onOpen: (_, local) => widget.onOpen(ordered, group.offset + local),
           ),
         );
       },
     );
   }
+}
+
+String collectionGroupTitle(CollectionSection section) {
+  final title = section.title?.trim();
+  return title == null || title.isEmpty || title == section.label
+      ? section.label
+      : '${section.label}: $title';
 }
 
 /// The picked player's name over their games, and the way back to all.
@@ -2400,101 +2455,6 @@ class _PlayerLine extends StatelessWidget {
             ),
           ),
         ],
-      ),
-    );
-  }
-}
-
-/// The header over a run of games: a round and its date, a book's part, a
-/// chapter's number and title, or "Other games" for those in no section.
-class _SectionHeader extends StatelessWidget {
-  const _SectionHeader({required this.section, required this.first});
-
-  /// Null for the games in no section.
-  final CollectionSection? section;
-
-  /// The first header sits right under the list's own top padding.
-  final bool first;
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = context.colors;
-    final s = section;
-    final isPart = s?.kind == CollectionSectionKind.part;
-    final main = isPart
-        ? AppTypography.textSmMedium.copyWith(
-            color: colors.textPrimary,
-            fontSize: 17.f,
-            height: 22 / 17,
-            fontWeight: FontWeight.w700,
-          )
-        : AppTypography.textSmMedium.copyWith(
-            color: colors.textPrimary,
-            fontWeight: FontWeight.w600,
-          );
-    final muted = main.copyWith(
-      color: colors.textSecondary,
-      fontFeatures: const [FontFeature.tabularFigures()],
-    );
-
-    String? lead;
-    var title = 'Other games';
-    String? date;
-    if (s != null) {
-      final named = s.title != null && s.title != s.label;
-      switch (s.kind) {
-        case CollectionSectionKind.part:
-          lead = named ? s.label : null;
-          title = named ? s.title! : s.label;
-        case CollectionSectionKind.chapter:
-          lead = named ? s.number ?? s.label : null;
-          title = named ? s.title! : s.label;
-        case CollectionSectionKind.round:
-        case CollectionSectionKind.stage:
-        case CollectionSectionKind.other:
-          title = named ? '${s.label} · ${s.title}' : s.label;
-          final day = s.startsOn;
-          date = day == null ? null : DateFormat('MMM d, yyyy').format(day);
-      }
-      if (title.isEmpty) title = s.number ?? 'Games';
-    }
-
-    return Semantics(
-      header: true,
-      child: Padding(
-        padding: EdgeInsets.fromLTRB(
-          _headerInset,
-          first ? 0 : (isPart ? 28.sp : 20.sp),
-          _headerInset,
-          10.sp,
-        ),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.baseline,
-          textBaseline: TextBaseline.alphabetic,
-          children: [
-            Expanded(
-              child: Text.rich(
-                TextSpan(
-                  children: [
-                    if (lead != null) TextSpan(text: '$lead  ', style: muted),
-                    TextSpan(text: title),
-                  ],
-                ),
-                style: main,
-              ),
-            ),
-            if (date != null) ...[
-              SizedBox(width: 12.sp),
-              Text(
-                date,
-                style: AppTypography.textXsMedium.copyWith(
-                  color: colors.textSecondary,
-                  fontFeatures: const [FontFeature.tabularFigures()],
-                ),
-              ),
-            ],
-          ],
-        ),
       ),
     );
   }
@@ -2575,92 +2535,43 @@ class _CollectionPlayerRow extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final p = player;
-    final colors = context.colors;
     final fideId = int.tryParse(p.fideId ?? '');
-    final photo = fideId == null || fideId <= 0
-        ? null
-        : ref.watch(playerPhotoProvider(fideId)).valueOrNull;
     final title = p.title?.trim();
     final fed = p.fed?.trim();
     final count = p.games == 1 ? '1 game' : '${p.games} games';
     void pick() => onPick(p);
-    return Semantics(
-      button: true,
-      label: '${title ?? ''} ${p.name}, $count. Show their games'.trim(),
-      excludeSemantics: true,
-      onTap: pick,
-      child: TappableScale(
-        onTap: pick,
-        child: CardContextMenu(
-          onPreviewTap: pick,
-          actions: (menuContext) => playerMenuActions(
-            menuContext,
-            ref,
-            playerName: p.name,
-            fideId: fideId != null && fideId > 0 ? fideId : null,
-            title: title == null || title.isEmpty ? null : title,
-            federation: fed == null || fed.isEmpty ? null : fed,
-            rating: p.bestElo,
-            gamebasePlayerId: p.playerId,
-            onOpen: pick,
-            openLabel: 'Show their games',
-            openIcon: Icons.open_in_new_rounded,
-          ),
-          child: Container(
-            constraints: BoxConstraints(minHeight: 56.sp),
-            padding: EdgeInsets.symmetric(horizontal: 12.sp, vertical: 8.sp),
-            decoration: BoxDecoration(
-              color: colors.surface,
-              borderRadius: BorderRadius.circular(8.br),
-            ),
-            child: Row(
-              children: [
-                SpacePlayerAvatar(
-                  size: 40.sp,
-                  name: p.name,
-                  photoUrl: photo,
-                  title: title,
-                  federation: fed,
-                  ring: colors.surface,
-                ),
-                SizedBox(width: 14.sp),
-                Expanded(
-                  child: Text.rich(
-                    TextSpan(
-                      children: [
-                        TextSpan(text: p.name),
-                        if (p.bestElo != null)
-                          TextSpan(
-                            text: '  ${p.bestElo}',
-                            style: TextStyle(
-                              color: colors.textSecondary,
-                              fontFeatures: const [
-                                FontFeature.tabularFigures(),
-                              ],
-                            ),
-                          ),
-                      ],
-                    ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: AppTypography.textSmMedium.copyWith(
-                      color: colors.textPrimary,
-                    ),
-                  ),
-                ),
-                SizedBox(width: 12.sp),
-                Text(
-                  count,
-                  style: AppTypography.textSmMedium.copyWith(
-                    color: colors.textPrimary,
-                    fontWeight: FontWeight.w600,
-                    fontFeatures: const [FontFeature.tabularFigures()],
-                  ),
-                ),
-              ],
-            ),
-          ),
+    return CardContextMenu(
+      onPreviewTap: pick,
+      actions: (menuContext) => playerMenuActions(
+        menuContext,
+        ref,
+        playerName: p.name,
+        fideId: fideId != null && fideId > 0 ? fideId : null,
+        title: title,
+        federation: fed,
+        rating: p.bestElo,
+        gamebasePlayerId: p.playerId,
+        onOpen: pick,
+        openLabel: 'Show their games',
+        openIcon: Icons.open_in_new_rounded,
+      ),
+      child: FigmaPlayerCard(
+        player: PlayerStandingModel(
+          name: p.name,
+          countryCode: fed ?? '',
+          title: title,
+          fideId: fideId,
+          gamebasePlayerId: p.playerId,
+          score: p.bestElo ?? 0,
+          scoreChange: 0,
+          hasRatingDiff: false,
+          matchScore: count,
         ),
+        rank: null,
+        showRank: false,
+        showFavoriteButton: false,
+        hideMissingRating: true,
+        onTap: pick,
       ),
     );
   }

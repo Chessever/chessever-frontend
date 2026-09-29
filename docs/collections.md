@@ -49,8 +49,10 @@ Every response is the gamebase envelope `{ "status": "success", "data": … }`.
 card / board model and groups the games under the tree for the Games tab: an
 event's games under their rounds (label and date), a book's under its parts
 and chapters (each chapter's number, title and intro above its games), games
-in no section last. Opening a game hands the board the whole list in that
-order, so prev/next walks the collection.
+in no section last. Games without sections use the same round surface,
+grouped by Event, calendar date and Round (or the supplied PGN tags when an
+older API omits the structured fields). Opening a game hands the board the
+selected chapter/round list in that order; All games walks the full collection.
 
 ## Uploading one
 
@@ -88,3 +90,66 @@ Use the admin console on chessever.com: **Content › Collections**.
 
 The app picks up changes on the next load or pull-to-refresh; the API caches
 responses and clears that cache after every admin write.
+
+
+## Shared tournament detail components
+
+The collection's Games tab reuses `TournamentRoundHeader` (also used by the
+live tournament's `RoundHeader`), `TextDropDownWidget` and the existing
+`DiscoveryGameList` adapter to tournament GameCard/board/grid components.
+Author parts and chapters retain their order and introductions. The selector
+opens the chosen chapter/round, collapse controls keep their state, and a
+parent heading provides context without admitting sibling games into board
+navigation. Unsectioned games fall back to event + date + round groups in
+first-appearance/file order. Date-only headers do not fabricate a start time;
+verified API `startsAt`/`playedAt` values display a labelled UTC time.
+
+The layout switch is in the upper-right beside the three-dot menu. It cycles
+list, board grid and board, while retaining this screen's selection across
+its tabs. The about tab uses `TournamentAboutField` for event/edition and
+contents alongside the book's actual cover, supplied credits and foreword.
+The Players tab uses `FigmaPlayerCard`, including the same photo/title/flag
+logic as Favorites and Countrymen. Missing ratings stay absent. Legacy split
+name/FIDE rows merge only with unambiguous identity/federation evidence and
+retain aliases so tapping one person includes every matching game.
+
+The structured card augments PGN player IDs, titles, ratings, federation and
+opening fields. Missing API side names never replace real PGN names with
+White/Black. The source PGN remains byte-for-byte intact for annotations,
+variations, clocks and board replay.
+
+### Validation and device checks
+
+Scoped `flutter analyze --no-pub` passes. The focused collection, PGN hydration,
+Premium and event-focus suites pass 118 tests, including actual widget taps on
+collapse/selector, all three layouts and the shared player card's alias filter.
+Large books mount visible card rows lazily. Existing entitlement, favorites,
+context menus and board evaluation providers retain their behavior.
+
+The requested design re-check follows the existing tournament/card language:
+no new font, palette, decorative badge, mock window, logo, gradient, background
+field, floating artifact, pricing/testimonial/footer/hero composition or
+entrance animation was introduced. Those marketing patterns are inapplicable
+here. The checks that apply to these screens cover consistent gutters, text
+contrast in both themes, flexible multiline headers, centered bare controls,
+readable dates/credits, actual game data, valid selector/collapse/layout/player
+interactions and large-text overflow. Existing shared card styling is retained
+as explicitly requested. Real device runtime/visual testing remains the user's
+responsibility under AGENTS.md; no Flutter app was launched or built.
+
+On the test app, check:
+
+1. A chaptered book: select a chapter, collapse/reopen it, and step previous/next
+   on the board. The selection excludes sibling games. Select All games to
+   restore the full order.
+2. A book without chapters: event/date/round headers, calendar-only dates and
+   labelled UTC times when provided; all three card layouts from the icon next
+   to the menu.
+3. Players: one card for a player whose games mix explicit FIDE IDs and names;
+   tapping it includes all their games. Known namesakes remain separate.
+4. About/credits/foreword, context menus, signed-out and Premium states, both
+   themes, a narrow phone and larger accessibility text.
+
+Deployment order is the test Gamebase additive migration, concurrent indexes,
+API, then matching web/mobile clients. See the Gamebase collection runbook.
+The old Supabase discovery schema and production environments are untouched.

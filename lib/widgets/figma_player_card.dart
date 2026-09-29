@@ -32,6 +32,9 @@ class FigmaPlayerCard extends ConsumerWidget {
   final bool isFavorite;
   final bool showFavoriteButton;
   final bool isInactive;
+
+  /// A curated book may have no recorded rating. Do not display a fabricated 0.
+  final bool hideMissingRating;
   final VoidCallback onTap;
   final VoidCallback? onToggleFavorite;
   final ValueChanged<LongPressStartDetails>? onLongPress;
@@ -59,6 +62,7 @@ class FigmaPlayerCard extends ConsumerWidget {
     this.isFavorite = false,
     this.showFavoriteButton = true,
     this.isInactive = false,
+    this.hideMissingRating = false,
     required this.onTap,
     this.onToggleFavorite,
     this.onLongPress,
@@ -279,12 +283,13 @@ class FigmaPlayerCard extends ConsumerWidget {
                           ),
                         ),
                       // Rating
-                      Text(
-                        player.score.toString(),
-                        style: AppTypography.textSmRegular.copyWith(
-                          color: context.colors.textSecondary,
+                      if (!hideMissingRating || player.score > 0)
+                        Text(
+                          player.score.toString(),
+                          style: AppTypography.textSmRegular.copyWith(
+                            color: context.colors.textSecondary,
+                          ),
                         ),
-                      ),
                       // Rating change (if any), set flush against the rating
                       // exactly as shipped. The tokens are kGreenColor /
                       // kRedColor in dark and the deeper paper inks in light.
