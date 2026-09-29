@@ -29,6 +29,7 @@ class CollectionPlateRow extends StatelessWidget {
     this.note,
     this.onTap,
     this.menuActions,
+    this.trailing,
   });
 
   /// An event's picture: landscape, 5:4.
@@ -46,6 +47,10 @@ class CollectionPlateRow extends StatelessWidget {
   final String? meta;
   final String semanticsLabel;
   final int metaMaxLines;
+
+  /// Trailing action (a collection's star), top-aligned at the row's end.
+  /// Null draws the row exactly as before.
+  final Widget? trailing;
 
   /// How much the collection holds ("55 games"), on its own line.
   final String? tally;
@@ -174,6 +179,8 @@ class CollectionPlateRow extends StatelessWidget {
               ),
             ),
           ),
+          if (trailing != null)
+            Align(alignment: Alignment.topCenter, child: trailing),
         ],
       ),
     );

@@ -1155,6 +1155,11 @@ class ChessBoardScreenNew extends ConsumerStatefulWidget {
   /// Optional initial position to show (FEN).
   final String? initialFen;
 
+  /// When false, the route offers no way to take the PGN out: the app-bar
+  /// save button is hidden and the 3-dots menu loses Copy PGN. Collection
+  /// games (licensed book/event content) open with this off.
+  final bool allowGameExport;
+
   /// Reports a user-selected PageView game to the deferred navigation host.
   /// If background event expansion omits that game, the host keeps the
   /// immediate list instead of replacing it and jumping the visible page.
@@ -1175,6 +1180,7 @@ class ChessBoardScreenNew extends ConsumerStatefulWidget {
     this.showSaveAnalysisOnLoad = false,
     this.initialFen,
     this.onVisibleGameChanged,
+    this.allowGameExport = true,
     super.key,
   });
 
@@ -3490,6 +3496,8 @@ class _ChessBoardScreenState extends ConsumerState<ChessBoardScreenNew>
                                             showGamebaseButton:
                                                 widget.showGamebaseButton,
                                             showClock: widget.showClock,
+                                            allowGameExport:
+                                                widget.allowGameExport,
                                             savedAnalysisData:
                                                 _getSavedAnalysisDataForIndex(
                                                   index,
@@ -4135,6 +4143,7 @@ class _GamePage extends ConsumerWidget {
   final bool showGamebaseButton;
   final bool showClock;
   final SavedAnalysisData? savedAnalysisData;
+  final bool allowGameExport;
 
   const _GamePage({
     required this.game,
@@ -4150,6 +4159,7 @@ class _GamePage extends ConsumerWidget {
     this.showGamebaseButton = false,
     this.showClock = true,
     this.savedAnalysisData,
+    this.allowGameExport = true,
   });
 
   @override
@@ -4191,6 +4201,7 @@ class _GamePage extends ConsumerWidget {
         hideEventInfo: hideEventInfo,
         savedAnalysisData: savedAnalysisData,
         isActivePage: currentGameIndex == currentPageIndex,
+        allowGameExport: allowGameExport,
       ),
       bottomNavigationBar: _BottomNavBar(
         index: currentGameIndex,
@@ -4212,14 +4223,81 @@ class _GamePage extends ConsumerWidget {
         showClock: showClock,
       ),
     );
-    return _BoardShareBoundaryScope(
-      child: MediaQuery.removeViewInsets(
-        context: context,
-        removeBottom: true,
-        child: scaffold,
+    return _ArrowKeyStepper(
+      game: game,
+      index: currentGameIndex,
+      isActivePage: currentGameIndex == currentPageIndex,
+      child: _BoardShareBoundaryScope(
+        child: MediaQuery.removeViewInsets(
+          context: context,
+          removeBottom: true,
+          child: scaffold,
+        ),
       ),
     );
   }
+}
+
+/// Steps the visible game with a hardware keyboard's ←/→ arrows (an iPad
+/// with a keyboard, or desktop). Only the foreground page of the top route
+/// answers, and never while a text field holds focus.
+class _ArrowKeyStepper extends ConsumerStatefulWidget {
+  const _ArrowKeyStepper({
+    required this.game,
+    required this.index,
+    required this.isActivePage,
+    required this.child,
+  });
+
+  final GamesTourModel game;
+  final int index;
+  final bool isActivePage;
+  final Widget child;
+
+  @override
+  ConsumerState<_ArrowKeyStepper> createState() => _ArrowKeyStepperState();
+}
+
+class _ArrowKeyStepperState extends ConsumerState<_ArrowKeyStepper> {
+  @override
+  void initState() {
+    super.initState();
+    HardwareKeyboard.instance.addHandler(_handleKey);
+  }
+
+  @override
+  void dispose() {
+    HardwareKeyboard.instance.removeHandler(_handleKey);
+    super.dispose();
+  }
+
+  bool _handleKey(KeyEvent event) {
+    if (!widget.isActivePage || event is! KeyDownEvent) return false;
+    final route = ModalRoute.of(context);
+    if (route != null && !route.isCurrent) return false;
+    // Caret movement inside a text field is the field's own business.
+    if (FocusManager.instance.primaryFocus?.context?.widget
+        is EditableText) {
+      return false;
+    }
+    final notifier = ref.read(
+      chessBoardScreenProviderNew(
+        ChessBoardProviderParams(game: widget.game, index: widget.index),
+      ).notifier,
+    );
+    if (event.logicalKey == LogicalKeyboardKey.arrowRight) {
+      unawaited(notifier.moveForward());
+      return true;
+    }
+    if (event.logicalKey == LogicalKeyboardKey.arrowLeft) {
+      unawaited(notifier.moveBackward());
+      return true;
+    }
+    return false;
+  }
+
+  @override
+  Widget build(BuildContext context) => widget.child;
 }
 
 class _LoadingScreen extends StatelessWidget {
@@ -4488,6 +4566,10 @@ class _AppBar extends ConsumerStatefulWidget implements PreferredSizeWidget {
   /// crash) and the flying-heart would dock onto the wrong page.
   final bool isActivePage;
 
+  /// Mirrors [ChessBoardScreenNew.allowGameExport]: no save button, no Copy
+  /// PGN row for licensed collection content.
+  final bool allowGameExport;
+
   const _AppBar({
     required this.game,
     required this.games,
@@ -4497,6 +4579,7 @@ class _AppBar extends ConsumerStatefulWidget implements PreferredSizeWidget {
     this.hideEventInfo = false,
     this.savedAnalysisData,
     this.isActivePage = false,
+    this.allowGameExport = true,
   });
 
   @override
@@ -5067,7 +5150,7 @@ class _AppBarState extends ConsumerState<_AppBar> {
                               _showEventInfoSheet(context, ref, infoSheetPgn),
                 ),
               // Save Analysis button — with auto-save status animation for library games
-              _buildSaveButton(),
+              if (widget.allowGameExport) _buildSaveButton(),
               // 3-dot menu - use tablet-safe overlay popup on tablets to prevent
               // phantom tap dismissals, use standard PopupMenuButton on mobile
               if (ResponsiveHelper.isTablet)
@@ -5111,6 +5194,7 @@ class _AppBarState extends ConsumerState<_AppBar> {
                         videoSession: EventVideoScope.sessionOf(this.context),
                         analysisCleared: analysisCleared,
                         onCopyPgn: copyPgnBtnClicked,
+                        allowCopyPgn: widget.allowGameExport,
                       ),
                 )
               else
@@ -5154,6 +5238,7 @@ class _AppBarState extends ConsumerState<_AppBar> {
                         videoSession: EventVideoScope.sessionOf(this.context),
                         analysisCleared: analysisCleared,
                         onCopyPgn: copyPgnBtnClicked,
+                        allowCopyPgn: widget.allowGameExport,
                       ),
                 ),
             ],
@@ -8718,7 +8803,13 @@ class _BoardWithSidebar extends ConsumerStatefulWidget {
 
 class _BoardWithSidebarState extends ConsumerState<_BoardWithSidebar> {
   static const _pinchCoachmarkSeenKey = 'board_pinch_coachmark_seen';
+  static const _boardWidthKey = 'board_pinch_width';
   static bool _dismissedThisSession = false;
+
+  /// Pinch width shared by every game page in this session, so swiping to
+  /// another game keeps the board size without waiting on disk. Disk is the
+  /// backup for leaving and coming back.
+  static double? _sessionBoardWidth;
 
   final Map<int, Offset> _touches = {};
   double? _boardWidth;
@@ -8729,9 +8820,28 @@ class _BoardWithSidebarState extends ConsumerState<_BoardWithSidebar> {
   @override
   void initState() {
     super.initState();
+    _boardWidth = _sessionBoardWidth;
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) unawaited(_loadPinchCoachmark());
+      if (!mounted) return;
+      unawaited(_loadPinchCoachmark());
+      if (_boardWidth == null) unawaited(_loadBoardWidth());
     });
+  }
+
+  Future<void> _loadBoardWidth() async {
+    final saved = await ref
+        .read(sharedPreferencesRepository)
+        .getDouble(_boardWidthKey);
+    if (!mounted || saved == null || _boardWidth != null) return;
+    _sessionBoardWidth = saved;
+    setState(() => _boardWidth = saved);
+  }
+
+  void _rememberBoardWidth(double width) {
+    _sessionBoardWidth = width;
+    unawaited(
+      ref.read(sharedPreferencesRepository).setDouble(_boardWidthKey, width),
+    );
   }
 
   Future<void> _loadPinchCoachmark() async {
@@ -8769,6 +8879,11 @@ class _BoardWithSidebarState extends ConsumerState<_BoardWithSidebar> {
     _touches.remove(pointer);
     _pinchDistance = null;
     _pinchBoardWidth = null;
+    // The pinch is over once the last finger lifts: keep the size for the
+    // next game and the next visit.
+    if (_touches.isEmpty && _boardWidth != null) {
+      _rememberBoardWidth(_boardWidth!);
+    }
   }
 
   // DISABLED: Only used for move annotation overlay
@@ -8871,7 +8986,10 @@ class _BoardWithSidebarState extends ConsumerState<_BoardWithSidebar> {
               minBoardWidth,
               maxBoardWidth,
             );
-            if (next != boardSize) setState(() => _boardWidth = next);
+            if (next != boardSize) {
+              setState(() => _boardWidth = next);
+              _sessionBoardWidth = next;
+            }
           },
           onPointerUp: (event) => _endTouch(event.pointer),
           onPointerCancel: (event) => _endTouch(event.pointer),

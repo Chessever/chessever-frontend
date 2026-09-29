@@ -5,6 +5,7 @@ import 'package:chessever2/screens/for_you/discovery/providers/discovery_provide
 import 'package:chessever2/screens/for_you/discovery/providers/reports_provider.dart';
 import 'package:chessever2/screens/for_you/discovery/widgets/discovery_common.dart';
 import 'package:chessever2/screens/for_you/discovery/widgets/discovery_game_cards.dart';
+import 'package:chessever2/screens/group_event/widget/appbar_icons_widget.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_list_view_mode_provider.dart';
 import 'package:chessever2/theme/app_colors.dart';
@@ -12,28 +13,120 @@ import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/scroll_cache.dart';
+import 'package:chessever2/utils/svg_asset.dart';
 import 'package:chessever2/widgets/game_date_header.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:intl/intl.dart';
 
 /// Saved reports, progressively loaded on the existing game-card design.
-class ReportsScreen extends StatelessWidget {
+/// A single page, so the tab strip is a search row with the usual layout
+/// toggle instead of a one-word "Games" tab.
+class ReportsScreen extends ConsumerStatefulWidget {
   const ReportsScreen({super.key});
   static Future<void> open(BuildContext context) => Navigator.of(
     context,
   ).push(MaterialPageRoute<void>(builder: (_) => const ReportsScreen()));
 
   @override
+  ConsumerState<ReportsScreen> createState() => _ReportsScreenState();
+}
+
+class _ReportsScreenState extends ConsumerState<ReportsScreen> {
+  final TextEditingController _searchController = TextEditingController();
+  String _query = '';
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) => EventViewShell(
     title: 'Reports',
-    tabs: const ['Games'],
-    pageBuilder: (context, _) => const _ReportsGames(),
+    tabs: const ['Reports'],
+    tabStripOverride: Row(
+      children: [
+        Expanded(
+          child: Container(
+            height: 44.h,
+            decoration: BoxDecoration(
+              color: context.colors.background,
+              borderRadius: BorderRadius.circular(12.br),
+              border: Border.all(color: context.colors.surfaceRecessed),
+            ),
+            child: Row(
+              children: [
+                SizedBox(width: 12.w),
+                Icon(
+                  Icons.search,
+                  size: 20.sp,
+                  color: context.colors.textSecondary,
+                ),
+                SizedBox(width: 8.w),
+                Expanded(
+                  child: TextField(
+                    controller: _searchController,
+                    textInputAction: TextInputAction.search,
+                    style: AppTypography.textSmRegular.copyWith(
+                      color: context.colors.textPrimary,
+                    ),
+                    decoration: InputDecoration(
+                      hintText: 'Search players',
+                      hintStyle: AppTypography.textSmRegular.copyWith(
+                        color: context.colors.textSecondary,
+                      ),
+                      border: InputBorder.none,
+                      isDense: true,
+                      contentPadding: EdgeInsets.zero,
+                    ),
+                    onChanged: (value) =>
+                        setState(() => _query = value.trim()),
+                  ),
+                ),
+                if (_query.isNotEmpty)
+                  GestureDetector(
+                    onTap: () {
+                      _searchController.clear();
+                      setState(() => _query = '');
+                    },
+                    child: Padding(
+                      padding: EdgeInsets.all(8.w),
+                      child: Icon(
+                        Icons.close,
+                        size: 18.sp,
+                        color: context.colors.textSecondary,
+                      ),
+                    ),
+                  )
+                else
+                  SizedBox(width: 12.w),
+              ],
+            ),
+          ),
+        ),
+        SizedBox(width: 12.w),
+        Semantics(
+          label: 'Toggle chessboard view',
+          child: AppBarIcons(
+            image: SvgAsset.chase_grid,
+            onTap: () {
+              HapticFeedbackService.cardTap();
+              ref.read(gamesListViewModeSwitcher).toggleViewMode();
+            },
+          ),
+        ),
+      ],
+    ),
+    pageBuilder: (context, _) => _ReportsGames(query: _query),
   );
 }
 
 class _ReportsGames extends ConsumerStatefulWidget {
-  const _ReportsGames();
+  const _ReportsGames({required this.query});
+
+  final String query;
 
   @override
   ConsumerState<_ReportsGames> createState() => _ReportsGamesState();
@@ -42,6 +135,18 @@ class _ReportsGames extends ConsumerStatefulWidget {
 class _ReportsGamesState extends ConsumerState<_ReportsGames> {
   bool _checkScheduled = false;
   final Set<DateTime?> _collapsedDates = {};
+
+  List<GamesTourModel> _visibleItems(List<GamesTourModel> items) {
+    final query = widget.query.toLowerCase();
+    if (query.isEmpty) return items;
+    return [
+      for (final game in items)
+        if ('${game.whitePlayer.name} ${game.blackPlayer.name}'
+            .toLowerCase()
+            .contains(query))
+          game,
+    ];
+  }
 
   DateTime? _dayOf(GamesTourModel game) {
     final date = game.lastMoveTime?.toUtc();
@@ -153,7 +258,8 @@ class _ReportsGamesState extends ConsumerState<_ReportsGames> {
     final perRow = mode == GamesListViewMode.chessBoardGrid
         ? (ResponsiveHelper.isTablet && ResponsiveHelper.isLandscape ? 4 : 2)
         : 1;
-    final rows = _rows(reports.items, perRow);
+    final items = _visibleItems(reports.items);
+    final rows = _rows(items, perRow);
     final horizontalPadding = ResponsiveHelper.adaptive(
       phone: 16.w,
       tablet: 24.w,
@@ -195,7 +301,7 @@ class _ReportsGamesState extends ConsumerState<_ReportsGames> {
             ),
             slivers: [
               SliverToBoxAdapter(child: SizedBox(height: 12.h)),
-              if (reports.items.isNotEmpty)
+              if (items.isNotEmpty)
                 SliverPadding(
                   padding: EdgeInsets.symmetric(
                     horizontal: horizontalPadding,
@@ -203,8 +309,7 @@ class _ReportsGamesState extends ConsumerState<_ReportsGames> {
                   ),
                   sliver: SliverList(
                     delegate: SliverChildBuilderDelegate(
-                      (context, index) =>
-                          _buildRow(rows[index], reports.items, perRow),
+                      (context, index) => _buildRow(rows[index], items, perRow),
                       childCount: rows.length,
                       addAutomaticKeepAlives: false,
                     ),
@@ -229,10 +334,11 @@ class _ReportsGamesState extends ConsumerState<_ReportsGames> {
                   ),
                 )
               else if (reports.error == null)
-                const SliverToBoxAdapter(
+                SliverToBoxAdapter(
                   child: DiscoveryNotice(
-                    text:
-                        'Analyzed games will appear here when a report is available.',
+                    text: widget.query.isEmpty
+                        ? 'Analyzed games will appear here when a report is available.'
+                        : 'No reports match "${widget.query}".',
                   ),
                 ),
               if (reports.error != null)
@@ -243,7 +349,7 @@ class _ReportsGamesState extends ConsumerState<_ReportsGames> {
                     onAction: () => unawaited(notifier.retry()),
                   ),
                 )
-              else if (reports.items.isNotEmpty &&
+              else if (items.isNotEmpty &&
                   reports.isLoading &&
                   !reports.isRefreshing)
                 SliverToBoxAdapter(
@@ -262,7 +368,7 @@ class _ReportsGamesState extends ConsumerState<_ReportsGames> {
                     ),
                   ),
                 )
-              else if (reports.items.isNotEmpty && !reports.hasMore)
+              else if (items.isNotEmpty && !reports.hasMore)
                 SliverToBoxAdapter(
                   child: Padding(
                     padding: EdgeInsets.symmetric(vertical: 16.h),

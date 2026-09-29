@@ -3,7 +3,6 @@ import 'dart:async';
 import 'package:chessever2/e2e/e2e_ids.dart';
 import 'package:chessever2/main.dart' show routeObserver;
 import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
-import 'package:chessever2/screens/chessboard/utils/legible_ink.dart';
 import 'package:chessever2/screens/chessboard/widgets/chess_board_from_fen_new.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_list_view_mode_provider.dart';
@@ -25,7 +24,6 @@ import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/svg_asset.dart';
-import 'package:chessever2/utils/tablet_safe_menu.dart';
 import 'package:flutter_svg/svg.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
@@ -381,11 +379,9 @@ class _GamesAppBarWidgetState extends ConsumerState<CountrymanGamesAppBar> {
   bool isSearching = false;
   final TextEditingController _searchController = TextEditingController();
   final FocusNode _focusNode = FocusNode();
-  late final GlobalKey _menuKey;
 
   @override
   void initState() {
-    _menuKey = GlobalKey();
     super.initState();
   }
 
@@ -534,117 +530,6 @@ class _GamesAppBarWidgetState extends ConsumerState<CountrymanGamesAppBar> {
                       image: SvgAsset.chase_grid,
                       onTap: () {
                         ref.read(gamesListViewModeSwitcher).toggleViewMode();
-                      },
-                    ),
-                    SizedBox(width: 18.w),
-                    AppBarIcons(
-                      key: _menuKey,
-                      padding: EdgeInsets.symmetric(
-                        horizontal: 2.sp,
-                        vertical: 1.sp,
-                      ),
-                      image: SvgAsset.threeDots,
-                      onTap: () {
-                        final RenderBox? renderBox =
-                            _menuKey.currentContext?.findRenderObject()
-                                as RenderBox?;
-
-                        if (renderBox != null) {
-                          final Offset offset = renderBox.localToGlobal(
-                            Offset.zero,
-                          );
-
-                          showTabletSafeMenu(
-                            context: context,
-                            position: RelativeRect.fromLTRB(
-                              offset.dx,
-                              offset.dy + renderBox.size.height,
-                              offset.dx + renderBox.size.width,
-                              offset.dy,
-                            ),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12.br),
-                            ),
-                            color: context.colors.surface,
-                            items: <PopupMenuEntry<String>>[
-                              PopupMenuItem<String>(
-                                value: 'Unpin all',
-                                child: InkWell(
-                                  onTap: () {
-                                    Navigator.pop(context);
-                                    ref
-                                        .read(
-                                          countrymanGamesTourScreenProvider
-                                              .notifier,
-                                        )
-                                        .unpinAllGames();
-                                  },
-                                  child: SizedBox(
-                                    width: 200,
-                                    child: Row(
-                                      mainAxisAlignment:
-                                          MainAxisAlignment.spaceBetween,
-                                      children: [
-                                        Text(
-                                          "Unpin all",
-                                          style: AppTypography.textXsMedium
-                                              .copyWith(
-                                                color:
-                                                    context.colors.textPrimary,
-                                              ),
-                                        ),
-                                        SvgPicture.asset(
-                                          SvgAsset.unpine,
-                                          height: 13.h,
-                                          width: 13.w,
-                                          // White art: ink it on paper.
-                                          colorFilter:
-                                              context.isLightTheme
-                                                  ? ColorFilter.mode(
-                                                    context.colors.iconPrimary,
-                                                    BlendMode.srcIn,
-                                                  )
-                                                  : null,
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                ),
-                              ),
-                              PopupMenuDivider(
-                                height: 1.h,
-                                thickness: 0.5.w,
-                                color: context.colors.divider,
-                              ),
-                              PopupMenuItem<String>(
-                                value: 'share',
-                                child: Row(
-                                  mainAxisAlignment:
-                                      MainAxisAlignment.spaceBetween,
-                                  children: [
-                                    Text(
-                                      "Active games on top",
-                                      style: AppTypography.textXsMedium
-                                          .copyWith(
-                                            color: context.colors.textPrimary,
-                                          ),
-                                    ),
-                                    // White-and-green art: on paper the
-                                    // white re-inks and the arrow keeps its
-                                    // green, darkened to 3:1 on the menu.
-                                    inkedSvgAsset(
-                                      context,
-                                      SvgAsset.active,
-                                      height: 13.h,
-                                      width: 13.w,
-                                      on: context.colors.surface,
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ],
-                          );
-                        }
                       },
                     ),
 

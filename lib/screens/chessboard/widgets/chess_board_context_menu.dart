@@ -11,6 +11,7 @@ List<PopupMenuEntry<String>> chessBoardContextMenuItems(
   required EventVideoSession? videoSession,
   required bool analysisCleared,
   required VoidCallback onCopyPgn,
+  bool allowCopyPgn = true,
 }) {
   PopupMenuItem<String> action({
     required String value,
@@ -70,12 +71,13 @@ List<PopupMenuEntry<String>> chessBoardContextMenuItems(
       icon: const Icon(Icons.settings),
     ),
     action(value: 'share', label: 'Share Game', icon: const Icon(Icons.share)),
-    action(
-      value: 'copy_pgn',
-      label: 'Copy PGN',
-      icon: const Icon(Icons.copy),
-      onTap: onCopyPgn,
-    ),
+    if (allowCopyPgn)
+      action(
+        value: 'copy_pgn',
+        label: 'Copy PGN',
+        icon: const Icon(Icons.copy),
+        onTap: onCopyPgn,
+      ),
     const PopupMenuDivider(),
     action(
       value: 'clear_analysis',

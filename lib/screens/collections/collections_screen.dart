@@ -1,5 +1,4 @@
 import 'package:chessever2/repository/gamebase/collections/collection_search_query.dart';
-import 'package:chessever2/screens/collections/collection_catalog_list.dart';
 import 'package:chessever2/screens/collections/collection_search_filters.dart';
 import 'package:chessever2/widgets/simple_search_bar.dart';
 import 'package:chessever2/widgets/search/search_motion.dart';
@@ -9,12 +8,13 @@ import 'dart:math' as math;
 import 'package:chessever2/e2e/e2e_ids.dart';
 
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:chessever2/providers/favorite_events_provider.dart';
+import 'package:chessever2/repository/favorites/models/favorite_event.dart';
 import 'package:chessever2/screens/chessboard/chess_board_screen_new.dart';
 import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
 import 'package:chessever2/revenue_cat_service/subscribe_state.dart';
 import 'package:chessever2/screens/collections/collection_bindings.dart';
 import 'package:chessever2/screens/collections/collection_plate_row.dart';
-import 'package:chessever2/screens/collections/collection_explore.dart';
 export 'package:chessever2/screens/collections/collection_plate_row.dart';
 import 'package:chessever2/screens/collections/collections_data.dart';
 import 'package:chessever2/screens/collections/event_view_shell.dart';
@@ -44,8 +44,9 @@ import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/user_error_message.dart';
 import 'package:chessever2/widgets/app_button.dart' show TappableScale;
+import 'package:chessever2/screens/group_event/widget/appbar_icons_widget.dart';
 import 'package:chessever2/screens/library/widgets/library_context_menu.dart'
-    show LibraryMenuAction;
+    show LibraryMenuAction, showLibraryContextMenu;
 import 'package:chessever2/screens/my_space/actions/space_menu_action.dart';
 import 'package:chessever2/screens/favorites/tabs/favorites_players_tab.dart'
     show playerPhotoProvider;
@@ -53,6 +54,8 @@ import 'package:chessever2/screens/my_space/widgets/space_avatar.dart'
     show SpacePlayerAvatar;
 import 'package:chessever2/screens/player_profile/utils/player_menu_actions.dart'
     show playerMenuActions;
+import 'package:chessever2/services/analytics/analytics_service.dart';
+import 'package:chessever2/widgets/auth/auth_upgrade_sheet.dart';
 import 'package:chessever2/widgets/hub_tile.dart';
 import 'package:chessever2/widgets/card_context_menu.dart';
 import 'package:chessever2/widgets/skeleton_widget.dart';
@@ -113,8 +116,9 @@ class _CollectionsScreenState extends ConsumerState<CollectionsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final repository = ref.watch(collectionsRepositoryProvider);
     final query = _query;
+    final all = ref.watch(collectionsProvider);
+    final favorites = ref.watch(favoriteEventsProvider).valueOrNull;
     return EventViewShell(
       key: e2eKey(E2eIds.collectionsRoot),
       title: 'Collections',
@@ -163,7 +167,9 @@ class _CollectionsScreenState extends ConsumerState<CollectionsScreen> {
           ),
         ),
       ),
-      tabs: const ['Openings', 'Games', 'Books'],
+      tabs: const ['Collections'],
+      // One list, no sections: the tab strip would be a single word.
+      tabStripOverride: const SizedBox.shrink(),
       showBackButton: !embedded,
       homeTab: embedded,
       onOpenSidebar: embedded && (Scaffold.maybeOf(context)?.hasDrawer ?? false)
@@ -178,43 +184,152 @@ class _CollectionsScreenState extends ConsumerState<CollectionsScreen> {
               ),
             )
           : null,
-      pageBuilder: (context, index) {
-        if (index == 0) {
-          return CollectionOpeningsView(
-            search: _query,
-            bottomPadding: embedded ? 72 : 0,
+      pageBuilder: (context, _) => all.when(
+        data: (items) {
+          // Starred collections pin to the top, like starred events do in
+          // the Events lists; the team's order holds inside each group.
+          final visible = _filteredCollections(items, query);
+          if (favorites != null) {
+            visible.sort((a, b) {
+              final sa = collectionIsFavorited(favorites, a) ? 0 : 1;
+              final sb = collectionIsFavorited(favorites, b) ? 0 : 1;
+              return sa.compareTo(sb);
+            });
+          }
+          final body = visible.isEmpty
+              ? _Notice(
+                  text: query.isActive
+                      ? 'No collections match this search.'
+                      : 'No collections yet.',
+                )
+              : ListView.builder(
+                  padding: EdgeInsets.fromLTRB(
+                    16.sp,
+                    16.sp,
+                    16.sp,
+                    24.sp +
+                        MediaQuery.viewPaddingOf(context).bottom +
+                        (embedded ? 72 : 0),
+                  ),
+                  itemCount: visible.length,
+                  itemBuilder: (context, index) => Padding(
+                    padding: EdgeInsets.only(bottom: 12.sp),
+                    child: CollectionCard(collection: visible[index]),
+                  ),
+                );
+          return RefreshIndicator(
+            color: context.colors.textPrimary,
+            backgroundColor: context.colors.surface,
+            onRefresh: () async {
+              ref.invalidate(collectionsProvider);
+              try {
+                await ref.read(collectionsProvider.future);
+              } catch (_) {
+                // The page shows the failure and its retry.
+              }
+            },
+            child: body,
           );
-        }
-        if (index == 1) {
-          return PublishedCollectionGamesView(
-            search: _query,
-            bottomPadding: embedded ? 72 : 0,
-          );
-        }
-        return CollectionCatalogList<Collection>(
-          key: ObjectKey(repository),
-          query: _query,
-          load: (offset) async {
-            final page = await repository.searchBooks(query, offset);
-            return CatalogBatch(page.items, page.total);
+        },
+        loading: () => const _CardsSkeleton(),
+        error: (error, _) => _Notice(
+          text: _collectionErrorText(
+            error,
+            fallback: "Couldn't load collections.",
+          ),
+          actionLabel: 'Try again',
+          onAction: () => ref.invalidate(collectionsProvider),
+        ),
+      ),
+    );
+  }
+}
+
+/// The unified list answers the search bar and the author/year filters
+/// locally. Game-level filters (ECO, result) have no meaning for a
+/// collection row and are ignored.
+List<Collection> _filteredCollections(
+  List<Collection> items,
+  CollectionSearchQuery query,
+) {
+  final text = query.text.trim().toLowerCase();
+  final author = query.author.trim().toLowerCase();
+  bool matches(Collection c) {
+    if (author.isNotEmpty &&
+        !(c.author ?? c.annotator ?? '').toLowerCase().contains(author)) {
+      return false;
+    }
+    final year =
+        c.publishedYear ?? c.dateStart?.year ?? c.dateEnd?.year;
+    if (query.year != null && year != query.year) return false;
+    if (query.minYear != null && (year ?? 1 << 30) < query.minYear!) {
+      return false;
+    }
+    if (query.maxYear != null && (year ?? -1) > query.maxYear!) return false;
+    if (text.isNotEmpty) {
+      final haystack =
+          '${c.title} ${c.subtitle ?? ''} ${c.author ?? ''} '
+                  '${c.annotator ?? ''} ${c.location ?? ''}'
+              .toLowerCase();
+      if (!haystack.contains(text)) return false;
+    }
+    return true;
+  }
+
+  return [for (final c in items) if (matches(c)) c];
+}
+
+/// The favorites identity of a collection. A starred collection is a plain
+/// favorite-events row, like a starred event, so it sorts and syncs the
+/// same way; `metadata.kind` tells it apart when it opens.
+String collectionFavoriteId(Collection c) => 'collection:${c.slug}';
+
+bool collectionIsFavorited(
+  Iterable<FavoriteEvent> favorites,
+  Collection c,
+) {
+  final id = collectionFavoriteId(c);
+  return favorites.any(
+    (e) =>
+        e.eventId == id ||
+        (e.metadata['kind'] == 'collection' && e.metadata['slug'] == c.slug),
+  );
+}
+
+/// Stars or unstars [c]: the one path behind every collection star, so each
+/// writes the same row and the same analytics event.
+Future<void> toggleCollectionFavorite({
+  required BuildContext context,
+  required WidgetRef ref,
+  required Collection collection,
+}) async {
+  final allowed = await requireFullAuthGuard(context);
+  if (!allowed) return;
+
+  HapticFeedbackService.pin();
+
+  try {
+    final isFavorited = await ref
+        .read(favoriteEventsProvider.notifier)
+        .toggleFavorite(
+          eventId: collectionFavoriteId(collection),
+          eventName: collection.title,
+          extraMetadata: {
+            'kind': 'collection',
+            'slug': collection.slug,
+            'collectionKind': collection.kind.name,
           },
-          identity: (book) => book.id,
-          padding: EdgeInsets.fromLTRB(
-            16.sp,
-            16.sp,
-            16.sp,
-            24.sp +
-                MediaQuery.viewPaddingOf(context).bottom +
-                (embedded ? 72 : 0),
-          ),
-          emptyMessage: 'No books yet.',
-          itemBuilder: (book) => Padding(
-            padding: EdgeInsets.only(bottom: 12.sp),
-            child: CollectionCard(collection: book),
-          ),
         );
+    AnalyticsService.instance.trackEventDetached(
+      'Collection Favorite Toggled',
+      properties: {
+        'collection_id': collection.id,
+        'slug': collection.slug,
+        'is_favorited': isFavorited,
       },
     );
+  } catch (e) {
+    debugPrint('[CollectionCard] Error toggling favorite: $e');
   }
 }
 
@@ -274,12 +389,21 @@ class CollectionCard extends ConsumerWidget {
     // Who wrote it, or where and when it was played: what tells this one
     // from its neighbours (two Sinquefield Cups differ by their year), on a
     // line of its own so the count never pushes the year off the end. An
-    // event's subtitle stands in only when it has neither place nor dates.
+    // event reads like an event card: the author instead of dates, ratings
+    // and rounds, and just the year — never a date range.
+    final byline = c.author ?? c.annotator;
+    final eventYear = c.publishedYear ?? c.dateStart?.year ?? c.dateEnd?.year;
+    final eventParts = [
+      if (byline != null && byline.trim().isNotEmpty) 'by $byline',
+      if (eventYear != null) '$eventYear',
+      if (c.location != null && c.location!.trim().isNotEmpty)
+        c.location!.trim(),
+    ];
     final identity = c.kind == CollectionKind.event
-        ? collectionEventLine(c.location, c.dateStart, c.dateEnd) ?? c.subtitle
-        : (c.author ?? c.annotator) == null
+        ? (eventParts.isEmpty ? c.subtitle : eventParts.join(' · '))
+        : byline == null
         ? c.subtitle
-        : 'by ${c.author ?? c.annotator}';
+        : 'by $byline';
     // A book names the events it covers when its row carries them; counted
     // otherwise, as an event counts the books written about it.
     final named = isBook && note == null
@@ -327,6 +451,7 @@ class CollectionCard extends ConsumerWidget {
         ?caption,
       ].join(', '),
       onTap: open,
+      trailing: _CollectionStar(collection: c),
       menuActions: (menuContext) => [
         LibraryMenuAction(
           icon: Icons.open_in_new_rounded,
@@ -339,6 +464,42 @@ class CollectionCard extends ConsumerWidget {
           draft: collectionSpaceDraft(c),
         ),
       ],
+    );
+  }
+}
+
+/// A collection's star, the event card's star in the same place: filled
+/// gold while starred, an outline otherwise.
+class _CollectionStar extends ConsumerWidget {
+  const _CollectionStar({required this.collection});
+
+  final Collection collection;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final favorites = ref.watch(favoriteEventsProvider).valueOrNull;
+    final starred = favorites != null &&
+        collectionIsFavorited(favorites, collection);
+    return Semantics(
+      button: true,
+      label: starred ? 'Unstar ${collection.title}' : 'Star ${collection.title}',
+      child: InkWell(
+        onTap: () => toggleCollectionFavorite(
+          context: context,
+          ref: ref,
+          collection: collection,
+        ),
+        child: Padding(
+          padding: EdgeInsets.fromLTRB(6.w, 6.h, 2.w, 6.h),
+          child: SvgWidget(
+            starred ? SvgAsset.starFilledIcon : SvgAsset.starIcon,
+            semanticsLabel: 'Favorite Icon',
+            height: 20.h,
+            width: 20.w,
+            preserveOriginalColors: starred,
+          ),
+        ),
+      ),
     );
   }
 }
@@ -481,7 +642,7 @@ class _CollectionScreenState extends ConsumerState<CollectionScreen> {
   static const int _aboutTab = 0;
   static const int _gamesTab = 1;
 
-  static const List<String> _collectionTabs = ['About', 'Games', 'Openings'];
+  static const List<String> _collectionTabs = ['About', 'Games', 'Players'];
   late CollectionOpening? _opening = widget.opening;
 
   /// Fixed by the kind the page opened as, so the tab strip never changes
@@ -766,6 +927,8 @@ class _CollectionScreenState extends ConsumerState<CollectionScreen> {
           viewSource: ChessboardView.tour,
           showGamebaseButton: false,
           disableGamebaseOverlayByDefault: true,
+          // Licensed book/event content: no save, no Copy PGN.
+          allowGameExport: false,
         ),
       ),
     );
@@ -777,6 +940,11 @@ class _CollectionScreenState extends ConsumerState<CollectionScreen> {
     final detail = ref.watch(collectionDetailProvider(slug));
     final c = detail.valueOrNull ?? widget.collection;
     final subscription = ref.watch(subscriptionProvider);
+    final starred = collectionIsFavorited(
+      ref.watch(favoriteEventsProvider).valueOrNull ??
+          const <FavoriteEvent>[],
+      c,
+    );
     final locked = isCollectionLocked(
       c,
       isSubscribed: subscription.isSubscribed,
@@ -851,6 +1019,39 @@ class _CollectionScreenState extends ConsumerState<CollectionScreen> {
       tabs: _collectionTabs,
       initialTab: _initialTab,
       controller: _tabs,
+      actions: [
+        Builder(
+          builder: (menuContext) => AppBarIcons(
+            image: SvgAsset.threeDots,
+            onTap: () {
+              HapticFeedbackService.cardTap();
+              unawaited(
+                showLibraryContextMenu(
+                  context: menuContext,
+                  actions: [
+                    LibraryMenuAction(
+                      icon: starred
+                          ? Icons.star_rounded
+                          : Icons.star_outline_rounded,
+                      label: starred ? 'Unstar' : 'Star',
+                      onSelected: () => toggleCollectionFavorite(
+                        context: context,
+                        ref: ref,
+                        collection: c,
+                      ),
+                    ),
+                    spaceMenuAction(
+                      context: menuContext,
+                      ref: ref,
+                      draft: collectionSpaceDraft(c),
+                    ),
+                  ],
+                ),
+              );
+            },
+          ),
+        ),
+      ],
       pageBuilder: (context, index) {
         return switch (index) {
           0 => _AboutPage(
@@ -936,16 +1137,38 @@ class _CollectionScreenState extends ConsumerState<CollectionScreen> {
                             },
                           ),
                   ),
-          _ => CollectionOpeningsView(
-            slug: slug,
-            onPick: (opening) {
-              setState(() {
-                _opening = opening;
-                _player = null;
-              });
-              _tabs.showTab(_gamesTab, scrollToTop: true);
-            },
-          ),
+          _ => players == null
+              ? _LockedPlayers(
+                  collection: c,
+                  phase: phase,
+                  onUnlock: () => _unlock(c),
+                )
+              : players.when(
+                  skipLoadingOnReload: isCollectionPremiumGate(
+                    players.error,
+                  ),
+                  data: (list) => _PlayersPage(
+                    players: list,
+                    onPick: _showPlayer,
+                  ),
+                  loading: () => const _CardsSkeleton(),
+                  error: (error, _) => isCollectionPremiumGate(error)
+                      ? _LockedPlayers(
+                          collection: c,
+                          phase: phase,
+                          onUnlock: () => _unlock(c),
+                        )
+                      : _Notice(
+                          text: _collectionErrorText(
+                            error,
+                            fallback: "Couldn't load the players.",
+                          ),
+                          actionLabel: 'Try again',
+                          onAction: () => ref.invalidate(
+                            collectionPlayersProvider(slug),
+                          ),
+                        ),
+                ),
         };
       },
     );

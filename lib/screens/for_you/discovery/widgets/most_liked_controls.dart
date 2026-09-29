@@ -76,9 +76,13 @@ class MostLikedDateControl extends StatelessWidget {
 /// profile; a long press lifts the row into the player focus menu (profile,
 /// My Space, share, favourites).
 class MostLikedPlayersList extends StatelessWidget {
-  const MostLikedPlayersList({super.key, required this.players});
+  const MostLikedPlayersList({super.key, required this.players, this.onPick});
 
   final List<MostLikedPlayer> players;
+
+  /// When set, tapping a row picks them (the page narrows Games to them)
+  /// instead of opening their profile.
+  final ValueChanged<MostLikedPlayer>? onPick;
 
   /// A row's height at the default text size.
   static double get rowHeight => 56.w;
@@ -101,6 +105,7 @@ class MostLikedPlayersList extends StatelessWidget {
             _PlayerRow(
               key: ValueKey('most_liked_player_${row.rank}'),
               row: row,
+              onPick: onPick,
             ),
         ],
       ),
@@ -109,9 +114,20 @@ class MostLikedPlayersList extends StatelessWidget {
 }
 
 class _PlayerRow extends ConsumerWidget {
-  const _PlayerRow({super.key, required this.row});
+  const _PlayerRow({super.key, required this.row, this.onPick});
 
   final MostLikedPlayer row;
+  final ValueChanged<MostLikedPlayer>? onPick;
+
+  void _tap(BuildContext context) {
+    final pick = onPick;
+    if (pick != null) {
+      HapticFeedbackService.cardTap();
+      pick(row);
+      return;
+    }
+    _open(context);
+  }
 
   void _open(BuildContext context) {
     HapticFeedbackService.cardTap();
@@ -169,7 +185,7 @@ class _PlayerRow extends ConsumerWidget {
         label:
             '${row.rank}, ${[if (title.isNotEmpty) title, p.name].join(' ')}, '
             '$detail, $likes',
-        onTap: () => _open(context),
+        onTap: () => _tap(context),
         onLongPress: () => menu.open(rowContext),
         onLongPressHint: 'More actions',
         excludeSemantics: true,
@@ -188,7 +204,7 @@ class _PlayerRow extends ConsumerWidget {
 
     return WallPressable(
       pressScale: 0.96,
-      onTap: () => _open(context),
+      onTap: () => _tap(context),
       child: ConstrainedBox(
         constraints: BoxConstraints(minHeight: MostLikedPlayersList.rowHeight),
         child: Padding(

@@ -23,7 +23,6 @@ import 'package:chessever2/screens/chessboard/widgets/chess_board_from_fen_new.d
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/home_top_bar.dart';
-import 'package:chessever2/widgets/game_filter/eco_filter_dropdown.dart';
 import 'package:chessever2/widgets/segmented_switcher.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
@@ -38,12 +37,14 @@ class _FakeCollections extends CollectionsRepository {
     required this.detail,
     required this.games,
     this.openings = const [],
+    this.list,
     this.publishedLoader,
   }) : super(GamebaseRepository(Dio(), apiKey: 'test'));
 
   final Collection detail;
   final List<CollectionGame> games;
   final List<CollectionOpening> openings;
+  final List<Collection>? list;
   final Future<PublishedGamesBatch> Function(int offset)? publishedLoader;
   @override
   Future<List<String>> fetchAuthors() async => ['Bobby Fischer'];
@@ -69,7 +70,7 @@ class _FakeCollections extends CollectionsRepository {
     offset: offset,
   );
   @override
-  Future<List<Collection>> fetchCollections() async => [detail];
+  Future<List<Collection>> fetchCollections() async => list ?? [detail];
 
   @override
   Future<PublishedGamesBatch> fetchPublishedGames({
@@ -256,16 +257,26 @@ Finder _rich(String text) => find.textContaining(text, findRichText: true);
 
 void main() {
   testWidgets(
-    'the shared search field debounces, carries filters across tabs and clears',
+    'the search field debounces, filters the unified list and clears',
     (tester) async {
+      const zurich = Collection(
+        id: 'zurich',
+        slug: 'zurich',
+        kind: CollectionKind.event,
+        title: 'Zurich 1953',
+        location: 'Zurich',
+      );
+      const endgames = Collection(
+        id: 'endgames',
+        slug: 'endgames',
+        kind: CollectionKind.book,
+        title: 'Carlsen Endgames',
+        author: 'Magnus Carlsen',
+      );
       final repo = _FakeCollections(
-        detail: const Collection(
-          id: 'book',
-          slug: 'book',
-          kind: CollectionKind.book,
-          title: 'Book',
-        ),
+        detail: zurich,
         games: const [],
+        list: const [zurich, endgames],
       );
       await _pump(
         tester,
@@ -273,62 +284,22 @@ void main() {
         size: const Size(393, 852),
         home: const CollectionsScreen(embedded: true),
       );
-      await tester.tap(find.text('Games'));
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 400));
-      expect(repo.searchQueries.last.parameters, isEmpty);
-      await tester.tap(find.byKey(const ValueKey('collections_filters')));
-      await tester.pumpAndSettle();
-      await tester.tap(find.byTooltip('Close filters'));
-      await tester.pumpAndSettle();
-      expect(repo.searchQueries.last.parameters, isEmpty);
+      expect(find.byType(CollectionCard), findsNWidgets(2));
       final field = find.byKey(const ValueKey('collections_search'));
       expect(field, findsOneWidget);
       await tester.enterText(field, 'Carlsen');
+      // Inside the debounce window the list has not filtered yet.
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(find.byType(CollectionCard), findsNWidgets(2));
       await tester.pump(const Duration(milliseconds: 350));
-      await tester.tap(find.text('Games'));
       await tester.pump();
-      await tester.pump(const Duration(milliseconds: 400));
-      await tester.pump();
-      expect(repo.searchQueries.last.text, 'Carlsen');
-      await tester.tap(find.byKey(const ValueKey('collections_filters')));
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 400));
-      await tester.tap(find.byKey(const ValueKey('eco-dropdown-header')));
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 400));
-      await tester.enterText(
-        find.descendant(
-          of: find.byType(EcoFilterDropdown),
-          matching: find.byType(TextField),
-        ),
-        'B20',
-      );
-      await tester.pump();
-      final opening = find
-          .byWidgetPredicate(
-            (widget) =>
-                widget is Semantics &&
-                (widget.properties.label?.endsWith(', ECO B20') ?? false),
-          )
-          .first;
-      await tester.ensureVisible(opening);
-      await tester.pump();
-      await tester.tap(opening);
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 400));
-      await tester.ensureVisible(find.text('Apply filters'));
-      await tester.tap(find.text('Apply filters'));
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 400));
-      await tester.pump();
-      expect(repo.searchQueries.last.eco, 'B20');
-      expect(repo.searchQueries.last.text, 'Carlsen');
+      expect(find.text('Zurich 1953'), findsNothing);
+      expect(find.text('Carlsen Endgames'), findsOneWidget);
       await tester.enterText(field, '');
       await tester.pump(const Duration(milliseconds: 350));
       await tester.pump();
-      expect(repo.searchQueries.last.text, '');
-      expect(repo.searchQueries.last.eco, 'B20');
+      expect(find.byType(CollectionCard), findsNWidgets(2));
+      expect(tester.takeException(), isNull);
       await _teardown(tester);
     },
   );
@@ -364,17 +335,14 @@ void main() {
       expect(find.byType(HomeTopBarFrame), findsOneWidget);
       expect(find.byType(HomeTopBarAvatar), findsOneWidget);
       expect(find.byTooltip('Back'), findsNothing);
+      // One list, no sections: no tab strip under the header.
+      expect(find.byType(SegmentedSwitcher), findsNothing);
 
       final context = tester.element(find.byType(HomeTopBarFrame));
       final row = tester.getRect(find.byType(HomeTopBarRow));
-      final segments = tester.getRect(find.byType(SegmentedSwitcher));
       final pages = tester.getRect(find.byType(PageView));
       expect(row.top, closeTo(HomeTopBarMetrics.topInset(context), 0.5));
-      expect(segments.top - row.bottom, closeTo(16.h, 0.5));
-      expect(pages.top - segments.bottom, closeTo(12.h, 0.5));
-      final label = tester.getRect(find.text('Openings'));
-      expect(label.top, greaterThanOrEqualTo(segments.top));
-      expect(label.bottom, lessThanOrEqualTo(segments.bottom));
+      expect(pages.top - row.bottom, closeTo(16.h + 12.h, 0.5));
       expect(tester.takeException(), isNull);
 
       await tester.tap(find.bySemanticsLabel('Open sidebar'));
@@ -486,7 +454,7 @@ void main() {
   });
 
   testWidgets(
-    'analysis keeps editorial credits in About with an Openings tab',
+    'analysis keeps editorial credits in About with a Players tab',
     (tester) async {
       const collection = Collection(
         id: 'analysis',
@@ -504,7 +472,7 @@ void main() {
       );
       expect(find.text('About'), findsOneWidget);
       expect(find.text('Games'), findsOneWidget);
-      expect(find.text('Openings'), findsOneWidget);
+      expect(find.text('Players'), findsOneWidget);
       await tester.tap(find.text('About'));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 500));
@@ -518,27 +486,22 @@ void main() {
   );
 
   testWidgets(
-    'primary Collections has Openings Games Books and re-tap returns its active list to the top',
+    'primary Collections shows one list and re-tap returns it to the top',
     (tester) async {
-      const book = Collection(
-        id: 'study',
-        slug: 'study',
-        kind: CollectionKind.book,
-        title: 'Opening studies',
-        access: CollectionAccess.free,
-      );
+      final books = [
+        for (var i = 0; i < 25; i++)
+          Collection(
+            id: 'study-$i',
+            slug: 'study-$i',
+            kind: CollectionKind.book,
+            title: 'Opening studies $i',
+            access: CollectionAccess.free,
+          ),
+      ];
       final repo = _FakeCollections(
-        detail: book,
+        detail: books.first,
         games: [_game('one')],
-        openings: [
-          for (var i = 0; i < 25; i++)
-            CollectionOpening(
-              eco: 'A${i.toString().padLeft(2, '0')}',
-              name: 'Opening $i',
-              gameCount: i + 1,
-              bookCount: 1,
-            ),
-        ],
+        list: books,
       );
       await _pump(
         tester,
@@ -547,11 +510,12 @@ void main() {
         home: const CollectionsScreen(embedded: true),
       );
       expect(find.byTooltip('Back'), findsNothing);
-      expect(find.text('Openings'), findsOneWidget);
-      expect(find.text('Games'), findsOneWidget);
-      expect(find.text('Books'), findsOneWidget);
+      expect(find.text('Openings'), findsNothing);
+      expect(find.text('Games'), findsNothing);
+      expect(find.text('Books'), findsNothing);
+      expect(find.byType(CollectionCard), findsWidgets);
       final list = find.descendant(
-        of: find.byType(CollectionOpeningsView),
+        of: find.byType(PageView),
         matching: find.byType(ListView),
       );
       await tester.drag(list, const Offset(0, -600));
@@ -574,16 +538,6 @@ void main() {
         await tester.pump(const Duration(milliseconds: 60));
       }
       expect(scroll.pixels, closeTo(0, 0.5));
-      await tester.tap(find.text('Games'));
-      for (var i = 0; i < 12; i++) {
-        await tester.pump(const Duration(milliseconds: 60));
-      }
-      expect(find.byType(DiscoveryGameList), findsOneWidget);
-      await tester.tap(find.text('Books'));
-      for (var i = 0; i < 12; i++) {
-        await tester.pump(const Duration(milliseconds: 60));
-      }
-      expect(find.byType(CollectionCard), findsOneWidget);
       expect(tester.takeException(), isNull);
       await _teardown(tester);
     },
@@ -662,7 +616,7 @@ void main() {
   );
 
   testWidgets(
-    'book opening selection requests games scoped to the book and ECO',
+    'a book opened on an opening requests games scoped to the book and ECO',
     (tester) async {
       const book = Collection(
         id: 'study',
@@ -683,21 +637,11 @@ void main() {
         games: [_game('one'), _game('two')],
         openings: [opening],
       );
-      await _pump(tester, repo);
-      await tester.tap(find.text('Openings'));
-      for (var i = 0; i < 12; i++) {
-        await tester.pump(const Duration(milliseconds: 60));
-      }
-      expect(find.byType(OpeningEventCard), findsOneWidget);
-      expect(find.text('1 game'), findsOneWidget);
-      final board = tester.widget<GameCardChessboard>(
-        find.descendant(
-          of: find.byType(OpeningEventCard),
-          matching: find.byType(GameCardChessboard),
-        ),
+      await _pump(
+        tester,
+        repo,
+        home: CollectionScreen(collection: book, opening: opening),
       );
-      expect(board.fen, contains('2p5'));
-      await tester.tap(find.byType(OpeningEventCard));
       for (var i = 0; i < 12; i++) {
         await tester.pump(const Duration(milliseconds: 60));
       }

@@ -1,7 +1,6 @@
 import 'package:chessever2/screens/feed/feed_screen.dart';
 import 'package:chessever2/screens/feed/widgets/feed_tile_board.dart';
-import 'package:chessever2/screens/for_you/discovery/models/discovery_models.dart';
-import 'package:chessever2/screens/for_you/discovery/most_liked_screen.dart';
+import 'package:chessever2/screens/for_you/discovery/likes_screen.dart';
 import 'package:chessever2/screens/for_you/discovery/providers/discovery_providers.dart';
 import 'package:chessever2/screens/for_you/discovery/providers/reports_provider.dart';
 import 'package:chessever2/screens/for_you/discovery/reports_screen.dart';
@@ -16,7 +15,7 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 /// Discovery is a two-row set of destinations. Each destination owns its
 /// loading, empty and retry states, and stays available if its preview fails.
-enum DiscoverySection { tiles, mostLiked, miniatures, reports }
+enum DiscoverySection { tiles, likes, miniatures, reports }
 
 class DiscoveryView extends ConsumerStatefulWidget {
   const DiscoveryView({super.key, this.scrollController});
@@ -38,9 +37,6 @@ class _DiscoveryViewState extends ConsumerState<DiscoveryView> {
   @override
   Widget build(BuildContext context) {
     final feed = ref.watch(feedTilePreviewProvider).valueOrNull;
-    final ranking = ref.watch(
-      mostLikedProvider(MostLikedQuery(MostLikedPeriod.today, DateTime.now())),
-    );
     return RefreshIndicator(
       color: context.colors.textPrimary,
       backgroundColor: context.colors.surface,
@@ -78,15 +74,13 @@ class _DiscoveryViewState extends ConsumerState<DiscoveryView> {
                         onTap: () => FeedScreen.open(context),
                       ),
                       right: HubTile(
-                        key: const ValueKey('discovery_most_liked_tile'),
-                        title: 'Most Liked',
-                        caption: ranking.hasError
-                            ? 'Open rankings'
-                            : "Today's favorites",
+                        key: const ValueKey('discovery_likes_tile'),
+                        title: 'Likes',
+                        caption: 'Saved games & rankings',
                         artwork: const HubSceneBackdrop(
                           scene: HubScene.mostLiked,
                         ),
-                        onTap: () => MostLikedScreen.open(context),
+                        onTap: () => LikesScreen.open(context),
                       ),
                     ),
                     HubTileRow(

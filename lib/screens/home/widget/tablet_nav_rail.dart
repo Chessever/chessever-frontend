@@ -49,6 +49,8 @@ class TabletNavRail extends ConsumerWidget {
                   return _NavRailItem(
                     item: item,
                     isSelected: selectedItem == item,
+                    onLongPress: () =>
+                        unawaited(makeBottomTabDefault(context, ref, item)),
                     onTap: () {
                       final previous = ref.read(
                         selectedBottomNavBarItemProvider,
@@ -89,6 +91,7 @@ class TabletNavRail extends ConsumerWidget {
   }
 }
 
+
 class _MenuButton extends StatelessWidget {
   final VoidCallback onTap;
 
@@ -118,11 +121,13 @@ class _NavRailItem extends StatefulWidget {
   final BottomNavBarItem item;
   final bool isSelected;
   final VoidCallback onTap;
+  final VoidCallback? onLongPress;
 
   const _NavRailItem({
     required this.item,
     required this.isSelected,
     required this.onTap,
+    this.onLongPress,
   });
 
   @override
@@ -160,11 +165,13 @@ class _NavRailItemState extends State<_NavRailItem> {
       child: Semantics(
         button: true,
         selected: widget.isSelected,
+        onLongPress: widget.onLongPress,
         child: GestureDetector(
           onTapDown: (_) => _setPressed(true),
           onTapUp: (_) => _setPressed(false),
           onTapCancel: () => _setPressed(false),
           onTap: widget.onTap,
+          onLongPress: widget.onLongPress,
           behavior: HitTestBehavior.opaque,
           child: Container(
             width: double.infinity,

@@ -40,9 +40,14 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 /// their players, and a short explanation of how likes work.
 /// A player opens the Games page narrowed to them.
 class MyLikesHubScreen extends ConsumerStatefulWidget {
-  const MyLikesHubScreen({super.key, this.initialTab = 0});
+  const MyLikesHubScreen({
+    super.key,
+    this.initialTab = 0,
+    this.embedded = false,
+  });
 
   final int initialTab;
+  final bool embedded;
 
   static const List<String> tabs = ['Games', 'Players', 'About'];
 
@@ -89,6 +94,7 @@ class _MyLikesHubScreenState extends ConsumerState<MyLikesHubScreen> {
     }
     return EventViewShell(
       title: 'My Likes',
+      embedded: widget.embedded,
       tabs: MyLikesHubScreen.tabs,
       initialTab: initialTab,
       controller: _tabs,
