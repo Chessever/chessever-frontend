@@ -5,16 +5,10 @@ import 'package:flutter/material.dart';
 
 /// A bare destination mark and its name, centered together as one unit.
 class DestinationTitle extends StatelessWidget {
-  const DestinationTitle({
-    super.key,
-    required this.title,
-    required this.icon,
-    this.style,
-  });
+  const DestinationTitle({super.key, required this.title, required this.icon});
 
   final String title;
   final Widget icon;
-  final TextStyle? style;
 
   @override
   Widget build(BuildContext context) => Row(
@@ -33,12 +27,10 @@ class DestinationTitle extends StatelessWidget {
           title,
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
-          style:
-              style ??
-              AppTypography.textMdMedium.copyWith(
-                color: context.colors.textPrimary,
-                fontWeight: FontWeight.w600,
-              ),
+          style: AppTypography.textMdMedium.copyWith(
+            color: context.colors.textPrimary,
+            fontWeight: FontWeight.w600,
+          ),
         ),
       ),
     ],

@@ -26,6 +26,7 @@ import 'package:chessever2/screens/my_space/providers/space_shortcuts_provider.d
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/event_no_spoilers_provider.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/widgets/destination_title.dart';
 import 'package:chessground/chessground.dart';
 import 'package:dartchess/dartchess.dart';
@@ -93,6 +94,13 @@ void main() {
           tester.view.physicalSize.width / tester.view.devicePixelRatio;
       expect(heading.center.dx, closeTo(screenWidth / 2, 0.5));
       expect(heading.height, lessThan(48));
+      final titleText = tester.widget<Text>(find.text('Feed'));
+      expect(titleText.style!.fontSize, AppTypography.textMdMedium.fontSize);
+      expect(titleText.style!.fontWeight, FontWeight.w600);
+      expect(
+        tester.getSize(find.byIcon(Icons.smart_display_rounded)),
+        Size.square(22.sp),
+      );
       expect(tester.getRect(find.text('Feed')).left, greaterThan(heading.left));
       // Autoplay: the first move lands after the opening beat, with the
       // board's ordinary sound (it is unclassified).

@@ -19,7 +19,6 @@ import 'package:chessever2/screens/feed/widgets/feed_pull_refresh.dart';
 import 'package:chessever2/screens/feed/widgets/feed_sfx_provider.dart';
 import 'package:chessever2/screens/feed/widgets/feed_states.dart';
 import 'package:chessever2/theme/app_colors.dart';
-import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/user_error_message.dart';
 import 'package:chessever2/widgets/app_snack.dart';
@@ -854,14 +853,9 @@ class _FeedTitle extends StatelessWidget {
               height: HomeTopBarMetrics.controlExtent,
               child: Center(
                 widthFactor: 1,
-                child: DestinationTitle(
+                child: const DestinationTitle(
                   title: 'Feed',
-                  icon: const Icon(Icons.dynamic_feed_rounded),
-                  style: AppTypography.textXlBold.copyWith(
-                    fontSize: 22,
-                    height: 28 / 22,
-                    color: context.colors.textPrimary,
-                  ),
+                  icon: Icon(Icons.smart_display_rounded),
                 ),
               ),
             ),

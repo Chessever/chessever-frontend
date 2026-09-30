@@ -8899,8 +8899,9 @@ class _BoardWithSidebarState extends ConsumerState<_BoardWithSidebar> {
     _pinchBoardWidth = null;
     // The pinch is over once the last finger lifts: keep the size for the
     // next game and the next visit.
-    if (_touches.isEmpty && _boardWidth != null) {
-      _rememberBoardWidth(_boardWidth!);
+    final width = _BoardZoomScope.of(context).value ?? _boardWidth;
+    if (_touches.isEmpty && width != null) {
+      _rememberBoardWidth(width);
     }
   }
 
