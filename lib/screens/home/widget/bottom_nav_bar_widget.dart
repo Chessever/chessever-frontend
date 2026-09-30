@@ -14,11 +14,13 @@ class BottomNavBarWidget extends StatefulWidget {
     required this.title,
     required this.width,
     this.icon,
+    this.onLongPress,
     super.key,
   });
 
   final bool isSelected;
   final VoidCallback onTap;
+  final VoidCallback? onLongPress;
   final String svgIcon;
   final String title;
   final double width;
@@ -52,6 +54,10 @@ class _BottomNavBarWidgetState extends State<BottomNavBarWidget> {
         button: true,
         selected: widget.isSelected,
         label: widget.title,
+        onLongPress: widget.onLongPress,
+        onLongPressHint: widget.onLongPress == null
+            ? null
+            : 'Make ${widget.title} the start screen',
         child: Tooltip(
           message: widget.title,
           excludeFromSemantics: true,
@@ -62,6 +68,7 @@ class _BottomNavBarWidgetState extends State<BottomNavBarWidget> {
             onTapUp: (_) => _setPressed(false),
             onTapCancel: () => _setPressed(false),
             onTap: widget.onTap,
+            onLongPress: widget.onLongPress,
             child: SizedBox(
               width: widget.width,
               child: Padding(

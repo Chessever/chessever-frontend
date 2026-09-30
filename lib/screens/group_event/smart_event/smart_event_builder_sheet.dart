@@ -536,10 +536,11 @@ class _Controls extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         _Group(
-          label: 'Level',
-          child: _LevelTrack(
-            selected: RatingTierFilter.normalizeMinRating(filter.minElo),
-            onPick: onLevel,
+          label: 'Opening',
+          child: _OpeningField(
+            eco: filter.eco,
+            onOpen: onOpenOpening,
+            onClear: onClearOpening,
           ),
         ),
         gap,
@@ -572,11 +573,10 @@ class _Controls extends StatelessWidget {
         ),
         gap,
         _Group(
-          label: 'Opening',
-          child: _OpeningField(
-            eco: filter.eco,
-            onOpen: onOpenOpening,
-            onClear: onClearOpening,
+          label: 'Level',
+          child: _LevelTrack(
+            selected: RatingTierFilter.normalizeMinRating(filter.minElo),
+            onPick: onLevel,
           ),
         ),
       ],

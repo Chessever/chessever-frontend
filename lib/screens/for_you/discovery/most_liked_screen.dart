@@ -14,9 +14,12 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 ///
 /// Games lists the ranking the way an event's Games tab lists its games;
 /// Players lists everyone with a game in it. Both tabs rank the same period
-/// and day ([mostLikedActiveQuery]), picked on either of them.
-class MostLikedScreen extends StatelessWidget {
-  const MostLikedScreen({super.key, this.now});
+/// and day ([mostLikedActiveQuery]), picked on either of them. Picking a
+/// player narrows Games to their ranked games and turns to it.
+class MostLikedScreen extends StatefulWidget {
+  const MostLikedScreen({super.key, this.now, this.embedded = false});
+
+  final bool embedded;
 
   /// Pins "now" in tests.
   final DateTime? now;
@@ -29,24 +32,52 @@ class MostLikedScreen extends StatelessWidget {
   }
 
   @override
+  State<MostLikedScreen> createState() => _MostLikedScreenState();
+}
+
+class _MostLikedScreenState extends State<MostLikedScreen> {
+  final _tabs = EventViewController();
+  MostLikedPlayer? _player;
+
+  void _pickPlayer(MostLikedPlayer player) {
+    setState(() => _player = player);
+    _tabs.showTab(0, scrollToTop: true);
+  }
+
+  @override
   Widget build(BuildContext context) {
     return EventViewShell(
       title: 'Most liked',
+      embedded: widget.embedded,
       tabs: const ['Games', 'Players'],
+      controller: _tabs,
       pageBuilder: (context, index) => _MostLikedPage(
         key: ValueKey('most_liked_page_$index'),
         view: index == 0 ? MostLikedView.games : MostLikedView.players,
-        now: now,
+        now: widget.now,
+        playerFilter: _player,
+        onPickPlayer: _pickPlayer,
+        onClearPlayerFilter: () => setState(() => _player = null),
       ),
     );
   }
 }
 
 class _MostLikedPage extends ConsumerWidget {
-  const _MostLikedPage({super.key, required this.view, this.now});
+  const _MostLikedPage({
+    super.key,
+    required this.view,
+    this.now,
+    this.playerFilter,
+    this.onPickPlayer,
+    this.onClearPlayerFilter,
+  });
 
   final MostLikedView view;
   final DateTime? now;
+  final MostLikedPlayer? playerFilter;
+  final ValueChanged<MostLikedPlayer>? onPickPlayer;
+  final VoidCallback? onClearPlayerFilter;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -70,7 +101,15 @@ class _MostLikedPage extends ConsumerWidget {
           top: 8.sp,
           bottom: 24.sp + MediaQuery.viewPaddingOf(context).bottom,
         ),
-        children: [MostLikedSection(view: view, now: now)],
+        children: [
+          MostLikedSection(
+            view: view,
+            now: now,
+            playerFilter: playerFilter,
+            onPickPlayer: onPickPlayer,
+            onClearPlayerFilter: onClearPlayerFilter,
+          ),
+        ],
       ),
     );
   }

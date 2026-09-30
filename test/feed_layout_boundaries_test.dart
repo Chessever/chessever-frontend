@@ -158,7 +158,7 @@ void main() {
           final scrub = tester.getRect(find.byType(FeedScrubStrip));
           final actionRow = tester.getRect(find.byType(FeedActionRow));
           final counter = tester.getRect(
-            find.byKey(const ValueKey('feed_scrub_counter')),
+            find.byKey(const ValueKey('feed_scrub_play_toggle')),
           );
 
           expect(header.height, 44);

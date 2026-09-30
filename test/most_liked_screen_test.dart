@@ -1,16 +1,20 @@
 import 'package:chessever2/providers/board_settings_provider_new.dart';
 import 'package:chessever2/providers/engine_settings_provider.dart';
+import 'package:chessever2/repository/library/models/saved_analysis.dart';
 import 'package:chessever2/repository/lichess/cloud_eval/cloud_eval.dart';
+import 'package:chessever2/repository/liked_games/liked_games_provider.dart';
 import 'package:chessever2/revenue_cat_service/subscribe_state.dart';
 import 'package:chessever2/screens/chessboard/provider/current_eval_provider.dart';
 import 'package:chessever2/screens/favorites/tabs/favorites_players_tab.dart';
 import 'package:chessever2/screens/for_you/discovery/models/discovery_models.dart';
+import 'package:chessever2/screens/for_you/discovery/likes_screen.dart';
 import 'package:chessever2/screens/for_you/discovery/most_liked_screen.dart';
 import 'package:chessever2/screens/for_you/discovery/providers/discovery_providers.dart';
 import 'package:chessever2/screens/for_you/discovery/widgets/discovery_common.dart';
 import 'package:chessever2/screens/for_you/discovery/widgets/most_liked_controls.dart';
 import 'package:chessever2/screens/for_you/discovery/widgets/most_liked_section.dart';
-import 'package:chessever2/screens/my_space/widgets/space_avatar.dart';
+import 'package:chessever2/widgets/figma_player_card.dart';
+import 'package:chessever2/screens/my_likes/provider/my_likes_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/event_no_spoilers_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrapper/grid_game_card_wrapper_widget.dart';
@@ -23,6 +27,11 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 // ---------------------------------------------------------------- doubles
+
+class _EmptyLikes extends LikedGamesNotifier {
+  @override
+  Future<List<SavedAnalysis>> build() async => const [];
+}
 
 class _Subscription extends StateNotifier<SubscriptionState>
     implements SubscriptionNotifier {
@@ -106,8 +115,12 @@ Future<ProviderContainer> _pump(
   required bool subscribed,
   List<MostLikedQuery>? queries,
   Widget home = const MostLikedScreen(),
+  List<Override> extra = const [],
+  Size size = const Size(390, 6000),
+  double textScale = 1,
+  ThemeData? theme,
 }) async {
-  tester.view.physicalSize = const Size(390, 6000);
+  tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1;
   addTearDown(tester.view.resetPhysicalSize);
   addTearDown(tester.view.resetDevicePixelRatio);
@@ -131,25 +144,48 @@ Future<ProviderContainer> _pump(
         queries?.add(query);
         return MostLikedResult.ranked(_ranking(12));
       }),
+      likedGamesProvider.overrideWith(_EmptyLikes.new),
+      myLikesViewProvider.overrideWith(
+        (ref) async => const MyLikesData(
+          sections: [],
+          openableAnalyses: [],
+          totalLiked: 0,
+          visibleCount: 0,
+        ),
+      ),
+      myLikesTagCountsProvider.overrideWith((ref) async => const {}),
+      ...extra,
     ],
   );
   addTearDown(container.dispose);
-  await _mount(tester, container, home);
+  await _mount(
+    tester,
+    container,
+    home,
+    phone: Size(size.width, size.height > 2000 ? 844 : size.height),
+    textScale: textScale,
+    theme: theme,
+  );
   return container;
 }
 
 Future<void> _mount(
   WidgetTester tester,
   ProviderContainer container,
-  Widget home,
-) async {
+  Widget home, {
+  Size phone = const Size(390, 844),
+  double textScale = 1,
+  ThemeData? theme,
+}) async {
   await tester.pumpWidget(
     UncontrolledProviderScope(
       container: container,
       child: MaterialApp(
-        theme: AppTheme.darkTheme,
+        theme: theme ?? AppTheme.darkTheme,
         builder: (context, child) => MediaQuery(
-          data: MediaQuery.of(context).copyWith(size: const Size(390, 844)),
+          data: MediaQuery.of(
+            context,
+          ).copyWith(size: phone, textScaler: TextScaler.linear(textScale)),
           child: child!,
         ),
         home: Builder(
@@ -179,6 +215,120 @@ Future<void> _teardown(WidgetTester tester, ProviderContainer container) async {
 }
 
 void main() {
+  testWidgets(
+    'Likes opens My Likes first and preserves both views across tabs',
+    (tester) async {
+      final queries = <MostLikedQuery>[];
+      final container = await _pump(
+        tester,
+        subscribed: true,
+        home: const LikesScreen(),
+        queries: queries,
+        extra: [
+          myLikesViewProvider.overrideWith(
+            (ref) async => const MyLikesData(
+              sections: [],
+              openableAnalyses: [],
+              totalLiked: 1,
+              visibleCount: 0,
+            ),
+          ),
+        ],
+      );
+      expect(find.text('Likes'), findsOneWidget);
+      expect(find.text('My Likes'), findsOneWidget);
+      expect(find.text('Most Liked'), findsOneWidget);
+      expect(find.byTooltip('Back'), findsOneWidget);
+      expect(find.byType(Scaffold), findsOneWidget);
+      expect(find.text('Keep the games you love'), findsOneWidget);
+      expect(queries, isEmpty);
+
+      await tester.tap(find.text('Games').hitTestable());
+      await _settle(tester);
+      await tester.enterText(find.byType(TextField), 'Magnus');
+      await _settle(tester);
+      expect(container.read(myLikesFilterProvider).searchQuery, 'Magnus');
+
+      await tester.tap(find.text('Most Liked'));
+      await _settle(tester);
+      expect(queries, isNotEmpty);
+      expect(find.byTooltip('Back'), findsOneWidget);
+      expect(find.text('Most liked'), findsNothing);
+      await tester.tap(find.bySemanticsLabel('Most liked, Week'));
+      await _settle(tester);
+      await tester.tap(find.text('Players').hitTestable());
+      await _settle(tester);
+      expect(find.text('White0, Player').hitTestable(), findsOneWidget);
+
+      await tester.tap(find.text('My Likes'));
+      await _settle(tester);
+      expect(find.byType(TextField).hitTestable(), findsOneWidget);
+      expect(
+        tester.widget<TextField>(find.byType(TextField)).controller!.text,
+        'Magnus',
+      );
+      await tester.tap(find.text('Most Liked'));
+      await _settle(tester);
+      expect(find.text('White0, Player').hitTestable(), findsOneWidget);
+      expect(container.read(mostLikedPeriodProvider), MostLikedPeriod.week);
+      expect(tester.takeException(), isNull);
+      await _teardown(tester, container);
+    },
+  );
+
+  testWidgets('horizontal swipes switch Likes sections, not secondary tabs', (
+    tester,
+  ) async {
+    final container = await _pump(
+      tester,
+      subscribed: true,
+      home: const LikesScreen(),
+    );
+    await tester.drag(
+      find.text('Keep the games you love'),
+      const Offset(-320, 0),
+    );
+    await _settle(tester);
+    await tester.pump(const Duration(seconds: 1));
+    final sections = tester.widget<PageView>(find.byType(PageView).first);
+    expect(sections.controller!.page, 1);
+    expect(find.byType(MostLikedDateControl), findsOneWidget);
+    await tester.drag(find.byType(PageView).first, const Offset(320, 0));
+    await _settle(tester);
+    await tester.pump(const Duration(seconds: 1));
+    expect(sections.controller!.page, 0);
+    expect(find.text('Keep the games you love').hitTestable(), findsOneWidget);
+    expect(tester.takeException(), isNull);
+    await _teardown(tester, container);
+  });
+
+  for (final width in [320.0, 390.0, 1024.0]) {
+    for (final light in [false, true]) {
+      testWidgets('Likes tabs fit at $width with large text, light=$light', (
+        tester,
+      ) async {
+        final container = await _pump(
+          tester,
+          subscribed: false,
+          home: const LikesScreen(),
+          size: Size(width, 844),
+          textScale: 2,
+          theme: light ? AppTheme.lightTheme : AppTheme.darkTheme,
+        );
+        expect(find.text('My Likes').hitTestable(), findsOneWidget);
+        expect(find.text('Most Liked').hitTestable(), findsOneWidget);
+        expect(tester.takeException(), isNull);
+        await tester.tap(find.text('Most Liked'));
+        await _settle(tester);
+        expect(find.byTooltip('Back'), findsOneWidget);
+        expect(find.text('My Likes').hitTestable(), findsOneWidget);
+        expect(find.text('Most Liked').hitTestable(), findsOneWidget);
+        expect(tester.takeException(), isNull);
+        await _teardown(tester, container);
+      });
+    }
+  }
+
   testWidgets('Games lists the whole ranking with a heart on every board; '
       'Players lists everyone in it, each as their profile circle', (
     tester,
@@ -206,10 +356,9 @@ void main() {
     await tester.tap(find.text('Players'));
     await _settle(tester);
     expect(find.byType(MostLikedPlayersList), findsOneWidget);
-    expect(find.byType(SpacePlayerAvatar), findsWidgets);
-    // A person is a photo circle with a flat monogram, never the gradient
-    // initials tile.
-    expect(find.byType(PlayerInitialsAvatar), findsNothing);
+    expect(find.byType(FigmaPlayerCard), findsWidgets);
+    // Uses the shared photo and initials fallback from the other player lists.
+    expect(find.byType(PlayerInitialsAvatar), findsWidgets);
     expect(find.text('White0, Player'), findsOneWidget);
     expect(tester.takeException(), isNull);
     await _teardown(tester, container);

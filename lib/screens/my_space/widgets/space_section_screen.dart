@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'dart:math' as math;
 
+import 'package:chessever2/screens/my_space/widgets/smart_events_empty.dart';
+import 'package:chessever2/screens/my_space/actions/space_remove_confirmation.dart';
 import 'package:chessever2/config/feature_flags.dart';
 import 'package:chessever2/repository/library/models/saved_analysis.dart';
 import 'package:chessever2/screens/for_you/discovery/widgets/discovery_common.dart'
@@ -145,6 +147,9 @@ class _SpaceSectionScreenState extends ConsumerState<SpaceSectionScreen> {
   Future<bool> _remove(SpaceShortcut s) async {
     final current = _current(s);
     if (current == null) return false;
+    if (!await confirmSpaceSmartEventRemoval(context, [current]) || !mounted) {
+      return false;
+    }
     final messenger = ScaffoldMessenger.maybeOf(context);
     final notifier = ref.read(spaceShortcutsProvider.notifier);
     unawaited(notifier.removeTarget(current.kind, current.targetId));
@@ -276,6 +281,18 @@ class _SpaceSectionScreenState extends ConsumerState<SpaceSectionScreen> {
   Future<void> _removeSelected(Set<String> all) async {
     final keys = {..._selected};
     if (keys.isEmpty) return;
+    final pins =
+        ref.read(spaceShortcutsProvider).valueOrNull ?? const <SpaceShortcut>[];
+    final smartEvents = pins
+        .where(
+          (s) => keys.contains(s.key) && s.kind == SpaceShortcutKind.smartEvent,
+        )
+        .toList();
+    if (smartEvents.isNotEmpty &&
+        !await confirmSpaceSmartEventRemoval(context, smartEvents)) {
+      return;
+    }
+    if (!mounted) return;
     final emptied = keys.containsAll(all);
     setState(() {
       _selected.clear();
@@ -517,14 +534,16 @@ class _SpaceSectionScreenState extends ConsumerState<SpaceSectionScreen> {
                             ),
                     )
                   : shown == 0
-                  ? Center(
-                      child: Text(
-                        'Nothing in $title yet',
-                        style: AppTypography.textSmMedium.copyWith(
-                          color: context.colors.textSecondary,
-                        ),
-                      ),
-                    )
+                  ? section == SpaceSection.smartEvents
+                        ? const SmartEventsEmpty()
+                        : Center(
+                            child: Text(
+                              'Nothing in $title yet',
+                              style: AppTypography.textSmMedium.copyWith(
+                                color: context.colors.textSecondary,
+                              ),
+                            ),
+                          )
                   : LayoutBuilder(
                       builder: (context, constraints) =>
                           _grid(auto, items, constraints.maxWidth),

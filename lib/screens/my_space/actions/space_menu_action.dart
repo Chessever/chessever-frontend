@@ -1,3 +1,4 @@
+import 'package:chessever2/screens/my_space/actions/space_remove_confirmation.dart';
 import 'package:chessever2/providers/favorite_players_provider.dart';
 import 'package:chessever2/repository/favorites/models/favorite_player.dart';
 import 'package:chessever2/screens/library/widgets/library_context_menu.dart';
@@ -39,6 +40,7 @@ LibraryMenuAction spaceMenuAction({
   }
   final notifier = ref.read(spaceShortcutsProvider.notifier);
   final messenger = ScaffoldMessenger.maybeOf(context);
+  final navigator = Navigator.of(context);
   return LibraryMenuAction(
     icon: inSpace
         ? Icons.dashboard_customize
@@ -46,6 +48,10 @@ LibraryMenuAction spaceMenuAction({
     label: inSpace ? 'Remove from My Space' : 'Add to My Space',
     onSelected: () async {
       if (inSpace) {
+        if (!navigator.mounted ||
+            !await confirmSpaceSmartEventRemoval(navigator.context, [draft])) {
+          return;
+        }
         final removed = await notifier.removeTarget(draft.kind, draft.targetId);
         HapticFeedbackService.light();
         if (messenger != null && removed != null) {

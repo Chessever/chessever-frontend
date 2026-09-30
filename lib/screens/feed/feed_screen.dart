@@ -24,6 +24,8 @@ import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/user_error_message.dart';
 import 'package:chessever2/widgets/app_snack.dart';
 import 'package:chessever2/widgets/home_top_bar.dart';
+import 'package:chessever2/widgets/destination_title.dart';
+import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
@@ -763,52 +765,58 @@ class _FeedHeader extends StatelessWidget {
   /// Why the speaker reads off when Feed's own mute is not the reason.
   final String? soundHint;
 
-  /// A 22pt glyph centred in a 44pt-wide target sits 11pt inside it; the
-  /// bar's right gutter is pulled in by that much so the glyph's own edge
-  /// lands on the gutter.
-  static const double _glyphInset = 11;
-
   @override
   Widget build(BuildContext context) {
     final colors = context.colors;
 
-    // The home bar's frame and row, so the title and the speaker sit exactly
-    // where they did as a tab; the back button takes the avatar's place.
+    // Keep the home bar's vertical geometry, with the title centered between
+    // equal side gutters independently of the back and sound controls.
     return Padding(
       padding: const EdgeInsets.only(bottom: 4),
       child: HomeTopBarFrame(
-        trailingOpticalInset: _glyphInset,
-        child: HomeTopBarRow(
-          showAvatar: false,
-          leading: const HomeTopBarBackButton(key: ValueKey('feed_back')),
-          content: MediaQuery.withClampedTextScaling(
-            maxScaleFactor: HomeTopBarMetrics.maxTextScale,
-            child: _FeedTitle(onTap: onTitleTap),
-          ),
-          trailing: [
-            Semantics(
-              toggled: soundOn,
-              hint: soundHint,
-              child: FeedPressable(
-                key: const ValueKey('feed_sound_toggle'),
-                semanticsLabel: 'Move sounds',
-                onTap: onToggleSound,
-                // No taller than the avatar, so the shared row keeps its
-                // height. On a phone that draws it shorter than 44pt the
-                // bar's tap target still takes a full 44pt (see
-                // HomeTopBarTapTarget).
-                child: SizedBox(
-                  width: 44,
-                  height: HomeTopBarMetrics.controlExtent,
-                  child: Center(
-                    child: FeedGlyph(
-                      soundOn ? FeedGlyphs.soundOn : FeedGlyphs.soundOff,
-                      width: 22,
-                      height: 22,
-                      color: colors.textPrimary,
+        child: Stack(
+          alignment: Alignment.center,
+          children: [
+            HomeTopBarRow(
+              showAvatar: false,
+              leading: const HomeTopBarBackButton(key: ValueKey('feed_back')),
+              content: MediaQuery.withClampedTextScaling(
+                maxScaleFactor: HomeTopBarMetrics.maxTextScale,
+                child: const SizedBox.shrink(),
+              ),
+              trailing: [
+                Semantics(
+                  toggled: soundOn,
+                  hint: soundHint,
+                  child: FeedPressable(
+                    key: const ValueKey('feed_sound_toggle'),
+                    semanticsLabel: 'Move sounds',
+                    onTap: onToggleSound,
+                    // No taller than the avatar, so the shared row keeps its
+                    // height. On a phone that draws it shorter than 44pt the
+                    // bar's tap target still takes a full 44pt (see
+                    // HomeTopBarTapTarget).
+                    child: SizedBox(
+                      width: 44,
+                      height: HomeTopBarMetrics.controlExtent,
+                      child: Center(
+                        child: FeedGlyph(
+                          soundOn ? FeedGlyphs.soundOn : FeedGlyphs.soundOff,
+                          width: 22,
+                          height: 22,
+                          color: colors.textPrimary,
+                        ),
+                      ),
                     ),
                   ),
                 ),
+              ],
+            ),
+            Padding(
+              padding: EdgeInsets.symmetric(horizontal: 56.w),
+              child: MediaQuery.withClampedTextScaling(
+                maxScaleFactor: HomeTopBarMetrics.maxTextScale,
+                child: _FeedTitle(onTap: onTitleTap),
               ),
             ),
           ],
@@ -830,7 +838,8 @@ class _FeedTitle extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Align(
-      alignment: Alignment.centerLeft,
+      alignment: Alignment.center,
+      heightFactor: 1,
       child: Semantics(
         header: true,
         // Drawn no taller than the avatar, so the shared row keeps its
@@ -845,10 +854,9 @@ class _FeedTitle extends StatelessWidget {
               height: HomeTopBarMetrics.controlExtent,
               child: Center(
                 widthFactor: 1,
-                child: Text(
-                  'Feed',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
+                child: DestinationTitle(
+                  title: 'Feed',
+                  icon: const Icon(Icons.dynamic_feed_rounded),
                   style: AppTypography.textXlBold.copyWith(
                     fontSize: 22,
                     height: 28 / 22,

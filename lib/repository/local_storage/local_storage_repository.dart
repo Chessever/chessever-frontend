@@ -125,6 +125,18 @@ class AppSharedPreferences {
     return prefs.getInt(key);
   }
 
+  Future<void> setDouble(String key, double value) async {
+    final prefs = await _getPrefs();
+    if (prefs == null) return;
+    await prefs.setDouble(key, value);
+  }
+
+  Future<double?> getDouble(String key) async {
+    final prefs = await _getPrefs();
+    if (prefs == null) return null;
+    return prefs.getDouble(key);
+  }
+
   Future<void> setBool(String key, bool value) async {
     final prefs = await _getPrefs();
     if (prefs == null) return;

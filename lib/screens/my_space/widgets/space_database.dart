@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:math' as math;
 
+import 'package:chessever2/screens/my_space/widgets/smart_events_empty.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:chessever2/config/feature_flags.dart';
 import 'package:chessever2/repository/library/models/library_folder.dart';
@@ -1704,6 +1705,7 @@ class SpaceGroupPage extends ConsumerWidget {
     ];
     final title = spaceGroupTitle(section);
     if (items.isEmpty) {
+      if (section == SpaceSection.smartEvents) return const SmartEventsEmpty();
       return Center(
         child: Text(
           'Nothing in $title yet',
