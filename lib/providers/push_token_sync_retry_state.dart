@@ -7,6 +7,12 @@ class PushTokenSyncRetryState {
   String? _activeSignature;
   int _failedAttempts = 0;
 
+  void reset() {
+    _syncedSignature = null;
+    _activeSignature = null;
+    _failedAttempts = 0;
+  }
+
   bool shouldSync(String signature) {
     if (_syncedSignature == signature) return false;
     _activate(signature);

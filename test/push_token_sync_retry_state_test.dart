@@ -30,6 +30,22 @@ void main() {
       expect(state.shouldSync(signature), isFalse);
     });
 
+    test('resume refreshes a previously synced subscription', () {
+      final state = PushTokenSyncRetryState();
+      state.recordSuccess('same-device');
+      expect(state.shouldSync('same-device'), isFalse);
+      state.reset();
+      expect(state.shouldSync('same-device'), isTrue);
+    });
+
+    test('resume recovers after exhausting network retries', () {
+      final state = PushTokenSyncRetryState(maxAttempts: 1);
+      state.recordFailure('same-device');
+      expect(state.shouldSync('same-device'), isFalse);
+      state.reset();
+      expect(state.shouldSync('same-device'), isTrue);
+    });
+
     test('a new subscription resets the retry budget', () {
       final state = PushTokenSyncRetryState(maxAttempts: 2);
 
