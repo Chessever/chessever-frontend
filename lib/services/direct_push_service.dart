@@ -25,8 +25,9 @@ Future<void> directPushBackgroundHandler(RemoteMessage message) async {
 class DirectPushService with WidgetsBindingObserver {
   DirectPushService._();
   static final instance = DirectPushService._();
-  static const _enabled = bool.fromEnvironment('CHESSEVER_DIRECT_PUSH_ENABLED');
-  static const _productionUrl = String.fromEnvironment('CHESSEVER_NOTIFICATION_URL');
+  static const _enabled = bool.fromEnvironment('CHESSEVER_DIRECT_PUSH_ENABLED', defaultValue: true);
+  static const _productionUrl = String.fromEnvironment('CHESSEVER_NOTIFICATION_URL',
+      defaultValue: 'https://chessever-notifications.young-sun-69a8.workers.dev');
   static const _testUrl = String.fromEnvironment('CHESSEVER_TEST_NOTIFICATION_URL');
   static String get _url => AppEnvironment.isTest ? _testUrl : _productionUrl;
   final _local = FlutterLocalNotificationsPlugin();
