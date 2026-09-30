@@ -2,6 +2,7 @@ import '../services/direct_push_service.dart';
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/widgets.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:onesignal_flutter/onesignal_flutter.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -17,7 +18,7 @@ final pushTokenSyncProvider = Provider<PushTokenSyncController>((ref) {
   return controller;
 });
 
-class PushTokenSyncController {
+class PushTokenSyncController with WidgetsBindingObserver {
   PushTokenSyncController(this.ref);
 
   final Ref ref;
@@ -27,10 +28,13 @@ class PushTokenSyncController {
   final PushTokenSyncRetryState _retryState = PushTokenSyncRetryState();
   final Set<String> _inFlightSignatures = <String>{};
   Timer? _retryTimer;
+  Timer? _readinessTimer;
+  int _readinessAttempts = 0;
 
   void start() {
     if (_started) return;
     _started = true;
+    WidgetsBinding.instance.addObserver(this);
 
     ref.listen(currentUserProvider, (previous, next) {
       final previousUserId = previous?.id;
@@ -39,6 +43,8 @@ class PushTokenSyncController {
       }
 
       _userId = next?.id;
+      _readinessAttempts = 0;
+      _readinessTimer?.cancel();
       if (_userId == null) return;
       unawaited(_syncCurrentSubscription());
     }, fireImmediately: true);
@@ -51,6 +57,25 @@ class PushTokenSyncController {
   void dispose() {
     _disposed = true;
     _retryTimer?.cancel();
+    _readinessTimer?.cancel();
+    WidgetsBinding.instance.removeObserver(this);
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state != AppLifecycleState.resumed || _disposed) return;
+    _readinessAttempts = 0;
+    _retryState.reset();
+    unawaited(_syncCurrentSubscription());
+  }
+
+  void _retrySubscriptionReadiness() {
+    if (_disposed || _userId == null || _readinessAttempts >= 10) return;
+    _readinessAttempts++;
+    _readinessTimer?.cancel();
+    _readinessTimer = Timer(const Duration(seconds: 3), () {
+      unawaited(_syncCurrentSubscription());
+    });
   }
 
   void _handlePushSubscriptionChanged(OSPushSubscriptionChangedState state) {
@@ -68,7 +93,12 @@ class PushTokenSyncController {
     try {
       final dynamic subscription = OneSignal.User.pushSubscription;
       final String? id = subscription.id as String?;
-      if (id == null || id.isEmpty) return;
+      if (id == null || id.isEmpty) {
+        _retrySubscriptionReadiness();
+        return;
+      }
+      _readinessTimer?.cancel();
+      _readinessAttempts = 0;
 
       final String? token = subscription.token as String?;
       final bool? optedIn = subscription.optedIn as bool?;
@@ -80,7 +110,8 @@ class PushTokenSyncController {
         optedIn: optedIn ?? true,
       );
     } catch (_) {
-      // No-op if OneSignal isn't ready yet.
+      // The SDK may finish initializing without emitting a subscription change.
+      _retrySubscriptionReadiness();
     }
   }
 
