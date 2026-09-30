@@ -1,3 +1,4 @@
+import 'services/direct_push_service.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
@@ -168,7 +169,7 @@ String _getEnv(String key) {
     return releaseValue;
   }
 
-  if (kDebugMode && !AppEnvironment.isTest) {
+  if (kDebugMode && !AppEnvironment.isTest && dotenv.isInitialized) {
     final value = dotenv.env[key];
     if (value == null || value.isEmpty) {
       throw Exception('Missing env variable in .env file: $key');
@@ -189,7 +190,7 @@ String _getEnv(String key) {
 String _getOptionalEnv(String key) {
   final releaseValue = _releaseEnvValues[key]?.trim();
   if (releaseValue != null && releaseValue.isNotEmpty) return releaseValue;
-  if (kDebugMode && !AppEnvironment.isTest) {
+  if (kDebugMode && !AppEnvironment.isTest && dotenv.isInitialized) {
     return dotenv.env[key]?.trim() ?? '';
   }
   return '';
@@ -835,6 +836,8 @@ void _initializePostStartupServices(WidgetRef ref) {
     );
   }
 
+  unawaited(DirectPushService.instance.initialize());
+
   // Handle OneSignal notification taps.
   //
   // This listener is registered here, during startup, and NOT from the widget
@@ -858,6 +861,7 @@ void _initializePostStartupServices(WidgetRef ref) {
     OneSignal.Notifications.addClickListener((event) {
       final data = event.notification.additionalData;
       if (data == null) return;
+      unawaited(DirectPushService.instance.recordOneSignalOpen(data));
       DeepLinkService.instance.ingestNotificationData(data);
     });
   }

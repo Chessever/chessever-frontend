@@ -248,3 +248,6 @@ fastlane/.env*
 
 # Local brainstorm visual companion sessions
 .superpowers/
+
+# Local production client SDK configuration
+config/production-internal-push.local.json

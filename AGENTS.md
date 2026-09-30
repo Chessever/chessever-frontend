@@ -125,3 +125,9 @@ chessever_frontend_desktop_oss/scripts/which_repo_owns_function.sh <slug>
 ```
 
 `onesignal-dispatch`, `fetch-fide-photo-webp` and `revenuecat-webhook` have stale copies in other repos. Deploying from the wrong one rolls production back — it happened on 2026-08-26 and reverted an auth check to a version that accepted any request with no token header. This repo is the source of truth for the notification, RevenueCat and photo functions.
+
+## Local commit preference
+
+- Commit completed mobile changes locally after validation, including the required version bump.
+- Keep commits local. Do not push unless the user explicitly asks.
+- Exclude credentials and local environment configuration, and preserve unrelated working-tree changes.

@@ -171,6 +171,8 @@ dependencies:
   receive_sharing_intent: 1.8.1
   lottie: ^3.3.3
   flutter_screenshot_detect: ^0.1.7
+  firebase_messaging: ^15.2.10
+  flutter_local_notifications: ^19.5.0
 
 dev_dependencies:
   flutter_test:

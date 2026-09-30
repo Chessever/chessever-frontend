@@ -10,6 +10,11 @@ class SceneDelegate: FlutterSceneDelegate {
   ) {
     super.scene(scene, willConnectTo: session, options: connectionOptions)
 
+    if let response = connectionOptions.notificationResponse,
+       let appDelegate = UIApplication.shared.delegate as? AppDelegate {
+      appDelegate.captureDirectPushTap(response)
+    }
+
     for context in connectionOptions.urlContexts {
       let url = context.url
       DispatchQueue.main.async {

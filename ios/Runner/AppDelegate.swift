@@ -7,6 +7,55 @@ import OneSignalFramework
 
 @main
 @objc class AppDelegate: FlutterAppDelegate, FlutterImplicitEngineDelegate {
+  private var pushTapChannel: FlutterMethodChannel?
+  private var pushTapListenerReady = false
+  private var pendingPushTap: [String: Any]?
+
+  // Scene-based launches do not put the response in UIApplication launchOptions.
+  // Keep the tap until Dart has registered its listener.
+  func captureDirectPushTap(_ response: UNNotificationResponse) {
+    guard response.actionIdentifier == UNNotificationDefaultActionIdentifier else { return }
+    let info = response.notification.request.content.userInfo
+    guard let messageId = info["gcm.message_id"] as? String else { return }
+    var data: [String: Any] = [:]
+    for (key, value) in info {
+      guard let key = key as? String, key != "aps" else { continue }
+      data[key] = value
+    }
+    let tap: [String: Any] = ["messageId": messageId, "data": data]
+    if pushTapListenerReady, let channel = pushTapChannel {
+      channel.invokeMethod("notificationOpened", arguments: tap)
+    } else {
+      pendingPushTap = tap
+    }
+  }
+
+  override func userNotificationCenter(
+    _ center: UNUserNotificationCenter,
+    didReceive response: UNNotificationResponse,
+    withCompletionHandler completionHandler: @escaping () -> Void
+  ) {
+    captureDirectPushTap(response)
+    super.userNotificationCenter(center, didReceive: response,
+                                 withCompletionHandler: completionHandler)
+  }
+
+  private func setupPushTapChannel(binaryMessenger: FlutterBinaryMessenger) {
+    let channel = FlutterMethodChannel(name: "com.chessever/push_taps",
+                                       binaryMessenger: binaryMessenger)
+    pushTapChannel = channel
+    channel.setMethodCallHandler { [weak self] call, result in
+      guard call.method == "takeInitialTap", let self = self else {
+        result(FlutterMethodNotImplemented)
+        return
+      }
+      self.pushTapListenerReady = true
+      let tap = self.pendingPushTap
+      self.pendingPushTap = nil
+      result(tap)
+    }
+  }
+
   override func application(
     _ application: UIApplication,
     didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
@@ -23,6 +72,32 @@ import OneSignalFramework
     }
 
     return super.application(application, didFinishLaunchingWithOptions: launchOptions)
+  }
+
+  override func userNotificationCenter(
+    _ center: UNUserNotificationCenter,
+    willPresent notification: UNNotification,
+    withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
+  ) {
+    let isFirebasePush = notification.request.trigger is UNPushNotificationTrigger
+      && notification.request.content.userInfo["gcm.message_id"] != nil
+    guard isFirebasePush else {
+      super.userNotificationCenter(center, willPresent: notification,
+                                   withCompletionHandler: completionHandler)
+      return
+    }
+
+    // Own the system completion for FCM. Flutter fans this callback out to
+    // plugins, which can call it zero or multiple times; banner presentation
+    // must not depend on a plugin replying (especially with an implicit engine).
+    // Keep forwarding for Firebase's onMessage/receipt handling, but do not let
+    // plugin callbacks complete the system request a second time.
+    if #available(iOS 14.0, *) {
+      completionHandler([.banner, .list, .sound, .badge])
+    } else {
+      completionHandler([.alert, .sound, .badge])
+    }
+    super.userNotificationCenter(center, willPresent: notification) { _ in }
   }
 
   override func application(
@@ -50,6 +125,7 @@ import OneSignalFramework
     // Storyboard-based apps use an implicit engine, so plugin and channel
     // registration must happen here exactly once.
     GeneratedPluginRegistrant.register(with: engineBridge.pluginRegistry)
+    setupPushTapChannel(binaryMessenger: engineBridge.applicationRegistrar.messenger())
     setupAudioSessionChannel(binaryMessenger: engineBridge.applicationRegistrar.messenger())
     setupPipChannel(binaryMessenger: engineBridge.applicationRegistrar.messenger())
     setupMediaPickerChannel(binaryMessenger: engineBridge.applicationRegistrar.messenger())

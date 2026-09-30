@@ -1,3 +1,11 @@
+import 'package:chessever2/repository/authentication/auth_repository.dart';
+import 'package:chessever2/repository/authentication/model/auth_state.dart';
+import 'package:chessever2/repository/supabase/group_broadcast/group_broadcast.dart';
+import 'package:chessever2/repository/supabase/group_broadcast/group_tour_repository.dart';
+import 'package:chessever2/repository/supabase/tour/tour.dart';
+import 'package:chessever2/repository/supabase/tour/tour_repository.dart';
+import 'package:chessever2/screens/tour_detail/provider/tour_detail_repo_provider.dart';
+import 'package:chessever2/screens/tour_detail/provider/tour_detail_mode_provider.dart';
 import 'package:chessever2/services/deep_link_service.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -11,9 +19,8 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 /// terminated-app tap sitting on Home while the same tap worked fine when the
 /// app was merely backgrounded.
 ///
-/// These tests drive the boundary with a payload that carries no routing hints,
-/// so routing resolves synchronously to the Home fallback and no repository,
-/// auth or network work is involved.
+/// Covers early tap buffering and the portal broadcast URL with fake auth and
+/// repositories, including tour-to-group resolution and category selection.
 void main() {
   const noHintsPayload = <String, dynamic>{'type': 'call_to_action'};
 
@@ -34,23 +41,26 @@ void main() {
     DeepLinkService.instance.dispose();
   });
 
-  Future<WidgetRef> pumpHost(WidgetTester tester) async {
+  Future<WidgetRef> pumpHost(
+    WidgetTester tester, {
+    List<Override> overrides = const [],
+  }) async {
     late WidgetRef captured;
     await tester.pumpWidget(
       ProviderScope(
+        overrides: overrides,
         child: MaterialApp(
           navigatorKey: navigatorKey,
           onGenerateRoute: (settings) {
             pushedRoutes.add(settings.name ?? '');
             return MaterialPageRoute<void>(
               settings: settings,
-              builder:
-                  (_) => Consumer(
-                    builder: (_, ref, __) {
-                      captured = ref;
-                      return const SizedBox.shrink();
-                    },
-                  ),
+              builder: (_) => Consumer(
+                builder: (_, ref, __) {
+                  captured = ref;
+                  return const SizedBox.shrink();
+                },
+              ),
             );
           },
           initialRoute: '/',
@@ -58,6 +68,55 @@ void main() {
       ),
     );
     return captured;
+  }
+
+  for (final coldStart in [true, false]) {
+    testWidgets('tester broadcast URL opens event (cold=$coldStart)', (
+      tester,
+    ) async {
+      DeepLinkService.instance.dispose();
+      final tours = _Tours();
+      final groups = _Groups();
+      final selection = _Selection();
+      final ref = await pumpHost(
+        tester,
+        overrides: [
+          authStateProvider.overrideWith(_Authenticated.new),
+          tourRepositoryProvider.overrideWithValue(tours),
+          groupBroadcastRepositoryProvider.overrideWithValue(groups),
+          tourDetailRepoProvider.overrideWithValue(selection),
+        ],
+      );
+      const data = <String, dynamic>{
+        'url':
+            'https://chessever.com/broadcast/2026-titled-tuesday-blitz-september-29/mKgqPByN',
+      };
+      final authSubscription = ProviderScope.containerOf(
+        navigatorKey.currentContext!,
+      ).listen(authStateProvider, (_, __) {});
+      await tester.pump();
+      addTearDown(authSubscription.close);
+      pushedRoutes.clear();
+      if (!coldStart) {
+        DeepLinkService.instance.attachNotificationRouter(navigatorKey, ref);
+      }
+      DeepLinkService.instance.ingestNotificationData(data);
+      if (coldStart) {
+        DeepLinkService.instance.attachNotificationRouter(navigatorKey, ref);
+      }
+      DeepLinkService.notifyAppReady();
+      await tester.pumpAndSettle();
+      expect(tours.requested, ['mKgqPByN']);
+      expect(groups.requested, 'gb_mKgqPByN');
+      expect(selection.tourId, 'mKgqPByN');
+      expect(pushedRoutes, ['/tournament_detail_screen']);
+      expect(
+        ProviderScope.containerOf(
+          navigatorKey.currentContext!,
+        ).read(selectedBroadcastModelProvider)?.id,
+        'gb_mKgqPByN',
+      );
+    });
   }
 
   testWidgets('a tap that lands before the router is attached is not lost', (
@@ -129,4 +188,66 @@ void main() {
 
     expect(pushedRoutes, isEmpty);
   });
+}
+
+class _Authenticated extends AuthController {
+  @override
+  Future<AppAuthState> build() async =>
+      const AppAuthState(status: AppAuthStatus.authenticated);
+}
+
+class _Tours implements TourRepository {
+  List<String>? requested;
+  @override
+  Future<List<Tour>> getToursByIds(List<String> ids) async {
+    requested = ids;
+    return [
+      Tour(
+        id: 'mKgqPByN',
+        name: 'Titled Tuesday',
+        slug: 'titled-tuesday',
+        info: TourInfo(),
+        createdAt: DateTime(2026, 9, 29),
+        url: '',
+        tier: 0,
+        dates: [],
+        players: [],
+        groupBroadcastId: 'gb_mKgqPByN',
+      ),
+    ];
+  }
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+class _Groups implements GroupBroadcastRepository {
+  String? requested;
+  @override
+  Future<GroupBroadcast> getGroupBroadcastById(String id) async {
+    requested = id;
+    return GroupBroadcast(
+      id: id,
+      createdAt: DateTime(2026, 9, 29),
+      name: 'Titled Tuesday',
+      search: [],
+    );
+  }
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+class _Selection implements TourDetailRepo {
+  String? tourId;
+  @override
+  Future<void> saveSelectedTourId({
+    required String groupEventId,
+    required String tourId,
+  }) async {
+    this.tourId = tourId;
+  }
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }

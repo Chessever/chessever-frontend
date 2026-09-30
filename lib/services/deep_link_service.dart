@@ -1252,6 +1252,13 @@ class DeepLinkService {
     GlobalKey<NavigatorState> navigatorKey,
     WidgetRef ref,
   ) {
+    final portalUrl = Uri.tryParse(data['url'] is String ? data['url'] as String : '');
+    if (portalUrl != null && portalUrl.scheme == 'https' &&
+        const ['chessever.com', 'www.chessever.com'].contains(portalUrl.host)) {
+      handleDeepLink(portalUrl, navigatorKey, ref);
+      return;
+    }
+
     final type = _asNonEmptyString(data['type'])?.toLowerCase();
 
     debugPrint('DeepLinkService: Handling notification data: type=$type');
