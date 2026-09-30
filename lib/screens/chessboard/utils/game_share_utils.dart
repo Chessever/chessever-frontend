@@ -281,7 +281,7 @@ ChessGame mergeGameReportAnnotationsForGif(
 /// classification is: the standard NAG the reader picked, plus the matching
 /// ChessEver code from the `$240`–`$247` block ([kChesseverClassificationNags])
 /// so the badge survives the round trip instead of degrading to bare text. The
-/// five glyphs that carry a badge are listed in [kQualityNagClassifications];
+/// glyphs that carry a badge are listed in [kQualityNagClassifications];
 /// `!?` and `□` travel as their standard NAG alone, which is all they ever had.
 ///
 /// Where the reader's verdict lands on a move that already carries one — an
@@ -338,7 +338,10 @@ ChessGame mergeUserMoveNagsForExport(
       final badgedClassification = classificationForQualityNag(
         firstBadgedQualityNag(userNags) ?? 0,
       );
-      final userOverridesVerdict = userNags.any(_moveVerdictNags.contains);
+      final userOverridesVerdict = userNags.any(
+        (nag) => _moveVerdictNags.contains(nag) ||
+            classificationForQualityNag(nag) != null,
+      );
       final next = existingNags
         .where(
           (nag) =>

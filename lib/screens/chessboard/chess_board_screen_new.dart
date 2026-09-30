@@ -436,7 +436,10 @@ List<int> mergeMoveNags({
   // beside it. Without this a broadcast `!` outranks the `?` they just applied
   // (both survive the merge, and the lower code wins the badge slot), and the
   // move keeps showing the imported verdict they were trying to overrule.
-  final userOverridesVerdict = userNags.any(kMoveVerdictNags.contains);
+  final userOverridesVerdict = userNags.any(
+    (nag) => kMoveVerdictNags.contains(nag) ||
+        classificationForQualityNag(nag) != null,
+  );
   if (pgn.isNotEmpty) {
     final dropVerdicts =
         reportJudgedMove ||
@@ -17629,7 +17632,7 @@ class _EventInfoRow extends StatelessWidget {
 // ===========================================================================
 
 class _NagPickerSheet extends ConsumerWidget {
-  static const List<int> _qualityNags = [3, 1, 5, 6, 2, 4, 7];
+  static const List<int> _qualityNags = manualQualityNags;
   static const List<int> _evaluationNags = [
     14,
     15,

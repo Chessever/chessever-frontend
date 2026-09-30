@@ -4,7 +4,7 @@ import 'package:chessever2/services/lichess_move_annotations_service.dart';
 import 'package:flutter/material.dart';
 
 enum NagCategory {
-  /// Move quality glyphs ($1–$6, $7): bold colored, eye-catching.
+  /// Move quality glyphs ($1–$7 and manual ChessEver verdict codes).
   quality,
 
   /// Position assessment glyphs (=, ±, ∓, ∞, ⩲, ⩱, +-, -+, etc).
@@ -28,9 +28,24 @@ class NagDisplay {
 const Color _kEvalSlate = Color(0xFF9AA3AD);
 const Color _kObservationDim = Color(0xFFB8C4D0);
 
+/// Includes the existing ChessEver lossless verdict codes for the three
+/// classifications that have no standard PGN quality glyph.
+const manualQualityNags = <int>[3, 1, 242, 5, 6, 2, 4, 243, 247, 7];
+
 // Quality NAG colors resolve through [moveAnnotationColor] so text glyphs
 // match the classification badge SVG gradient tops (board, notation, recap).
 NagDisplay? getNagDisplay(int nag) {
+  final classification = classificationForQualityNag(nag);
+  if (nag >= 240 && classification != null) {
+    final type = annotationTypeForClassification(classification);
+    final symbol = switch (nag) {
+      242 => '★',
+      243 => '💔',
+      247 => 'Book',
+      _ => '',
+    };
+    return NagDisplay(symbol, moveAnnotationColor(type), NagCategory.quality);
+  }
   switch (nag) {
     case 1:
       // goodMove — navy !
