@@ -983,6 +983,7 @@ class _CollectionScreenState extends ConsumerState<CollectionScreen> {
           showGamebaseButton: false,
           disableGamebaseOverlayByDefault: true,
           // Licensed book/event content: no save, no Copy PGN.
+          allowGameExport: false,
         ),
       ),
     );

@@ -1089,6 +1089,9 @@ class FeedNotifier extends AsyncNotifier<List<FeedItem>> {
     DateTime now,
   ) {
     if (clip == null || clip.plyCount < _minPlies) return null;
+    // The Feed is a report feed: a game without a ChessEver Game Report has
+    // nothing to rank it by, so it never becomes a post.
+    if (!clip.hasReport) return null;
     final game = candidate.game;
     if (game.gameStatus.isOngoing) return null;
     final result = clip.result ?? _resultOf(game.gameStatus);

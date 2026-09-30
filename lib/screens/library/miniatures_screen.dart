@@ -7,10 +7,10 @@ import 'package:chessever2/screens/my_space/actions/space_menu_action.dart';
 import 'package:chessever2/screens/my_space/models/space_shortcut.dart';
 import 'package:chessever2/screens/my_space/providers/space_shortcuts_provider.dart';
 import 'package:chessever2/theme/app_colors.dart';
-import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/screen_wrapper.dart';
+import 'package:chessever2/widgets/destination_title.dart';
 import 'package:chessever2/widgets/scroll_to_top_bus.dart';
 import 'package:chessever2/widgets/segmented_switcher.dart';
 import 'package:flutter/material.dart';
@@ -160,34 +160,12 @@ class _MiniaturesScreenState extends ConsumerState<MiniaturesScreen> {
           // narrowest phones instead of letting the two overlap.
           Padding(
             padding: EdgeInsets.symmetric(horizontal: 56.w),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                // Same bare mark the Library card uses for this collection.
-                Icon(
-                  Icons.bolt_rounded,
-                  size: 18.sp,
-                  color: context.colors.iconPrimary,
-                ),
-                SizedBox(width: 6.w),
-                Flexible(
-                  child: Text(
-                    'Miniatures',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: AppTypography.textMdMedium.copyWith(
-                      color: context.colors.textPrimary,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ),
-              ],
+            child: const DestinationTitle(
+              title: 'Miniatures',
+              icon: Icon(Icons.bolt_rounded),
             ),
           ),
-          Align(
-            alignment: Alignment.centerRight,
-            child: _buildSpaceButton(),
-          ),
+          Align(alignment: Alignment.centerRight, child: _buildSpaceButton()),
         ],
       ),
     );
@@ -205,10 +183,12 @@ class _MiniaturesScreenState extends ConsumerState<MiniaturesScreen> {
     if (!inSpace && !draft.canAddToMySpace) return const SizedBox.shrink();
     return IconButton(
       tooltip: inSpace ? 'Remove from My Space' : 'Add to My Space',
-      onPressed:
-          () => toggleSpaceShortcut(context: context, ref: ref, draft: draft),
+      onPressed: () =>
+          toggleSpaceShortcut(context: context, ref: ref, draft: draft),
       icon: Icon(
-        inSpace ? Icons.dashboard_customize : Icons.dashboard_customize_outlined,
+        inSpace
+            ? Icons.dashboard_customize
+            : Icons.dashboard_customize_outlined,
         size: 18.sp,
         color: context.colors.textPrimary,
       ),

@@ -3,6 +3,7 @@ import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/home_top_bar.dart';
+import 'package:chessever2/widgets/destination_title.dart';
 import 'package:chessever2/widgets/screen_wrapper.dart';
 import 'package:chessever2/widgets/segmented_switcher.dart';
 import 'package:flutter/material.dart';
@@ -24,13 +25,25 @@ class EventViewShell extends StatefulWidget {
     this.onOpenSidebar,
     this.scrollToTopSequence,
     this.header,
-    this.actions = const [],
+    this.embedded = false,
     this.tabStripOverride,
+    this.actions,
+    this.titleIcon,
   });
 
-  final Widget? header;
+  /// Renders only tabs and pages inside a parent screen. The parent owns the
+  /// header and horizontal swipe; these secondary tabs remain tappable.
+  final bool embedded;
+
+  /// Replaces the segmented tab strip (a search row on single-page screens).
+  /// Pages still swipe; with one tab there is nothing to switch between.
   final Widget? tabStripOverride;
-  final List<Widget> actions;
+
+  /// Trailing header buttons on the default (back + title) header, in place
+  /// of the spacer that balances the back button.
+  final List<Widget>? actions;
+  final Widget? header;
+  final Widget? titleIcon;
   final String title;
   final List<String> tabs;
   final Widget Function(BuildContext context, int index) pageBuilder;
@@ -150,149 +163,154 @@ class _EventViewShellState extends State<EventViewShell> {
   Widget build(BuildContext context) {
     final colors = context.colors;
     final side = HomeTopBarMetrics.horizontalPadding;
-    return ScreenWrapper(
-      child: Scaffold(
-        backgroundColor: colors.background,
-        body: Center(
-          child: ConstrainedBox(
-            constraints: BoxConstraints(
-              maxWidth: ResponsiveHelper.isTablet
-                  ? ResponsiveHelper.contentMaxWidth
-                  : double.infinity,
-            ),
-            child: Column(
-              children: [
-                if (widget.header != null)
-                  widget.header!
-                else if (widget.homeTab)
-                  HomeTopBar(
-                    onOpenSidebar: widget.onOpenSidebar,
-                    content: Semantics(
-                      header: true,
-                      child: Text(
-                        widget.title,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: AppTypography.textMdMedium.copyWith(
-                          color: colors.textPrimary,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ),
-                  )
-                else ...[
-                  SizedBox(height: MediaQuery.viewPaddingOf(context).top + 4.h),
-                  Padding(
-                    padding: EdgeInsets.symmetric(
-                      horizontal: ResponsiveHelper.adaptive(
-                        phone: 16.w,
-                        tablet: 24.w,
-                      ),
-                    ),
-                    child: Row(
-                      children: [
-                        if (widget.showBackButton)
-                          IconButton(
-                            tooltip: 'Back',
-                            iconSize: 24.ic,
-                            padding: EdgeInsets.zero,
-                            onPressed: () {
-                              HapticFeedbackService.navigation();
-                              Navigator.of(context).maybePop();
-                            },
-                            icon: Icon(
-                              Icons.arrow_back_ios_new_outlined,
-                              size: 24.ic,
-                              color: colors.textPrimary,
-                            ),
-                          ),
-                        Expanded(
-                          child: Semantics(
-                            header: true,
-                            child: Text(
-                              widget.title,
-                              textAlign: TextAlign.center,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: AppTypography.textMdMedium.copyWith(
-                                color: colors.textPrimary,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                          ),
-                        ),
-                        if (widget.actions.isNotEmpty)
-                          ...widget.actions
-                        else if (widget.showBackButton)
-                          const SizedBox(width: 48),
-                      ],
-                    ),
-                  ),
-                ],
-                SizedBox(height: widget.homeTab ? 16.h : 8.h),
-                Padding(
-                  padding: EdgeInsets.symmetric(horizontal: side),
-                  child:
-                      widget.tabStripOverride ??
-                      SegmentedSwitcher(
-                        key: ValueKey(
-                          'event_view_tabs_${widget.tabs.join('_')}',
-                        ),
-                        backgroundColor: colors.popup,
-                        selectedBackgroundColor: colors.popup,
-                        // Keep the labels inside the fixed-height strip when the
-                        // system text size grows.
-                        textStyle: AppTypography.textSmMedium.copyWith(
-                          color: colors.tabInactive,
-                          height: 1.2,
-                        ),
-                        selectedTextStyle: AppTypography.textSmMedium.copyWith(
-                          color: colors.textPrimary,
-                          height: 1.2,
-                        ),
-                        options: widget.tabs,
-                        optionLabels: [
-                          for (final tab in widget.tabs)
-                            Padding(
-                              padding: EdgeInsets.symmetric(horizontal: 4.w),
-                              child: FittedBox(
-                                fit: BoxFit.scaleDown,
-                                child: Text(tab, maxLines: 1, softWrap: false),
-                              ),
-                            ),
-                        ],
-                        initialSelection: widget.initialTab,
-                        currentSelection: _selected,
-                        onSelectionChanged: _select,
-                      ),
-                ),
-                if (widget.homeTab) SizedBox(height: 12.h),
-                Expanded(
-                  child: PageView.builder(
-                    controller: _pages,
-                    itemCount: widget.tabs.length,
-                    onPageChanged: (index) {
-                      if (index == _selected) return;
-                      FocusScope.of(context).unfocus();
-                      setState(() => _selected = index);
-                    },
-                    itemBuilder: (context, index) => PrimaryScrollController(
-                      controller: _scrolls.putIfAbsent(
-                        index,
-                        ScrollController.new,
-                      ),
-                      child: Builder(
-                        builder: (context) =>
-                            widget.pageBuilder(context, index),
-                      ),
+    final content = Center(
+      child: ConstrainedBox(
+        constraints: BoxConstraints(
+          maxWidth: ResponsiveHelper.isTablet
+              ? ResponsiveHelper.contentMaxWidth
+              : double.infinity,
+        ),
+        child: Column(
+          children: [
+            if (widget.embedded)
+              const SizedBox.shrink()
+            else if (widget.header != null)
+              widget.header!
+            else if (widget.homeTab)
+              HomeTopBar(
+                onOpenSidebar: widget.onOpenSidebar,
+                content: Semantics(
+                  header: true,
+                  child: Text(
+                    widget.title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: AppTypography.textMdMedium.copyWith(
+                      color: colors.textPrimary,
+                      fontWeight: FontWeight.w600,
                     ),
                   ),
                 ),
-              ],
+              )
+            else ...[
+              SizedBox(height: MediaQuery.viewPaddingOf(context).top + 4.h),
+              Padding(
+                padding: EdgeInsets.symmetric(
+                  horizontal: ResponsiveHelper.adaptive(
+                    phone: 16.w,
+                    tablet: 24.w,
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    if (widget.showBackButton)
+                      IconButton(
+                        tooltip: 'Back',
+                        iconSize: 24.ic,
+                        padding: EdgeInsets.zero,
+                        onPressed: () {
+                          HapticFeedbackService.navigation();
+                          Navigator.of(context).maybePop();
+                        },
+                        icon: Icon(
+                          Icons.arrow_back_ios_new_outlined,
+                          size: 24.ic,
+                          color: colors.textPrimary,
+                        ),
+                      ),
+                    Expanded(
+                      child: Semantics(
+                        header: true,
+                        child: widget.titleIcon != null
+                            ? Center(
+                                child: DestinationTitle(
+                                  title: widget.title,
+                                  icon: widget.titleIcon!,
+                                ),
+                              )
+                            : Text(
+                                widget.title,
+                                textAlign: TextAlign.center,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: AppTypography.textMdMedium.copyWith(
+                                  color: colors.textPrimary,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                      ),
+                    ),
+                    if (widget.actions != null)
+                      ...widget.actions!
+                    else if (widget.showBackButton)
+                      const SizedBox(width: 48),
+                  ],
+                ),
+              ),
+            ],
+            SizedBox(height: widget.homeTab ? 16.h : 8.h),
+            Padding(
+              padding: EdgeInsets.symmetric(horizontal: side),
+              child:
+                  widget.tabStripOverride ??
+                  SegmentedSwitcher(
+                    key: ValueKey('event_view_tabs_${widget.tabs.join('_')}'),
+                    backgroundColor: colors.popup,
+                    selectedBackgroundColor: colors.popup,
+                    // Keep the labels inside the fixed-height strip when the
+                    // system text size grows.
+                    textStyle: AppTypography.textSmMedium.copyWith(
+                      color: colors.tabInactive,
+                      height: 1.2,
+                    ),
+                    selectedTextStyle: AppTypography.textSmMedium.copyWith(
+                      color: colors.textPrimary,
+                      height: 1.2,
+                    ),
+                    options: widget.tabs,
+                    optionLabels: [
+                      for (final tab in widget.tabs)
+                        Padding(
+                          padding: EdgeInsets.symmetric(horizontal: 4.w),
+                          child: FittedBox(
+                            fit: BoxFit.scaleDown,
+                            child: Text(tab, maxLines: 1, softWrap: false),
+                          ),
+                        ),
+                    ],
+                    initialSelection: widget.initialTab,
+                    currentSelection: _selected,
+                    onSelectionChanged: _select,
+                  ),
             ),
-          ),
+            if (widget.homeTab) SizedBox(height: 12.h),
+            Expanded(
+              child: PageView.builder(
+                controller: _pages,
+                physics: widget.embedded
+                    ? const NeverScrollableScrollPhysics()
+                    : null,
+                itemCount: widget.tabs.length,
+                onPageChanged: (index) {
+                  if (index == _selected) return;
+                  FocusScope.of(context).unfocus();
+                  setState(() => _selected = index);
+                },
+                itemBuilder: (context, index) => PrimaryScrollController(
+                  controller: _scrolls.putIfAbsent(index, ScrollController.new),
+                  child: Builder(
+                    builder: (context) => widget.pageBuilder(context, index),
+                  ),
+                ),
+              ),
+            ),
+          ],
         ),
       ),
+    );
+    if (widget.embedded) return content;
+    return ScreenWrapper(
+      child: Scaffold(backgroundColor: colors.background, body: content),
     );
   }
 }

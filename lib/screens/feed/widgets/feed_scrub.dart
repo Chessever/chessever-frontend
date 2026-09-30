@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 
 import 'package:chessever2/screens/feed/models/feed_models.dart';
+import 'package:chessever2/screens/feed/models/feed_game_division.dart';
 import 'package:chessever2/screens/feed/widgets/feed_classification.dart';
 import 'package:chessever2/screens/feed/widgets/feed_format.dart';
 import 'package:chessever2/screens/feed/widgets/feed_layout.dart';
@@ -674,12 +675,15 @@ class _BubbleLayout extends SingleChildLayoutDelegate {
 /// The recorded game evaluation, always in its own slot above the scrub bar.
 /// Missing or hidden evaluations are stated explicitly instead of drawing a
 /// synthetic flat curve. The existing scrub strip remains the move control.
-class FeedEvaluationGraph extends StatelessWidget {
+class FeedEvaluationGraph extends StatefulWidget {
   const FeedEvaluationGraph({
     required this.item,
     required this.ply,
     required this.showEvaluations,
     required this.onSeek,
+    required this.onStart,
+    required this.onUpdate,
+    required this.onEnd,
     super.key,
   });
 
@@ -687,6 +691,9 @@ class FeedEvaluationGraph extends StatelessWidget {
   final int ply;
   final bool showEvaluations;
   final ValueChanged<double> onSeek;
+  final ValueChanged<double> onStart;
+  final ValueChanged<double> onUpdate;
+  final VoidCallback onEnd;
 
   static double heightFor(TextScaler scaler) =>
       FeedReportOverlay.infoHeightFor(scaler) +
@@ -695,21 +702,54 @@ class FeedEvaluationGraph extends StatelessWidget {
       9;
 
   @override
+  State<FeedEvaluationGraph> createState() => _FeedEvaluationGraphState();
+}
+
+class _FeedEvaluationGraphState extends State<FeedEvaluationGraph> {
+  bool _dragging = false;
+  Offset? _down;
+  double _grip = 0;
+  double _span = 1;
+
+  double get _cursorX =>
+      FeedScrubStrip.thumbInset +
+      _span * widget.ply / math.max(1, widget.item.plyCount);
+
+  bool _onCursor(Offset local) =>
+      (local.dx - _cursorX).abs() <= FeedScrubStrip.thumbReach;
+
+  double _fraction(double x) =>
+      ((x + _grip - FeedScrubStrip.thumbInset) / _span).clamp(0.0, 1.0);
+
+  void _begin(double x) {
+    final down = _down;
+    _grip = down != null && _onCursor(down) ? _cursorX - down.dx : 0;
+    _dragging = true;
+    widget.onStart(_fraction(x));
+  }
+
+  void _end() {
+    if (!_dragging) return;
+    _dragging = false;
+    widget.onEnd();
+  }
+
+  @override
   Widget build(BuildContext context) {
     final colors = context.colors;
-    final hasCurve = showEvaluations && item.hasEvals;
-    final unavailable = showEvaluations
+    final hasCurve = widget.showEvaluations && widget.item.hasEvals;
+    final unavailable = widget.showEvaluations
         ? 'No recorded evaluation'
         : 'Evaluation hidden';
     return SizedBox(
       key: const ValueKey('feed_evaluation_graph'),
-      height: heightFor(MediaQuery.textScalerOf(context)),
+      height: FeedEvaluationGraph.heightFor(MediaQuery.textScalerOf(context)),
       child: Column(
         children: [
           FeedMoveInfoRow(
-            item: item,
-            ply: ply,
-            trailing: hasCurve ? feedEvalText(item, ply) : '',
+            item: widget.item,
+            ply: widget.ply,
+            trailing: hasCurve ? feedEvalText(widget.item, widget.ply) : '',
             height: FeedReportOverlay.infoHeightFor(
               MediaQuery.textScalerOf(context),
             ),
@@ -722,31 +762,162 @@ class FeedEvaluationGraph extends StatelessWidget {
             child: hasCurve
                 ? LayoutBuilder(
                     builder: (context, constraints) {
-                      double fraction(double x) =>
-                          ((x - FeedScrubStrip.thumbInset) /
-                                  math.max(
-                                    1.0,
-                                    constraints.maxWidth -
-                                        2 * FeedScrubStrip.thumbInset,
-                                  ))
-                              .clamp(0.0, 1.0);
+                      _span = math.max(
+                        1.0,
+                        constraints.maxWidth - 2 * FeedScrubStrip.thumbInset,
+                      );
                       return Semantics(
                         label: 'Game evaluation graph',
-                        hint:
-                            'Tap to choose a move. Drag the progress bar to scrub.',
-                        child: GestureDetector(
-                          behavior: HitTestBehavior.opaque,
-                          onTapUp: (details) =>
-                              onSeek(fraction(details.localPosition.dx)),
-                          child: CustomPaint(
-                            painter: _ReportChartPainter(
-                              item: item,
-                              ply: ply,
-                              inset: FeedScrubStrip.thumbInset,
-                              surface: colors.surfaceRecessed,
-                              grid: colors.divider,
-                              ink: colors.textPrimary,
-                              cursor: colors.accentText,
+                        slider: true,
+                        value: feedPlyText(widget.item, widget.ply),
+                        increasedValue: feedPlyText(
+                          widget.item,
+                          math.min(widget.ply + 1, widget.item.plyCount),
+                        ),
+                        decreasedValue: feedPlyText(
+                          widget.item,
+                          math.max(widget.ply - 1, 0),
+                        ),
+                        onIncrease: widget.ply < widget.item.plyCount
+                            ? () => widget.onSeek(
+                                (widget.ply + 1) / widget.item.plyCount,
+                              )
+                            : null,
+                        onDecrease: widget.ply > 0
+                            ? () => widget.onSeek(
+                                (widget.ply - 1) / widget.item.plyCount,
+                              )
+                            : null,
+                        hint: 'Tap or drag to choose a move.',
+                        child: Listener(
+                          onPointerDown: (event) => _down = event.localPosition,
+                          child: RawGestureDetector(
+                            behavior: HitTestBehavior.opaque,
+                            excludeFromSemantics: true,
+                            gestures: {
+                              TapGestureRecognizer:
+                                  GestureRecognizerFactoryWithHandlers<
+                                    TapGestureRecognizer
+                                  >(
+                                    () =>
+                                        TapGestureRecognizer(debugOwner: this),
+                                    (r) => r.onTapUp = (d) => widget.onSeek(
+                                      ((d.localPosition.dx -
+                                                  FeedScrubStrip.thumbInset) /
+                                              _span)
+                                          .clamp(0.0, 1.0),
+                                    ),
+                                  ),
+                              HorizontalDragGestureRecognizer:
+                                  GestureRecognizerFactoryWithHandlers<
+                                    HorizontalDragGestureRecognizer
+                                  >(
+                                    () => HorizontalDragGestureRecognizer(
+                                      debugOwner: this,
+                                    ),
+                                    (r) => r
+                                      ..onlyAcceptDragOnThreshold = true
+                                      ..gestureSettings =
+                                          MediaQuery.maybeGestureSettingsOf(
+                                            context,
+                                          )
+                                      ..dragStartBehavior =
+                                          DragStartBehavior.start
+                                      ..onStart = ((d) =>
+                                          _begin(d.localPosition.dx))
+                                      ..onUpdate = ((d) => widget.onUpdate(
+                                        _fraction(d.localPosition.dx),
+                                      ))
+                                      ..onEnd = ((_) => _end())
+                                      ..onCancel = _end,
+                                  ),
+                              _ThumbHoldRecognizer:
+                                  GestureRecognizerFactoryWithHandlers<
+                                    _ThumbHoldRecognizer
+                                  >(
+                                    () => _ThumbHoldRecognizer(
+                                      onThumb: _onCursor,
+                                      duration: FeedScrubStrip.holdToGrab,
+                                      debugOwner: this,
+                                    ),
+                                    (r) => r
+                                      ..gestureSettings =
+                                          MediaQuery.maybeGestureSettingsOf(
+                                            context,
+                                          )
+                                      ..onLongPressStart = ((d) =>
+                                          _begin(d.localPosition.dx))
+                                      ..onLongPressMoveUpdate = ((d) =>
+                                          widget.onUpdate(
+                                            _fraction(d.localPosition.dx),
+                                          ))
+                                      ..onLongPressEnd = ((_) => _end())
+                                      ..onLongPressCancel = _end,
+                                  ),
+                            },
+                            child: Stack(
+                              fit: StackFit.expand,
+                              children: [
+                                CustomPaint(
+                                  painter: _ReportChartPainter(
+                                    item: widget.item,
+                                    ply: widget.ply,
+                                    inset: FeedScrubStrip.thumbInset,
+                                    surface: colors.surfaceRecessed,
+                                    grid: colors.divider,
+                                    ink: colors.textPrimary,
+                                    cursor: colors.accentText,
+                                  ),
+                                ),
+                                for (final (at, label) in FeedGameDivision.of(
+                                  widget.item,
+                                ).markers)
+                                  Positioned(
+                                    left:
+                                        (FeedScrubStrip.thumbInset +
+                                                _span *
+                                                    at /
+                                                    math.max(
+                                                      1,
+                                                      widget.item.plyCount,
+                                                    ) +
+                                                3)
+                                            .clamp(
+                                              0.0,
+                                              math.max(
+                                                0.0,
+                                                constraints.maxWidth - 17,
+                                              ),
+                                            ),
+                                    top: 4,
+                                    bottom: 4,
+                                    width: 14,
+                                    child: IgnorePointer(
+                                      child: RotatedBox(
+                                        quarterTurns: 1,
+                                        child: Align(
+                                          alignment: Alignment.centerLeft,
+                                          child: FittedBox(
+                                            fit: BoxFit.scaleDown,
+                                            child: Text(
+                                              label,
+                                              key: ValueKey(
+                                                'feed_phase_$label',
+                                              ),
+                                              maxLines: 1,
+                                              style: AppTypography.textXsRegular
+                                                  .copyWith(
+                                                    fontSize: 10,
+                                                    height: 1.1,
+                                                    color: colors.textSecondary,
+                                                  ),
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                              ],
                             ),
                           ),
                         ),
@@ -906,11 +1077,6 @@ class _ReportChartPainter extends CustomPainter {
       ..color = grid
       ..strokeWidth = 1;
     canvas.drawLine(Offset(0, h / 2), Offset(w, h / 2), gridPaint);
-    for (final x in [w / 3, 2 * w / 3]) {
-      for (var y = 0.0; y < h; y += 7) {
-        canvas.drawLine(Offset(x, y), Offset(x, math.min(h, y + 3)), gridPaint);
-      }
-    }
 
     final n = item.plyCount;
     if (n > 0) {
@@ -962,6 +1128,21 @@ class _ReportChartPainter extends CustomPainter {
         canvas.drawCircle(c, 3.5, ring);
       }
 
+      final division = FeedGameDivision.of(item);
+      final markerPaint = Paint()
+        ..color = ink.withValues(alpha: 0.38)
+        ..strokeWidth = 1
+        ..strokeCap = StrokeCap.round;
+      for (final (at, _) in division.markers) {
+        for (var y = 3.0; y < h - 3; y += 7) {
+          canvas.drawLine(
+            Offset(x(at), y),
+            Offset(x(at), math.min(h - 3, y + 3)),
+            markerPaint,
+          );
+        }
+      }
+
       final cx = x(ply);
       canvas.drawLine(
         Offset(cx, 0),
@@ -980,7 +1161,10 @@ class _ReportChartPainter extends CustomPainter {
       old.ply != ply ||
       old.item != item ||
       old.inset != inset ||
-      old.surface != surface;
+      old.surface != surface ||
+      old.grid != grid ||
+      old.ink != ink ||
+      old.cursor != cursor;
 }
 
 /// "15. Nf3  [badge] Blunder ……… +1.2": the move label, its classification

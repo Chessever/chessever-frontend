@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:chessever2/providers/favorite_events_provider.dart';
 import 'package:chessever2/repository/favorites/models/favorite_event.dart';
 import 'package:chessever2/repository/supabase/game/game_repository.dart';
@@ -17,6 +19,7 @@ import 'package:chessever2/widgets/auth/auth_upgrade_sheet.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 
 /// Actions available from the event card long-press context menu.
@@ -468,12 +471,61 @@ Future<void> _shareEvent({
   await Share.share(url, sharePositionOrigin: origin);
 }
 
+/// Combined PGN above this size no longer goes through the clipboard: a
+/// multi-megabyte `Clipboard.setData` silently fails on device, and Library
+/// import then reports "clipboard is empty" (Olympiad). Large exports are
+/// shared as a `.pgn` file instead, which the user can save or import.
+const int _kMaxClipboardChars = 256 * 1024;
+
+/// Writes a too-big-for-clipboard event export to a temp `.pgn` file and
+/// opens the share sheet, so the user can save it to Files or import it.
+Future<void> _shareEventPgnFile({
+  required Rect shareOrigin,
+  required ScaffoldMessengerState messenger,
+  required GroupEventCardModel model,
+  required String pgn,
+  required int gameCount,
+}) async {
+  final slug = model.title
+      .toLowerCase()
+      .replaceAll(RegExp('[^a-z0-9]+'), '-')
+      .replaceAll(RegExp('^-+|-+\$'), '');
+  final name = slug.isEmpty ? 'event' : slug;
+  final tempDir = await getTemporaryDirectory();
+  final file = File('${tempDir.path}/$name-chessever.pgn');
+  await file.writeAsString(pgn);
+
+  AnalyticsService.instance.trackEventDetached(
+    'Event PGN Exported',
+    properties: {
+      'event_id': model.id,
+      'event_name': model.title,
+      'game_count': gameCount,
+    },
+  );
+
+  HapticFeedbackService.success();
+  showAppSnackOn(
+    messenger,
+    'Too big for clipboard ($gameCount games) — sharing as a file',
+  );
+  await Share.shareXFiles(
+    [XFile(file.path, mimeType: 'application/x-chess-pgn')],
+    subject: '${model.title} - Chessever PGN',
+    sharePositionOrigin: shareOrigin,
+  );
+}
+
 Future<void> _copyEventPgn({
   required BuildContext context,
   required WidgetRef ref,
   required GroupEventCardModel model,
 }) async {
   final messenger = ScaffoldMessenger.of(context);
+  final cardBox = context.findRenderObject() as RenderBox?;
+  final shareOrigin = cardBox != null
+      ? cardBox.localToGlobal(Offset.zero) & cardBox.size
+      : const Rect.fromLTWH(0, 0, 1, 1);
 
   try {
     final tourIds = await ref
@@ -518,7 +570,19 @@ Future<void> _copyEventPgn({
       return;
     }
 
-    await Clipboard.setData(ClipboardData(text: pgnBuffer.toString()));
+    final combined = pgnBuffer.toString();
+    if (combined.length > _kMaxClipboardChars) {
+      await _shareEventPgnFile(
+        shareOrigin: shareOrigin,
+        messenger: messenger,
+        model: model,
+        pgn: combined,
+        gameCount: copied,
+      );
+      return;
+    }
+
+    await Clipboard.setData(ClipboardData(text: combined));
     HapticFeedbackService.success();
 
     AnalyticsService.instance.trackEventDetached(

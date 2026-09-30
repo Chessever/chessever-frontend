@@ -2099,7 +2099,6 @@ class _FeedClipState extends ConsumerState<FeedClip>
 
         final n = math.max(1, _item.plyCount);
         final progress = _item.plyCount <= 0 ? 1.0 : shown / n;
-        final counterWidest = feedMoveCounter(_item, _item.plyCount);
         // One column for the board, player rows and all controls below it,
         // including when the board is height-bound.
         Widget content(Widget child) => Padding(
@@ -2311,39 +2310,62 @@ class _FeedClipState extends ConsumerState<FeedClip>
                 // never overflows by a rounding error.
                 const Spacer(),
                 // The graph and its evaluation end at the board edge. The
-                // timeline reserves counter space only within its own row.
+                // timeline shares its row with the playback control.
                 content(
                   FeedEvaluationGraph(
                     item: _item,
                     ply: shown,
                     showEvaluations: evalVisibility.evals,
                     onSeek: _onScrubTap,
+                    onStart: _onScrubStart,
+                    onUpdate: _onScrubUpdate,
+                    onEnd: _onScrubEnd,
                   ),
                 ),
-                FeedScrubStrip(
-                  progress: progress,
-                  scrubbing: p.isScrubbing,
-                  inset: l.contentLeft,
-                  semanticsValue: feedPlyText(_item, shown),
-                  semanticsIncreased: feedPlyText(
-                    _item,
-                    math.min(shown + 1, _item.plyCount),
-                  ),
-                  semanticsDecreased: feedPlyText(
-                    _item,
-                    math.max(shown - 1, 0),
-                  ),
-                  counter: feedMoveCounter(_item, shown),
-                  counterWidest: counterWidest,
-                  // The report chart carries the move itself.
-                  bubble: showBubble
-                      ? FeedMoveBubble(item: _item, ply: shown)
-                      : null,
-                  onStart: _onScrubStart,
-                  onUpdate: _onScrubUpdate,
-                  onEnd: _onScrubEnd,
-                  onSeek: _onScrubTap,
-                  onStep: (delta) => _stepTo(shown + delta),
+                Row(
+                  children: [
+                    Expanded(
+                      child: FeedScrubStrip(
+                        progress: progress,
+                        scrubbing: p.isScrubbing,
+                        inset: l.contentLeft,
+                        semanticsValue: feedPlyText(_item, shown),
+                        semanticsIncreased: feedPlyText(
+                          _item,
+                          math.min(shown + 1, _item.plyCount),
+                        ),
+                        semanticsDecreased: feedPlyText(
+                          _item,
+                          math.max(shown - 1, 0),
+                        ),
+                        // The report chart carries the move itself.
+                        bubble: showBubble
+                            ? FeedMoveBubble(item: _item, ply: shown)
+                            : null,
+                        onStart: _onScrubStart,
+                        onUpdate: _onScrubUpdate,
+                        onEnd: _onScrubEnd,
+                        onSeek: _onScrubTap,
+                        onStep: (delta) => _stepTo(shown + delta),
+                      ),
+                    ),
+                    Padding(
+                      padding: EdgeInsets.only(right: l.contentLeft),
+                      child: FeedStepButton(
+                        key: const ValueKey('feed_scrub_play_toggle'),
+                        glyphOffset: const Offset(
+                          0,
+                          FeedLayout.scrubTrackCenter -
+                              FeedLayout.scrubHeight / 2,
+                        ),
+                        glyph: p.isPlaying
+                            ? FeedGlyphs.stop
+                            : FeedGlyphs.playSmall,
+                        semanticsLabel: p.isPlaying ? 'Stop' : 'Play',
+                        onTap: exploring ? _backToGame : _togglePlay,
+                      ),
+                    ),
+                  ],
                 ),
                 SizedBox(height: l.foot),
               ],

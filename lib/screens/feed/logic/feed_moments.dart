@@ -49,6 +49,7 @@ class FeedClip {
     required this.plies,
     required this.result,
     required this.hasEvals,
+    required this.hasReport,
     required this.headlines,
     this.event,
   });
@@ -61,6 +62,10 @@ class FeedClip {
   /// `1-0`, `0-1`, `½-½` or null when unfinished / unknown.
   final String? result;
   final bool hasEvals;
+
+  /// Whether the PGN carries a ChessEver Game Report. The Feed only shows
+  /// games that have one.
+  final bool hasReport;
 
   /// Types of the severity-3 moments, in ply order.
   final List<FeedMomentType> headlines;
@@ -93,6 +98,7 @@ FeedClip? feedClipFromPgn(String pgn, {int maxHeadlines = kFlowMaxHeadlines}) {
     event: event == null || event.isEmpty || event == '?' ? null : event,
     result: game.result,
     hasEvals: game.hasEvals,
+    hasReport: game.hasReportClassifications,
     headlines: [
       for (final ply in plies)
         if (ply.moment?.isHeadline ?? false) ply.moment!.type,

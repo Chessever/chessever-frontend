@@ -97,6 +97,11 @@ abstract final class FeedGlyphs {
       '<rect x="10.8" y="10.8" width="6.4" height="6.4" fill="#FFFFFF" '
       'fill-opacity="0.45"/></svg>';
 
+  /// Stop holds playback at the current position.
+  static const stop =
+      '<svg viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">'
+      '<rect x="4" y="4" width="12" height="12" rx="1.5" fill="#FFFFFF"/></svg>';
+
   /// Two rounded bars, the pause counterpart of [play] at step size.
   static const pause =
       '<svg viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">'

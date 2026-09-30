@@ -4,6 +4,7 @@ import 'package:chessever2/screens/settings/widgets/board_settings_body.dart';
 import 'package:chessever2/screens/settings/widgets/botvinnik_settings_body.dart';
 import 'package:chessever2/screens/settings/widgets/engine_settings_body.dart';
 import 'package:chessever2/screens/settings/widgets/notification_settings_body.dart';
+import 'package:chessever2/screens/settings/widgets/start_screen_settings_body.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/theme/theme_provider.dart';
@@ -19,7 +20,7 @@ import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:motor/motor.dart';
 
-enum SettingsSection { botvinnik, board, engine, notification }
+enum SettingsSection { botvinnik, board, engine, notification, customization }
 
 class SettingsPage extends ConsumerStatefulWidget {
   const SettingsPage({super.key, this.initiallyExpanded});
@@ -183,6 +184,18 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                     trackPersist: _trackPersist,
                     liveWidgetsKey: _liveWidgetsKey,
                   ),
+                ),
+                SizedBox(height: 14.h),
+                _CollapsibleSection(
+                  title: 'Customization',
+                  leading: Icon(
+                    Icons.tune_rounded,
+                    color: context.colors.iconPrimary,
+                    size: 22.ic,
+                  ),
+                  expanded: _expanded == SettingsSection.customization,
+                  onTap: () => _toggle(SettingsSection.customization),
+                  child: const StartScreenSettingsBody(),
                 ),
                 SizedBox(height: 24.h),
                 _DeleteAccountRow(
