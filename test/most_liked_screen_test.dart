@@ -13,7 +13,7 @@ import 'package:chessever2/screens/for_you/discovery/providers/discovery_provide
 import 'package:chessever2/screens/for_you/discovery/widgets/discovery_common.dart';
 import 'package:chessever2/screens/for_you/discovery/widgets/most_liked_controls.dart';
 import 'package:chessever2/screens/for_you/discovery/widgets/most_liked_section.dart';
-import 'package:chessever2/screens/my_space/widgets/space_avatar.dart';
+import 'package:chessever2/widgets/figma_player_card.dart';
 import 'package:chessever2/screens/my_likes/provider/my_likes_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/event_no_spoilers_provider.dart';
@@ -237,26 +237,28 @@ void main() {
       );
       expect(find.text('Likes'), findsOneWidget);
       expect(find.text('My Likes'), findsOneWidget);
-      expect(find.text('Most Liked'), findsOneWidget);
+      expect(find.text('Most Liked'), findsNothing);
+      expect(find.text('Games').first.hitTestable(), findsOneWidget);
+      expect(find.text('Players').first.hitTestable(), findsOneWidget);
       expect(find.byTooltip('Back'), findsOneWidget);
       expect(find.byType(Scaffold), findsOneWidget);
       expect(find.text('Keep the games you love'), findsOneWidget);
       expect(queries, isEmpty);
 
-      await tester.tap(find.text('Games').hitTestable());
+      await tester.tap(find.text('Games').last.hitTestable());
       await _settle(tester);
       await tester.enterText(find.byType(TextField), 'Magnus');
       await _settle(tester);
       expect(container.read(myLikesFilterProvider).searchQuery, 'Magnus');
 
-      await tester.tap(find.text('Most Liked'));
+      await tester.tap(find.text('Games').first);
       await _settle(tester);
       expect(queries, isNotEmpty);
       expect(find.byTooltip('Back'), findsOneWidget);
       expect(find.text('Most liked'), findsNothing);
       await tester.tap(find.bySemanticsLabel('Most liked, Week'));
       await _settle(tester);
-      await tester.tap(find.text('Players').hitTestable());
+      await tester.tap(find.text('Players').first.hitTestable());
       await _settle(tester);
       expect(find.text('White0, Player').hitTestable(), findsOneWidget);
 
@@ -267,7 +269,7 @@ void main() {
         tester.widget<TextField>(find.byType(TextField)).controller!.text,
         'Magnus',
       );
-      await tester.tap(find.text('Most Liked'));
+      await tester.tap(find.text('Players').first);
       await _settle(tester);
       expect(find.text('White0, Player').hitTestable(), findsOneWidget);
       expect(container.read(mostLikedPeriodProvider), MostLikedPeriod.week);
@@ -275,6 +277,32 @@ void main() {
       await _teardown(tester, container);
     },
   );
+
+  testWidgets('Likes player opens only their ranked games and can clear it', (
+    tester,
+  ) async {
+    final container = await _pump(
+      tester,
+      subscribed: true,
+      home: const LikesScreen(),
+    );
+    await tester.tap(find.text('Players').first);
+    await _settle(tester);
+    await tester.tap(find.text('White0, Player').hitTestable());
+    await _settle(tester);
+    expect(find.text('Games by White0, Player').hitTestable(), findsOneWidget);
+    expect(
+      find.byType(GridGameCardWrapperWidget).hitTestable(),
+      findsOneWidget,
+    );
+    expect(find.byTooltip('Back'), findsOneWidget);
+    await tester.tap(find.byIcon(Icons.close).hitTestable());
+    await _settle(tester);
+    expect(find.text('Games by White0, Player'), findsNothing);
+    expect(find.byType(GridGameCardWrapperWidget), findsNWidgets(12));
+    expect(tester.takeException(), isNull);
+    await _teardown(tester, container);
+  });
 
   testWidgets('horizontal swipes switch Likes sections, not secondary tabs', (
     tester,
@@ -316,13 +344,13 @@ void main() {
           theme: light ? AppTheme.lightTheme : AppTheme.darkTheme,
         );
         expect(find.text('My Likes').hitTestable(), findsOneWidget);
-        expect(find.text('Most Liked').hitTestable(), findsOneWidget);
+        expect(find.text('Games').first.hitTestable(), findsOneWidget);
         expect(tester.takeException(), isNull);
-        await tester.tap(find.text('Most Liked'));
+        await tester.tap(find.text('Games').first);
         await _settle(tester);
         expect(find.byTooltip('Back'), findsOneWidget);
         expect(find.text('My Likes').hitTestable(), findsOneWidget);
-        expect(find.text('Most Liked').hitTestable(), findsOneWidget);
+        expect(find.text('Games').first.hitTestable(), findsOneWidget);
         expect(tester.takeException(), isNull);
         await _teardown(tester, container);
       });
@@ -356,10 +384,9 @@ void main() {
     await tester.tap(find.text('Players'));
     await _settle(tester);
     expect(find.byType(MostLikedPlayersList), findsOneWidget);
-    expect(find.byType(SpacePlayerAvatar), findsWidgets);
-    // A person is a photo circle with a flat monogram, never the gradient
-    // initials tile.
-    expect(find.byType(PlayerInitialsAvatar), findsNothing);
+    expect(find.byType(FigmaPlayerCard), findsWidgets);
+    // Uses the shared photo and initials fallback from the other player lists.
+    expect(find.byType(PlayerInitialsAvatar), findsWidgets);
     expect(find.text('White0, Player'), findsOneWidget);
     expect(tester.takeException(), isNull);
     await _teardown(tester, container);

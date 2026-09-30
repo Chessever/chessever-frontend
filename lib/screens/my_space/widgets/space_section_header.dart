@@ -4,9 +4,9 @@ import 'package:chessever2/screens/my_space/models/space_shortcut.dart';
 import 'package:flutter/material.dart';
 
 /// What a group of saved things is called on My Space, on its header, its
-/// See all page and its add sheet. The Library's files are "Databases" here.
+/// See all page and its add sheet.
 String spaceGroupTitle(SpaceSection section) => switch (section) {
-  SpaceSection.library => 'Databases',
+  SpaceSection.library => 'Library',
   _ => section.title,
 };
 

@@ -272,6 +272,7 @@ class FeedStepButton extends StatefulWidget {
     required this.semanticsLabel,
     required this.onTap,
     this.size = 44,
+    this.glyphOffset = Offset.zero,
     super.key,
   });
 
@@ -281,6 +282,9 @@ class FeedStepButton extends StatefulWidget {
   /// Null disables the control.
   final VoidCallback? onTap;
   final double size;
+
+  /// Position the mark without moving its full tap target.
+  final Offset glyphOffset;
 
   @override
   State<FeedStepButton> createState() => _FeedStepButtonState();
@@ -311,12 +315,15 @@ class _FeedStepButtonState extends State<FeedStepButton> {
         child: SizedBox.square(
           dimension: widget.size,
           child: Center(
-            child: FeedGlyph(
-              widget.glyph,
-              width: 20,
-              height: 20,
-              color: ink.withValues(
-                alpha: !enabled ? 0.28 : (_pressed ? 0.5 : 0.92),
+            child: Transform.translate(
+              offset: widget.glyphOffset,
+              child: FeedGlyph(
+                widget.glyph,
+                width: 20,
+                height: 20,
+                color: ink.withValues(
+                  alpha: !enabled ? 0.28 : (_pressed ? 0.5 : 0.92),
+                ),
               ),
             ),
           ),

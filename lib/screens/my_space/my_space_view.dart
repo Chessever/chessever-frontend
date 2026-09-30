@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:chessever2/screens/my_space/actions/space_remove_confirmation.dart';
 // import 'package:chessever2/providers/favorite_events_provider.dart';
 // import 'package:chessever2/providers/for_you_games_provider.dart';
 // import 'package:chessever2/repository/liked_games/liked_games_provider.dart';
@@ -16,7 +17,6 @@ import 'package:chessever2/widgets/hub_context_art.dart';
 import 'package:chessever2/screens/my_space/providers/space_edit_mode_provider.dart';
 import 'package:chessever2/screens/my_space/providers/space_hub_providers.dart';
 import 'package:chessever2/screens/my_space/providers/space_shortcuts_provider.dart';
-import 'package:chessever2/screens/my_space/sheets/space_add_sheet.dart';
 import 'package:chessever2/screens/my_space/widgets/space_database.dart';
 import 'package:chessever2/screens/my_space/widgets/space_edit_grid.dart';
 import 'package:chessever2/screens/my_space/widgets/space_edit_tutorial.dart';
@@ -48,9 +48,8 @@ Future<void> openMyPrep(BuildContext context) {
   return MyPrepScreen.open(context);
 }
 
-/// The My Space tab, with Smart Events and Databases tiles above what the
-/// user saved, in compact event-style cards without category headers, and the
-/// tile that builds a Smart Event at the foot.
+/// The My Space tab, with Smart Events and Library tiles above what the
+/// user saved, in compact event-style cards without category headers.
 ///
 /// Works signed out too: the shortcuts provider keeps a device-local list
 /// for guests.
@@ -90,6 +89,18 @@ class _MySpaceViewState extends ConsumerState<MySpaceView> {
   Future<void> _removeSelected(Set<String> all) async {
     final keys = _selected.intersection(all);
     if (keys.isEmpty) return;
+    final pins =
+        ref.read(spaceShortcutsProvider).valueOrNull ?? const <SpaceShortcut>[];
+    final smartEvents = pins
+        .where(
+          (s) => keys.contains(s.key) && s.kind == SpaceShortcutKind.smartEvent,
+        )
+        .toList();
+    if (smartEvents.isNotEmpty &&
+        !await confirmSpaceSmartEventRemoval(context, smartEvents)) {
+      return;
+    }
+    if (!mounted) return;
     setState(_selected.clear);
     final removed = spaceRemovePinsSelected(
       context: context,
@@ -262,7 +273,7 @@ class _MySpaceViewState extends ConsumerState<MySpaceView> {
       }
     }
     final lead = 1;
-    final count = lead + body.length + 1;
+    final count = lead + body.length;
 
     Widget padded(Widget child) => Padding(
       padding: EdgeInsets.symmetric(horizontal: gutter),
@@ -290,13 +301,6 @@ class _MySpaceViewState extends ConsumerState<MySpaceView> {
           return KeyedSubtree(
             key: const ValueKey<String>('my_space_tiles'),
             child: padded(const _MySpaceTiles()),
-          );
-        }
-        if (index == count - 1) {
-          return Padding(
-            key: const ValueKey<String>('my_space_build'),
-            padding: EdgeInsets.fromLTRB(gutter, 24.sp, gutter, 0),
-            child: const _BuildSmartEventTile(),
           );
         }
         final at = index - lead;
@@ -376,7 +380,7 @@ class _LibraryTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) => HubTile(
     key: const ValueKey('my_space_library_tile'),
-    title: 'Databases',
+    title: 'Library',
     caption: 'Your databases',
     artwork: const HubLibraryBackdrop(),
     onTap: () {
@@ -539,35 +543,6 @@ class _DatabaseSkeleton extends StatelessWidget {
           const _EventPlate(),
         ],
       ),
-    );
-  }
-}
-
-// ------------------------------------------------------------------ build
-
-/// What the Build smart event tile says under its title: the builder's own
-/// prompt, in its words.
-const String kBuildSmartEventCaption = 'Openings you care about';
-
-/// "+ Build smart event": the builder opens in place, and what it builds is
-/// saved into My Database, in the Smart Events group right above it. Its
-/// mark is the smart events' own monochrome stacked boards (the glyph a
-/// smart event's plate shows before anything is picked), in the builder's
-/// ink: no hue, as every smart-event surface.
-class _BuildSmartEventTile extends ConsumerWidget {
-  const _BuildSmartEventTile();
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    return HubTile(
-      key: const ValueKey('my_space_build_smart_event'),
-      title: 'Build smart event',
-      caption: kBuildSmartEventCaption,
-      artwork: const HubSceneBackdrop(scene: HubScene.smartEvents),
-      onTap: () {
-        HapticFeedbackService.buttonPress();
-        showSpaceAddSheet(context, ref, SpaceSection.smartEvents);
-      },
     );
   }
 }

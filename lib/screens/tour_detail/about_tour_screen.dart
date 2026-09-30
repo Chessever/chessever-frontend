@@ -96,12 +96,11 @@ class _AboutTourScreenState extends ConsumerState<AboutTourScreen>
       return;
     }
 
-    final fallbackId =
-        about.groupBroadcastId?.isNotEmpty == true
-            ? about.groupBroadcastId
-            : about.id.isNotEmpty
-            ? about.id
-            : null;
+    final fallbackId = about.groupBroadcastId?.isNotEmpty == true
+        ? about.groupBroadcastId
+        : about.id.isNotEmpty
+        ? about.id
+        : null;
 
     if (fallbackId == null) {
       return;
@@ -142,31 +141,29 @@ class _AboutTourScreenState extends ConsumerState<AboutTourScreen>
     final isOnlineLocation = locationService.isOnlinePlatform(
       aboutModel.location,
     );
-    final countryCode =
-        isOnlineLocation
-            ? ''
-            : locationService.getCountryCode(aboutModel.location);
+    final countryCode = isOnlineLocation
+        ? ''
+        : locationService.getCountryCode(aboutModel.location);
     final locationTitle = isOnlineLocation ? 'Online' : 'Location';
-    final locationDescription =
-        isOnlineLocation
-            ? locationService.prettifyPlatformName(aboutModel.location)
-            : aboutModel.location;
-    final Widget? locationLeading =
-        isOnlineLocation
-            ? Icon(
-              Icons.language_rounded,
-              size: 14.sp,
-              color: context.colors.textPrimaryMuted,
-            )
-            : (countryCode.isNotEmpty
-                ? CountryFlag.fromCountryCode(
+    final locationDescription = isOnlineLocation
+        ? locationService.prettifyPlatformName(aboutModel.location)
+        : aboutModel.location;
+    final Widget? locationLeading = isOnlineLocation
+        ? Icon(
+            Icons.language_rounded,
+            size: 14.sp,
+            color: context.colors.textPrimaryMuted,
+          )
+        : (countryCode.isNotEmpty
+              ? CountryFlag.fromCountryCode(
                   countryCode,
                   theme: ImageTheme(width: 16.w, height: 12.h),
                 )
-                : null);
+              : null);
 
-    var ratedPlayers =
-        aboutModel.players.where((p) => p.rating != null).toList();
+    var ratedPlayers = aboutModel.players
+        .where((p) => p.rating != null)
+        .toList();
     if (ratedPlayers.isNotEmpty) {
       ratedPlayers.sort((a, b) => b.rating!.compareTo(a.rating!));
       ratedPlayers = ratedPlayers.take(4).toList();
@@ -238,19 +235,19 @@ class _AboutTourScreenState extends ConsumerState<AboutTourScreen>
                           ),
                         ),
                         SizedBox(height: 12.h),
-                        _TitleDescWidget(
+                        TournamentAboutField(
                           title: 'Players',
                           description: ratedPlayers
                               .map((e) => e.displayName)
                               .join(', '),
                         ),
                         SizedBox(height: 12),
-                        _TitleDescWidget(
+                        TournamentAboutField(
                           title: 'Time Control',
                           description: aboutModel.timeControl,
                         ),
                         SizedBox(height: 12.h),
-                        _TitleDescWidget(
+                        TournamentAboutField(
                           title: 'Date',
                           description: aboutModel.date,
                         ),
@@ -288,14 +285,13 @@ class _AboutTourScreenState extends ConsumerState<AboutTourScreen>
                           _InlineLinkRow(
                             prefix: 'Powered by:',
                             linkLabel: _writerAttributionBrand(ref),
-                            onTap:
-                                isSkeleton
-                                    ? null
-                                    : () => ref
-                                        .read(urlLauncherProvider)
-                                        .launchCustomUrl(
-                                          aboutModel.tourUrl.trim(),
-                                        ),
+                            onTap: isSkeleton
+                                ? null
+                                : () => ref
+                                      .read(urlLauncherProvider)
+                                      .launchCustomUrl(
+                                        aboutModel.tourUrl.trim(),
+                                      ),
                           ),
                         ],
                         SizedBox(
@@ -388,12 +384,11 @@ class _AboutTourScreenState extends ConsumerState<AboutTourScreen>
             if (hasWebsite || isSkeleton)
               Flexible(
                 child: GestureDetector(
-                  onTap:
-                      isSkeleton
-                          ? null
-                          : () => ref
-                              .read(urlLauncherProvider)
-                              .launchCustomUrl(websiteUrl),
+                  onTap: isSkeleton
+                      ? null
+                      : () => ref
+                            .read(urlLauncherProvider)
+                            .launchCustomUrl(websiteUrl),
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
@@ -427,12 +422,11 @@ class _AboutTourScreenState extends ConsumerState<AboutTourScreen>
               SizedBox(width: 24.w),
             if (hasStandings || isSkeleton)
               GestureDetector(
-                onTap:
-                    isSkeleton
-                        ? null
-                        : () => ref
-                            .read(urlLauncherProvider)
-                            .launchCustomUrl(standingsUrl),
+                onTap: isSkeleton
+                    ? null
+                    : () => ref
+                          .read(urlLauncherProvider)
+                          .launchCustomUrl(standingsUrl),
                 child: Text(
                   'Official Standings',
                   style: AppTypography.textXsMedium.copyWith(
@@ -449,29 +443,45 @@ class _AboutTourScreenState extends ConsumerState<AboutTourScreen>
   }
 }
 
-class _TitleDescWidget extends StatelessWidget {
-  const _TitleDescWidget({
+class TournamentAboutField extends StatelessWidget {
+  const TournamentAboutField({
+    super.key,
     required this.title,
     required this.description,
+    this.icon,
   });
 
   final String title;
   final String description;
+  final IconData? icon;
 
   @override
   Widget build(BuildContext context) {
-    return Column(
+    final content = Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
           title,
-          style: AppTypography.textXsMedium.copyWith(color: context.colors.textPrimaryMuted),
+          style: AppTypography.textXsMedium.copyWith(
+            color: context.colors.textPrimaryMuted,
+          ),
         ),
         SizedBox(height: 8),
         Text(
           description,
-          style: AppTypography.textXsMedium.copyWith(color: context.colors.textPrimary),
+          style: AppTypography.textXsMedium.copyWith(
+            color: context.colors.textPrimary,
+          ),
         ),
+      ],
+    );
+    if (icon == null) return content;
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(icon, size: 18.sp, color: context.colors.textSecondary),
+        SizedBox(width: 12.sp),
+        Expanded(child: content),
       ],
     );
   }
@@ -498,7 +508,9 @@ class _InlineLinkRow extends StatelessWidget {
           children: [
             Text(
               '$prefix ',
-              style: AppTypography.textXsMedium.copyWith(color: context.colors.textPrimary),
+              style: AppTypography.textXsMedium.copyWith(
+                color: context.colors.textPrimary,
+              ),
             ),
             GestureDetector(
               onTap: onTap,
@@ -536,7 +548,9 @@ class _CountryFlag extends StatelessWidget {
       children: [
         Text(
           title,
-          style: AppTypography.textXsMedium.copyWith(color: context.colors.textPrimaryMuted),
+          style: AppTypography.textXsMedium.copyWith(
+            color: context.colors.textPrimaryMuted,
+          ),
         ),
         SizedBox(height: 8.w),
         Row(
@@ -547,7 +561,9 @@ class _CountryFlag extends StatelessWidget {
               child: Text(
                 description,
                 maxLines: 1,
-                style: AppTypography.textXsMedium.copyWith(color: context.colors.textPrimary),
+                style: AppTypography.textXsMedium.copyWith(
+                  color: context.colors.textPrimary,
+                ),
               ),
             ),
           ],

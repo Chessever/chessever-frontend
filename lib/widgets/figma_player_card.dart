@@ -32,6 +32,13 @@ class FigmaPlayerCard extends ConsumerWidget {
   final bool isFavorite;
   final bool showFavoriteButton;
   final bool isInactive;
+  final bool hideMissingRating;
+
+  /// Collection-specific data, such as liked games, in the shared trailing slot.
+  final Widget? trailing;
+
+  /// Uses the account photo for authors without inferring a FIDE identity.
+  final Widget? avatar;
   final VoidCallback onTap;
   final VoidCallback? onToggleFavorite;
   final ValueChanged<LongPressStartDetails>? onLongPress;
@@ -59,6 +66,9 @@ class FigmaPlayerCard extends ConsumerWidget {
     this.isFavorite = false,
     this.showFavoriteButton = true,
     this.isInactive = false,
+    this.hideMissingRating = false,
+    this.trailing,
+    this.avatar,
     required this.onTap,
     this.onToggleFavorite,
     this.onLongPress,
@@ -80,8 +90,9 @@ class FigmaPlayerCard extends ConsumerWidget {
       color: context.colors.textPrimary,
     );
     final pending = matchScorePending && (player.matchScore ?? '').isEmpty;
-    final reserved =
-        reserveMatchScoreSlot ? _measureMatchScoreSlot(context, style) : null;
+    final reserved = reserveMatchScoreSlot
+        ? _measureMatchScoreSlot(context, style)
+        : null;
 
     if (pending) {
       final bone = skel.Skeletonizer(
@@ -142,6 +153,7 @@ class FigmaPlayerCard extends ConsumerWidget {
     required String initials,
     required double avatarSize,
   }) {
+    if (this.avatar != null) return this.avatar!;
     final tag = avatarHeroTag;
     final useHero = tag != null && tag.isNotEmpty;
 
@@ -175,7 +187,9 @@ class FigmaPlayerCard extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final photoAsync = ref.watch(playerPhotoProvider(player.fideId));
+    final photoAsync = avatar == null
+        ? ref.watch(playerPhotoProvider(player.fideId))
+        : const AsyncData<String?>(null);
     final avatarSize = 56.w;
     final initials = _getInitials(player.name);
     final federationForFlag = player.countryCode.trim();
@@ -192,10 +206,9 @@ class FigmaPlayerCard extends ConsumerWidget {
             // object, so it keeps the rule's height (the copy stays in
             // register over the original) but draws nothing.
             bottom: BorderSide(
-              color:
-                  LiftedRowSurface.isLifted(context)
-                      ? Colors.transparent
-                      : context.colors.divider,
+              color: LiftedRowSurface.isLifted(context)
+                  ? Colors.transparent
+                  : context.colors.divider,
               width: 1,
             ),
           ),
@@ -209,31 +222,30 @@ class FigmaPlayerCard extends ConsumerWidget {
             // lands on the same x.
             SizedBox(
               width: 24.w,
-              child:
-                  !showRank
-                      ? const SizedBox.shrink()
-                      : rank != null
-                      ? Text(
-                        rank.toString(),
+              child: !showRank
+                  ? const SizedBox.shrink()
+                  : rank != null
+                  ? Text(
+                      rank.toString(),
+                      style: AppTypography.textSmMedium.copyWith(
+                        color: context.colors.textTertiary,
+                      ),
+                      textAlign: TextAlign.center,
+                    )
+                  : skel.Skeletonizer(
+                      enabled: true,
+                      effect: skel.ShimmerEffect(
+                        baseColor: context.colors.skeleton,
+                        highlightColor: context.colors.divider,
+                      ),
+                      child: Text(
+                        '00',
                         style: AppTypography.textSmMedium.copyWith(
                           color: context.colors.textTertiary,
                         ),
                         textAlign: TextAlign.center,
-                      )
-                      : skel.Skeletonizer(
-                        enabled: true,
-                        effect: skel.ShimmerEffect(
-                          baseColor: context.colors.skeleton,
-                          highlightColor: context.colors.divider,
-                        ),
-                        child: Text(
-                          '00',
-                          style: AppTypography.textSmMedium.copyWith(
-                            color: context.colors.textTertiary,
-                          ),
-                          textAlign: TextAlign.center,
-                        ),
                       ),
+                    ),
             ),
             SizedBox(width: 12.w),
             // Player photo with title badge overlay
@@ -279,12 +291,13 @@ class FigmaPlayerCard extends ConsumerWidget {
                           ),
                         ),
                       // Rating
-                      Text(
-                        player.score.toString(),
-                        style: AppTypography.textSmRegular.copyWith(
-                          color: context.colors.textSecondary,
+                      if (!hideMissingRating || player.score > 0)
+                        Text(
+                          player.score.toString(),
+                          style: AppTypography.textSmRegular.copyWith(
+                            color: context.colors.textSecondary,
+                          ),
                         ),
-                      ),
                       // Rating change (if any), set flush against the rating
                       // exactly as shipped. The tokens are kGreenColor /
                       // kRedColor in dark and the deeper paper inks in light.
@@ -294,10 +307,9 @@ class FigmaPlayerCard extends ConsumerWidget {
                               ? '+${player.scoreChange}'
                               : '${player.scoreChange}',
                           style: AppTypography.textSmMedium.copyWith(
-                            color:
-                                player.scoreChange > 0
-                                    ? context.colors.successStrong
-                                    : context.colors.danger,
+                            color: player.scoreChange > 0
+                                ? context.colors.successStrong
+                                : context.colors.danger,
                           ),
                         ),
                     ],
@@ -305,8 +317,13 @@ class FigmaPlayerCard extends ConsumerWidget {
                 ],
               ),
             ),
-            // Right side: either heart or score
-            if (showFavoriteButton && onToggleFavorite != null)
+            // Right side: collection data, heart, or score.
+            if (trailing != null)
+              Padding(
+                padding: EdgeInsets.only(left: 8.w),
+                child: trailing!,
+              )
+            else if (showFavoriteButton && onToggleFavorite != null)
               GestureDetector(
                 onTap: onToggleFavorite,
                 behavior: HitTestBehavior.opaque,
@@ -314,10 +331,9 @@ class FigmaPlayerCard extends ConsumerWidget {
                   padding: EdgeInsets.all(8.sp),
                   child: Icon(
                     isFavorite ? Icons.favorite : Icons.favorite_border,
-                    color:
-                        isFavorite
-                            ? const Color(0xFFEF4444)
-                            : context.colors.textTertiary,
+                    color: isFavorite
+                        ? const Color(0xFFEF4444)
+                        : context.colors.textTertiary,
                     size: 24.ic,
                   ),
                 ),

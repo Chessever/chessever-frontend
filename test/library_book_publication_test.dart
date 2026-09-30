@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:chessever2/repository/library/library_book_publication.dart';
+import 'package:chessever2/repository/gamebase/gamebase_repository.dart';
 import 'package:chessever2/repository/library/models/library_folder.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -60,6 +61,46 @@ class _Adapter implements HttpClientAdapter {
 }
 
 void main() {
+  test(
+    'native publishing reuses the authenticated Gamebase transport',
+    () async {
+      final adapter = _Adapter();
+      final dio = Dio()..httpClientAdapter = adapter;
+      final repo = GamebaseRepository(
+        dio,
+        baseUrl: 'https://service.chessever.com',
+        apiKey: 'existing-app-key',
+      );
+      final publisher = GamebaseLibraryBookPublisher(
+        dio: dio,
+        baseUrl: 'https://service.chessever.com',
+        production: true,
+        accessToken: () => 'current-user-session',
+        apiRequest: repo.requestLibraryBookPublication,
+      );
+      await publisher.load(_folder());
+      await publisher.save(
+        _folder(),
+        const LibraryBookMetadata(title: 'Study'),
+      );
+      await publisher.unpublishTree(_folder());
+      expect(adapter.requests.map((r) => r.method), ['GET', 'PUT', 'DELETE']);
+      for (final request in adapter.requests) {
+        expect(request.uri.host, 'service.chessever.com');
+        expect(request.headers['X-API-Key'], 'existing-app-key');
+        expect(request.headers['Authorization'], 'Bearer current-user-session');
+        expect(request.followRedirects, isFalse);
+        expect(request.receiveTimeout, const Duration(minutes: 5));
+      }
+      expect(adapter.requests[1].data.containsKey('publish'), isFalse);
+      expect(
+        adapter.requests.last.queryParameters['includeDescendants'],
+        isTrue,
+      );
+      dio.close();
+    },
+  );
+
   test(
     'publication includes nested folders but excludes subscriptions and Likes',
     () {

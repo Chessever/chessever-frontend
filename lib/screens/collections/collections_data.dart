@@ -1,3 +1,5 @@
+import 'dart:math' show Random;
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:chessever2/repository/gamebase/collections/collection_search_query.dart';
 import 'dart:async';
 
@@ -33,7 +35,10 @@ class CollectionGame {
     try {
       return CollectionGame(
         card: card,
-        game: collectionGameModel(card.id, pgn),
+        game: hydrateCollectionGameCard(
+          card,
+          collectionGameModel(card.id, pgn),
+        ),
       );
     } catch (e) {
       debugPrint('[Collections] game ${card.id} unreadable: $e');
@@ -50,6 +55,38 @@ GamesTourModel collectionGameModel(String id, String pgn) {
   // The shared PGN mapper already hydrates the card's final position and
   // metadata. Keep the exact source text for annotations and board replay.
   return base.copyWith(pgn: pgn);
+}
+
+/// Import enrichment belongs to the structured card. Keep the original PGN
+/// byte-for-byte for replay, while using verified player links on the cards.
+GamesTourModel hydrateCollectionGameCard(
+  CollectionGameCard card,
+  GamesTourModel game,
+) {
+  PlayerCard side(CollectionPlayerSide data, PlayerCard parsed) =>
+      parsed.copyWith(
+        name:
+            RegExp(
+              r'^(white|black|\?|nn|n\.\s?n\.?)?$',
+              caseSensitive: false,
+            ).hasMatch(data.name.trim())
+            ? null
+            : data.name,
+        title: data.title,
+        rating: data.elo != null && data.elo! > 0 ? data.elo : null,
+        federation: data.fed,
+        countryCode: data.fed,
+        fideId: int.tryParse(data.fideId ?? ''),
+        gamebasePlayerId: data.playerId,
+      );
+  return game.copyWith(
+    whitePlayer: side(card.white, game.whitePlayer),
+    blackPlayer: side(card.black, game.blackPlayer),
+    boardNr: card.board,
+    gameDay: card.playedOn,
+    eco: card.eco,
+    openingName: card.opening,
+  );
 }
 
 /// One run of games under one header of the Games tab: a round, a part, a
@@ -85,8 +122,10 @@ class CollectionGameGroup {
 /// The groups' games, concatenated, are the order the board steps through.
 List<CollectionGameGroup> groupCollectionGames(
   List<CollectionSection> sections,
-  List<CollectionGame> games,
-) {
+  List<CollectionGame> games, {
+  bool preserveGameOrder = false,
+}) {
+  if (preserveGameOrder) return _groupsInGameOrder(sections, games);
   final bySection = <String, List<CollectionGame>>{};
   final known = <String>{};
   void index(List<CollectionSection> nodes) {
@@ -107,7 +146,7 @@ List<CollectionGameGroup> groupCollectionGames(
     }
   }
   for (final list in bySection.values) {
-    _sortByOrderIndex(list);
+    if (!preserveGameOrder) _sortByOrderIndex(list);
   }
 
   final groups = <CollectionGameGroup>[];
@@ -133,11 +172,194 @@ List<CollectionGameGroup> groupCollectionGames(
 
   walk(sections, 0);
   if (unsorted.isNotEmpty) {
+    // A book without author chapters still has the tournament's round cards.
+    // Use event + date + round, never a guessed publication date or midnight
+    // labelled as a known start time. Preserve first appearance and file order.
+    final buckets = <String, List<CollectionGame>>{};
+    for (final game in unsorted) {
+      final card = game.card;
+      final date = _collectionGameDay(game);
+      final event =
+          _collectionTag(card.event) ?? _collectionTag(game.game.tourId) ?? '';
+      final round =
+          _collectionTag(card.roundTag) ??
+          _collectionTag(game.game.roundId) ??
+          '';
+      final key =
+          '${event.toLowerCase()}|${date?.toIso8601String() ?? ''}|$round';
+      (buckets[key] ??= []).add(game);
+    }
+    for (final entry in buckets.entries) {
+      final bucket = entry.value;
+      final first = bucket.first;
+      final event =
+          _collectionTag(first.card.event) ?? _collectionTag(first.game.tourId);
+      final round =
+          _collectionTag(first.card.roundTag) ??
+          _collectionTag(first.game.roundId);
+      final label = event ?? 'Other games';
+      final instants =
+          bucket.map((g) => g.card.playedAt).whereType<DateTime>().toList()
+            ..sort();
+      groups.add(
+        CollectionGameGroup(
+          section: CollectionSection(
+            id: 'collection-auto-${entry.key}',
+            kind: CollectionSectionKind.round,
+            label: label,
+            title: round != null ? 'Round $round' : null,
+            startsOn: _collectionGameDay(first),
+            startsAt: instants.firstOrNull,
+            gameCount: bucket.length,
+          ),
+          games: bucket,
+          offset: offset,
+        ),
+      );
+      offset += bucket.length;
+    }
+  }
+  return groups;
+}
+
+/// A selected sort is authoritative across chapters and dates. Keep
+/// contiguous runs in the server's order, repeating a header when needed,
+/// rather than moving an earlier game behind another chapter's later game.
+List<CollectionGameGroup> _groupsInGameOrder(
+  List<CollectionSection> sections,
+  List<CollectionGame> games,
+) {
+  final paths = <String, List<CollectionSection>>{};
+  void index(List<CollectionSection> nodes, List<CollectionSection> ancestors) {
+    for (final section in nodes) {
+      final path = [...ancestors, section];
+      paths[section.id] = path;
+      index(section.children, path);
+    }
+  }
+
+  index(sections, const []);
+  String runKey(CollectionGame game) {
+    if (paths.containsKey(game.sectionId)) return 'section:${game.sectionId}';
+    final event =
+        _collectionTag(game.card.event) ??
+        _collectionTag(game.game.tourId) ??
+        '';
+    final round =
+        _collectionTag(game.card.roundTag) ??
+        _collectionTag(game.game.roundId) ??
+        '';
+    return '${event.toLowerCase()}|${_collectionGameDay(game)?.toIso8601String() ?? ''}|$round';
+  }
+
+  final groups = <CollectionGameGroup>[];
+  var offset = 0;
+  var parents = <CollectionSection>[];
+  while (offset < games.length) {
+    final start = offset;
+    final key = runKey(games[start]);
+    while (offset < games.length && runKey(games[offset]) == key) {
+      offset++;
+    }
+    final run = games.sublist(start, offset);
+    final path = paths[run.first.sectionId];
+    if (path == null) {
+      parents = [];
+      final fallback = groupCollectionGames(const [], run).single;
+      groups.add(
+        CollectionGameGroup(
+          section: fallback.section,
+          games: run,
+          offset: start,
+        ),
+      );
+      continue;
+    }
+    final nextParents = path.take(path.length - 1).toList();
+    for (var depth = 0; depth < nextParents.length; depth++) {
+      if (depth >= parents.length ||
+          parents[depth].id != nextParents[depth].id) {
+        groups.add(
+          CollectionGameGroup(
+            section: nextParents[depth],
+            depth: depth,
+            games: const [],
+            offset: start,
+          ),
+        );
+      }
+    }
+    parents = nextParents;
     groups.add(
-      CollectionGameGroup(section: null, games: unsorted, offset: offset),
+      CollectionGameGroup(
+        section: path.last,
+        depth: path.length - 1,
+        games: run,
+        offset: start,
+      ),
     );
   }
   return groups;
+}
+
+String? _collectionTag(String? value) {
+  final tag = value?.trim();
+  return tag == null || tag.isEmpty || tag == '?' || tag == 'import_preview'
+      ? null
+      : tag;
+}
+
+DateTime? _collectionGameDay(CollectionGame game) {
+  final day =
+      game.card.playedOn ?? game.game.gameDay ?? game.card.playedAt?.toUtc();
+  return day == null ? null : DateTime(day.year, day.month, day.day);
+}
+
+/// The selector's games and board navigation share the same membership. An
+/// ancestor header keeps a chapter's context without including sibling games.
+List<CollectionGameGroup> selectCollectionGameGroups(
+  List<CollectionGameGroup> groups,
+  String selected,
+) {
+  final byId = {
+    for (final g in groups)
+      if (g.section != null) g.section!.id: g,
+  };
+  final picked = byId[selected]?.section;
+  if (selected == 'all' || picked == null) return groups;
+  final included = <String>{};
+  void include(CollectionSection section) {
+    included.add(section.id);
+    for (final child in section.children) {
+      include(child);
+    }
+  }
+
+  include(picked);
+  final ancestors = <String>{};
+  var parent = picked.parentId;
+  while (parent != null && ancestors.add(parent)) {
+    parent = byId[parent]?.section?.parentId;
+  }
+  var offset = 0;
+  return [
+    for (final group in groups)
+      if (included.contains(group.section?.id) ||
+          ancestors.contains(group.section?.id))
+        () {
+          final games = included.contains(group.section?.id)
+              ? group.games
+              : const <CollectionGame>[];
+          final filtered = CollectionGameGroup(
+            section: group.section,
+            depth: group.depth,
+            games: games,
+            offset: offset,
+          );
+          offset += games.length;
+          return filtered;
+        }(),
+  ];
 }
 
 void _sortByOrderIndex(List<CollectionGame> games) {
@@ -324,6 +546,41 @@ class CollectionsRepository {
         if (seen.add(card.id)) ?CollectionGame.fromCard(card),
     ];
   }
+
+  Future<List<CollectionGame>> searchGames(
+    String slug,
+    CollectionSearchQuery search, {
+    String? playerKey,
+  }) async {
+    final fresh = isFreshAccess(slug);
+    final bearer = await _accessToken();
+    final cards = await _allPages<CollectionGameCard>(
+      pageSize: gamesPageSize,
+      fetch: (offset) async {
+        final page = await _api.getCollectionGames(
+          slug,
+          search: search,
+          playerKey: playerKey,
+          includePgn: true,
+          limit: gamesPageSize,
+          offset: offset,
+          bearer: bearer,
+          fresh: fresh,
+        );
+        return (page.items, page.total);
+      },
+    );
+    final seen = <String>{};
+    return [
+      for (final card in cards)
+        if (seen.add(card.id)) ?CollectionGame.fromCard(card),
+    ];
+  }
+
+  Future<({List<CollectionAuthor> items, int total})> searchAuthors(
+    CollectionSearchQuery query,
+    int offset,
+  ) => _api.searchCollectionAuthors(search: query, offset: offset);
 
   /// Public opening metadata stays available even when game access is gated.
   Future<List<CollectionOpening>> fetchOpenings({String? slug}) =>
@@ -619,6 +876,79 @@ final collectionContentsProvider = FutureProvider.autoDispose
       final results = await Future.wait<Object>([
         ref.watch(collectionDetailProvider(slug).future),
         ref.watch(collectionGamesProvider(slug).future),
+      ]);
+      return CollectionContents(
+        sections: (results[0] as Collection).sections,
+        games: results[1] as List<CollectionGame>,
+      );
+    });
+
+// Counters update independently of favorite ordering and existing saved rows.
+final collectionEngagementCountsProvider =
+    StateProvider.family<Map<String, dynamic>?, String>((ref, slug) => null);
+final _collectionReaderId = FutureProvider<String>((ref) async {
+  final preferences = await SharedPreferences.getInstance();
+  final previous = preferences.getString('collection_reader_id');
+  if (previous != null) return previous;
+  final bytes = List<int>.generate(16, (_) => Random.secure().nextInt(256));
+  bytes[6] = (bytes[6] & 15) | 64;
+  bytes[8] = (bytes[8] & 63) | 128;
+  final hex = bytes.map((b) => b.toRadixString(16).padLeft(2, '0')).join();
+  final id =
+      '${hex.substring(0, 8)}-${hex.substring(8, 12)}-${hex.substring(12, 16)}-${hex.substring(16, 20)}-${hex.substring(20)}';
+  await preferences.setString('collection_reader_id', id);
+  return id;
+});
+Future<void> trackCollectionRead(WidgetRef ref, Collection collection) async {
+  try {
+    final id = await ref.read(_collectionReaderId.future);
+    final counts = await ref
+        .read(gamebaseRepositoryProvider)
+        .recordCollectionEngagement(collection.slug, {'viewerId': id});
+    ref
+            .read(collectionEngagementCountsProvider(collection.slug).notifier)
+            .state =
+        counts;
+  } catch (_) {
+    /* Counts never interrupt reading. */
+  }
+}
+
+Future<void> syncCollectionStar(
+  WidgetRef ref,
+  Collection collection,
+  bool starred,
+) async {
+  try {
+    final token = await collectionsSessionToken();
+    if (token == null) return;
+    final counts = await ref
+        .read(gamebaseRepositoryProvider)
+        .recordCollectionEngagement(
+          collection.slug,
+          {'starred': starred},
+          bearer: token,
+          star: true,
+        );
+    ref
+            .read(collectionEngagementCountsProvider(collection.slug).notifier)
+            .state =
+        counts;
+  } catch (_) {
+    /* The existing favorite remains authoritative for pinning. */
+  }
+}
+
+final collectionFilteredContentsProvider = FutureProvider.autoDispose
+    .family<
+      CollectionContents,
+      ({String slug, CollectionSearchQuery query, String? player})
+    >((ref, key) async {
+      final results = await Future.wait<Object>([
+        ref.watch(collectionDetailProvider(key.slug).future),
+        ref
+            .watch(collectionsRepositoryProvider)
+            .searchGames(key.slug, key.query, playerKey: key.player),
       ]);
       return CollectionContents(
         sections: (results[0] as Collection).sections,

@@ -1225,7 +1225,7 @@ class MyApp extends HookConsumerWidget {
     final upgrader = useMemoized(
       () => Upgrader(
         messages: CustomUpgraderMessages(),
-        durationUntilAlertAgain: const Duration(days: 1),
+        durationUntilAlertAgain: const Duration(days: 3),
         debugDisplayAlways: false,
         debugLogging: false,
       ),

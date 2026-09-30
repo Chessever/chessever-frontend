@@ -10,8 +10,8 @@ import 'package:chessever2/screens/for_you/discovery/widgets/discovery_common.da
     show discoveryHeartInk;
 import 'package:chessever2/screens/gamebase/event_view/gamebase_virtual_event_id.dart'
     show virtualBroadcastId;
-import 'package:chessever2/screens/favorites/tabs/favorites_players_tab.dart'
-    show playerPhotoProvider;
+import 'package:chessever2/screens/standings/player_standing_model.dart';
+import 'package:chessever2/widgets/figma_player_card.dart';
 import 'package:chessever2/screens/group_event/model/tour_event_card_model.dart';
 import 'package:chessever2/screens/group_event/providers/live_group_broadcast_id_provider.dart';
 import 'package:chessever2/screens/library/widgets/library_context_menu.dart';
@@ -21,7 +21,6 @@ import 'package:chessever2/screens/my_space/actions/space_menu_action.dart';
 import 'package:chessever2/screens/my_space/models/space_shortcut.dart';
 import 'package:chessever2/screens/my_space/navigation/space_shortcut_navigator.dart';
 import 'package:chessever2/screens/my_space/providers/space_hub_providers.dart';
-import 'package:chessever2/screens/my_space/widgets/space_avatar.dart';
 import 'package:chessever2/screens/my_space/widgets/space_glyphs.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/utils/app_typography.dart';
@@ -314,6 +313,7 @@ class MyLikesPlayersPage extends ConsumerWidget {
       itemBuilder: (context, i) => _PlayerRow(
         key: ValueKey<String>('my_likes_player_${players[i].key}'),
         player: players[i],
+        rank: i + 1,
         onPick: onPick,
       ),
     );
@@ -321,7 +321,14 @@ class MyLikesPlayersPage extends ConsumerWidget {
 }
 
 class _PlayerRow extends ConsumerWidget {
-  const _PlayerRow({super.key, required this.player, required this.onPick});
+  const _PlayerRow({
+    super.key,
+    required this.player,
+    required this.rank,
+    required this.onPick,
+  });
+
+  final int rank;
 
   final MyLikesPlayer player;
   final ValueChanged<String> onPick;
@@ -330,9 +337,6 @@ class _PlayerRow extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final colors = context.colors;
     final p = player;
-    final photo = p.fideId == null
-        ? null
-        : ref.watch(playerPhotoProvider(p.fideId)).valueOrNull;
     final draft = spacePlayerDraft(
       playerName: p.name,
       fideId: p.fideId,
@@ -340,66 +344,28 @@ class _PlayerRow extends ConsumerWidget {
       federation: p.federation,
       rating: p.rating,
     );
-    final standing = [
-      if (p.title != null) p.title!,
-      if (p.rating != null && p.rating! > 0) '${p.rating}',
-    ].join(' ');
     final count = p.games == 1 ? '1 liked game' : '${p.games} liked games';
     void pick() => onPick(p.name);
 
-    final row = Container(
-      padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 10.h),
-      decoration: BoxDecoration(
-        color: colors.surface,
-        borderRadius: BorderRadius.circular(12.br),
-        border: context.isLightTheme
-            ? Border.all(color: colors.divider.withValues(alpha: 0.4))
-            : null,
+    final row = FigmaPlayerCard(
+      player: PlayerStandingModel(
+        name: p.name,
+        fideId: p.fideId,
+        title: p.title,
+        countryCode: p.federation ?? '',
+        score: p.rating ?? 0,
+        scoreChange: 0,
+        hasRatingDiff: false,
+        matchScore: null,
       ),
-      child: Row(
-        children: [
-          SpacePlayerAvatar(
-            size: 48.w,
-            name: p.name,
-            photoUrl: photo,
-            title: p.title,
-            federation: p.federation,
-            ring: colors.surface,
-          ),
-          SizedBox(width: 12.w),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  p.name,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: AppTypography.textSmMedium.copyWith(
-                    fontWeight: FontWeight.w600,
-                    color: colors.textPrimary,
-                  ),
-                ),
-                SizedBox(height: 2.h),
-                Text(
-                  standing.isEmpty ? count : '$standing · $count',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: AppTypography.textXsMedium.copyWith(
-                    color: colors.textSecondary,
-                    fontFeatures: const [FontFeature.tabularFigures()],
-                  ),
-                ),
-              ],
-            ),
-          ),
-          Icon(
-            Icons.chevron_right_rounded,
-            size: 20.ic,
-            color: colors.iconSecondary,
-          ),
-        ],
+      rank: rank,
+      onTap: pick,
+      trailing: Text(
+        count,
+        style: AppTypography.textXsMedium.copyWith(
+          color: colors.textPrimary,
+          fontFeatures: const [FontFeature.tabularFigures()],
+        ),
       ),
     );
 
@@ -408,24 +374,21 @@ class _PlayerRow extends ConsumerWidget {
       label: '${p.name}, $count',
       excludeSemantics: true,
       onTap: pick,
-      child: TappableScale(
-        onTap: pick,
-        child: CardContextMenu(
-          onPreviewTap: pick,
-          actions: (menuContext) => [
-            LibraryMenuAction(
-              icon: Icons.favorite_border_rounded,
-              label: 'Show liked games',
-              onSelected: pick,
-            ),
-            LibraryMenuAction(
-              icon: Icons.person_outline_rounded,
-              label: 'Open profile',
-              onSelected: () => openSpaceShortcut(context, ref, draft),
-            ),
-          ],
-          child: row,
-        ),
+      child: CardContextMenu(
+        onPreviewTap: pick,
+        actions: (menuContext) => [
+          LibraryMenuAction(
+            icon: Icons.favorite_border_rounded,
+            label: 'Show liked games',
+            onSelected: pick,
+          ),
+          LibraryMenuAction(
+            icon: Icons.person_outline_rounded,
+            label: 'Open profile',
+            onSelected: () => openSpaceShortcut(context, ref, draft),
+          ),
+        ],
+        child: row,
       ),
     );
   }

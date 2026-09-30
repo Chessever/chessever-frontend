@@ -343,18 +343,6 @@ class FolderCard extends ConsumerWidget {
             ),
           ),
 
-          if (libraryFolderCanPublish(folder))
-            IconButton(
-              key: ValueKey('publish_book_${folder.id}'),
-              tooltip: 'Publish / edit book',
-              constraints: const BoxConstraints(minWidth: 44, minHeight: 44),
-              onPressed: () => openLibraryBookEditor(context, folder),
-              icon: Icon(
-                Icons.publish_rounded,
-                size: 21.sp,
-                color: context.colors.textSecondary,
-              ),
-            ),
           // Right arrow for protected collections (TWIC, Liked Games),
           // plus a source-links affordance for the ChessEver master DB.
           if (isProtected)

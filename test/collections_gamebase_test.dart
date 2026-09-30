@@ -1,3 +1,4 @@
+import 'package:chessever2/repository/gamebase/collections/collection_search_query.dart';
 import 'dart:convert';
 import 'dart:typed_data';
 
@@ -178,6 +179,7 @@ class _FakeGamebase extends GamebaseRepository {
     String? section,
     String? playerKey,
     String? eco,
+    CollectionSearchQuery search = const CollectionSearchQuery(),
     bool includePgn = false,
     int limit = 100,
     int offset = 0,
@@ -480,7 +482,11 @@ void main() {
         _game('a', sectionId: 'r1', orderIndex: 1),
         _game('u2', sectionId: 'gone'),
       ]);
-      expect(groups.map((g) => g.section?.id), ['r2', 'r1', null]);
+      expect(groups.map((g) => g.section?.id), [
+        'r2',
+        'r1',
+        'collection-auto-casual||',
+      ]);
       expect(groups.map((g) => g.games.map((x) => x.id).toList()), [
         ['c'],
         ['a', 'b'],
@@ -504,7 +510,7 @@ void main() {
         'ch1',
         'p2',
         'ch3',
-        null,
+        'collection-auto-casual||',
       ]);
       expect(groups.map((g) => g.depth), [0, 1, 0, 1, 0]);
       expect(groups[0].games, isEmpty, reason: 'a part only leads');
@@ -512,10 +518,74 @@ void main() {
       expect(groups.expand((g) => g.games).map((g) => g.id), ['g1', 'g3', 'u']);
     });
 
-    test('no sections: one headerless group', () {
+    test(
+      'filtering a round keeps its identity when its first game disappears',
+      () {
+        final a = _game('first');
+        final b = _game('second');
+        final full = groupCollectionGames(const [], [a, b]);
+        final filtered = groupCollectionGames(const [], [b]);
+        expect(filtered.single.section?.id, full.single.section?.id);
+        expect(filtered.single.games.single.id, 'second');
+      },
+    );
+
+    test(
+      'an explicit sort preserves the server order across chapters and rounds',
+      () {
+        const sections = [
+          CollectionSection(
+            id: 'p',
+            kind: CollectionSectionKind.part,
+            label: 'Part',
+            children: [
+              CollectionSection(
+                id: 'a',
+                parentId: 'p',
+                kind: CollectionSectionKind.chapter,
+                label: 'A',
+              ),
+              CollectionSection(
+                id: 'b',
+                parentId: 'p',
+                kind: CollectionSectionKind.chapter,
+                label: 'B',
+              ),
+            ],
+          ),
+        ];
+        final sorted = [
+          _game('new', sectionId: 'b'),
+          _game('middle', sectionId: 'a'),
+          _game('other'),
+          _game('old', sectionId: 'b'),
+        ];
+        final groups = groupCollectionGames(
+          sections,
+          sorted,
+          preserveGameOrder: true,
+        );
+        expect(groups.expand((group) => group.games).map((game) => game.id), [
+          'new',
+          'middle',
+          'other',
+          'old',
+        ]);
+        expect(
+          groups
+              .where((group) => group.games.isNotEmpty)
+              .map((group) => group.offset),
+          [0, 1, 2, 3],
+        );
+        expect(groups.first.section?.id, 'p');
+        expect(groups.last.depth, 1);
+      },
+    );
+
+    test('no sections: a fallback round group', () {
       final groups = groupCollectionGames(const [], [_game('a'), _game('b')]);
       expect(groups, hasLength(1));
-      expect(groups.single.section, isNull);
+      expect(groups.single.section?.label, 'Casual');
       expect(groups.single.games.map((g) => g.id), ['a', 'b']);
     });
   });

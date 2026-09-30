@@ -3,6 +3,7 @@ import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/home_top_bar.dart';
+import 'package:chessever2/widgets/destination_title.dart';
 import 'package:chessever2/widgets/screen_wrapper.dart';
 import 'package:chessever2/widgets/segmented_switcher.dart';
 import 'package:flutter/material.dart';
@@ -27,6 +28,10 @@ class EventViewShell extends StatefulWidget {
     this.embedded = false,
     this.tabStripOverride,
     this.actions,
+    this.titleIcon,
+    this.beforeTabsBuilder,
+    this.scrollableTabs = false,
+    this.contentOverride,
   });
 
   /// Renders only tabs and pages inside a parent screen. The parent owns the
@@ -36,11 +41,20 @@ class EventViewShell extends StatefulWidget {
   /// Replaces the segmented tab strip (a search row on single-page screens).
   /// Pages still swipe; with one tab there is nothing to switch between.
   final Widget? tabStripOverride;
+  final bool scrollableTabs;
+
+  /// Search results replacing the pages while preserving tab/scroll state.
+  final Widget? contentOverride;
 
   /// Trailing header buttons on the default (back + title) header, in place
   /// of the spacer that balances the back button.
   final List<Widget>? actions;
   final Widget? header;
+  final Widget? titleIcon;
+
+  /// Pinned content between the detail header and tab switcher.
+  final Widget Function(BuildContext context, int selectedTab)?
+  beforeTabsBuilder;
   final String title;
   final List<String> tabs;
   final Widget Function(BuildContext context, int index) pageBuilder;
@@ -218,16 +232,23 @@ class _EventViewShellState extends State<EventViewShell> {
                     Expanded(
                       child: Semantics(
                         header: true,
-                        child: Text(
-                          widget.title,
-                          textAlign: TextAlign.center,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: AppTypography.textMdMedium.copyWith(
-                            color: colors.textPrimary,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
+                        child: widget.titleIcon != null
+                            ? Center(
+                                child: DestinationTitle(
+                                  title: widget.title,
+                                  icon: widget.titleIcon!,
+                                ),
+                              )
+                            : Text(
+                                widget.title,
+                                textAlign: TextAlign.center,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: AppTypography.textMdMedium.copyWith(
+                                  color: colors.textPrimary,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
                       ),
                     ),
                     if (widget.actions != null)
@@ -239,14 +260,14 @@ class _EventViewShellState extends State<EventViewShell> {
               ),
             ],
             SizedBox(height: widget.homeTab ? 16.h : 8.h),
+            if (widget.beforeTabsBuilder != null)
+              widget.beforeTabsBuilder!(context, _selected),
             Padding(
               padding: EdgeInsets.symmetric(horizontal: side),
               child:
                   widget.tabStripOverride ??
                   SegmentedSwitcher(
-                    key: ValueKey(
-                      'event_view_tabs_${widget.tabs.join('_')}',
-                    ),
+                    key: ValueKey('event_view_tabs_${widget.tabs.join('_')}'),
                     backgroundColor: colors.popup,
                     selectedBackgroundColor: colors.popup,
                     // Keep the labels inside the fixed-height strip when the
@@ -270,6 +291,7 @@ class _EventViewShellState extends State<EventViewShell> {
                           ),
                         ),
                     ],
+                    isScrollable: widget.scrollableTabs,
                     initialSelection: widget.initialTab,
                     currentSelection: _selected,
                     onSelectionChanged: _select,
@@ -277,23 +299,36 @@ class _EventViewShellState extends State<EventViewShell> {
             ),
             if (widget.homeTab) SizedBox(height: 12.h),
             Expanded(
-              child: PageView.builder(
-                controller: _pages,
-                physics: widget.embedded
-                    ? const NeverScrollableScrollPhysics()
-                    : null,
-                itemCount: widget.tabs.length,
-                onPageChanged: (index) {
-                  if (index == _selected) return;
-                  FocusScope.of(context).unfocus();
-                  setState(() => _selected = index);
-                },
-                itemBuilder: (context, index) => PrimaryScrollController(
-                  controller: _scrolls.putIfAbsent(index, ScrollController.new),
-                  child: Builder(
-                    builder: (context) => widget.pageBuilder(context, index),
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  Offstage(
+                    offstage: widget.contentOverride != null,
+                    child: PageView.builder(
+                      controller: _pages,
+                      physics: widget.embedded
+                          ? const NeverScrollableScrollPhysics()
+                          : null,
+                      itemCount: widget.tabs.length,
+                      onPageChanged: (index) {
+                        if (index == _selected) return;
+                        FocusScope.of(context).unfocus();
+                        setState(() => _selected = index);
+                      },
+                      itemBuilder: (context, index) => PrimaryScrollController(
+                        controller: _scrolls.putIfAbsent(
+                          index,
+                          ScrollController.new,
+                        ),
+                        child: Builder(
+                          builder: (context) =>
+                              widget.pageBuilder(context, index),
+                        ),
+                      ),
+                    ),
                   ),
-                ),
+                  if (widget.contentOverride != null) widget.contentOverride!,
+                ],
               ),
             ),
           ],

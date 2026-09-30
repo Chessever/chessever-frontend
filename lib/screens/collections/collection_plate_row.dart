@@ -30,6 +30,9 @@ class CollectionPlateRow extends StatelessWidget {
     this.onTap,
     this.menuActions,
     this.trailing,
+    this.stats,
+    this.compactDetails = false,
+    this.detailItems = const [],
   });
 
   /// An event's picture: landscape, 5:4.
@@ -51,6 +54,11 @@ class CollectionPlateRow extends StatelessWidget {
   /// Trailing action (a collection's star), top-aligned at the row's end.
   /// Null draws the row exactly as before.
   final Widget? trailing;
+  final Widget? stats;
+
+  /// Books keep their counts together instead of adding another text row.
+  final bool compactDetails;
+  final List<Widget> detailItems;
 
   /// How much the collection holds ("55 games"), on its own line.
   final String? tally;
@@ -103,6 +111,112 @@ class CollectionPlateRow extends StatelessWidget {
             ),
           );
 
+    final identity = <Widget>[
+      Text(
+        title,
+        maxLines: 2,
+        overflow: TextOverflow.ellipsis,
+        style: AppTypography.textSmMedium.copyWith(
+          color: colors.textPrimary,
+          fontSize: compactDetails ? 16.f : 14.f,
+          fontWeight: compactDetails ? FontWeight.w600 : FontWeight.w500,
+          height: 1.2,
+        ),
+      ),
+      if (metaText != null) ...[
+        SizedBox(height: 4.h),
+        count == null ? withLock(metaText) : metaText,
+      ],
+    ];
+    final details = ExcludeSemantics(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (compactDetails)
+            ConstrainedBox(
+              constraints: const BoxConstraints(minHeight: 48),
+              child: Padding(
+                padding: EdgeInsetsDirectional.only(end: 0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: identity,
+                ),
+              ),
+            )
+          else
+            ...identity,
+          if (compactDetails &&
+              (count != null || detailItems.isNotEmpty || stats != null)) ...[
+            SizedBox(height: 8.sp),
+            Wrap(
+              spacing: 12.sp,
+              runSpacing: 4.sp,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: [
+                if (count != null)
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Flexible(
+                        child: Text(
+                          count,
+                          style: AppTypography.textXsRegular.copyWith(
+                            color: colors.textSecondary,
+                            fontFeatures: const [FontFeature.tabularFigures()],
+                          ),
+                        ),
+                      ),
+                      if (locked) ...[
+                        SizedBox(width: DiscoveryPadlock.gap),
+                        const DiscoveryPadlock(
+                          key: ValueKey<String>('collection_card_padlock'),
+                        ),
+                      ],
+                    ],
+                  ),
+                ...detailItems,
+                if (stats != null) stats!,
+              ],
+            ),
+          ] else if (count != null) ...[
+            SizedBox(height: metaText == null ? 4.h : 2.h),
+            withLock(
+              Text(
+                count,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: metaStyle.copyWith(
+                  color: colors.textSecondary,
+                  fontFeatures: const [FontFeature.tabularFigures()],
+                ),
+              ),
+            ),
+          ] else if (metaText == null && locked) ...[
+            SizedBox(height: 4.h),
+            withLock(null),
+          ],
+          if (!compactDetails && stats != null) ...[
+            SizedBox(height: 6.h),
+            stats!,
+          ],
+          if (caption != null) ...[
+            SizedBox(height: 6.h),
+            Text(
+              caption,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: AppTypography.textXsRegular.copyWith(
+                color: colors.textSecondary,
+                height: 16 / 12,
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+
     Widget card = Container(
       decoration: BoxDecoration(
         color: colors.surface,
@@ -114,73 +228,38 @@ class CollectionPlateRow extends StatelessWidget {
       padding: EdgeInsets.all(6.sp),
       child: Row(
         children: [
-          ClipRRect(
-            borderRadius: BorderRadius.circular(6.br),
-            child: SizedBox(
-              width: size.width,
-              height: size.height,
-              child: plate,
+          ExcludeSemantics(
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(6.br),
+              child: SizedBox(
+                width: size.width,
+                height: size.height,
+                child: plate,
+              ),
             ),
           ),
           SizedBox(width: 10.w),
           Expanded(
             child: Padding(
-              // Clear of the card's right rim, so a long title never runs
-              // into it.
-              padding: EdgeInsets.only(right: 6.sp),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    title,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: AppTypography.textSmMedium.copyWith(
-                      color: colors.textPrimary,
-                      fontSize: 14.f,
-                      height: 1.2,
-                    ),
-                  ),
-                  if (metaText != null) ...[
-                    SizedBox(height: 4.h),
-                    count == null ? withLock(metaText) : metaText,
-                  ],
-                  if (count != null) ...[
-                    SizedBox(height: metaText == null ? 4.h : 2.h),
-                    withLock(
-                      Text(
-                        count,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: metaStyle.copyWith(
-                          color: colors.textSecondary,
-                          fontFeatures: const [FontFeature.tabularFigures()],
-                        ),
-                      ),
-                    ),
-                  ] else if (metaText == null && locked) ...[
-                    SizedBox(height: 4.h),
-                    withLock(null),
-                  ],
-                  if (caption != null) ...[
-                    SizedBox(height: 6.h),
-                    Text(
-                      caption,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: AppTypography.textXsRegular.copyWith(
-                        color: colors.textSecondary,
-                        height: 16 / 12,
-                      ),
-                    ),
-                  ],
-                ],
-              ),
+              padding: EdgeInsetsDirectional.only(end: 6.sp),
+              child: compactDetails
+                  ? Padding(
+                      padding: EdgeInsets.only(top: 4.sp),
+                      child: details,
+                    )
+                  : details,
             ),
           ),
           if (trailing != null)
-            Align(alignment: Alignment.topCenter, child: trailing),
+            Align(
+              alignment: Alignment.topCenter,
+              child: compactDetails
+                  ? Transform.translate(
+                      offset: Offset(0, -4.sp),
+                      child: trailing,
+                    )
+                  : trailing,
+            ),
         ],
       ),
     );
@@ -200,7 +279,9 @@ class CollectionPlateRow extends StatelessWidget {
     return Semantics(
       button: true,
       label: semanticsLabel,
-      excludeSemantics: true,
+      excludeSemantics: trailing == null,
+      container: trailing != null,
+      explicitChildNodes: trailing != null,
       onTap: tap,
       child: TappableScale(onTap: tap, child: card),
     );

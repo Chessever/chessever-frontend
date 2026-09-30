@@ -4,6 +4,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'package:chessever2/config/app_environment.dart';
 import 'package:chessever2/config/gamebase_environment.dart';
+import 'package:chessever2/repository/gamebase/gamebase_repository.dart';
 import 'package:chessever2/repository/library/models/library_folder.dart';
 import 'package:chessever2/screens/library/providers/library_folders_provider.dart'
     show kTwicBookId, kMiniaturesBookId;
@@ -122,21 +123,35 @@ class LibraryBookPublicationException implements Exception {
   final String message;
 }
 
-/// Uses the explicitly configured test service and the current user's session.
-/// There is no fallback endpoint or anonymous publication request.
+typedef LibraryPublicationApiRequest =
+    Future<Map<String, dynamic>> Function({
+      required String folderId,
+      required String method,
+      required String bearer,
+      Map<String, dynamic>? body,
+      Map<String, dynamic>? query,
+    });
+
+/// Uses the native production client or the explicitly configured test bridge,
+/// with the current user's session and no fallback endpoint.
 class GamebaseLibraryBookPublisher implements LibraryBookPublisher {
   GamebaseLibraryBookPublisher({
     required this.dio,
     required String? baseUrl,
     required this.accessToken,
+    this.apiRequest,
+    bool production = false,
   }) : _baseUrl = baseUrl == null
            ? null
+           : production
+           ? (baseUrl == 'https://service.chessever.com' ? baseUrl : '')
            : GamebaseEnvironment.validateTestBase(baseUrl),
        _configured = baseUrl?.trim().isNotEmpty ?? false;
 
   final Dio dio;
   final String? _baseUrl;
   final String? Function() accessToken;
+  final LibraryPublicationApiRequest? apiRequest;
   final bool _configured;
 
   @override
@@ -193,20 +208,28 @@ class GamebaseLibraryBookPublisher implements LibraryBookPublisher {
       throw const LibraryBookPublicationException('Sign in to publish a book.');
     }
     try {
-      final response = await dio.request<Map<String, dynamic>>(
-        '$base/api/library/folders/${Uri.encodeComponent(folder.id)}/book',
-        data: body,
-        queryParameters: query,
-        options: Options(
-          method: method,
-          followRedirects: false,
-          headers: {
-            'Authorization': 'Bearer $token',
-            'Accept': 'application/json',
-          },
-        ),
-      );
-      final data = response.data?['data'];
+      final envelope = apiRequest != null
+          ? await apiRequest!(
+              folderId: folder.id,
+              method: method,
+              bearer: token,
+              body: body,
+              query: query,
+            )
+          : (await dio.request<Map<String, dynamic>>(
+              '$base/api/library/folders/${Uri.encodeComponent(folder.id)}/book',
+              data: body,
+              queryParameters: query,
+              options: Options(
+                method: method,
+                followRedirects: false,
+                headers: {
+                  'Authorization': 'Bearer $token',
+                  'Accept': 'application/json',
+                },
+              ),
+            )).data;
+      final data = envelope?['data'];
       if (data is! Map) throw const FormatException('Missing publication');
       return LibraryBookPublication.fromJson(
         Map<String, dynamic>.from(data),
@@ -261,12 +284,14 @@ final libraryBookPublisherProvider = Provider<LibraryBookPublisher>((ref) {
   ref.onDispose(() => dio.close());
   return GamebaseLibraryBookPublisher(
     dio: dio,
-    // Publication is enabled only in the test flavor for this rollout.
+    production: !AppEnvironment.isTest,
     baseUrl: AppEnvironment.isTest
         ? const String.fromEnvironment('LIBRARY_BOOK_PUBLISHING_BASE')
-        : null,
+        : 'https://service.chessever.com',
+    apiRequest: AppEnvironment.isTest
+        ? null
+        : ref.read(gamebaseRepositoryProvider).requestLibraryBookPublication,
     accessToken: () {
-      if (!AppEnvironment.isTest) return null;
       final client = Supabase.instance.client;
       return client.auth.currentSession?.accessToken;
     },

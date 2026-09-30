@@ -88,3 +88,17 @@ Use the admin console on chessever.com: **Content › Collections**.
 
 The app picks up changes on the next load or pull-to-refresh; the API caches
 responses and clears that cache after every admin write.
+
+## Production integration (35.25.1+3502)
+
+This release reuses tournament round headers, game cards, About fields and the Favorites/Countrymen player cards. Book Games tabs begin directly with collapsible chapters or event/date groups; the redundant All games selector and game-count toolbar are removed. The existing layout switcher sits beside the three-dot menu in the header. Event collections retain the round selector.
+
+Book list pictures share the event card's 5:4 proportions, retaining the pixel placeholder. Unique reader counts use an eye icon; the existing star pins books and displays the star count. The folder publication action moves from folder cards into the far right of the folder header, alongside all original controls in one row. Smart Events omits its header tally.
+
+Library owners submit drafts for superadmin approval. Metadata and PGN snapshots never auto-publish. Nested owned folders supply chapters. Source variations, comments, NAGs and clocks are preserved. Ownership, staff takedowns, source deletion and concurrent updates are checked on the server. Existing public collection contracts and premium gates remain supported.
+
+Production folder publishing reuses the existing authenticated Gamebase client, with the user's session and redirect forwarding disabled. The web profile uses its server bridge. Browser challenges on the marketing site cannot block native folder operations.
+
+New server summary fields and SQL tables/columns are additive. Shared widget options retain their original defaults outside Collections. This isolated stable patch excludes unrelated Feed/My Space work from the development checkout. The .env asset line is commented for clean CI builds.
+
+Validation: scoped Flutter analysis and 133 relevant collection/publishing regressions pass. Device verification remains with the product manager: open a book, collapse chapters, switch the three game layouts in the header, tap a deduplicated player to filter games, star a book and check its pinned order; then check the one-row folder header and submit a draft. Verify a live tournament and Favorites/Countrymen in both themes.

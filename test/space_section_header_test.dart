@@ -35,8 +35,8 @@ Future<void> _pump(
 }
 
 void main() {
-  test('the Library\'s files are Databases on My Space', () {
-    expect(spaceGroupTitle(SpaceSection.library), 'Databases');
+  test('the Library group is called Library on My Space', () {
+    expect(spaceGroupTitle(SpaceSection.library), 'Library');
     expect(spaceGroupTitle(SpaceSection.events), 'Events');
     expect(spaceGroupTitle(SpaceSection.links), 'Shortcuts');
   });

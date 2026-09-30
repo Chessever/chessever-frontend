@@ -354,17 +354,25 @@ void main() {
   });
 
   group('the scrub line', () {
-    testWidgets('is a full-width 44pt target, with a counter of the moves', (
-      tester,
-    ) async {
+    testWidgets('is a 44pt target beside the playback button', (tester) async {
       await _pump(tester, games: 1);
       final strip = tester.getRect(find.byType(FeedScrubStrip));
       expect(strip.height, 44);
-      expect(strip.width, tester.getRect(_pages).width);
-      expect(find.text('0/4'), findsOneWidget);
+      expect(strip.width, lessThan(tester.getRect(_pages).width));
+      expect(
+        tester
+            .widget<FeedScrubStrip>(find.byType(FeedScrubStrip).first)
+            .progress,
+        closeTo(0 / 7, 0.001),
+      );
 
       await tester.pump(const Duration(milliseconds: 500));
-      expect(find.text('1/4'), findsOneWidget);
+      expect(
+        tester
+            .widget<FeedScrubStrip>(find.byType(FeedScrubStrip).first)
+            .progress,
+        closeTo(1 / 7, 0.001),
+      );
       await _tearDown(tester);
     });
 
@@ -374,7 +382,7 @@ void main() {
       final feed = await _pump(tester, games: 1);
       final strip = tester.getRect(find.byType(FeedScrubStrip));
       final counter = tester.getRect(
-        find.byKey(const ValueKey('feed_scrub_counter')),
+        find.byKey(const ValueKey('feed_scrub_play_toggle')),
       );
       // The track runs from the board's left edge to just before the
       // counter; its middle is ply 4 of 7 (2... Nc6).
@@ -383,7 +391,12 @@ void main() {
           counter.right - _counterWidth(tester) - FeedScrubStrip.counterGap;
       await tester.tapAt(Offset((left + right) / 2, strip.center.dy));
       await tester.pump();
-      expect(find.text('2/4'), findsOneWidget);
+      expect(
+        tester
+            .widget<FeedScrubStrip>(find.byType(FeedScrubStrip).first)
+            .progress,
+        closeTo(4 / 7, 0.001),
+      );
       expect(feed.sound.played.last, ('Nc6', null));
 
       // Plays on: the next move comes on its own.
@@ -426,7 +439,7 @@ void main() {
       await _pump(tester, games: 1);
       final strip = tester.getRect(find.byType(FeedScrubStrip));
       final counter = tester.getRect(
-        find.byKey(const ValueKey('feed_scrub_counter')),
+        find.byKey(const ValueKey('feed_scrub_play_toggle')),
       );
       final left = strip.left + 16;
       final right =
@@ -439,7 +452,12 @@ void main() {
         await gesture.moveTo(Offset(x, strip.center.dy));
         await tester.pump(const Duration(milliseconds: 8));
       }
-      expect(find.text('4/4'), findsOneWidget);
+      expect(
+        tester
+            .widget<FeedScrubStrip>(find.byType(FeedScrubStrip).first)
+            .progress,
+        closeTo(7 / 7, 0.001),
+      );
       await gesture.up();
       await tester.pump();
       expect(ticks, 7);
@@ -452,7 +470,7 @@ void main() {
       final top = tester.getRect(_pages).top;
       final strip = tester.getRect(find.byType(FeedScrubStrip).first);
       final counter = tester.getRect(
-        find.byKey(const ValueKey('feed_scrub_counter')).first,
+        find.byKey(const ValueKey('feed_scrub_play_toggle')).first,
       );
       final runLeft = strip.left + 16 + FeedScrubStrip.thumbInset;
       final runRight =
@@ -469,7 +487,12 @@ void main() {
       // Resting there: taken, where it stood. Nothing jumps.
       await tester.pump(const Duration(milliseconds: 140));
       expect(find.byType(FeedMoveBubble), findsOneWidget);
-      expect(find.text('0/4'), findsOneWidget);
+      expect(
+        tester
+            .widget<FeedScrubStrip>(find.byType(FeedScrubStrip).first)
+            .progress,
+        closeTo(0 / 7, 0.001),
+      );
 
       // Taken: up and across, it scrubs by the finger's sideways travel and
       // never pages the feed. Three quarters along: ply 5 of 7, move 3.
@@ -479,7 +502,12 @@ void main() {
         await tester.pump(const Duration(milliseconds: 16));
       }
       expect(find.byType(FeedMoveBubble), findsOneWidget);
-      expect(find.text('3/4'), findsOneWidget);
+      expect(
+        tester
+            .widget<FeedScrubStrip>(find.byType(FeedScrubStrip).first)
+            .progress,
+        closeTo(5 / 7, 0.001),
+      );
       await gesture.up();
       for (var i = 0; i < 10; i++) {
         await tester.pump(const Duration(milliseconds: 50));
@@ -527,17 +555,20 @@ void main() {
       }
     });
 
-    testWidgets('a tap on the counter leaves the game where it is', (
-      tester,
-    ) async {
+    testWidgets('a tap on Stop leaves the game where it is', (tester) async {
       final feed = await _pump(tester, games: 1);
       final counter = tester.getRect(
-        find.byKey(const ValueKey('feed_scrub_counter')),
+        find.byKey(const ValueKey('feed_scrub_play_toggle')),
       );
       final strip = tester.getRect(find.byType(FeedScrubStrip));
       await tester.tapAt(Offset(counter.center.dx, strip.center.dy));
       await tester.pump();
-      expect(find.text('0/4'), findsOneWidget);
+      expect(
+        tester
+            .widget<FeedScrubStrip>(find.byType(FeedScrubStrip).first)
+            .progress,
+        closeTo(0 / 7, 0.001),
+      );
       expect(find.text('4/4'), findsNothing);
       expect(feed.sound.played, isEmpty);
       await _tearDown(tester);
@@ -580,6 +611,137 @@ void main() {
         }
       });
     }
+
+    testWidgets('chart drag scrubs in both directions and resumes on release', (
+      tester,
+    ) async {
+      final feed = await _pump(tester, games: 1, evals: true);
+      final chart = tester.getRect(
+        find.byKey(const ValueKey('feed_report_chart')),
+      );
+      final gesture = await tester.startGesture(
+        Offset(chart.left + 55, chart.center.dy),
+      );
+      await gesture.moveTo(
+        Offset(chart.left + chart.width * 0.7, chart.center.dy),
+      );
+      await tester.pump();
+      expect(
+        tester.widget<FeedScrubStrip>(find.byType(FeedScrubStrip)).scrubbing,
+        isTrue,
+      );
+      expect(
+        tester
+            .widget<FeedEvaluationGraph>(find.byType(FeedEvaluationGraph))
+            .ply,
+        5,
+      );
+      final heard = feed.sound.played.length;
+      await tester.pump(const Duration(seconds: 1));
+      expect(feed.sound.played.length, heard);
+      await gesture.moveTo(
+        Offset(chart.left + chart.width * 0.3, chart.center.dy),
+      );
+      await tester.pump();
+      expect(
+        tester
+            .widget<FeedEvaluationGraph>(find.byType(FeedEvaluationGraph))
+            .ply,
+        2,
+      );
+      await gesture.up();
+      await tester.pump(const Duration(milliseconds: 700));
+      expect(
+        tester.widget<FeedScrubStrip>(find.byType(FeedScrubStrip)).scrubbing,
+        isFalse,
+      );
+      expect(feed.sound.played.length, greaterThan(heard));
+      await _tearDown(tester);
+    });
+
+    testWidgets(
+      'holding the chart selector preserves its grip and cancellation releases playback',
+      (tester) async {
+        await _pump(tester, games: 1, evals: true);
+        final chart = tester.getRect(
+          find.byKey(const ValueKey('feed_report_chart')),
+        );
+        final gesture = await tester.startGesture(
+          Offset(chart.left + FeedScrubStrip.thumbInset + 6, chart.center.dy),
+        );
+        await tester.pump(
+          FeedScrubStrip.holdToGrab + const Duration(milliseconds: 10),
+        );
+        expect(
+          tester.widget<FeedScrubStrip>(find.byType(FeedScrubStrip)).scrubbing,
+          isTrue,
+        );
+        await gesture.moveBy(
+          Offset((chart.width - 2 * FeedScrubStrip.thumbInset) * 3 / 7, 12),
+        );
+        await tester.pump();
+        expect(
+          tester
+              .widget<FeedEvaluationGraph>(find.byType(FeedEvaluationGraph))
+              .ply,
+          3,
+        );
+        await gesture.cancel();
+        await tester.pump();
+        expect(
+          tester.widget<FeedScrubStrip>(find.byType(FeedScrubStrip)).scrubbing,
+          isFalse,
+        );
+        await _tearDown(tester);
+      },
+    );
+
+    testWidgets('vertical swipe starting on the chart pages the feed', (
+      tester,
+    ) async {
+      await _pump(tester, games: 2, evals: true);
+      final chart = tester.getRect(
+        find.byKey(const ValueKey('feed_report_chart')).first,
+      );
+      await tester.flingFrom(chart.center, const Offset(0, -300), 1500);
+      await _settle(tester);
+      expect(_currentKey(tester), 'game:g1');
+      await _tearDown(tester);
+    });
+
+    testWidgets('phase labels fit the chart at large text size', (
+      tester,
+    ) async {
+      tester.platformDispatcher.textScaleFactorTestValue = 2;
+      addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+      await _pump(
+        tester,
+        games: 1,
+        evals: true,
+        makeFeed: (items, more) => _FakeFeed([
+          _scholarsMate(
+            'g0',
+            evals: true,
+            pgn:
+                '1. e3 g6 2. d4 Bg7 3. Nf3 Nf6 4. Bd3 O-O 5. O-O b6 6. c4 Bb7 7. Nbd2 d5 8. b3 Nbd7 9. Bb2 Re8 10. Qc2 dxc4 11. bxc4 c5 12. d5 e5 13. e4 h5 14. a4 Nf8 15. h3 Qd6 16. Nxe5 Rxe5 17. Nf3 N6d7 18. Nxe5 Bxe5 19. Bxe5 Nxe5 20. Be2 Bc8 21. f4 Ned7 22. e5 Qe7 23. Bf3 Rb8 24. Rae1 f5 25. d6 Qh4 26. e6 Nxe6 27. Rxe6 Nf6 28. Ree1 Qxf4 29. Bd5+ Nxd5 30. Rxf4 Nxf4 31. Qd2 g5 32. d7 Bb7 33. d8=Q+ Rxd8 34. Qxd8+ Kh7 35. Qc7+ Kh6 36. Qxb7 g4 37. Qc6+ Ng6 38. Re6 gxh3 39. Rxg6+ Kh7 40. Rh6+ Kg7 41. Qf6+ Kg8 42. Rh8#',
+          ),
+        ], moreValue: more),
+      );
+      final chart = tester.getRect(
+        find.byKey(const ValueKey('feed_report_chart')),
+      );
+      for (final name in ['Opening', 'Middlegame', 'Endgame']) {
+        final label = find.byKey(ValueKey('feed_phase_$name'));
+        expect(label, findsOneWidget);
+        final bounds = tester.getRect(label);
+        expect(bounds.left, greaterThanOrEqualTo(chart.left));
+        expect(bounds.right, lessThanOrEqualTo(chart.right));
+        expect(bounds.top, greaterThanOrEqualTo(chart.top));
+        expect(bounds.bottom, lessThanOrEqualTo(chart.bottom));
+      }
+      expect(tester.takeException(), isNull);
+      await _tearDown(tester);
+    });
 
     testWidgets(
       'the evaluation graph stays visible before, during and after scrubbing',
@@ -751,7 +913,7 @@ void main() {
       await _pump(tester, games: 1);
       final strip = tester.getRect(find.byType(FeedScrubStrip));
       final counter = tester.getRect(
-        find.byKey(const ValueKey('feed_scrub_counter')),
+        find.byKey(const ValueKey('feed_scrub_play_toggle')),
       );
       final left = strip.left + 16;
       final right =
@@ -769,7 +931,12 @@ void main() {
         await gesture.moveTo(Offset(x, strip.center.dy));
         await tester.pump(const Duration(milliseconds: 16));
       }
-      expect(find.text('4/4'), findsOneWidget);
+      expect(
+        tester
+            .widget<FeedScrubStrip>(find.byType(FeedScrubStrip).first)
+            .progress,
+        closeTo(7 / 7, 0.001),
+      );
       // The current move updates on the same frame as the scrub counter.
       await tester.pump(const Duration(milliseconds: 16));
       expect(move('Qxf7#'), findsOneWidget);
@@ -786,7 +953,12 @@ void main() {
         await tester.pump(const Duration(milliseconds: 16));
       }
       await tester.pump(const Duration(milliseconds: 16));
-      expect(find.text('0/4'), findsOneWidget);
+      expect(
+        tester
+            .widget<FeedScrubStrip>(find.byType(FeedScrubStrip).first)
+            .progress,
+        closeTo(0 / 7, 0.001),
+      );
       expect(move('Start'), findsOneWidget);
       expect(
         tester
@@ -814,19 +986,7 @@ String? _currentKey(WidgetTester tester) => ProviderScope.containerOf(
 
 /// The counter's reserved width: the widest it can read, "4/4".
 double _counterWidth(WidgetTester tester) {
-  final text = tester.widget<Text>(
-    find.byKey(const ValueKey('feed_scrub_counter')).first,
-  );
-  final painter = TextPainter(
-    text: TextSpan(text: '4/4', style: text.style),
-    textDirection: TextDirection.ltr,
-    textScaler: MediaQuery.textScalerOf(
-      tester.element(find.byType(FeedScrubStrip).first),
-    ),
-  )..layout();
-  final width = painter.width.ceilToDouble();
-  painter.dispose();
-  return width;
+  return 44 + 16 - FeedScrubStrip.counterGap;
 }
 
 Future<void> _fling(WidgetTester tester) async {
@@ -919,8 +1079,8 @@ Future<void> _tearDown(WidgetTester tester) async {
 
 const _pgn = '1. e4 e5 2. Bc4 Nc6 3. Qh5 Nf6 4. Qxf7# 1-0';
 
-FeedItem _scholarsMate(String id, {bool evals = false}) {
-  final parsed = PgnGame.parsePgn(_pgn);
+FeedItem _scholarsMate(String id, {bool evals = false, String pgn = _pgn}) {
+  final parsed = PgnGame.parsePgn(pgn);
   Position position = PgnGame.startingPosition(parsed.headers);
   final plies = <FeedPly>[FeedPly(fen: position.fen, cp: evals ? 20 : null)];
   for (final node in parsed.moves.mainline()) {
@@ -955,7 +1115,7 @@ FeedItem _scholarsMate(String id, {bool evals = false}) {
       gameStatus: GameStatus.whiteWins,
       roundId: 'round-1',
       tourId: 'tour-1',
-      pgn: _pgn,
+      pgn: pgn,
       fen: plies.last.fen,
       eco: 'C20',
       openingName: "King's Pawn Game",

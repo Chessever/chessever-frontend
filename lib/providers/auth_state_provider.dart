@@ -40,3 +40,11 @@ final linkedChessAccountsProvider = Provider<LinkedChessAccounts>((ref) {
     }),
   );
 });
+
+/// Observe only photo changes without changing account identity equality or
+/// causing existing current-user consumers to rebuild on metadata updates.
+final profileAvatarUrlProvider = Provider<String?>((ref) {
+  return ref.watch(
+    authStateProvider.select((auth) => auth.valueOrNull?.user?.avatarUrl),
+  );
+});

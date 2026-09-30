@@ -1,3 +1,4 @@
+import 'package:chessever2/screens/collections/collection_catalog_views.dart';
 import 'package:chessever2/repository/gamebase/collections/collection_search_query.dart';
 import 'package:chessever2/screens/collections/collection_catalog_list.dart';
 import 'package:chessever2/revenue_cat_service/subscribe_state.dart';
@@ -139,11 +140,34 @@ class CollectionOpeningsView extends ConsumerWidget {
 }
 
 class OpeningBooksScreen extends ConsumerWidget {
-  const OpeningBooksScreen({super.key, required this.opening});
+  const OpeningBooksScreen({super.key, required this.opening, this.search});
+  final CollectionSearchQuery? search;
   final CollectionOpening opening;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    if (search != null) {
+      final q = search!;
+      return EventViewShell(
+        title: collectionOpeningName(opening),
+        tabs: const ['Books'],
+        tabStripOverride: const SizedBox.shrink(),
+        pageBuilder: (_, __) => CollectionBooksCatalog(
+          query: CollectionSearchQuery(
+            text: q.text,
+            eco: opening.eco,
+            result: q.result,
+            year: q.year,
+            minYear: q.minYear,
+            maxYear: q.maxYear,
+            author: q.author,
+            authorId: q.authorId,
+            annotated: q.annotated,
+            sort: q.sort,
+          ),
+        ),
+      );
+    }
     final provider = collectionBooksForOpeningProvider(opening.eco);
     final books = ref.watch(provider);
     return EventViewShell(

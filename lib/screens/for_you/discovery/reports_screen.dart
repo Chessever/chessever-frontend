@@ -45,6 +45,7 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
   @override
   Widget build(BuildContext context) => EventViewShell(
     title: 'Reports',
+    titleIcon: Icon(Icons.assessment_rounded),
     tabs: const ['Reports'],
     tabStripOverride: Row(
       children: [
@@ -81,8 +82,7 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
                       isDense: true,
                       contentPadding: EdgeInsets.zero,
                     ),
-                    onChanged: (value) =>
-                        setState(() => _query = value.trim()),
+                    onChanged: (value) => setState(() => _query = value.trim()),
                   ),
                 ),
                 if (_query.isNotEmpty)

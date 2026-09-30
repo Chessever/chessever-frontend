@@ -1,3 +1,4 @@
+import 'package:chessever2/widgets/game_filter/game_filter_choice_chips.dart';
 import 'package:chessever2/repository/gamebase/search/gamebase_search_models.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
@@ -155,9 +156,8 @@ class _GameFilterDialogState extends State<GameFilterDialog> {
                       _chipGrid<GameLiveFilter>(
                         values: GameLiveFilter.values,
                         selected: _live,
-                        label:
-                            (v) =>
-                                v == GameLiveFilter.all ? 'All' : v.displayText,
+                        label: (v) =>
+                            v == GameLiveFilter.all ? 'All' : v.displayText,
                         onTap: (v) {
                           HapticFeedbackService.selection();
                           setState(() {
@@ -186,11 +186,9 @@ class _GameFilterDialogState extends State<GameFilterDialog> {
                       _chipGrid<GameTimeControlFilter>(
                         values: GameTimeControlFilter.values,
                         selected: _timeControl,
-                        label:
-                            (v) =>
-                                v == GameTimeControlFilter.all
-                                    ? 'All'
-                                    : v.displayText,
+                        label: (v) => v == GameTimeControlFilter.all
+                            ? 'All'
+                            : v.displayText,
                         onTap: (v) {
                           HapticFeedbackService.selection();
                           setState(() => _timeControl = v);
@@ -219,13 +217,11 @@ class _GameFilterDialogState extends State<GameFilterDialog> {
                     _chipGrid<GameResultFilter>(
                       values: GameResultFilter.values,
                       selected: _result,
-                      label:
-                          (v) =>
-                              v == GameResultFilter.all ? 'All' : v.displayText,
-                      isEnabled:
-                          (v) =>
-                              _live != GameLiveFilter.live ||
-                              v == GameResultFilter.all,
+                      label: (v) =>
+                          v == GameResultFilter.all ? 'All' : v.displayText,
+                      isEnabled: (v) =>
+                          _live != GameLiveFilter.live ||
+                          v == GameResultFilter.all,
                       onTap: (v) {
                         HapticFeedbackService.selection();
                         setState(() => _result = v);
@@ -250,11 +246,8 @@ class _GameFilterDialogState extends State<GameFilterDialog> {
                       _chipGrid<GameColorFilter>(
                         values: GameColorFilter.values,
                         selected: _color,
-                        label:
-                            (v) =>
-                                v == GameColorFilter.all
-                                    ? 'All'
-                                    : v.displayText,
+                        label: (v) =>
+                            v == GameColorFilter.all ? 'All' : v.displayText,
                         onTap: (v) {
                           HapticFeedbackService.selection();
                           setState(() => _color = v);
@@ -270,11 +263,8 @@ class _GameFilterDialogState extends State<GameFilterDialog> {
                       _chipGrid<GameOnlineFilter>(
                         values: GameOnlineFilter.values,
                         selected: _online,
-                        label:
-                            (v) =>
-                                v == GameOnlineFilter.all
-                                    ? 'All'
-                                    : v.displayText,
+                        label: (v) =>
+                            v == GameOnlineFilter.all ? 'All' : v.displayText,
                         onTap: (v) {
                           HapticFeedbackService.selection();
                           setState(() => _online = v);
@@ -423,22 +413,20 @@ class _GameFilterDialogState extends State<GameFilterDialog> {
       // Color hidden → never carry a stale color filter (no UI to clear it).
       color: widget.showColorFilter ? _color : GameColorFilter.all,
       // Same rule for a hidden Time Control section.
-      timeControl:
-          widget.showTimeControlFilter
-              ? _timeControl
-              : GameTimeControlFilter.all,
+      timeControl: widget.showTimeControlFilter
+          ? _timeControl
+          : GameTimeControlFilter.all,
       online: _online,
       live: _live,
-      minYear:
-          widget.showYearFilter
-              ? _yearRange.start.round()
-              : GameFilter.defaultMinYear,
-      maxYear:
-          widget.showYearFilter ? _yearRange.end.round() : DateTime.now().year,
-      minRating:
-          widget.showLevelFilter
-              ? _selectedMinRating ?? GameFilter.defaultMinRating
-              : GameFilter.defaultMinRating,
+      minYear: widget.showYearFilter
+          ? _yearRange.start.round()
+          : GameFilter.defaultMinYear,
+      maxYear: widget.showYearFilter
+          ? _yearRange.end.round()
+          : DateTime.now().year,
+      minRating: widget.showLevelFilter
+          ? _selectedMinRating ?? GameFilter.defaultMinRating
+          : GameFilter.defaultMinRating,
       maxRating: GameFilter.absoluteMaxRating,
       sorts: widget.showSortSection ? _sorts : const [],
     );
@@ -552,11 +540,9 @@ class _GameFilterDialogState extends State<GameFilterDialog> {
         _adaptiveChipLayout(
           measureLabels: GamebaseSortField.values.map(_sortFieldLabel).toList(),
           extraPerChip: widget.showSortDirection ? 4.w + 12.ic : 0,
-          chipsBuilder:
-              (expanded) =>
-                  GamebaseSortField.values
-                      .map((f) => _buildSortChip(f, expanded: expanded))
-                      .toList(),
+          chipsBuilder: (expanded) => GamebaseSortField.values
+              .map((f) => _buildSortChip(f, expanded: expanded))
+              .toList(),
         ),
       ],
     );
@@ -595,16 +581,15 @@ class _GameFilterDialogState extends State<GameFilterDialog> {
               SizedBox(
                 width: 12.ic,
                 height: 12.ic,
-                child:
-                    isSelected
-                        ? Icon(
-                          criterion!.direction == GamebaseSortDirection.asc
-                              ? Icons.arrow_upward_rounded
-                              : Icons.arrow_downward_rounded,
-                          size: 12.ic,
-                          color: kBlackColor,
-                        )
-                        : null,
+                child: isSelected
+                    ? Icon(
+                        criterion!.direction == GamebaseSortDirection.asc
+                            ? Icons.arrow_upward_rounded
+                            : Icons.arrow_downward_rounded,
+                        size: 12.ic,
+                        color: kBlackColor,
+                      )
+                    : null,
               ),
             ],
           ],
@@ -665,10 +650,9 @@ class _GameFilterDialogState extends State<GameFilterDialog> {
                   Expanded(child: chips[i]),
                   SizedBox(width: 8.w),
                   Expanded(
-                    child:
-                        i + 1 < chips.length
-                            ? chips[i + 1]
-                            : const SizedBox.shrink(),
+                    child: i + 1 < chips.length
+                        ? chips[i + 1]
+                        : const SizedBox.shrink(),
                   ),
                 ],
               ),
@@ -685,55 +669,13 @@ class _GameFilterDialogState extends State<GameFilterDialog> {
     required String Function(T) label,
     required ValueChanged<T> onTap,
     bool Function(T)? isEnabled,
-  }) {
-    return _adaptiveChipLayout(
-      measureLabels: values.map(label).toList(),
-      chipsBuilder:
-          (expanded) =>
-              values.map((v) {
-                final isSelected = v == selected;
-                final enabled = isEnabled?.call(v) ?? true;
-                return Semantics(
-                  button: true,
-                  enabled: enabled,
-                  selected: isSelected,
-                  child: GestureDetector(
-                    onTap: enabled ? () => onTap(v) : null,
-                    child: AnimatedContainer(
-                      duration: const Duration(milliseconds: 150),
-                      padding: EdgeInsets.symmetric(
-                        horizontal: 14.w,
-                        vertical: 10.h,
-                      ),
-                      // Equal-width grid cells center their label; row chips
-                      // hug their content as before.
-                      alignment: expanded ? Alignment.center : null,
-                      decoration: BoxDecoration(
-                        color:
-                            isSelected
-                                ? kPrimaryColor
-                                : context.colors.surfaceRecessed,
-                        borderRadius: BorderRadius.circular(8.br),
-                      ),
-                      child: Text(
-                        label(v),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: AppTypography.textXsMedium.copyWith(
-                          color:
-                              isSelected
-                                  ? kBlackColor
-                                  : enabled
-                                  ? context.colors.textPrimary
-                                  : context.colors.textSecondary,
-                        ),
-                      ),
-                    ),
-                  ),
-                );
-              }).toList(),
-    );
-  }
+  }) => GameFilterChoiceChips<T>(
+    values: values,
+    selected: selected,
+    label: label,
+    onTap: onTap,
+    isEnabled: isEnabled,
+  );
 
   Widget _rangeSliderCard({
     required RangeValues values,

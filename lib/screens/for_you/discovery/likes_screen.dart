@@ -1,11 +1,12 @@
 import 'package:chessever2/screens/collections/event_view_shell.dart';
 import 'package:chessever2/screens/for_you/discovery/most_liked_screen.dart';
+import 'package:chessever2/screens/for_you/discovery/models/discovery_models.dart';
 import 'package:chessever2/screens/my_likes/my_likes_hub_screen.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:flutter/material.dart';
 
 /// Personal likes and community rankings share one Discovery destination.
-class LikesScreen extends StatelessWidget {
+class LikesScreen extends StatefulWidget {
   const LikesScreen({super.key});
 
   static Future<void> open(BuildContext context) {
@@ -16,14 +17,40 @@ class LikesScreen extends StatelessWidget {
   }
 
   @override
+  State<LikesScreen> createState() => _LikesScreenState();
+}
+
+class _LikesScreenState extends State<LikesScreen> {
+  final _tabs = EventViewController();
+  MostLikedPlayer? _player;
+
+  void _pickPlayer(MostLikedPlayer player) {
+    setState(() => _player = player);
+    _tabs.showTab(1, scrollToTop: true);
+  }
+
+  @override
+  void dispose() {
+    _tabs.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) => EventViewShell(
     title: 'Likes',
-    tabs: const ['My Likes', 'Most Liked'],
+    titleIcon: const Icon(Icons.favorite_rounded),
+    tabs: const ['My Likes', 'Games', 'Players'],
+    controller: _tabs,
     pageBuilder: (context, index) => _LikesTab(
       key: ValueKey('likes_tab_$index'),
       child: index == 0
           ? const MyLikesHubScreen(embedded: true)
-          : const MostLikedScreen(embedded: true),
+          : MostLikedPage(
+              view: index == 1 ? MostLikedView.games : MostLikedView.players,
+              playerFilter: _player,
+              onPickPlayer: _pickPlayer,
+              onClearPlayerFilter: () => setState(() => _player = null),
+            ),
     ),
   );
 }

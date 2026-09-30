@@ -26,6 +26,8 @@ class OpeningEventCard extends StatelessWidget {
     this.gameCount,
     this.bookCount,
     this.menuActions,
+    this.boardSize,
+    this.useEventImageFrame = false,
   });
 
   final String name;
@@ -37,6 +39,8 @@ class OpeningEventCard extends StatelessWidget {
   final int? bookCount;
   final VoidCallback onTap;
   final CardMenuActionsBuilder? menuActions;
+  final double? boardSize;
+  final bool useEventImageFrame;
 
   @override
   Widget build(BuildContext context) {
@@ -44,7 +48,10 @@ class OpeningEventCard extends StatelessWidget {
         ? const <String>[]
         : spaceEcoMovePath(eco!.split('-').first);
     final position = fen ?? spaceFenAfter(moves);
-    final size = 88.w;
+    final frame = useEventImageFrame
+        ? CollectionPlateRow.eventPlate
+        : Size.square(boardSize ?? 88.w);
+    final size = useEventImageFrame ? frame.height : frame.width;
     final counts = [
       if (gameCount != null) '$gameCount ${gameCount == 1 ? 'game' : 'games'}',
       if (bookCount != null) '$bookCount ${bookCount == 1 ? 'book' : 'books'}',
@@ -54,15 +61,17 @@ class OpeningEventCard extends StatelessWidget {
       if (caption != null && caption!.isNotEmpty && caption != eco) caption!,
     ].join(' · ');
     return CollectionPlateRow(
-      plate: GameCardChessboard(
-        fen: position,
-        lastMove: lastMove,
-        boardSize: size,
-        orientation: Side.white,
-        showCoordinates: false,
-        animateEnding: false,
+      plate: Center(
+        child: GameCardChessboard(
+          fen: position,
+          lastMove: lastMove,
+          boardSize: size,
+          orientation: Side.white,
+          showCoordinates: false,
+          animateEnding: false,
+        ),
       ),
-      plateSize: Size.square(size),
+      plateSize: frame,
       title: name,
       meta: line.isEmpty ? null : line,
       metaMaxLines: 2,
