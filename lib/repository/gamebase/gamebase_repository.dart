@@ -888,6 +888,34 @@ class GamebaseRepository {
     );
   }
 
+  /// Folder publishing uses the existing native API transport. Browser
+  /// challenges on the public website must not block Library operations.
+  Future<Map<String, dynamic>> requestLibraryBookPublication({
+    required String folderId,
+    required String method,
+    required String bearer,
+    Map<String, dynamic>? body,
+    Map<String, dynamic>? query,
+  }) async {
+    if (!const {'GET', 'PUT', 'DELETE'}.contains(method)) {
+      throw ArgumentError.value(method, 'method');
+    }
+    final response = await _dio.request<Map<String, dynamic>>(
+      '$_baseUrl/api/library/folders/${Uri.encodeComponent(folderId)}/book',
+      data: body,
+      queryParameters: query,
+      options: Options(
+        method: method,
+        followRedirects: false,
+        receiveTimeout: const Duration(minutes: 5),
+        headers: {..._headers, 'Authorization': 'Bearer $bearer'},
+      ),
+    );
+    final data = response.data;
+    if (data == null) throw const FormatException('Missing publication');
+    return data;
+  }
+
   /// One page of the published collections (`GET /api/collections`),
   /// ordered by the team's sort order, newest first within it.
   Future<CollectionsPage> getCollections({
