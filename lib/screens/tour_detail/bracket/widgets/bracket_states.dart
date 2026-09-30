@@ -95,7 +95,7 @@ class BracketEmptyView extends StatelessWidget {
               ),
               child: Icon(
                 Icons.account_tree_outlined,
-                color: colors.brand,
+                color: context.colors.accentText,
                 size: 27,
               ),
             ),

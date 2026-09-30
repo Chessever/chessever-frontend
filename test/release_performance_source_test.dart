@@ -211,7 +211,7 @@ void main() {
 
     expect(
       repositorySource,
-      contains(".select('id,round_id,round_slug,status')"),
+      contains(".select('id,round_id,round_slug,status,players,board_nr')"),
     );
     expect(providerSource, contains('.getTourGamesSafetyNet(tourId)'));
     expect(providerSource, contains('_safetyNetRefreshInFlight'));

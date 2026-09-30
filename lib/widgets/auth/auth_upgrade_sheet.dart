@@ -151,8 +151,11 @@ class _AuthUpgradePage extends HookConsumerWidget {
 
     return Stack(
       children: [
-        const Positioned.fill(child: _AmbientGlow()),
-        const Positioned.fill(child: _FloatingParticles()),
+        // Slow drifting motes give the dark sheet a pulse; on paper they are
+        // haze, so light keeps the sheet clean. (The blurred cyan glow blobs
+        // that once sat behind them were background glow, in either theme.)
+        if (!context.isLightTheme)
+          const Positioned.fill(child: _FloatingParticles()),
         Padding(
           padding: EdgeInsets.fromLTRB(20.w, 12.h, 20.w, 20.h),
           // Actions are pinned below the scroll area: with longer copy (or a
@@ -220,9 +223,7 @@ class _AuthUpgradePage extends HookConsumerWidget {
                         message ?? 'Create an account to access all features',
                         textAlign: TextAlign.center,
                         style: AppTypography.textSmRegular.copyWith(
-                          color: context.colors.textPrimary.withValues(
-                            alpha: 0.6,
-                          ),
+                          color: context.textInk(0.6),
                         ),
                       ),
                       SizedBox(height: 16.h),
@@ -290,39 +291,18 @@ class _AuthUpgradePage extends HookConsumerWidget {
   }
 }
 
-class _UnlockVisual extends HookWidget {
+class _UnlockVisual extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
-    final pulseController = useAnimationController(
-      duration: const Duration(milliseconds: 2000),
-    )..repeat(reverse: true);
-
-    final pulseAnimation = useAnimation(
-      CurvedAnimation(parent: pulseController, curve: Curves.easeInOut),
-    );
-
+    final light = context.isLightTheme;
+    // The disc stands on its own ring in both themes: a pulsing radial halo
+    // and a cyan bloom behind it read as a sticker glow, not light.
     return SizedBox(
       height: 140.h,
       width: 140.w,
       child: Stack(
         alignment: Alignment.center,
         children: [
-          Transform.scale(
-            scale: 1.0 + pulseAnimation * 0.08,
-            child: Container(
-              width: 130.w,
-              height: 130.h,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                gradient: RadialGradient(
-                  colors: [
-                    kPrimaryColor.withValues(alpha: 0.2),
-                    kPrimaryColor.withValues(alpha: 0.0),
-                  ],
-                ),
-              ),
-            ),
-          ),
           Container(
             width: 100.w,
             height: 100.h,
@@ -330,22 +310,18 @@ class _UnlockVisual extends HookWidget {
               shape: BoxShape.circle,
               color: context.colors.surface.withValues(alpha: 0.9),
               border: Border.all(
-                color: kPrimaryColor.withValues(alpha: 0.3),
+                color:
+                    light
+                        ? context.colors.divider
+                        : kPrimaryColor.withValues(alpha: 0.3),
                 width: 2,
               ),
-              boxShadow: [
-                BoxShadow(
-                  color: kPrimaryColor.withValues(alpha: 0.2),
-                  blurRadius: 30,
-                  spreadRadius: 5,
-                ),
-              ],
             ),
             child: Center(
               child: Icon(
                 Icons.cloud_done_outlined,
                 size: 40.ic,
-                color: kPrimaryColor,
+                color: context.colors.accentText,
               ),
             ),
           ),
@@ -396,7 +372,7 @@ class _FeaturesList extends StatelessWidget {
           Text(
             'What an account adds:',
             style: AppTypography.textXsMedium.copyWith(
-              color: context.colors.textPrimary.withValues(alpha: 0.5),
+              color: context.textInk(0.5),
               letterSpacing: 0.5,
             ),
           ),
@@ -432,16 +408,22 @@ class _FeatureItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Bare marks in both themes, no tinted tile behind them. The pastels
+    // read on the dark sheet but sit near 1.4:1 on paper, so light draws the
+    // mark in accent-text ink. The 40dp slot keeps the text column aligned.
+    final light = context.isLightTheme;
     return Row(
       children: [
-        Container(
+        SizedBox(
           width: 40.w,
           height: 40.h,
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(10.br),
-            color: color.withValues(alpha: 0.15),
+          child: Center(
+            child: Icon(
+              icon,
+              size: 22.ic,
+              color: light ? context.colors.accentText : color,
+            ),
           ),
-          child: Center(child: Icon(icon, size: 20.ic, color: color)),
         ),
         SizedBox(width: 12.w),
         Expanded(
@@ -457,7 +439,7 @@ class _FeatureItem extends StatelessWidget {
               Text(
                 subtitle,
                 style: AppTypography.textXsRegular.copyWith(
-                  color: context.colors.textPrimary.withValues(alpha: 0.5),
+                  color: context.textInk(0.5),
                 ),
               ),
             ],
@@ -474,43 +456,51 @@ class _PrimaryButton extends HookWidget {
   final String label;
   final VoidCallback onTap;
 
+  static const _pressMotion = CupertinoMotion.snappy(
+    duration: Duration(milliseconds: 240),
+    snapToEnd: true,
+  );
+
   @override
   Widget build(BuildContext context) {
     final isPressed = useState(false);
+    final reduceMotion = MediaQuery.disableAnimationsOf(context);
+    // One solid ink plate in both themes: the inverse of the page ink, so the
+    // label clears AA by a wide margin (21:1 dark, ~15:1 paper) with no
+    // gradient and no bloom under it.
+    final colors = context.colors;
 
-    return GestureDetector(
-      onTapDown: (_) => isPressed.value = true,
-      onTapUp: (_) {
-        isPressed.value = false;
-        onTap();
-      },
-      onTapCancel: () => isPressed.value = false,
-      child: AnimatedScale(
-        scale: isPressed.value ? 0.97 : 1.0,
-        duration: const Duration(milliseconds: 100),
-        child: Container(
-          width: double.infinity,
-          height: 52.h,
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(14.br),
-            gradient: const LinearGradient(
-              colors: [Color(0xFF3BC4FF), Color(0xFF5E61FF)],
-            ),
-            boxShadow: [
-              BoxShadow(
-                color: kPrimaryColor.withValues(alpha: 0.35),
-                blurRadius: 20,
-                offset: const Offset(0, 8),
-              ),
-            ],
+    return Semantics(
+      button: true,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTapDown: (_) => isPressed.value = true,
+        onTapUp: (_) => isPressed.value = false,
+        onTapCancel: () => isPressed.value = false,
+        onTap: onTap,
+        child: SingleMotionBuilder(
+          motion: reduceMotion ? const Motion.none() : _pressMotion,
+          value: isPressed.value ? 0.97 : 1.0,
+          builder: (context, scale, child) => Transform.scale(
+            // Springs settle a hair short of 1.0; snap so the label rasterises
+            // crisp at rest.
+            scale: (scale - 1).abs() < 0.002 ? 1.0 : scale,
+            child: child,
           ),
-          child: Center(
+          child: Container(
+            width: double.infinity,
+            constraints: BoxConstraints(minHeight: 52.h),
+            padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 12.h),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(14.br),
+              color: colors.textPrimary,
+            ),
+            alignment: Alignment.center,
             child: Text(
               label,
+              textAlign: TextAlign.center,
               style: AppTypography.textMdMedium.copyWith(
-                // Cyan→indigo gradient is bright in both themes,
-                // so the label is always white for contrast.
-                color: Colors.white,
+                color: colors.textInverse,
               ),
             ),
           ),
@@ -544,73 +534,11 @@ class _DismissButton extends StatelessWidget {
       child: Text(
         label,
         style: AppTypography.textMdMedium.copyWith(
-          color: context.colors.textPrimary.withValues(alpha: 0.6),
+          color: context.textInk(0.6),
         ),
       ),
     );
   }
-}
-
-class _AmbientGlow extends HookWidget {
-  const _AmbientGlow();
-
-  @override
-  Widget build(BuildContext context) {
-    final controller = useAnimationController(
-      duration: const Duration(seconds: 8),
-    )..repeat(reverse: true);
-
-    final animation = useAnimation(
-      CurvedAnimation(parent: controller, curve: Curves.easeInOut),
-    );
-
-    return CustomPaint(
-      painter: _AmbientGlowPainter(animation),
-      size: Size.infinite,
-    );
-  }
-}
-
-class _AmbientGlowPainter extends CustomPainter {
-  _AmbientGlowPainter(this.animation);
-  final double animation;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paint1 =
-        Paint()
-          ..color = kPrimaryColor.withValues(alpha: 0.08 + (animation * 0.04))
-          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 120);
-
-    canvas.drawCircle(
-      Offset(
-        size.width * (0.3 + animation * 0.1),
-        size.height * (0.25 + animation * 0.05),
-      ),
-      size.width * 0.4,
-      paint1,
-    );
-
-    final paint2 =
-        Paint()
-          ..color = const Color(
-            0xFF08647F,
-          ).withValues(alpha: 0.06 + (animation * 0.03))
-          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 100);
-
-    canvas.drawCircle(
-      Offset(
-        size.width * (0.7 - animation * 0.1),
-        size.height * (0.7 - animation * 0.05),
-      ),
-      size.width * 0.35,
-      paint2,
-    );
-  }
-
-  @override
-  bool shouldRepaint(covariant _AmbientGlowPainter oldDelegate) =>
-      oldDelegate.animation != animation;
 }
 
 class _FloatingParticles extends HookWidget {

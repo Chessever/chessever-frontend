@@ -237,7 +237,10 @@ Future<T?> _showTabletOverlayMenu<T>({
                               return Divider(
                                 height: item.height,
                                 thickness: 0.5,
-                                color: Colors.white.withValues(alpha: 0.1),
+                                color:
+                                    context.isLightTheme
+                                        ? context.colors.divider
+                                        : Colors.white.withValues(alpha: 0.1),
                               );
                             }
                             return const SizedBox.shrink();

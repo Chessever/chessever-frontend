@@ -29,6 +29,7 @@ import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:chessever2/screens/chessboard/utils/legible_ink.dart';
 
 // Premium spring curves for buttery smooth animations. Defined in
 // `widgets/onboarding_ui.dart` so steps in their own files ease identically.
@@ -391,9 +392,7 @@ class _AuthStep extends HookWidget {
                           'Create an account to access all features',
                           textAlign: TextAlign.center,
                           style: AppTypography.textSmRegular.copyWith(
-                            color: context.colors.textPrimary.withValues(
-                              alpha: 0.6,
-                            ),
+                            color: context.textInk(0.6),
                           ),
                         )
                         .animate(delay: 300.ms)
@@ -444,7 +443,7 @@ class _AuthStep extends HookWidget {
                           child: Text(
                             'I already have an account',
                             style: AppTypography.textSmMedium.copyWith(
-                              color: kPrimaryColor,
+                              color: context.colors.accentText,
                             ),
                           ),
                         ),
@@ -467,9 +466,7 @@ class _AuthStep extends HookWidget {
                           child: Text(
                             'Not now',
                             style: AppTypography.textSmRegular.copyWith(
-                              color: context.colors.textPrimary.withValues(
-                                alpha: 0.55,
-                              ),
+                              color: context.textInk(0.55),
                             ),
                           ),
                         ),
@@ -511,12 +508,16 @@ class _UnlockVisual extends HookWidget {
               height: 95.h,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                gradient: RadialGradient(
-                  colors: [
-                    kPrimaryColor.withValues(alpha: 0.2),
-                    kPrimaryColor.withValues(alpha: 0.0),
-                  ],
-                ),
+                // Blooms only read on black; paper gets the flat mark.
+                gradient:
+                    context.isLightTheme
+                        ? null
+                        : RadialGradient(
+                          colors: [
+                            kPrimaryColor.withValues(alpha: 0.2),
+                            kPrimaryColor.withValues(alpha: 0.0),
+                          ],
+                        ),
               ),
             ),
           ),
@@ -532,19 +533,22 @@ class _UnlockVisual extends HookWidget {
                 color: kPrimaryColor.withValues(alpha: 0.3),
                 width: 2,
               ),
-              boxShadow: [
-                BoxShadow(
-                  color: kPrimaryColor.withValues(alpha: 0.2),
-                  blurRadius: 20,
-                  spreadRadius: 3,
-                ),
-              ],
+              boxShadow:
+                  context.isLightTheme
+                      ? null
+                      : [
+                        BoxShadow(
+                          color: kPrimaryColor.withValues(alpha: 0.2),
+                          blurRadius: 20,
+                          spreadRadius: 3,
+                        ),
+                      ],
             ),
             child: Center(
               child: Icon(
                 Icons.lock_open_rounded,
                 size: 32.ic,
-                color: kPrimaryColor,
+                color: context.colors.accentText,
               ),
             ),
           ),
@@ -599,7 +603,7 @@ class _FeaturesList extends StatelessWidget {
           Text(
             'What you\'ll get with an account:',
             style: AppTypography.textXsMedium.copyWith(
-              color: context.colors.textPrimary.withValues(alpha: 0.5),
+              color: context.textInk(0.5),
               letterSpacing: 0.5,
             ),
           ),
@@ -645,7 +649,21 @@ class _FeatureItem extends StatelessWidget {
             borderRadius: BorderRadius.circular(8.br),
             color: color.withValues(alpha: 0.15),
           ),
-          child: Center(child: Icon(icon, size: 18.ic, color: color)),
+          child: Center(
+            child: Icon(
+              icon,
+              size: 18.ic,
+              color: legibleHueInk(
+                context,
+                color,
+                minContrast: 3,
+                on: Color.alphaBlend(
+                  color.withValues(alpha: 0.15),
+                  context.colors.background,
+                ),
+              ),
+            ),
+          ),
         ),
         SizedBox(width: 10.w),
         // Text
@@ -663,7 +681,7 @@ class _FeatureItem extends StatelessWidget {
               Text(
                 subtitle,
                 style: AppTypography.textXsRegular.copyWith(
-                  color: context.colors.textPrimary.withValues(alpha: 0.5),
+                  color: context.textInk(0.5),
                 ),
               ),
             ],
@@ -673,7 +691,7 @@ class _FeatureItem extends StatelessWidget {
         Icon(
           Icons.lock_outline_rounded,
           size: 14.ic,
-          color: context.colors.textPrimary.withValues(alpha: 0.25),
+          color: context.textInk(0.25),
         ),
       ],
     );
@@ -785,9 +803,7 @@ class _AuthenticatedUserStep extends HookWidget {
                                 'Welcome back,',
                                 textAlign: TextAlign.center,
                                 style: AppTypography.textMdRegular.copyWith(
-                                  color: context.colors.textPrimary.withValues(
-                                    alpha: 0.6,
-                                  ),
+                                  color: context.textInk(0.6),
                                 ),
                               )
                               .animate(delay: 200.ms)
@@ -840,7 +856,7 @@ class _AuthenticatedUserStep extends HookWidget {
                                       child: Icon(
                                         Icons.check_rounded,
                                         size: 18.ic,
-                                        color: kGreenColor,
+                                        color: context.colors.successStrong,
                                       ),
                                     ),
                                     SizedBox(width: 12.w),
@@ -863,10 +879,7 @@ class _AuthenticatedUserStep extends HookWidget {
                                             'Synced across all your devices',
                                             style: AppTypography.textXsRegular
                                                 .copyWith(
-                                                  color: context
-                                                      .colors
-                                                      .textPrimary
-                                                      .withValues(alpha: 0.5),
+                                                  color: context.textInk(0.5),
                                                 ),
                                           ),
                                         ],
@@ -931,8 +944,7 @@ class _AuthenticatedUserStep extends HookWidget {
                                   Text(
                                     'Your chess journey continues',
                                     style: AppTypography.textXsRegular.copyWith(
-                                      color: context.colors.textPrimary
-                                          .withValues(alpha: 0.4),
+                                      color: context.textInk(0.4),
                                     ),
                                   ),
                                 ],
@@ -983,12 +995,15 @@ class _UserAvatarVisual extends HookWidget {
               height: 150.h,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                gradient: RadialGradient(
-                  colors: [
-                    kGreenColor.withValues(alpha: 0.18),
-                    kGreenColor.withValues(alpha: 0.0),
-                  ],
-                ),
+                gradient:
+                    context.isLightTheme
+                        ? null
+                        : RadialGradient(
+                          colors: [
+                            kGreenColor.withValues(alpha: 0.18),
+                            kGreenColor.withValues(alpha: 0.0),
+                          ],
+                        ),
               ),
             ),
           ),
@@ -1017,13 +1032,16 @@ class _UserAvatarVisual extends HookWidget {
                 color: kGreenColor.withValues(alpha: 0.4),
                 width: 2.5,
               ),
-              boxShadow: [
-                BoxShadow(
-                  color: kGreenColor.withValues(alpha: 0.2),
-                  blurRadius: 30,
-                  spreadRadius: 5,
-                ),
-              ],
+              boxShadow:
+                  context.isLightTheme
+                      ? null
+                      : [
+                        BoxShadow(
+                          color: kGreenColor.withValues(alpha: 0.2),
+                          blurRadius: 30,
+                          spreadRadius: 5,
+                        ),
+                      ],
             ),
             child: ClipOval(
               child:
@@ -1054,12 +1072,15 @@ class _UserAvatarVisual extends HookWidget {
                 shape: BoxShape.circle,
                 color: kGreenColor,
                 border: Border.all(color: context.colors.background, width: 3),
-                boxShadow: [
-                  BoxShadow(
-                    color: kGreenColor.withValues(alpha: 0.4),
-                    blurRadius: 8,
-                  ),
-                ],
+                boxShadow:
+                    context.isLightTheme
+                        ? null
+                        : [
+                          BoxShadow(
+                            color: kGreenColor.withValues(alpha: 0.4),
+                            blurRadius: 8,
+                          ),
+                        ],
               ),
               child: Icon(
                 Icons.check_rounded,
@@ -1172,15 +1193,25 @@ class _FloatingParticles extends HookWidget {
     final animation = useAnimation(controller);
 
     return CustomPaint(
-      painter: _ParticlePainter(animation),
+      // Paper: white motes vanish, so they drift as faint ink instead.
+      painter: _ParticlePainter(
+        animation,
+        base:
+            context.isLightTheme
+                ? context.colors.textPrimary.withValues(alpha: 0.5)
+                : Colors.white,
+      ),
       size: Size.infinite,
     );
   }
 }
 
 class _ParticlePainter extends CustomPainter {
-  _ParticlePainter(this.animation);
+  _ParticlePainter(this.animation, {this.base = Colors.white});
   final double animation;
+
+  /// Mote colour; its own alpha scales each particle's opacity.
+  final Color base;
 
   static final List<_Particle> particles = List.generate(
     12,
@@ -1203,8 +1234,8 @@ class _ParticlePainter extends CustomPainter {
 
       final paint =
           Paint()
-            ..color = Colors.white.withValues(
-              alpha: particle.opacity * (1 - y.abs() * 0.5),
+            ..color = base.withValues(
+              alpha: base.a * particle.opacity * (1 - y.abs() * 0.5),
             );
 
       canvas.drawCircle(
@@ -1217,7 +1248,7 @@ class _ParticlePainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant _ParticlePainter oldDelegate) =>
-      oldDelegate.animation != animation;
+      oldDelegate.animation != animation || oldDelegate.base != base;
 }
 
 class _Particle {
@@ -1257,7 +1288,7 @@ class _PageIndicator extends StatelessWidget {
               borderRadius: BorderRadius.circular(2.br),
               color:
                   isActive
-                      ? kPrimaryColor
+                      ? context.colors.accentText
                       : context.colors.textPrimary.withValues(alpha: 0.12),
             ),
           ),
@@ -1358,7 +1389,7 @@ class _WelcomeStep extends HookWidget {
                     'Follow players, Track Events, Analyze games',
                     textAlign: TextAlign.center,
                     style: AppTypography.textSmRegular.copyWith(
-                      color: context.colors.textPrimary.withValues(alpha: 0.6),
+                      color: context.textInk(0.6),
                       letterSpacing: 0.3,
                     ),
                   )
@@ -1381,7 +1412,7 @@ class _WelcomeStep extends HookWidget {
                     child: Text(
                       'I already have an account',
                       style: AppTypography.textSmMedium.copyWith(
-                        color: kPrimaryColor,
+                        color: context.colors.accentText,
                       ),
                     ),
                   )
@@ -1470,7 +1501,7 @@ class _CountryStep extends HookConsumerWidget {
                     'We\'ll show you players from your region',
                     textAlign: TextAlign.center,
                     style: AppTypography.textSmRegular.copyWith(
-                      color: context.colors.textPrimary.withValues(alpha: 0.6),
+                      color: context.textInk(0.6),
                     ),
                   )
                   .animate(delay: 300.ms)
@@ -1531,7 +1562,7 @@ class _GlobeVisual extends StatelessWidget {
                 height: 24.h,
                 child: CircularProgressIndicator(
                   strokeWidth: 2,
-                  color: context.colors.textPrimary.withValues(alpha: 0.6),
+                  color: context.textInk(0.6),
                 ),
               ),
             ),
@@ -1539,7 +1570,7 @@ class _GlobeVisual extends StatelessWidget {
             (_, __) => Icon(
               Icons.public,
               size: 48.ic,
-              color: context.colors.textPrimary.withValues(alpha: 0.5),
+              color: context.textInk(0.5),
             ),
         data:
             (country) => Center(
@@ -1579,14 +1610,14 @@ class _CountryCard extends StatelessWidget {
                   height: 18.h,
                   child: CircularProgressIndicator(
                     strokeWidth: 2,
-                    color: context.colors.textPrimary.withValues(alpha: 0.5),
+                    color: context.textInk(0.5),
                   ),
                 ),
                 SizedBox(width: 12.w),
                 Text(
                   'Finding your location...',
                   style: AppTypography.textSmMedium.copyWith(
-                    color: context.colors.textPrimary.withValues(alpha: 0.6),
+                    color: context.textInk(0.6),
                   ),
                 ),
               ],
@@ -1598,7 +1629,7 @@ class _CountryCard extends StatelessWidget {
                 Text(
                   'Couldn\'t detect location',
                   style: AppTypography.textSmMedium.copyWith(
-                    color: context.colors.textPrimary.withValues(alpha: 0.6),
+                    color: context.textInk(0.6),
                   ),
                 ),
                 SizedBox(width: 12.w),
@@ -1607,7 +1638,7 @@ class _CountryCard extends StatelessWidget {
                   child: Text(
                     'Retry',
                     style: AppTypography.textSmMedium.copyWith(
-                      color: kPrimaryColor,
+                      color: context.colors.accentText,
                     ),
                   ),
                 ),

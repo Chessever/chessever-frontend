@@ -34,10 +34,13 @@ class CompletedEventMenu extends StatelessWidget {
               mainAxisSize: MainAxisSize.min,
               children: [
                 ListTile(
-                  leading: const Icon(Icons.download, color: Colors.white),
-                  title: const Text(
+                  leading: Icon(
+                    Icons.download,
+                    color: context.colors.iconPrimary,
+                  ),
+                  title: Text(
                     'Download Tournament PGN',
-                    style: TextStyle(color: Colors.white),
+                    style: TextStyle(color: context.colors.textPrimary),
                   ),
                   onTap: () {
                     Navigator.pop(context);
@@ -46,13 +49,13 @@ class CompletedEventMenu extends StatelessWidget {
                 ),
                 DividerWidget(),
                 ListTile(
-                  leading: const Icon(
+                  leading: Icon(
                     Icons.library_add_outlined,
-                    color: Colors.white,
+                    color: context.colors.iconPrimary,
                   ),
-                  title: const Text(
+                  title: Text(
                     'Add to Library',
-                    style: TextStyle(color: Colors.white),
+                    style: TextStyle(color: context.colors.textPrimary),
                   ),
                   onTap: () {
                     Navigator.pop(context);
@@ -68,7 +71,12 @@ class CompletedEventMenu extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return IconButton(
-      icon: const Icon(Icons.more_vert, color: Colors.grey, size: 24),
+      icon: Icon(
+        Icons.more_vert,
+        color:
+            context.isLightTheme ? context.colors.iconSecondary : Colors.grey,
+        size: 24,
+      ),
       padding: EdgeInsets.zero,
       constraints: const BoxConstraints(),
       onPressed: () => _showMenu(context),

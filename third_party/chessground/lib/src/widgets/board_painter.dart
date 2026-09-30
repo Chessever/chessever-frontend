@@ -2,6 +2,7 @@ import 'dart:math' show pi;
 import 'dart:ui' as ui;
 
 import 'package:dartchess/dartchess.dart';
+import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/widgets.dart';
 
 import '../board_settings.dart';
@@ -236,6 +237,7 @@ class PiecesPainter extends CustomPainter {
     required this.blindfoldMode,
     required this.pieceOrientationBehavior,
     required this.imagesLoaded,
+    this.landingSquareNotifier,
   }) : _draggedPieceSquareNotifier = draggedPieceSquareNotifier,
        super(
          repaint: Listenable.merge([
@@ -248,8 +250,13 @@ class PiecesPainter extends CustomPainter {
            draggedPieceSquareNotifier,
            gameNotifier,
            pendingPromotionNotifier,
+           landingSquareNotifier,
          ]),
        );
+
+  /// CHESSEVER PATCH (landing settle): the square whose piece is currently
+  /// drawn by [LandingPiecePainter] instead, skipped here while set.
+  final ValueListenable<Square?>? landingSquareNotifier;
 
   /// The current pieces on the board, keyed by square.
   final ValueNotifier<Pieces> piecesNotifier;
@@ -303,13 +310,15 @@ class PiecesPainter extends CustomPainter {
     final translatingPieces = translatingPiecesNotifier.value;
     final draggedPieceSquare = _draggedPieceSquareNotifier?.value;
     final promotionMoveFrom = pendingPromotionNotifier.value?.from;
+    final landingSquare = landingSquareNotifier?.value;
     final sideToMove = game?.sideToMove;
     final paint = Paint()..filterQuality = FilterQuality.medium;
     for (final entry in pieces.entries) {
       final square = entry.key;
       if (translatingPieces.containsKey(square) ||
           square == draggedPieceSquare ||
-          square == promotionMoveFrom) {
+          square == promotionMoveFrom ||
+          square == landingSquare) {
         continue;
       }
       final asset = pieceAssets[entry.value.kind];
@@ -545,6 +554,106 @@ class TranslatingPiecesPainter extends CustomPainter {
         blindfoldMode != oldDelegate.blindfoldMode ||
         pieceAssets != oldDelegate.pieceAssets ||
         pieceOrientationBehavior != oldDelegate.pieceOrientationBehavior;
+  }
+}
+
+/// CHESSEVER PATCH (landing settle): paints the piece that just landed on
+/// [landingSquareNotifier]'s square, scaled by [scale] around the square's
+/// centre while its settle spring runs (1.08 → 1.0). [PiecesPainter] skips that
+/// square for as long as the notifier holds it, so the piece is drawn exactly
+/// once. Nothing is drawn while the square is still translating.
+class LandingPiecePainter extends CustomPainter {
+  /// Creates a painter for the piece settling on its landing square.
+  LandingPiecePainter({
+    required this.landingSquareNotifier,
+    required this.piecesNotifier,
+    required this.translatingPiecesNotifier,
+    required this.pieceAssets,
+    required this.squareSize,
+    required this.orientation,
+    required this.blindfoldMode,
+    required this.pieceOrientationBehavior,
+    required this.gameNotifier,
+    required Animation<double> scale,
+  }) : _scale = scale,
+       super(repaint: Listenable.merge([scale, landingSquareNotifier]));
+
+  /// The square being settled, or null when no settle runs.
+  final ValueListenable<Square?> landingSquareNotifier;
+
+  /// The current pieces on the board, keyed by square.
+  final ValueNotifier<Pieces> piecesNotifier;
+
+  /// The pieces currently animating between squares.
+  final ValueNotifier<TranslatingPieces> translatingPiecesNotifier;
+
+  /// The assets used to render each piece kind.
+  final PieceAssets pieceAssets;
+
+  /// The size of a single square in logical pixels.
+  final double squareSize;
+
+  /// The side the board is oriented towards.
+  final Side orientation;
+
+  /// Whether pieces should be hidden (blindfold mode).
+  final bool blindfoldMode;
+
+  /// How pieces are oriented relative to the board.
+  final PieceOrientationBehavior pieceOrientationBehavior;
+
+  /// The current game data, used to determine the side to move.
+  final ValueNotifier<GameData?> gameNotifier;
+
+  final Animation<double> _scale;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final square = landingSquareNotifier.value;
+    if (blindfoldMode || square == null) return;
+    if (translatingPiecesNotifier.value.containsKey(square)) return;
+    final piece = piecesNotifier.value[square];
+    if (piece == null) return;
+    final asset = pieceAssets[piece.kind];
+    if (asset == null) return;
+    final image = ChessgroundImages.instance.get(asset);
+    if (image == null) return;
+
+    final rect = _squareRect(square, squareSize, orientation);
+    final scale = _scale.value;
+    final dst = Rect.fromCenter(
+      center: rect.center,
+      width: rect.width * scale,
+      height: rect.height * scale,
+    );
+    final src = Rect.fromLTWH(0, 0, image.width.toDouble(), image.height.toDouble());
+    final paint = Paint()..filterQuality = FilterQuality.medium;
+    if (_isUpsideDown(
+      piece.color,
+      behavior: pieceOrientationBehavior,
+      orientation: orientation,
+      sideToMove: gameNotifier.value?.sideToMove,
+    )) {
+      canvas.save();
+      canvas.translate(dst.center.dx, dst.center.dy);
+      canvas.rotate(pi);
+      canvas.translate(-dst.center.dx, -dst.center.dy);
+      canvas.drawImageRect(image, src, dst, paint);
+      canvas.restore();
+    } else {
+      canvas.drawImageRect(image, src, dst, paint);
+    }
+  }
+
+  @override
+  bool shouldRepaint(LandingPiecePainter oldDelegate) {
+    return squareSize != oldDelegate.squareSize ||
+        orientation != oldDelegate.orientation ||
+        blindfoldMode != oldDelegate.blindfoldMode ||
+        pieceAssets != oldDelegate.pieceAssets ||
+        pieceOrientationBehavior != oldDelegate.pieceOrientationBehavior ||
+        landingSquareNotifier != oldDelegate.landingSquareNotifier ||
+        _scale != oldDelegate._scale;
   }
 }
 

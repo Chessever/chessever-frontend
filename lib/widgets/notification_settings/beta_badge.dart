@@ -20,7 +20,10 @@ class BetaBadge extends StatelessWidget {
       child: Text(
         label,
         style: AppTypography.textSmRegular.copyWith(
-          color: const Color(0xFF9E9E9E),
+          color:
+              context.isLightTheme
+                  ? context.colors.textSecondary
+                  : const Color(0xFF9E9E9E),
           fontSize: 9.f,
           fontWeight: FontWeight.w600,
           letterSpacing: 0.4,

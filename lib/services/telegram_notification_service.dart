@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'package:chessever2/config/app_environment.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:http/http.dart' as http;
@@ -61,6 +62,7 @@ class TelegramNotificationService {
   static String _env(String key) {
     final release = _release[key];
     if (release != null && release.isNotEmpty) return release;
+    if (AppEnvironment.isTest) return '';
     try {
       final value = dotenv.env[key]?.trim();
       if (value != null && value.isNotEmpty) return value;

@@ -12,10 +12,16 @@ class RatingTierFilter extends StatelessWidget {
     super.key,
     required this.selectedMinRating,
     required this.onChanged,
+    this.unselectedColor,
   });
 
   final int? selectedMinRating;
   final ValueChanged<int?> onChanged;
+
+  /// An unselected chip's fill; defaults to the recessed surface. Hosts
+  /// whose own surface is that recessed tone pass a step off it, or the
+  /// chips would have no edge at all.
+  final Color? unselectedColor;
 
   static const tiers = <RatingTier>[
     RatingTier(label: 'GM', subtitle: '+2500', minRating: 2500),
@@ -69,6 +75,7 @@ class RatingTierFilter extends StatelessWidget {
                       tier: tiers[i],
                       isSelected: selected == tiers[i].minRating,
                       onChanged: onChanged,
+                      unselectedColor: unselectedColor,
                     ),
                   ),
                   SizedBox(width: 8.w),
@@ -79,6 +86,7 @@ class RatingTierFilter extends StatelessWidget {
                               tier: tiers[i + 1],
                               isSelected: selected == tiers[i + 1].minRating,
                               onChanged: onChanged,
+                              unselectedColor: unselectedColor,
                             )
                             : const SizedBox.shrink(),
                   ),
@@ -97,11 +105,13 @@ class _TierChip extends StatelessWidget {
     required this.tier,
     required this.isSelected,
     required this.onChanged,
+    this.unselectedColor,
   });
 
   final RatingTier tier;
   final bool isSelected;
   final ValueChanged<int?> onChanged;
+  final Color? unselectedColor;
 
   @override
   Widget build(BuildContext context) {
@@ -113,7 +123,10 @@ class _TierChip extends StatelessWidget {
         padding: EdgeInsets.symmetric(horizontal: 14.w, vertical: 10.h),
         alignment: Alignment.center,
         decoration: BoxDecoration(
-          color: isSelected ? kPrimaryColor : context.colors.surfaceRecessed,
+          color:
+              isSelected
+                  ? kPrimaryColor
+                  : unselectedColor ?? context.colors.surfaceRecessed,
           borderRadius: BorderRadius.circular(8.br),
         ),
         child: Row(

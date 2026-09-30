@@ -24,7 +24,8 @@ class LanguageSettingsDialog extends ConsumerWidget {
       child: Container(
         padding: EdgeInsets.symmetric(horizontal: 20.sp, vertical: 8.sp),
         decoration: BoxDecoration(
-          color: kBlackColor,
+          // A black slab on paper; light uses the popup surface.
+          color: context.isLightTheme ? context.colors.popup : kBlackColor,
           borderRadius: BorderRadius.circular(12.br),
         ),
         child: ListView.separated(

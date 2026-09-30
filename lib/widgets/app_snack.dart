@@ -1,14 +1,16 @@
 import 'dart:async';
 import 'dart:math' as math;
 
+import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:flutter/material.dart';
 
 /// Semantic weight of a snack. Only the ink changes — the capsule itself is
-/// always the same black object, so two stacked toasts never fight each other
-/// for attention the way a red bar next to a grey bar used to.
+/// always the same object for the theme (ink-black in dark, paper in light),
+/// so two stacked toasts never fight each other for attention the way a red
+/// bar next to a grey bar used to.
 enum AppSnackTone { neutral, danger, success }
 
 /// The one and only way to raise a transient message in this app.
@@ -22,9 +24,9 @@ enum AppSnackTone { neutral, danger, success }
 ///   `persist: false`.
 /// * **One at a time.** Showing a snack retires the current one instead of
 ///   queueing behind it, so a stale message can never outlive its screen.
-/// * **Black, in both themes.** The capsule is the app's ink, not the theme's
-///   surface, so the message reads as a layer floating over the product rather
-///   than a piece of the page.
+/// * **One capsule per theme, never per message.** Dark: the app's ink, a
+///   layer floating over the product. Light: a paper capsule with an ink edge
+///   and a short ink shadow — a black slab on mint paper was far too loud.
 ScaffoldFeatureController<SnackBar, SnackBarClosedReason>? showAppSnack(
   BuildContext context,
   String message, {
@@ -123,11 +125,21 @@ class _AppSnackCapsule extends StatelessWidget {
   final FutureOr<void> Function()? onAction;
   final Duration life;
 
-  Color get _messageColor => switch (tone) {
-    AppSnackTone.neutral => Colors.white.withValues(alpha: 0.94),
-    AppSnackTone.danger => _dangerInk,
-    AppSnackTone.success => _successInk,
-  };
+  Color _messageColor(BuildContext context) {
+    if (context.isLightTheme) {
+      final colors = context.colors;
+      return switch (tone) {
+        AppSnackTone.neutral => colors.textPrimary,
+        AppSnackTone.danger => colors.danger,
+        AppSnackTone.success => colors.successStrong,
+      };
+    }
+    return switch (tone) {
+      AppSnackTone.neutral => Colors.white.withValues(alpha: 0.94),
+      AppSnackTone.danger => _dangerInk,
+      AppSnackTone.success => _successInk,
+    };
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -136,22 +148,41 @@ class _AppSnackCapsule extends StatelessWidget {
     // keeps the drain rule honest about how long is actually left.
     final drainLife = life + const Duration(milliseconds: 250);
     final reduceMotion = MediaQuery.disableAnimationsOf(context);
+    final isLight = context.isLightTheme;
+    final messageColor = _messageColor(context);
 
     return Container(
       decoration: BoxDecoration(
-        color: _capsuleInk,
+        // Dark: the app's ink. Light: the same paper the focus menu floats
+        // on, so the toast belongs to the page instead of punching a hole
+        // in it.
+        color: isLight ? context.colors.popup : _capsuleInk,
         borderRadius: radius,
         // Self-coloured edge: felt as a lip catching light, not read as a
-        // drawn outline.
-        border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+        // drawn outline. On paper the lip is ink, the only thing that
+        // separates a pale capsule from a pale page.
+        border: Border.all(
+          color:
+              isLight
+                  ? context.colors.textPrimary.withValues(alpha: 0.10)
+                  : Colors.white.withValues(alpha: 0.08),
+        ),
         boxShadow: [
           // One tight, low-offset, self-tinted shadow. Enough to lift the
-          // capsule off a near-black app background; never a bloom.
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.55),
-            blurRadius: 18,
-            offset: const Offset(0, 6),
-          ),
+          // capsule off a near-black app background; never a bloom. Paper
+          // needs far less: a black 0.55/18 blur is a grey smear there, so
+          // light casts a short ink shadow.
+          context.isLightTheme
+              ? const BoxShadow(
+                color: Color(0x2E0E1A1C),
+                blurRadius: 8,
+                offset: Offset(0, 3),
+              )
+              : BoxShadow(
+                color: Colors.black.withValues(alpha: 0.55),
+                blurRadius: 18,
+                offset: const Offset(0, 6),
+              ),
         ],
       ),
       child: ClipRRect(
@@ -176,7 +207,7 @@ class _AppSnackCapsule extends StatelessWidget {
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                       style: AppTypography.textSmMedium.copyWith(
-                        color: _messageColor,
+                        color: messageColor,
                       ),
                     ),
                   ),
@@ -185,11 +216,18 @@ class _AppSnackCapsule extends StatelessWidget {
                     _SnackActionLabel(
                       label: actionLabel!,
                       // Cyan is the app's single accent, but it collides with
-                      // the red of an error, so a danger snack answers in white.
+                      // the red of an error, so a danger snack answers in the
+                      // capsule's plain ink (white in dark, ink on paper). On
+                      // paper the accent is the deep accent-text teal: brand
+                      // cyan is ~2:1 there.
                       color:
                           tone == AppSnackTone.danger
-                              ? Colors.white.withValues(alpha: 0.95)
-                              : kPrimaryColor,
+                              ? (isLight
+                                  ? context.colors.textPrimary
+                                  : Colors.white.withValues(alpha: 0.95))
+                              : (isLight
+                                  ? context.colors.accentText
+                                  : kPrimaryColor),
                       onPressed: onAction,
                     ),
                   ],
@@ -198,24 +236,26 @@ class _AppSnackCapsule extends StatelessWidget {
             ),
             // Specular lip: a hairline of light catching the top edge, fading
             // out before either corner so it reads as a lit surface rather
-            // than a second drawn border.
-            Positioned(
-              top: 0,
-              left: 14.sp,
-              right: 14.sp,
-              height: 1,
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: [
-                      Colors.white.withValues(alpha: 0),
-                      Colors.white.withValues(alpha: 0.16),
-                      Colors.white.withValues(alpha: 0),
-                    ],
+            // than a second drawn border. Dark only: white light on paper is
+            // invisible.
+            if (!isLight)
+              Positioned(
+                top: 0,
+                left: 14.sp,
+                right: 14.sp,
+                height: 1,
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: [
+                        Colors.white.withValues(alpha: 0),
+                        Colors.white.withValues(alpha: 0.16),
+                        Colors.white.withValues(alpha: 0),
+                      ],
+                    ),
                   ),
                 ),
               ),
-            ),
             // The one authored detail: a hairline that drains along the bottom
             // edge for exactly as long as the snack has left to live, so the
             // capsule tells you it is about to leave instead of just leaving.
@@ -235,7 +275,7 @@ class _AppSnackCapsule extends StatelessWidget {
                       widthFactor: value.clamp(0.0, 1.0),
                       child: DecoratedBox(
                         decoration: BoxDecoration(
-                          color: _messageColor.withValues(alpha: 0.26),
+                          color: messageColor.withValues(alpha: 0.26),
                           borderRadius: BorderRadius.circular(1),
                         ),
                       ),

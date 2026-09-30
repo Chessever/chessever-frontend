@@ -1,5 +1,4 @@
 import 'package:chessever2/theme/app_colors.dart';
-import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:flutter/material.dart';
@@ -100,7 +99,12 @@ class _SegmentLabel extends StatelessWidget {
               duration: const Duration(milliseconds: 180),
               curve: Curves.easeInOut,
               style: AppTypography.textSmRegular.copyWith(
-                color: selected ? context.colors.textPrimary : const Color(0xFF888888),
+                color:
+                    selected
+                        ? context.colors.textPrimary
+                        : context.isLightTheme
+                        ? context.colors.textSecondary
+                        : const Color(0xFF888888),
                 fontSize: 12.f,
                 fontWeight: selected ? FontWeight.w500 : FontWeight.w400,
               ),

@@ -7,6 +7,7 @@ import 'package:chessever2/utils/svg_asset.dart';
 import 'package:chessever2/widgets/back_drop_filter_widget.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
+import 'package:chessever2/screens/chessboard/utils/legible_ink.dart';
 
 class ContextPopupMenu extends StatelessWidget {
   const ContextPopupMenu({
@@ -103,11 +104,17 @@ class ContextPopupMenu extends StatelessWidget {
       color: context.colors.surfaceRecessed,
       borderRadius: BorderRadius.circular(12.br),
       boxShadow: [
-        BoxShadow(
-          color: Colors.black.withValues(alpha: 0.3),
-          blurRadius: 10,
-          offset: const Offset(0, 5),
-        ),
+        context.isLightTheme
+            ? BoxShadow(
+              color: context.colors.shadow,
+              blurRadius: 4,
+              offset: const Offset(0, 1),
+            )
+            : BoxShadow(
+              color: Colors.black.withValues(alpha: 0.3),
+              blurRadius: 10,
+              offset: const Offset(0, 5),
+            ),
       ],
     );
   }
@@ -151,7 +158,15 @@ class MenuItemContent extends StatelessWidget {
         SizedBox(
           width: 13.w,
           height: 13.h,
-          child: SvgPicture.asset(iconAsset, height: 13.h, width: 13.w),
+          // The menu glyphs are white-filled; on paper they take the ink
+          // (a two-tone glyph keeps its accent).
+          child: inkedSvgAsset(
+            context,
+            iconAsset,
+            height: 13.h,
+            width: 13.w,
+            on: context.colors.surfaceRecessed,
+          ),
         ),
         SizedBox(width: 10.w),
         Expanded(

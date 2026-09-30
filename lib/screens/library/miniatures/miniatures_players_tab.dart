@@ -4,7 +4,10 @@ import 'package:chessever2/screens/library/miniatures/miniature_player_scorecard
 import 'package:chessever2/screens/library/miniatures/miniatures_mode_provider.dart';
 import 'package:chessever2/screens/library/miniatures/widgets/miniature_players_filter_dialog.dart';
 import 'package:chessever2/screens/library/providers/miniatures_provider.dart';
+import 'package:chessever2/screens/library/widgets/library_context_menu.dart';
 import 'package:chessever2/screens/player_profile/player_profile_screen.dart';
+import 'package:chessever2/screens/player_profile/utils/player_menu_actions.dart';
+import 'package:chessever2/screens/player_profile/widgets/lifted_row_menu.dart';
 import 'package:chessever2/screens/standings/player_standing_model.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/utils/app_typography.dart';
@@ -18,6 +21,7 @@ import 'package:chessever2/widgets/skeleton_widget.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:skeletonizer/skeletonizer.dart';
+import 'package:chessever2/screens/chessboard/utils/legible_ink.dart';
 
 /// High-ELO player leaderboard for Miniatures → Players, ranked the same way as
 /// For You → Favorites → Players (Supabase `chess_players`, rating desc).
@@ -268,7 +272,9 @@ class _MiniaturesPlayersTabState extends ConsumerState<MiniaturesPlayersTab>
                     size: 20.sp,
                     color:
                         hasActiveFilters
-                            ? const Color(0xFFEF4444)
+                            ? (context.isLightTheme
+                                ? context.colors.danger
+                                : const Color(0xFFEF4444))
                             : context.colors.textSecondary,
                   ),
                   if (hasActiveFilters)
@@ -278,15 +284,24 @@ class _MiniaturesPlayersTabState extends ConsumerState<MiniaturesPlayersTab>
                       child: Container(
                         width: 14.w,
                         height: 14.h,
-                        decoration: const BoxDecoration(
-                          color: Color(0xFFEF4444),
+                        decoration: BoxDecoration(
+                          color:
+                              context.isLightTheme
+                                  ? context.colors.danger
+                                  : const Color(0xFFEF4444),
                           shape: BoxShape.circle,
                         ),
                         child: Center(
                           child: Text(
                             '$activeFilterCount',
                             style: AppTypography.textXsBold.copyWith(
-                              color: context.colors.textPrimary,
+                              color:
+                                  context.isLightTheme
+                                      ? labelOnFill(
+                                        context,
+                                        context.colors.danger,
+                                      )
+                                      : context.colors.textPrimary,
                               fontSize: 9.sp,
                               height: 1,
                             ),
@@ -412,7 +427,10 @@ class _MiniaturesPlayersTabState extends ConsumerState<MiniaturesPlayersTab>
                             Text(
                               'Loading more…',
                               style: AppTypography.textXsRegular.copyWith(
-                                color: const Color(0xFF71717A),
+                                color:
+                                    context.isLightTheme
+                                        ? context.colors.textSecondary
+                                        : const Color(0xFF71717A),
                               ),
                             ),
                           ],
@@ -524,19 +542,53 @@ class _MiniaturePlayerRow extends ConsumerWidget {
             ? player
             : player.copyWith(matchScore: matchScore);
 
-    return FigmaPlayerCard(
-      player: cardPlayer,
-      rank: rank,
-      showFavoriteButton: false,
-      avatarHeroTag: miniature?.avatarHeroTag,
-      // Pending only while this row's own lookup is genuinely still out; a
-      // settled miss leaves the slot empty instead of shimmering forever.
-      matchScorePending: matchScore == null && (lookup?.isLoading ?? false),
-      // Records here run from `5W-2L` to `172W-41L` and land row by row, so the
-      // slot is held at one width: every name ends on the same x, and nothing
-      // moves when a record arrives.
-      reserveMatchScoreSlot: true,
-      onTap: () => _open(context, ref),
+    final hasScorecard = miniature != null;
+    // Long-press lifts the row into the shared focus menu. The lifted copy
+    // drops the avatar hero tag: two Heroines with one tag on screen would
+    // fight over the flight.
+    return LiftedRowMenu(
+      onPreviewTap: () => _open(context, ref),
+      preview: FigmaPlayerCard(
+        player: cardPlayer,
+        rank: rank,
+        showFavoriteButton: false,
+        reserveMatchScoreSlot: true,
+        onTap: () {},
+      ),
+      actions:
+          (rowContext) => playerStandingMenuActions(
+            rowContext,
+            ref,
+            player,
+            onOpen: () => _open(context, ref),
+            openLabel: hasScorecard ? 'Open scorecard' : 'Open profile',
+            openIcon:
+                hasScorecard
+                    ? Icons.open_in_new_rounded
+                    : Icons.person_outline_rounded,
+            extra: [
+              if (hasScorecard)
+                LibraryMenuAction(
+                  icon: Icons.person_outline_rounded,
+                  label: 'Open profile',
+                  onSelected: () => openPlayerProfileFor(context, player),
+                ),
+            ],
+          ),
+      child: FigmaPlayerCard(
+        player: cardPlayer,
+        rank: rank,
+        showFavoriteButton: false,
+        avatarHeroTag: miniature?.avatarHeroTag,
+        // Pending only while this row's own lookup is genuinely still out; a
+        // settled miss leaves the slot empty instead of shimmering forever.
+        matchScorePending: matchScore == null && (lookup?.isLoading ?? false),
+        // Records here run from `5W-2L` to `172W-41L` and land row by row, so
+        // the slot is held at one width: every name ends on the same x, and
+        // nothing moves when a record arrives.
+        reserveMatchScoreSlot: true,
+        onTap: () => _open(context, ref),
+      ),
     );
   }
 }

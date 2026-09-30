@@ -9,7 +9,29 @@ import 'package:chessever2/utils/svg_asset.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
-enum BottomNavBarItem { tournaments, calendar, library }
+/// Main sections: Home, Events, Collections. The calendar opens
+/// from the sidebar, and Feed from For You › Discovery.
+///
+/// Tabs are only ever addressed by value or by [Enum.name] (analytics sends
+/// the name), never by index, so reordering the bar moves nothing else.
+enum BottomNavBarItem {
+  tournaments,
+  forYou,
+  collections;
+
+  // Source compatibility for integrations compiled against the previous tab.
+  @Deprecated(
+    'Library is reached through My Space; use collections for the main tab',
+  )
+  static const library = collections;
+}
+
+/// Keep enum identities stable for callers; presentation has its own order.
+const bottomNavBarOrder = [
+  BottomNavBarItem.forYou,
+  BottomNavBarItem.tournaments,
+  BottomNavBarItem.collections,
+];
 
 /// Emitted whenever the user taps the already-selected bottom nav item.
 /// Screens that own a scrollable surface for [item] should listen and
@@ -28,7 +50,7 @@ class BottomNavBarReTapRequestNotifier
   BottomNavBarReTapRequestNotifier()
     : super(
         const BottomNavBarReTapRequest(
-          item: BottomNavBarItem.tournaments,
+          item: BottomNavBarItem.forYou,
           sequence: 0,
         ),
       );
@@ -38,26 +60,30 @@ class BottomNavBarReTapRequestNotifier
   }
 }
 
-final bottomNavBarReTapRequestProvider = StateNotifierProvider<
-  BottomNavBarReTapRequestNotifier,
-  BottomNavBarReTapRequest
->((ref) => BottomNavBarReTapRequestNotifier());
+final bottomNavBarReTapRequestProvider =
+    StateNotifierProvider<
+      BottomNavBarReTapRequestNotifier,
+      BottomNavBarReTapRequest
+    >((ref) => BottomNavBarReTapRequestNotifier());
 
 final Map<BottomNavBarItem, String> bottomNavBarIcons = {
   BottomNavBarItem.tournaments: SvgAsset.tournamentIcon,
-  BottomNavBarItem.calendar: SvgAsset.calendarNavIcon,
-  BottomNavBarItem.library: SvgAsset.libraryNavIcon,
+  BottomNavBarItem.forYou: SvgAsset.forYouNavIcon,
+  BottomNavBarItem.collections: 'assets/svgs/collections_nav.svg',
 };
 
 final namesBottomNavBarIcons = {
   BottomNavBarItem.tournaments: 'Events',
-  BottomNavBarItem.calendar: 'Calendar',
-  BottomNavBarItem.library: 'Library',
+  BottomNavBarItem.forYou: 'Home',
+  BottomNavBarItem.collections: 'Collections',
 };
 
+/// The section Home shows. The app opens on For You (its Today page); deep
+/// links and notification taps push their screens over Home, so backing out
+/// of them lands there too.
 final selectedBottomNavBarItemProvider =
     StateProvider.autoDispose<BottomNavBarItem>(
-      (ref) => BottomNavBarItem.tournaments,
+      (ref) => BottomNavBarItem.forYou,
     );
 
 class BottomNavBar extends ConsumerWidget {
@@ -78,54 +104,53 @@ class BottomNavBar extends ConsumerWidget {
           top: BorderSide(color: context.colors.divider, width: 1.w),
         ),
       ),
-      // Design height (70.h) is a floor, not a fixed slot: each nav item is a
-      // Column (icon + label + vertical padding) whose label height rides
-      // MediaQuery.textScaler. A fixed height that also had the safe-area inset
-      // carved out of a capped total starved that Column on short screens /
-      // large text scales / large insets and overflowed the bottom. Flooring
-      // the row content (so it can grow when it must) and adding the inset on
-      // top via padding keeps the normal-device look while never overflowing.
+      // Keep comfortable touch targets plus the device's bottom safe area.
       child: ConstrainedBox(
-        constraints: BoxConstraints(minHeight: 70.h),
+        constraints: const BoxConstraints(minHeight: 48),
         child: Row(
-          children: List.generate(
-          BottomNavBarItem.values.length,
-          (index) => BottomNavBarWidget(
-            key: switch (BottomNavBarItem.values[index]) {
-              BottomNavBarItem.tournaments => e2eKey(E2eIds.navEvents),
-              BottomNavBarItem.calendar => e2eKey(E2eIds.navCalendar),
-              BottomNavBarItem.library => e2eKey(E2eIds.navLibrary),
-            },
-            width:
-                MediaQuery.sizeOf(context).width /
-                BottomNavBarItem.values.length,
-            isSelected: selectedItem == BottomNavBarItem.values[index],
-            onTap: () {
-              final previous = ref.read(selectedBottomNavBarItemProvider);
-              final next = BottomNavBarItem.values[index];
-              if (previous == next) {
-                // Same tab re-tapped: signal screens to scroll their active
-                // list to top. Selected subtab + data are preserved; no
-                // pull-to-refresh, no reload.
-                ref
-                    .read(bottomNavBarReTapRequestProvider.notifier)
-                    .request(next);
-                return;
-              }
+          children: [
+            for (final item in bottomNavBarOrder)
+              BottomNavBarWidget(
+                key: switch (item) {
+                  BottomNavBarItem.tournaments => e2eKey(E2eIds.navEvents),
+                  BottomNavBarItem.forYou => e2eKey(E2eIds.navForYou),
+                  BottomNavBarItem.collections => e2eKey(E2eIds.navCollections),
+                },
+                width:
+                    MediaQuery.sizeOf(context).width / bottomNavBarOrder.length,
+                isSelected: selectedItem == item,
+                onTap: () {
+                  final previous = ref.read(selectedBottomNavBarItemProvider);
+                  if (previous == item) {
+                    // Same tab re-tapped: signal screens to scroll their
+                    // active list to top. Selected subtab + data are
+                    // preserved; no pull-to-refresh, no reload.
+                    ref
+                        .read(bottomNavBarReTapRequestProvider.notifier)
+                        .request(item);
+                    return;
+                  }
 
-              ref.read(selectedBottomNavBarItemProvider.notifier).state = next;
+                  ref.read(selectedBottomNavBarItemProvider.notifier).state =
+                      item;
 
-              unawaited(
-                AnalyticsService.instance.trackEvent(
-                  'Bottom Nav Changed',
-                  properties: {'previous_tab': previous.name, 'tab': next.name},
-                ),
-              );
-            },
-            svgIcon: bottomNavBarIcons[BottomNavBarItem.values[index]]!,
-            title: namesBottomNavBarIcons[BottomNavBarItem.values[index]]!,
-            ),
-          ),
+                  unawaited(
+                    AnalyticsService.instance.trackEvent(
+                      'Bottom Nav Changed',
+                      properties: {
+                        'previous_tab': previous.name,
+                        'tab': item.name,
+                      },
+                    ),
+                  );
+                },
+                svgIcon: bottomNavBarIcons[item]!,
+                icon: item == BottomNavBarItem.forYou
+                    ? Icons.home_rounded
+                    : null,
+                title: namesBottomNavBarIcons[item]!,
+              ),
+          ],
         ),
       ),
     );

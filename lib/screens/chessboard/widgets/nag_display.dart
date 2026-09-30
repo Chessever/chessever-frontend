@@ -1,4 +1,5 @@
 import 'package:chessever2/screens/chessboard/game_review/classification_style.dart';
+import 'package:chessever2/screens/chessboard/utils/legible_ink.dart';
 import 'package:chessever2/services/lichess_move_annotations_service.dart';
 import 'package:flutter/material.dart';
 
@@ -116,6 +117,12 @@ NagDisplay? getNagDisplay(int nag) {
       return null;
   }
 }
+
+/// [NagDisplay.color] as TEXT ink for the active theme. Dark returns the
+/// glyph colour untouched; light darkens the same hue until it clears AA on
+/// paper (the slate and dim observation greys read ~2:1 there otherwise).
+Color nagInk(BuildContext context, NagDisplay display, {Color? on}) =>
+    legibleHueInk(context, display.color, on: on);
 
 /// Convenience: the NAG most worth surfacing on the board, in priority order.
 /// Quality NAGs win over evaluation/observation; lower codes win within a tier.

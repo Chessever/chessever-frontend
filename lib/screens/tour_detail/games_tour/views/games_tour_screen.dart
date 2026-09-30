@@ -85,6 +85,14 @@ class _GamesTourScreenState extends ConsumerState<GamesTourScreen>
                                 SvgAsset.tournamentIcon,
                                 height: 35.h,
                                 width: 35.w,
+                                // White stroke art: tint it for paper.
+                                colorFilter:
+                                    context.isLightTheme
+                                        ? ColorFilter.mode(
+                                          context.colors.iconSecondary,
+                                          BlendMode.srcIn,
+                                        )
+                                        : null,
                               ),
                               SizedBox(height: 10.h),
                               Text(

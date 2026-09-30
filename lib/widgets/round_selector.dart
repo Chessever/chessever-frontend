@@ -1,6 +1,5 @@
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:flutter/material.dart';
-import '../theme/app_theme.dart';
 import '../utils/app_typography.dart';
 import '../utils/haptic_feedback_service.dart';
 import '../utils/responsive_helper.dart';
@@ -41,10 +40,12 @@ class RoundSelector extends StatelessWidget {
               style: AppTypography.textSmBold.copyWith(color: context.colors.textPrimary),
             ),
             SizedBox(width: 7.w), // Exact gap: 7px
+            // White chevron art: tinted to ink on paper.
             Image.asset(
               'assets/svgs/round_selector.png',
               width: 20.w,
               height: 20.h,
+              color: context.isLightTheme ? context.colors.iconPrimary : null,
             ),
           ],
         ),
@@ -89,7 +90,7 @@ class RoundSelector extends StatelessWidget {
                       title: Text(
                         'Round $roundNumber',
                         style: AppTypography.textMdMedium.copyWith(
-                          color: isSelected ? kPrimaryColor : context.colors.textPrimary,
+                          color: isSelected ? context.colors.accentText : context.colors.textPrimary,
                         ),
                         textAlign: TextAlign.center,
                       ),

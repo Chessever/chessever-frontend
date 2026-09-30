@@ -19,6 +19,8 @@ import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:chessever2/screens/chessboard/widgets/context_pop_up_menu.dart';
 import 'package:chessever2/screens/library/widgets/library_context_menu.dart';
+import 'package:chessever2/screens/my_space/actions/space_menu_action.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/utils/game_space_shortcut.dart';
 
 class GameCard extends ConsumerWidget {
   const GameCard({
@@ -30,8 +32,13 @@ class GameCard extends ConsumerWidget {
     this.allowStockfishFallback = true,
     this.footerDetail,
     this.showPin = true,
+    this.menuActions,
     super.key,
   });
+
+  /// Replaces the long-press menu's rows (Pin, Share, My Space) for a host
+  /// whose game is its own thing (a saved like: open the copy, edit, remove).
+  final List<LibraryMenuAction> Function(BuildContext context)? menuActions;
 
   final MatchWithComparison matchComparison;
   final FutureOr<void> Function(GamesTourModel game) onPinToggle;
@@ -56,6 +63,26 @@ class GameCard extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    return TappableScale(
+      onTap: () {
+        HapticFeedbackService.cardTap();
+        onTap();
+      },
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onLongPress: () => _showContextMenu(context, ref),
+        child: _surface(context, allowStockfishFallback: allowStockfishFallback),
+      ),
+    );
+  }
+
+  /// The card as drawn in the list. The long-press menu lifts this same
+  /// surface (pin mark, footer and light-theme edge included), so the card in
+  /// focus is the card the user pressed rather than a look-alike.
+  Widget _surface(
+    BuildContext context, {
+    required bool allowStockfishFallback,
+  }) {
     final body = SizedBox(
       width: double.infinity,
       child: Stack(
@@ -73,41 +100,9 @@ class GameCard extends ConsumerWidget {
     // In light theme, lift the card with the same iOS-style treatment as the
     // settings page _SettingCard: faint divider border + soft shadow. The
     // inner sections already round to 12br, so the outer wrapper matches.
-    // Dark theme is unchanged — no wrapper.
-    final wrapped =
-        context.isLightTheme
-            ? DecoratedBox(
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(12.br),
-                border: Border.all(
-                  color: context.colors.divider.withValues(alpha: 0.5),
-                ),
-                boxShadow: [
-                  BoxShadow(
-                    color: context.colors.shadow,
-                    blurRadius: 10,
-                    offset: const Offset(0, 1),
-                  ),
-                ],
-              ),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(12.br),
-                child: body,
-              ),
-            )
-            : body;
-
-    return TappableScale(
-      onTap: () {
-        HapticFeedbackService.cardTap();
-        onTap();
-      },
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onLongPress: () => _showContextMenu(context),
-        child: wrapped,
-      ),
-    );
+    // Dark theme is unchanged — no wrapper. One lift for every row
+    // ([GameCardFrame.lift]), so a saved opening's row cannot drift from it.
+    return GameCardFrame.lift(context, child: body);
   }
 
   /// One menu, everywhere. This used to be a bespoke blurred overlay that
@@ -115,28 +110,188 @@ class GameCard extends ConsumerWidget {
   /// visually unrelated treatment to the one the Library cards use. Both now
   /// go through [showLibraryContextMenu], so a long press feels the same
   /// wherever the user does it.
-  void _showContextMenu(BuildContext context) {
+  void _showContextMenu(BuildContext context, WidgetRef ref) {
     final game = matchComparison.game;
+    final spaceDraft = gameSpaceShortcutDraft(game);
     showLibraryContextMenu(
       context: context,
+      // The lifted copy never starts the engine: the list card already owns
+      // any evaluation, and the copy only lives while the menu is open.
       previewBuilder:
-          (_) => GamesTourGameCardBody(
-            matchComparison: matchComparison,
-            allowStockfishFallback: false,
-          ),
-      actions: [
-        if (showPin)
-          LibraryMenuAction(
-            icon: isPinned ? Icons.push_pin : Icons.push_pin_outlined,
-            label: isPinned ? 'Unpin' : 'Pin',
-            onSelected: () => onPinToggle(game),
-          ),
-        LibraryMenuAction(
-          icon: Icons.ios_share_rounded,
-          label: 'Share',
-          onSelected: () => onShare?.call(game),
+          (previewContext) =>
+              _surface(previewContext, allowStockfishFallback: false),
+      onPreviewTap: () {
+        HapticFeedbackService.cardTap();
+        onTap();
+      },
+      actions:
+          menuActions?.call(context) ??
+          [
+            if (showPin)
+              LibraryMenuAction(
+                icon: isPinned ? Icons.push_pin : Icons.push_pin_outlined,
+                label: isPinned ? 'Unpin' : 'Pin',
+                onSelected: () => onPinToggle(game),
+              ),
+            LibraryMenuAction(
+              icon: Icons.ios_share_rounded,
+              label: 'Share',
+              onSelected: () => onShare?.call(game),
+            ),
+            if (spaceDraft != null)
+              spaceMenuAction(context: context, ref: ref, draft: spaceDraft),
+          ],
+    );
+  }
+}
+
+/// The compact game row without a game: its 60.h player strip (a start
+/// slot where the first player stands, then an end slot) over its 24.h
+/// footer strip, in the row's exact surfaces, radii and light-theme edge.
+/// For a thing that sits among game rows and must read as one of them (a
+/// saved opening: its name and ECO where a player's name and rating stand,
+/// its board at the end, its line where the last move goes).
+///
+/// [startFlex] widens the start slot over the end one (a row of a game
+/// gives each player a third).
+class GameCardFrame extends StatelessWidget {
+  const GameCardFrame({
+    super.key,
+    required this.start,
+    this.end,
+    this.footer,
+    this.startFlex = 1,
+  });
+
+  final Widget start;
+  final Widget? end;
+  final Widget? footer;
+  final int startFlex;
+
+  /// A player's name on the strip.
+  static TextStyle nameStyle(BuildContext context) =>
+      AppTypography.textXsMedium.copyWith(
+        color: context.isLightTheme ? context.colors.textPrimary : kBlackColor,
+      );
+
+  /// A player's title and rating under the name.
+  static TextStyle detailStyle(BuildContext context) =>
+      AppTypography.textXsMedium.copyWith(
+        color:
+            context.isLightTheme
+                ? context.colors.textSecondary
+                : context.colors.surface,
+      );
+
+  /// The last move in the footer.
+  static TextStyle footerStyle(BuildContext context) =>
+      AppTypography.textXsMedium.copyWith(color: context.colors.textPrimary);
+
+  /// The player strip's height.
+  static double get stripHeight => 60.h;
+
+  /// The footer strip's height.
+  static double get footerHeight => 24.h;
+
+  /// The row's player strip around [child]: its height, inset, surface,
+  /// top corners and (on paper) the divider under it. [GameCard] draws its
+  /// players in this very strip.
+  static Widget playerStrip(BuildContext context, {required Widget child}) {
+    final isLight = context.isLightTheme;
+    return Container(
+      height: stripHeight,
+      padding: EdgeInsets.symmetric(horizontal: 16.sp),
+      decoration: BoxDecoration(
+        color: isLight ? context.colors.surface : context.colors.textPrimaryMuted,
+        borderRadius: BorderRadius.only(
+          topLeft: Radius.circular(12.br),
+          topRight: Radius.circular(12.br),
         ),
-      ],
+        border:
+            isLight
+                ? Border(
+                  bottom: BorderSide(
+                    color: context.colors.divider.withValues(alpha: 0.6),
+                    width: 1,
+                  ),
+                )
+                : null,
+      ),
+      child: child,
+    );
+  }
+
+  /// The row's footer strip around [child] (clocks and the last move on a
+  /// game): its height, inset, surface and bottom corners.
+  static Widget footerStrip(BuildContext context, {required Widget child}) {
+    return Container(
+      height: footerHeight,
+      padding: EdgeInsets.symmetric(horizontal: 16.sp),
+      decoration: BoxDecoration(
+        color: context.colors.surface,
+        borderRadius: BorderRadius.only(
+          bottomLeft: Radius.circular(12.br),
+          bottomRight: Radius.circular(12.br),
+        ),
+      ),
+      child: child,
+    );
+  }
+
+  /// The row's lift: on paper a faint divider edge and a tight shadow around
+  /// the rounded card; dark stands on its tone, unwrapped.
+  static Widget lift(BuildContext context, {required Widget child}) {
+    if (!context.isLightTheme) return child;
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(12.br),
+        border: Border.all(
+          color: context.colors.divider.withValues(alpha: 0.5),
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: context.colors.shadow,
+            blurRadius: 10,
+            offset: const Offset(0, 1),
+          ),
+        ],
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(12.br),
+        child: child,
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final trailing = end;
+    return lift(
+      context,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          playerStrip(
+            context,
+            child: Row(
+              children: [
+                Expanded(flex: startFlex, child: start),
+                if (trailing != null)
+                  Expanded(
+                    child: Align(
+                      alignment: Alignment.centerRight,
+                      child: trailing,
+                    ),
+                  ),
+              ],
+            ),
+          ),
+          footerStrip(
+            context,
+            child: Center(child: footer ?? const SizedBox.shrink()),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -253,27 +408,8 @@ class _TopSection extends ConsumerWidget {
     // Light theme: use a flat white surface card for the chip strip and let
     // the divider separate it from the bottom row. Dark theme keeps the
     // historical translucent-text-as-bg trick that the user signed off on.
-    final isLight = context.isLightTheme;
-    return Container(
-      height: 60.h,
-      padding: EdgeInsets.symmetric(horizontal: 16.sp),
-      decoration: BoxDecoration(
-        color:
-            isLight ? context.colors.surface : context.colors.textPrimaryMuted,
-        borderRadius: BorderRadius.only(
-          topLeft: Radius.circular(12.br),
-          topRight: Radius.circular(12.br),
-        ),
-        border:
-            isLight
-                ? Border(
-                  bottom: BorderSide(
-                    color: context.colors.divider.withValues(alpha: 0.6),
-                    width: 1,
-                  ),
-                )
-                : null,
-      ),
+    return GameCardFrame.playerStrip(
+      context,
       child: Row(
         children: [
           Expanded(child: _GamesRound(player: player1)),
@@ -359,12 +495,19 @@ class _CenterContent extends ConsumerWidget {
     // No Spoilers also hides live evaluation. Keep a neutral live-state marker
     // so the card still communicates that moves and clocks are updating.
     if (hideSpoilers) {
-      return Center(child: StatusText(status: 'LIVE', color: kPrimaryColor));
+      return Center(child: StatusText(status: 'LIVE', color: context.colors.accentText));
     }
 
-    // If engine gauge is disabled, show "LIVE" indicator instead of progress bar
+    // A stored unfinished PGN is a recorded position, not a live broadcast.
     if (!showEngineGauge) {
-      return Center(child: StatusText(status: 'LIVE', color: kPrimaryColor));
+      return Center(
+        child: StatusText(
+          status: matchWithComparison.game.source == GameSource.supabase
+              ? 'LIVE'
+              : '*',
+          color: context.colors.accentText,
+        ),
+      );
     }
 
     // Show the eval progress bar
@@ -403,8 +546,16 @@ class _BottomSection extends ConsumerWidget {
       ),
     );
 
-    // When clocks are hidden or game hasn't started, handle accordingly
-    if (!showClock || !matchComparison.game.hasStarted) {
+    final game = matchComparison.game;
+    final storedWithoutClocks =
+        game.source != GameSource.supabase &&
+        game.whiteClockSeconds == null &&
+        game.blackClockSeconds == null &&
+        game.whiteClockCentiseconds == 0 &&
+        game.blackClockCentiseconds == 0;
+    // A stored game may have real moves but no recorded clocks. Its move
+    // notation remains useful; placeholder timers do not.
+    if (!showClock || !game.hasStarted || storedWithoutClocks) {
       final detail = footerDetail?.trim() ?? '';
       final hasNotation =
           formatGameCardLastMoveNotation(
@@ -412,16 +563,8 @@ class _BottomSection extends ConsumerWidget {
             fen: matchComparison.game.fen,
           )?.isNotEmpty ??
           false;
-      return Container(
-        height: 24.h,
-        padding: EdgeInsets.symmetric(horizontal: 16.sp),
-        decoration: BoxDecoration(
-          color: context.colors.surface,
-          borderRadius: BorderRadius.only(
-            bottomLeft: Radius.circular(12.br),
-            bottomRight: Radius.circular(12.br),
-          ),
-        ),
+      return GameCardFrame.footerStrip(
+        context,
         child: Row(
           children: [
             if (!hasNotation && detail.isNotEmpty)
@@ -445,16 +588,8 @@ class _BottomSection extends ConsumerWidget {
       );
     }
 
-    return Container(
-      height: 24.h,
-      padding: EdgeInsets.symmetric(horizontal: 16.sp),
-      decoration: BoxDecoration(
-        color: context.colors.surface,
-        borderRadius: BorderRadius.only(
-          bottomLeft: Radius.circular(12.br),
-          bottomRight: Radius.circular(12.br),
-        ),
-      ),
+    return GameCardFrame.footerStrip(
+      context,
       child: Row(
         children:
             matchComparison.comparison == MatchComparison.sameOrder
@@ -546,7 +681,10 @@ class _GamesRound extends ConsumerWidget {
             SizedBox(width: 4.w),
             Flexible(
               child: Text(
-                '${player.title} ${player.rating}',
+                [
+                  if (player.title.trim().isNotEmpty) player.title.trim(),
+                  if (player.rating > 0) '${player.rating}',
+                ].join(' '),
                 style: AppTypography.textXsMedium.copyWith(color: ratingColor),
                 overflow: TextOverflow.ellipsis,
               ),
@@ -594,6 +732,7 @@ class _TimerWidget extends StatelessWidget {
     final isGameFinished = effectiveStatus.isFinished;
 
     final isClockRunning =
+        gamesTourModel.source == GameSource.supabase &&
         !isGameFinished &&
         gamesTourModel.gameStatus.isOngoing &&
         gamesTourModel.lastMoveTime != null &&
@@ -612,6 +751,12 @@ class _TimerWidget extends StatelessWidget {
             ? gamesTourModel.whiteClockSeconds
             : gamesTourModel.blackClockSeconds;
 
+    if (gamesTourModel.source != GameSource.supabase &&
+        clockSeconds == null &&
+        clockCentiseconds == 0) {
+      return const SizedBox.shrink();
+    }
+
     return Center(
       child: Container(
         padding: EdgeInsets.symmetric(horizontal: 6.w, vertical: 2.h),
@@ -624,7 +769,7 @@ class _TimerWidget extends StatelessWidget {
           border:
               shouldHighlightClock
                   ? Border.all(
-                    color: kPrimaryColor.withValues(alpha: 0.4),
+                    color: context.colors.accentText.withValues(alpha: 0.4),
                     width: 0.7,
                   )
                   : null,
@@ -646,7 +791,7 @@ class _TimerWidget extends StatelessWidget {
                   isGameFinished
                       ? context.colors.textPrimary
                       : (shouldHighlightClock
-                          ? kPrimaryColor
+                          ? context.colors.accentText
                           : context.colors.textPrimaryMuted),
             ),
           ),

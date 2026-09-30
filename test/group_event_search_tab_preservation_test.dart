@@ -3,11 +3,31 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 void main() {
-  for (final originalCategory in <GroupEventCategory>[
-    GroupEventCategory.forYou,
-    GroupEventCategory.current,
-    GroupEventCategory.past,
-  ]) {
+  test('Events opens on Current', () {
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+
+    expect(
+      container.read(selectedGroupCategoryProvider),
+      GroupEventCategory.current,
+    );
+  });
+
+  test('clearing a search started from the default tab returns to Current', () {
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+    final controller = container.read(groupEventSearchTabControllerProvider);
+
+    controller.showSearch();
+    controller.restorePreviousTab();
+
+    expect(
+      container.read(selectedGroupCategoryProvider),
+      GroupEventCategory.current,
+    );
+  });
+
+  for (final originalCategory in eventsHomeCategories) {
     test('clearing search restores the $originalCategory home tab', () {
       final container = ProviderContainer();
       addTearDown(container.dispose);

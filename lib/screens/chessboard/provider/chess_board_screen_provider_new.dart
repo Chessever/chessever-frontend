@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:math' as math;
+import 'package:chessever2/screens/chessboard/utils/move_hold_repeater.dart';
 import 'package:chessever2/providers/board_settings_provider_new.dart';
 import 'package:chessever2/repository/library/library_repository.dart';
 import 'package:chessever2/repository/library/models/saved_analysis.dart';
@@ -13,6 +14,7 @@ import 'package:chessever2/repository/supabase/game/game_repository.dart';
 import 'package:chessever2/screens/chessboard/analysis/chess_game.dart';
 import 'package:chessever2/screens/chessboard/analysis/chess_game_navigator.dart';
 import 'package:chessever2/screens/chessboard/analysis/chess_game_navigator_state_manager.dart';
+import 'package:chessever2/screens/chessboard/classification_fx/classification_fx.dart';
 import 'package:chessever2/screens/chessboard/provider/board_eval_restart_policy.dart';
 import 'package:chessever2/screens/chessboard/provider/analysis_view_session.dart';
 import 'package:chessever2/screens/chessboard/provider/current_eval_provider.dart';
@@ -28,7 +30,6 @@ import 'package:chessever2/screens/library/utils/gamebase_pgn_builder.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/utils/live_game_position_resolver.dart';
 import 'package:chessever2/theme/app_theme.dart';
-import 'package:chessever2/utils/audio_player_service.dart';
 import 'package:chessever2/utils/chess_title_utils.dart';
 import 'package:chessever2/utils/pgn_clock_utils.dart';
 import 'package:chessever2/utils/pgn_time_control.dart';
@@ -265,7 +266,7 @@ class ChessBoardScreenNotifierNew
   SavedAnalysisData? savedAnalysisData;
   final bool startAtLastMove;
   final String? initialFen;
-  Timer? _longPressTimer;
+  late final _moveHold = MoveHoldRepeater(onEnd: stopLongPress);
   // Owned by this notifier, independent of its remappable PageView index.
   Timer? _evaluationTimer;
   bool _hasParsedMoves = false;
@@ -3909,10 +3910,9 @@ class ChessBoardScreenNotifierNew
     // Determine the initial move position
     // Priority: savedAnalysisData.movePointer > savedAnalysisData.lastViewedPosition > currentState.currentMoveIndex
     List<int> movePointer;
-    if (savedAnalysisData != null &&
-        savedAnalysisData!.movePointer != null &&
-        savedAnalysisData!.movePointer!.isNotEmpty) {
+    if (savedAnalysisData?.movePointer != null) {
       // Use saved move pointer to restore exact position in variation tree
+      // (an explicitly empty pointer means the starting position).
       movePointer = savedAnalysisData!.movePointer!;
       debugPrint(
         '🎯 ChessBoard[$index]: Restoring saved movePointer: $movePointer',
@@ -5422,7 +5422,13 @@ class ChessBoardScreenNotifierNew
       return; // Sound disabled, skip playing
     }
 
-    AudioPlayerService.instance.playSfxForSan(san);
+    // Always the ordinary move sound. When this move is classified, the board
+    // screen's audio listener has already announced it: that listener resolves
+    // the class from the same badge the board draws, and it runs synchronously
+    // on the state change that precedes every call here. A classification
+    // sound wins over the ordinary one for the same move, so this call yields.
+    // (Engine-line steps that never enter the game tree are never classified.)
+    ClassificationSfx.playMove(san: san);
   }
 
   bool _ensureVariantSelection() {
@@ -7743,61 +7749,37 @@ class ChessBoardScreenNotifierNew
     }
   }
 
-  void startLongPressForward() {
+  void startLongPressForward() => _startMoveHold(forward: true);
+
+  void startLongPressBackward() => _startMoveHold(forward: false);
+
+  void _startMoveHold({required bool forward}) {
     _isLongPressing = true;
-    _longPressTimer?.cancel();
-
-    // Trigger initial haptic feedback
     HapticFeedback.mediumImpact();
-
-    // Faster interval for smoother fast-forward (150ms instead of 300ms)
-    _longPressTimer = Timer.periodic(const Duration(milliseconds: 150), (_) {
-      try {
-        final currentState = state.value;
-        final canAdvance =
-            currentState != null &&
-            _canMoveForwardInCurrentContext(currentState);
-        if (canAdvance && !_isProcessingMove) {
-          // Light haptic feedback on each step
-          HapticFeedback.selectionClick();
-          unawaited(moveForward());
-        } else {
-          // Final haptic feedback when reaching end
-          HapticFeedback.lightImpact();
-          stopLongPress();
-        }
-      } on StateError {
-        stopLongPress();
+    _moveHold.start(() async {
+      if (!mounted) return MoveHoldStep.end;
+      // A slow navigation/evaluation cancellation is not the end of the game.
+      // Keep the hold alive and retry once the move has settled.
+      if (_isProcessingMove || _isNavigationProcessing) {
+        return MoveHoldStep.waiting;
       }
-    });
-  }
-
-  void startLongPressBackward() {
-    _isLongPressing = true;
-    _longPressTimer?.cancel();
-
-    // Trigger initial haptic feedback
-    HapticFeedback.mediumImpact();
-
-    // Faster interval for smoother fast-backward (150ms instead of 300ms)
-    _longPressTimer = Timer.periodic(const Duration(milliseconds: 150), (_) {
-      try {
-        final currentState = state.value;
-        final canRetreat =
-            currentState != null &&
-            _canMoveBackwardInCurrentContext(currentState);
-        if (canRetreat && !_isProcessingMove) {
-          // Light haptic feedback on each step
-          HapticFeedback.selectionClick();
-          unawaited(moveBackward());
-        } else {
-          // Final haptic feedback when reaching start
-          HapticFeedback.lightImpact();
-          stopLongPress();
-        }
-      } on StateError {
-        stopLongPress();
+      final current = state.valueOrNull;
+      final canMove =
+          current != null &&
+          (forward
+              ? _canMoveForwardInCurrentContext(current)
+              : _canMoveBackwardInCurrentContext(current));
+      if (!canMove) {
+        HapticFeedback.lightImpact();
+        return MoveHoldStep.end;
       }
+      HapticFeedback.selectionClick();
+      if (forward) {
+        await moveForward();
+      } else {
+        await moveBackward();
+      }
+      return MoveHoldStep.moved;
     });
   }
 
@@ -7808,8 +7790,7 @@ class ChessBoardScreenNotifierNew
   double getBlackRatio(double eval) => 1.0 - getWhiteRatio(eval);
 
   void stopLongPress() {
-    _longPressTimer?.cancel();
-    _longPressTimer = null;
+    _moveHold.stop();
     if (_isLongPressing) {
       _isLongPressing = false;
       _cancelEvaluation = true;
@@ -7822,7 +7803,7 @@ class ChessBoardScreenNotifierNew
   @override
   void dispose() {
     _evaluationTimer?.cancel();
-    _longPressTimer?.cancel();
+    _moveHold.stop();
     _isLongPressing = false;
     _cancelEvaluation = true;
     for (final request in _navigationQueue) {

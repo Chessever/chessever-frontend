@@ -9,10 +9,12 @@ void main() {
     ($) async {
       await launchAppAndReachSignedInShell($);
 
+      // Home opens on For You (its Today page).
       await expectVisible($, E2eIds.homeRoot);
-      await expectVisible($, E2eIds.eventsRoot);
-      await expectVisible($, E2eIds.navCalendar);
-      await expectVisible($, E2eIds.navLibrary);
+      await expectVisible($, E2eIds.forYouRoot);
+      await expectVisible($, E2eIds.navEvents);
+      await expectVisible($, E2eIds.navForYou);
+      await expectVisible($, E2eIds.navCollections);
     },
     config: patrolE2eConfig,
   );

@@ -5,7 +5,6 @@ import 'package:chessever2/screens/player_profile/provider/player_profile_provid
 import 'package:chessever2/screens/player_profile/utils/twic_event_navigation.dart';
 import 'package:chessever2/screens/player_profile/widgets/player_profile_resolved_event_card.dart';
 import 'package:chessever2/theme/app_colors.dart';
-import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/scroll_cache.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
@@ -391,7 +390,7 @@ class _PlayerEventsTabState extends ConsumerState<PlayerEventsTab>
                 child: Text(
                   'This player has no recorded tournament participations.',
                   style: AppTypography.textSmRegular.copyWith(
-                    color: context.colors.textPrimary.withValues(alpha: 0.6),
+                    color: context.textInk(0.6),
                   ),
                   textAlign: TextAlign.center,
                 ),
@@ -457,7 +456,7 @@ class _PlayerEventsTabState extends ConsumerState<PlayerEventsTab>
                 child: Text(
                   error,
                   style: AppTypography.textSmRegular.copyWith(
-                    color: context.colors.textPrimary.withValues(alpha: 0.6),
+                    color: context.textInk(0.6),
                   ),
                   textAlign: TextAlign.center,
                 ),
@@ -663,7 +662,8 @@ class _EventsListContent extends ConsumerWidget {
     BuildContext context,
     GameTimeControlFilter timeControl,
   ) {
-    const filterRedColor = Color(0xFFEF4444);
+    final filterRedColor =
+        context.isLightTheme ? context.colors.danger : const Color(0xFFEF4444);
     return Center(
       child: Padding(
         padding: EdgeInsets.only(top: 40.h),
@@ -686,7 +686,7 @@ class _EventsListContent extends ConsumerWidget {
             Text(
               'This player has no ${timeControl.displayText.toLowerCase()} tournaments.\nTap the time control card to clear filter.',
               style: AppTypography.textSmRegular.copyWith(
-                color: context.colors.textPrimary.withValues(alpha: 0.55),
+                color: context.textInk(0.55),
               ),
               textAlign: TextAlign.center,
             ),
@@ -790,7 +790,7 @@ class _StatsHeader extends StatelessWidget {
               _StatBox(
                 value: totalEvents.toString(),
                 label: 'Events',
-                color: kPrimaryColor,
+                color: context.colors.accentText,
               ),
               SizedBox(width: 12.w),
               _StatBox(
@@ -820,7 +820,7 @@ class _StatsHeader extends StatelessWidget {
   }
 
   Color _getScoreColor(BuildContext context, double score) {
-    if (score >= 0.6) return kGreenColor;
+    if (score >= 0.6) return context.colors.successStrong;
     if (score >= 0.4) return context.colors.textPrimary;
     return context.colors.danger;
   }
@@ -854,7 +854,7 @@ class _StatBox extends StatelessWidget {
             Text(
               label,
               style: AppTypography.textXsRegular.copyWith(
-                color: context.colors.textPrimary.withValues(alpha: 0.6),
+                color: context.textInk(0.6),
               ),
             ),
           ],
@@ -910,7 +910,7 @@ class _EventsPaginationFooter extends StatelessWidget {
           child: Text(
             'Loaded $loadedEvents events',
             style: AppTypography.textXsRegular.copyWith(
-              color: context.colors.textPrimary.withValues(alpha: 0.45),
+              color: context.textInk(0.45),
             ),
           ),
         ),
@@ -974,13 +974,13 @@ class _PlayerEventCard extends ConsumerWidget {
                 Icon(
                   Icons.sports_esports_outlined,
                   size: 14.sp,
-                  color: context.colors.textPrimary.withValues(alpha: 0.5),
+                  color: context.textInk(0.5),
                 ),
                 SizedBox(width: 4.w),
                 Text(
                   '${playerEventData.gamesPlayed} ${playerEventData.gamesPlayed == 1 ? 'game' : 'games'}',
                   style: AppTypography.textXsRegular.copyWith(
-                    color: context.colors.textPrimary.withValues(alpha: 0.5),
+                    color: context.textInk(0.5),
                   ),
                 ),
               ],
@@ -1037,7 +1037,7 @@ class _PlayerEventCard extends ConsumerWidget {
   Color _getScoreColor(BuildContext context, double score, int totalGames) {
     if (totalGames == 0) return context.colors.textPrimary;
     final percentage = score / totalGames;
-    if (percentage >= 0.6) return kGreenColor;
+    if (percentage >= 0.6) return context.colors.successStrong;
     if (percentage >= 0.4) return context.colors.textPrimary;
     return context.colors.danger;
   }

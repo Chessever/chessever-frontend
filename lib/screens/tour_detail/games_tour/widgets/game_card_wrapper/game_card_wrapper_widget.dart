@@ -1,4 +1,6 @@
 import 'package:chessever2/screens/chessboard/widgets/chess_board_from_fen_new.dart';
+import 'package:chessever2/screens/library/widgets/library_context_menu.dart'
+    show LibraryMenuAction;
 import 'package:chessever2/screens/chessboard/utils/game_list_snapshot.dart';
 import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
 import 'package:chessever2/screens/chessboard/provider/game_pgn_stream_provider.dart';
@@ -39,9 +41,13 @@ class GameCardWrapperWidget extends ConsumerWidget {
   /// no clock and no last move so the footer strip would otherwise be blank.
   final String? footerDetail;
 
-  /// Passed through to [GameCard]: drops the long-press Pin item where there is
-  /// no pin target (archive lists stub [onPinToggle] out).
+  /// Passed through to [GameCard] and [ChessBoardFromFENNew]: drops the
+  /// long-press Pin item where there is no pin target (archive lists stub
+  /// [onPinToggle] out).
   final bool showPin;
+
+  /// Replaces the card's long-press rows (see [GameCard.menuActions]).
+  final List<LibraryMenuAction> Function(BuildContext context)? menuActions;
 
   const GameCardWrapperWidget({
     super.key,
@@ -62,6 +68,7 @@ class GameCardWrapperWidget extends ConsumerWidget {
     this.comparison = MatchComparison.sameOrder,
     this.footerDetail,
     this.showPin = true,
+    this.menuActions,
   });
 
   @override
@@ -158,6 +165,11 @@ class GameCardWrapperWidget extends ConsumerWidget {
                 scoreCardViewSource: viewSource,
                 scoreCardGamesContext: getUpdatedGamesList(),
                 playerProfileDataSource: playerProfileDataSource,
+                // Same Pin policy as the list card below: hosts with no pin
+                // target (Discovery wide boards, archive lists) drop the row
+                // instead of offering one that pins into the wrong scope.
+                showPin: showPin,
+                menuActions: menuActions,
               )
               : GameCard(
                 key: ValueKey(keyValue),
@@ -171,6 +183,7 @@ class GameCardWrapperWidget extends ConsumerWidget {
                 allowStockfishFallback: effectiveAllowStockfishFallback,
                 footerDetail: footerDetail,
                 showPin: showPin,
+                menuActions: menuActions,
                 onTap: navigateToGame,
               ),
     );

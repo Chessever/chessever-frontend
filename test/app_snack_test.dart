@@ -1,3 +1,5 @@
+import 'package:chessever2/theme/app_colors.dart';
+import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/app_snack.dart';
 import 'package:flutter/material.dart';
@@ -143,5 +145,109 @@ void main() {
 
     expect(find.text('first'), findsNothing);
     expect(find.text('second'), findsOneWidget);
+  });
+
+  group('capsule per theme', () {
+    Widget themed(ThemeData theme, void Function(BuildContext) onTap) {
+      return MaterialApp(
+        theme: theme,
+        home: Builder(
+          builder: (context) {
+            ResponsiveHelper.init(context);
+            return Scaffold(
+              body: Builder(
+                builder:
+                    (inner) => TextButton(
+                      onPressed: () => onTap(inner),
+                      child: const Text('go'),
+                    ),
+              ),
+            );
+          },
+        ),
+      );
+    }
+
+    double contrast(Color a, Color b) {
+      final la = a.computeLuminance(), lb = b.computeLuminance();
+      final hi = la > lb ? la : lb, lo = la > lb ? lb : la;
+      return (hi + 0.05) / (lo + 0.05);
+    }
+
+    Future<(Color capsule, Color message, Color? action)> show(
+      WidgetTester tester,
+      ThemeData theme,
+      AppSnackTone tone, {
+      String? action,
+    }) async {
+      await tester.pumpWidget(
+        themed(
+          theme,
+          (c) => showAppSnack(
+            c,
+            'Message',
+            tone: tone,
+            actionLabel: action,
+            onAction: action == null ? null : () {},
+          ),
+        ),
+      );
+      await tester.tap(find.text('go'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+      final capsule =
+          tester
+              .widgetList<Container>(
+                find.descendant(
+                  of: find.byType(SnackBar),
+                  matching: find.byType(Container),
+                ),
+              )
+              .map((c) => c.decoration)
+              .whereType<BoxDecoration>()
+              .firstWhere((d) => d.borderRadius != null)
+              .color!;
+      final message = tester.widget<Text>(find.text('Message')).style!.color!;
+      final actionColor =
+          action == null
+              ? null
+              : tester.widget<Text>(find.text(action)).style!.color!;
+      await tester.pump(const Duration(seconds: 6));
+      await tester.pump(const Duration(milliseconds: 400));
+      return (capsule, message, actionColor);
+    }
+
+    testWidgets('dark keeps the shipped ink-black capsule', (tester) async {
+      final (capsule, message, _) = await show(
+        tester,
+        AppTheme.darkTheme,
+        AppSnackTone.neutral,
+      );
+      expect(capsule, const Color(0xFF08080A));
+      expect(message, Colors.white.withValues(alpha: 0.94));
+    });
+
+    testWidgets('light floats a paper capsule with AA ink', (tester) async {
+      final colors = AppColors.light;
+      for (final tone in AppSnackTone.values) {
+        final (capsule, message, action) = await show(
+          tester,
+          AppTheme.lightTheme,
+          tone,
+          action: 'Undo',
+        );
+        expect(capsule, colors.popup, reason: '$tone capsule');
+        expect(
+          contrast(message, capsule),
+          greaterThanOrEqualTo(4.5),
+          reason: '$tone message',
+        );
+        expect(
+          contrast(action!, capsule),
+          greaterThanOrEqualTo(4.5),
+          reason: '$tone action',
+        );
+      }
+    });
   });
 }

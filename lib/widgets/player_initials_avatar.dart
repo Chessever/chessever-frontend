@@ -1,5 +1,5 @@
 import 'package:cached_network_image/cached_network_image.dart';
-import 'package:chessever2/theme/app_theme.dart';
+import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:flutter/material.dart';
@@ -51,6 +51,28 @@ class PlayerInitialsAvatar extends StatelessWidget {
     final effectiveBorderRadius =
         borderRadius ?? (isCircular ? size / 2 : 12.br);
     final hasPhoto = photoUrl != null && photoUrl!.isNotEmpty;
+    final hasTitle = title != null && title!.isNotEmpty;
+    final badgeFill =
+        hasTitle
+            ? titleBadgeFill(
+              context,
+              titleBadgeColor ?? getTitleBadgeColor(title!),
+            )
+            : null;
+    // Dark keeps the shipped band exactly: sized by its padding and label,
+    // with the initials centred on the whole square behind it. On paper the
+    // band's height is fixed by the avatar, not by the reader's text scale,
+    // so the initials can be centred in the space above it.
+    final light = context.isLightTheme;
+    final bandHeight = light && badgeFill != null ? _titleBandHeight() : 0.0;
+    final bandLabel =
+        badgeFill == null
+            ? null
+            : AppTypography.textXsMedium.copyWith(
+              color: titleBadgeInk(context, badgeFill),
+              fontSize: 9.sp,
+              fontWeight: FontWeight.w600,
+            );
 
     // Transparent Material ancestor ensures Text descendants always have a
     // Material parent — without this the widget renders with yellow-underline
@@ -69,33 +91,56 @@ class PlayerInitialsAvatar extends StatelessWidget {
                       imageUrl: photoUrl!,
                       size: size,
                       initials: initials,
+                      bottomInset: bandHeight,
                     )
-                    : _InitialsPlaceholder(initials: initials, size: size),
+                    : _InitialsPlaceholder(
+                      initials: initials,
+                      size: size,
+                      bottomInset: bandHeight,
+                    ),
           ),
-          if (title != null && title!.isNotEmpty)
+          if (badgeFill != null && bandLabel != null)
             Positioned(
               bottom: 0,
               left: 0,
               right: 0,
-              child: Container(
-                padding: EdgeInsets.symmetric(horizontal: 3.w, vertical: 1.5.h),
-                decoration: BoxDecoration(
-                  color: titleBadgeColor ?? getTitleBadgeColor(title!),
-                  borderRadius: BorderRadius.only(
-                    bottomLeft: Radius.circular(effectiveBorderRadius - 2),
-                    bottomRight: Radius.circular(effectiveBorderRadius - 2),
-                  ),
-                ),
-                child: Text(
-                  title!,
-                  textAlign: TextAlign.center,
-                  style: AppTypography.textXsMedium.copyWith(
-                    color: Colors.white,
-                    fontSize: 9.sp,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ),
+              child:
+                  light
+                      ? Container(
+                        height: bandHeight,
+                        alignment: Alignment.center,
+                        padding: EdgeInsets.symmetric(horizontal: 3.w),
+                        decoration: _titleBandDecoration(
+                          badgeFill,
+                          effectiveBorderRadius,
+                        ),
+                        child: Text(
+                          title!,
+                          textAlign: TextAlign.center,
+                          maxLines: 1,
+                          softWrap: false,
+                          // Sized to the avatar, not to reading text.
+                          textScaler: TextScaler.noScaling,
+                          style: bandLabel.copyWith(
+                            height: _kTitleBandLineHeight,
+                          ),
+                        ),
+                      )
+                      : Container(
+                        padding: EdgeInsets.symmetric(
+                          horizontal: 3.w,
+                          vertical: 1.5.h,
+                        ),
+                        decoration: _titleBandDecoration(
+                          badgeFill,
+                          effectiveBorderRadius,
+                        ),
+                        child: Text(
+                          title!,
+                          textAlign: TextAlign.center,
+                          style: bandLabel,
+                        ),
+                      ),
             ),
         ],
       ),
@@ -103,17 +148,34 @@ class PlayerInitialsAvatar extends StatelessWidget {
   }
 }
 
+BoxDecoration _titleBandDecoration(Color fill, double avatarRadius) =>
+    BoxDecoration(
+      color: fill,
+      borderRadius: BorderRadius.only(
+        bottomLeft: Radius.circular(avatarRadius - 2),
+        bottomRight: Radius.circular(avatarRadius - 2),
+      ),
+    );
+
+/// Line height of the title band label (AppTypography.textXsMedium's 20/12).
+const double _kTitleBandLineHeight = 20 / 12;
+
+/// Height of the GM/IM band: one unscaled 9sp label line plus its padding.
+double _titleBandHeight() => 9.sp * _kTitleBandLineHeight + 2 * 1.5.h;
+
 /// A network image widget that validates the loaded image isn't a placeholder/black image.
 /// Uses ColorFiltered to detect mostly-black images and falls back to initials.
 class _ValidatedNetworkImage extends StatefulWidget {
   final String imageUrl;
   final double size;
   final String initials;
+  final double bottomInset;
 
   const _ValidatedNetworkImage({
     required this.imageUrl,
     required this.size,
     required this.initials,
+    this.bottomInset = 0,
   });
 
   @override
@@ -128,7 +190,7 @@ class _ValidatedNetworkImageState extends State<_ValidatedNetworkImage> {
   Widget build(BuildContext context) {
     // If we've determined the image is invalid, show fallback immediately
     if (_showFallback) {
-      return _InitialsPlaceholder(initials: widget.initials, size: widget.size);
+      return _placeholder();
     }
 
     final cacheSize =
@@ -142,16 +204,8 @@ class _ValidatedNetworkImageState extends State<_ValidatedNetworkImage> {
       memCacheWidth: cacheSize,
       fadeInDuration: const Duration(milliseconds: 200),
       fadeOutDuration: const Duration(milliseconds: 200),
-      placeholder:
-          (context, url) => _InitialsPlaceholder(
-            initials: widget.initials,
-            size: widget.size,
-          ),
-      errorWidget:
-          (context, url, error) => _InitialsPlaceholder(
-            initials: widget.initials,
-            size: widget.size,
-          ),
+      placeholder: (context, url) => _placeholder(),
+      errorWidget: (context, url, error) => _placeholder(),
       imageBuilder: (context, imageProvider) {
         // Validate the image once loaded
         if (!_imageValidated) {
@@ -166,23 +220,23 @@ class _ValidatedNetworkImageState extends State<_ValidatedNetworkImage> {
           frameBuilder: (context, child, frame, wasSynchronouslyLoaded) {
             // If frame is null, image isn't loaded yet
             if (frame == null) {
-              return _InitialsPlaceholder(
-                initials: widget.initials,
-                size: widget.size,
-              );
+              return _placeholder();
             }
             return child;
           },
           errorBuilder: (context, error, stackTrace) {
-            return _InitialsPlaceholder(
-              initials: widget.initials,
-              size: widget.size,
-            );
+            return _placeholder();
           },
         );
       },
     );
   }
+
+  Widget _placeholder() => _InitialsPlaceholder(
+    initials: widget.initials,
+    size: widget.size,
+    bottomInset: widget.bottomInset,
+  );
 
   Future<void> _validateImage(ImageProvider imageProvider) async {
     _imageValidated = true;
@@ -228,30 +282,78 @@ class _InitialsPlaceholder extends StatelessWidget {
   final String initials;
   final double size;
 
-  const _InitialsPlaceholder({required this.initials, required this.size});
+  /// Height of the title band laid over the avatar's bottom edge, or 0.
+  /// The initials centre in the space above it and size to fit there.
+  final double bottomInset;
+
+  const _InitialsPlaceholder({
+    required this.initials,
+    required this.size,
+    this.bottomInset = 0,
+  });
+
+  static const double _letterSpacing = 1.0;
 
   @override
   Widget build(BuildContext context) {
-    final fontSize = size * 0.38;
+    // Dark keeps the shipped placeholder exactly: initials centred on the
+    // whole square at size x 0.38, scaling with the reader's text size.
+    if (!context.isLightTheme) {
+      return Container(
+        width: size,
+        height: size,
+        decoration: BoxDecoration(gradient: context.colors.profileGradient),
+        child: Center(
+          child: Text(
+            initials.isNotEmpty ? initials.toUpperCase() : '?',
+            style: TextStyle(
+              fontFamily: 'InterDisplay',
+              fontSize: size * 0.38,
+              fontWeight: FontWeight.w700,
+              color: Colors.white,
+              letterSpacing: _letterSpacing,
+            ),
+          ),
+        ),
+      );
+    }
+
+    // The space the band leaves clear (never under half the avatar).
+    final clear = (size - bottomInset).clamp(size * 0.5, size);
+    final fontSize = (size * 0.38).clamp(0.0, clear * 0.5);
     final effectiveInitials =
         initials.isNotEmpty ? initials.toUpperCase() : '?';
 
     return Container(
       width: size,
       height: size,
-      decoration: const BoxDecoration(
-        // Use the app's profile initials gradient for consistency
-        gradient: kProfileInitialsGradient,
+      padding: EdgeInsets.only(bottom: size - clear),
+      decoration: BoxDecoration(
+        // The app's profile initials gradient (a deeper teal on paper, so
+        // the white initials clear AA there).
+        gradient: context.colors.profileGradient,
       ),
       child: Center(
-        child: Text(
-          effectiveInitials,
-          style: TextStyle(
-            fontFamily: 'InterDisplay',
-            fontSize: fontSize,
-            fontWeight: FontWeight.w700,
-            color: Colors.white,
-            letterSpacing: 1.0,
+        child: FittedBox(
+          fit: BoxFit.scaleDown,
+          child: Padding(
+            // Letter spacing trails the last glyph; balance it on the left
+            // so the pair sits on the true centre.
+            padding: const EdgeInsets.only(left: _letterSpacing),
+            child: Text(
+              effectiveInitials,
+              maxLines: 1,
+              softWrap: false,
+              // Sized to the avatar, not to reading text.
+              textScaler: TextScaler.noScaling,
+              style: TextStyle(
+                fontFamily: 'InterDisplay',
+                fontSize: fontSize,
+                fontWeight: FontWeight.w700,
+                color: Colors.white,
+                letterSpacing: _letterSpacing,
+              ),
+            ),
           ),
         ),
       ),
@@ -436,17 +538,24 @@ class _CompactInitialsPlaceholder extends StatelessWidget {
     final fontSize = size * 0.38;
     final effectiveInitials =
         initials.isNotEmpty ? initials.toUpperCase() : '?';
+    // Dark keeps the shipped label as it was; paper pins it to the avatar.
+    final light = context.isLightTheme;
 
     return Container(
       width: size,
       height: size,
-      decoration: const BoxDecoration(
-        // Use the app's profile initials gradient for consistency
-        gradient: kProfileInitialsGradient,
+      decoration: BoxDecoration(
+        // The app's profile initials gradient (a deeper teal on paper, so
+        // the white initials clear AA there).
+        gradient: context.colors.profileGradient,
       ),
       child: Center(
         child: Text(
           effectiveInitials,
+          maxLines: light ? 1 : null,
+          softWrap: light ? false : null,
+          // Sized to the avatar, not to reading text.
+          textScaler: light ? TextScaler.noScaling : null,
           style: TextStyle(
             fontFamily: 'InterDisplay',
             fontSize: fontSize,
@@ -492,6 +601,44 @@ String getPlayerInitials(String name) {
   }
 
   return '?';
+}
+
+/// Near-black label ink for bright title fills: the paper theme's text ink.
+Color get _titleBadgeDarkInk => AppColors.light.textPrimary;
+
+/// Label ink on a title badge fill.
+///
+/// Dark keeps the shipped design exactly: every title label is white. Light
+/// picks by contrast (the band sits on the avatar, not the page): white on
+/// deep fills, the paper ink on bright ones. Green, gold, amber, teal,
+/// bronze, pink and gray read 2-3.5:1 with white, so on paper they take the
+/// ink.
+Color titleBadgeInk(BuildContext context, Color fill) {
+  const white = Color(0xFFFFFFFF);
+  if (!context.isLightTheme) return white;
+  final ink = _titleBadgeDarkInk;
+  return wcagContrast(white, fill) >= wcagContrast(ink, fill) ? white : ink;
+}
+
+/// A title badge's fill.
+///
+/// Dark keeps every title hue exactly as shipped. In light, a hue on which
+/// neither a white nor an ink label reaches AA (violet, indigo and purple
+/// top out near 4.2-4.5:1) is deepened toward ink just enough for the white
+/// label to clear 4.5:1; every other hue is kept. Pair it with
+/// [titleBadgeInk] on the returned fill.
+Color titleBadgeFill(BuildContext context, Color hue) {
+  if (!context.isLightTheme) return hue;
+  const white = Color(0xFFFFFFFF);
+  final ink = _titleBadgeDarkInk;
+  if (wcagContrast(white, hue) >= 4.5 || wcagContrast(ink, hue) >= 4.5) {
+    return hue;
+  }
+  for (var step = 1; step <= 20; step++) {
+    final deeper = Color.lerp(hue, ink, step / 20)!;
+    if (wcagContrast(white, deeper) >= 4.5) return deeper;
+  }
+  return ink;
 }
 
 /// Returns the appropriate badge color for a chess title.

@@ -26,12 +26,15 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 ///
 /// Free users may open only games dated **Today** (see
 /// [isMiniatureGameLocked]); older or undated games show the premium paywall
-/// and do not navigate until the user is subscribed.
+/// and do not navigate until the user is subscribed. A confirmed purchase or
+/// restore resumes straight into the game that was tapped. [returnTo] names
+/// the surface that resumes, for the paywall analytics (a fixed identifier).
 Future<void> openMiniatureGame({
   required BuildContext context,
   required WidgetRef ref,
   required List<GamesTourModel> games,
   required int index,
+  String returnTo = kMiniaturesReturnTo,
 }) async {
   if (index < 0 || index >= games.length) return;
 
@@ -41,11 +44,36 @@ Future<void> openMiniatureGame({
     isSubscribed: subscription.isSubscribed,
     subscriptionLoading: subscription.isLoading,
   );
-  if (locked) {
-    final unlocked = await requirePremiumGuard(context, ref);
-    if (!unlocked || !context.mounted) return;
+  if (!locked) {
+    return _launchMiniatureGame(
+      context: context,
+      ref: ref,
+      games: games,
+      index: index,
+    );
   }
+  await requirePremiumGuard(
+    context,
+    ref,
+    featureId: kMiniaturesArchiveFeatureId,
+    returnTo: returnTo,
+    onEntitled:
+        () => _launchMiniatureGame(
+          context: context,
+          ref: ref,
+          games: games,
+          index: index,
+        ),
+  );
+}
 
+Future<void> _launchMiniatureGame({
+  required BuildContext context,
+  required WidgetRef ref,
+  required List<GamesTourModel> games,
+  required int index,
+}) async {
+  if (!context.mounted) return;
   HapticFeedbackService.cardTap();
 
   // Board renders this as a tour-style game view.

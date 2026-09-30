@@ -1,5 +1,12 @@
+import 'package:chessever2/repository/gamebase/collections/collection_search_query.dart';
+import 'package:chessever2/config/gamebase_environment.dart';
+import 'dart:convert';
+import 'dart:io' show HttpClient;
+
+import 'package:chessever2/config/app_environment.dart';
 import 'package:chessever2/repository/lichess/cloud_eval/cloud_eval.dart';
 import 'package:dio/dio.dart';
+import 'package:dio/io.dart';
 import 'package:chessever2/main.dart';
 import 'package:logarte/logarte.dart';
 import 'package:flutter/foundation.dart';
@@ -8,6 +15,7 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:dart_mappable/dart_mappable.dart';
 import 'package:dartchess/dartchess.dart';
 import 'package:chessever2/screens/gamebase/models/models.dart';
+import 'package:chessever2/repository/gamebase/collections/collections_models.dart';
 import 'package:chessever2/repository/gamebase/miniatures/miniatures_models.dart';
 import 'package:chessever2/repository/gamebase/search/gamebase_search_models.dart';
 import 'package:chessever2/repository/gamebase/search/gamebase_search_models_extra.dart';
@@ -45,16 +53,60 @@ class MissingGamebaseApiKeyException implements Exception {
   }
 }
 
+/// One HTTP request exactly as a [GamebaseRepository] method sends it: the
+/// method, the full URL (base URL included) and the body or query map.
+@immutable
+class GamebaseWireRequest {
+  const GamebaseWireRequest({
+    required this.method,
+    required this.url,
+    required this.payload,
+  });
+
+  /// `GET` or `POST`.
+  final String method;
+  final String url;
+
+  /// The POST body, or the GET query parameters.
+  final Map<String, dynamic> payload;
+
+  /// A stable text form of the whole request, with map keys sorted at every
+  /// level, so two requests that would put the same bytes on the wire always
+  /// produce the same identity whatever order their fields were built in.
+  String get identity => jsonEncode(<String, Object?>{
+    'method': method,
+    'url': url,
+    'payload': _canonicalJson(payload),
+  });
+
+  static Object? _canonicalJson(Object? value) {
+    if (value is Map) {
+      final keys = value.keys.map((key) => key.toString()).toList()..sort();
+      return <String, Object?>{
+        for (final key in keys) key: _canonicalJson(value[key]),
+      };
+    }
+    if (value is Iterable) {
+      return value.map(_canonicalJson).toList(growable: false);
+    }
+    return value;
+  }
+
+  @override
+  String toString() => 'GamebaseWireRequest($method $url $payload)';
+}
+
 class GamebaseRepository {
   final Dio _dio;
   final String _apiKey;
   final String _baseUrl;
 
   GamebaseRepository(this._dio, {String? baseUrl, String? apiKey})
-    : _baseUrl = baseUrl ?? 'https://service.chessever.com',
+    : _baseUrl = baseUrl ?? GamebaseEnvironment.baseUrl,
       _apiKey = (apiKey ?? _resolveApiKey()).trim();
 
   static String _resolveApiKey() {
+    if (AppEnvironment.isTest) return GamebaseEnvironment.testApiKey;
     const releaseKey = String.fromEnvironment(
       'GAMEBASE_API_KEY',
       defaultValue: '',
@@ -64,7 +116,7 @@ class GamebaseRepository {
       return releaseKey;
     }
 
-    if (kDebugMode) {
+    if (kDebugMode && !AppEnvironment.isTest) {
       final envKey = dotenv.env['GAMEBASE_API_KEY']?.trim();
       if (envKey != null && envKey.isNotEmpty) return envKey;
     } else {
@@ -87,6 +139,11 @@ class GamebaseRepository {
   static const int _aggregateReceiveTimeoutRetries = 1;
 
   Map<String, String> get _headers {
+    if (_baseUrl.isEmpty) {
+      throw StateError(
+        'Set GAMEBASE_TEST_BASE_URL to the test Gamebase service.',
+      );
+    }
     if (!hasApiKey) throw const MissingGamebaseApiKeyException();
     return {'X-API-Key': _apiKey, 'Accept': 'application/json'};
   }
@@ -180,10 +237,9 @@ class GamebaseRepository {
     final trimmedUci = uci?.trim();
     final filters = buildExplorerQueryFilterFields(
       timeControl: timeControl,
-      playerId:
-          trimmedPlayerId != null && trimmedPlayerId.isNotEmpty
-              ? trimmedPlayerId
-              : null,
+      playerId: trimmedPlayerId != null && trimmedPlayerId.isNotEmpty
+          ? trimmedPlayerId
+          : null,
       color: color,
       result: result,
       minRating: minRating,
@@ -194,18 +250,16 @@ class GamebaseRepository {
     );
 
     if (normalizedMoves.isNotEmpty) {
-      final orderBy =
-          sortBy != null
-              ? [
-                {
-                  'field': sortBy.name,
-                  'direction':
-                      sortDirection == GamebaseSortDirection.asc
-                          ? 'asc'
-                          : 'desc',
-                },
-              ]
-              : null;
+      final orderBy = sortBy != null
+          ? [
+              {
+                'field': sortBy.name,
+                'direction': sortDirection == GamebaseSortDirection.asc
+                    ? 'asc'
+                    : 'desc',
+              },
+            ]
+          : null;
       return <String, dynamic>{
         'fen': normalizedFen,
         'moves': normalizedMoves,
@@ -265,10 +319,9 @@ class GamebaseRepository {
       if (trimmedUci != null && trimmedUci.isNotEmpty) 'uci': trimmedUci,
       ...buildExplorerQueryFilterFields(
         timeControl: timeControl,
-        playerId:
-            trimmedPlayerId != null && trimmedPlayerId.isNotEmpty
-                ? trimmedPlayerId
-                : null,
+        playerId: trimmedPlayerId != null && trimmedPlayerId.isNotEmpty
+            ? trimmedPlayerId
+            : null,
         color: color,
         result: result,
         minRating: minRating,
@@ -734,11 +787,12 @@ class GamebaseRepository {
     try {
       // Reuse the list query params, then drop the paging/sorting keys the
       // stats endpoint does not accept.
-      final params = Map<String, dynamic>.from(
-        filter.queryParameters(limit: 1, offset: 0),
-      )..removeWhere(
-        (key, _) => const {'limit', 'offset', 'sort', 'order'}.contains(key),
-      );
+      final params =
+          Map<String, dynamic>.from(filter.queryParameters(limit: 1, offset: 0))
+            ..removeWhere(
+              (key, _) =>
+                  const {'limit', 'offset', 'sort', 'order'}.contains(key),
+            );
       params['dailyDays'] = dailyDays;
       params['openingLimit'] = openingLimit;
       params['notableLimit'] = notableLimit;
@@ -809,6 +863,270 @@ class GamebaseRepository {
       );
     } catch (e) {
       throw Exception('Failed to load miniature players: $e');
+    }
+  }
+
+  Future<Map<String, dynamic>> recordCollectionEngagement(
+    String slug,
+    Map<String, dynamic> body, {
+    String? bearer,
+    bool star = false,
+  }) async {
+    final response = await _dio.request(
+      '$_baseUrl/api/collections/${Uri.encodeComponent(slug)}/${star ? 'star' : 'view'}',
+      data: body,
+      options: Options(
+        method: star ? 'PUT' : 'POST',
+        headers: {
+          ..._headers,
+          if (bearer != null) 'Authorization': 'Bearer $bearer',
+        },
+      ),
+    );
+    return Map<String, dynamic>.from(
+      unwrapCollectionsEnvelope(response.data) as Map,
+    );
+  }
+
+  /// One page of the published collections (`GET /api/collections`),
+  /// ordered by the team's sort order, newest first within it.
+  Future<CollectionsPage> getCollections({
+    CollectionKind? kind,
+    String? query,
+    int limit = 30,
+    int offset = 0,
+  }) async {
+    final q = (query ?? '').trim();
+    final data = await _getCollectionsData(
+      '/api/collections',
+      what: 'collections',
+      queryParameters: {
+        if (kind != null) 'kind': kind.apiValue,
+        if (q.isNotEmpty) 'q': q,
+        'limit': limit,
+        'offset': offset,
+      },
+    );
+    return CollectionsPage.fromJson(data);
+  }
+
+  /// A published collection with its About text and section tree
+  /// (`GET /api/collections/:slug`; an id works too). [bearer] is the
+  /// viewer's session token: with it the server judges a Premium
+  /// collection's `contentLocked` for them. [fresh] asks it to judge anew
+  /// rather than repeat a "not Premium" it still holds (right after a
+  /// purchase).
+  Future<Collection> getCollection(
+    String slug, {
+    String? bearer,
+    bool fresh = false,
+  }) async {
+    final data = await _getCollectionsData(
+      '/api/collections/${Uri.encodeComponent(slug)}',
+      what: 'collection',
+      bearer: bearer,
+      fresh: fresh,
+    );
+    if (data is! Map) {
+      throw const FormatException('Unexpected collection response format');
+    }
+    return Collection.fromJson(Map<String, dynamic>.from(data));
+  }
+
+  /// One page of a collection's games in section-tree order
+  /// (`GET /api/collections/:slug/games`). [includePgn] adds each game's
+  /// whole PGN, which the board needs to replay it. A Premium collection
+  /// answers only a [bearer] whose account is entitled; anyone else gets a
+  /// [CollectionsRequestException] with [CollectionsRequestException.isPremiumGate].
+  /// [fresh] as for [getCollection].
+  Future<CollectionGamesPage> getCollectionGames(
+    String slug, {
+    String? section,
+    String? playerKey,
+    String? eco,
+    bool includePgn = false,
+    int limit = 100,
+    int offset = 0,
+    String? bearer,
+    bool fresh = false,
+  }) async {
+    final data = await _getCollectionsData(
+      '/api/collections/${Uri.encodeComponent(slug)}/games',
+      what: 'collection games',
+      bearer: bearer,
+      fresh: fresh,
+      queryParameters: {
+        if (section != null && section.isNotEmpty) 'section': section,
+        if (playerKey != null && playerKey.isNotEmpty) 'player': playerKey,
+        if (eco != null && eco.isNotEmpty) 'eco': eco,
+        if (includePgn) 'include': 'pgn',
+        'limit': limit,
+        'offset': offset,
+      },
+    );
+    return CollectionGamesPage.fromJson(data);
+  }
+
+  Future<({List<String> items, int total})> getCollectionAuthors({
+    int offset = 0,
+    int limit = 100,
+  }) async {
+    final data = await _getCollectionsData(
+      '/api/collections/catalog/authors',
+      what: 'collection authors',
+      queryParameters: {'offset': offset, 'limit': limit},
+    );
+    if (data is! Map || data['items'] is! List || data['total'] is! num) {
+      throw const FormatException('Invalid collection authors response');
+    }
+    return (
+      items: [for (final item in data['items'] as List) item['name'] as String],
+      total: (data['total'] as num).toInt(),
+    );
+  }
+
+  Future<CollectionsPage> searchCollectionBooks({
+    CollectionSearchQuery search = const CollectionSearchQuery(),
+    int limit = 40,
+    int offset = 0,
+  }) async => CollectionsPage.fromJson(
+    await _getCollectionsData(
+      '/api/collections/catalog/books',
+      what: 'collection search',
+      queryParameters: {...search.parameters, 'limit': limit, 'offset': offset},
+    ),
+  );
+
+  Future<CollectionOpeningsPage> getCollectionOpenings({
+    String? slug,
+    CollectionSearchQuery search = const CollectionSearchQuery(),
+    int limit = 100,
+    int offset = 0,
+  }) async {
+    final data = await _getCollectionsData(
+      slug == null
+          ? '/api/collections/openings'
+          : '/api/collections/${Uri.encodeComponent(slug)}/openings',
+      what: 'collection openings',
+      queryParameters: {...search.parameters, 'limit': limit, 'offset': offset},
+    );
+    return CollectionOpeningsPage.fromJson(data);
+  }
+
+  Future<CollectionsPage> getBooksForOpening(
+    String eco, {
+    int limit = 100,
+    int offset = 0,
+  }) async {
+    final data = await _getCollectionsData(
+      '/api/collections/for-opening',
+      what: 'books for opening',
+      queryParameters: {'eco': eco, 'limit': limit, 'offset': offset},
+    );
+    return CollectionsPage.fromJson(data);
+  }
+
+  /// A bounded page of readable games across published books. The server
+  /// enforces access before including a PGN and supplies its source book.
+  Future<CollectionGamesPage> getPublishedCollectionGames({
+    CollectionSearchQuery search = const CollectionSearchQuery(),
+    int limit = 40,
+    int offset = 0,
+    String? bearer,
+  }) async {
+    final data = await _getCollectionsData(
+      '/api/collections/games',
+      what: 'published collection games',
+      bearer: bearer,
+      queryParameters: {
+        ...search.parameters,
+        'include': 'pgn',
+        'limit': limit,
+        'offset': offset,
+      },
+    );
+    return CollectionGamesPage.fromJson(data);
+  }
+
+  /// Everyone who played in a collection, most games first
+  /// (`GET /api/collections/:slug/players`). Gated like the games;
+  /// [fresh] as for [getCollection].
+  Future<List<CollectionPlayer>> getCollectionPlayers(
+    String slug, {
+    String? bearer,
+    bool fresh = false,
+  }) async {
+    final data = await _getCollectionsData(
+      '/api/collections/${Uri.encodeComponent(slug)}/players',
+      what: 'collection players',
+      bearer: bearer,
+      fresh: fresh,
+    );
+    return CollectionPlayer.listFromJson(data);
+  }
+
+  /// The published collections (books unless [kind] says otherwise) bound
+  /// to the event [anchors] name (`GET /api/collections/for-event`), each
+  /// with the team's note for the binding. Public: covers and titles are
+  /// the preview.
+  Future<List<Collection>> getCollectionsForEvent(
+    CollectionEventAnchors anchors, {
+    CollectionKind kind = CollectionKind.book,
+  }) async {
+    if (anchors.isEmpty) return const [];
+    final data = await _getCollectionsData(
+      '/api/collections/for-event',
+      what: 'event collections',
+      queryParameters: anchors.toQuery(kind: kind),
+    );
+    return collectionsForEventFromJson(data);
+  }
+
+  /// GETs a collections endpoint and returns its envelope's `data`. List
+  /// values in [queryParameters] repeat their key (`?tour=a&tour=b`).
+  /// [fresh] sends `Cache-Control: no-cache` (and `Pragma` for proxies that
+  /// only read that), which gamebase takes as "check my Premium again".
+  Future<Object?> _getCollectionsData(
+    String path, {
+    required String what,
+    Map<String, dynamic>? queryParameters,
+    String? bearer,
+    bool fresh = false,
+  }) async {
+    try {
+      final response = await _dio.get(
+        '$_baseUrl$path',
+        queryParameters: queryParameters,
+        options: Options(
+          headers: {
+            ..._headers,
+            if (bearer != null && bearer.isNotEmpty)
+              'Authorization': 'Bearer $bearer',
+            if (fresh) ...{'Cache-Control': 'no-cache', 'Pragma': 'no-cache'},
+          },
+          listFormat: ListFormat.multi,
+        ),
+      );
+      return unwrapCollectionsEnvelope(
+        response.data,
+        statusCode: response.statusCode,
+      );
+    } on DioException catch (e) {
+      if (kDebugMode) {
+        debugPrint('[GamebaseRepository] $what DioException:');
+        debugPrint('  Status: ${e.response?.statusCode}');
+        debugPrint('  Message: ${e.message}');
+      }
+      // Gamebase answers every refusal (404 unpublished slug, 400 validation)
+      // with a 4xx/5xx `{status: "error"}` envelope, which Dio throws on.
+      // Surface that message; fall back only when the body is not one.
+      final body = e.response?.data;
+      if (body is Map && body['status'] == 'error') {
+        unwrapCollectionsEnvelope(body, statusCode: e.response?.statusCode);
+      }
+      throw Exception(
+        'Failed to load $what: ${e.response?.statusCode ?? 'network error'} - ${e.message}',
+      );
     }
   }
 
@@ -1441,6 +1759,107 @@ class GamebaseRepository {
     }
   }
 
+  /// The request [getPositionGames] puts on the wire for these arguments:
+  /// a POST of the body to `/games/query` when the move line survives
+  /// sanitization, otherwise a GET of the same map to `/games`.
+  ///
+  /// Anything that caches position-games pages keys them by this, so a page
+  /// is only ever reused for a request that is byte-for-byte the same.
+  GamebaseWireRequest positionGamesRequest({
+    required String fen,
+    List<String> moves = const [],
+    String? uci,
+    TimeControl? timeControl,
+    String? playerId,
+    String? color,
+    String? result,
+    int? minRating,
+    int? maxRating,
+    int? yearFrom,
+    int? yearTo,
+    GamebaseSortField? sortBy,
+    GamebaseSortDirection? sortDirection,
+    bool? isOnline,
+    int notationPlies = 0,
+    int pageNumber = 0,
+    int pageSize = 20,
+  }) {
+    final body = buildPositionGamesQueryBody(
+      fen: fen,
+      moves: moves,
+      uci: uci,
+      timeControl: timeControl,
+      playerId: playerId,
+      color: color,
+      result: result,
+      minRating: minRating,
+      maxRating: maxRating,
+      yearFrom: yearFrom,
+      yearTo: yearTo,
+      sortBy: sortBy,
+      sortDirection: sortDirection,
+      isOnline: isOnline,
+      notationPlies: notationPlies,
+      pageNumber: pageNumber,
+      pageSize: pageSize,
+    );
+    final normalizedMoves = (body['moves'] as List?) ?? const [];
+    return normalizedMoves.isNotEmpty
+        ? GamebaseWireRequest(
+            method: 'POST',
+            url: '$_baseUrl/api/game-position/games/query',
+            payload: body,
+          )
+        : GamebaseWireRequest(
+            method: 'GET',
+            url: '$_baseUrl/api/game-position/games',
+            payload: body,
+          );
+  }
+
+  /// The request [getFenPositionGames] puts on the wire for these arguments.
+  GamebaseWireRequest fenPositionGamesRequest({
+    required String fen,
+    String? uci,
+    TimeControl? timeControl,
+    String? playerId,
+    String? color,
+    String? result,
+    int? minRating,
+    int? maxRating,
+    int? yearFrom,
+    int? yearTo,
+    GamebaseSortField? sortBy,
+    GamebaseSortDirection? sortDirection,
+    bool? isOnline,
+    int notationPlies = 0,
+    int pageNumber = 0,
+    int pageSize = 20,
+  }) {
+    return GamebaseWireRequest(
+      method: 'GET',
+      url: '$_baseUrl/api/game-position/fen/games',
+      payload: buildFenPositionGamesQueryParameters(
+        fen: fen,
+        uci: uci,
+        timeControl: timeControl,
+        playerId: playerId,
+        color: color,
+        result: result,
+        minRating: minRating,
+        maxRating: maxRating,
+        yearFrom: yearFrom,
+        yearTo: yearTo,
+        sortBy: sortBy,
+        sortDirection: sortDirection,
+        isOnline: isOnline,
+        notationPlies: notationPlies,
+        pageNumber: pageNumber,
+        pageSize: pageSize,
+      ),
+    );
+  }
+
   /// List example games for a given position (and optionally a specific move from that position).
   ///
   /// Pagination is 0-indexed per the API spec for this endpoint.
@@ -1468,7 +1887,7 @@ class GamebaseRepository {
     int pageSize = 20,
   }) async {
     try {
-      final body = buildPositionGamesQueryBody(
+      final request = positionGamesRequest(
         fen: fen,
         moves: moves,
         uci: uci,
@@ -1487,7 +1906,7 @@ class GamebaseRepository {
         pageNumber: pageNumber,
         pageSize: pageSize,
       );
-      final normalizedMoves = (body['moves'] as List?) ?? const [];
+      final normalizedMoves = (request.payload['moves'] as List?) ?? const [];
 
       if (kDebugMode &&
           moves.isNotEmpty &&
@@ -1497,18 +1916,17 @@ class GamebaseRepository {
         );
       }
 
-      final response =
-          normalizedMoves.isNotEmpty
-              ? await _dio.post(
-                '$_baseUrl/api/game-position/games/query',
-                data: body,
-                options: Options(headers: _headers),
-              )
-              : await _dio.get(
-                '$_baseUrl/api/game-position/games',
-                queryParameters: body,
-                options: Options(headers: _headers),
-              );
+      final response = request.method == 'POST'
+          ? await _dio.post(
+              request.url,
+              data: request.payload,
+              options: Options(headers: _headers),
+            )
+          : await _dio.get(
+              request.url,
+              queryParameters: request.payload,
+              options: Options(headers: _headers),
+            );
 
       final data = response.data;
       if (data is! Map) {
@@ -1548,26 +1966,27 @@ class GamebaseRepository {
     int pageSize = 20,
   }) async {
     try {
+      final request = fenPositionGamesRequest(
+        fen: fen,
+        uci: uci,
+        timeControl: timeControl,
+        playerId: playerId,
+        color: color,
+        result: result,
+        minRating: minRating,
+        maxRating: maxRating,
+        yearFrom: yearFrom,
+        yearTo: yearTo,
+        sortBy: sortBy,
+        sortDirection: sortDirection,
+        isOnline: isOnline,
+        notationPlies: notationPlies,
+        pageNumber: pageNumber,
+        pageSize: pageSize,
+      );
       final response = await _dio.get(
-        '$_baseUrl/api/game-position/fen/games',
-        queryParameters: buildFenPositionGamesQueryParameters(
-          fen: fen,
-          uci: uci,
-          timeControl: timeControl,
-          playerId: playerId,
-          color: color,
-          result: result,
-          minRating: minRating,
-          maxRating: maxRating,
-          yearFrom: yearFrom,
-          yearTo: yearTo,
-          sortBy: sortBy,
-          sortDirection: sortDirection,
-          isOnline: isOnline,
-          notationPlies: notationPlies,
-          pageNumber: pageNumber,
-          pageSize: pageSize,
-        ),
+        request.url,
+        queryParameters: request.payload,
         options: Options(headers: _headers),
       );
 
@@ -1603,6 +2022,15 @@ final gamebaseRepositoryProvider = Provider<GamebaseRepository>((ref) {
       connectTimeout: const Duration(seconds: 10),
       receiveTimeout: const Duration(seconds: 30),
     ),
+  );
+  // Dio's own adapter drops an idle connection after 3 s, so a reader who
+  // pauses between taps pays a fresh TCP + TLS handshake (100-300 ms on a
+  // phone) on the next explorer request. A minute of idle keep-alive covers
+  // ordinary reading pauses; the socket still closes the moment the server
+  // closes its end.
+  dio.httpClientAdapter = IOHttpClientAdapter(
+    createHttpClient: () =>
+        HttpClient()..idleTimeout = const Duration(seconds: 60),
   );
   dio.interceptors.add(LogarteDioInterceptor(logarte));
   return GamebaseRepository(dio);

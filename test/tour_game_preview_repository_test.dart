@@ -49,6 +49,28 @@ void main() {
     );
   });
 
+  test('standings reconciliation reads every page including corrected player fields', () async {
+    final pages = <int>[];
+    final client = SupabaseClient('https://example.test', 'placeholder',
+      httpClient: MockClient((request) async {
+        final q = request.url.queryParameters;
+        expect(q['tour_id'], 'eq.tour');
+        expect(q['select'], 'id,round_id,round_slug,status,players,board_nr');
+        final offset = int.parse(q['offset'] ?? '0');
+        final limit = int.parse(q['limit']!);
+        pages.add(offset);
+        return http.Response(jsonEncode([
+          for (var i = offset; i < (offset + limit).clamp(0, 2400); i++) _row(i),
+        ]), 200, request: request, headers: {'content-type': 'application/json'});
+      }));
+    addTearDown(client.dispose);
+    final rows = await _Repository(client).getTourGamesSafetyNet('tour');
+    expect(rows, hasLength(2400));
+    expect(rows.map((g) => g.id).toSet(), hasLength(2400));
+    expect(pages, [0, 1000, 2000]);
+    expect(rows.last.players!.first.rating, 2600);
+  });
+
   test(
     '2400-game index is complete and fetches PGN only for required fallbacks',
     () async {

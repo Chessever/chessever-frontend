@@ -2,7 +2,9 @@ import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:flutter/material.dart';
 
-enum ExplorerBoardMenuAction { copyPgn, boardSettings, share }
+/// [addToSpace] is not in [explorerBoardMenuItems]: its label flips between
+/// "Add" and "Remove" with My Space state, so the screen appends it itself.
+enum ExplorerBoardMenuAction { copyPgn, boardSettings, share, addToSpace }
 
 const int boardWorkspaceDefaultPage = 0;
 const String boardWorkspaceViewsCoachmarkMessage =

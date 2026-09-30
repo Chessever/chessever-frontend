@@ -1,6 +1,5 @@
 import 'package:chessever2/screens/player_profile/player_profile_screen.dart';
 import 'package:chessever2/theme/app_colors.dart';
-import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 
 import 'package:chessever2/utils/responsive_helper.dart';
@@ -146,11 +145,11 @@ class RecentOpponentsList extends StatelessWidget {
 
   Color _getResultColor(BuildContext context, double result) {
     if (result == 1.0) {
-      return kGreenColor; // Win
+      return context.colors.successStrong; // Win
     } else if (result == 0.5) {
       return context.colors.textPrimaryMuted; // Draw
     } else {
-      return kRedColor; // Loss
+      return context.colors.danger; // Loss
     }
   }
 }

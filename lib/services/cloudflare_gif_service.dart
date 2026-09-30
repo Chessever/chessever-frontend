@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:chessever2/config/app_environment.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:http/http.dart' as http;
@@ -38,6 +39,11 @@ String? cloudGifPhotoMimeType(Uint8List bytes) {
   }
   return null;
 }
+
+/// Which edition of the GIF to render. [dark] is the historical look and is
+/// what the renderer draws when a request names no theme, so a dark request
+/// never carries the key and stays byte-identical to older app versions.
+enum CloudflareGifTheme { dark, light }
 
 enum CloudflareGifJobStatus {
   queued,
@@ -114,12 +120,10 @@ typedef CloudflareAccessTokenProvider = Future<String> Function();
 class CloudflareGifService {
   CloudflareGifService({
     required Uri baseUri,
-    required CloudflareAccessTokenProvider accessTokenProvider,
-    CloudflareAccessTokenProvider? refreshAccessTokenProvider,
+    required this._accessTokenProvider,
+    this._refreshAccessTokenProvider,
     http.Client? client,
   }) : _baseUri = _normalizeBaseUri(baseUri),
-       _accessTokenProvider = accessTokenProvider,
-       _refreshAccessTokenProvider = refreshAccessTokenProvider,
        _client = client ?? http.Client();
 
   factory CloudflareGifService.fromEnvironment() {
@@ -160,7 +164,7 @@ class CloudflareGifService {
     );
     final normalizedRelease = releaseValue.trim();
     if (normalizedRelease.isNotEmpty) return normalizedRelease;
-    if (!kDebugMode) return null;
+    if (!kDebugMode || AppEnvironment.isTest) return null;
     try {
       final debugValue =
           dotenv.env['CHESSEVER_CLOUDFLARE_API_BASE']?.trim() ?? '';
@@ -211,12 +215,16 @@ class CloudflareGifService {
     required String pgn,
     required bool flipped,
     required Map<String, Object?> metadata,
+    CloudflareGifTheme theme = CloudflareGifTheme.dark,
   }) async {
     final response = await _postJson('v1/gif-jobs', <String, Object?>{
       'schemaVersion': 1,
       'pgn': pgn,
       'flipped': flipped,
       'metadata': metadata,
+      // Only the paper edition names itself; dark requests keep the exact
+      // body (and so the exact cache key) they always had.
+      if (theme == CloudflareGifTheme.light) 'theme': 'light',
     });
     return CloudflareGifJob.fromJson(response);
   }
@@ -395,10 +403,12 @@ class CloudflareGifService {
     return switch (code) {
       'too_many_plies' => 'This game is too long for a GIF (max 150 moves).',
       'pgn_too_large' => 'This game is too large to export as a GIF.',
-      'invalid_pgn' || 'no_moves' => 'This game could not be turned into a GIF.',
+      'invalid_pgn' ||
+      'no_moves' => 'This game could not be turned into a GIF.',
       'renderer_failed' => 'Couldn\'t create the GIF. Please try again.',
       'active_job_limit' => 'A GIF is already being created. Please wait.',
-      'daily_job_limit' => 'You\'ve reached today\'s GIF limit. Try again tomorrow.',
+      'daily_job_limit' =>
+        'You\'ve reached today\'s GIF limit. Try again tomorrow.',
       'authentication_required' => 'Sign in to generate a GIF.',
       'service_not_configured' => 'GIF export is unavailable right now.',
       'generation_timeout' =>

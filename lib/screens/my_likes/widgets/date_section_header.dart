@@ -1,5 +1,4 @@
 import 'package:chessever2/theme/app_colors.dart';
-import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
@@ -36,7 +35,9 @@ class DateSectionHeader extends StatelessWidget {
           ),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withValues(alpha: 0.1),
+              color: context.isLightTheme
+                  ? context.colors.shadow
+                  : Colors.black.withValues(alpha: 0.1),
               blurRadius: 4,
               offset: const Offset(0, 2),
             ),
@@ -49,7 +50,7 @@ class DateSectionHeader extends StatelessWidget {
               width: 4.w,
               height: 20.h,
               decoration: BoxDecoration(
-                color: kPrimaryColor,
+                color: context.colors.accentText,
                 borderRadius: BorderRadius.circular(2),
               ),
             ),
@@ -72,7 +73,7 @@ class DateSectionHeader extends StatelessWidget {
                 isExpanded
                     ? Icons.keyboard_arrow_up_rounded
                     : Icons.keyboard_arrow_down_rounded,
-                color: context.colors.textPrimary.withValues(alpha: 0.5),
+                color: context.textInk(0.5),
                 size: 20.sp,
               ),
             ],

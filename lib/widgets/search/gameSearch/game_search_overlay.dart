@@ -94,21 +94,35 @@ class _GamesSearchOverlayState extends ConsumerState<GamesSearchOverlay>
               child: Container(
                 margin: const EdgeInsets.symmetric(horizontal: 20),
                 decoration: BoxDecoration(
-                  color: Colors.grey[900],
+                  // Dark keeps the historic grey[900] sheet; light uses the
+                  // popup paper with one tight ink-tinted shadow.
+                  color:
+                      context.isLightTheme
+                          ? context.colors.popup
+                          : Colors.grey[900],
                   borderRadius: BorderRadius.circular(12),
                   border: Border.all(color: context.colors.textPrimary.withValues(alpha: 0.1)),
-                  boxShadow: [
-                    BoxShadow(
-                      color: kBlackColor.withOpacity(0.3),
-                      blurRadius: 20.br,
-                      offset: const Offset(0, 8),
-                    ),
-                    BoxShadow(
-                      color: kBlackColor.withOpacity(0.1),
-                      blurRadius: 40.br,
-                      offset: const Offset(0, 16),
-                    ),
-                  ],
+                  boxShadow:
+                      context.isLightTheme
+                          ? [
+                            BoxShadow(
+                              color: context.colors.shadow,
+                              blurRadius: 6,
+                              offset: const Offset(0, 2),
+                            ),
+                          ]
+                          : [
+                            BoxShadow(
+                              color: kBlackColor.withOpacity(0.3),
+                              blurRadius: 20.br,
+                              offset: const Offset(0, 8),
+                            ),
+                            BoxShadow(
+                              color: kBlackColor.withOpacity(0.1),
+                              blurRadius: 40.br,
+                              offset: const Offset(0, 16),
+                            ),
+                          ],
                 ),
                 child: ClipRRect(
                   borderRadius: BorderRadius.circular(12.br),
@@ -204,7 +218,6 @@ class _GameSearchResultTileState extends State<_GameSearchResultTile>
   late AnimationController _slideController;
   late Animation<double> _scaleAnimation;
   late Animation<Offset> _slideAnimation;
-  late Animation<Color?> _colorAnimation;
 
   late final String _playerNames;
 
@@ -243,11 +256,6 @@ class _GameSearchResultTileState extends State<_GameSearchResultTile>
     ).animate(
       CurvedAnimation(parent: _slideController, curve: Curves.easeOutCubic),
     );
-
-    _colorAnimation = ColorTween(
-      begin: Colors.transparent,
-      end: context.colors.textPrimary.withValues(alpha: 0.05),
-    ).animate(_hoverController);
   }
 
   void _startAnimation() {
@@ -298,7 +306,13 @@ class _GameSearchResultTileState extends State<_GameSearchResultTile>
                       vertical: 12.sp,
                     ),
                     decoration: BoxDecoration(
-                      color: _colorAnimation.value,
+                      // Resolved in build: Theme lookups are illegal in
+                      // initState, and the hover wash must follow the theme.
+                      color: Color.lerp(
+                        Colors.transparent,
+                        context.colors.textPrimary.withValues(alpha: 0.05),
+                        _hoverController.value,
+                      ),
                       borderRadius:
                           widget.index == 0
                               ? BorderRadius.only(
@@ -368,13 +382,19 @@ class _IdleState extends StatelessWidget {
             Icon(
               Icons.search,
               size: 32.ic,
-              color: kBoardLightGrey.withOpacity(0.5),
+              color:
+                  context.isLightTheme
+                      ? context.colors.iconSecondary
+                      : kBoardLightGrey.withOpacity(0.5),
             ),
             SizedBox(height: 12.h),
             Text(
               'Start typing to search games',
               style: TextStyle(
-                color: kBoardLightGrey.withOpacity(0.7),
+                color:
+                    context.isLightTheme
+                        ? context.colors.textSecondary
+                        : kBoardLightGrey.withOpacity(0.7),
                 fontSize: 12.f,
                 fontWeight: FontWeight.w400,
               ),
@@ -401,7 +421,9 @@ class _LoadingState extends StatelessWidget {
               width: 24.w,
               height: 24.h,
               child: CircularProgressIndicator(
-                valueColor: AlwaysStoppedAnimation<Color>(kDarkBlue),
+                valueColor: AlwaysStoppedAnimation<Color>(
+                  context.isLightTheme ? context.colors.accentText : kDarkBlue,
+                ),
                 strokeWidth: 2.5.w,
               ),
             ),
@@ -432,20 +454,20 @@ class _ErrorState extends StatelessWidget {
       margin: EdgeInsets.all(16.br),
       height: 100.h,
       decoration: BoxDecoration(
-        color: kRedColor.withOpacity(0.1),
+        color: context.colors.danger.withValues(alpha: 0.1),
         borderRadius: BorderRadius.circular(12.br),
-        border: Border.all(color: kRedColor.withOpacity(0.3)),
+        border: Border.all(color: context.colors.danger.withValues(alpha: 0.3)),
       ),
       child: Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.error_outline, color: kRedColor, size: 24.f),
+            Icon(Icons.error_outline, color: context.colors.danger, size: 24.f),
             SizedBox(height: 8.h),
             Text(
               message,
               style: TextStyle(
-                color: kRedColor,
+                color: context.colors.danger,
                 fontSize: 12.f,
                 fontWeight: FontWeight.w500,
               ),
@@ -482,7 +504,10 @@ class EmptySearchWidget extends StatelessWidget {
                     child: Icon(
                       Icons.search_off,
                       size: 48.ic,
-                      color: kBoardLightGrey.withOpacity(0.6),
+                      color:
+                          context.isLightTheme
+                              ? context.colors.iconSecondary
+                              : kBoardLightGrey.withOpacity(0.6),
                     ),
                   ),
                 );
@@ -502,7 +527,10 @@ class EmptySearchWidget extends StatelessWidget {
             Text(
               'Try different keywords for "$query"',
               style: TextStyle(
-                color: kBoardLightGrey.withOpacity(0.8),
+                color:
+                    context.isLightTheme
+                        ? context.colors.textSecondary
+                        : kBoardLightGrey.withOpacity(0.8),
                 fontSize: 13.f,
                 fontWeight: FontWeight.w400,
               ),

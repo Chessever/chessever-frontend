@@ -8,6 +8,7 @@ import 'package:logarte/logarte.dart';
 import 'package:chessever2/e2e/e2e_config.dart';
 import 'package:chessever2/e2e/e2e_ids.dart';
 import 'package:chessever2/config/app_environment.dart';
+import 'package:chessever2/config/test_network_isolation.dart';
 import 'package:chessever2/utils/logger/logger.dart';
 import 'package:chessever2/localization/locale_provider.dart';
 import 'package:chessever2/screens/authentication/auth_screen.dart';
@@ -69,6 +70,7 @@ import 'services/deep_link_service.dart';
 import 'services/pgn_file_intake_service.dart';
 import 'services/push_notifications_service.dart';
 import 'theme/app_theme.dart';
+import 'theme/theme_provider.dart';
 import 'package:chessever2/repository/authentication/auth_repository.dart';
 import 'package:chessever2/providers/app_resume_signal_provider.dart';
 import 'package:chessever2/providers/push_token_sync_provider.dart';
@@ -262,6 +264,7 @@ Future<void> main() => runChessEver(AppFlavor.production);
 
 Future<void> runChessEver(AppFlavor flavor) async {
   AppEnvironment.configure(flavor);
+  installTestNetworkIsolation();
   await runZonedGuarded(
     () async {
       _e2eStartupLog('runZonedGuarded entered');
@@ -316,9 +319,9 @@ Future<void> runChessEver(AppFlavor flavor) async {
       };
 
       // Local debug builds may provide values through --dart-define-from-file.
-      // If a developer still has a dotenv asset in a private local workflow,
-      // load it opportunistically, but never require bundling .env.
-      if (kDebugMode && !E2eConfig.isEnabled) {
+      // Production-flavor local workflows may still bundle a dotenv asset.
+      // Test launches use only their explicit defines, never that shared file.
+      if (kDebugMode && !E2eConfig.isEnabled && !AppEnvironment.isTest) {
         try {
           _e2eStartupLog('loading .env');
           await dotenv.load(fileName: ".env");
@@ -524,12 +527,11 @@ Future<void> _initializeRevenueCat() async {
       );
       return;
     }
-    final apiKey =
-        AppEnvironment.isTest
-            ? configuredTestKey
-            : Platform.isIOS
-            ? 'appl_hggBdZrNsqmMHEorxxxLYjyHTzz'
-            : 'goog_ZmINjxirbMFvSsVMUfviZwrpfBY';
+    final apiKey = AppEnvironment.isTest
+        ? configuredTestKey
+        : Platform.isIOS
+        ? 'appl_hggBdZrNsqmMHEorxxxLYjyHTzz'
+        : 'goog_ZmINjxirbMFvSsVMUfviZwrpfBY';
 
     // If a Supabase session is already restored at boot, configure RC with
     // that UID directly. Without this, RC starts anonymous ($RCAnonymousID:…)
@@ -650,7 +652,7 @@ Future<void> _initializeSupabaseWithRecovery({
   Future<void> initialize() {
     return Supabase.initialize(
       url: supabaseUrl,
-      anonKey: supabaseAnonKey,
+      publishableKey: supabaseAnonKey,
       authOptions: authOptions,
     ).timeout(
       const Duration(seconds: 6),
@@ -826,7 +828,8 @@ void _initializePostStartupServices(WidgetRef ref) {
   // Initialize OneSignal (non-blocking)
   final oneSignalAppId = _resolveOneSignalAppId();
   final oneSignalStarted =
-      !E2eConfig.suppressInterruptivePrompts && oneSignalAppId.trim().isNotEmpty;
+      !E2eConfig.suppressInterruptivePrompts &&
+      oneSignalAppId.trim().isNotEmpty;
   if (oneSignalStarted) {
     unawaited(
       PushNotificationsService.instance.initialize(appId: oneSignalAppId),
@@ -1167,8 +1170,9 @@ class MyApp extends HookConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    // Light theme is temporarily disabled — always stay dark.
-    const themeMode = ThemeMode.dark;
+    // Dark stays the default for everyone who never picked a theme; the
+    // Settings → Appearance choice (Dark / Auto / Light) is restored from prefs.
+    final themeMode = ref.watch(themeModeProvider);
     final locale = ref.watch(localeProvider);
     ref.watch(pushTokenSyncProvider);
     ref.watch(eventVideoPreloadProvider);
@@ -1194,8 +1198,16 @@ class MyApp extends HookConsumerWidget {
     // Also ensure status bar is visible and UI is edge-to-edge
     useEffect(() {
       SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+      final platformDark =
+          WidgetsBinding.instance.platformDispatcher.platformBrightness ==
+          Brightness.dark;
+      final resolvedDark = switch (themeMode) {
+        ThemeMode.dark => true,
+        ThemeMode.light => false,
+        ThemeMode.system => platformDark,
+      };
       SystemChrome.setSystemUIOverlayStyle(
-        AppTheme.overlayFor(Brightness.dark),
+        AppTheme.overlayFor(resolvedDark ? Brightness.dark : Brightness.light),
       );
 
       if (ResponsiveHelper.isTablet) {
@@ -1212,7 +1224,7 @@ class MyApp extends HookConsumerWidget {
         ]);
       }
       return null;
-    }, const []);
+    }, [themeMode]);
 
     final upgrader = useMemoized(
       () => Upgrader(
@@ -1344,38 +1356,37 @@ class MyApp extends HookConsumerWidget {
             GuestGateRouteObserver.instance,
           ],
           initialRoute: '/',
-          builder:
-              (context, child) => DismissKeyboard(
-                child: AnnotatedRegion<SystemUiOverlayStyle>(
-                  value: AppTheme.overlayFor(Theme.of(context).brightness),
-                  child: CustomUpgradeAlert(
-                    upgrader: upgrader,
-                    navigatorKey: navigatorKey,
-                    child: child ?? const SizedBox.shrink(),
-                  ),
-                ),
+          builder: (context, child) => DismissKeyboard(
+            child: AnnotatedRegion<SystemUiOverlayStyle>(
+              value: AppTheme.overlayFor(Theme.of(context).brightness),
+              child: CustomUpgradeAlert(
+                upgrader: upgrader,
+                navigatorKey: navigatorKey,
+                child: child ?? const SizedBox.shrink(),
               ),
+            ),
+          ),
           routes: {
             '/': (context) => const SplashScreen(),
             '/auth_screen': (context) => const AuthScreen(),
             '/home_screen': (context) => const HomeScreen(),
             '/group_event_screen': (context) => const GroupEventScreen(),
-            '/tournament_detail_screen':
-                (context) => const TournamentDetailScreen(),
+            '/tournament_detail_screen': (context) =>
+                const TournamentDetailScreen(),
             '/calendar_screen': (context) => const CalendarScreen(),
             '/library_screen': (context) => const LibraryScreen(),
             '/favorites_screen': (context) => const FavoritesTabScreen(),
             '/scorecard_screen': (context) => const ScoreCardScreen(),
             '/team_scorecard_screen': (context) => const TeamScoreCardScreen(),
             '/player_list_screen': (context) => const PlayerListScreen(),
-            '/countryman_games_screen':
-                (context) => const CountrymanGamesScreen(),
+            '/countryman_games_screen': (context) =>
+                const CountrymanGamesScreen(),
             '/standings': (context) => const PlayerTourScreen(),
             '/calendar_detail_screen': (context) => CalendarDetailsScreen(),
             '/Board_sheet': (context) => BoardColorDialog(),
             '/onboarding': (context) => const OnboardingFlowScreen(),
-            '/player_selection_screen':
-                (context) => const PlayerSelectionScreen(),
+            '/player_selection_screen': (context) =>
+                const PlayerSelectionScreen(),
           },
         ),
       ),

@@ -10,7 +10,7 @@ import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/federation_flag.dart';
 import 'package:chessever2/widgets/player_initials_avatar.dart'
-    show getTitleBadgeColor;
+    show getTitleBadgeColor, titleBadgeFill, titleBadgeInk;
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -188,13 +188,24 @@ class _TwicPlayerCard extends ConsumerWidget {
                             vertical: 2.sp,
                           ),
                           decoration: BoxDecoration(
-                            color: getTitleBadgeColor(player.title!),
+                            color: titleBadgeFill(
+                              context,
+                              getTitleBadgeColor(player.title!),
+                            ),
                             borderRadius: BorderRadius.circular(4.br),
                           ),
                           child: Text(
                             player.title!,
                             style: AppTypography.textXsBold.copyWith(
-                              color: context.colors.textPrimary,
+                              // Label picked against the (light-deepened)
+                              // fill so it clears AA; dark stays white.
+                              color: titleBadgeInk(
+                                context,
+                                titleBadgeFill(
+                                  context,
+                                  getTitleBadgeColor(player.title!),
+                                ),
+                              ),
                               fontSize: isCompact ? 9.sp : 10.sp,
                               letterSpacing: 0.5,
                             ),

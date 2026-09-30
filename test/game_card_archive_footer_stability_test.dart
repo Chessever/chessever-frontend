@@ -48,13 +48,20 @@ GamesTourModel _archiveGame() {
   );
 }
 
-Future<void> _pumpCard(WidgetTester tester, {String? footerDetail}) {
+Future<void> _pumpCard(
+  WidgetTester tester, {
+  String? footerDetail,
+  GamesTourModel? game,
+  bool showEngineGauge = true,
+}) {
   return tester.pumpWidget(
     ProviderScope(
       overrides: [
         // Keeps the real settings load (and its sqlite init timeout timer) out
         // of the test; the card only reads showEngineGauge from it.
-        engineSettingsProviderNew.overrideWith(_FakeEngineSettings.new),
+        engineSettingsProviderNew.overrideWith(
+          () => _FakeEngineSettings(showEngineGauge: showEngineGauge),
+        ),
       ],
       child: MaterialApp(
         theme: ThemeData.dark().copyWith(extensions: const [AppColors.dark]),
@@ -65,7 +72,7 @@ Future<void> _pumpCard(WidgetTester tester, {String? footerDetail}) {
               body: Center(
                 child: GameCard(
                   matchComparison: MatchWithComparison(
-                    game: _archiveGame(),
+                    game: game ?? _archiveGame(),
                     comparison: MatchComparison.sameOrder,
                   ),
                   pinnedIds: const [],
@@ -84,8 +91,13 @@ Future<void> _pumpCard(WidgetTester tester, {String? footerDetail}) {
 
 class _FakeEngineSettings extends AsyncNotifier<EngineSettings>
     implements EngineSettingsNotifierNew {
+  _FakeEngineSettings({required this.showEngineGauge});
+
+  final bool showEngineGauge;
+
   @override
-  Future<EngineSettings> build() async => const EngineSettings();
+  Future<EngineSettings> build() async =>
+      EngineSettings(showEngineGaugeInGrid: showEngineGauge);
 
   @override
   dynamic noSuchMethod(Invocation invocation) => null;
@@ -101,6 +113,74 @@ Future<void> _settle(WidgetTester tester) async {
 }
 
 void main() {
+  final savedGame = _archiveGame().copyWith(
+    source: GameSource.savedAnalysis,
+    fen: 'rnbqkbnr/pppp1ppp/8/4p3/4P3/8/PPPP1PPP/RNBQKBNR w KQkq e6 0 2',
+    lastMove: 'e7e5',
+  );
+
+  testWidgets('a stored unfinished PGN stays unfinished and never says LIVE', (
+    tester,
+  ) async {
+    await _pumpCard(
+      tester,
+      game: savedGame.copyWith(
+        source: GameSource.boardEditor,
+        gameStatus: GameStatus.ongoing,
+      ),
+      showEngineGauge: false,
+    );
+    await _settle(tester);
+    expect(find.text('LIVE'), findsNothing);
+    expect(find.text('*'), findsOneWidget);
+    expect(find.text('--:--'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('recorded PGN clocks remain static on an unfinished position', (
+    tester,
+  ) async {
+    await _pumpCard(
+      tester,
+      game: savedGame.copyWith(
+        source: GameSource.boardEditor,
+        gameStatus: GameStatus.ongoing,
+        whiteTimeDisplay: '05:00',
+        whiteClockSeconds: 300,
+        whiteClockCentiseconds: 30000,
+        lastMoveTime: DateTime.now(),
+      ),
+      showEngineGauge: false,
+    );
+    await _settle(tester);
+    expect(find.text('05:00'), findsOneWidget);
+    expect(find.text('04:50'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets(
+    'a started saved game shows moves without missing-clock placeholders',
+    (tester) async {
+      await _pumpCard(tester, game: savedGame);
+      await _settle(tester);
+      expect(find.text('--:--'), findsNothing);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets('a saved game displays recorded zero and hides an unknown side', (
+    tester,
+  ) async {
+    await _pumpCard(
+      tester,
+      game: savedGame.copyWith(whiteClockSeconds: 0, whiteTimeDisplay: '00:00'),
+    );
+    await _settle(tester);
+    expect(find.text('00:00'), findsOneWidget);
+    expect(find.text('--:--'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('archive card height does not change once async data settles', (
     tester,
   ) async {

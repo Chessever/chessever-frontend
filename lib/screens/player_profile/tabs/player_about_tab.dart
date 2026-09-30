@@ -1,9 +1,14 @@
 import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
+import 'package:chessever2/screens/chessboard/widgets/chess_board_from_fen_new.dart'
+    show showGameShareOverlay;
 import 'package:chessever2/repository/gamebase/memorial_player.dart';
+import 'package:chessever2/screens/library/widgets/library_context_menu.dart';
+import 'package:chessever2/screens/my_space/actions/space_menu_action.dart';
 import 'package:chessever2/screens/player_profile/tabs/memorial_player_about_tab.dart';
 import 'package:chessever2/screens/player_profile/player_profile_data_source.dart';
 import 'package:chessever2/screens/player_profile/provider/player_profile_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/utils/game_space_shortcut.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrapper/game_card_wrapper_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/games_tour_content_provider.dart';
@@ -14,6 +19,7 @@ import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/country_utils.dart';
+import 'package:chessever2/utils/eco_openings.dart';
 import 'package:chessever2/utils/png_asset.dart';
 import 'package:chessever2/utils/number_format_utils.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
@@ -24,11 +30,14 @@ import 'package:chessever2/widgets/fullscreen_image_viewer.dart';
 import 'package:chessever2/widgets/game_filter/game_filter_model.dart';
 import 'package:chessever2/widgets/player_initials_avatar.dart';
 import 'package:chessever2/widgets/scroll_to_top_bus.dart';
+import 'package:chessever2/widgets/space_shortcut_drafts.dart';
 import 'package:country_flags/country_flags.dart';
 import 'package:heroine/heroine.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:chessever2/screens/chessboard/utils/legible_ink.dart';
+import 'package:chessever2/widgets/time_control_glyph.dart';
 
 /// Callback for updating game filters in a combinable way.
 /// Each parameter is optional - only provided parameters are updated,
@@ -552,7 +561,7 @@ class _PlayerAboutTabState extends ConsumerState<PlayerAboutTab>
           Icon(
             Icons.sports_esports_outlined,
             size: 48.ic,
-            color: context.colors.textPrimary.withValues(alpha: 0.4),
+            color: context.textInk(0.4),
           ),
           SizedBox(height: 12.h),
           Text(
@@ -565,7 +574,7 @@ class _PlayerAboutTabState extends ConsumerState<PlayerAboutTab>
           Text(
             'Analytics will appear when games are available',
             style: AppTypography.textSmRegular.copyWith(
-              color: context.colors.textPrimary.withValues(alpha: 0.6),
+              color: context.textInk(0.6),
             ),
             textAlign: TextAlign.center,
           ),
@@ -601,7 +610,10 @@ class _PlayerAboutTabState extends ConsumerState<PlayerAboutTab>
           Icon(
             Icons.filter_alt_outlined,
             size: 48.ic,
-            color: filterRedColor.withValues(alpha: 0.6),
+            color:
+                context.isLightTheme
+                    ? context.colors.danger
+                    : filterRedColor.withValues(alpha: 0.6),
           ),
           SizedBox(height: 12.h),
           Text(
@@ -614,7 +626,7 @@ class _PlayerAboutTabState extends ConsumerState<PlayerAboutTab>
           Text(
             'No games match the current filters.\nTap filter cards again to clear them.',
             style: AppTypography.textSmRegular.copyWith(
-              color: context.colors.textPrimary.withValues(alpha: 0.6),
+              color: context.textInk(0.6),
             ),
             textAlign: TextAlign.center,
           ),
@@ -669,7 +681,7 @@ class _PlayerAboutTabState extends ConsumerState<PlayerAboutTab>
           Text(
             error,
             style: AppTypography.textSmRegular.copyWith(
-              color: context.colors.textPrimary.withValues(alpha: 0.6),
+              color: context.textInk(0.6),
             ),
             textAlign: TextAlign.center,
           ),
@@ -1104,6 +1116,7 @@ class _PlayerHeaderSectionState extends ConsumerState<_PlayerHeaderSection> {
                     child: _RatingCard(
                       icon: PngAsset.classicalIcon,
                       label: isMemorial ? 'Peak classical' : 'Classical',
+                      fitLabel: isMemorial ? 'Peak classical' : 'Classical',
                       rating: classicalRating,
                       isSelected:
                           currentTimeControl == GameTimeControlFilter.classical,
@@ -1129,6 +1142,7 @@ class _PlayerHeaderSectionState extends ConsumerState<_PlayerHeaderSection> {
                     child: _RatingCard(
                       icon: PngAsset.rapidIcon,
                       label: isMemorial ? 'Peak rapid' : 'Rapid',
+                      fitLabel: isMemorial ? 'Peak classical' : 'Classical',
                       rating: rapidRating,
                       isSelected:
                           currentTimeControl == GameTimeControlFilter.rapid,
@@ -1153,6 +1167,7 @@ class _PlayerHeaderSectionState extends ConsumerState<_PlayerHeaderSection> {
                     child: _RatingCard(
                       icon: PngAsset.blitzIcon,
                       label: isMemorial ? 'Peak blitz' : 'Blitz',
+                      fitLabel: isMemorial ? 'Peak classical' : 'Classical',
                       rating: blitzRating,
                       isSelected:
                           currentTimeControl == GameTimeControlFilter.blitz,
@@ -1214,9 +1229,7 @@ class _PlayerHeaderSectionState extends ConsumerState<_PlayerHeaderSection> {
                       Text(
                         'Federation',
                         style: AppTypography.textXsRegular.copyWith(
-                          color: context.colors.textPrimary.withValues(
-                            alpha: 0.5,
-                          ),
+                          color: context.textInk(0.5),
                         ),
                       ),
                     ],
@@ -1243,9 +1256,7 @@ class _PlayerHeaderSectionState extends ConsumerState<_PlayerHeaderSection> {
                     Text(
                       isMemorial ? 'Historical FIDE ID' : 'FIDE ID',
                       style: AppTypography.textXsRegular.copyWith(
-                        color: context.colors.textPrimary.withValues(
-                          alpha: 0.5,
-                        ),
+                        color: context.textInk(0.5),
                       ),
                     ),
                   ],
@@ -1301,6 +1312,7 @@ class _RatingCard extends StatefulWidget {
   const _RatingCard({
     required this.icon,
     required this.label,
+    this.fitLabel,
     this.rating,
     this.onTap,
     this.isSelected = false,
@@ -1308,6 +1320,10 @@ class _RatingCard extends StatefulWidget {
 
   final String icon;
   final String label;
+
+  /// The longest label in the row. Every card sizes its label to fit this
+  /// one, so the three labels shrink together and keep one size.
+  final String? fitLabel;
   final int? rating;
   final VoidCallback? onTap;
   final bool isSelected;
@@ -1350,8 +1366,13 @@ class _RatingCardState extends State<_RatingCard> {
             onTap: widget.onTap,
             borderRadius: BorderRadius.circular(10.br),
             child: Container(
-              padding: EdgeInsets.symmetric(horizontal: 7.sp, vertical: 9.sp),
-              height: 110.w,
+              // Everything inside is centred, so the side inset only decides
+              // how much room the label gets: 3.sp keeps 'Classical' at full
+              // size on a 393dp phone while it still clears the rounded edge.
+              padding: EdgeInsets.symmetric(horizontal: 3.sp, vertical: 9.sp),
+              // A floor, not a fixed height: at 360dp / 1.3x text a pinned
+              // height let the column spill over the avatar's title ribbon.
+              constraints: BoxConstraints(minHeight: 110.w),
               decoration: BoxDecoration(
                 color: bgColor,
                 borderRadius: BorderRadius.circular(10.br),
@@ -1360,24 +1381,65 @@ class _RatingCardState extends State<_RatingCard> {
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Image.asset(widget.icon, width: 20.w, height: 20.h),
-                  SizedBox(height: 5.h),
-                  Text(
-                    widget.label,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    textAlign: TextAlign.center,
-                    style: AppTypography.textXsMedium.copyWith(
-                      color: labelColor,
-                      fontSize: 10.sp,
-                      height: 1.1,
+                  Image.asset(
+                    TimeControlGlyph.resolve(
+                      widget.icon,
+                      light: context.isLightTheme,
                     ),
+                    width: 20.w,
+                    height: 20.h,
+                  ),
+                  SizedBox(height: 5.h),
+                  // One line each, shrunk to fit: 'Classical' and a
+                  // four-digit rating must never break mid-word. The label
+                  // takes the scale the row's longest label needs, so
+                  // 'Rapid' and 'Blitz' never sit larger than 'Classical'.
+                  LayoutBuilder(
+                    builder: (context, box) {
+                      final style = AppTypography.textXsMedium.copyWith(
+                        color: labelColor,
+                        fontSize: 10.sp,
+                        height: 1.1,
+                      );
+                      var scale = 1.0;
+                      final reference = widget.fitLabel;
+                      if (reference != null && box.maxWidth.isFinite) {
+                        final painter = TextPainter(
+                          text: TextSpan(text: reference, style: style),
+                          textDirection: TextDirection.ltr,
+                          textScaler: MediaQuery.textScalerOf(context),
+                          maxLines: 1,
+                        )..layout();
+                        final width = painter.width;
+                        painter.dispose();
+                        if (width > box.maxWidth && width > 0) {
+                          scale = box.maxWidth / width;
+                        }
+                      }
+                      return FittedBox(
+                        fit: BoxFit.scaleDown,
+                        child: Text(
+                          widget.label,
+                          maxLines: 1,
+                          softWrap: false,
+                          textAlign: TextAlign.center,
+                          style: style.copyWith(
+                            fontSize: style.fontSize! * scale,
+                          ),
+                        ),
+                      );
+                    },
                   ),
                   SizedBox(height: 4.h),
-                  Text(
-                    widget.rating?.toString() ?? '-',
-                    style: AppTypography.textLgBold.copyWith(
-                      color: context.colors.textPrimary,
+                  FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: Text(
+                      widget.rating?.toString() ?? '-',
+                      maxLines: 1,
+                      softWrap: false,
+                      style: AppTypography.textLgBold.copyWith(
+                        color: context.colors.textPrimary,
+                      ),
                     ),
                   ),
                 ],
@@ -1430,7 +1492,7 @@ class _OverallStatsSection extends StatelessWidget {
                   _StatBox(
                     label: 'Win Rate',
                     value: '${(resultStats.winRate * 100).toStringAsFixed(1)}%',
-                    color: kGreenColor,
+                    color: context.colors.successStrong,
                     isSelected: currentResultFilter == PlayerResultFilter.win,
                     onTap: () {
                       // Toggle: if already selected, clear filter; otherwise apply
@@ -1505,7 +1567,11 @@ class _OverallStatsSection extends StatelessWidget {
                     children: [
                       Expanded(
                         flex: resultStats.wins,
-                        child: Container(color: kGreenColor),
+                        child: Container(
+                          // Same green as dark; the deeper paper ink keeps
+                          // the segment at 3:1 beside the grey draw share.
+                          color: context.colors.successStrong,
+                        ),
                       ),
                       if (resultStats.draws > 0)
                         Expanded(
@@ -1541,9 +1607,7 @@ class _OverallStatsSection extends StatelessWidget {
                         Text(
                           'Total Games',
                           style: AppTypography.textXsRegular.copyWith(
-                            color: context.colors.textPrimary.withValues(
-                              alpha: 0.5,
-                            ),
+                            color: context.textInk(0.5),
                           ),
                         ),
                       ],
@@ -1566,9 +1630,7 @@ class _OverallStatsSection extends StatelessWidget {
                           Text(
                             'Avg. Opponent',
                             style: AppTypography.textXsRegular.copyWith(
-                              color: context.colors.textPrimary.withValues(
-                                alpha: 0.5,
-                              ),
+                              color: context.textInk(0.5),
                             ),
                           ),
                         ],
@@ -1605,7 +1667,7 @@ class _ResultCountTriplet extends StatelessWidget {
           _ResultCountColumn(
             value: formatTightStatCount(resultStats.wins),
             label: 'W',
-            color: kGreenColor,
+            color: context.colors.successStrong,
           ),
           SizedBox(width: 12.w),
           _ResultCountColumn(
@@ -1743,9 +1805,9 @@ class _StatBoxState extends State<_StatBox> {
                                 width: borderWidth,
                               )
                               : null,
-                      // Subtle glow when selected
+                      // Subtle glow when selected; paper gets no bloom.
                       boxShadow:
-                          selectProgress > 0.5
+                          selectProgress > 0.5 && !context.isLightTheme
                               ? [
                                 BoxShadow(
                                   color: widget.color.withValues(
@@ -1769,9 +1831,7 @@ class _StatBoxState extends State<_StatBox> {
                         Text(
                           widget.label,
                           style: AppTypography.textXsRegular.copyWith(
-                            color: context.colors.textPrimary.withValues(
-                              alpha: 0.6,
-                            ),
+                            color: context.textInk(0.6),
                           ),
                         ),
                       ],
@@ -1930,8 +1990,7 @@ class _ColorStatCardState extends State<_ColorStatCard> {
   @override
   Widget build(BuildContext context) {
     // Determine accent color based on piece color
-    final accentColor =
-        widget.color == Colors.white ? kPrimaryColor : kPrimaryColor;
+    final accentColor = context.colors.accentText;
 
     return GestureDetector(
       onTapDown: widget.onTap != null ? _onTapDown : null,
@@ -1979,9 +2038,9 @@ class _ColorStatCardState extends State<_ColorStatCard> {
                     color: bgColor,
                     borderRadius: BorderRadius.circular(12.br),
                     border: Border.all(color: borderColor, width: borderWidth),
-                    // Subtle glow when selected
+                    // Subtle glow when selected; paper gets no bloom.
                     boxShadow:
-                        selectProgress > 0.5
+                        selectProgress > 0.5 && !context.isLightTheme
                             ? [
                               BoxShadow(
                                 color: accentColor.withValues(
@@ -2048,14 +2107,12 @@ class _ColorStatCardState extends State<_ColorStatCard> {
                       Text(
                         'Score',
                         style: AppTypography.textXsRegular.copyWith(
-                          color: context.colors.textPrimary.withValues(
-                            alpha: 0.5,
-                          ),
+                          color: context.textInk(0.5),
                         ),
                       ),
                       SizedBox(height: 8.h),
                       Wrap(
-                        spacing: 6.w,
+                        spacing: 10.w,
                         runSpacing: 4.h,
                         crossAxisAlignment: WrapCrossAlignment.center,
                         children: [
@@ -2074,15 +2131,16 @@ class _ColorStatCardState extends State<_ColorStatCard> {
                             type: 'L',
                             compact: true,
                           ),
-                          Text(
-                            '${widget.games} games',
-                            style: AppTypography.textXsRegular.copyWith(
-                              color: context.colors.textPrimary.withValues(
-                                alpha: 0.4,
-                              ),
-                            ),
-                          ),
                         ],
+                      ),
+                      // Always its own line, so the White and Black cards
+                      // share one row structure whatever the counts' widths.
+                      SizedBox(height: 4.h),
+                      Text(
+                        '${widget.games} games',
+                        style: AppTypography.textXsRegular.copyWith(
+                          color: context.textInk(0.4),
+                        ),
                       ),
                     ],
                   ),
@@ -2143,6 +2201,14 @@ class _RecentFormSectionState extends State<_RecentFormSection> {
             ? StringUtils.slugToTitle(selectedGame!.tourSlug!)
             : null;
 
+    final edgePadding = 16.sp;
+    final chipSize = 28.w;
+    // The chip row owns the card's top and bottom padding, so every chip's
+    // tap slot runs the full row height (never under 44dp) while the chips
+    // sit exactly where the padded layout put them.
+    final rowPadding =
+        ((44.0 - chipSize) / 2).clamp(edgePadding, double.infinity).toDouble();
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -2154,39 +2220,48 @@ class _RecentFormSectionState extends State<_RecentFormSection> {
         ),
         SizedBox(height: 12.h),
         Container(
-          padding: EdgeInsets.all(16.sp),
+          padding: EdgeInsets.symmetric(horizontal: edgePadding),
           decoration: BoxDecoration(
             color: context.colors.surface,
             borderRadius: BorderRadius.circular(12.br),
           ),
           child: Column(
             children: [
-              // W/D/L chips row
+              // W/D/L chips row. Slots are contiguous, so a tap anywhere in
+              // the row lands on its nearest chip.
               Row(
-                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                 children: List.generate(widget.form.length, (index) {
                   final result = widget.form[index];
                   final isSelected = _selectedIndex == index;
 
                   Color bgColor;
                   String text;
+                  String label;
                   if (result == 1.0) {
-                    bgColor = kGreenColor;
+                    bgColor = context.colors.successStrong;
                     text = 'W';
+                    label = 'Win';
                   } else if (result == 0.5) {
                     bgColor = context.colors.textSecondary;
                     text = 'D';
+                    label = 'Draw';
                   } else {
                     bgColor = context.colors.danger;
                     text = 'L';
+                    label = 'Loss';
                   }
 
-                  return _AnimatedFormChip(
-                    text: text,
-                    bgColor: bgColor,
-                    isSelected: isSelected,
-                    isDraw: result == 0.5,
-                    onTap: () => _onChipTapped(index),
+                  return Expanded(
+                    child: _AnimatedFormChip(
+                      text: text,
+                      semanticLabel: label,
+                      bgColor: bgColor,
+                      size: chipSize,
+                      hitPadding: rowPadding,
+                      isSelected: isSelected,
+                      isDraw: result == 0.5,
+                      onTap: () => _onChipTapped(index),
+                    ),
                   );
                 }),
               ),
@@ -2198,6 +2273,7 @@ class _RecentFormSectionState extends State<_RecentFormSection> {
                 allRecentGames: widget.recentGames,
                 eventName: eventName,
                 dataSource: widget.dataSource,
+                bottomPadding: edgePadding,
               ),
             ],
           ),
@@ -2207,18 +2283,30 @@ class _RecentFormSectionState extends State<_RecentFormSection> {
   }
 }
 
-/// Animated form chip with motor-powered selection state
+/// W/D/L result chip. Selection draws an inset ring in the chip's own label
+/// ink; the only motion is the 0.97 press.
 class _AnimatedFormChip extends StatefulWidget {
   const _AnimatedFormChip({
     required this.text,
+    required this.semanticLabel,
     required this.bgColor,
+    required this.size,
+    required this.hitPadding,
     required this.isSelected,
     required this.isDraw,
     required this.onTap,
   });
 
   final String text;
+  final String semanticLabel;
   final Color bgColor;
+
+  /// Visual chip edge length.
+  final double size;
+
+  /// Vertical tap slop above and below the chip; the slot's width comes from
+  /// the parent row.
+  final double hitPadding;
   final bool isSelected;
   final bool isDraw;
   final VoidCallback onTap;
@@ -2228,10 +2316,15 @@ class _AnimatedFormChip extends StatefulWidget {
 }
 
 class _AnimatedFormChipState extends State<_AnimatedFormChip> {
+  // Inset ring geometry, in logical pixels. A fill margin sits between the
+  // chip edge and the ring so the ring only ever touches the chip's own fill.
+  static const double _ringInset = 2.5;
+  static const double _ringWidth = 1.5;
+
   double _pressScale = 1.0;
 
   void _onTapDown(TapDownDetails _) {
-    setState(() => _pressScale = 0.85);
+    setState(() => _pressScale = 0.97);
   }
 
   void _onTapUp(TapUpDetails _) {
@@ -2245,73 +2338,87 @@ class _AnimatedFormChipState extends State<_AnimatedFormChip> {
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTapDown: _onTapDown,
-      onTapUp: _onTapUp,
-      onTapCancel: _onTapCancel,
-      child: SingleMotionBuilder(
-        motion: const CupertinoMotion.snappy(),
-        value: _pressScale,
-        builder: (context, pressScale, _) {
-          return SingleMotionBuilder(
-            motion: const CupertinoMotion.bouncy(),
-            value: widget.isSelected ? 1.0 : 0.0,
-            builder: (context, selectProgress, _) {
-              // Selection scale and shadow
-              final selectScale = 1.0 + (selectProgress * 0.15);
-              final combinedScale = pressScale * selectScale;
+    final reduceMotion = MediaQuery.maybeDisableAnimationsOf(context) ?? false;
+    // W/L chips have green/red backgrounds in both themes, so the foreground
+    // stays white for contrast. Draw chips sit on a translucent surface and
+    // read better in solid black. In light mode the draw fill is the deep
+    // secondary ink, so its label flips to white.
+    final ink =
+        widget.isDraw && !context.isLightTheme ? Colors.black : Colors.white;
+    // The selection ring reuses the label ink: it clears every fill by >=3:1
+    // in both themes, where the page ink on the light-mode fills does not.
+    final outerRadius = 6.br;
+    final innerRadius =
+        outerRadius - _ringInset > 2.0 ? outerRadius - _ringInset : 2.0;
 
-              // Selection indicator glow
-              final glowOpacity = selectProgress * 0.6;
-              final borderWidth = selectProgress * 2.5;
-
-              return Transform.scale(
-                scale: combinedScale,
-                child: Container(
-                  width: 28.w,
-                  height: 28.w,
-                  decoration: BoxDecoration(
-                    color: widget.bgColor,
-                    borderRadius: BorderRadius.circular(6.br),
-                    border:
-                        borderWidth > 0
-                            ? Border.all(
-                              color: context.colors.textPrimary.withValues(
-                                alpha: glowOpacity + 0.3,
-                              ),
-                              width: borderWidth,
-                            )
-                            : null,
-                    boxShadow:
-                        selectProgress > 0.1
-                            ? [
-                              BoxShadow(
-                                color: widget.bgColor.withValues(
-                                  alpha: 0.5 * selectProgress,
-                                ),
-                                blurRadius: 8 * selectProgress,
-                                spreadRadius: 2 * selectProgress,
-                              ),
-                            ]
-                            : null,
-                  ),
-                  child: Center(
-                    child: Text(
-                      widget.text,
-                      style: AppTypography.textXsBold.copyWith(
-                        // W/L chips have green/red backgrounds in both themes,
-                        // so the foreground stays white for contrast. Draw
-                        // chips sit on a translucent surface and read better
-                        // in solid black.
-                        color: widget.isDraw ? Colors.black : Colors.white,
-                      ),
-                    ),
-                  ),
+    return Semantics(
+      button: true,
+      selected: widget.isSelected,
+      label: widget.semanticLabel,
+      excludeSemantics: true,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTapDown: _onTapDown,
+        onTapUp: _onTapUp,
+        onTapCancel: _onTapCancel,
+        child: Padding(
+          padding: EdgeInsets.symmetric(vertical: widget.hitPadding),
+          child: Center(
+            child: SingleMotionBuilder(
+              motion:
+                  reduceMotion
+                      ? const Motion.none()
+                      : const CupertinoMotion.snappy(),
+              value: _pressScale,
+              builder: (context, pressScale, child) {
+                return Transform.scale(scale: pressScale, child: child);
+              },
+              child: Container(
+                width: widget.size,
+                height: widget.size,
+                padding: const EdgeInsets.all(_ringInset),
+                decoration: BoxDecoration(
+                  color: widget.bgColor,
+                  borderRadius: BorderRadius.circular(outerRadius),
                 ),
-              );
-            },
-          );
-        },
+                child: SingleMotionBuilder(
+                  motion:
+                      reduceMotion
+                          ? const Motion.none()
+                          : const CupertinoMotion.snappy(),
+                  value: widget.isSelected ? 1.0 : 0.0,
+                  builder: (context, selectProgress, _) {
+                    final ringAlpha = selectProgress.clamp(0.0, 1.0);
+                    return DecoratedBox(
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(innerRadius),
+                        border:
+                            ringAlpha > 0.01
+                                ? Border.all(
+                                  color: ink.withValues(alpha: ringAlpha),
+                                  width: _ringWidth,
+                                )
+                                : null,
+                      ),
+                      child: Center(
+                        child: Text(
+                          widget.text,
+                          maxLines: 1,
+                          softWrap: false,
+                          overflow: TextOverflow.visible,
+                          style: AppTypography.textXsBold.copyWith(
+                            color: ink,
+                            height: 1.0,
+                          ),
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ),
+          ),
+        ),
       ),
     );
   }
@@ -2325,6 +2432,7 @@ class _ExpandableGameCard extends ConsumerWidget {
     required this.allRecentGames,
     required this.dataSource,
     this.eventName,
+    this.bottomPadding = 0,
   });
 
   final GamesTourModel? selectedGame;
@@ -2332,6 +2440,10 @@ class _ExpandableGameCard extends ConsumerWidget {
   final List<GamesTourModel> allRecentGames;
   final PlayerProfileDataSource dataSource;
   final String? eventName;
+
+  /// Space under the hint once expanded. The chip row above already supplies
+  /// the gap between the chips and the divider.
+  final double bottomPadding;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -2351,9 +2463,6 @@ class _ExpandableGameCard extends ConsumerWidget {
 
         return Column(
           children: [
-            // Animated spacing
-            SizedBox(height: 16.h * expandProgress),
-
             // Divider with animated opacity
             Opacity(
               opacity: opacity,
@@ -2398,11 +2507,13 @@ class _ExpandableGameCard extends ConsumerWidget {
                 child: Text(
                   'Tap card to view full game',
                   style: AppTypography.textXsRegular.copyWith(
-                    color: context.colors.textPrimary.withValues(alpha: 0.4),
+                    color: context.textInk(0.4),
                   ),
                 ),
               ),
             ),
+
+            SizedBox(height: bottomPadding * expandProgress),
           ],
         );
       },
@@ -2415,33 +2526,78 @@ class _ExpandableGameCard extends ConsumerWidget {
     GamesTourModel game,
     String? eventName,
   ) {
+    void openGame() {
+      HapticFeedbackService.cardTap();
+      // Navigate to chessboard
+      ref
+          .read(gameCardWrapperProvider)
+          .navigateToChessBoard(
+            context: context,
+            orderedGames: allRecentGames,
+            gameIndex: selectedIndex ?? 0,
+            onReturnFromChessboard: null,
+            viewSource: ChessboardView.playerProfile,
+            playerProfileDataSource: dataSource,
+            showClock: dataSource != PlayerProfileDataSource.twic,
+          );
+    }
+
+    // The lifted copy never starts its own engine fallback.
+    Widget card({bool preview = false}) => ClipRRect(
+      borderRadius: BorderRadius.circular(12.br),
+      child: GamesTourGameCardBody(
+        matchComparison: MatchWithComparison(
+          game: game,
+          comparison: MatchComparison.sameOrder,
+        ),
+        eventName: eventName,
+        showClock: false,
+        allowStockfishFallback: !preview,
+      ),
+    );
+
     return TappableScale(
       scaleDown: 0.98,
-      onTap: () {
-        HapticFeedbackService.cardTap();
-        // Navigate to chessboard
-        ref
-            .read(gameCardWrapperProvider)
-            .navigateToChessBoard(
-              context: context,
-              orderedGames: allRecentGames,
-              gameIndex: selectedIndex ?? 0,
-              onReturnFromChessboard: null,
-              viewSource: ChessboardView.playerProfile,
-              playerProfileDataSource: dataSource,
-              showClock: dataSource != PlayerProfileDataSource.twic,
-            );
-      },
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(12.br),
-        child: GamesTourGameCardBody(
-          matchComparison: MatchWithComparison(
-            game: game,
-            comparison: MatchComparison.sameOrder,
-          ),
-          eventName: eventName,
-          showClock: false,
-        ),
+      onTap: openGame,
+      // Long-press: the same focus menu the Games tab cards open.
+      child: Builder(
+        builder:
+            (cardContext) => GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onLongPress: () {
+                final spaceDraft = gameSpaceShortcutDraft(game);
+                showLibraryContextMenu(
+                  context: cardContext,
+                  previewBuilder: (_) => card(preview: true),
+                  onPreviewTap: openGame,
+                  actions: [
+                    LibraryMenuAction(
+                      icon: Icons.open_in_new_rounded,
+                      label: 'Open game',
+                      onSelected: () {
+                        if (cardContext.mounted) openGame();
+                      },
+                    ),
+                    LibraryMenuAction(
+                      icon: Icons.ios_share_rounded,
+                      label: 'Share',
+                      onSelected: () {
+                        if (cardContext.mounted) {
+                          return showGameShareOverlay(cardContext, ref, game);
+                        }
+                      },
+                    ),
+                    if (spaceDraft != null)
+                      spaceMenuAction(
+                        context: cardContext,
+                        ref: ref,
+                        draft: spaceDraft,
+                      ),
+                  ],
+                );
+              },
+              child: card(),
+            ),
       ),
     );
   }
@@ -2606,6 +2762,64 @@ class _OpeningRepertoireSectionState
     }
   }
 
+  /// Long-press menu for a repertoire row: pin this player's tree of the
+  /// opening (from the side currently shown), or the opening itself.
+  void _showOpeningMenu(
+    BuildContext rowContext,
+    OpeningStatistic opening, {
+    required bool isSelected,
+    required bool isActive,
+  }) {
+    final eco = opening.eco.trim().toUpperCase();
+    final name =
+        (opening.openingName?.trim().isNotEmpty ?? false)
+            ? opening.openingName!.trim()
+            : EcoOpenings.getOpeningName(eco) ?? eco;
+    final color = switch (_effectiveFilter) {
+      _OpeningRepertoireFilter.white => 'white',
+      _OpeningRepertoireFilter.black => 'black',
+      _OpeningRepertoireFilter.all => 'all',
+    };
+    final player = widget.playerKey;
+
+    showLibraryContextMenu(
+      context: rowContext,
+      previewBuilder:
+          (_) => _OpeningRow(
+            opening: opening,
+            isSelected: isSelected,
+            isActive: isActive,
+          ),
+      actions: [
+        labeledSpaceMenuAction(
+          context: rowContext,
+          ref: ref,
+          draft: spacePlayerOpeningsDraft(
+            playerName: player.playerName,
+            fideId: player.fideId,
+            gamebasePlayerId: player.gamebasePlayerId,
+            eco: eco,
+            color: color,
+            openingName: name,
+          ),
+          addLabel: 'Add opening tree to My Space',
+          removeLabel: 'Remove opening tree from My Space',
+        ),
+        labeledSpaceMenuAction(
+          context: rowContext,
+          ref: ref,
+          draft: spaceOpeningDraft(
+            targetId: eco,
+            name: name,
+            extraParams: {'ecoCode': eco},
+          ),
+          addLabel: 'Add opening to My Space',
+          removeLabel: 'Remove opening from My Space',
+        ),
+      ],
+    );
+  }
+
   void _onLocalFilterChanged(_OpeningRepertoireFilter newFilter) {
     if (_localFilter == newFilter) return;
 
@@ -2707,7 +2921,7 @@ class _OpeningRepertoireSectionState
                         ? 'No openings found yet'
                         : 'No openings found for this color',
                     style: AppTypography.textSmRegular.copyWith(
-                      color: context.colors.textPrimary.withValues(alpha: 0.6),
+                      color: context.textInk(0.6),
                     ),
                   ),
                 )
@@ -2733,6 +2947,15 @@ class _OpeningRepertoireSectionState
                       isSelected: isSelected,
                       isActive: isActive,
                       onTap: isActive ? () => _onOpeningTapped(opening) : null,
+                      onLongPress:
+                          opening.hasRealEcoCode
+                              ? (rowContext) => _showOpeningMenu(
+                                rowContext,
+                                opening,
+                                isSelected: isSelected,
+                                isActive: isActive,
+                              )
+                              : null,
                     );
                   },
                 ),
@@ -2754,9 +2977,7 @@ class _OpeningRepertoireSectionState
             ? context.colors.textPrimary.withValues(alpha: 0.6)
             : context.colors.divider.withValues(alpha: 0.6);
     final textColor =
-        isSelected
-            ? context.colors.textPrimary
-            : context.colors.textPrimary.withValues(alpha: 0.6);
+        isSelected ? context.colors.textPrimary : context.textInk(0.6);
 
     return GestureDetector(
       onTap: () => _onLocalFilterChanged(filter),
@@ -2783,12 +3004,16 @@ class _OpeningRow extends StatefulWidget {
     this.isSelected = false,
     this.isActive = true,
     this.onTap,
+    this.onLongPress,
   });
 
   final OpeningStatistic opening;
   final bool isSelected;
   final bool isActive;
   final VoidCallback? onTap;
+
+  /// Receives the row's own context so a context menu can anchor to it.
+  final void Function(BuildContext rowContext)? onLongPress;
 
   @override
   State<_OpeningRow> createState() => _OpeningRowState();
@@ -2830,7 +3055,7 @@ class _OpeningRowState extends State<_OpeningRow> {
   }
 
   Color _getScoreColor(double score) {
-    if (score >= 0.6) return kGreenColor;
+    if (score >= 0.6) return context.colors.successStrong;
     if (score >= 0.4) return context.colors.textPrimary;
     return context.colors.danger;
   }
@@ -2842,6 +3067,10 @@ class _OpeningRowState extends State<_OpeningRow> {
       onTapUp: widget.onTap != null ? _onTapUp : null,
       onTapCancel: widget.onTap != null ? _onTapCancel : null,
       onTap: widget.onTap,
+      onLongPress:
+          widget.onLongPress == null
+              ? null
+              : () => widget.onLongPress!(context),
       behavior: HitTestBehavior.opaque,
       child: SingleMotionBuilder(
         motion: const CupertinoMotion.snappy(),
@@ -2873,13 +3102,13 @@ class _OpeningRowState extends State<_OpeningRow> {
                   final activeNameColor =
                       Color.lerp(
                         context.colors.textPrimary,
-                        kPrimaryColor,
+                        context.colors.accentText,
                         selectProgress * 0.6,
                       )!;
                   final nameColor =
                       Color.lerp(
                         activeNameColor,
-                        context.colors.textPrimary.withValues(alpha: 0.22),
+                        context.textInk(0.22),
                         inactiveAmount,
                       )!;
 
@@ -2887,7 +3116,7 @@ class _OpeningRowState extends State<_OpeningRow> {
                   final ecoBorderColor =
                       Color.lerp(
                         Colors.transparent,
-                        kPrimaryColor,
+                        context.colors.accentText,
                         selectProgress * activeProgress,
                       )!;
                   final ecoBorderWidth = selectProgress * activeProgress * 2.0;
@@ -2906,13 +3135,13 @@ class _OpeningRowState extends State<_OpeningRow> {
                   final activeScoreColor =
                       Color.lerp(
                         baseScoreColor,
-                        kPrimaryColor,
+                        context.colors.accentText,
                         selectProgress * 0.4,
                       )!;
                   final scoreColor =
                       Color.lerp(
                         activeScoreColor,
-                        context.colors.textPrimary.withValues(alpha: 0.18),
+                        context.textInk(0.18),
                         inactiveAmount,
                       )!;
 
@@ -2935,9 +3164,12 @@ class _OpeningRowState extends State<_OpeningRow> {
                             selectProgress > 0.1 && activeProgress > 0.5
                                 ? Border(
                                   left: BorderSide(
-                                    color: kPrimaryColor.withValues(
-                                      alpha: selectProgress * 0.8,
-                                    ),
+                                    color: (context.isLightTheme
+                                            ? context.colors.accentText
+                                            : kPrimaryColor)
+                                        .withValues(
+                                          alpha: selectProgress * 0.8,
+                                        ),
                                     width: 3 * selectProgress,
                                   ),
                                 )
@@ -2965,7 +3197,9 @@ class _OpeningRowState extends State<_OpeningRow> {
                                         )
                                         : null,
                                 boxShadow:
-                                    selectProgress > 0.5 && activeProgress > 0.5
+                                    selectProgress > 0.5 &&
+                                            activeProgress > 0.5 &&
+                                            !context.isLightTheme
                                         ? [
                                           BoxShadow(
                                             color: kPrimaryColor.withValues(
@@ -2982,13 +3216,22 @@ class _OpeningRowState extends State<_OpeningRow> {
                                 textAlign: TextAlign.center,
                                 maxLines: 1,
                                 style: AppTypography.textXsBold.copyWith(
-                                  color: Color.lerp(
-                                    context.colors.textPrimary,
-                                    context.colors.textPrimary.withValues(
-                                      alpha: 0.35,
-                                    ),
-                                    inactiveAmount,
-                                  ),
+                                  // Paper: the saturated ECO fills (saddle,
+                                  // plum) sink ink to ~2.5:1, so the label
+                                  // takes whichever of ink/white reads.
+                                  color:
+                                      context.isLightTheme
+                                          ? Color.lerp(
+                                            labelOnFill(context, ecoColor),
+                                            context.textInk(0.35),
+                                            inactiveAmount,
+                                          )
+                                          : Color.lerp(
+                                            context.colors.textPrimary,
+                                            context.colors.textPrimary
+                                                .withValues(alpha: 0.35),
+                                            inactiveAmount,
+                                          ),
                                   fontFamily: 'monospace',
                                 ),
                               ),
@@ -3011,7 +3254,7 @@ class _OpeningRowState extends State<_OpeningRow> {
                                   ),
                                   SizedBox(height: 4.h),
                                   Wrap(
-                                    spacing: 4.w,
+                                    spacing: 8.w,
                                     runSpacing: 2.h,
                                     crossAxisAlignment:
                                         WrapCrossAlignment.center,
@@ -3039,10 +3282,9 @@ class _OpeningRowState extends State<_OpeningRow> {
                                         '${widget.opening.count} games',
                                         style: AppTypography.textXsRegular
                                             .copyWith(
-                                              color: context.colors.textPrimary
-                                                  .withValues(
-                                                    alpha: secondaryTextAlpha,
-                                                  ),
+                                              color: context.textInk(
+                                                secondaryTextAlpha,
+                                              ),
                                             ),
                                       ),
                                     ],
@@ -3064,8 +3306,7 @@ class _OpeningRowState extends State<_OpeningRow> {
                                 Text(
                                   'score',
                                   style: AppTypography.textXsRegular.copyWith(
-                                    color: context.colors.textPrimary
-                                        .withValues(alpha: secondaryTextAlpha),
+                                    color: context.textInk(secondaryTextAlpha),
                                   ),
                                 ),
                               ],
@@ -3085,7 +3326,10 @@ class _OpeningRowState extends State<_OpeningRow> {
   }
 }
 
-/// Win/Loss/Draw indicator with color and optional dimming
+/// Win/Loss/Draw count set as plain inline text ('25W'), with optional
+/// dimming. No tinted chip: the tint dragged the counts under AA in both
+/// themes, and the Overall Performance triplet already reads W/D/L as bare
+/// coloured type on the card.
 class _WLDIndicator extends StatelessWidget {
   const _WLDIndicator({
     required this.value,
@@ -3101,67 +3345,62 @@ class _WLDIndicator extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    Color baseBgColor;
+    final isLight = context.isLightTheme;
     Color baseTextColor;
+    String resultName;
 
+    // Ink straight on the card surface: paper 6.3 / 6.4 / 5.2:1, dark
+    // 8.1 / 9.0 / 4.8:1 (W / D / L).
     switch (type) {
       case 'W':
-        baseBgColor = kGreenColor.withValues(alpha: 0.2);
-        baseTextColor = kGreenColor;
+        baseTextColor =
+            isLight ? context.colors.successStrong : context.colors.success;
+        resultName = value == 1 ? 'win' : 'wins';
         break;
       case 'L':
-        baseBgColor = context.colors.danger.withValues(alpha: 0.2);
         baseTextColor = context.colors.danger;
+        resultName = value == 1 ? 'loss' : 'losses';
         break;
       case 'D':
       default:
-        baseBgColor = context.colors.textPrimary.withValues(alpha: 0.15);
-        baseTextColor = context.colors.textPrimary.withValues(alpha: 0.7);
+        baseTextColor =
+            isLight
+                ? context.colors.textSecondary
+                : context.colors.textPrimary.withValues(alpha: 0.7);
+        resultName = value == 1 ? 'draw' : 'draws';
         break;
     }
 
-    // Dim colors when inactive
-    final bgColor =
-        Color.lerp(
-          baseBgColor,
-          context.colors.textPrimary.withValues(alpha: 0.05),
-          dimAmount,
-        )!;
+    // Dim when inactive
     final textColor =
-        Color.lerp(
-          baseTextColor,
-          context.colors.textPrimary.withValues(alpha: 0.2),
-          dimAmount,
-        )!;
+        Color.lerp(baseTextColor, context.textInk(0.2), dimAmount)!;
 
-    return Container(
-      padding: EdgeInsets.symmetric(
-        horizontal: compact ? 6.w : 8.w,
-        vertical: compact ? 2.h : 4.h,
-      ),
-      decoration: BoxDecoration(
-        color: bgColor,
-        borderRadius: BorderRadius.circular(4.br),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Text(
-            type,
-            style: (compact
-                    ? AppTypography.textXsBold
-                    : AppTypography.textXsMedium)
-                .copyWith(color: textColor),
+    return Semantics(
+      label: '$value $resultName',
+      excludeSemantics: true,
+      child: Padding(
+        // Vertical only: holds the line height the old chip had, so the
+        // cards and opening rows keep their exact height.
+        padding: EdgeInsets.symmetric(vertical: compact ? 2.h : 4.h),
+        child: Text.rich(
+          TextSpan(
+            children: [
+              TextSpan(
+                text: value.toString(),
+                style: (compact
+                        ? AppTypography.textXsBold
+                        : AppTypography.textXsMedium)
+                    .copyWith(color: textColor),
+              ),
+              TextSpan(
+                text: type,
+                style: AppTypography.textXsMedium.copyWith(color: textColor),
+              ),
+            ],
           ),
-          SizedBox(width: compact ? 2.w : 4.w),
-          Text(
-            value.toString(),
-            style: (compact
-                    ? AppTypography.textXsBold
-                    : AppTypography.textXsMedium)
-                .copyWith(color: textColor),
-          ),
-        ],
+          maxLines: 1,
+          softWrap: false,
+        ),
       ),
     );
   }

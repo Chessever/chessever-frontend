@@ -1,4 +1,5 @@
 // repositories/game_repository.dart
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:chessever2/repository/supabase/game/games.dart';
@@ -8,6 +9,7 @@ import 'package:chessever2/repository/supabase/base_repository.dart';
 import 'package:chessever2/widgets/game_filter/game_filter_model.dart';
 import 'package:flutter/foundation.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 final gameRepositoryProvider = AutoDisposeProvider<GameRepository>((ref) {
   return GameRepository();
@@ -53,6 +55,8 @@ class TourGameSafetyNetSnapshot {
     this.roundId,
     this.roundSlug,
     this.status,
+    this.players,
+    this.boardNr,
   });
 
   factory TourGameSafetyNetSnapshot.fromJson(Map<String, dynamic> json) {
@@ -61,6 +65,10 @@ class TourGameSafetyNetSnapshot {
       roundId: json['round_id'] as String?,
       roundSlug: json['round_slug'] as String?,
       status: json['status'] as String?,
+      players: (json['players'] as List?)
+          ?.map((p) => Player.fromJson(Map<String, dynamic>.from(p as Map)))
+          .toList(growable: false),
+      boardNr: (json['board_nr'] as num?)?.toInt(),
     );
   }
 
@@ -68,6 +76,31 @@ class TourGameSafetyNetSnapshot {
   final String? roundId;
   final String? roundSlug;
   final String? status;
+  final List<Player>? players;
+  final int? boardNr;
+
+  bool differsFrom(Games game) =>
+      (status != null && status != game.status) ||
+      roundId != game.roundId ||
+      roundSlug != game.roundSlug ||
+      (boardNr != null && boardNr != game.boardNr) ||
+      (players != null &&
+          jsonEncode(
+                players!.map((p) => (p.toJson()..remove('clock'))).toList(),
+              ) !=
+              jsonEncode(
+                game.players
+                    ?.map((p) => (p.toJson()..remove('clock')))
+                    .toList(),
+              ));
+
+  Games mergeInto(Games game) => game.copyWith(
+    roundId: roundId,
+    roundSlug: roundSlug,
+    status: status,
+    players: players,
+    boardNr: boardNr,
+  );
 }
 
 const String _gameListSelectColumns = '''
@@ -94,6 +127,36 @@ const String _gameListSelectColumns = '''
           game_day,
           last_clock_white,
           last_clock_black,
+          eco,
+          opening_name,
+          tours!games_tour_id_fkey(
+            avg_elo,
+            tc:info->>tc,
+            group_broadcasts!tours_group_broadcast_id_fkey(time_control)
+          )
+        ''';
+
+/// [_gameListSelectColumns] without `pgn` and `search`: what the Feed ranks
+/// on. Movetext is fetched afterwards for the games it picks.
+const String _feedCandidateSelectColumns = '''
+          id,
+          round_id,
+          round_slug,
+          tour_id,
+          tour_slug,
+          name,
+          fen,
+          players,
+          last_move,
+          status,
+          lichess_id,
+          player_white,
+          player_black,
+          date_start,
+          time_start,
+          board_nr,
+          last_move_time,
+          game_day,
           eco,
           opening_name,
           tours!games_tour_id_fkey(
@@ -864,8 +927,53 @@ class GameRepository extends BaseRepository {
     });
   }
 
-  /// Lightweight set/status snapshot used by the tournament safety net.
-  /// Full game rows contain PGN, FEN, players, clocks, and joined tour data;
+  /// One tour channel for result consumers, never one subscription per board.
+  /// A null emission requests reconciliation after subscribe/reconnect. Deletes
+  /// with only a primary key are recovered by the paginated safety net: Realtime
+  /// cannot reliably scope those to a tour. No PGN/move ticks enter provider state.
+  Stream<TourGameSafetyNetSnapshot?> watchTourStandingsChanges(String tourId) {
+    late final StreamController<TourGameSafetyNetSnapshot?> controller;
+    late final RealtimeChannel channel;
+    controller = StreamController<TourGameSafetyNetSnapshot?>(
+      onListen: () {
+        channel = supabase
+            .channel('standings-$tourId-${identityHashCode(controller)}')
+            .onPostgresChanges(
+              event: PostgresChangeEvent.all,
+              schema: 'public',
+              table: 'games',
+              filter: PostgresChangeFilter(
+                type: PostgresChangeFilterType.eq,
+                column: 'tour_id',
+                value: tourId,
+              ),
+              callback: (payload) {
+                if (controller.isClosed) return;
+                final row = payload.newRecord;
+                if (payload.eventType == PostgresChangeEvent.delete) {
+                  if (payload.oldRecord['tour_id'] == tourId) {
+                    controller.add(null);
+                  }
+                } else if (row['tour_id'] == tourId) {
+                  controller.add(TourGameSafetyNetSnapshot.fromJson(row));
+                }
+              },
+            )
+            .subscribe((status, error) {
+              if (controller.isClosed) return;
+              if (status == RealtimeSubscribeStatus.subscribed) {
+                controller.add(null);
+              }
+              // The client reconnects; polling remains active during failures.
+            });
+      },
+      onCancel: () => supabase.removeChannel(channel),
+    );
+    return controller.stream;
+  }
+
+  /// Lightweight standings snapshot used by the tournament safety net.
+  /// Full game rows contain PGN, FEN, clocks, and joined tour data;
   /// downloading all of that every few seconds caused avoidable UI-isolate
   /// encode/decode and cache work even when nothing changed.
   Future<List<TourGameSafetyNetSnapshot>> getTourGamesSafetyNet(
@@ -878,7 +986,7 @@ class GameRepository extends BaseRepository {
       while (true) {
         final response = await supabase
             .from('games')
-            .select('id,round_id,round_slug,status')
+            .select('id,round_id,round_slug,status,players,board_nr')
             .eq('tour_id', tourId)
             .order('id', ascending: true)
             .range(pageOffset, pageOffset + _tourGamesFetchPageSize - 1);
@@ -1230,6 +1338,98 @@ class GameRepository extends BaseRepository {
       );
 
       return games;
+    });
+  }
+
+  /// Feed candidates: finished games, newest first, listing columns only.
+  ///
+  /// No PGN rides along (the Feed fetches movetext for the few games it
+  /// actually shows, in one batch through [getGamePgns]), and the Elo floor
+  /// runs on the server against the indexed `player_max_rating`, so a page
+  /// is a few kilobytes however strong the day was. [tourIds] narrows to
+  /// those tours (the events running now); null reads every tour.
+  Future<List<Games>> getFeedCandidateGames({
+    required DateTime since,
+    List<String>? tourIds,
+    int minRating = 2400,
+    bool decisiveOnly = false,
+    int limit = 60,
+    int offset = 0,
+  }) async {
+    return handleApiCall(() async {
+      if (tourIds != null && tourIds.isEmpty) return <Games>[];
+      dynamic query = supabase
+          .from('games')
+          .select(_feedCandidateSelectColumns)
+          .gte('player_max_rating', minRating)
+          .inFilter(
+            'status',
+            decisiveOnly
+                ? const ['1-0', '0-1']
+                : const ['1-0', '0-1', '1/2-1/2', '½-½'],
+          )
+          .gte('last_move_time', since.toUtc().toIso8601String());
+      if (tourIds != null) query = query.inFilter('tour_id', tourIds);
+      final response = await query
+          .order('last_move_time', ascending: false, nullsFirst: false)
+          .range(offset, offset + limit - 1);
+      final games = <Games>[];
+      for (final raw in response as List) {
+        try {
+          games.add(
+            Games.fromJson({
+              ...(raw as Map<String, dynamic>),
+              'is_pgn_deferred': true,
+            }),
+          );
+        } catch (_) {
+          // A row missing its round or tour cannot be drawn; skip it.
+        }
+      }
+      return games;
+    });
+  }
+
+  /// Movetext for [ids] in one request, by game id. Ids the table does not
+  /// know (or whose PGN is empty) are simply absent.
+  Future<Map<String, String>> getGamePgns(List<String> ids) async {
+    return handleApiCall(() async {
+      if (ids.isEmpty) return <String, String>{};
+      final response = await supabase
+          .from('games')
+          .select('id, pgn')
+          .inFilter('id', ids);
+      return <String, String>{
+        for (final row in response as List)
+          if ((row['pgn'] as String?)?.trim().isNotEmpty ?? false)
+            row['id'] as String: row['pgn'] as String,
+      };
+    });
+  }
+
+  /// Tours of the events running now (`group_broadcasts_current`) whose
+  /// strongest section averages at least [minEventElo], with that average.
+  Future<Map<String, int>> getCurrentEventTourElos({
+    int minEventElo = 2300,
+  }) async {
+    return handleApiCall(() async {
+      final events = await supabase
+          .from('group_broadcasts_current')
+          .select('id, max_avg_elo')
+          .gte('max_avg_elo', minEventElo);
+      final eloByEvent = <String, int>{
+        for (final row in events as List)
+          row['id'] as String: (row['max_avg_elo'] as num?)?.toInt() ?? 0,
+      };
+      if (eloByEvent.isEmpty) return <String, int>{};
+      final tours = await supabase
+          .from('tours')
+          .select('id, group_broadcast_id')
+          .inFilter('group_broadcast_id', eloByEvent.keys.toList());
+      return <String, int>{
+        for (final row in tours as List)
+          row['id'] as String: eloByEvent[row['group_broadcast_id']] ?? 0,
+      };
     });
   }
 

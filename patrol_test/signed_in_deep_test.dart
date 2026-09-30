@@ -243,11 +243,8 @@ void main() {
         await popRoute($);
         await popRoute($);
 
-        await tapBottomNavRoot(
-          $,
-          navId: E2eIds.navLibrary,
-          expectedRoot: E2eIds.libraryRoot,
-        );
+        await pushNamedRoute($, '/library_screen');
+        await expectVisible($, E2eIds.libraryRoot);
         final query = seed.seededPlayers.first.queryToken;
         await searchFor($, fieldId: E2eIds.librarySearchField, query: query);
         await pumpUntil(

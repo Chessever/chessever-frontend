@@ -8,8 +8,10 @@ import 'package:chessever2/screens/library/miniatures/miniatures_day_list_utils.
 import 'package:chessever2/screens/library/providers/miniatures_provider.dart';
 import 'package:chessever2/screens/library/widgets/add_to_folder_sheet.dart';
 import 'package:chessever2/screens/library/widgets/gamebase_search_game_card.dart';
+import 'package:chessever2/screens/library/widgets/library_context_menu.dart';
 import 'package:chessever2/screens/library/widgets/miniatures_filter_dialog.dart';
 import 'package:chessever2/screens/player_profile/player_profile_screen.dart';
+import 'package:chessever2/screens/player_profile/utils/player_menu_actions.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
@@ -17,6 +19,7 @@ import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/scroll_cache.dart';
+import 'package:chessever2/widgets/card_context_menu.dart';
 import 'package:chessever2/widgets/federation_flag.dart';
 import 'package:chessever2/widgets/fullscreen_image_viewer.dart';
 import 'package:chessever2/widgets/player_initials_avatar.dart';
@@ -25,6 +28,7 @@ import 'package:flutter/material.dart';
 import 'package:heroine/heroine.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:intl/intl.dart';
+import 'package:chessever2/screens/chessboard/utils/legible_ink.dart';
 
 /// A player's own miniature games, in the same spirit as the tournament
 /// Standings → player card → score card flow: a compact player header with
@@ -68,6 +72,13 @@ class _MiniaturePlayerScorecardScreenState
   /// header (avatar + name) so the title appears as that name leaves view.
   static const double _titleFadeStart = 28;
   static const double _titleFadeEnd = 88;
+
+  final GlobalKey _appBarTitleKey = GlobalKey();
+  final GlobalKey _moreButtonKey = GlobalKey();
+
+  /// True when the fade-in title, laid out exactly as it always was, runs
+  /// under the ⋮ button (very long names). The button then yields to it.
+  bool _titleReachesMore = false;
 
   String get _playerId => widget.player.playerId;
 
@@ -249,6 +260,35 @@ class _MiniaturePlayerScorecardScreenState
     );
   }
 
+  void _syncTitleClearance() {
+    if (!mounted) return;
+    final title = _appBarTitleKey.currentContext?.findRenderObject();
+    final more = _moreButtonKey.currentContext?.findRenderObject();
+    if (title is! RenderBox || more is! RenderBox) return;
+    if (!title.hasSize || !more.hasSize) return;
+    final reaches = (title.localToGlobal(Offset.zero) & title.size).overlaps(
+      more.localToGlobal(Offset.zero) & more.size,
+    );
+    if (reaches != _titleReachesMore) {
+      setState(() => _titleReachesMore = reaches);
+    }
+  }
+
+  List<LibraryMenuAction> _playerMenuActions(BuildContext menuContext) {
+    final player = widget.player;
+    return playerMenuActions(
+      menuContext,
+      ref,
+      playerName: player.name,
+      fideId: player.fideId,
+      title: player.title,
+      federation: player.fed,
+      rating: player.rating,
+      onOpen: _openFullProfile,
+      openLabel: 'Open player profile',
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final state = ref.watch(miniaturePlayerGamesPaginatedProvider(_playerId));
@@ -302,6 +342,14 @@ class _MiniaturePlayerScorecardScreenState
       );
     }
 
+    // The ⋮ fades out (twice as fast as the title fades in) only when the
+    // title would run under it; otherwise it stays beside the title.
+    final moreOpacity =
+        _titleReachesMore
+            ? (1 - 2 * _appBarTitleOpacity).clamp(0.0, 1.0)
+            : 1.0;
+    WidgetsBinding.instance.addPostFrameCallback((_) => _syncTitleClearance());
+
     // Title is empty at rest so it does not duplicate the body header; it
     // fades in once the header name scrolls under the bar, and out on return.
     // No body SafeArea: top is the AppBar; bottom inset is list padding only.
@@ -317,10 +365,42 @@ class _MiniaturePlayerScorecardScreenState
             opacity: _appBarTitleOpacity,
             child: Text(
               widget.player.name,
+              key: _appBarTitleKey,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: AppTypography.textMdMedium.copyWith(
                 color: context.colors.textPrimary,
+              ),
+            ),
+          ),
+        ),
+        // The player behind this scorecard, pinned or shared from here.
+        // Deliberately NOT `actions`: a trailing slot narrows the title and,
+        // on iOS, un-centres it. The flexible-space layer sits under the
+        // toolbar without taking part in its layout, so the bar is laid out
+        // exactly as before and the ⋮ fills space that was already empty,
+        // mirroring the back arrow (24dp glyph, 16dp from the edge).
+        flexibleSpace: SafeArea(
+          bottom: false,
+          child: Align(
+            alignment: AlignmentDirectional.centerEnd,
+            child: Padding(
+              padding: const EdgeInsetsDirectional.only(end: 6),
+              child: IgnorePointer(
+                ignoring: moreOpacity < 0.05,
+                child: ExcludeSemantics(
+                  excluding: moreOpacity < 0.05,
+                  child: Opacity(
+                    opacity: moreOpacity,
+                    child: CardMoreButton(
+                      key: _moreButtonKey,
+                      vertical: true,
+                      size: 24,
+                      color: context.colors.textPrimary,
+                      actions: _playerMenuActions,
+                    ),
+                  ),
+                ),
               ),
             ),
           ),
@@ -413,7 +493,9 @@ class _MiniaturePlayerScorecardScreenState
                     size: 20.sp,
                     color:
                         hasActiveFilters
-                            ? const Color(0xFFEF4444)
+                            ? (context.isLightTheme
+                                ? context.colors.danger
+                                : const Color(0xFFEF4444))
                             : context.colors.textSecondary,
                   ),
                   if (hasActiveFilters)
@@ -423,15 +505,24 @@ class _MiniaturePlayerScorecardScreenState
                       child: Container(
                         width: 14.w,
                         height: 14.h,
-                        decoration: const BoxDecoration(
-                          color: Color(0xFFEF4444),
+                        decoration: BoxDecoration(
+                          color:
+                              context.isLightTheme
+                                  ? context.colors.danger
+                                  : const Color(0xFFEF4444),
                           shape: BoxShape.circle,
                         ),
                         child: Center(
                           child: Text(
                             '$activeFilterCount',
                             style: AppTypography.textXsBold.copyWith(
-                              color: context.colors.textPrimary,
+                              color:
+                                  context.isLightTheme
+                                      ? labelOnFill(
+                                        context,
+                                        context.colors.danger,
+                                      )
+                                      : context.colors.textPrimary,
                               fontSize: 9.sp,
                               height: 1,
                             ),
@@ -830,14 +921,14 @@ class _PlayerHeader extends ConsumerWidget {
                         Text(
                           'Open player profile',
                           style: AppTypography.textXsMedium.copyWith(
-                            color: kPrimaryColor,
+                            color: context.colors.accentText,
                           ),
                         ),
                         SizedBox(width: 2.w),
                         Icon(
                           Icons.chevron_right_rounded,
                           size: 16.sp,
-                          color: kPrimaryColor,
+                          color: context.colors.accentText,
                         ),
                       ],
                     ),
@@ -1004,7 +1095,7 @@ class _WinLossValue extends StatelessWidget {
         children: [
           TextSpan(
             text: '${wins}W',
-            style: base.copyWith(color: kPrimaryColor),
+            style: base.copyWith(color: context.colors.accentText),
           ),
           TextSpan(
             text: '-',
@@ -1111,7 +1202,7 @@ class _ScorecardDateHeader extends StatelessWidget {
                   ? Icons.keyboard_arrow_up_rounded
                   : Icons.keyboard_arrow_down_rounded,
               size: 20.sp,
-              color: context.colors.textPrimary.withValues(alpha: 0.5),
+              color: context.textInk(0.5),
             ),
           ],
         ),

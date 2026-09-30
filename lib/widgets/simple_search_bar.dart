@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/widgets/home_top_bar.dart';
 import 'package:flutter/material.dart';
 import 'package:chessever2/utils/svg_asset.dart';
 import 'package:chessever2/widgets/svg_widget.dart';
@@ -160,14 +161,19 @@ class _SimpleSearchBarState extends State<SimpleSearchBar> {
     // away instead of popping it off in a single frame.
     final word = _cycleFadingOut ? '' : hints[_hintIndex % hints.length];
     final prefix = widget.hintText.isEmpty ? '' : '${widget.hintText} ';
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        if (prefix.isNotEmpty) Text(prefix, style: AppTypography.textMdRegular),
-        Flexible(
-          child: SpringHintWord(word: word, style: AppTypography.textMdRegular),
-        ),
-      ],
+    // Scales down only when the hint would overflow (accessibility text
+    // sizes on narrow phones); at every size where it fits it is untouched.
+    return FittedBox(
+      fit: BoxFit.scaleDown,
+      alignment: AlignmentDirectional.centerStart,
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (prefix.isNotEmpty)
+            Text(prefix, style: AppTypography.textMdRegular),
+          SpringHintWord(word: word, style: AppTypography.textMdRegular),
+        ],
+      ),
     );
   }
 
@@ -228,18 +234,21 @@ class _SimpleSearchBarState extends State<SimpleSearchBar> {
               return SqueezeSlot(
                 open: visible,
                 motion: SearchMotion.accent,
-                child: GestureDetector(
-                  onTap: widget.onCloseTap,
-                  child: Container(
-                    padding: EdgeInsets.all(4.sp),
-                    decoration: BoxDecoration(
-                      color: context.colors.surfaceRecessed,
-                      shape: BoxShape.circle,
-                    ),
-                    child: Icon(
-                      Icons.close,
-                      size: 16.ic,
-                      color: context.colors.textPrimary,
+                // A 44pt reach in the home top bar without growing the row.
+                child: HomeTopBarTapTarget(
+                  child: GestureDetector(
+                    onTap: widget.onCloseTap,
+                    child: Container(
+                      padding: EdgeInsets.all(4.sp),
+                      decoration: BoxDecoration(
+                        color: context.colors.surfaceRecessed,
+                        shape: BoxShape.circle,
+                      ),
+                      child: Icon(
+                        Icons.close,
+                        size: 16.ic,
+                        color: context.colors.textPrimary,
+                      ),
                     ),
                   ),
                 ),
@@ -249,68 +258,71 @@ class _SimpleSearchBarState extends State<SimpleSearchBar> {
 
           if (widget.onOpenFilter != null) ...[
             SizedBox(width: 8.w),
-            GestureDetector(
-              key: widget.filterButtonKey,
-              onTap: widget.onOpenFilter,
-              child: Container(
-                padding: EdgeInsets.all(8.sp),
-                decoration: BoxDecoration(
-                  color: context.colors.surfaceRecessed,
-                  borderRadius: BorderRadius.circular(8.br),
-                ),
-                child: Stack(
-                  clipBehavior: Clip.none,
-                  children: [
-                    if (widget.filterBadgeCount > 0)
-                      SvgWidget(
-                        SvgAsset.listFilterIcon,
-                        height: 20.h,
-                        width: 20.w,
-                        colorFilter: ColorFilter.mode(
-                          context.colors.textPrimary,
-                          BlendMode.srcIn,
-                        ),
-                      )
-                    else
-                      _FocusTint(
-                        focusNode: widget.focusNode,
-                        builder:
-                            (context, color) => SvgWidget(
-                              SvgAsset.listFilterIcon,
-                              height: 20.h,
-                              width: 20.w,
-                              colorFilter: ColorFilter.mode(
-                                color,
-                                BlendMode.srcIn,
+            // A 44pt reach in the home top bar without growing the row.
+            HomeTopBarTapTarget(
+              child: GestureDetector(
+                key: widget.filterButtonKey,
+                onTap: widget.onOpenFilter,
+                child: Container(
+                  padding: EdgeInsets.all(8.sp),
+                  decoration: BoxDecoration(
+                    color: context.colors.surfaceRecessed,
+                    borderRadius: BorderRadius.circular(8.br),
+                  ),
+                  child: Stack(
+                    clipBehavior: Clip.none,
+                    children: [
+                      if (widget.filterBadgeCount > 0)
+                        SvgWidget(
+                          SvgAsset.listFilterIcon,
+                          height: 20.h,
+                          width: 20.w,
+                          colorFilter: ColorFilter.mode(
+                            context.colors.textPrimary,
+                            BlendMode.srcIn,
+                          ),
+                        )
+                      else
+                        _FocusTint(
+                          focusNode: widget.focusNode,
+                          builder:
+                              (context, color) => SvgWidget(
+                                SvgAsset.listFilterIcon,
+                                height: 20.h,
+                                width: 20.w,
+                                colorFilter: ColorFilter.mode(
+                                  color,
+                                  BlendMode.srcIn,
+                                ),
                               ),
+                        ),
+                      if (widget.filterBadgeCount > 0)
+                        Positioned(
+                          right: -4.w,
+                          top: -4.h,
+                          child: Container(
+                            padding: EdgeInsets.all(4.w),
+                            decoration: const BoxDecoration(
+                              color: Color(0xFFEF4444),
+                              shape: BoxShape.circle,
                             ),
-                      ),
-                    if (widget.filterBadgeCount > 0)
-                      Positioned(
-                        right: -4.w,
-                        top: -4.h,
-                        child: Container(
-                          padding: EdgeInsets.all(4.w),
-                          decoration: const BoxDecoration(
-                            color: Color(0xFFEF4444),
-                            shape: BoxShape.circle,
-                          ),
-                          constraints: BoxConstraints(
-                            minWidth: 16.w,
-                            minHeight: 16.h,
-                          ),
-                          child: Text(
-                            '${widget.filterBadgeCount}',
-                            style: AppTypography.textXsBold.copyWith(
-                              color: context.colors.textPrimary,
-                              fontSize: 10.sp,
-                              height: 1,
+                            constraints: BoxConstraints(
+                              minWidth: 16.w,
+                              minHeight: 16.h,
                             ),
-                            textAlign: TextAlign.center,
+                            child: Text(
+                              '${widget.filterBadgeCount}',
+                              style: AppTypography.textXsBold.copyWith(
+                                color: context.colors.textPrimary,
+                                fontSize: 10.sp,
+                                height: 1,
+                              ),
+                              textAlign: TextAlign.center,
+                            ),
                           ),
                         ),
-                      ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
             ),

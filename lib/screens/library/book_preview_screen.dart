@@ -143,7 +143,7 @@ class _BookPreviewScreenState extends ConsumerState<BookPreviewScreen> {
                   Text(
                     'by $ownerDisplayName',
                     style: AppTypography.textMdRegular.copyWith(
-                      color: context.colors.textPrimary.withValues(alpha: 0.6),
+                      color: context.textInk(0.6),
                     ),
                     textAlign: TextAlign.center,
                   ),
@@ -153,7 +153,7 @@ class _BookPreviewScreenState extends ConsumerState<BookPreviewScreen> {
                 Text(
                   gameCount == 1 ? '1 game' : '$gameCount games',
                   style: AppTypography.textSmRegular.copyWith(
-                    color: context.colors.textPrimary.withValues(alpha: 0.5),
+                    color: context.textInk(0.5),
                   ),
                 ),
                 SizedBox(height: 32.h),
@@ -349,7 +349,7 @@ class _BookPreviewScreenState extends ConsumerState<BookPreviewScreen> {
                 Icon(
                   Icons.menu_book_outlined,
                   size: 64.sp,
-                  color: context.colors.textPrimary.withValues(alpha: 0.35),
+                  color: context.textInk(0.35),
                 ),
                 SizedBox(height: 12.h),
                 Text(
@@ -362,7 +362,7 @@ class _BookPreviewScreenState extends ConsumerState<BookPreviewScreen> {
                 Text(
                   'This folder may have been removed or the link is invalid.',
                   style: AppTypography.textSmRegular.copyWith(
-                    color: context.colors.textPrimary.withValues(alpha: 0.55),
+                    color: context.textInk(0.55),
                   ),
                   textAlign: TextAlign.center,
                 ),
@@ -403,7 +403,10 @@ class _BookPreviewScreenState extends ConsumerState<BookPreviewScreen> {
                 Icon(
                   Icons.error_outline_rounded,
                   size: 56.sp,
-                  color: kRedColor.withValues(alpha: 0.85),
+                  color:
+                      context.isLightTheme
+                          ? context.colors.danger
+                          : kRedColor.withValues(alpha: 0.85),
                 ),
                 SizedBox(height: 12.h),
                 Text(
@@ -418,7 +421,7 @@ class _BookPreviewScreenState extends ConsumerState<BookPreviewScreen> {
                   child: Text(
                     error,
                     style: AppTypography.textSmRegular.copyWith(
-                      color: context.colors.textPrimary.withValues(alpha: 0.6),
+                      color: context.textInk(0.6),
                     ),
                     textAlign: TextAlign.center,
                   ),

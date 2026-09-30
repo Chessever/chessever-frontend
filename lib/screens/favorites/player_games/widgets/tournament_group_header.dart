@@ -80,7 +80,7 @@ class TournamentGroupHeader extends StatelessWidget {
                       Text(
                         ' • ',
                         style: AppTypography.textXsRegular.copyWith(
-                          color: context.colors.textPrimary.withValues(alpha: 0.5),
+                          color: context.textInk(0.5),
                         ),
                       ),
                       Flexible(
@@ -90,7 +90,7 @@ class TournamentGroupHeader extends StatelessWidget {
                             tournamentGroup.endDate,
                           ),
                           style: AppTypography.textXsRegular.copyWith(
-                            color: context.colors.textPrimary.withValues(alpha: 0.6),
+                            color: context.textInk(0.6),
                           ),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,

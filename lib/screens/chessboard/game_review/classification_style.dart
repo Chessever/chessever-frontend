@@ -1,5 +1,6 @@
 import 'package:chessever2/screens/chessboard/game_review/game_analysis_report.dart';
 import 'package:chessever2/services/lichess_move_annotations_service.dart';
+import 'package:chessever2/theme/app_colors.dart';
 import 'package:flutter/material.dart';
 
 /// Canonical palette and asset map for move-classification badges.
@@ -11,8 +12,11 @@ import 'package:flutter/material.dart';
 ///
 /// Each asset paints its own gradient rounded-square badge edge-to-edge, so
 /// callers render the SVG directly and must not wrap it in a tinted circle.
-/// The colours below are for *text* tinting (the SAN in the notation list,
-/// recap counters) and track the gradient top stop of each badge SVG.
+/// The colours below track the gradient top stop of each badge SVG. They are
+/// theme-independent: fills, graph markers and share renderers use them as
+/// is, and so does text on the dark theme. Text that may land on the light
+/// theme (the SAN in the notation list, recap counters) goes through
+/// [moveAnnotationInk] instead.
 Color moveAnnotationColor(LichessMoveAnnotationType type) => switch (type) {
   LichessMoveAnnotationType.brilliant => const Color(0xFF0FB4E5),
   LichessMoveAnnotationType.goodMove => const Color(0xFF26408B),
@@ -27,6 +31,30 @@ Color moveAnnotationColor(LichessMoveAnnotationType type) => switch (type) {
   LichessMoveAnnotationType.bookMove => const Color(0xFFB4A472),
   LichessMoveAnnotationType.forced => const Color(0xFF4E5B4F),
 };
+
+/// [moveAnnotationColor] as TEXT ink for the active theme.
+///
+/// Dark returns the badge palette untouched. On the light theme's paper most
+/// of the palette misses AA as text: brilliant cyan and book about 2:1,
+/// inaccuracy 3:1, best green (#1E924D) 3.3:1, missed win and blunder 3.5:1,
+/// mistake orange (#C55A1E) 3.6:1. Light swaps in the same hue darkened to at
+/// least 4.6:1 on the background (5.2:1 on the surface). Badge fills, graph
+/// markers and share renderers keep reading [moveAnnotationColor]; only
+/// text/icon tints should come through here.
+Color moveAnnotationInk(BuildContext context, LichessMoveAnnotationType type) {
+  if (!context.isLightTheme) return moveAnnotationColor(type);
+  return switch (type) {
+    LichessMoveAnnotationType.brilliant => const Color(0xFF09708F),
+    LichessMoveAnnotationType.goodMove => const Color(0xFF26408B),
+    LichessMoveAnnotationType.bestMove => const Color(0xFF18773E),
+    LichessMoveAnnotationType.missedWin => const Color(0xFFC52914),
+    LichessMoveAnnotationType.inaccuracy => const Color(0xFF965829),
+    LichessMoveAnnotationType.mistake => const Color(0xFFA84D1A),
+    LichessMoveAnnotationType.blunder => const Color(0xFFD30300),
+    LichessMoveAnnotationType.bookMove => const Color(0xFF73663D),
+    LichessMoveAnnotationType.forced => const Color(0xFF4E5B4F),
+  };
+}
 
 String moveAnnotationIconAsset(LichessMoveAnnotationType type) =>
     switch (type) {
@@ -60,6 +88,13 @@ String classificationIconAsset(GameMoveClassification classification) =>
 
 Color classificationColor(GameMoveClassification classification) =>
     moveAnnotationColor(annotationTypeForClassification(classification));
+
+/// [classificationColor] as TEXT ink for the active theme; see
+/// [moveAnnotationInk].
+Color classificationInk(
+  BuildContext context,
+  GameMoveClassification classification,
+) => moveAnnotationInk(context, annotationTypeForClassification(classification));
 
 /// Standard PGN quality NAG (`$1`–`$6`) → the classification whose badge stands
 /// for that glyph.

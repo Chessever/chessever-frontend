@@ -6,14 +6,16 @@ import 'package:chessever2/screens/group_event/group_event_screen.dart'
     show searchTabQueryProvider;
 import 'package:chessever2/screens/group_event/providers/supabase_combined_search_provider.dart';
 import 'package:chessever2/screens/player_profile/player_profile_screen.dart';
+import 'package:chessever2/screens/player_profile/utils/player_menu_actions.dart';
 import 'package:chessever2/services/fide_photo_service.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/country_utils.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/widgets/card_context_menu.dart';
 import 'package:chessever2/widgets/player_initials_avatar.dart'
-    show getTitleBadgeColor;
+    show getTitleBadgeColor, titleBadgeFill, titleBadgeInk;
 import 'package:country_flags/country_flags.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
@@ -182,6 +184,32 @@ class _PlayerSearchCard extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    // Long-press lifts the card itself into the shared focus menu, half-width
+    // cards included: the copy lays out at the card's own width (never the
+    // menu's), so the pressed card stays legible above the blur.
+    return CardContextMenu(
+      onPreviewTap: () => _navigateToProfile(context),
+      actions:
+          (cardContext) => playerMenuActions(
+            cardContext,
+            ref,
+            playerName: player.name,
+            fideId: player.fideId,
+            title: player.title,
+            federation: player.fed,
+            rating: player.rating,
+            gamebasePlayerId: player.gamebasePlayerId,
+            memorialSourceIdentity: player.memorialSourceIdentity,
+            memorialRouteId: player.memorialRouteId,
+            onOpen: () {
+              if (context.mounted) _navigateToProfile(context);
+            },
+          ),
+      child: _buildCard(context),
+    );
+  }
+
+  Widget _buildCard(BuildContext context) {
     final countryCode = _getIso2CountryCode();
 
     return GestureDetector(
@@ -241,13 +269,24 @@ class _PlayerSearchCard extends ConsumerWidget {
                             vertical: 2.sp,
                           ),
                           decoration: BoxDecoration(
-                            color: getTitleBadgeColor(player.title!),
+                            color: titleBadgeFill(
+                              context,
+                              getTitleBadgeColor(player.title!),
+                            ),
                             borderRadius: BorderRadius.circular(4.br),
                           ),
                           child: Text(
                             player.title!,
                             style: AppTypography.textXsBold.copyWith(
-                              color: context.colors.textPrimary,
+                              // Label picked against the (light-deepened)
+                              // fill so it clears AA; dark stays white.
+                              color: titleBadgeInk(
+                                context,
+                                titleBadgeFill(
+                                  context,
+                                  getTitleBadgeColor(player.title!),
+                                ),
+                              ),
                               fontSize: isCompact ? 9.sp : 10.sp,
                               letterSpacing: 0.5,
                             ),

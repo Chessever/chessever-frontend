@@ -4,7 +4,6 @@ import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_mode
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrapper/game_card_wrapper_widget.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/games_tour_content_provider.dart';
 import 'package:chessever2/theme/app_colors.dart';
-import 'package:chessever2/theme/app_theme.dart' show kRedColor;
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:flutter/material.dart';
@@ -63,11 +62,11 @@ class _TeamRoundGroupState extends State<TeamRoundGroup> {
     final Color oppScoreColor;
     switch (match.result) {
       case TeamMatchResult.win:
-        ourScoreColor = colors.brand;
-        oppScoreColor = kRedColor;
+        ourScoreColor = colors.accentText;
+        oppScoreColor = colors.danger;
       case TeamMatchResult.loss:
-        ourScoreColor = kRedColor;
-        oppScoreColor = colors.brand;
+        ourScoreColor = colors.danger;
+        oppScoreColor = colors.accentText;
       case TeamMatchResult.draw:
         ourScoreColor = colors.textPrimary;
         oppScoreColor = colors.textPrimary;

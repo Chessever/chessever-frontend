@@ -3,12 +3,17 @@ import 'package:chessever2/screens/countrymen/provider/countrymen_mode_provider.
 import 'package:chessever2/screens/countrymen/tabs/countrymen_events_tab.dart';
 import 'package:chessever2/screens/countrymen/tabs/countrymen_games_tab.dart';
 import 'package:chessever2/screens/countrymen/tabs/countrymen_players_tab.dart';
+import 'package:chessever2/screens/my_space/actions/space_menu_action.dart';
+import 'package:chessever2/screens/my_space/models/space_shortcut.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
+import 'package:chessever2/utils/favorite_player_identity.dart'
+    show countryCodeToIso2;
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/app_snack.dart';
+import 'package:chessever2/widgets/card_context_menu.dart';
 import 'package:chessever2/widgets/country_dropdown.dart';
 import 'package:chessever2/widgets/scroll_to_top_bus.dart';
 import 'package:chessever2/widgets/segmented_switcher.dart';
@@ -17,7 +22,40 @@ import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 class CountrymenTabScreen extends ConsumerStatefulWidget {
-  const CountrymenTabScreen({super.key});
+  const CountrymenTabScreen({super.key, this.initialCountryCode});
+
+  /// Opens on this federation (ISO alpha-2 like `NO`, or a FIDE code like
+  /// `NOR`) as a temporary pick, exactly as if it were chosen in the country
+  /// dropdown: "Pin" still makes it the default. Null opens on the user's
+  /// own country, as always.
+  final String? initialCountryCode;
+
+  /// The picker's country for [code], or null when it names none.
+  static Country? countryFor(String? code) {
+    final raw = code?.trim() ?? '';
+    if (raw.isEmpty) return null;
+    final iso2 = countryCodeToIso2(raw);
+    if (iso2.isEmpty) return null;
+    return CountryService().findByCode(iso2);
+  }
+
+  /// Selects [code] before the screen is pushed, so its first frame and its
+  /// tabs' first fetch are already for that country. Returns false when the
+  /// code names no country.
+  static bool preselect(WidgetRef ref, String? code) {
+    final country = countryFor(code);
+    if (country == null) return false;
+    _selectTemporary(ref, country);
+    return true;
+  }
+
+  static void _selectTemporary(WidgetRef ref, Country country) {
+    final persisted = ref.read(countryDropdownProvider).valueOrNull;
+    // The user's own country is not a temporary pick; it would only show a
+    // redundant "Pin".
+    ref.read(temporaryCountryProvider.notifier).state =
+        persisted?.countryCode == country.countryCode ? null : country;
+  }
 
   @override
   ConsumerState<CountrymenTabScreen> createState() =>
@@ -28,6 +66,12 @@ class _CountrymenTabScreenState extends ConsumerState<CountrymenTabScreen> {
   late PageController _pageController;
   final ScrollToTopBus _scrollToTopBus = ScrollToTopBus();
 
+  /// The country [CountrymenTabScreen.initialCountryCode] selected, cleared
+  /// again when the screen goes (the back button already does, a swipe back
+  /// did not), so it never leaks into the next plain visit.
+  String? _seededCode;
+  ProviderContainer? _container;
+
   @override
   void initState() {
     super.initState();
@@ -35,12 +79,35 @@ class _CountrymenTabScreenState extends ConsumerState<CountrymenTabScreen> {
       ref.read(selectedCountrymenModeProvider),
     );
     _pageController = PageController(initialPage: initialPage);
+
+    final country = CountrymenTabScreen.countryFor(widget.initialCountryCode);
+    if (country != null) {
+      _seededCode = country.countryCode;
+      _container = ProviderScope.containerOf(context, listen: false);
+      final showing = ref.read(effectiveCountryProvider).valueOrNull;
+      if (showing?.countryCode != country.countryCode) {
+        // Providers cannot change while the tree builds. Callers that went
+        // through [CountrymenTabScreen.preselect] never get here.
+        Future.microtask(() {
+          if (!mounted) return;
+          CountrymenTabScreen._selectTemporary(ref, country);
+        });
+      }
+    }
   }
 
   @override
   void dispose() {
     _pageController.dispose();
     _scrollToTopBus.dispose();
+    final code = _seededCode;
+    final container = _container;
+    if (code != null && container != null) {
+      Future.microtask(() {
+        final temporary = container.read(temporaryCountryProvider.notifier);
+        if (temporary.state?.countryCode == code) temporary.state = null;
+      });
+    }
     super.dispose();
   }
 
@@ -179,7 +246,7 @@ class _CountrymenTabScreenState extends ConsumerState<CountrymenTabScreen> {
   ) {
     final isTemporary = _isTemporarySelection();
 
-    return Padding(
+    final bar = Padding(
       padding: EdgeInsets.symmetric(horizontal: 12.w),
       child: Row(
         children: [
@@ -234,7 +301,7 @@ class _CountrymenTabScreenState extends ConsumerState<CountrymenTabScreen> {
                       child: Text(
                         'Error',
                         style: AppTypography.textSmMedium.copyWith(
-                          color: kRedColor,
+                          color: context.colors.danger,
                         ),
                       ),
                     ),
@@ -256,7 +323,9 @@ class _CountrymenTabScreenState extends ConsumerState<CountrymenTabScreen> {
                               color: kPrimaryColor.withValues(alpha: 0.15),
                               borderRadius: BorderRadius.circular(8.br),
                               border: Border.all(
-                                color: kPrimaryColor.withValues(alpha: 0.3),
+                                color: context.colors.accentText.withValues(
+                                  alpha: 0.3,
+                                ),
                                 width: 1,
                               ),
                             ),
@@ -266,13 +335,13 @@ class _CountrymenTabScreenState extends ConsumerState<CountrymenTabScreen> {
                                 Icon(
                                   Icons.push_pin_rounded,
                                   size: 14.ic,
-                                  color: kPrimaryColor,
+                                  color: context.colors.accentText,
                                 ),
                                 SizedBox(width: 4.w),
                                 Text(
                                   'Pin',
                                   style: AppTypography.textXsMedium.copyWith(
-                                    color: kPrimaryColor,
+                                    color: context.colors.accentText,
                                   ),
                                 ),
                               ],
@@ -284,6 +353,56 @@ class _CountrymenTabScreenState extends ConsumerState<CountrymenTabScreen> {
           ),
         ],
       ),
+    );
+
+    // The 3-dot never takes part in the row's layout: it is laid over the
+    // trailing gap + side padding (10.w + 12.w) the bar already leaves empty
+    // after the dropdown, so the bar's height, the dropdown's width and every
+    // child sit exactly where they always did, and it takes no taps from the
+    // dropdown. A temporary pick fills that gap with the Pin tile, so the
+    // 3-dot steps aside until it is pinned. The Stack stays either way so the
+    // bar is never remounted when that flips.
+    // Same branch the dropdown itself renders, so the 3-dot is never offered
+    // beside a Loading/Error bar.
+    final country = countryAsync.maybeWhen<Country?>(
+      data: (country) => country,
+      orElse: () => null,
+    );
+    return Stack(
+      children: [
+        bar,
+        if (!isTemporary && country != null)
+          Positioned(
+            top: 0,
+            bottom: 0,
+            right: 0,
+            width: 22.w,
+            child: _buildMoreButton(country),
+          ),
+      ],
+    );
+  }
+
+  /// The shared focus menu for the federation on screen: pin it into My
+  /// Space, or take it out again. Same 3-dot as the player profile's app bar,
+  /// at the bar's own 18.ic icon size and in the chevron's muted ink; the
+  /// row's label is read when the menu opens, so it never goes stale.
+  Widget _buildMoreButton(Country country) {
+    final draft = SpaceShortcut.draft(
+      kind: SpaceShortcutKind.countrymen,
+      targetId: country.countryCode,
+      title: country.name,
+      subtitle: 'Countrymen',
+      params: {'name': country.name},
+    );
+    return CardMoreButton(
+      vertical: true,
+      color: context.colors.textPrimaryMuted,
+      size: 18.ic,
+      actions:
+          (menuContext) => [
+            spaceMenuAction(context: menuContext, ref: ref, draft: draft),
+          ],
     );
   }
 

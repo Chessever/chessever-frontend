@@ -1,5 +1,6 @@
 import 'package:chessever2/screens/standings/team_standing_model.dart';
 import 'package:chessever2/screens/tour_detail/player_tour/player_tour_screen_provider.dart';
+import 'package:chessever2/screens/tour_detail/team_tour/team_space_shortcut.dart';
 import 'package:chessever2/screens/tour_detail/team_tour/team_tour_screen_provider.dart';
 import 'package:chessever2/screens/tour_detail/team_tour/widgets/team_player_chip.dart';
 import 'package:chessever2/screens/tour_detail/team_tour/widgets/team_round_group.dart';
@@ -7,6 +8,7 @@ import 'package:chessever2/screens/group_event/widget/empty_widget.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/widgets/card_context_menu.dart';
 import 'package:chessever2/widgets/figma_team_card.dart';
 import 'package:chessever2/widgets/scroll_to_top_bus.dart';
 import 'package:chessever2/widgets/skeleton_widget.dart';
@@ -153,15 +155,17 @@ class _TeamList extends ConsumerWidget {
                     (s) => s.contains(team.teamName),
                   ),
                 );
+                void openScorecard() {
+                  ref.read(selectedTeamProvider.notifier).state = team;
+                  Navigator.of(context).pushNamed('/team_scorecard_screen');
+                }
+
                 return FigmaTeamCard(
                   key: ValueKey('team_standing_${team.teamName}'),
                   team: team,
                   rank: team.rank,
                   isExpanded: isExpanded,
-                  onTeamTap: () {
-                    ref.read(selectedTeamProvider.notifier).state = team;
-                    Navigator.of(context).pushNamed('/team_scorecard_screen');
-                  },
+                  onTeamTap: openScorecard,
                   onToggle: () {
                     final next = Set<String>.from(
                       ref.read(expandedTeamsProvider),
@@ -171,6 +175,14 @@ class _TeamList extends ConsumerWidget {
                     }
                     ref.read(expandedTeamsProvider.notifier).state = next;
                   },
+                  // Header only: the menu measures and lifts the same box,
+                  // and the players and matchups below keep their gestures.
+                  wrapHeader:
+                      (header) => _TeamRowMenu(
+                        team: team,
+                        onOpen: openScorecard,
+                        child: header,
+                      ),
                   expandedChildren:
                       isExpanded ? [_TeamExpansion(team: team)] : const [],
                 );
@@ -187,6 +199,41 @@ class _TeamList extends ConsumerWidget {
             ),
           ),
       loading: () => const _TeamStandingsLoading(),
+    );
+  }
+}
+
+/// Long-press on a team standings row header: the header lifts into the
+/// shared focus menu (open its scorecard, share its page, pin it into My
+/// Space).
+///
+/// Wraps only the collapsed header (via [FigmaTeamCard.wrapHeader]), so the
+/// lifted copy and the anchor the menu is placed from are the same box even
+/// while the team is expanded, and a press on the players or matchups below
+/// never opens the team menu.
+class _TeamRowMenu extends ConsumerWidget {
+  const _TeamRowMenu({
+    required this.team,
+    required this.onOpen,
+    required this.child,
+  });
+
+  final TeamStandingModel team;
+  final VoidCallback onOpen;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    return CardContextMenu(
+      actions:
+          (menuContext) => teamMenuActions(
+            context: menuContext,
+            ref: ref,
+            teamName: team.teamName,
+            onOpen: onOpen,
+          ),
+      onPreviewTap: onOpen,
+      child: child,
     );
   }
 }

@@ -337,10 +337,11 @@ class _PipModeSelector extends StatelessWidget {
                 : Colors.transparent,
             borderRadius: BorderRadius.circular(8.br),
             border: Border.all(
-              color: isSelected ? kPrimaryColor : Colors.transparent,
+              color:
+                  isSelected ? context.colors.accentText : Colors.transparent,
               width: isSelected ? 1.5 : 1.0,
             ),
-            boxShadow: isSelected
+            boxShadow: isSelected && !context.isLightTheme
                 ? [
                     BoxShadow(
                       color: kPrimaryColor.withValues(alpha: 0.18),
@@ -356,7 +357,7 @@ class _PipModeSelector extends StatelessWidget {
                 icon,
                 color: isSelected
                     ? context.colors.textPrimary
-                    : context.colors.textTertiary,
+                    : _wellInk(context),
                 size: 20.ic,
               ),
               SizedBox(height: 4.h),
@@ -367,7 +368,7 @@ class _PipModeSelector extends StatelessWidget {
                 style: AppTypography.textXsMedium.copyWith(
                   color: isSelected
                       ? context.colors.textPrimary
-                      : context.colors.textTertiary,
+                      : _wellInk(context),
                   fontSize: 10.f,
                 ),
               ),
@@ -378,3 +379,10 @@ class _PipModeSelector extends StatelessWidget {
     );
   }
 }
+
+/// Quiet ink on the selector's recessed well. Dark keeps tertiary; on paper
+/// tertiary reads 3.8:1 against the well, so it steps up to secondary.
+Color _wellInk(BuildContext context) =>
+    context.isLightTheme
+        ? context.colors.textSecondary
+        : context.colors.textTertiary;

@@ -443,6 +443,26 @@ class SmartEventRequest {
     );
   }
 
+  /// The same request remembering which opening line was picked, so the
+  /// event can explain it. Criteria, name and caption are unchanged.
+  SmartEventRequest withOpeningContext(SmartEventOpeningContext? context) {
+    return SmartEventRequest(
+      source: source,
+      tierLabel: tierLabel,
+      titleSuffix: titleSuffix,
+      minElo: minElo,
+      maxElo: maxElo,
+      caption: caption,
+      countSingular: countSingular,
+      countPlural: countPlural,
+      events: events,
+      formatsAndStates: formatsAndStates,
+      eco: eco,
+      openingContext: context,
+      savedAt: savedAt,
+    );
+  }
+
   /// The same request with the Elo range opened up to the full scale. The
   /// Games / Events tabs load through this so the tier dropdown can move
   /// BELOW the saved floor — the selected band travels in the query's
@@ -678,6 +698,31 @@ class SmartEventCardData {
   /// Multi-value combinations collapse to "Filtered".
   static String? _labelForNonEloFilters(FilterPopupState filter) =>
       _labelForFormatsAndStates(filter.formatsAndStates);
+}
+
+/// The Smart Event a set of Events filters describes, named and captioned
+/// exactly as the Events screens' generated card names it, with no events
+/// attached (members resolve from the criteria when it opens). Null when no
+/// filter is set. Every path that turns filters into a Smart Event goes
+/// through here, so none of them can drift.
+SmartEventRequest? smartEventRequestFromFilterState(FilterPopupState filter) {
+  // The card needs an event to exist; its criteria never read it.
+  const placeholder = GroupEventCardModel(
+    id: '',
+    title: '',
+    dates: '',
+    maxAvgElo: 0,
+    timeUntilStart: '',
+    tourEventCategory: TourEventCategory.live,
+    timeControl: '',
+    endDate: null,
+    startDate: null,
+  );
+  return SmartEventCardData.fromState(
+    filter: filter,
+    events: const [placeholder],
+    source: SmartEventSource.forYou,
+  )?.request.withEvents(const []);
 }
 
 final dismissedSmartEventCardKeysProvider = StateProvider<Set<String>>(

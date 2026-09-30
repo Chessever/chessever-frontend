@@ -164,7 +164,7 @@ class _RoundDropdown extends HookConsumerWidget {
                       child: Text(
                         round.formattedRoundDateTime,
                         style: AppTypography.textXsRegular.copyWith(
-                          color: context.colors.textPrimary.withValues(alpha: 0.4),
+                          color: context.textInk(0.4),
                           fontSize: 10.sp,
                         ),
                         maxLines: 1,
@@ -390,7 +390,7 @@ class _RoundDropdown extends HookConsumerWidget {
                         child: Text(
                           selected.formattedRoundDateTime,
                           style: AppTypography.textXxsRegular.copyWith(
-                            color: context.colors.textPrimary.withValues(alpha: 0.35),
+                            color: context.textInk(0.35),
                             fontSize: 9.sp,
                           ),
                           overflow: TextOverflow.ellipsis,

@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:math' as math;
 
+import 'package:chessever2/screens/chessboard/utils/move_hold_repeater.dart';
 import 'package:chessever2/e2e/e2e_ids.dart';
 import 'package:chessever2/revenue_cat_service/subscribe_state.dart';
 import 'package:chessever2/screens/board_editor/board_editor_screen.dart';
@@ -34,6 +35,7 @@ import 'package:chessever2/screens/chessboard/widgets/share_game_screen.dart';
 import 'package:chessever2/screens/chessboard/widgets/switch_views_tutorial_overlay.dart';
 import 'package:chessever2/screens/gamebase/providers/explorer_eval_provider.dart';
 import 'package:chessever2/screens/gamebase/utils/board_workspace_coachmarks.dart';
+import 'package:chessever2/screens/gamebase/utils/space_position_draft.dart';
 import 'package:chessever2/screens/gamebase/utils/explorer_share_utils.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/screens/gamebase/services/player_opening_tree.dart';
@@ -49,11 +51,18 @@ import 'package:chessever2/screens/gamebase/providers/gamebase_providers.dart';
 import 'package:chessever2/screens/gamebase/providers/gamebase_explorer_state.dart';
 import 'package:chessever2/screens/gamebase/widgets/widgets.dart';
 import 'package:chessever2/screens/gamebase/widgets/board_workspace_controls.dart';
+import 'package:chessever2/screens/gamebase/widgets/position_games_sheet.dart'
+    show explorerSheetSurface;
 import 'package:chessever2/screens/gamebase/models/models.dart';
 import 'package:chessever2/main.dart' show routeObserver;
+import 'package:chessever2/screens/my_space/actions/space_menu_action.dart';
+import 'package:chessever2/screens/my_space/models/space_shortcut.dart';
+import 'package:chessever2/screens/my_space/navigation/space_shortcut_navigator.dart';
+import 'package:chessever2/screens/my_space/providers/space_shortcuts_provider.dart';
 import 'package:chessever2/widgets/app_snack.dart';
 import 'package:chessever2/widgets/auth/auth_upgrade_sheet.dart';
 import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
+import 'package:chessever2/screens/chessboard/utils/legible_ink.dart';
 
 /// Main screen for exploring the Gamebase opening database.
 /// Displays a chess board, move statistics, and navigation controls.
@@ -62,6 +71,8 @@ class GamebaseExplorerScreen extends ConsumerStatefulWidget {
     super.key,
     this.initialPlayer,
     this.initialFilters,
+    this.initialFen,
+    this.initialMoves,
     this.enableWorkspaceCoachmarks = true,
   });
 
@@ -72,6 +83,8 @@ class GamebaseExplorerScreen extends ConsumerStatefulWidget {
     Key? key,
     GamebasePlayer? initialPlayer,
     GamebaseFilters? initialFilters,
+    String? initialFen,
+    List<String>? initialMoves,
     bool enableWorkspaceCoachmarks = true,
   }) {
     return ProviderScope(
@@ -85,6 +98,8 @@ class GamebaseExplorerScreen extends ConsumerStatefulWidget {
         key: key,
         initialPlayer: initialPlayer,
         initialFilters: initialFilters,
+        initialFen: initialFen,
+        initialMoves: initialMoves,
         enableWorkspaceCoachmarks: enableWorkspaceCoachmarks,
       ),
     );
@@ -95,6 +110,15 @@ class GamebaseExplorerScreen extends ConsumerStatefulWidget {
 
   /// Optional filters to pre-apply (e.g. time control, rating from player profile).
   final GamebaseFilters? initialFilters;
+
+  /// Position to open on (a My Space shortcut). Applied after the player
+  /// scope, so a scoped tree opens filtered AND on the saved line.
+  final String? initialFen;
+
+  /// UCI line from the standard start that reaches [initialFen]. Keeps the
+  /// notation tree and the line-anchored aggregates query; without it the
+  /// explorer queries [initialFen] alone, like a Board Editor position.
+  final List<String>? initialMoves;
 
   /// Test and embedding escape hatch. Normal Board entries teach the shared
   /// views and Editor once; focused widget tests can disable the persistence IO.
@@ -110,8 +134,8 @@ class _GamebaseExplorerScreenState extends ConsumerState<GamebaseExplorerScreen>
   bool _isFlipped = false;
   bool _routeActive = true;
   bool _appIsResumed = true;
-  Timer? _backwardLongPressTimer;
-  Timer? _forwardLongPressTimer;
+  final _backwardMoveHold = MoveHoldRepeater();
+  final _forwardMoveHold = MoveHoldRepeater();
   final GlobalKey<TooltipState> _viewsCoachmarkKey = GlobalKey<TooltipState>();
   final GlobalKey<TooltipState> _editorCoachmarkKey = GlobalKey<TooltipState>();
 
@@ -248,10 +272,28 @@ class _GamebaseExplorerScreenState extends ConsumerState<GamebaseExplorerScreen>
       ref.read(explorerPageIndexProvider.notifier).state =
           boardWorkspaceDefaultPage;
       _resetExplorerState(fetch: true);
+      _applyInitialPosition();
       if (widget.enableWorkspaceCoachmarks) {
         unawaited(_showWorkspaceCoachmarks());
       }
     });
+  }
+
+  /// Lands the explorer on [GamebaseExplorerScreen.initialFen] /
+  /// [GamebaseExplorerScreen.initialMoves]. setPosition* keeps the filters
+  /// the reset just applied, and its fetch supersedes the start-position one.
+  void _applyInitialPosition() {
+    final line = resolveSpaceLine(
+      fen: widget.initialFen,
+      moves: widget.initialMoves,
+    );
+    if (line == null) return;
+    final notifier = ref.read(gamebaseExplorerProvider.notifier);
+    if (line.ucis.isNotEmpty) {
+      notifier.setPositionWithMoves(line.fen, line.ucis);
+    } else {
+      notifier.setPosition(line.fen, startingFen: line.fen);
+    }
   }
 
   Future<void> _showWorkspaceCoachmarks() async {
@@ -296,87 +338,57 @@ class _GamebaseExplorerScreenState extends ConsumerState<GamebaseExplorerScreen>
   }
 
   void _startLongPressBackward() {
-    _backwardLongPressTimer?.cancel();
-    _backwardLongPressTimer = Timer.periodic(
-      const Duration(milliseconds: 130),
-      (_) {
-        final focusState = ref.read(explorerFocusedGameProvider);
-        if (focusState != null) {
-          if (!focusState.canGoBackward) {
-            _stopLongPressBackward();
-            return;
-          }
-          ref.read(explorerFocusedGameProvider.notifier).backward();
-          return;
-        }
-        final preview = ref.read(explorerEvalProvider).pvPreview;
-        if (preview != null) {
-          if (!preview.canMoveBackward) {
-            _stopLongPressBackward();
-            return;
-          }
-          ref.read(explorerEvalProvider.notifier).navigateLockedPvBackward();
-          return;
-        }
-        final currentState = ref.read(gamebaseExplorerProvider);
-        if (!currentState.canGoBack) {
-          _stopLongPressBackward();
-          return;
-        }
-        ref.read(gamebaseExplorerProvider.notifier).goBack();
-      },
-    );
-  }
-
-  void _stopLongPressBackward() {
-    _backwardLongPressTimer?.cancel();
-    _backwardLongPressTimer = null;
-  }
-
-  void _startLongPressForward() {
-    _forwardLongPressTimer?.cancel();
-    _forwardLongPressTimer = Timer.periodic(const Duration(milliseconds: 130), (
-      _,
-    ) {
+    _forwardMoveHold.stop();
+    _backwardMoveHold.start(() {
       final focusState = ref.read(explorerFocusedGameProvider);
       if (focusState != null) {
-        if (!focusState.canGoForward) {
-          _stopLongPressForward();
-          return;
-        }
-        ref.read(explorerFocusedGameProvider.notifier).forward();
-        return;
+        if (!focusState.canGoBackward) return MoveHoldStep.end;
+        ref.read(explorerFocusedGameProvider.notifier).backward();
+        return MoveHoldStep.moved;
       }
       final preview = ref.read(explorerEvalProvider).pvPreview;
       if (preview != null) {
-        if (!preview.canMoveForward) {
-          _stopLongPressForward();
-          return;
-        }
-        ref.read(explorerEvalProvider.notifier).navigateLockedPvForward();
-        return;
+        if (!preview.canMoveBackward) return MoveHoldStep.end;
+        ref.read(explorerEvalProvider.notifier).navigateLockedPvBackward();
+        return MoveHoldStep.moved;
       }
-      final currentState = ref.read(gamebaseExplorerProvider);
-      if (!currentState.canGoForward) {
-        _stopLongPressForward();
-        return;
-      }
-      // About to cross the free-tier boundary — halt the auto-repeat and
-      // surface the paywall instead of silently parking the user on a
-      // blurred panel.
-      if (_forwardStepWouldCrossFreeLimit()) {
-        _stopLongPressForward();
-        unawaited(requirePremiumGuard(context, ref));
-        return;
-      }
-      ref.read(gamebaseExplorerProvider.notifier).goForward();
+      final current = ref.read(gamebaseExplorerProvider);
+      if (!current.canGoBack) return MoveHoldStep.end;
+      ref.read(gamebaseExplorerProvider.notifier).goBack();
+      return MoveHoldStep.moved;
     });
   }
 
-  void _stopLongPressForward() {
-    _forwardLongPressTimer?.cancel();
-    _forwardLongPressTimer = null;
+  void _stopLongPressBackward() => _backwardMoveHold.stop();
+
+  void _startLongPressForward() {
+    _backwardMoveHold.stop();
+    _forwardMoveHold.start(() {
+      final focusState = ref.read(explorerFocusedGameProvider);
+      if (focusState != null) {
+        if (!focusState.canGoForward) return MoveHoldStep.end;
+        ref.read(explorerFocusedGameProvider.notifier).forward();
+        return MoveHoldStep.moved;
+      }
+      final preview = ref.read(explorerEvalProvider).pvPreview;
+      if (preview != null) {
+        if (!preview.canMoveForward) return MoveHoldStep.end;
+        ref.read(explorerEvalProvider.notifier).navigateLockedPvForward();
+        return MoveHoldStep.moved;
+      }
+      final current = ref.read(gamebaseExplorerProvider);
+      if (!current.canGoForward) return MoveHoldStep.end;
+      // Retain the free-tier boundary: a hold cannot run past the paywall.
+      if (_forwardStepWouldCrossFreeLimit()) {
+        unawaited(requirePremiumGuard(context, ref));
+        return MoveHoldStep.end;
+      }
+      ref.read(gamebaseExplorerProvider.notifier).goForward();
+      return MoveHoldStep.moved;
+    });
   }
+
+  void _stopLongPressForward() => _forwardMoveHold.stop();
 
   /// Returns true when a single forward ply from the current explorer state
   /// would land past the free-tier move limit for a non-subscriber.
@@ -588,7 +600,7 @@ class _GamebaseExplorerScreenState extends ConsumerState<GamebaseExplorerScreen>
             Expanded(
               child: Container(
                 decoration: BoxDecoration(
-                  color: context.colors.surfaceRecessed,
+                  color: explorerSheetSurface(context),
                   borderRadius: BorderRadius.vertical(
                     top: Radius.circular(16.br),
                   ),
@@ -671,7 +683,7 @@ class _GamebaseExplorerScreenState extends ConsumerState<GamebaseExplorerScreen>
             child: Container(
               height: availableHeight - verticalPadding,
               decoration: BoxDecoration(
-                color: context.colors.surfaceRecessed,
+                color: explorerSheetSurface(context),
                 borderRadius: BorderRadius.circular(12.sp),
                 border: Border.all(color: context.colors.divider),
               ),
@@ -742,7 +754,7 @@ class _GamebaseExplorerScreenState extends ConsumerState<GamebaseExplorerScreen>
               Expanded(
                 child: Container(
                   decoration: BoxDecoration(
-                    color: context.colors.surfaceRecessed,
+                    color: explorerSheetSurface(context),
                     borderRadius: BorderRadius.vertical(
                       top: Radius.circular(16.br),
                     ),
@@ -835,24 +847,47 @@ class _GamebaseExplorerScreenState extends ConsumerState<GamebaseExplorerScreen>
           tooltip: 'More board actions',
           icon: Icon(Icons.more_vert, size: 22.ic),
           onSelected: _handleBoardMenuAction,
-          itemBuilder:
-              (context) => [
-                for (final item in explorerBoardMenuItems)
-                  PopupMenuItem<ExplorerBoardMenuAction>(
-                    value: item.action,
-                    child: Row(
-                      children: [
-                        Icon(
-                          item.icon,
-                          color: context.colors.textPrimary,
-                          size: 20.ic,
-                        ),
-                        SizedBox(width: 10.sp),
-                        Text(item.label),
-                      ],
-                    ),
+          itemBuilder: (context) {
+            final inSpace = ref.read(
+              spaceShortcutExistsProvider(
+                SpaceShortcut.keyFor(
+                  SpaceShortcutKind.position,
+                  ref.read(gamebaseExplorerProvider).currentFen,
+                ),
+              ),
+            );
+            return [
+              for (final item in [
+                ...explorerBoardMenuItems,
+                if (inSpace)
+                ExplorerBoardMenuItem(
+                  action: ExplorerBoardMenuAction.addToSpace,
+                  label:
+                      inSpace
+                          ? 'Remove position from My Space'
+                          : 'Add position to My Space',
+                  icon:
+                      inSpace
+                          ? Icons.dashboard_customize
+                          : Icons.dashboard_customize_outlined,
+                ),
+              ])
+                PopupMenuItem<ExplorerBoardMenuAction>(
+                  value: item.action,
+                  child: Row(
+                    children: [
+                      Icon(
+                        item.icon,
+                        color: context.colors.textPrimary,
+                        size: 20.ic,
+                      ),
+                      SizedBox(width: 10.sp),
+                      Text(item.label),
+                    ],
                   ),
-              ],
+                ),
+            ];
+          },
         ),
       ],
     );
@@ -870,7 +905,32 @@ class _GamebaseExplorerScreenState extends ConsumerState<GamebaseExplorerScreen>
         ).push(SettingsPage.route(initiallyExpanded: SettingsSection.board));
       case ExplorerBoardMenuAction.share:
         await _shareExplorerBoard();
+      case ExplorerBoardMenuAction.addToSpace:
+        final draft = _spacePositionDraft();
+        if (draft == null) {
+          showAppSnack(context, 'No position to save yet');
+          return;
+        }
+        await toggleSpaceShortcut(context: context, ref: ref, draft: draft);
     }
+  }
+
+  /// The committed explorer position as a My Space `position` shortcut:
+  /// FEN as the identity, the UCI line that reaches it, the deepest named
+  /// opening on that line, and the player the tree is scoped to. Built by the
+  /// shared [spacePositionDraft] so the board's notation menu dedupes with it.
+  SpaceShortcut? _spacePositionDraft() {
+    final state = ref.read(gamebaseExplorerProvider);
+    final player =
+        state.filters.selectedPlayers.length == 1
+            ? state.filters.selectedPlayers.first
+            : null;
+    return spacePositionDraft(
+      fen: state.currentFen,
+      ucis: state.exploredMoves,
+      startingFen: state.game?.startingFen,
+      player: player,
+    );
   }
 
   String? _currentExplorerPgn() {
@@ -1194,11 +1254,17 @@ class _GamebaseChessBoardState extends ConsumerState<_GamebaseChessBoard> {
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(4.br),
         boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.3),
-            blurRadius: 8,
-            offset: const Offset(0, 4),
-          ),
+          context.isLightTheme
+              ? BoxShadow(
+                color: context.colors.shadow,
+                blurRadius: 3,
+                offset: const Offset(0, 1),
+              )
+              : BoxShadow(
+                color: Colors.black.withValues(alpha: 0.3),
+                blurRadius: 8,
+                offset: const Offset(0, 4),
+              ),
         ],
       ),
       child: ClipRRect(
@@ -1367,7 +1433,7 @@ void showExplorerFilterSheet(
   showModalBottomSheet(
     context: context,
     isScrollControlled: true,
-    backgroundColor: context.colors.surfaceRecessed,
+    backgroundColor: explorerSheetSurface(context),
     shape: RoundedRectangleBorder(
       borderRadius: BorderRadius.vertical(top: Radius.circular(16.br)),
     ),
@@ -1490,7 +1556,10 @@ class _ExplorerFilterSheetState extends ConsumerState<ExplorerFilterSheet> {
       decoration: InputDecoration(
         hintText: 'Search player',
         hintStyle: TextStyle(
-          color: context.colors.textSecondary.withValues(alpha: 0.65),
+          color:
+              context.isLightTheme
+                  ? context.colors.textTertiary
+                  : context.colors.textSecondary.withValues(alpha: 0.65),
           fontSize: 13.f,
         ),
         prefixIcon: Icon(
@@ -1510,7 +1579,7 @@ class _ExplorerFilterSheetState extends ConsumerState<ExplorerFilterSheet> {
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(8.br),
-          borderSide: BorderSide(color: kPrimaryColor),
+          borderSide: BorderSide(color: context.colors.accentText),
         ),
         contentPadding: EdgeInsets.symmetric(
           horizontal: 12.sp,
@@ -1714,7 +1783,7 @@ class _ExplorerFilterSheetState extends ConsumerState<ExplorerFilterSheet> {
                         child: Text(
                           'Clear all',
                           style: TextStyle(
-                            color: kPrimaryColor,
+                            color: context.colors.accentText,
                             fontSize: 14.f,
                           ),
                         ),
@@ -1747,7 +1816,7 @@ class _ExplorerFilterSheetState extends ConsumerState<ExplorerFilterSheet> {
                           labelStyle: TextStyle(
                             color:
                                 isSelected
-                                    ? kPrimaryColor
+                                    ? context.colors.accentText
                                     : context.colors.textPrimary,
                             fontSize: 12.f,
                           ),
@@ -1755,7 +1824,7 @@ class _ExplorerFilterSheetState extends ConsumerState<ExplorerFilterSheet> {
                           side: BorderSide(
                             color:
                                 isSelected
-                                    ? kPrimaryColor
+                                    ? context.colors.accentText
                                     : context.colors.divider,
                           ),
                         );
@@ -1788,7 +1857,7 @@ class _ExplorerFilterSheetState extends ConsumerState<ExplorerFilterSheet> {
                             labelStyle: TextStyle(
                               color:
                                   isSelected
-                                      ? kPrimaryColor
+                                      ? context.colors.accentText
                                       : context.colors.textPrimary,
                               fontSize: 12.f,
                             ),
@@ -1796,7 +1865,7 @@ class _ExplorerFilterSheetState extends ConsumerState<ExplorerFilterSheet> {
                             side: BorderSide(
                               color:
                                   isSelected
-                                      ? kPrimaryColor
+                                      ? context.colors.accentText
                                       : context.colors.divider,
                             ),
                           );
@@ -1836,7 +1905,7 @@ class _ExplorerFilterSheetState extends ConsumerState<ExplorerFilterSheet> {
                         labelStyle: TextStyle(
                           color:
                               filters.playerColor == GamebasePlayerColor.white
-                                  ? kPrimaryColor
+                                  ? context.colors.accentText
                                   : context.colors.textPrimary,
                           fontSize: 12.f,
                         ),
@@ -1844,7 +1913,7 @@ class _ExplorerFilterSheetState extends ConsumerState<ExplorerFilterSheet> {
                         side: BorderSide(
                           color:
                               filters.playerColor == GamebasePlayerColor.white
-                                  ? kPrimaryColor
+                                  ? context.colors.accentText
                                   : context.colors.divider,
                         ),
                       ),
@@ -1864,7 +1933,7 @@ class _ExplorerFilterSheetState extends ConsumerState<ExplorerFilterSheet> {
                         labelStyle: TextStyle(
                           color:
                               filters.playerColor == GamebasePlayerColor.black
-                                  ? kPrimaryColor
+                                  ? context.colors.accentText
                                   : context.colors.textPrimary,
                           fontSize: 12.f,
                         ),
@@ -1872,7 +1941,7 @@ class _ExplorerFilterSheetState extends ConsumerState<ExplorerFilterSheet> {
                         side: BorderSide(
                           color:
                               filters.playerColor == GamebasePlayerColor.black
-                                  ? kPrimaryColor
+                                  ? context.colors.accentText
                                   : context.colors.divider,
                         ),
                       ),
@@ -1905,7 +1974,7 @@ class _ExplorerFilterSheetState extends ConsumerState<ExplorerFilterSheet> {
                         size: 14.sp,
                         color:
                             filters.isOnline == false
-                                ? kPrimaryColor
+                                ? context.colors.accentText
                                 : context.colors.textPrimary,
                       ),
                       selected: filters.isOnline == false,
@@ -1915,7 +1984,7 @@ class _ExplorerFilterSheetState extends ConsumerState<ExplorerFilterSheet> {
                       labelStyle: TextStyle(
                         color:
                             filters.isOnline == false
-                                ? kPrimaryColor
+                                ? context.colors.accentText
                                 : context.colors.textPrimary,
                         fontSize: 12.f,
                       ),
@@ -1923,7 +1992,7 @@ class _ExplorerFilterSheetState extends ConsumerState<ExplorerFilterSheet> {
                       side: BorderSide(
                         color:
                             filters.isOnline == false
-                                ? kPrimaryColor
+                                ? context.colors.accentText
                                 : context.colors.divider,
                       ),
                     ),
@@ -1934,7 +2003,7 @@ class _ExplorerFilterSheetState extends ConsumerState<ExplorerFilterSheet> {
                         size: 14.sp,
                         color:
                             filters.isOnline == true
-                                ? kPrimaryColor
+                                ? context.colors.accentText
                                 : context.colors.textPrimary,
                       ),
                       selected: filters.isOnline == true,
@@ -1944,7 +2013,7 @@ class _ExplorerFilterSheetState extends ConsumerState<ExplorerFilterSheet> {
                       labelStyle: TextStyle(
                         color:
                             filters.isOnline == true
-                                ? kPrimaryColor
+                                ? context.colors.accentText
                                 : context.colors.textPrimary,
                         fontSize: 12.f,
                       ),
@@ -1952,7 +2021,7 @@ class _ExplorerFilterSheetState extends ConsumerState<ExplorerFilterSheet> {
                       side: BorderSide(
                         color:
                             filters.isOnline == true
-                                ? kPrimaryColor
+                                ? context.colors.accentText
                                 : context.colors.divider,
                       ),
                     ),
@@ -1974,6 +2043,10 @@ class _ExplorerFilterSheetState extends ConsumerState<ExplorerFilterSheet> {
                   Padding(
                     padding: EdgeInsets.symmetric(horizontal: 4.w),
                     child: RatingTierFilter(
+                      // The sheet is the recessed tone in dark: the chips
+                      // take the surface a step darker so they show.
+                      unselectedColor:
+                          context.isLightTheme ? null : context.colors.surface,
                       selectedMinRating: _selectedMinRating,
                       onChanged:
                           (value) => setState(() => _selectedMinRating = value),
@@ -2175,7 +2248,7 @@ class _PlayerSearchResults extends ConsumerWidget {
                   trailing: Icon(
                     Icons.add_rounded,
                     size: 18.sp,
-                    color: kPrimaryColor,
+                    color: context.colors.accentText,
                   ),
                 );
               },
@@ -2191,7 +2264,7 @@ class _PlayerSearchResults extends ConsumerWidget {
                       height: 16.sp,
                       child: CircularProgressIndicator(
                         strokeWidth: 2,
-                        color: kPrimaryColor,
+                        color: context.colors.accentText,
                       ),
                     ),
                     SizedBox(width: 10.sp),
@@ -2210,7 +2283,7 @@ class _PlayerSearchResults extends ConsumerWidget {
                 padding: EdgeInsets.all(12.sp),
                 child: Text(
                   'Search failed',
-                  style: TextStyle(color: kRedColor, fontSize: 12.f),
+                  style: TextStyle(color: context.colors.danger, fontSize: 12.f),
                 ),
               ),
         ),
@@ -2858,7 +2931,7 @@ class _ExplorerBottomPanelsState extends ConsumerState<_ExplorerBottomPanels>
       children: [
         pageView,
         Material(
-          color: context.colors.surfaceRecessed.withValues(alpha: 0.94),
+          color: explorerSheetSurface(context).withValues(alpha: 0.94),
           child: Semantics(
             button: true,
             label: 'Exit engine line preview',
@@ -3068,9 +3141,7 @@ class _ExplorerNotationViewState extends ConsumerState<_ExplorerNotationView> {
                     child: Text(
                       token.text,
                       style: AppTypography.textXsRegular.copyWith(
-                        color: context.colors.textPrimaryMuted.withValues(
-                          alpha: 0.65,
-                        ),
+                        color: context.textInk(0.65),
                         fontStyle: FontStyle.italic,
                         height: 1.35,
                       ),
@@ -3136,13 +3207,25 @@ class _ExplorerNotationViewState extends ConsumerState<_ExplorerNotationView> {
     }
 
     final baseColor = _resolveMoveColor(token, currentPly);
-    final color = firstQualityNag?.color ?? baseColor;
+    // The current move sits on its own plate; on paper coloured SAN is
+    // re-inked against it so it stays AA.
+    final isLight = context.isLightTheme;
+    final currentPlate =
+        isLight
+            ? context.colors.textPrimary.withValues(alpha: 0.08)
+            : context.colors.textPrimaryMuted.withValues(alpha: 0.25);
+    final plateSolid = Color.alphaBlend(currentPlate, context.colors.background);
+    Color onPlate(Color ink) =>
+        isCurrent && isLight ? legibleHueInkOn(ink, plateSolid) : ink;
+    final color = onPlate(
+      firstQualityNag == null ? baseColor : nagInk(context, firstQualityNag),
+    );
     final textStyle = AppTypography.textXsMedium.copyWith(
       color: color,
       fontWeight: isCurrent ? FontWeight.bold : FontWeight.normal,
     );
     final numberStyle = AppTypography.textXsMedium.copyWith(
-      color: context.colors.textPrimary.withValues(alpha: 0.5),
+      color: context.textInk(0.5),
       fontWeight: isCurrent ? FontWeight.bold : FontWeight.normal,
     );
 
@@ -3188,7 +3271,7 @@ class _ExplorerNotationViewState extends ConsumerState<_ExplorerNotationView> {
             TextSpan(
               text: d.symbol,
               style: textStyle.copyWith(
-                color: d.color,
+                color: onPlate(nagInk(context, d)),
                 fontWeight: FontWeight.w800,
                 letterSpacing: -0.2,
               ),
@@ -3199,7 +3282,7 @@ class _ExplorerNotationViewState extends ConsumerState<_ExplorerNotationView> {
             TextSpan(
               text: ' ${d.symbol}',
               style: textStyle.copyWith(
-                color: d.color,
+                color: onPlate(nagInk(context, d)),
                 fontWeight: FontWeight.w500,
                 fontSize: (textStyle.fontSize ?? 12.0) - 0.5,
                 letterSpacing: 0.0,
@@ -3222,10 +3305,7 @@ class _ExplorerNotationViewState extends ConsumerState<_ExplorerNotationView> {
       child: Container(
         padding: EdgeInsets.symmetric(horizontal: 6.sp, vertical: 2.sp),
         decoration: BoxDecoration(
-          color:
-              isCurrent
-                  ? context.colors.textPrimaryMuted.withValues(alpha: 0.25)
-                  : Colors.transparent,
+          color: isCurrent ? currentPlate : Colors.transparent,
           borderRadius: BorderRadius.circular(4.sp),
           border: Border.all(
             color: isCurrent ? context.colors.textPrimary : Colors.transparent,
@@ -3241,14 +3321,18 @@ class _ExplorerNotationViewState extends ConsumerState<_ExplorerNotationView> {
     final isVariationToken =
         token.type != NotationTokenType.ellipsis &&
         (token.variation != null || token.variationColorKey != null);
-    Color depthColor;
+    final Color depthColor;
     if (isVariationToken) {
       depthColor = _accentColorForToken(token);
     } else if (token.depth > 0) {
-      depthColor = _colorForVariationDepth(token.depth);
+      depthColor = legibleHueInk(context, _colorForVariationDepth(token.depth));
     } else {
       depthColor = context.colors.textPrimary.withValues(alpha: 0.75);
     }
+    // Text and glyph tints: on paper [depthColor] is already the AA ink and
+    // an alpha on top would sink it again, so light draws it solid.
+    Color auxInk(double alpha) =>
+        context.isLightTheme ? depthColor : depthColor.withValues(alpha: alpha);
 
     if (token.type == NotationTokenType.variationPlaceholder) {
       return GestureDetector(
@@ -3270,13 +3354,13 @@ class _ExplorerNotationViewState extends ConsumerState<_ExplorerNotationView> {
               Icon(
                 Icons.unfold_more_rounded,
                 size: 12.sp,
-                color: depthColor.withValues(alpha: 0.7),
+                color: auxInk(0.7),
               ),
               SizedBox(width: 4.sp),
               Text(
                 token.text,
                 style: AppTypography.textXsMedium.copyWith(
-                  color: depthColor.withValues(alpha: 0.85),
+                  color: auxInk(0.85),
                   fontStyle: FontStyle.italic,
                 ),
               ),
@@ -3322,7 +3406,7 @@ class _ExplorerNotationViewState extends ConsumerState<_ExplorerNotationView> {
                       isCollapsed ? Icons.add_rounded : Icons.remove_rounded,
                       key: ValueKey<bool>(isCollapsed),
                       size: 12.sp,
-                      color: depthColor.withValues(alpha: 0.9),
+                      color: auxInk(0.9),
                     ),
                   ),
                 ),
@@ -3330,7 +3414,7 @@ class _ExplorerNotationViewState extends ConsumerState<_ExplorerNotationView> {
               Text(
                 token.text,
                 style: AppTypography.textXsMedium.copyWith(
-                  color: depthColor.withValues(alpha: 0.85),
+                  color: auxInk(0.85),
                   fontStyle: FontStyle.italic,
                 ),
               ),
@@ -3349,7 +3433,7 @@ class _ExplorerNotationViewState extends ConsumerState<_ExplorerNotationView> {
           child: Text(
             token.text,
             style: AppTypography.textXsMedium.copyWith(
-              color: depthColor.withValues(alpha: 0.85),
+              color: auxInk(0.85),
               fontStyle: FontStyle.italic,
             ),
           ),
@@ -3363,7 +3447,7 @@ class _ExplorerNotationViewState extends ConsumerState<_ExplorerNotationView> {
         color:
             token.type == NotationTokenType.ellipsis
                 ? context.colors.textPrimaryMuted
-                : depthColor.withValues(alpha: 0.85),
+                : auxInk(0.85),
         fontStyle:
             token.type == NotationTokenType.ellipsis
                 ? FontStyle.normal
@@ -3400,7 +3484,12 @@ class _ExplorerNotationViewState extends ConsumerState<_ExplorerNotationView> {
     return _colorForVariationAccent(depth, seed: seed);
   }
 
-  Color _colorForVariationAccent(int depth, {String? seed}) {
+  /// The variation's accent as legible ink (identity in dark; on paper the
+  /// pale depth hues are darkened to AA).
+  Color _colorForVariationAccent(int depth, {String? seed}) =>
+      legibleHueInk(context, _rawVariationHue(depth, seed: seed));
+
+  Color _rawVariationHue(int depth, {String? seed}) {
     if (seed == null || seed.isEmpty) {
       return _colorForVariationDepth(depth);
     }
@@ -3433,11 +3522,18 @@ class _ExplorerNotationViewState extends ConsumerState<_ExplorerNotationView> {
       return isPast ? context.colors.textPrimary : context.colors.textPrimary;
     }
 
-    final depthColor = _colorForVariationAccent(
+    final hue = _rawVariationHue(
       token.depth,
       seed: token.variationColorKey ?? token.variation?.id,
     );
-    return depthColor.withValues(alpha: isPast ? 0.95 : 0.75);
+    // Paper: alpha on an AA ink drops it under AA, so the past/future step is
+    // carried by contrast (7:1 vs 4.5:1) instead of transparency.
+    if (context.isLightTheme) {
+      return isPast
+          ? legibleHueInk(context, hue, minContrast: 7)
+          : legibleHueInk(context, hue);
+    }
+    return hue.withValues(alpha: isPast ? 0.95 : 0.75);
   }
 
   void _schedulePointerScroll(ChessMovePointer pointer, String pointerId) {

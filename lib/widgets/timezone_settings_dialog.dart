@@ -78,7 +78,9 @@ class TimezoneSettingsDialog extends ConsumerWidget {
               padding: EdgeInsets.symmetric(horizontal: 5.sp, vertical: 8.sp),
 
               decoration: BoxDecoration(
-                color: kBlackColor,
+                // A black slab on paper; light uses the popup surface.
+                color:
+                    context.isLightTheme ? context.colors.popup : kBlackColor,
                 borderRadius: BorderRadius.circular(20.sp),
               ),
               child: Column(
@@ -119,7 +121,13 @@ class TimezoneSettingsDialog extends ConsumerWidget {
                     padding: EdgeInsets.symmetric(horizontal: 16.sp),
                     itemCount: timezoneOptions.length,
                     separatorBuilder:
-                        (_, __) => Divider(color: Colors.grey[800], height: 1),
+                        (_, __) => Divider(
+                          color:
+                              context.isLightTheme
+                                  ? context.colors.divider
+                                  : Colors.grey[800],
+                          height: 1,
+                        ),
                     itemBuilder: (context, index) {
                       final option = timezoneOptions[index];
                       final isSelected = selectedId == option.id;
@@ -141,7 +149,7 @@ class TimezoneSettingsDialog extends ConsumerWidget {
                             child: Text(
                               option.display,
                               style: AppTypography.textSmMedium.copyWith(
-                                color: isSelected ? kPrimaryColor : context.colors.textPrimary,
+                                color: isSelected ? context.colors.accentText : context.colors.textPrimary,
                               ),
                             ),
                           ),

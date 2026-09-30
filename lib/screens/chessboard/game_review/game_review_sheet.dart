@@ -6,14 +6,17 @@ import 'package:chessever2/screens/chessboard/game_review/evaluation_graph_marke
 import 'package:chessever2/screens/chessboard/game_review/game_analysis_report.dart';
 import 'package:chessever2/screens/chessboard/game_review/game_review_provider.dart';
 import 'package:chessever2/screens/player_profile/player_profile_screen.dart';
+import 'package:chessever2/screens/player_profile/utils/player_menu_actions.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/services/fide_photo_service.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
+import 'package:chessever2/widgets/card_context_menu.dart';
 import 'package:chessever2/widgets/player_initials_avatar.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_svg/flutter_svg.dart';
+import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:motor/motor.dart';
 
 /// Heights for the two-step Game Analysis sheet.
@@ -371,9 +374,13 @@ class GameAnalysisButton extends StatelessWidget {
                     border: Border.all(
                       color:
                           completed
-                              ? const Color(0xFF28833A)
+                              ? (context.isLightTheme
+                                  ? context.colors.successStrong
+                                  : const Color(0xFF28833A))
                               : running
-                              ? kPrimaryColor.withValues(alpha: 0.7)
+                              ? (context.isLightTheme
+                                  ? context.colors.accentText
+                                  : kPrimaryColor.withValues(alpha: 0.7))
                               : context.colors.divider,
                     ),
                   ),
@@ -414,9 +421,11 @@ class GameAnalysisButton extends StatelessWidget {
                               color:
                                   enabled
                                       ? completed
-                                          ? const Color(0xFF45C86E)
-                                          : kPrimaryColor
-                                      : kLightGreyColor,
+                                          ? context.colors.success
+                                          : context.colors.accentText
+                                      : (context.isLightTheme
+                                          ? context.colors.iconSecondary
+                                          : kLightGreyColor),
                             ),
                             const SizedBox(width: 9),
                             Flexible(
@@ -489,12 +498,18 @@ class _GameReviewSurface extends StatelessWidget {
         color: context.colors.surface,
         borderRadius: radius,
         boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.34),
-            blurRadius: 16,
-            spreadRadius: -6,
-            offset: const Offset(0, -4),
-          ),
+          context.isLightTheme
+              ? BoxShadow(
+                color: context.colors.shadow,
+                blurRadius: 6,
+                offset: const Offset(0, -1),
+              )
+              : BoxShadow(
+                color: Colors.black.withValues(alpha: 0.34),
+                blurRadius: 16,
+                spreadRadius: -6,
+                offset: const Offset(0, -4),
+              ),
         ],
       ),
       child: ClipRRect(
@@ -680,7 +695,7 @@ class _ReviewProgress extends StatelessWidget {
       padding: const EdgeInsets.symmetric(vertical: 56),
       child: Column(
         children: [
-          const Icon(Icons.memory_rounded, color: kPrimaryColor, size: 34),
+          Icon(Icons.memory_rounded, color: context.colors.accentText, size: 34),
           const SizedBox(height: 16),
           Text(
             state.message ?? 'Analyzing game…',
@@ -704,7 +719,7 @@ class _ReviewProgress extends StatelessWidget {
                     child: LinearProgressIndicator(
                       minHeight: 8,
                       value: value,
-                      color: kPrimaryColor,
+                      color: context.colors.accentText,
                       backgroundColor: context.colors.surfaceRecessed,
                     ),
                   ),
@@ -747,7 +762,7 @@ class _ReviewMessage extends StatelessWidget {
       padding: const EdgeInsets.symmetric(vertical: 44),
       child: Column(
         children: [
-          Icon(icon, color: kPrimaryColor, size: 34),
+          Icon(icon, color: context.colors.accentText, size: 34),
           const SizedBox(height: 14),
           Text(
             title,
@@ -1038,6 +1053,60 @@ class _PlayerColumnState extends State<_PlayerColumn> {
   Widget build(BuildContext context) {
     final player = widget.player;
     final canOpenProfile = player.name.trim().isNotEmpty;
+    final column = _buildColumn(context, player, canOpenProfile);
+    // Long-press opens the player's focus menu (profile, My Space, share).
+    // The review is also rendered provider-free (tests, previews); there the
+    // column stays tap-only rather than failing on a missing scope.
+    final hasProviderScope =
+        context
+            .getElementForInheritedWidgetOfExactType<
+              UncontrolledProviderScope
+            >() !=
+        null;
+    if (!canOpenProfile || !hasProviderScope) return column;
+    return Consumer(
+      builder:
+          (context, ref, child) => Builder(
+            builder:
+                (columnContext) => GestureDetector(
+                  behavior: HitTestBehavior.deferToChild,
+                  // The column is narrower than the menu, so the menu opens
+                  // on its own, anchored to the column, with no lifted copy.
+                  onLongPress:
+                      () => CardContextMenu.open(
+                        columnContext,
+                        actions:
+                            (menuContext) => playerMenuActions(
+                              menuContext,
+                              ref,
+                              playerName: player.name,
+                              fideId: player.fideId,
+                              title:
+                                  player.title.trim().isEmpty
+                                      ? null
+                                      : player.title.trim(),
+                              federation: player.countryCode,
+                              rating: player.rating > 0 ? player.rating : null,
+                              gamebasePlayerId: player.gamebasePlayerId,
+                              onOpen: () {
+                                if (columnContext.mounted) {
+                                  _openPlayerProfile(columnContext, player);
+                                }
+                              },
+                            ),
+                      ),
+                  child: child,
+                ),
+          ),
+      child: column,
+    );
+  }
+
+  Widget _buildColumn(
+    BuildContext context,
+    PlayerCard player,
+    bool canOpenProfile,
+  ) {
     return InkWell(
       onTap: canOpenProfile ? () => _openPlayerProfile(context, player) : null,
       borderRadius: BorderRadius.circular(12),
@@ -1174,7 +1243,7 @@ class _ClassificationRecap extends StatelessWidget {
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             style: TextStyle(
-                              color: classificationColor(classification),
+                              color: classificationInk(context, classification),
                               fontSize: 14,
                               fontWeight: FontWeight.w700,
                             ),
@@ -1231,7 +1300,7 @@ class _ClassificationScore extends StatelessWidget {
             '$count',
             textAlign: TextAlign.center,
             style: TextStyle(
-              color: classificationColor(classification),
+              color: classificationInk(context, classification),
               fontSize: 16,
               fontWeight: FontWeight.w700,
             ),
@@ -1346,16 +1415,34 @@ class _EvaluationGraph extends StatelessWidget {
                           positions: report.positions,
                           moves: report.moves,
                           activePly: activePly,
-                          surface: context.colors.surfaceRecessed,
-                          grid: context.colors.divider,
-                          fill: context.colors.textPrimary.withValues(
-                            alpha: 0.08,
-                          ),
+                          // Light mirrors the eval bar: White's share reads
+                          // as paper, Black's as the deeper slab. Dark keeps
+                          // its faint white fill on the recessed well.
+                          surface:
+                              context.isLightTheme
+                                  ? context.colors.evalBlack
+                                  : context.colors.surfaceRecessed,
+                          grid:
+                              context.isLightTheme
+                                  ? context.colors.textPrimary.withValues(
+                                    alpha: 0.16,
+                                  )
+                                  : context.colors.divider,
+                          fill:
+                              context.isLightTheme
+                                  ? context.colors.evalWhite
+                                  : context.colors.textPrimary.withValues(
+                                    alpha: 0.08,
+                                  ),
                           stroke: context.colors.textPrimaryMuted,
                           outline: context.colors.surfaceRecessed.withValues(
                             alpha: 0.55,
                           ),
                           marker: context.colors.textPrimary,
+                          cursor:
+                              context.isLightTheme
+                                  ? context.colors.accentText
+                                  : kPrimaryColor.withValues(alpha: 0.8),
                         ),
                         child: const SizedBox.expand(),
                       ),
@@ -1373,16 +1460,26 @@ class _EvaluationGraph extends StatelessWidget {
                               horizontal: 7,
                               vertical: 3,
                             ),
+                            // A dark capsule over the graph in both themes;
+                            // paper gets the inverse ink slab so its label
+                            // (textInverse) reads, not page ink on charcoal.
                             decoration: BoxDecoration(
-                              color: const Color(
-                                0xFF303034,
-                              ).withValues(alpha: 0.92),
+                              color:
+                                  context.isLightTheme
+                                      ? context.colors.surfaceInverse
+                                          .withValues(alpha: 0.94)
+                                      : const Color(
+                                        0xFF303034,
+                                      ).withValues(alpha: 0.92),
                               borderRadius: BorderRadius.circular(6),
-                              boxShadow: const [
+                              boxShadow: [
                                 BoxShadow(
-                                  color: Colors.black38,
+                                  color:
+                                      context.isLightTheme
+                                          ? context.colors.shadow
+                                          : Colors.black38,
                                   blurRadius: 4,
-                                  offset: Offset(0, 1),
+                                  offset: const Offset(0, 1),
                                 ),
                               ],
                             ),
@@ -1403,7 +1500,10 @@ class _EvaluationGraph extends StatelessWidget {
                                     overflow: TextOverflow.ellipsis,
                                     textAlign: TextAlign.center,
                                     style: TextStyle(
-                                      color: context.colors.textPrimary,
+                                      color:
+                                          context.isLightTheme
+                                              ? context.colors.textInverse
+                                              : context.colors.textPrimary,
                                       fontSize: 10,
                                       fontWeight: FontWeight.w600,
                                     ),
@@ -1578,6 +1678,7 @@ class _ReviewGraphPainter extends CustomPainter {
     required this.stroke,
     required this.outline,
     required this.marker,
+    required this.cursor,
   });
 
   final List<GameReportPosition> positions;
@@ -1589,6 +1690,9 @@ class _ReviewGraphPainter extends CustomPainter {
   final Color stroke;
   final Color outline;
   final Color marker;
+
+  /// The active-ply scrubber line.
+  final Color cursor;
 
   /// Radius of classification dots on the win% curve (chess.com-style).
   static const double _classificationDotRadius = 3.5;
@@ -1676,7 +1780,7 @@ class _ReviewGraphPainter extends CustomPainter {
       Offset(markerX, 0),
       Offset(markerX, size.height),
       Paint()
-        ..color = kPrimaryColor.withValues(alpha: 0.8)
+        ..color = cursor
         ..strokeWidth = 2,
     );
     final markerY =
@@ -1701,5 +1805,6 @@ class _ReviewGraphPainter extends CustomPainter {
       oldDelegate.fill != fill ||
       oldDelegate.stroke != stroke ||
       oldDelegate.outline != outline ||
-      oldDelegate.marker != marker;
+      oldDelegate.marker != marker ||
+      oldDelegate.cursor != cursor;
 }

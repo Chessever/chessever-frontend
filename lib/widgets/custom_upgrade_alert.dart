@@ -96,7 +96,7 @@ class CustomUpgradeAlert extends StatelessWidget {
                 : UpgradeDialogStyle.material,
         cupertinoButtonTextStyle:
             Platform.isIOS
-                ? AppTypography.textMdMedium.copyWith(color: kPrimaryColor)
+                ? AppTypography.textMdMedium.copyWith(color: context.colors.accentText)
                 : null,
         child: child,
       ),

@@ -82,13 +82,13 @@ class EngineSettingsBody extends ConsumerWidget {
                     Switch.adaptive(
                       key: const ValueKey('evaluation-bar-master-switch'),
                       value: settings.showEngineGauge,
-                      thumbColor: const WidgetStatePropertyAll(kPrimaryColor),
-                      trackColor: WidgetStateProperty.resolveWith(
-                        (states) =>
-                            states.contains(WidgetState.selected)
-                                ? kPrimaryColor.withValues(alpha: 0.35)
-                                : context.colors.divider.withValues(alpha: 0.5),
-                      ),
+                      // Dark keeps its always-cyan thumb; paper uses the
+                      // shared AA pair (white on teal ON, grey OFF).
+                      thumbColor:
+                          context.isLightTheme
+                              ? settingsSwitchThumb(context)
+                              : const WidgetStatePropertyAll(kPrimaryColor),
+                      trackColor: settingsSwitchTrack(context),
                       onChanged: (value) {
                         trackPersist(notifier.toggleEngineGauge(value));
                       },
@@ -147,16 +147,8 @@ class EngineSettingsBody extends ConsumerWidget {
               ),
               Switch.adaptive(
                 value: settings.showEngineAnalysis,
-                thumbColor: WidgetStateProperty.resolveWith(
-                  (states) => states.contains(WidgetState.selected)
-                      ? kPrimaryColor
-                      : context.colors.textSecondary.withValues(alpha: 0.6),
-                ),
-                trackColor: WidgetStateProperty.resolveWith(
-                  (states) => states.contains(WidgetState.selected)
-                      ? kPrimaryColor.withValues(alpha: 0.35)
-                      : context.colors.divider.withValues(alpha: 0.5),
-                ),
+                thumbColor: settingsSwitchThumb(context),
+                trackColor: settingsSwitchTrack(context),
                 onChanged: (value) {
                   trackPersist(notifier.toggleEngineAnalysis(value));
                 },
@@ -222,16 +214,8 @@ class EngineSettingsBody extends ConsumerWidget {
               ),
               Switch.adaptive(
                 value: settings.showDepthOverlay,
-                thumbColor: WidgetStateProperty.resolveWith(
-                  (states) => states.contains(WidgetState.selected)
-                      ? kPrimaryColor
-                      : context.colors.textSecondary.withValues(alpha: 0.6),
-                ),
-                trackColor: WidgetStateProperty.resolveWith(
-                  (states) => states.contains(WidgetState.selected)
-                      ? kPrimaryColor.withValues(alpha: 0.35)
-                      : context.colors.divider.withValues(alpha: 0.5),
-                ),
+                thumbColor: settingsSwitchThumb(context),
+                trackColor: settingsSwitchTrack(context),
                 onChanged: (value) {
                   trackPersist(notifier.toggleDepthOverlay(value));
                 },
@@ -267,16 +251,8 @@ class EngineSettingsBody extends ConsumerWidget {
               ),
               Switch.adaptive(
                 value: settings.showPvArrows,
-                thumbColor: WidgetStateProperty.resolveWith(
-                  (states) => states.contains(WidgetState.selected)
-                      ? kPrimaryColor
-                      : context.colors.textSecondary.withValues(alpha: 0.6),
-                ),
-                trackColor: WidgetStateProperty.resolveWith(
-                  (states) => states.contains(WidgetState.selected)
-                      ? kPrimaryColor.withValues(alpha: 0.35)
-                      : context.colors.divider.withValues(alpha: 0.5),
-                ),
+                thumbColor: settingsSwitchThumb(context),
+                trackColor: settingsSwitchTrack(context),
                 onChanged: (value) {
                   trackPersist(notifier.togglePvArrows(value));
                 },
@@ -474,7 +450,9 @@ class _EngineLinesToggle extends StatelessWidget {
                 icon,
                 size: 16.f,
                 color: selected
-                    ? context.colors.textInverse
+                    ? (context.isLightTheme
+                        ? context.colors.inkOnAccent
+                        : context.colors.textInverse)
                     : context.colors.textSecondary,
               ),
               SizedBox(width: 6.w),
@@ -482,7 +460,9 @@ class _EngineLinesToggle extends StatelessWidget {
                 label,
                 style: AppTypography.textSmMedium.copyWith(
                   color: selected
-                      ? context.colors.textInverse
+                      ? (context.isLightTheme
+                          ? context.colors.inkOnAccent
+                          : context.colors.textInverse)
                       : context.colors.textSecondary,
                   fontSize: 12.f,
                   fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
@@ -538,17 +518,13 @@ class _EvaluationSurfaceSwitch extends StatelessWidget {
                 if (states.contains(WidgetState.disabled)) {
                   return context.colors.textSecondary.withValues(alpha: 0.35);
                 }
-                return states.contains(WidgetState.selected)
-                    ? kPrimaryColor
-                    : context.colors.textSecondary.withValues(alpha: 0.6);
+                return settingsSwitchThumb(context).resolve(states);
               }),
               trackColor: WidgetStateProperty.resolveWith((states) {
                 if (states.contains(WidgetState.disabled)) {
                   return context.colors.divider.withValues(alpha: 0.3);
                 }
-                return states.contains(WidgetState.selected)
-                    ? kPrimaryColor.withValues(alpha: 0.35)
-                    : context.colors.divider.withValues(alpha: 0.5);
+                return settingsSwitchTrack(context).resolve(states);
               }),
               onChanged: enabled ? onChanged : null,
             ),
@@ -578,10 +554,19 @@ class _DiscreteSlider extends StatelessWidget {
     final labelIndex = clampedValue.round().clamp(0, labels.length - 1);
 
     return SliderTheme(
+      // Paper: the cyan track and thumb sit near 2:1, so light draws them in
+      // the accent-text teal. Dark is unchanged.
       data: SliderTheme.of(context).copyWith(
-        activeTrackColor: kPrimaryColor,
-        inactiveTrackColor: kPrimaryColor.withValues(alpha: 0.2),
-        thumbColor: kPrimaryColor,
+        activeTrackColor:
+            context.isLightTheme ? context.colors.accentText : kPrimaryColor,
+        inactiveTrackColor:
+            context.isLightTheme
+                ? context.colors.accentText.withValues(alpha: 0.25)
+                : kPrimaryColor.withValues(alpha: 0.2),
+        thumbColor:
+            context.isLightTheme ? context.colors.accentText : kPrimaryColor,
+        valueIndicatorColor:
+            context.isLightTheme ? context.colors.accentText : null,
         valueIndicatorTextStyle: AppTypography.textSmMedium.copyWith(
           color: context.colors.textInverse,
           fontSize: 11.f,

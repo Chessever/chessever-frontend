@@ -1,10 +1,19 @@
 import 'package:chessever2/repository/supabase/game/games.dart';
+import 'package:chessever2/screens/chessboard/widgets/chess_board_from_fen_new.dart'
+    show showGameShareOverlay;
+import 'package:chessever2/screens/library/widgets/library_context_menu.dart';
+import 'package:chessever2/screens/library/widgets/menu_preview_surface.dart';
+import 'package:chessever2/screens/my_space/actions/space_menu_action.dart';
 import 'package:chessever2/screens/tour_detail/bracket/models/knockout_bracket.dart';
 import 'package:chessever2/screens/tour_detail/bracket/utils/bracket_game_result.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/utils/game_space_shortcut.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
+import 'package:chessever2/widgets/card_context_menu.dart';
 import 'package:chessever2/widgets/federation_flag.dart';
 import 'package:flutter/material.dart';
+import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 Future<void> showKnockoutMatchSheet({
   required BuildContext context,
@@ -16,7 +25,10 @@ Future<void> showKnockoutMatchSheet({
     useSafeArea: true,
     isScrollControlled: true,
     backgroundColor: Colors.transparent,
-    barrierColor: Colors.black.withValues(alpha: 0.6),
+    barrierColor:
+        context.isLightTheme
+            ? context.colors.scrim
+            : Colors.black.withValues(alpha: 0.6),
     builder:
         (sheetContext) => _KnockoutMatchSheet(
           match: match,
@@ -147,14 +159,36 @@ class _KnockoutMatchSheet extends StatelessWidget {
                 separatorBuilder: (_, _) => const SizedBox(height: 8),
                 itemBuilder: (context, index) {
                   final game = match.games[index];
-                  return _LegTile(
+                  void open() {
+                    HapticFeedbackService.navigation();
+                    onGameTap(game);
+                  }
+
+                  final tile = _LegTile(
                     game: game,
                     label: _legLabel(match.games, index),
                     isLive: game.id == liveGameId,
-                    onTap: () {
-                      HapticFeedbackService.navigation();
-                      onGameTap(game);
-                    },
+                    onTap: open,
+                  );
+                  // Long-press lifts the leg into the same game menu every
+                  // other game card raises: open, share, My Space.
+                  return Consumer(
+                    builder:
+                        (context, ref, _) => CardContextMenu(
+                          onPreviewTap: open,
+                          actions:
+                              (tileContext) =>
+                                  _legMenuActions(tileContext, ref, game, open),
+                          // The leg's fill is translucent over the sheet; a
+                          // plate of the sheet's colour keeps its lifted copy
+                          // reading the same over the menu scrim.
+                          child: MenuPreviewSurface(
+                            color: context.colors.surface,
+                            outset: EdgeInsets.zero,
+                            borderRadius: BorderRadius.circular(12),
+                            child: tile,
+                          ),
+                        ),
                   );
                 },
               ),
@@ -163,6 +197,45 @@ class _KnockoutMatchSheet extends StatelessWidget {
         ),
       ),
     );
+  }
+}
+
+/// The leg's game as the shared game model, so its pin is the same shortcut
+/// the Games tab and the board make for this game.
+List<LibraryMenuAction> _legMenuActions(
+  BuildContext context,
+  WidgetRef ref,
+  Games game,
+  VoidCallback open,
+) {
+  final model = _legGameModel(game);
+  final spaceDraft = model == null ? null : gameSpaceShortcutDraft(model);
+  return [
+    LibraryMenuAction(
+      icon: Icons.open_in_new_rounded,
+      label: 'Open game',
+      onSelected: open,
+    ),
+    if (model != null)
+      LibraryMenuAction(
+        icon: Icons.ios_share_rounded,
+        label: 'Share',
+        onSelected: () => showGameShareOverlay(context, ref, model),
+      ),
+    if (spaceDraft != null)
+      spaceMenuAction(context: context, ref: ref, draft: spaceDraft),
+  ];
+}
+
+/// [GamesTourModel.fromGameIndex] throws for a leg whose pairing is not
+/// filled in yet (fewer than two players, or a blank name). Such a leg keeps
+/// only "Open game" instead of a long-press that throws.
+GamesTourModel? _legGameModel(Games game) {
+  try {
+    return GamesTourModel.fromGameIndex(game);
+  } catch (e) {
+    debugPrint('[KnockoutMatchSheet] leg ${game.id} has no game model: $e');
+    return null;
   }
 }
 
@@ -239,7 +312,7 @@ class _AggregateParticipantRow extends StatelessWidget {
                 width: 6,
                 height: 6,
                 decoration: BoxDecoration(
-                  color: colors.brand,
+                  color: colors.accentText,
                   shape: BoxShape.circle,
                 ),
               ),
@@ -270,7 +343,7 @@ class _AggregateParticipantRow extends StatelessWidget {
               ),
             ),
             if (isWinner) ...[
-              Icon(Icons.check_rounded, size: 17, color: colors.brand),
+              Icon(Icons.check_rounded, size: 17, color: context.colors.accentText),
               const SizedBox(width: 5),
             ],
             Text(
@@ -279,7 +352,7 @@ class _AggregateParticipantRow extends StatelessWidget {
                 fontFamily: 'InterDisplay',
                 color:
                     isWinner
-                        ? colors.brand
+                        ? context.colors.accentText
                         : isEliminated
                         ? colors.textTertiary
                         : colors.textPrimary,
@@ -354,7 +427,7 @@ class _LegTile extends StatelessWidget {
                       ? Icons.radio_button_checked_rounded
                       : Icons.sports_esports_outlined,
                   size: 17,
-                  color: isLive ? colors.brand : colors.iconSecondary,
+                  color: isLive ? context.colors.accentText : colors.iconSecondary,
                 ),
               ),
               const SizedBox(width: 11),
@@ -395,7 +468,7 @@ class _LegTile extends StatelessWidget {
                 result,
                 style: TextStyle(
                   fontFamily: 'InterDisplay',
-                  color: isLive ? colors.brand : colors.textPrimary,
+                  color: isLive ? context.colors.accentText : colors.textPrimary,
                   fontSize: isLive ? 10 : 13,
                   height: 1,
                   fontWeight: FontWeight.w700,

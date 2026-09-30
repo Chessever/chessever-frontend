@@ -42,13 +42,17 @@ class ChessSvgBottomNavbar extends StatelessWidget {
       fontWeight: FontWeight.w600,
       height: 1.0,
       leadingDistribution: TextLeadingDistribution.even,
-      shadows: [
-        Shadow(
-          color: Colors.black.withValues(alpha: 0.35),
-          offset: Offset(0, 1.sp),
-          blurRadius: 2.sp,
-        ),
-      ],
+      // A black drop under ink letters smudges on paper; dark keeps it.
+      shadows:
+          context.isLightTheme
+              ? null
+              : [
+                Shadow(
+                  color: Colors.black.withValues(alpha: 0.35),
+                  offset: Offset(0, 1.sp),
+                  blurRadius: 2.sp,
+                ),
+              ],
     );
 
     final bool showDepth = depthText != null && depthText!.isNotEmpty;
@@ -269,16 +273,25 @@ class _UnseenMovesBadgeState extends State<_UnseenMovesBadge>
         return Container(
           width: 8.w,
           height: 8.h,
+          // Paper: the deeper danger red, and no bloom around it.
           decoration: BoxDecoration(
-            color: Colors.red.withValues(alpha: _animation.value),
+            color:
+                context.isLightTheme
+                    ? context.colors.danger.withValues(alpha: _animation.value)
+                    : Colors.red.withValues(alpha: _animation.value),
             shape: BoxShape.circle,
-            boxShadow: [
-              BoxShadow(
-                color: Colors.red.withValues(alpha: _animation.value * 0.5),
-                blurRadius: 3,
-                spreadRadius: 1,
-              ),
-            ],
+            boxShadow:
+                context.isLightTheme
+                    ? null
+                    : [
+                      BoxShadow(
+                        color: Colors.red.withValues(
+                          alpha: _animation.value * 0.5,
+                        ),
+                        blurRadius: 3,
+                        spreadRadius: 1,
+                      ),
+                    ],
           ),
         );
       },

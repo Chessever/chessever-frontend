@@ -43,20 +43,20 @@ void main() {
       final seed = await seedBaselineData($);
 
       try {
-        await expectVisible($, E2eIds.eventsRoot);
+        // Home opens on For You. Collections is a primary destination;
+        // Library remains available as its own pushed route.
+        await expectVisible($, E2eIds.forYouRoot);
 
         await tapBottomNavRoot(
           $,
-          navId: E2eIds.navCalendar,
-          expectedRoot: E2eIds.calendarRoot,
+          navId: E2eIds.navCollections,
+          expectedRoot: E2eIds.collectionsRoot,
         );
-        await tapBottomNavRoot(
-          $,
-          navId: E2eIds.navLibrary,
-          expectedRoot: E2eIds.libraryRoot,
-        );
+        await pushNamedRoute($, '/library_screen');
+        await expectVisible($, E2eIds.libraryRoot);
         await expectVisible($, E2eIds.libraryBoardButton);
         await expectVisible($, E2eIds.libraryCreateFolderButton);
+        await popRoute($);
         await tapBottomNavRoot(
           $,
           navId: E2eIds.navEvents,
@@ -69,11 +69,9 @@ void main() {
           await popRoute($);
         }
 
-        await openDrawerDestination(
-          $,
-          drawerItemId: E2eIds.drawerPlayers,
-          expectedRoot: E2eIds.playersRoot,
-        );
+        // The drawer has no Players row any more; the list is a route.
+        await pushNamedRoute($, '/player_list_screen');
+        await expectVisible($, E2eIds.playersRoot);
         await popRoute($);
 
         await openDrawerDestination(
@@ -103,7 +101,7 @@ void main() {
         await popRoute($);
 
         await openHomeDrawer($);
-        await byId($, E2eIds.drawerLogout).tap();
+        await tapDrawerItem($, E2eIds.drawerLogout);
         await expectTextVisible($, 'Logout');
         await $('Cancel').tap();
         await ensureHomeShell($);
@@ -196,6 +194,11 @@ void main() {
 
       try {
         await resetToHome($);
+        await tapBottomNavRoot(
+          $,
+          navId: E2eIds.navEvents,
+          expectedRoot: E2eIds.eventsRoot,
+        );
         await expectVisible($, E2eIds.eventsSearchField);
         await byId($, E2eIds.eventsFilterButton).tap();
         await expectTextVisible($, 'Filters');
@@ -237,9 +240,11 @@ void main() {
           timeout: const Duration(seconds: 45),
         );
 
-        await tapBottomNavRoot(
+        // The calendar left the bottom bar: the sidebar month view's "Full
+        // calendar" link pushes it as an ordinary route.
+        await openDrawerDestination(
           $,
-          navId: E2eIds.navCalendar,
+          drawerItemId: E2eIds.drawerFullCalendar,
           expectedRoot: E2eIds.calendarRoot,
         );
         if (calendarQuery != null && calendarQuery.isNotEmpty) {
@@ -256,6 +261,7 @@ void main() {
             reason: 'calendar search query',
           );
         }
+        await popRoute($);
 
         await pushNamedRoute($, '/player_list_screen');
         await expectVisible($, E2eIds.playersRoot);
@@ -276,11 +282,8 @@ void main() {
         );
         await popRoute($);
 
-        await tapBottomNavRoot(
-          $,
-          navId: E2eIds.navLibrary,
-          expectedRoot: E2eIds.libraryRoot,
-        );
+        await pushNamedRoute($, '/library_screen');
+        await expectVisible($, E2eIds.libraryRoot);
         await searchFor($, fieldId: E2eIds.librarySearchField, query: query);
         await pumpUntil(
           $,

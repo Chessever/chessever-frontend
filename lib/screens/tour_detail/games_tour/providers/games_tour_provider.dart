@@ -65,7 +65,9 @@ void setLiveGameCardsPausedWithNotifier(
 
 bool _usesLiveEventData(TournamentDetailScreenMode mode) =>
     mode == TournamentDetailScreenMode.games ||
-    mode == TournamentDetailScreenMode.bracket;
+    mode == TournamentDetailScreenMode.bracket ||
+    mode == TournamentDetailScreenMode.standings ||
+    mode == TournamentDetailScreenMode.players;
 
 @visibleForTesting
 List<Games> retainGamesAcrossTransientEmptyRefresh(
@@ -115,7 +117,7 @@ final completeGamesTourFutureProvider = FutureProvider.autoDispose
 /// **Architecture:**
 /// - A complete round paints first, followed by the complete tour catalog
 /// - It does NOT maintain individual Supabase Realtime streams per game
-/// - Its safety net periodically fetches only game IDs, round IDs, and status;
+/// - Its safety net periodically fetches standings fields without PGN/FEN;
 ///   a full snapshot is fetched only when game membership changes
 /// - Individual game cards use `liveGameCardProvider` with `.autoDispose`
 ///   to get realtime updates only for VISIBLE games
@@ -127,6 +129,14 @@ class GamesTourNotifier extends StateNotifier<AsyncValue<List<Games>>> {
   GamesTourNotifier({required this.ref, required this.tourId})
     : super(const AsyncValue.loading()) {
     _loadFinished = _loadInitialGames();
+    ref.onCancel(() {
+      _observed = false;
+      _stopPeriodicRefresh();
+    });
+    ref.onResume(() {
+      _observed = true;
+      _startPeriodicRefresh();
+    });
 
     // Listen to shouldStreamProvider changes
     _shouldStreamListener = ref.listen<bool>(tournamentDataActiveProvider, (
@@ -174,6 +184,11 @@ class GamesTourNotifier extends StateNotifier<AsyncValue<List<Games>>> {
   bool _refreshLoopActive = false;
   bool _safetyNetRefreshInFlight = false;
   int _refreshGeneration = 0;
+  int _resultRevision = 0;
+  bool _observed = true;
+  bool _reconcilePending = false;
+  StreamSubscription<TourGameSafetyNetSnapshot?>? _standingsSubscription;
+  Timer? _reconcileTimer;
 
   Future<void> _loadInitialGames() async {
     final generation = ++_loadGeneration;
@@ -347,7 +362,9 @@ class GamesTourNotifier extends StateNotifier<AsyncValue<List<Games>>> {
       _usesLiveEventData(ref.read(selectedTourModeProvider));
 
   bool get _shouldRunSafetyNet =>
-      ref.read(tournamentDataActiveProvider) && _isEventDataTabVisible;
+      _observed &&
+      ref.read(tournamentDataActiveProvider) &&
+      _isEventDataTabVisible;
 
   int get _stableTourJitterSeconds {
     var hash = 0;
@@ -383,6 +400,42 @@ class GamesTourNotifier extends StateNotifier<AsyncValue<List<Games>>> {
     _refreshLoopActive = true;
     final generation = ++_refreshGeneration;
 
+    // Games has visible-card streams already. Aggregate views need results for
+    // every board, including sibling stages and boards outside the viewport.
+    if (ref.read(selectedTourModeProvider) !=
+        TournamentDetailScreenMode.games) {
+      _standingsSubscription = ref
+          .read(gameRepositoryProvider)
+          .watchTourStandingsChanges(tourId)
+          .listen(
+            (fresh) {
+              if (!_isRefreshActive(generation)) return;
+              final games = state.valueOrNull;
+              if (games == null) return;
+              final index = fresh == null
+                  ? -1
+                  : games.indexWhere((game) => game.id == fresh.id);
+              if (index < 0) {
+                _scheduleReconciliation(generation);
+                return;
+              }
+              if (!fresh!.differsFrom(games[index])) return;
+              _resultRevision++;
+              state = AsyncValue.data([
+                for (var i = 0; i < games.length; i++)
+                  i == index ? fresh.mergeInto(games[i]) : games[i],
+              ]);
+              _refreshSourceStandings();
+            },
+            onError: (Object error) {
+              // Polling repairs missed events while the channel reconnects.
+              if (_isRefreshActive(generation)) {
+                _scheduleReconciliation(generation);
+              }
+            },
+          );
+    }
+
     _refreshTimer = Timer(firstDelay, () async {
       await _checkForNewGames(generation);
       if (!_isRefreshActive(generation)) return;
@@ -400,11 +453,30 @@ class GamesTourNotifier extends StateNotifier<AsyncValue<List<Games>>> {
     );
   }
 
+  void _refreshSourceStandings() {
+    ref.read(tourDetailScreenProvider.notifier).scheduleStandingsRefresh();
+  }
+
+  void _scheduleReconciliation(int generation) {
+    // Coalesce a batch of newly paired boards into one paginated snapshot.
+    if (_reconcileTimer?.isActive == true) return;
+    _reconcileTimer = Timer(const Duration(milliseconds: 200), () {
+      _reconcilePending = true;
+      unawaited(_checkForNewGames(generation));
+    });
+  }
+
   void _stopPeriodicRefresh() {
     _refreshLoopActive = false;
     _refreshGeneration += 1;
     _refreshTimer?.cancel();
     _refreshTimer = null;
+    _reconcileTimer?.cancel();
+    _reconcileTimer = null;
+    _reconcilePending = false;
+    final subscription = _standingsSubscription;
+    _standingsSubscription = null;
+    if (subscription != null) unawaited(subscription.cancel());
     debugPrint(
       '🔥 GamesTourNotifier: Stopped periodic refresh for tour $tourId',
     );
@@ -419,14 +491,22 @@ class GamesTourNotifier extends StateNotifier<AsyncValue<List<Games>>> {
   Future<void> _checkForNewGames(int generation) async {
     if (!_isRefreshActive(generation) || _safetyNetRefreshInFlight) return;
     _safetyNetRefreshInFlight = true;
+    _reconcilePending = false;
+    final revision = _resultRevision;
     try {
       final currentGames = state.valueOrNull;
       if (currentGames == null) return;
 
       final safetySnapshots = await ref
           .read(gameRepositoryProvider)
-          .getTourGamesSafetyNet(tourId);
+          .getTourGamesSafetyNet(tourId)
+          .timeout(const Duration(seconds: 12));
       if (!_isRefreshActive(generation)) return;
+      // A result received after this HTTP read began is newer than its snapshot.
+      if (revision != _resultRevision) {
+        _reconcilePending = true;
+        return;
+      }
 
       final currentById = {for (final game in currentGames) game.id: game};
       final safetyById = {
@@ -437,7 +517,7 @@ class GamesTourNotifier extends StateNotifier<AsyncValue<List<Games>>> {
           safetyById.keys.any((id) => !currentById.containsKey(id));
 
       if (membershipChanged) {
-        await _refreshAfterMembershipChange(currentGames, generation);
+        await _refreshAfterMembershipChange(currentGames, generation, revision);
         return;
       }
 
@@ -446,14 +526,15 @@ class GamesTourNotifier extends StateNotifier<AsyncValue<List<Games>>> {
       for (final current in currentGames) {
         final fresh = safetyById[current.id];
         if (fresh == null) continue;
-        if (_hasSafetyNetChange(current, fresh)) {
+        if (fresh.differsFrom(current)) {
           hasChanges = true;
         }
-        mergedGames.add(_mergeSafetyNetSnapshot(current, fresh));
+        mergedGames.add(fresh.mergeInto(current));
       }
 
       if (hasChanges && _isRefreshActive(generation)) {
         state = AsyncValue.data(mergedGames);
+        _refreshSourceStandings();
       }
     } catch (error) {
       // Suppress noise from races where the notifier is disposed mid-await.
@@ -461,17 +542,26 @@ class GamesTourNotifier extends StateNotifier<AsyncValue<List<Games>>> {
       debugPrint('🔥 GamesTourNotifier: Error checking for new games: $error');
     } finally {
       _safetyNetRefreshInFlight = false;
+      if (_reconcilePending && _shouldRunSafetyNet) {
+        _scheduleReconciliation(_refreshGeneration);
+      }
     }
   }
 
   Future<void> _refreshAfterMembershipChange(
     List<Games> currentGames,
     int generation,
+    int revision,
   ) async {
     final freshGames = await ref
         .read(gamesLocalStorage)
-        .fetchAndSaveGames(tourId, forceRefresh: true);
+        .fetchAndSaveGames(tourId, forceRefresh: true, rethrowErrors: true)
+        .timeout(const Duration(seconds: 12));
     if (!_isRefreshActive(generation)) return;
+    if (revision != _resultRevision) {
+      _reconcilePending = true;
+      return;
+    }
 
     debugPrint(
       '🔥 GamesTourNotifier: Detected game count change! Current: '
@@ -482,38 +572,20 @@ class GamesTourNotifier extends StateNotifier<AsyncValue<List<Games>>> {
         .map((fresh) {
           final current = currentById[fresh.id];
           if (current == null) return fresh;
-          return current.copyWith(
+          return TourGameSafetyNetSnapshot(
+            id: fresh.id,
             roundId: fresh.roundId,
             roundSlug: fresh.roundSlug,
-            status: fresh.status ?? current.status,
-          );
+            status: fresh.status,
+            players: fresh.players,
+            boardNr: fresh.boardNr,
+          ).mergeInto(current);
         })
         .toList(growable: false);
     state = AsyncValue.data(
       retainGamesAcrossTransientEmptyRefresh(currentGames, mergedGames),
     );
-  }
-
-  bool _hasSafetyNetChange(Games current, TourGameSafetyNetSnapshot fresh) {
-    // Per-move fields (FEN/PGN/last_move/clocks) are intentionally excluded
-    // here. Visible cards receive those through batched realtime streams; if
-    // the poll writes them into the parent list on every safety-net tick, the
-    // whole Games tab rebuilds and can disturb scrolling. The poll only owns
-    // set-level changes plus status/round movement for off-screen cards.
-    return (fresh.status != null && current.status != fresh.status) ||
-        current.roundId != fresh.roundId ||
-        current.roundSlug != fresh.roundSlug;
-  }
-
-  Games _mergeSafetyNetSnapshot(
-    Games current,
-    TourGameSafetyNetSnapshot fresh,
-  ) {
-    return current.copyWith(
-      roundId: fresh.roundId,
-      roundSlug: fresh.roundSlug,
-      status: fresh.status ?? current.status,
-    );
+    _refreshSourceStandings();
   }
 
   Future<List<Games>> waitForCompleteCatalog() async {

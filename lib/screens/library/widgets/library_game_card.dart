@@ -1,9 +1,10 @@
+import 'dart:math' as math;
+
 import 'package:chessever2/providers/engine_settings_provider.dart';
 import 'package:chessever2/screens/chessboard/models/like_tag.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/chess_progress_bar.dart';
 import 'package:chessever2/theme/app_colors.dart';
-import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/chess_title_utils.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
@@ -13,8 +14,10 @@ import 'package:chessever2/utils/string_utils.dart';
 import 'package:chessever2/widgets/app_button.dart';
 import 'package:chessever2/widgets/backfilled_federation_flag.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:chessever2/widgets/time_control_glyph.dart';
 
 /// Unified game card for library screens.
 /// Uses the same design as GamebaseSearchGameCard for consistency.
@@ -31,6 +34,7 @@ class LibraryGameCard extends HookConsumerWidget {
     this.tags = const <String>[],
     this.reserveTagSlot = false,
     this.tagCounts,
+    this.trailing,
   });
 
   final GamesTourModel game;
@@ -52,6 +56,18 @@ class LibraryGameCard extends HookConsumerWidget {
   /// count desc — most-used tag leftmost — so the user's dominant categories
   /// surface first. Tie-break follows canonical [kLikeTags] order.
   final Map<String, int>? tagCounts;
+
+  /// A control (e.g. a [CardMoreButton] whose glyph is [trailingGlyphSize])
+  /// drawn at the end of the tag slot's last line, in space the footer
+  /// already leaves empty. It adds no size and moves nothing: the card lays
+  /// out exactly as it does without it. On a card whose chips reach that
+  /// corner, or with no tag slot at all, it is left out, and the card's
+  /// long-press stays the way in. Hosts pass it with [reserveTagSlot].
+  final Widget? trailing;
+
+  /// The [trailing] control's glyph: the size of the footer's time-control
+  /// coin, the only other mark on that line.
+  static double get trailingGlyphSize => 14.sp;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -97,6 +113,8 @@ class LibraryGameCard extends HookConsumerWidget {
       }
       return result;
     }, [tags, tagCounts]);
+
+    final footerPadding = EdgeInsets.symmetric(horizontal: 6.w, vertical: 3.h);
 
     return TappableScale(
       onTap: () {
@@ -181,73 +199,101 @@ class LibraryGameCard extends HookConsumerWidget {
               ),
               // Bottom section - dark background with event info
               Container(
-                padding: EdgeInsets.symmetric(horizontal: 6.w, vertical: 3.h),
+                padding: footerPadding,
                 decoration: BoxDecoration(
                   color: context.colors.surface,
                   borderRadius: BorderRadius.vertical(
                     bottom: Radius.circular(12.br),
                   ),
                 ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        // Left: time control icon + event name
-                        Image.asset(
-                          timeControlIcon,
-                          width: 14.sp,
-                          height: 14.sp,
-                        ),
-                        SizedBox(width: 4.w),
-                        Expanded(
-                          child: Text(
-                            displayEventName,
-                            style: AppTypography.textXsRegular.copyWith(
-                              color: context.colors.textPrimary,
+                child: _withTrailing(
+                  padding: footerPadding,
+                  hasTagSlot: reserveTagSlot || visibleTags.isNotEmpty,
+                  footer: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          // Left: time control icon + event name
+                          // Paper swaps in the ink twins of the white coins.
+                          Image.asset(
+                            TimeControlGlyph.resolve(
+                              timeControlIcon,
+                              light: context.isLightTheme,
                             ),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
+                            width: 14.sp,
+                            height: 14.sp,
                           ),
-                        ),
-                        // ECO code (only if available)
-                        if (showRound && displayEco.isNotEmpty) ...[
-                          SizedBox(width: 8.w),
-                          Text(
-                            displayEco,
-                            style: AppTypography.textXsRegular.copyWith(
-                              color: context.colors.textPrimary,
+                          SizedBox(width: 4.w),
+                          Expanded(
+                            child: Text(
+                              displayEventName,
+                              style: AppTypography.textXsRegular.copyWith(
+                                color: context.colors.textPrimary,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
                             ),
                           ),
+                          // ECO code (only if available)
+                          if (showRound && displayEco.isNotEmpty) ...[
+                            SizedBox(width: 8.w),
+                            Text(
+                              displayEco,
+                              style: AppTypography.textXsRegular.copyWith(
+                                color: context.colors.textPrimary,
+                              ),
+                            ),
+                          ],
+                          // Date (always right-most)
+                          if (displayDate.isNotEmpty) ...[
+                            SizedBox(width: 8.w),
+                            Text(
+                              displayDate,
+                              style: AppTypography.textXsRegular.copyWith(
+                                color: context.colors.textPrimary,
+                              ),
+                            ),
+                          ],
                         ],
-                        // Date (always right-most)
-                        if (displayDate.isNotEmpty) ...[
-                          SizedBox(width: 8.w),
-                          Text(
-                            displayDate,
-                            style: AppTypography.textXsRegular.copyWith(
-                              color: context.colors.textPrimary,
-                            ),
-                          ),
-                        ],
+                      ),
+                      if (reserveTagSlot || visibleTags.isNotEmpty) ...[
+                        SizedBox(height: 6.h),
+                        if (visibleTags.isNotEmpty)
+                          _LibraryTagChips(tags: visibleTags)
+                        else
+                          // No tags: keep a single chip-row of height so cards
+                          // stay uniformly sized across the list.
+                          SizedBox(height: 22.h),
                       ],
-                    ),
-                    if (reserveTagSlot || visibleTags.isNotEmpty) ...[
-                      SizedBox(height: 6.h),
-                      if (visibleTags.isNotEmpty)
-                        _LibraryTagChips(tags: visibleTags)
-                      else
-                        // No tags: keep a single chip-row of height so cards
-                        // stay uniformly sized across the list.
-                        SizedBox(height: 22.h),
                     ],
-                  ],
+                  ),
                 ),
               ),
             ],
           ),
         ),
       ),
+    );
+  }
+
+  /// [footer] as it is, with [trailing] laid over the end of its tag slot.
+  /// With no tag slot there is no empty room for it, so it is left out.
+  Widget _withTrailing({
+    required Widget footer,
+    required EdgeInsets padding,
+    required bool hasTagSlot,
+  }) {
+    final end = trailing;
+    if (end == null || !hasTagSlot) return footer;
+    return _FooterTrailing(
+      glyph: trailingGlyphSize,
+      endInset: padding.right,
+      bottomInset: padding.bottom,
+      // The Wrap's run spacing, the narrower of the gaps above a last line.
+      lineGap: 5.h,
+      footer: footer,
+      trailing: end,
     );
   }
 
@@ -338,6 +384,252 @@ class _LibraryTagChip extends StatelessWidget {
         ),
       ),
     );
+  }
+}
+
+/// The trailing control's target, the platform minimum (as [CardMoreButton]).
+const double _kTrailingTarget = 44;
+
+/// Lays a card's [LibraryGameCard.trailing] over the end of the footer's
+/// last line (the tag slot), in space the footer already leaves empty.
+///
+/// The footer lays out exactly as it would alone: this adds no size and
+/// moves nothing. The control's target is a [_kTrailingTarget]-wide band at
+/// the footer's right edge, from just above that line to the card's bottom.
+/// On a card whose last line of chips reaches into that band the control is
+/// left out altogether (not painted, hit or announced), so it never sits on
+/// a chip.
+class _FooterTrailing extends MultiChildRenderObjectWidget {
+  _FooterTrailing({
+    required Widget footer,
+    required Widget trailing,
+    required this.glyph,
+    required this.endInset,
+    required this.bottomInset,
+    required this.lineGap,
+  }) : super(children: [footer, trailing]);
+
+  /// The control's glyph size.
+  final double glyph;
+
+  /// The footer's padding right of and below the footer column. The target
+  /// and the press disc reach into it, never past the card's edge.
+  final double endInset;
+  final double bottomInset;
+
+  /// Empty space above the last line that the target may take.
+  final double lineGap;
+
+  @override
+  _RenderFooterTrailing createRenderObject(BuildContext context) =>
+      _RenderFooterTrailing(glyph, endInset, bottomInset, lineGap);
+
+  @override
+  void updateRenderObject(
+    BuildContext context,
+    _RenderFooterTrailing renderObject,
+  ) {
+    renderObject
+      ..glyph = glyph
+      ..endInset = endInset
+      ..bottomInset = bottomInset
+      ..lineGap = lineGap;
+  }
+}
+
+class _FooterTrailingParentData extends ContainerBoxParentData<RenderBox> {}
+
+class _RenderFooterTrailing extends RenderBox
+    with
+        ContainerRenderObjectMixin<RenderBox, _FooterTrailingParentData>,
+        RenderBoxContainerDefaultsMixin<RenderBox, _FooterTrailingParentData> {
+  _RenderFooterTrailing(
+    this._glyph,
+    this._endInset,
+    this._bottomInset,
+    this._lineGap,
+  );
+
+  double _glyph;
+  set glyph(double value) {
+    if (value == _glyph) return;
+    _glyph = value;
+    markNeedsLayout();
+  }
+
+  double _endInset;
+  set endInset(double value) {
+    if (value == _endInset) return;
+    _endInset = value;
+    markNeedsLayout();
+  }
+
+  double _bottomInset;
+  set bottomInset(double value) {
+    if (value == _bottomInset) return;
+    _bottomInset = value;
+    markNeedsLayout();
+  }
+
+  double _lineGap;
+  set lineGap(double value) {
+    if (value == _lineGap) return;
+    _lineGap = value;
+    markNeedsLayout();
+  }
+
+  /// Whether this card has room for the control.
+  bool _shows = false;
+
+  /// Where a press lands on the control, in this box's coordinates. It
+  /// reaches into the footer's padding, past this box.
+  Rect _target = Rect.zero;
+
+  RenderBox get _footer => firstChild!;
+  RenderBox get _trailing => lastChild!;
+
+  Offset _offsetOf(RenderBox child) =>
+      (child.parentData! as _FooterTrailingParentData).offset;
+
+  @override
+  void setupParentData(RenderBox child) {
+    if (child.parentData is! _FooterTrailingParentData) {
+      child.parentData = _FooterTrailingParentData();
+    }
+  }
+
+  @override
+  double computeMinIntrinsicWidth(double height) =>
+      _footer.getMinIntrinsicWidth(height);
+
+  @override
+  double computeMaxIntrinsicWidth(double height) =>
+      _footer.getMaxIntrinsicWidth(height);
+
+  @override
+  double computeMinIntrinsicHeight(double width) =>
+      _footer.getMinIntrinsicHeight(width);
+
+  @override
+  double computeMaxIntrinsicHeight(double width) =>
+      _footer.getMaxIntrinsicHeight(width);
+
+  @override
+  double? computeDistanceToActualBaseline(TextBaseline baseline) =>
+      _footer.getDistanceToActualBaseline(baseline);
+
+  @override
+  Size computeDryLayout(BoxConstraints constraints) =>
+      _footer.getDryLayout(constraints);
+
+  /// The footer's last line in this box's coordinates, as wide as what sits
+  /// on it: the last run of chips, or the reserved empty slot (no width).
+  /// The tag slot is the footer column's last child.
+  static Rect? _lastLine(RenderBox footer) {
+    if (footer is! RenderFlex) return null;
+    final slot = footer.lastChild;
+    if (slot == null || !slot.hasSize) return null;
+    final at = (slot.parentData! as FlexParentData).offset;
+    if (slot is RenderWrap && slot.firstChild != null) {
+      Rect? line;
+      for (var chip = slot.firstChild; chip != null;) {
+        final rect = (chip.parentData! as WrapParentData).offset & chip.size;
+        // A chip lower than the line so far starts the next run.
+        line = line == null || rect.top > line.top + 0.5
+            ? rect
+            : line.expandToInclude(rect);
+        chip = slot.childAfter(chip);
+      }
+      return line!.shift(at);
+    }
+    return Rect.fromLTWH(at.dx, at.dy, 0, slot.size.height);
+  }
+
+  @override
+  void performLayout() {
+    _footer.layout(constraints, parentUsesSize: true);
+    size = _footer.size;
+    // The dots end on the footer's text edge, so the press disc can reach
+    // into the padding past them; it stops a quarter of it short of the
+    // card's edge. A line is never less than 22 tall, which leaves the disc
+    // more room below than that.
+    final disc = 2 * (_endInset * 0.75 + _glyph / 3);
+    _trailing.layout(BoxConstraints.tight(Size.square(disc)));
+  }
+
+  /// Puts the control on the footer's last line as it is laid out now. Done
+  /// at paint rather than in [performLayout], which may not read the chips
+  /// below the footer column; paint runs after any layout beneath this box.
+  void _place() {
+    final line = _lastLine(_footer);
+    if (line == null) {
+      _setShows(false);
+      return;
+    }
+    final trailing = _trailing;
+    // Centred on the line, with the three dots (the middle two thirds of
+    // the glyph) ending on the footer's text edge, level with the date.
+    final center = Offset(size.width - _glyph / 3, line.center.dy);
+    (trailing.parentData! as _FooterTrailingParentData).offset =
+        center - trailing.size.center(Offset.zero);
+
+    final right = size.width + _endInset;
+    _target = Rect.fromLTRB(
+      right - _kTrailingTarget,
+      math.max(0, line.top - _lineGap),
+      right,
+      size.height + _bottomInset,
+    );
+    _setShows(line.right <= _target.left);
+  }
+
+  void _setShows(bool value) {
+    if (value == _shows) return;
+    _shows = value;
+    markNeedsSemanticsUpdate();
+  }
+
+  @override
+  void paint(PaintingContext context, Offset offset) {
+    context.paintChild(_footer, offset);
+    _place();
+    if (_shows) {
+      final trailing = _trailing;
+      context.paintChild(trailing, offset + _offsetOf(trailing));
+    }
+  }
+
+  // The target reaches past this box into the footer's padding, so it is
+  // tried ahead of the usual bounds check.
+  @override
+  bool hitTest(BoxHitTestResult result, {required Offset position}) {
+    if (_shows && _target.contains(position)) {
+      final trailing = _trailing;
+      final hit = result.addWithPaintOffset(
+        offset: _offsetOf(trailing),
+        position: position,
+        // A press anywhere in the target is a press on the control.
+        hitTest: (result, _) => trailing.hitTest(
+          result,
+          position: trailing.size.center(Offset.zero),
+        ),
+      );
+      if (hit) {
+        result.add(BoxHitTestEntry(this, position));
+        return true;
+      }
+    }
+    return super.hitTest(result, position: position);
+  }
+
+  @override
+  bool hitTestChildren(BoxHitTestResult result, {required Offset position}) =>
+      _footer.hitTest(result, position: position);
+
+  @override
+  void visitChildrenForSemantics(RenderObjectVisitor visitor) {
+    visitor(_footer);
+    if (_shows) visitor(_trailing);
   }
 }
 
@@ -507,7 +799,7 @@ class _ResultOrEvalBar extends StatelessWidget {
       return Text(
         'LIVE',
         style: AppTypography.textSmMedium.copyWith(
-          color: kPrimaryColor,
+          color: context.colors.accentText,
           fontSize: 12.sp,
         ),
       );

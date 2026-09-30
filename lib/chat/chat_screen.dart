@@ -5,6 +5,7 @@ import 'package:chessever2/chat/chat_api.dart';
 import 'package:chessever2/chat/botvinnik_provider.dart';
 import 'package:chessever2/providers/auth_state_provider.dart';
 import 'package:chessever2/services/deep_link_service.dart';
+import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/screens/group_event/smart_event/smart_aggregate_event_provider.dart';
 import 'package:chessever2/screens/group_event/smart_event/smart_event_screen.dart';
 import 'package:chessever2/screens/player_profile/player_profile_screen.dart';
@@ -16,6 +17,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:motor/motor.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -26,6 +28,10 @@ Uri? safeChatSourceUri(String? href) {
   if (uri == null || uri.scheme != 'https' || uri.host.isEmpty) return null;
   return uri;
 }
+
+/// The tablet side panel's slide: a smooth spring, sampled as a curve for
+/// the route's transition animation (house rule: springs, not easings).
+final Curve _panelCurve = const CupertinoMotion.smooth().toCurve;
 
 class ChatScreen extends ConsumerStatefulWidget {
   const ChatScreen({
@@ -56,6 +62,8 @@ class ChatScreen extends ConsumerStatefulWidget {
     );
 
     final width = MediaQuery.sizeOf(context).width;
+    final light = context.isLightTheme;
+    final colors = context.colors;
     if (width < 700) {
       await Navigator.of(
         context,
@@ -66,14 +74,19 @@ class ChatScreen extends ConsumerStatefulWidget {
       context: context,
       barrierDismissible: true,
       barrierLabel: 'Close Botvinnik',
-      barrierColor: Colors.black38,
+      barrierColor: light ? colors.scrim : Colors.black38,
       transitionDuration: const Duration(milliseconds: 220),
       pageBuilder: (context, animation, secondaryAnimation) {
         return Align(
           alignment: Alignment.centerRight,
           child: SafeArea(
             child: Material(
-              elevation: 20,
+              // A 20dp black elevation smears a grey cloud across paper; in
+              // light the scrim and a hairline edge separate the panel.
+              elevation: light ? 0 : 20,
+              shape: light
+                  ? Border(left: BorderSide(color: colors.divider))
+                  : null,
               child: SizedBox(
                 width: 520,
                 height: double.infinity,
@@ -88,9 +101,7 @@ class ChatScreen extends ConsumerStatefulWidget {
           position: Tween<Offset>(
             begin: const Offset(1, 0),
             end: Offset.zero,
-          ).animate(
-            CurvedAnimation(parent: animation, curve: Curves.easeOutCubic),
-          ),
+          ).animate(CurvedAnimation(parent: animation, curve: _panelCurve)),
           child: child,
         );
       },
@@ -213,10 +224,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   Future<void> _select(ChatConversation conversation) async {
     if (_sending) return;
     try {
-      final messages =
-          conversation.isDraft
-              ? const <ChatMessage>[]
-              : await _api.messages(conversation.id);
+      final messages = conversation.isDraft
+          ? const <ChatMessage>[]
+          : await _api.messages(conversation.id);
       if (!mounted) return;
       setState(() {
         _selected = conversation;
@@ -240,8 +250,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         await _api.deleteConversation(conversation.id);
       }
       if (!mounted) return;
-      final remaining =
-          _conversations.where((item) => item.id != conversation.id).toList();
+      final remaining = _conversations
+          .where((item) => item.id != conversation.id)
+          .toList();
       setState(() => _conversations = remaining);
       if (_selected?.id == conversation.id) {
         if (remaining.isEmpty) {
@@ -347,11 +358,10 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           case 'references':
             final raw = event.data['references'] as List<dynamic>? ?? const [];
             messages[messages.length - 1] = assistant.copyWith(
-              references:
-                  raw
-                      .whereType<Map<String, dynamic>>()
-                      .map(ChatReference.fromJson)
-                      .toList(),
+              references: raw
+                  .whereType<Map<String, dynamic>>()
+                  .map(ChatReference.fromJson)
+                  .toList(),
             );
             break;
           case 'error':
@@ -374,10 +384,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         unawaited(ref.read(botvinnikQuotaProvider.notifier).refresh());
       }
       setState(() {
-        _error =
-            error.quota != null && error.quota!.remaining <= 0
-                ? null
-                : error.message;
+        _error = error.quota != null && error.quota!.remaining <= 0
+            ? null
+            : error.message;
         if (_messages.isNotEmpty && _messages.last.content.isEmpty) {
           _messages = _messages.sublist(0, _messages.length - 1);
         }
@@ -399,15 +408,12 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     final previousFeedback = message.feedback;
     setState(() {
       _feedbackPending.add(message.id);
-      _messages =
-          _messages
-              .map(
-                (item) =>
-                    item.id == message.id
-                        ? item.withFeedback(nextFeedback)
-                        : item,
-              )
-              .toList();
+      _messages = _messages
+          .map(
+            (item) =>
+                item.id == message.id ? item.withFeedback(nextFeedback) : item,
+          )
+          .toList();
     });
 
     try {
@@ -418,24 +424,21 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       );
       if (!mounted || _selected?.id != selected.id) return;
       setState(() {
-        _messages =
-            _messages
-                .map((item) => item.id == updated.id ? updated : item)
-                .toList();
+        _messages = _messages
+            .map((item) => item.id == updated.id ? updated : item)
+            .toList();
       });
     } on ChatApiException catch (error) {
       if (!mounted || _selected?.id != selected.id) return;
       setState(() {
         _error = error.message;
-        _messages =
-            _messages
-                .map(
-                  (item) =>
-                      item.id == message.id
-                          ? item.withFeedback(previousFeedback)
-                          : item,
-                )
-                .toList();
+        _messages = _messages
+            .map(
+              (item) => item.id == message.id
+                  ? item.withFeedback(previousFeedback)
+                  : item,
+            )
+            .toList();
       });
     } finally {
       if (mounted) setState(() => _feedbackPending.remove(message.id));
@@ -504,7 +507,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         _scrollController.animateTo(
           end,
           duration: const Duration(milliseconds: 220),
-          curve: Curves.easeOut,
+          curve: _panelCurve,
         ),
       );
     });
@@ -535,14 +538,13 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       final fideId = int.tryParse(reference.id);
       Navigator.of(context).push(
         MaterialPageRoute<void>(
-          builder:
-              (_) => PlayerProfileScreen(
-                fideId: fideId,
-                playerName: reference.label,
-                title: reference.title,
-                federation: reference.federation,
-                rating: reference.rating,
-              ),
+          builder: (_) => PlayerProfileScreen(
+            fideId: fideId,
+            playerName: reference.label,
+            title: reference.title,
+            federation: reference.federation,
+            rating: reference.rating,
+          ),
         ),
       );
       return;
@@ -551,12 +553,11 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         RegExp(r'^[A-E][0-9]{2}$').hasMatch(reference.id.toUpperCase())) {
       Navigator.of(context).push(
         MaterialPageRoute<void>(
-          builder:
-              (_) => SmartEventScreen(
-                request: SmartEventRequest.forOpening(
-                  GameEcoFilter.forCode(reference.id),
-                ),
-              ),
+          builder: (_) => SmartEventScreen(
+            request: SmartEventRequest.forOpening(
+              GameEcoFilter.forCode(reference.id),
+            ),
+          ),
         ),
       );
     }
@@ -595,6 +596,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           onPressed: () => _scaffoldKey.currentState?.openDrawer(),
         ),
         titleSpacing: 4,
+        // The name alone carries the title; "Beta" rides in the subtitle so
+        // the title never truncates at 360dp with a 1.3x text scale.
         title: const Row(
           children: [
             BotvinnikIcon(size: 40),
@@ -604,17 +607,25 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Text('Botvinnik (Beta)'),
+                  Text(
+                    'Botvinnik',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
                   SizedBox(height: 1),
                   Row(
                     children: [
                       _OnlineDot(),
                       SizedBox(width: 5),
-                      Text(
-                        'Chess assistant',
-                        style: TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w400,
+                      Flexible(
+                        child: Text(
+                          'Beta · Chess assistant',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w400,
+                          ),
                         ),
                       ),
                     ],
@@ -647,38 +658,39 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                 ],
               ),
             Expanded(
-              child:
-                  _loading
-                      ? const Center(child: CircularProgressIndicator())
-                      : _messages.isEmpty
-                      ? _EmptyChat(
-                        suggestions: chatSuggestionsForScreen(
-                          widget.screenContext?.screen,
-                        ),
-                        isTournamentContext:
-                            widget.screenContext?.screen == 'tournament' ||
-                            widget.screenContext?.screen == 'event',
-                        onSuggestionPressed: _sendSuggestion,
-                      )
-                      : ListView.builder(
-                        controller: _scrollController,
-                        keyboardDismissBehavior:
-                            ScrollViewKeyboardDismissBehavior.onDrag,
-                        padding: const EdgeInsets.fromLTRB(16, 20, 16, 24),
-                        itemCount: _messages.length,
-                        itemBuilder:
-                            (context, index) => ChatMessageBubble(
-                              key: ValueKey(_messages[index].id),
-                              message: _messages[index],
-                              isStreaming:
-                                  _sending && index == _messages.length - 1,
-                              feedbackPending: _feedbackPending.contains(
-                                _messages[index].id,
-                              ),
-                              onReferencePressed: _openReference,
-                              onFeedbackPressed: _setFeedback,
-                            ),
+              child: _loading
+                  ? Center(
+                      child: CircularProgressIndicator(
+                        color: context.colors.accentText,
                       ),
+                    )
+                  : _messages.isEmpty
+                  ? _EmptyChat(
+                      suggestions: chatSuggestionsForScreen(
+                        widget.screenContext?.screen,
+                      ),
+                      isTournamentContext:
+                          widget.screenContext?.screen == 'tournament' ||
+                          widget.screenContext?.screen == 'event',
+                      onSuggestionPressed: _sendSuggestion,
+                    )
+                  : ListView.builder(
+                      controller: _scrollController,
+                      keyboardDismissBehavior:
+                          ScrollViewKeyboardDismissBehavior.onDrag,
+                      padding: const EdgeInsets.fromLTRB(16, 20, 16, 24),
+                      itemCount: _messages.length,
+                      itemBuilder: (context, index) => ChatMessageBubble(
+                        key: ValueKey(_messages[index].id),
+                        message: _messages[index],
+                        isStreaming: _sending && index == _messages.length - 1,
+                        feedbackPending: _feedbackPending.contains(
+                          _messages[index].id,
+                        ),
+                        onReferencePressed: _openReference,
+                        onFeedbackPressed: _setFeedback,
+                      ),
+                    ),
             ),
             switch (composerAccess) {
               ChatComposerAccess.signedOut => _ChatLoginGate(
@@ -764,12 +776,11 @@ List<(int, int)> _markdownProtectedRanges(String source) {
   ];
 }
 
-String _chatReferenceHref(ChatReference reference) =>
-    Uri(
-      scheme: 'chessever',
-      host: 'reference',
-      queryParameters: {'type': reference.type, 'id': reference.id},
-    ).toString();
+String _chatReferenceHref(ChatReference reference) => Uri(
+  scheme: 'chessever',
+  host: 'reference',
+  queryParameters: {'type': reference.type, 'id': reference.id},
+).toString();
 
 ChatReference? chatReferenceForHref(
   String? href,
@@ -927,10 +938,8 @@ IntegratedChatReferences integrateChatReferences(
   for (final reference in references) {
     unique.putIfAbsent('${reference.type}:${reference.id}', () => reference);
   }
-  final candidates =
-      unique.values.toList()..sort(
-        (left, right) => right.label.length.compareTo(left.label.length),
-      );
+  final candidates = unique.values.toList()
+    ..sort((left, right) => right.label.length.compareTo(left.label.length));
 
   for (final reference in candidates) {
     var linkedReference = false;
@@ -980,12 +989,44 @@ class _OnlineDot extends StatelessWidget {
     return Container(
       width: 7,
       height: 7,
-      decoration: const BoxDecoration(
-        color: Color(0xff35c759),
+      decoration: BoxDecoration(
+        color: chatOnlineDotColor(context),
         shape: BoxShape.circle,
       ),
     );
   }
+}
+
+/// The app bar's "online" dot: the historic #35C759 in dark, the paper
+/// `success` green in light, where #35C759 sits at ~1.8:1 on the mint bar.
+Color chatOnlineDotColor(BuildContext context) =>
+    context.isLightTheme ? context.colors.success : const Color(0xff35c759);
+
+/// Markdown styling for Botvinnik's answers. Links take the accent-text ink
+/// in both themes, set semibold so a link differs from body ink by more than
+/// hue alone: the package's `Colors.blue` read 2.5:1 on the paper bubble and,
+/// in dark, put a second, unrelated blue under the cyan BOTVINNIK label.
+/// Dark otherwise keeps the package's theme-derived sheet. On paper, code
+/// sits on the surface, one step up from the #E2ECEC bubble, seated by a
+/// divider edge so a block never reads as a loose white slab.
+MarkdownStyleSheet chatMarkdownStyleSheet(BuildContext context) {
+  final theme = Theme.of(context);
+  final base = MarkdownStyleSheet.fromTheme(theme);
+  final colors = context.colors;
+  final link = TextStyle(color: colors.accentText, fontWeight: FontWeight.w600);
+  if (theme.brightness != Brightness.light) return base.copyWith(a: link);
+  return base.copyWith(
+    a: link,
+    code: base.code?.copyWith(
+      color: colors.textPrimary,
+      backgroundColor: colors.surface,
+    ),
+    codeblockDecoration: BoxDecoration(
+      color: colors.surface,
+      borderRadius: BorderRadius.circular(8),
+      border: Border.all(color: colors.divider),
+    ),
+  );
 }
 
 class _ChatComposer extends StatefulWidget {
@@ -1114,11 +1155,11 @@ class _ChatUpgradeGate extends StatelessWidget {
 
 class _ChatComposerState extends State<_ChatComposer> {
   static const _placeholders = <String>[
-    'Your move—ask Botvinnik',
-    '轮到你了——问问博特维尼克',
-    'आपकी चाल—बोटविनिक से पूछें',
-    'Tu jugada—pregúntale a Botvinnik',
-    'حان دورك—اسأل بوتفينيك',
+    'Your move. Ask Botvinnik',
+    '轮到你了，问问博特维尼克',
+    'आपकी चाल। बोटविनिक से पूछें',
+    'Tu jugada. Pregúntale a Botvinnik',
+    'حان دورك، اسأل بوتفينيك',
   ];
 
   static const _typingDelay = Duration(milliseconds: 70);
@@ -1157,8 +1198,9 @@ class _ChatComposerState extends State<_ChatComposer> {
     _reduceMotion = reduceMotion;
     _placeholderIndex = 0;
     _isDeleting = false;
-    _visibleCharacterCount =
-        reduceMotion || _hasUserTyped ? _currentRunes.length : 0;
+    _visibleCharacterCount = reduceMotion || _hasUserTyped
+        ? _currentRunes.length
+        : 0;
     if (!reduceMotion && !_hasUserTyped) {
       _schedulePlaceholderTick(_typingDelay);
     }
@@ -1245,6 +1287,12 @@ class _ChatComposerState extends State<_ChatComposer> {
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
+    // Dark lifts the field a step above the surface; paper recesses it one
+    // gentle step (the page background) instead of the deep #C5D6D5, which
+    // left the hint at a bare 4.5:1.
+    final fieldFill = context.isLightTheme
+        ? context.colors.background
+        : colorScheme.surfaceContainerHighest;
     return Material(
       color: colorScheme.surface,
       child: SafeArea(
@@ -1256,7 +1304,7 @@ class _ChatComposerState extends State<_ChatComposer> {
           ),
           child: Container(
             decoration: BoxDecoration(
-              color: colorScheme.surfaceContainerHighest,
+              color: fieldFill,
               borderRadius: BorderRadius.circular(22),
               border: Border.all(color: colorScheme.outlineVariant),
             ),
@@ -1294,18 +1342,23 @@ class _ChatComposerState extends State<_ChatComposer> {
                         tooltip: 'Send',
                         onPressed: canSend ? widget.onSend : null,
                         style: IconButton.styleFrom(
+                          // The app's IconTheme colour otherwise outranks the
+                          // filled default: white on cyan (2.4:1) in dark,
+                          // ink on the teal fill (2.5:1) in light. onPrimary
+                          // is the ink each theme picked for its fill.
+                          foregroundColor: colorScheme.onPrimary,
                           minimumSize: const Size.square(40),
                           maximumSize: const Size.square(40),
                         ),
-                        icon:
-                            widget.sending
-                                ? const SizedBox.square(
-                                  dimension: 17,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                  ),
-                                )
-                                : const Icon(Icons.arrow_upward_rounded),
+                        icon: widget.sending
+                            ? SizedBox.square(
+                                dimension: 17,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: context.colors.accentText,
+                                ),
+                              )
+                            : const Icon(Icons.arrow_upward_rounded),
                       );
                     },
                   ),
@@ -1353,7 +1406,7 @@ class _EmptyChat extends StatelessWidget {
               Text(
                 isTournamentContext
                     ? 'Ask about this tournament’s format, schedule, rounds, games, or standings.'
-                    : 'Ask about tournaments, schedules, rounds, games, or standings — in your preferred language.',
+                    : 'Ask about tournaments, schedules, rounds, games or standings, in any language.',
                 textAlign: TextAlign.center,
                 style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                   color: colorScheme.onSurfaceVariant,
@@ -1497,19 +1550,17 @@ class _ChatMessageBubbleState extends State<ChatMessageBubble> {
     final isUser = message.role == 'user';
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
-    final linkedContent =
-        integrateChatReferences(
-          normalizeChatMarkdown(message.content),
-          message.references,
-        ).markdown;
+    final linkedContent = integrateChatReferences(
+      normalizeChatMarkdown(message.content),
+      message.references,
+    ).markdown;
     final bubble = Container(
       constraints: BoxConstraints(maxWidth: isUser ? 420 : double.infinity),
       padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 12),
       decoration: BoxDecoration(
-        color:
-            isUser
-                ? colorScheme.primaryContainer
-                : colorScheme.surfaceContainerHigh,
+        color: isUser
+            ? colorScheme.primaryContainer
+            : colorScheme.surfaceContainerHigh,
         borderRadius: BorderRadius.only(
           topLeft: const Radius.circular(18),
           topRight: const Radius.circular(18),
@@ -1525,7 +1576,7 @@ class _ChatMessageBubbleState extends State<ChatMessageBubble> {
             Text(
               'BOTVINNIK',
               style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                color: colorScheme.primary,
+                color: context.colors.accentText,
                 fontWeight: FontWeight.w700,
                 letterSpacing: 0.7,
               ),
@@ -1536,9 +1587,12 @@ class _ChatMessageBubbleState extends State<ChatMessageBubble> {
             Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                const SizedBox.square(
+                SizedBox.square(
                   dimension: 16,
-                  child: CircularProgressIndicator(strokeWidth: 2),
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: context.colors.accentText,
+                  ),
                 ),
                 const SizedBox(width: 8),
                 Text(
@@ -1588,12 +1642,7 @@ class _ChatMessageBubbleState extends State<ChatMessageBubble> {
     final feedbackActions = Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        IconButton(
-          tooltip: 'Copy message',
-          icon: const Icon(Icons.copy_rounded, size: 18),
-          onPressed: () => unawaited(_copyChatMessage(context, message.content)),
-          visualDensity: VisualDensity.compact,
-        ),
+        ChatMessageCopyButton(text: message.content),
         _FeedbackButton(
           tooltip: 'Helpful',
           icon: Icons.thumb_up_outlined,
@@ -1615,24 +1664,23 @@ class _ChatMessageBubbleState extends State<ChatMessageBubble> {
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 18),
-      child:
-          isUser
-              ? Row(
-                mainAxisAlignment: MainAxisAlignment.end,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [Flexible(child: bubble)],
-              )
-              : Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  bubble,
-                  if (message.content.isNotEmpty && !isStreaming)
-                    Padding(
-                      padding: const EdgeInsets.only(left: 2, top: 3),
-                      child: feedbackActions,
-                    ),
-                ],
-              ),
+      child: isUser
+          ? Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [Flexible(child: bubble)],
+            )
+          : Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                bubble,
+                if (message.content.isNotEmpty && !isStreaming)
+                  Padding(
+                    padding: const EdgeInsets.only(left: 2, top: 3),
+                    child: feedbackActions,
+                  ),
+              ],
+            ),
     );
   }
 }
@@ -1644,7 +1692,8 @@ class _CopyableMessageContent extends StatefulWidget {
   final Widget child;
 
   @override
-  State<_CopyableMessageContent> createState() => _CopyableMessageContentState();
+  State<_CopyableMessageContent> createState() =>
+      _CopyableMessageContentState();
 }
 
 class _CopyableMessageContentState extends State<_CopyableMessageContent> {
@@ -1670,7 +1719,7 @@ class _CopyableMessageContentState extends State<_CopyableMessageContent> {
           if (copied) return;
           copied = true;
           ContextMenuController.removeAny();
-          unawaited(_copyChatMessage(context, text));
+          unawaited(copyChatMessage(context, text));
         }
 
         final buttons = <ContextMenuButtonItem>[
@@ -1721,12 +1770,43 @@ class _CopyableMessageContentState extends State<_CopyableMessageContent> {
   }
 }
 
-Future<void> _copyChatMessage(BuildContext context, String text) async {
+/// Copies the complete answer independently of text selection. Native Copy
+/// still copies only the selection, including keyboard shortcuts.
+Future<void> copyChatMessage(BuildContext context, String text) async {
   final messenger = ScaffoldMessenger.maybeOf(context);
-  await Clipboard.setData(ClipboardData(text: text));
-  await HapticFeedback.lightImpact();
+  ContextMenuController.removeAny();
+  try {
+    await Clipboard.setData(ClipboardData(text: text));
+  } catch (_) {
+    if (messenger != null && messenger.mounted) {
+      showAppSnackOn(
+        messenger,
+        "Couldn't copy this message. Try again.",
+        tone: AppSnackTone.danger,
+      );
+    }
+    return;
+  }
+  unawaited(HapticFeedback.lightImpact());
   if (messenger == null || !messenger.mounted) return;
   showAppSnackOn(messenger, 'Message copied', tone: AppSnackTone.success);
+}
+
+class ChatMessageCopyButton extends StatelessWidget {
+  const ChatMessageCopyButton({super.key, required this.text});
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) => IconButton(
+    tooltip: 'Copy message',
+    icon: const Icon(Icons.content_copy_rounded, size: 18),
+    constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
+    visualDensity: VisualDensity.standard,
+    onPressed: text.isEmpty
+        ? null
+        : () => unawaited(copyChatMessage(context, text)),
+  );
 }
 
 List<List<ChatReference>> structureChatReferences(
@@ -1789,8 +1869,9 @@ class _FeedbackButton extends StatelessWidget {
       visualDensity: VisualDensity.compact,
       style: IconButton.styleFrom(
         foregroundColor: colorScheme.onSurfaceVariant,
-        backgroundColor:
-            selected ? colorScheme.secondaryContainer : Colors.transparent,
+        backgroundColor: selected
+            ? colorScheme.secondaryContainer
+            : Colors.transparent,
         disabledForegroundColor: colorScheme.onSurfaceVariant.withValues(
           alpha: 0.45,
         ),
@@ -1915,16 +1996,19 @@ class _ConversationDrawer extends ConsumerWidget {
                     child: ListTile(
                       selected: selected,
                       selectedTileColor: colorScheme.secondaryContainer,
+                      // The fill marks the selection; the title takes the
+                      // container's own ink (cyan `primary` on the dark
+                      // container read 3.8:1).
+                      selectedColor: colorScheme.onSecondaryContainer,
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(12),
                       ),
                       leading: Icon(
                         Icons.chat_bubble_outline_rounded,
                         size: 19,
-                        color:
-                            selected
-                                ? colorScheme.onSecondaryContainer
-                                : colorScheme.onSurfaceVariant,
+                        color: selected
+                            ? colorScheme.onSecondaryContainer
+                            : colorScheme.onSurfaceVariant,
                       ),
                       title: Text(
                         conversation.title,

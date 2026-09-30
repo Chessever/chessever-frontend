@@ -4,6 +4,8 @@ import 'dart:math' as math;
 import 'package:chessever2/repository/supabase/game/games.dart';
 import 'package:chessever2/repository/supabase/tour/tour.dart';
 import 'package:chessever2/screens/standings/player_standing_model.dart';
+import 'package:chessever2/screens/standings/utils/fide_rating_change.dart';
+import 'package:chessever2/utils/broadcast_custom_scoring.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:flutter/foundation.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -64,6 +66,7 @@ String _standingsPlayerSignature(Player player) {
     player.fideId,
     player.fed,
     player.team,
+    player.customPoints,
   ].join(':');
 }
 
@@ -90,7 +93,7 @@ Future<List<PlayerStandingModel>> buildStandingsFromData({
     }
   }
 
-  // Batch-fetch FIDE per-time-control ratings + K-factors for every player
+  // Batch-fetch FIDE per-time-control K-factors for every player
   // with a fideId. This lets us apply the authoritative K (e.g. rapid_k=10
   // for someone who hit 2400 in rapid, not the hardcoded 20) instead of
   // guessing. One round-trip, all players at once.
@@ -99,8 +102,7 @@ Future<List<PlayerStandingModel>> buildStandingsFromData({
     final id = player.fideId;
     if (id != null && id > 0) fideIds.add(id);
   }
-  // Also include opponents discovered via gamesByPlayerKey, since the
-  // opponent's rating feeds into the expected-score calc.
+  // Include players discovered in games but absent from the source roster.
   for (final game in gamesTourModels) {
     for (final card in [game.whitePlayer, game.blackPlayer]) {
       final id = card.fideId;
@@ -140,7 +142,8 @@ Future<List<PlayerStandingModel>> buildStandingsFromData({
     var calculatedScore = 0.0;
     var gamesPlayed = 0;
     var totalRatingDiff = 0.0;
-    var hasCalculatedRatingDiff = false;
+    var ratedGames = 0;
+    final ratingPools = <String>{};
 
     for (final gameRef in playerGames) {
       final status = gameRef.game.gameStatus;
@@ -149,19 +152,18 @@ Future<List<PlayerStandingModel>> buildStandingsFromData({
       }
 
       gamesPlayed++;
-      switch (status) {
-        case GameStatus.whiteWins:
-          if (gameRef.isWhite) calculatedScore += 1.0;
-          break;
-        case GameStatus.blackWins:
-          if (!gameRef.isWhite) calculatedScore += 1.0;
-          break;
-        case GameStatus.draw:
-          calculatedScore += 0.5;
-          break;
-        default:
-          break;
-      }
+      final points = aggregateBroadcastResultPoints(
+        standardWhitePoints: standardResultValueForSide(status, isWhite: true)!,
+        standardBlackPoints: standardResultValueForSide(
+          status,
+          isWhite: false,
+        )!,
+        whiteCustomPoints: gameRef.game.whitePlayer.customPoints,
+        blackCustomPoints: gameRef.game.blackPlayer.customPoints,
+      );
+      calculatedScore += gameRef.isWhite ? points.white : points.black;
+      ratingPools.add(ratingPoolForGame(gameRef.game));
+      if (isArmageddonGame(gameRef.game)) continue;
 
       final playerRating =
           _getPlayerRating(
@@ -179,34 +181,24 @@ Future<List<PlayerStandingModel>> buildStandingsFromData({
       );
 
       if (playerRating != null && opponentRating != null) {
-        final tc = gameRef.game.timeControl;
-        final playerFide =
-            updatedPlayer.fideId != null
-                ? fideEloByFideId[updatedPlayer.fideId!]
-                : null;
-        final opponentFideId = opponentCard.fideId;
-        final opponentFide =
-            opponentFideId != null ? fideEloByFideId[opponentFideId] : null;
-
-        // Prefer FIDE per-time-control rating + K from chess_players.
-        // A 2405 standard player can have rapid_k=10 while our old heuristic
-        // hardcoded K=20 for rapid — causing 2x the real rating change.
-        final fideK = tc != null ? playerFide?.getK(tc) : null;
-        final fidePlayerRating =
-            tc != null ? playerFide?.getRating(tc)?.toDouble() : null;
-        final fideOpponentRating =
-            tc != null ? opponentFide?.getRating(tc)?.toDouble() : null;
+        final tc = ratingPoolForGame(gameRef.game);
+        final playerFide = updatedPlayer.fideId != null
+            ? fideEloByFideId[updatedPlayer.fideId!]
+            : null;
+        // The event's published ratings belong to this result. The current
+        // monthly FIDE list supplies K, not a replacement historical rating.
+        final fideK = playerFide?.getK(tc);
 
         totalRatingDiff += _calculateFideRatingChange(
-          fidePlayerRating ?? playerRating,
-          fideOpponentRating ?? opponentRating,
+          playerRating,
+          opponentRating,
           status,
           gameRef.isWhite,
           title: gameRef.playerCard.title,
           timeControl: tc,
           fideK: fideK,
         );
-        hasCalculatedRatingDiff = true;
+        ratedGames++;
       }
     }
 
@@ -225,7 +217,12 @@ Future<List<PlayerStandingModel>> buildStandingsFromData({
     );
     final int? finalRatingDiff =
         updatedPlayer.ratingDiff ??
-        (hasCalculatedRatingDiff ? totalRatingDiff.round() : null);
+        (ratedGames > 0 &&
+                ratedGames == gamesPlayed &&
+                ratedGames >= updatedPlayer.played &&
+                ratingPools.length == 1
+            ? totalRatingDiff.round()
+            : null);
 
     enrichedPlayers.add(
       updatedPlayer.copyWith(
@@ -478,9 +475,7 @@ Future<Map<int, _FideEloRow>> _fetchFideEloBatchChunked(
     final chunk = unique.sublist(i, end);
     final rows = await supabase
         .from('chess_players')
-        .select(
-          'fideid, rating, rapid_rating, blitz_rating, k, rapid_k, blitz_k',
-        )
+        .select('fideid, k, rapid_k, blitz_k')
         .inFilter('fideid', chunk);
 
     for (final row in rows as List) {
@@ -488,9 +483,6 @@ Future<Map<int, _FideEloRow>> _fetchFideEloBatchChunked(
       final id = _readJsonInt(raw['fideid']);
       if (id == null || id <= 0) continue;
       map[id] = _FideEloRow(
-        standard: _readJsonInt(raw['rating']),
-        rapid: _readJsonInt(raw['rapid_rating']),
-        blitz: _readJsonInt(raw['blitz_rating']),
         standardK: _readJsonInt(raw['k']),
         rapidK: _readJsonInt(raw['rapid_k']),
         blitzK: _readJsonInt(raw['blitz_k']),
@@ -585,30 +577,6 @@ double? _getPlayerRating(
   return null;
 }
 
-// Heuristic K-factor fallback used only when FIDE's per-time-control K is
-// unavailable. FIDE's authoritative K (sticky 2400 → 10, U18 < 2300 → 40,
-// default 20) lives in `chess_players.{k,rapid_k,blitz_k}` and must be
-// preferred; see [_calculateFideRatingChange].
-int _heuristicKFactor(double rating, {String? title, String? timeControl}) {
-  final tc = timeControl?.toLowerCase();
-  if (tc == 'rapid' || tc == 'blitz') {
-    return 20;
-  }
-
-  if (rating >= 2400) {
-    return 10;
-  }
-
-  if (title != null) {
-    final t = title.toUpperCase();
-    if (t == 'GM' || t == 'IM') {
-      return 10;
-    }
-  }
-
-  return 20;
-}
-
 double _calculateFideRatingChange(
   double playerRating,
   double opponentRating,
@@ -634,44 +602,28 @@ double _calculateFideRatingChange(
       return 0.0;
   }
 
-  final ratingDiff = (opponentRating - playerRating).clamp(-400.0, 400.0);
-  final expectedScore = 1 / (1 + math.pow(10, ratingDiff / 400.0));
-  final kFactor =
-      fideK ??
-      _heuristicKFactor(playerRating, title: title, timeControl: timeControl);
-  return kFactor * (actualScore - expectedScore);
+  return calculateFideRatingChange(
+    playerRating: playerRating,
+    opponentRating: opponentRating,
+    actualScore: actualScore,
+    kFactor:
+        fideK ??
+        scoreCardFallbackKFactorForSelectedRating(
+          playerRating,
+          title: title,
+          timeControl: timeControl,
+        ),
+  );
 }
 
-/// One player's FIDE per-time-control ratings + K-factors, as stored in
+/// One player's FIDE per-time-control K-factors, as stored in
 /// `chess_players`. Source of truth for Elo change calculations.
 class _FideEloRow {
-  const _FideEloRow({
-    this.standard,
-    this.rapid,
-    this.blitz,
-    this.standardK,
-    this.rapidK,
-    this.blitzK,
-  });
+  const _FideEloRow({this.standardK, this.rapidK, this.blitzK});
 
-  final int? standard;
-  final int? rapid;
-  final int? blitz;
   final int? standardK;
   final int? rapidK;
   final int? blitzK;
-
-  int? getRating(String timeControl) {
-    final tc = timeControl.toLowerCase();
-    final raw = switch (tc) {
-      'standard' || 'classical' => standard,
-      'rapid' => rapid,
-      'blitz' => blitz,
-      _ => standard,
-    };
-    if (raw == null || raw <= 0) return null;
-    return raw;
-  }
 
   int? getK(String timeControl) {
     final tc = timeControl.toLowerCase();

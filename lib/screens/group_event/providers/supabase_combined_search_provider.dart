@@ -196,6 +196,10 @@ final supabaseCombinedSearchProvider = AutoDisposeFutureProvider.family<
         .read(groupBroadcastLocalStorage(GroupEventCategory.past))
         .searchTournamentsWithScoring(trimmedQuery, liveIds)
         .catchError((_) => EnhancedSearchResult.empty()),
+    ref
+        .read(groupBroadcastLocalStorage(GroupEventCategory.upcoming))
+        .searchTournamentsWithScoring(trimmedQuery, liveIds)
+        .catchError((_) => EnhancedSearchResult.empty()),
   ]);
 
   final rawBroadcasts = parallelResults[0] as List<GroupBroadcast>;
@@ -207,6 +211,7 @@ final supabaseCombinedSearchProvider = AutoDisposeFutureProvider.family<
       .toList(growable: false);
   final localSearchCurrent = parallelResults[4] as EnhancedSearchResult;
   final localSearchPast = parallelResults[5] as EnhancedSearchResult;
+  final localSearchUpcoming = parallelResults[6] as EnhancedSearchResult;
 
   // Country queries: FTS includes player names + federations in search_fts,
   // so e.g. "norway" surfaces "… Championship for Prisoners" because a player
@@ -410,9 +415,14 @@ final supabaseCombinedSearchProvider = AutoDisposeFutureProvider.family<
       ..addAll(byIdentity.values);
   }
 
-  // Merge resilient local-search results from ALL categories (current + past)
-  // This ensures we find events even if Supabase RPC is slow or returns limited results
-  final allLocalSearches = [localSearchCurrent, localSearchPast];
+  // Merge resilient local-search results from ALL categories (current, past,
+  // upcoming). This ensures we find events even if Supabase RPC is slow or
+  // returns limited results
+  final allLocalSearches = [
+    localSearchCurrent,
+    localSearchPast,
+    localSearchUpcoming,
+  ];
   for (final localSearch in allLocalSearches) {
     if (localSearch.tournamentResults.isNotEmpty) {
       final existingIds = {for (final r in tournamentResults) r.tournament.id};

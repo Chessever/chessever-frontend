@@ -147,6 +147,12 @@ class _TestSubscriptionNotifier extends SubscriptionNotifier {
   _TestSubscriptionNotifier() : super() {
     state = SubscriptionState(isSubscribed: true);
   }
+
+  // RevenueCat has no plugin under test, so its async init lands as "not
+  // subscribed" mid-test. Hold the premium state this test set up.
+  @override
+  set state(SubscriptionState value) =>
+      super.state = value.copyWith(isSubscribed: true, isLoading: false);
 }
 
 final _currentUser = AppUser(
@@ -185,7 +191,7 @@ void main() {
     SharedPreferences.setMockInitialValues({});
     await Supabase.initialize(
       url: 'https://placeholder.supabase.co',
-      anonKey: 'placeholder-anon-key',
+      publishableKey: 'placeholder-publishable-key',
     );
   });
 
@@ -434,6 +440,10 @@ void main() {
 
     container.read(myLikesFilterProvider.notifier).toggleTag('Beautiful Mate');
 
+    // The view is auto-dispose: hold a listener so it is not disposed while
+    // its first load is still in flight.
+    final view = container.listen(myLikesViewProvider, (_, __) {});
+    addTearDown(view.close);
     final data = await container.read(myLikesViewProvider.future);
 
     expect(repository.likedViewCalls, 1);

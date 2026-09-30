@@ -9,6 +9,8 @@ import 'package:chessever2/screens/tour_detail/games_tour/widgets/group_event_ga
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/group_event_match_card_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/match_expansion_provider.dart';
 import 'package:chessever2/screens/tour_detail/team_tour/team_player_nav.dart';
+import 'package:chessever2/screens/tour_detail/team_tour/team_space_shortcut.dart';
+import 'package:chessever2/widgets/card_context_menu.dart';
 import 'package:chessever2/utils/location_service_provider.dart';
 import 'package:country_flags/country_flags.dart';
 import 'package:flutter/material.dart';
@@ -71,13 +73,13 @@ class GroupEventMatchCard extends ConsumerWidget {
         isMatchDraw
             ? context.colors.textPrimary
             : matchScore.first > matchScore.last
-            ? context.colors.brand
+            ? context.colors.accentText
             : context.colors.danger;
     final team2ScoreColor =
         isMatchDraw
             ? context.colors.textPrimary
             : matchScore.last > matchScore.first
-            ? context.colors.brand
+            ? context.colors.accentText
             : context.colors.danger;
 
     // Use match key from roundTitle (Team1 vs Team2)
@@ -91,6 +93,150 @@ class GroupEventMatchCard extends ConsumerWidget {
             ? BorderRadius.only(topLeft: radius, topRight: radius)
             : cardBorderRadius;
 
+    // One header, two uses: the live row, and the copy that lifts into the
+    // focus menu (always fully rounded, since it floats alone there).
+    Widget buildHeader(BorderRadius radius) {
+      return InkWell(
+        onTap: () {
+          ref.read(matchExpansionProvider.notifier).toggleMatch(matchKey);
+        },
+        child: Container(
+          height: 60.h,
+          padding: EdgeInsets.only(left: 12.sp, right: 12.sp),
+          decoration: BoxDecoration(
+            color: context.colors.surface,
+            borderRadius: radius,
+          ),
+          child: Row(
+            children: [
+              // Phantom spacer mirroring the trailing expand-icon column so
+              // the centre "score VS score" block stays optically centred in
+              // the card no matter how long the team names are.
+              SizedBox(width: 24.w),
+              Expanded(
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: () {
+                    // Stop header InkWell from toggling expand; push keeps
+                    // Games list mounted so scroll position is preserved.
+                    openTeamScoreCard(context, ref, team1Name);
+                  },
+                  child: Row(
+                    children: [
+                      if (country1.isNotEmpty) ...[
+                        CountryFlag.fromCountryCode(
+                          country1,
+                          theme: ImageTheme(height: 12.h, width: 16.w),
+                        ),
+                        SizedBox(width: 4.w),
+                      ],
+                      Expanded(
+                        child: Text(
+                          team1Name,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: AppTypography.textXsMedium.copyWith(
+                            color: context.colors.textPrimary,
+                          ),
+                          textAlign: TextAlign.left,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+
+              SizedBox(
+                width: 36.w,
+                child: Align(
+                  alignment: Alignment.centerRight,
+                  child: Text(
+                    team1ScoreStr,
+                    style: AppTypography.textXsMedium.copyWith(
+                      color: team1ScoreColor,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ),
+
+              SizedBox(
+                width: 32.w,
+                child: Center(
+                  child: Text(
+                    'VS',
+                    textAlign: TextAlign.center,
+                    style: AppTypography.textXsMedium.copyWith(
+                      color: context.colors.textPrimary,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+              ),
+
+              SizedBox(
+                width: 36.w,
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    team2ScoreStr,
+                    style: AppTypography.textXsMedium.copyWith(
+                      color: team2ScoreColor,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ),
+
+              Expanded(
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: () {
+                    openTeamScoreCard(context, ref, team2Name);
+                  },
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          team2Name,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: AppTypography.textXsMedium.copyWith(
+                            color: context.colors.textPrimary,
+                          ),
+                          textAlign: TextAlign.right,
+                        ),
+                      ),
+                      if (country2.isNotEmpty) ...[
+                        SizedBox(width: 4.w),
+                        CountryFlag.fromCountryCode(
+                          country2,
+                          theme: ImageTheme(height: 12.h, width: 16.w),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              ),
+
+              // Expand/collapse icon — fixed-width column mirrored by the
+              // leading phantom spacer so the score block stays centred.
+              SizedBox(
+                width: 24.w,
+                child: Icon(
+                  isExpanded
+                      ? Icons.keyboard_arrow_up_rounded
+                      : Icons.keyboard_arrow_down_rounded,
+                  color: context.textInk(0.5),
+                  size: 20.sp,
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
     return Container(
       decoration: BoxDecoration(
         color: context.colors.surface,
@@ -99,144 +245,37 @@ class GroupEventMatchCard extends ConsumerWidget {
       clipBehavior: Clip.antiAlias,
       child: Column(
         children: [
-          InkWell(
-            onTap: () {
-              ref.read(matchExpansionProvider.notifier).toggleMatch(matchKey);
-            },
-            child: Container(
-              height: 60.h,
-              padding: EdgeInsets.only(left: 12.sp, right: 12.sp),
-              decoration: BoxDecoration(
-                color: context.colors.surface,
-                borderRadius: headerBorderRadius,
-              ),
-              child: Row(
-                children: [
-                  // Phantom spacer mirroring the trailing expand-icon column so
-                  // the centre "score VS score" block stays optically centred in
-                  // the card no matter how long the team names are.
-                  SizedBox(width: 24.w),
-                  Expanded(
-                    child: GestureDetector(
-                      behavior: HitTestBehavior.opaque,
-                      onTap: () {
-                        // Stop header InkWell from toggling expand; push keeps
-                        // Games list mounted so scroll position is preserved.
-                        openTeamScoreCard(context, ref, team1Name);
-                      },
-                      child: Row(
-                        children: [
-                          if (country1.isNotEmpty) ...[
-                            CountryFlag.fromCountryCode(
-                              country1,
-                              theme: ImageTheme(height: 12.h, width: 16.w),
-                            ),
-                            SizedBox(width: 4.w),
-                          ],
-                          Expanded(
-                            child: Text(
-                              team1Name,
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
-                              style: AppTypography.textXsMedium.copyWith(
-                                color: context.colors.textPrimary,
-                              ),
-                              textAlign: TextAlign.left,
-                            ),
-                          ),
-                        ],
+          // Long-press lifts the matchup into the shared focus menu: open
+          // either team. The team names keep their own taps.
+          Builder(
+            builder:
+                (headerContext) => GestureDetector(
+                  behavior: HitTestBehavior.deferToChild,
+                  onLongPress:
+                      () => CardContextMenu.open(
+                        headerContext,
+                        // One row per team: open its scorecard.
+                        actions:
+                            (menuContext) => [
+                              for (final teamName in [team1Name, team2Name])
+                                ...teamMenuActions(
+                                  context: menuContext,
+                                  ref: ref,
+                                  teamName: teamName,
+                                  onOpen:
+                                      () => openTeamScoreCard(
+                                        context,
+                                        ref,
+                                        teamName,
+                                      ),
+                                  includeShare: false,
+                                  nameInLabels: true,
+                                ),
+                            ],
+                        preview: buildHeader(cardBorderRadius),
                       ),
-                    ),
-                  ),
-
-                  SizedBox(
-                    width: 36.w,
-                    child: Align(
-                      alignment: Alignment.centerRight,
-                      child: Text(
-                        team1ScoreStr,
-                        style: AppTypography.textXsMedium.copyWith(
-                          color: team1ScoreColor,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ),
-                  ),
-
-                  SizedBox(
-                    width: 32.w,
-                    child: Center(
-                      child: Text(
-                        'VS',
-                        textAlign: TextAlign.center,
-                        style: AppTypography.textXsMedium.copyWith(
-                          color: context.colors.textPrimary,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ),
-                  ),
-
-                  SizedBox(
-                    width: 36.w,
-                    child: Align(
-                      alignment: Alignment.centerLeft,
-                      child: Text(
-                        team2ScoreStr,
-                        style: AppTypography.textXsMedium.copyWith(
-                          color: team2ScoreColor,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ),
-                  ),
-
-                  Expanded(
-                    child: GestureDetector(
-                      behavior: HitTestBehavior.opaque,
-                      onTap: () {
-                        openTeamScoreCard(context, ref, team2Name);
-                      },
-                      child: Row(
-                        children: [
-                          Expanded(
-                            child: Text(
-                              team2Name,
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
-                              style: AppTypography.textXsMedium.copyWith(
-                                color: context.colors.textPrimary,
-                              ),
-                              textAlign: TextAlign.right,
-                            ),
-                          ),
-                          if (country2.isNotEmpty) ...[
-                            SizedBox(width: 4.w),
-                            CountryFlag.fromCountryCode(
-                              country2,
-                              theme: ImageTheme(height: 12.h, width: 16.w),
-                            ),
-                          ],
-                        ],
-                      ),
-                    ),
-                  ),
-
-                  // Expand/collapse icon — fixed-width column mirrored by the
-                  // leading phantom spacer so the score block stays centred.
-                  SizedBox(
-                    width: 24.w,
-                    child: Icon(
-                      isExpanded
-                          ? Icons.keyboard_arrow_up_rounded
-                          : Icons.keyboard_arrow_down_rounded,
-                      color: context.colors.textPrimary.withValues(alpha: 0.5),
-                      size: 20.sp,
-                    ),
-                  ),
-                ],
-              ),
-            ),
+                  child: buildHeader(headerBorderRadius),
+                ),
           ),
 
           AnimatedSwitcher(

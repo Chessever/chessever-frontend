@@ -37,15 +37,26 @@ class TwicGameCard extends ConsumerWidget {
       child: Container(
         margin: EdgeInsets.only(bottom: 10.sp),
         padding: EdgeInsets.symmetric(horizontal: 14.sp, vertical: 12.sp),
+        // Dark keeps its paper card; light sits on the theme surface with a
+        // tight contact shadow.
         decoration: BoxDecoration(
-          color: const Color(0xFFF5F5F5),
+          color:
+              context.isLightTheme
+                  ? context.colors.surface
+                  : const Color(0xFFF5F5F5),
           borderRadius: BorderRadius.circular(12.br),
           boxShadow: [
-            BoxShadow(
-              color: kBlackColor.withValues(alpha: 0.15),
-              blurRadius: 8,
-              offset: const Offset(0, 2),
-            ),
+            context.isLightTheme
+                ? BoxShadow(
+                  color: context.colors.shadow,
+                  blurRadius: 3,
+                  offset: const Offset(0, 1),
+                )
+                : BoxShadow(
+                  color: kBlackColor.withValues(alpha: 0.15),
+                  blurRadius: 8,
+                  offset: const Offset(0, 2),
+                ),
           ],
         ),
         child: Column(
@@ -149,10 +160,16 @@ class _PlayerInfo extends StatelessWidget {
         Text(
           player.name,
           style: AppTypography.textSmMedium.copyWith(
+            // Dark draws ink-on-paper with the dark theme's own surfaces;
+            // on the light theme those tokens are paper, so use the inks.
             color:
-                isWinner
-                    ? context.colors.surface
-                    : context.colors.dividerStrong,
+                context.isLightTheme
+                    ? (isWinner
+                        ? context.colors.textPrimary
+                        : context.colors.textSecondary)
+                    : (isWinner
+                        ? context.colors.surface
+                        : context.colors.dividerStrong),
             fontWeight: isWinner ? FontWeight.w700 : FontWeight.w500,
           ),
           maxLines: 1,
@@ -210,7 +227,10 @@ class _ResultBadge extends StatelessWidget {
         break;
       case GameStatus.draw:
         backgroundColor = context.colors.textSecondary;
-        textColor = context.colors.textPrimary;
+        textColor =
+            context.isLightTheme
+                ? context.colors.textInverse
+                : context.colors.textPrimary;
         text = '½-½';
         break;
       case GameStatus.ongoing:
@@ -220,7 +240,10 @@ class _ResultBadge extends StatelessWidget {
         break;
       case GameStatus.unknown:
         backgroundColor = context.colors.textPrimaryMuted;
-        textColor = context.colors.textSecondary;
+        textColor =
+            context.isLightTheme
+                ? context.colors.textInverse
+                : context.colors.textSecondary;
         text = '-';
         break;
     }
@@ -262,7 +285,9 @@ class _MetaRow extends StatelessWidget {
               Icon(
                 Icons.emoji_events_outlined,
                 size: 14.ic,
-                color: const Color(0xFF888888),
+                color: context.isLightTheme
+                  ? context.colors.iconSecondary
+                  : const Color(0xFF888888),
               ),
               SizedBox(width: 4.sp),
               Expanded(
@@ -286,7 +311,9 @@ class _MetaRow extends StatelessWidget {
             Icon(
               Icons.calendar_today_outlined,
               size: 12.ic,
-              color: const Color(0xFF888888),
+              color: context.isLightTheme
+                  ? context.colors.iconSecondary
+                  : const Color(0xFF888888),
             ),
             SizedBox(width: 4.sp),
             Text(

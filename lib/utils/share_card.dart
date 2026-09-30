@@ -4,6 +4,7 @@ import 'dart:ui' as ui;
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/utils/share_card_palette.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
@@ -24,16 +25,26 @@ import 'package:share_plus/share_plus.dart';
 /// pinned to [width]; a minimum height of `width * minHeightFactor` enforces a
 /// consistent portrait aspect (default 4:5) that looks aligned in an X/Twitter
 /// post — short cards gain brand-bg breathing room, long ones grow past it and
-/// are captured in full (intrinsic height, no clipping). Returns null if the
-/// boundary never mounts.
+/// are captured in full (intrinsic height, no clipping). A card built on
+/// [ShareCardColumn] spends that room above its footer, so the footer sits on
+/// the bottom edge. Returns null if the boundary never mounts.
+///
+/// The card paints with [palette], handed down through [ShareCardScope]. Left
+/// null, it follows the APP theme (read from the root overlay, not from
+/// [context]): a share started inside a forced-dark island such as the feed
+/// still matches the theme the user picked.
 Future<Uint8List?> captureCardPng(
   BuildContext context, {
   required Widget child,
   required double width,
   required double pixelRatio,
   double minHeightFactor = 5 / 4,
+  ShareCardPalette? palette,
 }) async {
   final overlayState = Overlay.of(context, rootOverlay: true);
+  final resolvedPalette =
+      palette ??
+      ShareCardPalette.forBrightness(Theme.of(overlayState.context).brightness);
   final boundaryKey = GlobalKey();
 
   final entry = OverlayEntry(
@@ -55,7 +66,7 @@ Future<Uint8List?> captureCardPng(
                   maxWidth: width,
                   minHeight: width * minHeightFactor,
                 ),
-                child: child,
+                child: ShareCardScope(palette: resolvedPalette, child: child),
               ),
             ),
           ),
@@ -85,6 +96,51 @@ Future<Uint8List?> captureCardPng(
     }
   } finally {
     entry.remove();
+  }
+}
+
+/// The sign-off under the ChessEver mark on every share card, so each image
+/// ends on the same line whichever surface produced it.
+const String kShareFooterSlogan = 'Follow Chess Better';
+
+/// Root column of a share card whose LAST child is its footer.
+///
+/// [captureCardPng] pads a short card to its 4:5 floor. A plain min-size
+/// column leaves that slack under the footer, so the sign-off floats mid-card
+/// over an empty band. This column gives the slack to the gap above the
+/// footer instead, pinning it to the bottom edge. With no minimum height to
+/// fill (a scroll view, or a card taller than the floor) it lays out exactly
+/// like `Column(mainAxisSize: min, crossAxisAlignment: stretch)`.
+class ShareCardColumn extends StatelessWidget {
+  const ShareCardColumn({super.key, required this.children});
+
+  /// The card's sections top to bottom; the last one is the footer.
+  final List<Widget> children;
+
+  @override
+  Widget build(BuildContext context) {
+    if (children.length < 2) {
+      return Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: children,
+      );
+    }
+    // Two children under spaceBetween put all free space between them. A
+    // Spacer cannot do this: the capture never bounds the height.
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: children.sublist(0, children.length - 1),
+        ),
+        children.last,
+      ],
+    );
   }
 }
 
@@ -225,12 +281,22 @@ class SharePreviewSheet extends StatelessWidget {
         Flexible(
           child: SingleChildScrollView(
             padding: EdgeInsets.symmetric(horizontal: 16.sp, vertical: 8.h),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(12.br),
-              child: Image.memory(
-                imageBytes,
-                fit: BoxFit.fitWidth,
-                width: double.infinity,
+            child: Container(
+              // A paper card on the paper sheet needs an edge to sit on.
+              foregroundDecoration:
+                  context.isLightTheme
+                      ? BoxDecoration(
+                        borderRadius: BorderRadius.circular(12.br),
+                        border: Border.all(color: context.colors.divider),
+                      )
+                      : null,
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(12.br),
+                child: Image.memory(
+                  imageBytes,
+                  fit: BoxFit.fitWidth,
+                  width: double.infinity,
+                ),
               ),
             ),
           ),
@@ -255,7 +321,18 @@ class SharePreviewSheet extends StatelessWidget {
                     label: const Text('Share Link'),
                     style: OutlinedButton.styleFrom(
                       foregroundColor: context.colors.textPrimary,
-                      side: BorderSide(color: context.colors.brand),
+                      // Paper: a recessed fill with no edge, the secondary the
+                      // game share overlay uses, so the row is not an outline
+                      // beside a fill. Same box either way; dark keeps its
+                      // brand-cyan edge.
+                      backgroundColor:
+                          context.isLightTheme
+                              ? context.colors.surfaceRecessed
+                              : null,
+                      side:
+                          context.isLightTheme
+                              ? BorderSide.none
+                              : BorderSide(color: context.colors.brand),
                       padding: EdgeInsets.symmetric(vertical: 14.h),
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(12.br),
@@ -275,7 +352,9 @@ class SharePreviewSheet extends StatelessWidget {
                   label: const Text('Share Image'),
                   style: FilledButton.styleFrom(
                     backgroundColor: context.colors.brand,
-                    foregroundColor: Colors.white,
+                    // White on cyan is ~2.4:1 in either theme; the accent ink
+                    // clears AA on it (~6.3:1 dark, ~8:1 light).
+                    foregroundColor: context.colors.inkOnAccent,
                     padding: EdgeInsets.symmetric(vertical: 14.h),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(12.br),

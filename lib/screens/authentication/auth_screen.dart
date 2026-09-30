@@ -291,7 +291,7 @@ class _AuthButtonWidget extends ConsumerWidget {
             'Sign in to keep your players, events and analysis.',
             textAlign: TextAlign.center,
             style: AppTypography.textSmRegular.copyWith(
-              color: context.colors.textPrimary.withValues(alpha: 0.6),
+              color: context.textInk(0.6),
             ),
           ),
           SizedBox(height: 20.h),
@@ -613,32 +613,43 @@ class _CountryPickerWidgetState extends ConsumerState<CountryPickerWidget>
     return Container(
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(12),
-        boxShadow: [
-          BoxShadow(
-            color: context.colors.textPrimary.withValues(alpha: 0.8),
-            blurRadius: 8,
-            spreadRadius: 2,
-            offset: const Offset(-1, 0),
-          ),
-          BoxShadow(
-            color: context.colors.textPrimary.withValues(alpha: 0.5),
-            blurRadius: 20,
-            spreadRadius: 2,
-            offset: const Offset(0, 2),
-          ),
-          BoxShadow(
-            color: context.colors.textPrimary.withValues(alpha: 0.3),
-            blurRadius: 35,
-            spreadRadius: 2,
-            offset: const Offset(0, 4),
-          ),
-          BoxShadow(
-            color: kBlackColor.withValues(alpha: 0.2),
-            blurRadius: 15,
-            spreadRadius: 1,
-            offset: const Offset(0, 8),
-          ),
-        ],
+        // Paper: the stacked ink halo turns into a muddy smear, so light
+        // gets one tight contact shadow. Dark keeps its white glow.
+        boxShadow:
+            context.isLightTheme
+                ? [
+                  BoxShadow(
+                    color: context.colors.shadow,
+                    blurRadius: 4,
+                    offset: const Offset(0, 1),
+                  ),
+                ]
+                : [
+                  BoxShadow(
+                    color: context.colors.textPrimary.withValues(alpha: 0.8),
+                    blurRadius: 8,
+                    spreadRadius: 2,
+                    offset: const Offset(-1, 0),
+                  ),
+                  BoxShadow(
+                    color: context.colors.textPrimary.withValues(alpha: 0.5),
+                    blurRadius: 20,
+                    spreadRadius: 2,
+                    offset: const Offset(0, 2),
+                  ),
+                  BoxShadow(
+                    color: context.colors.textPrimary.withValues(alpha: 0.3),
+                    blurRadius: 35,
+                    spreadRadius: 2,
+                    offset: const Offset(0, 4),
+                  ),
+                  BoxShadow(
+                    color: kBlackColor.withValues(alpha: 0.2),
+                    blurRadius: 15,
+                    spreadRadius: 1,
+                    offset: const Offset(0, 8),
+                  ),
+                ],
       ),
       child: ElevatedButton(
         onPressed: countryState.maybeWhen(

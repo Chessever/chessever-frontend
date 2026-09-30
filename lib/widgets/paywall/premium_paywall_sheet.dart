@@ -15,13 +15,91 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:motor/motor.dart';
 import 'package:purchases_flutter/purchases_flutter.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+/// The action a Premium gate resumes once the viewer is entitled: whatever
+/// they tapped before the paywall opened (open the archived game, apply the
+/// locked filter, step to the earlier day).
+typedef PremiumResume = FutureOr<void> Function();
+
+/// Longest identifier the upgrade hand-off forwards to analytics.
+const int _kPaywallIdMaxLength = 64;
+final RegExp _paywallFeatureIdPattern = RegExp(r'^[a-z][a-z0-9_]*$');
+final RegExp _paywallReturnToPattern = RegExp(
+  r'^[a-z][a-z0-9_]*(/[a-z][a-z0-9_]*)*$',
+);
+
+/// [featureId] as the paywall analytics may carry it: a fixed snake_case
+/// identifier ('miniatures_archive'), or null. Anything else (a name, an
+/// email, a uuid, a FIDE id) is dropped instead of sent, so a careless caller
+/// can never leak user or player data into the checkout funnel.
+@visibleForTesting
+String? paywallFeatureIdForAnalytics(String? featureId) =>
+    _fixedIdentifier(featureId, _paywallFeatureIdPattern);
+
+/// [returnTo] as the paywall analytics may carry it: a fixed route-like name
+/// ('for_you/discovery/most_liked'), or null. Same rule as
+/// [paywallFeatureIdForAnalytics].
+@visibleForTesting
+String? paywallReturnToForAnalytics(String? returnTo) =>
+    _fixedIdentifier(returnTo, _paywallReturnToPattern);
+
+String? _fixedIdentifier(String? value, RegExp pattern) {
+  if (value == null) return null;
+  if (value.length > _kPaywallIdMaxLength) return null;
+  return pattern.hasMatch(value) ? value : null;
+}
+
+/// Hands a confirmed entitlement back to the feature that asked for it: runs
+/// [onEntitled] and returns `true`.
+///
+/// [after] is what still covers the originating screen, the purchase
+/// celebration. The action waits for it to close, so a resumed navigation
+/// lands where the viewer is looking instead of under the celebration. With
+/// no [onEntitled] nothing waits and `true` comes back at once, exactly as
+/// before the hand-off existed. When [context] is gone there is no feature
+/// left to return to, so the action is skipped.
+@visibleForTesting
+Future<bool> resumePremiumAction(
+  BuildContext context, {
+  PremiumResume? onEntitled,
+  Future<void>? after,
+}) async {
+  if (onEntitled == null) return true;
+  if (after != null) {
+    try {
+      await after;
+    } catch (_) {
+      // A celebration that failed to show must not strand the action.
+    }
+  }
+  if (!context.mounted) return true;
+  await onEntitled();
+  return true;
+}
+
 /// Show the premium paywall sheet, upgrading guests to a full account first.
 /// Returns `true` if the user already has Premium or successfully subscribes.
-Future<bool> showPremiumPaywallSheet({required BuildContext context}) async {
+///
+/// [featureId] names the feature or CTA that asked for Premium
+/// ('most_liked_rankings') and [returnTo] the surface the caller resumes on
+/// once entitled ('for_you/discovery/most_liked'), so the checkout funnel
+/// knows where each upgrade started. Both reach the paywall analytics event
+/// only, never RevenueCat or payment metadata, and must be fixed identifiers:
+/// anything shaped like user, player or account data is dropped.
+///
+/// [onEntitled] resumes the intended action after a confirmed purchase or
+/// restore (the sheet closes first), or straight away for a viewer who turns
+/// out to be entitled already. See [resumePremiumAction].
+Future<bool> showPremiumPaywallSheet({
+  required BuildContext context,
+  String? featureId,
+  String? returnTo,
+  PremiumResume? onEntitled,
+}) async {
   final initialUser = Supabase.instance.client.auth.currentUser;
   if (initialUser == null || initialUser.isAnonymous) {
     final authenticated = await showAuthUpgradeSheet(
@@ -55,12 +133,20 @@ Future<bool> showPremiumPaywallSheet({required BuildContext context}) async {
       customerInfo?.entitlements.active.isNotEmpty == true;
   final hasActiveSubscription =
       hasStoreEntitlement || await revenueCat.isSubscribed();
-  if (hasActiveSubscription) return true;
-  if (!context.mounted) return false;
+  if (!context.mounted) return hasActiveSubscription;
+  if (hasActiveSubscription) {
+    return resumePremiumAction(context, onEntitled: onEntitled);
+  }
 
   // AppsFlyer funnel: paywall view counts as checkout intent.
-  unawaited(AppsflyerService.instance.logInitiatedCheckout());
+  unawaited(
+    AppsflyerService.instance.logInitiatedCheckout(
+      featureId: paywallFeatureIdForAnalytics(featureId),
+      returnTo: paywallReturnToForAnalytics(returnTo),
+    ),
+  );
 
+  final handoff = _PaywallHandoff();
   final result = await showModalBottomSheet<bool>(
     context: context,
     // Save flow / chess board sheets host their own nested Navigator
@@ -71,47 +157,90 @@ Future<bool> showPremiumPaywallSheet({required BuildContext context}) async {
     isScrollControlled: true,
     backgroundColor: Colors.transparent,
     constraints: ResponsiveHelper.bottomSheetConstraints,
-    builder: (_) => _PremiumPaywallSheet(hostContext: context),
+    builder:
+        (_) => _PremiumPaywallSheet(hostContext: context, handoff: handoff),
   );
-  return result ?? false;
+  if (result != true) return false;
+  if (!context.mounted) return true;
+  return resumePremiumAction(
+    context,
+    onEntitled: onEntitled,
+    after: handoff.celebration,
+  );
 }
 
 /// Guard that checks subscription and shows paywall if needed.
 /// Returns true if user has premium or just subscribed.
 /// Note: Requires authentication first - shows auth upgrade sheet if user is anonymous.
-Future<bool> requirePremiumGuard(BuildContext context, WidgetRef ref) async {
-  if (kDebugMode) return true;
+/// [featureId], [returnTo] and [onEntitled] are handed to the paywall as-is;
+/// see [showPremiumPaywallSheet]. A subscriber skips the paywall, so
+/// [onEntitled] runs straight away.
+Future<bool> requirePremiumGuard(
+  BuildContext context,
+  WidgetRef ref, {
+  String? featureId,
+  String? returnTo,
+  PremiumResume? onEntitled,
+}) async {
+  if (kDebugMode) return resumePremiumAction(context, onEntitled: onEntitled);
 
   // First ensure user is authenticated (not anonymous)
   final isAuthenticated = await requireFullAuthGuard(context);
   if (!isAuthenticated) return false;
 
   final subscriptionState = ref.read(subscriptionProvider);
-  if (subscriptionState.isSubscribed) return true;
-  if (!context.mounted) return false;
+  if (!context.mounted) return subscriptionState.isSubscribed;
+  if (subscriptionState.isSubscribed) {
+    return resumePremiumAction(context, onEntitled: onEntitled);
+  }
 
-  return await showPremiumPaywallSheet(context: context);
+  return await showPremiumPaywallSheet(
+    context: context,
+    featureId: featureId,
+    returnTo: returnTo,
+    onEntitled: onEntitled,
+  );
 }
 
 /// Guard variant for places where WidgetRef is not conveniently available.
 /// Returns true if user has premium or just subscribed from paywall.
-Future<bool> requirePremiumGuardNoRef(BuildContext context) async {
-  if (kDebugMode) return true;
+Future<bool> requirePremiumGuardNoRef(
+  BuildContext context, {
+  String? featureId,
+  String? returnTo,
+  PremiumResume? onEntitled,
+}) async {
+  if (kDebugMode) return resumePremiumAction(context, onEntitled: onEntitled);
 
   final isAuthenticated = await requireFullAuthGuard(context);
   if (!isAuthenticated) return false;
 
   final isSubscribed = await RevenueCatService().isSubscribed();
-  if (isSubscribed) return true;
-  if (!context.mounted) return false;
+  if (!context.mounted) return isSubscribed;
+  if (isSubscribed) {
+    return resumePremiumAction(context, onEntitled: onEntitled);
+  }
 
-  return await showPremiumPaywallSheet(context: context);
+  return await showPremiumPaywallSheet(
+    context: context,
+    featureId: featureId,
+    returnTo: returnTo,
+    onEntitled: onEntitled,
+  );
+}
+
+/// What an open paywall hands back to the gate that opened it: the
+/// celebration shown on a confirmed purchase or restore, so a resumed action
+/// can wait for it to close.
+class _PaywallHandoff {
+  Future<void>? celebration;
 }
 
 class _PremiumPaywallSheet extends HookWidget {
-  const _PremiumPaywallSheet({required this.hostContext});
+  const _PremiumPaywallSheet({required this.hostContext, this.handoff});
 
   final BuildContext hostContext;
+  final _PaywallHandoff? handoff;
 
   @override
   Widget build(BuildContext context) {
@@ -122,10 +251,11 @@ class _PremiumPaywallSheet extends HookWidget {
       builder: (BuildContext context, ScrollController scrollController) {
         return Container(
           decoration: BoxDecoration(
-            color: context.colors.surface.withValues(alpha: 0.98),
+            // Opaque: at 0.98 the page behind ghosted through the copy.
+            color: context.colors.surface,
             borderRadius: BorderRadius.vertical(top: Radius.circular(28.sp)),
           ),
-          child: _PaywallContent(hostContext: hostContext),
+          child: _PaywallContent(hostContext: hostContext, handoff: handoff),
         );
       },
     );
@@ -133,9 +263,10 @@ class _PremiumPaywallSheet extends HookWidget {
 }
 
 class _PaywallContent extends HookConsumerWidget {
-  const _PaywallContent({required this.hostContext});
+  const _PaywallContent({required this.hostContext, this.handoff});
 
   final BuildContext hostContext;
+  final _PaywallHandoff? handoff;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -169,7 +300,11 @@ class _PaywallContent extends HookConsumerWidget {
       final wasSubscribed = prev?.isSubscribed ?? false;
       if (!wasSubscribed && next.isSubscribed && hostContext.mounted) {
         Navigator.maybeOf(hostContext, rootNavigator: true)?.pop(true);
-        unawaited(showPremiumCelebration(hostContext));
+        final celebration = showPremiumCelebration(hostContext);
+        // The gate that opened this sheet resumes its action once the
+        // celebration closes (see resumePremiumAction).
+        handoff?.celebration = celebration;
+        unawaited(celebration);
       }
     });
 
@@ -314,12 +449,18 @@ class _PaywallContent extends HookConsumerWidget {
             ),
           ),
           // Hero Icon
+          // The logo art is a black square, which reads as a hard slab on
+          // either sheet (neither is pure black), so it is rounded into the
+          // app-icon shape it actually is.
           Center(
-            child: Image.asset(
-              'assets/pngs/new_app_logo.webp',
-              height: 80.h,
-              cacheHeight:
-                  (80 * MediaQuery.devicePixelRatioOf(context)).toInt(),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(18.br),
+              child: Image.asset(
+                'assets/pngs/new_app_logo.webp',
+                height: 80.h,
+                cacheHeight:
+                    (80 * MediaQuery.devicePixelRatioOf(context)).toInt(),
+              ),
             ),
           ),
           SizedBox(height: 16.h),
@@ -375,7 +516,10 @@ class _PaywallContent extends HookConsumerWidget {
                 child: Text(
                   'Restore purchases',
                   style: AppTypography.textSmMedium.copyWith(
-                    color: context.colors.textPrimary.withValues(alpha: 0.5),
+                    color:
+                        context.isLightTheme
+                            ? context.colors.textSecondary
+                            : context.textInk(0.5),
                   ),
                 ),
               ),
@@ -383,7 +527,7 @@ class _PaywallContent extends HookConsumerWidget {
               Text(
                 '·',
                 style: AppTypography.textSmMedium.copyWith(
-                  color: context.colors.textPrimary.withValues(alpha: 0.3),
+                  color: context.textInk(0.3),
                 ),
               ),
               SizedBox(width: 12.w),
@@ -392,7 +536,10 @@ class _PaywallContent extends HookConsumerWidget {
                 child: Text(
                   'Have a code?',
                   style: AppTypography.textSmMedium.copyWith(
-                    color: context.colors.textPrimary.withValues(alpha: 0.5),
+                    color:
+                        context.isLightTheme
+                            ? context.colors.textSecondary
+                            : context.textInk(0.5),
                   ),
                 ),
               ),
@@ -408,9 +555,15 @@ class _PaywallContent extends HookConsumerWidget {
                 child: Text(
                   'Privacy Policy',
                   style: AppTypography.textXsMedium.copyWith(
-                    color: context.colors.textPrimary.withValues(alpha: 0.4),
+                    color:
+                        context.isLightTheme
+                            ? context.colors.textSecondary
+                            : context.textInk(0.4),
                     decoration: TextDecoration.underline,
-                    decorationColor: context.colors.textPrimary.withValues(alpha: 0.4),
+                    decorationColor:
+                        context.isLightTheme
+                            ? context.colors.textSecondary
+                            : context.textInk(0.4),
                   ),
                 ),
               ),
@@ -418,7 +571,7 @@ class _PaywallContent extends HookConsumerWidget {
               Text(
                 '|',
                 style: AppTypography.textXsMedium.copyWith(
-                  color: context.colors.textPrimary.withValues(alpha: 0.3),
+                  color: context.textInk(0.3),
                 ),
               ),
               SizedBox(width: 16.w),
@@ -427,9 +580,15 @@ class _PaywallContent extends HookConsumerWidget {
                 child: Text(
                   'Terms of Use',
                   style: AppTypography.textXsMedium.copyWith(
-                    color: context.colors.textPrimary.withValues(alpha: 0.4),
+                    color:
+                        context.isLightTheme
+                            ? context.colors.textSecondary
+                            : context.textInk(0.4),
                     decoration: TextDecoration.underline,
-                    decorationColor: context.colors.textPrimary.withValues(alpha: 0.4),
+                    decorationColor:
+                        context.isLightTheme
+                            ? context.colors.textSecondary
+                            : context.textInk(0.4),
                   ),
                 ),
               ),
@@ -452,9 +611,9 @@ class _FeaturesList extends StatelessWidget {
   Widget build(BuildContext context) {
     final features = [
       (Icons.people_rounded, 'Countrymen & Favorites'),
-      (Icons.sports_esports_rounded, 'Opponent Prep Tools'),
+      (Icons.person_search_rounded, 'Opponent Prep Tools'),
       (Icons.auto_stories_rounded, 'Database Storage'),
-      (Icons.filter_alt_rounded, 'ChessEver Desktop Beta'),
+      (Icons.desktop_windows_rounded, 'ChessEver Desktop Beta'),
     ];
 
     return Column(
@@ -475,7 +634,7 @@ class _FeatureItem extends StatelessWidget {
       padding: EdgeInsets.symmetric(vertical: 6.h),
       child: Row(
         children: [
-          Icon(icon, size: 20.ic, color: kPrimaryColor),
+          Icon(icon, size: 20.ic, color: context.colors.accentText),
           SizedBox(width: 12.w),
           Text(
             text,
@@ -492,6 +651,21 @@ class _FeatureItem extends StatelessWidget {
 // Old feature list removed
 
 enum PlanType { monthly, annual }
+
+/// The two plan cards on their own, for layout and contrast tests.
+@visibleForTesting
+Widget paywallPricingForTest({
+  required ValueNotifier<PlanType> selectedPlan,
+  required Package? monthlyPackage,
+  required Package? annualPackage,
+}) => _PricingSection(
+  selectedPlan: selectedPlan,
+  monthlyPackage: monthlyPackage,
+  annualPackage: annualPackage,
+  productsError: null,
+  isRetrying: false,
+  onRetry: () {},
+);
 
 class _PricingSection extends HookWidget {
   const _PricingSection({
@@ -557,8 +731,11 @@ class _PricingSection extends HookWidget {
           _ProductsErrorRow(message: productsError!, onRetry: onRetry),
           SizedBox(height: 12.h),
         ],
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
+        // One grid for both plans: equal heights, and every row (title,
+        // note, price, per-month line) on a shared line, whatever the copy.
+        IntrinsicHeight(
+          child: Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
         // Monthly card
         Expanded(
@@ -580,20 +757,20 @@ class _PricingSection extends HookWidget {
         Expanded(
           child: _PricingCard(
             isSelected: selectedPlan.value == PlanType.annual,
-            isBestValue: true,
             title: 'Annual',
             // BILLED AMOUNT is the main price (Apple requirement)
             price: annualPackage?.storeProduct.priceString,
             period: '/yr',
             // Monthly equivalent shown as subordinate subtitle
             subtitle: monthlyEquivalentFromAnnual,
-            badge: savingsPercent > 0 ? 'SAVE $savingsPercent%' : null,
+            note: savingsPercent > 0 ? 'Save $savingsPercent%' : 'Best value',
             isLoading: !hasPackages,
             onTap:
                 hasPackages ? () => selectedPlan.value = PlanType.annual : null,
           ),
         ),
           ],
+        ),
         ),
       ],
     );
@@ -616,7 +793,7 @@ class _ProductsErrorRow extends StatelessWidget {
           child: Text(
             message,
             style: AppTypography.textSmMedium.copyWith(
-              color: context.colors.textPrimary.withValues(alpha: 0.6),
+              color: context.textInk(0.6),
             ),
           ),
         ),
@@ -629,7 +806,7 @@ class _ProductsErrorRow extends StatelessWidget {
             padding: EdgeInsets.symmetric(vertical: 12.h, horizontal: 4.w),
             child: Text(
               'Try again',
-              style: AppTypography.textSmBold.copyWith(color: kPrimaryColor),
+              style: AppTypography.textSmBold.copyWith(color: context.colors.accentText),
             ),
           ),
         ),
@@ -645,10 +822,9 @@ class _PricingCard extends HookWidget {
     required this.period,
     this.price,
     this.onTap,
-    this.badge,
+    this.note,
     this.subtitle,
     this.isLoading = false,
-    this.isBestValue = false,
   });
 
   final bool isSelected;
@@ -656,25 +832,58 @@ class _PricingCard extends HookWidget {
   final String? price;
   final String period;
   final VoidCallback? onTap;
-  final String? badge;
+
+  /// One quiet line under the title ("Save 33%"). Plain type, no pill: a
+  /// plan without one still holds the slot so both cards keep their rows on
+  /// the same lines.
+  final String? note;
+
+  /// Subordinate per-month line under the price; the slot is held when null.
   final String? subtitle;
   final bool isLoading;
-  final bool isBestValue;
 
   @override
   Widget build(BuildContext context) {
     final isPressed = useState(false);
     final showLoading = isLoading || price == null;
+    final reduceMotion = MediaQuery.disableAnimationsOf(context);
 
+    final light = context.isLightTheme;
+    // The selected ring carries the state (cyan is ~2.2:1 on paper, so light
+    // rings in the accent-text teal). A tonal fill, no bloom.
     final borderColor =
-        isSelected ? kPrimaryColor : context.colors.textPrimary.withValues(alpha: 0.1);
+        isSelected
+            ? (light ? context.colors.accentText : kPrimaryColor)
+            : context.colors.textPrimary.withValues(alpha: 0.1);
 
     final backgroundColor =
         isSelected
             ? kPrimaryColor.withValues(alpha: 0.15)
             : context.colors.textPrimary.withValues(alpha: 0.05);
 
+    final noteStyle = AppTypography.textXsBold.copyWith(
+      color: context.colors.accentText,
+    );
+    final subtitleStyle = AppTypography.textXxsRegular.copyWith(
+      // 0.72 keeps the per-month line at AA on the selected tint in dark.
+      color: context.textInk(0.72),
+    );
+
+    // Holds a one-line slot at [style]'s height without drawing anything
+    // (a no-break space). Real copy may take a second line at large text
+    // sizes rather than clip.
+    Widget line(String? text, TextStyle style) => ExcludeSemantics(
+      excluding: text == null,
+      child: Text(
+        text ?? '\u00a0',
+        maxLines: 2,
+        overflow: TextOverflow.ellipsis,
+        style: style,
+      ),
+    );
+
     return GestureDetector(
+      behavior: HitTestBehavior.opaque,
       onTapDown: showLoading ? null : (_) => isPressed.value = true,
       onTapUp:
           showLoading
@@ -684,181 +893,134 @@ class _PricingCard extends HookWidget {
                 onTap?.call();
               },
       onTapCancel: showLoading ? null : () => isPressed.value = false,
-      child: AnimatedScale(
-        scale: isPressed.value ? 0.97 : 1.0,
-        duration: const Duration(milliseconds: 100),
-        child: Stack(
-          clipBehavior: Clip.none,
-          children: [
-            AnimatedContainer(
-              duration: const Duration(milliseconds: 200),
-              curve: Curves.easeOut,
-              constraints: BoxConstraints(
-                minHeight: isBestValue ? 130.h : 110.h,
-              ),
-              padding: EdgeInsets.all(12.sp),
-              decoration: BoxDecoration(
-                color: backgroundColor,
-                borderRadius: BorderRadius.circular(16.br),
-                border: Border.all(
-                  color: borderColor,
-                  width: isSelected ? 2 : 1.5,
-                ),
-                boxShadow:
-                    isSelected
-                        ? [
-                          BoxShadow(
-                            color: kPrimaryColor.withValues(alpha: 0.15),
-                            blurRadius: 12,
-                            offset: const Offset(0, 4),
-                          ),
-                        ]
-                        : [],
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      child: _SpringPress(
+        pressed: isPressed.value,
+        reduceMotion: reduceMotion,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          curve: Curves.easeOut,
+          // The border insets the content, so the thinner unselected ring
+          // gives its half pixel back as padding: both cards' rows stay on
+          // the same lines whichever one is selected.
+          padding: EdgeInsets.all(12.sp + (isSelected ? 0 : 0.5)),
+          decoration: BoxDecoration(
+            color: backgroundColor,
+            borderRadius: BorderRadius.circular(16.br),
+            border: Border.all(color: borderColor, width: isSelected ? 2 : 1.5),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
                 children: [
-                  // Header: Title + Checked Icon -> Actually Title + Badge
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Text(
-                            title,
-                            style: AppTypography.textMdBold.copyWith(
-                              color:
-                                  isSelected
-                                      ? context.colors.textPrimary
-                                      : context.colors.textPrimary.withValues(alpha: 0.7),
-                            ),
-                          ),
-                          if (isSelected)
-                            Icon(
-                              Icons.check_circle_rounded,
-                              color: kPrimaryColor,
-                              size: 18.ic,
-                            ),
-                        ],
+                  Expanded(
+                    child: Text(
+                      title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: AppTypography.textMdBold.copyWith(
+                        color:
+                            isSelected
+                                ? context.colors.textPrimary
+                                : context.textInk(0.7),
                       ),
-                      if (badge != null) ...[
-                        SizedBox(height: 4.h),
-                        Container(
-                          padding: EdgeInsets.symmetric(
-                            horizontal: 6.w,
-                            vertical: 3.h,
-                          ),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFF22C55E),
-                            borderRadius: BorderRadius.circular(16.br),
-                          ),
-                          child: Text(
-                            badge!,
-                            style: AppTypography.textXxsBold.copyWith(
-                              color: context.colors.textPrimary,
-                              letterSpacing: 0.5,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ],
+                    ),
                   ),
-
-                  SizedBox(height: 8.h),
-
-                  // Pricing Block - BILLED AMOUNT is most prominent (Apple Guideline 3.1.2)
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      if (showLoading)
-                        Container(
-                          width: 60.w,
-                          height: 24.h,
-                          decoration: BoxDecoration(
-                            color: context.colors.textPrimary.withValues(alpha: 0.1),
-                            borderRadius: BorderRadius.circular(4.br),
-                          ),
-                        )
-                      else ...[
-                        // Main Price (BILLED AMOUNT - most prominent)
-                        Row(
-                          crossAxisAlignment: CrossAxisAlignment.baseline,
-                          textBaseline: TextBaseline.alphabetic,
-                          children: [
-                            Text(
-                              price!,
-                              style: AppTypography.displaySmBold.copyWith(
-                                color: context.colors.textPrimary,
-                                fontSize: 20.sp,
-                              ),
-                            ),
-                            SizedBox(width: 2.w),
-                            Text(
-                              period,
-                              style: AppTypography.textSmMedium.copyWith(
-                                color: context.colors.textPrimary.withValues(alpha: 0.6),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ],
-
-                      // Subtitle (monthly equivalent - subordinate)
-                      if (subtitle != null && !showLoading) ...[
-                        SizedBox(height: 2.h),
-                        Text(
-                          subtitle!,
-                          style: AppTypography.textXxsRegular.copyWith(
-                            color: context.colors.textPrimary.withValues(alpha: 0.5),
-                          ),
-                        ),
-                      ],
-                    ],
+                  // The check keeps its slot so the title never shifts.
+                  Opacity(
+                    opacity: isSelected ? 1 : 0,
+                    child: Icon(
+                      Icons.check_circle_rounded,
+                      color: context.colors.accentText,
+                      size: 18.ic,
+                    ),
                   ),
                 ],
               ),
-            ),
-
-            // "BEST VALUE" Tag floating on top
-            if (isBestValue)
-              Positioned(
-                top: -10.h,
-                left: 0,
-                right: 0,
-                child: Center(
-                  child: Container(
-                    padding: EdgeInsets.symmetric(
-                      horizontal: 10.w,
-                      vertical: 3.h,
-                    ),
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        colors: [kPrimaryColor, kDarkBlue],
-                      ),
-                      borderRadius: BorderRadius.circular(10.br),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.2),
-                          blurRadius: 4,
-                          offset: const Offset(0, 2),
+              SizedBox(height: 2.h),
+              line(note, noteStyle),
+              // Price block pinned to the bottom, so both prices share a
+              // baseline even when one card's copy runs longer.
+              const Spacer(),
+              SizedBox(height: 10.h),
+              if (showLoading)
+                Container(
+                  width: 60.w,
+                  height: 24.h,
+                  decoration: BoxDecoration(
+                    color: context.colors.textPrimary.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(4.br),
+                  ),
+                )
+              else
+                // Main Price (BILLED AMOUNT - most prominent, Apple
+                // Guideline 3.1.2)
+                FittedBox(
+                  fit: BoxFit.scaleDown,
+                  alignment: Alignment.centerLeft,
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.baseline,
+                    textBaseline: TextBaseline.alphabetic,
+                    children: [
+                      Text(
+                        price!,
+                        style: AppTypography.displaySmBold.copyWith(
+                          color: context.colors.textPrimary,
+                          fontSize: 20.sp,
                         ),
-                      ],
-                    ),
-                    child: Text(
-                      'BEST VALUE',
-                      style: AppTypography.textXxsBold.copyWith(
-                        color: context.colors.inkOnAccent,
-                        letterSpacing: 1.0,
                       ),
-                    ),
+                      SizedBox(width: 2.w),
+                      Text(
+                        period,
+                        style: AppTypography.textSmMedium.copyWith(
+                          color: context.textInk(0.6),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-              ),
-          ],
+              SizedBox(height: 2.h),
+              line(showLoading ? null : subtitle, subtitleStyle),
+            ],
+          ),
         ),
       ),
+    );
+  }
+}
+
+/// The 0.97 press on the paywall's cards and buttons, on a snappy spring so
+/// it stays interruptible; still under reduced motion.
+class _SpringPress extends StatelessWidget {
+  const _SpringPress({
+    required this.pressed,
+    required this.reduceMotion,
+    required this.child,
+  });
+
+  final bool pressed;
+  final bool reduceMotion;
+  final Widget child;
+
+  static const _motion = CupertinoMotion.snappy(
+    duration: Duration(milliseconds: 240),
+    snapToEnd: true,
+  );
+
+  @override
+  Widget build(BuildContext context) {
+    return SingleMotionBuilder(
+      motion: reduceMotion ? const Motion.none() : _motion,
+      value: pressed ? 0.97 : 1.0,
+      builder:
+          (context, scale, child) => Transform.scale(
+            // Springs settle a hair short of 1.0; snap so text rasterises
+            // crisp at rest.
+            scale: (scale - 1).abs() < 0.002 ? 1.0 : scale,
+            child: child,
+          ),
+      child: child,
     );
   }
 }
@@ -946,32 +1108,20 @@ class _PurchaseButton extends HookWidget {
               }
               : null,
       onTapCancel: isTappable ? () => isPressed.value = false : null,
-      child: AnimatedScale(
-        scale: isPressed.value ? 0.97 : 1.0,
-        duration: const Duration(milliseconds: 100),
+      child: _SpringPress(
+        pressed: isPressed.value,
+        reduceMotion: MediaQuery.disableAnimationsOf(context),
         child: Opacity(
           // Reads as "not ready yet" instead of inviting a tap that no-ops.
           opacity: isEnabled ? 1.0 : 0.4,
           child: Container(
           width: double.infinity,
           height: 54.h,
+          // One solid brand fill with a near-black label (~8:1) in both
+          // themes: no cyan-to-blue gradient, no bloom under it.
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(16.br),
-            gradient: LinearGradient(
-              colors: [kPrimaryColor, kDarkBlue],
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-            ),
-            boxShadow:
-                isEnabled
-                    ? [
-                      BoxShadow(
-                        color: kPrimaryColor.withValues(alpha: 0.4),
-                        blurRadius: 25,
-                        offset: const Offset(0, 8),
-                      ),
-                    ]
-                    : null,
+            color: context.colors.brand,
           ),
           child: Center(
             child:
@@ -979,9 +1129,11 @@ class _PurchaseButton extends HookWidget {
                     ? SizedBox(
                       width: 24.w,
                       height: 24.h,
-                      child: const CircularProgressIndicator(
+                      child: CircularProgressIndicator(
                         strokeWidth: 2.5,
-                        valueColor: AlwaysStoppedAnimation<Color>(kBlackColor),
+                        valueColor: AlwaysStoppedAnimation<Color>(
+                          context.colors.inkOnAccent,
+                        ),
                       ),
                     )
                     : Padding(
@@ -992,7 +1144,7 @@ class _PurchaseButton extends HookWidget {
                           buttonText,
                           textAlign: TextAlign.center,
                           style: AppTypography.textLgBold.copyWith(
-                            color: kBlackColor,
+                            color: context.colors.inkOnAccent,
                             letterSpacing: 0.2,
                           ),
                         ),
@@ -1166,7 +1318,7 @@ class _AndroidCodeRedeemSheet extends HookConsumerWidget {
       ),
       child: Container(
         decoration: BoxDecoration(
-          color: context.colors.surface.withValues(alpha: 0.98),
+          color: context.colors.surface,
           borderRadius: BorderRadius.vertical(top: Radius.circular(28.sp)),
         ),
         padding: EdgeInsets.fromLTRB(20.w, 12.h, 20.w, 24.h),
@@ -1194,7 +1346,7 @@ class _AndroidCodeRedeemSheet extends HookConsumerWidget {
             Text(
               'Enter your code to apply your discount. The Play Store purchase sheet will open with the discounted price.',
               style: AppTypography.textSmRegular.copyWith(
-                color: context.colors.textPrimary.withValues(alpha: 0.6),
+                color: context.textInk(0.6),
               ),
             ),
             SizedBox(height: 16.h),
@@ -1220,7 +1372,7 @@ class _AndroidCodeRedeemSheet extends HookConsumerWidget {
               decoration: InputDecoration(
                 hintText: 'XXXXXXXXXX',
                 hintStyle: AppTypography.textMdMedium.copyWith(
-                  color: context.colors.textPrimary.withValues(alpha: 0.25),
+                  color: context.textInk(0.25),
                   letterSpacing: 1.2,
                 ),
                 filled: true,
@@ -1239,7 +1391,12 @@ class _AndroidCodeRedeemSheet extends HookConsumerWidget {
                 ),
                 focusedBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12.br),
-                  borderSide: const BorderSide(color: kPrimaryColor),
+                  borderSide: BorderSide(
+                    color:
+                        context.isLightTheme
+                            ? context.colors.accentText
+                            : kPrimaryColor,
+                  ),
                 ),
               ),
             ),
@@ -1248,7 +1405,10 @@ class _AndroidCodeRedeemSheet extends HookConsumerWidget {
               Text(
                 errorMessage.value!,
                 style: AppTypography.textSmMedium.copyWith(
-                  color: const Color(0xFFFF6B6B),
+                  color:
+                      context.isLightTheme
+                          ? context.colors.danger
+                          : const Color(0xFFFF6B6B),
                 ),
               ),
             ],
@@ -1265,7 +1425,7 @@ class _AndroidCodeRedeemSheet extends HookConsumerWidget {
               child: Text(
                 'Cancel',
                 style: AppTypography.textSmMedium.copyWith(
-                  color: context.colors.textPrimary.withValues(alpha: 0.5),
+                  color: context.textInk(0.5),
                 ),
               ),
             ),
@@ -1302,32 +1462,19 @@ class _RedeemButton extends HookWidget {
               }
               : null,
       onTapCancel: tappable ? () => isPressed.value = false : null,
-      child: AnimatedScale(
-        scale: isPressed.value ? 0.97 : 1.0,
-        duration: const Duration(milliseconds: 100),
+      child: _SpringPress(
+        pressed: isPressed.value,
+        reduceMotion: MediaQuery.disableAnimationsOf(context),
         child: AnimatedOpacity(
           opacity: tappable ? 1.0 : 0.5,
           duration: const Duration(milliseconds: 150),
           child: Container(
             width: double.infinity,
             height: 54.h,
+            // Solid brand fill, near-black label, no gradient or bloom.
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(16.br),
-              gradient: const LinearGradient(
-                colors: [kPrimaryColor, kDarkBlue],
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-              ),
-              boxShadow:
-                  tappable
-                      ? [
-                        BoxShadow(
-                          color: kPrimaryColor.withValues(alpha: 0.4),
-                          blurRadius: 25,
-                          offset: const Offset(0, 8),
-                        ),
-                      ]
-                      : const [],
+              color: context.colors.brand,
             ),
             child: Center(
               child:
@@ -1335,17 +1482,17 @@ class _RedeemButton extends HookWidget {
                       ? SizedBox(
                         width: 24.w,
                         height: 24.h,
-                        child: const CircularProgressIndicator(
+                        child: CircularProgressIndicator(
                           strokeWidth: 2.5,
                           valueColor: AlwaysStoppedAnimation<Color>(
-                            kBlackColor,
+                            context.colors.inkOnAccent,
                           ),
                         ),
                       )
                       : Text(
                         'Apply discount',
                         style: AppTypography.textLgBold.copyWith(
-                          color: kBlackColor,
+                          color: context.colors.inkOnAccent,
                           letterSpacing: 0.2,
                         ),
                       ),

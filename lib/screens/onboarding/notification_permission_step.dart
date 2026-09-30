@@ -157,7 +157,7 @@ class _NotificationPermissionStepState
                     _subtitle(),
                     textAlign: TextAlign.center,
                     style: AppTypography.textSmRegular.copyWith(
-                      color: context.colors.textPrimary.withValues(alpha: 0.6),
+                      color: context.textInk(0.6),
                     ),
                   )
                   .animate(delay: 300.ms)

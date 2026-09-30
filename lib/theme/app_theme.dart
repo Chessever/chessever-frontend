@@ -109,6 +109,13 @@ RadialGradient radialOverlayGradient = RadialGradient(
   ],
 );
 
+/// Light-theme twin of [radialOverlayGradient]: the same vignette in the
+/// palette's ink (#0E1A1C) at 0.22 → 0.34. A black 0.4–0.58 wash turns mint
+/// paper into a muddy grey slab; the ink dim still separates the dialog.
+const RadialGradient radialOverlayGradientLight = RadialGradient(
+  colors: [Color(0x380E1A1C), Color(0x570E1A1C)],
+);
+
 // Profile initials gradient
 const LinearGradient kProfileInitialsGradient = LinearGradient(
   begin: Alignment.topCenter,
@@ -183,13 +190,35 @@ class AppTheme {
       seedColor: kPrimaryColor,
       brightness: Brightness.light,
     ).copyWith(
-      primary: kPrimaryColor,
+      // Material roles mapped onto the mint palette. Left to the seed, the
+      // light scheme is a blue-grey and purple M3 skin (#F0F4F8 containers,
+      // #5D5B7D tertiary) and brand cyan as `primary` reads ~2:1 on paper, so
+      // every default spinner, switch, filled button and focus ring failed.
+      // `primary` is AppColors.light.accentText; brand cyan FILLS stay on
+      // `context.colors.brand`.
+      primary: const Color(0xFF005F7D),
       onPrimary: kWhiteColor,
+      primaryContainer: const Color(0xFFCFEEF4),
+      onPrimaryContainer: const Color(0xFF0E1A1C),
+      secondaryContainer: const Color(0xFFC5D6D5),
+      onSecondaryContainer: const Color(0xFF0E1A1C),
+      tertiary: const Color(0xFF4D5E61),
+      onTertiary: const Color(0xFFF4FAF9),
       surface: const Color(0xFFF4FAF9),
       onSurface: const Color(0xFF0E1A1C),
+      onSurfaceVariant: const Color(0xFF4D5E61),
+      surfaceContainerLowest: const Color(0xFFF4FAF9),
+      surfaceContainerLow: const Color(0xFFEEF6F5),
+      surfaceContainer: const Color(0xFFE8F1F0),
+      surfaceContainerHigh: const Color(0xFFE2ECEC),
       surfaceContainerHighest: const Color(0xFFC5D6D5),
       outline: const Color(0xFFB7C9C8),
-      error: kRedColor,
+      outlineVariant: const Color(0xFFB7C9C8),
+      inverseSurface: const Color(0xFF0E1A1C),
+      onInverseSurface: const Color(0xFFF4FAF9),
+      inversePrimary: kPrimaryColor,
+      // AppColors.light.danger: kRedColor only reaches ~3:1 on paper.
+      error: const Color(0xFFC53128),
     ),
     appBarTheme: const AppBarTheme(
       backgroundColor: Color(0xFFE2ECEC),
@@ -219,6 +248,29 @@ class AppTheme {
       backgroundColor: Color(0xFFF4FAF9),
       modalBarrierColor: Color(0x660E1A1C),
       surfaceTintColor: Colors.transparent,
+    ),
+    // Inverse ink capsule, mirroring the dark theme's raised tooltip: a
+    // light-on-dark tag reads instantly over the pale mint surfaces.
+    tooltipTheme: TooltipThemeData(
+      decoration: BoxDecoration(
+        color: const Color(0xFF0E1A1C),
+        borderRadius: BorderRadius.circular(4),
+      ),
+      textStyle: const TextStyle(color: Color(0xFFF4FAF9), fontSize: 12),
+    ),
+    // Text buttons follow colorScheme.primary, now the deep accent-text teal;
+    // pinned here as well so a scheme tweak can never put cyan text on paper.
+    textButtonTheme: TextButtonThemeData(
+      style: TextButton.styleFrom(foregroundColor: const Color(0xFF005F7D)),
+    ),
+    popupMenuTheme: const PopupMenuThemeData(
+      color: Color(0xFFF4FAF9),
+      surfaceTintColor: Colors.transparent,
+    ),
+    textSelectionTheme: const TextSelectionThemeData(
+      cursorColor: Color(0xFF005F7D),
+      selectionColor: Color(0x400FB4E5),
+      selectionHandleColor: Color(0xFF005F7D),
     ),
     extensions: const [_lightAppColors],
     useMaterial3: true,

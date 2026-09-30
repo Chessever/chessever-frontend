@@ -17,6 +17,11 @@ class CalendarEvent {
   /// calendar feed keeps every event; only Upcoming restricts to these.
   final bool isMajorUpcoming;
 
+  /// True on the row the FIDE major-events scrape wrote. The web calendar
+  /// counts an event as major when this or [isMajorUpcoming] is set on any
+  /// row sharing its [fideEventId]. Reads false where the column is absent.
+  final bool isMajorEvent;
+
   CalendarEvent({
     required this.name,
     this.startDate,
@@ -31,6 +36,7 @@ class CalendarEvent {
     this.players,
     this.fideEventId,
     this.isMajorUpcoming = false,
+    this.isMajorEvent = false,
   });
 
   factory CalendarEvent.fromJson(Map<String, dynamic> json) => CalendarEvent(
@@ -53,6 +59,7 @@ class CalendarEvent {
     players: json['players'] as List<dynamic>?,
     fideEventId: json['fide_event_id'] as String?,
     isMajorUpcoming: json['is_major_upcoming_event'] as bool? ?? false,
+    isMajorEvent: json['is_major_event'] as bool? ?? false,
   );
 
   Map<String, dynamic> toJson() => {
@@ -69,6 +76,7 @@ class CalendarEvent {
     'players': players,
     'fide_event_id': fideEventId,
     'is_major_upcoming_event': isMajorUpcoming,
+    'is_major_event': isMajorEvent,
   };
 
   @override

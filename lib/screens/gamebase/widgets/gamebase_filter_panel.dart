@@ -4,7 +4,6 @@ import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 import '../../../revenue_cat_service/subscribe_state.dart';
-import '../../../theme/app_theme.dart';
 import '../../../utils/app_typography.dart';
 import '../../../utils/responsive_helper.dart';
 import '../../../widgets/game_filter/rating_tier_filter.dart';
@@ -135,7 +134,7 @@ class _FilterHeader extends StatelessWidget {
                   child: Text(
                     'Clear all',
                     style: AppTypography.textXsMedium.copyWith(
-                      color: kRedColor,
+                      color: context.colors.danger,
                     ),
                   ),
                 ),
@@ -631,8 +630,12 @@ class _PlayerSearchInput extends HookConsumerWidget {
             ),
             decoration: InputDecoration(
               hintText: 'Search player...',
+              // The field is a recessed well; tertiary sinks to 3.8:1 there.
               hintStyle: AppTypography.textSmRegular.copyWith(
-                color: context.colors.textSecondary.withValues(alpha: 0.5),
+                color:
+                    context.isLightTheme
+                        ? context.colors.textSecondary
+                        : context.colors.textSecondary.withValues(alpha: 0.5),
               ),
               prefixIcon: Icon(
                 Icons.search_rounded,
@@ -656,7 +659,10 @@ class _PlayerSearchInput extends HookConsumerWidget {
               focusedBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(8.br),
                 borderSide: BorderSide(
-                  color: context.colors.textPrimary.withValues(alpha: 0.25),
+                  color:
+                      context.isLightTheme
+                          ? context.colors.accentText
+                          : context.colors.textPrimary.withValues(alpha: 0.25),
                   width: 1,
                 ),
               ),
@@ -731,7 +737,7 @@ class _PlayerSearchInput extends HookConsumerWidget {
                     child: Text(
                       'Search failed',
                       style: AppTypography.textSmRegular.copyWith(
-                        color: kRedColor,
+                        color: context.colors.danger,
                       ),
                     ),
                   ),

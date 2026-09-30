@@ -1,5 +1,6 @@
 import 'dart:ui';
 
+import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:flutter/material.dart';
 
@@ -19,7 +20,13 @@ class BackDropFilterWidget extends StatelessWidget {
       child: BackdropFilter(
         filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
         child: Container(
-          decoration: BoxDecoration(gradient: radialOverlayGradient),
+          decoration: BoxDecoration(
+            // Paper dims with the palette's ink; a black wash turns it grey.
+            gradient:
+                context.isLightTheme
+                    ? radialOverlayGradientLight
+                    : radialOverlayGradient,
+          ),
         ),
       ),
     );

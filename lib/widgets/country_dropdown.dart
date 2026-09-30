@@ -186,7 +186,7 @@ selectedCountryCode,
                     ),
                     hintText: 'Search',
                     hintStyle: AppTypography.textSmRegular.copyWith(
-                      color: context.colors.textPrimary.withValues(alpha: 0.5),
+                      color: context.textInk(0.5),
                     ),
                     prefixIcon: Icon(
                       Icons.search,
@@ -205,8 +205,15 @@ selectedCountryCode,
                     ),
                     focusedBorder: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(8.br),
+                      // The focus ring must clear 3:1; ink at 0.3 is ~2:1
+                      // on paper, so light rings in accent-text teal.
                       borderSide: BorderSide(
-                        color: context.colors.textPrimary.withValues(alpha: 0.3),
+                        color:
+                            context.isLightTheme
+                                ? context.colors.accentText
+                                : context.colors.textPrimary.withValues(
+                                  alpha: 0.3,
+                                ),
                         width: 1,
                       ),
                     ),

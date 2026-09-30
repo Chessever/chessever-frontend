@@ -896,9 +896,10 @@ final forYouEventsProvider =
       return ForYouNotifier(ref);
     });
 
-/// True only while the personalized For You surface is the selected tab on the
-/// current foreground route. The notifier keeps its cache alive, but expensive
-/// catch-up work must wait for this signal instead of running behind any screen.
+/// True only while the personalized feed (For You > Today) is the visible page
+/// on the current foreground route. The notifier keeps its cache alive, but
+/// expensive catch-up work must wait for this signal instead of running behind
+/// any screen. Published by `ForYouGamesWidget`.
 final forYouSurfaceVisibleProvider = StateProvider<bool>((ref) => false);
 
 final forYouTopGamesSnapshotCacheProvider =

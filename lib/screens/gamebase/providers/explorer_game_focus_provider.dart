@@ -1,4 +1,4 @@
-import 'dart:async';
+import 'package:chessever2/screens/chessboard/utils/move_hold_repeater.dart';
 
 import 'package:flutter/foundation.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -6,7 +6,7 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'gamebase_explorer_state.dart';
 import 'gamebase_providers.dart';
 
-/// Interval for focused-card long-press auto-repeat (parity with board ~150ms).
+/// Initial hold interval. Later steps accelerate with the main board.
 const Duration kExplorerCardLongPressInterval = Duration(milliseconds: 150);
 
 /// A game card focused for continuation traversal inside the opening
@@ -59,7 +59,7 @@ class ExplorerGameFocus {
 class ExplorerFocusedGameNotifier extends StateNotifier<ExplorerGameFocus?> {
   ExplorerFocusedGameNotifier() : super(null);
 
-  Timer? _longPressTimer;
+  final _moveHold = MoveHoldRepeater();
 
   /// Focuses [gameId], starting at [ply] (clamped into the continuation).
   void focus({
@@ -101,40 +101,30 @@ class ExplorerFocusedGameNotifier extends StateNotifier<ExplorerGameFocus?> {
   /// Auto-repeat [forward] while the bottom-nav forward control is held.
   /// Stops at line end or when [stopLongPress] is called.
   void startLongPressForward() {
-    _longPressTimer?.cancel();
-    _longPressTimer = Timer.periodic(kExplorerCardLongPressInterval, (_) {
+    _moveHold.start(() {
       final current = state;
-      if (current == null || !current.canGoForward) {
-        stopLongPress();
-        return;
-      }
+      if (current == null || !current.canGoForward) return MoveHoldStep.end;
       forward();
+      return MoveHoldStep.moved;
     });
   }
 
-  /// Auto-repeat [backward] while the bottom-nav back control is held.
-  /// Stops at the start of the line or when [stopLongPress] is called.
+  /// Auto-repeat backward through each position, faster while held.
   void startLongPressBackward() {
-    _longPressTimer?.cancel();
-    _longPressTimer = Timer.periodic(kExplorerCardLongPressInterval, (_) {
+    _moveHold.start(() {
       final current = state;
-      if (current == null || !current.canGoBackward) {
-        stopLongPress();
-        return;
-      }
+      if (current == null || !current.canGoBackward) return MoveHoldStep.end;
       backward();
+      return MoveHoldStep.moved;
     });
   }
 
   /// Cancels any in-flight long-press auto-repeat.
-  void stopLongPress() {
-    _longPressTimer?.cancel();
-    _longPressTimer = null;
-  }
+  void stopLongPress() => _moveHold.stop();
 
   /// Whether a long-press auto-repeat timer is currently active.
   @visibleForTesting
-  bool get isLongPressing => _longPressTimer != null;
+  bool get isLongPressing => _moveHold.isActive;
 
   void clear() {
     stopLongPress();

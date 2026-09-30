@@ -90,9 +90,7 @@ class OnboardingPrimaryButton extends HookWidget {
                         color:
                             onTap != null
                                 ? context.colors.textInverse
-                                : context.colors.textPrimary.withValues(
-                                  alpha: 0.5,
-                                ),
+                                : context.textInk(0.5),
                       ),
                     ),
           ),

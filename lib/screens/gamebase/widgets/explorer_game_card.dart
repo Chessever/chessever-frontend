@@ -3,18 +3,25 @@ import 'dart:async';
 import 'package:chessever2/providers/board_settings_provider_new.dart';
 import 'package:chessever2/providers/engine_settings_provider.dart';
 import 'package:chessever2/repository/gamebase/gamebase_repository.dart';
+import 'package:chessever2/repository/gamebase/search/gamebase_search_models.dart';
 import 'package:chessever2/revenue_cat_service/subscribe_state.dart';
 import 'package:chessever2/screens/chessboard/widgets/chess_board_from_fen_new.dart';
 import 'package:chessever2/screens/chessboard/widgets/evaluation_bar_widget.dart';
 import 'package:chessever2/screens/chessboard/widgets/player_first_row_detail_widget.dart';
 import 'package:chessever2/screens/gamebase/providers/explorer_game_focus_provider.dart';
+import 'package:chessever2/screens/gamebase/providers/explorer_games_cache.dart';
+import 'package:chessever2/screens/gamebase/providers/explorer_games_prefetch.dart';
 import 'package:chessever2/screens/gamebase/providers/gamebase_explorer_state.dart';
 import 'package:chessever2/screens/gamebase/providers/gamebase_providers.dart';
 import 'package:chessever2/screens/gamebase/utils/continuation_line.dart';
 import 'package:chessever2/screens/gamebase/utils/explorer_games_paging.dart';
 import 'package:chessever2/screens/gamebase/widgets/position_games_sheet.dart';
+import 'package:chessever2/screens/library/widgets/archive_game_actions.dart';
+import 'package:chessever2/screens/library/widgets/library_context_menu.dart';
+import 'package:chessever2/screens/my_space/actions/space_menu_action.dart';
 import 'package:chessever2/screens/player_profile/utils/twic_event_identity.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/utils/game_space_shortcut.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
@@ -113,34 +120,122 @@ class _ExplorerGamesSectionState extends ConsumerState<ExplorerGamesSection> {
     if (focusNotifier != null) {
       Future.microtask(focusNotifier.clearIfActive);
     }
+    // Its link is gone with it: a "View all" warm still waiting is dropped.
+    final warmed = _warmedAllGames;
+    if (warmed != null) _allGamesWarmer?.cancel([warmed]);
     super.dispose();
   }
 
-  GamebasePositionGamesQuery get _query => GamebasePositionGamesQuery(
-    fen: widget.fen,
-    moves: widget.moves,
-    timeControl:
-        widget.filters.timeControls.isNotEmpty
-            ? widget.filters.timeControls.first
-            : null,
-    playerId:
-        widget.filters.playerIds.isNotEmpty
-            ? widget.filters.playerIds.first
-            : null,
-    color: widget.filters.playerColor?.name,
-    result: widget.filters.gameResult?.apiValue,
-    isOnline: widget.filters.isOnline,
-    minRating: widget.filters.minRating,
-    maxRating: widget.filters.maxRating,
-    yearFrom: widget.filters.yearFrom,
-    yearTo: widget.filters.yearTo,
-    sortBy: widget.filters.sortBy,
-    sortDirection: widget.filters.sortDirection,
-    pageNumber: 0,
-    pageSize: _maxGames,
-    notationPlies: _notationPlies,
-    useFenEndpoint: widget.useFenEndpoint,
-  );
+  /// The game ids of the cards on screen, as of the last build.
+  Set<String>? _renderedGameIds;
+
+  /// A card focused for its continuation owns the bottom-nav arrows. When
+  /// the rows on screen change under it (a saved copy replaced by the
+  /// server's answer, a filter change) and that game is no longer among
+  /// them, the arrows go back to the board after this frame, rather than
+  /// walking a card nobody can see.
+  void _releaseFocusIfGone(Set<String> renderedIds) {
+    if (setEquals(_renderedGameIds, renderedIds)) return;
+    _renderedGameIds = renderedIds;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final focus = ref.read(explorerFocusedGameProvider);
+      if (focus == null || focus.anchorFen != widget.fen) return;
+      if (_renderedGameIds?.contains(focus.gameId) ?? false) return;
+      ref.read(explorerFocusedGameProvider.notifier).clearIfActive();
+    });
+  }
+
+  /// Built through the shared factory so the panel's own inline request, the
+  /// warm-ups and this strip address one entry, whichever endpoint feeds it.
+  GamebasePositionGamesQuery get _query =>
+      GamebasePositionGamesQuery.fromFilters(
+        fen: widget.fen,
+        filters: widget.filters,
+        moves: widget.moves,
+        pageNumber: 0,
+        pageSize: _maxGames,
+        notationPlies: _notationPlies,
+        useFenEndpoint: widget.useFenEndpoint,
+      );
+
+  /// The full sheet "View all N games" opens, in its opening sort.
+  GamebasePositionGamesQuery get _allGamesQuery =>
+      GamebasePositionGamesQuery.sheetPage(
+        fen: widget.fen,
+        filters: widget.filters,
+        moves: widget.moves,
+        useFenEndpoint: widget.useFenEndpoint,
+      );
+
+  /// A saved first page for [_savedFor], painted while the server answers.
+  ExplorerGamesSnapshot? _saved;
+  GamebasePositionGamesQuery? _savedFor;
+
+  /// The server answer that was already older than [kExplorerGamesFreshFor]
+  /// when this strip attached to [_savedFor]. It stands in as a saved copy,
+  /// never as current, until the answer it asked for replaces it.
+  GamebaseSearchQueryResponse? _heldStale;
+
+  /// The "View all" sheet this strip has warmed while its link is on screen,
+  /// so each is queued once, and the warmer it was queued with.
+  GamebasePositionGamesQuery? _warmedAllGames;
+  ExplorerGamesPrefetcher? _allGamesWarmer;
+
+  /// Runs once per query the strip shows (a new position, a remount):
+  ///
+  /// * an answer held from more than [kExplorerGamesFreshFor] ago is asked
+  ///   for again after this frame, and shown as a saved copy until then;
+  /// * a saved copy of the page is picked up, at once from memory or from
+  ///   disk a few milliseconds later, to stand in while the server answers.
+  void _attach(
+    GamebasePositionGamesQuery query,
+    AsyncValue<GamebaseSearchQueryResponse> gamesAsync,
+  ) {
+    if (_savedFor == query) return;
+    _savedFor = query;
+    _heldStale = null;
+    final cache = ref.read(explorerGamesCacheProvider);
+    final held = gamesAsync.valueOrNull;
+    if (held != null &&
+        !gamesAsync.isLoading &&
+        !gamesAsync.hasError &&
+        !cache.isFresh(held)) {
+      _heldStale = held;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted || _savedFor != query) return;
+        refreshExplorerGamesIfStale(ref, query);
+      });
+    }
+    _saved = cache.peek(query);
+    if (_saved != null) return;
+    unawaited(
+      cache.read(query).then((snapshot) {
+        if (snapshot == null || !mounted || _savedFor != query) return;
+        setState(() => _saved = snapshot);
+      }),
+    );
+  }
+
+  /// Keeps the "View all" sheet warmed while its link is on screen: queued
+  /// once when the link appears (for an exact-FEN position it is the only
+  /// way into the list), and dropped from the queue if it is still waiting
+  /// when the link goes (another position, no hidden games, the strip
+  /// closing).
+  void _syncAllGamesWarm({required bool linkShown}) {
+    final query = linkShown ? _allGamesQuery : null;
+    if (_warmedAllGames == query) return;
+    final previous = _warmedAllGames;
+    _warmedAllGames = query;
+    if (previous != null) _allGamesWarmer?.cancel([previous]);
+    if (query == null) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || _warmedAllGames != query) return;
+      final warmer = ref.read(explorerGamesPrefetchProvider);
+      _allGamesWarmer = warmer;
+      warmer.warm([query]);
+    });
+  }
 
   /// Publishes the rendered card count after the frame that rendered it —
   /// the panel turns this into its page grid, and a grid built mid-build would
@@ -211,108 +306,178 @@ class _ExplorerGamesSectionState extends ConsumerState<ExplorerGamesSection> {
   @override
   Widget build(BuildContext context) {
     _focusNotifier = ref.read(explorerFocusedGameProvider.notifier);
-    final gamesAsync = ref.watch(positionGamesProvider(_query));
+    final query = _query;
+    final gamesAsync = ref.watch(positionGamesProvider(query));
+    _attach(query, gamesAsync);
+    final saved = _saved?.response;
+    final hasSaved = saved != null && saved.data.isNotEmpty;
+    final failed = gamesAsync.hasError && !gamesAsync.isLoading;
+    final held = gamesAsync.valueOrNull;
+
+    // The server's answer when there is one. Until it lands (or when asking
+    // again failed) a saved copy of this very page stands in, and a failure
+    // says so quietly under it instead of passing the copy off as current.
+    // An answer being asked for again (too old when this strip attached, or
+    // refreshed by the panel) is one such copy until the new one lands.
+    final GamebaseSearchQueryResponse? response;
+    final bool current;
+    if (!failed &&
+        held != null &&
+        !gamesAsync.isLoading &&
+        !identical(held, _heldStale)) {
+      response = held;
+      current = true;
+    } else if (!failed && held != null) {
+      response = held;
+      current = false;
+    } else if (hasSaved) {
+      response = saved;
+      current = false;
+    } else if (failed && gamesAsync.hasValue) {
+      response = gamesAsync.requireValue;
+      current = false;
+    } else {
+      response = null;
+      current = false;
+    }
+
+    final Widget body;
+    if (response == null) {
+      _reportCardCount(0);
+      _releaseFocusIfGone(const <String>{});
+      _syncAllGamesWarm(linkShown: false);
+      body =
+          failed
+              ? const _ExplorerGamesStatusRow(
+                message: 'Couldn’t load games for this position',
+              )
+              : const _ExplorerGamesStatusRow.loading();
+    } else {
+      body = _buildGames(
+        context,
+        response,
+        current: current,
+        refreshFailed: failed,
+      );
+    }
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
+      children: [body],
+    );
+  }
+
+  Widget _buildGames(
+    BuildContext context,
+    GamebaseSearchQueryResponse response, {
+    required bool current,
+    required bool refreshFailed,
+  }) {
+    final rows = response.data.take(_maxGames).toList(growable: false);
+    if (rows.isEmpty) {
+      _reportCardCount(0);
+      _releaseFocusIfGone(const <String>{});
+      _syncAllGamesWarm(linkShown: false);
+      return _ExplorerGamesStatusRow(message: widget.emptyMessage);
+    }
+
+    final games = <GamesTourModel>[];
+    final lines = <ContinuationLine>[];
+    for (final row in rows) {
+      final game = mapGamebasePreviewToTourModel(row);
+      games.add(game);
+      final ucis =
+          (row['continuation'] as List?)
+              ?.map((e) => e.toString())
+              .toList(growable: false) ??
+          const <String>[];
+      final preview = buildContinuationLine(widget.fen, ucis);
+      final full = _fullLinesByGameId[game.gameId];
+      // Prefer full mainline when it actually extends past the API cap.
+      lines.add(
+        (full != null && full.sans.length > preview.sans.length)
+            ? full
+            : (full ?? preview),
+      );
+    }
+
+    // Fire-and-forget full-game upgrade after this frame. A saved copy is
+    // about to be replaced (or cannot reach the server), so it is not
+    // upgraded.
+    if (current) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        _scheduleFullLineUpgrade(games);
+      });
+    }
+    _reportCardCount(games.length);
+    _releaseFocusIfGone({for (final game in games) game.gameId});
+
+    // The strip is capped at [_maxGames]. On a move row that cap is
+    // never reached (the panel only inlines games once 10 or fewer
+    // remain), but an exact-FEN position has no '∑' row to fall back
+    // to, so the remainder would simply be unreachable. One quiet
+    // trailing link, below the last card so it never disturbs the
+    // page grid, hands them to the full sheet.
+    //
+    // It names the count only once the server has confirmed it: a saved
+    // copy's count may be out of date, and the sheet it opens would carry
+    // that number in its title.
+    final totalCount = response.metadata.totalCount;
+    final hiddenCount =
+        totalCount != null && totalCount > games.length
+            ? totalCount - games.length
+            : 0;
+    final linkCount = current ? totalCount : null;
+    _syncAllGamesWarm(linkShown: hiddenCount > 0);
+
+    return Column(
       children: [
-        gamesAsync.when(
-          loading: () {
-            _reportCardCount(0);
-            return const _ExplorerGamesStatusRow.loading();
-          },
-          error: (_, __) {
-            _reportCardCount(0);
-            return const _ExplorerGamesStatusRow(
-              message: 'Couldn’t load games for this position',
-            );
-          },
-          data: (response) {
-            final rows = response.data.take(_maxGames).toList(growable: false);
-            if (rows.isEmpty) {
-              _reportCardCount(0);
-              return _ExplorerGamesStatusRow(message: widget.emptyMessage);
-            }
-
-            final games = <GamesTourModel>[];
-            final lines = <ContinuationLine>[];
-            for (final row in rows) {
-              final game = mapGamebasePreviewToTourModel(row);
-              games.add(game);
-              final ucis =
-                  (row['continuation'] as List?)
-                      ?.map((e) => e.toString())
-                      .toList(growable: false) ??
-                  const <String>[];
-              final preview = buildContinuationLine(widget.fen, ucis);
-              final full = _fullLinesByGameId[game.gameId];
-              // Prefer full mainline when it actually extends past the API cap.
-              lines.add(
-                (full != null && full.sans.length > preview.sans.length)
-                    ? full
-                    : (full ?? preview),
-              );
-            }
-
-            // Fire-and-forget full-game upgrade after this frame.
-            WidgetsBinding.instance.addPostFrameCallback((_) {
-              if (!mounted) return;
-              _scheduleFullLineUpgrade(games);
-            });
-            _reportCardCount(games.length);
-
-            // The strip is capped at [_maxGames]. On a move row that cap is
-            // never reached (the panel only inlines games once 10 or fewer
-            // remain), but an exact-FEN position has no '∑' row to fall back
-            // to, so the remainder would simply be unreachable. One quiet
-            // trailing link, below the last card so it never disturbs the
-            // page grid, hands them to the full sheet.
-            final totalCount = response.metadata.totalCount;
-            final hiddenCount =
-                totalCount != null && totalCount > games.length
-                    ? totalCount - games.length
-                    : 0;
-
-            return Column(
-              children: [
-                for (var i = 0; i < games.length; i++)
-                  Padding(
-                    // Bottom gap is part of the page pitch — keep it equal to
-                    // `ExplorerGameCardGeometry.gap` or the grid drifts.
-                    padding: EdgeInsets.fromLTRB(
-                      12.sp,
-                      0,
-                      12.sp,
-                      ExplorerGameCardGeometry.gap,
-                    ),
-                    child: ExplorerGameCard(
-                      game: games[i],
-                      anchorFen: widget.fen,
-                      line: lines[i],
-                      allGames: games,
-                      index: i,
-                      boardSize: widget.boardSize,
-                      evalWindow: widget.evalWindow,
-                    ),
-                  ),
-                if (hiddenCount > 0)
-                  _ExplorerGamesOverflowRow(
-                    totalCount: totalCount!,
-                    onTap:
-                        () => _openAllGames(
-                          context,
-                          totalCount: totalCount,
-                        ),
-                  ),
-              ],
-            );
-          },
-        ),
+        for (var i = 0; i < games.length; i++)
+          Padding(
+            // Bottom gap is part of the page pitch — keep it equal to
+            // `ExplorerGameCardGeometry.gap` or the grid drifts.
+            padding: EdgeInsets.fromLTRB(
+              12.sp,
+              0,
+              12.sp,
+              ExplorerGameCardGeometry.gap,
+            ),
+            child: ExplorerGameCard(
+              game: games[i],
+              anchorFen: widget.fen,
+              line: lines[i],
+              allGames: games,
+              index: i,
+              boardSize: widget.boardSize,
+              evalWindow: widget.evalWindow,
+            ),
+          ),
+        if (hiddenCount > 0)
+          _ExplorerGamesOverflowRow(
+            totalCount: linkCount,
+            onTapDown:
+                () => ref
+                    .read(explorerGamesPrefetchProvider)
+                    .warmNow(_allGamesQuery),
+            onTap: () => _openAllGames(context, totalCount: linkCount),
+          ),
+        // A saved copy says so while the server is asked, as the games
+        // sheet does, and says so if asking failed.
+        if (refreshFailed)
+          const _ExplorerGamesStatusRow(
+            message: 'Saved games. Couldn’t refresh them.',
+          )
+        else if (!current)
+          const _ExplorerGamesStatusRow.loading('Updating games...'),
       ],
     );
   }
 
-  void _openAllGames(BuildContext context, {required int totalCount}) {
+  /// Opens the full sheet. Its title carries [totalCount] only when the
+  /// strip had it from a current answer; the sheet's own count slot always
+  /// shows the live total.
+  void _openAllGames(BuildContext context, {required int? totalCount}) {
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
@@ -326,7 +491,7 @@ class _ExplorerGamesSectionState extends ConsumerState<ExplorerGamesSection> {
             moves: widget.moves,
             filters: widget.filters,
             useFenEndpoint: widget.useFenEndpoint,
-            title: '$totalCount games',
+            title: totalCount != null ? '$totalCount games' : 'All games',
           ),
     );
   }
@@ -337,16 +502,23 @@ class _ExplorerGamesOverflowRow extends StatelessWidget {
   const _ExplorerGamesOverflowRow({
     required this.totalCount,
     required this.onTap,
+    this.onTapDown,
   });
 
-  final int totalCount;
+  /// Named in the link only when current; null reads "View all games".
+  final int? totalCount;
   final VoidCallback onTap;
+
+  /// Fires as the finger lands, a beat before [onTap], to start the sheet's
+  /// request early.
+  final VoidCallback? onTapDown;
 
   @override
   Widget build(BuildContext context) {
     return Material(
       color: Colors.transparent,
       child: InkWell(
+        onTapDown: onTapDown == null ? null : (_) => onTapDown!(),
         onTap: onTap,
         child: Padding(
           padding: EdgeInsets.symmetric(horizontal: 12.sp, vertical: 14.sp),
@@ -354,7 +526,9 @@ class _ExplorerGamesOverflowRow extends StatelessWidget {
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               Text(
-                'View all $totalCount games',
+                totalCount != null
+                    ? 'View all $totalCount games'
+                    : 'View all games',
                 style: TextStyle(
                   color: context.colors.textSecondary,
                   fontSize: 12.f,
@@ -373,7 +547,9 @@ class _ExplorerGamesOverflowRow extends StatelessWidget {
 class _ExplorerGamesStatusRow extends StatelessWidget {
   const _ExplorerGamesStatusRow({required this.message}) : isLoading = false;
 
-  const _ExplorerGamesStatusRow.loading() : message = null, isLoading = true;
+  /// A small spinner beside [message].
+  const _ExplorerGamesStatusRow.loading([this.message = 'Loading games...'])
+    : isLoading = true;
 
   final String? message;
   final bool isLoading;
@@ -396,7 +572,7 @@ class _ExplorerGamesStatusRow extends StatelessWidget {
             ),
             SizedBox(width: 10.w),
             Text(
-              'Loading games...',
+              message ?? '',
               style: TextStyle(
                 color: context.colors.textPrimaryMuted,
                 fontSize: 12.f,
@@ -672,6 +848,39 @@ class _ExplorerGameCardState extends ConsumerState<ExplorerGameCard> {
     );
   }
 
+  /// Long-press on the board half: the same game menu every archive row
+  /// raises (open, share, My Space). Free users get the paywall, like every
+  /// other interaction on this card.
+  ///
+  /// No lifted copy: the continuation strip holds a GlobalKey, so the menu
+  /// anchors to the card instead of rebuilding it.
+  Future<void> _handleBodyLongPress() async {
+    // Same gate as a tap: premium passes straight through.
+    if (!await _requirePremium() || !mounted) return;
+    final game = widget.game;
+    final spaceDraft = gameSpaceShortcutDraft(game);
+    await showLibraryContextMenu(
+      context: context,
+      actions: [
+        LibraryMenuAction(
+          icon: Icons.open_in_new_rounded,
+          label: 'Open game',
+          onSelected: _handleBodyTap,
+        ),
+        LibraryMenuAction(
+          icon: Icons.ios_share_rounded,
+          label: 'Share game',
+          onSelected: () async {
+            if (!mounted) return;
+            await shareArchiveGame(context: context, ref: ref, game: game);
+          },
+        ),
+        if (spaceDraft != null)
+          spaceMenuAction(context: context, ref: ref, draft: spaceDraft),
+      ],
+    );
+  }
+
   void _scheduleEnsureChipVisible() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
@@ -833,6 +1042,7 @@ class _ExplorerGameCardState extends ConsumerState<ExplorerGameCard> {
           child: GestureDetector(
             behavior: HitTestBehavior.opaque,
             onTap: _handleBodyTap,
+            onLongPress: _handleBodyLongPress,
             child: Container(
               decoration: BoxDecoration(
                 color:
@@ -1119,7 +1329,7 @@ class _ExplorerGameCardState extends ConsumerState<ExplorerGameCard> {
         child: Text(
           label,
           style: AppTypography.textXsMedium.copyWith(
-            color: isCurrent ? kPrimaryColor : context.colors.textPrimary,
+            color: isCurrent ? context.colors.accentText : context.colors.textPrimary,
             fontWeight: isCurrent ? FontWeight.w700 : FontWeight.w500,
           ),
         ),
@@ -1377,7 +1587,7 @@ class _ExplorerCardPlayerRow extends StatelessWidget {
         !status.isFinished
             ? context.colors.textPrimary
             : isWin
-            ? kPrimaryColor
+            ? context.colors.accentText
             : isDraw
             ? context.colors.textPrimaryMuted
             : context.colors.danger;

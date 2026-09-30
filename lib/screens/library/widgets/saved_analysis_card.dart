@@ -7,6 +7,7 @@ import 'package:chessever2/theme/app_colors.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
+import 'package:chessever2/screens/chessboard/utils/legible_ink.dart';
 
 class SavedAnalysisCard extends StatelessWidget {
   final SavedAnalysis analysis;
@@ -75,7 +76,9 @@ class SavedAnalysisCard extends StatelessWidget {
                   SizedBox(width: 8.w),
                   Icon(
                     Icons.star,
-                    color: Colors.amber, // Keep amber for favorite
+                    // Amber stays the favourite hue; on paper it is deepened
+                    // to 3:1 so the star still reads.
+                    color: legibleHueInk(context, Colors.amber, minContrast: 3),
                     size: 16.sp,
                   ),
                 ],

@@ -17,6 +17,7 @@ import 'package:chessever2/screens/tour_detail/provider/tour_detail_screen_provi
 import 'package:chessever2/screens/group_event/group_event_screen.dart';
 import 'package:chessever2/providers/app_resume_signal_provider.dart';
 import 'package:chessever2/providers/favorite_events_provider.dart';
+import 'package:chessever2/repository/favorites/models/favorite_event.dart';
 import 'package:chessever2/providers/event_favorite_players_provider.dart';
 import 'package:chessever2/services/analytics/analytics_service.dart';
 import 'package:flutter/cupertino.dart';
@@ -58,16 +59,77 @@ final supabaseSearchProvider =
           .searchGroupBroadcastsFromSupabase(query);
     });
 
+/// Whether [broadcast] still belongs on Upcoming at [now]: it has not
+/// started yet.
+///
+/// The upcoming view can lag behind the clock (test data still carries August
+/// rows under `group_broadcasts_upcoming`), so a row whose start has already
+/// passed is dropped rather than listed as upcoming; it belongs to Current or
+/// Past. An undated row stays (it sorts last) unless its end has passed too.
+bool isStillUpcoming(GroupBroadcast broadcast, {DateTime? now}) {
+  final at = now ?? DateTime.now();
+  final start = broadcast.dateStart;
+  if (start != null) return start.isAfter(at);
+  final end = broadcast.dateEnd;
+  return end == null || !end.isBefore(at);
+}
+
+/// [broadcasts] without the rows [isStillUpcoming] rejects, order kept.
+List<GroupBroadcast> dropStartedUpcomingBroadcasts(
+  Iterable<GroupBroadcast> broadcasts, {
+  DateTime? now,
+}) {
+  final at = now ?? DateTime.now();
+  return [
+    for (final broadcast in broadcasts)
+      if (isStillUpcoming(broadcast, now: at)) broadcast,
+  ];
+}
+
+/// Upcoming order: events the user starred first, then everything by start
+/// date, soonest first. Undated events sink to the end of their group; ties
+/// break on Elo (strongest first) then title so a refresh never reshuffles.
+List<GroupEventCardModel> sortUpcomingEvents(
+  Iterable<GroupEventCardModel> events, {
+  Set<String> starredIds = const <String>{},
+}) {
+  int bySoonestStart(GroupEventCardModel a, GroupEventCardModel b) {
+    final aStart = a.startDate;
+    final bStart = b.startDate;
+    if (aStart != null && bStart != null) {
+      final byStart = aStart.compareTo(bStart);
+      if (byStart != 0) return byStart;
+    } else if (aStart != null) {
+      return -1;
+    } else if (bStart != null) {
+      return 1;
+    }
+    final byElo = b.maxAvgElo.compareTo(a.maxAvgElo);
+    if (byElo != 0) return byElo;
+    return a.title.toLowerCase().compareTo(b.title.toLowerCase());
+  }
+
+  final starred = <GroupEventCardModel>[];
+  final rest = <GroupEventCardModel>[];
+  for (final event in events) {
+    (starredIds.contains(event.id) ? starred : rest).add(event);
+  }
+  starred.sort(bySoonestStart);
+  rest.sort(bySoonestStart);
+  return [...starred, ...rest];
+}
+
 final groupEventScreenProvider = AutoDisposeStateNotifierProvider<
   _GroupEventScreenController,
   AsyncValue<List<GroupEventCardModel>>
 >((ref) {
   final tourEventCategory = ref.watch(selectedGroupCategoryProvider);
 
-  // Watch filter state for Current/Past tabs so provider rebuilds on filter change
+  // Watch filter state for the event lists so provider rebuilds on filter change
   FilterPopupState appliedFilter = defaultFilterPopupState;
   if (tourEventCategory == GroupEventCategory.current ||
-      tourEventCategory == GroupEventCategory.past) {
+      tourEventCategory == GroupEventCategory.past ||
+      tourEventCategory == GroupEventCategory.upcoming) {
     appliedFilter = ref.watch(currentPastAppliedFilterProvider);
   }
 
@@ -87,11 +149,15 @@ class TournamentNavigationController {
 
   final Ref ref;
 
+  /// [analyticsSource] overrides the `category` label on 'Tournament Opened'
+  /// for surfaces outside the Events lists (For You), so their taps stay
+  /// distinguishable from Events > Current/Past/Upcoming.
   Future<void> openTournament({
     required BuildContext context,
     required String id,
     required GroupEventCategory category,
     Iterable<GroupBroadcast> knownBroadcasts = const <GroupBroadcast>[],
+    String? analyticsSource,
   }) async {
     GroupBroadcast? selectedBroadcast;
     for (final broadcast in knownBroadcasts) {
@@ -117,7 +183,7 @@ class TournamentNavigationController {
         properties: {
           'tournament_id': id,
           'tournament_name': selectedBroadcast.name,
-          'category': category.name,
+          'category': analyticsSource ?? category.name,
           'is_live': ref.read(liveBroadcastIdsProvider).contains(id),
           'time_control': selectedBroadcast.timeControl,
         },
@@ -168,6 +234,13 @@ class _GroupEventScreenController
       return true;
     }
     return false;
+  }
+
+  /// Upcoming rows as the tab may list them: never one that has already
+  /// started ([dropStartedUpcomingBroadcasts]). Other categories pass through.
+  List<GroupBroadcast> _withoutStartedUpcoming(List<GroupBroadcast> rows) {
+    if (tourEventCategory != GroupEventCategory.upcoming) return rows;
+    return dropStartedUpcomingBroadcasts(rows);
   }
 
   List<GroupBroadcast> _applyClientFilter(
@@ -261,14 +334,10 @@ class _GroupEventScreenController
 
       if (!mounted) return;
       state = AsyncValue.data(
-        ref
-            .read(tournamentSortingServiceProvider)
-            .sortAllTours(
-              models,
-              eventFavoritePlayersMap: ref.read(
-                eventFavoritePlayersCacheProvider,
-              ),
-            ),
+        _sortForCategory(
+          models,
+          eventFavoritePlayersMap: ref.read(eventFavoritePlayersCacheProvider),
+        ),
       );
     } catch (_) {
       // Keep the current list; the next resume/live-ids signal retries.
@@ -290,27 +359,55 @@ class _GroupEventScreenController
         );
 
         // Re-sort with updated favorites and heart data
-        final sortingService = ref.read(tournamentSortingServiceProvider);
-        final sortedTours =
-            tourEventCategory == GroupEventCategory.forYou
-                ? sortingService.sortUpcomingTours(
-                  currentModels,
-                  eventFavoritePlayersMap: eventFavoritePlayersMap,
-                )
-                : tourEventCategory == GroupEventCategory.past
-                ? sortingService.sortPastTours(
-                  currentModels,
-                  eventFavoritePlayersMap: eventFavoritePlayersMap,
-                  prioritizeFavorites: false,
-                )
-                : sortingService.sortAllTours(
-                  currentModels,
-                  eventFavoritePlayersMap: eventFavoritePlayersMap,
-                );
-
-        state = AsyncValue.data(sortedTours);
+        state = AsyncValue.data(
+          _sortForCategory(
+            currentModels,
+            eventFavoritePlayersMap: eventFavoritePlayersMap,
+            favoriteEventIds: _eventIdsOf(favorites),
+          ),
+        );
       });
     });
+  }
+
+  /// The list order for this controller's category: Past by date, Upcoming
+  /// soonest first with starred events on top, Current by Elo with favourites
+  /// and hearts on top.
+  List<GroupEventCardModel> _sortForCategory(
+    List<GroupEventCardModel> models, {
+    Map<String, EventFavoritePlayers>? eventFavoritePlayersMap,
+    Set<String>? favoriteEventIds,
+  }) {
+    final sortingService = ref.read(tournamentSortingServiceProvider);
+    switch (tourEventCategory) {
+      case GroupEventCategory.upcoming:
+        return sortUpcomingEvents(
+          models,
+          starredIds:
+              favoriteEventIds ??
+              _eventIdsOf(ref.read(favoriteEventsProvider).valueOrNull),
+        );
+      case GroupEventCategory.past:
+        return sortingService.sortPastTours(
+          models,
+          eventFavoritePlayersMap: eventFavoritePlayersMap,
+          prioritizeFavorites: false,
+        );
+      case GroupEventCategory.current:
+      case GroupEventCategory.search:
+        return sortingService.sortAllTours(
+          models,
+          eventFavoritePlayersMap: eventFavoritePlayersMap,
+        );
+    }
+  }
+
+  static Set<String> _eventIdsOf(List<FavoriteEvent>? favorites) {
+    if (favorites == null) return const <String>{};
+    return {
+      for (final favorite in favorites)
+        if (favorite.eventId.isNotEmpty) favorite.eventId,
+    };
   }
 
   Future<List<String>> _getLiveIdsSnapshot() async {
@@ -383,7 +480,9 @@ class _GroupEventScreenController
                 .read(groupBroadcastLocalStorage(tourEventCategory))
                 .fetchGroupBroadcasts();
       }
+      tour = _withoutStartedUpcoming(tour);
       if (tour.isEmpty) {
+        if (!mounted) return;
         state = AsyncValue.data(<GroupEventCardModel>[]);
         return;
       }
@@ -404,8 +503,6 @@ class _GroupEventScreenController
         tour = _applyClientFilter(tour, liveIds: strictLiveIds);
       }
 
-      final sortingService = ref.read(tournamentSortingServiceProvider);
-
       final tourEventCardModel =
           tour
               .map(
@@ -413,18 +510,8 @@ class _GroupEventScreenController
               )
               .toList();
 
-      final sortedTours =
-          tourEventCategory == GroupEventCategory.forYou
-              ? sortingService.sortUpcomingTours(tourEventCardModel)
-              : tourEventCategory == GroupEventCategory.past
-              ? sortingService.sortPastTours(
-                tourEventCardModel,
-                prioritizeFavorites: false,
-              )
-              : sortingService.sortAllTours(tourEventCardModel);
-
       if (!mounted) return;
-      state = AsyncValue.data(sortedTours);
+      state = AsyncValue.data(_sortForCategory(tourEventCardModel));
     } catch (error, stackTrace) {
       // The screen may have been disposed mid-load; setting state after dispose
       // throws "Tried to use _GroupEventScreenController after dispose"
@@ -505,10 +592,11 @@ class _GroupEventScreenController
     try {
       state = const AsyncValue.loading();
 
-      final refreshed =
-          await ref
-              .read(groupBroadcastLocalStorage(tourEventCategory))
-              .refresh();
+      final refreshed = _withoutStartedUpcoming(
+        await ref
+            .read(groupBroadcastLocalStorage(tourEventCategory))
+            .refresh(),
+      );
 
       _groupBroadcastList = refreshed;
       final strictLiveIds = await _getLiveIdsSnapshot();
@@ -525,20 +613,11 @@ class _GroupEventScreenController
                 (t) => GroupEventCardModel.fromGroupBroadcast(t, strictLiveIds),
               )
               .toList();
-      final sortingService = ref.read(tournamentSortingServiceProvider);
 
-      final sortedTours =
-          tourEventCategory == GroupEventCategory.forYou
-              ? sortingService.sortUpcomingTours(tourEventCardModel)
-              : tourEventCategory == GroupEventCategory.past
-              ? sortingService.sortPastTours(
-                tourEventCardModel,
-                prioritizeFavorites: false,
-              )
-              : sortingService.sortAllTours(tourEventCardModel);
-
-      state = AsyncValue.data(sortedTours);
+      if (!mounted) return;
+      state = AsyncValue.data(_sortForCategory(tourEventCardModel));
     } catch (err, stk) {
+      if (!mounted) return;
       state = AsyncValue.error(err, stk);
     }
   }
@@ -646,7 +725,7 @@ class _GroupEventScreenController
               .where((tour) {
                 if (tourEventCategory == GroupEventCategory.current) {
                   return true;
-                } else if (tourEventCategory == GroupEventCategory.forYou) {
+                } else if (tourEventCategory == GroupEventCategory.upcoming) {
                   return tour.tourEventCategory == TourEventCategory.upcoming;
                 } else {
                   return true;

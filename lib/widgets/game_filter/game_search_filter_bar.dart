@@ -42,6 +42,10 @@ class GameSearchFilterBar extends StatelessWidget {
     final activeFilterCount =
         currentFilter.activeFilterCount + currentFilter.activeSortCount;
     final height = 48.h;
+    // The active-filter red: #EF4444 reads on the dark tile, but on paper
+    // the icon sits at ~2.6:1 on its own tint, so light uses danger ink.
+    final activeRed =
+        context.isLightTheme ? context.colors.danger : const Color(0xFFEF4444);
 
     return SizedBox(
       height: height,
@@ -121,12 +125,12 @@ class GameSearchFilterBar extends StatelessWidget {
               height: height,
               decoration: BoxDecoration(
                 color: hasActiveFilters
-                    ? const Color(0xFFEF4444).withValues(alpha: 0.15)
+                    ? activeRed.withValues(alpha: 0.15)
                     : context.colors.background,
                 borderRadius: BorderRadius.circular(12.br),
                 border: Border.all(
                   color: hasActiveFilters
-                      ? const Color(0xFFEF4444).withValues(alpha: 0.5)
+                      ? activeRed.withValues(alpha: 0.5)
                       : context.colors.surfaceRecessed,
                 ),
               ),
@@ -137,7 +141,7 @@ class GameSearchFilterBar extends StatelessWidget {
                     Icons.tune_rounded,
                     size: 20.sp,
                     color: hasActiveFilters
-                        ? const Color(0xFFEF4444)
+                        ? activeRed
                         : context.colors.textSecondary,
                   ),
                   if (hasActiveFilters)

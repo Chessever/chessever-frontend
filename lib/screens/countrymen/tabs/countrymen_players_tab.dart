@@ -8,6 +8,7 @@ import 'package:chessever2/screens/favorites/rankings/ranking_filter_controls.da
 import 'package:chessever2/screens/favorites/rankings/ranking_filters.dart';
 import 'package:chessever2/utils/favorite_constants.dart';
 import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
+import 'package:chessever2/screens/favorites/widgets/collection_inks.dart';
 import 'package:chessever2/screens/standings/player_standing_model.dart';
 import 'package:chessever2/screens/player_profile/player_profile_screen.dart';
 import 'package:chessever2/theme/app_colors.dart';
@@ -19,6 +20,9 @@ import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/favorite_limit_guard.dart';
 import 'package:chessever2/utils/transient_request_retry.dart';
 import 'package:chessever2/widgets/auth/auth_upgrade_sheet.dart';
+import 'package:chessever2/screens/library/widgets/library_context_menu.dart';
+import 'package:chessever2/screens/player_profile/utils/player_menu_actions.dart';
+import 'package:chessever2/screens/player_profile/widgets/lifted_row_menu.dart';
 import 'package:chessever2/widgets/figma_player_card.dart';
 import 'package:chessever2/widgets/scroll_to_top_bus.dart';
 import 'package:chessever2/widgets/scroll_to_top_button.dart';
@@ -608,7 +612,7 @@ class _CountrymenPlayersTabState extends ConsumerState<CountrymenPlayersTab>
                             Text(
                               'Loading more players...',
                               style: AppTypography.textXsRegular.copyWith(
-                                color: const Color(0xFF71717A),
+                                color: context.collectionSubtleInk,
                               ),
                             ),
                           ],
@@ -635,19 +639,45 @@ class _CountrymenPlayersTabState extends ConsumerState<CountrymenPlayersTab>
             ),
           );
 
-          return FigmaPlayerCard(
-            player: player,
-            isFavorite: isFavorite,
-            rank: index + 1,
-            // Search results are matches, not standings — numbering them 1..n
-            // would claim a national rank the player does not hold.
-            showRank: !state.isSearching,
-            showFavoriteButton: true,
-            isInactive:
-                player.fideId != null &&
-                state.inactivePlayerIds.contains(player.fideId),
-            onTap: () => _navigateToPlayerDetail(player),
-            onToggleFavorite: () => _toggleFavorite(player, isFavorite),
+          // Long-press lifts the row into the shared focus menu.
+          return LiftedRowMenu(
+            onPreviewTap: () => _navigateToPlayerDetail(player),
+            actions:
+                (rowContext) => playerStandingMenuActions(
+                  rowContext,
+                  ref,
+                  player,
+                  onOpen: () => _navigateToPlayerDetail(player),
+                  extra: [
+                    LibraryMenuAction(
+                      icon:
+                          isFavorite
+                              ? Icons.favorite_rounded
+                              : Icons.favorite_border_rounded,
+                      label:
+                          isFavorite
+                              ? 'Remove from favorites'
+                              : 'Add to favorites',
+                      onSelected: () {
+                        if (mounted) _toggleFavorite(player, isFavorite);
+                      },
+                    ),
+                  ],
+                ),
+            child: FigmaPlayerCard(
+              player: player,
+              isFavorite: isFavorite,
+              rank: index + 1,
+              // Search results are matches, not standings — numbering them
+              // 1..n would claim a national rank the player does not hold.
+              showRank: !state.isSearching,
+              showFavoriteButton: true,
+              isInactive:
+                  player.fideId != null &&
+                  state.inactivePlayerIds.contains(player.fideId),
+              onTap: () => _navigateToPlayerDetail(player),
+              onToggleFavorite: () => _toggleFavorite(player, isFavorite),
+            ),
           );
         }, childCount: players.length + (showLoadingIndicator ? 1 : 0)),
       ),
@@ -737,7 +767,7 @@ class _CountrymenPlayersTabState extends ConsumerState<CountrymenPlayersTab>
           Text(
             'Loading players...',
             style: AppTypography.textSmRegular.copyWith(
-              color: const Color(0xFFA1A1AA),
+              color: context.collectionMutedInk,
             ),
           ),
         ],
@@ -754,12 +784,12 @@ class _CountrymenPlayersTabState extends ConsumerState<CountrymenPlayersTab>
             width: 64.w,
             height: 64.h,
             decoration: BoxDecoration(
-              color: const Color(0xFFEF4444).withValues(alpha: 0.1),
+              color: context.collectionAlertInk.withValues(alpha: 0.1),
               borderRadius: BorderRadius.circular(16.br),
             ),
             child: Icon(
               Icons.error_outline_rounded,
-              color: const Color(0xFFEF4444),
+              color: context.collectionAlertInk,
               size: 32.ic,
             ),
           ),
@@ -776,7 +806,7 @@ class _CountrymenPlayersTabState extends ConsumerState<CountrymenPlayersTab>
             child: Text(
               error,
               style: AppTypography.textSmRegular.copyWith(
-                color: const Color(0xFFA1A1AA),
+                color: context.collectionMutedInk,
               ),
               textAlign: TextAlign.center,
             ),
@@ -855,7 +885,7 @@ class _CountrymenPlayersTabState extends ConsumerState<CountrymenPlayersTab>
             child: Text(
               message,
               style: AppTypography.textSmRegular.copyWith(
-                color: const Color(0xFFA1A1AA),
+                color: context.collectionMutedInk,
               ),
               textAlign: TextAlign.center,
             ),
@@ -873,7 +903,7 @@ class _CountrymenPlayersTabState extends ConsumerState<CountrymenPlayersTab>
           Icon(
             Icons.search_off_outlined,
             size: 56.sp,
-            color: context.colors.textPrimary.withValues(alpha: 0.4),
+            color: context.textInk(0.4),
           ),
           SizedBox(height: 12.h),
           Text(
@@ -886,7 +916,7 @@ class _CountrymenPlayersTabState extends ConsumerState<CountrymenPlayersTab>
           Text(
             'Try a different search term',
             style: AppTypography.textSmRegular.copyWith(
-              color: context.colors.textPrimary.withValues(alpha: 0.55),
+              color: context.textInk(0.55),
             ),
             textAlign: TextAlign.center,
           ),

@@ -37,7 +37,7 @@ class _PremiumScreenState extends ConsumerState<PremiumScreen> {
             children: [
               Icon(
                 Icons.workspace_premium_rounded,
-                color: kPrimaryColor,
+                color: context.colors.accentText,
                 size: 40.ic,
               ),
               SizedBox(height: 12.h),
@@ -76,7 +76,10 @@ class _PremiumScreenState extends ConsumerState<PremiumScreen> {
               ),
               child: Container(
                 decoration: BoxDecoration(
-                  color: Colors.black,
+                  color:
+                      context.isLightTheme
+                          ? context.colors.popup
+                          : Colors.black,
                   borderRadius: BorderRadius.vertical(
                     top: Radius.circular(24.br),
                   ),

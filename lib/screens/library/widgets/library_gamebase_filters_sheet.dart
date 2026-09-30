@@ -97,7 +97,7 @@ class LibraryGamebaseFiltersSheet extends ConsumerWidget {
                               ref
                                   .read(gamebaseDatabaseSearchProvider.notifier)
                                   .clearFilters(),
-                      color: kRedColor,
+                      color: context.colors.danger,
                     ),
                   ],
                 ),
@@ -267,7 +267,7 @@ class _FilterRuleCard extends StatelessWidget {
                   ),
                   child: Icon(
                     Icons.delete_outline_rounded,
-                    color: kRedColor,
+                    color: context.colors.danger,
                     size: 18.ic,
                   ),
                 ),
@@ -321,7 +321,7 @@ class _ValueEditor extends StatelessWidget {
       return Text(
         'No value',
         style: AppTypography.textSmRegular.copyWith(
-          color: context.colors.textPrimary.withValues(alpha: 0.55),
+          color: context.textInk(0.55),
         ),
       );
     }
@@ -521,7 +521,7 @@ class _Dropdown<T> extends StatelessWidget {
                   : Text(
                     hint!,
                     style: AppTypography.textSmRegular.copyWith(
-                      color: context.colors.textPrimary.withValues(alpha: 0.55),
+                      color: context.textInk(0.55),
                     ),
                   ),
           items: [
@@ -580,7 +580,7 @@ class _TextInput extends StatelessWidget {
           isDense: true,
           hintText: hint,
           hintStyle: AppTypography.textSmRegular.copyWith(
-            color: context.colors.textPrimary.withValues(alpha: 0.5),
+            color: context.textInk(0.5),
           ),
           border: InputBorder.none,
         ),
@@ -662,12 +662,12 @@ class _InlineError extends StatelessWidget {
       ),
       child: Row(
         children: [
-          Icon(Icons.error_outline, color: kRedColor, size: 18.sp),
+          Icon(Icons.error_outline, color: context.colors.danger, size: 18.sp),
           SizedBox(width: 10.w),
           Expanded(
             child: Text(
               message,
-              style: AppTypography.textSmRegular.copyWith(color: kRedColor),
+              style: AppTypography.textSmRegular.copyWith(color: context.colors.danger),
             ),
           ),
         ],

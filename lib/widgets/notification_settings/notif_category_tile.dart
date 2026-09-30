@@ -3,6 +3,8 @@ import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/png_asset.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/widgets/app_switch_colors.dart';
+import 'package:chessever2/widgets/time_control_glyph.dart';
 import 'package:flutter/material.dart';
 
 /// A parent-child notification category row used inside [NotifPushCard].
@@ -125,13 +127,8 @@ class _NotifCategoryTileState extends State<NotifCategoryTile>
             ),
             Switch.adaptive(
               value: widget.enabled,
-              thumbColor: WidgetStatePropertyAll(kPrimaryColor),
-              trackColor: WidgetStateProperty.resolveWith(
-                (states) =>
-                    states.contains(WidgetState.selected)
-                        ? kPrimaryColor.withValues(alpha: 0.35)
-                        : context.colors.divider.withValues(alpha: 0.5),
-              ),
+              thumbColor: appSwitchThumbColor(context),
+              trackColor: appSwitchTrackColor(context),
               onChanged: widget.interactive ? (_) => widget.onToggle() : null,
             ),
           ],
@@ -210,6 +207,11 @@ class _TcCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final light = context.isLightTheme;
+    // The selected state lives on the ring, the check and the label weight:
+    // no tinted fill, no bloom. Paper takes the accent-text ring (cyan is
+    // ~2.2:1 there).
+    final ring = light ? context.colors.accentText : kPrimaryColor;
     return Expanded(
       child: FadeTransition(
         opacity: fade,
@@ -220,27 +222,19 @@ class _TcCard extends StatelessWidget {
             child: AnimatedContainer(
               duration: const Duration(milliseconds: 200),
               curve: Curves.easeInOut,
-              padding: EdgeInsets.symmetric(vertical: 10.sp),
+              // The thinner unselected border gives its half pixel back as
+              // padding, so the three marks and labels share one line.
+              padding: EdgeInsets.symmetric(
+                vertical: 10.sp + (selected ? 0 : 0.5),
+                horizontal: selected ? 0 : 0.5,
+              ),
               decoration: BoxDecoration(
-                color:
-                    selected
-                        ? kPrimaryColor.withValues(alpha: 0.08)
-                        : context.colors.surface,
+                color: context.colors.surface,
                 borderRadius: BorderRadius.circular(10.br),
                 border: Border.all(
-                  color: selected ? kPrimaryColor : context.colors.surfaceRecessed,
+                  color: selected ? ring : context.colors.surfaceRecessed,
                   width: selected ? 1.5 : 1.0,
                 ),
-                boxShadow:
-                    selected
-                        ? [
-                          BoxShadow(
-                            color: kPrimaryColor.withValues(alpha: 0.18),
-                            blurRadius: 8,
-                            spreadRadius: 0,
-                          ),
-                        ]
-                        : [],
               ),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
@@ -250,14 +244,13 @@ class _TcCard extends StatelessWidget {
                     clipBehavior: Clip.none,
                     alignment: Alignment.center,
                     children: [
+                      // Off marks recede but still clear 3:1 (the blue
+                      // bolt is the faintest: ~3.2:1 at 0.75 in both
+                      // themes; it was ~1.6:1 at 0.35).
                       AnimatedOpacity(
-                        opacity: selected ? 1.0 : 0.35,
+                        opacity: selected ? 1.0 : 0.75,
                         duration: const Duration(milliseconds: 200),
-                        child: Image.asset(
-                          assetPath,
-                          width: 20.sp,
-                          height: 20.sp,
-                        ),
+                        child: TimeControlGlyph(assetPath, size: 20.sp),
                       ),
                       Positioned(
                         top: -5,
@@ -268,13 +261,18 @@ class _TcCard extends StatelessWidget {
                           child: Container(
                             padding: const EdgeInsets.all(2),
                             decoration: BoxDecoration(
-                              color: kPrimaryColor,
+                              color: ring,
                               shape: BoxShape.circle,
                             ),
                             child: Icon(
                               Icons.check,
                               size: 7.sp,
-                              color: context.colors.textPrimary,
+                              // Dark ink on cyan (white read 2.4:1); paper
+                              // on the accent-text teal in light.
+                              color:
+                                  light
+                                      ? context.colors.surface
+                                      : context.colors.inkOnAccent,
                             ),
                           ),
                         ),
@@ -286,7 +284,12 @@ class _TcCard extends StatelessWidget {
                     label,
                     style: AppTypography.textSmRegular.copyWith(
                       fontSize: 10.f,
-                      color: selected ? context.colors.textPrimary : const Color(0xFF888888),
+                      color:
+                          selected
+                              ? context.colors.textPrimary
+                              : light
+                              ? context.colors.textSecondary
+                              : const Color(0xFF888888),
                       fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
                     ),
                   ),

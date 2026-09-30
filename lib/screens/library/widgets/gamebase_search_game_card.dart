@@ -10,7 +10,9 @@ import 'package:chessever2/screens/library/widgets/archive_game_actions.dart';
 import 'package:chessever2/screens/library/widgets/library_context_menu.dart';
 import 'package:chessever2/screens/library/widgets/library_game_card.dart';
 import 'package:chessever2/screens/library/widgets/swipe_action_card.dart';
+import 'package:chessever2/screens/my_space/actions/space_menu_action.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/utils/game_space_shortcut.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrapper/game_card_wrapper_provider.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
@@ -139,6 +141,11 @@ class GamebaseSearchGameCard extends ConsumerWidget {
       return requirePremiumGuard(context, ref);
     }
 
+    // Tagged `source: gamebase` for archive rows; Favorites / Countrymen also
+    // render live broadcast games through this card, and those must keep
+    // opening through their tour.
+    final spaceDraft = gameSpaceShortcutDraft(game);
+
     return showLibraryContextMenu(
       context: context,
       previewBuilder: (_) => buildCard(),
@@ -182,6 +189,8 @@ class GamebaseSearchGameCard extends ConsumerWidget {
             await copyArchiveGameFen(context: context, ref: ref, game: game);
           },
         ),
+        if (spaceDraft != null)
+          spaceMenuAction(context: context, ref: ref, draft: spaceDraft),
       ],
     );
   }

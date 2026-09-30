@@ -72,17 +72,23 @@ class _ScrollToTopButtonState extends State<ScrollToTopButton> {
                       decoration: BoxDecoration(
                         color: kPrimaryColor,
                         borderRadius: BorderRadius.circular(24.br),
+                        // One tight shadow cast downward in the theme's
+                        // shadow ink, no cyan bloom.
                         boxShadow: [
                           BoxShadow(
-                            color: kPrimaryColor.withValues(alpha: 0.3),
-                            blurRadius: 12,
-                            offset: const Offset(0, 4),
+                            color:
+                                context.isLightTheme
+                                    ? context.colors.shadow
+                                    : Colors.black.withValues(alpha: 0.5),
+                            blurRadius: 4,
+                            offset: const Offset(0, 2),
                           ),
                         ],
                       ),
                       child: Icon(
                         Icons.keyboard_arrow_up_rounded,
-                        color: context.colors.textPrimary,
+                        // Brand-fill ink: white on cyan read 2.4:1 in dark.
+                        color: context.colors.inkOnAccent,
                         size: 28.sp,
                       ),
                     ),

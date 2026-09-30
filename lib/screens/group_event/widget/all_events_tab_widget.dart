@@ -6,6 +6,8 @@ import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/scroll_cache.dart';
 import 'package:chessever2/widgets/event_card/event_card.dart';
 import 'package:chessever2/widgets/event_card/smart_event_card.dart';
+import 'package:chessever2/screens/group_event/smart_event/smart_event_builder_sheet.dart'
+    show smartEventCardSummary, watchSmartEventLive;
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
@@ -52,7 +54,10 @@ class _AllEventsTabWidgetState extends ConsumerState<AllEventsTabWidget> {
       caption: smartData.request.caption,
       countSingular: smartData.request.countSingular,
       countPlural: smartData.request.countPlural,
-      accentColor: smartEventAccentColor(smartData.request.scopeId),
+      formatsAndStates: smartData.request.formatsAndStates,
+      summary: smartEventCardSummary(smartData.request),
+      live: watchSmartEventLive(ref, smartData.request),
+      spaceDraft: smartEventSpaceDraft(smartData.request),
       onTap:
           () => Navigator.of(context).push(
             MaterialPageRoute(
@@ -134,7 +139,7 @@ class _AllEventsTabWidgetState extends ConsumerState<AllEventsTabWidget> {
               padding: EdgeInsets.only(bottom: bottomPadding + 20),
               child: Center(
                 child: CircularProgressIndicator(
-                  color: context.colors.brand,
+                  color: context.colors.accentText,
                 ),
               ),
             ),
@@ -169,7 +174,9 @@ class _AllEventsTabWidgetState extends ConsumerState<AllEventsTabWidget> {
           return Padding(
             padding: EdgeInsets.only(bottom: bottomPadding + 20),
             child: Center(
-              child: CircularProgressIndicator(color: context.colors.brand),
+              child: CircularProgressIndicator(
+                color: context.colors.accentText,
+              ),
             ),
           );
         }

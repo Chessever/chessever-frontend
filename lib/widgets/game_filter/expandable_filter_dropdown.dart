@@ -2,6 +2,7 @@ import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/widgets/time_control_glyph.dart';
 import 'package:flutter/material.dart';
 
 /// Custom expandable dropdown matching the dark theme design
@@ -80,6 +81,10 @@ class _ExpandableFilterDropdownState<T>
 
   @override
   Widget build(BuildContext context) {
+    // The open header inverts: a textPrimary plate (white in dark, ink on
+    // paper) carrying textInverse ink (black in dark, mint on paper).
+    final inverseInk = context.colors.textInverse;
+    final light = context.isLightTheme;
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -107,11 +112,13 @@ class _ExpandableFilterDropdownState<T>
                 // Asset image icon (preferred)
                 if (widget.itemAssetPath != null) ...[
                   if (widget.itemAssetPath!(widget.value) != null) ...[
-                    Image.asset(
+                    // Dark keeps its black silhouette on the white plate; on
+                    // the ink plate the original dark-stage art reads as is.
+                    TimeControlGlyph(
                       widget.itemAssetPath!(widget.value)!,
-                      width: 16.sp,
-                      height: 16.sp,
-                      color: _isExpanded ? kBlackColor : null,
+                      size: 16.sp,
+                      tint: _isExpanded && !light ? kBlackColor : null,
+                      onDark: _isExpanded && light ? true : null,
                     ),
                     SizedBox(width: 8.w),
                   ],
@@ -120,7 +127,7 @@ class _ExpandableFilterDropdownState<T>
                   Icon(
                     widget.itemIcon!(widget.value),
                     size: 18.ic,
-                    color: _isExpanded ? kBlackColor : context.colors.textPrimary,
+                    color: _isExpanded ? inverseInk : context.colors.textPrimary,
                   ),
                   SizedBox(width: 8.w),
                 ],
@@ -129,7 +136,7 @@ class _ExpandableFilterDropdownState<T>
                   child: Text(
                     widget.itemLabel(widget.value),
                     style: AppTypography.textSmMedium.copyWith(
-                      color: _isExpanded ? kBlackColor : context.colors.textPrimary,
+                      color: _isExpanded ? inverseInk : context.colors.textPrimary,
                     ),
                   ),
                 ),
@@ -141,7 +148,7 @@ class _ExpandableFilterDropdownState<T>
                     size: 20.ic,
                     color:
                         _isExpanded
-                            ? kBlackColor.withValues(alpha: 0.7)
+                            ? inverseInk.withValues(alpha: 0.7)
                             : context.colors.textSecondary,
                   ),
                 ),
@@ -199,7 +206,7 @@ class _ExpandableFilterDropdownState<T>
           children: [
             // Asset image icon (preferred)
             if (hasAssetIcon) ...[
-              Image.asset(assetPath, width: 16.sp, height: 16.sp),
+              TimeControlGlyph(assetPath, size: 16.sp),
               SizedBox(width: 8.w),
             ] else if (hasIcon && iconData != null) ...[
               // Fallback to IconData

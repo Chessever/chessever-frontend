@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:chessever2/repository/local_storage/tournament/tour_local_storage.dart';
 import 'package:chessever2/repository/supabase/game/game_repository.dart';
@@ -10,20 +11,28 @@ import 'package:chessever2/screens/group_event/model/about_tour_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_app_bar_view_model.dart';
 import 'package:chessever2/screens/group_event/model/tour_detail_view_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/live_tour_id_provider.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/providers/games_tour_provider.dart'
+    show tournamentDataActiveProvider;
 import 'package:chessever2/screens/tour_detail/provider/interface/itour_detail_provider.dart';
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_mode_provider.dart';
 import 'package:chessever2/screens/tour_detail/provider/tour_category_ordering.dart';
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_repo_provider.dart';
 import 'package:chessever2/screens/tour_detail/provider/tour_selection_logic.dart';
 import 'package:flutter/foundation.dart';
-import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 /// Seeds [tourDetailScreenProvider] with already-resolved data for widget tests.
 @visibleForTesting
-Override tourDetailScreenProviderOverride(TourDetailViewModel viewModel) {
+Override tourDetailScreenProviderOverride(
+  TourDetailViewModel viewModel, {
+  bool refreshMetadata = false,
+}) {
   return tourDetailScreenProvider.overrideWith(
-    (ref) => _TourDetailScreenNotifier.seeded(ref: ref, viewModel: viewModel),
+    (ref) => _TourDetailScreenNotifier.seeded(
+      ref: ref,
+      viewModel: viewModel,
+      refreshMetadata: refreshMetadata,
+    ),
   );
 }
 
@@ -64,6 +73,7 @@ class _TourDetailScreenNotifier
   _TourDetailScreenNotifier({required this.ref, required this.groupBroadcast})
     : super(const AsyncValue.loading()) {
     setupLiveTourIdListener();
+    _setupMetadataRefresh();
     loadTourDetails();
   }
 
@@ -82,6 +92,7 @@ class _TourDetailScreenNotifier
   _TourDetailScreenNotifier.seeded({
     required this.ref,
     required TourDetailViewModel viewModel,
+    required bool refreshMetadata,
   }) : groupBroadcast = GroupBroadcast(
          id:
              viewModel.aboutTourModel.groupBroadcastId ??
@@ -90,11 +101,77 @@ class _TourDetailScreenNotifier
          name: viewModel.aboutTourModel.name,
          search: const [],
        ),
-       super(AsyncValue.data(viewModel));
+       super(AsyncValue.data(viewModel)) {
+    _currentLiveTourIds = viewModel.liveTourIds;
+    if (refreshMetadata) _setupMetadataRefresh();
+  }
 
   final Ref ref;
   final GroupBroadcast groupBroadcast;
   List<String> _currentLiveTourIds = [];
+  Timer? _metadataRefreshTimer;
+  bool _loadingTours = false;
+  Timer? _resultRefreshTimer;
+  Timer? _aggregateRetryTimer;
+
+  void _setupMetadataRefresh() {
+    // Board updates do not carry tours.players or officialTeamStandings.
+    // Those aggregates can land after the final board update, so refresh on
+    // a clock even when no further result changes arrive. Scope it to the
+    // visible, foreground event just like the game catalog safety net.
+    if (isVirtualGamebaseId(groupBroadcast.id)) return;
+    void setActive(bool active, {bool refreshNow = false}) {
+      _metadataRefreshTimer?.cancel();
+      _metadataRefreshTimer = null;
+      if (!active) {
+        _resultRefreshTimer?.cancel();
+        _aggregateRetryTimer?.cancel();
+        return;
+      }
+      if (refreshNow) unawaited(refreshTourDetails());
+      _metadataRefreshTimer = Timer.periodic(
+        const Duration(seconds: 30),
+        (_) => unawaited(refreshTourDetails()),
+      );
+    }
+
+    ref.listen<bool>(tournamentDataActiveProvider, (previous, active) {
+      setActive(active, refreshNow: true);
+    });
+    ref.onCancel(() => setActive(false));
+    ref.onResume(() {
+      setActive(ref.read(tournamentDataActiveProvider), refreshNow: true);
+    });
+    setActive(ref.read(tournamentDataActiveProvider));
+  }
+
+  /// Results and derived rosters are separate writes. Fetch after a burst of
+  /// results, then again after the writer has had time to publish its aggregate.
+  /// The periodic refresh also catches independently published official tables.
+  void scheduleStandingsRefresh() {
+    if (!mounted ||
+        groupBroadcast.id.isEmpty ||
+        !ref.read(tournamentDataActiveProvider)) {
+      return;
+    }
+    if (_resultRefreshTimer?.isActive == true) return;
+    _resultRefreshTimer = Timer(const Duration(milliseconds: 300), () {
+      if (!mounted) return;
+      unawaited(refreshTourDetails());
+      _aggregateRetryTimer?.cancel();
+      _aggregateRetryTimer = Timer(const Duration(seconds: 3), () {
+        if (mounted) unawaited(refreshTourDetails());
+      });
+    });
+  }
+
+  @override
+  void dispose() {
+    _metadataRefreshTimer?.cancel();
+    _resultRefreshTimer?.cancel();
+    _aggregateRetryTimer?.cancel();
+    super.dispose();
+  }
 
   @override
   void setupLiveTourIdListener() {
@@ -201,6 +278,8 @@ class _TourDetailScreenNotifier
 
   @override
   Future<void> loadTourDetails() async {
+    if (_loadingTours || !mounted) return;
+    _loadingTours = true;
     try {
       final liveTourIdAsync = ref.read(liveTourIdProvider);
       final liveTourIds = _normalizeLiveTourIds(
@@ -254,6 +333,8 @@ class _TourDetailScreenNotifier
       setDataState(tourDetailViewModel);
     } catch (e, st) {
       setErrorState(e, st);
+    } finally {
+      _loadingTours = false;
     }
   }
 
@@ -317,7 +398,51 @@ class _TourDetailScreenNotifier
 
   @override
   Future<void> refreshTourDetails() async {
-    await loadTourDetails();
+    if (!mounted || _loadingTours) return;
+    if (!state.hasValue || isVirtualGamebaseId(groupBroadcast.id)) {
+      await loadTourDetails();
+      return;
+    }
+    _loadingTours = true;
+    try {
+      final tours = await ref
+          .read(tourLocalStorageProvider)
+          .getTours(groupBroadcast.id)
+          .timeout(const Duration(seconds: 12));
+      if (!mounted || tours.isEmpty) return;
+
+      // Do not redo default selection/activity queries for a metadata refresh.
+      // Read the selection AFTER the request: the user may switch Open/Women
+      // while it is in flight. Preserve the whole last good view on failures.
+      final current = state.valueOrNull;
+      if (current == null) return;
+      if (mapEquals(
+        {for (final tour in tours) tour.id: jsonEncode(tour.toJson())},
+        {
+          for (final model in current.tours)
+            model.tour.id: jsonEncode(model.tour.toJson()),
+        },
+      )) {
+        return;
+      }
+      final tourModels = await processTours(tours, _currentLiveTourIds);
+      if (!mounted || tourModels.isEmpty) return;
+      final selectedId = state.valueOrNull?.aboutTourModel.id;
+      final selected = findTourModel(tourModels, selectedId ?? '')?.tour;
+      // A transient partial catalog must not bounce the user to another tour.
+      if (selected == null) return;
+      setDataState(
+        createViewModel(
+          selected,
+          tourModels,
+          _liveTourIdsForTours(_currentLiveTourIds, tourModels),
+        ),
+      );
+    } catch (e) {
+      logWarning('Tournament metadata refresh failed: $e');
+    } finally {
+      _loadingTours = false;
+    }
   }
 
   @override
@@ -494,7 +619,7 @@ class _TourDetailScreenNotifier
 
   @override
   void setDataState(TourDetailViewModel viewModel) {
-    state = AsyncValue.data(viewModel);
+    if (mounted) state = AsyncValue.data(viewModel);
   }
 
   @override

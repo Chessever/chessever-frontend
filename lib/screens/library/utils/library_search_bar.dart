@@ -115,23 +115,40 @@ class SearchBarWidget extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isLight = context.isLightTheme;
+    // Light rests on a 1px hairline; the heavier ring is reserved for focus.
+    // Dark keeps 2.w throughout (its resting edge is transparent anyway).
+    final focusRingWidth = 2.w;
+    final borderWidth = isLight && !focusNode.hasFocus ? 1.0 : focusRingWidth;
+    // Container insets its child by the border width, so pad back the
+    // difference: the field keeps one height and the text never jumps on focus.
+    final borderSlack = focusRingWidth - borderWidth;
     return AnimatedContainer(
       duration: const Duration(milliseconds: 300),
       curve: Curves.easeInOut,
       margin: EdgeInsets.symmetric(horizontal: margin ?? 20.sp),
-      padding: EdgeInsets.symmetric(horizontal: 12.sp, vertical: 8.sp),
+      padding: EdgeInsets.symmetric(
+        horizontal: 12.sp + borderSlack,
+        vertical: 8.sp + borderSlack,
+      ),
       decoration: BoxDecoration(
-        color: Colors.grey[900],
+        // Dark keeps the historic grey[900] field; light sits on paper with a
+        // hairline edge so the field reads without a filled dark slab.
+        color: isLight ? context.colors.surface : Colors.grey[900],
         borderRadius: BorderRadius.circular(8.br),
         border: Border.all(
           color:
               focusNode.hasFocus
-                  ? kDarkBlue.withValues(alpha: 0.5)
-                  : Colors.transparent,
-          width: 2.w,
+                  // Full accentText: at 0.6 alpha the ring fell under 3:1
+                  // against the light surface.
+                  ? (isLight
+                      ? context.colors.accentText
+                      : kDarkBlue.withValues(alpha: 0.5))
+                  : (isLight ? context.colors.divider : Colors.transparent),
+          width: borderWidth,
         ),
         boxShadow:
-            focusNode.hasFocus
+            focusNode.hasFocus && !isLight
                 ? [
                   BoxShadow(
                     color: kDarkBlue.withValues(alpha: 0.15),
@@ -148,7 +165,12 @@ class SearchBarWidget extends StatelessWidget {
             duration: const Duration(milliseconds: 200),
             child: Icon(
               Icons.search,
-              color: focusNode.hasFocus ? Colors.blue : Colors.white70,
+              color:
+                  focusNode.hasFocus
+                      ? (isLight ? context.colors.accentText : Colors.blue)
+                      : (isLight
+                          ? context.colors.textSecondary
+                          : Colors.white70),
               size: 20.ic,
             ),
           ),
@@ -175,7 +197,10 @@ class SearchBarWidget extends StatelessWidget {
               child: Container(
                 padding: EdgeInsets.all(4.sp),
                 decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.1),
+                  color:
+                      isLight
+                          ? context.colors.textPrimary.withValues(alpha: 0.06)
+                          : Colors.white.withValues(alpha: 0.1),
                   shape: BoxShape.circle,
                 ),
                 child: Icon(Icons.close, color: context.colors.textPrimaryMuted, size: 16.ic),

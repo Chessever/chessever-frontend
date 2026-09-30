@@ -1,5 +1,4 @@
 import 'package:chessever2/theme/app_colors.dart';
-import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
@@ -106,13 +105,14 @@ class _WheelRangeFilterState extends State<WheelRangeFilter> {
           ),
         ),
 
-        // Separator
+        // Separator: en dash, matching the "800–1400" range labels. Full
+        // textSecondary so it clears AA in both themes (6.4:1 light).
         Padding(
           padding: EdgeInsets.symmetric(horizontal: 12.w),
           child: Text(
-            '-',
+            '–',
             style: AppTypography.textSmMedium.copyWith(
-              color: context.colors.textSecondary.withValues(alpha: 0.5),
+              color: context.colors.textSecondary,
             ),
           ),
         ),
@@ -462,13 +462,14 @@ class _WheelInputState extends State<_WheelInput> {
                   ),
                 ),
 
-                // Scroll indicator icon
+                // Scroll affordance. Full iconSecondary: 5.5:1 light,
+                // 5.3:1 dark on surface (the old 30% alpha read ~1.6:1).
                 Positioned(
                   right: 12.w,
                   child: IgnorePointer(
                     child: Icon(
                       Icons.unfold_more_rounded,
-                      color: context.colors.textSecondary.withValues(alpha: 0.3),
+                      color: context.colors.iconSecondary,
                       size: 16.ic,
                     ),
                   ),

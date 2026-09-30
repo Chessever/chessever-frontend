@@ -1,13 +1,13 @@
 import 'dart:async';
 
 import 'package:chessever2/providers/country_dropdown_provider.dart';
+import 'package:chessever2/screens/favorites/widgets/collection_inks.dart';
 import 'package:chessever2/screens/group_event/providers/live_group_broadcast_id_provider.dart';
 import 'package:chessever2/repository/supabase/group_broadcast/group_broadcast.dart';
 import 'package:chessever2/repository/supabase/group_broadcast/group_tour_repository.dart';
 import 'package:chessever2/screens/group_event/model/tour_event_card_model.dart';
 import 'package:chessever2/screens/tour_detail/provider/tour_detail_mode_provider.dart';
 import 'package:chessever2/theme/app_colors.dart';
-import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
@@ -389,7 +389,7 @@ class _CountrymenEventsTabState extends ConsumerState<CountrymenEventsTab>
                             Text(
                               'Loading more events...',
                               style: AppTypography.textXsRegular.copyWith(
-                                color: const Color(0xFF71717A),
+                                color: context.collectionSubtleInk,
                               ),
                             ),
                           ],
@@ -448,7 +448,7 @@ class _CountrymenEventsTabState extends ConsumerState<CountrymenEventsTab>
           Text(
             'Loading events...',
             style: AppTypography.textSmRegular.copyWith(
-              color: const Color(0xFFA1A1AA),
+              color: context.collectionMutedInk,
             ),
           ),
         ],
@@ -465,12 +465,12 @@ class _CountrymenEventsTabState extends ConsumerState<CountrymenEventsTab>
             width: 64.w,
             height: 64.h,
             decoration: BoxDecoration(
-              color: const Color(0xFFEF4444).withValues(alpha: 0.1),
+              color: context.collectionAlertInk.withValues(alpha: 0.1),
               borderRadius: BorderRadius.circular(16.br),
             ),
             child: Icon(
               Icons.error_outline_rounded,
-              color: const Color(0xFFEF4444),
+              color: context.collectionAlertInk,
               size: 32.ic,
             ),
           ),
@@ -485,7 +485,7 @@ class _CountrymenEventsTabState extends ConsumerState<CountrymenEventsTab>
             child: Text(
               error,
               style: AppTypography.textSmRegular.copyWith(
-                color: const Color(0xFFA1A1AA),
+                color: context.collectionMutedInk,
               ),
               textAlign: TextAlign.center,
             ),
@@ -550,7 +550,7 @@ class _CountrymenEventsTabState extends ConsumerState<CountrymenEventsTab>
             child: Text(
               'No chess events found in $countryName',
               style: AppTypography.textSmRegular.copyWith(
-                color: const Color(0xFFA1A1AA),
+                color: context.collectionMutedInk,
               ),
               textAlign: TextAlign.center,
             ),
@@ -568,7 +568,7 @@ class _CountrymenEventsTabState extends ConsumerState<CountrymenEventsTab>
           Icon(
             Icons.search_off_outlined,
             size: 56.sp,
-            color: context.colors.textPrimary.withValues(alpha: 0.4),
+            color: context.textInk(0.4),
           ),
           SizedBox(height: 12.h),
           Text(
@@ -581,7 +581,7 @@ class _CountrymenEventsTabState extends ConsumerState<CountrymenEventsTab>
           Text(
             'Try a different search term',
             style: AppTypography.textSmRegular.copyWith(
-              color: context.colors.textPrimary.withValues(alpha: 0.55),
+              color: context.textInk(0.55),
             ),
             textAlign: TextAlign.center,
           ),

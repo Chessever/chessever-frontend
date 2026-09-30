@@ -1,7 +1,7 @@
 import 'package:chessever2/theme/app_colors.dart';
-import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/widgets/app_switch_colors.dart';
 import 'package:chessever2/widgets/notification_settings/notif_category_tile.dart';
 import 'package:flutter/material.dart';
 
@@ -104,13 +104,8 @@ class NotifPushCard extends StatelessWidget {
               ),
               Switch.adaptive(
                 value: enabled,
-                thumbColor: WidgetStatePropertyAll(kPrimaryColor),
-                trackColor: WidgetStateProperty.resolveWith(
-                  (states) =>
-                      states.contains(WidgetState.selected)
-                          ? kPrimaryColor.withValues(alpha: 0.35)
-                          : context.colors.divider.withValues(alpha: 0.5),
-                ),
+                thumbColor: appSwitchThumbColor(context),
+                trackColor: appSwitchTrackColor(context),
                 onChanged: onChanged,
               ),
             ],

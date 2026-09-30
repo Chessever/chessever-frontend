@@ -13,6 +13,7 @@ import 'package:chessever2/repository/supabase/game/game_repository.dart';
 import 'package:chessever2/repository/supabase/game/game_stream_repository.dart';
 import 'package:chessever2/repository/supabase/game/games.dart';
 import 'package:chessever2/screens/chessboard/chess_board_screen_new.dart';
+import 'package:chessever2/screens/chessboard/analysis/chess_game.dart';
 import 'package:chessever2/screens/chessboard/game_review/game_analysis_report_store.dart';
 import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
 import 'package:chessever2/screens/gamebase/models/models.dart';
@@ -126,6 +127,16 @@ void main() {
             gameIndex: 0,
             viewSource: ChessboardView.favScorecard,
           );
+      final positionSnapshot = SavedAnalysisData(
+        chessGame: ChessGame.fromPgn(
+          scopedPlayerGames.first.gameId,
+          scopedPlayerGames.first.pgn!,
+        ),
+        variationComments: const {},
+        movePointer: const [0],
+        isBoardFlipped: false,
+        lastViewedPosition: 0,
+      );
 
       await tester.pumpWidget(
         UncontrolledProviderScope(
@@ -142,6 +153,7 @@ void main() {
                   initialIndex: launch.immediateIndex,
                   expandedNavigation: launch.expanded,
                   viewSource: ChessboardView.favScorecard,
+                  savedAnalysisData: positionSnapshot,
                 );
               },
             ),
@@ -180,6 +192,11 @@ void main() {
         'swiped-game',
       ], reason: 'the board must retain the player-scoped swipe collection');
       expect(board.viewSource, ChessboardView.favScorecard);
+      expect(
+        board.savedAnalysisData,
+        isNull,
+        reason: 'the entry position belongs to the opened game, not the sibling',
+      );
 
       pageView = tester.widget<PageView>(pages);
       expect(pageView.controller!.page, 1);

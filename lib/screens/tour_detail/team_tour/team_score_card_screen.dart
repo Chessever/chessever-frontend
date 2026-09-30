@@ -11,7 +11,6 @@ import 'package:chessever2/screens/tour_detail/team_tour/widgets/team_event_shar
 import 'package:chessever2/screens/tour_detail/team_tour/widgets/team_player_chip.dart';
 import 'package:chessever2/screens/tour_detail/team_tour/widgets/team_round_group.dart';
 import 'package:chessever2/theme/app_colors.dart';
-import 'package:chessever2/theme/app_theme.dart' show kRedColor;
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/share_card.dart';
@@ -356,11 +355,15 @@ class _RecordLine extends StatelessWidget {
       text: TextSpan(
         style: dim,
         children: [
-          seg('$won W', context.colors.brand),
+          seg('$won W', context.colors.accentText),
           const TextSpan(text: '   ·   '),
-          seg('$drawn D', _drawGrey),
+          seg(
+            '$drawn D',
+            // 9AA0A6 is 2.5:1 on paper.
+            context.isLightTheme ? context.colors.textSecondary : _drawGrey,
+          ),
           const TextSpan(text: '   ·   '),
-          seg('$lost L', kRedColor),
+          seg('$lost L', context.colors.danger),
         ],
       ),
     );

@@ -1,7 +1,38 @@
 import 'package:chessever2/screens/player_profile/utils/player_profile_share_utils.dart';
+import 'package:chessever2/screens/standings/widgets/player_event_share_image_card.dart';
 import 'package:chessever2/utils/string_utils.dart';
 import 'package:chessever2/widgets/event_card/event_context_menu.dart'
     show buildEventShareUrl;
+
+/// Rating total for the same game snapshot rendered on the player report.
+/// Standings can lag a completed game, so a complete set of known changes wins.
+/// Preserve source totals for incomplete history, custom scoring, and mixed
+/// rating pools; those cannot be reconstructed as one local Elo total.
+int? resolvePlayerEventRatingDiff({
+  required List<PlayerEventShareGameRow> rows,
+  int sourcePlayed = 0,
+  int? fallbackRatingDiff,
+  bool preferSource = false,
+}) {
+  if (preferSource) return fallbackRatingDiff;
+  final pools = <String>{};
+  var finishedGames = 0;
+  var total = 0.0;
+  for (final row in rows) {
+    if (row.outcome == PlayerEventGameOutcome.other) continue;
+    finishedGames++;
+    pools.add(row.ratingPool ?? 'standard');
+    if (pools.length > 1) return fallbackRatingDiff;
+    final change = row.ratingChange;
+    if (change == null) return fallbackRatingDiff;
+    total += change;
+  }
+  if (finishedGames == 0 || finishedGames < sourcePlayed) {
+    return fallbackRatingDiff;
+  }
+  // Round once after summing: rounding each row can change the event total.
+  return total.round();
+}
 
 /// Sentinels that gamebase/TWIC rows put in `tourId` when there is no real
 /// broadcast identity — never treat these as URL path segments.

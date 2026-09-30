@@ -1,6 +1,5 @@
 import 'package:chessever2/screens/chessboard/video/video_session.dart';
 import 'package:chessever2/theme/app_colors.dart';
-import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/svg_asset.dart';
 import 'package:chessever2/widgets/svg_widget.dart';
@@ -82,7 +81,8 @@ List<PopupMenuEntry<String>> chessBoardContextMenuItems(
       value: 'clear_analysis',
       label: analysisCleared ? 'Restore Analysis' : 'Clear Analysis',
       icon: Icon(analysisCleared ? Icons.restore : Icons.auto_delete_outlined),
-      color: analysisCleared ? context.colors.textPrimary : kRedColor,
+      color:
+          analysisCleared ? context.colors.textPrimary : context.colors.danger,
     ),
   ];
 }

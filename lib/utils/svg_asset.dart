@@ -34,6 +34,12 @@ class SvgAsset {
   static const tournamentIcon = 'assets/svgs/tournament.svg';
   static const calendarNavIcon = 'assets/svgs/calendar_nav.svg';
   static const libraryNavIcon = 'assets/svgs/library_nav.svg';
+  static const feedNavIcon = 'assets/svgs/feed_nav.svg';
+  static const forYouNavIcon = 'assets/svgs/for_you_nav.svg';
+
+  /// X's own mark (the About dialog's follow link).
+  static const xLogo = 'assets/svgs/x_logo.svg';
+
   static const websiteIcon = 'assets/svgs/website.svg';
   static const infoIcon = 'assets/svgs/info.svg';
   static const premiumSelected = 'assets/svgs/selected.svg';
@@ -102,7 +108,9 @@ class SvgAsset {
       calendarIcon,
       tournamentIcon,
       calendarNavIcon,
+      forYouNavIcon,
       libraryNavIcon,
+      feedNavIcon,
       websiteIcon,
       infoIcon,
       premiumSelected,

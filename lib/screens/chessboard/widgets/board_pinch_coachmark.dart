@@ -112,7 +112,7 @@ class _BoardPinchCoachmarkState extends State<BoardPinchCoachmark>
                     const Text(
                       'Move two fingers together or apart',
                       textAlign: TextAlign.center,
-                      style: TextStyle(color: Colors.white70, fontSize: 12),
+                      style: TextStyle(color: Colors.white, fontSize: 12),
                     ),
                   ],
                 );

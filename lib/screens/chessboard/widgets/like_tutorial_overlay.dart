@@ -215,15 +215,18 @@ class _LikeTutorialOverlayState extends State<LikeTutorialOverlay>
                                 decoration: BoxDecoration(
                                   color: kPrimaryColor,
                                   shape: BoxShape.circle,
-                                  boxShadow: [
-                                    BoxShadow(
-                                      color: kPrimaryColor.withValues(
-                                        alpha: 0.4,
-                                      ),
-                                      blurRadius: 12,
-                                      offset: const Offset(0, 6),
-                                    ),
-                                  ],
+                                  boxShadow:
+                                      context.isLightTheme
+                                          ? null
+                                          : [
+                                            BoxShadow(
+                                              color: kPrimaryColor.withValues(
+                                                alpha: 0.4,
+                                              ),
+                                              blurRadius: 12,
+                                              offset: const Offset(0, 6),
+                                            ),
+                                          ],
                                   border: Border.all(
                                     color: Colors.white,
                                     width: 3,
@@ -231,7 +234,11 @@ class _LikeTutorialOverlayState extends State<LikeTutorialOverlay>
                                 ),
                                 child: Icon(
                                   Icons.favorite_rounded,
-                                  color: Colors.white,
+                                  // Paper: accent ink (white on cyan is 2.4:1).
+                                  color:
+                                      context.isLightTheme
+                                          ? context.colors.inkOnAccent
+                                          : Colors.white,
                                   size: 22.sp,
                                 ),
                               ),

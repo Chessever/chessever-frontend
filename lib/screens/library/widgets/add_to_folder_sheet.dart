@@ -402,9 +402,7 @@ class _AddToFolderPageState extends ConsumerState<_AddToFolderPage> {
                           child: Text(
                             'No folders yet.',
                             style: AppTypography.textSmRegular.copyWith(
-                              color: context.colors.textPrimary.withValues(
-                                alpha: 0.5,
-                              ),
+                              color: context.textInk(0.5),
                             ),
                             textAlign: TextAlign.center,
                           ),
@@ -453,7 +451,7 @@ class _AddToFolderPageState extends ConsumerState<_AddToFolderPage> {
           child: Text(
             'RECENT',
             style: AppTypography.textXsBold.copyWith(
-              color: context.colors.textPrimary.withValues(alpha: 0.4),
+              color: context.textInk(0.4),
               letterSpacing: 1.2,
             ),
           ),
@@ -497,10 +495,8 @@ class _AddToFolderPageState extends ConsumerState<_AddToFolderPage> {
                         size: 14.sp,
                         color:
                             isSelected
-                                ? kPrimaryColor
-                                : context.colors.textPrimary.withValues(
-                                  alpha: 0.6,
-                                ),
+                                ? context.colors.accentText
+                                : context.textInk(0.6),
                       ),
                       SizedBox(width: 6.w),
                       Text(
@@ -655,7 +651,7 @@ class _ExpandableFolderTile extends ConsumerWidget {
                       isExpanded
                           ? Icons.keyboard_arrow_up_rounded
                           : Icons.keyboard_arrow_down_rounded,
-                      color: context.colors.textPrimary.withValues(alpha: 0.5),
+                      color: context.textInk(0.5),
                     ),
                   )
                   : null,
@@ -727,7 +723,7 @@ class _FolderSelectionTile extends StatelessWidget {
               Icon(
                 Icons.subdirectory_arrow_right_rounded,
                 size: 16.sp,
-                color: context.colors.textPrimary.withValues(alpha: 0.3),
+                color: context.textInk(0.3),
               ),
               SizedBox(width: 8.w),
             ],
@@ -768,8 +764,8 @@ class _FolderSelectionTile extends StatelessWidget {
                     : Icons.radio_button_unchecked_rounded,
                 color:
                     selected
-                        ? kPrimaryColor
-                        : context.colors.textPrimary.withValues(alpha: 0.35),
+                        ? context.colors.accentText
+                        : context.textInk(0.35),
                 size: isSmall ? 18.sp : 20.sp,
               ),
           ],

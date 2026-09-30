@@ -41,12 +41,20 @@ class BoardColorDialog extends ConsumerWidget {
         color: context.colors.popup,
 
         borderRadius: BorderRadius.circular(20.sp),
+        // A surface-tinted halo reads as a pale glow on paper; light casts
+        // one short ink shadow instead. Dark is unchanged.
         boxShadow: [
-          BoxShadow(
-            color: context.colors.surface.withValues(alpha: 0.3),
-            blurRadius: 10,
-            spreadRadius: 1,
-          ),
+          context.isLightTheme
+              ? BoxShadow(
+                color: context.colors.shadow,
+                blurRadius: 8,
+                offset: const Offset(0, 2),
+              )
+              : BoxShadow(
+                color: context.colors.surface.withValues(alpha: 0.3),
+                blurRadius: 10,
+                spreadRadius: 1,
+              ),
         ],
       ),
       child: Column(
@@ -169,7 +177,15 @@ class BoardColorDialog extends ConsumerWidget {
             height: 20.h,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              border: Border.all(color: Colors.white, width: 2),
+              // A white ring vanishes on the paper popup; light rings in
+              // secondary ink (the white check stays on the green fill).
+              border: Border.all(
+                color:
+                    context.isLightTheme
+                        ? context.colors.textSecondary
+                        : Colors.white,
+                width: 2,
+              ),
               color: isSelected ? checkMarkColor : Colors.transparent,
             ),
             child:

@@ -1,7 +1,6 @@
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/utils/knockout_match_detector.dart';
 import 'package:chessever2/theme/app_colors.dart';
-import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 
 import 'package:chessever2/utils/responsive_helper.dart';
@@ -43,7 +42,9 @@ class MatchHeader extends ConsumerWidget {
         borderRadius: BorderRadius.circular(12.br),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.08),
+            color: context.isLightTheme
+                ? context.colors.shadow
+                : Colors.black.withValues(alpha: 0.08),
             blurRadius: 4,
             offset: const Offset(0, 2),
           ),
@@ -185,7 +186,7 @@ class MatchHeader extends ConsumerWidget {
                       isExpanded
                           ? Icons.keyboard_arrow_up_rounded
                           : Icons.keyboard_arrow_down_rounded,
-                      color: context.colors.textPrimary.withValues(alpha: 0.5),
+                      color: context.textInk(0.5),
                       size: 20.sp,
                     ),
                   ],
@@ -198,7 +199,7 @@ class MatchHeader extends ConsumerWidget {
                   child: Text(
                     TimeUtils.formatRoundDateTime(match.playedAt),
                     style: AppTypography.textXsRegular.copyWith(
-                      color: context.colors.textPrimary.withValues(alpha: 0.45),
+                      color: context.textInk(0.45),
                       fontSize: 10.sp,
                     ),
                   ),
@@ -213,7 +214,10 @@ class MatchHeader extends ConsumerWidget {
 
   Color _getStatusColor(BuildContext context) {
     if (match.isComplete) {
-      return kPrimaryColor.withValues(alpha: 0.5);
+      // Half the paper ink is 2.4:1; light holds the rail at 3.2:1.
+      return context.colors.accentText.withValues(
+        alpha: context.isLightTheme ? 0.65 : 0.5,
+      );
     }
 
     // Check if there are any ongoing games
@@ -222,7 +226,7 @@ class MatchHeader extends ConsumerWidget {
     );
 
     if (hasOngoingGames) {
-      return kPrimaryColor;
+      return context.colors.accentText;
     }
 
     // Matches with all games finished (draws) or scheduled
@@ -256,7 +260,12 @@ class CompactMatchHeader extends ConsumerWidget {
             width: 3.w,
             height: 20.h,
             decoration: BoxDecoration(
-              color: match.isComplete ? Colors.green : kPrimaryColor,
+              color:
+                  match.isComplete
+                      ? (context.isLightTheme
+                          ? context.colors.success
+                          : Colors.green)
+                      : context.colors.accentText,
               borderRadius: BorderRadius.circular(1.5),
             ),
           ),
@@ -280,7 +289,7 @@ class CompactMatchHeader extends ConsumerWidget {
                 Text(
                   'vs',
                   style: AppTypography.textXsMedium.copyWith(
-                    color: context.colors.textPrimary.withValues(alpha: 0.6),
+                    color: context.textInk(0.6),
                     fontWeight: FontWeight.w500,
                   ),
                 ),
@@ -305,7 +314,7 @@ class CompactMatchHeader extends ConsumerWidget {
           Text(
             match.scoreDisplay,
             style: AppTypography.textXsMedium.copyWith(
-              color: kPrimaryColor,
+              color: context.colors.accentText,
               fontWeight: FontWeight.w700,
             ),
           ),
@@ -346,20 +355,13 @@ PlayerCard? _matchPlayerCard(MatchHeaderModel match, String playerName) {
   return null;
 }
 
-/// Light-theme inks for the two decisive states.
-///
-/// `AppColors.brand` (#0FB4E5) and `AppColors.danger` (#F5453A) are the same
-/// value on both palettes, and on the light card surface (#F4FAF9) they
-/// measure 2.29:1 and 3.43:1 — under the 4.5:1 AA floor for text this size.
-/// The old tinted plate masked that; with the plate gone the number has to
-/// carry its own contrast, so light mode gets deepened variants of the same
-/// two hues (5.34:1 and 6.19:1).
-const _lightScoreLeadInk = Color(0xFF06708F);
-const _lightScoreTrailInk = Color(0xFFB3261E);
-
 /// Reads a knockout match score the way the pairing does: whoever is ahead
-/// carries the brand colour, whoever trails carries the danger colour, and a
-/// level match stays neutral so a tie never looks like a result.
+/// carries the brand ink, whoever trails carries the danger ink, and a level
+/// match stays neutral so a tie never looks like a result.
+///
+/// Both tokens are the historic cyan / red in dark. In light they deepen for
+/// paper (`accentText` 6.78:1, `danger` 5.17:1 on the card surface), where
+/// raw brand cyan only reaches 2.29:1.
 Color _matchScoreColor(
   BuildContext context,
   double score,
@@ -367,11 +369,9 @@ Color _matchScoreColor(
 ) {
   if (score == opponentScore) return context.colors.textPrimary;
 
-  final isLeading = score > opponentScore;
-  if (context.isLightTheme) {
-    return isLeading ? _lightScoreLeadInk : _lightScoreTrailInk;
-  }
-  return isLeading ? context.colors.brand : context.colors.danger;
+  return score > opponentScore
+      ? context.colors.accentText
+      : context.colors.danger;
 }
 
 Widget? _playerFlag(PlayerCard? player) {

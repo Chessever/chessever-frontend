@@ -348,7 +348,7 @@ class _PlayerGamesScreenState extends ConsumerState<PlayerGamesScreen> {
             child: Text(
               'This player has not played any games yet',
               style: AppTypography.textSmRegular.copyWith(
-                color: context.colors.textPrimary.withValues(alpha: 0.5),
+                color: context.textInk(0.5),
               ),
               textAlign: TextAlign.center,
             ),

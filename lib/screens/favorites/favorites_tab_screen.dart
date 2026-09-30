@@ -3,8 +3,8 @@ import 'package:chessever2/screens/favorites/provider/favorites_mode_provider.da
 import 'package:chessever2/screens/favorites/tabs/favorites_games_tab.dart';
 import 'package:chessever2/screens/favorites/tabs/favorites_list_tab.dart';
 import 'package:chessever2/screens/favorites/tabs/favorites_players_tab.dart';
+import 'package:chessever2/screens/favorites/widgets/collection_inks.dart';
 import 'package:chessever2/theme/app_colors.dart';
-import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/scroll_to_top_bus.dart';
@@ -164,7 +164,7 @@ class _FavoritesTabScreenState extends ConsumerState<FavoritesTabScreen> {
                 children: [
                   Icon(
                     Icons.favorite,
-                    color: const Color(0xFFEF4444),
+                    color: context.collectionAlertInk,
                     size: 20.ic,
                   ),
                   SizedBox(width: 8.w),

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:chessever2/screens/tour_detail/provider/tour_detail_mode_provider.dart';
 import 'package:chessever2/repository/supabase/round/round.dart';
 import 'package:chessever2/repository/supabase/round/round_repository.dart';
 
@@ -57,17 +58,30 @@ class _Rounds extends RoundRepository {
 
 class _Repository extends GameRepository {
   int polls = 0;
+  String status = '*';
+  Future<List<TourGameSafetyNetSnapshot>>? pending;
+  final updates = StreamController<TourGameSafetyNetSnapshot?>.broadcast();
+  List<Player>? players;
+  int subscriptions = 0;
+  @override
+  Stream<TourGameSafetyNetSnapshot?> watchTourStandingsChanges(String tourId) {
+    subscriptions++;
+    return updates.stream;
+  }
+
   @override
   Future<List<TourGameSafetyNetSnapshot>> getTourGamesSafetyNet(
     String tourId,
   ) async {
     polls++;
+    if (pending != null) return pending!;
     return [
-      const TourGameSafetyNetSnapshot(
+      TourGameSafetyNetSnapshot(
         id: 'g',
         roundId: 'r',
         roundSlug: 'r',
-        status: '*',
+        status: status,
+        players: players,
       ),
     ];
   }
@@ -217,6 +231,182 @@ void main() {
     subscription.close();
     container.dispose();
     await tester.pump(const Duration(milliseconds: 1));
+  });
+
+  for (final mode in [
+    TournamentDetailScreenMode.standings,
+    TournamentDetailScreenMode.players,
+    TournamentDetailScreenMode.bracket,
+  ]) {
+    testWidgets('results refresh while $mode stays open', (tester) async {
+      final repository = _Repository();
+      final container = ProviderContainer(
+        overrides: [
+          roundRepositoryProvider.overrideWithValue(_Rounds()),
+          gameRepositoryProvider.overrideWithValue(repository),
+          gamesLocalStorage.overrideWith(_Storage.new),
+          tournamentDetailVisibleProvider.overrideWith((ref) => true),
+          selectedTourModeProvider.overrideWith((ref) => mode),
+        ],
+      );
+      container.listen(gamesTourProvider('tour'), (_, __) {});
+      await tester.pump();
+      repository.status = '1-0';
+      await tester.pump(const Duration(seconds: 46));
+      expect(
+        container.read(gamesTourProvider('tour')).requireValue.single.status,
+        '1-0',
+      );
+      container.dispose();
+      await tester.pump(Duration.zero);
+    });
+  }
+
+  for (final mode in [
+    TournamentDetailScreenMode.standings,
+    TournamentDetailScreenMode.players,
+    TournamentDetailScreenMode.bracket,
+  ]) {
+    testWidgets(
+      'realtime results and retractions update $mode before polling',
+      (tester) async {
+        final repository = _Repository();
+        final container = ProviderContainer(
+          overrides: [
+            roundRepositoryProvider.overrideWithValue(_Rounds()),
+            gameRepositoryProvider.overrideWithValue(repository),
+            gamesLocalStorage.overrideWith(_Storage.new),
+            tournamentDetailVisibleProvider.overrideWith((ref) => true),
+            selectedTourModeProvider.overrideWith((ref) => mode),
+          ],
+        );
+        final subscription = container.listen(
+          gamesTourProvider('tour'),
+          (_, __) {},
+        );
+        await tester.pump();
+        for (final status in ['1-0', '1/2-1/2', '0-1', '*']) {
+          repository.updates.add(
+            TourGameSafetyNetSnapshot(
+              id: 'g',
+              roundId: 'r',
+              roundSlug: 'r',
+              status: status,
+            ),
+          );
+          await tester.pump();
+          expect(
+            container
+                .read(gamesTourProvider('tour'))
+                .requireValue
+                .single
+                .status,
+            status,
+          );
+          expect(repository.polls, 0);
+        }
+        expect(repository.updates.hasListener, isTrue);
+        container.read(tournamentDetailVisibleProvider.notifier).state = false;
+        await tester.pump(Duration.zero);
+        expect(repository.updates.hasListener, isFalse);
+        container.read(tournamentDetailVisibleProvider.notifier).state = true;
+        await tester.pump(Duration.zero);
+        expect(repository.subscriptions, 2);
+        subscription.close();
+        await tester.pump(Duration.zero);
+        expect(repository.updates.hasListener, isFalse);
+        container.dispose();
+        await repository.updates.close();
+      },
+    );
+  }
+
+  testWidgets('an older HTTP snapshot cannot undo a realtime result', (
+    tester,
+  ) async {
+    final pending = Completer<List<TourGameSafetyNetSnapshot>>();
+    final repository = _Repository()..pending = pending.future;
+    final container = ProviderContainer(
+      overrides: [
+        roundRepositoryProvider.overrideWithValue(_Rounds()),
+        gameRepositoryProvider.overrideWithValue(repository),
+        gamesLocalStorage.overrideWith(_Storage.new),
+        tournamentDetailVisibleProvider.overrideWith((ref) => true),
+        selectedTourModeProvider.overrideWith(
+          (ref) => TournamentDetailScreenMode.standings,
+        ),
+      ],
+    );
+    container.listen(gamesTourProvider('tour'), (_, __) {});
+    await tester.pump();
+    repository.updates.add(
+      null,
+    ); // subscription/reconnect reconciles immediately
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 200));
+    expect(repository.polls, 1);
+    repository.updates.add(
+      const TourGameSafetyNetSnapshot(
+        id: 'g',
+        roundId: 'r',
+        roundSlug: 'r',
+        status: '1-0',
+      ),
+    );
+    await tester.pump();
+    pending.complete([
+      const TourGameSafetyNetSnapshot(
+        id: 'g',
+        roundId: 'r',
+        roundSlug: 'r',
+        status: '*',
+      ),
+    ]);
+    await tester.pump();
+    expect(
+      container.read(gamesTourProvider('tour')).requireValue.single.status,
+      '1-0',
+    );
+    container.dispose();
+    await repository.updates.close();
+  });
+
+  testWidgets('failed or stuck polling recovers without overlapping requests', (
+    tester,
+  ) async {
+    final repository = _Repository()
+      ..pending = Completer<List<TourGameSafetyNetSnapshot>>().future;
+    final container = ProviderContainer(
+      overrides: [
+        roundRepositoryProvider.overrideWithValue(_Rounds()),
+        gameRepositoryProvider.overrideWithValue(repository),
+        gamesLocalStorage.overrideWith(_Storage.new),
+        tournamentDetailVisibleProvider.overrideWith((ref) => true),
+        selectedTourModeProvider.overrideWith(
+          (ref) => TournamentDetailScreenMode.standings,
+        ),
+      ],
+    );
+    container.listen(gamesTourProvider('tour'), (_, __) {});
+    await tester.pump();
+    repository.updates.add(null);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 200));
+    repository.updates.add(null);
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 2));
+    expect(repository.polls, 1);
+    await tester.pump(const Duration(seconds: 10));
+    repository.pending = null;
+    repository.status = '0-1';
+    await tester.pump(const Duration(milliseconds: 200));
+    expect(repository.polls, 2);
+    expect(
+      container.read(gamesTourProvider('tour')).requireValue.single.status,
+      '0-1',
+    );
+    container.dispose();
+    await repository.updates.close();
   });
 
   testWidgets('board switcher cannot restart covered tournament polling', (

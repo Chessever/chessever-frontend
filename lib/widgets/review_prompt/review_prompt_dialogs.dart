@@ -147,12 +147,20 @@ class _ReviewFlowDialogState extends State<ReviewFlowDialog> {
           color: context.colors.textPrimary.withValues(alpha: 0.08),
           width: 1,
         ),
+        // Dark floats the card on a deep black bloom; on paper that is a
+        // grey smear, so light casts one tight ink shadow instead.
         boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.3),
-            blurRadius: 24,
-            offset: const Offset(0, 12),
-          ),
+          context.isLightTheme
+              ? BoxShadow(
+                color: context.colors.shadow,
+                blurRadius: 8,
+                offset: const Offset(0, 2),
+              )
+              : BoxShadow(
+                color: Colors.black.withValues(alpha: 0.3),
+                blurRadius: 24,
+                offset: const Offset(0, 12),
+              ),
         ],
       ),
       child: AnimatedSize(
@@ -201,7 +209,7 @@ class _ReviewFlowDialogState extends State<ReviewFlowDialog> {
         mainAxisSize: MainAxisSize.min,
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(Icons.star_rounded, color: kPrimaryColor, size: 42.ic),
+          Icon(Icons.star_rounded, color: context.colors.accentText, size: 42.ic),
           SizedBox(height: 12.sp),
           Text(
             'Enjoying ChessEver?',
@@ -214,7 +222,7 @@ class _ReviewFlowDialogState extends State<ReviewFlowDialog> {
           Text(
             'Tap a star to rate your experience',
             style: AppTypography.textSmRegular.copyWith(
-              color: context.colors.textPrimary.withValues(alpha: 0.6),
+              color: context.textInk(0.6),
             ),
             textAlign: TextAlign.center,
           ),
@@ -227,9 +235,13 @@ class _ReviewFlowDialogState extends State<ReviewFlowDialog> {
                 onPressed: () => _onRatingSelected(index + 1),
                 icon: Icon(
                   isActive ? Icons.star_rounded : Icons.star_border_rounded,
+                  // An empty star is still a control: ink at 0.35 is ~2.2:1
+                  // on paper, so light outlines it in secondary icon ink.
                   color:
                       isActive
-                          ? kPrimaryColor
+                          ? context.colors.accentText
+                          : context.isLightTheme
+                          ? context.colors.iconSecondary
                           : context.colors.textPrimary.withValues(alpha: 0.35),
                   size: 30.ic,
                 ),
@@ -278,7 +290,11 @@ class _ReviewFlowDialogState extends State<ReviewFlowDialog> {
                   child: Text(
                     'Continue',
                     style: AppTypography.textSmMedium.copyWith(
-                      color: kBlackColor,
+                      // Black on the recessed fill vanished in dark (1.3:1).
+                      color:
+                          _rating != 0
+                              ? kBlackColor
+                              : context.colors.textSecondary,
                     ),
                   ),
                 ),
@@ -313,7 +329,7 @@ class _ReviewFlowDialogState extends State<ReviewFlowDialog> {
                 Text(
                   'Tell us what went wrong or what we can improve...',
                   style: AppTypography.textSmRegular.copyWith(
-                    color: context.colors.textPrimary.withValues(alpha: 0.6),
+                    color: context.textInk(0.6),
                   ),
                 ),
                 SizedBox(height: 12.sp),
@@ -326,7 +342,7 @@ class _ReviewFlowDialogState extends State<ReviewFlowDialog> {
                       isActive ? Icons.star_rounded : Icons.star_border_rounded,
                       color:
                           isActive
-                              ? kPrimaryColor
+                              ? context.colors.accentText
                               : context.colors.textPrimary.withValues(
                                 alpha: 0.25,
                               ),
@@ -354,7 +370,7 @@ class _ReviewFlowDialogState extends State<ReviewFlowDialog> {
                   decoration: InputDecoration(
                     hintText: 'Type your feedback here...',
                     hintStyle: AppTypography.textSmRegular.copyWith(
-                      color: context.colors.textPrimary.withValues(alpha: 0.35),
+                      color: context.textInk(0.35),
                     ),
                     filled: true,
                     fillColor: context.colors.surface,
@@ -376,10 +392,15 @@ class _ReviewFlowDialogState extends State<ReviewFlowDialog> {
                     ),
                     focusedBorder: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(12.br),
-                      borderSide: const BorderSide(color: kPrimaryColor),
+                      borderSide: BorderSide(
+                        color:
+                            context.isLightTheme
+                                ? context.colors.accentText
+                                : kPrimaryColor,
+                      ),
                     ),
                     counterStyle: AppTypography.textXsRegular.copyWith(
-                      color: context.colors.textPrimary.withValues(alpha: 0.35),
+                      color: context.textInk(0.35),
                     ),
                   ),
                 ),
@@ -425,7 +446,11 @@ class _ReviewFlowDialogState extends State<ReviewFlowDialog> {
                         child: Text(
                           'Next',
                           style: AppTypography.textSmMedium.copyWith(
-                            color: kBlackColor,
+                            // Black on the recessed fill vanished in dark (1.3:1).
+                            color:
+                                _canSubmitFeedback
+                                    ? kBlackColor
+                                    : context.colors.textSecondary,
                           ),
                         ),
                       ),
@@ -463,7 +488,7 @@ class _ReviewFlowDialogState extends State<ReviewFlowDialog> {
                 Text(
                   'What premium feature would you love to see?',
                   style: AppTypography.textSmRegular.copyWith(
-                    color: context.colors.textPrimary.withValues(alpha: 0.6),
+                    color: context.textInk(0.6),
                   ),
                 ),
                 SizedBox(height: 16.sp),
@@ -488,7 +513,7 @@ class _ReviewFlowDialogState extends State<ReviewFlowDialog> {
                   decoration: InputDecoration(
                     hintText: "I'd happily pay for...",
                     hintStyle: AppTypography.textSmRegular.copyWith(
-                      color: context.colors.textPrimary.withValues(alpha: 0.35),
+                      color: context.textInk(0.35),
                     ),
                     filled: true,
                     fillColor: context.colors.surface,
@@ -510,10 +535,15 @@ class _ReviewFlowDialogState extends State<ReviewFlowDialog> {
                     ),
                     focusedBorder: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(12.br),
-                      borderSide: const BorderSide(color: kPrimaryColor),
+                      borderSide: BorderSide(
+                        color:
+                            context.isLightTheme
+                                ? context.colors.accentText
+                                : kPrimaryColor,
+                      ),
                     ),
                     counterStyle: AppTypography.textXsRegular.copyWith(
-                      color: context.colors.textPrimary.withValues(alpha: 0.35),
+                      color: context.textInk(0.35),
                     ),
                   ),
                 ),
@@ -559,7 +589,11 @@ class _ReviewFlowDialogState extends State<ReviewFlowDialog> {
                         child: Text(
                           'Send',
                           style: AppTypography.textSmMedium.copyWith(
-                            color: kBlackColor,
+                            // Black on the recessed fill vanished in dark (1.3:1).
+                            color:
+                                _canSubmitFeature
+                                    ? kBlackColor
+                                    : context.colors.textSecondary,
                           ),
                         ),
                       ),
@@ -590,17 +624,11 @@ class _ReviewFlowDialogState extends State<ReviewFlowDialog> {
       ),
       child: Row(
         children: [
-          Container(
-            padding: EdgeInsets.all(8.sp),
-            decoration: BoxDecoration(
-              color: kPrimaryColor.withValues(alpha: 0.15),
-              shape: BoxShape.circle,
-            ),
-            child: Icon(
-              Icons.auto_awesome_rounded,
-              color: kPrimaryColor,
-              size: 20.ic,
-            ),
+          // The mark stands bare on the banner, no tinted disc behind it.
+          Icon(
+            Icons.auto_awesome_rounded,
+            color: context.colors.accentText,
+            size: 22.ic,
           ),
           SizedBox(width: 12.sp),
           Expanded(

@@ -157,11 +157,11 @@ class _MiniaturePlayersFilterDialogState
               Text(
                 label,
                 style: AppTypography.textXsMedium.copyWith(
-                  color: kPrimaryColor,
+                  color: context.colors.accentText,
                 ),
               ),
               SizedBox(width: 4.w),
-              Icon(Icons.close_rounded, color: kPrimaryColor, size: 14.ic),
+              Icon(Icons.close_rounded, color: context.colors.accentText, size: 14.ic),
             ],
           ),
         ),
@@ -201,7 +201,7 @@ class _MiniaturePlayersFilterDialogState
                 onPressed: () => Navigator.of(context).pop(),
                 icon: Icon(
                   Icons.close_rounded,
-                  color: context.colors.textPrimary.withValues(alpha: 0.6),
+                  color: context.textInk(0.6),
                   size: 20.ic,
                 ),
               ),
