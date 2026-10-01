@@ -1,11 +1,21 @@
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:chessever2/repository/library/library_book_publication.dart';
 import 'package:chessever2/repository/library/models/library_folder.dart';
+import 'package:chessever2/screens/collections/collection_plate_row.dart';
 import 'package:chessever2/screens/collections/collections_data.dart';
+import 'package:chessever2/screens/collections/collections_screen.dart'
+    show CollectionBookPlate;
 import 'package:chessever2/theme/app_colors.dart';
+import 'package:chessever2/utils/app_typography.dart';
+import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/utils/svg_asset.dart';
 import 'package:chessever2/widgets/alert_dialog/alert_modal.dart';
 import 'package:chessever2/widgets/app_snack.dart';
 import 'package:chessever2/widgets/auth/auth_upgrade_sheet.dart';
+import 'package:chessever2/widgets/segmented_switcher.dart';
+import 'package:chessever2/widgets/svg_widget.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 Future<void> openLibraryBookEditor(
@@ -19,6 +29,15 @@ Future<void> openLibraryBookEditor(
   );
 }
 
+/// The fields this screen edits, in the order they read on the collection
+/// page. Foreword and publisher are not edited here: the publisher is always
+/// ChessEver's own editor, and a foreword belongs to a printed book, not to
+/// a folder of games. Whatever the server already holds for them is kept.
+enum _Field { title, subtitle, author, year, about, cover }
+
+/// Which preview the field is drawn in: the list row or the collection page.
+const _listFields = {_Field.title, _Field.author, _Field.cover};
+
 /// Publication is explicit. Saving details alone preserves the current
 /// visibility, and a failure leaves every entered field in place.
 class LibraryBookScreen extends ConsumerStatefulWidget {
@@ -30,19 +49,8 @@ class LibraryBookScreen extends ConsumerStatefulWidget {
 
 class _LibraryBookScreenState extends ConsumerState<LibraryBookScreen> {
   final _form = GlobalKey<FormState>();
-  final _fields = <String, TextEditingController>{
-    for (final name in [
-      'title',
-      'subtitle',
-      'author',
-      'about',
-      'foreword',
-      'publisher',
-      'year',
-      'cover',
-    ])
-      name: TextEditingController(),
-  };
+  final _fields = {for (final f in _Field.values) f: TextEditingController()};
+  final _focus = {for (final f in _Field.values) f: FocusNode()};
   LibraryBookPublication? _publication;
   bool _loading = true;
   bool _busy = false;
@@ -51,9 +59,16 @@ class _LibraryBookScreenState extends ConsumerState<LibraryBookScreen> {
   String _busyLabel = 'Saving collection details…';
   String? _error;
 
+  /// 0: as it reads in the Collections list, 1: as its page opens.
+  int _previewTab = 0;
+  _Field? _focused;
+
   @override
   void initState() {
     super.initState();
+    for (final entry in _focus.entries) {
+      entry.value.addListener(() => _onFocus(entry.key, entry.value));
+    }
     _load();
   }
 
@@ -62,20 +77,35 @@ class _LibraryBookScreenState extends ConsumerState<LibraryBookScreen> {
     for (final field in _fields.values) {
       field.dispose();
     }
+    for (final node in _focus.values) {
+      node.dispose();
+    }
     super.dispose();
+  }
+
+  /// Follow the field being edited: the preview turns to where that field
+  /// shows, and its spot there lights up.
+  void _onFocus(_Field field, FocusNode node) {
+    if (!mounted) return;
+    if (node.hasFocus) {
+      setState(() {
+        _focused = field;
+        _previewTab = _listFields.contains(field) ? 0 : 1;
+      });
+    } else if (_focused == field) {
+      setState(() => _focused = null);
+    }
   }
 
   void _accept(LibraryBookPublication publication) {
     final m = publication.metadata;
     final values = {
-      'title': m.title,
-      'subtitle': m.subtitle,
-      'author': m.author,
-      'about': m.about,
-      'foreword': m.foreword,
-      'publisher': m.publisher,
-      'year': m.publishedYear?.toString() ?? '',
-      'cover': m.coverUrl,
+      _Field.title: m.title,
+      _Field.subtitle: m.subtitle,
+      _Field.author: m.author,
+      _Field.about: m.about,
+      _Field.year: m.publishedYear?.toString() ?? '',
+      _Field.cover: m.coverUrl,
     };
     for (final entry in values.entries) {
       _fields[entry.key]!.text = entry.value;
@@ -108,16 +138,22 @@ class _LibraryBookScreenState extends ConsumerState<LibraryBookScreen> {
       ? error.message
       : 'Could not load collection details. Please try again.';
 
-  LibraryBookMetadata get _metadata => LibraryBookMetadata(
-    title: _fields['title']!.text,
-    subtitle: _fields['subtitle']!.text,
-    author: _fields['author']!.text,
-    about: _fields['about']!.text,
-    foreword: _fields['foreword']!.text,
-    publisher: _fields['publisher']!.text,
-    publishedYear: int.tryParse(_fields['year']!.text.trim()),
-    coverUrl: _fields['cover']!.text,
-  );
+  String _text(_Field field) => _fields[field]!.text;
+
+  LibraryBookMetadata get _metadata {
+    final saved = _publication?.metadata;
+    return LibraryBookMetadata(
+      title: _text(_Field.title),
+      subtitle: _text(_Field.subtitle),
+      author: _text(_Field.author),
+      about: _text(_Field.about),
+      // Not editable here; carried through so a save never erases them.
+      foreword: saved?.foreword ?? '',
+      publisher: saved?.publisher ?? '',
+      publishedYear: int.tryParse(_text(_Field.year).trim()),
+      coverUrl: _text(_Field.cover),
+    );
+  }
 
   bool _validateForReview = false;
 
@@ -126,7 +162,8 @@ class _LibraryBookScreenState extends ConsumerState<LibraryBookScreen> {
     _validateForReview = publish;
     if (!(_form.currentState?.validate() ?? false)) {
       setState(
-        () => _error = 'Check the highlighted collection details before saving.',
+        () =>
+            _error = 'Check the highlighted collection details before saving.',
       );
       return;
     }
@@ -196,7 +233,11 @@ class _LibraryBookScreenState extends ConsumerState<LibraryBookScreen> {
       ref.invalidate(collectionsRepositoryProvider);
       ref.invalidate(collectionOpeningsProvider);
       ref.invalidate(collectionBooksForOpeningProvider);
-      showAppSnack(context, 'Collection unpublished', tone: AppSnackTone.success);
+      showAppSnack(
+        context,
+        'Collection unpublished',
+        tone: AppSnackTone.success,
+      );
     } catch (error) {
       if (mounted) setState(() => _error = _message(error));
     } finally {
@@ -222,90 +263,192 @@ class _LibraryBookScreenState extends ConsumerState<LibraryBookScreen> {
     });
   }
 
+  String? _validate(_Field field, String? raw) {
+    final value = raw?.trim() ?? '';
+    switch (field) {
+      case _Field.title:
+        return value.isEmpty ? 'Enter a collection title' : null;
+      case _Field.author:
+        return _validateForReview && value.isEmpty
+            ? 'Credit the author by name'
+            : null;
+      case _Field.about:
+        return _validateForReview && value.isEmpty
+            ? 'Describe this collection'
+            : null;
+      case _Field.year:
+        if (value.isEmpty) return null;
+        final year = int.tryParse(value);
+        return year == null || year < 1000 || year > DateTime.now().year + 1
+            ? 'Enter a four-digit year'
+            : null;
+      case _Field.cover:
+        if (value.isEmpty) return null;
+        return _coverUri(value) == null ? 'Use an HTTPS image link' : null;
+      case _Field.subtitle:
+        return null;
+    }
+  }
+
   Widget _field(
-    String name,
-    String label, {
+    _Field field, {
+    required String label,
+    required String where,
+    required String hint,
+    bool optional = false,
     int lines = 1,
     int limit = 300,
-    String? hint,
-  }) => Padding(
-    padding: const EdgeInsets.only(bottom: 18),
-    child: TextFormField(
-      controller: _fields[name],
-      enabled: !_busy,
-      minLines: lines,
-      maxLines: lines == 1 ? 1 : lines + 4,
-      maxLength: limit,
-      keyboardType: name == 'year'
-          ? TextInputType.number
-          : name == 'cover'
-          ? TextInputType.url
-          : lines > 1
-          ? TextInputType.multiline
-          : TextInputType.text,
-      textCapitalization: name == 'cover' || name == 'year'
-          ? TextCapitalization.none
-          : TextCapitalization.sentences,
-      style: TextStyle(color: context.colors.textPrimary),
-      onChanged: (_) {
-        if (!_dirty) setState(() => _dirty = true);
-      },
-      decoration: InputDecoration(
-        labelText: label,
-        hintText: hint,
-        alignLabelWithHint: lines > 1,
-        counterText: '',
-        filled: true,
-        fillColor: context.colors.surface,
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(10),
-          borderSide: BorderSide.none,
-        ),
+  }) {
+    final colors = context.colors;
+    final radius = BorderRadius.circular(10.br);
+    OutlineInputBorder outline(Color color) => OutlineInputBorder(
+      borderRadius: radius,
+      borderSide: BorderSide(color: color),
+    );
+    return Padding(
+      padding: EdgeInsets.only(bottom: 20.sp),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.baseline,
+            textBaseline: TextBaseline.alphabetic,
+            children: [
+              Text(
+                label,
+                style: AppTypography.textSmMedium.copyWith(
+                  color: colors.textPrimary,
+                ),
+              ),
+              if (optional) ...[
+                SizedBox(width: 6.sp),
+                Text(
+                  'Optional',
+                  style: AppTypography.textXsRegular.copyWith(
+                    color: context.textInk(0.45),
+                  ),
+                ),
+              ],
+            ],
+          ),
+          SizedBox(height: 2.sp),
+          Text(
+            where,
+            style: AppTypography.textXsRegular.copyWith(
+              color: context.textInk(0.55),
+              height: 16 / 12,
+            ),
+          ),
+          SizedBox(height: 8.sp),
+          TextFormField(
+            controller: _fields[field],
+            focusNode: _focus[field],
+            enabled: !_busy,
+            minLines: lines,
+            maxLines: lines == 1 ? 1 : lines + 4,
+            maxLength: limit,
+            keyboardType: switch (field) {
+              _Field.year => TextInputType.number,
+              _Field.cover => TextInputType.url,
+              _ when lines > 1 => TextInputType.multiline,
+              _ => TextInputType.text,
+            },
+            inputFormatters: field == _Field.year
+                ? [FilteringTextInputFormatter.digitsOnly]
+                : null,
+            textCapitalization: switch (field) {
+              _Field.cover || _Field.year => TextCapitalization.none,
+              _Field.title || _Field.subtitle => TextCapitalization.words,
+              _ => TextCapitalization.sentences,
+            },
+            autocorrect: field != _Field.cover,
+            style: AppTypography.textSmRegular.copyWith(
+              color: colors.textPrimary,
+              fontSize: 15.f,
+              height: 22 / 15,
+            ),
+            onChanged: (_) {
+              if (!_dirty) setState(() => _dirty = true);
+            },
+            decoration: InputDecoration(
+              hintText: hint,
+              hintMaxLines: lines,
+              hintStyle: AppTypography.textSmRegular.copyWith(
+                color: context.textInk(0.35),
+                fontSize: 15.f,
+                height: 22 / 15,
+              ),
+              counterText: '',
+              isDense: true,
+              filled: true,
+              fillColor: colors.textPrimary.withValues(alpha: 0.03),
+              contentPadding: EdgeInsets.symmetric(
+                horizontal: 14.sp,
+                vertical: 13.sp,
+              ),
+              border: outline(colors.textPrimary.withValues(alpha: 0.06)),
+              enabledBorder: outline(
+                colors.textPrimary.withValues(alpha: 0.06),
+              ),
+              disabledBorder: outline(
+                colors.textPrimary.withValues(alpha: 0.04),
+              ),
+              focusedBorder: outline(colors.textPrimary.withValues(alpha: 0.3)),
+              errorBorder: outline(colors.danger.withValues(alpha: 0.7)),
+              focusedErrorBorder: outline(colors.danger),
+              errorStyle: AppTypography.textXsRegular.copyWith(
+                color: colors.danger,
+              ),
+            ),
+            validator: (raw) => _validate(field, raw),
+          ),
+        ],
       ),
-      validator: (raw) {
-        final value = raw?.trim() ?? '';
-        if (_validateForReview &&
-            ['author', 'about'].contains(name) &&
-            value.isEmpty) {
-          return name == 'author'
-              ? 'Credit the author by name'
-              : 'Describe this collection';
-        }
-        if (name == 'title' && value.isEmpty) return 'Enter a collection title';
-        if (name == 'year' && value.isNotEmpty) {
-          final year = int.tryParse(value);
-          if (year == null || year < 0 || year > 9999) {
-            return 'Enter a valid publication year';
-          }
-        }
-        if (name == 'cover' && value.isNotEmpty) {
-          final uri = Uri.tryParse(value);
-          if (uri == null ||
-              uri.scheme != 'https' ||
-              uri.host.isEmpty ||
-              uri.userInfo.isNotEmpty) {
-            return 'Use an HTTPS image URL';
-          }
-        }
-        return null;
-      },
-    ),
-  );
+    );
+  }
+
+  Widget _status(bool published) {
+    final colors = context.colors;
+    return Row(
+      children: [
+        Container(
+          width: 8.sp,
+          height: 8.sp,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: published ? colors.success : context.textInk(0.35),
+          ),
+        ),
+        SizedBox(width: 8.sp),
+        Expanded(
+          child: Text(
+            published
+                ? 'Published · ${_plural(_publication!.gameCount, 'game')} in Collections'
+                : 'Private draft · only you can see it',
+            style: AppTypography.textXsMedium.copyWith(
+              color: context.textInk(0.7),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
     final published = _publication?.isPublished ?? false;
+    final colors = context.colors;
     return PopScope(
       canPop: !_busy && !_dirty,
       onPopInvokedWithResult: (didPop, _) {
         if (!didPop && !_busy) _close();
       },
       child: Scaffold(
-        backgroundColor: context.colors.background,
+        backgroundColor: colors.background,
         appBar: AppBar(
-          backgroundColor: context.colors.background,
-          foregroundColor: context.colors.textPrimary,
-          title: const Text('Collection details'),
+          backgroundColor: colors.background,
+          foregroundColor: colors.textPrimary,
+          title: Text(published ? 'Edit collection' : 'Publish collection'),
           leading: IconButton(
             onPressed: _busy ? null : _close,
             tooltip: 'Back',
@@ -327,7 +470,7 @@ class _LibraryBookScreenState extends ConsumerState<LibraryBookScreen> {
                         children: [
                           Text(
                             _error ?? 'Could not load collection details',
-                            style: TextStyle(color: context.colors.textPrimary),
+                            style: TextStyle(color: colors.textPrimary),
                           ),
                           const SizedBox(height: 12),
                           TextButton(
@@ -340,52 +483,95 @@ class _LibraryBookScreenState extends ConsumerState<LibraryBookScreen> {
                   : Form(
                       key: _form,
                       child: SingleChildScrollView(
-                        padding: const EdgeInsets.fromLTRB(20, 12, 20, 32),
+                        padding: EdgeInsets.fromLTRB(20.sp, 8.sp, 20.sp, 32.sp),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.stretch,
                           children: [
-                            Text(
-                              published
-                                  ? 'Published in Collections'
-                                  : 'Private draft',
-                              style: TextStyle(
-                                fontWeight: FontWeight.w600,
-                                color: context.colors.textPrimary,
+                            _status(published),
+                            SizedBox(height: 20.sp),
+                            _sectionHeading('Preview'),
+                            SizedBox(height: 10.sp),
+                            SegmentedSwitcher(
+                              options: const ['In the list', 'Collection page'],
+                              currentSelection: _previewTab,
+                              onSelectionChanged: (i) =>
+                                  setState(() => _previewTab = i),
+                            ),
+                            SizedBox(height: 12.sp),
+                            ListenableBuilder(
+                              listenable: Listenable.merge(_fields.values),
+                              builder: (context, _) => _BookPreview(
+                                page: _previewTab == 1,
+                                title: _text(_Field.title).trim(),
+                                subtitle: _text(_Field.subtitle).trim(),
+                                author: _text(_Field.author).trim(),
+                                year: _text(_Field.year).trim(),
+                                about: _text(_Field.about).trim(),
+                                cover: _coverUri(_text(_Field.cover)),
+                                publisher: _publication!.metadata.publisher
+                                    .trim(),
+                                gameCount: _publication!.gameCount,
+                                focused: _focused,
                               ),
                             ),
-                            const SizedBox(height: 6),
+                            SizedBox(height: 28.sp),
+                            _sectionHeading('Details'),
+                            SizedBox(height: 4.sp),
                             Text(
-                              published
-                                  ? '${_publication!.gameCount} public games. Your source folder stays private.'
-                                  : 'Submit this folder and its games for ChessEver approval. It stays in draft until a superadmin publishes it.',
-                              style: TextStyle(
-                                color: context.colors.textSecondary,
-                                height: 1.5,
+                              'Everything is needed to submit unless marked Optional.',
+                              style: AppTypography.textXsRegular.copyWith(
+                                color: context.textInk(0.55),
                               ),
                             ),
-                            const SizedBox(height: 24),
-                            _field('title', 'Title', limit: 300),
-                            _field('author', 'Author', limit: 300),
-                            _field('subtitle', 'Subtitle', limit: 300),
+                            SizedBox(height: 16.sp),
                             _field(
-                              'about',
-                              'Description',
+                              _Field.title,
+                              label: 'Title',
+                              where:
+                                  'The name readers see in the list and on top of the page.',
+                              hint: 'e.g. Carlsen’s Best Endgames',
+                            ),
+                            _field(
+                              _Field.subtitle,
+                              label: 'Subtitle',
+                              optional: true,
+                              where:
+                                  'One short line under the title on the collection page. It adds detail the title leaves out.',
+                              hint: 'e.g. 40 annotated wins, 2013–2023',
+                            ),
+                            _field(
+                              _Field.author,
+                              label: 'Author',
+                              where:
+                                  'Credited as “by …” in the list and on the page.',
+                              hint: 'e.g. Magnus Carlsen',
+                            ),
+                            _field(
+                              _Field.year,
+                              label: 'Year',
+                              optional: true,
+                              where: 'Shown on the page under the author.',
+                              hint: 'e.g. ${DateTime.now().year}',
+                              limit: 4,
+                            ),
+                            _field(
+                              _Field.about,
+                              label: 'Description',
+                              where:
+                                  'Opens the page under “About this collection”.',
+                              hint:
+                                  'What’s inside, who it’s for, and what readers will take away.',
                               lines: 4,
                               limit: 20000,
                             ),
                             _field(
-                              'foreword',
-                              'Foreword',
-                              lines: 3,
-                              limit: 50000,
-                            ),
-                            _field('publisher', 'Publisher', limit: 200),
-                            _field('year', 'Publication year', limit: 4),
-                            _field(
-                              'cover',
-                              'Cover image URL',
-                              limit: 2000,
+                              _Field.cover,
+                              label: 'Cover image link',
+                              optional: true,
+                              where:
+                                  'A portrait image works best. Without one, the stacked boards are shown.',
                               hint: 'https://…',
+                              limit: 2000,
                             ),
                             if (published)
                               CheckboxListTile(
@@ -408,55 +594,64 @@ class _LibraryBookScreenState extends ConsumerState<LibraryBookScreen> {
                               ),
                             if (_error != null)
                               Padding(
-                                padding: const EdgeInsets.only(bottom: 16),
+                                padding: EdgeInsets.only(bottom: 16.sp),
                                 child: Semantics(
                                   liveRegion: true,
                                   child: Text(
                                     _error!,
-                                    style: TextStyle(
-                                      color: context.colors.textPrimary,
+                                    style: AppTypography.textSmRegular.copyWith(
+                                      color: colors.danger,
                                     ),
                                   ),
                                 ),
                               ),
                             if (_busy)
                               Padding(
-                                padding: const EdgeInsets.only(bottom: 16),
+                                padding: EdgeInsets.only(bottom: 16.sp),
                                 child: Column(
                                   children: [
                                     const LinearProgressIndicator(),
-                                    const SizedBox(height: 8),
+                                    SizedBox(height: 8.sp),
                                     Text(
                                       _busyLabel,
                                       textAlign: TextAlign.center,
+                                      style: AppTypography.textXsRegular
+                                          .copyWith(
+                                            color: context.textInk(0.6),
+                                          ),
                                     ),
                                   ],
                                 ),
                               ),
                             FilledButton(
                               style: FilledButton.styleFrom(
-                                backgroundColor: context.colors.textPrimary,
-                                foregroundColor: context.colors.background,
+                                backgroundColor: colors.textPrimary,
+                                foregroundColor: colors.background,
                                 minimumSize: const Size.fromHeight(48),
                                 elevation: 0,
                                 shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(8),
+                                  borderRadius: BorderRadius.circular(12.br),
                                 ),
+                                textStyle: AppTypography.textSmMedium,
                               ),
                               onPressed: _busy
                                   ? null
                                   : () => _save(publish: true),
-                              child: Padding(
-                                padding: const EdgeInsets.symmetric(
-                                  vertical: 12,
-                                ),
-                                child: Text(
-                                  published
-                                      ? 'Submit changes'
-                                      : 'Submit for approval',
-                                ),
+                              child: Text(
+                                published
+                                    ? 'Submit changes'
+                                    : 'Submit for approval',
                               ),
                             ),
+                            SizedBox(height: 8.sp),
+                            Text(
+                              'ChessEver reviews every collection before it appears in Collections.',
+                              textAlign: TextAlign.center,
+                              style: AppTypography.textXsRegular.copyWith(
+                                color: context.textInk(0.5),
+                              ),
+                            ),
+                            SizedBox(height: 4.sp),
                             if (!published)
                               TextButton(
                                 onPressed: _busy ? null : _save,
@@ -475,6 +670,327 @@ class _LibraryBookScreenState extends ConsumerState<LibraryBookScreen> {
           ),
         ),
       ),
+    );
+  }
+
+  Widget _sectionHeading(String text) => Semantics(
+    header: true,
+    child: Text(
+      text,
+      style: AppTypography.textSmMedium.copyWith(
+        color: context.colors.textPrimary,
+        fontSize: 15.f,
+        height: 20 / 15,
+        fontWeight: FontWeight.w600,
+      ),
+    ),
+  );
+}
+
+/// An HTTPS image link, or null when [raw] is not one.
+Uri? _coverUri(String raw) {
+  final value = raw.trim();
+  if (value.isEmpty) return null;
+  final uri = Uri.tryParse(value);
+  if (uri == null ||
+      uri.scheme != 'https' ||
+      uri.host.isEmpty ||
+      uri.userInfo.isNotEmpty) {
+    return null;
+  }
+  return uri;
+}
+
+String _plural(int n, String one) => n == 1 ? '1 $one' : '$n ${one}s';
+
+/// The collection as it will be drawn, built from what is typed now: the
+/// list row is the Collections list's own row; the page is the top of the
+/// collection's About page. An empty optional field leaves no trace, exactly
+/// as published, until it is being edited: then its place shows as a ghost,
+/// and the spot of whichever field has focus is lit.
+class _BookPreview extends StatelessWidget {
+  const _BookPreview({
+    required this.page,
+    required this.title,
+    required this.subtitle,
+    required this.author,
+    required this.year,
+    required this.about,
+    required this.cover,
+    required this.publisher,
+    required this.gameCount,
+    required this.focused,
+  });
+
+  final bool page;
+  final String title;
+  final String subtitle;
+  final String author;
+  final String year;
+  final String about;
+  final Uri? cover;
+  final String publisher;
+  final int gameCount;
+  final _Field? focused;
+
+  Widget _plate(BoxFit fit) {
+    final url = cover;
+    const plate = CollectionBookPlate();
+    if (url == null) return plate;
+    return CachedNetworkImage(
+      imageUrl: url.toString(),
+      fit: fit,
+      placeholder: (_, __) => plate,
+      errorWidget: (_, __, ___) => plate,
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.colors;
+    return Container(
+      key: const ValueKey('book_preview'),
+      padding: EdgeInsets.all(12.sp),
+      decoration: BoxDecoration(
+        color: colors.background,
+        borderRadius: BorderRadius.circular(12.br),
+        border: Border.all(color: colors.textPrimary.withValues(alpha: 0.08)),
+      ),
+      child: AnimatedSize(
+        duration: MediaQuery.disableAnimationsOf(context)
+            ? Duration.zero
+            : const Duration(milliseconds: 220),
+        curve: Curves.easeOutCubic,
+        alignment: Alignment.topCenter,
+        child: page ? _page(context) : _list(context),
+      ),
+    );
+  }
+
+  /// The Collections list row. A book's row credits its author; the subtitle
+  /// takes that place only when no author is set, so say so when both are.
+  Widget _list(BuildContext context) {
+    final meta = author.isNotEmpty
+        ? 'by $author'
+        : subtitle.isNotEmpty
+        ? subtitle
+        : null;
+    final shownTitle = title.isEmpty ? 'Collection title' : title;
+    final note = switch (focused) {
+      _Field.subtitle when author.isNotEmpty =>
+        'In the list, the author’s name takes the subtitle’s place.',
+      _ => null,
+    };
+    return Column(
+      key: const ValueKey('book_preview_list'),
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        CollectionPlateRow(
+          plate: _plate(BoxFit.cover),
+          plateSize: CollectionPlateRow.eventPlate,
+          compactDetails: true,
+          title: shownTitle,
+          meta: meta,
+          metaMaxLines: 2,
+          tally: gameCount > 0 ? _plural(gameCount, 'game') : null,
+          semanticsLabel: [
+            'Preview',
+            shownTitle,
+            ?meta,
+            if (gameCount > 0) _plural(gameCount, 'game'),
+          ].join(', '),
+          trailing: Padding(
+            padding: EdgeInsets.all(12.sp),
+            child: SvgWidget(
+              SvgAsset.starIcon,
+              semanticsLabel: 'Star',
+              height: 20.h,
+              width: 20.w,
+            ),
+          ),
+        ),
+        if (note != null) ...[
+          SizedBox(height: 10.sp),
+          Text(
+            note,
+            style: AppTypography.textXsRegular.copyWith(
+              color: context.textInk(0.6),
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+
+  /// The top of the About page, as `_BookAboutPage` draws it.
+  Widget _page(BuildContext context) {
+    final colors = context.colors;
+    final secondary = AppTypography.textSmRegular.copyWith(
+      color: colors.textSecondary,
+      height: 20 / 14,
+    );
+    final edition = [
+      if (publisher.isNotEmpty) publisher,
+      if (year.isNotEmpty) year,
+    ].join(' · ');
+    return Column(
+      key: const ValueKey('book_preview_page'),
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (cover != null || focused == _Field.cover) ...[
+              _Spot(
+                lit: focused == _Field.cover,
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(4.br),
+                  child: SizedBox(
+                    width: 64.w,
+                    height: 96.w,
+                    child: _plate(BoxFit.contain),
+                  ),
+                ),
+              ),
+              SizedBox(width: 12.sp),
+            ],
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _Spot(
+                    lit: focused == _Field.title,
+                    child: Text(
+                      title.isEmpty ? 'Collection title' : title,
+                      style: AppTypography.textSmMedium.copyWith(
+                        color: title.isEmpty
+                            ? context.textInk(0.35)
+                            : colors.textPrimary,
+                        fontSize: 20.f,
+                        height: 26 / 20,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                  _line(
+                    context,
+                    field: _Field.subtitle,
+                    value: subtitle,
+                    ghost: 'Subtitle',
+                    style: secondary,
+                    gap: 2.sp,
+                  ),
+                  _line(
+                    context,
+                    field: _Field.author,
+                    value: author.isEmpty ? '' : 'by $author',
+                    ghost: 'by Author',
+                    style: AppTypography.textSmMedium.copyWith(
+                      color: colors.textPrimary,
+                    ),
+                    gap: 6.sp,
+                    alwaysHold: true,
+                  ),
+                  _line(
+                    context,
+                    field: _Field.year,
+                    value: edition,
+                    ghost: edition.isEmpty ? 'Year' : edition,
+                    style: secondary,
+                    gap: 4.sp,
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+        SizedBox(height: 16.sp),
+        Text(
+          'About this collection',
+          style: AppTypography.textSmMedium.copyWith(
+            color: about.isEmpty ? context.textInk(0.35) : colors.textPrimary,
+            fontSize: 15.f,
+            height: 20 / 15,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        SizedBox(height: 4.sp),
+        _Spot(
+          lit: focused == _Field.about,
+          child: Text(
+            about.isEmpty ? 'Your description goes here.' : about,
+            maxLines: 4,
+            overflow: TextOverflow.ellipsis,
+            style: AppTypography.textSmRegular.copyWith(
+              color: about.isEmpty ? context.textInk(0.35) : colors.textPrimary,
+              fontSize: 15.f,
+              height: 22 / 15,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// One identity line. Empty, it is absent from the page; while its field
+  /// is focused (or [alwaysHold], for a field submission needs) it holds its
+  /// place with a ghost.
+  Widget _line(
+    BuildContext context, {
+    required _Field field,
+    required String value,
+    required String ghost,
+    required TextStyle style,
+    required double gap,
+    bool alwaysHold = false,
+  }) {
+    final lit = focused == field;
+    if (value.isEmpty && !lit && !alwaysHold) return const SizedBox.shrink();
+    return Padding(
+      padding: EdgeInsets.only(top: gap),
+      child: _Spot(
+        lit: lit,
+        child: Text(
+          value.isEmpty ? ghost : value,
+          style: value.isEmpty
+              ? style.copyWith(color: context.textInk(0.35))
+              : style,
+        ),
+      ),
+    );
+  }
+}
+
+/// A spot in the preview, tinted while its field is being edited. The tint
+/// sits inside a fixed inset, so lighting one never moves the layout.
+class _Spot extends StatelessWidget {
+  const _Spot({required this.lit, required this.child});
+
+  final bool lit;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final accent = context.colors.accentText;
+    return AnimatedContainer(
+      duration: MediaQuery.disableAnimationsOf(context)
+          ? Duration.zero
+          : const Duration(milliseconds: 180),
+      curve: Curves.easeOutCubic,
+      padding: EdgeInsets.symmetric(horizontal: 4.sp, vertical: 2.sp),
+      transform: Matrix4.translationValues(-4.sp, 0, 0),
+      decoration: BoxDecoration(
+        color: lit
+            ? accent.withValues(alpha: 0.14)
+            : accent.withValues(alpha: 0),
+        borderRadius: BorderRadius.circular(4.br),
+        border: Border.all(
+          color: lit
+              ? accent.withValues(alpha: 0.5)
+              : accent.withValues(alpha: 0),
+        ),
+      ),
+      child: child,
     );
   }
 }

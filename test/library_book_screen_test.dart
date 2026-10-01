@@ -125,7 +125,7 @@ void main() {
     await _tap(tester, 'Submit for approval');
     expect(publisher.saves, isEmpty);
     expect(
-      find.text('Check the highlighted book details before saving.'),
+      find.text('Check the highlighted collection details before saving.'),
       findsOneWidget,
     );
   });
@@ -151,6 +151,7 @@ void main() {
       find.byType(TextFormField).first,
       'My Sicilian study',
     );
+    await tester.pumpAndSettle();
     await _tap(tester, 'Submit for approval');
     expect(find.text('Offline. Retry when connected.'), findsOneWidget);
     expect(publisher.saves.single.metadata.title, 'My Sicilian study');
@@ -161,6 +162,53 @@ void main() {
     expect(publisher.publication.metadata.title, 'My Sicilian study');
     expect(publisher.publication.isPublished, isFalse);
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('foreword and publisher are not asked for but survive a save', (
+    tester,
+  ) async {
+    final publisher = _Publisher()
+      ..publication = const LibraryBookPublication(
+        status: 'unpublished',
+        metadata: LibraryBookMetadata(
+          title: 'My study',
+          author: 'Owner',
+          about: 'A chess study',
+          foreword: 'Kept foreword',
+          publisher: 'ChessEver',
+        ),
+      );
+    await _pump(tester, publisher);
+    expect(find.text('Foreword'), findsNothing);
+    expect(find.text('Publisher'), findsNothing);
+    expect(find.text('Optional'), findsNWidgets(3));
+    await _tap(tester, 'Save private draft');
+    expect(publisher.saves.single.metadata.foreword, 'Kept foreword');
+    expect(publisher.saves.single.metadata.publisher, 'ChessEver');
+  });
+
+  testWidgets('preview follows what is typed', (tester) async {
+    final publisher = _Publisher();
+    await _pump(tester, publisher);
+    final preview = find.byKey(const ValueKey('book_preview'));
+    expect(
+      find.descendant(of: preview, matching: find.text('by Owner')),
+      findsOneWidget,
+    );
+    await tester.enterText(find.byType(TextFormField).first, 'Endgame Gems');
+    await tester.pump();
+    expect(
+      find.descendant(of: preview, matching: find.text('Endgame Gems')),
+      findsOneWidget,
+    );
+    // Editing the subtitle turns the preview to the page, where it shows.
+    await tester.enterText(find.byType(TextFormField).at(1), 'Forty wins');
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('book_preview_page')), findsOneWidget);
+    expect(
+      find.descendant(of: preview, matching: find.text('Forty wins')),
+      findsOneWidget,
+    );
   });
 
   testWidgets(

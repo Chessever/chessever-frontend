@@ -576,6 +576,17 @@ class _Cover extends StatelessWidget {
   }
 }
 
+/// The stacked-boards plate a book shows in place of a missing cover, for
+/// surfaces outside this file that draw a book before it exists (the
+/// publishing preview).
+class CollectionBookPlate extends StatelessWidget {
+  const CollectionBookPlate({super.key});
+
+  @override
+  Widget build(BuildContext context) =>
+      const _PixelPlate(section: SpaceSection.library);
+}
+
 /// The pixel object on the hub's plate: the stacked boards for a book, the
 /// trophy for an event.
 class _PixelPlate extends StatelessWidget {
