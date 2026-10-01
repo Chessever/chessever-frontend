@@ -73,7 +73,7 @@
             create("production") {
                 dimension = "environment"
                 manifestPlaceholders["admobAppId"] = adDefines["ADMOB_ANDROID_APP_ID"]
-                    ?: "ca-app-pub-3940256099942544~3347511713"
+                    ?: "ca-app-pub-3681310687796023~4858872090"
                 manifestPlaceholders["appName"] = "ChessEver"
                 manifestPlaceholders["authRedirectScheme"] = "com.chessever.app"
             }

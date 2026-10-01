@@ -6,21 +6,24 @@ backend deployment are complete. No deployment is performed by this change.
 
 ## Configuration
 
-Required Flutter defines:
+The supplied production IDs are configured as defaults:
 
-- `REWARDED_PREMIUM_ENABLED=true`
-- `ADMOB_ANDROID_APP_ID=ca-app-pub-…~…`
-- `ADMOB_ANDROID_REWARDED_ID=ca-app-pub-…/…`
-- `ADMOB_IOS_APP_ID=ca-app-pub-…~…`
-- `ADMOB_IOS_REWARDED_ID=ca-app-pub-…/…`
+| Platform | App ID | Rewarded ad-unit ID |
+| --- | --- | --- |
+| Android | `ca-app-pub-3681310687796023~4858872090` | `ca-app-pub-3681310687796023/8590975808` |
+| iOS | `ca-app-pub-3681310687796023~5640461560` | `ca-app-pub-3681310687796023/8331032066` |
 
-Android reads its native SDK app ID from the same Dart define. For iOS, also
-create `ios/Flutter/AdMob-production.xcconfig` containing
-`ADMOB_APP_ID = <the same ADMOB_IOS_APP_ID>`; the three production configurations
-include that file. Native configs default to Google's sample app IDs so an
-unconfigured binary can still launch. Release rewarded access requires both
-its platform's app ID and rewarded unit ID; missing values retain checkout.
-AdMob identifiers are public configuration, not API secrets.
+Rewarded access remains disabled by default. After backend deployment and AdMob
+verification/privacy setup, enable the production flavor with
+`REWARDED_PREMIUM_ENABLED=true` as a Flutter Dart define.
+The four `ADMOB_ANDROID_APP_ID`, `ADMOB_ANDROID_REWARDED_ID`,
+`ADMOB_IOS_APP_ID`, and `ADMOB_IOS_REWARDED_ID` Dart defines can override these
+defaults. Android's native SDK app ID reads the same override. If overriding
+iOS, also create `ios/Flutter/AdMob-production.xcconfig` containing
+`ADMOB_APP_ID = <the same ADMOB_IOS_APP_ID>`.
+ChessEver Test retains sample native app IDs and cannot obtain rewarded access.
+Debug uses Google's sample rewarded units. AdMob identifiers are public
+configuration, not API secrets.
 
 In AdMob, configure each rewarded unit with the reward description "10 minutes
 of Premium", enable server-side verification, and point it to
@@ -33,8 +36,13 @@ AdMob chooses the duration and may supply an ad pod; the app never promises
 30 seconds or chains ads itself.
 
 Both Edge Functions require `REWARDED_AD_UNIT_IDS`, a comma-separated allowlist
-of the configured full rewarded unit IDs. They refuse other Supabase project
-hosts. Configure production units only for production. Never enable a bypass
+of the configured full rewarded unit IDs. For the supplied production units, use:
+
+```text
+REWARDED_AD_UNIT_IDS=ca-app-pub-3681310687796023/8590975808,ca-app-pub-3681310687796023/8331032066
+```
+
+The functions refuse other Supabase project hosts. Configure production units only for production. Never enable a bypass
 that accepts client claims instead of Google's signed callback.
 
 Debug binaries use Google sample rewarded units; do not expect a production

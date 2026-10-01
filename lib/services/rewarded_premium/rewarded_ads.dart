@@ -18,11 +18,23 @@ abstract final class RewardedAdsConfig {
           (RegExp(r'^ca-app-pub-\d+/\d+$').hasMatch(liveUnitId) &&
               RegExp(r'^ca-app-pub-\d+~\d+$').hasMatch(liveAppId)));
   static String get liveAppId => Platform.isAndroid
-      ? const String.fromEnvironment('ADMOB_ANDROID_APP_ID')
-      : const String.fromEnvironment('ADMOB_IOS_APP_ID');
+      ? const String.fromEnvironment(
+          'ADMOB_ANDROID_APP_ID',
+          defaultValue: 'ca-app-pub-3681310687796023~4858872090',
+        )
+      : const String.fromEnvironment(
+          'ADMOB_IOS_APP_ID',
+          defaultValue: 'ca-app-pub-3681310687796023~5640461560',
+        );
   static String get liveUnitId => Platform.isAndroid
-      ? const String.fromEnvironment('ADMOB_ANDROID_REWARDED_ID')
-      : const String.fromEnvironment('ADMOB_IOS_REWARDED_ID');
+      ? const String.fromEnvironment(
+          'ADMOB_ANDROID_REWARDED_ID',
+          defaultValue: 'ca-app-pub-3681310687796023/8590975808',
+        )
+      : const String.fromEnvironment(
+          'ADMOB_IOS_REWARDED_ID',
+          defaultValue: 'ca-app-pub-3681310687796023/8331032066',
+        );
   static String get unitId => kDebugMode
       ? (Platform.isAndroid
             ? 'ca-app-pub-3940256099942544/5224354917'
