@@ -4,7 +4,7 @@ import 'package:chessever2/services/lichess_move_annotations_service.dart';
 import 'package:flutter/material.dart';
 
 enum NagCategory {
-  /// Move quality glyphs ($1–$6, $7): bold colored, eye-catching.
+  /// Move quality glyphs ($1–$7 and manual ChessEver verdict codes).
   quality,
 
   /// Position assessment glyphs (=, ±, ∓, ∞, ⩲, ⩱, +-, -+, etc).
@@ -28,9 +28,45 @@ class NagDisplay {
 const Color _kEvalSlate = Color(0xFF9AA3AD);
 const Color _kObservationDim = Color(0xFFB8C4D0);
 
+/// Includes the existing ChessEver lossless verdict codes for the three
+/// classifications that have no standard PGN quality glyph.
+const manualQualityNags = <int>[3, 1, 242, 5, 6, 2, 4, 243, 247, 7];
+
+/// What a quality mark means, for the picker's tooltip and screen readers.
+String? qualityNagName(int nag) => switch (nag) {
+  3 => 'Brilliant move',
+  1 => 'Good move',
+  242 => 'Best move',
+  5 => 'Interesting move',
+  6 => 'Inaccuracy',
+  2 => 'Mistake',
+  4 => 'Blunder',
+  243 => 'Missed win',
+  247 => 'Book move',
+  7 => 'Only move',
+  _ => null,
+};
+
+/// Whether [nag] may be printed as text beside a move. ChessEver's own
+/// verdict codes (`$240`–`$247`) are carried by exported PGNs on many moves
+/// and only ever render as badges; as text they would glue "Book" or an
+/// emoji onto the SAN in plain notation such as the Gamebase explorer.
+bool nagShownAsText(int nag) => nag < 240 || nag > 247;
+
 // Quality NAG colors resolve through [moveAnnotationColor] so text glyphs
 // match the classification badge SVG gradient tops (board, notation, recap).
 NagDisplay? getNagDisplay(int nag) {
+  final classification = classificationForQualityNag(nag);
+  if (nag >= 240 && classification != null) {
+    final type = annotationTypeForClassification(classification);
+    final symbol = switch (nag) {
+      242 => '★',
+      243 => '💔',
+      247 => 'Book',
+      _ => '',
+    };
+    return NagDisplay(symbol, moveAnnotationColor(type), NagCategory.quality);
+  }
   switch (nag) {
     case 1:
       // goodMove — navy !
