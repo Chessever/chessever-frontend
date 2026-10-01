@@ -7,7 +7,7 @@ status is loading, or with paid/active rewarded Premium access. Other tabs and
 ChessEver Test do not request native ads.
 
 The SDK's medium native template provides ad attribution, AdChoices, and a
-video media area above the 120×120 minimum. The card reserves 400 logical pixels
+video media area above the 120×120 minimum. The card reserves 350 logical pixels
 of height to fit the media and text assets. ATT,
 UMP consent, test-device configuration and SDK initialization share the rewarded
 ad setup. Unavailable inventory and loading failures collapse the placement.

@@ -101,9 +101,11 @@ class _TodayNativeAdState extends ConsumerState<TodayNativeAd>
     super.build(context);
     if (!_loaded || _ad == null) return const SizedBox.shrink();
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 16),
+      // The next event already supplies its own top spacing. Avoid doubling
+      // that gap, and leave a small gap after the preceding game cards.
+      padding: const EdgeInsets.only(top: 8),
       child: Center(
-        child: SizedBox(width: 360, height: 400, child: AdWidget(ad: _ad!)),
+        child: SizedBox(width: 360, height: 350, child: AdWidget(ad: _ad!)),
       ),
     );
   }
