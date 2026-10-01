@@ -1,0 +1,4 @@
+# Local-only test artifacts; no credentials or deployment config.
+__pycache__/
+.local-postgres/
+.test-runs/

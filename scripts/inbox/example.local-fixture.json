@@ -1,0 +1,5 @@
+{
+  "id": "40000000-0000-4000-8000-000000000001",
+  "title": "[LOCAL TEST FIXTURE] Editorial Inbox preview",
+  "body": "[LOCAL TEST FIXTURE ONLY — not approved editorial copy]\n\nThis synthetic message exercises draft preview and the local mock publishing workflow. It must not be published to a live audience. No push or email."
+}

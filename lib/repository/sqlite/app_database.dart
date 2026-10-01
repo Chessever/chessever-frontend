@@ -47,6 +47,11 @@ class AppDatabase {
     }
 
     _initCompleter = Completer<Database>();
+    // The initiating caller awaits _initWithRetry, not this shared future.
+    // Observe its failure even when no second caller joined; joined callers
+    // still receive the same error. Otherwise a handled cache failure also
+    // escapes as an unhandled asynchronous error.
+    _initCompleter!.future.ignore();
 
     try {
       final db = await _initWithRetry();

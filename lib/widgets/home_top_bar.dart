@@ -1,5 +1,7 @@
 import 'dart:math' as math;
 
+import 'package:chessever2/screens/inbox/inbox_provider.dart';
+import 'package:chessever2/screens/inbox/inbox_unread_dot.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
@@ -8,6 +10,7 @@ import 'package:chessever2/widgets/search/search_motion.dart';
 import 'package:chessever2/widgets/user_avatar.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
+import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 /// The one top bar every home tab (Events, Feed, For You, Library) wears.
 ///
@@ -135,14 +138,15 @@ class HomeTopBarFrame extends StatelessWidget {
 /// reads as a single "Open sidebar" button to a screen reader. It is never
 /// placed in a box that fixes its height: squeezing the ringed avatar into a
 /// 44pt row is what turned it into an oval.
-class HomeTopBarAvatar extends StatelessWidget {
+class HomeTopBarAvatar extends ConsumerWidget {
   const HomeTopBarAvatar({super.key, this.onTap});
 
   final VoidCallback? onTap;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final tap = onTap;
+    final unread = ref.watch(inboxHasUnreadProvider);
     final VoidCallback? handleTap = tap == null
         ? null
         : () {
@@ -155,14 +159,17 @@ class HomeTopBarAvatar extends StatelessWidget {
     return Semantics(
       container: true,
       button: handleTap != null,
-      label: 'Open sidebar',
+      label: unread ? 'Open sidebar, unread Inbox messages' : 'Open sidebar',
       onTap: handleTap,
       excludeSemantics: true,
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
         onTap: handleTap,
-        child: const IgnorePointer(
-          child: UserAvatar(size: HomeTopBarMetrics.avatarSize),
+        child: IgnorePointer(
+          child: InboxAvatarBadge(
+            unread: unread,
+            child: const UserAvatar(size: HomeTopBarMetrics.avatarSize),
+          ),
         ),
       ),
     );

@@ -1,4 +1,6 @@
 import 'package:chessever2/providers/country_dropdown_provider.dart';
+import 'package:chessever2/screens/inbox/inbox_provider.dart';
+import 'package:chessever2/screens/inbox/inbox_unread_dot.dart';
 import 'package:chessever2/widgets/user_avatar.dart';
 import 'package:country_flags/country_flags.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
@@ -7,7 +9,7 @@ import 'package:chessever2/widgets/svg_widget.dart';
 import 'package:flutter/material.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/theme/app_colors.dart';
-import 'package:chessever2/theme/app_theme.dart';
+
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 class RoundedSearchBar extends ConsumerStatefulWidget {
@@ -51,7 +53,10 @@ class _RoundedSearchBarState extends ConsumerState<RoundedSearchBar> {
     return Row(
       children: [
         if (widget.showProfile)
-          UserAvatar(size: 32, onTap: widget.onProfileTap),
+          InboxAvatarBadge(
+            unread: ref.watch(inboxHasUnreadProvider),
+            child: UserAvatar(size: 32, onTap: widget.onProfileTap),
+          ),
 
         if (widget.showProfile) SizedBox(width: 20.w),
 
