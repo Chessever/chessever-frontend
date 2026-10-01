@@ -20,8 +20,10 @@ class DiscoveryEventCard extends StatelessWidget {
     this.count,
     this.countQualifier,
     this.onRetry,
+    this.centerContent = false,
   });
 
+  final bool centerContent;
   final String title;
   final String caption;
   final SpaceSection artSection;
@@ -60,7 +62,9 @@ class DiscoveryEventCard extends StatelessWidget {
             child: ConstrainedBox(
               constraints: BoxConstraints(minHeight: imageHeight),
               child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
+                crossAxisAlignment: centerContent
+                    ? CrossAxisAlignment.center
+                    : CrossAxisAlignment.start,
                 children: [
                   ExcludeSemantics(
                     child: SizedBox(
@@ -72,7 +76,9 @@ class DiscoveryEventCard extends StatelessWidget {
                   SizedBox(width: 10.w),
                   Expanded(
                     child: Padding(
-                      padding: EdgeInsets.symmetric(vertical: 8.h),
+                      padding: EdgeInsets.symmetric(
+                        vertical: centerContent ? 0 : 8.h,
+                      ),
                       child: ExcludeSemantics(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
@@ -124,7 +130,7 @@ class DiscoveryEventCard extends StatelessWidget {
                   else
                     ExcludeSemantics(
                       child: SizedBox(
-                        width: 32,
+                        width: centerContent ? 28.w : 32,
                         height: imageHeight,
                         child: Icon(
                           Icons.chevron_right_rounded,

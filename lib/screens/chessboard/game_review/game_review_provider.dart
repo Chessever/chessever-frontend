@@ -196,11 +196,11 @@ class MobileGameReviewController extends StateNotifier<MobileGameReviewState> {
           ),
         ),
       );
-      // Previous generations: session memory, then durable local store.
+      // Previous generations: session memory, disk, then the saved game PGN.
       // Cached reports do not consume the free daily quota.
       if (state.isEligible) {
         if (!_reportController.loadCachedReport(fingerprint)) {
-          unawaited(_reportController.loadPersistedReport(fingerprint));
+          unawaited(_reportController.loadExistingReport(game));
         }
       }
     } else {
@@ -276,11 +276,12 @@ class MobileGameReviewController extends StateNotifier<MobileGameReviewState> {
     final game = _game;
     final fingerprint = state.fingerprint;
     if (game == null || fingerprint == null) return;
-    if (_reportController.loadCachedReport(fingerprint)) return;
-    if (await _reportController.loadPersistedReport(fingerprint)) return;
-    if (!mounted || !_active) return;
+    if (await _reportController.loadExistingReport(game)) return;
+    if (!mounted || !_active || state.fingerprint != fingerprint) return;
     final interrupted = await _reportController.hasInterruptedRun(fingerprint);
-    if (!interrupted || !mounted || !_active) return;
+    if (!interrupted || !mounted || !_active || state.fingerprint != fingerprint) {
+      return;
+    }
     // Same user request that already claimed — re-enter analyze only.
     await _reportController.analyze(
       game,
@@ -337,12 +338,13 @@ class MobileGameReviewController extends StateNotifier<MobileGameReviewState> {
     final hostContext = context;
 
     // Cached / already-completed reports never spend a free slot.
-    if (_reportController.loadCachedReport(fingerprint)) return;
-    if (await _reportController.loadPersistedReport(fingerprint)) return;
-    if (!mounted || !hostContext.mounted) return;
+    if (await _reportController.loadExistingReport(game)) return;
+    if (!mounted || !hostContext.mounted || state.fingerprint != fingerprint) {
+      return;
+    }
 
     final claim = await _claimWithUi(hostContext, fingerprint);
-    if (!mounted || !claim) return;
+    if (!mounted || !claim || state.fingerprint != fingerprint) return;
 
     await _reportController.analyze(
       game,
@@ -366,10 +368,10 @@ class MobileGameReviewController extends StateNotifier<MobileGameReviewState> {
     final game = _game;
     if (game == null) return;
     final fingerprint = gameReportFingerprint(game);
-    if (_reportController.loadCachedReport(fingerprint)) return;
-    if (await _reportController.loadPersistedReport(fingerprint)) return;
+    if (await _reportController.loadExistingReport(game)) return;
+    if (!mounted || state.fingerprint != fingerprint) return;
     final claim = await _claimQuota(fingerprint);
-    if (!claim.allowed || !mounted) return;
+    if (!claim.allowed || !mounted || state.fingerprint != fingerprint) return;
     await _reportController.analyze(
       game,
       whiteRating: _whiteRating,

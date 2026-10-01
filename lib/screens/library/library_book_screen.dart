@@ -48,7 +48,7 @@ class _LibraryBookScreenState extends ConsumerState<LibraryBookScreen> {
   bool _busy = false;
   bool _dirty = false;
   bool _refreshGames = false;
-  String _busyLabel = 'Saving book details…';
+  String _busyLabel = 'Saving collection details…';
   String? _error;
 
   @override
@@ -106,7 +106,7 @@ class _LibraryBookScreenState extends ConsumerState<LibraryBookScreen> {
 
   String _message(Object error) => error is LibraryBookPublicationException
       ? error.message
-      : 'Could not load book details. Please try again.';
+      : 'Could not load collection details. Please try again.';
 
   LibraryBookMetadata get _metadata => LibraryBookMetadata(
     title: _fields['title']!.text,
@@ -126,7 +126,7 @@ class _LibraryBookScreenState extends ConsumerState<LibraryBookScreen> {
     _validateForReview = publish;
     if (!(_form.currentState?.validate() ?? false)) {
       setState(
-        () => _error = 'Check the highlighted book details before saving.',
+        () => _error = 'Check the highlighted collection details before saving.',
       );
       return;
     }
@@ -135,8 +135,8 @@ class _LibraryBookScreenState extends ConsumerState<LibraryBookScreen> {
       _busy = true;
       _error = null;
       _busyLabel = publish || _refreshGames
-          ? 'Saving book and indexing games…'
-          : 'Saving book details…';
+          ? 'Saving collection and indexing games…'
+          : 'Saving collection details…';
     });
     try {
       final saved = await ref
@@ -158,10 +158,10 @@ class _LibraryBookScreenState extends ConsumerState<LibraryBookScreen> {
       showAppSnack(
         context,
         saved.isPublished
-            ? 'Book updated'
+            ? 'Collection updated'
             : publish
             ? 'Submitted for ChessEver approval'
-            : 'Book details saved privately',
+            : 'Collection details saved privately',
         tone: AppSnackTone.success,
       );
     } catch (error) {
@@ -174,16 +174,16 @@ class _LibraryBookScreenState extends ConsumerState<LibraryBookScreen> {
   Future<void> _unpublish() async {
     final confirmed = await showSmoothConfirmDialog(
       context: context,
-      title: 'Unpublish book?',
+      title: 'Unpublish collection?',
       message:
-          'Remove this book from Collections. Your private folder and saved book details will remain.',
+          'Remove this collection from Collections. Your private folder and saved collection details will remain.',
       confirmText: 'Unpublish',
     );
     if (confirmed != true || !mounted || _busy) return;
     setState(() {
       _busy = true;
       _error = null;
-      _busyLabel = 'Unpublishing book…';
+      _busyLabel = 'Unpublishing collection…';
     });
     try {
       final saved = await ref
@@ -196,7 +196,7 @@ class _LibraryBookScreenState extends ConsumerState<LibraryBookScreen> {
       ref.invalidate(collectionsRepositoryProvider);
       ref.invalidate(collectionOpeningsProvider);
       ref.invalidate(collectionBooksForOpeningProvider);
-      showAppSnack(context, 'Book unpublished', tone: AppSnackTone.success);
+      showAppSnack(context, 'Collection unpublished', tone: AppSnackTone.success);
     } catch (error) {
       if (mounted) setState(() => _error = _message(error));
     } finally {
@@ -209,7 +209,7 @@ class _LibraryBookScreenState extends ConsumerState<LibraryBookScreen> {
     if (_dirty) {
       final discard = await showSmoothConfirmDialog(
         context: context,
-        title: 'Discard book edits?',
+        title: 'Discard collection edits?',
         message: 'Your last saved details will remain.',
         confirmText: 'Discard',
       );
@@ -269,9 +269,9 @@ class _LibraryBookScreenState extends ConsumerState<LibraryBookScreen> {
             value.isEmpty) {
           return name == 'author'
               ? 'Credit the author by name'
-              : 'Describe this book';
+              : 'Describe this collection';
         }
-        if (name == 'title' && value.isEmpty) return 'Enter a book title';
+        if (name == 'title' && value.isEmpty) return 'Enter a collection title';
         if (name == 'year' && value.isNotEmpty) {
           final year = int.tryParse(value);
           if (year == null || year < 0 || year > 9999) {
@@ -305,7 +305,7 @@ class _LibraryBookScreenState extends ConsumerState<LibraryBookScreen> {
         appBar: AppBar(
           backgroundColor: context.colors.background,
           foregroundColor: context.colors.textPrimary,
-          title: const Text('Book details'),
+          title: const Text('Collection details'),
           leading: IconButton(
             onPressed: _busy ? null : _close,
             tooltip: 'Back',
@@ -326,7 +326,7 @@ class _LibraryBookScreenState extends ConsumerState<LibraryBookScreen> {
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
                           Text(
-                            _error ?? 'Could not load book details',
+                            _error ?? 'Could not load collection details',
                             style: TextStyle(color: context.colors.textPrimary),
                           ),
                           const SizedBox(height: 12),
@@ -393,7 +393,7 @@ class _LibraryBookScreenState extends ConsumerState<LibraryBookScreen> {
                                 controlAffinity:
                                     ListTileControlAffinity.leading,
                                 title: const Text(
-                                  'Update book games from this folder',
+                                  'Update collection games from this folder',
                                 ),
                                 subtitle: const Text(
                                   'Includes your current games and annotations in the review.',
@@ -465,7 +465,7 @@ class _LibraryBookScreenState extends ConsumerState<LibraryBookScreen> {
                             if (published)
                               TextButton(
                                 onPressed: _busy ? null : _unpublish,
-                                child: const Text('Unpublish book'),
+                                child: const Text('Unpublish collection'),
                               ),
                           ],
                         ),

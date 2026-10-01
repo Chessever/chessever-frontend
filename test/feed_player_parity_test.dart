@@ -81,7 +81,7 @@ void main() {
         white: player('Carlsen, Magnus', fideId: 1503014),
         black: player('Nakamura, Hikaru', fideId: 2016192, fed: 'USA'),
         pgnText:
-            '1. e4 { [%eval 0.3] } e5 { [%eval 0.3] } 2. Bc4 Nc6 '
+            '1. e4 \$242 { [%eval 0.3] } e5 { [%eval 0.3] } 2. Bc4 Nc6 '
             '3. Qh5 Nf6 4. Qxf7# 1-0',
       ),
     ),

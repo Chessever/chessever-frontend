@@ -96,23 +96,43 @@ class _EventSearchBarState extends ConsumerState<EventSearchBar> {
     // Sits between the app-bar row and the tab switcher. Tight vertical
     // padding keeps the strip compact so the tab chips remain near the top
     // of the viewport.
-    return Padding(
-      padding: EdgeInsets.only(top: 4.h, bottom: 8.h),
-      child: Container(
-        padding: EdgeInsets.symmetric(vertical: 4.h),
-        decoration: BoxDecoration(
-          color: context.colors.surfaceRecessed,
-          borderRadius: BorderRadius.circular(12.br),
-        ),
-        child: SimpleSearchBar(
-          controller: _controller,
-          focusNode: _focusNode,
-          hintText: hintText,
-          onChanged: _handleChanged,
-          onCloseTap: _handleCleared,
-          onOpenFilter: null,
-        ),
+    return EventSearchBarFrame(
+      child: SimpleSearchBar(
+        controller: _controller,
+        focusNode: _focusNode,
+        hintText: hintText,
+        onChanged: _handleChanged,
+        onCloseTap: _handleCleared,
+        onOpenFilter: null,
       ),
     );
   }
+}
+
+/// Shared tournament-detail search surface; collections use the same geometry.
+class EventSearchBarFrame extends StatelessWidget {
+  const EventSearchBarFrame({
+    super.key,
+    required this.child,
+    this.horizontalPadding = 0,
+  });
+  final Widget child;
+  final double horizontalPadding;
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: EdgeInsets.fromLTRB(
+      horizontalPadding,
+      4.h,
+      horizontalPadding,
+      8.h,
+    ),
+    child: Container(
+      padding: EdgeInsets.symmetric(vertical: 4.h),
+      decoration: BoxDecoration(
+        color: context.colors.surfaceRecessed,
+        borderRadius: BorderRadius.circular(12.br),
+      ),
+      child: child,
+    ),
+  );
 }

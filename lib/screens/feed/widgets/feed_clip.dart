@@ -1706,7 +1706,19 @@ class _FeedClipState extends ConsumerState<FeedClip>
     final parts = <FeedHeaderPart>[];
 
     final signal = _item.signal;
-    final signalPart = signal == null ? null : _signalPart(signal);
+    final type = _item.reportType;
+    final signalPart = type != null
+        ? FeedHeaderPart(
+            id: 'report_type',
+            pieces: [
+              FeedHeaderPiece.text(type.label, tone: FeedHeaderTone.strong),
+            ],
+            shrinkable: true,
+            semanticsLabel: '${type.label}. ${type.description}',
+          )
+        : signal == null
+        ? null
+        : _signalPart(signal);
     final signalAt = signalPart == null ? null : parts.length;
     if (signalPart != null) parts.add(signalPart);
 
@@ -1882,23 +1894,6 @@ class _FeedClipState extends ConsumerState<FeedClip>
           semanticsLabel: count == 1
               ? 'Liked once today'
               : 'Liked $count times today',
-        );
-      case FeedSignalKind.upset:
-        final points = signal.count ?? 0;
-        if (points <= 0) return null;
-        return FeedHeaderPart(
-          id: 'signal',
-          pieces: [
-            FeedHeaderPiece.text('$points-point', tone: FeedHeaderTone.strong),
-            const FeedHeaderPiece.text(
-              ' upset',
-              tone: FeedHeaderTone.secondary,
-            ),
-          ],
-          compact: const [
-            FeedHeaderPiece.text('Upset', tone: FeedHeaderTone.secondary),
-          ],
-          semanticsLabel: 'Upset, the winner was rated $points points lower',
         );
     }
   }

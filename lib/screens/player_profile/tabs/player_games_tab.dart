@@ -2143,6 +2143,7 @@ class _EventSection extends ConsumerWidget {
     return PlayerProfileResolvedEventCard(
       request: request,
       fallbackCard: fallbackCard,
+      gamebaseKey: eventData?.canonicalKey ?? tourSlug ?? tourId,
       heroTagSuffix: '_player_games_$tourId',
       crossAxisAlignment: CrossAxisAlignment.stretch,
       onTap: (displayCard) => _navigateToEvent(context, ref, displayCard),

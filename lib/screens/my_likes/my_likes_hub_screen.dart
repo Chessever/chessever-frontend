@@ -94,6 +94,7 @@ class _MyLikesHubScreenState extends ConsumerState<MyLikesHubScreen> {
     return EventViewShell(
       title: 'My Likes',
       embedded: widget.embedded,
+      secondaryTabs: widget.embedded,
       tabs: MyLikesHubScreen.tabs,
       initialTab: initialTab,
       controller: _tabs,

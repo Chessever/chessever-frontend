@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:chessever2/providers/board_settings_provider_new.dart';
 import 'package:chessever2/providers/favorite_players_provider.dart';
@@ -12,7 +13,9 @@ import 'package:chessever2/screens/feed/news/feed_news.dart';
 import 'package:chessever2/screens/feed/providers/feed_entries_provider.dart';
 import 'package:chessever2/screens/feed/providers/feed_provider.dart';
 import 'package:chessever2/screens/for_you/discovery/data/discovery_repository.dart';
+import 'package:chessever2/screens/for_you/discovery/models/report_game_type.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
+import 'package:crypto/crypto.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -72,6 +75,50 @@ void main() {
   });
 
   group('refresh, over the real notifier', () {
+    test(
+      'verified report categories and charts survive every feed path',
+      () => _quietly(() async {
+        final f = await _Harness.start();
+        void check() {
+          final items = f.container.read(feedProvider).requireValue;
+          expect(items, isNotEmpty);
+          for (final item in items) {
+            expect(item.hasEvals, isTrue);
+            expect(
+              item.reportType,
+              isIn([ReportGameType.comeback, ReportGameType.upsideDown]),
+            );
+          }
+        }
+
+        check();
+        await f.notifier.loadMore();
+        check();
+        await f.notifier.refresh();
+        check();
+      }),
+      timeout: _realTime,
+    );
+
+    test(
+      'unreported games never land on opening, refresh or later pages',
+      () => _quietly(() async {
+        final unreported = {for (var i = 0; i < 6; i++) 'r$i'};
+        final f = await _Harness.start(unreported: unreported);
+        void check() => expect(f.ids.toSet().intersection(unreported), isEmpty);
+        check();
+        expect(
+          f.notifier.reserveIds!.toSet().intersection(unreported),
+          isEmpty,
+        );
+        await f.notifier.loadMore();
+        check();
+        await f.notifier.refresh();
+        check();
+      }),
+      timeout: _realTime,
+    );
+
     test(
       'lands on none of the games the feed held',
       () => _quietly(() async {
@@ -282,8 +329,8 @@ class _Harness {
 
   List<String> get ids => _ids(container.read(feedProvider).value ?? const []);
 
-  static Future<_Harness> start() async {
-    final games = _Games();
+  static Future<_Harness> start({Set<String> unreported = const {}}) async {
+    final games = _Games()..unreported.addAll(unreported);
     final notifier = _ClockedFeed();
     final container = ProviderContainer(
       overrides: [
@@ -329,11 +376,13 @@ class _ClockedFeed extends FeedNotifier {
 
 const _pgn =
     '[Event "Test Open 2026"]\n[Result "1-0"]\n\n'
-    '1. e4 e5 2. Nf3 Nc6 3. Bb5 Nf6 4. O-O Nxe4 5. Re1 Nd6 6. Nxe5 Be7 '
+    '1. e4 \$242 { [%eval 0.30] } e5 2. Nf3 Nc6 3. Bb5 Nf6 4. O-O Nxe4 5. Re1 Nd6 6. Nxe5 Be7 '
     '7. Bf1 Nxe5 8. Rxe5 O-O 9. d4 Bf6 10. Re1 Re8 11. c3 Rxe1 '
     '12. Qxe1 Ne8 13. Bf4 d6 14. Nd2 Bf5 1-0';
 
 class _Games implements GameRepository {
+  final Set<String> unreported = {};
+
   /// Twelve strong games that just finished, and a hundred weaker ones from
   /// three days ago. Every read carries the strong ones (the newest, as the
   /// real listing does), and they outrank the rest even once shown: only a
@@ -409,7 +458,25 @@ class _Games implements GameRepository {
 
   @override
   Future<Map<String, String>> getGamePgns(List<String> ids) async => {
-    for (final id in ids) id: _pgn,
+    for (final id in ids)
+      id: unreported.contains(id)
+          ? _pgn.replaceFirst(r'$242 { [%eval 0.30] }', '')
+          : _pgn,
+  };
+
+  @override
+  Future<Map<String, Object?>> getFeedGameClassifications(
+    List<String> ids,
+  ) async => {
+    for (final id in ids)
+      id: {
+        'version': 1,
+        'pgnHash': md5.convert(utf8.encode(_pgn)).toString(),
+        'result': '1-0',
+        'tags': [
+          int.parse(id.substring(1)).isEven ? 'comeback' : 'upside_down',
+        ],
+      },
   };
 
   @override

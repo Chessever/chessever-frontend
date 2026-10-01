@@ -45,8 +45,8 @@ class LibraryScreen extends ConsumerStatefulWidget {
     this.databasesOnly = false,
   });
 
-  /// My Space exposes databases only. Other Library entry points retain
-  /// their existing shortcuts and contents.
+  /// My Space shows databases and the permanent My Likes archive. Other
+  /// Library entry points also retain the Miniatures shortcut.
   final bool databasesOnly;
 
   /// The databases list alone, as a page inside another screen's frame (My
@@ -537,7 +537,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
         ? folders
         : (List<LibraryFolder>.from(folders)..removeAt(likedIdx));
     final allFolders = <LibraryFolder>[
-      if (!widget.databasesOnly && likedIdx != -1) folders[likedIdx],
+      if (likedIdx != -1) folders[likedIdx],
       kTwicFolder,
       if (!widget.databasesOnly) kMiniaturesFolder,
       ...rest,

@@ -23,6 +23,7 @@ class SimpleSearchBar extends StatefulWidget {
     this.filterBadgeCount = 0,
     this.textFieldKey,
     this.filterButtonKey,
+    this.compactFilter = false,
     this.rotatingHints,
     this.rotationInterval = const Duration(seconds: 2),
   });
@@ -37,6 +38,9 @@ class SimpleSearchBar extends StatefulWidget {
   final int filterBadgeCount;
   final Key? textFieldKey;
   final Key? filterButtonKey;
+
+  /// Detail search bars keep the filter icon within their existing row height.
+  final bool compactFilter;
 
   /// Optional list of words cycled after the static [hintText]. When provided
   /// the hint reads as "`hintText` word" and the trailing word animates in
@@ -264,7 +268,9 @@ class _SimpleSearchBarState extends State<SimpleSearchBar> {
                 key: widget.filterButtonKey,
                 onTap: widget.onOpenFilter,
                 child: Container(
-                  padding: EdgeInsets.all(8.sp),
+                  padding: widget.compactFilter
+                      ? EdgeInsets.symmetric(horizontal: 8.sp)
+                      : EdgeInsets.all(8.sp),
                   decoration: BoxDecoration(
                     color: context.colors.surfaceRecessed,
                     borderRadius: BorderRadius.circular(8.br),

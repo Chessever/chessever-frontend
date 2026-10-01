@@ -5,7 +5,6 @@ import 'package:chessever2/repository/supabase/game/games.dart';
 import 'package:chessever2/screens/group_event/model/tour_event_card_model.dart';
 import 'package:chessever2/screens/group_event/providers/group_event_screen_provider.dart';
 import 'package:chessever2/screens/group_event/providers/supabase_combined_search_provider.dart';
-import 'package:chessever2/screens/gamebase/event_view/gamebase_virtual_event_id.dart';
 import 'package:chessever2/screens/gamebase/utils/space_position_draft.dart';
 import 'package:chessever2/screens/library/widgets/library_context_menu.dart';
 import 'package:chessever2/screens/my_space/actions/space_menu_action.dart';
@@ -868,21 +867,10 @@ SpaceShortcut openingSearchSpaceDraft(
 
 /// The My Space shortcut for a searched event. Community (calendar) events
 /// carry their calendar identity so the opener can route them to the calendar
-/// detail. Gamebase-only virtual events have no id the opener can resolve, so
-/// they offer no pin.
+/// detail; virtual database events retain their archive identity.
 SpaceShortcut? searchEventSpaceDraft(GroupEventCardModel tournament) {
-  if (tournament.id.trim().isEmpty || isVirtualGamebaseId(tournament.id)) {
-    return null;
-  }
-  final draft = eventSpaceDraft(tournament);
-  if (tournament.eventSource != EventSource.communityEvent) return draft;
-  return draft.copyWith(
-    params: {
-      ...draft.params,
-      'source': 'calendar',
-      'calendarEventId': tournament.id,
-    },
-  );
+  if (tournament.id.trim().isEmpty) return null;
+  return eventSpaceDraft(tournament);
 }
 
 class _OpeningResultTile extends StatelessWidget {

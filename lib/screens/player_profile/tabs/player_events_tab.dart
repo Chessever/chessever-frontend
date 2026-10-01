@@ -954,6 +954,7 @@ class _PlayerEventCard extends ConsumerWidget {
     return PlayerProfileResolvedEventCard(
       request: request,
       fallbackCard: fallbackCard,
+      gamebaseKey: playerEventData.canonicalKey ?? playerEventData.tourId,
       heroTagSuffix: 'player-profile-$index',
       onTap: (displayCard) => _navigateToTournament(context, ref, displayCard),
       statsRow: Container(

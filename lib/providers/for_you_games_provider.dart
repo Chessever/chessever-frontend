@@ -9,6 +9,7 @@ import 'package:chessever2/providers/favorite_players_provider.dart';
 import 'package:chessever2/providers/for_you_games_logic.dart';
 import 'package:chessever2/repository/favorites/models/favorite_event.dart';
 import 'package:chessever2/repository/favorites/models/favorite_player.dart';
+import 'package:chessever2/repository/local_storage/for_you/for_you_feed_local_storage.dart';
 import 'package:chessever2/repository/local_storage/tournament/games/pin_games_local_storage.dart';
 import 'package:chessever2/repository/supabase/game/game_repository.dart';
 import 'package:chessever2/repository/supabase/game/game_stream_repository.dart';
@@ -297,7 +298,50 @@ class ForYouNotifier extends StateNotifier<ForYouState> {
   }
 
   Future<void> _loadInitial() async {
-    await _fetchPage(isInitial: true);
+    final storage = ref.read(forYouFeedLocalStorageProvider);
+    final filterKey = forYouFeedCacheFilterKey(
+      ref.read(forYouAppliedFilterProvider),
+    );
+    // Start the server request immediately. A slow disk read must not delay it,
+    // and a late cache read must never overwrite a successful server response.
+    final fetch = _fetchPage(isInitial: true);
+    try {
+      final cached = await storage
+          .read(filterKey: filterKey)
+          .timeout(const Duration(milliseconds: 250));
+      if (mounted &&
+          cached != null &&
+          cached.broadcasts.isNotEmpty &&
+          state.events.isEmpty &&
+          (state.isLoading || state.error != null) &&
+          filterKey ==
+              forYouFeedCacheFilterKey(ref.read(forYouAppliedFilterProvider))) {
+        final liveIds = _getLiveIdsSnapshot();
+        final models = cached.broadcasts
+            .map(
+              (broadcast) =>
+                  GroupEventCardModel.fromGroupBroadcast(broadcast, liveIds),
+            )
+            .toList();
+        ref.read(forYouTopGamesSnapshotCacheProvider.notifier).state = {
+          for (final model in models)
+            model.id: buildForYouTopGamesSnapshot(
+              eventId: model.id,
+              games: cached.gamesByEventId[model.id] ?? const <Games>[],
+              maxGames: kGamesPerEvent,
+            ),
+        };
+        // Do not freeze session order from provisional cached data. The fresh
+        // page still receives the usual personalized ranking.
+        state = state.copyWith(
+          events: _sortLikeCurrentTab(models),
+          hasMore: cached.hasMore,
+        );
+      }
+    } catch (_) {
+      // An unavailable cache leaves the normal network load in charge.
+    }
+    await fetch;
   }
 
   Future<void> refresh() async {
@@ -506,6 +550,7 @@ class ForYouNotifier extends StateNotifier<ForYouState> {
         maxElo: hasEloFilter ? maxElo : null,
         statusFilters: statusFilters.isNotEmpty ? statusFilters : null,
       );
+      if (!mounted) return;
       final dbHasMore = filteredBroadcasts.length >= _kPageSize;
       _offset += filteredBroadcasts.length;
 
@@ -517,20 +562,28 @@ class ForYouNotifier extends StateNotifier<ForYouState> {
 
       // Prefer cached live IDs so For You can render after app resume even
       // while the realtime settings stream is reconnecting.
-      final liveIds = await _getLiveIdsSnapshot();
+      final liveIds = _getLiveIdsSnapshot();
 
       // Convert to models
-      final models =
-          filteredBroadcasts
-              .map((b) => GroupEventCardModel.fromGroupBroadcast(b, liveIds))
-              .toList();
+      var models = filteredBroadcasts
+          .map((b) => GroupEventCardModel.fromGroupBroadcast(b, liveIds))
+          .toList();
 
-      await _prefetchTopGames(models, replace: isInitial);
+      final gamesByEventId = await _prefetchTopGames(
+        models,
+        replace: isInitial,
+      );
 
       // Bail out if the notifier was disposed while we were awaiting (e.g.
       // hot restart, or the tab/provider being torn down mid-fetch). Writing
       // `state` after dispose throws "used after dispose".
       if (!mounted) return;
+
+      // Live IDs may have arrived while the board RPC was pending. Publish
+      // their latest categories rather than overwriting them with the earlier
+      // startup snapshot.
+      final currentLiveIds = _getLiveIdsSnapshot();
+      models = models.map((model) => model.withLiveIds(currentLiveIds)).toList();
 
       // Update state
       if (isInitial) {
@@ -552,6 +605,19 @@ class ForYouNotifier extends StateNotifier<ForYouState> {
         );
         _lastRefreshAt = DateTime.now();
         _maybeFinalizePendingFavoritePlayerOrder();
+        unawaited(
+          ref
+              .read(forYouFeedLocalStorageProvider)
+              .write(
+                ForYouFeedCacheEntry(
+                  filterKey: forYouFeedCacheFilterKey(appliedFilters),
+                  cachedAt: _lastRefreshAt!,
+                  broadcasts: filteredBroadcasts,
+                  gamesByEventId: gamesByEventId,
+                  hasMore: dbHasMore,
+                ),
+              ),
+        );
       } else {
         final existingIds = state.events.map((event) => event.id).toSet();
         final newModels =
@@ -618,26 +684,16 @@ class ForYouNotifier extends StateNotifier<ForYouState> {
   }
 
   void _logErrorToSentry(dynamic error, StackTrace stackTrace) {
+    if (!mounted) return;
     unawaited(ref.read(errorLoggerProvider).logError(error, stackTrace));
   }
 
-  Future<List<String>> _getLiveIdsSnapshot() async {
-    final cached = ref.read(liveGroupBroadcastIdsProvider).valueOrNull;
-    if (cached != null) return cached;
+  // The strict resolver can remain pending during a settings outage. Its
+  // listener updates categories when it recovers; it is never a load gate.
+  List<String> _getLiveIdsSnapshot() =>
+      ref.read(liveGroupBroadcastIdsProvider).valueOrNull ?? const <String>[];
 
-    try {
-      return await ref.read(liveGroupBroadcastIdsProvider.future);
-    } catch (e, stack) {
-      debugPrint(
-        '[ForYou] liveGroupBroadcastIdsProvider failed, falling back to empty list: $e',
-      );
-      debugPrint('[ForYou] Live IDs stack: $stack');
-      _logErrorToSentry(e, stack);
-      return const <String>[];
-    }
-  }
-
-  Future<void> _prefetchTopGames(
+  Future<Map<String, List<Games>>> _prefetchTopGames(
     List<GroupEventCardModel> models, {
     required bool replace,
     bool refreshFavoritePlayerCounts = true,
@@ -646,7 +702,7 @@ class ForYouNotifier extends StateNotifier<ForYouState> {
 
     if (models.isEmpty) {
       if (replace) notifier.state = const <String, ForYouEventGamesSnapshot>{};
-      return;
+      return const {};
     }
 
     final eventIds = models
@@ -656,34 +712,25 @@ class ForYouNotifier extends StateNotifier<ForYouState> {
         .toList(growable: false);
     if (eventIds.isEmpty) {
       if (replace) notifier.state = const <String, ForYouEventGamesSnapshot>{};
-      return;
+      return const {};
     }
 
     final gameRepository = ref.read(gameRepositoryProvider);
-    final prefetchResults = await Future.wait<Object?>([
-      gameRepository.getForYouTopGamesByEventIds(
-        eventIds: eventIds,
-        boardsPerEvent: kGamesPerEvent,
-      ),
-      if (refreshFavoritePlayerCounts)
-        _loadFavoritePlayerMatches(
+    if (refreshFavoritePlayerCounts) {
+      unawaited(
+        _prefetchFavoritePlayerMatches(
           gameRepository: gameRepository,
           eventIds: eventIds,
           allowOrderHydrationFinalize: replace && _sessionEventOrder.isEmpty,
         ),
-    ]);
-
-    final gamesByEventId = prefetchResults[0]! as Map<String, List<Games>>;
-    if (refreshFavoritePlayerCounts) {
-      final favoritePlayerMatchesByEventId =
-          prefetchResults[1]! as Map<String, List<int>>;
-      _cacheFavoritePlayerMatches(
-        eventIds: eventIds,
-        matchesByEventId: favoritePlayerMatchesByEventId,
       );
     }
 
-    if (!mounted) return;
+    final gamesByEventId = await gameRepository.getForYouTopGamesByEventIds(
+      eventIds: eventIds,
+      boardsPerEvent: kGamesPerEvent,
+    );
+    if (!mounted) return gamesByEventId;
 
     final snapshots = <String, ForYouEventGamesSnapshot>{
       for (final model in models)
@@ -701,6 +748,24 @@ class ForYouNotifier extends StateNotifier<ForYouState> {
     );
     if (!identical(merged, notifier.state)) {
       notifier.state = merged;
+    }
+    return gamesByEventId;
+  }
+
+  Future<void> _prefetchFavoritePlayerMatches({
+    required GameRepository gameRepository,
+    required List<String> eventIds,
+    required bool allowOrderHydrationFinalize,
+  }) async {
+    final matches = await _loadFavoritePlayerMatches(
+      gameRepository: gameRepository,
+      eventIds: eventIds,
+      allowOrderHydrationFinalize: allowOrderHydrationFinalize,
+    );
+    if (!mounted) return;
+    _cacheFavoritePlayerMatches(eventIds: eventIds, matchesByEventId: matches);
+    if (allowOrderHydrationFinalize) {
+      _reapplySessionOrderForFavoriteChange();
     }
   }
 
@@ -739,7 +804,7 @@ class ForYouNotifier extends StateNotifier<ForYouState> {
       final favoriteFideIds = await _favoriteFideIdsSnapshot(
         allowOrderHydrationFinalize: allowOrderHydrationFinalize,
       );
-      if (favoriteFideIds.isEmpty) {
+      if (!mounted || favoriteFideIds.isEmpty) {
         return <String, List<int>>{};
       }
 
@@ -764,19 +829,12 @@ class ForYouNotifier extends StateNotifier<ForYouState> {
       return _favoriteFideIdsFrom(loadedFavorites);
     }
 
-    final favorites = await ref
-        .read(favoritePlayersProviderNew.future)
-        .timeout(
-          const Duration(milliseconds: 1500),
-          onTimeout: () {
-            if (allowOrderHydrationFinalize) {
-              _pendingFavoritePlayerOrderHydration = true;
-            }
-            return const <FavoritePlayer>[];
-          },
-        );
-
-    return _favoriteFideIdsFrom(favorites);
+    // The listener hydrates counts and ranking when favorites arrive. Missing
+    // personalization must never delay the event/board request on startup.
+    if (mounted && allowOrderHydrationFinalize) {
+      _pendingFavoritePlayerOrderHydration = true;
+    }
+    return const <int>[];
   }
 
   void _cacheFavoritePlayerMatches({

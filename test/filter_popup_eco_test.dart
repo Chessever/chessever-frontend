@@ -1,3 +1,4 @@
+import 'package:chessever2/widgets/game_filter/filter_popup_components.dart';
 import 'package:chessever2/screens/group_event/widget/filter_popup/filter_popup.dart';
 import 'package:chessever2/screens/group_event/widget/filter_popup/filter_popup_provider.dart';
 import 'package:chessever2/theme/app_theme.dart';
@@ -197,6 +198,8 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
+    expect(find.byType(FilterPopupFrame), findsOneWidget);
+    expect(find.byType(FilterChoiceGrid<String>), findsNWidgets(2));
 
     final applyButton = find.widgetWithText(ElevatedButton, 'Apply Filters');
     expect(applyButton, findsOneWidget);

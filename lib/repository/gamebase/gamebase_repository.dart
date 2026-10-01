@@ -866,6 +866,43 @@ class GamebaseRepository {
     }
   }
 
+  Future<String> uploadProfileAvatar(
+    Uint8List bytes, {
+    required String bearer,
+  }) async {
+    try {
+      final response = await _dio.post(
+        '$_baseUrl/api/collections/account/avatar',
+        data: Stream.value(bytes),
+        options: Options(
+          headers: {
+            ..._headers,
+            'Authorization': 'Bearer $bearer',
+            'Content-Type': 'image/png',
+            'Content-Length': bytes.length.toString(),
+          },
+          followRedirects: false,
+        ),
+      );
+      final data = unwrapCollectionsEnvelope(
+        response.data,
+        statusCode: response.statusCode,
+      );
+      if (data is! Map || data['avatarUrl'] is! String) {
+        throw const FormatException('Invalid profile photo response');
+      }
+      return data['avatarUrl'] as String;
+    } on DioException catch (error) {
+      if (error.response?.data is Map) {
+        unwrapCollectionsEnvelope(
+          error.response!.data,
+          statusCode: error.response?.statusCode,
+        );
+      }
+      rethrow;
+    }
+  }
+
   Future<Map<String, dynamic>> recordCollectionEngagement(
     String slug,
     Map<String, dynamic> body, {
@@ -972,6 +1009,7 @@ class GamebaseRepository {
     String? section,
     String? playerKey,
     String? eco,
+    CollectionSearchQuery search = const CollectionSearchQuery(),
     bool includePgn = false,
     int limit = 100,
     int offset = 0,
@@ -984,6 +1022,7 @@ class GamebaseRepository {
       bearer: bearer,
       fresh: fresh,
       queryParameters: {
+        ...search.parameters,
         if (section != null && section.isNotEmpty) 'section': section,
         if (playerKey != null && playerKey.isNotEmpty) 'player': playerKey,
         if (eco != null && eco.isNotEmpty) 'eco': eco,
@@ -1009,6 +1048,29 @@ class GamebaseRepository {
     }
     return (
       items: [for (final item in data['items'] as List) item['name'] as String],
+      total: (data['total'] as num).toInt(),
+    );
+  }
+
+  Future<({List<CollectionAuthor> items, int total})> searchCollectionAuthors({
+    CollectionSearchQuery search = const CollectionSearchQuery(),
+    int offset = 0,
+    int limit = 40,
+  }) async {
+    final data = await _getCollectionsData(
+      '/api/collections/catalog/authors',
+      what: 'collection authors',
+      queryParameters: {...search.parameters, 'offset': offset, 'limit': limit},
+    );
+    if (data is! Map || data['items'] is! List || data['total'] is! num) {
+      throw const FormatException('Invalid collection authors response');
+    }
+    return (
+      items: [
+        for (final item in data['items'] as List)
+          if (item is Map)
+            CollectionAuthor.fromJson(Map<String, dynamic>.from(item)),
+      ],
       total: (data['total'] as num).toInt(),
     );
   }

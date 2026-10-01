@@ -1,3 +1,4 @@
+import 'package:chessever2/screens/collections/collection_catalog_views.dart';
 import 'package:chessever2/repository/gamebase/collections/collection_search_query.dart';
 import 'package:chessever2/screens/collections/collection_catalog_list.dart';
 import 'package:chessever2/revenue_cat_service/subscribe_state.dart';
@@ -76,7 +77,7 @@ class CollectionOpeningsView extends ConsumerWidget {
         child: items.isEmpty
             ? const _ExploreNotice(
                 message:
-                    'Openings will appear here when games in published books have been indexed.',
+                    'Openings will appear here when games in published collections have been indexed.',
               )
             : ListView.separated(
                 key: PageStorageKey('collection_openings_${slug ?? 'all'}'),
@@ -139,22 +140,45 @@ class CollectionOpeningsView extends ConsumerWidget {
 }
 
 class OpeningBooksScreen extends ConsumerWidget {
-  const OpeningBooksScreen({super.key, required this.opening});
+  const OpeningBooksScreen({super.key, required this.opening, this.search});
+  final CollectionSearchQuery? search;
   final CollectionOpening opening;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    if (search != null) {
+      final q = search!;
+      return EventViewShell(
+        title: collectionOpeningName(opening),
+        tabs: const ['Collections'],
+        tabStripOverride: const SizedBox.shrink(),
+        pageBuilder: (_, __) => CollectionBooksCatalog(
+          query: CollectionSearchQuery(
+            text: q.text,
+            eco: opening.eco,
+            result: q.result,
+            year: q.year,
+            minYear: q.minYear,
+            maxYear: q.maxYear,
+            author: q.author,
+            authorId: q.authorId,
+            annotated: q.annotated,
+            sort: q.sort,
+          ),
+        ),
+      );
+    }
     final provider = collectionBooksForOpeningProvider(opening.eco);
     final books = ref.watch(provider);
     return EventViewShell(
       title: '${opening.eco} · ${collectionOpeningName(opening)}',
-      tabs: const ['Books'],
+      tabs: const ['Collections'],
       pageBuilder: (context, _) => books.when(
         loading: () => const _ExploreLoading(),
         error: (error, _) => _ExploreNotice(
           message: userFacingError(
             error,
-            fallback: "Couldn't load books for this opening.",
+            fallback: "Couldn't load collections for this opening.",
           ),
           onRetry: () => ref.invalidate(provider),
         ),
@@ -169,7 +193,7 @@ class OpeningBooksScreen extends ConsumerWidget {
           },
           child: items.isEmpty
               ? const _ExploreNotice(
-                  message: 'No published books study this opening yet.',
+                  message: 'No published collections study this opening yet.',
                 )
               : ListView.separated(
                   physics: const AlwaysScrollableScrollPhysics(),
@@ -321,7 +345,7 @@ class _PublishedCollectionGamesViewState
             ? _ExploreNotice(
                 message: widget.search.isActive
                     ? 'No matching games. Try another search or clear filters.'
-                    : 'No readable games yet. Browse Books to discover published collections.',
+                    : 'No readable games yet. Browse Collections to discover published collections.',
               )
             : ListView.builder(
                 key: ValueKey(widget.search),

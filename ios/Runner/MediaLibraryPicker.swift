@@ -4,11 +4,11 @@ import PhotosUI
 import UIKit
 import UniformTypeIdentifiers
 
-/// System photo library picker for feedback attachments.
+/// System photo library picker for feedback attachments and profile photos.
 ///
-/// Asks for photo-library permission first, then presents
-/// PHPickerViewController (Photos, Recents, Albums) — never
-/// UIDocumentPicker / Files. No camera APIs, so this does not reintroduce
+/// Profile selection presents PHPicker directly, sharing one chosen image
+/// without requesting photo-library access. Feedback retains its existing
+/// permission flow. No camera APIs, so this does not reintroduce
 /// the ITMS-90683 NSCameraUsageDescription rejection that forced the
 /// vendored file_picker document-only patch.
 final class MediaLibraryPicker: NSObject, PHPickerViewControllerDelegate {
@@ -34,14 +34,16 @@ final class MediaLibraryPicker: NSObject, PHPickerViewControllerDelegate {
       }
       switch call.method {
       case "pickImage":
-        self.pickImage(result: result)
+        self.pickImage(result: result, requestLibraryAccess: true)
+      case "pickProfileImage":
+        self.pickImage(result: result, requestLibraryAccess: false)
       default:
         result(FlutterMethodNotImplemented)
       }
     }
   }
 
-  private func pickImage(result: @escaping FlutterResult) {
+  private func pickImage(result: @escaping FlutterResult, requestLibraryAccess: Bool) {
     if flutterResult != nil {
       result(
         FlutterError(
@@ -53,7 +55,11 @@ final class MediaLibraryPicker: NSObject, PHPickerViewControllerDelegate {
       return
     }
     flutterResult = result
-    requestPhotoAccessThenPresent()
+    if requestLibraryAccess {
+      requestPhotoAccessThenPresent()
+    } else {
+      presentPicker()
+    }
   }
 
   private func requestPhotoAccessThenPresent() {

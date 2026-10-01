@@ -1252,13 +1252,10 @@ class SmartAggregateEventNotifier
   final SmartEventGamesQuery _query;
 
   DateTime? _nextDay;
+  bool _nextDayIsBoundary = false;
   bool _cursorReady = false;
   bool _isFetching = false;
   bool _didPrefetch = false;
-
-  /// Upper bound on days skipped in one fetch when a day survives the backend
-  /// predicates but is emptied by client-side narrowing.
-  static const int _maxSkippedSmartEventDays = 12;
 
   /// Days to pull in after first paint so Yesterday / older headers appear
   /// without waiting on a scroll. First paint itself is still one day.
@@ -1308,16 +1305,19 @@ class SmartAggregateEventNotifier
               ? null
               : _query.normalizedSearchQuery;
 
-      var targetDay =
-          _cursorReady
-              ? _nextDay
-              : await repository.getCurrentSmartEventDay(
-                liveOnly: scope.liveOnly,
-                completedOnly: scope.completedOnly,
-                minGameAverageElo: scope.minGameAverageElo,
-                searchQuery: search,
-                extraFilter: extraFilter,
-              );
+      var targetDay = _cursorReady && !_nextDayIsBoundary
+          ? _nextDay
+          : await repository.getCurrentSmartEventDay(
+              liveOnly: scope.liveOnly,
+              completedOnly: scope.completedOnly,
+              minGameAverageElo: scope.minGameAverageElo,
+              maxGameAverageElo: scope.maxGameAverageElo,
+              eventTimeControls: scope.eventTimeControls,
+              before: _cursorReady ? _nextDay : null,
+              searchQuery: search,
+              extraFilter: extraFilter,
+            );
+      if (!mounted) return;
       _cursorReady = true;
 
       if (targetDay == null) {
@@ -1335,9 +1335,9 @@ class SmartAggregateEventNotifier
         return;
       }
 
-      for (var skipped = 0; skipped <= _maxSkippedSmartEventDays; skipped++) {
+      while (targetDay != null) {
         final page = await repository.getCurrentSmartEventGamesOnDay(
-          day: targetDay!,
+          day: targetDay,
           liveOnly: scope.liveOnly,
           completedOnly: scope.completedOnly,
           minGameAverageElo: scope.minGameAverageElo,
@@ -1345,8 +1345,11 @@ class SmartAggregateEventNotifier
           eventTimeControls: scope.eventTimeControls,
           searchQuery: search,
           extraFilter: extraFilter,
+          deferNextDayLookup: true,
         );
+        if (!mounted) return;
         _nextDay = page.nextDay;
+        _nextDayIsBoundary = page.nextDayIsBoundary;
 
         if (page.games.isNotEmpty) {
           final liveIds = _ref.read(liveBroadcastIdsProvider);
@@ -1386,18 +1389,32 @@ class SmartAggregateEventNotifier
           }
           return;
         }
-        targetDay = page.nextDay;
+        targetDay = !page.nextDayIsBoundary
+            ? page.nextDay
+            : await repository.getCurrentSmartEventDay(
+                liveOnly: scope.liveOnly,
+                completedOnly: scope.completedOnly,
+                minGameAverageElo: scope.minGameAverageElo,
+                maxGameAverageElo: scope.maxGameAverageElo,
+                eventTimeControls: scope.eventTimeControls,
+                before: page.nextDay,
+                searchQuery: search,
+                extraFilter: extraFilter,
+              );
+        if (!mounted) return;
       }
 
       final current = state.valueOrNull;
+      _nextDay = null;
       if (!append) {
         state = const AsyncValue.data(SmartAggregateEvent.empty);
       } else if (current != null) {
         state = AsyncValue.data(
-          current.copyWith(hasMore: _nextDay != null, isLoadingMore: false),
+          current.copyWith(hasMore: false, isLoadingMore: false),
         );
       }
     } catch (error, stackTrace) {
+      if (!mounted) return;
       if (!append) {
         state = AsyncValue.error(error, stackTrace);
       } else {

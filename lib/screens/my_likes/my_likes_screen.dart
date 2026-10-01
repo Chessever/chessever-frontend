@@ -1,4 +1,10 @@
 import 'dart:async';
+import 'dart:io';
+
+import 'package:chessever2/screens/library/utils/folder_pgn_exporter.dart';
+import 'package:chessever2/utils/logger/logger.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:share_plus/share_plus.dart';
 
 import 'package:chessever2/repository/liked_games/liked_games_provider.dart';
 import 'package:chessever2/repository/library/models/saved_analysis.dart';
@@ -10,6 +16,7 @@ import 'package:chessever2/screens/my_likes/my_likes_hub_screen.dart';
 import 'package:chessever2/screens/my_likes/widgets/date_section_header.dart'
     show DateSectionHeader, formatLikedDateHeader;
 import 'package:chessever2/screens/my_likes/widgets/my_likes_archive_boundary.dart';
+import 'package:chessever2/screens/my_likes/widgets/my_likes_game_card.dart';
 import 'package:chessever2/screens/my_space/models/space_shortcut.dart';
 import 'package:chessever2/repository/library/library_game_event.dart';
 import 'package:chessever2/screens/for_you/discovery/models/discovery_models.dart'
@@ -37,17 +44,13 @@ import 'package:flutter/services.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:chessever2/screens/chessboard/utils/legible_ink.dart';
 
-/// My Likes, from anywhere that opens it (the My Likes tile, the Library's
-/// Liked Games card, a My Space shortcut, a deep link): the My Likes hub in
-/// the event view's frame, on its Games tab unless told otherwise.
+/// The standalone saved-games archive used by Library and Discovery.
 class MyLikesScreen extends StatelessWidget {
-  const MyLikesScreen({super.key, this.initialTab = 0});
-
-  final int initialTab;
+  const MyLikesScreen({super.key});
 
   @override
   Widget build(BuildContext context) =>
-      MyLikesHubScreen(initialTab: initialTab);
+      const MyLikesGamesPage(standalone: true);
 }
 
 /// My Likes' Games page — the For You → Favorites → Games view without the
@@ -59,7 +62,9 @@ class MyLikesScreen extends StatelessWidget {
 /// A page of [MyLikesHubScreen]: the hub's frame carries back and the title;
 /// this page starts with the same search and filters as Favorites.
 class MyLikesGamesPage extends ConsumerStatefulWidget {
-  const MyLikesGamesPage({super.key});
+  const MyLikesGamesPage({super.key, this.standalone = false});
+
+  final bool standalone;
 
   @override
   ConsumerState<MyLikesGamesPage> createState() => _MyLikesGamesPageState();
@@ -256,7 +261,58 @@ class _MyLikesGamesPageState extends ConsumerState<MyLikesGamesPage>
       body = _buildLoadingState();
     }
 
-    return body;
+    if (!widget.standalone) return body;
+    return Scaffold(
+      backgroundColor: context.colors.background,
+      body: SafeArea(
+        bottom: false,
+        child: Column(
+          children: [
+            Padding(
+              padding: EdgeInsets.fromLTRB(8.w, 8.h, 16.w, 4.h),
+              child: Row(
+                children: [
+                  IconButton(
+                    tooltip: 'Back',
+                    onPressed: () => Navigator.of(context).maybePop(),
+                    icon: Icon(
+                      Icons.arrow_back_ios_new_rounded,
+                      color: context.colors.textPrimary,
+                      size: 20.sp,
+                    ),
+                  ),
+                  Icon(
+                    Icons.favorite_rounded,
+                    color: context.colors.danger,
+                    size: 20.sp,
+                  ),
+                  SizedBox(width: 8.w),
+                  Expanded(
+                    child: Text(
+                      'My Likes',
+                      style: AppTypography.textLgBold.copyWith(
+                        color: context.colors.textPrimary,
+                      ),
+                    ),
+                  ),
+                  if ((data?.totalLiked ?? 0) > 0)
+                    IconButton(
+                      tooltip: 'Export as PGN',
+                      onPressed: _handleExportPgn,
+                      icon: Icon(
+                        Icons.ios_share_rounded,
+                        color: context.colors.textPrimary,
+                        size: 20.sp,
+                      ),
+                    ),
+                ],
+              ),
+            ),
+            Expanded(child: body),
+          ],
+        ),
+      ),
+    );
   }
 
   /// Opens the paywall from the archive boundary. The sheet sits over My
@@ -281,6 +337,125 @@ class _MyLikesGamesPageState extends ConsumerState<MyLikesGamesPage>
         }
       },
     );
+  }
+
+  Future<bool> _promptExportUpgrade(int lockedCount) async {
+    if (!mounted) return false;
+    final completer = Completer<bool>();
+    final controller = showAppSnack(
+      context,
+      'Upgrade to export $lockedCount more game${lockedCount == 1 ? '' : 's'}',
+      actionLabel: 'Upgrade',
+      duration: const Duration(seconds: 6),
+      onAction: () async {
+        if (completer.isCompleted) return;
+        final unlocked = await requirePremiumGuard(context, ref);
+        if (!completer.isCompleted) completer.complete(unlocked);
+      },
+    );
+    if (controller == null) return false;
+    // Resolve to false when the snack dismisses without the Upgrade action
+    // being tapped — caller proceeds with the unlocked slice. This is exactly
+    // why the snack must never be persistent: `closed` is the gate.
+    unawaited(
+      controller.closed.then((_) {
+        if (!completer.isCompleted) completer.complete(false);
+      }),
+    );
+    return completer.future;
+  }
+
+  Future<void> _handleExportPgn() async {
+    HapticFeedbackService.medium();
+
+    final allAnalyses =
+        ref.read(likedGamesProvider).valueOrNull ?? const <SavedAnalysis>[];
+    if (allAnalyses.isEmpty) {
+      showAppSnack(context, 'Nothing to export yet');
+      return;
+    }
+
+    // Free users export their latest-likes window; Premium gets everything. Slice the list at tap time so a sub picked up mid-
+    // session takes effect immediately.
+    List<SavedAnalysis> analyses;
+    if (ref.read(myLikesUnlimitedProvider)) {
+      analyses = allAnalyses;
+    } else {
+      final window = freeLikesWindow(allAnalyses, unlimited: false);
+      analyses = allAnalyses
+          .where((a) => !isLikedGameLocked(a.id, window: window))
+          .toList();
+      final lockedCount = allAnalyses.length - analyses.length;
+      if (lockedCount > 0) {
+        final proceed = await _promptExportUpgrade(lockedCount);
+        if (!mounted) return;
+        if (proceed) {
+          // User just subscribed via the upgrade prompt — re-read state
+          // and export everything.
+          final refreshed = ref.read(subscriptionProvider);
+          if (refreshed.isSubscribed) {
+            analyses = allAnalyses;
+          }
+        } else if (analyses.isEmpty) {
+          // Nothing unlocked AND user declined upgrade — bail out cleanly.
+          return;
+        }
+      }
+    }
+
+    List<FolderPgnFile> files;
+    try {
+      files = exportSavedAnalysesAsPgnFiles(
+        analyses: analyses,
+        databaseName: 'My Likes',
+      );
+    } catch (e, st) {
+      talker.handle(e, st);
+      if (!mounted) return;
+      showAppSnack(
+        context,
+        userFacingError(e, fallback: 'Export failed. Please try again.'),
+        tone: AppSnackTone.danger,
+      );
+      return;
+    }
+
+    if (!mounted) return;
+    if (files.isEmpty) {
+      showAppSnack(context, 'Nothing to export yet');
+      return;
+    }
+
+    try {
+      final tempDir = await getTemporaryDirectory();
+      final xFiles = <XFile>[];
+      for (final entry in files) {
+        final file = File('${tempDir.path}/${entry.filename}');
+        await file.writeAsString(entry.pgn);
+        xFiles.add(XFile(file.path, mimeType: 'application/x-chess-pgn'));
+      }
+
+      if (!mounted) return;
+      final box = context.findRenderObject() as RenderBox?;
+      final origin = box != null
+          ? box.localToGlobal(Offset.zero) & box.size
+          : const Rect.fromLTWH(0, 0, 1, 1);
+
+      await Share.shareXFiles(
+        xFiles,
+        subject: 'My Likes - Chessever PGN',
+        sharePositionOrigin: origin,
+      );
+      HapticFeedbackService.success();
+    } catch (e, st) {
+      talker.handle(e, st);
+      if (!mounted) return;
+      showAppSnack(
+        context,
+        userFacingError(e, fallback: 'Could not share this. Please try again.'),
+        tone: AppSnackTone.danger,
+      );
+    }
   }
 
   Widget _buildBody(MyLikesData data) {
@@ -422,6 +597,7 @@ class _MyLikesGamesPageState extends ConsumerState<MyLikesGamesPage>
   /// remove). A like behind the free window is greyed with the padlock after
   /// its line and opens the paywall. Built a row at a time as it scrolls in.
   Widget _buildSectionsSliver(MyLikesData data) {
+    if (widget.standalone) return _buildArchiveSectionsSliver(data);
     // Library-wide tag → game-count map. Reuses the cached counts that drive
     // the filter chip row so a card's line names the dominant tag first.
     final liveCounts = ref.watch(myLikesTagCountsProvider).valueOrNull;
@@ -494,6 +670,70 @@ class _MyLikesGamesPageState extends ConsumerState<MyLikesGamesPage>
         delegate: SliverChildBuilderDelegate(
           (context, index) => Padding(
             padding: EdgeInsets.only(bottom: 12.sp),
+            child: items[index](),
+          ),
+          childCount: items.length,
+          addAutomaticKeepAlives: false,
+        ),
+      ),
+    );
+  }
+
+  /// Library's original one-card-per-game layout, with the current archive
+  /// boundary and access policy kept intact.
+  Widget _buildArchiveSectionsSliver(MyLikesData data) {
+    final tagCounts =
+        ref.watch(myLikesTagCountsProvider).valueOrNull ?? _lastTagCounts;
+    final items = <Widget Function()>[];
+
+    void addGames(List<MyLikesEntry> entries) {
+      for (final entry in entries) {
+        items.add(
+          () => MyLikesGameCard(
+            key: ValueKey('mylikes_${entry.analysis.id}'),
+            analysis: entry.analysis,
+            game: entry.game,
+            isLocked: entry.isLocked,
+            tagCounts: tagCounts,
+            onOpen: () => _openAnalysis(entry.analysis),
+            onRemove: () => _removeAnalysis(entry.analysis),
+          ),
+        );
+      }
+    }
+
+    for (final section in data.sections) {
+      final dateKey = section.key;
+      final sorted = dateKey.startsWith('__');
+      final collapsed = _collapsedDates.contains(dateKey);
+      if (!sorted) {
+        items.add(
+          () => DateSectionHeader(
+            dateLabel: formatLikedDateHeader(dateKey),
+            gameCount: section.value.length,
+            isExpanded: !collapsed,
+            onToggle: () => _toggleDateSection(dateKey),
+          ),
+        );
+      }
+      if (sorted || !collapsed) addGames(section.value);
+    }
+    if (data.showsArchiveBoundary) {
+      items.add(
+        () => MyLikesArchiveBoundary(
+          key: const ValueKey('mylikes_archive_boundary'),
+          data: data,
+          onViewHistory: _viewFullHistory,
+        ),
+      );
+      addGames(data.lockedPreview);
+    }
+    return SliverPadding(
+      padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 8.h),
+      sliver: SliverList(
+        delegate: SliverChildBuilderDelegate(
+          (context, index) => Padding(
+            padding: EdgeInsets.only(bottom: 12.h),
             child: items[index](),
           ),
           childCount: items.length,
