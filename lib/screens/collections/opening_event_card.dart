@@ -54,7 +54,7 @@ class OpeningEventCard extends StatelessWidget {
     final size = useEventImageFrame ? frame.height : frame.width;
     final counts = [
       if (gameCount != null) '$gameCount ${gameCount == 1 ? 'game' : 'games'}',
-      if (bookCount != null) '$bookCount ${bookCount == 1 ? 'book' : 'books'}',
+      if (bookCount != null) '$bookCount ${bookCount == 1 ? 'collection' : 'collections'}',
     ].join(' · ');
     final line = [
       if (eco != null && !name.startsWith(eco!)) eco!,

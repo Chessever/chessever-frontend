@@ -37,6 +37,10 @@ class FigmaPlayerCard extends ConsumerWidget {
   /// Collection-specific data, such as liked games, in the shared trailing slot.
   final Widget? trailing;
 
+  /// Optional archive/ranking detail beneath the rating, without displacing
+  /// the favorite heart from the shared trailing column.
+  final String? detail;
+
   /// Uses the account photo for authors without inferring a FIDE identity.
   final Widget? avatar;
   final VoidCallback onTap;
@@ -57,6 +61,8 @@ class FigmaPlayerCard extends ConsumerWidget {
   /// column ends on the same x in every row, and so a record arriving after
   /// first paint does not shove that row's name sideways.
   final bool reserveMatchScoreSlot;
+  /// Allows long collection counts to wrap without consuming the name column.
+  final double? matchScoreMaxWidth;
 
   const FigmaPlayerCard({
     super.key,
@@ -68,6 +74,7 @@ class FigmaPlayerCard extends ConsumerWidget {
     this.isInactive = false,
     this.hideMissingRating = false,
     this.trailing,
+    this.detail,
     this.avatar,
     required this.onTap,
     this.onToggleFavorite,
@@ -75,6 +82,7 @@ class FigmaPlayerCard extends ConsumerWidget {
     this.avatarHeroTag,
     this.matchScorePending = false,
     this.reserveMatchScoreSlot = false,
+    this.matchScoreMaxWidth,
   });
 
   /// The longest record the leaderboard produces. Both the reserved width and
@@ -314,6 +322,15 @@ class FigmaPlayerCard extends ConsumerWidget {
                         ),
                     ],
                   ),
+                  if (detail != null) ...[
+                    SizedBox(height: 3.h),
+                    Text(
+                      detail!,
+                      style: AppTypography.textXsRegular.copyWith(
+                        color: context.colors.textSecondary,
+                      ),
+                    ),
+                  ],
                 ],
               ),
             ),
@@ -324,24 +341,43 @@ class FigmaPlayerCard extends ConsumerWidget {
                 child: trailing!,
               )
             else if (showFavoriteButton && onToggleFavorite != null)
-              GestureDetector(
+              Semantics(
+                button: true,
+                label: isFavorite
+                    ? 'Remove from favorites'
+                    : 'Add to favorites',
                 onTap: onToggleFavorite,
-                behavior: HitTestBehavior.opaque,
-                child: Container(
-                  padding: EdgeInsets.all(8.sp),
-                  child: Icon(
-                    isFavorite ? Icons.favorite : Icons.favorite_border,
-                    color: isFavorite
-                        ? const Color(0xFFEF4444)
-                        : context.colors.textTertiary,
-                    size: 24.ic,
+                excludeSemantics: true,
+                child: GestureDetector(
+                  onTap: onToggleFavorite,
+                  behavior: HitTestBehavior.opaque,
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(
+                      minWidth: 44,
+                      minHeight: 44,
+                    ),
+                    child: Padding(
+                      padding: EdgeInsets.all(8.sp),
+                      child: Icon(
+                        isFavorite ? Icons.favorite : Icons.favorite_border,
+                        color: isFavorite
+                            ? const Color(0xFFEF4444)
+                            : context.colors.textTertiary,
+                        size: 24.ic,
+                      ),
+                    ),
                   ),
                 ),
               )
             else if (!showFavoriteButton)
               Padding(
                 padding: EdgeInsets.only(left: 8.w),
-                child: _buildMatchScore(context),
+                child: matchScoreMaxWidth == null
+                    ? _buildMatchScore(context)
+                    : ConstrainedBox(
+                        constraints: BoxConstraints(maxWidth: matchScoreMaxWidth!),
+                        child: _buildMatchScore(context),
+                      ),
               ),
           ],
         ),

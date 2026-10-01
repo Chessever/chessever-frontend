@@ -77,7 +77,7 @@ class CollectionOpeningsView extends ConsumerWidget {
         child: items.isEmpty
             ? const _ExploreNotice(
                 message:
-                    'Openings will appear here when games in published books have been indexed.',
+                    'Openings will appear here when games in published collections have been indexed.',
               )
             : ListView.separated(
                 key: PageStorageKey('collection_openings_${slug ?? 'all'}'),
@@ -150,7 +150,7 @@ class OpeningBooksScreen extends ConsumerWidget {
       final q = search!;
       return EventViewShell(
         title: collectionOpeningName(opening),
-        tabs: const ['Books'],
+        tabs: const ['Collections'],
         tabStripOverride: const SizedBox.shrink(),
         pageBuilder: (_, __) => CollectionBooksCatalog(
           query: CollectionSearchQuery(
@@ -172,13 +172,13 @@ class OpeningBooksScreen extends ConsumerWidget {
     final books = ref.watch(provider);
     return EventViewShell(
       title: '${opening.eco} · ${collectionOpeningName(opening)}',
-      tabs: const ['Books'],
+      tabs: const ['Collections'],
       pageBuilder: (context, _) => books.when(
         loading: () => const _ExploreLoading(),
         error: (error, _) => _ExploreNotice(
           message: userFacingError(
             error,
-            fallback: "Couldn't load books for this opening.",
+            fallback: "Couldn't load collections for this opening.",
           ),
           onRetry: () => ref.invalidate(provider),
         ),
@@ -193,7 +193,7 @@ class OpeningBooksScreen extends ConsumerWidget {
           },
           child: items.isEmpty
               ? const _ExploreNotice(
-                  message: 'No published books study this opening yet.',
+                  message: 'No published collections study this opening yet.',
                 )
               : ListView.separated(
                   physics: const AlwaysScrollableScrollPhysics(),
@@ -345,7 +345,7 @@ class _PublishedCollectionGamesViewState
             ? _ExploreNotice(
                 message: widget.search.isActive
                     ? 'No matching games. Try another search or clear filters.'
-                    : 'No readable games yet. Browse Books to discover published collections.',
+                    : 'No readable games yet. Browse Collections to discover published collections.',
               )
             : ListView.builder(
                 key: ValueKey(widget.search),

@@ -1334,7 +1334,9 @@ class GameRepository extends BaseRepository {
     });
   }
 
-  /// Feed candidates: finished games, newest first, listing columns only.
+  /// Feed candidates: finished report games, newest first, listing only.
+  /// The report predicates match Analyzed Games; parsed mainline validation
+  /// in Feed remains the final eligibility check.
   ///
   /// No PGN rides along (the Feed fetches movetext for the few games it
   /// actually shows, in one batch through [getGamePgns]), and the Elo floor
@@ -1354,12 +1356,14 @@ class GameRepository extends BaseRepository {
       dynamic query = supabase
           .from('games')
           .select(_feedCandidateSelectColumns)
+          .like('pgn', r'%[\%eval %')
+          .or(r'pgn.like.%$24%,pgn.ilike.%chessever_annotation%')
           .gte('player_max_rating', minRating)
           .inFilter(
             'status',
             decisiveOnly
                 ? const ['1-0', '0-1']
-                : const ['1-0', '0-1', '1/2-1/2', '½-½'],
+                : const ['1-0', '0-1', '1/2-1/2'],
           )
           .gte('last_move_time', since.toUtc().toIso8601String());
       if (tourIds != null) query = query.inFilter('tour_id', tourIds);
@@ -1398,6 +1402,22 @@ class GameRepository extends BaseRepository {
             row['id'] as String: row['pgn'] as String,
       };
     });
+  }
+
+  /// Optional Reports categories. Eligibility never depends on this metadata;
+  /// the caller checks its PGN hash and result before displaying a category.
+  Future<Map<String, Object?>> getFeedGameClassifications(
+    List<String> ids,
+  ) async {
+    if (ids.isEmpty) return const {};
+    final rows = await supabase
+        .from('games')
+        .select('id, report_game_classification')
+        .inFilter('id', ids);
+    return {
+      for (final row in rows)
+        row['id'] as String: row['report_game_classification'],
+    };
   }
 
   /// Tours of the events running now (`group_broadcasts_current`) whose

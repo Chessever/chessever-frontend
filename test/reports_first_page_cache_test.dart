@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:chessever2/screens/for_you/discovery/data/discovery_repository.dart';
 import 'package:chessever2/screens/for_you/discovery/models/discovery_models.dart';
+import 'package:chessever2/screens/for_you/discovery/models/report_game_type.dart';
 import 'package:chessever2/screens/for_you/discovery/providers/reports_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -9,16 +10,23 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 class _Repository implements DiscoveryRepository {
   final requests =
-      <({AnalyzedGamesCursor? after, Completer<AnalyzedGamesPage> result})>[];
+      <
+        ({
+          AnalyzedGamesCursor? after,
+          ReportGameType? gameType,
+          Completer<AnalyzedGamesPage> result,
+        })
+      >[];
 
   @override
   Future<AnalyzedGamesPage> fetchAnalyzedGamesPage({
     int pageSize = 30,
     AnalyzedGamesCursor? after,
     DateTime? since,
+    ReportGameType? gameType,
   }) {
     final result = Completer<AnalyzedGamesPage>();
-    requests.add((after: after, result: result));
+    requests.add((after: after, gameType: gameType, result: result));
     return result.future;
   }
 

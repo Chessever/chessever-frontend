@@ -1,6 +1,9 @@
+import 'package:chessever2/screens/collections/collection_author_screen.dart';
 import 'package:chessever2/screens/tour_detail/widgets/event_search_bar.dart';
 import 'package:chessever2/widgets/simple_search_bar.dart';
 import 'package:chessever2/screens/collections/collection_catalog_list.dart';
+import 'package:chessever2/screens/collections/collection_catalog_views.dart';
+import 'package:chessever2/screens/collections/event_view_shell.dart';
 import 'package:chessever2/widgets/player_initials_avatar.dart';
 import 'package:chessever2/repository/gamebase/collections/collection_search_query.dart';
 import 'dart:async';
@@ -12,6 +15,7 @@ import 'package:chessever2/repository/gamebase/gamebase_repository.dart';
 import 'package:chessever2/repository/lichess/cloud_eval/cloud_eval.dart';
 import 'package:chessever2/revenue_cat_service/subscribe_state.dart';
 import 'package:chessever2/screens/chessboard/provider/current_eval_provider.dart';
+import 'package:chessever2/screens/chessboard/chess_board_screen_new.dart';
 import 'package:chessever2/screens/collections/collections_data.dart';
 import 'package:chessever2/screens/collections/collections_screen.dart';
 import 'package:chessever2/screens/collections/collection_explore.dart';
@@ -34,8 +38,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
-/// The collection screen's Games tab: games under the section tree's
-/// headers (a round and its date; a book's parts, chapters and intros).
+/// Books use a flat Games list; event collections retain section headers.
 
 class _FakeCollections extends CollectionsRepository {
   _FakeCollections({
@@ -45,6 +48,9 @@ class _FakeCollections extends CollectionsRepository {
     this.players = const [],
     this.list,
     this.publishedLoader,
+    this.searchResult,
+    this.authors,
+    this.booksByAuthor = const {},
   }) : super(GamebaseRepository(Dio(), apiKey: 'test'));
 
   final Collection detail;
@@ -52,6 +58,9 @@ class _FakeCollections extends CollectionsRepository {
   final List<CollectionOpening> openings;
   final List<CollectionPlayer> players;
   final List<Collection>? list;
+  final List<CollectionAuthor>? authors;
+  final Map<String, List<Collection>> booksByAuthor;
+  final List<CollectionGame> Function(CollectionSearchQuery)? searchResult;
   final Future<PublishedGamesBatch> Function(int offset)? publishedLoader;
   @override
   Future<List<String>> fetchAuthors() async => ['Bobby Fischer'];
@@ -68,7 +77,7 @@ class _FakeCollections extends CollectionsRepository {
   ) async {
     bookQueries.add(query);
     return CollectionsPage(
-      items: (list ?? [detail])
+      items: (booksByAuthor[query.authorId] ?? list ?? [detail])
           .where(
             (c) =>
                 query.text.isEmpty ||
@@ -77,7 +86,7 @@ class _FakeCollections extends CollectionsRepository {
                 ),
           )
           .toList(),
-      total: (list ?? [detail]).length,
+      total: (booksByAuthor[query.authorId] ?? list ?? [detail]).length,
       limit: 40,
       offset: offset,
     );
@@ -147,6 +156,7 @@ class _FakeCollections extends CollectionsRepository {
   }) async {
     filteredQueries.add((query: search, player: playerKey));
     filteredSlugs.add(slug);
+    if (searchResult != null) return searchResult!(search);
     return games
         .where(
           (g) =>
@@ -164,24 +174,37 @@ class _FakeCollections extends CollectionsRepository {
         .toList();
   }
 
+  final authorQueries = <CollectionSearchQuery>[];
   @override
   Future<({List<CollectionAuthor> items, int total})> searchAuthors(
     CollectionSearchQuery query,
     int offset,
-  ) async => (
-    items: const [
-      CollectionAuthor(
-        id: 'credit:author',
-        name: 'Bobby Fischer',
-        avatarUrl: 'https://example.com/author.jpg',
-        bookCount: 1,
-      ),
-    ],
-    total: 1,
-  );
+  ) async {
+    authorQueries.add(query);
+    final items =
+        authors ??
+        const [
+          CollectionAuthor(
+            id: 'credit:author',
+            name: 'Bobby Fischer',
+            avatarUrl: 'https://example.com/author.jpg',
+            bookCount: 1,
+          ),
+        ];
+    return (items: items, total: items.length);
+  }
 
   @override
   Future<List<CollectionPlayer>> fetchPlayers(String slug) async => players;
+}
+
+class _BookNavigationObserver extends NavigatorObserver {
+  MaterialPageRoute<void>? lastPage;
+
+  @override
+  void didPush(Route<dynamic> route, Route<dynamic>? previousRoute) {
+    if (route is MaterialPageRoute<void>) lastPage = route;
+  }
 }
 
 class _Subscription extends StateNotifier<SubscriptionState>
@@ -271,6 +294,7 @@ Future<void> _pump(
   double textScale = 1,
   Widget? home,
   CollectionsRepository Function()? repositoryFactory,
+  NavigatorObserver? navigationObserver,
 }) async {
   tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1;
@@ -304,6 +328,9 @@ Future<void> _pump(
     UncontrolledProviderScope(
       container: container,
       child: MaterialApp(
+        navigatorObservers: [
+          if (navigationObserver != null) navigationObserver,
+        ],
         theme: light ? AppTheme.lightTheme : AppTheme.darkTheme,
         builder: (context, child) => MediaQuery(
           data: MediaQuery.of(
@@ -409,7 +436,7 @@ void main() {
         closeTo(tournamentSearchSize.height, 0.01),
       );
       final tabs = find.byKey(
-        const ValueKey('event_view_tabs_About_Openings_Games_Players'),
+        const ValueKey('event_view_tabs_About_Games_Players'),
       );
       expect(input, findsOneWidget);
       expect(tester.getRect(input).bottom, lessThan(tester.getRect(tabs).top));
@@ -454,6 +481,68 @@ void main() {
     },
   );
 
+  testWidgets('book search keeps the server subset and order on the board', (
+    tester,
+  ) async {
+    final first = _game('first', sectionId: 'chapter-a', orderIndex: 0);
+    final second = _game('second', sectionId: 'chapter-b', orderIndex: 0);
+    final third = _game('third', sectionId: 'chapter-a', orderIndex: 1);
+    final repo = _FakeCollections(
+      detail: const Collection(
+        id: 'book',
+        slug: 'book',
+        kind: CollectionKind.book,
+        title: 'Filtered book',
+        access: CollectionAccess.free,
+        sections: [
+          CollectionSection(
+            id: 'chapter-a',
+            kind: CollectionSectionKind.chapter,
+            label: 'Chapter A',
+          ),
+          CollectionSection(
+            id: 'chapter-b',
+            kind: CollectionSectionKind.round,
+            label: 'Round B',
+          ),
+        ],
+      ),
+      games: [first, second, third],
+      // The endpoint's filtered/ranked response is authoritative, including
+      // order that crosses chapters and differs from local orderIndex.
+      searchResult: (_) => [third, first],
+    );
+    final observer = _BookNavigationObserver();
+    await _pump(tester, repo, navigationObserver: observer);
+    await tester.enterText(
+      find.byKey(const ValueKey('collection_games_search')),
+      '[White "Nimzowitsch"]',
+    );
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.pumpAndSettle();
+    expect(repo.filteredQueries.last.query.text, '[White "Nimzowitsch"]');
+    expect(find.byType(TournamentRoundHeader), findsNothing);
+    expect(find.byType(GameCard), findsNWidgets(2));
+    final rows = tester
+        .widgetList<DiscoveryGameList>(find.byType(DiscoveryGameList))
+        .toList();
+    expect(
+      [for (final row in rows) row.games[row.start].gameId],
+      ['third', 'first'],
+    );
+    await tester.tap(find.byType(GameCard).last);
+    // Inspect the pushed route's widget without mounting the live board.
+    final board =
+        observer.lastPage!.builder(
+              tester.element(find.byType(CollectionScreen)),
+            )
+            as ChessBoardScreenNew;
+    expect(board.games.map((game) => game.gameId), ['third', 'first']);
+    expect(board.currentIndex, 1);
+    expect(board.allowGameExport, isFalse);
+    await _teardown(tester);
+  });
+
   testWidgets('book search is fixed across tabs and combines existing cards', (
     tester,
   ) async {
@@ -486,7 +575,7 @@ void main() {
     final input = find.byKey(const ValueKey('collection_games_search'));
     final searchBar = find.byType(SimpleSearchBar);
     final initialRect = tester.getRect(searchBar);
-    for (final tab in ['Players', 'Openings', 'About', 'Games']) {
+    for (final tab in ['Players', 'About', 'Games']) {
       await tester.tap(find.text(tab).first);
       await tester.pumpAndSettle();
       expect(tester.getRect(searchBar), initialRect);
@@ -552,7 +641,7 @@ void main() {
       tester
           .widget<SegmentedSwitcher>(find.byType(SegmentedSwitcher))
           .currentSelection,
-      3,
+      2,
     );
     expect(find.byType(FigmaPlayerCard), findsOneWidget);
     final playerCard = tester.widget<FigmaPlayerCard>(
@@ -564,128 +653,171 @@ void main() {
     await _teardown(tester);
   });
 
-  testWidgets(
-    'book tabs slide to About and opening taps show only that book opening games',
-    (tester) async {
-      await tester.binding.setSurfaceSize(const Size(390, 844));
-      addTearDown(() => tester.binding.setSurfaceSize(null));
-      final repo = _FakeCollections(
-        detail: const Collection(
-          id: 'book',
-          slug: 'book',
-          kind: CollectionKind.book,
-          title: 'Opening book',
-          access: CollectionAccess.free,
+  // Paused Openings tab regression, retained with its implementation.
+  //   testWidgets(
+  //     'book tabs slide to About and opening taps show only that book opening games',
+  //     (tester) async {
+  //       await tester.binding.setSurfaceSize(const Size(390, 844));
+  //       addTearDown(() => tester.binding.setSurfaceSize(null));
+  //       final repo = _FakeCollections(
+  //         detail: const Collection(
+  //           id: 'book',
+  //           slug: 'book',
+  //           kind: CollectionKind.book,
+  //           title: 'Opening book',
+  //           access: CollectionAccess.free,
+  //         ),
+  //         games: [
+  //           _game('sicilian', eco: 'B20', playedOn: DateTime(2026, 8, 29)),
+  //           _game('ruy', eco: 'C60', playedOn: DateTime(2026, 8, 30)),
+  //         ],
+  //         openings: const [
+  //           CollectionOpening(eco: 'B20', gameCount: 1),
+  //           CollectionOpening(eco: 'C60', gameCount: 1),
+  //         ],
+  //       );
+  //       await _pump(tester, repo, size: const Size(390, 844));
+  //       await tester.pumpAndSettle();
+  //       final strip = find.byType(SegmentedSwitcher);
+  //       final switcher = tester.widget<SegmentedSwitcher>(strip);
+  //       expect(switcher.options, ['About', 'Openings', 'Games', 'Players']);
+  //       expect(switcher.isScrollable, isTrue);
+  //       expect(switcher.currentSelection, 2);
+  //       final tabScroller = find.descendant(
+  //         of: strip,
+  //         matching: find.byType(SingleChildScrollView),
+  //       );
+  //       ScrollController tabScroll() =>
+  //           tester.widget<SingleChildScrollView>(tabScroller).controller!;
+  //       expect(
+  //         tabScroll().offset,
+  //         closeTo(tabScroll().position.maxScrollExtent, 0.01),
+  //       );
+  //       await tester.tap(find.text('Openings').first);
+  //       await tester.pumpAndSettle();
+  //       expect(tabScroll().offset, closeTo(0, 0.01));
+  //       expect(repo.openingSlugs, contains('book'));
+  //       expect(
+  //         find.byKey(const ValueKey('collection_opening_all')),
+  //         findsNothing,
+  //       );
+  //       for (final category in ['A', 'D', 'E']) {
+  //         expect(
+  //           find.byKey(ValueKey('collection_opening_category_$category')),
+  //           findsNothing,
+  //         );
+  //       }
+  //       for (final category in ['B', 'C']) {
+  //         expect(
+  //           find.byKey(ValueKey('collection_opening_category_$category')),
+  //           findsOneWidget,
+  //         );
+  //       }
+  //       await tester.tap(find.text('About').first);
+  //       await tester.pumpAndSettle();
+  //       expect(tester.widget<SegmentedSwitcher>(strip).currentSelection, 0);
+  //       await tester.tap(find.text('Games').first);
+  //       await tester.pumpAndSettle();
+  //       expect(
+  //         tabScroll().offset,
+  //         closeTo(tabScroll().position.maxScrollExtent, 0.01),
+  //       );
+  //       await tester.tap(find.text('Players').first);
+  //       await tester.pumpAndSettle();
+  //       expect(
+  //         tabScroll().offset,
+  //         closeTo(tabScroll().position.maxScrollExtent, 0.01),
+  //       );
+  //       await tester.tap(find.text('Openings').first);
+  //       await tester.pumpAndSettle();
+  //       await tester.tap(
+  //         find.byKey(const ValueKey('collection_opening_category_B')),
+  //       );
+  //       await tester.pumpAndSettle();
+  //       final opening = find.byKey(const ValueKey('collection_opening_B20'));
+  //       for (var depth = 0; depth < 8 && opening.evaluate().isEmpty; depth++) {
+  //         final closed = find.byWidgetPredicate(
+  //           (w) =>
+  //               w is TournamentRoundHeader &&
+  //               w.key.toString().contains('collection_opening_family_') &&
+  //               !w.isExpanded,
+  //         );
+  //         await tester.ensureVisible(closed.first);
+  //         await tester.tap(closed.first);
+  //         await tester.pumpAndSettle();
+  //       }
+  //       expect(opening, findsOneWidget);
+  //       expect(
+  //         find.descendant(of: opening, matching: find.text('1 game')),
+  //         findsOneWidget,
+  //       );
+  //       await tester.ensureVisible(opening);
+  //       await tester.tap(opening);
+  //       await tester.pumpAndSettle();
+  //       expect(repo.filteredSlugs.last, 'book');
+  //       expect(repo.filteredQueries.last.query.eco, 'B20');
+  //       expect(repo.filteredQueries.last.player, isNull);
+  //       expect(find.byType(GameCard), findsOneWidget);
+  //       expect(find.text('29 Aug 2026'), findsOneWidget);
+  //       final dateHeader = find.byWidgetPredicate(
+  //         (w) => w is TournamentRoundHeader && w.subtitle == '29 Aug 2026',
+  //       );
+  //       await tester.tap(dateHeader);
+  //       await tester.pumpAndSettle();
+  //       expect(find.byType(GameCard), findsNothing);
+  //       await tester.pageBack();
+  //       await tester.pumpAndSettle();
+  //       expect(opening, findsOneWidget);
+  //       expect(tester.widget<SegmentedSwitcher>(strip).currentSelection, 1);
+  //       expect(tester.takeException(), isNull);
+  //       await _teardown(tester);
+  //     },
+  //   );
+  //
+
+  testWidgets('book About is visible beside Games and Players', (tester) async {
+    final repo = _FakeCollections(
+      detail: const Collection(
+        id: 'book',
+        slug: 'book',
+        kind: CollectionKind.book,
+        title: 'Opening book',
+        about: 'A collection of opening studies.',
+        access: CollectionAccess.free,
+      ),
+      games: [_game('one')],
+      players: const [
+        CollectionPlayer(
+          key: 'name:nimzowitsch, aron',
+          name: 'Nimzowitsch, Aron',
+          games: 1,
         ),
-        games: [
-          _game('sicilian', eco: 'B20', playedOn: DateTime(2026, 8, 29)),
-          _game('ruy', eco: 'C60', playedOn: DateTime(2026, 8, 30)),
-        ],
-        openings: const [
-          CollectionOpening(eco: 'B20', gameCount: 1),
-          CollectionOpening(eco: 'C60', gameCount: 1),
-        ],
-      );
-      await _pump(tester, repo, size: const Size(390, 844));
-      await tester.pumpAndSettle();
-      final strip = find.byType(SegmentedSwitcher);
-      final switcher = tester.widget<SegmentedSwitcher>(strip);
-      expect(switcher.options, ['About', 'Openings', 'Games', 'Players']);
-      expect(switcher.isScrollable, isTrue);
-      expect(switcher.currentSelection, 2);
-      final tabScroller = find.descendant(
-        of: strip,
-        matching: find.byType(SingleChildScrollView),
-      );
-      ScrollController tabScroll() =>
-          tester.widget<SingleChildScrollView>(tabScroller).controller!;
-      expect(
-        tabScroll().offset,
-        closeTo(tabScroll().position.maxScrollExtent, 0.01),
-      );
-      await tester.tap(find.text('Openings').first);
-      await tester.pumpAndSettle();
-      expect(tabScroll().offset, closeTo(0, 0.01));
-      expect(repo.openingSlugs, contains('book'));
-      expect(
-        find.byKey(const ValueKey('collection_opening_all')),
-        findsNothing,
-      );
-      for (final category in ['A', 'D', 'E']) {
-        expect(
-          find.byKey(ValueKey('collection_opening_category_$category')),
-          findsNothing,
-        );
-      }
-      for (final category in ['B', 'C']) {
-        expect(
-          find.byKey(ValueKey('collection_opening_category_$category')),
-          findsOneWidget,
-        );
-      }
-      await tester.tap(find.text('About').first);
-      await tester.pumpAndSettle();
-      expect(tester.widget<SegmentedSwitcher>(strip).currentSelection, 0);
-      await tester.tap(find.text('Games').first);
-      await tester.pumpAndSettle();
-      expect(
-        tabScroll().offset,
-        closeTo(tabScroll().position.maxScrollExtent, 0.01),
-      );
-      await tester.tap(find.text('Players').first);
-      await tester.pumpAndSettle();
-      expect(
-        tabScroll().offset,
-        closeTo(tabScroll().position.maxScrollExtent, 0.01),
-      );
-      await tester.tap(find.text('Openings').first);
-      await tester.pumpAndSettle();
-      await tester.tap(
-        find.byKey(const ValueKey('collection_opening_category_B')),
-      );
-      await tester.pumpAndSettle();
-      final opening = find.byKey(const ValueKey('collection_opening_B20'));
-      for (var depth = 0; depth < 8 && opening.evaluate().isEmpty; depth++) {
-        final closed = find.byWidgetPredicate(
-          (w) =>
-              w is TournamentRoundHeader &&
-              w.key.toString().contains('collection_opening_family_') &&
-              !w.isExpanded,
-        );
-        await tester.ensureVisible(closed.first);
-        await tester.tap(closed.first);
-        await tester.pumpAndSettle();
-      }
-      expect(opening, findsOneWidget);
-      expect(
-        find.descendant(of: opening, matching: find.text('1 game')),
-        findsOneWidget,
-      );
-      await tester.ensureVisible(opening);
-      await tester.tap(opening);
-      await tester.pumpAndSettle();
-      expect(repo.filteredSlugs.last, 'book');
-      expect(repo.filteredQueries.last.query.eco, 'B20');
-      expect(repo.filteredQueries.last.player, isNull);
-      expect(find.byType(GameCard), findsOneWidget);
-      expect(find.text('29 Aug 2026'), findsOneWidget);
-      final dateHeader = find.byWidgetPredicate(
-        (w) => w is TournamentRoundHeader && w.subtitle == '29 Aug 2026',
-      );
-      await tester.tap(dateHeader);
-      await tester.pumpAndSettle();
-      expect(find.byType(GameCard), findsNothing);
-      await tester.pageBack();
-      await tester.pumpAndSettle();
-      expect(opening, findsOneWidget);
-      expect(tester.widget<SegmentedSwitcher>(strip).currentSelection, 1);
-      expect(tester.takeException(), isNull);
-      await _teardown(tester);
-    },
-  );
+      ],
+    );
+    await _pump(tester, repo, size: const Size(390, 844), textScale: 2);
+    await tester.pumpAndSettle();
+    final strip = find.byType(SegmentedSwitcher);
+    final switcher = tester.widget<SegmentedSwitcher>(strip);
+    expect(switcher.options, ['About', 'Games', 'Players']);
+    expect(switcher.isScrollable, isFalse);
+    expect(switcher.currentSelection, 1);
+    expect(find.text('Openings'), findsNothing);
+    expect(find.byType(GameCard), findsOneWidget);
+    await tester.tap(find.text('About').first);
+    await tester.pumpAndSettle();
+    expect(find.text('A collection of opening studies.'), findsOneWidget);
+    await tester.tap(find.text('Players').first);
+    await tester.pumpAndSettle();
+    expect(find.byType(FigmaPlayerCard), findsOneWidget);
+    await tester.tap(find.text('Games').first);
+    await tester.pumpAndSettle();
+    expect(find.byType(GameCard), findsOneWidget);
+    expect(tester.takeException(), isNull);
+    await _teardown(tester);
+  });
 
   testWidgets(
-    'root openings disclose families and authors open only their books',
+    'preserved opening catalog discloses families and authors open their collections',
     (tester) async {
       final repo = _FakeCollections(
         detail: const Collection(
@@ -705,8 +837,17 @@ void main() {
           ),
         ],
       );
-      await _pump(tester, repo, home: const CollectionsScreen());
-      await tester.tap(find.text('Openings').first);
+      await _pump(
+        tester,
+        repo,
+        home: EventViewShell(
+          title: 'Preserved opening catalog',
+          tabs: const ['Openings', 'Authors'],
+          pageBuilder: (_, index) => index == 0
+              ? const CollectionOpeningCatalog(query: CollectionSearchQuery())
+              : const CollectionAuthorsCatalog(query: CollectionSearchQuery()),
+        ),
+      );
       await tester.pumpAndSettle();
       expect(
         find.byKey(const ValueKey('collection_opening_category_B')),
@@ -768,7 +909,7 @@ void main() {
       expect(openingRect.left, greaterThan(familyRect.left));
       expect(openingRect.right, closeTo(categoryRect.right, 0.01));
       expect(
-        find.descendant(of: opening, matching: find.text('1 book')),
+        find.descendant(of: opening, matching: find.text('1 collection')),
         findsOneWidget,
       );
       final miniBoard = tester.widget<GameCardChessboard>(
@@ -825,6 +966,209 @@ void main() {
     },
   );
 
+  for (final light in [false, true]) {
+    testWidgets(
+      'author cards open Collections and title opens About in ${light ? 'light' : 'dark'} theme',
+      (tester) async {
+        const authorId = 'account:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
+        final repo = _FakeCollections(
+          detail: const Collection(
+            id: 'author-book',
+            slug: 'author-book',
+            kind: CollectionKind.book,
+            title: 'Authored collection',
+            access: CollectionAccess.free,
+          ),
+          games: [],
+          authors: const [
+            CollectionAuthor(
+              id: authorId,
+              name: 'Test Author',
+              about: 'I write about chess.\n\nI annotate my own games.',
+              bookCount: 1,
+            ),
+          ],
+        );
+        await _pump(
+          tester,
+          repo,
+          light: light,
+          textScale: 2,
+          size: const Size(390, 844),
+          home: const CollectionsScreen(),
+        );
+        await tester.tap(find.text('Authors').first);
+        await tester.pumpAndSettle();
+        expect(tester.takeException(), isNull, reason: 'author catalog layout');
+        final card = find.byType(FigmaPlayerCard);
+        await tester.tapAt(
+          tester.getRect(card).bottomRight - const Offset(20, 20),
+        );
+        await tester.pumpAndSettle();
+        expect(
+          tester.takeException(),
+          isNull,
+          reason: 'author detail collections layout',
+        );
+        final strip = find.byType(SegmentedSwitcher);
+        expect(tester.widget<SegmentedSwitcher>(strip).options, [
+          'About',
+          'Collections',
+        ]);
+        expect(tester.widget<SegmentedSwitcher>(strip).currentSelection, 1);
+        expect(find.byType(CollectionCard), findsOneWidget);
+        expect(repo.bookQueries.last.authorId, authorId);
+        expect(repo.bookQueries.last.author, isEmpty);
+        final title = find.byKey(const ValueKey('event_view_title_action'));
+        expect(tester.getSize(title).height, greaterThanOrEqualTo(44));
+        await tester.tap(title);
+        await tester.pumpAndSettle();
+        expect(tester.widget<SegmentedSwitcher>(strip).currentSelection, 0);
+        expect(find.text('I write about chess.'), findsOneWidget);
+        expect(find.text('I annotate my own games.'), findsOneWidget);
+        await tester.tap(find.text('Collections').first);
+        await tester.pumpAndSettle();
+        expect(find.byType(CollectionCard), findsOneWidget);
+        expect(tester.takeException(), isNull);
+        await _teardown(tester);
+      },
+    );
+  }
+
+  for (final kind in [CollectionKind.book, CollectionKind.analysis]) {
+    testWidgets('${kind.name} author credit opens the shared author About', (
+      tester,
+    ) async {
+      const authorId = 'account:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
+      final repo = _FakeCollections(
+        detail: Collection(
+          id: 'book',
+          slug: 'book',
+          kind: kind,
+          title: 'Authored collection',
+          author: 'Test Author',
+          authorId: authorId,
+          authorBio: 'Editorial biography for this collection.',
+          access: CollectionAccess.free,
+        ),
+        games: [],
+        authors: const [
+          CollectionAuthor(
+            id: authorId,
+            name: 'Test Author',
+            about: 'Shared public author description.',
+            bookCount: 1,
+          ),
+        ],
+      );
+      await _pump(tester, repo);
+      await tester.tap(find.text('About').first);
+      await tester.pumpAndSettle();
+      expect(
+        find.text('Editorial biography for this collection.'),
+        findsOneWidget,
+      );
+      await tester.tap(
+        find.byKey(const ValueKey('collection_author_credit_book')),
+      );
+      await tester.pumpAndSettle();
+      expect(
+        tester
+            .widget<SegmentedSwitcher>(find.byType(SegmentedSwitcher))
+            .currentSelection,
+        0,
+      );
+      expect(find.text('Shared public author description.'), findsOneWidget);
+      expect(
+        find.text('Editorial biography for this collection.'),
+        findsNothing,
+      );
+      await tester.tap(find.text('Collections').first);
+      await tester.pumpAndSettle();
+      expect(repo.bookQueries.last.authorId, authorId);
+      await tester.pageBack();
+      await tester.pumpAndSettle();
+      expect(
+        find.text('Editorial biography for this collection.'),
+        findsOneWidget,
+      );
+      expect(tester.takeException(), isNull);
+      await _teardown(tester);
+    });
+  }
+
+  test(
+    'author About parses separately from collection editorial biographies',
+    () {
+      final author = CollectionAuthor.fromJson({
+        'id': 'credit:one',
+        'name': 'Test Author',
+        'about': '  Public biography.  ',
+      });
+      expect(author.about, 'Public biography.');
+      expect(
+        CollectionAuthor.fromJson({'name': 'Legacy author'}).about,
+        isNull,
+      );
+      expect(
+        Collection.fromJson({
+          'id': 'one',
+          'title': 'A collection',
+          'authorId': 'credit:one',
+        }).authorId,
+        'credit:one',
+      );
+    },
+  );
+
+  test(
+    'legacy author credits distinguish namesakes by collection membership',
+    () async {
+      const first = CollectionAuthor(
+        id: 'account:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+        name: 'Same Name',
+        about: 'First author.',
+      );
+      const second = CollectionAuthor(
+        id: 'account:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+        name: 'Same Name',
+        about: 'Second author.',
+      );
+      const book = Collection(
+        id: 'book',
+        slug: 'book',
+        kind: CollectionKind.book,
+        title: 'Correct author collection',
+      );
+      final repo = _FakeCollections(
+        detail: book,
+        games: [],
+        authors: [first, second],
+        booksByAuthor: {
+          first.id: [],
+          second.id: [book],
+        },
+      );
+      final container = ProviderContainer(
+        overrides: [collectionsRepositoryProvider.overrideWithValue(repo)],
+      );
+      addTearDown(container.dispose);
+      final author = await container.read(
+        collectionAuthorProfileProvider((
+          id: 'Same Name',
+          name: 'Same Name',
+          collectionSlug: 'book',
+        )).future,
+      );
+      expect(author?.id, second.id);
+      expect(author?.about, 'Second author.');
+      expect(repo.bookQueries.map((query) => query.authorId), [
+        first.id,
+        second.id,
+      ]);
+    },
+  );
+
   testWidgets(
     'players use the shared card and legacy aliases filter every game',
     (tester) async {
@@ -860,7 +1204,11 @@ void main() {
       await tester.tap(find.text('Players').first);
       await tester.pumpAndSettle();
       expect(find.byType(FigmaPlayerCard), findsOneWidget);
-      expect(find.text('2 games'), findsOneWidget);
+      expect(find.text('2 games'), findsNothing);
+      expect(
+        find.descendant(of: find.byType(FigmaPlayerCard), matching: find.text('2')),
+        findsOneWidget,
+      );
       expect(find.text('0'), findsNothing);
       await tester.tap(find.byType(FigmaPlayerCard));
       await tester.pumpAndSettle();
@@ -1181,9 +1529,10 @@ void main() {
         home: const CollectionsScreen(embedded: true),
       );
       expect(find.byTooltip('Back'), findsNothing);
-      expect(find.text('Openings'), findsOneWidget);
+      expect(find.text('About'), findsOneWidget);
+      expect(find.text('Openings'), findsNothing);
       expect(find.text('Authors'), findsOneWidget);
-      expect(find.text('Books'), findsOneWidget);
+      expect(find.text('Collections'), findsOneWidget);
       expect(find.byType(CollectionCard), findsWidgets);
       final list = find.descendant(
         of: find.byType(PageView),
@@ -1209,6 +1558,13 @@ void main() {
         await tester.pump(const Duration(milliseconds: 60));
       }
       expect(scroll.pixels, closeTo(0, 0.5));
+      await tester.tap(find.text('About'));
+      await tester.pumpAndSettle();
+      expect(find.text('About collections'), findsOneWidget);
+      expect(repo.openingSlugs, isEmpty);
+      await tester.tap(find.text('Collections').first);
+      await tester.pumpAndSettle();
+      expect(find.byType(CollectionCard), findsWidgets);
       expect(tester.takeException(), isNull);
       await _teardown(tester);
     },
@@ -1464,66 +1820,86 @@ void main() {
     await _teardown(tester);
   });
 
-  testWidgets('a book shows parts, numbered chapters and their intros', (
-    tester,
-  ) async {
-    await _pump(
-      tester,
-      _FakeCollections(
-        detail: const Collection(
-          id: 'c2',
-          slug: 'my-system',
-          kind: CollectionKind.book,
-          title: 'My System',
-          gameCount: 2,
-          // The server's verdict: this viewer reads the book.
-          contentLocked: false,
-          sections: [
-            CollectionSection(
-              id: 'p1',
-              kind: CollectionSectionKind.part,
-              label: 'Part I',
-              number: 'I',
-              title: 'The Elements',
-              orderIndex: 1,
-              children: [
-                CollectionSection(
-                  id: 'ch7',
-                  parentId: 'p1',
-                  kind: CollectionSectionKind.chapter,
-                  label: 'Chapter 7',
-                  number: '7',
-                  title: 'The Pin',
-                  intro: 'A pinned piece cannot move.\n\nExploit it.',
-                  orderIndex: 1,
-                ),
-              ],
-            ),
-            CollectionSection(
-              id: 'empty',
-              kind: CollectionSectionKind.chapter,
-              label: 'Chapter 8',
-              title: 'Nothing here yet',
-              orderIndex: 2,
-            ),
+  testWidgets(
+    'book games stay flat and preserve response order across sections',
+    (tester) async {
+      await _pump(
+        tester,
+        _FakeCollections(
+          detail: const Collection(
+            id: 'c2',
+            slug: 'my-system',
+            kind: CollectionKind.book,
+            title: 'My System',
+            gameCount: 2,
+            // The server's verdict: this viewer reads the book.
+            contentLocked: false,
+            sections: [
+              CollectionSection(
+                id: 'p1',
+                kind: CollectionSectionKind.part,
+                label: 'Part I',
+                number: 'I',
+                title: 'The Elements',
+                orderIndex: 1,
+                children: [
+                  CollectionSection(
+                    id: 'ch7',
+                    parentId: 'p1',
+                    kind: CollectionSectionKind.chapter,
+                    label: 'Chapter 7',
+                    number: '7',
+                    title: 'The Pin',
+                    intro: 'A pinned piece cannot move.\n\nExploit it.',
+                    orderIndex: 1,
+                  ),
+                ],
+              ),
+              CollectionSection(
+                id: 'empty',
+                kind: CollectionSectionKind.chapter,
+                label: 'Chapter 8',
+                title: 'Nothing here yet',
+                orderIndex: 2,
+              ),
+            ],
+          ),
+          games: [
+            _game('a', sectionId: 'ch7', orderIndex: 2),
+            _game('unsectioned', orderIndex: 0),
+            _game('b', sectionId: 'ch7', orderIndex: 1),
           ],
         ),
-        games: [
-          _game('a', sectionId: 'ch7'),
-          _game('b', sectionId: 'ch7'),
-        ],
-      ),
-    );
+      );
 
-    expect(_rich('The Elements'), findsOneWidget);
-    expect(_rich('Part I'), findsOneWidget);
-    expect(_rich('Chapter 7: The Pin'), findsOneWidget);
-    expect(find.text('A pinned piece cannot move.'), findsOneWidget);
-    expect(find.text('Exploit it.'), findsOneWidget);
-    expect(_rich('Nothing here yet'), findsNothing);
-    expect(find.text('Casual'), findsNothing);
-    await _teardown(tester);
-  });
+      // Paused book chapter presentation:
+      // expect(_rich('The Elements'), findsOneWidget);
+      // expect(_rich('Part I'), findsOneWidget);
+      // expect(_rich('Chapter 7: The Pin'), findsOneWidget);
+      // expect(find.text('A pinned piece cannot move.'), findsOneWidget);
+      // expect(find.text('Exploit it.'), findsOneWidget);
+      expect(find.byType(TournamentRoundHeader), findsNothing);
+      expect(_rich('The Elements'), findsNothing);
+      expect(_rich('Chapter 7: The Pin'), findsNothing);
+      expect(find.text('A pinned piece cannot move.'), findsNothing);
+      final rows = tester
+          .widgetList<DiscoveryGameList>(find.byType(DiscoveryGameList))
+          .toList();
+      expect(rows, hasLength(3));
+      expect(
+        [for (final row in rows) row.games[row.start].gameId],
+        ['a', 'unsectioned', 'b'],
+      );
+      expect(rows.last.games.map((game) => game.gameId), [
+        'a',
+        'unsectioned',
+        'b',
+      ]);
+      expect(_rich('Nothing here yet'), findsNothing);
+      expect(find.text('Casual'), findsNothing);
+      await _teardown(tester);
+    },
+  );
 
   testWidgets(
     'a collection without sections uses the tournament round header',

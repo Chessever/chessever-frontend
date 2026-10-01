@@ -27,20 +27,29 @@ class EventViewShell extends StatefulWidget {
     this.header,
     this.embedded = false,
     this.tabStripOverride,
+    this.tabStripPadding,
     this.actions,
     this.titleIcon,
+    this.onTitleTap,
     this.beforeTabsBuilder,
     this.scrollableTabs = false,
     this.contentOverride,
+    this.secondaryTabs = false,
   });
 
   /// Renders only tabs and pages inside a parent screen. The parent owns the
   /// header and horizontal swipe; these secondary tabs remain tappable.
   final bool embedded;
 
+  /// A quiet text row beneath a parent destination's segmented tabs.
+  final bool secondaryTabs;
+
   /// Replaces the segmented tab strip (a search row on single-page screens).
   /// Pages still swipe; with one tab there is nothing to switch between.
   final Widget? tabStripOverride;
+
+  /// Allows scrollable overrides to own their padding inside the viewport.
+  final EdgeInsetsGeometry? tabStripPadding;
   final bool scrollableTabs;
 
   /// Search results replacing the pages while preserving tab/scroll state.
@@ -51,6 +60,9 @@ class EventViewShell extends StatefulWidget {
   final List<Widget>? actions;
   final Widget? header;
   final Widget? titleIcon;
+
+  /// Optional title action, used by an author name to select their About tab.
+  final VoidCallback? onTitleTap;
 
   /// Pinned content between the detail header and tab switcher.
   final Widget Function(BuildContext context, int selectedTab)?
@@ -239,6 +251,28 @@ class _EventViewShellState extends State<EventViewShell> {
                                   icon: widget.titleIcon!,
                                 ),
                               )
+                            : widget.onTitleTap != null
+                            ? TextButton(
+                                key: const ValueKey('event_view_title_action'),
+                                onPressed: widget.onTitleTap,
+                                style: TextButton.styleFrom(
+                                  foregroundColor: colors.textPrimary,
+                                  padding: EdgeInsets.symmetric(
+                                    horizontal: 8.w,
+                                  ),
+                                  minimumSize: const Size(44, 44),
+                                ),
+                                child: Text(
+                                  widget.title,
+                                  textAlign: TextAlign.center,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: AppTypography.textMdMedium.copyWith(
+                                    color: colors.textPrimary,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              )
                             : Text(
                                 widget.title,
                                 textAlign: TextAlign.center,
@@ -263,39 +297,88 @@ class _EventViewShellState extends State<EventViewShell> {
             if (widget.beforeTabsBuilder != null)
               widget.beforeTabsBuilder!(context, _selected),
             Padding(
-              padding: EdgeInsets.symmetric(horizontal: side),
+              padding:
+                  widget.tabStripPadding ??
+                  EdgeInsets.symmetric(horizontal: side),
               child:
                   widget.tabStripOverride ??
-                  SegmentedSwitcher(
-                    key: ValueKey('event_view_tabs_${widget.tabs.join('_')}'),
-                    backgroundColor: colors.popup,
-                    selectedBackgroundColor: colors.popup,
-                    // Keep the labels inside the fixed-height strip when the
-                    // system text size grows.
-                    textStyle: AppTypography.textSmMedium.copyWith(
-                      color: colors.tabInactive,
-                      height: 1.2,
-                    ),
-                    selectedTextStyle: AppTypography.textSmMedium.copyWith(
-                      color: colors.textPrimary,
-                      height: 1.2,
-                    ),
-                    options: widget.tabs,
-                    optionLabels: [
-                      for (final tab in widget.tabs)
-                        Padding(
-                          padding: EdgeInsets.symmetric(horizontal: 4.w),
-                          child: FittedBox(
-                            fit: BoxFit.scaleDown,
-                            child: Text(tab, maxLines: 1, softWrap: false),
+                  (widget.secondaryTabs
+                      ? Row(
+                          children: [
+                            for (
+                              var index = 0;
+                              index < widget.tabs.length;
+                              index++
+                            )
+                              Expanded(
+                                child: Semantics(
+                                  selected: index == _selected,
+                                  child: TextButton(
+                                    onPressed: () => _select(index),
+                                    style: TextButton.styleFrom(
+                                      minimumSize: const Size(0, 44),
+                                      padding: EdgeInsets.symmetric(
+                                        horizontal: 8.w,
+                                        vertical: 12.h,
+                                      ),
+                                      foregroundColor: index == _selected
+                                          ? colors.textPrimary
+                                          : colors.textSecondary,
+                                      textStyle: AppTypography.textSmMedium
+                                          .copyWith(
+                                            height: 1.2,
+                                            fontWeight: index == _selected
+                                                ? FontWeight.w700
+                                                : FontWeight.w400,
+                                          ),
+                                    ),
+                                    child: FittedBox(
+                                      fit: BoxFit.scaleDown,
+                                      child: Text(
+                                        widget.tabs[index],
+                                        maxLines: 1,
+                                        softWrap: false,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                          ],
+                        )
+                      : SegmentedSwitcher(
+                          key: ValueKey(
+                            'event_view_tabs_${widget.tabs.join('_')}',
                           ),
-                        ),
-                    ],
-                    isScrollable: widget.scrollableTabs,
-                    initialSelection: widget.initialTab,
-                    currentSelection: _selected,
-                    onSelectionChanged: _select,
-                  ),
+                          backgroundColor: colors.popup,
+                          selectedBackgroundColor: colors.popup,
+                          // Keep the labels inside the fixed-height strip when the
+                          // system text size grows.
+                          textStyle: AppTypography.textSmMedium.copyWith(
+                            color: colors.tabInactive,
+                            height: 1.2,
+                          ),
+                          selectedTextStyle: AppTypography.textSmMedium
+                              .copyWith(color: colors.textPrimary, height: 1.2),
+                          options: widget.tabs,
+                          optionLabels: [
+                            for (final tab in widget.tabs)
+                              Padding(
+                                padding: EdgeInsets.symmetric(horizontal: 4.w),
+                                child: FittedBox(
+                                  fit: BoxFit.scaleDown,
+                                  child: Text(
+                                    tab,
+                                    maxLines: 1,
+                                    softWrap: false,
+                                  ),
+                                ),
+                              ),
+                          ],
+                          isScrollable: widget.scrollableTabs,
+                          initialSelection: widget.initialTab,
+                          currentSelection: _selected,
+                          onSelectionChanged: _select,
+                        )),
             ),
             if (widget.homeTab) SizedBox(height: 12.h),
             Expanded(

@@ -151,6 +151,7 @@ class Collection {
     required this.title,
     this.subtitle,
     this.author,
+    this.authorId,
     this.annotator,
     this.authorBio,
     this.annotatorBio,
@@ -203,6 +204,9 @@ class Collection {
 
   /// The book's author (for an event, whoever the team credits).
   final String? author;
+
+  /// Public catalog identity of the verified author, when supplied by the API.
+  final String? authorId;
 
   /// Who annotated the games.
   final String? annotator;
@@ -315,6 +319,7 @@ class Collection {
       title: _nullableString(json['title']) ?? 'Untitled',
       subtitle: _nullableString(json['subtitle']),
       author: _nullableString(json['author']),
+      authorId: _nullableString(json['authorId']),
       annotator: _nullableString(json['annotator']),
       authorBio: _nullableString(json['authorBio']),
       annotatorBio: _nullableString(json['annotatorBio']),
@@ -1260,12 +1265,16 @@ class CollectionAuthor {
     required this.id,
     required this.name,
     this.avatarUrl,
+    this.about,
     this.bookCount = 0,
     this.gameCount = 0,
   });
   final String id;
   final String name;
   final String? avatarUrl;
+
+  /// The author's shared public profile description, independent of a book.
+  final String? about;
   final int bookCount;
   final int gameCount;
   bool get hasCatalogIdentity =>
@@ -1275,6 +1284,7 @@ class CollectionAuthor {
         id: _nullableString(json['id']) ?? _nullableString(json['name']) ?? '',
         name: _nullableString(json['name']) ?? '',
         avatarUrl: _nullableString(json['avatarUrl']),
+        about: _nullableString(json['about']),
         bookCount: _int(json['bookCount']),
         gameCount: _int(json['gameCount']),
       );

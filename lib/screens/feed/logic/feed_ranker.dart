@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 
+import 'package:chessever2/screens/for_you/discovery/models/report_game_type.dart';
 import 'package:flutter/foundation.dart';
 
 /// Where a Feed candidate came from. Several pools can offer the same game;
@@ -37,6 +38,9 @@ class FeedSignals {
     this.eventKey,
     this.playerKeys = const {},
     this.seenBefore = false,
+    this.reportInterest = 0,
+    this.reportType,
+    this.openingKey,
   });
 
   final String id;
@@ -65,9 +69,18 @@ class FeedSignals {
   /// Shown to this viewer in an earlier session or before a refresh.
   final bool seenBefore;
 
+  /// Bounded bonus from the generated report’s actual turning points.
+  final double reportInterest;
+  final ReportGameType? reportType;
+  final String? openingKey;
+
   bool get decisive => result == '1-0' || result == '0-1';
 
-  FeedSignals withSeenBefore(bool value) => value == seenBefore
+  FeedSignals withSeenBefore(
+    bool value, {
+    double? reportInterest,
+    ReportGameType? reportType,
+  }) => value == seenBefore && reportInterest == null && reportType == null
       ? this
       : FeedSignals(
           id: id,
@@ -81,6 +94,9 @@ class FeedSignals {
           eventKey: eventKey,
           playerKeys: playerKeys,
           seenBefore: value,
+          reportInterest: reportInterest ?? this.reportInterest,
+          reportType: reportType ?? this.reportType,
+          openingKey: openingKey,
         );
 
   int get averageElo {
@@ -98,24 +114,21 @@ class FeedSignals {
 }
 
 /// How interesting a game is on its own, before variety is considered.
-/// Roughly 0 (a quiet club draw from last week) to 7 (today's 2750 upset by
-/// a player the viewer follows).
+/// Report highlights and recency lead; rating and personal interest support
+/// them. A rating gap alone says nothing about the game's chess quality.
 ///
 /// The weights encode the product call: decisive high-Elo games are the
-/// core; upsets, the viewer's own players and what the community liked are
-/// the surprises that keep a thumb moving; freshness breaks ties.
+/// core; report stories, the viewer's players and community favourites add
+/// variety. Recent games receive a substantial freshness bonus.
 double feedInterest(FeedSignals s) {
   var score = ((s.averageElo - 2200) / 300).clamp(0.0, 2.2);
-  score += s.decisive ? 1.2 : 0.1;
-
-  final margin = s.winnerMargin;
-  if (margin <= -80) score += 0.4 + math.min(0.8, -margin / 250);
+  score += s.decisive ? 0.8 : 0.1;
 
   switch (s.pool) {
     case FeedPool.favorite:
-      score += 1.6;
+      score += 0.8;
     case FeedPool.liked:
-      score += 0.5 + 0.35 * math.log(1 + s.likes) / math.ln2;
+      score += (0.35 * math.log(1 + s.likes) / math.ln2).clamp(0.0, 1.0);
     case FeedPool.miniature:
       score += 1.0;
     case FeedPool.current:
@@ -125,8 +138,9 @@ double feedInterest(FeedSignals s) {
   }
 
   final hours = s.age.inMinutes / 60;
-  score += 0.9 * math.exp(-hours.clamp(0, 24 * 30) / 30);
+  score += 1.8 * math.exp(-hours.clamp(0, 24 * 30) / 48);
 
+  score += s.reportInterest.clamp(0.0, 3.0);
   if (s.seenBefore) score -= 2.5;
   return score;
 }
@@ -147,8 +161,8 @@ double feedInterest(FeedSignals s) {
 ///   skipped and the single best remaining game is served: a variable-ratio
 ///   reward, the rhythm that makes one more swipe feel worth it. The very
 ///   first pick is always one.
-/// * **Exploration.** One pick in ten is uniform over the pool, so a
-///   low-ranked miniature or an unknown player's brilliancy still surfaces.
+/// * **Exploration.** Occasional draws within the promising quality band let
+///   an unknown player's report highlight surface without a weak random pick.
 ///
 /// Seeded, so one session's order is stable and a test can replay it; a new
 /// session (or a pull-to-refresh) brings a new seed.
@@ -164,7 +178,7 @@ class FeedRanker {
   late int _jackpotIn;
 
   static const double temperature = 0.7;
-  static const double explore = 0.1;
+  static const double explore = 0.08;
   static const int _historySize = 4;
 
   /// How much a candidate is held back for echoing the recent picks: 1 is
@@ -191,6 +205,8 @@ class FeedRanker {
       }
     }
     if (!last.decisive && !s.decisive) factor *= 0.5;
+    if (s.reportType != null && s.reportType == last.reportType) factor *= 0.45;
+    if (s.openingKey != null && s.openingKey == last.openingKey) factor *= 0.65;
     return factor;
   }
 
@@ -217,6 +233,14 @@ class FeedRanker {
         ];
         if (others.isNotEmpty) options = others;
       }
+      final type = _history.last.reportType;
+      if (type != null && _history[_history.length - 2].reportType == type) {
+        final others = [
+          for (final s in options)
+            if (s.reportType != type) s,
+        ];
+        if (others.isNotEmpty) options = others;
+      }
     }
 
     final FeedSignals pick;
@@ -224,7 +248,14 @@ class FeedRanker {
       pick = _best(options);
       _jackpotIn = 3 + _random.nextInt(3);
     } else if (_random.nextDouble() < explore) {
-      pick = options[_random.nextInt(options.length)];
+      // Explore within a quality band instead of randomly serving the weakest
+      // or oldest game merely because it survived eligibility.
+      final best = options.map(feedInterest).reduce(math.max);
+      final promising = [
+        for (final s in options)
+          if (feedInterest(s) >= best - 1.5) s,
+      ];
+      pick = promising[_random.nextInt(promising.length)];
       _jackpotIn--;
     } else {
       pick = _draw(options);

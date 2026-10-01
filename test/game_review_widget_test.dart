@@ -6,6 +6,7 @@ import 'package:chessever2/repository/supabase/game_analysis_quota_repository.da
 import 'package:chessever2/screens/chessboard/analysis/chess_game.dart';
 import 'package:chessever2/screens/chessboard/game_review/game_analysis_report.dart';
 import 'package:chessever2/screens/chessboard/game_review/game_analysis_report_store.dart';
+import 'package:chessever2/screens/chessboard/game_review/game_report_from_pgn.dart';
 import 'package:chessever2/screens/chessboard/game_review/game_review_provider.dart';
 import 'package:chessever2/screens/chessboard/game_review/game_review_sheet.dart';
 import 'package:chessever2/screens/chessboard/game_review/game_review_sheet_host.dart';
@@ -1024,6 +1025,54 @@ void main() {
         .widgetList<FractionallySizedBox>(find.byType(FractionallySizedBox))
         .where((box) => box.widthFactor == 0.75);
     expect(buttonWidthBoxes, hasLength(5));
+  });
+
+  testWidgets('saved report keeps absent metrics and starting eval blank', (
+    tester,
+  ) async {
+    GameAnalysisReportController.clearSessionCacheForTest();
+    addTearDown(GameAnalysisReportController.clearSessionCacheForTest);
+    final chessGame = ChessGame.fromPgn(
+      'saved-sheet',
+      r'1. e4 $247 {[%eval 0.32]} e5 {[%eval 0.22]} 1-0',
+    );
+    final report = gameAnalysisReportFromPgn(chessGame)!;
+    final store = GameAnalysisReportStore.memory();
+    await store.save(report);
+    final reports = GameAnalysisReportController(store: store);
+    final review = MobileGameReviewController(reportController: reports);
+    addTearDown(review.dispose);
+    review.configure(
+      game: chessGame,
+      active: false,
+      finished: true,
+      whiteRating: 0,
+      blackRating: 0,
+    );
+    await reports.loadExistingReport(chessGame);
+    int? jumpedToPly;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: GameReviewSheet(
+            controller: review,
+            game: _game(),
+            activePly: 0,
+            onJumpToPly: (ply) => jumpedToPly = ply,
+            onClose: _noop,
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 500));
+    expect(find.text('–', findRichText: true), findsNWidgets(2));
+    expect(find.text('0.0%', findRichText: true), findsNothing);
+    expect(find.text('Start'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('game-review-next-move')));
+    expect(jumpedToPly, 1);
+    expect(tester.takeException(), isNull);
+    await store.flush();
   });
 
   testWidgets('completed review shows players, accuracy, recap, and graph', (

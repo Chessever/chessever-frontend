@@ -401,7 +401,7 @@ Future<void> _settle(WidgetTester tester) async {
 }
 
 Future<void> _showTab(WidgetTester tester, String tab) async {
-  if (const ['Events', 'Books', 'Players'].contains(tab)) {
+  if (const ['Events', 'Collections', 'Players'].contains(tab)) {
     final strip = find.descendant(
       of: find.byType(SegmentedSwitcher),
       matching: find.text('About'),
@@ -959,7 +959,7 @@ void main() {
       // carries the count (the facts do not say it again above it).
       expect(find.text('by Garry Kasparov'), findsOneWidget);
       expect(find.byKey(const ValueKey('collection_unlock')), findsOneWidget);
-      expect(_rich('Read all 4 games in this book'), findsOneWidget);
+      expect(_rich('Read all 4 games in this collection'), findsOneWidget);
       expect(find.text('4 games'), findsNothing);
 
       // The contents are visible, every entry locked.
@@ -1909,8 +1909,8 @@ void main() {
       );
       expect(repo.bookAnchors, [anchors]);
       // One book: its heading says so, as a book's page says "Event".
-      expect(find.text('Book'), findsOneWidget);
-      expect(find.text('Books'), findsNothing);
+      expect(find.text('Collection'), findsOneWidget);
+      expect(find.text('Collections'), findsNothing);
       expect(find.text('Kasparov vs Karpov'), findsOneWidget);
       expect(find.text('The 1985 match, move by move.'), findsOneWidget);
       // Premium, and this viewer is not.
@@ -1989,7 +1989,7 @@ void main() {
       expect(repo.bookAnchors.single.groups, ['gb_abcd1234']);
       expect(repo.bookAnchors.single.tours, ['abcd1234']);
       expect(repo.bookAnchors.single.slugs, ['world-championship-1985']);
-      expect(find.text('Book'), findsOneWidget);
+      expect(find.text('Collection'), findsOneWidget);
       expect(find.text('Kasparov vs Karpov'), findsOneWidget);
       expect(find.text('The 1985 match, move by move.'), findsOneWidget);
       // A subscriber's book wears no padlock.
@@ -2011,8 +2011,8 @@ void main() {
           ),
         ),
       );
-      expect(find.text('Books'), findsNothing);
-      expect(find.text('Book'), findsNothing);
+      expect(find.text('Collections'), findsNothing);
+      expect(find.text('Collection'), findsNothing);
       expect(
         find.byKey(const ValueKey('collection_books_section')),
         findsNothing,
@@ -2043,8 +2043,8 @@ void main() {
           ),
         ),
       );
-      expect(find.text('Books'), findsOneWidget);
-      expect(find.text('Book'), findsNothing);
+      expect(find.text('Collections'), findsOneWidget);
+      expect(find.text('Collection'), findsNothing);
     });
   });
 
@@ -2125,11 +2125,11 @@ void main() {
       expect(find.textContaining('Wijk aan Zee'), findsOneWidget);
       expect(find.textContaining('13-28'), findsNothing);
       expect(find.text('Fourteen players, one round-robin'), findsNothing);
-      expect(find.text('91 games · 2 books'), findsOneWidget);
+      expect(find.text('91 games · 2 collections'), findsOneWidget);
       // Neither author, place nor dates: the subtitle stands in; no count.
       expect(find.text('Played online'), findsOneWidget);
       expect(find.text('1 game'), findsOneWidget);
-      expect(find.textContaining('book'), findsOneWidget);
+      expect(find.textContaining('collection'), findsOneWidget);
     });
 
     _widgetTest('a book card: the author, its bound events, an event plate '
@@ -2227,7 +2227,7 @@ void main() {
     ];
 
     _widgetTest(
-      'books add scoped Openings while events keep their three tabs',
+      'books and events share About, Games and Players tabs',
       (tester) async {
         await _pump(
           tester,
@@ -2235,7 +2235,8 @@ void main() {
           subscribed: true,
           home: () => CollectionScreen(collection: _book()),
         );
-        expect(tabLabels(tester), ['About', 'Openings', 'Games', 'Players']);
+        // expect(tabLabels(tester), ['About', 'Openings', 'Games', 'Players']);
+        expect(tabLabels(tester), ['About', 'Games', 'Players']);
         await _teardown(tester);
 
         await _pump(
@@ -2314,7 +2315,7 @@ void main() {
       expect(find.textContaining('by '), findsNothing);
       expect(find.byKey(const ValueKey('collection_foreword')), findsNothing);
       await _showTab(tester, 'Events');
-      expect(find.text('No events for this book yet.'), findsOneWidget);
+      expect(find.text('No events for this collection yet.'), findsOneWidget);
       expect(tester.takeException(), isNull);
     });
 
@@ -2340,7 +2341,7 @@ void main() {
         subscribed: false,
         home: () => CollectionScreen(collection: _event()),
       );
-      await _showTab(tester, 'Books');
+      await _showTab(tester, 'Collections');
       expect(repo.bookAnchors.single.collections, ['e-Wijk aan Zee']);
       expect(find.text('Kasparov vs Karpov'), findsOneWidget);
       expect(find.text('by Garry Kasparov'), findsOneWidget);
@@ -2369,15 +2370,15 @@ void main() {
         subscribed: true,
         home: () => CollectionScreen(collection: _event()),
       );
-      await _showTab(tester, 'Books');
+      await _showTab(tester, 'Collections');
       expect(find.text('Try again'), findsOneWidget);
-      expect(find.text('No books about this event yet.'), findsNothing);
+      expect(find.text('No collections about this event yet.'), findsNothing);
 
       repo.booksError = null;
       await tester.tap(find.text('Try again'));
       await _settle(tester);
       expect(repo.bookAnchors, hasLength(2));
-      expect(find.text('No books about this event yet.'), findsOneWidget);
+      expect(find.text('No collections about this event yet.'), findsOneWidget);
     });
 
     _widgetTest('an event opened from a book waits for its id, then asks '
@@ -2396,9 +2397,9 @@ void main() {
         subscribed: true,
         home: () => CollectionScreen(collection: bySlug),
       );
-      await _showTab(tester, 'Books');
+      await _showTab(tester, 'Collections');
       expect(repo.bookAnchors.single.collections, ['e-Wijk aan Zee']);
-      expect(find.text('No books about this event yet.'), findsOneWidget);
+      expect(find.text('No collections about this event yet.'), findsOneWidget);
     });
   });
 }

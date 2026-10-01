@@ -4,6 +4,8 @@ import 'package:chessever2/providers/favorite_events_provider.dart';
 import 'package:chessever2/repository/favorites/models/favorite_event.dart';
 import 'package:chessever2/repository/supabase/group_broadcast/group_tour_repository.dart';
 import 'package:chessever2/screens/group_event/model/tour_event_card_model.dart';
+import 'package:chessever2/screens/favorites/player_games/view_model/player_games_state.dart';
+import 'package:chessever2/screens/favorites/player_games/widgets/tournament_group_header.dart';
 import 'package:chessever2/screens/my_space/models/space_shortcut.dart';
 import 'package:chessever2/screens/my_space/providers/space_shortcuts_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/event_no_spoilers_provider.dart';
@@ -11,6 +13,8 @@ import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/event_card/event_card.dart';
 import 'package:chessever2/widgets/event_card/event_image_provider.dart';
+import 'package:chessever2/widgets/event_card/event_next_round_provider.dart';
+import 'package:chessever2/screens/group_event/providers/live_group_broadcast_id_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -22,6 +26,32 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 class _MemorySpaceShortcuts extends SpaceShortcutsNotifier {
   @override
   Future<List<SpaceShortcut>> build() async => const [];
+
+  @override
+  Future<bool> add(SpaceShortcut draft) async {
+    final list = state.requireValue;
+    if (!draft.canAddToMySpace || list.any((s) => s.key == draft.key)) {
+      return false;
+    }
+    state = AsyncData([draft, ...list]);
+    return true;
+  }
+
+  @override
+  Future<SpaceShortcut?> remove(String id) async {
+    final list = state.requireValue;
+    final removed = list.where((s) => s.id == id).firstOrNull;
+    state = AsyncData([
+      for (final s in list)
+        if (s.id != id) s,
+    ]);
+    return removed;
+  }
+
+  @override
+  Future<void> restore(SpaceShortcut item) async {
+    state = AsyncData([item, ...state.requireValue]);
+  }
 }
 
 class _NoFavoriteEvents extends FavoriteEventsNotifier {
@@ -67,19 +97,29 @@ class _ControlledRepository implements GroupBroadcastRepository {
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 
-GroupEventCardModel _event() => GroupEventCardModel(
-  id: 'group-1',
+GroupEventCardModel _event({
+  TourEventCategory category = TourEventCategory.completed,
+  EventSource source = EventSource.lichessBroadcast,
+  String id = 'group-1',
+}) => GroupEventCardModel(
+  id: id,
   title: 'Sinquefield Cup 2026',
   dates: 'Aug 1 - 9, 2026',
   maxAvgElo: 2760,
   timeUntilStart: '',
-  tourEventCategory: TourEventCategory.completed,
+  tourEventCategory: category,
+  eventSource: source,
   timeControl: '90+30',
   startDate: DateTime(2026, 8, 1),
   endDate: DateTime(2026, 8, 9),
 );
 
-Widget _host(_ControlledRepository repo) {
+Widget _host(
+  _ControlledRepository repo, {
+  GroupEventCardModel? event,
+  SpaceShortcut? spaceDraft,
+  Widget? card,
+}) {
   return ProviderScope(
     overrides: [
       spaceShortcutsProvider.overrideWith(_MemorySpaceShortcuts.new),
@@ -91,6 +131,8 @@ Widget _host(_ControlledRepository repo) {
         (ref, tourId) => _MemoryNoSpoilers(ref, tourId),
       ),
       groupBroadcastRepositoryProvider.overrideWithValue(repo),
+      eventNextRoundProvider.overrideWith((ref, id) async => null),
+      liveGroupBroadcastIdsProvider.overrideWith((ref) => Stream.value([])),
     ],
     child: MaterialApp(
       theme: AppTheme.darkTheme,
@@ -104,12 +146,16 @@ Widget _host(_ControlledRepository repo) {
                 padding: const EdgeInsets.all(16),
                 child: Align(
                   alignment: Alignment.topCenter,
-                  child: EventCard(
-                    tourEventCardModel: _event(),
-                    favoritePlayersSource: EventFavoritePlayersSource.cacheOnly,
-                    heroTagSuffix: 'test',
-                    onTap: () {},
-                  ),
+                  child:
+                      card ??
+                      EventCard(
+                        tourEventCardModel: event ?? _event(),
+                        spaceDraft: spaceDraft,
+                        favoritePlayersSource:
+                            EventFavoritePlayersSource.cacheOnly,
+                        heroTagSuffix: 'test',
+                        onTap: () {},
+                      ),
                 ),
               ),
             );
@@ -127,6 +173,117 @@ Future<void> _drain(WidgetTester tester) async {
 
 void main() {
   setUp(_stored.clear);
+
+  testWidgets('favorite player tournament headers offer add and remove', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      _host(
+        _ControlledRepository(),
+        card: TournamentGroupHeader(
+          tournamentGroup: TournamentGamesGroup(
+            tourId: 'tour-1',
+            tourName: 'Favorite player event',
+            tourSlug: 'favorite-player-event',
+            games: const [],
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    final header = find.byType(TournamentGroupHeader);
+    final container = ProviderScope.containerOf(tester.element(header));
+    await tester.longPress(header);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Add to My Space'));
+    await tester.pumpAndSettle();
+    final saved = container.read(spaceShortcutsProvider).requireValue.single;
+    expect(saved.targetId, 'tour-1');
+    expect(saved.params['tourId'], 'tour-1');
+
+    await tester.longPress(header);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Remove from My Space'));
+    await tester.pumpAndSettle();
+    expect(container.read(spaceShortcutsProvider).requireValue, isEmpty);
+    await _drain(tester);
+  });
+
+  for (final category in TourEventCategory.values) {
+    testWidgets('${category.name} event can be added, removed and restored', (
+      tester,
+    ) async {
+      final event = _event(category: category);
+      await tester.pumpWidget(_host(_ControlledRepository(), event: event));
+      await tester.pumpAndSettle();
+      final container = ProviderScope.containerOf(
+        tester.element(find.byType(EventCard)),
+      );
+
+      await tester.longPress(find.byType(EventCard));
+      await tester.pumpAndSettle();
+      expect(find.text('Add to My Space'), findsOneWidget);
+      await tester.tap(find.text('Add to My Space'));
+      await tester.pumpAndSettle();
+      final saved = container.read(spaceShortcutsProvider).requireValue.single;
+      expect(saved.kind, SpaceShortcutKind.event);
+      expect(saved.targetId, event.id);
+      await _drain(tester);
+
+      await tester.longPress(find.byType(EventCard).first);
+      await tester.pumpAndSettle();
+      expect(find.text('Remove from My Space'), findsOneWidget);
+      await tester.tap(find.text('Remove from My Space'));
+      // The snack's progress line animates for its whole lifetime; settling
+      // here would dismiss Undo before the test can press it.
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+      await tester.pump();
+      expect(container.read(spaceShortcutsProvider).requireValue, isEmpty);
+
+      await tester.tap(find.text('Undo'));
+      await tester.pumpAndSettle();
+      expect(
+        container.read(spaceShortcutsProvider).requireValue.single.key,
+        saved.key,
+      );
+      await _drain(tester);
+    });
+  }
+
+  for (final source in [
+    EventSource.communityEvent,
+    EventSource.lichessBroadcast,
+  ]) {
+    testWidgets(
+      'non-broadcast event keeps its My Space action: ${source.name}',
+      (tester) async {
+        final databaseEvent = source == EventSource.lichessBroadcast;
+        final event = _event(
+          source: source,
+          id: databaseEvent ? 'gamebase::Archive event' : 'cal_event_community',
+        );
+        final repo = _ControlledRepository();
+        await tester.pumpWidget(_host(repo, event: event));
+        await tester.pumpAndSettle();
+        await tester.longPress(find.byType(EventCard));
+        await tester.pumpAndSettle();
+        expect(find.text('Add to My Space'), findsOneWidget);
+        expect(find.text('Share'), findsNothing);
+        expect(find.text('Copy PGN'), findsNothing);
+        expect(repo.lookups, 0);
+        await tester.tap(find.text('Add to My Space'));
+        await tester.pumpAndSettle();
+
+        await tester.longPress(find.byType(EventCard).first);
+        await tester.pumpAndSettle();
+        expect(find.text('Remove from My Space'), findsOneWidget);
+        await tester.tap(find.text('Remove from My Space'));
+        await tester.pumpAndSettle();
+        await _drain(tester);
+      },
+    );
+  }
 
   testWidgets('a slow lookup never holds the menu or drops No Spoilers', (
     tester,

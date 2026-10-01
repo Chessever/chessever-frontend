@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:chessever2/screens/for_you/discovery/data/discovery_repository.dart';
 import 'package:chessever2/screens/for_you/discovery/models/discovery_models.dart';
+import 'package:chessever2/screens/for_you/discovery/models/report_game_type.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
@@ -44,17 +45,27 @@ class ReportsPaginationState {
   final String? error;
 }
 
+final reportsGameTypeProvider = StateProvider.autoDispose<ReportGameType?>(
+  (ref) => null,
+);
+
 final reportsPaginationProvider =
     StateNotifierProvider.autoDispose<
       ReportsPaginationNotifier,
       ReportsPaginationState
-    >(
-      (ref) => ReportsPaginationNotifier(
+    >((ref) {
+      final gameType = ref.watch(reportsGameTypeProvider);
+      return ReportsPaginationNotifier(
         ref.watch(discoveryRepositoryProvider),
-        firstPage: ref.read(reportsFirstPageProvider.future),
-        reloadFirstPage: () => ref.refresh(reportsFirstPageProvider.future),
-      ),
-    );
+        gameType: gameType,
+        firstPage: gameType == null
+            ? ref.read(reportsFirstPageProvider.future)
+            : null,
+        reloadFirstPage: gameType == null
+            ? () => ref.refresh(reportsFirstPageProvider.future)
+            : null,
+      );
+    });
 
 /// One in-flight page at a time. Refresh supersedes earlier requests without
 /// letting a late response replace the fresh list or advance its cursor.
@@ -63,11 +74,13 @@ class ReportsPaginationNotifier extends StateNotifier<ReportsPaginationState> {
     this._repository, {
     Future<AnalyzedGamesPage>? firstPage,
     this.reloadFirstPage,
+    this.gameType,
   }) : super(const ReportsPaginationState()) {
     unawaited(_fetch(reset: true, firstPage: firstPage));
   }
 
   final DiscoveryRepository _repository;
+  final ReportGameType? gameType;
   final Future<AnalyzedGamesPage> Function()? reloadFirstPage;
   AnalyzedGamesCursor? _cursor;
   final Set<String> _seenIds = {};
@@ -107,7 +120,10 @@ class ReportsPaginationNotifier extends StateNotifier<ReportsPaginationState> {
           await (firstPage ??
               (reset && reloadFirstPage != null
                   ? reloadFirstPage!()
-                  : _repository.fetchAnalyzedGamesPage(after: after)));
+                  : _repository.fetchAnalyzedGamesPage(
+                      after: after,
+                      gameType: gameType,
+                    )));
       if (!mounted || request != _request) return;
       if (page.nextCursor != null && page.nextCursor == after) {
         throw StateError('Report pagination did not advance');
@@ -123,12 +139,14 @@ class ReportsPaginationNotifier extends StateNotifier<ReportsPaginationState> {
         items: List.unmodifiable(items),
         hasMore: page.nextCursor != null,
       );
-    } catch (_) {
+    } catch (error) {
       if (!mounted || request != _request) return;
       state = ReportsPaginationState(
         items: state.items,
         hasMore: state.hasMore,
-        error: state.items.isEmpty
+        error: error is ReportGameTypesUnavailable
+            ? 'Report filters are not available yet. Choose All to browse reports.'
+            : state.items.isEmpty
             ? "Couldn't load reports"
             : reset
             ? "Couldn't refresh reports"

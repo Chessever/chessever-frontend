@@ -1,3 +1,4 @@
+import 'package:chessever2/screens/collections/collection_author_screen.dart';
 import 'package:chessever2/providers/auth_state_provider.dart';
 import 'package:chessever2/providers/favorite_events_provider.dart';
 import 'package:chessever2/repository/gamebase/collections/collection_search_query.dart';
@@ -5,7 +6,8 @@ import 'package:chessever2/screens/collections/collection_catalog_list.dart';
 import 'package:chessever2/screens/collections/collection_explore.dart';
 import 'package:chessever2/screens/collections/collections_data.dart';
 import 'package:chessever2/screens/collections/collections_screen.dart';
-import 'package:chessever2/screens/collections/event_view_shell.dart';
+import 'package:chessever2/theme/app_colors.dart';
+import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/screens/standings/player_standing_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/round_header_widget.dart';
 import 'package:chessever2/screens/collections/opening_event_card.dart';
@@ -18,6 +20,7 @@ import 'package:chessever2/widgets/game_filter/eco_filter_dropdown.dart'
     show EcoBrowseNode, buildEcoBrowseTree;
 import 'package:chessever2/widgets/search/opening_search_suggestion.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 class CollectionBooksCatalog extends ConsumerWidget {
@@ -55,7 +58,7 @@ class CollectionBooksCatalog extends ConsumerWidget {
         16.sp,
         24.sp + MediaQuery.viewPaddingOf(context).bottom + bottomPadding,
       ),
-      emptyMessage: 'No books yet.',
+      emptyMessage: 'No collections yet.',
       itemBuilder: (book) => Padding(
         padding: EdgeInsets.only(bottom: 12.sp),
         child: CollectionCard(collection: book),
@@ -89,7 +92,8 @@ class CollectionAuthorsCatalog extends ConsumerWidget {
         ResponsiveHelper.adaptive(phone: 16.sp, tablet: 24.sp),
         24.sp + MediaQuery.viewPaddingOf(context).bottom + bottomPadding,
       ),
-      emptyMessage: 'Authors will appear here when their books are published.',
+      emptyMessage:
+          'Authors will appear here when their collections are published.',
       indexedItemBuilder: (author, index) => Padding(
         padding: EdgeInsets.only(bottom: 8.sp),
         child: FigmaPlayerCard(
@@ -100,13 +104,38 @@ class CollectionAuthorsCatalog extends ConsumerWidget {
             score: 0,
             scoreChange: 0,
             hasRatingDiff: false,
-            matchScore:
-                '${author.bookCount} ${author.bookCount == 1 ? 'book' : 'books'}',
+            matchScore: '',
           ),
           rank: index + 1,
           showRank: true,
           showFavoriteButton: false,
           hideMissingRating: true,
+          trailing: Semantics(
+            label:
+                '${author.bookCount} ${author.bookCount == 1 ? 'book' : 'books'}',
+            excludeSemantics: true,
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                SvgPicture.asset(
+                  'assets/svgs/collections_nav.svg',
+                  width: 20.ic,
+                  height: 20.ic,
+                  colorFilter: ColorFilter.mode(
+                    context.colors.textPrimary,
+                    BlendMode.srcIn,
+                  ),
+                ),
+                SizedBox(width: 6.w),
+                Text(
+                  '${author.bookCount}',
+                  style: AppTypography.textMdMedium.copyWith(
+                    color: context.colors.textPrimary,
+                  ),
+                ),
+              ],
+            ),
+          ),
           avatar: PlayerInitialsAvatar(
             photoUrl: author.avatarUrl,
             initials: author.name
@@ -118,32 +147,10 @@ class CollectionAuthorsCatalog extends ConsumerWidget {
             size: 56.w,
             isCircular: true,
           ),
-          onTap: () => Navigator.of(context).push(
-            MaterialPageRoute<void>(
-              builder: (_) => EventViewShell(
-                title: author.name,
-                tabs: const ['Books'],
-                tabStripOverride: const SizedBox.shrink(),
-                pageBuilder: (_, __) => CollectionBooksCatalog(
-                  query: CollectionSearchQuery(
-                    text: query.text,
-                    eco: query.eco,
-                    result: query.result,
-                    year: query.year,
-                    minYear: query.minYear,
-                    maxYear: query.maxYear,
-                    annotated: query.annotated,
-                    sort: query.sort,
-                    authorId: author.hasCatalogIdentity ? author.id : '',
-                    author: query.author.isNotEmpty
-                        ? query.author
-                        : author.hasCatalogIdentity
-                        ? ''
-                        : author.name,
-                  ),
-                ),
-              ),
-            ),
+          onTap: () => CollectionAuthorScreen.open(
+            context,
+            author: author,
+            query: query,
           ),
         ),
       ),

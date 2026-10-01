@@ -754,7 +754,7 @@ void main() {
           mostLikedQueries: queries,
           mostLiked: (_) => Future.error(Exception('offline')),
         );
-        expect(find.text('Saved games & rankings'), findsOneWidget);
+        expect(find.text('Community favorites'), findsOneWidget);
         expect(find.byType(HubTile), findsNWidgets(4));
         await tester
             .widget<RefreshIndicator>(find.byType(RefreshIndicator))

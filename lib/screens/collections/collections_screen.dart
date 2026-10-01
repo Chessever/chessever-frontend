@@ -1,3 +1,4 @@
+import 'package:chessever2/screens/collections/collection_author_screen.dart';
 import 'package:chessever2/screens/collections/opening_event_card.dart'
     show collectionOpeningName, OpeningEventCard;
 import 'package:chessever2/screens/tour_detail/widgets/event_search_bar.dart'
@@ -47,6 +48,7 @@ import 'package:chessever2/screens/tour_detail/about_tour_screen.dart';
 import 'package:chessever2/screens/standings/player_standing_model.dart';
 import 'package:chessever2/widgets/figma_player_card.dart';
 import 'package:chessever2/utils/svg_asset.dart';
+import 'package:chessever2/utils/png_asset.dart';
 import 'package:chessever2/widgets/svg_widget.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/utils/app_typography.dart';
@@ -68,8 +70,8 @@ import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:intl/intl.dart';
 
-/// The primary Collections destination: indexed openings, published games
-/// and books in the established event-card language.
+/// The primary Collections destination: About, published collections and
+/// authors in the established event-card language.
 class CollectionsScreen extends ConsumerStatefulWidget {
   const CollectionsScreen({super.key, this.embedded = false});
 
@@ -170,7 +172,9 @@ class _CollectionsScreenState extends ConsumerState<CollectionsScreen> {
           ),
         ),
       ),
-      tabs: const ['Openings', 'Books', 'Authors'],
+      // Opening discovery is paused; retain its catalog and wiring below.
+      // tabs: const ['Openings', 'Collections', 'Authors'],
+      tabs: const ['About', 'Collections', 'Authors'],
       initialTab: 1,
       showBackButton: !embedded,
       homeTab: embedded,
@@ -187,10 +191,11 @@ class _CollectionsScreenState extends ConsumerState<CollectionsScreen> {
             )
           : null,
       pageBuilder: (context, index) => switch (index) {
-        0 => CollectionOpeningCatalog(
-          query: query,
-          bottomPadding: embedded ? 72 : 0,
-        ),
+        // 0 => CollectionOpeningCatalog(
+        //   query: query,
+        //   bottomPadding: embedded ? 72 : 0,
+        // ),
+        0 => _CollectionsAboutPage(bottomPadding: embedded ? 72 : 0),
         1 => CollectionBooksCatalog(
           query: query,
           bottomPadding: embedded ? 72 : 0,
@@ -202,6 +207,42 @@ class _CollectionsScreenState extends ConsumerState<CollectionsScreen> {
       },
     );
   }
+}
+
+class _CollectionsAboutPage extends StatelessWidget {
+  const _CollectionsAboutPage({this.bottomPadding = 0});
+
+  final double bottomPadding;
+
+  @override
+  Widget build(BuildContext context) => ListView(
+    key: const PageStorageKey('collections_about'),
+    padding: _tabListPadding(
+      context,
+    ).add(EdgeInsets.only(bottom: bottomPadding)),
+    children: [
+      Text('About collections', style: _aboutHeadingStyle(context)),
+      SizedBox(height: 12.sp),
+      Text(
+        'Explore curated chess games with their original PGN annotations '
+        'and variations.',
+        style: AppTypography.textSmRegular.copyWith(
+          color: context.colors.textPrimary,
+          height: 1.5,
+        ),
+      ),
+      SizedBox(height: 16.sp),
+      Text(
+        'Open a collection to read about it, replay its games, or browse its '
+        'players. Search and filters help you find games; Authors lets you '
+        'explore each author\'s collections.',
+        style: AppTypography.textSmRegular.copyWith(
+          color: context.colors.textSecondary,
+          height: 1.5,
+        ),
+      ),
+    ],
+  );
 }
 
 /// The favorites identity of a collection. A starred collection is a plain
@@ -269,6 +310,18 @@ SpaceShortcut collectionSpaceDraft(Collection c) {
       'slug': c.slug,
       'collectionKind': c.kind.name,
       'gameCount': c.gameCount,
+      if (c.subtitle != null) 'subtitle': c.subtitle,
+      if (c.author != null) 'author': c.author,
+      if (c.annotator != null) 'annotator': c.annotator,
+      if (c.location != null) 'location': c.location,
+      if (c.dateStart != null) 'dateStart': c.dateStart!.toIso8601String(),
+      if (c.dateEnd != null) 'dateEnd': c.dateEnd!.toIso8601String(),
+      if (c.publishedYear != null) 'publishedYear': c.publishedYear,
+      'access': c.access.name,
+      'viewCount': c.viewCount,
+      'starCount': c.starCount,
+      'eventCount': c.eventCount,
+      if (c.bookCount != null) 'bookCount': c.bookCount,
       if (c.coverUrl != null) 'coverUrl': c.coverUrl,
     },
   );
@@ -340,7 +393,7 @@ class CollectionCard extends ConsumerWidget {
         ? (named == null && c.eventCount > 0
               ? _plural(c.eventCount, 'event')
               : null)
-        : ((c.bookCount ?? 0) > 0 ? _plural(c.bookCount!, 'book') : null);
+        : ((c.bookCount ?? 0) > 0 ? _plural(c.bookCount!, 'collection') : null);
     final tally = opening == null
         ? [_plural(c.gameCount, 'game'), ?bindings].join(' · ')
         : [
@@ -618,7 +671,7 @@ String? collectionDateRange(DateTime? start, DateTime? end) {
 /// Where section headers and the player line start: the game cards' edge.
 double get _headerInset => discoveryGutter + 4.sp;
 
-/// Every collection shares About, Games and Openings. Credits, related
+/// Every collection shares About, Games and Players. Credits, related
 /// events and books, and the player filter remain available from About.
 class CollectionScreen extends ConsumerStatefulWidget {
   const CollectionScreen({super.key, required this.collection, this.opening});
@@ -633,11 +686,13 @@ class CollectionScreen extends ConsumerStatefulWidget {
 
 class _CollectionScreenState extends ConsumerState<CollectionScreen> {
   static const int _aboutTab = 0;
-  int get _gamesTab => _isBook ? 2 : 1;
+  // int get _gamesTab => _isBook ? 2 : 1;
+  static const int _gamesTab = 1;
 
-  List<String> get _collectionTabs => _isBook
-      ? const ['About', 'Openings', 'Games', 'Players']
-      : const ['About', 'Games', 'Players'];
+  // List<String> get _collectionTabs => _isBook
+  //     ? const ['About', 'Openings', 'Games', 'Players']
+  //     : const ['About', 'Games', 'Players'];
+  List<String> get _collectionTabs => const ['About', 'Games', 'Players'];
   late CollectionOpening? _opening = widget.opening;
 
   /// Fixed by the kind the page opened as, so the tab strip never changes
@@ -889,7 +944,7 @@ class _CollectionScreenState extends ConsumerState<CollectionScreen> {
                     error: error,
                     onRetry: retry,
                   ),
-                  'Books' => _BooksPage(
+                  'Collections' => _BooksPage(
                     collectionId: c.id,
                     pending: pending,
                     error: error,
@@ -1042,7 +1097,7 @@ class _CollectionScreenState extends ConsumerState<CollectionScreen> {
     return EventViewShell(
       title: c.title,
       tabs: _collectionTabs,
-      scrollableTabs: _isBook,
+      // scrollableTabs: _isBook,
       initialTab: _initialTab,
       controller: _tabs,
       beforeTabsBuilder: _isBook
@@ -1114,15 +1169,16 @@ class _CollectionScreenState extends ConsumerState<CollectionScreen> {
         ),
       ],
       pageBuilder: (context, index) {
-        if (_isBook && index == 1) {
-          return CollectionOpeningCatalog(
-            query: const CollectionSearchQuery(),
-            slug: slug,
-            onPick: (opening) => _showOpeningGames(c, opening),
-          );
-        }
-        final contentIndex = _isBook && index > 1 ? index - 1 : index;
-        return switch (contentIndex) {
+        // Book opening discovery is paused, with the full implementation kept.
+        // if (_isBook && index == 1) {
+        //   return CollectionOpeningCatalog(
+        //     query: const CollectionSearchQuery(),
+        //     slug: slug,
+        //     onPick: (opening) => _showOpeningGames(c, opening),
+        //   );
+        // }
+        // final contentIndex = _isBook && index > 1 ? index - 1 : index;
+        return switch (index) {
           0 => _AboutPage(
             collection: c,
             playerCount: players?.valueOrNull?.length,
@@ -1139,7 +1195,7 @@ class _CollectionScreenState extends ConsumerState<CollectionScreen> {
             onRetry: retryDetail,
             onShowEvents: _isBook ? () => _showRelated('Events') : null,
             onShowBooks: c.kind == CollectionKind.event
-                ? () => _showRelated('Books')
+                ? () => _showRelated('Collections')
                 : null,
             onShowPlayers: _isBook ? null : () => _showRelated('Players'),
           ),
@@ -1163,6 +1219,9 @@ class _CollectionScreenState extends ConsumerState<CollectionScreen> {
                       searchState: _isBook ? _bookGameSearch : null,
                       contents: data,
                       showSelector: c.kind != CollectionKind.book,
+                      // Book chapters/rounds are paused; _groupedBody retains
+                      // the shared layout for events and scoped game routes.
+                      flatList: _isBook,
                       player: null,
                       onClearPlayer: () => _showPlayer(null),
                       onOpen: _openGame,
@@ -1264,9 +1323,9 @@ String _unlockLabel(Collection c) {
   final n = c.gameCount;
   if (c.kind == CollectionKind.book) {
     return switch (n) {
-      0 => 'Read this book',
-      1 => 'Read the game in this book',
-      _ => 'Read all $n games in this book',
+      0 => 'Read this collection',
+      1 => 'Read the game in this collection',
+      _ => 'Read all $n games in this collection',
     };
   }
   return switch (n) {
@@ -1592,8 +1651,9 @@ class _AboutPage extends ConsumerWidget {
         ),
         if (credit != null) ...[
           SizedBox(height: 4.sp),
-          Text(
-            c.author != null ? 'by $credit' : 'Annotated by $credit',
+          _CollectionAuthorCredit(
+            collection: c,
+            label: c.author != null ? 'by $credit' : 'Annotated by $credit',
             style: AppTypography.textSmMedium.copyWith(
               color: colors.textPrimary,
               fontWeight: FontWeight.w600,
@@ -1701,7 +1761,10 @@ class _AboutPage extends ConsumerWidget {
             if (onShowEvents != null)
               TextButton(onPressed: onShowEvents, child: const Text('Events')),
             if (onShowBooks != null)
-              TextButton(onPressed: onShowBooks, child: const Text('Books')),
+              TextButton(
+                onPressed: onShowBooks,
+                child: const Text('Collections'),
+              ),
             if (onShowPlayers != null)
               TextButton(
                 onPressed: onShowPlayers,
@@ -1721,6 +1784,41 @@ String collectionContentsSummary(Collection c) => switch (c.kind) {
   CollectionKind.book => 'The games collected in ${c.title}.',
   CollectionKind.analysis => 'Selected game analysis from ${c.title}.',
 };
+
+/// Author credits open the shared profile on About. An annotator-only credit
+/// remains editorial text rather than guessing an author identity.
+class _CollectionAuthorCredit extends StatelessWidget {
+  const _CollectionAuthorCredit({
+    required this.collection,
+    required this.label,
+    required this.style,
+  });
+  final Collection collection;
+  final String label;
+  final TextStyle style;
+
+  @override
+  Widget build(BuildContext context) {
+    final name = collection.author?.trim();
+    if (name == null || name.isEmpty) return Text(label, style: style);
+    return TextButton(
+      key: ValueKey('collection_author_credit_${collection.slug}'),
+      onPressed: () => CollectionAuthorScreen.open(
+        context,
+        author: CollectionAuthor(id: collection.authorId ?? name, name: name),
+        collectionSlug: collection.slug,
+        about: true,
+      ),
+      style: TextButton.styleFrom(
+        foregroundColor: style.color,
+        padding: EdgeInsets.zero,
+        minimumSize: const Size(44, 44),
+        alignment: AlignmentDirectional.centerStart,
+      ),
+      child: Text(label, style: style),
+    );
+  }
+}
 
 /// A compact jacket and bibliographic identity, then the editor's own text.
 /// Missing editorial fields leave no empty headings or invented description.
@@ -1830,8 +1928,9 @@ class _BookAboutPage extends StatelessWidget {
                       ],
                       if (credit != null && credit.trim().isNotEmpty) ...[
                         SizedBox(height: 8.sp),
-                        Text(
-                          c.author != null
+                        _CollectionAuthorCredit(
+                          collection: c,
+                          label: c.author != null
                               ? 'by $credit'
                               : 'Annotated by $credit',
                           style: AppTypography.textSmMedium.copyWith(
@@ -1890,7 +1989,7 @@ class _BookAboutPage extends StatelessWidget {
                   ),
                 ),
             ],
-            ...section('About this book', description),
+            ...section('About this collection', description),
             ...section(
               'Foreword',
               foreword,
@@ -1975,13 +2074,13 @@ class _EventsPage extends StatelessWidget {
         return _Notice(
           text: userFacingError(
             failed,
-            fallback: "Couldn't load this book's events.",
+            fallback: "Couldn't load this collection's events.",
           ),
           actionLabel: 'Try again',
           onAction: onRetry,
         );
       }
-      return const _Notice(text: 'No events for this book yet.');
+      return const _Notice(text: 'No events for this collection yet.');
     }
     return ListView.builder(
       key: const PageStorageKey<String>('collection_events'),
@@ -2026,7 +2125,7 @@ class _BooksPage extends ConsumerWidget {
         return _Notice(
           text: userFacingError(
             failed,
-            fallback: "Couldn't load the books about this event.",
+            fallback: "Couldn't load the collections about this event.",
           ),
           actionLabel: 'Try again',
           onAction: onRetry,
@@ -2039,7 +2138,7 @@ class _BooksPage extends ConsumerWidget {
     );
     return books.when(
       data: (list) => list.isEmpty
-          ? const _Notice(text: 'No books about this event yet.')
+          ? const _Notice(text: 'No collections about this event yet.')
           : ListView.builder(
               key: const PageStorageKey<String>('collection_books'),
               padding: _tabListPadding(context),
@@ -2057,7 +2156,7 @@ class _BooksPage extends ConsumerWidget {
       error: (error, _) => _Notice(
         text: userFacingError(
           error,
-          fallback: "Couldn't load the books about this event.",
+          fallback: "Couldn't load the collections about this event.",
         ),
         actionLabel: 'Try again',
         onAction: () => ref.invalidate(
@@ -2833,10 +2932,12 @@ class _GamesPage extends ConsumerStatefulWidget {
     this.onClearOpening,
     required this.slug,
     this.groupByDate = false,
+    this.flatList = false,
     this.searchState,
   });
   final String slug;
   final bool groupByDate;
+  final bool flatList;
   final _CollectionGamesSearchState? searchState;
   final CollectionContents contents;
   final bool showSelector;
@@ -2931,22 +3032,67 @@ class _GamesPageState extends ConsumerState<_GamesPage>
   }
 
   Widget _body(CollectionContents contents) {
-    final picked = widget.player;
     final opening = widget.opening;
-    final viewMode = widget.viewMode;
     if (contents.games.isEmpty) {
       return _Notice(
         text: _query.isActive
             ? 'No games match this search.'
             : opening == null
             ? 'No games in this collection yet.'
-            : 'No games study ${opening.eco} in this book yet.',
+            : 'No games study ${opening.eco} in this collection yet.',
         actionLabel: opening == null || widget.onClearOpening == null
             ? null
             : 'All games',
         onAction: widget.onClearOpening,
       );
     }
+    // Prior book chapter/round rendering: return _groupedBody(contents);
+    if (widget.flatList) return _flatBody(contents);
+    return _groupedBody(contents);
+  }
+
+  /// Keep the API's sequence intact for both the list and board previous/next.
+  Widget _flatBody(CollectionContents contents) {
+    final ordered = [for (final game in contents.games) game.game];
+    final perRow = widget.viewMode == GamesListViewMode.chessBoardGrid ? 2 : 1;
+    final opening = widget.opening;
+    final showOpeningLine = opening != null && widget.onClearOpening != null;
+    final lead = showOpeningLine ? 1 : 0;
+    return ListView.builder(
+      key: const PageStorageKey('collection_games'),
+      padding: EdgeInsets.only(
+        top: 12.sp,
+        bottom: 24.sp + MediaQuery.viewPaddingOf(context).bottom,
+      ),
+      itemCount: lead + (ordered.length / perRow).ceil(),
+      itemBuilder: (context, index) {
+        if (showOpeningLine && index == 0) {
+          return _PlayerLine(
+            name: '${opening.eco} · ${opening.name ?? 'Opening'}',
+            isOpening: true,
+            onClear: widget.onClearOpening!,
+          );
+        }
+        return Padding(
+          padding: EdgeInsets.only(bottom: 12.sp),
+          child: DiscoveryGameList(
+            games: ordered,
+            start: (index - lead) * perRow,
+            limit: perRow,
+            viewMode: widget.viewMode,
+            streamEnabled: false,
+            onOpen: (_, local) => widget.onOpen(ordered, local),
+          ),
+        );
+      },
+    );
+  }
+
+  /// Retained section layout for event collections and scoped game routes.
+  Widget _groupedBody(CollectionContents contents) {
+    final picked = widget.player;
+    final opening = widget.opening;
+    final viewMode = widget.viewMode;
     final groups = groupCollectionGames(
       widget.groupByDate ? const [] : contents.sections,
       [
@@ -3289,13 +3435,72 @@ class _CollectionPlayerRow extends ConsumerWidget {
           score: p.bestElo ?? 0,
           scoreChange: 0,
           hasRatingDiff: false,
-          matchScore: count,
+          matchScore: '',
         ),
         rank: rank,
         showRank: rank != null,
         showFavoriteButton: false,
         hideMissingRating: true,
+        trailing: Semantics(
+          label: count,
+          excludeSemantics: true,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              _CollectionGameMark(color: context.colors.textSecondary),
+              SizedBox(width: 6.w),
+              Text(
+                '${p.games}',
+                style: AppTypography.textMdMedium.copyWith(
+                  color: context.colors.textPrimary,
+                ),
+              ),
+            ],
+          ),
+        ),
         onTap: pick,
+      ),
+    );
+  }
+}
+
+/// The real ChessEver mark, with the dark canvas removed through the same
+/// luminance-to-alpha treatment used by the news cover's monochrome logo.
+class _CollectionGameMark extends StatelessWidget {
+  const _CollectionGameMark({required this.color});
+
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    final side = 20.ic;
+    // The artwork spans 52% of its canvas. Leave a little breathing room
+    // around that silhouette while cropping only the transparent canvas.
+    final canvas = side / 0.55;
+    return SizedBox.square(
+      dimension: side,
+      child: ClipRect(
+        child: OverflowBox(
+          minWidth: canvas,
+          maxWidth: canvas,
+          minHeight: canvas,
+          maxHeight: canvas,
+          child: ColorFiltered(
+            colorFilter: ColorFilter.matrix([
+              0, 0, 0, 0, color.r * 255,
+              0, 0, 0, 0, color.g * 255,
+              0, 0, 0, 0, color.b * 255,
+              0.4252, 1.4304, 0.1444, 0, -25.5,
+            ]),
+            child: Image.asset(
+              PngAsset.newAppLogo,
+              width: canvas,
+              height: canvas,
+              fit: BoxFit.contain,
+              excludeFromSemantics: true,
+            ),
+          ),
+        ),
       ),
     );
   }
