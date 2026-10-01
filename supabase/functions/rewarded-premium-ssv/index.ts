@@ -1,5 +1,5 @@
 import { createClient } from 'npm:@supabase/supabase-js@2.57.4';
-import { parseCallback, verifyCallback, rewardIdentity } from './verification.ts';
+import { parseCallback, verifyCallback, rewardIdentity, isConsoleVerification } from './verification.ts';
 
 let keys: {keyId:number; pem:string}[] = [];
 let fetched = 0;
@@ -22,11 +22,12 @@ Deno.serve(async request => {
   try {
     const parsed = parseCallback(request.url);
     const params = await verifyCallback(request.url, await publicKey(parsed.params.get('key_id')!));
+    const timestamp = Number(params.get('timestamp'));
+    if (!Number.isFinite(timestamp) || Math.abs(Date.now()-timestamp) > 24*60*60*1000) return new Response('expired_callback',{status:403});
+    if (isConsoleVerification(params)) return new Response('verified_no_reward', {headers:{'cache-control':'no-store'}});
     const adUnit = units.find(unit => unit === params.get('ad_unit') ||
       unit.split('/')[1] === params.get('ad_unit'));
     if (!adUnit) return new Response('invalid_ad_unit',{status:403});
-    const timestamp = Number(params.get('timestamp'));
-    if (!Number.isFinite(timestamp) || Math.abs(Date.now()-timestamp) > 24*60*60*1000) return new Response('expired_callback',{status:403});
     const identity = rewardIdentity(params);
     if (!identity) return new Response('verified_no_reward', {headers:{'cache-control':'no-store'}});
     const admin = createClient(project,Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,{

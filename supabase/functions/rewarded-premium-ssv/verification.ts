@@ -14,7 +14,9 @@ export function parseCallback(url: string) {
   const required = ['ad_unit', 'transaction_id', 'timestamp', 'signature', 'key_id'];
   for (const key of required) if (!params.get(key)) throw new Error('missing_parameter');
   if (!/^[\w-]{1,256}$/.test(params.get('transaction_id')!)) throw new Error('invalid_parameter');
-  return { params, signed: new TextEncoder().encode(query.slice(0, marker)) };
+  const content = query.slice(0, marker);
+  return { params, signed: new TextEncoder().encode(content),
+    formDecoded: new TextEncoder().encode(decodeURIComponent(content.replace(/\+/g, ' '))) };
 }
 
 // AdMob console verification permits optional/sample identity fields. They are
@@ -58,8 +60,19 @@ export async function verifyCallback(url: string, pem: string) {
   const keyBytes = decode64(pem.replace(/-----[^-]+-----|\s/g, ''));
   const key = await crypto.subtle.importKey('spki', keyBytes,
     { name: 'ECDSA', namedCurve: 'P-256' }, false, ['verify']);
-  const valid = await crypto.subtle.verify({name: 'ECDSA', hash: 'SHA-256'}, key,
+  let valid = await crypto.subtle.verify({name: 'ECDSA', hash: 'SHA-256'}, key,
     derToRaw(decode64(callback.params.get('signature')!)), callback.signed);
+  // Google's console sends form-encoded spaces but signs the decoded text.
+  // Either representation must cryptographically verify with Google's key.
+  if (!valid) valid = await crypto.subtle.verify({name: 'ECDSA', hash: 'SHA-256'}, key,
+    derToRaw(decode64(callback.params.get('signature')!)), callback.formDecoded);
   if (!valid) throw new Error('invalid_signature');
   return callback.params;
+}
+
+// Observed Google console placeholder values. Called only after signature and
+// timestamp validation; this path never calls rewarded_verify or grants access.
+export function isConsoleVerification(params: URLSearchParams) {
+  return params.get('ad_unit') === '1234567890' &&
+    params.get('transaction_id') === '123456789' && !rewardIdentity(params);
 }

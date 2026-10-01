@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {parseCallback,verifyCallback,derToRaw,rewardIdentity} from './verification.ts';
+import {parseCallback,verifyCallback,derToRaw,rewardIdentity,isConsoleVerification} from './verification.ts';
 
 function rawToDer(raw:Uint8Array) {
   const parts = [raw.slice(0,32),raw.slice(32) ].map(bytes => {
@@ -53,4 +53,23 @@ test('only complete app UUID identity is eligible for database verification', as
   assert.equal(rewardIdentity(params), null);
   params.delete('custom_data');
   assert.equal(rewardIdentity(params), null);
+});
+
+const googleSetupFixture = {"pem":"-----BEGIN PUBLIC KEY-----\nMFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE+nzvoGqvDeB9+SzE6igTl7TyK4JB\nbglwir9oTcQta8NuG26ZpZFxt+F2NDk7asTE6/2Yc8i1ATcGIqtuS5hv0Q==\n-----END PUBLIC KEY-----","url":"https://oelbsuggrzyqwzmvidju.supabase.co/functions/v1/rewarded-premium-ssv?ad_network=5450213213286189855&ad_unit=1234567890&reward_amount=10&reward_item=Premium+minutes&timestamp=1790870038860&transaction_id=123456789&signature=MEUCIQCNXBYPjfoYmRhoxzYYcZEmNhOwCQzCJoByoVT6TZldQQIgNm9mS7LoeoS3zoezgZ7LVLfqT6VvuJVXATvA_mytu3I&key_id=3335741209"};
+
+test('verifies the actual Google console callback with form-encoded reward name', async () => {
+  const params = await verifyCallback(googleSetupFixture.url, googleSetupFixture.pem);
+  assert.equal(params.get('reward_item'), 'Premium minutes');
+  assert.equal(isConsoleVerification(params), true);
+  assert.equal(rewardIdentity(params), null);
+  await assert.rejects(verifyCallback(googleSetupFixture.url.replace('reward_amount=10', 'reward_amount=20'), googleSetupFixture.pem), /invalid_signature/);
+});
+test('console placeholders cannot identify a real reward attempt', () => {
+  const params = new URL(googleSetupFixture.url).searchParams;
+  params.set('custom_data', 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa');
+  params.set('user_id', 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb');
+  assert.equal(isConsoleVerification(params), false);
+  params.delete('custom_data');
+  params.set('transaction_id', 'another_transaction');
+  assert.equal(isConsoleVerification(params), false);
 });
