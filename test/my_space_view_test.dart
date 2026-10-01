@@ -753,7 +753,7 @@ void main() {
     await _settleEdit(tester);
     expect(find.text('Nothing to edit yet.'), findsNothing);
     expect(find.byKey(const ValueKey<String>('space_edit_done')), findsNothing);
-    expect(find.text('My Likes'), findsNothing);
+    expect(find.text('My Likes'), findsOneWidget);
     expect(find.text('Smart Events'), findsOneWidget);
     expect(find.text(kMyDatabaseEmptyText), findsOneWidget);
     expect(tester.takeException(), isNull);
@@ -1103,9 +1103,6 @@ void main() {
       tester,
       const [],
       extra: [
-        likedGamesProvider.overrideWith(
-          () => throw StateError('Hidden likes must not load'),
-        ),
         forYouEventsProvider.overrideWith(
           (ref) => throw StateError('Hidden suggestions must not load'),
         ),
@@ -1113,7 +1110,12 @@ void main() {
     );
     expect(find.text('Smart Events'), findsOneWidget);
     expect(find.text('Library'), findsOneWidget);
-    expect(find.text('My Likes'), findsNothing);
+    expect(find.text('My Likes'), findsOneWidget);
+    expect(find.text('No likes yet'), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey<String>('my_space_likes_card')),
+      findsOneWidget,
+    );
     expect(find.text(kMyDatabaseEmptyText), findsOneWidget);
     expect(find.byType(EventCard), findsNothing);
     expect(find.byType(SpaceSaveToggle), findsNothing);
