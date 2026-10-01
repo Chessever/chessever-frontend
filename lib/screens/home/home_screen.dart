@@ -8,6 +8,7 @@ import 'package:chessever2/repository/authentication/auth_repository.dart';
 import 'package:chessever2/repository/local_storage/local_storage_repository.dart';
 import 'package:chessever2/screens/authentication/auth_screen_provider.dart';
 import 'package:chessever2/screens/collections/collections_screen.dart';
+import 'package:chessever2/screens/inbox/inbox_provider.dart';
 import 'package:chessever2/screens/my_space/widgets/space_add_fab.dart';
 import 'package:chessever2/screens/favorites/favorites_tab_screen.dart';
 import 'package:chessever2/screens/favorites/provider/favorites_mode_provider.dart';
@@ -232,6 +233,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   Widget build(BuildContext context) {
     // Listen for favorite signals (must be in build method)
     _listenForFavoriteSignals();
+    // Start account-scoped Inbox sync even before the drawer is opened.
+    ref.watch(inboxHasUnreadProvider);
 
     // Tablet layout: NavigationRail on the side
     if (ResponsiveHelper.isTablet) {
