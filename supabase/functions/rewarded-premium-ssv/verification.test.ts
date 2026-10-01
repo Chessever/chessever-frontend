@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {parseCallback,verifyCallback,derToRaw} from './verification.ts';
+import {parseCallback,verifyCallback,derToRaw,rewardIdentity} from './verification.ts';
 
 function rawToDer(raw:Uint8Array) {
   const parts = [raw.slice(0,32),raw.slice(32) ].map(bytes => {
@@ -11,10 +11,10 @@ function rawToDer(raw:Uint8Array) {
   });
   const content=parts.flat();return Uint8Array.from([0x30,content.length,...content]);
 }
-async function signedUrl() {
+async function signedUrl(identity = true) {
   const pair=await crypto.subtle.generateKey({name:'ECDSA',namedCurve:'P-256'},true,['sign','verify']);
   const pem='-----BEGIN PUBLIC KEY-----\n'+Buffer.from(await crypto.subtle.exportKey('spki',pair.publicKey)).toString('base64')+'\n-----END PUBLIC KEY-----';
-  const content='ad_unit=123&custom_data=aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa&timestamp='+Date.now()+'&transaction_id=tx1&user_id=bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb';
+  const content='ad_unit=123'+(identity ? '&custom_data=aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa' : '')+'&timestamp='+Date.now()+'&transaction_id=tx1'+(identity ? '&user_id=bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb' : '');
   const raw=new Uint8Array(await crypto.subtle.sign({name:'ECDSA',hash:'SHA-256'},pair.privateKey,new TextEncoder().encode(content)));
   const signature=Buffer.from(rawToDer(raw)).toString('base64url');
   return {pem,url:'https://example.invalid/?'+content+'&signature='+signature+'&key_id=1'};
@@ -35,4 +35,22 @@ test('rejects duplicate parameters and missing signed content',async()=>{
 });
 test('rejects malformed DER rather than accepting a partial signature',()=>{
   assert.throws(()=>derToRaw(new Uint8Array([0x30,2,2,0])),/invalid_der/);
+});
+
+test('signed console callback without optional identity verifies but cannot reward', async () => {
+  const {pem, url} = await signedUrl(false);
+  const params = await verifyCallback(url, pem);
+  assert.equal(rewardIdentity(params), null);
+  await assert.rejects(verifyCallback(url.replace('ad_unit=123', 'ad_unit=456'), pem), /invalid_signature/);
+});
+test('only complete app UUID identity is eligible for database verification', async () => {
+  const {pem, url} = await signedUrl();
+  const params = await verifyCallback(url, pem);
+  assert.deepEqual(rewardIdentity(params), {
+    attempt: 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', user: 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb',
+  });
+  params.set('custom_data', 'SAMPLE_CUSTOM_DATA_STRING');
+  assert.equal(rewardIdentity(params), null);
+  params.delete('custom_data');
+  assert.equal(rewardIdentity(params), null);
 });

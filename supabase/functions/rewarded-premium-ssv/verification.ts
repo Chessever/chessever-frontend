@@ -11,12 +11,20 @@ export function parseCallback(url: string) {
   for (const key of params.keys()) {
     if (params.getAll(key).length !== 1) throw new Error('duplicate_parameter');
   }
-  const required = ['ad_unit', 'custom_data', 'user_id', 'transaction_id', 'timestamp', 'signature', 'key_id'];
+  const required = ['ad_unit', 'transaction_id', 'timestamp', 'signature', 'key_id'];
   for (const key of required) if (!params.get(key)) throw new Error('missing_parameter');
-  if (!/^[\da-f-]{36}$/i.test(params.get('custom_data')!) ||
-      !/^[\da-f-]{36}$/i.test(params.get('user_id')!) ||
-      !/^[\w-]{1,256}$/.test(params.get('transaction_id')!)) throw new Error('invalid_parameter');
+  if (!/^[\w-]{1,256}$/.test(params.get('transaction_id')!)) throw new Error('invalid_parameter');
   return { params, signed: new TextEncoder().encode(query.slice(0, marker)) };
+}
+
+// AdMob console verification permits optional/sample identity fields. They are
+// signed and acknowledged, but cannot qualify for an app reward.
+export function rewardIdentity(params: URLSearchParams) {
+  const attempt = params.get('custom_data');
+  const user = params.get('user_id');
+  const uuid = /^[\da-f]{8}-[\da-f]{4}-[\da-f]{4}-[\da-f]{4}-[\da-f]{12}$/i;
+  return attempt && user && uuid.test(attempt) && uuid.test(user)
+    ? {attempt, user} : null;
 }
 
 function decode64(value: string) {

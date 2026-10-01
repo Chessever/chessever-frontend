@@ -28,6 +28,8 @@ configuration, not API secrets.
 In AdMob, configure each rewarded unit with the reward description "10 minutes
 of Premium", enable server-side verification, and point it to
 `https://oelbsuggrzyqwzmvidju.supabase.co/functions/v1/rewarded-premium-ssv`.
+AdMob console URL verification can leave User ID and Custom data blank. Signed
+callbacks without a matching app attempt are acknowledged without granting access.
 Set up the applicable privacy messages in AdMob Privacy & messaging. UMP runs
 before requesting the first ad of each app launch; required ad privacy options
 appear in About after consent information is loaded. The existing ATT prompt

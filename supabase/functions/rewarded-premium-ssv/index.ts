@@ -1,5 +1,5 @@
 import { createClient } from 'npm:@supabase/supabase-js@2.57.4';
-import { parseCallback, verifyCallback } from './verification.ts';
+import { parseCallback, verifyCallback, rewardIdentity } from './verification.ts';
 
 let keys: {keyId:number; pem:string}[] = [];
 let fetched = 0;
@@ -27,15 +27,22 @@ Deno.serve(async request => {
     if (!adUnit) return new Response('invalid_ad_unit',{status:403});
     const timestamp = Number(params.get('timestamp'));
     if (!Number.isFinite(timestamp) || Math.abs(Date.now()-timestamp) > 24*60*60*1000) return new Response('expired_callback',{status:403});
+    const identity = rewardIdentity(params);
+    if (!identity) return new Response('verified_no_reward', {headers:{'cache-control':'no-store'}});
     const admin = createClient(project,Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,{
       auth:{persistSession:false,autoRefreshToken:false},
     });
     const {data,error} = await admin.rpc('rewarded_verify', {
-      p_attempt:params.get('custom_data'), p_user:params.get('user_id'),
+      p_attempt:identity.attempt, p_user:identity.user,
       p_transaction:params.get('transaction_id'), p_adunit:adUnit,
     });
     if (error) return new Response('verification_unavailable',{status:error.code === '23505' ? 403 : 503});
-    if (data !== true) return new Response('invalid_attempt',{status:403});
+    if (data !== true) return new Response('verified_no_reward',{headers:{'cache-control':'no-store'}});
     return new Response('verified',{headers:{'cache-control':'no-store'}});
-  } catch (error) { return new Response('verification_failed',{status:error instanceof Error && /keys_unavailable|fetch|timeout/i.test(error.message) ? 503 : 403}); }
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : 'unknown_error';
+    // Never log callback URLs, identity fields or transaction data.
+    console.warn('rewarded_ssv_rejected', {reason});
+    return new Response('verification_failed',{status:/keys_unavailable|fetch|timeout/i.test(reason) ? 503 : 403});
+  }
 });
