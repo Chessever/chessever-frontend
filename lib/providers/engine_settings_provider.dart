@@ -1,7 +1,6 @@
 import 'dart:async';
-import 'dart:convert';
-import 'package:chessever2/repository/engine_settings/models/engine_settings_model.dart';
-import 'package:chessever2/repository/sqlite/app_database.dart';
+import 'package:chessever2/config/app_environment.dart';
+import 'package:chessever2/repository/engine_settings/engine_settings_store.dart';
 import 'package:chessever2/screens/chessboard/provider/stockfish_singleton.dart';
 import 'package:flutter/foundation.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -484,244 +483,260 @@ class BoardEngineSearchProfile {
   bool get isUnlimitedSearch => searchDuration == null;
 }
 
-/// Provider for managing engine settings with Supabase + SharedPreferences sync
+final engineSettingsCacheProvider = Provider<EngineSettingsCache>(
+  (ref) => SqliteEngineSettingsCache(),
+);
+
+final engineSettingsBackendProvider = Provider<EngineSettingsBackend>(
+  (ref) => SupabaseEngineSettingsBackend(Supabase.instance.client),
+);
+
+/// Observe SDK identity directly, including anonymous users and restoration.
+/// Same-account token refreshes never reset a store's serial write lane.
+final engineSettingsAccountProvider = Provider<String?>((ref) {
+  final auth = Supabase.instance.client.auth;
+  final userId = auth.currentUser?.id;
+  final subscription = auth.onAuthStateChange.listen((event) {
+    if (auth.currentUser?.id != userId) ref.invalidateSelf();
+  }, onError: (Object _) {
+    // A transient auth error must not turn a retained session into a guest.
+  });
+  ref.onDispose(() => unawaited(subscription.cancel()));
+  return userId;
+});
+
+final engineSettingsEnvironmentProvider = Provider<String>(
+  (ref) =>
+      '${AppEnvironment.flavor.name}:${AppEnvironment.expectedSupabaseProjectRef}',
+);
+
+final engineSettingsStoreProvider =
+    Provider.family<EngineSettingsStore, EngineSettingsScope>(
+      (ref, scope) => EngineSettingsStore(
+        scope: scope,
+        cache: ref.watch(engineSettingsCacheProvider),
+        backend: ref.watch(engineSettingsBackendProvider),
+        importLegacySurfaces: scope.environment.startsWith('production:'),
+      ),
+    );
+
+EngineSettings _settingsFromFields(Map<String, dynamic> fields) {
+  final map = {...engineSettingsDefaults, ...validEngineSettingsFields(fields)};
+  return EngineSettings(
+    showEngineGauge: map['showEngineGauge'],
+    showEngineGaugeOnBoard: map['showEngineGaugeOnBoard'],
+    showEngineGaugeInGrid: map['showEngineGaugeInGrid'],
+    showDepthOverlay: map['showDepthOverlay'],
+    showPvArrows: map['showPvArrows'],
+    showEngineAnalysis: map['showEngineAnalysis'],
+    searchTimeIndex: map['searchTimeIndex'],
+    engineLinesView: engineLinesViewFromIndex(map['engineLinesView']),
+    principalVariationIndex: map['principalVariationIndex'],
+    maxArrowsOnBoard: map['maxArrowsOnBoard'],
+  );
+}
+
+/// Provider for account-scoped durable settings and pending-field cloud sync.
 final engineSettingsProviderNew =
     AsyncNotifierProvider<EngineSettingsNotifierNew, EngineSettings>(
       EngineSettingsNotifierNew.new,
     );
 
 class EngineSettingsNotifierNew extends AsyncNotifier<EngineSettings> {
-  static const String _cacheKey = 'cached_engine_settings';
-
-  SupabaseClient get _supabase => Supabase.instance.client;
+  late EngineSettingsStore _store;
+  int _generation = 0;
+  int _changeEpoch = 0;
+  bool _ready = false;
 
   @override
   Future<EngineSettings> build() async {
-    return await _loadSettings();
+    final scope = (
+      environment: ref.watch(engineSettingsEnvironmentProvider),
+      userId: ref.watch(engineSettingsAccountProvider),
+    );
+    final store = ref.watch(engineSettingsStoreProvider(scope));
+    _store = store;
+    _ready = false;
+    final generation = ++_generation;
+    ref.onDispose(() {
+      _ready = false;
+      ++_generation;
+    });
+    final local = await store.loadLocal();
+    if (generation == _generation) {
+      _ready = true;
+      // Publish SQLite immediately; a delayed/offline cloud must not block UI.
+      unawaited(Future<void>(() => _syncStore(store, generation, _changeEpoch)));
+    }
+    return _settingsFromFields(local);
   }
 
-  Future<EngineSettings> _loadSettings() async {
-    try {
-      final cachedSettings = await _getCachedSettingsMap();
-      final userId = _supabase.auth.currentUser?.id;
-      if (userId == null) {
-        debugPrint(
-          '[EngineSettings] No user logged in, returning local settings',
-        );
-        return applyCachedEngineGaugeSurfaceSettings(
-          const EngineSettings(),
-          cachedSettings,
-        );
-      }
+  EngineSettings _currentSettings() {
+    // AsyncValue retains previous data while an account rebuild is loading.
+    if (!_ready ||
+        _store.scope.userId != ref.read(engineSettingsAccountProvider) ||
+        _store.scope.environment != ref.read(engineSettingsEnvironmentProvider)) {
+      throw StateError('Engine settings are still restoring');
+    }
+    return state.requireValue;
+  }
 
-      // Fetch from Supabase (source of truth)
-      final response =
-          await _supabase
-              .from('user_engine_settings')
-              .select()
-              .eq('user_id', userId)
-              .maybeSingle();
-
-      if (response == null) {
-        debugPrint(
-          '[EngineSettings] No settings found in Supabase, creating defaults',
-        );
-        final settings = applyCachedEngineGaugeSurfaceSettings(
-          const EngineSettings(),
-          cachedSettings,
-        );
-        // Save defaults to Supabase (upsert handles race conditions). Surface
-        // choices stay device-local and are written only to the local cache.
-        try {
-          await _saveToSupabase(settings, userId);
-        } catch (e) {
-          // Ignore duplicate errors - another process may have created it
-          debugPrint(
-            '[EngineSettings] Info: ${e.toString().contains('duplicate') ? 'Settings already exist' : 'Error creating defaults: $e'}',
-          );
-        }
-        await _cacheSettings(settings);
-        return settings;
-      }
-
-      final model = EngineSettingsModel.fromSupabase(response);
-      // engine_lines_view_index is not part of the dart_mappable model; read it
-      // directly to avoid regenerating the mapper for a single field.
-      final settings = applyCachedEngineGaugeSurfaceSettings(
-        EngineSettings(
-          showEngineGauge: model.showEngineGauge,
-          showDepthOverlay: model.showDepthOverlay,
-          showPvArrows: model.showPvArrows,
-          showEngineAnalysis: model.showEngineAnalysis,
-          searchTimeIndex: model.searchTimeIndex,
-          engineLinesView: engineLinesViewFromIndex(
-            response['engine_lines_view_index'] as int?,
-          ),
-          principalVariationIndex: model.principalVariationIndex,
-          maxArrowsOnBoard: model.maxArrowsOnBoard,
-        ),
-        cachedSettings,
-      );
-
-      // Cache locally
-      await _cacheSettings(settings);
-
-      debugPrint('[EngineSettings] Fetched settings from Supabase');
-      return settings;
-    } catch (e, st) {
-      debugPrint('[EngineSettings] Error fetching from Supabase: $e');
-      debugPrint('[EngineSettings] Stack: $st');
-
-      // Fallback to local cache
-      return await _getCachedSettings();
+  Future<void> _syncStore(
+    EngineSettingsStore store,
+    int generation,
+    int epoch,
+  ) async {
+    await store.sync();
+    if (_ready && generation == _generation && epoch == _changeEpoch) {
+      state = AsyncValue.data(_settingsFromFields(store.values));
     }
   }
 
   /// Toggle evaluation bar visibility across all surfaces without changing the
   /// saved per-surface choices.
   Future<void> toggleEngineGauge(bool value) async {
-    final currentState = state.valueOrNull ?? const EngineSettings();
+    final currentState = _currentSettings();
     final newSettings = currentState.copyWith(showEngineGauge: value);
     state = AsyncValue.data(newSettings);
-    await _persist(newSettings);
+    await _persist({'showEngineGauge': value});
   }
 
   /// Toggle evaluation bar visibility on opened boards.
   Future<void> toggleEngineGaugeOnBoard(bool value) async {
-    final currentState = state.valueOrNull ?? const EngineSettings();
+    final currentState = _currentSettings();
     final newSettings = currentState.copyWith(showEngineGaugeOnBoard: value);
     state = AsyncValue.data(newSettings);
     // Surface preferences are intentionally device-local. Sending the full
     // settings object to Supabase here would update unrelated synced fields
     // with a potentially stale snapshot.
-    await _cacheSettings(newSettings);
+    await _persist({'showEngineGaugeOnBoard': value}, sync: false);
   }
 
   /// Toggle evaluation bar visibility in game grids.
   Future<void> toggleEngineGaugeInGrid(bool value) async {
-    final currentState = state.valueOrNull ?? const EngineSettings();
+    final currentState = _currentSettings();
     final newSettings = currentState.copyWith(showEngineGaugeInGrid: value);
     state = AsyncValue.data(newSettings);
     // Keep this local for the same reason as the board-surface preference.
-    await _cacheSettings(newSettings);
+    await _persist({'showEngineGaugeInGrid': value}, sync: false);
   }
 
   /// Toggle depth overlay visibility
   Future<void> toggleDepthOverlay(bool value) async {
-    final currentState = state.valueOrNull ?? const EngineSettings();
+    final currentState = _currentSettings();
     final newSettings = currentState.copyWith(showDepthOverlay: value);
     state = AsyncValue.data(newSettings);
-    await _persist(newSettings);
+    await _persist({'showDepthOverlay': value});
   }
 
   /// Toggle PV arrows visibility
   Future<void> togglePvArrows(bool value) async {
-    final currentState = state.valueOrNull ?? const EngineSettings();
+    final currentState = _currentSettings();
     final newSettings = currentState.copyWith(showPvArrows: value);
     state = AsyncValue.data(newSettings);
-    await _persist(newSettings);
+    await _persist({'showPvArrows': value});
   }
 
   /// Toggle engine analysis visibility (PV cards & arrows from computer icon)
   /// When turned off, also stops the Stockfish engine to save resources
   Future<void> toggleEngineAnalysis(bool value) async {
+    final generation = _generation;
     // Optimistic local update so UI reacts instantly
-    final optimistic = (state.valueOrNull ?? const EngineSettings()).copyWith(
+    final optimistic = _currentSettings().copyWith(
       showEngineAnalysis: value,
     );
     debugPrint('🎯 EngineSettings: Engine analysis visibility set to $value');
     state = AsyncValue.data(optimistic);
 
+    // Queue only this field before stopping the engine. Never reload cloud:
+    // that used to replace an unsynced thinking-time selection.
+    await _persist({'showEngineAnalysis': value});
+
     // When turning off, stop the Stockfish engine to save resources
-    if (!value) {
+    if (!value &&
+        _ready &&
+        generation == _generation &&
+        state.valueOrNull?.showEngineAnalysis == false) {
       debugPrint(
         '🛑 EngineSettings: Stopping Stockfish engine (analysis disabled)',
       );
       await StockfishSingleton().cancelAllEvaluations();
       // Clear depth tracker since engine is stopped
-      ref
-          .read(engineDepthTrackerProvider.notifier)
-          .clearAll(reason: 'engine analysis disabled');
-    }
-
-    // Fire-and-forget persistence to avoid blocking UI or navigation
-    unawaited(() async {
-      try {
-        // Reload latest settings to avoid clobbering other fields, then persist
-        final latest = await _loadSettings();
-        final merged = latest.copyWith(showEngineAnalysis: value);
-        state = AsyncValue.data(merged);
-        await _persist(merged);
-      } catch (e, st) {
-        debugPrint(
-          '[EngineSettings] Error persisting engine analysis toggle: $e',
-        );
-        debugPrint('[EngineSettings] Stack: $st');
+      if (_ready && generation == _generation) {
+        ref
+            .read(engineDepthTrackerProvider.notifier)
+            .clearAll(reason: 'engine analysis disabled');
       }
-    }());
+    }
   }
 
   /// Set search time index
   Future<void> setSearchTimeIndex(int index) async {
+    final generation = _generation;
     final clamped = index.clamp(0, EngineSettings.searchTimeLabels.length - 1);
-    final currentState = state.valueOrNull ?? const EngineSettings();
+    final currentState = _currentSettings();
     final newSettings = currentState.copyWith(searchTimeIndex: clamped);
     debugPrint(
       '🔧 EngineSettings: Search time changed to ${newSettings.searchTimeLabel()}',
     );
     state = AsyncValue.data(newSettings);
-    await _persist(newSettings);
+    await _persist({'searchTimeIndex': clamped});
 
     // Clear depth tracker when settings change to force fresh evaluation
-    ref
-        .read(engineDepthTrackerProvider.notifier)
-        .clearAll(reason: 'settings changed');
+    if (_ready && generation == _generation) {
+      ref
+          .read(engineDepthTrackerProvider.notifier)
+          .clearAll(reason: 'settings changed');
+    }
   }
 
   /// Set principal variation index
   Future<void> setPrincipalVariationIndex(int index) async {
+    final generation = _generation;
     final clamped = index.clamp(
       0,
       EngineSettings.principalVariationLabels.length - 1,
     );
-    final currentState = state.valueOrNull ?? const EngineSettings();
+    final currentState = _currentSettings();
     final newSettings = currentState.copyWith(principalVariationIndex: clamped);
     final label = newSettings.principalVariationLabel();
     debugPrint('🔧 EngineSettings: PV setting changed to $label');
     state = AsyncValue.data(newSettings);
-    await _persist(newSettings);
+    await _persist({'principalVariationIndex': clamped});
 
     // Clear depth tracker when settings change to force fresh evaluation
-    ref
-        .read(engineDepthTrackerProvider.notifier)
-        .clearAll(reason: 'PV setting changed');
+    if (_ready && generation == _generation) {
+      ref
+          .read(engineDepthTrackerProvider.notifier)
+          .clearAll(reason: 'PV setting changed');
+    }
   }
 
   /// Set engine lines view layout (cards vs list). Applies everywhere.
   Future<void> setEngineLinesView(EngineLinesView view) async {
-    final currentState = state.valueOrNull ?? const EngineSettings();
+    final currentState = _currentSettings();
     if (currentState.engineLinesView == view) return;
     final newSettings = currentState.copyWith(engineLinesView: view);
     debugPrint('🔧 EngineSettings: Engine lines view changed to ${view.name}');
     state = AsyncValue.data(newSettings);
-    await _persist(newSettings);
+    await _persist({'engineLinesView': view.index});
   }
 
   /// Set max arrows on board index
   Future<void> setMaxArrowsOnBoard(int index) async {
     final clamped = index.clamp(0, EngineSettings.maxArrowsLabels.length - 1);
-    final currentState = state.valueOrNull ?? const EngineSettings();
+    final currentState = _currentSettings();
     final newSettings = currentState.copyWith(maxArrowsOnBoard: clamped);
     final label = newSettings.maxArrowsLabel();
     debugPrint('🔧 EngineSettings: Max arrows on board changed to $label');
     state = AsyncValue.data(newSettings);
-    await _persist(newSettings);
+    await _persist({'maxArrowsOnBoard': clamped});
   }
 
   /// Refresh settings from Supabase
   Future<void> refresh() async {
-    state = const AsyncValue.loading();
-    state = await AsyncValue.guard(() => _loadSettings());
+    if (!_ready) await future;
+    await _syncStore(_store, _generation, _changeEpoch);
   }
 
   /// Sync settings from Supabase to local cache
@@ -729,7 +744,7 @@ class EngineSettingsNotifierNew extends AsyncNotifier<EngineSettings> {
     debugPrint('[EngineSettings] Starting sync...');
     try {
       await refresh();
-      debugPrint('[EngineSettings] Sync complete');
+      debugPrint('[EngineSettings] Sync attempt finished');
     } catch (e, st) {
       debugPrint('[EngineSettings] Error syncing: $e');
       debugPrint('[EngineSettings] Stack: $st');
@@ -738,134 +753,30 @@ class EngineSettingsNotifierNew extends AsyncNotifier<EngineSettings> {
 
   // Private methods
 
-  Future<void> _persist(EngineSettings settings) async {
+  Future<void> _persist(Map<String, dynamic> patch, {bool sync = true}) async {
+    final store = _store;
+    final generation = _generation;
+    final epoch = ++_changeEpoch;
     try {
-      // Cache locally FIRST so the UI stays responsive even if Supabase fails
-      await _cacheSettings(settings);
-
-      final userId = _supabase.auth.currentUser?.id;
-      if (userId == null) {
-        debugPrint(
-          '[EngineSettings] No user logged in, skipping Supabase persist',
-        );
-        return;
+      await store.change(patch);
+    } catch (_) {
+      if (_ready && generation == _generation && epoch == _changeEpoch) {
+        state = AsyncValue.data(_settingsFromFields(store.values));
       }
-
-      // Save to Supabase in background — don't block UI on network failure
-      unawaited(_saveToSupabase(settings, userId));
-    } catch (e, st) {
-      debugPrint('[EngineSettings] Error persisting settings: $e');
-      debugPrint('[EngineSettings] Stack: $st');
+      rethrow; // A failed SQLite write is not durable success.
     }
+    if (sync) unawaited(_syncStore(store, generation, epoch));
   }
 
-  Future<void> _saveToSupabase(EngineSettings settings, String userId) async {
-    try {
-      // Use upsert with onConflict to handle existing records
-      await _supabase.from('user_engine_settings').upsert(
-        {
-          'user_id': userId,
-          'show_engine_gauge': settings.showEngineGauge,
-          'show_depth_overlay': settings.showDepthOverlay,
-          'show_pv_arrows': settings.showPvArrows,
-          'show_engine_analysis': settings.showEngineAnalysis,
-          'search_time_index': settings.searchTimeIndex,
-          'engine_lines_view_index': settings.engineLinesView.index,
-          'principal_variation_index': settings.principalVariationIndex,
-          'max_arrows_on_board': settings.maxArrowsOnBoard,
-          'updated_at': DateTime.now().toUtc().toIso8601String(),
-        },
-        onConflict: 'user_id', // Specify conflict column
-      );
-      debugPrint('[EngineSettings] ✅ Saved to Supabase');
-    } catch (e) {
-      debugPrint('[EngineSettings] ❌ Error saving to Supabase: $e');
-      rethrow;
-    }
-  }
-
-  Future<void> _cacheSettings(EngineSettings settings) async {
-    try {
-      final db = AppDatabase.instance;
-      final json = jsonEncode({
-        'showEngineGauge': settings.showEngineGauge,
-        'showEngineGaugeOnBoard': settings.showEngineGaugeOnBoard,
-        'showEngineGaugeInGrid': settings.showEngineGaugeInGrid,
-        'showDepthOverlay': settings.showDepthOverlay,
-        'showPvArrows': settings.showPvArrows,
-        'showEngineAnalysis': settings.showEngineAnalysis,
-        'searchTimeIndex': settings.searchTimeIndex,
-        'engineLinesView': settings.engineLinesView.index,
-        'principalVariationIndex': settings.principalVariationIndex,
-        'maxArrowsOnBoard': settings.maxArrowsOnBoard,
-      });
-      await db.setString(_cacheKey, json);
-      debugPrint('[EngineSettings] Cached settings locally');
-    } catch (e) {
-      debugPrint('[EngineSettings] Error caching settings: $e');
-    }
-  }
-
-  Future<Map<String, dynamic>> _getCachedSettingsMap() async {
-    try {
-      final db = AppDatabase.instance;
-      final json = await db.getString(_cacheKey);
-      if (json == null) return const {};
-      return jsonDecode(json) as Map<String, dynamic>;
-    } catch (e) {
-      debugPrint('[EngineSettings] Error reading cached settings map: $e');
-      return const {};
-    }
-  }
-
-  Future<EngineSettings> _getCachedSettings() async {
-    try {
-      final map = await _getCachedSettingsMap();
-      if (map.isEmpty) {
-        debugPrint('[EngineSettings] No cached settings, using defaults');
-        return const EngineSettings();
-      }
-
-      // Check if cache has all required fields - if not, it's stale
-      // and we should return defaults (which triggers fresh Supabase fetch)
-      if (!map.containsKey('maxArrowsOnBoard')) {
-        debugPrint(
-          '[EngineSettings] Cache is stale (missing fields), clearing and using defaults',
-        );
-        await AppDatabase.instance.remove(_cacheKey);
-        return const EngineSettings();
-      }
-
-      final settings = EngineSettings(
-        showEngineGauge: map['showEngineGauge'] as bool? ?? true,
-        showEngineGaugeOnBoard: map['showEngineGaugeOnBoard'] as bool? ?? true,
-        showEngineGaugeInGrid: map['showEngineGaugeInGrid'] as bool? ?? true,
-        showDepthOverlay: map['showDepthOverlay'] as bool? ?? true,
-        showPvArrows: map['showPvArrows'] as bool? ?? true,
-        showEngineAnalysis: map['showEngineAnalysis'] as bool? ?? true,
-        searchTimeIndex: map['searchTimeIndex'] as int? ?? 0,
-        engineLinesView: engineLinesViewFromIndex(
-          map['engineLinesView'] as int?,
-        ),
-        principalVariationIndex: map['principalVariationIndex'] as int? ?? 4,
-        maxArrowsOnBoard: map['maxArrowsOnBoard'] as int? ?? 2,
-      );
-      debugPrint('[EngineSettings] Loaded settings from cache');
-      return settings;
-    } catch (e) {
-      debugPrint('[EngineSettings] Error getting cached settings: $e');
-      return const EngineSettings();
-    }
-  }
-
-  /// Clear cache (useful on sign out)
+  /// Clear this scope only; account switches use separate snapshots/outboxes.
   Future<void> clearCache() async {
-    try {
-      final db = AppDatabase.instance;
-      await db.remove(_cacheKey);
-      debugPrint('[EngineSettings] Cleared cache');
-    } catch (e) {
-      debugPrint('[EngineSettings] Error clearing cache: $e');
+    _currentSettings();
+    ++_changeEpoch;
+    final store = _store;
+    final generation = _generation;
+    await store.clear();
+    if (_ready && generation == _generation) {
+      state = AsyncValue.data(_settingsFromFields(store.values));
     }
   }
 }
