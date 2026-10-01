@@ -283,4 +283,42 @@ void main() {
     expect(result, isNull); // Dismissing a draft never applies it.
     expect(tester.takeException(), isNull);
   });
+
+  testWidgets('top-level catalog filters omit the game result filter', (
+    tester,
+  ) async {
+    CollectionSearchQuery? result;
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.darkTheme,
+        home: Scaffold(
+          body: Builder(
+            builder: (context) {
+              ResponsiveHelper.init(context);
+              return TextButton(
+                onPressed: () async {
+                  result = await showCollectionSearchFilters(
+                    context,
+                    const CollectionSearchQuery(text: 'Tal', result: '1-0'),
+                    loadAuthors: () async => ['Judit Polgar'],
+                    showResult: false,
+                  );
+                },
+                child: const Text('Filters'),
+              );
+            },
+          ),
+        ),
+      ),
+    );
+    await tester.tap(find.text('Filters'));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('collection_result_filter')), findsNothing);
+    expect(find.text('Result'), findsNothing);
+    expect(find.text('½-½'), findsNothing);
+    await tester.ensureVisible(find.text('Apply Filters'));
+    await tester.tap(find.text('Apply Filters'));
+    await tester.pumpAndSettle();
+    expect(result!.result, isEmpty); // A stale result never leaks through.
+  });
 }

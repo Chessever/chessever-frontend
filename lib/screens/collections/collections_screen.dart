@@ -117,6 +117,7 @@ class _CollectionsScreenState extends ConsumerState<CollectionsScreen> {
       context,
       _query,
       loadAuthors: ref.read(collectionsRepositoryProvider).fetchAuthors,
+      showResult: false,
     );
     if (mounted && result != null) setState(() => _query = result);
   }
