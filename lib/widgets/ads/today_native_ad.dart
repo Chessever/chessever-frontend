@@ -48,7 +48,9 @@ class _TodayNativeAdState extends ConsumerState<TodayNativeAd>
         adUnitId: NativeAdsConfig.unitId,
         request: const AdRequest(),
         nativeTemplateStyle: NativeTemplateStyle(
-          templateType: TemplateType.small,
+          // The compact template's media area is below the 120x120 video
+          // minimum. Medium provides a full-width video region on both OSes.
+          templateType: TemplateType.medium,
           mainBackgroundColor: colors.surfaceContainerHigh,
           primaryTextStyle: NativeTemplateTextStyle(
             textColor: colors.onSurface,
@@ -101,7 +103,7 @@ class _TodayNativeAdState extends ConsumerState<TodayNativeAd>
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 16),
       child: Center(
-        child: SizedBox(width: 360, height: 140, child: AdWidget(ad: _ad!)),
+        child: SizedBox(width: 360, height: 400, child: AdWidget(ad: _ad!)),
       ),
     );
   }
