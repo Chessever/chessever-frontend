@@ -19,20 +19,18 @@ or device to check the placement:
 flutter run --dart-define-from-file=.env
 ```
 
-Live native ads remain disabled until the platform's separate Native Advanced
-ad-unit ID is configured. Create it in AdMob under Apps → the production app →
-Ad units → Add ad unit → Native Advanced. Rewarded IDs cannot be reused.
-
-Add these build defines, or the corresponding keys in your local define file:
+Production native IDs are configured as defaults. Optional build defines, or
+corresponding keys in your local define file, can override them:
 
 ```text
-ADMOB_ANDROID_NATIVE_ID=ca-app-pub-.../...
-ADMOB_IOS_NATIVE_ID=ca-app-pub-.../...
+ADMOB_ANDROID_NATIVE_ID=ca-app-pub-3681310687796023/2917470581
+ADMOB_IOS_NATIVE_ID=ca-app-pub-3681310687796023/4370153050
 ```
 
 `NATIVE_ADS_ENABLED=false` disables this placement. It defaults to true and is
-independent of `REWARDED_PREMIUM_ENABLED`. Profile/release requires a configured
-native ID; use a registered test device for development with those builds.
+independent of `REWARDED_PREMIUM_ENABLED`. Profile/release uses these native IDs;
+use a registered test device for development with those builds. An empty or
+invalid ID override disables the placement on that platform in profile/release.
 
 ## Device checks
 
