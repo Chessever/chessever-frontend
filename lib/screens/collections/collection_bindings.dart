@@ -300,7 +300,7 @@ class CollectionBooksSection extends ConsumerWidget {
         Semantics(
           header: true,
           child: Text(
-            books.length == 1 ? 'Book' : 'Books',
+            books.length == 1 ? 'Collection' : 'Collections',
             style: titleStyle,
           ),
         ),

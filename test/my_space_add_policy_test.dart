@@ -32,9 +32,10 @@ SpaceShortcut _draft(
 
 void main() {
   test(
-    'only databases and smart events qualify while folders remain navigation-only',
+    'events, databases and smart events qualify while folders remain navigation-only',
     () {
       const permitted = {
+        SpaceShortcutKind.event,
         SpaceShortcutKind.folder,
         SpaceShortcutKind.collection,
         SpaceShortcutKind.smartEvent,
@@ -49,7 +50,11 @@ void main() {
       for (final section in SpaceSection.values) {
         expect(
           section.supportsAddingToMySpace,
-          {SpaceSection.library, SpaceSection.smartEvents}.contains(section),
+          {
+            SpaceSection.events,
+            SpaceSection.library,
+            SpaceSection.smartEvents,
+          }.contains(section),
           reason: section.name,
         );
       }
@@ -113,6 +118,7 @@ void main() {
       expect(
         [for (final group in groups) ...group.items.map((pin) => pin.kind)],
         [
+          SpaceShortcutKind.event,
           SpaceShortcutKind.folder,
           SpaceShortcutKind.smartEvent,
           SpaceShortcutKind.collection,
@@ -181,7 +187,8 @@ void main() {
       expect(rows[1].label, 'Add opening');
       expect(rows[2].visible, isTrue);
       expect(rows[2].label, 'Remove from My Space');
-      expect(rows[3].visible, isFalse);
+      expect(rows[3].visible, isTrue);
+      expect(rows[3].enabled, isTrue);
       expect(rows[3].label, 'Add to My Space');
       await rows.first.onSelected();
       expect(tester.takeException(), isNull);

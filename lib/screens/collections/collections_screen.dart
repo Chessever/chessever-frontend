@@ -1,3 +1,9 @@
+import 'package:chessever2/screens/collections/collection_author_screen.dart';
+import 'package:chessever2/screens/collections/opening_event_card.dart'
+    show collectionOpeningName, OpeningEventCard;
+import 'package:chessever2/screens/tour_detail/widgets/event_search_bar.dart'
+    show EventSearchBarFrame;
+import 'package:chessever2/screens/collections/collection_catalog_views.dart';
 import 'package:chessever2/repository/gamebase/collections/collection_search_query.dart';
 import 'package:chessever2/screens/collections/collection_search_filters.dart';
 import 'package:chessever2/widgets/simple_search_bar.dart';
@@ -42,6 +48,7 @@ import 'package:chessever2/screens/tour_detail/about_tour_screen.dart';
 import 'package:chessever2/screens/standings/player_standing_model.dart';
 import 'package:chessever2/widgets/figma_player_card.dart';
 import 'package:chessever2/utils/svg_asset.dart';
+import 'package:chessever2/utils/png_asset.dart';
 import 'package:chessever2/widgets/svg_widget.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/utils/app_typography.dart';
@@ -63,8 +70,8 @@ import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:intl/intl.dart';
 
-/// The primary Collections destination: indexed openings, published games
-/// and books in the established event-card language.
+/// The primary Collections destination: About, published collections and
+/// authors in the established event-card language.
 class CollectionsScreen extends ConsumerStatefulWidget {
   const CollectionsScreen({super.key, this.embedded = false});
 
@@ -117,8 +124,6 @@ class _CollectionsScreenState extends ConsumerState<CollectionsScreen> {
   @override
   Widget build(BuildContext context) {
     final query = _query;
-    final all = ref.watch(collectionsProvider);
-    final favorites = ref.watch(favoriteEventsProvider).valueOrNull;
     return EventViewShell(
       key: e2eKey(E2eIds.collectionsRoot),
       title: 'Collections',
@@ -167,9 +172,10 @@ class _CollectionsScreenState extends ConsumerState<CollectionsScreen> {
           ),
         ),
       ),
-      tabs: const ['Collections'],
-      // One list, no sections: the tab strip would be a single word.
-      tabStripOverride: const SizedBox.shrink(),
+      // Opening discovery is paused; retain its catalog and wiring below.
+      // tabs: const ['Openings', 'Collections', 'Authors'],
+      tabs: const ['About', 'Collections', 'Authors'],
+      initialTab: 1,
       showBackButton: !embedded,
       homeTab: embedded,
       onOpenSidebar: embedded && (Scaffold.maybeOf(context)?.hasDrawer ?? false)
@@ -184,101 +190,59 @@ class _CollectionsScreenState extends ConsumerState<CollectionsScreen> {
               ),
             )
           : null,
-      pageBuilder: (context, _) => all.when(
-        data: (items) {
-          // Starred collections pin to the top, like starred events do in
-          // the Events lists; the team's order holds inside each group.
-          final visible = _filteredCollections(items, query);
-          if (favorites != null) {
-            visible.sort((a, b) {
-              final sa = collectionIsFavorited(favorites, a) ? 0 : 1;
-              final sb = collectionIsFavorited(favorites, b) ? 0 : 1;
-              return sa.compareTo(sb);
-            });
-          }
-          final body = visible.isEmpty
-              ? _Notice(
-                  text: query.isActive
-                      ? 'No collections match this search.'
-                      : 'No collections yet.',
-                )
-              : ListView.builder(
-                  padding: EdgeInsets.fromLTRB(
-                    16.sp,
-                    16.sp,
-                    16.sp,
-                    24.sp +
-                        MediaQuery.viewPaddingOf(context).bottom +
-                        (embedded ? 72 : 0),
-                  ),
-                  itemCount: visible.length,
-                  itemBuilder: (context, index) => Padding(
-                    padding: EdgeInsets.only(bottom: 12.sp),
-                    child: CollectionCard(collection: visible[index]),
-                  ),
-                );
-          return RefreshIndicator(
-            color: context.colors.textPrimary,
-            backgroundColor: context.colors.surface,
-            onRefresh: () async {
-              ref.invalidate(collectionsProvider);
-              try {
-                await ref.read(collectionsProvider.future);
-              } catch (_) {
-                // The page shows the failure and its retry.
-              }
-            },
-            child: body,
-          );
-        },
-        loading: () => const _CardsSkeleton(),
-        error: (error, _) => _Notice(
-          text: _collectionErrorText(
-            error,
-            fallback: "Couldn't load collections.",
-          ),
-          actionLabel: 'Try again',
-          onAction: () => ref.invalidate(collectionsProvider),
+      pageBuilder: (context, index) => switch (index) {
+        // 0 => CollectionOpeningCatalog(
+        //   query: query,
+        //   bottomPadding: embedded ? 72 : 0,
+        // ),
+        0 => _CollectionsAboutPage(bottomPadding: embedded ? 72 : 0),
+        1 => CollectionBooksCatalog(
+          query: query,
+          bottomPadding: embedded ? 72 : 0,
         ),
-      ),
+        _ => CollectionAuthorsCatalog(
+          query: query,
+          bottomPadding: embedded ? 72 : 0,
+        ),
+      },
     );
   }
 }
 
-/// The unified list answers the search bar and the author/year filters
-/// locally. Game-level filters (ECO, result) have no meaning for a
-/// collection row and are ignored.
-List<Collection> _filteredCollections(
-  List<Collection> items,
-  CollectionSearchQuery query,
-) {
-  final text = query.text.trim().toLowerCase();
-  final author = query.author.trim().toLowerCase();
-  bool matches(Collection c) {
-    if (author.isNotEmpty &&
-        !(c.author ?? c.annotator ?? '').toLowerCase().contains(author)) {
-      return false;
-    }
-    final year = c.publishedYear ?? c.dateStart?.year ?? c.dateEnd?.year;
-    if (query.year != null && year != query.year) return false;
-    if (query.minYear != null && (year ?? 1 << 30) < query.minYear!) {
-      return false;
-    }
-    if (query.maxYear != null && (year ?? -1) > query.maxYear!) return false;
-    if (text.isNotEmpty) {
-      final haystack =
-          '${c.title} ${c.subtitle ?? ''} ${c.author ?? ''} '
-                  '${c.annotator ?? ''} ${c.location ?? ''}'
-              .toLowerCase();
-      if (!haystack.contains(text)) return false;
-    }
-    return true;
-  }
+class _CollectionsAboutPage extends StatelessWidget {
+  const _CollectionsAboutPage({this.bottomPadding = 0});
 
-  return [
-    for (final c in items)
-      if (matches(c)) c,
-  ];
+  final double bottomPadding;
+
+  @override
+  Widget build(BuildContext context) => ListView(
+    key: const PageStorageKey('collections_about'),
+    padding: _tabListPadding(
+      context,
+    ).add(EdgeInsets.only(bottom: bottomPadding)),
+    children: [
+      Text('About collections', style: _aboutHeadingStyle(context)),
+      SizedBox(height: 12.sp),
+      Text(
+        'Explore curated chess games with their original PGN annotations '
+        'and variations.',
+        style: AppTypography.textSmRegular.copyWith(
+          color: context.colors.textPrimary,
+          height: 1.5,
+        ),
+      ),
+      SizedBox(height: 16.sp),
+      Text(
+        'Open a collection to read about it, replay its games, or browse its '
+        'players. Search and filters help you find games; Authors lets you '
+        'explore each author\'s collections.',
+        style: AppTypography.textSmRegular.copyWith(
+          color: context.colors.textSecondary,
+          height: 1.5,
+        ),
+      ),
+    ],
+  );
 }
 
 /// The favorites identity of a collection. A starred collection is a plain
@@ -346,6 +310,18 @@ SpaceShortcut collectionSpaceDraft(Collection c) {
       'slug': c.slug,
       'collectionKind': c.kind.name,
       'gameCount': c.gameCount,
+      if (c.subtitle != null) 'subtitle': c.subtitle,
+      if (c.author != null) 'author': c.author,
+      if (c.annotator != null) 'annotator': c.annotator,
+      if (c.location != null) 'location': c.location,
+      if (c.dateStart != null) 'dateStart': c.dateStart!.toIso8601String(),
+      if (c.dateEnd != null) 'dateEnd': c.dateEnd!.toIso8601String(),
+      if (c.publishedYear != null) 'publishedYear': c.publishedYear,
+      'access': c.access.name,
+      'viewCount': c.viewCount,
+      'starCount': c.starCount,
+      'eventCount': c.eventCount,
+      if (c.bookCount != null) 'bookCount': c.bookCount,
       if (c.coverUrl != null) 'coverUrl': c.coverUrl,
     },
   );
@@ -358,8 +334,8 @@ SpaceShortcut collectionSpaceDraft(Collection c) {
 /// carries them). Held, it lifts into the focus menu with Open and My
 /// Space.
 ///
-/// A book stands as a book does, on a portrait cover; an event keeps its
-/// landscape picture. A Premium collection the viewer cannot read yet
+/// Books and events share the landscape plate in lists; a book's About
+/// page preserves its complete jacket. A Premium collection the viewer cannot read yet
 /// carries the padlock after its game count (the page's one lock
 /// placement); it still opens, on its preview. [note] is the team's caption
 /// when the card is listed for an event ("Chapter 7 is this match's
@@ -381,6 +357,7 @@ class CollectionCard extends ConsumerWidget {
     final c = collection;
     final engagement = ref.watch(collectionEngagementCountsProvider(c.slug));
     final views = (engagement?['viewCount'] as num?)?.toInt() ?? c.viewCount;
+    final stars = (engagement?['starCount'] as num?)?.toInt() ?? c.starCount;
 
     final subscription = ref.watch(subscriptionProvider);
     final locked = isCollectionLocked(
@@ -416,7 +393,7 @@ class CollectionCard extends ConsumerWidget {
         ? (named == null && c.eventCount > 0
               ? _plural(c.eventCount, 'event')
               : null)
-        : ((c.bookCount ?? 0) > 0 ? _plural(c.bookCount!, 'book') : null);
+        : ((c.bookCount ?? 0) > 0 ? _plural(c.bookCount!, 'collection') : null);
     final tally = opening == null
         ? [_plural(c.gameCount, 'game'), ?bindings].join(' · ')
         : [
@@ -438,25 +415,34 @@ class CollectionCard extends ConsumerWidget {
     return CollectionPlateRow(
       plate: _Cover(collection: c),
       plateSize: CollectionPlateRow.eventPlate,
-      stats: isBook
-          ? Row(
-              children: [
-                Icon(
-                  Icons.visibility_outlined,
-                  size: 14.ic,
+      compactDetails: isBook,
+      detailItems: isBook
+          ? [
+              Text.rich(
+                TextSpan(
+                  children: [
+                    WidgetSpan(
+                      alignment: PlaceholderAlignment.middle,
+                      child: Padding(
+                        padding: EdgeInsetsDirectional.only(end: 4.sp),
+                        child: Icon(
+                          Icons.visibility_outlined,
+                          size: 14.ic,
+                          color: context.colors.textSecondary,
+                        ),
+                      ),
+                    ),
+                    TextSpan(text: '$views'),
+                  ],
+                ),
+                key: const ValueKey('collection_card_views'),
+                style: AppTypography.textXsRegular.copyWith(
                   color: context.colors.textSecondary,
+                  fontFeatures: const [FontFeature.tabularFigures()],
                 ),
-                SizedBox(width: 4.w),
-                Text(
-                  '$views',
-                  style: AppTypography.textXsRegular.copyWith(
-                    color: context.colors.textSecondary,
-                    fontFeatures: const [FontFeature.tabularFigures()],
-                  ),
-                ),
-              ],
-            )
-          : null,
+              ),
+            ]
+          : const [],
       title: c.title,
       meta: identity,
       metaMaxLines: 2,
@@ -468,10 +454,12 @@ class CollectionCard extends ConsumerWidget {
         ?identity,
         tally,
         if (locked) 'Premium',
+        if (isBook) _plural(views, 'view'),
+        if (isBook && stars > 0) _plural(stars, 'star'),
         ?caption,
       ].join(', '),
       onTap: open,
-      trailing: _CollectionStar(collection: c),
+      trailing: _CollectionStar(collection: c, count: isBook ? stars : null),
       menuActions: (menuContext) => [
         LibraryMenuAction(
           icon: Icons.open_in_new_rounded,
@@ -491,7 +479,9 @@ class CollectionCard extends ConsumerWidget {
 /// A collection's star, the event card's star in the same place: filled
 /// gold while starred, an outline otherwise.
 class _CollectionStar extends ConsumerWidget {
-  const _CollectionStar({required this.collection});
+  const _CollectionStar({required this.collection, this.count});
+
+  final int? count;
 
   final Collection collection;
 
@@ -500,11 +490,6 @@ class _CollectionStar extends ConsumerWidget {
     final favorites = ref.watch(favoriteEventsProvider).valueOrNull;
     final starred =
         favorites != null && collectionIsFavorited(favorites, collection);
-    final engagement = ref.watch(
-      collectionEngagementCountsProvider(collection.slug),
-    );
-    final stars =
-        (engagement?['starCount'] as num?)?.toInt() ?? collection.starCount;
     final icon = SvgWidget(
       starred ? SvgAsset.starFilledIcon : SvgAsset.starIcon,
       semanticsLabel: 'Favorite Icon',
@@ -523,25 +508,43 @@ class _CollectionStar extends ConsumerWidget {
           ref: ref,
           collection: collection,
         ),
-        child: Padding(
-          padding: EdgeInsets.fromLTRB(6.w, 6.h, 2.w, 6.h),
-          child: collection.kind == CollectionKind.book
-              ? Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    icon,
-                    SizedBox(height: 3.h),
-                    Text(
-                      '$stars',
-                      style: AppTypography.textXsRegular.copyWith(
-                        color: context.colors.textSecondary,
-                        fontFeatures: const [FontFeature.tabularFigures()],
-                      ),
-                    ),
-                  ],
-                )
-              : icon,
-        ),
+        child: collection.kind == CollectionKind.book
+            ? SizedBox(
+                width: 48,
+                height: 64,
+                child: ExcludeSemantics(
+                  child: Stack(
+                    alignment: Alignment.center,
+                    children: [
+                      icon,
+                      if ((count ?? 0) > 0)
+                        Positioned(
+                          bottom: 0,
+                          left: 0,
+                          right: 0,
+                          height: 18,
+                          child: FittedBox(
+                            fit: BoxFit.scaleDown,
+                            child: Text(
+                              '$count',
+                              key: const ValueKey('collection_card_star_count'),
+                              style: AppTypography.textXsRegular.copyWith(
+                                color: context.colors.textSecondary,
+                                fontFeatures: const [
+                                  FontFeature.tabularFigures(),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              )
+            : Padding(
+                padding: EdgeInsets.fromLTRB(6.w, 6.h, 2.w, 6.h),
+                child: ExcludeSemantics(child: icon),
+              ),
       ),
     );
   }
@@ -668,7 +671,7 @@ String? collectionDateRange(DateTime? start, DateTime? end) {
 /// Where section headers and the player line start: the game cards' edge.
 double get _headerInset => discoveryGutter + 4.sp;
 
-/// Every collection shares About, Games and Openings. Credits, related
+/// Every collection shares About, Games and Players. Credits, related
 /// events and books, and the player filter remain available from About.
 class CollectionScreen extends ConsumerStatefulWidget {
   const CollectionScreen({super.key, required this.collection, this.opening});
@@ -683,9 +686,13 @@ class CollectionScreen extends ConsumerStatefulWidget {
 
 class _CollectionScreenState extends ConsumerState<CollectionScreen> {
   static const int _aboutTab = 0;
+  // int get _gamesTab => _isBook ? 2 : 1;
   static const int _gamesTab = 1;
 
-  static const List<String> _collectionTabs = ['About', 'Games', 'Players'];
+  // List<String> get _collectionTabs => _isBook
+  //     ? const ['About', 'Openings', 'Games', 'Players']
+  //     : const ['About', 'Games', 'Players'];
+  List<String> get _collectionTabs => const ['About', 'Games', 'Players'];
   late CollectionOpening? _opening = widget.opening;
 
   /// Fixed by the kind the page opened as, so the tab strip never changes
@@ -693,9 +700,7 @@ class _CollectionScreenState extends ConsumerState<CollectionScreen> {
   late final bool _isBook = widget.collection.kind == CollectionKind.book;
 
   final EventViewController _tabs = EventViewController();
-
-  /// The player whose games the Games tab shows, or null for all.
-  CollectionPlayer? _player;
+  final _bookGameSearch = _CollectionGamesSearchState();
 
   // A book opens on the compact tournament list, even if another screen was
   // left on a board grid. Switching this page never changes other screens.
@@ -737,6 +742,7 @@ class _CollectionScreenState extends ConsumerState<CollectionScreen> {
   @override
   void initState() {
     super.initState();
+    _bookGameSearch.addListener(_bookSearchChanged);
     if (_isBook) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) {
@@ -746,11 +752,17 @@ class _CollectionScreenState extends ConsumerState<CollectionScreen> {
     }
   }
 
+  void _bookSearchChanged() {
+    if (mounted) setState(() {});
+  }
+
   @override
   void dispose() {
+    _bookGameSearch.removeListener(_bookSearchChanged);
     _confirm.cancel();
     _confirmationChanges.dispose();
     _tabs.dispose();
+    _bookGameSearch.dispose();
     super.dispose();
   }
 
@@ -873,14 +885,30 @@ class _CollectionScreenState extends ConsumerState<CollectionScreen> {
   }
 
   void _showPlayer(CollectionPlayer? player) {
-    HapticFeedbackService.selection();
-    setState(() => _player = player);
-    if (player != null) _tabs.showTab(_gamesTab);
+    if (player == null) return;
+    HapticFeedbackService.cardTap();
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => _CollectionScopedGamesScreen(
+          collection: widget.collection,
+          player: player,
+        ),
+      ),
+    );
   }
 
-  /// Related content keeps its existing views without adding different main
-  /// tabs to different kinds. The route watches detail again, so opening it
-  /// while a request is pending never strands its loading state.
+  void _showOpeningGames(Collection collection, CollectionOpening opening) {
+    HapticFeedbackService.cardTap();
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => _CollectionScopedGamesScreen(
+          collection: collection,
+          opening: opening,
+        ),
+      ),
+    );
+  }
+
   void _showRelated(String label) {
     HapticFeedbackService.navigation();
     Navigator.of(context).push(
@@ -916,7 +944,7 @@ class _CollectionScreenState extends ConsumerState<CollectionScreen> {
                     error: error,
                     onRetry: retry,
                   ),
-                  'Books' => _BooksPage(
+                  'Collections' => _BooksPage(
                     collectionId: c.id,
                     pending: pending,
                     error: error,
@@ -935,10 +963,8 @@ class _CollectionScreenState extends ConsumerState<CollectionScreen> {
                             ),
                             data: (list) => _PlayersPage(
                               players: list,
-                              onPick: (player) {
-                                Navigator.of(context).pop();
-                                _showPlayer(player);
-                              },
+                              numbered: _isBook,
+                              onPick: _showPlayer,
                             ),
                             loading: () => const _CardsSkeleton(),
                             error: (error, _) => isCollectionPremiumGate(error)
@@ -1071,8 +1097,36 @@ class _CollectionScreenState extends ConsumerState<CollectionScreen> {
     return EventViewShell(
       title: c.title,
       tabs: _collectionTabs,
+      // scrollableTabs: _isBook,
       initialTab: _initialTab,
       controller: _tabs,
+      beforeTabsBuilder: _isBook
+          ? (context, selectedTab) => _CollectionGamesSearchBar(
+              state: _bookGameSearch,
+              opening: _opening,
+              onClearOpening: () => setState(() => _opening = null),
+              pinned: true,
+              hintText: 'Search collection',
+            )
+          : null,
+      contentOverride: _isBook && _bookGameSearch.query.isActive
+          ? locked || serverLocked
+                ? _LockedContents(
+                    collection: c,
+                    phase: phase,
+                    onUnlock: unlock,
+                    onLineTap: lineTap,
+                  )
+                : _BookSearchResults(
+                    slug: slug,
+                    query: _bookGameSearch.query,
+                    opening: _opening,
+                    viewMode: _gamesViewMode,
+                    onOpening: (opening) => _showOpeningGames(c, opening),
+                    onPlayer: _showPlayer,
+                    onGame: _openGame,
+                  )
+          : null,
       actions: [
         Semantics(
           label: 'Toggle chessboard view',
@@ -1115,6 +1169,15 @@ class _CollectionScreenState extends ConsumerState<CollectionScreen> {
         ),
       ],
       pageBuilder: (context, index) {
+        // Book opening discovery is paused, with the full implementation kept.
+        // if (_isBook && index == 1) {
+        //   return CollectionOpeningCatalog(
+        //     query: const CollectionSearchQuery(),
+        //     slug: slug,
+        //     onPick: (opening) => _showOpeningGames(c, opening),
+        //   );
+        // }
+        // final contentIndex = _isBook && index > 1 ? index - 1 : index;
         return switch (index) {
           0 => _AboutPage(
             collection: c,
@@ -1132,7 +1195,7 @@ class _CollectionScreenState extends ConsumerState<CollectionScreen> {
             onRetry: retryDetail,
             onShowEvents: _isBook ? () => _showRelated('Events') : null,
             onShowBooks: c.kind == CollectionKind.event
-                ? () => _showRelated('Books')
+                ? () => _showRelated('Collections')
                 : null,
             onShowPlayers: _isBook ? null : () => _showRelated('Players'),
           ),
@@ -1152,9 +1215,14 @@ class _CollectionScreenState extends ConsumerState<CollectionScreen> {
                       contents.error,
                     ),
                     data: (data) => _GamesPage(
+                      slug: slug,
+                      searchState: _isBook ? _bookGameSearch : null,
                       contents: data,
                       showSelector: c.kind != CollectionKind.book,
-                      player: _player,
+                      // Book chapters/rounds are paused; _groupedBody retains
+                      // the shared layout for events and scoped game routes.
+                      flatList: _isBook,
+                      player: null,
                       onClearPlayer: () => _showPlayer(null),
                       onOpen: _openGame,
                       viewMode: _gamesViewMode,
@@ -1208,8 +1276,11 @@ class _CollectionScreenState extends ConsumerState<CollectionScreen> {
                   )
                 : players.when(
                     skipLoadingOnReload: isCollectionPremiumGate(players.error),
-                    data: (list) =>
-                        _PlayersPage(players: list, onPick: _showPlayer),
+                    data: (list) => _PlayersPage(
+                      players: list,
+                      numbered: _isBook,
+                      onPick: _showPlayer,
+                    ),
                     loading: () => const _CardsSkeleton(),
                     error: (error, _) => isCollectionPremiumGate(error)
                         ? _LockedPlayers(
@@ -1252,9 +1323,9 @@ String _unlockLabel(Collection c) {
   final n = c.gameCount;
   if (c.kind == CollectionKind.book) {
     return switch (n) {
-      0 => 'Read this book',
-      1 => 'Read the game in this book',
-      _ => 'Read all $n games in this book',
+      0 => 'Read this collection',
+      1 => 'Read the game in this collection',
+      _ => 'Read all $n games in this collection',
     };
   }
   return switch (n) {
@@ -1535,6 +1606,18 @@ class _AboutPage extends ConsumerWidget {
     final secondary = AppTypography.textSmRegular.copyWith(
       color: colors.textSecondary,
     );
+    if (isBook) {
+      return _BookAboutPage(
+        collection: c,
+        facts: facts,
+        locked: locked,
+        phase: phase,
+        onUnlock: onUnlock,
+        error: error,
+        onRetry: onRetry,
+        onShowEvents: onShowEvents,
+      );
+    }
     return ListView(
       padding: EdgeInsets.fromLTRB(
         20.sp,
@@ -1568,8 +1651,9 @@ class _AboutPage extends ConsumerWidget {
         ),
         if (credit != null) ...[
           SizedBox(height: 4.sp),
-          Text(
-            c.author != null ? 'by $credit' : 'Annotated by $credit',
+          _CollectionAuthorCredit(
+            collection: c,
+            label: c.author != null ? 'by $credit' : 'Annotated by $credit',
             style: AppTypography.textSmMedium.copyWith(
               color: colors.textPrimary,
               fontWeight: FontWeight.w600,
@@ -1677,7 +1761,10 @@ class _AboutPage extends ConsumerWidget {
             if (onShowEvents != null)
               TextButton(onPressed: onShowEvents, child: const Text('Events')),
             if (onShowBooks != null)
-              TextButton(onPressed: onShowBooks, child: const Text('Books')),
+              TextButton(
+                onPressed: onShowBooks,
+                child: const Text('Collections'),
+              ),
             if (onShowPlayers != null)
               TextButton(
                 onPressed: onShowPlayers,
@@ -1698,58 +1785,255 @@ String collectionContentsSummary(Collection c) => switch (c.kind) {
   CollectionKind.analysis => 'Selected game analysis from ${c.title}.',
 };
 
-/// A book's jacket on its About page, whole: standing 2:3 as it was
-/// printed, centred over the title as a shelf would show it, never cropped
-/// to a landscape band that loses its title and author. A tight shadow cast
-/// from above lifts it off a light page; on a dark one a faint lip of the
-/// ink separates a dark jacket from the ground.
+/// Author credits open the shared profile on About. An annotator-only credit
+/// remains editorial text rather than guessing an author identity.
+class _CollectionAuthorCredit extends StatelessWidget {
+  const _CollectionAuthorCredit({
+    required this.collection,
+    required this.label,
+    required this.style,
+  });
+  final Collection collection;
+  final String label;
+  final TextStyle style;
+
+  @override
+  Widget build(BuildContext context) {
+    final name = collection.author?.trim();
+    if (name == null || name.isEmpty) return Text(label, style: style);
+    return TextButton(
+      key: ValueKey('collection_author_credit_${collection.slug}'),
+      onPressed: () => CollectionAuthorScreen.open(
+        context,
+        author: CollectionAuthor(id: collection.authorId ?? name, name: name),
+        collectionSlug: collection.slug,
+        about: true,
+      ),
+      style: TextButton.styleFrom(
+        foregroundColor: style.color,
+        padding: EdgeInsets.zero,
+        minimumSize: const Size(44, 44),
+        alignment: AlignmentDirectional.centerStart,
+      ),
+      child: Text(label, style: style),
+    );
+  }
+}
+
+/// A compact jacket and bibliographic identity, then the editor's own text.
+/// Missing editorial fields leave no empty headings or invented description.
+class _BookAboutPage extends StatelessWidget {
+  const _BookAboutPage({
+    required this.collection,
+    required this.facts,
+    required this.locked,
+    required this.phase,
+    required this.onUnlock,
+    this.error,
+    this.onRetry,
+    this.onShowEvents,
+  });
+
+  final Collection collection;
+  final String facts;
+  final bool locked;
+  final CollectionUnlockPhase phase;
+  final VoidCallback onUnlock;
+  final Object? error;
+  final VoidCallback? onRetry;
+  final VoidCallback? onShowEvents;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = collection;
+    final colors = context.colors;
+    final body = AppTypography.textSmRegular.copyWith(
+      color: colors.textPrimary,
+      fontSize: 15.f,
+      height: 22 / 15,
+    );
+    final secondary = AppTypography.textSmRegular.copyWith(
+      color: colors.textSecondary,
+      height: 20 / 14,
+    );
+    final credit = c.author ?? c.annotator;
+    final edition = [
+      ?c.publisher,
+      if (c.publishedYear != null) '${c.publishedYear}',
+    ];
+    final description = _paragraphs(c.about);
+    final foreword = _paragraphs(c.foreword);
+    final authorBio = _paragraphs(c.authorBio);
+    final annotatorBio = c.annotatorBio == c.authorBio
+        ? <String>[]
+        : _paragraphs(c.annotatorBio);
+
+    List<Widget> section(
+      String title,
+      List<String> paragraphs, {
+      Key? firstKey,
+    }) => [
+      if (paragraphs.isNotEmpty) ...[
+        SizedBox(height: 24.sp),
+        Semantics(
+          header: true,
+          child: Text(title, style: _aboutHeadingStyle(context)),
+        ),
+        for (var i = 0; i < paragraphs.length; i++) ...[
+          SizedBox(height: i == 0 ? 8.sp : 12.sp),
+          Text(paragraphs[i], key: i == 0 ? firstKey : null, style: body),
+        ],
+      ],
+    ];
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final gutter = math.max(20.sp, (constraints.maxWidth - 640) / 2);
+        return ListView(
+          key: const ValueKey('book_about_content'),
+          padding: EdgeInsets.fromLTRB(
+            gutter,
+            20.sp,
+            gutter,
+            32.sp + MediaQuery.viewPaddingOf(context).bottom,
+          ),
+          children: [
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (c.coverUrl != null) ...[
+                  _BookCover(collection: c),
+                  SizedBox(width: 16.sp),
+                ],
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Semantics(
+                        header: true,
+                        child: Text(
+                          c.title,
+                          style: AppTypography.textSmMedium.copyWith(
+                            color: colors.textPrimary,
+                            fontSize: 20.f,
+                            height: 26 / 20,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ),
+                      if (c.subtitle != null &&
+                          c.subtitle!.trim().isNotEmpty) ...[
+                        SizedBox(height: 4.sp),
+                        Text(c.subtitle!, style: secondary),
+                      ],
+                      if (credit != null && credit.trim().isNotEmpty) ...[
+                        SizedBox(height: 8.sp),
+                        _CollectionAuthorCredit(
+                          collection: c,
+                          label: c.author != null
+                              ? 'by $credit'
+                              : 'Annotated by $credit',
+                          style: AppTypography.textSmMedium.copyWith(
+                            color: colors.textPrimary,
+                          ),
+                        ),
+                      ],
+                      if (c.author != null &&
+                          c.annotator != null &&
+                          c.annotator != c.author) ...[
+                        SizedBox(height: 4.sp),
+                        Text('Annotated by ${c.annotator}', style: secondary),
+                      ],
+                      if (edition.isNotEmpty) ...[
+                        SizedBox(height: 8.sp),
+                        Text(edition.join(' · '), style: secondary),
+                      ],
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            if (facts.isNotEmpty) ...[
+              SizedBox(height: 16.sp),
+              Text(
+                facts,
+                style: secondary.copyWith(
+                  fontFeatures: const [FontFeature.tabularFigures()],
+                ),
+              ),
+            ],
+            if (locked) ...[
+              SizedBox(height: 8.sp),
+              _UnlockAction(collection: c, phase: phase, onUnlock: onUnlock),
+            ],
+            if (error != null) ...[
+              SizedBox(height: 16.sp),
+              Text(
+                userFacingError(
+                  error,
+                  fallback: "Couldn't load the rest of this collection.",
+                ),
+                style: secondary,
+              ),
+              if (onRetry != null)
+                Align(
+                  alignment: AlignmentDirectional.centerStart,
+                  child: TextButton(
+                    style: TextButton.styleFrom(
+                      padding: EdgeInsets.zero,
+                      minimumSize: const Size(48, 48),
+                      alignment: AlignmentDirectional.centerStart,
+                    ),
+                    onPressed: onRetry,
+                    child: const Text('Try again'),
+                  ),
+                ),
+            ],
+            ...section('About this collection', description),
+            ...section(
+              'Foreword',
+              foreword,
+              firstKey: const ValueKey('collection_foreword'),
+            ),
+            ...section('About the author', authorBio),
+            ...section('About the annotator', annotatorBio),
+            if (onShowEvents != null) ...[
+              SizedBox(height: 24.sp),
+              Align(
+                alignment: AlignmentDirectional.centerStart,
+                child: TextButton(
+                  style: TextButton.styleFrom(
+                    padding: EdgeInsets.zero,
+                    minimumSize: const Size(48, 48),
+                    alignment: AlignmentDirectional.centerStart,
+                  ),
+                  onPressed: onShowEvents,
+                  child: const Text('Events'),
+                ),
+              ),
+            ],
+          ],
+        );
+      },
+    );
+  }
+}
+
+/// Keep the complete jacket visible beside the book's identity.
 class _BookCover extends StatelessWidget {
   const _BookCover({required this.collection});
 
   final Collection collection;
 
   @override
-  Widget build(BuildContext context) {
-    final colors = context.colors;
-    final isLight = context.isLightTheme;
-    final radius = BorderRadius.circular(4.br);
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final width = math.min(constraints.maxWidth * 0.42, 200.0);
-        return Center(
-          child: Container(
-            width: width,
-            height: width * 3 / 2,
-            decoration: BoxDecoration(
-              borderRadius: radius,
-              boxShadow: isLight
-                  ? [
-                      BoxShadow(
-                        color: colors.textPrimary.withValues(alpha: 0.16),
-                        offset: const Offset(0, 3),
-                        blurRadius: 8,
-                        spreadRadius: -2,
-                      ),
-                    ]
-                  : null,
-            ),
-            foregroundDecoration: isLight
-                ? null
-                : BoxDecoration(
-                    borderRadius: radius,
-                    border: Border.all(
-                      color: colors.textPrimary.withValues(alpha: 0.1),
-                    ),
-                  ),
-            child: ClipRRect(
-              borderRadius: radius,
-              child: _Cover(collection: collection, fit: BoxFit.contain),
-            ),
-          ),
-        );
-      },
-    );
-  }
+  Widget build(BuildContext context) => ClipRRect(
+    borderRadius: BorderRadius.circular(4.br),
+    child: SizedBox(
+      width: 80.w,
+      height: 120.w,
+      child: _Cover(collection: collection, fit: BoxFit.contain),
+    ),
+  );
 }
 
 /// A heading inside the About page: the page's own ink and weight, no
@@ -1790,13 +2074,13 @@ class _EventsPage extends StatelessWidget {
         return _Notice(
           text: userFacingError(
             failed,
-            fallback: "Couldn't load this book's events.",
+            fallback: "Couldn't load this collection's events.",
           ),
           actionLabel: 'Try again',
           onAction: onRetry,
         );
       }
-      return const _Notice(text: 'No events for this book yet.');
+      return const _Notice(text: 'No events for this collection yet.');
     }
     return ListView.builder(
       key: const PageStorageKey<String>('collection_events'),
@@ -1841,7 +2125,7 @@ class _BooksPage extends ConsumerWidget {
         return _Notice(
           text: userFacingError(
             failed,
-            fallback: "Couldn't load the books about this event.",
+            fallback: "Couldn't load the collections about this event.",
           ),
           actionLabel: 'Try again',
           onAction: onRetry,
@@ -1854,7 +2138,7 @@ class _BooksPage extends ConsumerWidget {
     );
     return books.when(
       data: (list) => list.isEmpty
-          ? const _Notice(text: 'No books about this event yet.')
+          ? const _Notice(text: 'No collections about this event yet.')
           : ListView.builder(
               key: const PageStorageKey<String>('collection_books'),
               padding: _tabListPadding(context),
@@ -1872,7 +2156,7 @@ class _BooksPage extends ConsumerWidget {
       error: (error, _) => _Notice(
         text: userFacingError(
           error,
-          fallback: "Couldn't load the books about this event.",
+          fallback: "Couldn't load the collections about this event.",
         ),
         actionLabel: 'Try again',
         onAction: () => ref.invalidate(
@@ -2265,7 +2549,378 @@ List<String> _paragraphs(String? text) => [
     if (p.trim().isNotEmpty) p.trim(),
 ];
 
-class _GamesPage extends StatefulWidget {
+class _CollectionScopedGamesScreen extends ConsumerStatefulWidget {
+  const _CollectionScopedGamesScreen({
+    required this.collection,
+    this.player,
+    this.opening,
+  }) : assert(player != null || opening != null);
+  final Collection collection;
+  final CollectionPlayer? player;
+  final CollectionOpening? opening;
+  @override
+  ConsumerState<_CollectionScopedGamesScreen> createState() =>
+      _CollectionScopedGamesScreenState();
+}
+
+class _CollectionScopedGamesScreenState
+    extends ConsumerState<_CollectionScopedGamesScreen> {
+  GamesListViewMode _mode = GamesListViewMode.gamesCard;
+  @override
+  Widget build(BuildContext context) => EventViewShell(
+    title: widget.player?.name ?? collectionOpeningName(widget.opening!),
+    tabs: const ['Games'],
+    tabStripOverride: const SizedBox.shrink(),
+    actions: [
+      IconButton(
+        tooltip: 'Change games layout',
+        icon: Icon(
+          _mode == GamesListViewMode.gamesCard
+              ? Icons.grid_view_rounded
+              : Icons.view_list_rounded,
+        ),
+        onPressed: () => setState(
+          () => _mode = GamesListViewMode
+              .values[(_mode.index + 1) % GamesListViewMode.values.length],
+        ),
+      ),
+    ],
+    pageBuilder: (_, __) => _GamesPage(
+      slug: widget.collection.slug,
+      contents: const CollectionContents(sections: [], games: []),
+      player: widget.player,
+      opening: widget.opening,
+      groupByDate: true,
+      showSelector: false,
+      onClearPlayer: () {},
+      viewMode: _mode,
+      onOpen: (games, index) {
+        ref.read(chessboardViewFromProviderNew.notifier).state =
+            ChessboardView.tour;
+        Navigator.of(context).push(
+          MaterialPageRoute<void>(
+            builder: (_) => ChessBoardScreenNew(
+              currentIndex: index,
+              games: games,
+              viewSource: ChessboardView.tour,
+              showGamebaseButton: false,
+              disableGamebaseOverlayByDefault: true,
+              allowGameExport: false,
+            ),
+          ),
+        );
+      },
+    ),
+  );
+}
+
+/// One book-scoped result list, using the same cards as the original tabs.
+class _BookSearchResults extends ConsumerWidget {
+  const _BookSearchResults({
+    required this.slug,
+    required this.query,
+    required this.opening,
+    required this.viewMode,
+    required this.onOpening,
+    required this.onPlayer,
+    required this.onGame,
+  });
+
+  final String slug;
+  final CollectionSearchQuery query;
+  final CollectionOpening? opening;
+  final GamesListViewMode viewMode;
+  final ValueChanged<CollectionOpening> onOpening;
+  final ValueChanged<CollectionPlayer> onPlayer;
+  final void Function(List<GamesTourModel>, int) onGame;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final effective = query.eco.isEmpty && opening != null
+        ? CollectionSearchQuery(
+            text: query.text,
+            eco: opening!.eco,
+            result: query.result,
+            year: query.year,
+            minYear: query.minYear,
+            maxYear: query.maxYear,
+            annotated: query.annotated,
+            sort: query.sort,
+          )
+        : query;
+    final gameKey = (slug: slug, query: effective, player: null as String?);
+    final games = ref.watch(collectionFilteredContentsProvider(gameKey));
+    // Game filters constrain openings and players too, without requiring their
+    // names to occur in a game's PGN text. Each section matches text itself.
+    final scopeQuery = effective.withText('');
+    final scopeKey = (slug: slug, query: scopeQuery, player: null as String?);
+    final scope = scopeQuery.isActive
+        ? ref.watch(collectionFilteredContentsProvider(scopeKey))
+        : null;
+    final openings = ref.watch(collectionOpeningsProvider(slug));
+    final players = ref.watch(collectionPlayersProvider(slug));
+    final text = query.text.trim().toLowerCase();
+    bool matches(String value) => value.toLowerCase().contains(text);
+    final scopedGames = scope?.valueOrNull?.games;
+    final openingItems = [
+      for (final item in openings.valueOrNull ?? const <CollectionOpening>[])
+        if ((matches(item.eco) || matches(collectionOpeningName(item))) &&
+            (scope == null ||
+                scopedGames?.any((game) => game.card.eco == item.eco) == true))
+          item,
+    ];
+    final playerItems = [
+      for (final item in players.valueOrNull ?? const <CollectionPlayer>[])
+        if (matches('${item.title ?? ''} ${item.name} ${item.fed ?? ''}') &&
+            (scope == null ||
+                scopedGames?.any(
+                      (game) =>
+                          game.card.involves(item.key) ||
+                          item.aliasKeys.any(game.card.involves),
+                    ) ==
+                    true))
+          item,
+    ];
+    final gameItems = games.valueOrNull?.games ?? const <CollectionGame>[];
+    final ordered = [for (final game in gameItems) game.game];
+    final perRow = viewMode == GamesListViewMode.chessBoardGrid ? 2 : 1;
+    Widget heading(String title, int count) => Padding(
+      padding: EdgeInsets.fromLTRB(16.sp, 16.sp, 16.sp, 12.sp),
+      child: Text(
+        '$title ($count)',
+        style: AppTypography.textSmMedium.copyWith(
+          color: context.colors.textPrimary,
+        ),
+      ),
+    );
+    Widget status(AsyncValue<Object?> value, String empty, VoidCallback retry) {
+      if (value.isLoading) {
+        return Padding(
+          padding: EdgeInsets.all(16.sp),
+          child: const Center(child: CircularProgressIndicator()),
+        );
+      }
+      return Padding(
+        padding: EdgeInsets.symmetric(horizontal: 16.sp, vertical: 8.sp),
+        child: value.hasError
+            ? Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    userFacingError(
+                      value.error!,
+                      fallback: "Couldn't load results.",
+                    ),
+                  ),
+                  TextButton(onPressed: retry, child: const Text('Try again')),
+                ],
+              )
+            : Text(
+                empty,
+                style: AppTypography.textSmRegular.copyWith(
+                  color: context.colors.textSecondary,
+                ),
+              ),
+      );
+    }
+
+    final openingStatus = scope != null && (scope.isLoading || scope.hasError)
+        ? scope
+        : openings;
+    final playerStatus = scope != null && (scope.isLoading || scope.hasError)
+        ? scope
+        : players;
+    void retryScope() {
+      ref.invalidate(collectionFilteredContentsProvider(scopeKey));
+    }
+
+    return CustomScrollView(
+      key: const ValueKey('book_search_results'),
+      slivers: [
+        SliverToBoxAdapter(child: heading('Openings', openingItems.length)),
+        if (openingItems.isEmpty)
+          SliverToBoxAdapter(
+            child: status(openingStatus, 'No openings match this search.', () {
+              ref.invalidate(collectionOpeningsProvider(slug));
+              retryScope();
+            }),
+          ),
+        SliverList.builder(
+          itemCount: openingItems.length,
+          itemBuilder: (_, index) {
+            final item = openingItems[index];
+            return Padding(
+              padding: EdgeInsets.fromLTRB(16.sp, 0, 16.sp, 8.sp),
+              child: OpeningEventCard(
+                key: ValueKey('book_search_opening_${item.eco}'),
+                name: collectionOpeningName(item),
+                eco: item.eco,
+                fen: item.fen,
+                gameCount: item.gameCount,
+                useEventImageFrame: true,
+                onTap: () => onOpening(item),
+              ),
+            );
+          },
+        ),
+        SliverToBoxAdapter(child: heading('Games', ordered.length)),
+        if (ordered.isEmpty)
+          SliverToBoxAdapter(
+            child: status(
+              games,
+              'No games match this search.',
+              () => ref.invalidate(collectionFilteredContentsProvider(gameKey)),
+            ),
+          ),
+        SliverList.builder(
+          itemCount: (ordered.length / perRow).ceil(),
+          itemBuilder: (_, index) => Padding(
+            padding: EdgeInsets.only(bottom: 12.sp),
+            child: DiscoveryGameList(
+              games: ordered,
+              start: index * perRow,
+              limit: perRow,
+              viewMode: viewMode,
+              streamEnabled: false,
+              onOpen: (_, local) => onGame(ordered, local),
+            ),
+          ),
+        ),
+        SliverToBoxAdapter(child: heading('Players', playerItems.length)),
+        if (playerItems.isEmpty)
+          SliverToBoxAdapter(
+            child: status(playerStatus, 'No players match this search.', () {
+              ref.invalidate(collectionPlayersProvider(slug));
+              retryScope();
+            }),
+          ),
+        SliverList.builder(
+          itemCount: playerItems.length,
+          itemBuilder: (_, index) => Padding(
+            padding: EdgeInsets.fromLTRB(16.sp, 0, 16.sp, 8.sp),
+            child: _CollectionPlayerRow(
+              player: playerItems[index],
+              rank: index + 1,
+              onPick: onPlayer,
+            ),
+          ),
+        ),
+        SliverToBoxAdapter(
+          child: SizedBox(
+            height: 24.sp + MediaQuery.viewPaddingOf(context).bottom,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _CollectionGamesSearchState extends ChangeNotifier {
+  final controller = TextEditingController();
+  final focus = FocusNode();
+  Timer? _debounce;
+  CollectionSearchQuery query = const CollectionSearchQuery();
+
+  void setQuery(CollectionSearchQuery value) {
+    query = value;
+    notifyListeners();
+  }
+
+  void changed(String text) {
+    _debounce?.cancel();
+    _debounce = Timer(
+      const Duration(milliseconds: 200),
+      () => setQuery(query.withText(text)),
+    );
+  }
+
+  void flush() {
+    _debounce?.cancel();
+    setQuery(query.withText(controller.text));
+  }
+
+  void clear() {
+    _debounce?.cancel();
+    controller.clear();
+    focus.unfocus();
+    setQuery(query.withText(''));
+  }
+
+  @override
+  void dispose() {
+    _debounce?.cancel();
+    controller.dispose();
+    focus.dispose();
+    super.dispose();
+  }
+}
+
+class _CollectionGamesSearchBar extends StatelessWidget {
+  const _CollectionGamesSearchBar({
+    required this.state,
+    this.opening,
+    this.onClearOpening,
+    this.pinned = false,
+    this.hintText = 'Search collection games',
+  });
+  final String hintText;
+  final _CollectionGamesSearchState state;
+  final CollectionOpening? opening;
+  final VoidCallback? onClearOpening;
+  final bool pinned;
+
+  Future<void> _filters(BuildContext context) async {
+    state.focus.unfocus();
+    state.flush();
+    final incomingEco = opening?.eco ?? '';
+    final query = state.query;
+    final current = query.eco.isEmpty && incomingEco.isNotEmpty
+        ? CollectionSearchQuery(
+            text: query.text,
+            eco: incomingEco,
+            result: query.result,
+            year: query.year,
+            minYear: query.minYear,
+            maxYear: query.maxYear,
+            annotated: query.annotated,
+            sort: query.sort,
+          )
+        : query;
+    final result = await showCollectionSearchFilters(context, current);
+    if (context.mounted && result != null) {
+      if (incomingEco.isNotEmpty && result.eco != incomingEco) {
+        onClearOpening?.call();
+      }
+      state.setQuery(result);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => AnimatedBuilder(
+    animation: state,
+    builder: (context, _) => EventSearchBarFrame(
+      horizontalPadding: pinned
+          ? ResponsiveHelper.adaptive(phone: 20.sp, tablet: 32.sp)
+          : 16.sp,
+      child: SimpleSearchBar(
+        controller: state.controller,
+        compactFilter: pinned,
+        focusNode: state.focus,
+        hintText: hintText,
+        textFieldKey: const ValueKey('collection_games_search'),
+        filterButtonKey: const ValueKey('collection_games_filters'),
+        filterBadgeCount:
+            state.query.filterCount +
+            (state.query.eco.isEmpty && opening != null ? 1 : 0),
+        onChanged: state.changed,
+        onOpenFilter: () => _filters(context),
+        onCloseTap: state.clear,
+      ),
+    ),
+  );
+}
+
+class _GamesPage extends ConsumerStatefulWidget {
   const _GamesPage({
     required this.contents,
     this.showSelector = true,
@@ -2275,7 +2930,15 @@ class _GamesPage extends StatefulWidget {
     required this.viewMode,
     this.opening,
     this.onClearOpening,
+    required this.slug,
+    this.groupByDate = false,
+    this.flatList = false,
+    this.searchState,
   });
+  final String slug;
+  final bool groupByDate;
+  final bool flatList;
+  final _CollectionGamesSearchState? searchState;
   final CollectionContents contents;
   final bool showSelector;
   final CollectionPlayer? player;
@@ -2286,51 +2949,180 @@ class _GamesPage extends StatefulWidget {
   final VoidCallback? onClearOpening;
 
   @override
-  State<_GamesPage> createState() => _GamesPageState();
+  ConsumerState<_GamesPage> createState() => _GamesPageState();
 }
 
-class _GamesPageState extends State<_GamesPage>
+class _GamesPageState extends ConsumerState<_GamesPage>
     with AutomaticKeepAliveClientMixin {
   final Set<String> _collapsed = {};
   String _selected = 'all';
+  late final _searchState = widget.searchState ?? _CollectionGamesSearchState();
+  CollectionSearchQuery get _query => _searchState.query;
+
+  @override
+  void initState() {
+    super.initState();
+    _searchState.addListener(_queryChanged);
+  }
+
+  void _queryChanged() {
+    setState(() {});
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final scroll = PrimaryScrollController.maybeOf(context);
+      if (scroll != null && scroll.hasClients) scroll.jumpTo(0);
+    });
+  }
+
+  @override
+  void dispose() {
+    _searchState.removeListener(_queryChanged);
+    if (widget.searchState == null) _searchState.dispose();
+    super.dispose();
+  }
+
   @override
   bool get wantKeepAlive => true;
 
   @override
   Widget build(BuildContext context) {
     super.build(context);
-    final contents = widget.contents;
-    final picked = widget.player;
+    final query = CollectionSearchQuery(
+      text: _query.text,
+      eco: _query.eco.isEmpty ? (widget.opening?.eco ?? '') : _query.eco,
+      result: _query.result,
+      year: _query.year,
+      minYear: _query.minYear,
+      maxYear: _query.maxYear,
+      annotated: _query.annotated,
+      sort: _query.sort,
+    );
+    final key = (slug: widget.slug, query: query, player: widget.player?.key);
+    final filtered = query.isActive || widget.player != null
+        ? ref.watch(collectionFilteredContentsProvider(key))
+        : null;
+    return Column(
+      children: [
+        if (widget.searchState == null)
+          _CollectionGamesSearchBar(
+            state: _searchState,
+            opening: widget.opening,
+            onClearOpening: widget.onClearOpening,
+          ),
+        Expanded(
+          child: filtered == null
+              ? _body(widget.contents)
+              : filtered.when(
+                  skipLoadingOnReload: false,
+                  data: _body,
+                  loading: () => const _CardsSkeleton(),
+                  error: (error, _) => _Notice(
+                    text: _collectionErrorText(
+                      error,
+                      fallback: "Couldn't load the games.",
+                    ),
+                    actionLabel: 'Try again',
+                    onAction: () =>
+                        ref.invalidate(collectionFilteredContentsProvider(key)),
+                  ),
+                ),
+        ),
+      ],
+    );
+  }
+
+  Widget _body(CollectionContents contents) {
     final opening = widget.opening;
-    final viewMode = widget.viewMode;
     if (contents.games.isEmpty) {
       return _Notice(
-        text: opening == null
+        text: _query.isActive
+            ? 'No games match this search.'
+            : opening == null
             ? 'No games in this collection yet.'
-            : 'No games study ${opening.eco} in this book yet.',
-        actionLabel: opening == null ? null : 'All games',
+            : 'No games study ${opening.eco} in this collection yet.',
+        actionLabel: opening == null || widget.onClearOpening == null
+            ? null
+            : 'All games',
         onAction: widget.onClearOpening,
       );
     }
-    final groups = groupCollectionGames(contents.sections, [
-      for (final g in contents.games)
-        if (picked == null ||
-            g.card.involves(picked.key) ||
-            picked.aliasKeys.any(g.card.involves))
-          g,
-    ]);
-    final selected = groups.any((g) => g.section?.id == _selected)
+    // Prior book chapter/round rendering: return _groupedBody(contents);
+    if (widget.flatList) return _flatBody(contents);
+    return _groupedBody(contents);
+  }
+
+  /// Keep the API's sequence intact for both the list and board previous/next.
+  Widget _flatBody(CollectionContents contents) {
+    final ordered = [for (final game in contents.games) game.game];
+    final perRow = widget.viewMode == GamesListViewMode.chessBoardGrid ? 2 : 1;
+    final opening = widget.opening;
+    final showOpeningLine = opening != null && widget.onClearOpening != null;
+    final lead = showOpeningLine ? 1 : 0;
+    return ListView.builder(
+      key: const PageStorageKey('collection_games'),
+      padding: EdgeInsets.only(
+        top: 12.sp,
+        bottom: 24.sp + MediaQuery.viewPaddingOf(context).bottom,
+      ),
+      itemCount: lead + (ordered.length / perRow).ceil(),
+      itemBuilder: (context, index) {
+        if (showOpeningLine && index == 0) {
+          return _PlayerLine(
+            name: '${opening.eco} · ${opening.name ?? 'Opening'}',
+            isOpening: true,
+            onClear: widget.onClearOpening!,
+          );
+        }
+        return Padding(
+          padding: EdgeInsets.only(bottom: 12.sp),
+          child: DiscoveryGameList(
+            games: ordered,
+            start: (index - lead) * perRow,
+            limit: perRow,
+            viewMode: widget.viewMode,
+            streamEnabled: false,
+            onOpen: (_, local) => widget.onOpen(ordered, local),
+          ),
+        );
+      },
+    );
+  }
+
+  /// Retained section layout for event collections and scoped game routes.
+  Widget _groupedBody(CollectionContents contents) {
+    final picked = widget.player;
+    final opening = widget.opening;
+    final viewMode = widget.viewMode;
+    final groups = groupCollectionGames(
+      widget.groupByDate ? const [] : contents.sections,
+      [
+        for (final g in contents.games)
+          if (picked == null ||
+              g.card.involves(picked.key) ||
+              picked.aliasKeys.any(g.card.involves))
+            g,
+      ],
+      preserveGameOrder: _query.sort != 'default',
+    );
+    final selectionGroups = widget.showSelector && _query.isActive
+        ? groupCollectionGames(widget.contents.sections, widget.contents.games)
+        : groups;
+    final selected = selectionGroups.any((g) => g.section?.id == _selected)
         ? _selected
         : 'all';
-    final selectedGroups = selectCollectionGameGroups(groups, selected);
+    final selectedGroups =
+        selected != 'all' && !groups.any((g) => g.section?.id == selected)
+        ? <CollectionGameGroup>[]
+        : selectCollectionGameGroups(groups, selected);
     final ordered = [
       for (final group in selectedGroups)
         for (final g in group.games) g.game,
     ];
+    final showOpeningLine = opening != null && !widget.groupByDate;
     final lead =
         (widget.showSelector ? 1 : 0) +
-        (picked == null ? 0 : 1) +
-        (opening == null ? 0 : 1);
+        (picked == null || widget.groupByDate ? 0 : 1) +
+        (showOpeningLine ? 1 : 0);
     final perRow = viewMode == GamesListViewMode.chessBoardGrid ? 2 : 1;
     final rows = <({int group, int? start})>[];
     final hiddenParents = <String>{};
@@ -2359,7 +3151,7 @@ class _GamesPageState extends State<_GamesPage>
         top: 12.sp,
         bottom: 24.sp + MediaQuery.viewPaddingOf(context).bottom,
       ),
-      itemCount: lead + (groups.isEmpty ? 1 : rows.length),
+      itemCount: lead + (selectedGroups.isEmpty ? 1 : rows.length),
       itemBuilder: (context, i) {
         if (widget.showSelector && i == 0) {
           return Padding(
@@ -2371,7 +3163,7 @@ class _GamesPageState extends State<_GamesPage>
                 selectedId: selected,
                 items: [
                   {'key': 'all', 'value': 'All games', 'status': 'completed'},
-                  for (final group in groups)
+                  for (final group in selectionGroups)
                     if (group.section != null)
                       {
                         'key': group.section!.id,
@@ -2393,7 +3185,7 @@ class _GamesPageState extends State<_GamesPage>
             ),
           );
         }
-        if (opening != null && i == (widget.showSelector ? 1 : 0)) {
+        if (showOpeningLine && i == (widget.showSelector ? 1 : 0)) {
           return _PlayerLine(
             name: '${opening.eco} · ${opening.name ?? 'Opening'}',
             isOpening: true,
@@ -2401,13 +3193,18 @@ class _GamesPageState extends State<_GamesPage>
           );
         }
         if (picked != null &&
+            !widget.groupByDate &&
             i == (widget.showSelector ? 1 : 0) + (opening == null ? 0 : 1)) {
           return _PlayerLine(name: picked.name, onClear: widget.onClearPlayer);
         }
-        if (groups.isEmpty) {
+        if (selectedGroups.isEmpty) {
           return Padding(
             padding: EdgeInsets.all(24.sp),
-            child: const Text('No games of this player here.'),
+            child: Text(
+              _query.isActive
+                  ? 'No games match this search.'
+                  : 'No games in this chapter or round.',
+            ),
           );
         }
         final row = rows[i - lead];
@@ -2428,7 +3225,11 @@ class _GamesPageState extends State<_GamesPage>
               children: [
                 TournamentRoundHeader(
                   multiline: true,
-                  key: ValueKey('collection_round_${section?.id}'),
+                  key: ValueKey(
+                    _query.sort == 'default'
+                        ? 'collection_round_${section?.id}'
+                        : 'collection_round_${section?.id}_${row.group}',
+                  ),
                   title: section == null
                       ? 'Other games'
                       : collectionGroupTitle(section),
@@ -2548,7 +3349,13 @@ class _SectionIntro extends StatelessWidget {
 }
 
 class _PlayersPage extends StatelessWidget {
-  const _PlayersPage({required this.players, required this.onPick});
+  const _PlayersPage({
+    required this.players,
+    required this.onPick,
+    this.numbered = false,
+  });
+
+  final bool numbered;
 
   final List<CollectionPlayer> players;
   final ValueChanged<CollectionPlayer> onPick;
@@ -2570,6 +3377,7 @@ class _PlayersPage extends StatelessWidget {
       itemBuilder: (context, i) => _CollectionPlayerRow(
         key: ValueKey<String>('collection_player_${players[i].key}'),
         player: players[i],
+        rank: numbered ? i + 1 : null,
         onPick: onPick,
       ),
     );
@@ -2586,7 +3394,10 @@ class _CollectionPlayerRow extends ConsumerWidget {
     super.key,
     required this.player,
     required this.onPick,
+    this.rank,
   });
+
+  final int? rank;
 
   final CollectionPlayer player;
   final ValueChanged<CollectionPlayer> onPick;
@@ -2624,13 +3435,72 @@ class _CollectionPlayerRow extends ConsumerWidget {
           score: p.bestElo ?? 0,
           scoreChange: 0,
           hasRatingDiff: false,
-          matchScore: count,
+          matchScore: '',
         ),
-        rank: null,
-        showRank: false,
+        rank: rank,
+        showRank: rank != null,
         showFavoriteButton: false,
         hideMissingRating: true,
+        trailing: Semantics(
+          label: count,
+          excludeSemantics: true,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              _CollectionGameMark(color: context.colors.textSecondary),
+              SizedBox(width: 6.w),
+              Text(
+                '${p.games}',
+                style: AppTypography.textMdMedium.copyWith(
+                  color: context.colors.textPrimary,
+                ),
+              ),
+            ],
+          ),
+        ),
         onTap: pick,
+      ),
+    );
+  }
+}
+
+/// The real ChessEver mark, with the dark canvas removed through the same
+/// luminance-to-alpha treatment used by the news cover's monochrome logo.
+class _CollectionGameMark extends StatelessWidget {
+  const _CollectionGameMark({required this.color});
+
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    final side = 20.ic;
+    // The artwork spans 52% of its canvas. Leave a little breathing room
+    // around that silhouette while cropping only the transparent canvas.
+    final canvas = side / 0.55;
+    return SizedBox.square(
+      dimension: side,
+      child: ClipRect(
+        child: OverflowBox(
+          minWidth: canvas,
+          maxWidth: canvas,
+          minHeight: canvas,
+          maxHeight: canvas,
+          child: ColorFiltered(
+            colorFilter: ColorFilter.matrix([
+              0, 0, 0, 0, color.r * 255,
+              0, 0, 0, 0, color.g * 255,
+              0, 0, 0, 0, color.b * 255,
+              0.4252, 1.4304, 0.1444, 0, -25.5,
+            ]),
+            child: Image.asset(
+              PngAsset.newAppLogo,
+              width: canvas,
+              height: canvas,
+              fit: BoxFit.contain,
+              excludeFromSemantics: true,
+            ),
+          ),
+        ),
       ),
     );
   }

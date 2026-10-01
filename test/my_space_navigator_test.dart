@@ -10,6 +10,8 @@ import 'package:chessever2/screens/group_event/model/tour_event_card_model.dart'
 import 'package:chessever2/widgets/event_card/event_context_menu.dart'
     show eventSpaceDraft;
 import 'package:chessever2/widgets/space_shortcut_drafts.dart';
+import 'package:chessever2/widgets/search/search_overlay_widget.dart'
+    show searchEventSpaceDraft;
 import 'package:flutter_test/flutter_test.dart';
 
 SpaceShortcut _s(
@@ -351,6 +353,28 @@ void main() {
   });
 
   group('draft helpers round-trip through the opener', () {
+    test('database event cards retain their archive route', () {
+      final card = GroupEventCardModel(
+        id: 'gamebase::Archive event',
+        title: 'Archive event',
+        dates: '',
+        maxAvgElo: 0,
+        timeUntilStart: '',
+        tourEventCategory: TourEventCategory.completed,
+        timeControl: 'Standard',
+        startDate: null,
+        endDate: null,
+        eventSource: EventSource.communityEvent,
+      );
+      final draft = eventSpaceDraft(card);
+      expect(draft.params['source'], 'gamebase');
+      expect(draft.params.containsKey('calendarEventId'), isFalse);
+      expect(isSpaceCalendarEvent(draft), isFalse);
+      final searchDraft = searchEventSpaceDraft(card)!;
+      expect(searchDraft.key, draft.key);
+      expect(isSpaceCalendarEvent(searchDraft), isFalse);
+    });
+
     test('ChessEver Database event', () {
       final draft = spaceTwicEventDraft(eventName: 'Tata Steel Masters');
       expect(draft.targetId, '$kTwicBookId:Tata Steel Masters');

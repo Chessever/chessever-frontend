@@ -122,8 +122,10 @@ class CollectionGameGroup {
 /// The groups' games, concatenated, are the order the board steps through.
 List<CollectionGameGroup> groupCollectionGames(
   List<CollectionSection> sections,
-  List<CollectionGame> games,
-) {
+  List<CollectionGame> games, {
+  bool preserveGameOrder = false,
+}) {
+  if (preserveGameOrder) return _groupsInGameOrder(sections, games);
   final bySection = <String, List<CollectionGame>>{};
   final known = <String>{};
   void index(List<CollectionSection> nodes) {
@@ -144,7 +146,7 @@ List<CollectionGameGroup> groupCollectionGames(
     }
   }
   for (final list in bySection.values) {
-    _sortByOrderIndex(list);
+    if (!preserveGameOrder) _sortByOrderIndex(list);
   }
 
   final groups = <CollectionGameGroup>[];
@@ -187,7 +189,8 @@ List<CollectionGameGroup> groupCollectionGames(
           '${event.toLowerCase()}|${date?.toIso8601String() ?? ''}|$round';
       (buckets[key] ??= []).add(game);
     }
-    for (final bucket in buckets.values) {
+    for (final entry in buckets.entries) {
+      final bucket = entry.value;
       final first = bucket.first;
       final event =
           _collectionTag(first.card.event) ?? _collectionTag(first.game.tourId);
@@ -201,7 +204,7 @@ List<CollectionGameGroup> groupCollectionGames(
       groups.add(
         CollectionGameGroup(
           section: CollectionSection(
-            id: 'collection-auto-${first.id}',
+            id: 'collection-auto-${entry.key}',
             kind: CollectionSectionKind.round,
             label: label,
             title: round != null ? 'Round $round' : null,
@@ -215,6 +218,86 @@ List<CollectionGameGroup> groupCollectionGames(
       );
       offset += bucket.length;
     }
+  }
+  return groups;
+}
+
+/// A selected sort is authoritative across chapters and dates. Keep
+/// contiguous runs in the server's order, repeating a header when needed,
+/// rather than moving an earlier game behind another chapter's later game.
+List<CollectionGameGroup> _groupsInGameOrder(
+  List<CollectionSection> sections,
+  List<CollectionGame> games,
+) {
+  final paths = <String, List<CollectionSection>>{};
+  void index(List<CollectionSection> nodes, List<CollectionSection> ancestors) {
+    for (final section in nodes) {
+      final path = [...ancestors, section];
+      paths[section.id] = path;
+      index(section.children, path);
+    }
+  }
+
+  index(sections, const []);
+  String runKey(CollectionGame game) {
+    if (paths.containsKey(game.sectionId)) return 'section:${game.sectionId}';
+    final event =
+        _collectionTag(game.card.event) ??
+        _collectionTag(game.game.tourId) ??
+        '';
+    final round =
+        _collectionTag(game.card.roundTag) ??
+        _collectionTag(game.game.roundId) ??
+        '';
+    return '${event.toLowerCase()}|${_collectionGameDay(game)?.toIso8601String() ?? ''}|$round';
+  }
+
+  final groups = <CollectionGameGroup>[];
+  var offset = 0;
+  var parents = <CollectionSection>[];
+  while (offset < games.length) {
+    final start = offset;
+    final key = runKey(games[start]);
+    while (offset < games.length && runKey(games[offset]) == key) {
+      offset++;
+    }
+    final run = games.sublist(start, offset);
+    final path = paths[run.first.sectionId];
+    if (path == null) {
+      parents = [];
+      final fallback = groupCollectionGames(const [], run).single;
+      groups.add(
+        CollectionGameGroup(
+          section: fallback.section,
+          games: run,
+          offset: start,
+        ),
+      );
+      continue;
+    }
+    final nextParents = path.take(path.length - 1).toList();
+    for (var depth = 0; depth < nextParents.length; depth++) {
+      if (depth >= parents.length ||
+          parents[depth].id != nextParents[depth].id) {
+        groups.add(
+          CollectionGameGroup(
+            section: nextParents[depth],
+            depth: depth,
+            games: const [],
+            offset: start,
+          ),
+        );
+      }
+    }
+    parents = nextParents;
+    groups.add(
+      CollectionGameGroup(
+        section: path.last,
+        depth: path.length - 1,
+        games: run,
+        offset: start,
+      ),
+    );
   }
   return groups;
 }
@@ -463,6 +546,41 @@ class CollectionsRepository {
         if (seen.add(card.id)) ?CollectionGame.fromCard(card),
     ];
   }
+
+  Future<List<CollectionGame>> searchGames(
+    String slug,
+    CollectionSearchQuery search, {
+    String? playerKey,
+  }) async {
+    final fresh = isFreshAccess(slug);
+    final bearer = await _accessToken();
+    final cards = await _allPages<CollectionGameCard>(
+      pageSize: gamesPageSize,
+      fetch: (offset) async {
+        final page = await _api.getCollectionGames(
+          slug,
+          search: search,
+          playerKey: playerKey,
+          includePgn: true,
+          limit: gamesPageSize,
+          offset: offset,
+          bearer: bearer,
+          fresh: fresh,
+        );
+        return (page.items, page.total);
+      },
+    );
+    final seen = <String>{};
+    return [
+      for (final card in cards)
+        if (seen.add(card.id)) ?CollectionGame.fromCard(card),
+    ];
+  }
+
+  Future<({List<CollectionAuthor> items, int total})> searchAuthors(
+    CollectionSearchQuery query,
+    int offset,
+  ) => _api.searchCollectionAuthors(search: query, offset: offset);
 
   /// Public opening metadata stays available even when game access is gated.
   Future<List<CollectionOpening>> fetchOpenings({String? slug}) =>
@@ -820,3 +938,20 @@ Future<void> syncCollectionStar(
     /* The existing favorite remains authoritative for pinning. */
   }
 }
+
+final collectionFilteredContentsProvider = FutureProvider.autoDispose
+    .family<
+      CollectionContents,
+      ({String slug, CollectionSearchQuery query, String? player})
+    >((ref, key) async {
+      final results = await Future.wait<Object>([
+        ref.watch(collectionDetailProvider(key.slug).future),
+        ref
+            .watch(collectionsRepositoryProvider)
+            .searchGames(key.slug, key.query, playerKey: key.player),
+      ]);
+      return CollectionContents(
+        sections: (results[0] as Collection).sections,
+        games: results[1] as List<CollectionGame>,
+      );
+    });

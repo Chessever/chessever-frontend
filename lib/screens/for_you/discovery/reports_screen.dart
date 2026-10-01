@@ -5,6 +5,7 @@ import 'package:chessever2/screens/for_you/discovery/providers/discovery_provide
 import 'package:chessever2/screens/for_you/discovery/providers/reports_provider.dart';
 import 'package:chessever2/screens/for_you/discovery/widgets/discovery_common.dart';
 import 'package:chessever2/screens/for_you/discovery/widgets/discovery_game_cards.dart';
+import 'package:chessever2/screens/for_you/discovery/widgets/report_type_chips.dart';
 import 'package:chessever2/screens/group_event/widget/appbar_icons_widget.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/games_list_view_mode_provider.dart';
@@ -15,6 +16,7 @@ import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/scroll_cache.dart';
 import 'package:chessever2/utils/svg_asset.dart';
 import 'package:chessever2/widgets/game_date_header.dart';
+import 'package:chessever2/widgets/home_top_bar.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:intl/intl.dart';
@@ -47,75 +49,96 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
     title: 'Reports',
     titleIcon: Icon(Icons.assessment_rounded),
     tabs: const ['Reports'],
-    tabStripOverride: Row(
+    tabStripPadding: EdgeInsets.zero,
+    tabStripOverride: Column(
+      mainAxisSize: MainAxisSize.min,
       children: [
-        Expanded(
-          child: Container(
-            height: 44.h,
-            decoration: BoxDecoration(
-              color: context.colors.background,
-              borderRadius: BorderRadius.circular(12.br),
-              border: Border.all(color: context.colors.surfaceRecessed),
-            ),
-            child: Row(
-              children: [
-                SizedBox(width: 12.w),
-                Icon(
-                  Icons.search,
-                  size: 20.sp,
-                  color: context.colors.textSecondary,
-                ),
-                SizedBox(width: 8.w),
-                Expanded(
-                  child: TextField(
-                    controller: _searchController,
-                    textInputAction: TextInputAction.search,
-                    style: AppTypography.textSmRegular.copyWith(
-                      color: context.colors.textPrimary,
-                    ),
-                    decoration: InputDecoration(
-                      hintText: 'Search players',
-                      hintStyle: AppTypography.textSmRegular.copyWith(
+        Padding(
+          padding: EdgeInsets.symmetric(
+            horizontal: HomeTopBarMetrics.horizontalPadding,
+          ),
+          child: Row(
+            children: [
+              Expanded(
+                child: Container(
+                  height: 44.h,
+                  decoration: BoxDecoration(
+                    color: context.colors.background,
+                    borderRadius: BorderRadius.circular(12.br),
+                    border: Border.all(color: context.colors.surfaceRecessed),
+                  ),
+                  child: Row(
+                    children: [
+                      SizedBox(width: 12.w),
+                      Icon(
+                        Icons.search,
+                        size: 20.sp,
                         color: context.colors.textSecondary,
                       ),
-                      border: InputBorder.none,
-                      isDense: true,
-                      contentPadding: EdgeInsets.zero,
-                    ),
-                    onChanged: (value) => setState(() => _query = value.trim()),
+                      SizedBox(width: 8.w),
+                      Expanded(
+                        child: TextField(
+                          controller: _searchController,
+                          textInputAction: TextInputAction.search,
+                          style: AppTypography.textSmRegular.copyWith(
+                            color: context.colors.textPrimary,
+                          ),
+                          decoration: InputDecoration(
+                            hintText: 'Search players',
+                            hintStyle: AppTypography.textSmRegular.copyWith(
+                              color: context.colors.textSecondary,
+                            ),
+                            border: InputBorder.none,
+                            isDense: true,
+                            contentPadding: EdgeInsets.zero,
+                          ),
+                          onChanged: (value) =>
+                              setState(() => _query = value.trim()),
+                        ),
+                      ),
+                      if (_query.isNotEmpty)
+                        GestureDetector(
+                          onTap: () {
+                            _searchController.clear();
+                            setState(() => _query = '');
+                          },
+                          child: Padding(
+                            padding: EdgeInsets.all(8.w),
+                            child: Icon(
+                              Icons.close,
+                              size: 18.sp,
+                              color: context.colors.textSecondary,
+                            ),
+                          ),
+                        )
+                      else
+                        SizedBox(width: 12.w),
+                    ],
                   ),
                 ),
-                if (_query.isNotEmpty)
-                  GestureDetector(
-                    onTap: () {
-                      _searchController.clear();
-                      setState(() => _query = '');
-                    },
-                    child: Padding(
-                      padding: EdgeInsets.all(8.w),
-                      child: Icon(
-                        Icons.close,
-                        size: 18.sp,
-                        color: context.colors.textSecondary,
-                      ),
-                    ),
-                  )
-                else
-                  SizedBox(width: 12.w),
-              ],
-            ),
+              ),
+              SizedBox(width: 12.w),
+              Semantics(
+                label: 'Toggle chessboard view',
+                child: AppBarIcons(
+                  image: SvgAsset.chase_grid,
+                  onTap: () {
+                    HapticFeedbackService.cardTap();
+                    ref.read(gamesListViewModeSwitcher).toggleViewMode();
+                  },
+                ),
+              ),
+            ],
           ),
         ),
-        SizedBox(width: 12.w),
-        Semantics(
-          label: 'Toggle chessboard view',
-          child: AppBarIcons(
-            image: SvgAsset.chase_grid,
-            onTap: () {
-              HapticFeedbackService.cardTap();
-              ref.read(gamesListViewModeSwitcher).toggleViewMode();
-            },
-          ),
+        SizedBox(height: 8.h),
+        ReportTypeChips(
+          selected: ref.watch(reportsGameTypeProvider),
+          onSelected: (type) {
+            if (type == ref.read(reportsGameTypeProvider)) return;
+            HapticFeedbackService.selection();
+            ref.read(reportsGameTypeProvider.notifier).state = type;
+          },
         ),
       ],
     ),
@@ -253,6 +276,15 @@ class _ReportsGamesState extends ConsumerState<_ReportsGames> {
 
   @override
   Widget build(BuildContext context) {
+    ref.listen(reportsGameTypeProvider, (previous, next) {
+      _collapsedDates.clear();
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        final scroll = PrimaryScrollController.maybeOf(context);
+        if (scroll != null && scroll.hasClients) scroll.jumpTo(0);
+      });
+    });
+    final gameType = ref.watch(reportsGameTypeProvider);
     final reports = ref.watch(reportsPaginationProvider);
     final mode = ref.watch(gamesListViewModeProvider);
     final perRow = mode == GamesListViewMode.chessBoardGrid
@@ -337,7 +369,9 @@ class _ReportsGamesState extends ConsumerState<_ReportsGames> {
                 SliverToBoxAdapter(
                   child: DiscoveryNotice(
                     text: widget.query.isEmpty
-                        ? 'Analyzed games will appear here when a report is available.'
+                        ? gameType == null
+                              ? 'Analyzed games will appear here when a report is available.'
+                              : 'No ${gameType.label} reports yet.'
                         : 'No reports match "${widget.query}".',
                   ),
                 ),

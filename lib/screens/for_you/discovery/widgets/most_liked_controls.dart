@@ -1,3 +1,10 @@
+import 'package:chessever2/providers/favorite_players_provider.dart';
+import 'package:chessever2/utils/favorite_constants.dart';
+import 'package:chessever2/utils/favorite_limit_guard.dart';
+import 'package:chessever2/utils/user_error_message.dart';
+import 'package:chessever2/widgets/auth/auth_upgrade_sheet.dart';
+import 'package:chessever2/widgets/app_snack.dart';
+import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
 import 'package:chessever2/screens/standings/player_standing_model.dart';
 import 'package:chessever2/widgets/figma_player_card.dart';
 import 'package:chessever2/screens/for_you/discovery/models/discovery_models.dart';
@@ -69,8 +76,8 @@ class MostLikedDateControl extends StatelessWidget {
 
 /// The Players view: everyone with a game in the ranking, most-liked first.
 /// Uses the same player card as Favorites, Countrymen and standings, with
-/// likes in the trailing slot. A tap opens the player's
-/// profile; a long press lifts the row into the player focus menu (profile,
+/// likes beneath the rating and the same working favorite heart. A tap opens
+/// the player's profile; a long press lifts the row into its focus menu (profile,
 /// My Space, share, favourites).
 class MostLikedPlayersList extends StatelessWidget {
   const MostLikedPlayersList({super.key, required this.players, this.onPick});
@@ -152,6 +159,55 @@ class _PlayerRow extends ConsumerWidget {
     final flag = p.countryCode.trim();
     final games = row.games == 1 ? '1 game' : '${row.games} games';
     final detail = [if (p.rating > 0) '${p.rating}', games].join(' · ');
+    final favorites = ref.watch(favoritePlayersProviderNew).valueOrNull;
+    final favorite = favorites
+        ?.where(
+          (f) => favoritePlayerMatchesIdentity(
+            f,
+            fideId: p.fideId?.toString(),
+            playerName: p.name,
+          ),
+        )
+        .firstOrNull;
+    final isFavorite = favorite != null;
+
+    Future<void> toggleFavorite() async {
+      final allowed = await requireFullAuthGuard(context);
+      if (!allowed || !context.mounted) return;
+      try {
+        if (!isFavorite) {
+          final canAdd = await canAddMoreFavorites(context, ref);
+          if (!canAdd || !context.mounted) return;
+        }
+        HapticFeedbackService.medium();
+        final notifier = ref.read(favoritePlayersProviderNew.notifier);
+        if (favorite != null) {
+          await notifier.removeFavorite(
+            favorite.playerName,
+            fideId: favorite.fideId,
+          );
+        } else {
+          await notifier.addFavorite(
+            fideId: p.fideId?.toString(),
+            playerName: p.name,
+            countryCode: flag,
+            rating: p.rating,
+            title: title,
+            gamebasePlayerId: p.gamebasePlayerId,
+          );
+        }
+      } on FavoriteLimitExceededException {
+        if (context.mounted) await showPremiumPaywallSheet(context: context);
+      } catch (error) {
+        if (context.mounted) {
+          showAppSnack(
+            context,
+            userFacingError(error),
+            tone: AppSnackTone.danger,
+          );
+        }
+      }
+    }
 
     // Long-press lifts the row into the shared focus menu. The row's one
     // semantics node sits above the menu and carries both actions, so a
@@ -185,7 +241,10 @@ class _PlayerRow extends ConsumerWidget {
         ),
         rank: row.rank,
         onTap: () => _tap(context),
-        trailing: DiscoveryLikes(likes: row.likes),
+        hideMissingRating: true,
+        detail: discoveryLikes(row.likes),
+        isFavorite: isFavorite,
+        onToggleFavorite: toggleFavorite,
       ),
     );
     final likes = discoveryLikes(row.likes);
@@ -199,7 +258,7 @@ class _PlayerRow extends ConsumerWidget {
         onTap: () => _tap(context),
         onLongPress: () => menu.open(rowContext),
         onLongPressHint: 'More actions',
-        excludeSemantics: true,
+        explicitChildNodes: true,
         child: menu,
       ),
     );

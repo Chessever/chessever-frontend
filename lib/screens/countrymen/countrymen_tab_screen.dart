@@ -3,8 +3,6 @@ import 'package:chessever2/screens/countrymen/provider/countrymen_mode_provider.
 import 'package:chessever2/screens/countrymen/tabs/countrymen_events_tab.dart';
 import 'package:chessever2/screens/countrymen/tabs/countrymen_games_tab.dart';
 import 'package:chessever2/screens/countrymen/tabs/countrymen_players_tab.dart';
-import 'package:chessever2/screens/my_space/actions/space_menu_action.dart';
-import 'package:chessever2/screens/my_space/models/space_shortcut.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
@@ -13,7 +11,6 @@ import 'package:chessever2/utils/favorite_player_identity.dart'
     show countryCodeToIso2;
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/app_snack.dart';
-import 'package:chessever2/widgets/card_context_menu.dart';
 import 'package:chessever2/widgets/country_dropdown.dart';
 import 'package:chessever2/widgets/scroll_to_top_bus.dart';
 import 'package:chessever2/widgets/segmented_switcher.dart';
@@ -246,7 +243,7 @@ class _CountrymenTabScreenState extends ConsumerState<CountrymenTabScreen> {
   ) {
     final isTemporary = _isTemporarySelection();
 
-    final bar = Padding(
+    return Padding(
       padding: EdgeInsets.symmetric(horizontal: 12.w),
       child: Row(
         children: [
@@ -353,56 +350,6 @@ class _CountrymenTabScreenState extends ConsumerState<CountrymenTabScreen> {
           ),
         ],
       ),
-    );
-
-    // The 3-dot never takes part in the row's layout: it is laid over the
-    // trailing gap + side padding (10.w + 12.w) the bar already leaves empty
-    // after the dropdown, so the bar's height, the dropdown's width and every
-    // child sit exactly where they always did, and it takes no taps from the
-    // dropdown. A temporary pick fills that gap with the Pin tile, so the
-    // 3-dot steps aside until it is pinned. The Stack stays either way so the
-    // bar is never remounted when that flips.
-    // Same branch the dropdown itself renders, so the 3-dot is never offered
-    // beside a Loading/Error bar.
-    final country = countryAsync.maybeWhen<Country?>(
-      data: (country) => country,
-      orElse: () => null,
-    );
-    return Stack(
-      children: [
-        bar,
-        if (!isTemporary && country != null)
-          Positioned(
-            top: 0,
-            bottom: 0,
-            right: 0,
-            width: 22.w,
-            child: _buildMoreButton(country),
-          ),
-      ],
-    );
-  }
-
-  /// The shared focus menu for the federation on screen: pin it into My
-  /// Space, or take it out again. Same 3-dot as the player profile's app bar,
-  /// at the bar's own 18.ic icon size and in the chevron's muted ink; the
-  /// row's label is read when the menu opens, so it never goes stale.
-  Widget _buildMoreButton(Country country) {
-    final draft = SpaceShortcut.draft(
-      kind: SpaceShortcutKind.countrymen,
-      targetId: country.countryCode,
-      title: country.name,
-      subtitle: 'Countrymen',
-      params: {'name': country.name},
-    );
-    return CardMoreButton(
-      vertical: true,
-      color: context.colors.textPrimaryMuted,
-      size: 18.ic,
-      actions:
-          (menuContext) => [
-            spaceMenuAction(context: menuContext, ref: ref, draft: draft),
-          ],
     );
   }
 

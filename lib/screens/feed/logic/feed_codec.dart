@@ -5,7 +5,11 @@ library;
 import 'dart:convert';
 
 import 'package:chessever2/screens/chessboard/classification_fx/move_class.dart';
+import 'package:chessever2/screens/chessboard/game_review/saved_game_report.dart';
+import 'package:chessever2/screens/feed/logic/feed_moments.dart';
+import 'package:chessever2/screens/feed/logic/feed_pgn.dart';
 import 'package:chessever2/screens/feed/models/feed_models.dart';
+import 'package:chessever2/screens/for_you/discovery/models/report_game_type.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 
 /// Where a feed item came from; drives its caption.
@@ -91,8 +95,9 @@ int _beatRank(FeedMomentType type) => switch (type) {
 // Cache codec — the first page, fully parsed, so a warm launch paints at once.
 // -----------------------------------------------------------------------------
 
-/// v2 adds each ply's [FeedPly.moveClass]; a v1 page is simply re-fetched.
-const int _cacheVersion = 2;
+/// v3 requires saved reports and carries their verified categories. Earlier
+/// pages are re-fetched so old editorial labels and plain charts cannot return.
+const int _cacheVersion = 3;
 
 /// Serialises a feed page for `AppDatabase.setCache`.
 String encodeFlowFeedCache(List<FeedItem> items) => jsonEncode({
@@ -127,6 +132,7 @@ Map<String, Object?> _itemToJson(FeedItem item) {
     'result': item.result,
     'evals': item.hasEvals,
     if (item.likes > 0) 'likes': item.likes,
+    if (item.reportType != null) 'reportType': item.reportType!.key,
     // A streak is re-derived from the live wall on every read, never stored.
     if (item.signal != null && item.signal!.kind != FeedSignalKind.streak)
       'signal': _signalToJson(item.signal!),
@@ -150,12 +156,35 @@ Map<String, Object?> _itemToJson(FeedItem item) {
 FeedItem? _itemFromJson(Map<String, Object?> json, DateTime now) {
   try {
     final game = _gameFromJson((json['game'] as Map).cast<String, Object?>());
-    final plies = <FeedPly>[
+    if (game.source != GameSource.supabase || !game.gameStatus.isFinished) {
+      return null;
+    }
+    final pgn = game.pgn;
+    if (pgn == null) return null;
+    final parsed = parseFlowPgn(pgn);
+    if (parsed == null || !parsed.hasEvals || !hasSavedGameReport(pgn)) {
+      return null;
+    }
+    var plies = <FeedPly>[
       for (final raw in json['plies'] as List)
         _plyFromJson((raw as List).cast<Object?>()),
     ];
     if (plies.length < 2) return null;
-    final result = json['result'] as String?;
+    if (!plies.any((ply) => ply.cp != null || ply.mate != null)) {
+      plies = buildFlowPlies(parsed);
+    }
+    final result =
+        normalizeFlowResult(json['result'] as String?) ?? parsed.result;
+    final expectedResult = switch (game.gameStatus) {
+      GameStatus.whiteWins => '1-0',
+      GameStatus.blackWins => '0-1',
+      GameStatus.draw => '½-½',
+      _ => null,
+    };
+    if (result != expectedResult ||
+        (parsed.result != null && parsed.result != expectedResult)) {
+      return null;
+    }
     final storedReason = json['reason'] as String? ?? '';
     final rawSignal = json['signal'];
     return FeedItem(
@@ -164,12 +193,14 @@ FeedItem? _itemFromJson(Map<String, Object?> json, DateTime now) {
       reason: _refreshReason(storedReason, game, plies, result, now),
       eventLabel: json['event'] as String?,
       result: result,
-      hasEvals: json['evals'] == true,
+      hasEvals: true,
       likes: (json['likes'] as num?)?.toInt() ?? 0,
-      signal:
-          rawSignal is Map
-              ? _signalFromJson(rawSignal.cast<String, Object?>())
-              : feedSignalFromReason(storedReason),
+      reportType: ReportGameType.values
+          .where((type) => type.key == json['reportType'])
+          .firstOrNull,
+      signal: rawSignal is Map
+          ? _signalFromJson(rawSignal.cast<String, Object?>())
+          : feedSignalFromReason(storedReason),
     );
   } catch (_) {
     return null;
@@ -217,7 +248,9 @@ FeedSignal? feedSignalFromReason(String reason) {
   const follow = 'Because you follow ';
   if (reason.startsWith(follow)) {
     final name = reason.substring(follow.length).trim();
-    return name.isEmpty ? null : FeedSignal(FeedSignalKind.favorite, name: name);
+    return name.isEmpty
+        ? null
+        : FeedSignal(FeedSignalKind.favorite, name: name);
   }
   if (reason.toLowerCase().contains('miniature')) {
     return const FeedSignal(FeedSignalKind.miniature);
@@ -262,8 +295,9 @@ FeedPly _plyFromJson(List<Object?> raw) {
     cp: (raw[3] as num?)?.toInt(),
     mate: (raw[4] as num?)?.toInt(),
     moment: moment,
-    moveClass:
-        className == null ? null : MoveClass.values.asNameMap()[className],
+    moveClass: className == null
+        ? null
+        : MoveClass.values.asNameMap()[className],
   );
 }
 

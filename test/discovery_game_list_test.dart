@@ -11,6 +11,7 @@ import 'package:chessever2/screens/for_you/discovery/widgets/discovery_common.da
 import 'package:chessever2/screens/for_you/discovery/widgets/discovery_game_cards.dart';
 import 'package:chessever2/screens/for_you/discovery/data/discovery_repository.dart';
 import 'package:chessever2/screens/for_you/discovery/models/discovery_models.dart';
+import 'package:chessever2/screens/for_you/discovery/models/report_game_type.dart';
 import 'package:chessever2/screens/for_you/discovery/providers/reports_provider.dart';
 import 'package:chessever2/screens/for_you/discovery/reports_screen.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
@@ -58,16 +59,23 @@ class _NoSpoilers extends EventNoSpoilersController {
 
 class _ReportsRepository implements DiscoveryRepository {
   final requests =
-      <({AnalyzedGamesCursor? after, Completer<AnalyzedGamesPage> result})>[];
+      <
+        ({
+          AnalyzedGamesCursor? after,
+          ReportGameType? gameType,
+          Completer<AnalyzedGamesPage> result,
+        })
+      >[];
 
   @override
   Future<AnalyzedGamesPage> fetchAnalyzedGamesPage({
     int pageSize = 30,
     AnalyzedGamesCursor? after,
     DateTime? since,
+    ReportGameType? gameType,
   }) {
     final result = Completer<AnalyzedGamesPage>();
-    requests.add((after: after, result: result));
+    requests.add((after: after, gameType: gameType, result: result));
     return result.future;
   }
 
@@ -265,6 +273,75 @@ void main() {
       );
       await _settle(tester);
     }
+
+    testWidgets(
+      'chips scroll as one row, switch queries, and ignore late prior results',
+      (tester) async {
+        final repository = _ReportsRepository();
+        final container = await open(
+          tester,
+          repository,
+          mode: GamesListViewMode.gamesCard,
+          screen: const Size(320, 852),
+          textScale: 1.6,
+        );
+        await complete(tester, repository, 0, [_game('all')]);
+        final upside = find.byKey(const ValueKey('report_type_upside_down'));
+        await tester.ensureVisible(upside);
+        await tester.tap(upside);
+        await _settle(tester);
+        expect(repository.requests.last.gameType, ReportGameType.upsideDown);
+        final comeback = find.byKey(const ValueKey('report_type_comeback'));
+        await tester.ensureVisible(comeback);
+        await tester.tap(comeback);
+        await _settle(tester);
+        expect(repository.requests.last.gameType, ReportGameType.comeback);
+        await complete(tester, repository, 2, [_game('comeback')]);
+        await complete(tester, repository, 1, [_game('late-upside')]);
+        expect(
+          container.read(reportsPaginationProvider).items.single.gameId,
+          'comeback',
+        );
+        final marathon = find.byKey(const ValueKey('report_type_marathon'));
+        await tester.ensureVisible(marathon);
+        await tester.tap(marathon);
+        await _settle(tester);
+        expect(repository.requests.last.gameType, ReportGameType.marathon);
+        await complete(tester, repository, 3, []);
+        expect(find.text('No Marathon reports yet.'), findsOneWidget);
+        final all = find.byKey(const ValueKey('report_type_all'));
+        await tester.ensureVisible(all);
+        await tester.tap(all);
+        await _settle(tester);
+        expect(
+          container.read(reportsPaginationProvider).items.single.gameId,
+          'all',
+        );
+        expect(
+          repository.requests,
+          hasLength(4),
+          reason: 'All reuses only its own first-page cache',
+        );
+        // Exercise every actual chip through a pointer, including ones which
+        // begin off-screen at this narrow width and large text size.
+        for (final type in ReportGameType.values) {
+          final chip = find.byKey(ValueKey('report_type_${type.key}'));
+          await tester.ensureVisible(chip);
+          await tester.tap(chip);
+          await _settle(tester);
+          expect(repository.requests.last.gameType, type);
+          await complete(
+            tester,
+            repository,
+            repository.requests.length - 1,
+            [],
+          );
+          expect(find.text('No ${type.label} reports yet.'), findsOneWidget);
+        }
+        expect(tester.takeException(), isNull);
+        await _teardown(tester, container);
+      },
+    );
 
     for (final mode in GamesListViewMode.values) {
       testWidgets(

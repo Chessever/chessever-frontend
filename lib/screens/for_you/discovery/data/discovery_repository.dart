@@ -6,9 +6,9 @@ import 'package:chessever2/repository/gamebase/miniatures/miniatures_models.dart
 import 'package:chessever2/repository/supabase/game/game_repository.dart';
 import 'package:chessever2/repository/supabase/game/games.dart';
 import 'package:chessever2/repository/supabase/tour/tour_repository.dart';
-import 'package:chessever2/screens/chessboard/utils/game_share_utils.dart'
-    show classificationFromNags, legacyClassificationFromComments;
+import 'package:chessever2/screens/chessboard/game_review/saved_game_report.dart';
 import 'package:chessever2/screens/for_you/discovery/models/discovery_models.dart';
+import 'package:chessever2/screens/for_you/discovery/models/report_game_type.dart';
 import 'package:chessever2/screens/library/miniatures/miniatures_access.dart';
 import 'package:chessever2/screens/library/utils/gamebase_game_to_games_tour_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
@@ -233,11 +233,20 @@ class DiscoveryRepository {
     int pageSize = 30,
     AnalyzedGamesCursor? after,
     DateTime? since,
+    ReportGameType? gameType,
   }) async {
     if (pageSize <= 0) return const AnalyzedGamesPage(items: []);
-    var query = client()
-        .from('games')
-        .select(_analyzedGameColumns)
+    // All keeps its exact existing query, including on older backends. The
+    // optional RPC filters the entire archive and excludes metadata whose PGN
+    // changed. It returns SETOF games, preserving embedded tour relationships.
+    final source = gameType == null
+        ? client().from('games').select(_analyzedGameColumns)
+        : client().rpc<List<Map<String, dynamic>>>(
+            'report_games_by_type',
+            params: {'p_type': gameType.key},
+            get: true,
+          );
+    var query = source
         .inFilter('status', _kFinalStatuses.toList(growable: false))
         .like('pgn', r'%[\%eval %')
         .or(r'pgn.like.%$24%,pgn.ilike.%chessever_annotation%');
@@ -263,7 +272,10 @@ class DiscoveryRepository {
     final stopwatch = Stopwatch()..start();
     final List<Map<String, dynamic>> rows;
     try {
-      rows = await query
+      final selected = gameType == null
+          ? query
+          : query.select(_analyzedGameColumns);
+      rows = await selected
           .order('last_move_time', ascending: false)
           .order('id', ascending: true)
           .limit(pageSize)
@@ -271,6 +283,11 @@ class DiscoveryRepository {
           // and avoid repeating unavailable-server requests behind the loader.
           .retry(enabled: false, requestTimeout: const Duration(seconds: 10));
     } catch (error) {
+      if (gameType != null &&
+          error is PostgrestException &&
+          (error.code == 'PGRST202' || error.code == '42883')) {
+        throw const ReportGameTypesUnavailable();
+      }
       final cause = error is PostgrestException
           ? 'database ${error.code ?? 'unknown'}'
           : error.runtimeType.toString();
@@ -285,7 +302,7 @@ class DiscoveryRepository {
     for (final raw in rows) {
       try {
         if (!_kFinalStatuses.contains(raw['status']) ||
-            !_hasSavedReport(raw['pgn'])) {
+            !hasSavedGameReport(raw['pgn'])) {
           continue;
         }
         final game = GamesTourModel.fromGame(
@@ -353,25 +370,6 @@ class DiscoveryRepository {
         .toList(growable: false);
     return (items: items, total: math.max(page.total, items.length));
   }
-}
-
-/// Shares the board's current and legacy classification readers. An evaluation
-/// and a ChessEver verdict must belong to the same played move: ordinary evals,
-/// quality glyphs and a quoted/variation-only report are not enough.
-bool _hasSavedReport(Object? pgn) {
-  if (pgn is! String || pgn.trim().isEmpty) return false;
-  final parsed = PgnGame.parseMultiGamePgn(pgn);
-  if (parsed.length != 1) return false;
-  return parsed.single.moves.mainline().any((move) {
-    final classification =
-        classificationFromNags(move.nags) ??
-        legacyClassificationFromComments(move.comments);
-    return classification != null &&
-        (move.comments?.any(
-              (comment) => PgnComment.fromPgn(comment).eval != null,
-            ) ??
-            false);
-  });
 }
 
 /// Strongest first by the two players' average rating, then most recent,

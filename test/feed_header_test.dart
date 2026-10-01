@@ -361,6 +361,7 @@ FeedItem _item({
   return FeedItem(
     game: GamesTourModel(
       gameId: 'g',
+      pgn: r'1. e4 $242 { [%eval 0.3] } e5 2. Nf3 Nc6 3. Bb5 1-0',
       whitePlayer: PlayerCard(
         name: 'White',
         federation: '',

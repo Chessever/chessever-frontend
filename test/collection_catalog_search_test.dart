@@ -1,3 +1,6 @@
+import 'package:chessever2/widgets/game_filter/game_filter_choice_chips.dart';
+import 'package:chessever2/widgets/game_filter/game_filter_model.dart';
+import 'package:chessever2/widgets/game_filter/filter_popup_components.dart';
 import 'dart:async';
 import 'package:chessever2/repository/gamebase/collections/collection_search_query.dart';
 import 'package:chessever2/repository/gamebase/gamebase_repository.dart';
@@ -62,6 +65,7 @@ void main() {
       expect(query.withText('Tal').parameters['minYear'], 2023);
       await repo.searchBooks(query, 40);
       await repo.searchOpenings(query, 40);
+      await repo.searchAuthors(query, 40);
       await repo.fetchPublishedGames(search: query, offset: 40);
       for (final r in requests) {
         expect(r.queryParameters, containsPair('q', '[White "Carlsen"]'));
@@ -72,7 +76,7 @@ void main() {
       }
       expect(requests.last.headers['Authorization'], 'Bearer session');
       expect(
-        requests.take(2).every((r) => !r.headers.containsKey('Authorization')),
+        requests.take(3).every((r) => !r.headers.containsKey('Authorization')),
         isTrue,
       );
       dio.close();
@@ -88,7 +92,10 @@ void main() {
         query: query,
         load: load,
         identity: (s) => s,
-        itemBuilder: (s) => SizedBox(height: 100, child: Text(s)),
+        indexedItemBuilder: (s, index) => SizedBox(
+          height: 100,
+          child: Text(s, key: ValueKey('rank_${index + 1}')),
+        ),
         padding: EdgeInsets.zero,
         emptyMessage: 'Empty',
       ),
@@ -136,131 +143,144 @@ void main() {
     await tester.tap(find.text('Try again'));
     await tester.pumpAndSettle();
     expect(find.text('Second'), findsOneWidget);
+    expect(find.byKey(const ValueKey('rank_1')), findsOneWidget);
+    expect(find.byKey(const ValueKey('rank_2')), findsOneWidget);
     expect(offsets, [0, 1, 1]);
   });
-  testWidgets(
-    'shared pickers apply and reset without annotation or help copy',
-    (tester) async {
-      CollectionSearchQuery? result;
-      await tester.pumpWidget(
-        MaterialApp(
-          theme: AppTheme.darkTheme,
-          home: Scaffold(
-            body: Builder(
-              builder: (context) {
-                ResponsiveHelper.init(context);
-                return TextButton(
-                  onPressed: () async {
-                    result = await showCollectionSearchFilters(
-                      context,
-                      result ??
-                          const CollectionSearchQuery(
-                            text: 'Tal',
-                            annotated: true,
-                          ),
-                      loadAuthors: () async => [
-                        'Bobby Fischer',
-                        'Judit Polgar',
-                      ],
-                    );
-                  },
-                  child: const Text('Filters'),
-                );
-              },
-            ),
+  testWidgets('shared pickers preserve every filter and reset to all years', (
+    tester,
+  ) async {
+    CollectionSearchQuery? result;
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.darkTheme,
+        home: Scaffold(
+          body: Builder(
+            builder: (context) {
+              ResponsiveHelper.init(context);
+              return TextButton(
+                onPressed: () async {
+                  result = await showCollectionSearchFilters(
+                    context,
+                    result ??
+                        const CollectionSearchQuery(
+                          text: 'Tal',
+                          annotated: true,
+                        ),
+                    loadAuthors: () async => ['Bobby Fischer', 'Judit Polgar'],
+                  );
+                },
+                child: const Text('Filters'),
+              );
+            },
           ),
         ),
-      );
-      await tester.tap(find.text('Filters'));
-      await tester.pumpAndSettle();
-      expect(find.byType(TextFormField), findsNothing);
-      expect(find.text('Result'), findsNothing);
-      expect(find.text('Sort'), findsNothing);
-      expect(find.text('Annotated games only'), findsNothing);
-      expect(find.textContaining('Filters match games'), findsNothing);
-      expect(find.textContaining('For a specific side'), findsNothing);
-      expect(find.byType(WheelRangeFilter), findsOneWidget);
-      expect(find.byType(ListWheelScrollView), findsNWidgets(2));
-      final year = DateTime.now().year;
-      var range = tester.widget<WheelRangeFilter>(
-        find.byType(WheelRangeFilter),
-      );
-      expect(range.currentStart, year - 1);
-      expect(range.currentEnd, year);
-      await tester.drag(
-        find.byType(ListWheelScrollView).first,
-        const Offset(0, 32),
-      );
-      await tester.pumpAndSettle();
-      expect(
-        tester
-            .widget<WheelRangeFilter>(find.byType(WheelRangeFilter))
-            .currentStart,
-        year - 2,
-      );
-      await tester.tap(find.byKey(const ValueKey('eco-dropdown-header')));
-      await tester.pumpAndSettle();
-      await tester.enterText(
-        find.descendant(
-          of: find.byType(EcoFilterDropdown),
-          matching: find.byType(TextField),
-        ),
-        'B20',
-      );
-      await tester.pumpAndSettle();
-      expect(find.byKey(const ValueKey('eco-family-B20-B99')), findsNothing);
-      final opening = find
-          .byWidgetPredicate(
-            (widget) =>
-                widget is Semantics &&
-                (widget.properties.label?.endsWith(', ECO B20') ?? false),
-          )
-          .first;
-      await tester.ensureVisible(opening);
-      await tester.pump();
-      await tester.tap(opening);
-      await tester.pumpAndSettle();
-      await tester.ensureVisible(
-        find.byKey(const ValueKey('collections_author')),
-      );
-      await tester.tap(find.text('All authors').first);
-      await tester.pumpAndSettle();
-      await tester.ensureVisible(find.text('Judit Polgar'));
-      await tester.tap(find.text('Judit Polgar'));
-      await tester.pumpAndSettle();
-      await tester.ensureVisible(find.text('Apply filters'));
-      await tester.tap(find.text('Apply filters'));
-      await tester.pumpAndSettle();
-      expect(result!.text, 'Tal');
-      expect(result!.eco, 'B20');
-      expect(result!.minYear, year - 2);
-      expect(result!.maxYear, year);
-      expect(result!.author, 'Judit Polgar');
-      expect(result!.annotated, isFalse);
-      await tester.tap(find.text('Filters'));
-      await tester.pumpAndSettle();
-      expect(
-        tester
-            .widget<WheelRangeFilter>(find.byType(WheelRangeFilter))
-            .currentStart,
-        year - 2,
-      );
-      await tester.tap(find.text('Reset'));
-      await tester.pumpAndSettle();
-      expect(result, const CollectionSearchQuery(text: 'Tal'));
-      expect(result!.filterCount, 0);
-      await tester.tap(find.text('Filters'));
-      await tester.pumpAndSettle();
-      expect(
-        tester
-            .widget<WheelRangeFilter>(find.byType(WheelRangeFilter))
-            .currentStart,
-        year - 1,
-      );
-      await tester.tap(find.byTooltip('Close filters'));
-      await tester.pumpAndSettle();
-      expect(result, isNull); // Dismissing a draft never applies it.
-      expect(tester.takeException(), isNull);
-    },
-  );
+      ),
+    );
+    await tester.tap(find.text('Filters'));
+    await tester.pumpAndSettle();
+    expect(find.byType(FilterPopupFrame), findsOneWidget);
+    expect(
+      find.byType(GameFilterChoiceChips<GameResultFilter>),
+      findsOneWidget,
+    );
+    expect(find.byType(TextFormField), findsNothing);
+    expect(find.text('Result'), findsOneWidget);
+    expect(find.text('Sort'), findsNothing);
+    expect(find.text('Annotations'), findsNothing);
+    expect(find.text('Unfinished'), findsNothing);
+    expect(find.text('Completed'), findsNothing);
+    expect(find.text('All'), findsOneWidget);
+    expect(find.text('½-½'), findsOneWidget);
+    expect(find.byType(SwitchListTile), findsNothing);
+    expect(find.textContaining('Filters match games'), findsNothing);
+    expect(find.textContaining('For a specific side'), findsNothing);
+    expect(find.byType(WheelRangeFilter), findsNothing);
+    await tester.tap(find.text('Year range'));
+    await tester.pumpAndSettle();
+    expect(find.byType(WheelRangeFilter), findsOneWidget);
+    expect(find.byType(ListWheelScrollView), findsNWidgets(2));
+    final year = DateTime.now().year;
+    var range = tester.widget<WheelRangeFilter>(find.byType(WheelRangeFilter));
+    expect(range.currentStart, year - 1);
+    expect(range.currentEnd, year);
+    await tester.drag(
+      find.byType(ListWheelScrollView).first,
+      const Offset(0, 32),
+    );
+    await tester.pumpAndSettle();
+    expect(
+      tester
+          .widget<WheelRangeFilter>(find.byType(WheelRangeFilter))
+          .currentStart,
+      year - 2,
+    );
+    await tester.tap(find.byKey(const ValueKey('eco-dropdown-header')));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.descendant(
+        of: find.byType(EcoFilterDropdown),
+        matching: find.byType(TextField),
+      ),
+      'B20',
+    );
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('eco-family-B20-B99')), findsNothing);
+    final opening = find
+        .byWidgetPredicate(
+          (widget) =>
+              widget is Semantics &&
+              (widget.properties.label?.endsWith(', ECO B20') ?? false),
+        )
+        .first;
+    await tester.ensureVisible(opening);
+    await tester.pump();
+    await tester.tap(opening);
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(
+      find.byKey(const ValueKey('collections_author')),
+    );
+    await tester.tap(find.text('All authors').first);
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('Judit Polgar'));
+    await tester.tap(find.text('Judit Polgar'));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(
+      find.byKey(const ValueKey('collection_result_filter')),
+    );
+    await tester.ensureVisible(find.text('1-0'));
+    await tester.tap(find.text('1-0'));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('Apply Filters'));
+    await tester.tap(find.text('Apply Filters'));
+    await tester.pumpAndSettle();
+    expect(result!.text, 'Tal');
+    expect(result!.eco, 'B20');
+    expect(result!.minYear, year - 2);
+    expect(result!.maxYear, year);
+    expect(result!.author, 'Judit Polgar');
+    expect(result!.annotated, isFalse);
+    expect(result!.result, '1-0');
+    expect(result!.sort, 'default');
+    await tester.tap(find.text('Filters'));
+    await tester.pumpAndSettle();
+    expect(
+      tester
+          .widget<WheelRangeFilter>(find.byType(WheelRangeFilter))
+          .currentStart,
+      year - 2,
+    );
+    await tester.ensureVisible(find.text('Reset'));
+    await tester.tap(find.text('Reset'));
+    await tester.pumpAndSettle();
+    expect(result, const CollectionSearchQuery(text: 'Tal'));
+    expect(result!.filterCount, 0);
+    await tester.tap(find.text('Filters'));
+    await tester.pumpAndSettle();
+    expect(find.byType(WheelRangeFilter), findsNothing);
+    await tester.tapAt(const Offset(5, 5));
+    await tester.pumpAndSettle();
+    expect(result, isNull); // Dismissing a draft never applies it.
+    expect(tester.takeException(), isNull);
+  });
 }

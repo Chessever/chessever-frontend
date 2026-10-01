@@ -65,10 +65,10 @@ void Function() _keepFor(Ref<Object?> ref, Duration maxAge) {
 
 // ---------------------------------------------------------------- Most Liked
 
-/// The period the viewer picked. Premium periods are only ever set after the
-/// premium guard passed (see the Most Liked section).
+/// Start with monthly rankings. The active query retains the Premium guard
+/// for viewers without access to monthly rankings.
 final mostLikedPeriodProvider = StateProvider<MostLikedPeriod>(
-  (ref) => MostLikedPeriod.today,
+  (ref) => MostLikedPeriod.month,
 );
 
 /// The day the viewer walked the date control to, or null for today. The
