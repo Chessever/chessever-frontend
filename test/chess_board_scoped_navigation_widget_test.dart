@@ -16,6 +16,7 @@ import 'package:chessever2/screens/chessboard/chess_board_screen_new.dart';
 import 'package:chessever2/screens/chessboard/analysis/chess_game.dart';
 import 'package:chessever2/screens/chessboard/game_review/game_analysis_report_store.dart';
 import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
+import 'package:chessever2/screens/chessboard/widgets/chess_board_bottom_navbar.dart';
 import 'package:chessever2/screens/gamebase/models/models.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/event_no_spoilers_provider.dart';
@@ -25,6 +26,7 @@ import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -44,6 +46,113 @@ void main() {
   });
 
   tearDownAll(GameAnalysisReportStore.debugResetInstance);
+
+  testWidgets('hardware arrows reuse board callbacks and selection reset', (
+    tester,
+  ) async {
+    final raw = _rawGame(
+      id: 'keyboard-board',
+      tourId: 'keyboard-tour',
+      round: 'round-1',
+      board: 1,
+    );
+    final game = GamesTourModel.fromGame(raw);
+    final container = _boardTestContainer(
+      gamesByTour: {
+        'keyboard-tour': [raw],
+      },
+      gameRepository: _ImmediateGameRepository({raw.id: raw}),
+    );
+    addTearDown(container.dispose);
+    final provider = chessBoardScreenProviderNew(
+      ChessBoardProviderParams(game: game, index: 0),
+    );
+    final selectionClear = boardSelectionClearRequestProvider(
+      '${game.gameId}#0',
+    );
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: MaterialApp(
+          theme: ThemeData.dark().copyWith(extensions: const [AppColors.dark]),
+          home: Builder(
+            builder: (context) {
+              ResponsiveHelper.init(context);
+              return ChessBoardScreenNew(
+                currentIndex: 0,
+                games: [game],
+                viewSource: ChessboardView.favorites,
+                savedAnalysisData: SavedAnalysisData(
+                  chessGame: ChessGame.fromPgn(game.gameId, game.pgn!),
+                  variationComments: const {},
+                  movePointer: const [0],
+                  isBoardFlipped: false,
+                  lastViewedPosition: 0,
+                ),
+              );
+            },
+          ),
+        ),
+      ),
+    );
+    for (var i = 0; i < 6; i++) {
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+    expect(container.read(provider).requireValue.analysisState.movePointer, [
+      0,
+    ]);
+    final initialClear = container.read(selectionClear);
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowLeft);
+    await tester.pump();
+    expect(
+      container.read(provider).requireValue.analysisState.movePointer,
+      isEmpty,
+    );
+    expect(container.read(selectionClear), initialClear + 1);
+    final atStartClear = container.read(selectionClear);
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowLeft);
+    await tester.pump();
+    expect(container.read(selectionClear), atStartClear);
+
+    // The fixture can show a non-route teaching overlay. Invoke the shipped
+    // enabled button callback directly here; pointer taps are covered in the
+    // real bottom-bar keyboard tests without that unrelated overlay.
+    tester
+        .widget<ChessSvgBottomNavbarWithLongPress>(
+          find.byKey(e2eKey(E2eIds.boardMoveForward)),
+        )
+        .onPressed!();
+    await tester.pump(const Duration(milliseconds: 100));
+    final touchPosition = container.read(provider).requireValue.analysisState;
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowLeft);
+    await tester.pump(const Duration(milliseconds: 100));
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+    await tester.pump(const Duration(milliseconds: 100));
+    final keyboardPosition = container
+        .read(provider)
+        .requireValue
+        .analysisState;
+    expect(keyboardPosition.movePointer, touchPosition.movePointer);
+    expect(keyboardPosition.position.fen, touchPosition.position.fen);
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(container.read(provider).requireValue.analysisState.movePointer, [
+      1,
+    ]);
+    final atEndClear = container.read(selectionClear);
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(container.read(provider).requireValue.analysisState.movePointer, [
+      1,
+    ]);
+    expect(container.read(selectionClear), atEndClear);
+    expect(container.read(provider).requireValue.allMoves.length, 2);
+    await tester.pumpWidget(const SizedBox.shrink());
+    container.dispose();
+    // Dispose the subscription sync timer and drain existing delayed board/
+    // explorer callbacks before Flutter verifies that no timers remain.
+    await tester.pump(const Duration(milliseconds: 300));
+  });
 
   testWidgets(
     'delayed player-list refresh keeps the swiped game and dropdown in sync',
