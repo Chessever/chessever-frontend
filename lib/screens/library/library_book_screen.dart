@@ -2,6 +2,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:chessever2/repository/library/collection_cover.dart';
 import 'package:chessever2/repository/library/library_book_publication.dart';
 import 'package:chessever2/repository/library/models/library_folder.dart';
 import 'package:chessever2/screens/collections/collection_plate_row.dart';
@@ -69,10 +70,10 @@ Future<void> openLibraryBookEditor(
 /// page. Foreword and publisher are not edited here: the publisher is always
 /// ChessEver's own editor, and a foreword belongs to a printed book, not to
 /// a folder of games. Whatever the server already holds for them is kept.
-enum _Field { title, subtitle, author, year, about, cover }
+enum _Field { title, subtitle, author, year, about }
 
 /// Which preview the field is drawn in: the list row or the collection page.
-const _listFields = {_Field.title, _Field.author, _Field.cover};
+const _listFields = {_Field.title, _Field.author};
 
 /// Publication is explicit. Saving details alone preserves the current
 /// visibility, and a failure leaves every entered field in place.
@@ -98,6 +99,12 @@ class _LibraryBookScreenState extends ConsumerState<LibraryBookScreen> {
   /// 0: as it reads in the Collections list, 1: as its page opens.
   int _previewTab = 0;
   _Field? _focused;
+
+  /// The cover lives on the server: it is uploaded as soon as it is picked,
+  /// and the saved link is carried through every details save.
+  String _coverUrl = '';
+  Uint8List? _coverPreview;
+  bool _coverBusy = false;
 
   @override
   void initState() {
@@ -144,7 +151,6 @@ class _LibraryBookScreenState extends ConsumerState<LibraryBookScreen> {
       _Field.author: m.author,
       _Field.about: m.about,
       _Field.year: m.publishedYear?.toString() ?? '',
-      _Field.cover: m.coverUrl,
     };
     for (final entry in values.entries) {
       _fields[entry.key]!.text = entry.value;
@@ -152,6 +158,7 @@ class _LibraryBookScreenState extends ConsumerState<LibraryBookScreen> {
     if (m.author.trim().isEmpty) _prefillRemembered();
     setState(() {
       _publication = publication;
+      _coverUrl = m.coverUrl;
       _dirty = false;
       _refreshGames = false;
     });
@@ -288,14 +295,15 @@ class _LibraryBookScreenState extends ConsumerState<LibraryBookScreen> {
       foreword: saved?.foreword ?? '',
       publisher: saved?.publisher ?? '',
       publishedYear: int.tryParse(_text(_Field.year).trim()),
-      coverUrl: _text(_Field.cover).trim(),
+      // Set by the cover upload, never typed; carried through on save.
+      coverUrl: _coverUrl,
     );
   }
 
   bool _validateForReview = false;
 
   Future<void> _save({bool publish = false}) async {
-    if (_busy) return;
+    if (_busy || _coverBusy) return;
     _validateForReview = publish;
     if (!(_form.currentState?.validate() ?? false)) {
       setState(
@@ -345,6 +353,105 @@ class _LibraryBookScreenState extends ConsumerState<LibraryBookScreen> {
     } finally {
       if (mounted) setState(() => _busy = false);
     }
+  }
+
+  /// Pick a photo, prepare the 2:3 cover and upload it straight away. A
+  /// cover belongs to a saved collection, so a never-saved one is first
+  /// saved as a private draft with what is typed.
+  Future<void> _pickCover() async {
+    if (_busy || _coverBusy) return;
+    final Uint8List? image;
+    try {
+      image = await ref.read(collectionCoverPickerProvider)();
+    } on FormatException catch (error) {
+      if (mounted) setState(() => _error = error.message);
+      return;
+    }
+    if (image == null || !mounted) return;
+    final wasPublished = _publication?.isPublished ?? false;
+    setState(() {
+      _coverBusy = true;
+      _coverPreview = image;
+      _error = null;
+    });
+    try {
+      final publisher = ref.read(libraryBookPublisherProvider);
+      if (_publication?.bookId == null) {
+        _validateForReview = false;
+        if (!(_form.currentState?.validate() ?? false)) {
+          throw const LibraryBookPublicationException(
+            'Add a title first. The cover is saved with the collection.',
+          );
+        }
+        final saved = await publisher.save(widget.folder, _metadata);
+        if (!mounted) return;
+        _accept(saved);
+        unawaited(_clearDraft());
+        _remember(saved.metadata);
+      }
+      final result = await publisher.uploadCover(widget.folder, image);
+      if (!mounted) return;
+      setState(() {
+        _publication = result;
+        _coverUrl = result.metadata.coverUrl;
+      });
+      _invalidateCollections();
+      showAppSnack(
+        context,
+        wasPublished
+            ? 'Cover saved. ChessEver will review the change.'
+            : 'Cover saved',
+        tone: AppSnackTone.success,
+      );
+    } catch (error) {
+      if (mounted) {
+        setState(() {
+          _coverPreview = null;
+          _error = error is LibraryBookPublicationException
+              ? error.message
+              : 'Could not save the cover. Retry when connected.';
+        });
+      }
+    } finally {
+      if (mounted) setState(() => _coverBusy = false);
+    }
+  }
+
+  Future<void> _removeCover() async {
+    if (_busy || _coverBusy) return;
+    setState(() {
+      _coverBusy = true;
+      _error = null;
+    });
+    try {
+      final result = await ref
+          .read(libraryBookPublisherProvider)
+          .removeCover(widget.folder);
+      if (!mounted) return;
+      setState(() {
+        _publication = result;
+        _coverUrl = result.metadata.coverUrl;
+        _coverPreview = null;
+      });
+      _invalidateCollections();
+    } catch (error) {
+      if (mounted) {
+        setState(
+          () => _error = error is LibraryBookPublicationException
+              ? error.message
+              : 'Could not remove the cover. Retry when connected.',
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _coverBusy = false);
+    }
+  }
+
+  void _invalidateCollections() {
+    ref.invalidate(collectionsProvider);
+    ref.invalidate(collectionsRepositoryProvider);
+    ref.invalidate(collectionOpeningsProvider);
+    ref.invalidate(collectionBooksForOpeningProvider);
   }
 
   Future<void> _unpublish() async {
@@ -419,9 +526,6 @@ class _LibraryBookScreenState extends ConsumerState<LibraryBookScreen> {
         return year == null || year < 1000 || year > DateTime.now().year + 1
             ? 'Enter a four-digit year'
             : null;
-      case _Field.cover:
-        if (value.isEmpty) return null;
-        return _coverUri(value) == null ? 'Use an HTTPS image link' : null;
       case _Field.subtitle:
         return value.isNotEmpty &&
                 value.toLowerCase() == _text(_Field.title).trim().toLowerCase()
@@ -491,13 +595,11 @@ class _LibraryBookScreenState extends ConsumerState<LibraryBookScreen> {
             maxLength: limit,
             keyboardType: switch (field) {
               _Field.year => TextInputType.number,
-              _Field.cover => TextInputType.url,
               _ when lines > 1 => TextInputType.multiline,
               _ => TextInputType.text,
             },
             inputFormatters: switch (field) {
               _Field.year => [FilteringTextInputFormatter.digitsOnly],
-              _Field.cover => [FilteringTextInputFormatter.deny(RegExp(r'\s'))],
               _Field.author => [
                 // Names only: letters (any script), spaces and . ' - , &.
                 FilteringTextInputFormatter.allow(
@@ -511,13 +613,12 @@ class _LibraryBookScreenState extends ConsumerState<LibraryBookScreen> {
             // Author is a proper name: every word starts upper-case, so
             // "Jason Statham" is not turned into "Jason statham".
             textCapitalization: switch (field) {
-              _Field.cover || _Field.year => TextCapitalization.none,
+              _Field.year => TextCapitalization.none,
               _Field.title ||
               _Field.subtitle ||
               _Field.author => TextCapitalization.words,
               _ => TextCapitalization.sentences,
             },
-            autocorrect: field != _Field.cover,
             style: AppTypography.textSmRegular.copyWith(
               color: colors.textPrimary,
               fontSize: 15.f,
@@ -668,7 +769,9 @@ class _LibraryBookScreenState extends ConsumerState<LibraryBookScreen> {
                                 author: _text(_Field.author).trim(),
                                 year: _text(_Field.year).trim(),
                                 about: _text(_Field.about).trim(),
-                                cover: _coverUri(_text(_Field.cover)),
+                                cover: _coverUri(_coverUrl),
+                                coverBytes: _coverPreview,
+                                coverLit: _coverBusy,
                                 publisher: _publication!.metadata.publisher
                                     .trim(),
                                 gameCount: _publication!.gameCount,
@@ -728,15 +831,7 @@ class _LibraryBookScreenState extends ConsumerState<LibraryBookScreen> {
                               lines: 4,
                               limit: 1500,
                             ),
-                            _field(
-                              _Field.cover,
-                              label: 'Cover image link',
-                              optional: true,
-                              where:
-                                  'A portrait image works best. Without one, the stacked boards are shown.',
-                              hint: 'https://…',
-                              limit: 2048,
-                            ),
+                            _coverPicker(published),
                             if (published)
                               CheckboxListTile(
                                 contentPadding: EdgeInsets.zero,
@@ -837,6 +932,145 @@ class _LibraryBookScreenState extends ConsumerState<LibraryBookScreen> {
     );
   }
 
+  /// The cover: a 2:3 thumbnail with Choose / Replace and Remove. It is the
+  /// collection's own image, not the profile photo shown for the author.
+  Widget _coverPicker(bool published) {
+    final colors = context.colors;
+    final url = _coverUri(_coverUrl);
+    final hasCover = _coverPreview != null || url != null;
+    final enabled = !_busy && !_coverBusy;
+    final thumb = _coverPreview != null
+        ? Image.memory(_coverPreview!, fit: BoxFit.cover)
+        : url != null
+        ? CachedNetworkImage(
+            imageUrl: url.toString(),
+            fit: BoxFit.cover,
+            placeholder: (_, __) => const CollectionBookPlate(),
+            errorWidget: (_, __, ___) => const CollectionBookPlate(),
+          )
+        : const CollectionBookPlate();
+    return Padding(
+      padding: EdgeInsets.only(bottom: 20.sp),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.baseline,
+            textBaseline: TextBaseline.alphabetic,
+            children: [
+              Text(
+                'Cover',
+                style: AppTypography.textSmMedium.copyWith(
+                  color: colors.textPrimary,
+                ),
+              ),
+              SizedBox(width: 6.sp),
+              Text(
+                'Optional',
+                style: AppTypography.textXsRegular.copyWith(
+                  color: context.textInk(0.45),
+                ),
+              ),
+            ],
+          ),
+          SizedBox(height: 2.sp),
+          Text(
+            'Shown on the collection card and page. The centre of your photo is cropped to a 2:3 portrait. Without one, the stacked boards are shown.',
+            style: AppTypography.textXsRegular.copyWith(
+              color: context.textInk(0.55),
+              height: 16 / 12,
+            ),
+          ),
+          SizedBox(height: 10.sp),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              Semantics(
+                image: true,
+                label: hasCover ? 'Collection cover' : 'No cover yet',
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(6.br),
+                  child: SizedBox(
+                    width: 64.w,
+                    height: 96.w,
+                    child: Stack(
+                      fit: StackFit.expand,
+                      children: [
+                        thumb,
+                        if (_coverBusy)
+                          ColoredBox(
+                            color: Colors.black.withValues(alpha: 0.4),
+                            child: Center(
+                              child: SizedBox.square(
+                                dimension: 20.sp,
+                                child: const CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: Colors.white,
+                                ),
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+              SizedBox(width: 16.sp),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    OutlinedButton(
+                      key: const ValueKey('book_cover_choose'),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: colors.textPrimary,
+                        minimumSize: const Size(0, 44),
+                        side: BorderSide(
+                          color: colors.textPrimary.withValues(alpha: 0.16),
+                        ),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10.br),
+                        ),
+                        textStyle: AppTypography.textSmMedium,
+                      ),
+                      onPressed: enabled ? _pickCover : null,
+                      child: Text(
+                        _coverBusy
+                            ? 'Saving cover…'
+                            : hasCover
+                            ? 'Replace photo'
+                            : 'Choose from gallery',
+                      ),
+                    ),
+                    if (hasCover && !_coverBusy)
+                      TextButton(
+                        key: const ValueKey('book_cover_remove'),
+                        style: TextButton.styleFrom(
+                          foregroundColor: context.textInk(0.6),
+                          minimumSize: const Size(0, 44),
+                          padding: EdgeInsets.symmetric(horizontal: 4.sp),
+                          textStyle: AppTypography.textSmRegular,
+                        ),
+                        onPressed: enabled ? _removeCover : null,
+                        child: const Text('Remove cover'),
+                      ),
+                    if (published)
+                      Text(
+                        'A new cover goes to ChessEver for review.',
+                        style: AppTypography.textXsRegular.copyWith(
+                          color: context.textInk(0.45),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _sectionHeading(String text) => Semantics(
     header: true,
     child: Text(
@@ -881,6 +1115,8 @@ class _BookPreview extends StatelessWidget {
     required this.year,
     required this.about,
     required this.cover,
+    required this.coverBytes,
+    required this.coverLit,
     required this.publisher,
     required this.gameCount,
     required this.focused,
@@ -893,6 +1129,8 @@ class _BookPreview extends StatelessWidget {
   final String year;
   final String about;
   final Uri? cover;
+  final Uint8List? coverBytes;
+  final bool coverLit;
   final String publisher;
   final int gameCount;
   final _Field? focused;
@@ -900,6 +1138,8 @@ class _BookPreview extends StatelessWidget {
   Widget _plate(BoxFit fit) {
     final url = cover;
     const plate = CollectionBookPlate();
+    // A just-picked cover shows at once, before its upload completes.
+    if (coverBytes != null) return Image.memory(coverBytes!, fit: fit);
     if (url == null) return plate;
     return CachedNetworkImage(
       imageUrl: url.toString(),
@@ -1004,9 +1244,9 @@ class _BookPreview extends StatelessWidget {
         Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            if (cover != null || focused == _Field.cover) ...[
+            if (cover != null || coverBytes != null || coverLit) ...[
               _Spot(
-                lit: focused == _Field.cover,
+                lit: coverLit,
                 child: ClipRRect(
                   borderRadius: BorderRadius.circular(4.br),
                   child: SizedBox(

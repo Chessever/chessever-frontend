@@ -7,6 +7,16 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:chessever2/repository/library/collection_cover.dart';
+import 'dart:convert';
+import 'dart:typed_data';
+
+Uint8List? pickedCover;
+
+/// A valid 1×1 PNG, so the instant preview can decode it.
+final _onePixelPng = base64Decode(
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
+);
 
 class _Publisher implements LibraryBookPublisher {
   @override
@@ -48,7 +58,42 @@ class _Publisher implements LibraryBookPublisher {
     return publication = LibraryBookPublication(
       status: 'draft',
       metadata: metadata,
+      bookId: 'book-1',
       gameCount: 2,
+    );
+  }
+
+  final covers = <Uint8List>[];
+  int coverRemovals = 0;
+  @override
+  Future<LibraryBookPublication> uploadCover(
+    LibraryFolder folder,
+    Uint8List image,
+  ) async {
+    covers.add(image);
+    return publication = LibraryBookPublication(
+      status: 'draft',
+      bookId: publication.bookId,
+      metadata: LibraryBookMetadata(
+        title: publication.metadata.title,
+        author: publication.metadata.author,
+        about: publication.metadata.about,
+        coverUrl: 'https://media.example.invalid/cover.webp',
+      ),
+    );
+  }
+
+  @override
+  Future<LibraryBookPublication> removeCover(LibraryFolder folder) async {
+    coverRemovals++;
+    return publication = LibraryBookPublication(
+      status: 'draft',
+      bookId: publication.bookId,
+      metadata: LibraryBookMetadata(
+        title: publication.metadata.title,
+        author: publication.metadata.author,
+        about: publication.metadata.about,
+      ),
     );
   }
 
@@ -72,7 +117,12 @@ Future<void> _pump(
   addTearDown(tester.view.reset);
   await tester.pumpWidget(
     ProviderScope(
-      overrides: [libraryBookPublisherProvider.overrideWithValue(publisher)],
+      overrides: [
+        libraryBookPublisherProvider.overrideWithValue(publisher),
+        collectionCoverPickerProvider.overrideWithValue(
+          () async => pickedCover,
+        ),
+      ],
       child: MaterialApp(
         theme: AppTheme.darkTheme,
         home: Builder(
@@ -99,6 +149,10 @@ Future<void> _pump(
 }
 
 Future<void> _tap(WidgetTester tester, String text) async {
+  // A focused field's caret scrolls itself back into view a frame later,
+  // which would pull the target off-screen after it was scrolled to.
+  FocusManager.instance.primaryFocus?.unfocus();
+  await tester.pumpAndSettle();
   final list = find
       .descendant(
         of: find.byType(SingleChildScrollView).first,
@@ -308,5 +362,29 @@ void main() {
     await _pump(tester, _Publisher());
     await tester.pumpAndSettle();
     expect(find.text('Continue where you left off?'), findsNothing);
+  });
+
+  testWidgets('a picked cover is uploaded, never typed as a link', (
+    tester,
+  ) async {
+    pickedCover = _onePixelPng;
+    addTearDown(() => pickedCover = null);
+    final publisher = _Publisher();
+    await _pump(tester, publisher);
+    expect(find.text('Cover image link'), findsNothing);
+    await _tap(tester, 'Choose from gallery');
+    // Never saved: the details are saved privately first, then the cover.
+    expect(publisher.saves.single.publish, isFalse);
+    expect(publisher.covers.single, pickedCover);
+    expect(find.text('Replace photo'), findsOneWidget);
+    // Later saves carry the uploaded cover through.
+    await _tap(tester, 'Save private draft');
+    expect(
+      publisher.saves.last.metadata.coverUrl,
+      'https://media.example.invalid/cover.webp',
+    );
+    await _tap(tester, 'Remove cover');
+    expect(publisher.coverRemovals, 1);
+    expect(find.text('Choose from gallery'), findsOneWidget);
   });
 }

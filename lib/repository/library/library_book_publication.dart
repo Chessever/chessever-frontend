@@ -1,3 +1,6 @@
+import 'dart:convert';
+import 'dart:typed_data';
+
 import 'package:dio/dio.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -116,6 +119,15 @@ abstract class LibraryBookPublisher {
   });
   Future<LibraryBookPublication> unpublish(LibraryFolder folder);
   Future<void> unpublishTree(LibraryFolder folder);
+
+  /// The collection's own cover (shown in collection cards), never the
+  /// profile photo. [image] is a prepared 2:3 image; the book's details must
+  /// have been saved once.
+  Future<LibraryBookPublication> uploadCover(
+    LibraryFolder folder,
+    Uint8List image,
+  );
+  Future<LibraryBookPublication> removeCover(LibraryFolder folder);
 }
 
 class LibraryBookPublicationException implements Exception {
@@ -130,6 +142,7 @@ typedef LibraryPublicationApiRequest =
       required String bearer,
       Map<String, dynamic>? body,
       Map<String, dynamic>? query,
+      required String resource,
     });
 
 /// Uses the native production client or the explicitly configured test bridge,
@@ -186,11 +199,27 @@ class GamebaseLibraryBookPublisher implements LibraryBookPublisher {
   Future<LibraryBookPublication> unpublish(LibraryFolder folder) =>
       _request(folder, 'DELETE');
 
+  @override
+  Future<LibraryBookPublication> uploadCover(
+    LibraryFolder folder,
+    Uint8List image,
+  ) => _request(
+    folder,
+    'POST',
+    resource: 'book/cover',
+    body: {'image': base64Encode(image)},
+  );
+
+  @override
+  Future<LibraryBookPublication> removeCover(LibraryFolder folder) =>
+      _request(folder, 'DELETE', resource: 'book/cover');
+
   Future<LibraryBookPublication> _request(
     LibraryFolder folder,
     String method, {
     Map<String, dynamic>? body,
     Map<String, dynamic>? query,
+    String resource = 'book',
   }) async {
     if (!libraryFolderCanPublish(folder)) {
       throw const LibraryBookPublicationException(
@@ -215,9 +244,10 @@ class GamebaseLibraryBookPublisher implements LibraryBookPublisher {
               bearer: token,
               body: body,
               query: query,
+              resource: resource,
             )
           : (await dio.request<Map<String, dynamic>>(
-              '$base/api/library/folders/${Uri.encodeComponent(folder.id)}/book',
+              '$base/api/library/folders/${Uri.encodeComponent(folder.id)}/$resource',
               data: body,
               queryParameters: query,
               options: Options(
@@ -240,6 +270,28 @@ class GamebaseLibraryBookPublisher implements LibraryBookPublisher {
       final failure = body is Map ? body['error'] : null;
       final deleting =
           failure is Map && failure['code'] == 'publication_deleting';
+      final code = failure is Map ? failure['code'] : null;
+      if (resource == 'book/cover') {
+        throw LibraryBookPublicationException(switch (code) {
+          'cover_type' => 'Use a JPEG, PNG or WebP photo.',
+          'cover_animated' => 'Use a still photo, not an animation.',
+          'cover_aspect' => 'The cover must be a 2:3 portrait.',
+          'cover_too_small' => 'Use a photo at least 600 × 900 pixels.',
+          'bad_base64' => 'This photo could not be read. Choose another one.',
+          'cover_unavailable' =>
+            'Cover uploads are unavailable right now. Try again shortly.',
+          'taken_down' =>
+            'ChessEver took this collection down. Ask ChessEver to restore it.',
+          _ => switch (error.response?.statusCode) {
+            401 => 'Your session expired. Sign in again to continue.',
+            403 => 'You do not have permission to change this cover.',
+            409 => 'Save the collection details, then add the cover.',
+            413 => 'This photo is too large. Choose one under 8 MB.',
+            404 || 503 => 'Cover uploads are not available here yet.',
+            _ => 'Could not save the cover. Retry when connected.',
+          },
+        });
+      }
       final message = switch (error.response?.statusCode) {
         401 => 'Your session expired. Sign in again to continue.',
         403 => 'You do not have permission to publish this folder.',

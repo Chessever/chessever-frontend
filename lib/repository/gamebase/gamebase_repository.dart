@@ -806,12 +806,16 @@ class GamebaseRepository {
     required String bearer,
     Map<String, dynamic>? body,
     Map<String, dynamic>? query,
+    String resource = 'book',
   }) async {
-    if (!const {'GET', 'PUT', 'DELETE'}.contains(method)) {
+    final cover = resource == 'book/cover';
+    if (!(cover
+        ? const {'POST', 'DELETE'}.contains(method)
+        : const {'GET', 'PUT', 'DELETE'}.contains(method))) {
       throw ArgumentError.value(method, 'method');
     }
     final response = await _dio.request<Map<String, dynamic>>(
-      '$_baseUrl/api/library/folders/${Uri.encodeComponent(folderId)}/book',
+      '$_baseUrl/api/library/folders/${Uri.encodeComponent(folderId)}/${cover ? 'book/cover' : 'book'}',
       data: body,
       queryParameters: query,
       options: Options(
