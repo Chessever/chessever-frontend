@@ -1,4 +1,3 @@
-import 'package:chessever2/services/rewarded_premium/rewarded_session.dart';
 import 'dart:convert';
 import 'dart:math' as math;
 
@@ -71,13 +70,11 @@ class DiscoveryRepository {
     final Object? rows;
     try {
       rows = await client().rpc(
-        'most_liked_games',
+        'most_liked_ranking_preview',
         params: {
           'p_from': window.from.toUtc().toIso8601String(),
           'p_to': window.to.toUtc().toIso8601String(),
           'p_limit': limit,
-          if (RewardedSession.instance.active)
-            'p_rewarded_session': RewardedSession.instance.token,
         },
       );
     } catch (e) {

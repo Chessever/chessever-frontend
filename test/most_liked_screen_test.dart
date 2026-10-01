@@ -1,4 +1,5 @@
 import 'package:chessever2/widgets/segmented_switcher.dart';
+import 'package:chessever2/screens/for_you/discovery/widgets/discovery_game_cards.dart';
 import 'package:chessever2/screens/chessboard/analysis/chess_game.dart';
 import 'package:chessever2/screens/my_likes/widgets/my_likes_game_card.dart';
 import 'package:chessever2/screens/my_likes/widgets/date_section_header.dart';
@@ -585,19 +586,33 @@ void main() {
     await _teardown(tester, container);
   });
 
-  testWidgets('a free account sees the locked periods and the Players '
+  testWidgets('a free account browses every period and keeps the Players '
       'unlock', (tester) async {
     final container = await _pump(tester, subscribed: false);
     await tester.tap(find.bySemanticsLabel('Most liked, Today'));
     await _settle(tester);
 
-    // Week, Month and Year each carry the padlock, and so does the arrow to
-    // earlier days.
-    expect(find.byType(DiscoveryPadlock), findsNWidgets(4));
+    // Only the earlier-date arrow is locked; period tabs are freely browsable.
+    expect(find.byType(DiscoveryPadlock), findsOneWidget);
     expect(
       find.textContaining(kMostLikedUpgradeCta, findRichText: true),
-      findsOneWidget,
+      findsNothing,
     );
+
+    for (final period in [
+      MostLikedPeriod.week,
+      MostLikedPeriod.month,
+      MostLikedPeriod.year,
+    ]) {
+      await tester.tap(find.bySemanticsLabel('Most liked, ${period.label}'));
+      await _settle(tester);
+      expect(container.read(mostLikedPeriodProvider), period);
+      final list = tester.widget<DiscoveryGameList>(
+        find.byType(DiscoveryGameList).first,
+      );
+      expect(list.onOpen, isNotNull);
+      expect(list.lockedFor?.call(0), isTrue);
+    }
 
     await tester.tap(find.text('Players'));
     await _settle(tester);

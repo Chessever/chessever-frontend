@@ -27,14 +27,14 @@ const String kMostLikedUpgradeCta = 'View weekly, monthly, and yearly rankings';
 /// The honest line while the ranking function is not deployed.
 const String kMostLikedNotLive = 'Most Liked starts once ranking is live';
 
-/// Whether the viewer may see Premium periods. Debug builds pass the premium
-/// guard for everyone, so they may pick any period too; otherwise a picked
-/// Premium period that the account no longer has falls back to Today.
+/// Whether the viewer may walk earlier dates and use the Players view.
+/// Debug builds keep the existing premium-guard bypass for those actions.
 bool _canSeePremiumPeriods(bool subscribed) => subscribed || kDebugMode;
 
 /// The ranking the Most liked page is on: the picked period holding the
-/// walked-to day, with Premium periods and earlier days folded back to the
-/// current day for an account without Premium. Watches what it reads, so a
+/// walked-to day, with earlier days folded back to the
+/// current period for an account without Premium. All period tabs can be
+/// browsed freely; opening non-Today games is gated. Watches what it reads, so a
 /// page and its tabs call it from build and always agree.
 MostLikedQuery mostLikedActiveQuery(WidgetRef ref, {DateTime? now}) {
   final subscribed = ref.watch(
@@ -42,7 +42,7 @@ MostLikedQuery mostLikedActiveQuery(WidgetRef ref, {DateTime? now}) {
   );
   final premium = _canSeePremiumPeriods(subscribed);
   final picked = ref.watch(mostLikedPeriodProvider);
-  final period = picked.isPremium && !premium ? MostLikedPeriod.today : picked;
+  final period = picked;
   final day = ref.watch(mostLikedDayProvider);
   return MostLikedQuery(
     period,
@@ -111,8 +111,8 @@ class MostLikedPreview extends ConsumerWidget {
 // ---------------------------------------------------------------- the page
 
 /// The Most liked page's ranking: the community ranking of games by how many
-/// people liked them. Today is free; Week, Month and Year sit behind the
-/// Premium boundary, and so do the date control's earlier periods and the
+/// people liked them. Every period can be browsed; opening games beyond Today
+/// requires Premium access, as do the date control's earlier periods and the
 /// Players view (everyone with a game in the ranking). Every period is a
 /// calendar one the date control walks: a day, a Monday-to-Sunday week, a
 /// month, a year.
@@ -154,19 +154,7 @@ class MostLikedSection extends ConsumerWidget {
     WidgetRef ref,
     MostLikedPeriod period,
   ) async {
-    if (!period.isPremium) {
-      ref.read(mostLikedPeriodProvider.notifier).state = period;
-      return;
-    }
-    await unlockThen(
-      context,
-      ref,
-      () {
-        ref.read(mostLikedPeriodProvider.notifier).state = period;
-      },
-      featureId: 'most_liked_rankings',
-      returnTo: discoveryReturnTo('most_liked'),
-    );
+    ref.read(mostLikedPeriodProvider.notifier).state = period;
   }
 
   /// Moves the ranking to [target]. Walking back is Premium ([locked] sends
@@ -242,7 +230,6 @@ class MostLikedSection extends ConsumerWidget {
               values: MostLikedPeriod.values,
               selected: query.period,
               label: (p) => p.label,
-              locked: (p) => p.isPremium && locked,
               semanticsPrefix: 'Most liked',
               onSelect: (p) => _select(context, ref, p),
             ),
@@ -287,7 +274,13 @@ class MostLikedSection extends ConsumerWidget {
               isCurrent: query.isCurrent(now),
               isToday: query.isFree(now),
               locked: locked,
-              onUpgrade: () => _select(context, ref, MostLikedPeriod.week),
+              onUpgrade: () => unlockThen(
+                context,
+                ref,
+                () => ref.invalidate(mostLikedProvider(query)),
+                featureId: 'most_liked_rankings',
+                returnTo: discoveryReturnTo('most_liked'),
+              ),
               onRetry: () => ref.invalidate(mostLikedProvider(query)),
               playerFilter: playerFilter,
               onPickPlayer: onPickPlayer,
@@ -311,7 +304,7 @@ class MostLikedSection extends ConsumerWidget {
   }
 }
 
-class _PageBody extends StatelessWidget {
+class _PageBody extends ConsumerWidget {
   const _PageBody({
     required this.result,
     required this.query,
@@ -339,13 +332,13 @@ class _PageBody extends StatelessWidget {
   /// The ranking is the current day's (not an earlier day's).
   final bool isToday;
 
-  /// Premium periods, days and the players list are behind the boundary.
+  /// Opening games beyond Today and the players list require Premium access.
   final bool locked;
   final VoidCallback onUpgrade;
   final VoidCallback onRetry;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     switch (result.status) {
       case MostLikedStatus.notLive:
         // Premium would unlock the same notice, so nothing is sold until the
@@ -369,9 +362,6 @@ class _PageBody extends StatelessWidget {
     }
 
     final entries = result.entries;
-    final upgrade = locked && query.period == MostLikedPeriod.today
-        ? DiscoveryUpgradeLine(label: kMostLikedUpgradeCta, onTap: onUpgrade)
-        : null;
     final narrowed = playerFilter;
 
     final Widget list;
@@ -408,6 +398,21 @@ class _PageBody extends StatelessWidget {
           : const <String, LiveGamesBatchKey>{};
         list = DiscoveryGameList(
           games: games,
+          lockedFor: (_) => !isToday && locked,
+          onOpen: (games, index) {
+            void open() => openDiscoveryGame(context, ref, games, index);
+            if (!isToday) {
+              unlockThen(
+                context,
+                ref,
+                open,
+                featureId: 'most_liked_rankings',
+                returnTo: discoveryReturnTo('most_liked'),
+              );
+            } else {
+              open();
+            }
+          },
           badgeFor: (i, boardSize) => _heart(visible[i], boardSize),
           rowLabelFor: (i) => _likesMeta(visible[i]),
           streamEnabled: isCurrent,
@@ -427,7 +432,6 @@ class _PageBody extends StatelessWidget {
             onClear: onClearPlayerFilter,
           ),
         list,
-        if (upgrade != null) ...[SizedBox(height: 4.w), upgrade],
       ],
     );
   }
