@@ -25,7 +25,7 @@ class PushTokenSyncController with WidgetsBindingObserver {
   bool _started = false;
   bool _disposed = false;
   String? _userId;
-  final PushTokenSyncRetryState _retryState = PushTokenSyncRetryState();
+  final PushTokenSyncRetryState _retryState = PushTokenSyncRetryState(maxAttempts: 8);
   final Set<String> _inFlightSignatures = <String>{};
   Timer? _retryTimer;
   Timer? _readinessTimer;
@@ -180,15 +180,30 @@ class PushTokenSyncController with WidgetsBindingObserver {
     }
 
     try {
-      await Supabase.instance.client.from('user_push_tokens').upsert({
-        'user_id': userId,
-        'provider': 'onesignal',
-        'subscription_id': subscriptionId,
-        'push_token': token,
-        'platform': _platformLabel(),
-        'opted_in': optedIn,
-        'last_seen_at': DateTime.now().toUtc().toIso8601String(),
-      }, onConflict: 'provider,subscription_id');
+      final client = Supabase.instance.client;
+      if (client.auth.currentUser?.id != userId) return;
+      try {
+        await client.from('user_push_tokens').upsert({
+          'user_id': userId,
+          'provider': 'onesignal',
+          'subscription_id': subscriptionId,
+          'push_token': token,
+          'platform': _platformLabel(),
+          'opted_in': optedIn,
+          'last_seen_at': DateTime.now().toUtc().toIso8601String(),
+        }, onConflict: 'provider,subscription_id');
+      } on PostgrestException catch (error) {
+        if (error.code != '42501' || token == null || token.isEmpty) rethrow;
+        // Only the server may move a subscription between accounts. It verifies
+        // both OneSignal's current user identity and possession of this token.
+        await client.functions.invoke('push-token-sync', body: {
+          'subscriptionId': subscriptionId,
+          'token': token,
+          'platform': _platformLabel(),
+          'optedIn': optedIn,
+        });
+      }
+      if (_disposed || _userId != userId || client.auth.currentUser?.id != userId) return;
       await DirectPushService.instance.mirrorReady(subscriptionId, optedIn);
       _retryState.recordSuccess(signature);
       _retryTimer?.cancel();
