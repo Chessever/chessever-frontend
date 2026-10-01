@@ -203,6 +203,10 @@ class PushTokenSyncController with WidgetsBindingObserver {
           }
         });
       }
+      if (error is PostgrestException) {
+        // Exclude details/hint: database errors can include device tokens.
+        debugPrint('[PushTokenSync] Database error code=${error.code}: ${error.message}');
+      }
       debugPrint(
         '[PushTokenSync] Subscription sync failed '
         '(${error.runtimeType}); ${delay == null ? 'retry limit reached' : 'retry scheduled'}',
