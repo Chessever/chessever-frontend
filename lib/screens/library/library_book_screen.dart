@@ -2,10 +2,10 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'dart:async';
 import 'dart:convert';
 
-import 'package:chessever2/repository/library/collection_cover.dart';
 import 'package:chessever2/repository/library/library_book_publication.dart';
 import 'package:chessever2/repository/library/models/library_folder.dart';
 import 'package:chessever2/screens/collections/collection_plate_row.dart';
+import 'package:chessever2/screens/library/cover_cropper.dart';
 import 'package:chessever2/screens/collections/collections_data.dart';
 import 'package:chessever2/screens/collections/collections_screen.dart'
     show CollectionBookPlate;
@@ -362,7 +362,7 @@ class _LibraryBookScreenState extends ConsumerState<LibraryBookScreen> {
     if (_busy || _coverBusy) return;
     final Uint8List? image;
     try {
-      image = await ref.read(collectionCoverPickerProvider)();
+      image = await ref.read(collectionCoverPickerProvider)(context);
     } on FormatException catch (error) {
       if (mounted) setState(() => _error = error.message);
       return;
@@ -975,7 +975,7 @@ class _LibraryBookScreenState extends ConsumerState<LibraryBookScreen> {
           ),
           SizedBox(height: 2.sp),
           Text(
-            'Shown on the collection card and page. The centre of your photo is cropped to a 2:3 portrait. Without one, the stacked boards are shown.',
+            'Shown on the collection card and page. You frame it as a 2:3 portrait after choosing. Without one, the stacked boards are shown.',
             style: AppTypography.textXsRegular.copyWith(
               color: context.textInk(0.55),
               height: 16 / 12,

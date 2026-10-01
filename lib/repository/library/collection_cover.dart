@@ -25,8 +25,9 @@ const _mediaChannel = MethodChannel('com.chessever/media_picker');
 
 /// Mobile opens the system photo picker for one chosen photo; no camera or
 /// library-wide permission is requested. Other platforms use the file picker.
-/// Returns null when the user cancels.
-final collectionCoverPickerProvider = Provider<Future<Uint8List?> Function()>(
+/// Returns the untouched photo, or null when the user cancels; the cropper
+/// then frames it and [prepareCollectionCover] renders the cover.
+final collectionCoverSourceProvider = Provider<Future<Uint8List?> Function()>(
   (ref) => () async {
     final Uint8List? source;
     if (!kIsWeb &&
@@ -59,30 +60,68 @@ final collectionCoverPickerProvider = Provider<Future<Uint8List?> Function()>(
         'This photo could not be read. Choose another one.',
       );
     }
-    return prepareCollectionCover(source);
+    if (source.length > _maxSourceBytes) {
+      throw const FormatException('Choose a photo smaller than 25 MB.');
+    }
+    return source;
   },
 );
 
-/// Centre-crops [bytes] to 2:3 and renders it at exactly 800×1200 (PNG).
-/// Refuses photos whose crop would be smaller than 600×900, rather than
-/// upscaling them into a blurry cover.
-Future<Uint8List> prepareCollectionCover(Uint8List bytes) async {
+/// Pixel size of an encoded photo, without decoding it.
+Future<Size> collectionCoverSourceSize(Uint8List bytes) async {
+  final buffer = await ui.ImmutableBuffer.fromUint8List(bytes);
+  try {
+    final descriptor = await ui.ImageDescriptor.encoded(buffer);
+    final size = Size(
+      descriptor.width.toDouble(),
+      descriptor.height.toDouble(),
+    );
+    descriptor.dispose();
+    return size;
+  } catch (_) {
+    throw const FormatException(
+      'This photo could not be read. Choose another one.',
+    );
+  } finally {
+    buffer.dispose();
+  }
+}
+
+/// Whether a photo of [size] can give a 2:3 cover of at least 600×900.
+bool collectionCoverFits(Size size) =>
+    math.min(size.width, size.height * 2 / 3) >= collectionCoverMinWidth;
+
+/// Renders [bytes] as an exactly 800×1200 PNG cover. [crop] is the framed
+/// window as fractions of the photo (0..1); omitted, the largest centred 2:3
+/// window is used. Refuses a window smaller than 600×900 photo pixels rather
+/// than upscaling it into a blurry cover.
+Future<Uint8List> prepareCollectionCover(Uint8List bytes, {Rect? crop}) async {
   if (bytes.length > _maxSourceBytes) {
     throw const FormatException('Choose a photo smaller than 25 MB.');
   }
   final buffer = await ui.ImmutableBuffer.fromUint8List(bytes);
   ui.ImageDescriptor? descriptor;
   late final ui.Codec codec;
-  late final Rect crop;
+  late final Rect window;
   try {
     descriptor = await ui.ImageDescriptor.encoded(buffer);
     final w = descriptor.width, h = descriptor.height;
     if (w * h > 60000000) {
       throw const FormatException('Choose a photo with smaller dimensions.');
     }
-    // Largest 2:3 window centred in the photo.
-    final cropW = math.min(w.toDouble(), h * 2 / 3);
+    // The framed window in photo pixels, kept exactly 2:3 and inside the
+    // photo; by default the largest centred one.
+    final full = math.min(w.toDouble(), h * 2 / 3);
+    final cropW = crop == null
+        ? full
+        : (crop.width * w).clamp(1.0, full).toDouble();
     final cropH = cropW * 3 / 2;
+    final left = crop == null
+        ? (w - cropW) / 2
+        : (crop.left * w).clamp(0.0, w - cropW).toDouble();
+    final top = crop == null
+        ? (h - cropH) / 2
+        : (crop.top * h).clamp(0.0, h - cropH).toDouble();
     if (cropW < collectionCoverMinWidth || cropH < collectionCoverMinHeight) {
       throw const FormatException(
         'This photo is too small for a cover. Use one at least 600 × 900 pixels.',
@@ -96,8 +135,12 @@ Future<Uint8List> prepareCollectionCover(Uint8List bytes) async {
       targetWidth: dw,
       targetHeight: dh,
     );
-    final cw = cropW * factor, ch = cropH * factor;
-    crop = Rect.fromLTWH((dw - cw) / 2, (dh - ch) / 2, cw, ch);
+    window = Rect.fromLTWH(
+      left * dw / w,
+      top * dh / h,
+      cropW * dw / w,
+      cropH * dh / h,
+    );
   } catch (_) {
     descriptor?.dispose();
     rethrow;
@@ -112,7 +155,7 @@ Future<Uint8List> prepareCollectionCover(Uint8List bytes) async {
         ..drawColor(Colors.white, BlendMode.src)
         ..drawImageRect(
           image,
-          crop,
+          window,
           Rect.fromLTWH(
             0,
             0,

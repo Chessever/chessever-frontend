@@ -7,7 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:chessever2/repository/library/collection_cover.dart';
+import 'package:chessever2/screens/library/cover_cropper.dart';
 import 'dart:convert';
 import 'dart:typed_data';
 
@@ -120,7 +120,7 @@ Future<void> _pump(
       overrides: [
         libraryBookPublisherProvider.overrideWithValue(publisher),
         collectionCoverPickerProvider.overrideWithValue(
-          () async => pickedCover,
+          (_) async => pickedCover,
         ),
       ],
       child: MaterialApp(
