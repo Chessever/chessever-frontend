@@ -16,7 +16,7 @@ async function publicKey(keyId: string) {
 }
 Deno.serve(async request => {
   const project = Deno.env.get('SUPABASE_URL')!;
-  const units = (Deno.env.get('REWARDED_AD_UNIT_IDS') ?? '').split(',').map(s=>s.trim()).filter(Boolean);
+  const units = (Deno.env.get('REWARDED_AD_UNIT_IDS') ?? 'ca-app-pub-3681310687796023/8590975808,ca-app-pub-3681310687796023/8331032066').split(',').map(s=>s.trim()).filter(Boolean);
   if (new URL(project).host !== 'oelbsuggrzyqwzmvidju.supabase.co' || !units.length) return new Response('unconfigured',{status:503});
   if (request.method !== 'GET') return new Response('method_not_allowed',{status:405});
   try {

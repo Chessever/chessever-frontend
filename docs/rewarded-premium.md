@@ -35,8 +35,10 @@ runs before requesting iOS ads; denying tracking does not itself deny access.
 AdMob chooses the duration and may supply an ad pod; the app never promises
 30 seconds or chains ads itself.
 
-Both Edge Functions require `REWARDED_AD_UNIT_IDS`, a comma-separated allowlist
-of the configured full rewarded unit IDs. For the supplied production units, use:
+Both Edge Functions default to the two supplied production rewarded unit IDs.
+No CLI secret setup is needed for these public identifiers. An optional
+`REWARDED_AD_UNIT_IDS` environment variable overrides the defaults with a
+comma-separated allowlist. For the supplied production units, its value is:
 
 ```text
 REWARDED_AD_UNIT_IDS=ca-app-pub-3681310687796023/8590975808,ca-app-pub-3681310687796023/8331032066
@@ -65,8 +67,8 @@ before testing; never generate live impressions during development.
    full-account ownership requirement.
 3. Deploy `rewarded-premium` and `rewarded-premium-ssv` with
    `--project-ref oelbsuggrzyqwzmvidju --no-verify-jwt`. Run the repository's
-   Edge Function auth audit after deployment. Configure the allowlist and SSV
-   callback before enabling the production app flag.
+   Edge Function auth audit after deployment. The approved production allowlist is included in the functions. Configure
+   the SSV callback before enabling the production app flag.
 4. Supply the platform IDs and release the production flavor from `stable`.
    Roll back the app flag to disable new ad grants if needed. Existing grants
    expire naturally within ten minutes. Do not apply this to the test project.
