@@ -1,3 +1,6 @@
+import 'package:chessever2/widgets/paywall/rewarded_premium/rewarded_navigation.dart';
+import 'package:chessever2/widgets/paywall/rewarded_premium/rewarded_access_ui.dart';
+import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
 import 'services/direct_push_service.dart';
 import 'dart:async';
 import 'dart:convert';
@@ -1346,6 +1349,7 @@ class MyApp extends HookConsumerWidget {
           themeMode: themeMode,
           navigatorKey: navigatorKey,
           navigatorObservers: [
+            RewardedNavigationObserver.instance,
             routeObserver,
             pageRouteObserver,
             HeroineController(),
@@ -1362,7 +1366,14 @@ class MyApp extends HookConsumerWidget {
               child: CustomUpgradeAlert(
                 upgrader: upgrader,
                 navigatorKey: navigatorKey,
-                child: child ?? const SizedBox.shrink(),
+                child: RewardedAccessHost(
+                  navigatorKey: navigatorKey,
+                  upgrade: (context) => showPremiumPaywallSheet(
+                    context: context,
+                    allowRewarded: false,
+                  ),
+                  child: child ?? const SizedBox.shrink(),
+                ),
               ),
             ),
           ),

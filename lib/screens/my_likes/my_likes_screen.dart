@@ -1,3 +1,4 @@
+import 'package:chessever2/services/rewarded_premium/rewarded_access_provider.dart';
 import 'dart:async';
 import 'dart:io';
 
@@ -8,7 +9,6 @@ import 'package:share_plus/share_plus.dart';
 
 import 'package:chessever2/repository/liked_games/liked_games_provider.dart';
 import 'package:chessever2/repository/library/models/saved_analysis.dart';
-import 'package:chessever2/revenue_cat_service/subscribe_state.dart';
 import 'package:chessever2/screens/chessboard/models/like_tag.dart';
 import 'package:chessever2/screens/library/utils/load_saved_analysis.dart';
 import 'package:chessever2/screens/my_likes/provider/my_likes_provider.dart';
@@ -328,7 +328,7 @@ class _MyLikesGamesPageState extends ConsumerState<MyLikesGamesPage>
       onEntitled: () {
         if (!mounted) return;
         ref.invalidate(myLikesViewProvider);
-        if (ref.read(subscriptionProvider).isSubscribed) {
+        if (ref.read(featureAccessStateProvider).isSubscribed) {
           showAppSnack(
             context,
             'Your full My Likes history is back',
@@ -392,7 +392,7 @@ class _MyLikesGamesPageState extends ConsumerState<MyLikesGamesPage>
         if (proceed) {
           // User just subscribed via the upgrade prompt — re-read state
           // and export everything.
-          final refreshed = ref.read(subscriptionProvider);
+          final refreshed = ref.read(featureAccessStateProvider);
           if (refreshed.isSubscribed) {
             analyses = allAnalyses;
           }

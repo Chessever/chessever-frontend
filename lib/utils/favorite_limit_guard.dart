@@ -1,4 +1,4 @@
-import 'package:chessever2/revenue_cat_service/subscribe_state.dart';
+import 'package:chessever2/services/rewarded_premium/rewarded_access_provider.dart';
 import 'package:chessever2/utils/favorite_constants.dart';
 import 'package:chessever2/widgets/app_snack.dart';
 import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
@@ -31,7 +31,7 @@ Future<bool> canAddMoreFavorites(
     return false;
   }
 
-  final isSubscribed = ref.read(subscriptionProvider).isSubscribed;
+  final isSubscribed = ref.read(featureAccessStateProvider).isSubscribed;
   if (isSubscribed) return true;
 
   // Fresh server-side count. Reading the realtime AsyncNotifier's cached

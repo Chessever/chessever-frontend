@@ -1,3 +1,4 @@
+import 'package:chessever2/services/rewarded_premium/rewarded_session.dart';
 import 'dart:async';
 import 'dart:convert';
 
@@ -360,6 +361,7 @@ class ChatApi {
   }
 
   Map<String, String> get _headers => {
+    ...RewardedSession.instance.headers,
     'authorization': 'Bearer $_token',
     'content-type': 'application/json',
   };

@@ -1,3 +1,4 @@
+import 'package:chessever2/services/rewarded_premium/rewarded_access_provider.dart';
 import 'dart:async';
 import 'dart:io' as io;
 import 'dart:math' as math;
@@ -43,7 +44,6 @@ import 'package:chessever2/utils/haptic_feedback_service.dart';
 
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/svg_asset.dart';
-import 'package:chessever2/revenue_cat_service/subscribe_state.dart';
 import 'package:chessever2/utils/favorite_constants.dart';
 import 'package:chessever2/utils/favorite_limit_guard.dart';
 import 'package:chessever2/widgets/app_snack.dart';
@@ -353,7 +353,7 @@ class _PlayerProfileScreenState extends ConsumerState<PlayerProfileScreen>
 
     // Paywall: allow 1 filter free, require premium for chaining (2+)
     if (newActiveCount > 1) {
-      final isPremium = ref.read(subscriptionProvider).isSubscribed;
+      final isPremium = ref.read(featureAccessStateProvider).isSubscribed;
       if (!isPremium) {
         if (!mounted) return;
         final subscribed = await requirePremiumGuard(context, ref);

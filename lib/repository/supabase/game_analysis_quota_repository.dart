@@ -1,3 +1,4 @@
+import 'package:chessever2/services/rewarded_premium/rewarded_session.dart';
 import 'package:chessever2/repository/supabase/base_repository.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
@@ -38,7 +39,10 @@ class GameAnalysisQuotaRepository extends BaseRepository {
     return handleApiCall(() async {
       final response = await supabase.rpc(
         'claim_game_analysis_report',
-        params: {'p_fingerprint': fingerprint},
+        params: {'p_fingerprint': fingerprint,
+          if (RewardedSession.instance.active)
+            'p_rewarded_session': RewardedSession.instance.token,
+        },
       );
       if (response is Map<String, dynamic>) {
         return GameAnalysisClaimResult.fromJson(response);

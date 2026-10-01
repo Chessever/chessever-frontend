@@ -1,3 +1,4 @@
+import 'package:chessever2/services/rewarded_premium/rewarded_access_provider.dart';
 import 'dart:async';
 
 import 'package:chessever2/repository/gamebase/miniatures/miniatures_models.dart';
@@ -189,7 +190,7 @@ class _MiniaturesGamesTabState extends ConsumerState<MiniaturesGamesTab>
     // A date range walks the archive: Premium date navigation. A confirmed
     // purchase applies it as chosen; backing out keeps every other choice,
     // since a locked list only ever shows Today anyway.
-    if (_archiveLockedFor(ref.read(subscriptionProvider)) &&
+    if (_archiveLockedFor(ref.read(featureAccessStateProvider)) &&
         miniaturesFilterWalksArchive(newFilter)) {
       var applied = false;
       await requirePremiumGuard(
@@ -343,7 +344,7 @@ class _MiniaturesGamesTabState extends ConsumerState<MiniaturesGamesTab>
     final games = ref.watch(miniatureGamesProvider);
     final filter = ref.watch(miniaturesFilterProvider);
     final viewMode = ref.watch(gamesListViewModeProvider);
-    final archiveLocked = _archiveLockedFor(ref.watch(subscriptionProvider));
+    final archiveLocked = _archiveLockedFor(ref.watch(featureAccessStateProvider));
     final horizontalPadding = ResponsiveHelper.adaptive(
       phone: 16.w,
       tablet: 24.w,

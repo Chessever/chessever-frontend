@@ -1,8 +1,8 @@
+import 'package:chessever2/services/rewarded_premium/rewarded_access_provider.dart';
 import 'dart:async';
 import 'dart:ui' show ImageFilter;
 
 import 'package:chessever2/providers/board_settings_provider_new.dart';
-import 'package:chessever2/revenue_cat_service/subscribe_state.dart';
 import 'package:chessever2/screens/gamebase/utils/space_position_draft.dart';
 import 'package:chessever2/screens/library/widgets/library_context_menu.dart';
 import 'package:chessever2/screens/library/widgets/menu_preview_surface.dart';
@@ -706,7 +706,7 @@ class MoveStatisticsPanel extends HookConsumerWidget {
     );
 
     final isSubscribed = ref.watch(
-      subscriptionProvider.select((s) => s.isSubscribed),
+      featureAccessStateProvider.select((s) => s.isSubscribed),
     );
     final effectiveMoveNumber =
         ref.read(gamebaseExplorerProvider.notifier).effectiveMoveNumber;

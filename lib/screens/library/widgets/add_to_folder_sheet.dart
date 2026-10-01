@@ -1,10 +1,10 @@
+import 'package:chessever2/services/rewarded_premium/rewarded_access_provider.dart';
 import 'package:chessever2/repository/gamebase/gamebase_repository.dart';
 import 'package:chessever2/repository/library/library_game_event.dart';
 import 'package:chessever2/repository/library/library_repository.dart';
 import 'package:chessever2/repository/library/models/library_folder.dart';
 import 'package:chessever2/repository/library/models/saved_analysis.dart';
 import 'package:chessever2/repository/supabase/game/game_repository.dart';
-import 'package:chessever2/revenue_cat_service/subscribe_state.dart';
 import 'package:chessever2/screens/chessboard/analysis/chess_game.dart';
 import 'package:chessever2/screens/chessboard/widgets/smooth_sheet_config.dart';
 import 'package:chessever2/screens/library/providers/library_folders_provider.dart';
@@ -222,7 +222,7 @@ class _AddToFolderPageState extends ConsumerState<_AddToFolderPage> {
   Future<void> _handleCreateNewBook() async {
     if (_isSaving) return;
 
-    final isPremium = ref.read(subscriptionProvider).isSubscribed;
+    final isPremium = ref.read(featureAccessStateProvider).isSubscribed;
     if (!isPremium) {
       final folders = await ref.read(libraryFoldersStreamProvider.future);
       final ownedBookCount =

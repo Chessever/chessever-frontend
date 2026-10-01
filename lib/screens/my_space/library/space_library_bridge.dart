@@ -1,9 +1,9 @@
+import 'package:chessever2/services/rewarded_premium/rewarded_access_provider.dart';
 import 'package:chessever2/repository/library/library_book_publication.dart';
 import 'package:chessever2/screens/collections/collections_data.dart';
 import 'package:chessever2/screens/library/library_book_screen.dart';
 import 'package:chessever2/repository/library/library_repository.dart';
 import 'package:chessever2/repository/library/models/library_folder.dart';
-import 'package:chessever2/revenue_cat_service/subscribe_state.dart';
 import 'package:chessever2/screens/library/folder_contents_screen.dart';
 import 'package:chessever2/screens/library/miniatures_screen.dart';
 import 'package:chessever2/screens/library/pgn_import_preview_screen.dart';
@@ -416,7 +416,7 @@ Future<void> _createDatabase(
   WidgetRef ref,
   ScaffoldMessengerState? messenger,
 ) async {
-  if (!ref.read(subscriptionProvider).isSubscribed) {
+  if (!ref.read(featureAccessStateProvider).isSubscribed) {
     final folders = await ref.read(libraryFoldersStreamProvider.future);
     final owned = folders
         .where((f) => !f.isSubscribed && f.id != kTwicBookId && f.isDatabase)

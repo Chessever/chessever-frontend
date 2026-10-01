@@ -1,6 +1,5 @@
+import 'package:chessever2/services/rewarded_premium/rewarded_access_provider.dart';
 import 'dart:math' as math;
-
-import 'package:chessever2/revenue_cat_service/subscribe_state.dart';
 import 'package:chessever2/screens/chessboard/provider/game_pgn_stream_provider.dart'
     show LiveGamesBatchKey;
 import 'package:chessever2/screens/for_you/discovery/models/discovery_models.dart';
@@ -39,7 +38,7 @@ bool _canSeePremiumPeriods(bool subscribed) => subscribed || kDebugMode;
 /// page and its tabs call it from build and always agree.
 MostLikedQuery mostLikedActiveQuery(WidgetRef ref, {DateTime? now}) {
   final subscribed = ref.watch(
-    subscriptionProvider.select((s) => s.isSubscribed),
+    featureAccessStateProvider.select((s) => s.isSubscribed),
   );
   final premium = _canSeePremiumPeriods(subscribed);
   final picked = ref.watch(mostLikedPeriodProvider);
@@ -200,7 +199,7 @@ class MostLikedSection extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final subscribed = ref.watch(
-      subscriptionProvider.select((s) => s.isSubscribed),
+      featureAccessStateProvider.select((s) => s.isSubscribed),
     );
     final premium = _canSeePremiumPeriods(subscribed);
     final locked = !subscribed;

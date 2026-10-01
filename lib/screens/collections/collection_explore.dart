@@ -1,7 +1,7 @@
+import 'package:chessever2/services/rewarded_premium/rewarded_access_provider.dart';
 import 'package:chessever2/screens/collections/collection_catalog_views.dart';
 import 'package:chessever2/repository/gamebase/collections/collection_search_query.dart';
 import 'package:chessever2/screens/collections/collection_catalog_list.dart';
-import 'package:chessever2/revenue_cat_service/subscribe_state.dart';
 import 'package:chessever2/screens/chessboard/chess_board_screen_new.dart';
 import 'package:chessever2/screens/chessboard/provider/chess_board_screen_provider_new.dart';
 import 'package:chessever2/screens/collections/collections_data.dart';
@@ -317,7 +317,7 @@ class _PublishedCollectionGamesViewState
     super.build(context);
     ref.listen(collectionsRepositoryProvider, (_, _) => _load(reset: true));
     ref.listen(
-      subscriptionProvider.select((s) => s.isSubscribed),
+      featureAccessStateProvider.select((s) => s.isSubscribed),
       (_, _) => _load(reset: true),
     );
     if (_games.isEmpty && _loading) return const _ExploreLoading();

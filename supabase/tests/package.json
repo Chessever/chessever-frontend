@@ -1,0 +1,7 @@
+{
+  "private": true,
+  "type": "module",
+  "engines": {"node": ">=22.18.0"},
+  "scripts": {"test:rewarded": "node --test rewarded_premium.test.mjs ../functions/rewarded-premium-ssv/verification.test.ts"},
+  "devDependencies": {"@electric-sql/pglite": "0.5.2"}
+}

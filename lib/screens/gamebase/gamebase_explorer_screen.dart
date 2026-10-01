@@ -1,9 +1,9 @@
+import 'package:chessever2/services/rewarded_premium/rewarded_access_provider.dart';
 import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:chessever2/screens/chessboard/utils/move_hold_repeater.dart';
 import 'package:chessever2/e2e/e2e_ids.dart';
-import 'package:chessever2/revenue_cat_service/subscribe_state.dart';
 import 'package:chessever2/screens/board_editor/board_editor_screen.dart';
 import 'package:chessever2/screens/chessboard/notation/notation_pointer.dart';
 import 'package:chessever2/screens/chessboard/notation/notation_token_builder.dart';
@@ -394,7 +394,7 @@ class _GamebaseExplorerScreenState extends ConsumerState<GamebaseExplorerScreen>
   /// would land past the free-tier move limit for a non-subscriber.
   bool _forwardStepWouldCrossFreeLimit() {
     if (kDebugMode) return false;
-    if (ref.read(subscriptionProvider).isSubscribed) return false;
+    if (ref.read(featureAccessStateProvider).isSubscribed) return false;
     final currentMoveNumber =
         ref.read(gamebaseExplorerProvider.notifier).effectiveMoveNumber;
     return currentMoveNumber >= kFreeExplorerMoveNumberLimit;
@@ -1308,7 +1308,7 @@ class _GamebaseChessBoardState extends ConsumerState<_GamebaseChessBoard> {
                     // and then blurring the panel. Chessground snaps the
                     // piece back when state doesn't change.
                     if (!kDebugMode &&
-                        !ref.read(subscriptionProvider).isSubscribed) {
+                        !ref.read(featureAccessStateProvider).isSubscribed) {
                       final currentMoveNumber =
                           ref
                               .read(gamebaseExplorerProvider.notifier)
@@ -1666,7 +1666,7 @@ class _ExplorerFilterSheetState extends ConsumerState<ExplorerFilterSheet> {
 
   void _apply() {
     final canUsePlayerFilter = _canUsePlayerFilter(
-      ref.read(subscriptionProvider).isSubscribed,
+      ref.read(featureAccessStateProvider).isSubscribed,
     );
     final treeBackedPlayerScope = widget.scopedPlayer != null;
     final finalFilters = _sanitizePlayerFilters(
@@ -1739,7 +1739,7 @@ class _ExplorerFilterSheetState extends ConsumerState<ExplorerFilterSheet> {
   @override
   Widget build(BuildContext context) {
     final isSubscribed = ref.watch(
-      subscriptionProvider.select((s) => s.isSubscribed),
+      featureAccessStateProvider.select((s) => s.isSubscribed),
     );
     final canUsePlayerFilter = _canUsePlayerFilter(isSubscribed);
     final filters = _sanitizePlayerFilters(
@@ -2465,7 +2465,7 @@ class _ExplorerEngineLinesState extends ConsumerState<_ExplorerEngineLines> {
       if (line.uciMoves.isEmpty) return;
       final firstUci = line.uciMoves.first.trim().toLowerCase();
       if (!_uciRegex.hasMatch(firstUci)) return;
-      if (!kDebugMode && !ref.read(subscriptionProvider).isSubscribed) {
+      if (!kDebugMode && !ref.read(featureAccessStateProvider).isSubscribed) {
         final currentMoveNumber =
             ref.read(gamebaseExplorerProvider.notifier).effectiveMoveNumber;
         if (currentMoveNumber >= kFreeExplorerMoveNumberLimit) {
