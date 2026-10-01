@@ -1,10 +1,5 @@
 # Today native ad
 
-The Today feed placement is currently removed for performance comparison.
-No native ad widget is mounted or native ad request initiated by the feed,
-regardless of build flags. The integration and IDs below are retained for
-possible reintroduction.
-
 The production Android/iOS Today feed displays one Native Advanced ad between
 its first and second regular events. Pinned smart events stay above them.
 There is no placement with fewer than two regular events, while subscription

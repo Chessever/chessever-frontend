@@ -1,4 +1,8 @@
 import 'dart:async';
+import 'package:chessever2/revenue_cat_service/subscribe_state.dart';
+import 'package:chessever2/services/native_ads_config.dart';
+import 'package:chessever2/services/rewarded_premium/rewarded_access_provider.dart';
+import 'package:chessever2/widgets/ads/today_native_ad.dart';
 
 import 'package:chessever2/main.dart' show pageRouteObserver;
 import 'package:chessever2/providers/favorite_events_provider.dart';
@@ -289,6 +293,10 @@ class _ForYouGamesWidgetState extends ConsumerState<ForYouGamesWidget>
     final state = ref.watch(forYouEventsProvider);
     final viewMode = ref.watch(gamesListViewModeProvider);
     final events = state.events;
+    final showNativeAd = NativeAdsConfig.available &&
+        events.length >= 2 &&
+        !ref.watch(subscriptionProvider.select((s) => s.isLoading)) &&
+        !ref.watch(premiumAccessProvider);
     final favoriteEvents = ref.watch(favoriteEventsProvider).valueOrNull ?? [];
     final dismissedSmartEventCardKeys = ref.watch(
       dismissedSmartEventCardKeysProvider,
@@ -358,6 +366,7 @@ class _ForYouGamesWidgetState extends ConsumerState<ForYouGamesWidget>
       backgroundColor: context.colors.surface,
       child: _buildEventsList(
         events,
+        showNativeAd: showNativeAd,
         viewMode: viewMode,
         showLoadingMore: state.hasMore && !state.isLoading,
         smartData: smartData,
@@ -462,6 +471,7 @@ class _ForYouGamesWidgetState extends ConsumerState<ForYouGamesWidget>
 
   Widget _buildEventsList(
     List<GroupEventCardModel> events, {
+    bool showNativeAd = false,
     required GamesListViewMode viewMode,
     bool showLoadingMore = false,
     SmartEventCardData? smartData,
@@ -471,6 +481,7 @@ class _ForYouGamesWidgetState extends ConsumerState<ForYouGamesWidget>
     if (ResponsiveHelper.isTablet) {
       return _buildTabletGridLayout(
         events,
+        showNativeAd: showNativeAd,
         viewMode: viewMode,
         showLoadingMore: showLoadingMore,
         smartData: smartData,
@@ -501,7 +512,7 @@ class _ForYouGamesWidgetState extends ConsumerState<ForYouGamesWidget>
       ),
       itemCount: itemCount,
       scrollCacheExtent: _forYouCacheExtentForMode(viewMode),
-      addAutomaticKeepAlives: false,
+      addAutomaticKeepAlives: true,
       addRepaintBoundaries: true,
       physics: const AlwaysScrollableScrollPhysics(
         parent: BouncingScrollPhysics(),
@@ -526,6 +537,15 @@ class _ForYouGamesWidgetState extends ConsumerState<ForYouGamesWidget>
         }
 
         final event = events[index - 1 - smartOffset];
+        if (showNativeAd && index == 1 + smartOffset) {
+          return Column(
+            key: ValueKey('event_${event.id}'),
+            children: [
+              _ForYouEventSection(event: event, isFirst: true),
+              const TodayNativeAd(),
+            ],
+          );
+        }
         return _ForYouEventSection(
           key: ValueKey('event_${event.id}'),
           event: event,
@@ -610,6 +630,7 @@ class _ForYouGamesWidgetState extends ConsumerState<ForYouGamesWidget>
   /// Uses ListView.builder for lazy, on-demand rendering
   Widget _buildTabletGridLayout(
     List<GroupEventCardModel> events, {
+    bool showNativeAd = false,
     required GamesListViewMode viewMode,
     bool showLoadingMore = false,
     SmartEventCardData? smartData,
@@ -624,7 +645,9 @@ class _ForYouGamesWidgetState extends ConsumerState<ForYouGamesWidget>
     final smartOffset = smartCards.length;
 
     // Number of event-pair rows (ceil division)
-    final rowCount = (events.length + 1) ~/ 2;
+    final rowCount = showNativeAd
+        ? 1 + events.length ~/ 2
+        : (events.length + 1) ~/ 2;
     // +1 for premium cards at top, +smartOffset for the smart card,
     // +1 for loading indicator if showing.
     final itemCount = rowCount + 1 + smartOffset + (showLoadingMore ? 1 : 0);
@@ -638,7 +661,7 @@ class _ForYouGamesWidgetState extends ConsumerState<ForYouGamesWidget>
       ),
       itemCount: itemCount,
       scrollCacheExtent: _forYouCacheExtentForMode(viewMode),
-      addAutomaticKeepAlives: false,
+      addAutomaticKeepAlives: true,
       addRepaintBoundaries: true,
       physics: const AlwaysScrollableScrollPhysics(
         parent: BouncingScrollPhysics(),
@@ -663,7 +686,16 @@ class _ForYouGamesWidgetState extends ConsumerState<ForYouGamesWidget>
         }
 
         final rowIndex = index - 1 - smartOffset;
-        final i = rowIndex * 2;
+        if (showNativeAd && rowIndex == 0) {
+          return Column(
+            key: ValueKey('native_first_event_${events.first.id}'),
+            children: [
+              _ForYouTabletEventColumn(event: events.first),
+              const TodayNativeAd(),
+            ],
+          );
+        }
+        final i = showNativeAd ? 1 + (rowIndex - 1) * 2 : rowIndex * 2;
         final event1 = events[i];
         final event2 = i + 1 < events.length ? events[i + 1] : null;
 
