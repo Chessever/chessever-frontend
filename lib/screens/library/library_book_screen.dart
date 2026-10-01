@@ -1,4 +1,7 @@
 import 'package:cached_network_image/cached_network_image.dart';
+import 'dart:async';
+import 'dart:convert';
+
 import 'package:chessever2/repository/library/library_book_publication.dart';
 import 'package:chessever2/repository/library/models/library_folder.dart';
 import 'package:chessever2/screens/collections/collection_plate_row.dart';
@@ -107,6 +110,9 @@ class _LibraryBookScreenState extends ConsumerState<LibraryBookScreen> {
 
   @override
   void dispose() {
+    _stashTimer?.cancel();
+    // Leaving mid-edit (back gesture, app route reset) still keeps the work.
+    if (_dirty) _stashDraft();
     for (final field in _fields.values) {
       field.dispose();
     }
@@ -166,6 +172,8 @@ class _LibraryBookScreenState extends ConsumerState<LibraryBookScreen> {
     } finally {
       if (mounted) setState(() => _loading = false);
     }
+    // Asked once the form is on screen, so the user sees what they resume.
+    if (mounted && _publication != null && _error == null) await _offerDraft();
   }
 
   String _message(Object error) => error is LibraryBookPublicationException
@@ -173,6 +181,76 @@ class _LibraryBookScreenState extends ConsumerState<LibraryBookScreen> {
       : 'Could not load collection details. Please try again.';
 
   String _text(_Field field) => _fields[field]!.text;
+
+  /// Unsubmitted edits live on this device, per folder, until the server
+  /// accepts a save. Coming back offers to pick up where the user left off.
+  String get _draftKey => 'library_book.draft.${widget.folder.id}';
+  Timer? _stashTimer;
+
+  void _scheduleStash() {
+    _stashTimer?.cancel();
+    _stashTimer = Timer(const Duration(milliseconds: 500), _stashDraft);
+  }
+
+  Future<void> _stashDraft() async {
+    // Read synchronously: this also runs from dispose().
+    final values = {for (final f in _Field.values) f.name: _text(f)};
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_draftKey, jsonEncode(values));
+    } catch (_) {}
+  }
+
+  Future<void> _clearDraft() async {
+    _stashTimer?.cancel();
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove(_draftKey);
+    } catch (_) {}
+  }
+
+  Future<void> _offerDraft() async {
+    Map<String, dynamic>? draft;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final raw = prefs.getString(_draftKey);
+      if (raw != null) draft = jsonDecode(raw) as Map<String, dynamic>;
+    } catch (_) {
+      draft = null;
+    }
+    if (draft == null || !mounted) return;
+    final values = {
+      for (final f in _Field.values)
+        if (draft[f.name] is String) f: draft[f.name] as String,
+    };
+    final differs = values.entries.any(
+      (e) => e.value.trim() != _text(e.key).trim(),
+    );
+    if (!differs) {
+      await _clearDraft();
+      return;
+    }
+    final resume = await showSmoothConfirmDialog(
+      context: context,
+      title: 'Continue where you left off?',
+      message:
+          'You have unsubmitted changes to this collection from your last visit.',
+      confirmText: 'Continue',
+      cancelText: 'Start over',
+    );
+    if (!mounted) return;
+    if (resume == true) {
+      setState(() {
+        for (final e in values.entries) {
+          _fields[e.key]!.text = e.value;
+        }
+        _dirty = true;
+      });
+    } else if (resume == false) {
+      await _clearDraft();
+    }
+    // Dismissed without choosing: keep the draft for next time.
+  }
 
   /// The author is usually the same person on every collection, so the last
   /// one saved pre-fills a fresh collection. Stored on this device only.
@@ -247,6 +325,7 @@ class _LibraryBookScreenState extends ConsumerState<LibraryBookScreen> {
           );
       if (!mounted) return;
       _accept(saved);
+      unawaited(_clearDraft());
       _remember(saved.metadata);
       ref.invalidate(collectionsProvider);
       ref.invalidate(collectionsRepositoryProvider);
@@ -307,15 +386,9 @@ class _LibraryBookScreenState extends ConsumerState<LibraryBookScreen> {
 
   Future<void> _close() async {
     if (_busy) return;
-    if (_dirty) {
-      final discard = await showSmoothConfirmDialog(
-        context: context,
-        title: 'Discard collection edits?',
-        message: 'Your last saved details will remain.',
-        confirmText: 'Discard',
-      );
-      if (discard != true || !mounted) return;
-    }
+    // Nothing to discard: unsaved edits are kept on the device and offered
+    // back on the next visit.
+    if (_dirty) await _stashDraft();
     if (!mounted) return;
     setState(() => _dirty = false);
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -452,6 +525,7 @@ class _LibraryBookScreenState extends ConsumerState<LibraryBookScreen> {
             ),
             onChanged: (_) {
               if (!_dirty) setState(() => _dirty = true);
+              _scheduleStash();
             },
             decoration: InputDecoration(
               hintText: hint,

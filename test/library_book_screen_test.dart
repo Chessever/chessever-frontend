@@ -274,4 +274,39 @@ void main() {
       'Jason Statham',
     );
   });
+
+  testWidgets('unsubmitted edits are offered back on the next visit', (
+    tester,
+  ) async {
+    SharedPreferences.setMockInitialValues({
+      'library_book.draft.folder':
+          '{"title":"Half-done study","author":"Owner","about":"A chess study"}',
+    });
+    final publisher = _Publisher();
+    await _pump(tester, publisher);
+    await tester.pumpAndSettle();
+    expect(find.text('Continue where you left off?'), findsOneWidget);
+    await tester.tap(find.text('Continue'));
+    await tester.pumpAndSettle();
+    expect(
+      tester.widget<TextField>(find.byType(TextField).first).controller!.text,
+      'Half-done study',
+    );
+    await _tap(tester, 'Save private draft');
+    expect(publisher.saves.single.metadata.title, 'Half-done study');
+    final prefs = await SharedPreferences.getInstance();
+    expect(prefs.getString('library_book.draft.folder'), isNull);
+  });
+
+  testWidgets('no prompt when the stored draft matches the saved details', (
+    tester,
+  ) async {
+    SharedPreferences.setMockInitialValues({
+      'library_book.draft.folder':
+          '{"title":"My study","author":"Owner","about":"A chess study"}',
+    });
+    await _pump(tester, _Publisher());
+    await tester.pumpAndSettle();
+    expect(find.text('Continue where you left off?'), findsNothing);
+  });
 }
