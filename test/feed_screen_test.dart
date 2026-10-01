@@ -115,12 +115,25 @@ void main() {
       await tester.tapAt(board);
       await tester.pump(const Duration(milliseconds: 300));
       expect(find.byKey(const ValueKey('feed_paused')), findsOneWidget);
+      expect(
+        tester
+            .widget<AnimatedOpacity>(find.byKey(const ValueKey('feed_paused')))
+            .opacity,
+        1,
+      );
 
-      // Paused means paused: time passes, the move does not.
+      // Paused means paused: time passes, the move does not. The pause
+      // confirmation fades away on its own, leaving the board clean.
       final pausedAt = feed.sound.played.length;
       await tester.pump(const Duration(seconds: 2));
       expect(feed.sound.played.length, pausedAt);
       expect(find.byKey(const ValueKey('feed_paused')), findsOneWidget);
+      expect(
+        tester
+            .widget<AnimatedOpacity>(find.byKey(const ValueKey('feed_paused')))
+            .opacity,
+        0,
+      );
 
       // Tap again → resumes and moves on.
       await tester.tapAt(board);

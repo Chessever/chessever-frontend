@@ -2077,13 +2077,15 @@ class _FeedClipState extends ConsumerState<FeedClip>
 
     return LayoutBuilder(
       builder: (context, constraints) {
+        // One geometry whether or not the viewer is playing their own line:
+        // the board never shrinks or moves when they start moving pieces.
+        // The line's move strip takes the evaluation graph's slot instead
+        // (see below), so nothing else on the page moves either.
         final l = FeedLayout.resolve(
           constraints,
           MediaQuery.textScalerOf(context),
           evalWidth: showBar ? 20.w : 0,
-          infoHeight: exploring
-              ? FeedLayout.moveStripHeightFor(MediaQuery.textScalerOf(context))
-              : 0,
+          infoHeight: 0,
           chartHeight: FeedEvaluationGraph.heightFor(
             MediaQuery.textScalerOf(context),
           ),
@@ -2158,8 +2160,12 @@ class _FeedClipState extends ConsumerState<FeedClip>
                       ),
                     ),
                   ),
-                if (p.showsPauseGlyph && !exploring)
-                  const Positioned.fill(child: FeedPausedOverlay()),
+                // Mounted for the whole pause so its fade runs once per
+                // pause; hidden while a piece is in hand or a scrub runs.
+                if (p.isUserPaused && !p.isEnded && !p.isManual && !exploring)
+                  Positioned.fill(
+                    child: FeedPausedOverlay(visible: p.showsPauseGlyph),
+                  ),
                 if (p.isFast && !p.isScrubbing)
                   const Positioned.fill(child: FeedFastOverlay()),
                 if (showEndCard)
@@ -2264,13 +2270,6 @@ class _FeedClipState extends ConsumerState<FeedClip>
                 const SizedBox(height: FeedLayout.gap),
                 content(_playerRow(l, white: true, revealResult: revealResult)),
                 SizedBox(height: l.infoSpace),
-                // Preserve navigation of a viewer-created variation.
-                if (exploring)
-                  content(
-                    RepaintBoundary(
-                      child: _buildStrip(l, shown, showEval: showBar),
-                    ),
-                  ),
                 SizedBox(height: l.actionsSpace),
                 content(
                   FeedActionRow(
@@ -2305,16 +2304,29 @@ class _FeedClipState extends ConsumerState<FeedClip>
                 // never overflows by a rounding error.
                 const Spacer(),
                 // The graph and its evaluation end at the board edge. The
-                // timeline shares its row with the playback control.
+                // timeline shares its row with the playback control. While
+                // the viewer plays their own line, its move strip (steps,
+                // "Back to game") stands in the graph's slot: the game's
+                // curve says nothing about the line, and swapping within a
+                // fixed slot keeps the board and every row where they were.
                 content(
-                  FeedEvaluationGraph(
-                    item: _item,
-                    ply: shown,
-                    showEvaluations: evalVisibility.evals,
-                    onSeek: _onScrubTap,
-                    onStart: _onScrubStart,
-                    onUpdate: _onScrubUpdate,
-                    onEnd: _onScrubEnd,
+                  SizedBox(
+                    height: l.chartHeight,
+                    child: exploring
+                        ? Align(
+                            child: RepaintBoundary(
+                              child: _buildStrip(l, shown, showEval: showBar),
+                            ),
+                          )
+                        : FeedEvaluationGraph(
+                            item: _item,
+                            ply: shown,
+                            showEvaluations: evalVisibility.evals,
+                            onSeek: _onScrubTap,
+                            onStart: _onScrubStart,
+                            onUpdate: _onScrubUpdate,
+                            onEnd: _onScrubEnd,
+                          ),
                   ),
                 ),
                 Row(
