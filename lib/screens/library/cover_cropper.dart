@@ -31,16 +31,72 @@ final collectionCoverPickerProvider =
       },
     );
 
-/// Frames a photo as a 2:3 cover. The frame stays put; the photo moves under
-/// it (drag) and scales (pinch, or scroll on a trackpad). Zoom stops before
-/// the framed window drops below the 600×900 pixels a cover needs, and the
-/// photo always fills the frame. Pops with the window as fractions of the
-/// photo, or nothing on Cancel.
+/// Pick a photo of the person a collection is credited to, frame it as a
+/// square, and return the prepared 512×512 author photo, or null when they
+/// cancel. Never the profile photo, never the cover. Overridden in tests.
+final authorPhotoPickerProvider =
+    Provider<Future<Uint8List?> Function(BuildContext context)>(
+      (ref) => (context) async {
+        final source = await ref.read(collectionCoverSourceProvider)();
+        if (source == null || !context.mounted) return null;
+        final size = await collectionCoverSourceSize(source);
+        if (!authorPhotoFits(size)) {
+          throw const FormatException(
+            'This photo is too small for an author photo. Use one at least 256 × 256 pixels.',
+          );
+        }
+        if (!context.mounted) return null;
+        final crop = await Navigator.of(context).push<Rect>(
+          MaterialPageRoute(
+            fullscreenDialog: true,
+            builder: (_) => CoverCropper(
+              bytes: source,
+              photoSize: size,
+              aspect: 1,
+              minWidth: authorPhotoMinSize,
+              title: 'Frame the author photo',
+              guide:
+                  'Pinch to zoom, drag to move. Collections shows it in a circle.',
+              round: true,
+            ),
+          ),
+        );
+        if (crop == null) return null;
+        return prepareAuthorPhoto(source, crop: crop);
+      },
+    );
+
+/// Frames a photo as a 2:3 cover (or, with [aspect] 1, a square author
+/// photo). The frame stays put; the photo moves under it (drag) and scales
+/// (pinch, or scroll on a trackpad). Zoom stops before the framed window drops
+/// below [minWidth] photo pixels, and the photo always fills the frame. Pops
+/// with the window as fractions of the photo, or nothing on Cancel.
 class CoverCropper extends StatefulWidget {
-  const CoverCropper({super.key, required this.bytes, required this.photoSize});
+  const CoverCropper({
+    super.key,
+    required this.bytes,
+    required this.photoSize,
+    this.aspect = 2 / 3,
+    this.minWidth = collectionCoverMinWidth,
+    this.title = 'Frame your cover',
+    this.guide =
+        'Pinch to zoom, drag to move. This is exactly what the cover shows.',
+    this.round = false,
+  });
 
   final Uint8List bytes;
   final Size photoSize;
+
+  /// Frame width / height: 2:3 for a cover, 1 for an author photo.
+  final double aspect;
+
+  /// The fewest photo pixels the framed window may span across.
+  final int minWidth;
+  final String title;
+  final String guide;
+
+  /// Shows a circle inside the square, as the photo appears in Collections.
+  final bool round;
 
   @override
   State<CoverCropper> createState() => _CoverCropperState();
@@ -113,7 +169,7 @@ class _CoverCropperState extends State<CoverCropper> {
                     ),
                     Expanded(
                       child: Text(
-                        'Frame your cover',
+                        widget.title,
                         textAlign: TextAlign.center,
                         style: action,
                       ),
@@ -137,9 +193,9 @@ class _CoverCropperState extends State<CoverCropper> {
                     const inset = 28.0;
                     final fw = math.min(
                       box.maxWidth - inset * 2,
-                      (box.maxHeight - inset * 2) * 2 / 3,
+                      (box.maxHeight - inset * 2) * widget.aspect,
                     );
-                    final frame = Size(fw, fw * 3 / 2);
+                    final frame = Size(fw, fw / widget.aspect);
                     if (_frame != frame) {
                       _frame = frame;
                       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -149,10 +205,7 @@ class _CoverCropperState extends State<CoverCropper> {
                     final s = _cover(frame);
                     // Visible photo width at zoom 1, in photo pixels.
                     final widest = frame.width / s;
-                    final maxZoom = math.max(
-                      1.0,
-                      widest / collectionCoverMinWidth,
-                    );
+                    final maxZoom = math.max(1.0, widest / widget.minWidth);
                     final rect = Rect.fromCenter(
                       center: box.biggest.center(Offset.zero),
                       width: frame.width,
@@ -183,7 +236,9 @@ class _CoverCropperState extends State<CoverCropper> {
                         ),
                         Positioned.fill(
                           child: IgnorePointer(
-                            child: CustomPaint(painter: _FramePainter(rect)),
+                            child: CustomPaint(
+                              painter: _FramePainter(rect, round: widget.round),
+                            ),
                           ),
                         ),
                       ],
@@ -194,7 +249,7 @@ class _CoverCropperState extends State<CoverCropper> {
               Padding(
                 padding: const EdgeInsets.fromLTRB(24, 4, 24, 16),
                 child: Text(
-                  'Pinch to zoom, drag to move. This is exactly what the cover shows.',
+                  widget.guide,
                   textAlign: TextAlign.center,
                   style: AppTypography.textXsRegular.copyWith(
                     color: Colors.white60,
@@ -209,10 +264,12 @@ class _CoverCropperState extends State<CoverCropper> {
   }
 }
 
-/// Dims everything outside the frame and draws its edge.
+/// Dims everything outside the frame and draws its edge. A [round] frame
+/// also lightly dims the corners the circular avatar will not show.
 class _FramePainter extends CustomPainter {
-  const _FramePainter(this.frame);
+  const _FramePainter(this.frame, {this.round = false});
   final Rect frame;
+  final bool round;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -224,6 +281,23 @@ class _FramePainter extends CustomPainter {
       shade,
       Paint()..color = Colors.black.withValues(alpha: 0.62),
     );
+    if (round) {
+      final corners = Path()
+        ..fillType = PathFillType.evenOdd
+        ..addRect(frame)
+        ..addOval(frame);
+      canvas.drawPath(
+        corners,
+        Paint()..color = Colors.black.withValues(alpha: 0.35),
+      );
+      canvas.drawOval(
+        frame.deflate(0.5),
+        Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 1
+          ..color = Colors.white.withValues(alpha: 0.5),
+      );
+    }
     canvas.drawRect(
       frame.deflate(0.5),
       Paint()
@@ -234,5 +308,6 @@ class _FramePainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(_FramePainter old) => old.frame != frame;
+  bool shouldRepaint(_FramePainter old) =>
+      old.frame != frame || old.round != round;
 }

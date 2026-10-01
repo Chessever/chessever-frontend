@@ -20,6 +20,17 @@ bool libraryFolderCanPublish(LibraryFolder folder) =>
     folder.id != kTwicBookId &&
     folder.id != kMiniaturesBookId;
 
+/// Who a collection's author credit names: the publishing account itself
+/// ([self], pictured by its profile photo) or someone it publishes for
+/// ([other], pictured by the collection's own author photo).
+enum LibraryAuthorCredit {
+  self,
+  other;
+
+  static LibraryAuthorCredit parse(Object? raw) =>
+      raw == 'other' ? LibraryAuthorCredit.other : LibraryAuthorCredit.self;
+}
+
 class LibraryBookMetadata {
   const LibraryBookMetadata({
     required this.title,
@@ -30,6 +41,8 @@ class LibraryBookMetadata {
     this.publisher = '',
     this.publishedYear,
     this.coverUrl = '',
+    this.authorCredit,
+    this.authorPhotoUrl = '',
   });
 
   final String title;
@@ -41,6 +54,13 @@ class LibraryBookMetadata {
   final int? publishedYear;
   final String coverUrl;
 
+  /// Null when the server predates author credits (it then refuses the key),
+  /// so it is only sent when known or when someone else is credited.
+  final LibraryAuthorCredit? authorCredit;
+
+  /// The credited author's own photo. Set only by its upload, never sent.
+  final String authorPhotoUrl;
+
   factory LibraryBookMetadata.fromJson(Map<String, dynamic> json) =>
       LibraryBookMetadata(
         title: json['title'] as String? ?? '',
@@ -51,6 +71,10 @@ class LibraryBookMetadata {
         publisher: json['publisher'] as String? ?? '',
         publishedYear: (json['publishedYear'] as num?)?.toInt(),
         coverUrl: json['coverUrl'] as String? ?? '',
+        authorCredit: json.containsKey('authorCredit')
+            ? LibraryAuthorCredit.parse(json['authorCredit'])
+            : null,
+        authorPhotoUrl: json['authorPhotoUrl'] as String? ?? '',
       );
 
   Map<String, dynamic> toJson() => {
@@ -62,6 +86,7 @@ class LibraryBookMetadata {
     'publisher': _nullable(publisher),
     'publishedYear': publishedYear,
     'coverUrl': _nullable(coverUrl),
+    if (authorCredit != null) 'authorCredit': authorCredit!.name,
   };
 
   static String? _nullable(String value) =>
@@ -128,7 +153,59 @@ abstract class LibraryBookPublisher {
     Uint8List image,
   );
   Future<LibraryBookPublication> removeCover(LibraryFolder folder);
+
+  /// The photo of the person the collection is credited to when it is
+  /// published in someone else's name: a prepared square, separate from the
+  /// cover and from the profile photo. Uploading credits someone else.
+  Future<LibraryBookPublication> uploadAuthorPhoto(
+    LibraryFolder folder,
+    Uint8List image,
+  );
+  Future<LibraryBookPublication> removeAuthorPhoto(LibraryFolder folder);
+
+  /// Existing ChessEver authors a word of [name] starts, so a credited name
+  /// keeps the spelling their other collections use. Never throws: any
+  /// failure is simply no suggestions.
+  Future<List<LibraryAuthorSuggestion>> suggestAuthors(String name);
 }
+
+class LibraryAuthorSuggestion {
+  const LibraryAuthorSuggestion({
+    required this.id,
+    required this.name,
+    this.bookCount = 0,
+    this.avatarUrl,
+  });
+
+  final String id;
+  final String name;
+  final int bookCount;
+  final String? avatarUrl;
+
+  /// Null for a row that is not a usable suggestion.
+  static LibraryAuthorSuggestion? fromJson(Object? raw) {
+    if (raw is! Map) return null;
+    final name = (raw['name'] as String? ?? '').trim();
+    if (name.isEmpty) return null;
+    final avatar = raw['avatarUrl'];
+    final uri = avatar is String ? Uri.tryParse(avatar) : null;
+    return LibraryAuthorSuggestion(
+      id: raw['id'] as String? ?? name,
+      name: name,
+      bookCount: (raw['bookCount'] as num?)?.toInt() ?? 0,
+      avatarUrl: uri != null && uri.scheme == 'https' && uri.host.isNotEmpty
+          ? avatar as String
+          : null,
+    );
+  }
+}
+
+typedef LibraryAuthorSuggestionRequest =
+    Future<Map<String, dynamic>> Function({
+      required String name,
+      required int limit,
+      required String bearer,
+    });
 
 class LibraryBookPublicationException implements Exception {
   const LibraryBookPublicationException(this.message);
@@ -153,6 +230,7 @@ class GamebaseLibraryBookPublisher implements LibraryBookPublisher {
     required String? baseUrl,
     required this.accessToken,
     this.apiRequest,
+    this.suggestionRequest,
     bool production = false,
   }) : _baseUrl = baseUrl == null
            ? null
@@ -165,6 +243,7 @@ class GamebaseLibraryBookPublisher implements LibraryBookPublisher {
   final String? _baseUrl;
   final String? Function() accessToken;
   final LibraryPublicationApiRequest? apiRequest;
+  final LibraryAuthorSuggestionRequest? suggestionRequest;
   final bool _configured;
 
   @override
@@ -214,6 +293,62 @@ class GamebaseLibraryBookPublisher implements LibraryBookPublisher {
   Future<LibraryBookPublication> removeCover(LibraryFolder folder) =>
       _request(folder, 'DELETE', resource: 'book/cover');
 
+  @override
+  Future<LibraryBookPublication> uploadAuthorPhoto(
+    LibraryFolder folder,
+    Uint8List image,
+  ) => _request(
+    folder,
+    'POST',
+    resource: 'book/author-photo',
+    body: {'image': base64Encode(image)},
+  );
+
+  @override
+  Future<LibraryBookPublication> removeAuthorPhoto(LibraryFolder folder) =>
+      _request(folder, 'DELETE', resource: 'book/author-photo');
+
+  @override
+  Future<List<LibraryAuthorSuggestion>> suggestAuthors(String name) async {
+    final term = name.trim().replaceAll(RegExp(r'\s+'), ' ');
+    final base = _baseUrl;
+    final token = accessToken();
+    if (term.length < 2 ||
+        term.length > 60 ||
+        base == null ||
+        base.isEmpty ||
+        token == null ||
+        token.isEmpty) {
+      return const [];
+    }
+    try {
+      final envelope = suggestionRequest != null
+          ? await suggestionRequest!(name: term, limit: 6, bearer: token)
+          : (await dio.get<Map<String, dynamic>>(
+              '$base/api/library/authors',
+              queryParameters: {'name': term, 'limit': 6},
+              options: Options(
+                followRedirects: false,
+                headers: {
+                  'Authorization': 'Bearer $token',
+                  'Accept': 'application/json',
+                },
+              ),
+            )).data;
+      final data = envelope?['data'];
+      final items = data is Map ? data['items'] : null;
+      if (items is! List) return const [];
+      return items
+          .map(LibraryAuthorSuggestion.fromJson)
+          .whereType<LibraryAuthorSuggestion>()
+          .take(6)
+          .toList();
+    } catch (_) {
+      // Old servers (404), offline, or a bad row: no suggestions.
+      return const [];
+    }
+  }
+
   Future<LibraryBookPublication> _request(
     LibraryFolder folder,
     String method, {
@@ -221,6 +356,7 @@ class GamebaseLibraryBookPublisher implements LibraryBookPublisher {
     Map<String, dynamic>? query,
     String resource = 'book',
   }) async {
+    final creditsOther = body?['authorCredit'] == 'other';
     if (!libraryFolderCanPublish(folder)) {
       throw const LibraryBookPublicationException(
         'Only your own folders and databases can become books.',
@@ -271,6 +407,29 @@ class GamebaseLibraryBookPublisher implements LibraryBookPublisher {
       final deleting =
           failure is Map && failure['code'] == 'publication_deleting';
       final code = failure is Map ? failure['code'] : null;
+      if (resource == 'book/author-photo') {
+        throw LibraryBookPublicationException(switch (code) {
+          'author_photo_type' => 'Use a JPEG, PNG or WebP photo.',
+          'author_photo_animated' => 'Use a still photo, not an animation.',
+          'author_photo_aspect' => 'The author photo must be a square.',
+          'author_photo_too_small' => 'Use a photo at least 256 × 256 pixels.',
+          'bad_base64' => 'This photo could not be read. Choose another one.',
+          'author_photo_unavailable' =>
+            'Author photo uploads are unavailable right now. Try again shortly.',
+          'taken_down' =>
+            'ChessEver took this collection down. Ask ChessEver to restore it.',
+          _ => switch (error.response?.statusCode) {
+            401 => 'Your session expired. Sign in again to continue.',
+            403 => 'You do not have permission to change this collection.',
+            409 => 'Save the collection details, then add the author photo.',
+            413 => 'This photo is too large. Choose one under 8 MB.',
+            404 ||
+            405 ||
+            503 => 'Author photo uploads are not available here yet.',
+            _ => 'Could not save the author photo. Retry when connected.',
+          },
+        });
+      }
       if (resource == 'book/cover') {
         throw LibraryBookPublicationException(switch (code) {
           'cover_type' => 'Use a JPEG, PNG or WebP photo.',
@@ -291,6 +450,18 @@ class GamebaseLibraryBookPublisher implements LibraryBookPublisher {
             _ => 'Could not save the cover. Retry when connected.',
           },
         });
+      }
+      // An older server refuses the unknown credit key with a bare 400.
+      final creditRefused =
+          resource == 'book' &&
+          method == 'PUT' &&
+          creditsOther &&
+          error.response?.statusCode == 400 &&
+          code == null;
+      if (creditRefused) {
+        throw const LibraryBookPublicationException(
+          'Crediting someone else is not available here yet. Choose Me for now; your details are still here.',
+        );
       }
       final message = switch (error.response?.statusCode) {
         401 => 'Your session expired. Sign in again to continue.',
@@ -343,6 +514,9 @@ final libraryBookPublisherProvider = Provider<LibraryBookPublisher>((ref) {
     apiRequest: AppEnvironment.isTest
         ? null
         : ref.read(gamebaseRepositoryProvider).requestLibraryBookPublication,
+    suggestionRequest: AppEnvironment.isTest
+        ? null
+        : ref.read(gamebaseRepositoryProvider).requestLibraryAuthorSuggestions,
     accessToken: () {
       final client = Supabase.instance.client;
       return client.auth.currentSession?.accessToken;

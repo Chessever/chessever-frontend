@@ -808,14 +808,15 @@ class GamebaseRepository {
     Map<String, dynamic>? query,
     String resource = 'book',
   }) async {
-    final cover = resource == 'book/cover';
-    if (!(cover
+    // An image upload: the collection's cover, or its credited author photo.
+    final upload = resource == 'book/cover' || resource == 'book/author-photo';
+    if (!(upload
         ? const {'POST', 'DELETE'}.contains(method)
         : const {'GET', 'PUT', 'DELETE'}.contains(method))) {
       throw ArgumentError.value(method, 'method');
     }
     final response = await _dio.request<Map<String, dynamic>>(
-      '$_baseUrl/api/library/folders/${Uri.encodeComponent(folderId)}/${cover ? 'book/cover' : 'book'}',
+      '$_baseUrl/api/library/folders/${Uri.encodeComponent(folderId)}/${upload ? resource : 'book'}',
       data: body,
       queryParameters: query,
       options: Options(
@@ -827,6 +828,26 @@ class GamebaseRepository {
     );
     final data = response.data;
     if (data == null) throw const FormatException('Missing publication');
+    return data;
+  }
+
+  /// Existing published author names a word of [name] starts
+  /// (`GET /api/library/authors`), for the collection editor.
+  Future<Map<String, dynamic>> requestLibraryAuthorSuggestions({
+    required String name,
+    required int limit,
+    required String bearer,
+  }) async {
+    final response = await _dio.get<Map<String, dynamic>>(
+      '$_baseUrl/api/library/authors',
+      queryParameters: {'name': name, 'limit': limit},
+      options: Options(
+        followRedirects: false,
+        headers: {..._headers, 'Authorization': 'Bearer $bearer'},
+      ),
+    );
+    final data = response.data;
+    if (data == null) throw const FormatException('Missing author names');
     return data;
   }
 

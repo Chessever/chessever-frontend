@@ -141,4 +141,71 @@ void main() {
     await tester.pumpAndSettle();
     expect(framed, isNull);
   });
+
+  test('an author photo needs a 256×256 square', () {
+    expect(authorPhotoFits(const Size(256, 256)), isTrue);
+    expect(authorPhotoFits(const Size(2000, 255)), isFalse);
+  });
+
+  testWidgets('the author photo is a 512×512 square from the framed window', (
+    tester,
+  ) async {
+    await tester.runAsync(() async {
+      final photo = await _photo(1200, 600);
+      // Frame the right-hand (blue) square of a landscape photo.
+      final framed = await prepareAuthorPhoto(
+        photo,
+        crop: const Rect.fromLTWH(0.5, 0, 0.5, 1),
+      );
+      final (size, colour) = await _decode(framed, at: const Offset(256, 256));
+      expect(size, const Size(512, 512));
+      expect(colour, const Color(0xFF0000FF));
+      await expectLater(
+        prepareAuthorPhoto(await _photo(200, 200)),
+        throwsA(isA<FormatException>()),
+      );
+    });
+  });
+
+  testWidgets('the square cropper returns a centred square window', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    Rect? framed;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Builder(
+          builder: (context) {
+            ResponsiveHelper.init(context);
+            return TextButton(
+              onPressed: () async =>
+                  framed = await Navigator.of(context).push<Rect>(
+                    MaterialPageRoute(
+                      builder: (_) => CoverCropper(
+                        bytes: _onePixelPng,
+                        photoSize: const Size(1800, 1200),
+                        aspect: 1,
+                        minWidth: authorPhotoMinSize,
+                        title: 'Frame the author photo',
+                        round: true,
+                      ),
+                    ),
+                  ),
+              child: const Text('open'),
+            );
+          },
+        ),
+      ),
+    );
+    await tester.tap(find.text('open'));
+    await tester.pumpAndSettle();
+    expect(find.text('Frame the author photo'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('cover_crop_use')));
+    await tester.pumpAndSettle();
+    expect(framed!.height, closeTo(1, 1e-6));
+    expect(framed!.width, closeTo(1200 / 1800, 1e-6));
+    expect(framed!.left, closeTo((1 - 1200 / 1800) / 2, 1e-6));
+  });
 }

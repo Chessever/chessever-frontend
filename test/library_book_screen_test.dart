@@ -1,3 +1,6 @@
+import 'dart:async';
+
+import 'package:dio/dio.dart';
 import 'package:chessever2/repository/library/library_book_publication.dart';
 import 'package:chessever2/repository/library/models/library_folder.dart';
 import 'package:chessever2/screens/library/library_book_screen.dart';
@@ -12,6 +15,7 @@ import 'dart:convert';
 import 'dart:typed_data';
 
 Uint8List? pickedCover;
+Uint8List? pickedAuthorPhoto;
 
 /// A valid 1×1 PNG, so the instant preview can decode it.
 final _onePixelPng = base64Decode(
@@ -97,6 +101,50 @@ class _Publisher implements LibraryBookPublisher {
     );
   }
 
+  final authorPhotos = <Uint8List>[];
+  int authorPhotoRemovals = 0;
+  final suggestionQueries = <String>[];
+
+  /// Answers name suggestions; a test may hold one back with a completer.
+  Future<List<LibraryAuthorSuggestion>> Function(String name) suggest =
+      (_) async => const [];
+
+  LibraryBookPublication _withAuthorPhoto(String url) => LibraryBookPublication(
+    status: 'draft',
+    bookId: publication.bookId,
+    metadata: LibraryBookMetadata(
+      title: publication.metadata.title,
+      author: publication.metadata.author,
+      about: publication.metadata.about,
+      coverUrl: publication.metadata.coverUrl,
+      authorCredit: LibraryAuthorCredit.other,
+      authorPhotoUrl: url,
+    ),
+  );
+
+  @override
+  Future<LibraryBookPublication> uploadAuthorPhoto(
+    LibraryFolder folder,
+    Uint8List image,
+  ) async {
+    authorPhotos.add(image);
+    return publication = _withAuthorPhoto(
+      'https://media.example.invalid/author.webp',
+    );
+  }
+
+  @override
+  Future<LibraryBookPublication> removeAuthorPhoto(LibraryFolder folder) async {
+    authorPhotoRemovals++;
+    return publication = _withAuthorPhoto('');
+  }
+
+  @override
+  Future<List<LibraryAuthorSuggestion>> suggestAuthors(String name) {
+    suggestionQueries.add(name);
+    return suggest(name);
+  }
+
   @override
   Future<LibraryBookPublication> unpublish(LibraryFolder folder) async {
     withdrawals++;
@@ -122,6 +170,10 @@ Future<void> _pump(
         collectionCoverPickerProvider.overrideWithValue(
           (_) async => pickedCover,
         ),
+        authorPhotoPickerProvider.overrideWithValue(
+          (_) async => pickedAuthorPhoto,
+        ),
+        libraryAuthorProfilePhotoProvider.overrideWithValue(null),
       ],
       child: MaterialApp(
         theme: AppTheme.darkTheme,
@@ -386,5 +438,325 @@ void main() {
     await _tap(tester, 'Remove cover');
     expect(publisher.coverRemovals, 1);
     expect(find.text('Choose from gallery'), findsOneWidget);
+  });
+
+  group('author credit', () {
+    Finder authorField() => find.byType(TextField).at(2);
+
+    Future<void> creditSomeoneElse(WidgetTester tester) async {
+      FocusManager.instance.primaryFocus?.unfocus();
+      await tester.pumpAndSettle();
+      await tester.ensureVisible(find.text('Someone else'));
+      await tester.tap(find.text('Someone else'));
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets('an older server never receives the credit key for "Me"', (
+      tester,
+    ) async {
+      final publisher = _Publisher();
+      await _pump(tester, publisher);
+      await _tap(tester, 'Save private draft');
+      final sent = publisher.saves.single.metadata;
+      expect(sent.authorCredit, isNull);
+      expect(sent.toJson().containsKey('authorCredit'), isFalse);
+    });
+
+    testWidgets('a server that knows credits gets "self" back for "Me"', (
+      tester,
+    ) async {
+      final publisher = _Publisher()
+        ..publication = const LibraryBookPublication(
+          status: 'draft',
+          bookId: 'book-1',
+          metadata: LibraryBookMetadata(
+            title: 'My study',
+            author: 'Owner',
+            about: 'A chess study',
+            authorCredit: LibraryAuthorCredit.self,
+          ),
+        );
+      await _pump(tester, publisher);
+      await _tap(tester, 'Save private draft');
+      expect(publisher.saves.single.metadata.toJson()['authorCredit'], 'self');
+    });
+
+    testWidgets(
+      'crediting someone else clears a pre-filled own name and is not remembered',
+      (tester) async {
+        SharedPreferences.setMockInitialValues({
+          'library_book.last_author': 'Jason Statham',
+        });
+        final publisher = _Publisher()
+          ..publication = const LibraryBookPublication(
+            status: 'draft',
+            metadata: LibraryBookMetadata(title: 'Fresh', about: 'Games'),
+          );
+        await _pump(tester, publisher);
+        await tester.pumpAndSettle();
+        expect(
+          tester.widget<TextField>(authorField()).controller!.text,
+          'Jason Statham',
+        );
+        await creditSomeoneElse(tester);
+        expect(tester.widget<TextField>(authorField()).controller!.text, '');
+        expect(find.text('Author photo'), findsOneWidget);
+        await tester.enterText(authorField(), 'Garry Kasparov');
+        await tester.pump(const Duration(milliseconds: 400));
+        await _tap(tester, 'Save private draft');
+        final sent = publisher.saves.single.metadata;
+        expect(sent.author, 'Garry Kasparov');
+        expect(sent.toJson()['authorCredit'], 'other');
+        final prefs = await SharedPreferences.getInstance();
+        expect(prefs.getString('library_book.last_author'), 'Jason Statham');
+      },
+    );
+
+    testWidgets('a suggestion fills the exact spelling; stale answers lose', (
+      tester,
+    ) async {
+      final slow = Completer<List<LibraryAuthorSuggestion>>();
+      final publisher = _Publisher()
+        ..suggest = (name) => name == 'Mag'
+            ? slow.future
+            : Future.value(const [
+                LibraryAuthorSuggestion(
+                  id: 'credit:1',
+                  name: 'Magnus Carlsen',
+                  bookCount: 3,
+                ),
+              ]);
+      await _pump(tester, publisher);
+      await creditSomeoneElse(tester);
+      await tester.enterText(authorField(), 'Mag');
+      await tester.pump(const Duration(milliseconds: 350));
+      await tester.enterText(authorField(), 'magnus carl');
+      await tester.pump(const Duration(milliseconds: 350));
+      await tester.pumpAndSettle();
+      expect(find.text('Magnus Carlsen'), findsOneWidget);
+      expect(find.text('3 collections'), findsOneWidget);
+      // The slower answer for an older name arrives last and is ignored.
+      slow.complete(const [
+        LibraryAuthorSuggestion(id: 'credit:2', name: 'Magda Stale'),
+      ]);
+      await tester.pumpAndSettle();
+      expect(find.text('Magda Stale'), findsNothing);
+      await tester.tap(
+        find.byKey(const ValueKey('book_author_suggestion_Magnus Carlsen')),
+      );
+      await tester.pumpAndSettle();
+      expect(
+        tester.widget<TextField>(authorField()).controller!.text,
+        'Magnus Carlsen',
+      );
+      expect(
+        find.text('Matches an existing ChessEver author.'),
+        findsOneWidget,
+      );
+      // Switching asks once for the name already there, then per pause.
+      expect(publisher.suggestionQueries, ['Owner', 'Mag', 'magnus carl']);
+    });
+
+    testWidgets('an author photo is uploaded on pick, after a first save', (
+      tester,
+    ) async {
+      pickedAuthorPhoto = _onePixelPng;
+      addTearDown(() => pickedAuthorPhoto = null);
+      final publisher = _Publisher();
+      await _pump(tester, publisher);
+      await creditSomeoneElse(tester);
+      await tester.enterText(authorField(), 'Garry Kasparov');
+      await tester.pump(const Duration(milliseconds: 400));
+      // The cover has its own "Choose from gallery"; this is the author's.
+      FocusManager.instance.primaryFocus?.unfocus();
+      await tester.pumpAndSettle();
+      final choose = find.byKey(const ValueKey('book_author_photo_choose'));
+      await tester.ensureVisible(choose);
+      await tester.pumpAndSettle();
+      await tester.tap(choose);
+      await tester.pumpAndSettle();
+      // Never saved: saved privately first, credited to someone else.
+      expect(publisher.saves.single.publish, isFalse);
+      expect(publisher.saves.single.metadata.toJson()['authorCredit'], 'other');
+      expect(publisher.authorPhotos.single, pickedAuthorPhoto);
+      expect(publisher.covers, isEmpty);
+      expect(find.text('Remove photo'), findsOneWidget);
+      await _tap(tester, 'Remove photo');
+      expect(publisher.authorPhotoRemovals, 1);
+    });
+
+    testWidgets('switching a credited book with a photo to Me warns first', (
+      tester,
+    ) async {
+      final publisher = _Publisher()
+        ..publication = const LibraryBookPublication(
+          status: 'draft',
+          bookId: 'book-1',
+          metadata: LibraryBookMetadata(
+            title: 'Kasparov’s games',
+            author: 'Garry Kasparov',
+            about: 'Games',
+            authorCredit: LibraryAuthorCredit.other,
+            authorPhotoUrl: 'https://media.example.invalid/author.webp',
+          ),
+        );
+      await _pump(tester, publisher);
+      expect(find.text('Remove photo'), findsOneWidget);
+      FocusManager.instance.primaryFocus?.unfocus();
+      await tester.ensureVisible(find.text('Me'));
+      await tester.tap(find.text('Me'));
+      await tester.pumpAndSettle();
+      expect(
+        find.text('The saved author photo will be removed when you save.'),
+        findsOneWidget,
+      );
+      await _tap(tester, 'Save private draft');
+      expect(publisher.saves.single.metadata.toJson()['authorCredit'], 'self');
+    });
+
+    testWidgets('the resume draft keeps the credit', (tester) async {
+      SharedPreferences.setMockInitialValues({
+        'library_book.draft.folder':
+            '{"title":"My study","author":"Garry Kasparov","about":"A chess study","authorCredit":"other"}',
+      });
+      final publisher = _Publisher();
+      await _pump(tester, publisher);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Continue'));
+      await tester.pumpAndSettle();
+      expect(find.text('Author photo'), findsOneWidget);
+      await _tap(tester, 'Save private draft');
+      expect(publisher.saves.single.metadata.toJson()['authorCredit'], 'other');
+    });
+  });
+
+  test('editor metadata only carries the credit it knows', () {
+    final legacy = LibraryBookMetadata.fromJson({'title': 'A'});
+    expect(legacy.authorCredit, isNull);
+    expect(legacy.toJson().containsKey('authorCredit'), isFalse);
+    final credited = LibraryBookMetadata.fromJson({
+      'title': 'A',
+      'authorCredit': 'other',
+      'authorPhotoUrl': 'https://media.example.invalid/a.webp',
+    });
+    expect(credited.authorCredit, LibraryAuthorCredit.other);
+    expect(credited.authorPhotoUrl, 'https://media.example.invalid/a.webp');
+    // The photo is set by its upload, never sent with the details.
+    expect(credited.toJson().containsKey('authorPhotoUrl'), isFalse);
+    expect(
+      LibraryAuthorSuggestion.fromJson({
+        'id': 'credit:1',
+        'name': ' Magnus Carlsen ',
+        'bookCount': 2,
+        'avatarUrl': 'http://insecure.invalid/a.png',
+      })!.avatarUrl,
+      isNull,
+    );
+    expect(LibraryAuthorSuggestion.fromJson({'name': ' '}), isNull);
+  });
+
+  group('publisher service', () {
+    final folder = LibraryFolder(
+      id: 'folder',
+      userId: 'owner',
+      name: 'My study',
+      color: '#000000',
+      icon: 'folder',
+      orderIndex: 0,
+      createdAt: DateTime(2026),
+      updatedAt: DateTime(2026),
+    );
+    GamebaseLibraryBookPublisher failing(int status, [Object? data]) =>
+        GamebaseLibraryBookPublisher(
+          dio: Dio(),
+          production: true,
+          baseUrl: 'https://service.chessever.com',
+          accessToken: () => 'token',
+          apiRequest:
+              ({
+                required folderId,
+                required method,
+                required bearer,
+                body,
+                query,
+                required resource,
+              }) async => throw DioException(
+                requestOptions: RequestOptions(path: '/x'),
+                response: Response(
+                  requestOptions: RequestOptions(path: '/x'),
+                  statusCode: status,
+                  data: data,
+                ),
+              ),
+        );
+
+    test('an older server refusing a someone-else credit says so', () async {
+      final publisher = failing(400, {
+        'status': 'error',
+        'error': {'message': 'Check the book details and try again.'},
+      });
+      await expectLater(
+        publisher.save(
+          folder,
+          const LibraryBookMetadata(
+            title: 'A',
+            author: 'Garry Kasparov',
+            authorCredit: LibraryAuthorCredit.other,
+          ),
+        ),
+        throwsA(
+          isA<LibraryBookPublicationException>().having(
+            (e) => e.message,
+            'message',
+            startsWith('Crediting someone else is not available here yet'),
+          ),
+        ),
+      );
+    });
+
+    test('author photo refusals keep their reason', () async {
+      await expectLater(
+        failing(422, {
+          'status': 'error',
+          'error': {'code': 'author_photo_aspect'},
+        }).uploadAuthorPhoto(folder, Uint8List(4)),
+        throwsA(
+          isA<LibraryBookPublicationException>().having(
+            (e) => e.message,
+            'message',
+            'The author photo must be a square.',
+          ),
+        ),
+      );
+      await expectLater(
+        failing(404).uploadAuthorPhoto(folder, Uint8List(4)),
+        throwsA(
+          isA<LibraryBookPublicationException>().having(
+            (e) => e.message,
+            'message',
+            'Author photo uploads are not available here yet.',
+          ),
+        ),
+      );
+    });
+
+    test('suggestions fail quietly and skip one-letter names', () async {
+      var asked = 0;
+      final publisher = GamebaseLibraryBookPublisher(
+        dio: Dio(),
+        production: true,
+        baseUrl: 'https://service.chessever.com',
+        accessToken: () => 'token',
+        suggestionRequest:
+            ({required name, required limit, required bearer}) async {
+              asked++;
+              throw StateError('offline');
+            },
+      );
+      expect(await publisher.suggestAuthors('M'), isEmpty);
+      expect(asked, 0);
+      expect(await publisher.suggestAuthors('Magnus'), isEmpty);
+      expect(asked, 1);
+    });
   });
 }

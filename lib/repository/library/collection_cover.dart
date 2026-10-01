@@ -21,6 +21,13 @@ const collectionCoverMinWidth = 600;
 const collectionCoverMinHeight = 900;
 const _maxSourceBytes = 25 * 1024 * 1024;
 
+/// The photo of the person a collection is credited to when it is published
+/// in someone else's name. Separate from the cover AND from the publishing
+/// account's profile photo. Gamebase accepts a square of at least 256×256
+/// and stores it as 512×512.
+const authorPhotoSize = 512;
+const authorPhotoMinSize = 256;
+
 const _mediaChannel = MethodChannel('com.chessever/media_picker');
 
 /// Mobile opens the system photo picker for one chosen photo; no camera or
@@ -91,11 +98,57 @@ Future<Size> collectionCoverSourceSize(Uint8List bytes) async {
 bool collectionCoverFits(Size size) =>
     math.min(size.width, size.height * 2 / 3) >= collectionCoverMinWidth;
 
+/// Whether a photo of [size] can give a square author photo of 256×256.
+bool authorPhotoFits(Size size) =>
+    math.min(size.width, size.height) >= authorPhotoMinSize;
+
+/// Renders [bytes] as an exactly 512×512 PNG author photo from the framed
+/// square [crop] (fractions of the photo; omitted, the largest centred one).
+/// Refuses a window smaller than 256×256 photo pixels.
+Future<Uint8List> prepareAuthorPhoto(
+  Uint8List bytes, {
+  Rect? crop,
+}) => _prepareFramed(
+  bytes,
+  crop: crop,
+  aspect: 1,
+  minWidth: authorPhotoMinSize,
+  outWidth: authorPhotoSize,
+  outHeight: authorPhotoSize,
+  tooSmall:
+      'This photo is too small for an author photo. Use one at least 256 × 256 pixels.',
+);
+
 /// Renders [bytes] as an exactly 800×1200 PNG cover. [crop] is the framed
 /// window as fractions of the photo (0..1); omitted, the largest centred 2:3
 /// window is used. Refuses a window smaller than 600×900 photo pixels rather
 /// than upscaling it into a blurry cover.
-Future<Uint8List> prepareCollectionCover(Uint8List bytes, {Rect? crop}) async {
+Future<Uint8List> prepareCollectionCover(
+  Uint8List bytes, {
+  Rect? crop,
+}) => _prepareFramed(
+  bytes,
+  crop: crop,
+  aspect: 2 / 3,
+  minWidth: collectionCoverMinWidth,
+  outWidth: collectionCoverWidth,
+  outHeight: collectionCoverHeight,
+  tooSmall:
+      'This photo is too small for a cover. Use one at least 600 × 900 pixels.',
+);
+
+/// Renders the [aspect] (width / height) window [crop] of [bytes] at exactly
+/// [outWidth]×[outHeight], refusing a window narrower than [minWidth] photo
+/// pixels instead of upscaling it.
+Future<Uint8List> _prepareFramed(
+  Uint8List bytes, {
+  required Rect? crop,
+  required double aspect,
+  required int minWidth,
+  required int outWidth,
+  required int outHeight,
+  required String tooSmall,
+}) async {
   if (bytes.length > _maxSourceBytes) {
     throw const FormatException('Choose a photo smaller than 25 MB.');
   }
@@ -109,26 +162,24 @@ Future<Uint8List> prepareCollectionCover(Uint8List bytes, {Rect? crop}) async {
     if (w * h > 60000000) {
       throw const FormatException('Choose a photo with smaller dimensions.');
     }
-    // The framed window in photo pixels, kept exactly 2:3 and inside the
-    // photo; by default the largest centred one.
-    final full = math.min(w.toDouble(), h * 2 / 3);
+    // The framed window in photo pixels, kept exactly at the aspect and
+    // inside the photo; by default the largest centred one.
+    final full = math.min(w.toDouble(), h * aspect);
     final cropW = crop == null
         ? full
         : (crop.width * w).clamp(1.0, full).toDouble();
-    final cropH = cropW * 3 / 2;
+    final cropH = cropW / aspect;
     final left = crop == null
         ? (w - cropW) / 2
         : (crop.left * w).clamp(0.0, w - cropW).toDouble();
     final top = crop == null
         ? (h - cropH) / 2
         : (crop.top * h).clamp(0.0, h - cropH).toDouble();
-    if (cropW < collectionCoverMinWidth || cropH < collectionCoverMinHeight) {
-      throw const FormatException(
-        'This photo is too small for a cover. Use one at least 600 × 900 pixels.',
-      );
+    if (cropW < minWidth || cropH < minWidth / aspect - 0.5) {
+      throw FormatException(tooSmall);
     }
-    // Decode only as large as the cover needs, to keep memory low.
-    final factor = math.min(1.0, collectionCoverHeight / cropH);
+    // Decode only as large as the output needs, to keep memory low.
+    final factor = math.min(1.0, outHeight / cropH);
     final dw = math.max(1, (w * factor).round());
     final dh = math.max(1, (h * factor).round());
     codec = await descriptor.instantiateCodec(
@@ -156,19 +207,11 @@ Future<Uint8List> prepareCollectionCover(Uint8List bytes, {Rect? crop}) async {
         ..drawImageRect(
           image,
           window,
-          Rect.fromLTWH(
-            0,
-            0,
-            collectionCoverWidth.toDouble(),
-            collectionCoverHeight.toDouble(),
-          ),
+          Rect.fromLTWH(0, 0, outWidth.toDouble(), outHeight.toDouble()),
           Paint()..filterQuality = FilterQuality.high,
         );
       final picture = recorder.endRecording();
-      final cover = await picture.toImage(
-        collectionCoverWidth,
-        collectionCoverHeight,
-      );
+      final cover = await picture.toImage(outWidth, outHeight);
       picture.dispose();
       try {
         final data = await cover.toByteData(format: ui.ImageByteFormat.png);
