@@ -1,4 +1,5 @@
 import 'package:chessever2/services/rewarded_premium/rewarded_access_provider.dart';
+import 'package:chessever2/services/rewarded_premium/rewarded_ads.dart';
 import 'dart:async';
 import 'dart:ui' show ImageFilter;
 
@@ -2115,7 +2116,9 @@ class _ExplorerPremiumGate extends ConsumerWidget {
             ),
             SizedBox(height: 8.h),
             Text(
-              'Games are won past book. Unlock Premium to keep mining master '
+              'Games are won past book. '
+              '${RewardedAdsConfig.available ? 'Upgrade or watch an ad' : 'Unlock Premium'} '
+              'to keep mining master '
               'data deep into the middlegame — score trends, sideline '
               'frequency, novelties, and the exact paths titled players take '
               'beyond move 10.',

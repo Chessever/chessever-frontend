@@ -1,5 +1,6 @@
 import 'package:chessever2/services/rewarded_premium/rewarded_access_provider.dart';
 import 'dart:async';
+import 'package:chessever2/services/rewarded_premium/rewarded_ads.dart';
 import 'dart:io';
 
 import 'package:chessever2/screens/library/utils/folder_pgn_exporter.dart';
@@ -344,8 +345,9 @@ class _MyLikesGamesPageState extends ConsumerState<MyLikesGamesPage>
     final completer = Completer<bool>();
     final controller = showAppSnack(
       context,
-      'Upgrade to export $lockedCount more game${lockedCount == 1 ? '' : 's'}',
-      actionLabel: 'Upgrade',
+      '${RewardedAdsConfig.available ? 'Upgrade or watch an ad' : 'Upgrade'} '
+      'to export $lockedCount more game${lockedCount == 1 ? '' : 's'}',
+      actionLabel: RewardedAdsConfig.available ? 'Unlock' : 'Upgrade',
       duration: const Duration(seconds: 6),
       onAction: () async {
         if (completer.isCompleted) return;

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:chessever2/services/rewarded_premium/rewarded_ads.dart';
 
 import 'package:chessever2/chat/botvinnik_icon.dart';
 import 'package:chessever2/chat/chat_api.dart';
@@ -1127,7 +1128,9 @@ class _ChatUpgradeGate extends StatelessWidget {
                 color: colorScheme.surfaceContainerHighest,
                 alignment: Alignment.center,
                 child: Text(
-                  'Botvinnik is available with Premium.',
+                  RewardedAdsConfig.available
+                      ? 'Watch an ad for 10 minutes of Premium access.'
+                      : 'Botvinnik is available with Premium.',
                   style: Theme.of(context).textTheme.labelSmall?.copyWith(
                     color: colorScheme.onSurfaceVariant,
                     fontWeight: FontWeight.w600,
@@ -1141,7 +1144,12 @@ class _ChatUpgradeGate extends StatelessWidget {
                   child: FilledButton.icon(
                     onPressed: onUpgrade,
                     icon: const Icon(Icons.workspace_premium_rounded),
-                    label: const Text('Upgrade to continue chatting'),
+                    label: Text(
+                      RewardedAdsConfig.available
+                          ? 'Upgrade or watch ad to continue chatting'
+                          : 'Upgrade to continue chatting',
+                      textAlign: TextAlign.center,
+                    ),
                   ),
                 ),
               ),
