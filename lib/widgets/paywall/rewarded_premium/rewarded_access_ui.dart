@@ -101,6 +101,8 @@ class _AccessChoiceState extends ConsumerState<_AccessChoice> {
   @override
   Widget build(BuildContext context) {
     final reward = ref.watch(rewardedAccessProvider);
+    final theme = Theme.of(context);
+    final dark = theme.brightness == Brightness.dark;
     ref.listen<bool>(subscriptionProvider.select((s) => s.isSubscribed), (
       _,
       paid,
@@ -110,8 +112,15 @@ class _AccessChoiceState extends ConsumerState<_AccessChoice> {
     return PopScope(
       canPop: !widget.expired && !_busy,
       child: AlertDialog(
+        backgroundColor: dark ? const Color(0xFF262A30) : Colors.white,
+        surfaceTintColor: Colors.transparent,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(24),
+          side: BorderSide(color: theme.colorScheme.outlineVariant),
+        ),
         title: Text(
           widget.expired ? 'Your Premium access has ended' : 'Unlock Premium',
+          textAlign: TextAlign.center,
         ),
         content: Column(
           mainAxisSize: MainAxisSize.min,
@@ -121,23 +130,41 @@ class _AccessChoiceState extends ConsumerState<_AccessChoice> {
               reward.pending
                   ? 'Confirming your reward…'
                   : 'Watch a complete ad for 10 minutes of access to all Premium features, or upgrade for ongoing access.',
+              textAlign: TextAlign.center,
             ),
             const SizedBox(height: 16),
             if (_busy) const Center(child: CircularProgressIndicator()),
             const SizedBox(height: 8),
             FilledButton(
               onPressed: _busy ? null : _watch,
+              style: FilledButton.styleFrom(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 12,
+                ),
+              ),
               child: Text(
                 reward.pending
                     ? 'Retry confirmation'
                     : widget.expired
                     ? 'Watch ad again'
                     : 'Watch ad — unlock Premium for 10 minutes',
+                textAlign: TextAlign.center,
               ),
             ),
+            const SizedBox(height: 8),
             OutlinedButton(
               onPressed: _busy ? null : _upgrade,
-              child: const Text('Upgrade to Premium'),
+              style: OutlinedButton.styleFrom(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 12,
+                ),
+              ),
+              child: const Text(
+                'Upgrade to Premium',
+                textAlign: TextAlign.center,
+              ),
             ),
             if (widget.expired)
               TextButton(
@@ -146,7 +173,7 @@ class _AccessChoiceState extends ConsumerState<_AccessChoice> {
                     : () {
                         Navigator.of(context).pop(false);
                       },
-                child: const Text('Go back'),
+                child: const Text('Go back', textAlign: TextAlign.center),
               ),
           ],
         ),
