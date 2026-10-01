@@ -49,6 +49,7 @@ class _LikesScreenState extends State<LikesScreen> {
     title: 'Likes',
     titleIcon: const Icon(Icons.favorite_rounded),
     tabs: const ['About', 'Games', 'Players'],
+    initialTab: 1,
     controller: _tabs,
     pageBuilder: (context, index) => _LikesTab(
       key: ValueKey('likes_tab_$index'),

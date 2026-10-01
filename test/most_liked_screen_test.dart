@@ -1,3 +1,4 @@
+import 'package:chessever2/widgets/segmented_switcher.dart';
 import 'package:chessever2/screens/chessboard/analysis/chess_game.dart';
 import 'package:chessever2/screens/my_likes/widgets/my_likes_game_card.dart';
 import 'package:chessever2/screens/my_likes/widgets/date_section_header.dart';
@@ -294,12 +295,22 @@ void main() {
         home: const LikesScreen(),
         queries: queries,
       );
-      expect(find.text('About').hitTestable(), findsOneWidget);
+      expect(queries, isNotEmpty);
+      expect(queries.last.period, MostLikedPeriod.month);
+      expect(container.read(mostLikedPeriodProvider), MostLikedPeriod.month);
+      expect(find.bySemanticsLabel('Most liked, Month'), findsOneWidget);
+      expect(
+        tester.widget<SegmentedSwitcher>(
+          find.byKey(const ValueKey('event_view_tabs_About_Games_Players')),
+        ).currentSelection,
+        1,
+      );
+      await tester.tap(find.text('About').hitTestable());
+      await _settle(tester);
       expect(find.byType(MyLikesGamesPage), findsNothing);
       expect(find.byType(DiscoveryEventCard), findsOneWidget);
       final art = tester.getSize(find.byType(SpacePlateArt));
       expect(art.width / art.height, closeTo(5 / 4, 0.001));
-      expect(queries, isEmpty);
       await tester.tap(find.byKey(const ValueKey('discovery_my_likes_card')));
       await _settle(tester);
       expect(find.byType(MyLikesScreen), findsOneWidget);
@@ -486,6 +497,8 @@ void main() {
       subscribed: true,
       home: const LikesScreen(),
     );
+    await tester.tap(find.text('About').hitTestable());
+    await _settle(tester);
     await tester.drag(
       find.text('Games the community loves'),
       const Offset(-320, 0),
@@ -520,6 +533,9 @@ void main() {
           textScale: 2,
           theme: light ? AppTheme.lightTheme : AppTheme.darkTheme,
         );
+        expect(find.text('Games').hitTestable(), findsOneWidget);
+        await tester.tap(find.text('About').hitTestable());
+        await _settle(tester);
         expect(find.text('My Likes').hitTestable(), findsOneWidget);
         expect(find.text('Games').first.hitTestable(), findsOneWidget);
         expect(tester.takeException(), isNull);
@@ -572,6 +588,8 @@ void main() {
   testWidgets('a free account sees the locked periods and the Players '
       'unlock', (tester) async {
     final container = await _pump(tester, subscribed: false);
+    await tester.tap(find.bySemanticsLabel('Most liked, Today'));
+    await _settle(tester);
 
     // Week, Month and Year each carry the padlock, and so does the arrow to
     // earlier days.
