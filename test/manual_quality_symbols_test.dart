@@ -64,4 +64,21 @@ void main() {
       expect(manualQualityNags.toSet().length, manualQualityNags.length);
     },
   );
+
+  test('every quality option is named, and verdict codes stay badge-only', () {
+    for (final nag in manualQualityNags) {
+      expect(qualityNagName(nag), isNotNull, reason: 'NAG $nag');
+    }
+    expect(qualityNagName(242), 'Best move');
+    expect(qualityNagName(243), 'Missed win');
+    expect(qualityNagName(247), 'Book move');
+    // Exported PGNs carry these on many moves; plain-text notation (the
+    // Gamebase explorer) must not glue "Book" or an emoji onto the SAN.
+    for (final nag in [240, 241, 242, 243, 244, 245, 246, 247]) {
+      expect(nagShownAsText(nag), isFalse, reason: 'NAG $nag');
+    }
+    for (final nag in [1, 2, 3, 4, 5, 6, 7, 14, 146]) {
+      expect(nagShownAsText(nag), isTrue, reason: 'NAG $nag');
+    }
+  });
 }
