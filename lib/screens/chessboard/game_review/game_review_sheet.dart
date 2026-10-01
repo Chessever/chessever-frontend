@@ -901,8 +901,8 @@ class _PlayerSummary extends StatelessWidget {
         const SizedBox(height: 14),
         _SummaryMetricRow(
           label: 'Accuracy',
-          left: report.whiteAccuracy.toStringAsFixed(1),
-          right: report.blackAccuracy.toStringAsFixed(1),
+          left: report.whiteAccuracy?.toStringAsFixed(1) ?? '–',
+          right: report.blackAccuracy?.toStringAsFixed(1) ?? '–',
           suffix: '%',
           cardValues: true,
         ),
@@ -973,7 +973,7 @@ class _SummaryMetricRow extends StatelessWidget {
       TextSpan(
         children: [
           TextSpan(text: value),
-          if (suffix.isNotEmpty)
+          if (suffix.isNotEmpty && value != '–')
             TextSpan(
               text: suffix,
               style: TextStyle(
@@ -1358,10 +1358,11 @@ class _EvaluationGraph extends StatelessWidget {
 
   String _description() {
     final line = report.positions[activePly].bestLine;
-    final evaluation =
-        line.mate != null
-            ? 'M${line.mate}'
-            : ((line.centipawns ?? 0) / 100).toStringAsFixed(2);
+    final evaluation = line.mate != null
+        ? 'M${line.mate}'
+        : line.centipawns != null
+        ? (line.centipawns! / 100).toStringAsFixed(2)
+        : null;
     // Reads as a move, not as telemetry: the move itself, the engine score,
     // and the verdict. The raw half-move index and the win-percentage restated
     // the graph the reader is already looking at.
@@ -1374,7 +1375,7 @@ class _EvaluationGraph extends StatelessWidget {
       final prefix = move.isWhite ? '$moveNumber.' : '$moveNumber...';
       parts.add('$prefix ${move.san}');
     }
-    parts.add(evaluation);
+    if (evaluation != null) parts.add(evaluation);
     final classification = _activeClassification;
     if (classification != null) parts.add(classification.label);
     return parts.join('  ');
@@ -1726,22 +1727,24 @@ class _ReviewGraphPainter extends CustomPainter {
     if (positions.isEmpty) return;
     final maxIndex = positions.length - 1;
     final path = Path();
+    double? firstX;
     for (var i = 0; i < positions.length; i++) {
+      final line = positions[i].bestLine;
+      if (line.centipawns == null && line.mate == null) continue;
       final x = maxIndex <= 0 ? 0.0 : size.width * i / maxIndex;
-      final y =
-          size.height -
-          gameReportWinPercentage(positions[i].bestLine) / 100 * size.height;
-      if (i == 0) {
+      final y = size.height - gameReportWinPercentage(line) / 100 * size.height;
+      if (firstX == null) {
         path.moveTo(x, y);
+        firstX = x;
       } else {
         path.lineTo(x, y);
       }
     }
-    final fillPath =
-        Path.from(path)
-          ..lineTo(size.width, size.height)
-          ..lineTo(0, size.height)
-          ..close();
+    if (firstX == null) return;
+    final fillPath = Path.from(path)
+      ..lineTo(size.width, size.height)
+      ..lineTo(firstX, size.height)
+      ..close();
     canvas.drawPath(fillPath, Paint()..color = fill);
     canvas.drawPath(
       path,
@@ -1783,6 +1786,8 @@ class _ReviewGraphPainter extends CustomPainter {
         ..color = cursor
         ..strokeWidth = 2,
     );
+    final activeLine = positions[safePly].bestLine;
+    if (activeLine.centipawns == null && activeLine.mate == null) return;
     final markerY =
         size.height -
         gameReportWinPercentage(positions[safePly].bestLine) /

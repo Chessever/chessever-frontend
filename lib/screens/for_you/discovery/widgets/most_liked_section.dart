@@ -11,6 +11,7 @@ import 'package:chessever2/screens/for_you/discovery/widgets/discovery_game_card
 import 'package:chessever2/screens/for_you/discovery/widgets/most_liked_controls.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/widgets/game_card_wrapper/live_game_card_provider.dart';
 import 'package:chessever2/theme/app_colors.dart';
+import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/board_like_heart.dart';
 import 'package:chessever2/widgets/skeleton_widget.dart';
@@ -129,12 +130,25 @@ class MostLikedSection extends ConsumerWidget {
     super.key,
     this.view = MostLikedView.games,
     this.now,
+    this.playerFilter,
+    this.onPickPlayer,
+    this.onClearPlayerFilter,
   });
 
   final MostLikedView view;
 
   /// Pins "now" in tests.
   final DateTime? now;
+
+  /// When set, the games view lists only this player's ranked games.
+  final MostLikedPlayer? playerFilter;
+
+  /// Tapping a player in the players view picks them; the page narrows
+  /// Games to them. Null keeps the old behavior (open their profile).
+  final ValueChanged<MostLikedPlayer>? onPickPlayer;
+
+  /// Clears [playerFilter]; shown as the narrowed banner's dismiss.
+  final VoidCallback? onClearPlayerFilter;
 
   Future<void> _select(
     BuildContext context,
@@ -276,6 +290,9 @@ class MostLikedSection extends ConsumerWidget {
               locked: locked,
               onUpgrade: () => _select(context, ref, MostLikedPeriod.week),
               onRetry: () => ref.invalidate(mostLikedProvider(query)),
+              playerFilter: playerFilter,
+              onPickPlayer: onPickPlayer,
+              onClearPlayerFilter: onClearPlayerFilter,
             ),
             loading: () => view == MostLikedView.players
                 ? const _PlayersSkeleton()
@@ -305,11 +322,17 @@ class _PageBody extends StatelessWidget {
     required this.locked,
     required this.onUpgrade,
     required this.onRetry,
+    this.playerFilter,
+    this.onPickPlayer,
+    this.onClearPlayerFilter,
   });
 
   final MostLikedResult result;
   final MostLikedQuery query;
   final MostLikedView view;
+  final MostLikedPlayer? playerFilter;
+  final ValueChanged<MostLikedPlayer>? onPickPlayer;
+  final VoidCallback? onClearPlayerFilter;
 
   /// The ranking is the current period's, so its unfinished games can move.
   final bool isCurrent;
@@ -350,6 +373,7 @@ class _PageBody extends StatelessWidget {
     final upgrade = locked && query.period == MostLikedPeriod.today
         ? DiscoveryUpgradeLine(label: kMostLikedUpgradeCta, onTap: onUpgrade)
         : null;
+    final narrowed = playerFilter;
 
     final Widget list;
     if (entries.isEmpty) {
@@ -364,9 +388,17 @@ class _PageBody extends StatelessWidget {
       final players = aggregateMostLikedPlayers(entries);
       list = players.isEmpty
           ? const DiscoveryNotice(text: 'No players in this ranking yet')
-          : MostLikedPlayersList(players: players);
+          : MostLikedPlayersList(players: players, onPick: onPickPlayer);
     } else {
-      final games = [for (final e in entries) e.game];
+      final visible = narrowed == null
+          ? entries
+          : [for (final e in entries) if (_hasPlayer(e, narrowed)) e];
+      if (visible.isEmpty && narrowed != null) {
+        list = DiscoveryNotice(
+          text: 'No ranked games for ${narrowed.player.name} here',
+        );
+      } else {
+        final games = [for (final e in visible) e.game];
       // The current period's unfinished broadcast games stream, all on one
       // channel for the page; nothing runs the on-device engine.
       final batches = isCurrent
@@ -375,23 +407,99 @@ class _PageBody extends StatelessWidget {
               scopePrefix: 'most_liked_page:${query.period.name}',
             )
           : const <String, LiveGamesBatchKey>{};
-      list = DiscoveryGameList(
-        games: games,
-        badgeFor: (i, boardSize) => _heart(entries[i], boardSize),
-        rowLabelFor: (i) => _likesMeta(entries[i]),
-        streamEnabled: isCurrent,
-        liveBatchKeyFor: (i) => batches[games[i].gameId],
-        allowStockfishFallback: false,
-      );
+        list = DiscoveryGameList(
+          games: games,
+          badgeFor: (i, boardSize) => _heart(visible[i], boardSize),
+          rowLabelFor: (i) => _likesMeta(visible[i]),
+          streamEnabled: isCurrent,
+          liveBatchKeyFor: (i) => batches[games[i].gameId],
+          allowStockfishFallback: false,
+        );
+      }
     }
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       mainAxisSize: MainAxisSize.min,
       children: [
+        if (narrowed != null && view == MostLikedView.games)
+          _NarrowedBanner(
+            name: narrowed.player.name,
+            onClear: onClearPlayerFilter,
+          ),
         list,
         if (upgrade != null) ...[SizedBox(height: 4.w), upgrade],
       ],
+    );
+  }
+}
+
+/// Whether [entry] has [picked] on either side: same FIDE id, same Gamebase
+/// id, or the same name once spellings are normalized.
+bool _hasPlayer(MostLikedEntry entry, MostLikedPlayer picked) {
+  final want = picked.player;
+  final wantName = want.name.trim().toLowerCase();
+  for (final side in [entry.game.whitePlayer, entry.game.blackPlayer]) {
+    if (want.fideId != null &&
+        want.fideId! > 0 &&
+        side.fideId == want.fideId) {
+      return true;
+    }
+    if (want.gamebasePlayerId != null &&
+        want.gamebasePlayerId!.isNotEmpty &&
+        side.gamebasePlayerId == want.gamebasePlayerId) {
+      return true;
+    }
+    if (wantName.isNotEmpty &&
+        side.name.trim().toLowerCase() == wantName) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/// "Games by X" with a dismiss: the Games tab is narrowed to one player.
+class _NarrowedBanner extends StatelessWidget {
+  const _NarrowedBanner({required this.name, this.onClear});
+
+  final String name;
+  final VoidCallback? onClear;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: EdgeInsets.fromLTRB(
+        discoveryGutter,
+        0,
+        discoveryGutter,
+        8.w,
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              'Games by $name',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: discoveryType(context, DiscoveryType.label),
+            ),
+          ),
+          GestureDetector(
+            onTap: () {
+              HapticFeedbackService.cardTap();
+              onClear?.call();
+            },
+            child: Padding(
+              padding: EdgeInsets.all(4.w),
+              child: Icon(
+                Icons.close,
+                size: 18.sp,
+                color: context.colors.textSecondary,
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

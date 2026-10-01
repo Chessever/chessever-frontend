@@ -265,7 +265,7 @@ List<LibraryMenuAction> spaceLibraryFolderActions(
 
   final publication = LibraryMenuAction(
     icon: Icons.publish_rounded,
-    label: 'Publish / edit book',
+    label: 'Publish / edit collection',
     onSelected: () => openLibraryBookEditor(context, folder),
   );
   final rename = LibraryMenuAction(

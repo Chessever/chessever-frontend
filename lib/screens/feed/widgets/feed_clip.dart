@@ -1706,7 +1706,19 @@ class _FeedClipState extends ConsumerState<FeedClip>
     final parts = <FeedHeaderPart>[];
 
     final signal = _item.signal;
-    final signalPart = signal == null ? null : _signalPart(signal);
+    final type = _item.reportType;
+    final signalPart = type != null
+        ? FeedHeaderPart(
+            id: 'report_type',
+            pieces: [
+              FeedHeaderPiece.text(type.label, tone: FeedHeaderTone.strong),
+            ],
+            shrinkable: true,
+            semanticsLabel: '${type.label}. ${type.description}',
+          )
+        : signal == null
+        ? null
+        : _signalPart(signal);
     final signalAt = signalPart == null ? null : parts.length;
     if (signalPart != null) parts.add(signalPart);
 
@@ -1882,23 +1894,6 @@ class _FeedClipState extends ConsumerState<FeedClip>
           semanticsLabel: count == 1
               ? 'Liked once today'
               : 'Liked $count times today',
-        );
-      case FeedSignalKind.upset:
-        final points = signal.count ?? 0;
-        if (points <= 0) return null;
-        return FeedHeaderPart(
-          id: 'signal',
-          pieces: [
-            FeedHeaderPiece.text('$points-point', tone: FeedHeaderTone.strong),
-            const FeedHeaderPiece.text(
-              ' upset',
-              tone: FeedHeaderTone.secondary,
-            ),
-          ],
-          compact: const [
-            FeedHeaderPiece.text('Upset', tone: FeedHeaderTone.secondary),
-          ],
-          semanticsLabel: 'Upset, the winner was rated $points points lower',
         );
     }
   }
@@ -2082,13 +2077,15 @@ class _FeedClipState extends ConsumerState<FeedClip>
 
     return LayoutBuilder(
       builder: (context, constraints) {
+        // One geometry whether or not the viewer is playing their own line:
+        // the board never shrinks or moves when they start moving pieces.
+        // The line's move strip takes the evaluation graph's slot instead
+        // (see below), so nothing else on the page moves either.
         final l = FeedLayout.resolve(
           constraints,
           MediaQuery.textScalerOf(context),
           evalWidth: showBar ? 20.w : 0,
-          infoHeight: exploring
-              ? FeedLayout.moveStripHeightFor(MediaQuery.textScalerOf(context))
-              : 0,
+          infoHeight: 0,
           chartHeight: FeedEvaluationGraph.heightFor(
             MediaQuery.textScalerOf(context),
           ),
@@ -2099,7 +2096,6 @@ class _FeedClipState extends ConsumerState<FeedClip>
 
         final n = math.max(1, _item.plyCount);
         final progress = _item.plyCount <= 0 ? 1.0 : shown / n;
-        final counterWidest = feedMoveCounter(_item, _item.plyCount);
         // One column for the board, player rows and all controls below it,
         // including when the board is height-bound.
         Widget content(Widget child) => Padding(
@@ -2164,8 +2160,12 @@ class _FeedClipState extends ConsumerState<FeedClip>
                       ),
                     ),
                   ),
-                if (p.showsPauseGlyph && !exploring)
-                  const Positioned.fill(child: FeedPausedOverlay()),
+                // Mounted for the whole pause so its fade runs once per
+                // pause; hidden while a piece is in hand or a scrub runs.
+                if (p.isUserPaused && !p.isEnded && !p.isManual && !exploring)
+                  Positioned.fill(
+                    child: FeedPausedOverlay(visible: p.showsPauseGlyph),
+                  ),
                 if (p.isFast && !p.isScrubbing)
                   const Positioned.fill(child: FeedFastOverlay()),
                 if (showEndCard)
@@ -2270,13 +2270,6 @@ class _FeedClipState extends ConsumerState<FeedClip>
                 const SizedBox(height: FeedLayout.gap),
                 content(_playerRow(l, white: true, revealResult: revealResult)),
                 SizedBox(height: l.infoSpace),
-                // Preserve navigation of a viewer-created variation.
-                if (exploring)
-                  content(
-                    RepaintBoundary(
-                      child: _buildStrip(l, shown, showEval: showBar),
-                    ),
-                  ),
                 SizedBox(height: l.actionsSpace),
                 content(
                   FeedActionRow(
@@ -2311,39 +2304,75 @@ class _FeedClipState extends ConsumerState<FeedClip>
                 // never overflows by a rounding error.
                 const Spacer(),
                 // The graph and its evaluation end at the board edge. The
-                // timeline reserves counter space only within its own row.
+                // timeline shares its row with the playback control. While
+                // the viewer plays their own line, its move strip (steps,
+                // "Back to game") stands in the graph's slot: the game's
+                // curve says nothing about the line, and swapping within a
+                // fixed slot keeps the board and every row where they were.
                 content(
-                  FeedEvaluationGraph(
-                    item: _item,
-                    ply: shown,
-                    showEvaluations: evalVisibility.evals,
-                    onSeek: _onScrubTap,
+                  SizedBox(
+                    height: l.chartHeight,
+                    child: exploring
+                        ? Align(
+                            child: RepaintBoundary(
+                              child: _buildStrip(l, shown, showEval: showBar),
+                            ),
+                          )
+                        : FeedEvaluationGraph(
+                            item: _item,
+                            ply: shown,
+                            showEvaluations: evalVisibility.evals,
+                            onSeek: _onScrubTap,
+                            onStart: _onScrubStart,
+                            onUpdate: _onScrubUpdate,
+                            onEnd: _onScrubEnd,
+                          ),
                   ),
                 ),
-                FeedScrubStrip(
-                  progress: progress,
-                  scrubbing: p.isScrubbing,
-                  inset: l.contentLeft,
-                  semanticsValue: feedPlyText(_item, shown),
-                  semanticsIncreased: feedPlyText(
-                    _item,
-                    math.min(shown + 1, _item.plyCount),
-                  ),
-                  semanticsDecreased: feedPlyText(
-                    _item,
-                    math.max(shown - 1, 0),
-                  ),
-                  counter: feedMoveCounter(_item, shown),
-                  counterWidest: counterWidest,
-                  // The report chart carries the move itself.
-                  bubble: showBubble
-                      ? FeedMoveBubble(item: _item, ply: shown)
-                      : null,
-                  onStart: _onScrubStart,
-                  onUpdate: _onScrubUpdate,
-                  onEnd: _onScrubEnd,
-                  onSeek: _onScrubTap,
-                  onStep: (delta) => _stepTo(shown + delta),
+                Row(
+                  children: [
+                    Expanded(
+                      child: FeedScrubStrip(
+                        progress: progress,
+                        scrubbing: p.isScrubbing,
+                        inset: l.contentLeft,
+                        semanticsValue: feedPlyText(_item, shown),
+                        semanticsIncreased: feedPlyText(
+                          _item,
+                          math.min(shown + 1, _item.plyCount),
+                        ),
+                        semanticsDecreased: feedPlyText(
+                          _item,
+                          math.max(shown - 1, 0),
+                        ),
+                        // The report chart carries the move itself.
+                        bubble: showBubble
+                            ? FeedMoveBubble(item: _item, ply: shown)
+                            : null,
+                        onStart: _onScrubStart,
+                        onUpdate: _onScrubUpdate,
+                        onEnd: _onScrubEnd,
+                        onSeek: _onScrubTap,
+                        onStep: (delta) => _stepTo(shown + delta),
+                      ),
+                    ),
+                    Padding(
+                      padding: EdgeInsets.only(right: l.contentLeft),
+                      child: FeedStepButton(
+                        key: const ValueKey('feed_scrub_play_toggle'),
+                        glyphOffset: const Offset(
+                          0,
+                          FeedLayout.scrubTrackCenter -
+                              FeedLayout.scrubHeight / 2,
+                        ),
+                        glyph: p.isPlaying
+                            ? FeedGlyphs.stop
+                            : FeedGlyphs.playSmall,
+                        semanticsLabel: p.isPlaying ? 'Stop' : 'Play',
+                        onTap: exploring ? _backToGame : _togglePlay,
+                      ),
+                    ),
+                  ],
                 ),
                 SizedBox(height: l.foot),
               ],

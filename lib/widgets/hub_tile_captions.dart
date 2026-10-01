@@ -101,7 +101,7 @@ String hubCollectionsCaption(AsyncValue<List<Collection>> collections) {
   }
   return [
     if (events > 0) _count(events, 'event', 'events'),
-    if (books > 0) _count(books, 'book', 'books'),
+    if (books > 0) _count(books, 'collection', 'collections'),
     if (analyses > 0) _count(analyses, 'analysis', 'analyses'),
   ].join(' · ');
 }

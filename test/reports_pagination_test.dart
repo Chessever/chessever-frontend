@@ -2,23 +2,31 @@ import 'dart:async';
 
 import 'package:chessever2/screens/for_you/discovery/data/discovery_repository.dart';
 import 'package:chessever2/screens/for_you/discovery/models/discovery_models.dart';
+import 'package:chessever2/screens/for_you/discovery/models/report_game_type.dart';
 import 'package:chessever2/screens/for_you/discovery/providers/reports_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 class _Repository implements DiscoveryRepository {
   final requests =
-      <({AnalyzedGamesCursor? after, Completer<AnalyzedGamesPage> result})>[];
+      <
+        ({
+          AnalyzedGamesCursor? after,
+          ReportGameType? gameType,
+          Completer<AnalyzedGamesPage> result,
+        })
+      >[];
 
   @override
   Future<AnalyzedGamesPage> fetchAnalyzedGamesPage({
     int pageSize = 30,
     AnalyzedGamesCursor? after,
     DateTime? since,
+    ReportGameType? gameType,
   }) {
     expect(since, isNull);
     final result = Completer<AnalyzedGamesPage>();
-    requests.add((after: after, result: result));
+    requests.add((after: after, gameType: gameType, result: result));
     return result.future;
   }
 
@@ -190,4 +198,42 @@ void main() {
     notifier.dispose();
     await complete(0, [1]);
   });
+
+  test(
+    'a selected type is retained through pagination, refresh and retry',
+    () async {
+      notifier.dispose();
+      repository = _Repository();
+      notifier = ReportsPaginationNotifier(
+        repository,
+        gameType: ReportGameType.squeeze,
+      );
+      expect(repository.requests.single.gameType, ReportGameType.squeeze);
+      await complete(0, [1], next: 1);
+      unawaited(notifier.loadNextPage());
+      expect(repository.requests[1].gameType, ReportGameType.squeeze);
+      repository.requests[1].result.completeError(StateError('offline'));
+      await _flush();
+      unawaited(notifier.retry());
+      expect(repository.requests[2].gameType, ReportGameType.squeeze);
+      expect(repository.requests[2].after, _cursor(1));
+      await complete(2, [2]);
+      unawaited(notifier.refresh());
+      expect(repository.requests[3].gameType, ReportGameType.squeeze);
+      expect(repository.requests[3].after, isNull);
+      await complete(3, [3]);
+    },
+  );
+
+  test(
+    'missing metadata support offers All without hiding older reports',
+    () async {
+      repository.requests.single.result.completeError(
+        const ReportGameTypesUnavailable(),
+      );
+      await _flush();
+      expect(notifier.state.error, contains('Choose All'));
+      expect(notifier.state.isLoading, isFalse);
+    },
+  );
 }

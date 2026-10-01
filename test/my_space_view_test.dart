@@ -1,3 +1,4 @@
+import 'package:chessever2/widgets/app_button.dart';
 import 'dart:async';
 
 import 'package:chessever2/providers/auth_state_provider.dart';
@@ -14,7 +15,6 @@ import 'package:chessever2/repository/supabase/group_broadcast/group_broadcast.d
 import 'package:chessever2/screens/favorites/tabs/favorites_players_tab.dart';
 import 'package:chessever2/screens/group_event/model/tour_event_card_model.dart';
 import 'package:chessever2/screens/group_event/providers/live_group_broadcast_id_provider.dart';
-import 'package:chessever2/screens/group_event/smart_event/smart_event_builder_sheet.dart';
 import 'package:chessever2/screens/library/providers/gamebase_database_games_provider.dart';
 import 'package:chessever2/screens/library/providers/library_auth_provider.dart';
 import 'package:chessever2/screens/my_space/models/space_shortcut.dart';
@@ -753,7 +753,7 @@ void main() {
     await _settleEdit(tester);
     expect(find.text('Nothing to edit yet.'), findsNothing);
     expect(find.byKey(const ValueKey<String>('space_edit_done')), findsNothing);
-    expect(find.text('My Likes'), findsNothing);
+    expect(find.text('My Likes'), findsOneWidget);
     expect(find.text('Smart Events'), findsOneWidget);
     expect(find.text(kMyDatabaseEmptyText), findsOneWidget);
     expect(tester.takeException(), isNull);
@@ -971,6 +971,16 @@ void main() {
 
     await tester.tap(find.byKey(const ValueKey<String>('space_edit_remove')));
     await _settleEdit(tester);
+    expect(find.text('Remove Smart Event?'), findsOneWidget);
+    expect(store.state.requireValue, seed);
+    await tester.tap(find.text('Cancel'));
+    await _settleEdit(tester);
+    expect(store.state.requireValue, seed);
+    expect(_selectedKeys(tester), {_folder.key, smart.key});
+    await tester.tap(find.byKey(const ValueKey<String>('space_edit_remove')));
+    await _settleEdit(tester);
+    await tester.tap(find.text('Remove'));
+    await _settleEdit(tester);
     expect(store.state.requireValue.map((pin) => pin.key), [
       _player.key,
       opening.key,
@@ -1086,29 +1096,30 @@ void main() {
     await _drain(tester);
   });
 
-  testWidgets('empty My Space shows only the supported products and builder', (
+  testWidgets('empty My Space shows only the supported products', (
     tester,
   ) async {
     await _pumpSpace(
       tester,
       const [],
       extra: [
-        likedGamesProvider.overrideWith(
-          () => throw StateError('Hidden likes must not load'),
-        ),
         forYouEventsProvider.overrideWith(
           (ref) => throw StateError('Hidden suggestions must not load'),
         ),
       ],
     );
     expect(find.text('Smart Events'), findsOneWidget);
-    expect(find.text('Databases'), findsOneWidget);
-    expect(find.text('My Likes'), findsNothing);
+    expect(find.text('Library'), findsOneWidget);
+    expect(find.text('My Likes'), findsOneWidget);
+    expect(find.text('No likes yet'), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey<String>('my_space_likes_card')),
+      findsOneWidget,
+    );
     expect(find.text(kMyDatabaseEmptyText), findsOneWidget);
     expect(find.byType(EventCard), findsNothing);
     expect(find.byType(SpaceSaveToggle), findsNothing);
-    expect(find.text('Build smart event'), findsOneWidget);
-    expect(find.text(kBuildSmartEventCaption), findsOneWidget);
+    expect(find.text('Build smart event'), findsNothing);
     expect(tester.takeException(), isNull);
     await _drain(tester);
   });
@@ -2518,6 +2529,68 @@ void main() {
     await _drain(tester);
   });
 
+  testWidgets(
+    'empty Smart Event removal confirms, cancel keeps it and Undo restores it',
+    (tester) async {
+      final smart = _pin(_smartDraft(2700), 'se-empty', 1);
+      final store = await _pumpSpace(tester, [smart], extra: [_noSmartMembers]);
+      final card = find.byKey(ValueKey<String>('space_smart_${smart.key}'));
+      await tester.longPress(card);
+      await tester.pump(const Duration(milliseconds: 600));
+      await tester.tap(find.text('Remove from My Space'));
+      await _settleEdit(tester);
+      expect(find.text('Remove Smart Event?'), findsOneWidget);
+      expect(store.state.requireValue, [smart]);
+      await tester.tap(find.text('Cancel'));
+      await _settleEdit(tester);
+      expect(store.state.requireValue, [smart]);
+      await tester.longPress(card);
+      await tester.pump(const Duration(milliseconds: 600));
+      await tester.tap(find.text('Remove from My Space'));
+      await _settleEdit(tester);
+      await tester.tap(find.text('Remove'));
+      await _settleEdit(tester);
+      expect(store.state.requireValue, isEmpty);
+      await tester.tap(find.text('Undo'));
+      await _settleEdit(tester);
+      expect(store.state.requireValue, [smart]);
+      expect(tester.takeException(), isNull);
+      await _drain(tester);
+    },
+  );
+
+  testWidgets(
+    'empty Smart Events page has a centered standard action button that opens the builder',
+    (tester) async {
+      await _openSeeAll(
+        tester,
+        [],
+        SpaceSection.smartEvents,
+        height: 844,
+        extra: [_noSmartMembers],
+      );
+      final add = find.byKey(const ValueKey('smart_events_empty_add'));
+      expect(add, findsOneWidget);
+      expect(find.text('Nothing in Smart Events yet'), findsNothing);
+      final rect = tester.getRect(add);
+      expect(tester.widget(add), isA<AppButton>());
+      expect(rect.height, closeTo(52.h, 0.5));
+      expect(find.text('Create Smart Event'), findsOneWidget);
+      expect(rect.width, lessThanOrEqualTo(360.w));
+      expect(rect.center.dx, closeTo(195, 0.5));
+      expect(
+        tester.takeException(),
+        isNull,
+        reason: 'button layout before opening builder',
+      );
+      await tester.tap(add);
+      await _settleEdit(tester);
+      expect(find.text('Build a Smart Event'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+      await _drain(tester);
+    },
+  );
+
   testWidgets('holding a saved row offers Remove from My Space, and takes '
       'it out', (tester) async {
     await _pumpSpace(tester, [_folder]);
@@ -2532,18 +2605,6 @@ void main() {
     }
     expect(find.text('Najdorf prep'), findsNothing);
     expect(find.text(kMyDatabaseEmptyText), findsOneWidget);
-    await _drain(tester);
-  });
-
-  testWidgets('Build smart event opens the builder in place', (tester) async {
-    await _pumpSpace(tester, const []);
-
-    await tester.tap(find.text('Build smart event'));
-    for (var i = 0; i < 8; i++) {
-      await tester.pump(const Duration(milliseconds: 100));
-    }
-    expect(find.byType(SmartEventBuilder), findsOneWidget);
-    expect(tester.takeException(), isNull);
     await _drain(tester);
   });
 
@@ -2656,7 +2717,7 @@ void main() {
       _pin(spaceOpeningDraft(targetId: 'C67', name: 'Berlin Defence'), 'o', 6),
       _folder,
     ]);
-    expect(_groupTitles(tester), ['Events', 'Openings', 'Databases']);
+    expect(_groupTitles(tester), ['Events', 'Openings', 'Library']);
     // See all on every group, even one that shows everything it holds.
     final seeAll = find.textContaining('See all', findRichText: true);
     expect(seeAll, findsNWidgets(3));

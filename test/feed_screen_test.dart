@@ -14,8 +14,11 @@ import 'package:chessever2/screens/feed/models/feed_models.dart';
 import 'package:chessever2/screens/feed/news/feed_news.dart';
 import 'package:chessever2/screens/feed/providers/feed_eval_provider.dart';
 import 'package:chessever2/screens/feed/providers/feed_provider.dart';
+import 'package:chessever2/screens/for_you/discovery/models/report_game_type.dart';
 import 'package:chessever2/screens/feed/puzzles/feed_puzzle.dart';
 import 'package:chessever2/screens/feed/widgets/feed_live_board.dart';
+import 'package:chessever2/screens/feed/widgets/feed_glyphs.dart';
+import 'package:chessever2/screens/feed/widgets/feed_layout.dart';
 import 'package:chessever2/screens/feed/widgets/feed_move_sound.dart';
 import 'package:chessever2/screens/feed/widgets/feed_scrub.dart';
 import 'package:chessever2/screens/feed/widgets/feed_sfx_provider.dart';
@@ -24,6 +27,8 @@ import 'package:chessever2/screens/my_space/providers/space_shortcuts_provider.d
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/providers/event_no_spoilers_provider.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/utils/app_typography.dart';
+import 'package:chessever2/widgets/destination_title.dart';
 import 'package:chessground/chessground.dart';
 import 'package:dartchess/dartchess.dart';
 import 'package:flutter/material.dart';
@@ -34,6 +39,33 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 const _pgn = '1. e4 e5 2. Bc4 Nc6 3. Qh5 Nf6 4. Qxf7# 1-0';
 
 void main() {
+  testWidgets('slider playback control stops and resumes the game', (
+    tester,
+  ) async {
+    final feed = await _pumpFeed(tester);
+    final toggle = find.byKey(const ValueKey('feed_scrub_play_toggle'));
+    expect(find.byKey(const ValueKey('feed_scrub_counter')), findsNothing);
+    final trackY =
+        tester.getRect(find.byType(FeedScrubStrip)).top +
+        FeedLayout.scrubTrackCenter;
+    final glyph = find.descendant(of: toggle, matching: find.byType(FeedGlyph));
+    expect(tester.getRect(glyph).center.dy, closeTo(trackY, 0.01));
+    expect(tester.getSize(toggle).height, 44);
+    expect(find.bySemanticsLabel('Stop'), findsOneWidget);
+    await tester.tap(toggle);
+    await tester.pump();
+    final stoppedAt = feed.sound.played.length;
+    expect(find.bySemanticsLabel('Play'), findsOneWidget);
+    expect(tester.getRect(glyph).center.dy, closeTo(trackY, 0.01));
+    await tester.pump(const Duration(seconds: 2));
+    expect(feed.sound.played.length, stoppedAt);
+    await tester.tap(toggle);
+    await tester.pump(const Duration(milliseconds: 700));
+    expect(feed.sound.played.length, greaterThan(stoppedAt));
+    expect(find.bySemanticsLabel('Stop'), findsOneWidget);
+    await _tearDown(tester);
+  });
+
   testWidgets(
     'Feed renders the playable clip, autoplays, and a tap toggles pause',
     (tester) async {
@@ -58,6 +90,19 @@ void main() {
       expect(find.textContaining('Nakamura', findRichText: true), findsWidgets);
       expect(find.text('Start'), findsOneWidget);
 
+      final heading = tester.getRect(find.byType(DestinationTitle));
+      final screenWidth =
+          tester.view.physicalSize.width / tester.view.devicePixelRatio;
+      expect(heading.center.dx, closeTo(screenWidth / 2, 0.5));
+      expect(heading.height, lessThan(48));
+      final titleText = tester.widget<Text>(find.text('Feed'));
+      expect(titleText.style!.fontSize, AppTypography.textMdMedium.fontSize);
+      expect(titleText.style!.fontWeight, FontWeight.w600);
+      expect(
+        tester.getSize(find.byIcon(Icons.smart_display_rounded)),
+        Size.square(22.sp),
+      );
+      expect(tester.getRect(find.text('Feed')).left, greaterThan(heading.left));
       // Autoplay: the first move lands after the opening beat, with the
       // board's ordinary sound (it is unclassified).
       await tester.pump(const Duration(milliseconds: 500));
@@ -70,12 +115,25 @@ void main() {
       await tester.tapAt(board);
       await tester.pump(const Duration(milliseconds: 300));
       expect(find.byKey(const ValueKey('feed_paused')), findsOneWidget);
+      expect(
+        tester
+            .widget<AnimatedOpacity>(find.byKey(const ValueKey('feed_paused')))
+            .opacity,
+        1,
+      );
 
-      // Paused means paused: time passes, the move does not.
+      // Paused means paused: time passes, the move does not. The pause
+      // confirmation fades away on its own, leaving the board clean.
       final pausedAt = feed.sound.played.length;
       await tester.pump(const Duration(seconds: 2));
       expect(feed.sound.played.length, pausedAt);
       expect(find.byKey(const ValueKey('feed_paused')), findsOneWidget);
+      expect(
+        tester
+            .widget<AnimatedOpacity>(find.byKey(const ValueKey('feed_paused')))
+            .opacity,
+        0,
+      );
 
       // Tap again → resumes and moves on.
       await tester.tapAt(board);
@@ -429,6 +487,32 @@ void main() {
     await _tearDown(tester);
   });
 
+  testWidgets('the header uses the report category instead of source labels', (
+    tester,
+  ) async {
+    await _pumpFeed(
+      tester,
+      games: [
+        _scholarsMate(
+          reportType: ReportGameType.comeback,
+          signal: const FeedSignal(FeedSignalKind.liked, count: 25),
+        ),
+      ],
+    );
+    expect(find.text('Comeback'), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('feed_header_report_type')),
+      findsOneWidget,
+    );
+    expect(find.byKey(const ValueKey('feed_header_signal')), findsNothing);
+    expect(find.textContaining('upset'), findsNothing);
+    expect(
+      find.bySemanticsLabel('Comeback. ${ReportGameType.comeback.description}'),
+      findsOneWidget,
+    );
+    await _tearDown(tester);
+  });
+
   testWidgets('a tap on the header or a player row never pauses', (
     tester,
   ) async {
@@ -768,6 +852,7 @@ FeedItem _scholarsMate({
   String result = '1-0',
   GameStatus status = GameStatus.whiteWins,
   FeedSignal? signal,
+  ReportGameType? reportType,
 }) {
   final parsed = PgnGame.parsePgn(pgn);
   Position position = PgnGame.startingPosition(parsed.headers);
@@ -831,6 +916,7 @@ FeedItem _scholarsMate({
     eventLabel: 'Test Open 2026',
     result: result,
     signal: signal,
+    reportType: reportType,
   );
 }
 

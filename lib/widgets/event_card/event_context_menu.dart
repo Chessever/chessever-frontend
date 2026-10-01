@@ -1,8 +1,11 @@
+import 'dart:io';
+
 import 'package:chessever2/providers/favorite_events_provider.dart';
 import 'package:chessever2/repository/favorites/models/favorite_event.dart';
 import 'package:chessever2/repository/supabase/game/game_repository.dart';
 import 'package:chessever2/repository/supabase/group_broadcast/group_tour_repository.dart';
 import 'package:chessever2/screens/group_event/model/tour_event_card_model.dart';
+import 'package:chessever2/screens/gamebase/event_view/gamebase_virtual_event_id.dart';
 import 'package:chessever2/screens/library/widgets/library_context_menu.dart';
 import 'package:chessever2/screens/my_space/actions/space_menu_action.dart';
 import 'package:chessever2/screens/my_space/models/space_shortcut.dart';
@@ -17,6 +20,7 @@ import 'package:chessever2/widgets/auth/auth_upgrade_sheet.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 
 /// Actions available from the event card long-press context menu.
@@ -109,7 +113,9 @@ String _slugify(String input) {
 SpaceShortcut eventSpaceDraft(GroupEventCardModel model) {
   final location = model.location?.trim() ?? '';
   final dates = model.dates.trim();
-  final isCalendarEvent = model.eventSource == EventSource.communityEvent;
+  final isDatabaseEvent = isVirtualGamebaseId(model.id);
+  final isCalendarEvent =
+      model.eventSource == EventSource.communityEvent && !isDatabaseEvent;
   return SpaceShortcut.draft(
     kind: SpaceShortcutKind.event,
     targetId: model.id,
@@ -121,6 +127,7 @@ SpaceShortcut eventSpaceDraft(GroupEventCardModel model) {
       'timeControl': model.timeControl,
       'dates': model.dates,
       if (location.isNotEmpty) 'location': location,
+      if (isDatabaseEvent) 'source': 'gamebase',
       if (isCalendarEvent) ...{
         'source': 'calendar',
         'calendarEventId': model.id,
@@ -236,7 +243,8 @@ const Duration _kNoSpoilersResolveCap = Duration(seconds: 5);
 /// "Turn on" form, and the row settles the tours when chosen (see
 /// [_turnOnNoSpoilersOnceResolved]). With neither, the row is left out.
 /// Community (calendar) events only get Open and My Space: they have no
-/// broadcast to act on.
+/// broadcast to act on. [spaceDraft] preserves a profile fallback's real
+/// identity or the original target of an existing pin.
 List<LibraryMenuAction> eventMenuActions({
   required BuildContext context,
   required WidgetRef ref,
@@ -244,6 +252,7 @@ List<LibraryMenuAction> eventMenuActions({
   List<String> tourIds = const <String>[],
   Future<List<String>>? pendingTourIds,
   VoidCallback? onOpen,
+  SpaceShortcut? spaceDraft,
 }) {
   final broadcastActions = hasBroadcastActions(model);
   final spoilerStates = [
@@ -293,7 +302,11 @@ List<LibraryMenuAction> eventMenuActions({
             () => _copyEventPgn(context: context, ref: ref, model: model),
       ),
     ],
-    spaceMenuAction(context: context, ref: ref, draft: eventSpaceDraft(model)),
+    spaceMenuAction(
+      context: context,
+      ref: ref,
+      draft: spaceDraft ?? eventSpaceDraft(model),
+    ),
   ];
 }
 
@@ -328,11 +341,12 @@ Future<void> showEventContextMenu({
   );
 }
 
-/// Community events are calendar-only and not backed by a GroupBroadcast, so
+/// Calendar and database-only events are not backed by a GroupBroadcast, so
 /// No Spoilers / Share / Copy PGN have nothing to act on. They still get the
 /// My Space row.
 bool hasBroadcastActions(GroupEventCardModel model) {
-  return model.eventSource != EventSource.communityEvent;
+  return model.eventSource != EventSource.communityEvent &&
+      !isVirtualGamebaseId(model.id);
 }
 
 Future<List<String>> _eventTourIds(
@@ -468,12 +482,61 @@ Future<void> _shareEvent({
   await Share.share(url, sharePositionOrigin: origin);
 }
 
+/// Combined PGN above this size no longer goes through the clipboard: a
+/// multi-megabyte `Clipboard.setData` silently fails on device, and Library
+/// import then reports "clipboard is empty" (Olympiad). Large exports are
+/// shared as a `.pgn` file instead, which the user can save or import.
+const int _kMaxClipboardChars = 256 * 1024;
+
+/// Writes a too-big-for-clipboard event export to a temp `.pgn` file and
+/// opens the share sheet, so the user can save it to Files or import it.
+Future<void> _shareEventPgnFile({
+  required Rect shareOrigin,
+  required ScaffoldMessengerState messenger,
+  required GroupEventCardModel model,
+  required String pgn,
+  required int gameCount,
+}) async {
+  final slug = model.title
+      .toLowerCase()
+      .replaceAll(RegExp('[^a-z0-9]+'), '-')
+      .replaceAll(RegExp('^-+|-+\$'), '');
+  final name = slug.isEmpty ? 'event' : slug;
+  final tempDir = await getTemporaryDirectory();
+  final file = File('${tempDir.path}/$name-chessever.pgn');
+  await file.writeAsString(pgn);
+
+  AnalyticsService.instance.trackEventDetached(
+    'Event PGN Exported',
+    properties: {
+      'event_id': model.id,
+      'event_name': model.title,
+      'game_count': gameCount,
+    },
+  );
+
+  HapticFeedbackService.success();
+  showAppSnackOn(
+    messenger,
+    'Too big for clipboard ($gameCount games) — sharing as a file',
+  );
+  await Share.shareXFiles(
+    [XFile(file.path, mimeType: 'application/x-chess-pgn')],
+    subject: '${model.title} - Chessever PGN',
+    sharePositionOrigin: shareOrigin,
+  );
+}
+
 Future<void> _copyEventPgn({
   required BuildContext context,
   required WidgetRef ref,
   required GroupEventCardModel model,
 }) async {
   final messenger = ScaffoldMessenger.of(context);
+  final cardBox = context.findRenderObject() as RenderBox?;
+  final shareOrigin = cardBox != null
+      ? cardBox.localToGlobal(Offset.zero) & cardBox.size
+      : const Rect.fromLTWH(0, 0, 1, 1);
 
   try {
     final tourIds = await ref
@@ -518,7 +581,19 @@ Future<void> _copyEventPgn({
       return;
     }
 
-    await Clipboard.setData(ClipboardData(text: pgnBuffer.toString()));
+    final combined = pgnBuffer.toString();
+    if (combined.length > _kMaxClipboardChars) {
+      await _shareEventPgnFile(
+        shareOrigin: shareOrigin,
+        messenger: messenger,
+        model: model,
+        pgn: combined,
+        gameCount: copied,
+      );
+      return;
+    }
+
+    await Clipboard.setData(ClipboardData(text: combined));
     HapticFeedbackService.success();
 
     AnalyticsService.instance.trackEventDetached(

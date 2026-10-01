@@ -53,8 +53,8 @@ import 'package:http/testing.dart';
 /// no seam under the top bar.
 void main() {
   for (final scale in [1.8, 2.0]) {
-    testWidgets('exploration keeps its graph, move line and controls whole '
-        'at ${scale}x text', (tester) async {
+    testWidgets('exploration keeps the board still and its move line and '
+        'controls whole at ${scale}x text', (tester) async {
       await _pump(
         tester,
         // FeedScreen clamps phone chrome to its supported reading size.
@@ -66,6 +66,10 @@ void main() {
         unclampedClip: true,
       );
       final board = tester.getRect(find.byType(FeedLiveBoard));
+      final graphBefore = tester.getRect(
+        find.byKey(const ValueKey('feed_evaluation_graph')),
+      );
+      final actionsBefore = tester.getRect(find.byType(FeedActionRow));
       Offset square(String name) {
         final square = Square.fromName(name);
         final side = board.width / 8;
@@ -81,17 +85,20 @@ void main() {
       await tester.tapAt(square('e3'));
       await tester.pump(const Duration(milliseconds: 100));
       expect(find.text('Your line'), findsOneWidget);
+      // Playing a line shifts nothing: same board, same rows.
+      expect(tester.getRect(find.byType(FeedLiveBoard)), board);
+      expect(tester.getRect(find.byType(FeedActionRow)), actionsBefore);
       final strip = tester.getRect(find.byType(FeedMoveStrip));
       expect(
         strip.height,
         closeTo(FeedLayout.moveStripHeightFor(TextScaler.linear(scale)), 0.01),
       );
       expect(strip.height, greaterThan(44));
+      // The line's strip stands in the graph's slot.
+      expect(find.byKey(const ValueKey('feed_evaluation_graph')), findsNothing);
+      expect(strip.top, greaterThanOrEqualTo(graphBefore.top));
+      expect(strip.bottom, lessThanOrEqualTo(graphBefore.bottom));
       final page = tester.getRect(find.byType(FeedClip));
-      final graph = tester.getRect(
-        find.byKey(const ValueKey('feed_evaluation_graph')),
-      );
-      expect(strip.bottom, lessThanOrEqualTo(graph.top));
       expect(strip.bottom, lessThanOrEqualTo(page.bottom));
       for (final text in tester.widgetList<Text>(
         find.descendant(
@@ -158,7 +165,7 @@ void main() {
           final scrub = tester.getRect(find.byType(FeedScrubStrip));
           final actionRow = tester.getRect(find.byType(FeedActionRow));
           final counter = tester.getRect(
-            find.byKey(const ValueKey('feed_scrub_counter')),
+            find.byKey(const ValueKey('feed_scrub_play_toggle')),
           );
 
           expect(header.height, 44);

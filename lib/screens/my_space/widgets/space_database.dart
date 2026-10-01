@@ -1,6 +1,13 @@
+import 'package:chessever2/screens/collections/collections_screen.dart'
+    show CollectionCard;
+import 'package:chessever2/screens/collections/collections_data.dart'
+    show collectionsProvider;
+import 'package:chessever2/repository/gamebase/collections/collections_models.dart'
+    show Collection;
 import 'dart:async';
 import 'dart:math' as math;
 
+import 'package:chessever2/screens/my_space/widgets/smart_events_empty.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:chessever2/config/feature_flags.dart';
 import 'package:chessever2/repository/library/models/library_folder.dart';
@@ -557,6 +564,7 @@ Widget _savedEventCard(
   return EventCard(
     key: ValueKey<String>('space_event_${s.key}'),
     tourEventCardModel: saved.modelOf(s),
+    spaceDraft: s,
     heroTagSuffix: '_myspace',
     forceCompactLayout: true,
     trailingWidget: editing ? SizedBox(width: 4.w) : null,
@@ -1704,6 +1712,7 @@ class SpaceGroupPage extends ConsumerWidget {
     ];
     final title = spaceGroupTitle(section);
     if (items.isEmpty) {
+      if (section == SpaceSection.smartEvents) return const SmartEventsEmpty();
       return Center(
         child: Text(
           'Nothing in $title yet',
@@ -2338,16 +2347,30 @@ class SpaceSavedRow extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    if (shortcut.kind == SpaceShortcutKind.collection) {
+      final collections = ref.watch(collectionsProvider).asData?.value;
+      Collection? collection;
+      for (final candidate in collections ?? const <Collection>[]) {
+        if (candidate.id == shortcut.targetId) {
+          collection = candidate;
+          break;
+        }
+      }
+      // Reuse the catalog face even while its current metadata is loading.
+      // Older saved shortcuts still carry the cover, kind and game count.
+      collection ??= Collection.fromJson({
+        ...shortcut.params,
+        'id': shortcut.targetId,
+        'title': shortcut.title,
+        'kind': shortcut.params['collectionKind'],
+      });
+      return CollectionCard(collection: collection);
+    }
     final colors = context.colors;
     final isLight = context.isLightTheme;
     final saved = savedMeta(shortcut);
-    // A book's jacket is portrait: its plate keeps the row's height and
-    // takes the jacket's 2:3 width, so the cover shows whole, not its middle.
-    final book =
-        shortcut.kind == SpaceShortcutKind.collection &&
-        shortcut.params['collectionKind'] == 'book';
     final plateHeight = 108.w * 4 / 5;
-    final plateWidth = book ? plateHeight * 2 / 3 : 108.w;
+    final plateWidth = 108.w;
     final metaStyle = AppTypography.textXsMedium.copyWith(
       color: colors.textPrimaryMuted,
       fontFeatures: const [FontFeature.tabularFigures()],

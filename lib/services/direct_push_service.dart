@@ -25,8 +25,9 @@ Future<void> directPushBackgroundHandler(RemoteMessage message) async {
 class DirectPushService with WidgetsBindingObserver {
   DirectPushService._();
   static final instance = DirectPushService._();
-  static const _enabled = bool.fromEnvironment('CHESSEVER_DIRECT_PUSH_ENABLED');
-  static const _productionUrl = String.fromEnvironment('CHESSEVER_NOTIFICATION_URL');
+  static const _enabled = bool.fromEnvironment('CHESSEVER_DIRECT_PUSH_ENABLED', defaultValue: true);
+  static const _productionUrl = String.fromEnvironment('CHESSEVER_NOTIFICATION_URL',
+      defaultValue: 'https://chessever-notifications.young-sun-69a8.workers.dev');
   static const _testUrl = String.fromEnvironment('CHESSEVER_TEST_NOTIFICATION_URL');
   static String get _url => AppEnvironment.isTest ? _testUrl : _productionUrl;
   final _local = FlutterLocalNotificationsPlugin();
@@ -38,6 +39,8 @@ class DirectPushService with WidgetsBindingObserver {
   bool _optedIn = false;
   String? _owner;
   Future<void>? _starting;
+  Timer? _registrationRetry;
+  int _registrationAttempts = 0;
 
   static bool get configured => _enabled && Uri.tryParse(_url)?.scheme == 'https' &&
       (!AppEnvironment.isTest || _url != _productionUrl);
@@ -104,7 +107,10 @@ class DirectPushService with WidgetsBindingObserver {
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed) unawaited(sync());
+    if (state == AppLifecycleState.resumed) {
+      _registrationAttempts = 0;
+      unawaited(sync());
+    }
   }
 
   /// Call only after the existing OneSignal token mirror was successfully saved.
@@ -133,6 +139,13 @@ class DirectPushService with WidgetsBindingObserver {
     return {'installationId':id,'installationSecret':secret};
   }
 
+  void _retryRegistration() {
+    if (_registrationAttempts >= 5) return;
+    _registrationAttempts++;
+    _registrationRetry?.cancel();
+    _registrationRetry = Timer(const Duration(seconds: 5), () => unawaited(sync()));
+  }
+
   Future<void> sync() async {
     if (!_ready) return;
     if (_syncing) { _syncAgain = true; return; }
@@ -145,8 +158,17 @@ class DirectPushService with WidgetsBindingObserver {
       }
       if (session == null || _oneSignalId == null) return;
       final settings = await FirebaseMessaging.instance.getNotificationSettings();
+      if (defaultTargetPlatform == TargetPlatform.iOS &&
+          await FirebaseMessaging.instance.getAPNSToken() == null) {
+        debugPrint('[DirectPush] Waiting for APNs token; registration retry scheduled.');
+        _retryRegistration();
+        return;
+      }
       final token = await FirebaseMessaging.instance.getToken();
-      if (token == null) return;
+      if (token == null) {
+        _retryRegistration();
+        return;
+      }
       final package = await PackageInfo.fromPlatform();
       final response = await http.post(Uri.parse('$_url/v1/devices'),headers:{
         'authorization':'Bearer ${session.accessToken}','content-type':'application/json'},body:jsonEncode({
@@ -156,7 +178,13 @@ class DirectPushService with WidgetsBindingObserver {
           'appVersion':'${package.version}+${package.buildNumber}',
           'language':WidgetsBinding.instance.platformDispatcher.locale.toLanguageTag(),
         })).timeout(const Duration(seconds:15));
-      if (response.statusCode >= 300) throw StateError('Registration rejected');
+      if (response.statusCode >= 300) {
+        debugPrint('[DirectPush] Registration rejected (HTTP ${response.statusCode}).');
+        throw StateError('Registration rejected');
+      }
+      _registrationRetry?.cancel();
+      _registrationAttempts = 0;
+      debugPrint('[DirectPush] Installation registered (${package.version}+${package.buildNumber}).');
       _owner = session.user.id;
       await prefs.setString('direct_push_owner', _owner!);
       if (Supabase.instance.client.auth.currentUser?.id != _owner) {
@@ -164,7 +192,10 @@ class DirectPushService with WidgetsBindingObserver {
         return;
       }
       await flushEvents();
-    } catch (e) { debugPrint('[DirectPush] Sync deferred (${e.runtimeType})'); }
+    } catch (e) {
+      debugPrint('[DirectPush] Sync deferred (${e.runtimeType}); retry scheduled.');
+      _retryRegistration();
+    }
     finally { _syncing = false; if (_syncAgain) { _syncAgain=false; unawaited(sync()); } }
   }
 

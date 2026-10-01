@@ -2,6 +2,7 @@ import '../services/direct_push_service.dart';
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/widgets.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:onesignal_flutter/onesignal_flutter.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -17,20 +18,23 @@ final pushTokenSyncProvider = Provider<PushTokenSyncController>((ref) {
   return controller;
 });
 
-class PushTokenSyncController {
+class PushTokenSyncController with WidgetsBindingObserver {
   PushTokenSyncController(this.ref);
 
   final Ref ref;
   bool _started = false;
   bool _disposed = false;
   String? _userId;
-  final PushTokenSyncRetryState _retryState = PushTokenSyncRetryState();
+  final PushTokenSyncRetryState _retryState = PushTokenSyncRetryState(maxAttempts: 8);
   final Set<String> _inFlightSignatures = <String>{};
   Timer? _retryTimer;
+  Timer? _readinessTimer;
+  int _readinessAttempts = 0;
 
   void start() {
     if (_started) return;
     _started = true;
+    WidgetsBinding.instance.addObserver(this);
 
     ref.listen(currentUserProvider, (previous, next) {
       final previousUserId = previous?.id;
@@ -39,6 +43,8 @@ class PushTokenSyncController {
       }
 
       _userId = next?.id;
+      _readinessAttempts = 0;
+      _readinessTimer?.cancel();
       if (_userId == null) return;
       unawaited(_syncCurrentSubscription());
     }, fireImmediately: true);
@@ -51,6 +57,25 @@ class PushTokenSyncController {
   void dispose() {
     _disposed = true;
     _retryTimer?.cancel();
+    _readinessTimer?.cancel();
+    WidgetsBinding.instance.removeObserver(this);
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state != AppLifecycleState.resumed || _disposed) return;
+    _readinessAttempts = 0;
+    _retryState.reset();
+    unawaited(_syncCurrentSubscription());
+  }
+
+  void _retrySubscriptionReadiness() {
+    if (_disposed || _userId == null || _readinessAttempts >= 10) return;
+    _readinessAttempts++;
+    _readinessTimer?.cancel();
+    _readinessTimer = Timer(const Duration(seconds: 3), () {
+      unawaited(_syncCurrentSubscription());
+    });
   }
 
   void _handlePushSubscriptionChanged(OSPushSubscriptionChangedState state) {
@@ -68,7 +93,12 @@ class PushTokenSyncController {
     try {
       final dynamic subscription = OneSignal.User.pushSubscription;
       final String? id = subscription.id as String?;
-      if (id == null || id.isEmpty) return;
+      if (id == null || id.isEmpty) {
+        _retrySubscriptionReadiness();
+        return;
+      }
+      _readinessTimer?.cancel();
+      _readinessAttempts = 0;
 
       final String? token = subscription.token as String?;
       final bool? optedIn = subscription.optedIn as bool?;
@@ -80,7 +110,8 @@ class PushTokenSyncController {
         optedIn: optedIn ?? true,
       );
     } catch (_) {
-      // No-op if OneSignal isn't ready yet.
+      // The SDK may finish initializing without emitting a subscription change.
+      _retrySubscriptionReadiness();
     }
   }
 
@@ -149,15 +180,30 @@ class PushTokenSyncController {
     }
 
     try {
-      await Supabase.instance.client.from('user_push_tokens').upsert({
-        'user_id': userId,
-        'provider': 'onesignal',
-        'subscription_id': subscriptionId,
-        'push_token': token,
-        'platform': _platformLabel(),
-        'opted_in': optedIn,
-        'last_seen_at': DateTime.now().toUtc().toIso8601String(),
-      }, onConflict: 'provider,subscription_id');
+      final client = Supabase.instance.client;
+      if (client.auth.currentUser?.id != userId) return;
+      try {
+        await client.from('user_push_tokens').upsert({
+          'user_id': userId,
+          'provider': 'onesignal',
+          'subscription_id': subscriptionId,
+          'push_token': token,
+          'platform': _platformLabel(),
+          'opted_in': optedIn,
+          'last_seen_at': DateTime.now().toUtc().toIso8601String(),
+        }, onConflict: 'provider,subscription_id');
+      } on PostgrestException catch (error) {
+        if (error.code != '42501' || token == null || token.isEmpty) rethrow;
+        // Only the server may move a subscription between accounts. It verifies
+        // both OneSignal's current user identity and possession of this token.
+        await client.functions.invoke('push-token-sync', body: {
+          'subscriptionId': subscriptionId,
+          'token': token,
+          'platform': _platformLabel(),
+          'optedIn': optedIn,
+        });
+      }
+      if (_disposed || _userId != userId || client.auth.currentUser?.id != userId) return;
       await DirectPushService.instance.mirrorReady(subscriptionId, optedIn);
       _retryState.recordSuccess(signature);
       _retryTimer?.cancel();
@@ -171,6 +217,10 @@ class PushTokenSyncController {
             unawaited(_syncCurrentSubscription());
           }
         });
+      }
+      if (error is PostgrestException) {
+        // Exclude details/hint: database errors can include device tokens.
+        debugPrint('[PushTokenSync] Database error code=${error.code}: ${error.message}');
       }
       debugPrint(
         '[PushTokenSync] Subscription sync failed '

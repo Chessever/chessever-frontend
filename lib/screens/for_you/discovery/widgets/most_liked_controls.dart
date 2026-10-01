@@ -1,11 +1,17 @@
-import 'package:chessever2/screens/favorites/tabs/favorites_players_tab.dart';
+import 'package:chessever2/providers/favorite_players_provider.dart';
+import 'package:chessever2/utils/favorite_constants.dart';
+import 'package:chessever2/utils/favorite_limit_guard.dart';
+import 'package:chessever2/utils/user_error_message.dart';
+import 'package:chessever2/widgets/auth/auth_upgrade_sheet.dart';
+import 'package:chessever2/widgets/app_snack.dart';
+import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
+import 'package:chessever2/screens/standings/player_standing_model.dart';
+import 'package:chessever2/widgets/figma_player_card.dart';
 import 'package:chessever2/screens/for_you/discovery/models/discovery_models.dart';
 import 'package:chessever2/screens/for_you/discovery/widgets/discovery_common.dart';
-import 'package:chessever2/screens/my_space/widgets/space_avatar.dart';
 import 'package:chessever2/screens/player_profile/player_profile_screen.dart';
 import 'package:chessever2/screens/player_profile/utils/player_menu_actions.dart';
 import 'package:chessever2/screens/player_profile/widgets/lifted_row_menu.dart';
-import 'package:chessever2/screens/streaks/widgets/wall_common.dart';
 import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:flutter/material.dart';
@@ -69,25 +75,27 @@ class MostLikedDateControl extends StatelessWidget {
 }
 
 /// The Players view: everyone with a game in the ranking, most-liked first.
-/// Each row reads like the Miniatures Players leaderboard (rank, the
-/// player's profile circle with their flag and title, rating and games, the
-/// likes where Miniatures has W-L) but in Discovery's own compact voice, and
-/// every text in it can shrink before it overflows. A tap opens the player's
-/// profile; a long press lifts the row into the player focus menu (profile,
+/// Uses the same player card as Favorites, Countrymen and standings, with
+/// likes beneath the rating and the same working favorite heart. A tap opens
+/// the player's profile; a long press lifts the row into its focus menu (profile,
 /// My Space, share, favourites).
 class MostLikedPlayersList extends StatelessWidget {
-  const MostLikedPlayersList({super.key, required this.players});
+  const MostLikedPlayersList({super.key, required this.players, this.onPick});
 
   final List<MostLikedPlayer> players;
 
+  /// When set, tapping a row picks them (the page narrows Games to them)
+  /// instead of opening their profile.
+  final ValueChanged<MostLikedPlayer>? onPick;
+
   /// A row's height at the default text size.
-  static double get rowHeight => 56.w;
+  static double get rowHeight => 80.w;
 
   /// The rank column.
-  static double get rankWidth => 20.w;
+  static double get rankWidth => 24.w;
 
   /// The profile circle's diameter.
-  static double get avatarSize => 40.w;
+  static double get avatarSize => 56.w;
 
   @override
   Widget build(BuildContext context) {
@@ -101,6 +109,7 @@ class MostLikedPlayersList extends StatelessWidget {
             _PlayerRow(
               key: ValueKey('most_liked_player_${row.rank}'),
               row: row,
+              onPick: onPick,
             ),
         ],
       ),
@@ -109,9 +118,20 @@ class MostLikedPlayersList extends StatelessWidget {
 }
 
 class _PlayerRow extends ConsumerWidget {
-  const _PlayerRow({super.key, required this.row});
+  const _PlayerRow({super.key, required this.row, this.onPick});
 
   final MostLikedPlayer row;
+  final ValueChanged<MostLikedPlayer>? onPick;
+
+  void _tap(BuildContext context) {
+    final pick = onPick;
+    if (pick != null) {
+      HapticFeedbackService.cardTap();
+      pick(row);
+      return;
+    }
+    _open(context);
+  }
 
   void _open(BuildContext context) {
     HapticFeedbackService.cardTap();
@@ -135,11 +155,59 @@ class _PlayerRow extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final p = row.player;
-    final photo = ref.watch(playerPhotoProvider(p.fideId)).valueOrNull;
     final title = p.title.trim();
     final flag = p.countryCode.trim();
     final games = row.games == 1 ? '1 game' : '${row.games} games';
     final detail = [if (p.rating > 0) '${p.rating}', games].join(' · ');
+    final favorites = ref.watch(favoritePlayersProviderNew).valueOrNull;
+    final favorite = favorites
+        ?.where(
+          (f) => favoritePlayerMatchesIdentity(
+            f,
+            fideId: p.fideId?.toString(),
+            playerName: p.name,
+          ),
+        )
+        .firstOrNull;
+    final isFavorite = favorite != null;
+
+    Future<void> toggleFavorite() async {
+      final allowed = await requireFullAuthGuard(context);
+      if (!allowed || !context.mounted) return;
+      try {
+        if (!isFavorite) {
+          final canAdd = await canAddMoreFavorites(context, ref);
+          if (!canAdd || !context.mounted) return;
+        }
+        HapticFeedbackService.medium();
+        final notifier = ref.read(favoritePlayersProviderNew.notifier);
+        if (favorite != null) {
+          await notifier.removeFavorite(
+            favorite.playerName,
+            fideId: favorite.fideId,
+          );
+        } else {
+          await notifier.addFavorite(
+            fideId: p.fideId?.toString(),
+            playerName: p.name,
+            countryCode: flag,
+            rating: p.rating,
+            title: title,
+            gamebasePlayerId: p.gamebasePlayerId,
+          );
+        }
+      } on FavoriteLimitExceededException {
+        if (context.mounted) await showPremiumPaywallSheet(context: context);
+      } catch (error) {
+        if (context.mounted) {
+          showAppSnack(
+            context,
+            userFacingError(error),
+            tone: AppSnackTone.danger,
+          );
+        }
+      }
+    }
 
     // Long-press lifts the row into the shared focus menu. The row's one
     // semantics node sits above the menu and carries both actions, so a
@@ -159,7 +227,25 @@ class _PlayerRow extends ConsumerWidget {
           if (context.mounted) _open(context);
         },
       ),
-      child: _buildRow(context, photo: photo, title: title, detail: detail),
+      child: FigmaPlayerCard(
+        player: PlayerStandingModel(
+          name: p.name,
+          fideId: p.fideId,
+          gamebasePlayerId: p.gamebasePlayerId,
+          title: title.isEmpty ? null : title,
+          countryCode: flag,
+          score: p.rating,
+          scoreChange: 0,
+          hasRatingDiff: false,
+          matchScore: null,
+        ),
+        rank: row.rank,
+        onTap: () => _tap(context),
+        hideMissingRating: true,
+        detail: discoveryLikes(row.likes),
+        isFavorite: isFavorite,
+        onToggleFavorite: toggleFavorite,
+      ),
     );
     final likes = discoveryLikes(row.likes);
     return Builder(
@@ -169,85 +255,11 @@ class _PlayerRow extends ConsumerWidget {
         label:
             '${row.rank}, ${[if (title.isNotEmpty) title, p.name].join(' ')}, '
             '$detail, $likes',
-        onTap: () => _open(context),
+        onTap: () => _tap(context),
         onLongPress: () => menu.open(rowContext),
         onLongPressHint: 'More actions',
-        excludeSemantics: true,
+        explicitChildNodes: true,
         child: menu,
-      ),
-    );
-  }
-
-  Widget _buildRow(
-    BuildContext context, {
-    required String? photo,
-    required String title,
-    required String detail,
-  }) {
-    final p = row.player;
-
-    return WallPressable(
-      pressScale: 0.96,
-      onTap: () => _open(context),
-      child: ConstrainedBox(
-        constraints: BoxConstraints(minHeight: MostLikedPlayersList.rowHeight),
-        child: Padding(
-          padding: EdgeInsets.symmetric(vertical: 8.w),
-          child: Row(
-            children: [
-              SizedBox(
-                width: MostLikedPlayersList.rankWidth,
-                child: Text(
-                  '${row.rank}',
-                  maxLines: 1,
-                  style: discoveryType(
-                    context,
-                    DiscoveryType.label,
-                    weight: FontWeight.w700,
-                    tabular: true,
-                  ),
-                ),
-              ),
-              SizedBox(width: 8.w),
-              // The same face a saved player wears in My Space.
-              SpacePlayerAvatar(
-                size: MostLikedPlayersList.avatarSize,
-                name: p.name,
-                photoUrl: photo,
-                title: title.isEmpty ? null : title,
-                federation: p.countryCode.trim(),
-              ),
-              SizedBox(width: 12.w),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      p.name,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: discoveryType(context, DiscoveryType.body),
-                    ),
-                    SizedBox(height: 2.w),
-                    Text(
-                      detail,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: discoveryType(
-                        context,
-                        DiscoveryType.meta,
-                        tabular: true,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              SizedBox(width: 12.w),
-              DiscoveryLikes(likes: row.likes),
-            ],
-          ),
-        ),
       ),
     );
   }

@@ -32,9 +32,17 @@ class FigmaPlayerCard extends ConsumerWidget {
   final bool isFavorite;
   final bool showFavoriteButton;
   final bool isInactive;
-
-  /// A curated book may have no recorded rating. Do not display a fabricated 0.
   final bool hideMissingRating;
+
+  /// Collection-specific data, such as liked games, in the shared trailing slot.
+  final Widget? trailing;
+
+  /// Optional archive/ranking detail beneath the rating, without displacing
+  /// the favorite heart from the shared trailing column.
+  final String? detail;
+
+  /// Uses the account photo for authors without inferring a FIDE identity.
+  final Widget? avatar;
   final VoidCallback onTap;
   final VoidCallback? onToggleFavorite;
   final ValueChanged<LongPressStartDetails>? onLongPress;
@@ -53,6 +61,8 @@ class FigmaPlayerCard extends ConsumerWidget {
   /// column ends on the same x in every row, and so a record arriving after
   /// first paint does not shove that row's name sideways.
   final bool reserveMatchScoreSlot;
+  /// Allows long collection counts to wrap without consuming the name column.
+  final double? matchScoreMaxWidth;
 
   const FigmaPlayerCard({
     super.key,
@@ -63,12 +73,16 @@ class FigmaPlayerCard extends ConsumerWidget {
     this.showFavoriteButton = true,
     this.isInactive = false,
     this.hideMissingRating = false,
+    this.trailing,
+    this.detail,
+    this.avatar,
     required this.onTap,
     this.onToggleFavorite,
     this.onLongPress,
     this.avatarHeroTag,
     this.matchScorePending = false,
     this.reserveMatchScoreSlot = false,
+    this.matchScoreMaxWidth,
   });
 
   /// The longest record the leaderboard produces. Both the reserved width and
@@ -84,8 +98,9 @@ class FigmaPlayerCard extends ConsumerWidget {
       color: context.colors.textPrimary,
     );
     final pending = matchScorePending && (player.matchScore ?? '').isEmpty;
-    final reserved =
-        reserveMatchScoreSlot ? _measureMatchScoreSlot(context, style) : null;
+    final reserved = reserveMatchScoreSlot
+        ? _measureMatchScoreSlot(context, style)
+        : null;
 
     if (pending) {
       final bone = skel.Skeletonizer(
@@ -146,6 +161,7 @@ class FigmaPlayerCard extends ConsumerWidget {
     required String initials,
     required double avatarSize,
   }) {
+    if (this.avatar != null) return this.avatar!;
     final tag = avatarHeroTag;
     final useHero = tag != null && tag.isNotEmpty;
 
@@ -179,7 +195,9 @@ class FigmaPlayerCard extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final photoAsync = ref.watch(playerPhotoProvider(player.fideId));
+    final photoAsync = avatar == null
+        ? ref.watch(playerPhotoProvider(player.fideId))
+        : const AsyncData<String?>(null);
     final avatarSize = 56.w;
     final initials = _getInitials(player.name);
     final federationForFlag = player.countryCode.trim();
@@ -196,10 +214,9 @@ class FigmaPlayerCard extends ConsumerWidget {
             // object, so it keeps the rule's height (the copy stays in
             // register over the original) but draws nothing.
             bottom: BorderSide(
-              color:
-                  LiftedRowSurface.isLifted(context)
-                      ? Colors.transparent
-                      : context.colors.divider,
+              color: LiftedRowSurface.isLifted(context)
+                  ? Colors.transparent
+                  : context.colors.divider,
               width: 1,
             ),
           ),
@@ -213,31 +230,30 @@ class FigmaPlayerCard extends ConsumerWidget {
             // lands on the same x.
             SizedBox(
               width: 24.w,
-              child:
-                  !showRank
-                      ? const SizedBox.shrink()
-                      : rank != null
-                      ? Text(
-                        rank.toString(),
+              child: !showRank
+                  ? const SizedBox.shrink()
+                  : rank != null
+                  ? Text(
+                      rank.toString(),
+                      style: AppTypography.textSmMedium.copyWith(
+                        color: context.colors.textTertiary,
+                      ),
+                      textAlign: TextAlign.center,
+                    )
+                  : skel.Skeletonizer(
+                      enabled: true,
+                      effect: skel.ShimmerEffect(
+                        baseColor: context.colors.skeleton,
+                        highlightColor: context.colors.divider,
+                      ),
+                      child: Text(
+                        '00',
                         style: AppTypography.textSmMedium.copyWith(
                           color: context.colors.textTertiary,
                         ),
                         textAlign: TextAlign.center,
-                      )
-                      : skel.Skeletonizer(
-                        enabled: true,
-                        effect: skel.ShimmerEffect(
-                          baseColor: context.colors.skeleton,
-                          highlightColor: context.colors.divider,
-                        ),
-                        child: Text(
-                          '00',
-                          style: AppTypography.textSmMedium.copyWith(
-                            color: context.colors.textTertiary,
-                          ),
-                          textAlign: TextAlign.center,
-                        ),
                       ),
+                    ),
             ),
             SizedBox(width: 12.w),
             // Player photo with title badge overlay
@@ -299,38 +315,69 @@ class FigmaPlayerCard extends ConsumerWidget {
                               ? '+${player.scoreChange}'
                               : '${player.scoreChange}',
                           style: AppTypography.textSmMedium.copyWith(
-                            color:
-                                player.scoreChange > 0
-                                    ? context.colors.successStrong
-                                    : context.colors.danger,
+                            color: player.scoreChange > 0
+                                ? context.colors.successStrong
+                                : context.colors.danger,
                           ),
                         ),
                     ],
                   ),
+                  if (detail != null) ...[
+                    SizedBox(height: 3.h),
+                    Text(
+                      detail!,
+                      style: AppTypography.textXsRegular.copyWith(
+                        color: context.colors.textSecondary,
+                      ),
+                    ),
+                  ],
                 ],
               ),
             ),
-            // Right side: either heart or score
-            if (showFavoriteButton && onToggleFavorite != null)
-              GestureDetector(
+            // Right side: collection data, heart, or score.
+            if (trailing != null)
+              Padding(
+                padding: EdgeInsets.only(left: 8.w),
+                child: trailing!,
+              )
+            else if (showFavoriteButton && onToggleFavorite != null)
+              Semantics(
+                button: true,
+                label: isFavorite
+                    ? 'Remove from favorites'
+                    : 'Add to favorites',
                 onTap: onToggleFavorite,
-                behavior: HitTestBehavior.opaque,
-                child: Container(
-                  padding: EdgeInsets.all(8.sp),
-                  child: Icon(
-                    isFavorite ? Icons.favorite : Icons.favorite_border,
-                    color:
-                        isFavorite
+                excludeSemantics: true,
+                child: GestureDetector(
+                  onTap: onToggleFavorite,
+                  behavior: HitTestBehavior.opaque,
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(
+                      minWidth: 44,
+                      minHeight: 44,
+                    ),
+                    child: Padding(
+                      padding: EdgeInsets.all(8.sp),
+                      child: Icon(
+                        isFavorite ? Icons.favorite : Icons.favorite_border,
+                        color: isFavorite
                             ? const Color(0xFFEF4444)
                             : context.colors.textTertiary,
-                    size: 24.ic,
+                        size: 24.ic,
+                      ),
+                    ),
                   ),
                 ),
               )
             else if (!showFavoriteButton)
               Padding(
                 padding: EdgeInsets.only(left: 8.w),
-                child: _buildMatchScore(context),
+                child: matchScoreMaxWidth == null
+                    ? _buildMatchScore(context)
+                    : ConstrainedBox(
+                        constraints: BoxConstraints(maxWidth: matchScoreMaxWidth!),
+                        child: _buildMatchScore(context),
+                      ),
               ),
           ],
         ),

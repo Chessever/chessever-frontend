@@ -5,7 +5,7 @@ import 'package:chessever2/screens/favorites/tabs/favorites_players_tab.dart';
 import 'package:chessever2/screens/my_likes/my_likes_hub_screen.dart';
 import 'package:chessever2/screens/my_space/models/space_shortcut.dart';
 import 'package:chessever2/screens/my_space/providers/space_shortcuts_provider.dart';
-import 'package:chessever2/screens/my_space/widgets/space_avatar.dart';
+import 'package:chessever2/widgets/figma_player_card.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:flutter/material.dart';
@@ -139,8 +139,13 @@ void main() {
     await tester.pump();
     await tester.pump();
 
-    expect(find.byType(SpacePlayerAvatar), findsWidgets);
-    expect(find.text('GM 2830 · 2 liked games'), findsOneWidget);
+    expect(find.byType(FigmaPlayerCard), findsWidgets);
+    final card = tester.widgetList<FigmaPlayerCard>(find.byType(FigmaPlayerCard)).first;
+    expect(card.player.name, 'Carlsen, Magnus');
+    expect(card.player.score, 2830);
+    expect(card.player.title, 'GM');
+    expect(card.rank, 1);
+    expect(find.text('2 liked games'), findsOneWidget);
     await tester.tap(find.text('Carlsen, Magnus'));
     await tester.pump(const Duration(milliseconds: 300));
     expect(picked, ['Carlsen, Magnus']);

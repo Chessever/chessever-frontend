@@ -38,6 +38,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart' show RenderParagraph;
+import 'dart:ui' show SemanticsAction;
 import 'package:flutter/services.dart' show FontLoader;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -319,6 +320,8 @@ Future<ProviderContainer> _pump(
   List<Override> overrides = const [],
   Size size = const Size(390, 2400),
   double textScale = 1,
+  ThemeData? theme,
+  TextDirection direction = TextDirection.ltr,
 }) async {
   tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1;
@@ -365,7 +368,7 @@ Future<ProviderContainer> _pump(
     UncontrolledProviderScope(
       container: container,
       child: MaterialApp(
-        theme: AppTheme.darkTheme,
+        theme: theme ?? AppTheme.darkTheme,
         routes: {
           '/tournament_detail_screen': (_) =>
               const Scaffold(body: Text('TOURNAMENT PAGE')),
@@ -374,7 +377,7 @@ Future<ProviderContainer> _pump(
           data: MediaQuery.of(
             context,
           ).copyWith(textScaler: TextScaler.linear(textScale)),
-          child: child!,
+          child: Directionality(textDirection: direction, child: child!),
         ),
         home: Builder(
           builder: (context) {
@@ -398,11 +401,13 @@ Future<void> _settle(WidgetTester tester) async {
 }
 
 Future<void> _showTab(WidgetTester tester, String tab) async {
-  if (const ['Events', 'Books', 'Players'].contains(tab)) {
+  if (const ['Events', 'Collections', 'Players'].contains(tab)) {
     final strip = find.descendant(
       of: find.byType(SegmentedSwitcher),
       matching: find.text('About'),
     );
+    await tester.ensureVisible(strip.first);
+    await _settle(tester);
     await tester.tap(strip.first);
     await _settle(tester);
     final action = find.widgetWithText(TextButton, tab);
@@ -411,6 +416,8 @@ Future<void> _showTab(WidgetTester tester, String tab) async {
     await _settle(tester);
     return;
   }
+  await tester.ensureVisible(find.text(tab).first);
+  await _settle(tester);
   await tester.tap(find.text(tab).first);
   await _settle(tester);
 }
@@ -952,7 +959,7 @@ void main() {
       // carries the count (the facts do not say it again above it).
       expect(find.text('by Garry Kasparov'), findsOneWidget);
       expect(find.byKey(const ValueKey('collection_unlock')), findsOneWidget);
-      expect(_rich('Read all 4 games in this book'), findsOneWidget);
+      expect(_rich('Read all 4 games in this collection'), findsOneWidget);
       expect(find.text('4 games'), findsNothing);
 
       // The contents are visible, every entry locked.
@@ -1490,6 +1497,171 @@ void main() {
       expect(cover.height / cover.width, closeTo(1.5, 0.01));
     });
 
+    _widgetTest(
+      'book metadata shares a row and the star is separately accessible',
+      (tester) async {
+        const book = Collection(
+          id: 'compact',
+          slug: 'compact',
+          kind: CollectionKind.book,
+          title: 'Advanced',
+          author: 'Durarbayli',
+          gameCount: 2,
+          viewCount: 12,
+          starCount: 3,
+        );
+        final handle = tester.ensureSemantics();
+
+        await _pump(
+          tester,
+          repo: _Repo(detail: book),
+          subscribed: true,
+          size: const Size(393, 900),
+          home: () => Scaffold(body: ListView(children: [CollectionCard(collection: book)])),
+        );
+        expect(
+          tester.getCenter(find.text('2 games')).dy,
+          closeTo(
+            tester
+                .getCenter(find.byKey(const ValueKey('collection_card_views')))
+                .dy,
+            0.01,
+          ),
+        );
+        double inkBottom(Finder finder) {
+          final paragraph = tester.renderObject<RenderParagraph>(finder);
+          final firstDigit = paragraph.text.toPlainText().indexOf(
+            RegExp(r'\d'),
+          );
+          final box = paragraph
+              .getBoxesForSelection(
+                TextSelection(
+                  baseOffset: firstDigit,
+                  extentOffset: firstDigit + 1,
+                ),
+              )
+              .single;
+          return tester.getTopLeft(finder).dy + box.bottom;
+        }
+
+        final countInkBottom = inkBottom(find.text('2 games'));
+        expect(
+          inkBottom(find.byKey(const ValueKey('collection_card_views'))),
+          closeTo(countInkBottom, 0.01),
+        );
+        expect(find.text('3 stars'), findsNothing);
+        final starCount = find.byKey(
+          const ValueKey('collection_card_star_count'),
+        );
+        expect(find.text('3'), findsOneWidget);
+        final star = find.bySemanticsLabel('Star Advanced');
+        expect(star, findsOneWidget);
+        expect(
+          tester.getCenter(starCount).dy,
+          closeTo(
+            tester.getCenter(find.byType(CollectionPlateRow)).dy + 23 - 4.sp,
+            0.01,
+          ),
+        );
+        expect(
+          tester.getRect(star).contains(tester.getRect(starCount).center),
+          isTrue,
+        );
+        expect(tester.getSize(star).width, greaterThanOrEqualTo(48));
+        expect(tester.getSize(star).height, greaterThanOrEqualTo(48));
+        expect(
+          tester
+              .getSemantics(star)
+              .getSemanticsData()
+              .hasAction(SemanticsAction.tap),
+          isTrue,
+        );
+        expect(
+          find.bySemanticsLabel(
+            RegExp('Advanced, by Durarbayli.*12 views.*3 stars'),
+          ),
+          findsOneWidget,
+        );
+        expect(tester.takeException(), isNull);
+        handle.dispose();
+      },
+    );
+
+    for (final theme in [AppTheme.darkTheme, AppTheme.lightTheme]) {
+      _widgetTest(
+        'book details reflow at large type in RTL (${theme.brightness.name})',
+        (tester) async {
+          const book = Collection(
+            id: 'reflow',
+            slug: 'reflow',
+            kind: CollectionKind.book,
+            title: 'A long collection title for careful study',
+            author: 'A long author name',
+            coverUrl: 'https://example.invalid/cover.jpg',
+            gameCount: 500,
+            viewCount: 99999999,
+            starCount: 1000000,
+            about: 'A substantial book description.',
+            foreword: 'A personal foreword.',
+            authorBio: 'The author biography.',
+            annotator: 'Another contributor',
+            annotatorBio: 'The annotator biography.',
+          );
+          await _pump(
+            tester,
+            repo: _Repo(detail: book),
+            subscribed: true,
+            size: const Size(320, 1600),
+            textScale: 2,
+            theme: theme,
+            direction: TextDirection.rtl,
+            home: () => Scaffold(
+              body: ListView(children: [CollectionCard(collection: book)]),
+            ),
+          );
+          expect(tester.takeException(), isNull);
+          final card = tester.getRect(find.byType(CollectionPlateRow));
+          for (final text in ['500 games', '99999999', '1000000']) {
+            final rect = tester.getRect(
+              text == '99999999'
+                  ? find.byKey(const ValueKey('collection_card_views'))
+                  : find.text(text),
+            );
+            expect(rect.left, greaterThanOrEqualTo(card.left));
+            expect(rect.right, lessThanOrEqualTo(card.right));
+          }
+          await _pump(
+            tester,
+            repo: _Repo(detail: book),
+            subscribed: false,
+            size: const Size(320, 2400),
+            textScale: 2,
+            theme: theme,
+            direction: TextDirection.rtl,
+            home: () => CollectionScreen(collection: book),
+          );
+          expect(tester.takeException(), isNull);
+          final about = find.byKey(const ValueKey('book_about_content'));
+          expect(about, findsOneWidget);
+          final description = find.text('A substantial book description.');
+          final foreword = find.text('A personal foreword.');
+          expect(
+            tester.getTopLeft(description).dy,
+            lessThan(tester.getTopLeft(find.text('Foreword')).dy),
+          );
+          expect(
+            tester.getRect(description).right,
+            closeTo(tester.getRect(foreword).right, 0.1),
+          );
+          final cover = tester.widget<CachedNetworkImage>(
+            find.byType(CachedNetworkImage).first,
+          );
+          expect(cover.fit, BoxFit.contain);
+          expect(find.textContaining('The games collected in'), findsNothing);
+        },
+      );
+    }
+
     _widgetTest('its card carries the padlock for a free viewer only', (
       tester,
     ) async {
@@ -1737,8 +1909,8 @@ void main() {
       );
       expect(repo.bookAnchors, [anchors]);
       // One book: its heading says so, as a book's page says "Event".
-      expect(find.text('Book'), findsOneWidget);
-      expect(find.text('Books'), findsNothing);
+      expect(find.text('Collection'), findsOneWidget);
+      expect(find.text('Collections'), findsNothing);
       expect(find.text('Kasparov vs Karpov'), findsOneWidget);
       expect(find.text('The 1985 match, move by move.'), findsOneWidget);
       // Premium, and this viewer is not.
@@ -1817,7 +1989,7 @@ void main() {
       expect(repo.bookAnchors.single.groups, ['gb_abcd1234']);
       expect(repo.bookAnchors.single.tours, ['abcd1234']);
       expect(repo.bookAnchors.single.slugs, ['world-championship-1985']);
-      expect(find.text('Book'), findsOneWidget);
+      expect(find.text('Collection'), findsOneWidget);
       expect(find.text('Kasparov vs Karpov'), findsOneWidget);
       expect(find.text('The 1985 match, move by move.'), findsOneWidget);
       // A subscriber's book wears no padlock.
@@ -1839,8 +2011,8 @@ void main() {
           ),
         ),
       );
-      expect(find.text('Books'), findsNothing);
-      expect(find.text('Book'), findsNothing);
+      expect(find.text('Collections'), findsNothing);
+      expect(find.text('Collection'), findsNothing);
       expect(
         find.byKey(const ValueKey('collection_books_section')),
         findsNothing,
@@ -1871,8 +2043,8 @@ void main() {
           ),
         ),
       );
-      expect(find.text('Books'), findsOneWidget);
-      expect(find.text('Book'), findsNothing);
+      expect(find.text('Collections'), findsOneWidget);
+      expect(find.text('Collection'), findsNothing);
     });
   });
 
@@ -1953,11 +2125,11 @@ void main() {
       expect(find.textContaining('Wijk aan Zee'), findsOneWidget);
       expect(find.textContaining('13-28'), findsNothing);
       expect(find.text('Fourteen players, one round-robin'), findsNothing);
-      expect(find.text('91 games · 2 books'), findsOneWidget);
+      expect(find.text('91 games · 2 collections'), findsOneWidget);
       // Neither author, place nor dates: the subtitle stands in; no count.
       expect(find.text('Played online'), findsOneWidget);
       expect(find.text('1 game'), findsOneWidget);
-      expect(find.textContaining('book'), findsOneWidget);
+      expect(find.textContaining('collection'), findsOneWidget);
     });
 
     _widgetTest('a book card: the author, its bound events, an event plate '
@@ -2054,30 +2226,32 @@ void main() {
         t.data!,
     ];
 
-    _widgetTest('books and events share About · Games · Players', (
-      tester,
-    ) async {
-      await _pump(
-        tester,
-        repo: _Repo(detail: _book(contentLocked: false)),
-        subscribed: true,
-        home: () => CollectionScreen(collection: _book()),
-      );
-      expect(tabLabels(tester), ['About', 'Games', 'Players']);
-      await _teardown(tester);
+    _widgetTest(
+      'books and events share About, Games and Players tabs',
+      (tester) async {
+        await _pump(
+          tester,
+          repo: _Repo(detail: _book(contentLocked: false)),
+          subscribed: true,
+          home: () => CollectionScreen(collection: _book()),
+        );
+        // expect(tabLabels(tester), ['About', 'Openings', 'Games', 'Players']);
+        expect(tabLabels(tester), ['About', 'Games', 'Players']);
+        await _teardown(tester);
 
-      await _pump(
-        tester,
-        repo: _Repo(detail: _event()),
-        subscribed: false,
-        home: () => CollectionScreen(collection: _event()),
-      );
-      expect(tabLabels(tester), ['About', 'Games', 'Players']);
-      // A free event opens on its games, as it always did.
-      expect(find.byType(DiscoveryGameList), findsWidgets);
-      await _showTab(tester, 'Players');
-      expect(find.text('No players in this collection yet.'), findsOneWidget);
-    });
+        await _pump(
+          tester,
+          repo: _Repo(detail: _event()),
+          subscribed: false,
+          home: () => CollectionScreen(collection: _event()),
+        );
+        expect(tabLabels(tester), ['About', 'Games', 'Players']);
+        // A free event opens on its games, as it always did.
+        expect(find.byType(DiscoveryGameList), findsWidgets);
+        await _showTab(tester, 'Players');
+        expect(find.text('No players in this collection yet.'), findsOneWidget);
+      },
+    );
 
     _widgetTest('a book\'s About: every credit, the description, then the '
         'foreword', (tester) async {
@@ -2141,7 +2315,7 @@ void main() {
       expect(find.textContaining('by '), findsNothing);
       expect(find.byKey(const ValueKey('collection_foreword')), findsNothing);
       await _showTab(tester, 'Events');
-      expect(find.text('No events for this book yet.'), findsOneWidget);
+      expect(find.text('No events for this collection yet.'), findsOneWidget);
       expect(tester.takeException(), isNull);
     });
 
@@ -2167,7 +2341,7 @@ void main() {
         subscribed: false,
         home: () => CollectionScreen(collection: _event()),
       );
-      await _showTab(tester, 'Books');
+      await _showTab(tester, 'Collections');
       expect(repo.bookAnchors.single.collections, ['e-Wijk aan Zee']);
       expect(find.text('Kasparov vs Karpov'), findsOneWidget);
       expect(find.text('by Garry Kasparov'), findsOneWidget);
@@ -2196,15 +2370,15 @@ void main() {
         subscribed: true,
         home: () => CollectionScreen(collection: _event()),
       );
-      await _showTab(tester, 'Books');
+      await _showTab(tester, 'Collections');
       expect(find.text('Try again'), findsOneWidget);
-      expect(find.text('No books about this event yet.'), findsNothing);
+      expect(find.text('No collections about this event yet.'), findsNothing);
 
       repo.booksError = null;
       await tester.tap(find.text('Try again'));
       await _settle(tester);
       expect(repo.bookAnchors, hasLength(2));
-      expect(find.text('No books about this event yet.'), findsOneWidget);
+      expect(find.text('No collections about this event yet.'), findsOneWidget);
     });
 
     _widgetTest('an event opened from a book waits for its id, then asks '
@@ -2223,9 +2397,9 @@ void main() {
         subscribed: true,
         home: () => CollectionScreen(collection: bySlug),
       );
-      await _showTab(tester, 'Books');
+      await _showTab(tester, 'Collections');
       expect(repo.bookAnchors.single.collections, ['e-Wijk aan Zee']);
-      expect(find.text('No books about this event yet.'), findsOneWidget);
+      expect(find.text('No collections about this event yet.'), findsOneWidget);
     });
   });
 }

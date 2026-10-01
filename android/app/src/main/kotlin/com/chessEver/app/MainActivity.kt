@@ -81,7 +81,7 @@ class MainActivity : FlutterActivity() {
     )
     mediaPickerChannel?.setMethodCallHandler { call, result ->
       when (call.method) {
-        "pickImage" -> pickFeedbackImage(result)
+        "pickImage", "pickProfileImage" -> pickFeedbackImage(result)
         else -> result.notImplemented()
       }
     }

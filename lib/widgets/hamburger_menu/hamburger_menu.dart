@@ -1,3 +1,4 @@
+import 'package:chessever2/widgets/profile_avatar_editor.dart';
 import 'dart:io';
 
 import 'package:chessever2/e2e/e2e_ids.dart';
@@ -73,7 +74,10 @@ Future<void> _openStoreListing() async {
 }
 
 void _showAboutDialog(BuildContext context, String version) {
-  showAlertModal<void>(context: context, child: _AboutDialog(version: version));
+  showAlertModal<void>(
+    context: context,
+    child: _AboutDialog(version: version),
+  );
 }
 
 class HamburgerMenu extends HookConsumerWidget {
@@ -187,13 +191,12 @@ class HamburgerMenu extends HookConsumerWidget {
                           semanticsLabel: 'Calendar Icon',
                           height: 20.h,
                           width: 20.w,
-                          colorFilter:
-                              context.isLightTheme
-                                  ? ColorFilter.mode(
-                                    context.colors.iconPrimary,
-                                    BlendMode.srcIn,
-                                  )
-                                  : null,
+                          colorFilter: context.isLightTheme
+                              ? ColorFilter.mode(
+                                  context.colors.iconPrimary,
+                                  BlendMode.srcIn,
+                                )
+                              : null,
                         ),
                         title: 'Calendar',
                         textStyle: AppTypography.textSmRegular.copyWith(
@@ -250,13 +253,12 @@ class HamburgerMenu extends HookConsumerWidget {
                           semanticsLabel: 'Settings Icon',
                           height: 20.h,
                           width: 20.w,
-                          colorFilter:
-                              context.isLightTheme
-                                  ? ColorFilter.mode(
-                                    context.colors.iconPrimary,
-                                    BlendMode.srcIn,
-                                  )
-                                  : null,
+                          colorFilter: context.isLightTheme
+                              ? ColorFilter.mode(
+                                  context.colors.iconPrimary,
+                                  BlendMode.srcIn,
+                                )
+                              : null,
                         ),
                         title: 'Settings',
                         textStyle: AppTypography.textSmRegular.copyWith(
@@ -272,13 +274,12 @@ class HamburgerMenu extends HookConsumerWidget {
                           semanticsLabel: 'Feedback Icon',
                           height: 20.h,
                           width: 20.w,
-                          colorFilter:
-                              context.isLightTheme
-                                  ? ColorFilter.mode(
-                                    context.colors.iconPrimary,
-                                    BlendMode.srcIn,
-                                  )
-                                  : null,
+                          colorFilter: context.isLightTheme
+                              ? ColorFilter.mode(
+                                  context.colors.iconPrimary,
+                                  BlendMode.srcIn,
+                                )
+                              : null,
                         ),
                         icon: Icons.rate_review_outlined,
                         title: 'Feedback',
@@ -287,9 +288,8 @@ class HamburgerMenu extends HookConsumerWidget {
                           height: 20.h / 14.h,
                         ),
                         onPressed: () {
-                          ReviewPromptService.instance.openSidebarDirectFeedback(
-                            context,
-                          );
+                          ReviewPromptService.instance
+                              .openSidebarDirectFeedback(context);
                         },
                         showChevron: true,
                       ),
@@ -311,13 +311,12 @@ class HamburgerMenu extends HookConsumerWidget {
                           semanticsLabel: 'Info Icon',
                           height: 20.h,
                           width: 20.w,
-                          colorFilter:
-                              context.isLightTheme
-                                  ? ColorFilter.mode(
-                                    context.colors.iconPrimary,
-                                    BlendMode.srcIn,
-                                  )
-                                  : null,
+                          colorFilter: context.isLightTheme
+                              ? ColorFilter.mode(
+                                  context.colors.iconPrimary,
+                                  BlendMode.srcIn,
+                                )
+                              : null,
                         ),
                         title: 'About',
                         textStyle: AppTypography.textSmRegular.copyWith(
@@ -403,7 +402,11 @@ class _UserProfileHeader extends ConsumerWidget {
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
-            UserAvatar(size: 40, showPremiumBorder: true),
+            UserAvatar(
+              size: 40,
+              showPremiumBorder: true,
+              onTap: () => showProfileAvatarEditor(context),
+            ),
             SizedBox(width: 12.w),
 
             Expanded(
@@ -568,15 +571,14 @@ class _RestorePurchasesRow extends ConsumerWidget {
     return InkWell(
       onTap: () async {
         HapticFeedbackService.buttonPress();
-        final success =
-            await ref.read(subscriptionProvider.notifier).restorePurchases();
+        final success = await ref
+            .read(subscriptionProvider.notifier)
+            .restorePurchases();
 
         if (context.mounted) {
           showAppSnack(
             context,
-            success
-                ? 'Purchases restored'
-                : 'No purchases found to restore',
+            success ? 'Purchases restored' : 'No purchases found to restore',
             tone: success ? AppSnackTone.success : AppSnackTone.neutral,
           );
         }
@@ -620,13 +622,12 @@ class _LogOutButton extends StatelessWidget {
         Supabase.instance.client.auth.currentUser?.isAnonymous == true;
 
     return InkWell(
-      onTap:
-          onLogoutPressed != null
-              ? () {
-                HapticFeedbackService.buttonPress();
-                onLogoutPressed!();
-              }
-              : null,
+      onTap: onLogoutPressed != null
+          ? () {
+              HapticFeedbackService.buttonPress();
+              onLogoutPressed!();
+            }
+          : null,
       child: Container(
         padding: EdgeInsets.symmetric(horizontal: 16.sp, vertical: 12.sp),
         height: 65.h,
@@ -641,10 +642,9 @@ class _LogOutButton extends StatelessWidget {
             Text(
               isAnonymous ? 'Sign up' : 'Log out',
               style: AppTypography.textSmMedium.copyWith(
-                color:
-                    isAnonymous
-                        ? context.colors.iconPrimary
-                        : context.colors.danger,
+                color: isAnonymous
+                    ? context.colors.iconPrimary
+                    : context.colors.danger,
                 height: 20.h / 14.h,
               ),
             ),
@@ -673,13 +673,12 @@ class _MenuItem extends StatelessWidget {
   final VoidCallback? onPressed;
   final TextStyle? textStyle;
 
-  VoidCallback? get _onTap =>
-      onPressed != null
-          ? () {
-            HapticFeedbackService.navigation();
-            onPressed!();
-          }
-          : null;
+  VoidCallback? get _onTap => onPressed != null
+      ? () {
+          HapticFeedbackService.navigation();
+          onPressed!();
+        }
+      : null;
 
   Widget _buildRowContent(BuildContext context) {
     return Row(

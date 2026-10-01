@@ -1,3 +1,4 @@
+import 'package:chessever2/repository/local_storage/local_storage_repository.dart';
 import 'package:chessever2/screens/home/widget/bottom_nav_bar.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
@@ -17,15 +18,38 @@ extension ForYouTabLabel on ForYouTab {
 /// older build left on the device (see `forgetForYouPageForLaunch`).
 const String forYouLastTabPrefsKey = 'for_you_last_tab_v1';
 
-/// Every launch lands on Today: it is the feed that used to open the app from
-/// the Events screen.
+/// Every launch lands on the stored default (Today unless a Premium viewer
+/// picked another in Settings › Customization).
 const ForYouTab kDefaultForYouTab = ForYouTab.today;
 
-/// Selected For You page. It starts on [initial] (Today unless a caller says
-/// otherwise) and lives in memory only: a launch always opens on Today, and
-/// within a session the provider below keeps the user's page.
+/// The launch Home page a Premium viewer picked. Unset or unreadable means
+/// Today.
+const String defaultForYouTabPrefsKey = 'default_foryou_tab_v1';
+
+ForYouTab readDefaultForYouTab() {
+  final name = SharedPreferencesService.instance.prefsOrNull?.getString(
+    defaultForYouTabPrefsKey,
+  );
+  if (name == null) return kDefaultForYouTab;
+  for (final tab in ForYouTab.values) {
+    if (tab.name == name) return tab;
+  }
+  return kDefaultForYouTab;
+}
+
+Future<void> writeDefaultForYouTab(ForYouTab tab) async {
+  final prefs =
+      SharedPreferencesService.instance.prefsOrNull ??
+      await SharedPreferencesService.instance.ensureInitialized();
+  await prefs?.setString(defaultForYouTabPrefsKey, tab.name);
+}
+
+/// Selected For You page. It starts on [initial] (the stored default unless
+/// a caller says otherwise) and lives in memory afterwards: within a
+/// session the provider below keeps the user's page.
 class ForYouTabController extends StateNotifier<ForYouTab> {
-  ForYouTabController([super.initial = kDefaultForYouTab]);
+  ForYouTabController([ForYouTab? initial])
+    : super(initial ?? readDefaultForYouTab());
 
   void select(ForYouTab tab) {
     if (tab == state) return;

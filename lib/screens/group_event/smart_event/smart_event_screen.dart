@@ -11,9 +11,11 @@ import 'package:chessever2/screens/for_you/open_for_you_event.dart';
 import 'package:chessever2/screens/group_event/group_event_screen.dart'
     show GroupEventCategory;
 import 'package:chessever2/screens/group_event/model/tour_event_card_model.dart';
+import 'package:chessever2/screens/group_event/widget/appbar_icons_widget.dart';
 import 'package:chessever2/screens/group_event/smart_event/smart_aggregate_event_provider.dart';
 import 'package:chessever2/screens/group_event/widget/filter_popup/filter_popup_provider.dart';
 import 'package:chessever2/screens/group_event/widget/filter_popup/filter_popup_state.dart';
+import 'package:chessever2/screens/library/widgets/library_context_menu.dart';
 import 'package:chessever2/screens/my_space/actions/space_menu_action.dart';
 import 'package:chessever2/screens/my_space/models/space_shortcut.dart';
 import 'package:chessever2/screens/my_space/providers/space_shortcuts_provider.dart';
@@ -691,97 +693,117 @@ class _AppBar extends ConsumerWidget {
             // and offer to apply + save it.
             onPressed: () => Navigator.of(context).maybePop(),
           ),
-          // Mirrors the My Space button + gap on the right so the title
-          // stays centred on the screen, not just between the buttons.
+          // Mirrors the toggle + menu on the right so the title stays
+          // centred on the screen, not just between the buttons.
           SizedBox(width: 24.ic + 16.w),
           Expanded(child: Center(child: _AppBarTitle(request: request))),
-          IconButton(
-            tooltip: inSpace ? 'Remove from My Space' : 'Add to My Space',
-            padding: EdgeInsets.zero,
-            constraints: const BoxConstraints(),
-            iconSize: 24.ic,
-            icon: Icon(
-              inSpace
-                  ? Icons.dashboard_customize
-                  : Icons.dashboard_customize_outlined,
-              color: context.colors.textPrimary,
-            ),
-            onPressed:
-                () => toggleSpaceShortcut(
-                  context: context,
-                  ref: ref,
-                  draft: spaceDraft,
-                ),
+          AppBarIcons(
+            image: SvgAsset.chase_grid,
+            onTap: () {
+              HapticFeedbackService.cardTap();
+              ref.read(gamesListViewModeSwitcher).toggleViewMode();
+            },
           ),
           SizedBox(width: 16.w),
-          IconButton(
-            tooltip:
-                isSaved
-                    ? (isDirty
-                        ? 'Apply changes to ${request.displayName}'
-                        : 'Remove ${request.displayName}')
-                    : 'Save ${request.displayName}',
-            padding: EdgeInsets.zero,
-            constraints: const BoxConstraints(),
-            iconSize: 26.ic,
-            icon: Icon(
-              isSaved
-                  ? (isDirty
-                      ? Icons.check_circle_outline_rounded
-                      : Icons.remove_circle_outline_rounded)
-                  : Icons.bookmark_border_rounded,
-              color: context.colors.textPrimary,
+          Builder(
+            builder: (menuContext) => AppBarIcons(
+              image: SvgAsset.threeDots,
+              onTap: () {
+                HapticFeedbackService.cardTap();
+                unawaited(
+                  showLibraryContextMenu(
+                    context: menuContext,
+                    actions: [
+                      LibraryMenuAction(
+                        icon: inSpace
+                            ? Icons.dashboard_customize
+                            : Icons.dashboard_customize_outlined,
+                        label: inSpace
+                            ? 'Remove from My Space'
+                            : 'Add to My Space',
+                        onSelected: () => toggleSpaceShortcut(
+                          context: context,
+                          ref: ref,
+                          draft: spaceDraft,
+                        ),
+                      ),
+                      LibraryMenuAction(
+                        icon: isSaved
+                            ? (isDirty
+                                ? Icons.check_circle_outline_rounded
+                                : Icons.remove_circle_outline_rounded)
+                            : Icons.bookmark_border_rounded,
+                        label: isSaved
+                            ? (isDirty
+                                ? 'Apply changes to ${request.displayName}'
+                                : 'Remove ${request.displayName}')
+                            : 'Save ${request.displayName}',
+                        onSelected: () => _toggleFavorite(
+                          context,
+                          ref,
+                          isSaved: isSaved,
+                          savedFavorite: savedFavorite,
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              },
             ),
-            onPressed: () async {
-              final allowed = await requireFullAuthGuard(context);
-              if (!allowed || !context.mounted) return;
-
-              // Saved + overridden: the button applies + saves the new
-              // config onto the saved smart event (after confirmation).
-              if (isSaved && isDirty) {
-                final confirmed = await _confirmApplyChanges(context);
-                if (!confirmed || !context.mounted) return;
-                await onApplyChanges();
-                return;
-              }
-
-              final confirmed = await _confirmFavoriteChange(
-                context,
-                isSaved: isSaved,
-              );
-              if (!confirmed || !context.mounted) return;
-
-              final notifier = ref.read(favoriteEventsProvider.notifier);
-              if (isSaved) {
-                // Remove by the matched row's actual id — a legacy v1 row's
-                // id differs from the criteria-keyed id we'd compute today.
-                await notifier.removeFavorite(savedFavorite.eventId);
-                // Removing the saved smart event must also wipe the applied
-                // filter that generates its card on home — otherwise the
-                // generated card lingers even though the favorite is gone.
-                ref.read(eventAppliedFilterProvider.notifier).state =
-                    defaultFilterPopupState;
-                ref
-                    .read(filterPopupProvider.notifier)
-                    .setState(defaultFilterPopupState);
-                if (context.mounted) Navigator.of(context).pop();
-                return;
-              }
-
-              // Unsaved + overridden: persist the new config first (filter
-              // popup write-back) so the saved card and the generated cards
-              // reflect the same criteria.
-              if (isDirty) await onApplyChanges();
-              await notifier.addFavorite(
-                eventId: request.favoriteEventId,
-                eventName: request.displayName,
-                maxAvgElo: request.minElo > 0 ? request.minElo : null,
-                extraMetadata: request.toFavoriteMetadata(),
-              );
-            },
           ),
         ],
       ),
+    );
+  }
+
+  Future<void> _toggleFavorite(
+    BuildContext context,
+    WidgetRef ref, {
+    required bool isSaved,
+    required FavoriteEvent? savedFavorite,
+  }) async {
+    final allowed = await requireFullAuthGuard(context);
+    if (!allowed || !context.mounted) return;
+
+    // Saved + overridden: the action applies + saves the new
+    // config onto the saved smart event (after confirmation).
+    if (isSaved && isDirty) {
+      final confirmed = await _confirmApplyChanges(context);
+      if (!confirmed || !context.mounted) return;
+      await onApplyChanges();
+      return;
+    }
+
+    final confirmed = await _confirmFavoriteChange(
+      context,
+      isSaved: isSaved,
+    );
+    if (!confirmed || !context.mounted) return;
+
+    final notifier = ref.read(favoriteEventsProvider.notifier);
+    if (isSaved) {
+      // Remove by the matched row's actual id — a legacy v1 row's
+      // id differs from the criteria-keyed id we'd compute today.
+      await notifier.removeFavorite(savedFavorite!.eventId);
+      // Removing the saved smart event must also wipe the applied
+      // filter that generates its card on home — otherwise the
+      // generated card lingers even though the favorite is gone.
+      ref.read(eventAppliedFilterProvider.notifier).state =
+          defaultFilterPopupState;
+      ref.read(filterPopupProvider.notifier).setState(defaultFilterPopupState);
+      if (context.mounted) Navigator.of(context).pop();
+      return;
+    }
+
+    // Unsaved + overridden: persist the new config first (filter
+    // popup write-back) so the saved card and the generated cards
+    // reflect the same criteria.
+    if (isDirty) await onApplyChanges();
+    await notifier.addFavorite(
+      eventId: request.favoriteEventId,
+      eventName: request.displayName,
+      maxAvgElo: request.minElo > 0 ? request.minElo : null,
+      extraMetadata: request.toFavoriteMetadata(),
     );
   }
 }

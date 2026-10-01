@@ -2,8 +2,10 @@ import 'package:chessever2/screens/chessboard/game_review/game_analysis_report.d
     show GameMoveClassification;
 import 'package:chessever2/screens/chessboard/game_review/lichess_judgment.dart';
 import 'package:chessever2/screens/chessboard/game_review/move_position_facts.dart';
+import 'package:chessever2/screens/chessboard/game_review/saved_game_report.dart';
 import 'package:chessever2/screens/feed/logic/feed_pgn.dart';
 import 'package:chessever2/screens/feed/models/feed_models.dart';
+import 'package:chessever2/screens/for_you/discovery/models/report_game_type.dart';
 import 'package:dartchess/dartchess.dart';
 import 'package:flutter/foundation.dart';
 
@@ -49,6 +51,7 @@ class FeedClip {
     required this.plies,
     required this.result,
     required this.hasEvals,
+    required this.hasReport,
     required this.headlines,
     this.event,
   });
@@ -61,6 +64,10 @@ class FeedClip {
   /// `1-0`, `0-1`, `½-½` or null when unfinished / unknown.
   final String? result;
   final bool hasEvals;
+
+  /// Whether the PGN carries a ChessEver Game Report. The Feed only shows
+  /// games that have one.
+  final bool hasReport;
 
   /// Types of the severity-3 moments, in ply order.
   final List<FeedMomentType> headlines;
@@ -93,6 +100,7 @@ FeedClip? feedClipFromPgn(String pgn, {int maxHeadlines = kFlowMaxHeadlines}) {
     event: event == null || event.isEmpty || event == '?' ? null : event,
     result: game.result,
     hasEvals: game.hasEvals,
+    hasReport: hasSavedGameReport(pgn),
     headlines: [
       for (final ply in plies)
         if (ply.moment?.isHeadline ?? false) ply.moment!.type,
@@ -516,4 +524,25 @@ void _markGameEnd(List<_Candidate?> candidates, FeedPgnGame game) {
     '0-1' => 'Black wins',
     _ => 'Draw',
   }, 2);
+}
+
+/// Report evidence outranks rating alone. Bonuses saturate so a long game
+/// with many errors cannot swamp a concise, memorable clip.
+double feedReportInterest(FeedClip clip, {ReportGameType? type}) {
+  var score = switch (type) {
+    ReportGameType.upsideDown || ReportGameType.comeback => 1.2,
+    ReportGameType.greatEscape => 1.0,
+    ReportGameType.oneBlunder || ReportGameType.miniature => 0.7,
+    ReportGameType.squeeze || ReportGameType.domination => 0.5,
+    ReportGameType.deadlock => -0.4,
+    ReportGameType.marathon => -0.2,
+    null => 0.0,
+  };
+  if (clip.hasBrilliance) score += 1.5;
+  if (clip.hasDrama) score += 0.9;
+  if (clip.headlines.length >= 2) score += 0.3;
+  if ((clip.result == '1-0' || clip.result == '0-1') && clip.plyCount < 49) {
+    score += 0.3;
+  }
+  return score.clamp(0.0, 3.0);
 }

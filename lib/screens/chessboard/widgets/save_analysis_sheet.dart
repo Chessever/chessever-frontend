@@ -27,7 +27,6 @@ import 'package:chessever2/utils/user_error_message.dart';
 import 'package:chessever2/widgets/app_snack.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_animate/flutter_animate.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:motor/motor.dart';
 import 'package:smooth_sheets/smooth_sheets.dart';
@@ -187,10 +186,8 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
   /// already liked.
   List<String> _selectedTags = const <String>[];
 
-  /// Collapsible tag section state. Tags sit above Databases now and stay
-  /// expanded by default so the picker remains discoverable; users can collapse
-  /// it to keep the sheet short on small phones.
-  bool _tagsExpanded = true;
+  /// Tags are optional: keep the picker compact until the user opens it.
+  bool _tagsExpanded = false;
 
   @override
   void initState() {
@@ -1162,96 +1159,56 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
     return Material(
       key: e2eKey(E2eIds.saveAnalysisSheet),
       type: MaterialType.transparency,
-      child: SafeArea(
-        top: false,
-        child: SingleChildScrollView(
+      child: SheetContentScaffold(
+        backgroundColor: Colors.transparent,
+        bottomBarVisibility: const BottomBarVisibility.always(
+          ignoreBottomInset: true,
+        ),
+        bottomBar: ColoredBox(
+          color: context.colors.surface,
+          child: SafeArea(
+            top: false,
+            child: Padding(
+              padding: EdgeInsets.symmetric(vertical: 12.h),
+              child: _buildActionButtons(),
+            ),
+          ),
+        ),
+        body: SingleChildScrollView(
           physics: const BouncingScrollPhysics(),
-          child: Padding(
-            padding: EdgeInsets.only(
-              bottom: MediaQuery.of(context).viewInsets.bottom,
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // Drag handle
-                _buildDragHandle(),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Drag handle
+              _buildDragHandle(),
 
-                // Header
-                _buildHeader()
-                    .animate()
-                    .fadeIn(duration: 300.ms, delay: 50.ms)
-                    .slideY(
-                      begin: 0.1,
-                      end: 0,
-                      duration: 350.ms,
-                      curve: Curves.easeOutCubic,
-                    ),
+              // Header
+              _buildHeader(),
 
-                SizedBox(height: 24.h),
+              SizedBox(height: 16.h),
 
-                // Game Details (PGN Headers)
-                _buildGameDetailsSection()
-                    .animate()
-                    .fadeIn(duration: 300.ms, delay: 100.ms)
-                    .slideY(
-                      begin: 0.1,
-                      end: 0,
-                      duration: 350.ms,
-                      curve: Curves.easeOutCubic,
-                    ),
+              // Game Details (PGN Headers)
+              _buildGameDetailsSection(),
 
-                SizedBox(height: 24.h),
+              SizedBox(height: 8.h),
 
-                // Tag (My-Likes classification) — above Databases per PM feedback.
-                _buildTagsSection()
-                    .animate()
-                    .fadeIn(duration: 300.ms, delay: 150.ms)
-                    .slideY(
-                      begin: 0.1,
-                      end: 0,
-                      duration: 350.ms,
-                      curve: Curves.easeOutCubic,
-                    ),
+              // Tag (My-Likes classification) — above Databases per PM feedback.
+              _buildTagsSection(),
 
-                SizedBox(height: 24.h),
+              SizedBox(height: 8.h),
 
-                // Folder section (Databases)
-                _buildFolderSection(foldersAsync)
-                    .animate()
-                    .fadeIn(duration: 300.ms, delay: 175.ms)
-                    .slideY(
-                      begin: 0.1,
-                      end: 0,
-                      duration: 350.ms,
-                      curve: Curves.easeOutCubic,
-                    ),
+              // Folder section (Databases)
+              _buildFolderSection(foldersAsync),
 
-                // Error messages
-                if (_errorMessage != null) ...[
-                  SizedBox(height: 16.h),
-                  _buildErrorMessage()
-                      .animate()
-                      .fadeIn(duration: 200.ms)
-                      .shake(hz: 2, curve: Curves.easeInOut),
-                ],
-
-                SizedBox(height: 28.h),
-
-                // Action buttons
-                _buildActionButtons()
-                    .animate()
-                    .fadeIn(duration: 300.ms, delay: 200.ms)
-                    .slideY(
-                      begin: 0.1,
-                      end: 0,
-                      duration: 350.ms,
-                      curve: Curves.easeOutCubic,
-                    ),
-
+              // Error messages
+              if (_errorMessage != null) ...[
                 SizedBox(height: 16.h),
+                _buildErrorMessage(),
               ],
-            ),
+
+              SizedBox(height: 16.h),
+            ],
           ),
         ),
       ),
@@ -1835,104 +1792,94 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
             onTap: () {
               setState(() => _tagsExpanded = !_tagsExpanded);
             },
-            child: Row(
-              children: [
-                Text(
-                  'Tag',
-                  style: AppTypography.textSmMedium.copyWith(
-                    color: colors.textPrimary.withValues(alpha: 0.8),
-                    letterSpacing: 0.3,
-                  ),
-                ),
-                if (selectedCount > 0) ...[
-                  SizedBox(width: 8.w),
-                  Container(
-                    padding: EdgeInsets.symmetric(
-                      horizontal: 7.w,
-                      vertical: 2.h,
-                    ),
-                    decoration: BoxDecoration(
-                      color: colors.textPrimary.withValues(alpha: 0.08),
-                      borderRadius: BorderRadius.circular(999.br),
-                    ),
-                    child: Text(
-                      '$selectedCount',
-                      style: AppTypography.textXsMedium.copyWith(
-                        color: colors.textSecondary,
-                        fontWeight: FontWeight.w600,
-                      ),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(minHeight: 44),
+              child: Row(
+                children: [
+                  Text(
+                    'Tags',
+                    style: AppTypography.textSmMedium.copyWith(
+                      color: colors.textPrimary.withValues(alpha: 0.8),
+                      letterSpacing: 0.3,
                     ),
                   ),
-                ],
-                const Spacer(),
-                if (selectedCount > 0)
-                  GestureDetector(
-                    behavior: HitTestBehavior.opaque,
-                    onTap:
-                        _isSaving
-                            ? null
-                            : () {
-                              _handleTagSelection(null);
-                            },
-                    child: Padding(
-                      padding: EdgeInsets.symmetric(
-                        horizontal: 6.w,
-                        vertical: 2.h,
-                      ),
+                  if (selectedCount > 0) ...[
+                    SizedBox(width: 8.w),
+                    Expanded(
                       child: Text(
-                        'Clear',
+                        '$selectedCount selected',
                         style: AppTypography.textXsMedium.copyWith(
                           color: colors.textSecondary,
+                          fontWeight: FontWeight.w600,
                         ),
                       ),
                     ),
+                  ] else
+                    const Spacer(),
+                  if (selectedCount > 0)
+                    GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onTap: _isSaving
+                          ? null
+                          : () {
+                              _handleTagSelection(null);
+                            },
+                      child: Padding(
+                        padding: EdgeInsets.symmetric(
+                          horizontal: 10.w,
+                          vertical: 12,
+                        ),
+                        child: Text(
+                          'Clear',
+                          style: AppTypography.textXsMedium.copyWith(
+                            color: colors.textSecondary,
+                          ),
+                        ),
+                      ),
+                    ),
+                  SizedBox(width: 2.w),
+                  AnimatedRotation(
+                    turns: _tagsExpanded ? 0.5 : 0.0,
+                    duration: const Duration(milliseconds: 220),
+                    curve: Curves.easeOutCubic,
+                    child: Icon(
+                      Icons.keyboard_arrow_down_rounded,
+                      size: 20.sp,
+                      color: colors.textSecondary,
+                    ),
                   ),
-                SizedBox(width: 2.w),
-                AnimatedRotation(
-                  turns: _tagsExpanded ? 0.5 : 0.0,
-                  duration: const Duration(milliseconds: 220),
-                  curve: Curves.easeOutCubic,
-                  child: Icon(
-                    Icons.keyboard_arrow_down_rounded,
-                    size: 20.sp,
-                    color: colors.textSecondary,
-                  ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
           AnimatedSize(
             duration: const Duration(milliseconds: 220),
             curve: Curves.easeOutCubic,
             alignment: Alignment.topCenter,
-            child:
-                _tagsExpanded
-                    ? Padding(
-                      padding: EdgeInsets.only(top: 14.h),
-                      child: Wrap(
-                        spacing: 8.w,
-                        runSpacing: 8.h,
-                        children: [
-                          for (final tag in kLikeTags)
-                            () {
-                              final selected = _selectedTags.contains(
-                                tag.label,
-                              );
-                              return _TagChip(
-                                tag: tag,
-                                selected: selected,
-                                onTap:
-                                    _isSaving
-                                        ? null
-                                        : () {
-                                          _handleTagSelection(tag.label);
-                                        },
-                              );
-                            }(),
-                        ],
-                      ),
-                    )
-                    : const SizedBox(width: double.infinity),
+            child: _tagsExpanded
+                ? Padding(
+                    padding: EdgeInsets.only(top: 14.h),
+                    child: Wrap(
+                      spacing: 8.w,
+                      runSpacing: 8.h,
+                      children: [
+                        for (final tag in kLikeTags)
+                          () {
+                            final selected = _selectedTags.contains(tag.label);
+                            return _TagChip(
+                              tag: tag,
+                              selected: selected,
+                              onTap: _isSaving
+                                  ? null
+                                  : () {
+                                      _handleTagSelection(tag.label);
+                                    },
+                            );
+                          }(),
+                      ],
+                    ),
+                  )
+                : const SizedBox(width: double.infinity),
           ),
         ],
       ),
@@ -2024,8 +1971,11 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           // Section header with toggle
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          Wrap(
+            alignment: WrapAlignment.spaceBetween,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            spacing: 12.w,
+            runSpacing: 8.h,
             children: [
               Text(
                 'Save to Database',
@@ -2599,155 +2549,89 @@ class _SaveAnalysisPageState extends ConsumerState<_SaveAnalysisPage>
     final selectedDatabaseCount =
         _selectedFoldersById.length + (hasValidNewFolderName ? 1 : 0);
 
+    final actionLabel = canSave
+        ? (_isDuplicateMode
+              ? 'Save Copy'
+              : (saveSeparateFromLiked
+                    ? (selectedDatabaseCount > 1
+                          ? 'Save to Databases'
+                          : 'Save to Database')
+                    : (_isEditMode ? 'Update Game' : 'Save Analysis')))
+        : (_isCreatingNewFolder ? 'Name your database' : 'Select a Database');
+
     return Padding(
       padding: EdgeInsets.symmetric(horizontal: 24.w),
-      child: Row(
-        children: [
-          // Cancel button
-          Expanded(
-            child: GestureDetector(
-              onTap:
-                  _isSaving
-                      ? null
-                      : () {
-                        HapticFeedback.lightImpact();
-                        Navigator.of(widget.config.hostContext).pop();
-                      },
-              child: Container(
-                padding: EdgeInsets.symmetric(vertical: 16.h),
-                decoration: BoxDecoration(
-                  color: context.colors.textPrimary.withValues(alpha: 0.05),
-                  borderRadius: BorderRadius.circular(14.br),
-                  border: Border.all(
-                    color: context.colors.textPrimary.withValues(alpha: 0.1),
+      child: IntrinsicHeight(
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            TextButton(
+              onPressed: _isSaving
+                  ? null
+                  : () {
+                      HapticFeedback.lightImpact();
+                      Navigator.of(widget.config.hostContext).pop();
+                    },
+              style: TextButton.styleFrom(
+                foregroundColor: context.colors.textSecondary,
+                minimumSize: const Size(64, 48),
+                padding: EdgeInsets.symmetric(horizontal: 12.w),
+                textStyle: AppTypography.textSmMedium,
+              ),
+              child: const Text('Cancel'),
+            ),
+            SizedBox(width: 12.w),
+            Expanded(
+              child: FilledButton(
+                onPressed: canSave ? _handleSave : null,
+                style: FilledButton.styleFrom(
+                  backgroundColor: context.colors.textPrimary,
+                  foregroundColor: context.colors.surface,
+                  disabledBackgroundColor: context.colors.textPrimary
+                      .withValues(alpha: 0.08),
+                  disabledForegroundColor: context.textInk(0.5),
+                  minimumSize: const Size(0, 48),
+                  padding: EdgeInsets.symmetric(
+                    horizontal: 12.w,
+                    vertical: 12.h,
                   ),
-                ),
-                child: Center(
-                  child: Text(
-                    'Cancel',
-                    style: AppTypography.textSmMedium.copyWith(
-                      color: context.colors.textPrimary.withValues(alpha: 0.7),
-                    ),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14.br),
                   ),
+                  textStyle: AppTypography.textSmBold,
                 ),
+                child: _isSaving
+                    ? SizedBox.square(
+                        dimension: 20.sp,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: context.colors.textPrimary,
+                        ),
+                      )
+                    : Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            _isDuplicateMode || saveSeparateFromLiked
+                                ? Icons.content_copy_rounded
+                                : (_isEditMode
+                                      ? Icons.check_rounded
+                                      : Icons.bookmark_add_rounded),
+                            size: 18.sp,
+                          ),
+                          SizedBox(width: 8.w),
+                          Flexible(
+                            child: Text(
+                              actionLabel,
+                              textAlign: TextAlign.center,
+                            ),
+                          ),
+                        ],
+                      ),
               ),
             ),
-          ),
-          SizedBox(width: 12.w),
-          // Save button
-          Expanded(
-            flex: 2,
-            child: GestureDetector(
-              onTap: canSave ? _handleSave : null,
-              child: SingleMotionBuilder(
-                motion: const CupertinoMotion.smooth(),
-                value: _isSaving ? 0.95 : 1.0,
-                builder: (context, value, child) {
-                  final scale = value.clamp(0.0, 1.0).toDouble();
-                  return Transform.scale(
-                    scale: scale,
-                    child: AnimatedContainer(
-                      duration: const Duration(milliseconds: 200),
-                      padding: EdgeInsets.symmetric(vertical: 16.h),
-                      decoration: BoxDecoration(
-                        gradient:
-                            canSave
-                                ? LinearGradient(
-                                  colors: [
-                                    kPrimaryColor,
-                                    kPrimaryColor.withValues(alpha: 0.8),
-                                  ],
-                                  begin: Alignment.topLeft,
-                                  end: Alignment.bottomRight,
-                                )
-                                : null,
-                        color:
-                            canSave
-                                ? null
-                                : context.colors.textPrimary.withValues(
-                                  alpha: 0.08,
-                                ),
-                        borderRadius: BorderRadius.circular(14.br),
-                        boxShadow:
-                            canSave
-                                ? [
-                                  context.isLightTheme
-                                      ? BoxShadow(
-                                        color: context.colors.shadow,
-                                        blurRadius: 4,
-                                        offset: const Offset(0, 1),
-                                      )
-                                      : BoxShadow(
-                                        color: kPrimaryColor.withValues(
-                                          alpha: 0.3,
-                                        ),
-                                        blurRadius: 20,
-                                        offset: const Offset(0, 8),
-                                      ),
-                                ]
-                                : null,
-                      ),
-                      child: Center(
-                        child:
-                            _isSaving
-                                ? SizedBox(
-                                  width: 20.w,
-                                  height: 20.h,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                    valueColor: AlwaysStoppedAnimation<Color>(
-                                      context.colors.textPrimary,
-                                    ),
-                                  ),
-                                )
-                                : Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Icon(
-                                      _isDuplicateMode || saveSeparateFromLiked
-                                          ? Icons.content_copy_rounded
-                                          : (_isEditMode
-                                              ? Icons.check_rounded
-                                              : Icons.bookmark_add_rounded),
-                                      color:
-                                          canSave
-                                              ? context.colors.textPrimary
-                                              : context.textInk(0.3),
-                                      size: 18.sp,
-                                    ),
-                                    SizedBox(width: 8.w),
-                                    Text(
-                                      canSave
-                                          ? (_isDuplicateMode
-                                              ? 'Save Copy'
-                                              : (saveSeparateFromLiked
-                                                  ? (selectedDatabaseCount > 1
-                                                      ? 'Save to Databases'
-                                                      : 'Save to Database')
-                                                  : (_isEditMode
-                                                      ? 'Update Game'
-                                                      : 'Save Analysis')))
-                                          : _isCreatingNewFolder
-                                          ? 'Name your database'
-                                          : 'Select a Database',
-                                      style: AppTypography.textSmBold.copyWith(
-                                        color:
-                                            canSave
-                                                ? context.colors.textPrimary
-                                                : context.textInk(0.3),
-                                        letterSpacing: 0.3,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                      ),
-                    ),
-                  );
-                },
-              ),
-            ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }

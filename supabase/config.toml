@@ -45,3 +45,7 @@ verify_jwt = false
 # NEVER set this to true.
 [functions.live-activity-refresh]
 verify_jwt = false
+
+# Validates the session and OneSignal device ownership in the function.
+[functions.push-token-sync]
+verify_jwt = false
