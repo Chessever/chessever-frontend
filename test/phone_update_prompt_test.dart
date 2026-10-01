@@ -174,9 +174,14 @@ void main() {
     now = now.add(const Duration(microseconds: 1));
     await resume(tester);
     expect(find.byType(AlertDialog), findsOneWidget);
+    // Dismissing (outside tap, back) counts as "later", as Upgrader's own
+    // alert-again window did: it must not return on every resume.
     navigator.currentState!.pop();
     await tester.pumpAndSettle();
     now = now.add(const Duration(hours: 1));
+    await resume(tester);
+    expect(find.byType(AlertDialog), findsNothing);
+    now = now.add(const Duration(hours: 72));
     await resume(tester);
     expect(find.byType(AlertDialog), findsOneWidget);
   });

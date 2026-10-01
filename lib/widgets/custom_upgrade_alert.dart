@@ -165,7 +165,7 @@ class CustomUpgradeAlertState extends State<CustomUpgradeAlert>
       if (navigatorContext == null || !navigatorContext.mounted) return;
       final messages = widget.upgrader.determineMessages(navigatorContext);
       final theme = _dialogTheme(context);
-      await showDialog<void>(
+      final choice = await showDialog<_UpdateChoice>(
         context: navigatorContext,
         barrierDismissible: !mandatory,
         builder: (dialogContext) => Theme(
@@ -179,6 +179,11 @@ class CustomUpgradeAlertState extends State<CustomUpgradeAlert>
           ),
         ),
       );
+      // Dismissing an optional offer (outside tap, back) is a "later" too.
+      // Without this it would return on every safe resume, with no cooldown.
+      if (choice == null && !mandatory) {
+        await _reminder.snooze(offered);
+      }
       // Resumes while a dialog is already open are satisfied by that dialog.
       _entryArmed = false;
       _manualPending = false;
@@ -237,6 +242,9 @@ class CustomUpgradeAlertState extends State<CustomUpgradeAlert>
   }
 }
 
+/// How the dialog was closed; null when it was dismissed.
+enum _UpdateChoice { later, update }
+
 class _PhoneStoreUpdateDialog extends StatefulWidget {
   const _PhoneStoreUpdateDialog({
     required this.upgrader,
@@ -261,16 +269,16 @@ class _PhoneStoreUpdateDialogState extends State<_PhoneStoreUpdateDialog> {
   bool _acting = false;
   String? _error;
 
-  void _closeDialog() {
-    final route = ModalRoute.of(context);
+  void _closeDialog(_UpdateChoice choice) {
+    final route = ModalRoute.of<_UpdateChoice>(context);
     if (route == null || !route.isActive) return;
     final navigator = Navigator.of(context);
     if (route.isCurrent) {
-      navigator.pop();
+      navigator.pop(choice);
     } else {
       // A deep link can push a game while a preference/store future is pending.
       // Remove this exact dialog, never pop the newly opened game above it.
-      navigator.removeRoute(route);
+      navigator.removeRoute(route, choice);
     }
   }
 
@@ -281,7 +289,7 @@ class _PhoneStoreUpdateDialogState extends State<_PhoneStoreUpdateDialog> {
       final saved = await widget.reminder.snooze(widget.offeredVersion);
       if (!mounted) return;
       if (saved) {
-        _closeDialog();
+        _closeDialog(_UpdateChoice.later);
       } else {
         setState(() => _error = 'Could not save reminder. Please try again.');
       }
@@ -300,7 +308,7 @@ class _PhoneStoreUpdateDialogState extends State<_PhoneStoreUpdateDialog> {
     try {
       // Keep Upgrader's existing platform-specific store launch contract.
       await widget.upgrader.sendUserToAppStore();
-      if (mounted && !widget.mandatory) _closeDialog();
+      if (mounted && !widget.mandatory) _closeDialog(_UpdateChoice.update);
     } catch (_) {
       if (mounted) {
         setState(() => _error = 'Could not open update. Please try again.');
