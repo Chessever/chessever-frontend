@@ -55,7 +55,7 @@ const int kExplorerGamesDiskMaxPageBytes = 256 * 1024;
 const Duration kExplorerGamesDiskMaxAge = Duration(days: 7);
 
 /// Bump whenever what a saved page means changes, so old files are ignored.
-const String kExplorerGamesCacheSchema = 'gbpg:v1';
+const String kExplorerGamesCacheSchema = 'gbpg:v2';
 
 /// Where the rows a games list painted came from.
 enum ExplorerGamesSource {
