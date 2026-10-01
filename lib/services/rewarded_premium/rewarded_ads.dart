@@ -50,7 +50,13 @@ class RewardedAds {
     if (!RewardedAdsConfig.available) {
       throw StateError('Rewarded ads unavailable');
     }
+    await prepareConsent(context);
+  }
+
+  /// Shared ATT, UMP and SDK setup for rewarded and native placements.
+  Future<void> prepareConsent(BuildContext context) async {
     await AttPromptService.instance.ensurePrompted(context);
+    if (!context.mounted) return;
     await (_consent ??= _requestConsent());
     if (!await ConsentInformation.instance.canRequestAds()) {
       throw StateError('Ads are unavailable with the current privacy settings');

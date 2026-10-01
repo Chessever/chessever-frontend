@@ -1,4 +1,5 @@
 import 'package:chessever2/services/rewarded_premium/rewarded_ads.dart';
+import 'package:chessever2/services/native_ads_config.dart';
 import 'package:chessever2/services/rewarded_premium/rewarded_access_provider.dart';
 import 'package:chessever2/widgets/profile_avatar_editor.dart';
 import 'dart:io';
@@ -760,7 +761,7 @@ class _AboutDialog extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     ref.watch(rewardedAccessProvider);
-    final rewarded = RewardedAdsConfig.available
+    final rewarded = (RewardedAdsConfig.available || NativeAdsConfig.available)
         ? ref.read(rewardedAccessProvider.notifier)
         : null;
     return Container(
