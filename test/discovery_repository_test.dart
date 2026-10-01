@@ -8,6 +8,7 @@ import 'package:chessever2/repository/supabase/tour/tour.dart';
 import 'package:chessever2/repository/supabase/tour/tour_repository.dart';
 import 'package:chessever2/screens/for_you/discovery/data/discovery_repository.dart';
 import 'package:chessever2/screens/for_you/discovery/models/discovery_models.dart';
+import 'package:chessever2/screens/for_you/discovery/models/report_game_type.dart';
 import 'package:chessever2/screens/for_you/discovery/providers/discovery_providers.dart';
 import 'package:chessever2/screens/gamebase/models/gamebase_game.dart';
 import 'package:chessever2/screens/my_space/models/space_game_card.dart';
@@ -773,6 +774,27 @@ void main() {
       },
     );
 
+    test(
+      'type filters use the full archive RPC with the same cursor and embeds',
+      () async {
+        rows = [report('match')];
+        await repository.fetchAnalyzedGamesPage(
+          gameType: ReportGameType.comeback,
+          after: (lastMoveTime: null, gameId: 'previous'),
+        );
+        final req = requests.single;
+        expect(req.method, 'GET');
+        expect(req.url.path, '/rest/v1/rpc/report_games_by_type');
+        expect(req.url.queryParameters['p_type'], 'comeback');
+        expect(req.url.queryParameters['id'], 'gt.previous');
+        expect(
+          req.url.queryParameters['select'],
+          contains('tours!games_tour_id_fkey'),
+        );
+        expect(req.url.queryParameters['pgn'], r'like.%[\%eval %');
+      },
+    );
+
     test('undated games continue by id after all dated games', () async {
       rows = [report('b', time: null), report('c', time: null)];
       final page = await repository.fetchAnalyzedGamesPage(
@@ -856,6 +878,40 @@ void main() {
       },
     );
   }
+
+  test(
+    'an old backend keeps All working and exposes unavailable type filters',
+    () async {
+      final client = SupabaseClient(
+        'https://example.test',
+        'placeholder',
+        httpClient: MockClient((request) async {
+          if (request.url.path.contains('/rpc/')) {
+            return http.Response(
+              jsonEncode({'code': 'PGRST202', 'message': 'missing function'}),
+              404,
+              headers: {'content-type': 'application/json'},
+              request: request,
+            );
+          }
+          return _json([], request);
+        }),
+      );
+      addTearDown(client.dispose);
+      final repository = DiscoveryRepository(
+        client: () => client,
+        games: _NoGameRepository(),
+        tours: _NoTours(),
+        gamebase: _NoArchive(),
+      );
+      expect((await repository.fetchAnalyzedGamesPage()).items, isEmpty);
+      await expectLater(
+        repository.fetchAnalyzedGamesPage(gameType: ReportGameType.marathon),
+        throwsA(isA<ReportGameTypesUnavailable>()),
+      );
+      expect((await repository.fetchAnalyzedGamesPage()).items, isEmpty);
+    },
+  );
 
   test('a stalled Reports connection is aborted within ten seconds', () async {
     final httpClient = _StalledClient();

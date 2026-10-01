@@ -201,7 +201,7 @@ void main() {
     test('FEN games: the same GET and parameters as before', () {
       final request = repo.fenPositionGamesRequest(
         fen: _fen,
-        playerId: 'p1',
+        playerId: '00000000-0000-4000-8000-000000000001',
         sortBy: GamebaseSortField.date,
         sortDirection: GamebaseSortDirection.desc,
       );
@@ -211,7 +211,7 @@ void main() {
         request.payload,
         GamebaseRepository.buildFenPositionGamesQueryParameters(
           fen: _fen,
-          playerId: 'p1',
+          playerId: '00000000-0000-4000-8000-000000000001',
           sortBy: GamebaseSortField.date,
           sortDirection: GamebaseSortDirection.desc,
         ),
@@ -397,10 +397,10 @@ void main() {
         await container.read(positionGamesProvider(first).future);
         final callsAfterFirst = repo.calls;
 
-        // Sixty other first pages, as stepping through a line warms them.
+        // Sixty other filtered first pages, as explorer use warms them.
         for (var i = 0; i < 60; i++) {
           await container.read(
-            positionGamesProvider(_query(uci: 'a2a3-$i')).future,
+            positionGamesProvider(_query(filters: GamebaseFilters(minRating: 2000 + i))).future,
           );
           now = now.add(const Duration(milliseconds: 500));
         }
@@ -449,7 +449,7 @@ void main() {
         final cache = container.read(explorerGamesCacheProvider);
 
         // A burst of pages settles, then the reader leaves the explorer.
-        final queries = [for (var i = 0; i < 5; i++) _query(uci: 'a2a3-$i')];
+        final queries = [for (var i = 0; i < 5; i++) _query(filters: GamebaseFilters(minRating: 2000 + i))];
         for (final query in queries) {
           await container.read(positionGamesProvider(query).future);
         }

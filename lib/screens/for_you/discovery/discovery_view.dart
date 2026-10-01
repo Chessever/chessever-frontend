@@ -76,7 +76,7 @@ class _DiscoveryViewState extends ConsumerState<DiscoveryView> {
                       right: HubTile(
                         key: const ValueKey('discovery_likes_tile'),
                         title: 'Likes',
-                        caption: 'Saved games & rankings',
+                        caption: 'Community favorites',
                         artwork: const HubSceneBackdrop(
                           scene: HubScene.mostLiked,
                         ),

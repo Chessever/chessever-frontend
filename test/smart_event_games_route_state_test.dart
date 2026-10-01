@@ -4,10 +4,13 @@ import 'package:chessever2/providers/favorite_events_provider.dart';
 import 'package:chessever2/repository/favorites/models/favorite_event.dart';
 import 'package:chessever2/screens/group_event/smart_event/smart_aggregate_event_provider.dart';
 import 'package:chessever2/screens/group_event/smart_event/smart_event_screen.dart';
+import 'package:chessever2/screens/group_event/widget/appbar_icons_widget.dart';
 import 'package:chessever2/screens/my_space/models/space_shortcut.dart';
 import 'package:chessever2/screens/my_space/providers/space_shortcuts_provider.dart';
+import 'package:chessever2/screens/tour_detail/games_tour/providers/games_list_view_mode_provider.dart';
 import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/utils/svg_asset.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -21,6 +24,13 @@ class _LoadedAggregateNotifier extends SmartAggregateEventNotifier {
 class _TestBoardSettingsNotifier extends BoardSettingsNotifierNew {
   @override
   Future<BoardSettingsNew> build() async => const BoardSettingsNew();
+
+  @override
+  Future<void> setGamesListViewModeIndex(int index) async {
+    state = AsyncData(
+      state.requireValue.copyWith(gamesListViewModeIndex: index),
+    );
+  }
 }
 
 class _TestFavoriteEventsNotifier extends FavoriteEventsNotifier {
@@ -28,7 +38,7 @@ class _TestFavoriteEventsNotifier extends FavoriteEventsNotifier {
   Future<List<FavoriteEvent>> build() async => const [];
 }
 
-/// The app bar's My Space button watches this; the real notifier reads the
+/// The app bar's My Space menu action watches this; the real notifier reads the
 /// SQLite cache, which has no backend under widget tests.
 class _TestSpaceShortcutsNotifier extends SpaceShortcutsNotifier {
   @override
@@ -50,6 +60,84 @@ SmartEventRequest _request() {
 }
 
 void main() {
+  testWidgets('Smart Event menu contains saving and layout cycles as usual', (
+    tester,
+  ) async {
+    final request = _request();
+    final container = ProviderContainer(
+      overrides: [
+        boardSettingsProviderNew.overrideWith(_TestBoardSettingsNotifier.new),
+        favoriteEventsProvider.overrideWith(_TestFavoriteEventsNotifier.new),
+        spaceShortcutsProvider.overrideWith(_TestSpaceShortcutsNotifier.new),
+        smartAggregateEventRepositoryProvider.overrideWith(
+          (ref, query) => _LoadedAggregateNotifier(ref, query),
+        ),
+      ],
+    );
+    addTearDown(container.dispose);
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: MaterialApp(
+          theme: AppTheme.darkTheme,
+          navigatorObservers: [routeObserver],
+          home: Builder(
+            builder: (context) {
+              ResponsiveHelper.init(context);
+              return SmartEventScreen(request: request);
+            },
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 1));
+
+    final layout = find.byWidgetPredicate(
+      (widget) => widget is AppBarIcons && widget.image == SvgAsset.chase_grid,
+    );
+    final menu = find.byWidgetPredicate(
+      (widget) => widget is AppBarIcons && widget.image == SvgAsset.threeDots,
+    );
+    expect(find.byType(AppBarIcons), findsNWidgets(2));
+    expect(layout, findsOneWidget);
+    expect(menu, findsOneWidget);
+    expect(find.byIcon(Icons.bookmark_border_rounded), findsNothing);
+    expect(find.text('Add to My Space'), findsNothing);
+
+    expect(
+      container.read(gamesListViewModeProvider),
+      GamesListViewMode.chessBoardGrid,
+    );
+    for (final expected in [
+      GamesListViewMode.chessBoard,
+      GamesListViewMode.gamesCard,
+      GamesListViewMode.chessBoardGrid,
+    ]) {
+      await tester.tap(layout);
+      await tester.pump();
+      await tester.pump(const Duration(seconds: 1));
+      expect(container.read(gamesListViewModeProvider), expected);
+    }
+
+    await tester.tap(menu);
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 1));
+    expect(find.text('Add to My Space'), findsOneWidget);
+    expect(find.text('Save ${request.displayName}'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+
+    // Dismissing the menu leaves the header free of standalone save actions.
+    tester.state<NavigatorState>(find.byType(Navigator)).pop();
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 1));
+    expect(find.text('Add to My Space'), findsNothing);
+    expect(find.text('Save ${request.displayName}'), findsNothing);
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump();
+  });
+
   testWidgets(
     'Games keeps the same list and provider across routes and sibling tabs',
     (tester) async {

@@ -9,6 +9,7 @@ class CollectionSearchQuery {
     this.minYear,
     this.maxYear,
     this.author = '',
+    this.authorId = '',
     this.annotated = false,
     this.sort = 'default',
   });
@@ -19,6 +20,7 @@ class CollectionSearchQuery {
   final int? minYear;
   final int? maxYear;
   final String author;
+  final String authorId;
 
   factory CollectionSearchQuery.recentYears() {
     final year = DateTime.now().year;
@@ -31,7 +33,7 @@ class CollectionSearchQuery {
       (eco.isEmpty ? 0 : 1) +
       (result.isEmpty ? 0 : 1) +
       (year == null && minYear == null && maxYear == null ? 0 : 1) +
-      (author.isEmpty ? 0 : 1) +
+      (author.isEmpty && authorId.isEmpty ? 0 : 1) +
       (annotated ? 1 : 0) +
       (sort == 'default' ? 0 : 1);
   bool get isActive => text.trim().isNotEmpty || filterCount > 0;
@@ -43,6 +45,7 @@ class CollectionSearchQuery {
     if (minYear != null) 'minYear': minYear,
     if (maxYear != null) 'maxYear': maxYear,
     if (author.isNotEmpty) 'author': author,
+    if (authorId.isNotEmpty) 'authorId': authorId,
     if (annotated) 'annotated': 'true',
     if (sort != 'default') 'sort': sort,
   };
@@ -54,6 +57,7 @@ class CollectionSearchQuery {
     minYear: minYear,
     maxYear: maxYear,
     author: author,
+    authorId: authorId,
     annotated: annotated,
     sort: sort,
   );
@@ -67,6 +71,7 @@ class CollectionSearchQuery {
       minYear == other.minYear &&
       maxYear == other.maxYear &&
       author == other.author &&
+      authorId == other.authorId &&
       annotated == other.annotated &&
       sort == other.sort;
   @override
@@ -78,6 +83,7 @@ class CollectionSearchQuery {
     minYear,
     maxYear,
     author,
+    authorId,
     annotated,
     sort,
   );

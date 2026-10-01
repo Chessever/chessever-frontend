@@ -84,11 +84,10 @@ enum SpaceSection {
 }
 
 extension SpaceShortcutKindX on SpaceShortcutKind {
-  /// My Space currently exposes only databases and smart events. Keep the
+  /// My Space exposes events, databases and smart events. Keep the
   /// other kinds and their navigation intact for previously saved data.
   bool get canAddToMySpace => switch (this) {
     // Product scope: temporarily disabled, not removed from persistence.
-    // SpaceShortcutKind.event ||
     // SpaceShortcutKind.player ||
     // SpaceShortcutKind.playerGames ||
     // SpaceShortcutKind.countrymen ||
@@ -98,6 +97,7 @@ extension SpaceShortcutKindX on SpaceShortcutKind {
     // SpaceShortcutKind.opening ||
     // SpaceShortcutKind.position ||
     // SpaceShortcutKind.playerOpenings ||
+    SpaceShortcutKind.event ||
     SpaceShortcutKind.folder ||
     SpaceShortcutKind.collection ||
     SpaceShortcutKind.smartEvent => true,
@@ -133,7 +133,7 @@ extension SpaceShortcutKindX on SpaceShortcutKind {
 
 extension SpaceSectionX on SpaceSection {
   bool get supportsAddingToMySpace =>
-      // this == SpaceSection.events ||
+      this == SpaceSection.events ||
       this == SpaceSection.library ||
       // this == SpaceSection.players ||
       // this == SpaceSection.games ||

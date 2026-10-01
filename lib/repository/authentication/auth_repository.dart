@@ -124,6 +124,28 @@ class AuthController extends AutoDisposeAsyncNotifier<AppAuthState> {
     return const AppAuthState.unauthenticated();
   }
 
+  /// The upload endpoint has already saved this account's photo. Reflect it
+  /// immediately, then synchronize the SDK session without refreshing tokens.
+  Future<void> updateProfileAvatar(String userId, String url) async {
+    final user = state.valueOrNull?.user;
+    if (user == null ||
+        user.id != userId ||
+        _supabase.auth.currentUser?.id != userId) {
+      return;
+    }
+    state = AsyncData(
+      AppAuthState.authenticated(user.copyWith(avatarUrl: url)),
+    );
+    try {
+      await _supabase.auth.updateUser(
+        UserAttributes(data: {'profile_avatar_url': url, 'avatar_url': url}),
+      );
+    } catch (_) {
+      // A successful server upload stays successful during a connectivity loss.
+      // Supabase's next normal auth refresh will also carry the saved photo.
+    }
+  }
+
   /// Fire `af_complete_registration` once, on the very first signIn event for
   /// a freshly-created Supabase user. Gated on `createdAt` within the last
   /// 2 minutes so session restores and repeat logins never re-fire it.

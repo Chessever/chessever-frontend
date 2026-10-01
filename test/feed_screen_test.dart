@@ -14,6 +14,7 @@ import 'package:chessever2/screens/feed/models/feed_models.dart';
 import 'package:chessever2/screens/feed/news/feed_news.dart';
 import 'package:chessever2/screens/feed/providers/feed_eval_provider.dart';
 import 'package:chessever2/screens/feed/providers/feed_provider.dart';
+import 'package:chessever2/screens/for_you/discovery/models/report_game_type.dart';
 import 'package:chessever2/screens/feed/puzzles/feed_puzzle.dart';
 import 'package:chessever2/screens/feed/widgets/feed_live_board.dart';
 import 'package:chessever2/screens/feed/widgets/feed_glyphs.dart';
@@ -114,12 +115,25 @@ void main() {
       await tester.tapAt(board);
       await tester.pump(const Duration(milliseconds: 300));
       expect(find.byKey(const ValueKey('feed_paused')), findsOneWidget);
+      expect(
+        tester
+            .widget<AnimatedOpacity>(find.byKey(const ValueKey('feed_paused')))
+            .opacity,
+        1,
+      );
 
-      // Paused means paused: time passes, the move does not.
+      // Paused means paused: time passes, the move does not. The pause
+      // confirmation fades away on its own, leaving the board clean.
       final pausedAt = feed.sound.played.length;
       await tester.pump(const Duration(seconds: 2));
       expect(feed.sound.played.length, pausedAt);
       expect(find.byKey(const ValueKey('feed_paused')), findsOneWidget);
+      expect(
+        tester
+            .widget<AnimatedOpacity>(find.byKey(const ValueKey('feed_paused')))
+            .opacity,
+        0,
+      );
 
       // Tap again → resumes and moves on.
       await tester.tapAt(board);
@@ -473,6 +487,32 @@ void main() {
     await _tearDown(tester);
   });
 
+  testWidgets('the header uses the report category instead of source labels', (
+    tester,
+  ) async {
+    await _pumpFeed(
+      tester,
+      games: [
+        _scholarsMate(
+          reportType: ReportGameType.comeback,
+          signal: const FeedSignal(FeedSignalKind.liked, count: 25),
+        ),
+      ],
+    );
+    expect(find.text('Comeback'), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('feed_header_report_type')),
+      findsOneWidget,
+    );
+    expect(find.byKey(const ValueKey('feed_header_signal')), findsNothing);
+    expect(find.textContaining('upset'), findsNothing);
+    expect(
+      find.bySemanticsLabel('Comeback. ${ReportGameType.comeback.description}'),
+      findsOneWidget,
+    );
+    await _tearDown(tester);
+  });
+
   testWidgets('a tap on the header or a player row never pauses', (
     tester,
   ) async {
@@ -812,6 +852,7 @@ FeedItem _scholarsMate({
   String result = '1-0',
   GameStatus status = GameStatus.whiteWins,
   FeedSignal? signal,
+  ReportGameType? reportType,
 }) {
   final parsed = PgnGame.parsePgn(pgn);
   Position position = PgnGame.startingPosition(parsed.headers);
@@ -875,6 +916,7 @@ FeedItem _scholarsMate({
     eventLabel: 'Test Open 2026',
     result: result,
     signal: signal,
+    reportType: reportType,
   );
 }
 

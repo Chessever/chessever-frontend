@@ -5,8 +5,6 @@ import 'dart:math' as math;
 import 'package:chessever2/config/feature_flags.dart';
 import 'package:chessever2/providers/board_settings_provider_new.dart';
 import 'package:chessever2/providers/favorite_players_provider.dart';
-import 'package:chessever2/repository/gamebase/gamebase_repository.dart';
-import 'package:chessever2/repository/gamebase/miniatures/miniatures_models.dart';
 import 'package:chessever2/repository/sqlite/app_database.dart';
 import 'package:chessever2/repository/supabase/game/game_repository.dart';
 import 'package:chessever2/repository/supabase/game/games.dart';
@@ -14,9 +12,11 @@ import 'package:chessever2/screens/feed/audio/feed_sfx.dart';
 import 'package:chessever2/screens/feed/logic/feed_codec.dart';
 import 'package:chessever2/screens/feed/logic/feed_moments.dart';
 import 'package:chessever2/screens/feed/logic/feed_ranker.dart';
+import 'package:chessever2/screens/feed/logic/feed_report.dart';
 import 'package:chessever2/screens/feed/models/feed_models.dart';
 import 'package:chessever2/screens/for_you/discovery/data/discovery_repository.dart';
 import 'package:chessever2/screens/for_you/discovery/models/discovery_models.dart';
+import 'package:chessever2/screens/for_you/discovery/models/report_game_type.dart';
 import 'package:chessever2/screens/standings/providers/player_utils_provider.dart';
 import 'package:chessever2/screens/streaks/models/streak_models.dart';
 import 'package:chessever2/screens/streaks/providers/streak_providers.dart';
@@ -36,10 +36,11 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 /// 2. strong decisive-leaning games from anywhere this week;
 /// 3. games of the players the user follows;
 /// 4. today's most liked games;
-/// 5. Gamebase miniatures (today, else this week).
+/// Only Supabase games with the same saved-report evidence as Reports can play.
 ///
-/// The ranker picks; only then are the picked games' PGNs fetched, in one
-/// batched request, and parsed in a background isolate.
+/// A wider shortlist is fetched in one batch and parsed in an isolate.
+/// Only report-backed clips compete for the final draw, with bonuses for
+/// actual brilliance, turning points and concise decisive games.
 ///
 /// How it starts fast:
 /// - **Warm launch.** The last first page lives in SQLite, already parsed.
@@ -77,7 +78,6 @@ class _FeedCandidate {
     required this.game,
     required this.signals,
     this.pgn,
-    this.loadPgn,
     this.hint,
   });
 
@@ -87,12 +87,7 @@ class _FeedCandidate {
   /// PGN already downloaded with the listing, when the source includes it.
   final String? pgn;
 
-  /// Its own request, for sources outside the `games` table. Null means
-  /// the PGN comes from `games` in the page's batched read.
-  final Future<String?> Function()? loadPgn;
-
-  /// Caption input: the followed player's display name, or the miniature
-  /// window (`today` / `week`).
+  /// Caption input: the followed player's display name.
   final String? hint;
 
   bool get hasInlinePgn => pgn != null && pgn!.trim().isNotEmpty;
@@ -102,7 +97,6 @@ class _FeedCandidate {
   /// What the caption code calls this source.
   FeedSource get source => switch (pool) {
     FeedPool.favorite => FeedSource.favorite,
-    FeedPool.miniature => FeedSource.miniature,
     _ => FeedSource.decisive,
   };
 }
@@ -180,7 +174,7 @@ class FeedNotifier extends AsyncNotifier<List<FeedItem>> {
   /// Where the first page is kept on disk ([readFeedFirstPageCache]).
   static const String cacheKey = 'flow_feed_first_page_v1';
   static const String _shownKey = 'flow_feed_shown_v1';
-  static const Duration _cacheMaxAge = Duration(days: 3);
+  static const Duration _cacheMaxAge = Duration(minutes: 30);
 
   /// Games in the page `build` returns: two, so the first board plays as
   /// soon as one small batch is parsed. The opening pages follow behind.
@@ -214,7 +208,6 @@ class FeedNotifier extends AsyncNotifier<List<FeedItem>> {
   static const int _sliceCount = 24;
   static const int _favoriteLimit = 16;
   static const int _likedLimit = 20;
-  static const int _miniatureLimit = 8;
 
   static const Duration _currentAge = Duration(days: 4);
   static const Duration _topAge = Duration(days: 7);
@@ -271,9 +264,6 @@ class FeedNotifier extends AsyncNotifier<List<FeedItem>> {
   /// stop the new feed from drawing its own.
   int? _preparingReserveFor;
   final math.Random _slices = math.Random();
-  int _miniatureOffset = 0;
-  MiniatureGamesWindow _miniatureWindow = MiniatureGamesWindow.today;
-  bool _miniaturesExhausted = false;
 
   /// Failed requests to the sources every user has. When they all fail and
   /// nothing is cached, the feed reports an error instead of an empty page,
@@ -344,8 +334,8 @@ class FeedNotifier extends AsyncNotifier<List<FeedItem>> {
   ///
   /// Either way the new first page is new: none of the games the feed held
   /// (on screen or loaded behind it), and none shown before while anything
-  /// unseen is left. The refreshed feed explores a random slice of the week
-  /// rather than re-reading the newest games.
+  /// unseen is left. Fresh reports lead each refresh; older slices provide
+  /// variety after the newest unseen reports have been used.
   Future<void> refresh() async {
     final generation = ++_generation;
     final showing = [
@@ -359,7 +349,6 @@ class FeedNotifier extends AsyncNotifier<List<FeedItem>> {
     // What is on screen stays out of the new draw, and out of any page
     // appended to the old list should this refresh fail.
     _seen.addAll(showing);
-    _topOffset = _randomSlice();
 
     final landing = reserve == null
         ? const <FeedItem>[]
@@ -432,7 +421,7 @@ class FeedNotifier extends AsyncNotifier<List<FeedItem>> {
   int _randomSlice() => _slices.nextInt(_sliceCount) * _topLimit;
 
   /// Parses the next refresh ahead of time: [_reserveSize] games drawn by a
-  /// fresh ranker from a random slice of the week's strong games, joined by
+  /// fresh ranker from the newest unseen reports, joined by
   /// a share of what the running events and the viewer's own sources have
   /// in the pool. Its games leave this feed's draw, so the refresh is new.
   Future<void> _prepareReserve(int generation) async {
@@ -449,7 +438,7 @@ class FeedNotifier extends AsyncNotifier<List<FeedItem>> {
           since: since,
           minRating: _topMinRating,
           limit: _topLimit,
-          offset: _randomSlice(),
+          offset: attempt == 0 ? 0 : _randomSlice(),
         );
         if (rows.isEmpty) {
           rows = await repository.getFeedCandidateGames(
@@ -461,7 +450,11 @@ class FeedNotifier extends AsyncNotifier<List<FeedItem>> {
         if (generation != _generation) return;
         for (final row in rows) {
           final game = _tourModel(row);
-          if (game == null || _seen.contains(game.gameId)) continue;
+          if (game == null ||
+              _seen.contains(game.gameId) ||
+              _shownBefore.contains(game.gameId)) {
+            continue;
+          }
           if (!game.gameStatus.isFinished) continue;
           slice[game.gameId] = _FeedCandidate(
             game: game,
@@ -470,7 +463,7 @@ class FeedNotifier extends AsyncNotifier<List<FeedItem>> {
         }
       }
       // Some of the pool's own flavour: current events, followed players,
-      // likes and miniatures, a few each, taken out of this feed's draw.
+      // likes, a few each, taken out of this feed's draw.
       final byPool = <FeedPool, int>{};
       for (final candidate in _pool.values.toList()..shuffle(_slices)) {
         if (candidate.pool == FeedPool.top) continue;
@@ -615,21 +608,21 @@ class FeedNotifier extends AsyncNotifier<List<FeedItem>> {
     }
 
     // The first page is games the viewer has not seen, while any are left.
-    var items = await _materialize(
-      generation,
-      _firstPageSize,
-      unseenFirst: true,
-    );
-    if (items.isEmpty && generation == _generation && _pool.isNotEmpty) {
-      // The first picks all failed to load or parse: one more batch.
-      items = await _materialize(
-        generation,
-        _firstPageSize + 2,
-        unseenFirst: true,
-      );
+    var items = <FeedItem>[];
+    for (var attempt = 0; attempt < 3 && items.isEmpty; attempt++) {
+      if (attempt > 0) {
+        await sources.all.timeout(_sourceTimeout, onTimeout: () {});
+        if (generation != _generation) return const [];
+        if (_pool.isEmpty && !_allSourcesExhausted) {
+          await _refillAll(generation).all;
+        }
+      }
+      if (generation != _generation) return const [];
+      items = await _materialize(generation, _firstPageSize, unseenFirst: true);
+      if (_allSourcesExhausted && _pool.isEmpty) break;
     }
     if (generation != _generation) return const [];
-    if (items.isEmpty && _publicSourceFailures >= 2) {
+    if (items.isEmpty && _publicSourceFailures > 0 && _pool.isEmpty) {
       throw StateError('Feed unavailable: $_lastFailure');
     }
     return items;
@@ -692,7 +685,6 @@ class FeedNotifier extends AsyncNotifier<List<FeedItem>> {
         : guard(() => _fetchFavorites(generation));
     final others = Future.wait([
       if (!_likedExhausted) guard(() => _fetchLiked(generation)),
-      if (!_miniaturesExhausted) guard(() => _fetchMiniatures(generation)),
     ]);
     final all = Future.wait([public, favorites, others]);
     final reads = (all: all, public: public, favorites: favorites);
@@ -707,8 +699,7 @@ class FeedNotifier extends AsyncNotifier<List<FeedItem>> {
       _currentExhausted &&
       _topExhausted &&
       _favoritesExhausted &&
-      _likedExhausted &&
-      _miniaturesExhausted;
+      _likedExhausted;
 
   /// Games of the events running now. The tour roster is read once per
   /// generation; the games page by offset.
@@ -856,77 +847,20 @@ class FeedNotifier extends AsyncNotifier<List<FeedItem>> {
             limit: _likedLimit,
           );
       if (generation != _generation) return;
-      final gamebase = ref.read(gamebaseRepositoryProvider);
       for (final entry in result.entries) {
         final game = entry.game;
-        if (!game.gameStatus.isFinished) continue;
+        if (!game.gameStatus.isFinished || game.source != GameSource.supabase) {
+          continue;
+        }
         _offer(
           _FeedCandidate(
             game: game,
             signals: _signalsOf(game, FeedPool.liked, likes: entry.likes),
-            loadPgn: game.source == GameSource.gamebase
-                ? () async => (await gamebase.getGameWithPgn(game.gameId))?.pgn
-                : null,
           ),
         );
       }
     } catch (error) {
       debugPrint('[Feed] most liked failed: $error');
-    }
-  }
-
-  Future<void> _fetchMiniatures(int generation) async {
-    final repository = ref.read(gamebaseRepositoryProvider);
-    try {
-      var window = _miniatureWindow;
-      var offset = _miniatureOffset;
-      Future<GamebaseMiniaturesPage> read() => repository.getMiniatures(
-        filter: MiniatureGamesFilter(
-          window: window,
-          sort: MiniatureGamesSort.rating,
-          order: MiniatureGamesSortOrder.desc,
-        ),
-        limit: _miniatureLimit,
-        offset: offset,
-      );
-      var page = await read();
-      if (generation != _generation) return;
-      // A quiet day: widen to the week once.
-      if (page.items.isEmpty && window == MiniatureGamesWindow.today) {
-        window = MiniatureGamesWindow.week;
-        offset = 0;
-        page = await read();
-        if (generation != _generation) return;
-      }
-      _miniatureWindow = window;
-      _miniatureOffset = offset + page.items.length;
-      if (!page.hasMore) {
-        if (window == MiniatureGamesWindow.today) {
-          // Today is used up; carry on through the week.
-          _miniatureWindow = MiniatureGamesWindow.week;
-          _miniatureOffset = 0;
-        } else {
-          _miniaturesExhausted = true;
-        }
-      }
-      for (final miniature in page.items) {
-        final game = miniature.toGamesTourModel();
-        _offer(
-          _FeedCandidate(
-            game: game,
-            signals: _signalsOf(game, FeedPool.miniature),
-            loadPgn: () async =>
-                (await repository.getGameWithPgn(miniature.gameId))?.pgn,
-            hint: window.name,
-          ),
-        );
-      }
-    } catch (error) {
-      if (generation != _generation) return;
-      debugPrint('[Feed] miniatures failed: $error');
-      _publicSourceFailures++;
-      _lastFailure = error;
-      _miniaturesExhausted = true;
     }
   }
 
@@ -950,7 +884,11 @@ class FeedNotifier extends AsyncNotifier<List<FeedItem>> {
       likes: likes,
       eventElo: eventElo,
       eventKey: game.tourId,
-      playerKeys: {key(game.whitePlayer), key(game.blackPlayer)},
+      playerKeys: {
+        for (final player in [game.whitePlayer, game.blackPlayer])
+          if (key(player).isNotEmpty) key(player),
+      },
+      openingKey: game.eco?.trim().isNotEmpty == true ? game.eco!.trim() : null,
     );
   }
 
@@ -962,6 +900,7 @@ class FeedNotifier extends AsyncNotifier<List<FeedItem>> {
   /// version that ranks higher, and any PGN either one carried.
   void _offer(_FeedCandidate candidate) {
     final id = candidate.game.gameId;
+    if (candidate.game.source != GameSource.supabase) return;
     if (_seen.contains(id) || !candidate.game.gameStatus.isFinished) return;
     final existing = _pool[id];
     if (existing == null) {
@@ -979,14 +918,12 @@ class FeedNotifier extends AsyncNotifier<List<FeedItem>> {
             game: keep.game,
             signals: keep.signals,
             pgn: other.pgn,
-            loadPgn: keep.loadPgn,
             hint: keep.hint,
           );
   }
 
-  /// Draws up to [count] games from the pool, fetches the PGNs they still
-  /// need (one batched read for every `games` row, in parallel with any
-  /// others), then parses them all in one background isolate.
+  /// Previews up to three times [count] games, fetches the PGNs they still
+  /// need in one batched read, then parses them in one background isolate.
   ///
   /// [unseenFirst]: games shown before are not drawn at all while any other
   /// is left (elsewhere they are only demoted). For a first page, which is
@@ -1000,6 +937,8 @@ class FeedNotifier extends AsyncNotifier<List<FeedItem>> {
   }) async {
     final pool = from ?? _pool;
     final draw = ranker ?? _ranker;
+    // Preview a wider shortlist without committing rejected games to history.
+    final shortlist = FeedRanker(_newSeed());
     // History may have loaded after a candidate was offered; read it now.
     final signals = [
       for (final c in pool.values)
@@ -1007,8 +946,8 @@ class FeedNotifier extends AsyncNotifier<List<FeedItem>> {
     ];
     final picked = <_FeedCandidate>[];
     var unseenOnly = unseenFirst;
-    while (picked.length < count) {
-      final next = draw.next(
+    while (picked.length < count * 3) {
+      final next = shortlist.next(
         signals,
         eligible: unseenOnly ? (s) => !s.seenBefore : null,
       );
@@ -1025,22 +964,17 @@ class FeedNotifier extends AsyncNotifier<List<FeedItem>> {
 
     final batchIds = [
       for (final c in picked)
-        if (!c.hasInlinePgn && c.loadPgn == null) c.game.gameId,
+        if (!c.hasInlinePgn) c.game.gameId,
     ];
-    final (batch, own) = await (
+    final (batch, classifications) = await (
       _batchPgns(batchIds),
-      Future.wait([
-        for (final c in picked)
-          c.hasInlinePgn || c.loadPgn == null
-              ? Future<String?>.value(c.pgn)
-              : _loadOwnPgn(c),
-      ]),
+      _loadClassifications([for (final c in picked) c.game.gameId]),
     ).wait;
     if (generation != _generation) return const [];
 
     final ready = <(_FeedCandidate, String)>[];
     for (var i = 0; i < picked.length; i++) {
-      final pgn = own[i] ?? batch[picked[i].game.gameId];
+      final pgn = picked[i].pgn ?? batch[picked[i].game.gameId];
       if (pgn != null && pgn.trim().isNotEmpty) ready.add((picked[i], pgn));
     }
     if (ready.isEmpty) return const [];
@@ -1049,12 +983,52 @@ class FeedNotifier extends AsyncNotifier<List<FeedItem>> {
       for (final (_, pgn) in ready) pgn,
     ]);
 
+    if (generation != _generation) return const [];
     final now = DateTime.now();
-    final items = <FeedItem>[];
+    final playable = <String, FeedItem>{};
+    final ranked = <FeedSignals>[];
     for (var i = 0; i < ready.length; i++) {
       final (candidate, pgn) = ready[i];
-      final item = _toItem(candidate, clips[i], pgn, now);
-      if (item != null) items.add(item);
+      final clip = clips[i];
+      final type = feedReportType(
+        classifications[candidate.game.gameId],
+        pgn,
+        _resultOf(candidate.game.gameStatus) ?? '',
+      );
+      final item = _toItem(candidate, clip, pgn, now, reportType: type);
+      if (item == null) continue;
+      playable[candidate.game.gameId] = item;
+      ranked.add(
+        candidate.signals.withSeenBefore(
+          _shownBefore.contains(candidate.game.gameId),
+          reportInterest: feedReportInterest(clip!, type: type),
+          reportType: type,
+        ),
+      );
+      // Keep eligible runners-up ready for the next page, with their PGNs.
+      _seen.remove(candidate.game.gameId);
+      pool[candidate.game.gameId] = _FeedCandidate(
+        game: candidate.game,
+        signals: ranked.last,
+        pgn: pgn,
+        hint: candidate.hint,
+      );
+    }
+    final items = <FeedItem>[];
+    unseenOnly = unseenFirst;
+    while (items.length < count) {
+      final next = draw.next(
+        ranked,
+        eligible: unseenOnly ? (s) => !s.seenBefore : null,
+      );
+      if (next == null) {
+        if (!unseenOnly) break;
+        unseenOnly = false;
+        continue;
+      }
+      pool.remove(next.id);
+      _seen.add(next.id);
+      items.add(playable[next.id]!);
     }
     return items;
   }
@@ -1072,13 +1046,16 @@ class FeedNotifier extends AsyncNotifier<List<FeedItem>> {
     }
   }
 
-  Future<String?> _loadOwnPgn(_FeedCandidate candidate) async {
+  Future<Map<String, Object?>> _loadClassifications(List<String> ids) async {
     try {
-      final pgn = await candidate.loadPgn!().timeout(_pgnTimeout);
-      return pgn == null || pgn.trim().isEmpty ? null : pgn;
+      return await ref
+          .read(gameRepositoryProvider)
+          .getFeedGameClassifications(ids)
+          .timeout(const Duration(seconds: 2));
     } catch (error) {
-      debugPrint('[Feed] PGN for ${candidate.game.gameId} failed: $error');
-      return null;
+      // Older backends and temporary metadata failures still have Reports.
+      debugPrint('[Feed] report categories unavailable: $error');
+      return const {};
     }
   }
 
@@ -1086,16 +1063,20 @@ class FeedNotifier extends AsyncNotifier<List<FeedItem>> {
     _FeedCandidate candidate,
     FeedClip? clip,
     String pgn,
-    DateTime now,
-  ) {
+    DateTime now, {
+    ReportGameType? reportType,
+  }) {
     if (clip == null || clip.plyCount < _minPlies) return null;
     // The Feed is a report feed: a game without a ChessEver Game Report has
     // nothing to rank it by, so it never becomes a post.
-    if (!clip.hasReport) return null;
+    if (!clip.hasReport || !clip.hasEvals) return null;
     final game = candidate.game;
-    if (game.gameStatus.isOngoing) return null;
+    if (game.source != GameSource.supabase || !game.gameStatus.isFinished) {
+      return null;
+    }
     final result = clip.result ?? _resultOf(game.gameStatus);
     if (result == null) return null;
+    if (result != _resultOf(game.gameStatus)) return null;
     if (result == '½-½' && clip.plyCount < _minDrawPlies) return null;
 
     final streak = _streakOf(game, result, event: clip.event);
@@ -1118,11 +1099,12 @@ class FeedNotifier extends AsyncNotifier<List<FeedItem>> {
       hasEvals: clip.hasEvals,
       signal: streak?.signal ?? _signalFor(candidate),
       likes: candidate.signals.likes,
+      reportType: reportType,
     );
   }
 
   /// The header mark a source earns on its own, strongest first: the
-  /// followed player, today's likes, an upset, a miniature. Top boards of a
+  /// followed player and today's likes. Top boards of a
   /// running event earn none: the event label already says where it is.
   static FeedSignal? _signalFor(_FeedCandidate candidate) {
     final s = candidate.signals;
@@ -1135,18 +1117,8 @@ class FeedNotifier extends AsyncNotifier<List<FeedItem>> {
     if (s.pool == FeedPool.liked && s.likes > 1) {
       return FeedSignal(FeedSignalKind.liked, count: s.likes);
     }
-    if (s.winnerMargin <= -_upsetMargin) {
-      return FeedSignal(FeedSignalKind.upset, count: -s.winnerMargin);
-    }
-    if (s.pool == FeedPool.miniature) {
-      return const FeedSignal(FeedSignalKind.miniature);
-    }
     return null;
   }
-
-  /// Rating points the winner must have been below the loser for the
-  /// header to call it an upset.
-  static const int _upsetMargin = 150;
 
   /// The streak ledger's online rule on event names
   /// (`player_streak_is_online`), applied to the tour slug and the PGN
@@ -1311,9 +1283,6 @@ class FeedNotifier extends AsyncNotifier<List<FeedItem>> {
     _favoriteOffset = 0;
     _favoritesExhausted = false;
     _likedExhausted = false;
-    _miniatureOffset = 0;
-    _miniatureWindow = MiniatureGamesWindow.today;
-    _miniaturesExhausted = false;
     _publicSourceFailures = 0;
     _lastFailure = null;
   }
@@ -1419,6 +1388,7 @@ List<FeedClip?> _parseFlowClips(List<String> pgns) => [
 ];
 
 GamesTourModel? _tourModel(Games row) {
+  if (!const {'1-0', '0-1', '1/2-1/2'}.contains(row.status)) return null;
   try {
     return GamesTourModel.fromGame(row);
   } catch (_) {
@@ -1429,7 +1399,8 @@ GamesTourModel? _tourModel(Games row) {
 bool _isRecent(GamesTourModel game, Duration maxAge) {
   final played = game.bucketDate;
   if (played == null) return false;
-  return DateTime.now().difference(played) <= maxAge;
+  final age = DateTime.now().difference(played);
+  return !age.isNegative && age <= maxAge;
 }
 
 String? _resultOf(GameStatus status) => switch (status) {

@@ -16,17 +16,23 @@ class CollectionCatalogList<T> extends StatefulWidget {
     super.key,
     required this.query,
     required this.load,
-    required this.itemBuilder,
+    this.itemBuilder,
+    this.indexedItemBuilder,
     required this.identity,
     required this.padding,
     required this.emptyMessage,
-  });
+    this.compare,
+  }) : assert(itemBuilder != null || indexedItemBuilder != null);
   final CollectionSearchQuery query;
   final Future<CatalogBatch<T>> Function(int offset) load;
-  final Widget Function(T item) itemBuilder;
+  final Widget Function(T item)? itemBuilder;
+
+  /// Index in the displayed list, including rows loaded on earlier pages.
+  final Widget Function(T item, int index)? indexedItemBuilder;
   final String Function(T item) identity;
   final EdgeInsets padding;
   final String emptyMessage;
+  final Comparator<T>? compare;
   @override
   State<CollectionCatalogList<T>> createState() =>
       _CollectionCatalogListState<T>();
@@ -95,6 +101,14 @@ class _CollectionCatalogListState<T> extends State<CollectionCatalogList<T>>
   @override
   Widget build(BuildContext context) {
     super.build(context);
+    final ranked = _items.indexed.toList();
+    if (widget.compare case final compare?) {
+      ranked.sort((a, b) {
+        final rank = compare(a.$2, b.$2);
+        return rank == 0 ? a.$1.compareTo(b.$1) : rank;
+      });
+    }
+    final rows = ranked.map((entry) => entry.$2).toList();
     return RefreshIndicator(
       onRefresh: () => _load(reset: true),
       child: NotificationListener<ScrollNotification>(
@@ -108,7 +122,10 @@ class _CollectionCatalogListState<T> extends State<CollectionCatalogList<T>>
           padding: widget.padding,
           itemCount: _items.length + 1,
           itemBuilder: (context, index) {
-            if (index < _items.length) return widget.itemBuilder(_items[index]);
+            if (index < rows.length) {
+              return widget.indexedItemBuilder?.call(rows[index], index) ??
+                  widget.itemBuilder!(rows[index]);
+            }
             if (_loading) {
               return const Padding(
                 padding: EdgeInsets.all(24),

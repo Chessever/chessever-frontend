@@ -1,4 +1,5 @@
 import 'package:chessever2/screens/feed/logic/feed_ranker.dart';
+import 'package:chessever2/screens/for_you/discovery/models/report_game_type.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 FeedSignals _game(
@@ -12,6 +13,9 @@ FeedSignals _game(
   String? event,
   Set<String> players = const {},
   bool seen = false,
+  double interest = 0,
+  ReportGameType? type,
+  String? opening,
 }) => FeedSignals(
   id: id,
   pool: pool,
@@ -23,6 +27,9 @@ FeedSignals _game(
   eventKey: event ?? 'event-$id',
   playerKeys: players.isEmpty ? {'w-$id', 'b-$id'} : players,
   seenBefore: seen,
+  reportInterest: interest,
+  reportType: type,
+  openingKey: opening,
 );
 
 void main() {
@@ -36,10 +43,44 @@ void main() {
       );
     });
 
-    test('an upset earns more than the same favourite winning', () {
+    test('report action beats an otherwise identical quiet game', () {
+      final quiet = _game('quiet');
+      final exciting = _game(
+        'exciting',
+      ).withSeenBefore(false, reportInterest: 2.7);
+      expect(FeedRanker(1).next([quiet, exciting])!.id, 'exciting');
+      expect(exciting.withSeenBefore(true).reportInterest, 2.7);
+    });
+
+    test('a rating-gap result earns no invented quality bonus', () {
       final upset = _game('u', white: 2550, black: 2750);
       final expected = _game('e', white: 2750, black: 2550);
-      expect(feedInterest(upset), greaterThan(feedInterest(expected)));
+      expect(feedInterest(upset), feedInterest(expected));
+    });
+
+    test('recent report highlights beat an older quiet elite game', () {
+      expect(
+        FeedRanker(1).next([
+          _game(
+            'quiet',
+            white: 2800,
+            black: 2800,
+            age: const Duration(days: 6),
+          ),
+          _game('highlight', white: 2500, black: 2500, interest: 2.5),
+        ])!.id,
+        'highlight',
+      );
+    });
+
+    test('freshness has weight when report quality is equal', () {
+      expect(
+        FeedRanker(2).next([
+          _game('old', age: const Duration(days: 6), interest: 2),
+          _game('recent', interest: 2),
+        ])!.id,
+        'recent',
+      );
     });
 
     test('a followed player lifts a game; being seen sinks it', () {
@@ -56,6 +97,38 @@ void main() {
   });
 
   group('FeedRanker', () {
+    test('stories and openings do not repeat by default', () {
+      final ranker = FeedRanker(7);
+      ranker.next([
+        _game('first', type: ReportGameType.comeback, opening: 'C20'),
+      ]);
+      expect(
+        ranker.varietyFactor(
+          _game('repeat', type: ReportGameType.comeback, opening: 'C20'),
+        ),
+        lessThan(
+          ranker.varietyFactor(
+            _game(
+              'different',
+              type: ReportGameType.greatEscape,
+              opening: 'D30',
+            ),
+          ),
+        ),
+      );
+      ranker.next([_game('second', type: ReportGameType.comeback)]);
+      final pool = [
+        _game(
+          'third',
+          white: 2800,
+          black: 2800,
+          interest: 3,
+          type: ReportGameType.comeback,
+        ),
+        _game('escape', type: ReportGameType.greatEscape),
+      ];
+      expect(ranker.next(pool)!.id, 'escape');
+    });
     test('opens on the single best game', () {
       final pool = [
         _game('club', white: 2200, black: 2210, result: '½-½'),

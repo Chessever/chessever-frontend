@@ -5,6 +5,7 @@ import 'package:chessever2/repository/favorites/models/favorite_event.dart';
 import 'package:chessever2/repository/supabase/game/game_repository.dart';
 import 'package:chessever2/repository/supabase/group_broadcast/group_tour_repository.dart';
 import 'package:chessever2/screens/group_event/model/tour_event_card_model.dart';
+import 'package:chessever2/screens/gamebase/event_view/gamebase_virtual_event_id.dart';
 import 'package:chessever2/screens/library/widgets/library_context_menu.dart';
 import 'package:chessever2/screens/my_space/actions/space_menu_action.dart';
 import 'package:chessever2/screens/my_space/models/space_shortcut.dart';
@@ -112,7 +113,9 @@ String _slugify(String input) {
 SpaceShortcut eventSpaceDraft(GroupEventCardModel model) {
   final location = model.location?.trim() ?? '';
   final dates = model.dates.trim();
-  final isCalendarEvent = model.eventSource == EventSource.communityEvent;
+  final isDatabaseEvent = isVirtualGamebaseId(model.id);
+  final isCalendarEvent =
+      model.eventSource == EventSource.communityEvent && !isDatabaseEvent;
   return SpaceShortcut.draft(
     kind: SpaceShortcutKind.event,
     targetId: model.id,
@@ -124,6 +127,7 @@ SpaceShortcut eventSpaceDraft(GroupEventCardModel model) {
       'timeControl': model.timeControl,
       'dates': model.dates,
       if (location.isNotEmpty) 'location': location,
+      if (isDatabaseEvent) 'source': 'gamebase',
       if (isCalendarEvent) ...{
         'source': 'calendar',
         'calendarEventId': model.id,
@@ -239,7 +243,8 @@ const Duration _kNoSpoilersResolveCap = Duration(seconds: 5);
 /// "Turn on" form, and the row settles the tours when chosen (see
 /// [_turnOnNoSpoilersOnceResolved]). With neither, the row is left out.
 /// Community (calendar) events only get Open and My Space: they have no
-/// broadcast to act on.
+/// broadcast to act on. [spaceDraft] preserves a profile fallback's real
+/// identity or the original target of an existing pin.
 List<LibraryMenuAction> eventMenuActions({
   required BuildContext context,
   required WidgetRef ref,
@@ -247,6 +252,7 @@ List<LibraryMenuAction> eventMenuActions({
   List<String> tourIds = const <String>[],
   Future<List<String>>? pendingTourIds,
   VoidCallback? onOpen,
+  SpaceShortcut? spaceDraft,
 }) {
   final broadcastActions = hasBroadcastActions(model);
   final spoilerStates = [
@@ -296,7 +302,11 @@ List<LibraryMenuAction> eventMenuActions({
             () => _copyEventPgn(context: context, ref: ref, model: model),
       ),
     ],
-    spaceMenuAction(context: context, ref: ref, draft: eventSpaceDraft(model)),
+    spaceMenuAction(
+      context: context,
+      ref: ref,
+      draft: spaceDraft ?? eventSpaceDraft(model),
+    ),
   ];
 }
 
@@ -331,11 +341,12 @@ Future<void> showEventContextMenu({
   );
 }
 
-/// Community events are calendar-only and not backed by a GroupBroadcast, so
+/// Calendar and database-only events are not backed by a GroupBroadcast, so
 /// No Spoilers / Share / Copy PGN have nothing to act on. They still get the
 /// My Space row.
 bool hasBroadcastActions(GroupEventCardModel model) {
-  return model.eventSource != EventSource.communityEvent;
+  return model.eventSource != EventSource.communityEvent &&
+      !isVirtualGamebaseId(model.id);
 }
 
 Future<List<String>> _eventTourIds(

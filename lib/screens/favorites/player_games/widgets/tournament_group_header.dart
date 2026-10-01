@@ -1,18 +1,44 @@
 import 'package:chessever2/screens/favorites/player_games/view_model/player_games_state.dart';
+import 'package:chessever2/screens/my_space/actions/space_menu_action.dart';
+import 'package:chessever2/screens/my_space/models/space_shortcut.dart';
 import 'package:chessever2/theme/app_colors.dart';
-import 'package:chessever2/theme/app_theme.dart';
 import 'package:chessever2/utils/app_typography.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
+import 'package:chessever2/widgets/card_context_menu.dart';
 import 'package:flutter/material.dart';
+import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:intl/intl.dart';
 
-class TournamentGroupHeader extends StatelessWidget {
+class TournamentGroupHeader extends ConsumerWidget {
   final TournamentGamesGroup tournamentGroup;
 
   const TournamentGroupHeader({super.key, required this.tournamentGroup});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final dates = tournamentGroup.startDate == null
+        ? null
+        : _formatDateRange(tournamentGroup.startDate!, tournamentGroup.endDate);
+    final draft = SpaceShortcut.draft(
+      kind: SpaceShortcutKind.event,
+      targetId: tournamentGroup.tourId,
+      title: tournamentGroup.tourName,
+      subtitle: dates,
+      params: {
+        'tourId': tournamentGroup.tourId,
+        'tourSlug': tournamentGroup.tourSlug,
+        if (dates != null) 'dates': dates,
+      },
+    );
+    return CardContextMenu(
+      actions: (menuContext) => [
+        spaceMenuAction(context: menuContext, ref: ref, draft: draft),
+      ],
+      child: _buildHeader(context),
+    );
+  }
+
+  Widget _buildHeader(BuildContext context) {
     return Container(
       margin: EdgeInsets.only(bottom: 12.h),
       decoration: BoxDecoration(

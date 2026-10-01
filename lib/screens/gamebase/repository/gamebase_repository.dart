@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
+import 'package:chessever2/repository/gamebase/explorer_query.dart';
 import '../models/models.dart';
 
 class GamebaseApiKeyMissingException implements Exception {
@@ -47,23 +48,17 @@ class GamebaseRepository {
     String? playerId,
   }) async {
     try {
-      final queryParams = <String, String>{'fen': fen};
-
-      if (timeControl != null) {
-        queryParams['timeControl'] = timeControl.name.toUpperCase();
-      }
-
-      if (minRating != null) {
-        queryParams['minRating'] = minRating.toString();
-      }
-
-      if (maxRating != null) {
-        queryParams['maxRating'] = maxRating.toString();
-      }
-
-      if (playerId != null && playerId.isNotEmpty) {
-        queryParams['playerId'] = playerId;
-      }
+      final position = GamebaseExplorerPosition.resolve(fen, const []);
+      final filters = gamebaseExplorerFilterFields(
+        timeControl: timeControl?.name,
+        playerId: playerId,
+        minRating: minRating,
+        maxRating: maxRating,
+      );
+      final queryParams = <String, String>{
+        'fen': position.fen,
+        for (final entry in filters.entries) entry.key: entry.value.toString(),
+      };
 
       final uri = Uri.parse(
         '$_baseUrl/api/game-position/aggregates',

@@ -50,7 +50,7 @@ class UserAvatar extends HookConsumerWidget {
     final subscriptionState = ref.watch(subscriptionProvider);
     final isPremium = subscriptionState.isSubscribed;
 
-    final avatarUrl = user?.avatarUrl;
+    final avatarUrl = ref.watch(profileAvatarUrlProvider);
     final displayName = user?.displayName;
     final initials = _getInitials(displayName);
 

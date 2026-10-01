@@ -1,6 +1,9 @@
 # Report game types: discussion draft
 
-Status: proposed, awaiting the user's choice of types. This document does not
+Status: historical discussion draft. The user selected all seven stories,
+Miniature under 25 moves, and Marathon at 80 moves. The implemented contract
+and test rollout are in [report-game-types.md](report-game-types.md).
+This draft does not
 enable classifications, alter reports, add database columns, or authorize a
 deployment. The requested end state remains: classify existing reported games
 once, classify future Cloudflare reports, persist the result additively, and

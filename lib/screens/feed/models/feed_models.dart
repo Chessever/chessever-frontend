@@ -1,4 +1,5 @@
 import 'package:chessever2/screens/chessboard/classification_fx/move_class.dart';
+import 'package:chessever2/screens/for_you/discovery/models/report_game_type.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:flutter/foundation.dart';
 
@@ -101,9 +102,6 @@ enum FeedSignalKind {
 
   /// One of today's most liked games ([FeedSignal.count] distinct likes).
   liked,
-
-  /// The lower-rated player won by [FeedSignal.count] rating points.
-  upset,
 }
 
 @immutable
@@ -142,6 +140,7 @@ class FeedItem {
     this.hasEvals = false,
     this.signal,
     this.likes = 0,
+    this.reportType,
   });
 
   final GamesTourModel game;
@@ -167,6 +166,9 @@ class FeedItem {
   /// games); 0 when it does not. The Like button shows it from 3 up.
   final int likes;
 
+  /// Verified category from Discovery > Reports, never a rating-gap label.
+  final ReportGameType? reportType;
+
   int get plyCount => plies.length - 1;
 
   FeedItem copyWith({String? reason, FeedSignal? signal}) => FeedItem(
@@ -178,6 +180,7 @@ class FeedItem {
     hasEvals: hasEvals,
     signal: signal ?? this.signal,
     likes: likes,
+    reportType: reportType,
   );
 
   /// Plies Feed should linger on (headline moments).

@@ -53,6 +53,39 @@ void main() {
     expect(byPly[7]!.classification, isNull);
   });
 
+  test(
+    'optional game-story metadata does not change the existing report parser',
+    () {
+      final original = gameAnalysisReportFromServerJson(payload, game: game);
+      for (final metadata in [
+        null,
+        {
+          'version': 1,
+          'result': '1-0',
+          'primary': 'one_blunder',
+          'tags': ['one_blunder', 'miniature'],
+          'moves': 4,
+        },
+      ]) {
+        final enriched = gameAnalysisReportFromServerJson({
+          ...payload,
+          'gameClassification': metadata,
+        }, game: game);
+        expect(enriched.fingerprint, original.fingerprint);
+        expect(enriched.whiteAccuracy, original.whiteAccuracy);
+        expect(enriched.blackAccuracy, original.blackAccuracy);
+        expect(
+          enriched.moves.map((m) => m.classification),
+          original.moves.map((m) => m.classification),
+        );
+        expect(
+          enriched.positions.map((p) => p.fen),
+          original.positions.map((p) => p.fen),
+        );
+      }
+    },
+  );
+
   test('mate scores and centipawns are kept apart', () {
     final report = gameAnalysisReportFromServerJson(payload, game: game);
     final byPly = {for (final move in report.moves) move.ply: move};

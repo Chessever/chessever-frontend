@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:chessever2/providers/engine_settings_provider.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
@@ -198,8 +199,13 @@ class GameCardFrame extends StatelessWidget {
   /// players in this very strip.
   static Widget playerStrip(BuildContext context, {required Widget child}) {
     final isLight = context.isLightTheme;
+    final style = nameStyle(context);
+    final lineHeight =
+        MediaQuery.textScalerOf(context).scale(style.fontSize!) *
+        (style.height ?? 1);
     return Container(
-      height: stripHeight,
+      // Two text lines must remain inside the strip at accessibility sizes.
+      height: math.max(stripHeight, lineHeight * 2 + 16.sp),
       padding: EdgeInsets.symmetric(horizontal: 16.sp),
       decoration: BoxDecoration(
         color: isLight ? context.colors.surface : context.colors.textPrimaryMuted,
@@ -224,8 +230,12 @@ class GameCardFrame extends StatelessWidget {
   /// The row's footer strip around [child] (clocks and the last move on a
   /// game): its height, inset, surface and bottom corners.
   static Widget footerStrip(BuildContext context, {required Widget child}) {
+    final style = footerStyle(context);
+    final lineHeight =
+        MediaQuery.textScalerOf(context).scale(style.fontSize!) *
+        (style.height ?? 1);
     return Container(
-      height: footerHeight,
+      height: math.max(footerHeight, lineHeight + 4.sp),
       padding: EdgeInsets.symmetric(horizontal: 16.sp),
       decoration: BoxDecoration(
         color: context.colors.surface,

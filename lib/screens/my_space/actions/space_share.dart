@@ -75,6 +75,7 @@ String? spaceShortcutShareUrl(SpaceShortcut s) {
 /// `cal_event_` id the calendar cards use.
 bool isSpaceCalendarEvent(SpaceShortcut s) {
   if (s.kind != SpaceShortcutKind.event) return false;
+  if (isVirtualGamebaseId(s.targetId)) return false;
   final p = s.params;
   return _str(p['source']) == 'calendar' ||
       _str(p['eventSource']) == 'communityEvent' ||

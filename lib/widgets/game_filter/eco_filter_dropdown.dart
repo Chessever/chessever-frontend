@@ -6,8 +6,9 @@ import 'package:chessever2/widgets/game_filter/game_filter_model.dart';
 import 'package:chessever2/widgets/search/opening_search_suggestion.dart';
 import 'package:flutter/material.dart';
 
-class _EcoBrowseNode {
-  _EcoBrowseNode({
+/// Shared opening hierarchy used by the filter and collection catalog.
+class EcoBrowseNode {
+  EcoBrowseNode({
     required this.suggestion,
     required this.depth,
     required this.ancestorIds,
@@ -16,10 +17,10 @@ class _EcoBrowseNode {
   final OpeningSearchSuggestion suggestion;
   final int depth;
   final List<String> ancestorIds;
-  final List<_EcoBrowseNode> children = <_EcoBrowseNode>[];
+  final List<EcoBrowseNode> children = <EcoBrowseNode>[];
 }
 
-Map<String, List<_EcoBrowseNode>> _buildEcoBrowseTree(
+Map<String, List<EcoBrowseNode>> buildEcoBrowseTree(
   List<OpeningSearchSuggestion> suggestions,
 ) {
   final grouped = <String, List<OpeningSearchSuggestion>>{};
@@ -30,9 +31,9 @@ Map<String, List<_EcoBrowseNode>> _buildEcoBrowseTree(
     }
   }
 
-  final result = <String, List<_EcoBrowseNode>>{};
+  final result = <String, List<EcoBrowseNode>>{};
   for (final entry in grouped.entries) {
-    final nodesById = <String, _EcoBrowseNode>{};
+    final nodesById = <String, EcoBrowseNode>{};
     final parentById = <String, OpeningSearchSuggestion?>{};
     final uniqueSuggestions = <OpeningSearchSuggestion>[];
     final seenIds = <String>{};
@@ -81,14 +82,14 @@ Map<String, List<_EcoBrowseNode>> _buildEcoBrowseTree(
 
     for (final suggestion in uniqueSuggestions) {
       final ancestors = ancestorsFor(suggestion);
-      nodesById[suggestion.id] = _EcoBrowseNode(
+      nodesById[suggestion.id] = EcoBrowseNode(
         suggestion: suggestion,
         depth: ancestors.length,
         ancestorIds: ancestors,
       );
     }
 
-    final roots = <_EcoBrowseNode>[];
+    final roots = <EcoBrowseNode>[];
     for (final suggestion in uniqueSuggestions) {
       final node = nodesById[suggestion.id]!;
       final parent = parentById[suggestion.id];
@@ -131,7 +132,7 @@ int _compareParentCandidates(
   return _compareBrowseSuggestions(left, right);
 }
 
-void _sortBrowseNodes(List<_EcoBrowseNode> nodes) {
+void _sortBrowseNodes(List<EcoBrowseNode> nodes) {
   nodes.sort(
     (left, right) =>
         _compareBrowseSuggestions(left.suggestion, right.suggestion),
@@ -209,7 +210,7 @@ class _EcoFilterDropdownState extends State<EcoFilterDropdown>
     skipTraversal: true,
   );
   final ScrollController _scrollController = ScrollController();
-  late final Map<String, List<_EcoBrowseNode>> _browseRoots;
+  late final Map<String, List<EcoBrowseNode>> _browseRoots;
   final Set<String> _expandedCategories = <String>{};
   final Set<String> _expandedBrowseNodes = <String>{};
 
@@ -225,7 +226,7 @@ class _EcoFilterDropdownState extends State<EcoFilterDropdown>
   @override
   void initState() {
     super.initState();
-    _browseRoots = _buildEcoBrowseTree(
+    _browseRoots = buildEcoBrowseTree(
       _supportedSuggestions(browseOpeningSuggestions()),
     );
     _resetBrowseDisclosure(widget.value);
@@ -296,7 +297,7 @@ class _EcoFilterDropdownState extends State<EcoFilterDropdown>
     _expandedCategories.add(category);
 
     final selected = _findBrowseNode(
-      _browseRoots[category] ?? const <_EcoBrowseNode>[],
+      _browseRoots[category] ?? const <EcoBrowseNode>[],
       filter,
     );
     if (selected != null) {
@@ -304,8 +305,8 @@ class _EcoFilterDropdownState extends State<EcoFilterDropdown>
     }
   }
 
-  _EcoBrowseNode? _findBrowseNode(
-    List<_EcoBrowseNode> nodes,
+  EcoBrowseNode? _findBrowseNode(
+    List<EcoBrowseNode> nodes,
     GameEcoFilter filter,
   ) {
     for (final node in nodes) {
@@ -645,10 +646,10 @@ class _EcoFilterDropdownState extends State<EcoFilterDropdown>
     );
   }
 
-  List<_EcoBrowseNode> _visibleBrowseNodes(String category) {
-    final visible = <_EcoBrowseNode>[];
+  List<EcoBrowseNode> _visibleBrowseNodes(String category) {
+    final visible = <EcoBrowseNode>[];
 
-    void append(List<_EcoBrowseNode> nodes) {
+    void append(List<EcoBrowseNode> nodes) {
       for (final node in nodes) {
         visible.add(node);
         if (_expandedBrowseNodes.contains(node.suggestion.id)) {
@@ -657,7 +658,7 @@ class _EcoFilterDropdownState extends State<EcoFilterDropdown>
       }
     }
 
-    append(_browseRoots[category] ?? const <_EcoBrowseNode>[]);
+    append(_browseRoots[category] ?? const <EcoBrowseNode>[]);
     return visible;
   }
 

@@ -725,7 +725,7 @@ class _FolderContentsScreenState extends ConsumerState<FolderContentsScreen> {
           if (libraryFolderCanPublish(widget.folder))
             IconButton(
               key: const ValueKey('folder_publish_book'),
-              tooltip: 'Publish / edit book',
+              tooltip: 'Publish / edit collection',
               constraints: const BoxConstraints(minWidth: 44, minHeight: 44),
               onPressed: () => openLibraryBookEditor(context, widget.folder),
               icon: Icon(

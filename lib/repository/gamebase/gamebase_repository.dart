@@ -13,13 +13,14 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:dart_mappable/dart_mappable.dart';
-import 'package:dartchess/dartchess.dart';
 import 'package:chessever2/screens/gamebase/models/models.dart';
 import 'package:chessever2/repository/gamebase/collections/collections_models.dart';
 import 'package:chessever2/repository/gamebase/miniatures/miniatures_models.dart';
 import 'package:chessever2/repository/gamebase/search/gamebase_search_models.dart';
 import 'package:chessever2/repository/gamebase/search/gamebase_search_models_extra.dart';
 import 'package:chessever2/repository/gamebase/memorial_player.dart';
+
+import 'explorer_query.dart';
 
 part 'gamebase_repository.mapper.dart';
 
@@ -162,17 +163,17 @@ class GamebaseRepository {
     int? yearTo,
     bool? isOnline,
   }) {
-    return <String, dynamic>{
-      if (playerId != null && playerId.isNotEmpty) 'playerId': playerId,
-      if (timeControl != null) 'timeControl': timeControl.name.toUpperCase(),
-      if (minRating != null) 'minRating': minRating,
-      if (maxRating != null) 'maxRating': maxRating,
-      if (color != null) 'color': color,
-      if (result != null) 'result': result,
-      if (yearFrom != null) 'yearFrom': yearFrom,
-      if (yearTo != null) 'yearTo': yearTo,
-      if (isOnline != null) 'isOnline': isOnline,
-    };
+    return gamebaseExplorerFilterFields(
+      timeControl: timeControl?.name,
+      playerId: playerId,
+      minRating: minRating,
+      maxRating: maxRating,
+      color: color,
+      result: result,
+      yearFrom: yearFrom,
+      yearTo: yearTo,
+      isOnline: isOnline,
+    );
   }
 
   /// POST body for `/api/game-position/aggregates/query`.
@@ -190,10 +191,10 @@ class GamebaseRepository {
     int? yearTo,
     bool? isOnline,
   }) {
-    final normalizedFen = _normalizeFenForLookup(fen);
-    final normalizedMoves = _sanitizeMovesForFen(normalizedFen, moves);
+    final position = GamebaseExplorerPosition.resolve(fen, moves);
+    final normalizedMoves = position.moves;
     return <String, dynamic>{
-      'fen': normalizedFen,
+      'fen': position.fen,
       'moves': normalizedMoves,
       ...buildExplorerQueryFilterFields(
         timeControl: timeControl,
@@ -231,10 +232,10 @@ class GamebaseRepository {
     int pageNumber = 0,
     int pageSize = 20,
   }) {
-    final normalizedFen = _normalizeFenForLookup(fen);
-    final normalizedMoves = _sanitizeMovesForFen(normalizedFen, moves);
+    final position = GamebaseExplorerPosition.resolve(fen, moves);
+    final normalizedMoves = position.moves;
     final trimmedPlayerId = playerId?.trim();
-    final trimmedUci = uci?.trim();
+    final trimmedUci = position.continuationUci(uci);
     final filters = buildExplorerQueryFilterFields(
       timeControl: timeControl,
       playerId: trimmedPlayerId != null && trimmedPlayerId.isNotEmpty
@@ -261,13 +262,15 @@ class GamebaseRepository {
             ]
           : null;
       return <String, dynamic>{
-        'fen': normalizedFen,
+        'fen': position.fen,
         'moves': normalizedMoves,
-        'pageNumber': pageNumber,
-        'pageSize': pageSize,
+        ...gamebaseExplorerPageFields(
+          pageNumber: pageNumber,
+          pageSize: pageSize,
+          notationPlies: notationPlies,
+        ),
         if (trimmedUci != null && trimmedUci.isNotEmpty) 'uci': trimmedUci,
         ...filters,
-        if (notationPlies > 0) 'notationPlies': notationPlies,
         if (orderBy != null) 'orderBy': orderBy,
         if (sortBy != null) 'sortBy': sortBy.name,
         if (sortDirection != null) 'sortDirection': sortDirection.name,
@@ -275,12 +278,14 @@ class GamebaseRepository {
     }
 
     return <String, dynamic>{
-      'fen': normalizedFen,
-      'pageNumber': pageNumber,
-      'pageSize': pageSize,
+      'fen': position.fen,
+      ...gamebaseExplorerPageFields(
+        pageNumber: pageNumber,
+        pageSize: pageSize,
+        notationPlies: notationPlies,
+      ),
       if (trimmedUci != null && trimmedUci.isNotEmpty) 'uci': trimmedUci,
       ...filters,
-      if (notationPlies > 0) 'notationPlies': notationPlies,
       if (sortBy != null) 'sortBy': sortBy.name,
       if (sortDirection != null) 'sortDirection': sortDirection.name,
     };
@@ -309,13 +314,16 @@ class GamebaseRepository {
     int pageNumber = 0,
     int pageSize = 20,
   }) {
-    final normalizedFen = _normalizeFenForLookup(fen);
+    final position = GamebaseExplorerPosition.resolve(fen, const []);
     final trimmedPlayerId = playerId?.trim();
-    final trimmedUci = uci?.trim();
+    final trimmedUci = position.continuationUci(uci);
     return <String, dynamic>{
-      'fen': normalizedFen,
-      'pageNumber': pageNumber,
-      'pageSize': pageSize,
+      'fen': position.fen,
+      ...gamebaseExplorerPageFields(
+        pageNumber: pageNumber,
+        pageSize: pageSize,
+        notationPlies: notationPlies,
+      ),
       if (trimmedUci != null && trimmedUci.isNotEmpty) 'uci': trimmedUci,
       ...buildExplorerQueryFilterFields(
         timeControl: timeControl,
@@ -330,7 +338,6 @@ class GamebaseRepository {
         yearTo: yearTo,
         isOnline: isOnline,
       ),
-      if (notationPlies > 0) 'notationPlies': notationPlies,
       if (sortBy != null) 'sortBy': sortBy.name,
       if (sortDirection != null) 'sortDirection': sortDirection.name,
     };
@@ -443,143 +450,9 @@ class GamebaseRepository {
     }
   }
 
-  /// Canonicalize FEN for Gamebase lookups.
-  ///
-  /// The API expects a standard 6-field FEN. Some callers may provide only the
-  /// first 4 fields (piece placement, side to move, castling rights, en
-  /// passant). In that case, append halfmove/fullmove counters.
-  ///
-  /// When counters are present, preserve them. Some backends index/look up
-  /// positions using the full FEN string; clamping counters can cause misses
-  /// for progressed positions.
-  static String _normalizeFenForLookup(String fen) {
-    final parts = fen.trim().split(RegExp(r'\s+'));
-    if (parts.length < 4) return fen.trim();
-
-    if (parts.length == 4) return '${parts.join(' ')} 0 1';
-    return parts.take(6).join(' ');
-  }
-
-  static String _positionKey(String fen) =>
-      fen.trim().split(RegExp(r'\s+')).take(4).join(' ');
-
-  static NormalMove? _normalMoveFromUci(String uci) {
-    if (uci.length < 4) return null;
-
-    final from = Square.fromName(uci.substring(0, 2));
-    final to = Square.fromName(uci.substring(2, 4));
-
-    Role? promotion;
-    if (uci.length > 4) {
-      promotion = Role.fromChar(uci[4]);
-      if (promotion == null) return null;
-    }
-
-    return NormalMove(from: from, to: to, promotion: promotion);
-  }
-
-  static List<String> _sanitizeMovesForFen(String fen, List<String> moves) {
-    if (moves.isEmpty) return const [];
-
-    final normalizedMoves = moves
-        .map((m) => m.trim().toLowerCase())
-        .where((m) => RegExp(r'^[a-h][1-8][a-h][1-8][qrbn]?$').hasMatch(m))
-        .toList(growable: false);
-
-    if (normalizedMoves.isEmpty) return const [];
-
-    try {
-      Position position = Chess.initial;
-      final replayed = <String>[];
-      for (final uci in normalizedMoves) {
-        var move = _normalMoveFromUci(uci);
-        if (move == null) {
-          return const [];
-        }
-        if (!position.isLegal(move)) {
-          // Accept the other castling spelling (e1a1 ↔ e1c1, e1h1 ↔ e1g1).
-          final altUci = alternateCastlingUci(uci);
-          final alt = altUci == null ? null : _normalMoveFromUci(altUci);
-          if (alt == null || !position.isLegal(alt)) {
-            return const [];
-          }
-          move = alt;
-        }
-        // dartchess encodes castling king-to-rook (e1h1), but the backend
-        // (chess.js) only accepts the standard king-to-g/c UCI. Emit the
-        // standard form so deep-path queries (ply > indexed boundary) can
-        // replay the move line server-side.
-        replayed.add(_toStandardCastlingUci(position, move));
-        position = position.play(move);
-      }
-
-      // Only require the replayed position to match the target FEN (first 4
-      // fields — piece placement / turn / castling / en passant). Do NOT
-      // compare move count against _pliesFromFen: variation paths that
-      // replace a mainline move result in a move list shorter than the FEN's
-      // fullmove-derived ply count, and the old strict equality silently
-      // dropped the whole line at depth ≥ 21, collapsing the backend to the
-      // position-only path which returns empty past the indexed boundary.
-      return _positionKey(position.fen) == _positionKey(fen)
-          ? List<String>.unmodifiable(replayed)
-          : const [];
-    } catch (_) {
-      return const [];
-    }
-  }
-
-  /// The other spelling of a castling UCI, or null when [uci] is not one.
-  ///
-  /// dartchess emits the Chess960 king-to-rook form (`e1h1`) while the backend
-  /// answers in the classical king-to-g/c form (`e1g1`), so anything comparing
-  /// a board move against a gamebase `uci` has to bridge the two — otherwise a
-  /// castle silently reads as "a move the database has never seen".
-  static String? alternateCastlingUci(String uci) {
-    const pairs = <String, String>{
-      'e1h1': 'e1g1',
-      'e1g1': 'e1h1',
-      'e1a1': 'e1c1',
-      'e1c1': 'e1a1',
-      'e8h8': 'e8g8',
-      'e8g8': 'e8h8',
-      'e8a8': 'e8c8',
-      'e8c8': 'e8a8',
-    };
-    return pairs[uci];
-  }
-
-  /// Returns the standard king-to-target UCI for a castling move, or the
-  /// original [move]'s UCI for any non-castling move.
-  ///
-  /// dartchess normalizes castling to the Chess960 king-to-rook form (e.g.
-  /// `e1h1`), but the Gamebase backend uses chess.js which only recognizes the
-  /// classical king-to-g/c form (`e1g1`, `e1c1`, `e8g8`, `e8c8`). Without this
-  /// rewrite, any move line containing a castle fails server-side replay and
-  /// deep-path queries return empty aggregates.
-  static String _toStandardCastlingUci(Position position, NormalMove move) {
-    final piece = position.board.pieceAt(move.from);
-    if (piece == null || piece.role != Role.king) return move.uci;
-
-    final fromFile = move.from.file;
-    final toFile = move.to.file;
-    final fileDelta = (fromFile - toFile).abs();
-
-    final targetPiece = position.board.pieceAt(move.to);
-    final capturesOwnRook =
-        targetPiece != null &&
-        targetPiece.role == Role.rook &&
-        targetPiece.color == piece.color;
-
-    // File delta of 2+ (standard e1→g1/c1) or capturing own rook (Chess960
-    // form e1→h1/a1) both indicate castling. For everything else (e1→f1,
-    // e1→e2, etc.) fall through to the original UCI.
-    if (fileDelta < 2 && !capturesOwnRook) return move.uci;
-
-    final isKingSide = toFile > fromFile;
-    final targetFile = isKingSide ? File.g : File.c;
-    final targetSquare = Square.fromCoords(targetFile, move.from.rank);
-    return move.from.name + targetSquare.name;
-  }
+  /// The other classical/dartchess spelling of a castling move.
+  static String? alternateCastlingUci(String uci) =>
+      alternateGamebaseCastlingUci(uci);
 
   /// Search players by name.
   /// Note: pageNumber is 0-indexed per the API spec.
@@ -866,6 +739,43 @@ class GamebaseRepository {
     }
   }
 
+  Future<String> uploadProfileAvatar(
+    Uint8List bytes, {
+    required String bearer,
+  }) async {
+    try {
+      final response = await _dio.post(
+        '$_baseUrl/api/collections/account/avatar',
+        data: Stream.value(bytes),
+        options: Options(
+          headers: {
+            ..._headers,
+            'Authorization': 'Bearer $bearer',
+            'Content-Type': 'image/png',
+            'Content-Length': bytes.length.toString(),
+          },
+          followRedirects: false,
+        ),
+      );
+      final data = unwrapCollectionsEnvelope(
+        response.data,
+        statusCode: response.statusCode,
+      );
+      if (data is! Map || data['avatarUrl'] is! String) {
+        throw const FormatException('Invalid profile photo response');
+      }
+      return data['avatarUrl'] as String;
+    } on DioException catch (error) {
+      if (error.response?.data is Map) {
+        unwrapCollectionsEnvelope(
+          error.response!.data,
+          statusCode: error.response?.statusCode,
+        );
+      }
+      rethrow;
+    }
+  }
+
   Future<Map<String, dynamic>> recordCollectionEngagement(
     String slug,
     Map<String, dynamic> body, {
@@ -896,12 +806,16 @@ class GamebaseRepository {
     required String bearer,
     Map<String, dynamic>? body,
     Map<String, dynamic>? query,
+    String resource = 'book',
   }) async {
-    if (!const {'GET', 'PUT', 'DELETE'}.contains(method)) {
+    final cover = resource == 'book/cover';
+    if (!(cover
+        ? const {'POST', 'DELETE'}.contains(method)
+        : const {'GET', 'PUT', 'DELETE'}.contains(method))) {
       throw ArgumentError.value(method, 'method');
     }
     final response = await _dio.request<Map<String, dynamic>>(
-      '$_baseUrl/api/library/folders/${Uri.encodeComponent(folderId)}/book',
+      '$_baseUrl/api/library/folders/${Uri.encodeComponent(folderId)}/${cover ? 'book/cover' : 'book'}',
       data: body,
       queryParameters: query,
       options: Options(
@@ -972,6 +886,7 @@ class GamebaseRepository {
     String? section,
     String? playerKey,
     String? eco,
+    CollectionSearchQuery search = const CollectionSearchQuery(),
     bool includePgn = false,
     int limit = 100,
     int offset = 0,
@@ -984,6 +899,7 @@ class GamebaseRepository {
       bearer: bearer,
       fresh: fresh,
       queryParameters: {
+        ...search.parameters,
         if (section != null && section.isNotEmpty) 'section': section,
         if (playerKey != null && playerKey.isNotEmpty) 'player': playerKey,
         if (eco != null && eco.isNotEmpty) 'eco': eco,
@@ -1009,6 +925,29 @@ class GamebaseRepository {
     }
     return (
       items: [for (final item in data['items'] as List) item['name'] as String],
+      total: (data['total'] as num).toInt(),
+    );
+  }
+
+  Future<({List<CollectionAuthor> items, int total})> searchCollectionAuthors({
+    CollectionSearchQuery search = const CollectionSearchQuery(),
+    int offset = 0,
+    int limit = 40,
+  }) async {
+    final data = await _getCollectionsData(
+      '/api/collections/catalog/authors',
+      what: 'collection authors',
+      queryParameters: {...search.parameters, 'offset': offset, 'limit': limit},
+    );
+    if (data is! Map || data['items'] is! List || data['total'] is! num) {
+      throw const FormatException('Invalid collection authors response');
+    }
+    return (
+      items: [
+        for (final item in data['items'] as List)
+          if (item is Map)
+            CollectionAuthor.fromJson(Map<String, dynamic>.from(item)),
+      ],
       total: (data['total'] as num).toInt(),
     );
   }

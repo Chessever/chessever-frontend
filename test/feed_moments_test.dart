@@ -4,6 +4,7 @@ import 'package:chessever2/screens/feed/logic/feed_moments.dart';
 import 'package:chessever2/screens/feed/logic/feed_pgn.dart';
 import 'package:chessever2/screens/feed/models/feed_models.dart';
 import 'package:chessever2/screens/feed/logic/feed_codec.dart';
+import 'package:chessever2/screens/for_you/discovery/models/report_game_type.dart';
 import 'package:chessever2/screens/tour_detail/games_tour/models/games_tour_model.dart';
 import 'package:dartchess/dartchess.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -123,6 +124,30 @@ void main() {
     });
   });
 
+  test('report eligibility requires eval and verdict on the same move', () {
+    expect(feedClipFromPgn(_reportGame)!.hasReport, isTrue);
+    expect(feedClipFromPgn(_evalOnlyGame)!.hasReport, isFalse);
+    expect(feedClipFromPgn(_operaGame)!.hasReport, isFalse);
+    final split = _evalOnlyGame.replaceFirst('Qxf7#', r'Qxf7# $242');
+    expect(feedClipFromPgn(split)!.hasReport, isFalse);
+  });
+
+  test('report moments reward brilliance, drama and concise games', () {
+    final exciting = feedClipFromPgn(_reportGame)!;
+    final quiet = FeedClip(
+      plies: exciting.plies,
+      result: '½-½',
+      hasEvals: true,
+      hasReport: true,
+      headlines: const [],
+    );
+    expect(
+      feedReportInterest(exciting),
+      greaterThan(feedReportInterest(quiet)),
+    );
+    expect(feedReportInterest(exciting), lessThanOrEqualTo(3));
+  });
+
   group('prewarmed report PGN', () {
     late FeedClip clip;
 
@@ -233,6 +258,10 @@ void main() {
   });
 
   group('first-page cache codec', () {
+    final annotatedOpera = _operaGame.replaceFirst(
+      '1. e4',
+      r'1. e4 $242 { [%eval 0.30] }',
+    );
     FeedItem item({required String reason, DateTime? day}) {
       final clip = feedClipFromPgn(_operaGame)!;
       return FeedItem(
@@ -263,7 +292,7 @@ void main() {
           roundId: 'r1',
           tourId: 't1',
           tourSlug: 'paris-1858',
-          pgn: _operaGame,
+          pgn: annotatedOpera,
           boardNr: 1,
           gameDay: day,
         ),
@@ -286,10 +315,12 @@ void main() {
       expect(decoded.game.whitePlayer.name, 'Morphy, Paul');
       expect(decoded.game.whitePlayer.fideId, 1);
       expect(decoded.game.gameStatus, GameStatus.whiteWins);
-      expect(decoded.game.pgn, _operaGame);
+      expect(decoded.game.pgn, annotatedOpera);
       expect(decoded.reason, original.reason);
       expect(decoded.result, '1-0');
       expect(decoded.plyCount, 33);
+      expect(decoded.hasEvals, isTrue);
+      expect(decoded.plies[1].cp, 30);
       for (var i = 0; i < original.plies.length; i++) {
         expect(decoded.plies[i].fen, original.plies[i].fen);
         expect(decoded.plies[i].san, original.plies[i].san);
@@ -312,9 +343,56 @@ void main() {
       expect(decoded.reason, 'Brilliant finish');
     });
 
+    test('cached games without reports are dropped', () {
+      final original = item(reason: 'Top board today');
+      for (final pgn in [_operaGame, _evalOnlyGame, null]) {
+        final stale = FeedItem(
+          game: original.game.copyWith(pgn: pgn ?? ''),
+          plies: original.plies,
+          reason: original.reason,
+        );
+        expect(
+          decodeFlowFeedCache(
+            encodeFlowFeedCache([stale]),
+            now: DateTime.now(),
+          ),
+          isEmpty,
+        );
+      }
+    });
+
     test('garbage yields an empty page', () {
       expect(decodeFlowFeedCache('not json', now: DateTime.now()), isEmpty);
       expect(decodeFlowFeedCache('{"v":99}', now: DateTime.now()), isEmpty);
+    });
+
+    test('report labels survive caching and Gamebase games never do', () {
+      final original = item(reason: 'report');
+      final report = FeedItem(
+        game: original.game,
+        plies: original.plies,
+        reason: original.reason,
+        reportType: ReportGameType.comeback,
+      );
+      expect(
+        decodeFlowFeedCache(
+          encodeFlowFeedCache([report]),
+          now: DateTime.now(),
+        ).single.reportType,
+        ReportGameType.comeback,
+      );
+      final archive = FeedItem(
+        game: original.game.copyWith(source: GameSource.gamebase),
+        plies: original.plies,
+        reason: original.reason,
+      );
+      expect(
+        decodeFlowFeedCache(
+          encodeFlowFeedCache([archive]),
+          now: DateTime.now(),
+        ),
+        isEmpty,
+      );
     });
   });
 
@@ -358,6 +436,7 @@ void main() {
       final item = FeedItem(
         game: GamesTourModel(
           gameId: 'report-fixture',
+          pgn: _reportGame,
           whitePlayer: PlayerCard(
             name: 'White',
             federation: '',

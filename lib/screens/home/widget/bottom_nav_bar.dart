@@ -9,6 +9,7 @@ import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/svg_asset.dart';
 import 'package:chessever2/widgets/app_snack.dart';
+import 'package:chessever2/widgets/alert_dialog/alert_modal.dart';
 import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -127,6 +128,15 @@ Future<void> makeBottomTabDefault(
     featureId: 'default_start_tab',
     returnTo: 'home',
     onEntitled: () async {
+      if (!context.mounted) return;
+      final name = namesBottomNavBarIcons[item]!;
+      final confirmed = await showSmoothConfirmDialog(
+        context: context,
+        title: 'Make $name your start screen?',
+        message: 'The app will open on $name next time you launch it.',
+        confirmText: 'Apply',
+      );
+      if (confirmed != true || !context.mounted) return;
       await writeDefaultBottomTab(item);
       HapticFeedbackService.success();
       if (context.mounted) {

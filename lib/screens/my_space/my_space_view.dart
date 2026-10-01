@@ -3,12 +3,13 @@ import 'dart:async';
 import 'package:chessever2/screens/my_space/actions/space_remove_confirmation.dart';
 // import 'package:chessever2/providers/favorite_events_provider.dart';
 // import 'package:chessever2/providers/for_you_games_provider.dart';
-// import 'package:chessever2/repository/liked_games/liked_games_provider.dart';
+import 'package:chessever2/repository/liked_games/liked_games_provider.dart';
 // import 'package:chessever2/screens/for_you/open_for_you_event.dart';
 import 'package:chessever2/screens/for_you/discovery/widgets/discovery_common.dart'
     show DiscoveryAction;
 import 'package:chessever2/screens/my_space/actions/space_edit_actions.dart';
-// import 'package:chessever2/screens/my_likes/my_likes_screen.dart';
+import 'package:chessever2/screens/my_likes/my_likes_screen.dart';
+import 'package:chessever2/screens/collections/collection_plate_row.dart';
 import 'package:chessever2/screens/my_space/models/space_shortcut.dart';
 import 'package:chessever2/screens/my_space/my_prep_screen.dart';
 import 'package:chessever2/screens/library/library_screen.dart';
@@ -30,7 +31,7 @@ import 'package:chessever2/utils/scroll_cache.dart';
 //     show eventSpaceDraft;
 import 'package:chessever2/widgets/hub_tile.dart';
 // import 'package:chessever2/widgets/hub_tile_art.dart';
-// import 'package:chessever2/widgets/hub_tile_captions.dart';
+import 'package:chessever2/widgets/hub_tile_captions.dart';
 import 'package:chessever2/widgets/skeleton_widget.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -48,8 +49,8 @@ Future<void> openMyPrep(BuildContext context) {
   return MyPrepScreen.open(context);
 }
 
-/// The My Space tab, with Smart Events and Library tiles above what the
-/// user saved, in compact event-style cards without category headers.
+/// The My Space tab, with Smart Events and Library tiles, a permanent
+/// My Likes archive card, and saved compact cards without category headers.
 ///
 /// Works signed out too: the shortcuts provider keeps a device-local list
 /// for guests.
@@ -272,7 +273,7 @@ class _MySpaceViewState extends ConsumerState<MySpaceView> {
         ));
       }
     }
-    final lead = 1;
+    final lead = 2;
     final count = lead + body.length;
 
     Widget padded(Widget child) => Padding(
@@ -293,6 +294,8 @@ class _MySpaceViewState extends ConsumerState<MySpaceView> {
       // Groups keep their state as saved things come and go around them.
       findChildIndexCallback: (key) {
         if (key is! ValueKey<String>) return null;
+        if (key.value == 'my_space_tiles') return 0;
+        if (key.value == 'my_space_likes_card') return 1;
         final at = body.indexWhere((b) => b.key == key.value);
         return at < 0 ? null : lead + at;
       },
@@ -301,6 +304,13 @@ class _MySpaceViewState extends ConsumerState<MySpaceView> {
           return KeyedSubtree(
             key: const ValueKey<String>('my_space_tiles'),
             child: padded(const _MySpaceTiles()),
+          );
+        }
+        if (index == 1) {
+          return Padding(
+            key: const ValueKey<String>('my_space_likes_card'),
+            padding: EdgeInsets.fromLTRB(gutter, 12.sp, gutter, 16.sp),
+            child: const _MyLikesCard(),
           );
         }
         final at = index - lead;
@@ -344,34 +354,32 @@ class _MySpaceTiles extends StatelessWidget {
   );
 }
 
-// My Likes is temporarily outside My Space's product scope.
-/*
-class _MySpaceTiles extends ConsumerWidget {
-  const _MySpaceTiles();
+/// Permanent archive entry, sharing the saved cards' horizontal event frame.
+class _MyLikesCard extends ConsumerWidget {
+  const _MyLikesCard();
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final likes = ref.watch(likedGamesProvider.select(likesSummary));
-    return HubTileRow(
-      left: HubTile(
-        key: const ValueKey('my_space_likes_tile'),
-        title: 'My Likes',
-        caption: hubLikesCaption(likes),
-        ramp: false,
-        artwork: const HubLikesBackdrop(),
-        onTap: () {
-          HapticFeedbackService.cardTap();
-          Navigator.of(context).push(
-            MaterialPageRoute<void>(builder: (_) => const MyLikesScreen()),
-          );
-        },
+    final caption = hubLikesCaption(
+      ref.watch(likedGamesProvider.select(likesSummary)),
+    );
+    return CollectionPlateRow(
+      plate: Center(
+        child: Icon(Icons.favorite, size: 40.sp, color: context.colors.danger),
       ),
-      right: const _LibraryTile(),
+      title: 'My Likes',
+      meta: 'Your saved games',
+      tally: caption,
+      semanticsLabel: 'My Likes, your saved games, $caption',
+      onTap: () {
+        HapticFeedbackService.cardTap();
+        Navigator.of(
+          context,
+        ).push(MaterialPageRoute<void>(builder: (_) => const MyLikesScreen()));
+      },
     );
   }
 }
-
-*/
 
 /// Library is the private workspace; publishing is an explicit action inside it.
 class _LibraryTile extends StatelessWidget {

@@ -51,7 +51,7 @@ class _MostLikedScreenState extends State<MostLikedScreen> {
       embedded: widget.embedded,
       tabs: const ['Games', 'Players'],
       controller: _tabs,
-      pageBuilder: (context, index) => _MostLikedPage(
+      pageBuilder: (context, index) => MostLikedPage(
         key: ValueKey('most_liked_page_$index'),
         view: index == 0 ? MostLikedView.games : MostLikedView.players,
         now: widget.now,
@@ -63,8 +63,9 @@ class _MostLikedScreenState extends State<MostLikedScreen> {
   }
 }
 
-class _MostLikedPage extends ConsumerWidget {
-  const _MostLikedPage({
+/// Shared ranking page for standalone rankings and the Likes destination.
+class MostLikedPage extends ConsumerWidget {
+  const MostLikedPage({
     super.key,
     required this.view,
     this.now,

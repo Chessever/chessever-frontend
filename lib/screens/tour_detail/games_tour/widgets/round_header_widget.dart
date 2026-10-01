@@ -134,12 +134,16 @@ class TournamentRoundHeader extends StatelessWidget {
     this.isExpanded = true,
     this.onToggle,
     this.multiline = false,
+    this.titleMaxLines = 2,
+    this.contentInset = 0,
   });
   final String title;
   final String? subtitle;
   final bool isExpanded;
   final VoidCallback? onToggle;
   final bool multiline;
+  final int titleMaxLines;
+  final double contentInset;
 
   @override
   Widget build(BuildContext context) {
@@ -167,6 +171,7 @@ class TournamentRoundHeader extends StatelessWidget {
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
+            if (contentInset > 0) SizedBox(width: contentInset),
             Container(
               width: 4.w,
               height: 20.h,
@@ -198,7 +203,7 @@ class TournamentRoundHeader extends StatelessWidget {
                             fontSize: 16.sp,
                             fontWeight: FontWeight.w600,
                           ),
-                          maxLines: 2,
+                          maxLines: titleMaxLines,
                           overflow: TextOverflow.ellipsis,
                         ),
                         if (subtitle?.isNotEmpty == true) ...[

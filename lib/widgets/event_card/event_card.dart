@@ -4,6 +4,8 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:chessever2/providers/event_favorite_players_provider.dart';
 import 'package:chessever2/providers/favorite_events_provider.dart';
 import 'package:chessever2/screens/group_event/model/tour_event_card_model.dart';
+import 'package:chessever2/screens/gamebase/event_view/gamebase_virtual_event_id.dart';
+import 'package:chessever2/screens/my_space/models/space_shortcut.dart';
 import 'package:chessever2/screens/group_event/providers/live_group_broadcast_id_provider.dart';
 import 'package:chessever2/theme/app_colors.dart';
 import 'package:chessever2/widgets/hub_tile.dart' show kHubTileInk;
@@ -41,6 +43,10 @@ class EventCard extends ConsumerWidget {
   /// as a section header rather than an event-favorite entry point.
   final Widget? trailingWidget;
 
+  /// The save target when the display model is a profile fallback or a
+  /// snapshot of an existing pin. Its identity must match the destination.
+  final SpaceShortcut? spaceDraft;
+
   /// Optional suffix to make hero tag unique when same event appears in multiple lists
   final String? heroTagSuffix;
 
@@ -57,6 +63,7 @@ class EventCard extends ConsumerWidget {
     this.showHeartIndicator = false,
     this.favoritePlayersSource = EventFavoritePlayersSource.automatic,
     this.trailingWidget,
+    this.spaceDraft,
     this.heroTagSuffix,
     this.forceCompactLayout = false,
     super.key,
@@ -78,6 +85,7 @@ class EventCard extends ConsumerWidget {
       },
       child: _EventCardMenuTrigger(
         model: tourEventCardModel,
+        spaceDraft: spaceDraft,
         onOpen: onTap!,
         previewBuilder:
             (size) => SizedBox.fromSize(
@@ -105,7 +113,7 @@ class EventCard extends ConsumerWidget {
     // Completed, live, and calendar events don't render the countdown line,
     // so they skip the fetch entirely.
     final needsRound =
-        tourEventCardModel.eventSource == EventSource.lichessBroadcast &&
+        hasBroadcastActions(tourEventCardModel) &&
         tourEventCardModel.tourEventCategory != TourEventCategory.completed &&
         tourEventCardModel.tourEventCategory != TourEventCategory.live;
     // Shimmer only while the FIRST resolve is in flight. Invalidations (the
@@ -401,12 +409,14 @@ class EventCard extends ConsumerWidget {
 class _EventCardMenuTrigger extends ConsumerStatefulWidget {
   const _EventCardMenuTrigger({
     required this.model,
+    this.spaceDraft,
     required this.onOpen,
     required this.previewBuilder,
     required this.child,
   });
 
   final GroupEventCardModel model;
+  final SpaceShortcut? spaceDraft;
   final VoidCallback onOpen;
 
   /// The lifted copy of the card, sized to the card as it sits on screen.
@@ -510,6 +520,7 @@ class _EventCardMenuTriggerState extends ConsumerState<_EventCardMenuTrigger> {
               tourIds: knownTourIds ?? const <String>[],
               pendingTourIds: pendingTourIds,
               onOpen: widget.onOpen,
+              spaceDraft: widget.spaceDraft,
             ),
         preview: widget.previewBuilder(box.size),
         onPreviewTap: widget.onOpen,
@@ -1324,7 +1335,7 @@ class _NextRoundLine extends ConsumerWidget {
     if (category == TourEventCategory.completed) {
       return const SizedBox.shrink();
     }
-    if (eventId.startsWith('cal_event_')) {
+    if (eventId.startsWith('cal_event_') || isVirtualGamebaseId(eventId)) {
       return const SizedBox.shrink();
     }
 

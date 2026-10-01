@@ -4,6 +4,7 @@ import 'dart:math' as math;
 import 'package:chessever2/screens/chessboard/analysis/chess_game.dart';
 import 'package:chessever2/screens/chessboard/game_review/game_analysis_report_store.dart';
 import 'package:chessever2/screens/chessboard/game_review/game_report_progress.dart';
+import 'package:chessever2/screens/chessboard/game_review/game_report_from_pgn.dart';
 import 'package:chessever2/screens/chessboard/game_review/lichess_judgment.dart';
 import 'package:chessever2/screens/chessboard/game_review/move_position_facts.dart';
 import 'package:chessever2/screens/chessboard/provider/stockfish_singleton.dart';
@@ -97,8 +98,9 @@ class GameAnalysisReport {
   final String fingerprint;
   final List<GameReportPosition> positions;
   final List<GameReportMove> moves;
-  final double whiteAccuracy;
-  final double blackAccuracy;
+  // Absent when a report is restored from a PGN, which does not save them.
+  final double? whiteAccuracy;
+  final double? blackAccuracy;
   final int? whiteEstimatedRating;
   final int? blackEstimatedRating;
   final DateTime generatedAt;
@@ -486,6 +488,29 @@ class GameAnalysisReportController extends ChangeNotifier {
     return true;
   }
 
+  /// Memory and disk preserve the full report. A saved PGN is the fallback
+  /// when this device has never generated it or the local cache was evicted.
+  Future<bool> loadExistingReport(ChessGame game) async {
+    if (_disposed) return false;
+    final fingerprint = gameReportFingerprint(game);
+    bool hasCompletedReport() =>
+        _state.status == GameReportStatus.completed &&
+        _state.report?.fingerprint == fingerprint;
+    if (hasCompletedReport()) return true;
+    final generation = _generation;
+    if (await loadPersistedReport(fingerprint)) return true;
+    // Another load may have adopted this same report while disk was awaited.
+    if (_disposed || generation != _generation) return hasCompletedReport();
+    if (_state.isRunning) return false;
+    final report = gameAnalysisReportFromPgn(game);
+    if (report == null) return false;
+    _cacheReport(fingerprint, report);
+    _persistReport(report);
+    _adoptCompletedReport(report);
+    _clearPending(fingerprint);
+    return true;
+  }
+
   void _adoptCompletedReport(GameAnalysisReport report) {
     _generation++;
     _stopProgressTicker();
@@ -541,16 +566,13 @@ class GameAnalysisReportController extends ChangeNotifier {
   }) async {
     if (_state.isRunning || game.mainline.isEmpty) return;
     final fingerprint = gameReportFingerprint(game);
-    // Always check previous generations first: session memory, then durable
-    // local store. Skip Stockfish when either hits.
-    if (loadCachedReport(fingerprint)) {
+    // Reports may already exist on this device or in the game's saved PGN.
+    final beforeLoad = _generation;
+    if (await loadExistingReport(game)) {
       _clearPending(fingerprint);
       return;
     }
-    if (await loadPersistedReport(fingerprint)) {
-      _clearPending(fingerprint);
-      return;
-    }
+    if (_disposed || beforeLoad != _generation) return;
 
     // Neither cache had it, so it has to be analysed. Prefer the server: it
     // runs this same classifier deeper than a phone can, without spending the
