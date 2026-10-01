@@ -17,6 +17,39 @@ import 'package:chessever2/widgets/svg_widget.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
+/// Keeps typed text tidy as it is entered: no leading space and no runs of
+/// spaces. Single-line fields also refuse line breaks; multi-line ones allow
+/// at most one blank line between paragraphs.
+class _TidySpacesFormatter extends TextInputFormatter {
+  const _TidySpacesFormatter({this.multiline = false});
+  final bool multiline;
+
+  @override
+  TextEditingValue formatEditUpdate(
+    TextEditingValue oldValue,
+    TextEditingValue newValue,
+  ) {
+    var text = newValue.text;
+    text = multiline
+        ? text.replaceAll(RegExp(r'\n{3,}'), '\n\n')
+        : text.replaceAll(RegExp(r'[\r\n\t]'), ' ');
+    text = text
+        .replaceAll(RegExp(r'[ \t]{2,}'), ' ')
+        .replaceFirst(RegExp(r'^\s+'), '');
+    if (text == newValue.text) return newValue;
+    final removed = newValue.text.length - text.length;
+    final offset = (newValue.selection.baseOffset - removed).clamp(
+      0,
+      text.length,
+    );
+    return TextEditingValue(
+      text: text,
+      selection: TextSelection.collapsed(offset: offset),
+    );
+  }
+}
 
 Future<void> openLibraryBookEditor(
   BuildContext context,
@@ -110,6 +143,7 @@ class _LibraryBookScreenState extends ConsumerState<LibraryBookScreen> {
     for (final entry in values.entries) {
       _fields[entry.key]!.text = entry.value;
     }
+    if (m.author.trim().isEmpty) _prefillRemembered();
     setState(() {
       _publication = publication;
       _dirty = false;
@@ -140,18 +174,43 @@ class _LibraryBookScreenState extends ConsumerState<LibraryBookScreen> {
 
   String _text(_Field field) => _fields[field]!.text;
 
+  /// The author is usually the same person on every collection, so the last
+  /// one saved pre-fills a fresh collection. Stored on this device only.
+  static const _lastAuthorKey = 'library_book.last_author';
+
+  Future<void> _prefillRemembered() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final author = prefs.getString(_lastAuthorKey)?.trim() ?? '';
+      final field = _fields[_Field.author]!;
+      if (!mounted || author.isEmpty || field.text.trim().isNotEmpty) return;
+      setState(() => field.text = author);
+    } catch (_) {
+      // A missing preference only means no pre-fill.
+    }
+  }
+
+  Future<void> _remember(LibraryBookMetadata metadata) async {
+    final author = metadata.author.trim();
+    if (author.isEmpty) return;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_lastAuthorKey, author);
+    } catch (_) {}
+  }
+
   LibraryBookMetadata get _metadata {
     final saved = _publication?.metadata;
     return LibraryBookMetadata(
-      title: _text(_Field.title),
-      subtitle: _text(_Field.subtitle),
-      author: _text(_Field.author),
-      about: _text(_Field.about),
+      title: _text(_Field.title).trim(),
+      subtitle: _text(_Field.subtitle).trim(),
+      author: _text(_Field.author).trim(),
+      about: _text(_Field.about).trim(),
       // Not editable here; carried through so a save never erases them.
       foreword: saved?.foreword ?? '',
       publisher: saved?.publisher ?? '',
       publishedYear: int.tryParse(_text(_Field.year).trim()),
-      coverUrl: _text(_Field.cover),
+      coverUrl: _text(_Field.cover).trim(),
     );
   }
 
@@ -188,6 +247,7 @@ class _LibraryBookScreenState extends ConsumerState<LibraryBookScreen> {
           );
       if (!mounted) return;
       _accept(saved);
+      _remember(saved.metadata);
       ref.invalidate(collectionsProvider);
       ref.invalidate(collectionsRepositoryProvider);
       ref.invalidate(collectionOpeningsProvider);
@@ -267,11 +327,15 @@ class _LibraryBookScreenState extends ConsumerState<LibraryBookScreen> {
     final value = raw?.trim() ?? '';
     switch (field) {
       case _Field.title:
-        return value.isEmpty ? 'Enter a collection title' : null;
+        if (value.isEmpty) return 'Enter a collection title';
+        return value.length < 3 ? 'Use at least 3 characters' : null;
       case _Field.author:
-        return _validateForReview && value.isEmpty
-            ? 'Credit the author by name'
-            : null;
+        if (value.isEmpty) {
+          return _validateForReview ? 'Credit the author by name' : null;
+        }
+        return RegExp(r'\p{L}{2}', unicode: true).hasMatch(value)
+            ? null
+            : 'Enter the author’s name';
       case _Field.about:
         return _validateForReview && value.isEmpty
             ? 'Describe this collection'
@@ -286,7 +350,10 @@ class _LibraryBookScreenState extends ConsumerState<LibraryBookScreen> {
         if (value.isEmpty) return null;
         return _coverUri(value) == null ? 'Use an HTTPS image link' : null;
       case _Field.subtitle:
-        return null;
+        return value.isNotEmpty &&
+                value.toLowerCase() == _text(_Field.title).trim().toLowerCase()
+            ? 'Say something the title doesn’t'
+            : null;
     }
   }
 
@@ -314,10 +381,12 @@ class _LibraryBookScreenState extends ConsumerState<LibraryBookScreen> {
             crossAxisAlignment: CrossAxisAlignment.baseline,
             textBaseline: TextBaseline.alphabetic,
             children: [
-              Text(
-                label,
-                style: AppTypography.textSmMedium.copyWith(
-                  color: colors.textPrimary,
+              Flexible(
+                child: Text(
+                  label,
+                  style: AppTypography.textSmMedium.copyWith(
+                    color: colors.textPrimary,
+                  ),
                 ),
               ),
               if (optional) ...[
@@ -353,12 +422,26 @@ class _LibraryBookScreenState extends ConsumerState<LibraryBookScreen> {
               _ when lines > 1 => TextInputType.multiline,
               _ => TextInputType.text,
             },
-            inputFormatters: field == _Field.year
-                ? [FilteringTextInputFormatter.digitsOnly]
-                : null,
+            inputFormatters: switch (field) {
+              _Field.year => [FilteringTextInputFormatter.digitsOnly],
+              _Field.cover => [FilteringTextInputFormatter.deny(RegExp(r'\s'))],
+              _Field.author => [
+                // Names only: letters (any script), spaces and . ' - , &.
+                FilteringTextInputFormatter.allow(
+                  RegExp(r"[\p{L}\p{M} .'’\-,&]", unicode: true),
+                ),
+                const _TidySpacesFormatter(),
+              ],
+              _Field.about => [const _TidySpacesFormatter(multiline: true)],
+              _ => [const _TidySpacesFormatter()],
+            },
+            // Author is a proper name: every word starts upper-case, so
+            // "Jason Statham" is not turned into "Jason statham".
             textCapitalization: switch (field) {
               _Field.cover || _Field.year => TextCapitalization.none,
-              _Field.title || _Field.subtitle => TextCapitalization.words,
+              _Field.title ||
+              _Field.subtitle ||
+              _Field.author => TextCapitalization.words,
               _ => TextCapitalization.sentences,
             },
             autocorrect: field != _Field.cover,
@@ -378,7 +461,11 @@ class _LibraryBookScreenState extends ConsumerState<LibraryBookScreen> {
                 fontSize: 15.f,
                 height: 22 / 15,
               ),
-              counterText: '',
+              // A counter only where the limit is close enough to matter.
+              counterText: limit >= 100 && limit <= 2000 ? null : '',
+              counterStyle: AppTypography.textXsRegular.copyWith(
+                color: context.textInk(0.45),
+              ),
               isDense: true,
               filled: true,
               fillColor: colors.textPrimary.withValues(alpha: 0.03),
@@ -530,6 +617,7 @@ class _LibraryBookScreenState extends ConsumerState<LibraryBookScreen> {
                               where:
                                   'The name readers see in the list and on top of the page.',
                               hint: 'e.g. Carlsen’s Best Endgames',
+                              limit: 80,
                             ),
                             _field(
                               _Field.subtitle,
@@ -538,6 +626,7 @@ class _LibraryBookScreenState extends ConsumerState<LibraryBookScreen> {
                               where:
                                   'One short line under the title on the collection page. It adds detail the title leaves out.',
                               hint: 'e.g. 40 annotated wins, 2013–2023',
+                              limit: 120,
                             ),
                             _field(
                               _Field.author,
@@ -545,6 +634,7 @@ class _LibraryBookScreenState extends ConsumerState<LibraryBookScreen> {
                               where:
                                   'Credited as “by …” in the list and on the page.',
                               hint: 'e.g. Magnus Carlsen',
+                              limit: 60,
                             ),
                             _field(
                               _Field.year,
@@ -562,7 +652,7 @@ class _LibraryBookScreenState extends ConsumerState<LibraryBookScreen> {
                               hint:
                                   'What’s inside, who it’s for, and what readers will take away.',
                               lines: 4,
-                              limit: 20000,
+                              limit: 1500,
                             ),
                             _field(
                               _Field.cover,
@@ -571,7 +661,7 @@ class _LibraryBookScreenState extends ConsumerState<LibraryBookScreen> {
                               where:
                                   'A portrait image works best. Without one, the stacked boards are shown.',
                               hint: 'https://…',
-                              limit: 2000,
+                              limit: 2048,
                             ),
                             if (published)
                               CheckboxListTile(

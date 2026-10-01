@@ -6,6 +6,7 @@ import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class _Publisher implements LibraryBookPublisher {
   @override
@@ -116,6 +117,8 @@ Future<void> _tap(WidgetTester tester, String text) async {
 }
 
 void main() {
+  setUp(() => SharedPreferences.setMockInitialValues({}));
+
   testWidgets('title stays validated after scrolling down to the actions', (
     tester,
   ) async {
@@ -232,4 +235,43 @@ void main() {
       expect(tester.takeException(), isNull);
     },
   );
+
+  testWidgets('author capitalizes every word and text stays tidy', (
+    tester,
+  ) async {
+    final publisher = _Publisher();
+    await _pump(tester, publisher);
+    final author = find.byType(TextField).at(2);
+    expect(
+      tester.widget<TextField>(author).textCapitalization,
+      TextCapitalization.words,
+    );
+    await tester.enterText(author, '  Jason   Statham 42');
+    await tester.enterText(find.byType(TextField).first, ' Endgame   Gems');
+    await tester.pump();
+    expect(tester.widget<TextField>(author).controller!.text, 'Jason Statham ');
+    expect(
+      tester.widget<TextField>(find.byType(TextField).first).controller!.text,
+      'Endgame Gems',
+    );
+  });
+
+  testWidgets('a saved author pre-fills the next fresh collection', (
+    tester,
+  ) async {
+    SharedPreferences.setMockInitialValues({
+      'library_book.last_author': 'Jason Statham',
+    });
+    final publisher = _Publisher()
+      ..publication = const LibraryBookPublication(
+        status: 'draft',
+        metadata: LibraryBookMetadata(title: 'Fresh'),
+      );
+    await _pump(tester, publisher);
+    await tester.pumpAndSettle();
+    expect(
+      tester.widget<TextField>(find.byType(TextField).at(2)).controller!.text,
+      'Jason Statham',
+    );
+  });
 }
