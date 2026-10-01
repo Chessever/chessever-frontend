@@ -83,35 +83,46 @@ class MostLikedPage extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final query = mostLikedActiveQuery(ref, now: now);
-    return RefreshIndicator(
-      color: context.colors.textPrimary,
-      backgroundColor: context.colors.surface,
-      onRefresh: () async {
-        ref.invalidate(mostLikedProvider);
-        try {
-          await ref.read(mostLikedProvider(query).future);
-        } catch (_) {
-          // The section shows the failure and its retry.
-        }
-      },
-      child: ListView(
-        physics: const AlwaysScrollableScrollPhysics(
-          parent: BouncingScrollPhysics(),
-        ),
-        padding: EdgeInsets.only(
-          top: 8.sp,
-          bottom: 24.sp + MediaQuery.viewPaddingOf(context).bottom,
-        ),
-        children: [
-          MostLikedSection(
-            view: view,
-            now: now,
-            playerFilter: playerFilter,
-            onPickPlayer: onPickPlayer,
-            onClearPlayerFilter: onClearPlayerFilter,
+    // The period bar sits above the scrolling list, not in it, so Games (a
+    // long list of boards) keeps its period tabs and arrows in view exactly
+    // as the short Players list does.
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        SizedBox(height: 8.sp),
+        MostLikedPeriodBar(now: now),
+        Expanded(
+          child: RefreshIndicator(
+            color: context.colors.textPrimary,
+            backgroundColor: context.colors.surface,
+            onRefresh: () async {
+              ref.invalidate(mostLikedProvider);
+              try {
+                await ref.read(mostLikedProvider(query).future);
+              } catch (_) {
+                // The section shows the failure and its retry.
+              }
+            },
+            child: ListView(
+              physics: const AlwaysScrollableScrollPhysics(
+                parent: BouncingScrollPhysics(),
+              ),
+              padding: EdgeInsets.only(
+                bottom: 24.sp + MediaQuery.viewPaddingOf(context).bottom,
+              ),
+              children: [
+                MostLikedSection(
+                  view: view,
+                  now: now,
+                  playerFilter: playerFilter,
+                  onPickPlayer: onPickPlayer,
+                  onClearPlayerFilter: onClearPlayerFilter,
+                ),
+              ],
+            ),
           ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 }

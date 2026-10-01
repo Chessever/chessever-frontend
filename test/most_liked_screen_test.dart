@@ -285,6 +285,34 @@ Future<void> _teardown(WidgetTester tester, ProviderContainer container) async {
 }
 
 void main() {
+  for (final tab in ['Games', 'Players']) {
+    testWidgets('Likes $tab keeps the period tabs and arrows in view while '
+        'its list scrolls', (tester) async {
+      final container = await _pump(
+        tester,
+        subscribed: true,
+        home: const LikesScreen(),
+        size: const Size(390, 844),
+      );
+      await tester.tap(find.text(tab).hitTestable());
+      await _settle(tester);
+      final segments = find.byType(DiscoverySegments<MostLikedPeriod>);
+      final date = find.byType(MostLikedDateControl);
+      expect(segments.hitTestable(), findsOneWidget);
+      expect(date.hitTestable(), findsOneWidget);
+      final top = tester.getTopLeft(segments).dy;
+
+      // Fling the list from a point inside it, below the controls.
+      await tester.dragFrom(const Offset(195, 700), const Offset(0, -3000));
+      await _settle(tester);
+
+      expect(segments.hitTestable(), findsOneWidget);
+      expect(date.hitTestable(), findsOneWidget);
+      expect(tester.getTopLeft(segments).dy, top);
+      expect(tester.takeException(), isNull);
+      await _teardown(tester, container);
+    });
+  }
   testWidgets(
     'Likes About opens the standalone archive and keeps ranking period',
     (tester) async {
@@ -300,9 +328,11 @@ void main() {
       expect(container.read(mostLikedPeriodProvider), MostLikedPeriod.month);
       expect(find.bySemanticsLabel('Most liked, Month'), findsOneWidget);
       expect(
-        tester.widget<SegmentedSwitcher>(
-          find.byKey(const ValueKey('event_view_tabs_About_Games_Players')),
-        ).currentSelection,
+        tester
+            .widget<SegmentedSwitcher>(
+              find.byKey(const ValueKey('event_view_tabs_About_Games_Players')),
+            )
+            .currentSelection,
         1,
       );
       await tester.tap(find.text('About').hitTestable());
