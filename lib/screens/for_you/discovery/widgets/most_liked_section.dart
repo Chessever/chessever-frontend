@@ -14,6 +14,7 @@ import 'package:chessever2/utils/haptic_feedback_service.dart';
 import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/widgets/board_like_heart.dart';
 import 'package:chessever2/widgets/skeleton_widget.dart';
+import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
 import 'package:chessever2/widgets/time_control_glyph.dart';
 import 'package:chessever2/screens/my_space/models/space_shortcut.dart';
 import 'package:chessever2/screens/for_you/discovery/widgets/discovery_event_card.dart';
@@ -381,33 +382,37 @@ class _PageBody extends ConsumerWidget {
     } else {
       final visible = narrowed == null
           ? entries
-          : [for (final e in entries) if (_hasPlayer(e, narrowed)) e];
+          : [
+              for (final e in entries)
+                if (_hasPlayer(e, narrowed)) e,
+            ];
       if (visible.isEmpty && narrowed != null) {
         list = DiscoveryNotice(
           text: 'No ranked games for ${narrowed.player.name} here',
         );
       } else {
         final games = [for (final e in visible) e.game];
-      // The current period's unfinished broadcast games stream, all on one
-      // channel for the page; nothing runs the on-device engine.
-      final batches = isCurrent
-          ? liveBatchKeysForGames(
-              games: games,
-              scopePrefix: 'most_liked_page:${query.period.name}',
-            )
-          : const <String, LiveGamesBatchKey>{};
+        // The current period's unfinished broadcast games stream, all on one
+        // channel for the page; nothing runs the on-device engine.
+        final batches = isCurrent
+            ? liveBatchKeysForGames(
+                games: games,
+                scopePrefix: 'most_liked_page:${query.period.name}',
+              )
+            : const <String, LiveGamesBatchKey>{};
         list = DiscoveryGameList(
           games: games,
           lockedFor: (_) => !isToday && locked,
           onOpen: (games, index) {
             void open() => openDiscoveryGame(context, ref, games, index);
-            if (!isToday) {
-              unlockThen(
-                context,
-                ref,
-                open,
+            if (!isToday && locked) {
+              // Board access must be gated in debug sessions too: the shared
+              // guard intentionally bypasses other gates when ads are disabled.
+              showPremiumPaywallSheet(
+                context: context,
                 featureId: 'most_liked_rankings',
                 returnTo: discoveryReturnTo('most_liked'),
+                onEntitled: open,
               );
             } else {
               open();
@@ -443,9 +448,7 @@ bool _hasPlayer(MostLikedEntry entry, MostLikedPlayer picked) {
   final want = picked.player;
   final wantName = want.name.trim().toLowerCase();
   for (final side in [entry.game.whitePlayer, entry.game.blackPlayer]) {
-    if (want.fideId != null &&
-        want.fideId! > 0 &&
-        side.fideId == want.fideId) {
+    if (want.fideId != null && want.fideId! > 0 && side.fideId == want.fideId) {
       return true;
     }
     if (want.gamebasePlayerId != null &&
@@ -453,8 +456,7 @@ bool _hasPlayer(MostLikedEntry entry, MostLikedPlayer picked) {
         side.gamebasePlayerId == want.gamebasePlayerId) {
       return true;
     }
-    if (wantName.isNotEmpty &&
-        side.name.trim().toLowerCase() == wantName) {
+    if (wantName.isNotEmpty && side.name.trim().toLowerCase() == wantName) {
       return true;
     }
   }
@@ -471,12 +473,7 @@ class _NarrowedBanner extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: EdgeInsets.fromLTRB(
-        discoveryGutter,
-        0,
-        discoveryGutter,
-        8.w,
-      ),
+      padding: EdgeInsets.fromLTRB(discoveryGutter, 0, discoveryGutter, 8.w),
       child: Row(
         children: [
           Expanded(

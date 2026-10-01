@@ -41,6 +41,8 @@ import 'package:chessever2/widgets/player_initials_avatar.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 // ---------------------------------------------------------------- doubles
 
@@ -286,6 +288,15 @@ Future<void> _teardown(WidgetTester tester, ProviderContainer container) async {
 }
 
 void main() {
+  setUpAll(() async {
+    TestWidgetsFlutterBinding.ensureInitialized();
+    SharedPreferences.setMockInitialValues({});
+    await Supabase.initialize(
+      url: 'https://placeholder.supabase.co',
+      publishableKey: 'placeholder-publishable-key',
+    );
+  });
+
   testWidgets(
     'Likes About opens the standalone archive and keeps ranking period',
     (tester) async {
@@ -301,9 +312,11 @@ void main() {
       expect(container.read(mostLikedPeriodProvider), MostLikedPeriod.month);
       expect(find.bySemanticsLabel('Most liked, Month'), findsOneWidget);
       expect(
-        tester.widget<SegmentedSwitcher>(
-          find.byKey(const ValueKey('event_view_tabs_About_Games_Players')),
-        ).currentSelection,
+        tester
+            .widget<SegmentedSwitcher>(
+              find.byKey(const ValueKey('event_view_tabs_About_Games_Players')),
+            )
+            .currentSelection,
         1,
       );
       await tester.tap(find.text('About').hitTestable());
@@ -612,6 +625,16 @@ void main() {
       );
       expect(list.onOpen, isNotNull);
       expect(list.lockedFor?.call(0), isTrue);
+
+      // Exercise the opening handler, not just the locked appearance. Debug
+      // builds without rewarded configuration must still show a paywall.
+      list.onOpen!(list.games, 0);
+      await _settle(tester);
+      expect(find.text('Sign in to get Premium'), findsOneWidget);
+      Navigator.of(tester.element(find.text('Sign in to get Premium'))).pop();
+      await _settle(tester);
+      expect(find.byType(MostLikedScreen), findsOneWidget);
+      expect(tester.takeException(), isNull);
     }
 
     await tester.tap(find.text('Players'));
