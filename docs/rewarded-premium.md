@@ -205,3 +205,16 @@ rewarded access. Existing databases and saved games are preserved.
 Device check: during rewarded access, try creating a fourth database from
 Library, My Space, a folder, and the save/import pickers; each must be blocked.
 With ten saved games, a new single or bulk save must request a subscription.
+
+## Feed scrolling
+
+Free viewers can open Feed and view its first post. Swiping or tapping Next
+shows the Watch ad / Upgrade chooser before revealing subsequent posts.
+Dismissal returns to the first post; confirmed paid or rewarded access continues
+to the next post and allows scrolling. Free visits start on the first post
+rather than restoring a previously unlocked position. Expiry returns scrolling
+to the first-post allowance.
+
+Device check: swipe after the first post and dismiss the chooser; the second
+post must stay hidden. Try again and complete an ad; verify the second post
+appears and further swipes work. Also verify a subscriber never sees the gate.

@@ -1,3 +1,5 @@
+import 'dart:async';
+import 'package:chessever2/services/rewarded_premium/rewarded_access_provider.dart';
 import 'package:chessever2/providers/auth_state_provider.dart';
 import 'package:chessever2/providers/board_settings_provider_new.dart';
 import 'package:chessever2/providers/engine_settings_provider.dart';
@@ -38,7 +40,84 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 const _pgn = '1. e4 e5 2. Bc4 Nc6 3. Qh5 Nf6 4. Qxf7# 1-0';
 
+final _testFeedAccess = StateProvider<bool>((ref) => false);
+
 void main() {
+  for (final unlock in [false, true]) {
+    testWidgets('free feed swipe prompts and unlock=$unlock', (tester) async {
+      final completion = Completer<bool>();
+      var prompts = 0;
+      await _pumpFeed(
+        tester,
+        games: [
+          _scholarsMate(),
+          _scholarsMate(id: 'g2'),
+          _scholarsMate(id: 'g3'),
+        ],
+        accessOverrides: [
+          premiumAccessProvider.overrideWith(
+            (ref) => ref.watch(_testFeedAccess),
+          ),
+          feedAccessPromptProvider.overrideWithValue((context) async {
+            prompts++;
+            final allowed = await completion.future;
+            if (allowed && context.mounted) {
+              ProviderScope.containerOf(
+                context,
+                listen: false,
+              ).read(_testFeedAccess.notifier).state = true;
+            }
+            return allowed;
+          }),
+        ],
+      );
+      final pages = find.byKey(const ValueKey('feed_pages'));
+      expect(
+        tester.widget<PageView>(pages).childrenDelegate.estimatedChildCount,
+        2,
+      );
+      final board = tester.getRect(find.byType(FeedLiveBoard).first);
+      await tester.flingFrom(
+        _squareCenter(board, 'd2'),
+        const Offset(0, -240),
+        1500,
+      );
+      for (var i = 0; i < 10; i++) {
+        await tester.pump(const Duration(milliseconds: 100));
+      }
+      expect(prompts, 1);
+      expect(find.byKey(const ValueKey('feed_premium_gate')), findsOneWidget);
+      final container = ProviderScope.containerOf(
+        tester.element(find.byType(FeedScreen)),
+        listen: false,
+      );
+      expect(container.read(feedCurrentEntryKeyProvider), contains('feed-test-game'));
+      completion.complete(unlock);
+      for (var i = 0; i < 6; i++) {
+        await tester.pump(const Duration(milliseconds: 100));
+      }
+      final controller = tester.widget<PageView>(pages).controller!;
+      expect(controller.page, unlock ? 1 : 0);
+      expect(
+        tester.widget<PageView>(pages).childrenDelegate.estimatedChildCount,
+        unlock ? 4 : 2,
+      );
+      expect(prompts, 1);
+      if (unlock) {
+        controller.jumpToPage(2);
+        await tester.pump();
+        container.read(_testFeedAccess.notifier).state = false;
+        for (var i = 0; i < 4; i++) {
+          await tester.pump(const Duration(milliseconds: 100));
+        }
+        expect(controller.page, 0);
+        expect(prompts, 1, reason: 'Expiry must not show another swipe prompt');
+      }
+      expect(tester.takeException(), isNull);
+      await _tearDown(tester);
+    });
+  }
+
   testWidgets('slider playback control stops and resumes the game', (
     tester,
   ) async {
@@ -776,6 +855,7 @@ Future<_Feed> _pumpFeed(
   _RecordingEngine? engine,
   CloudEval? Function(String fen)? cached,
   ThemeData? theme,
+  List<Override>? accessOverrides,
 }) async {
   tester.view.devicePixelRatio = 3;
   tester.view.physicalSize = const Size(393 * 3, 852 * 3);
@@ -789,6 +869,7 @@ Future<_Feed> _pumpFeed(
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
+        ...(accessOverrides ?? [premiumAccessProvider.overrideWithValue(true)]),
         feedProvider.overrideWith(() => _FakeFeed(items)),
         feedPuzzlesProvider.overrideWith((ref) async => const <FeedPuzzle>[]),
         feedNewsProvider.overrideWith((ref) async => const <FeedNews>[]),

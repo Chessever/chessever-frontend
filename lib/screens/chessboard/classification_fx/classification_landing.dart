@@ -85,11 +85,7 @@ class ClassificationLanding extends StatefulWidget {
 class _ClassificationLandingState extends State<ClassificationLanding>
     with SingleTickerProviderStateMixin {
   /// 0 → 1 over one landing; 1 is also the resting (invisible) state.
-  late final SingleMotionController _progress = SingleMotionController(
-    motion: const CupertinoMotion.smooth(snapToEnd: true),
-    vsync: this,
-    initialValue: 1,
-  );
+  late final SingleMotionController _progress;
 
   Timer? _delay;
   bool _reduceMotion = false;
@@ -103,6 +99,13 @@ class _ClassificationLandingState extends State<ClassificationLanding>
   @override
   void initState() {
     super.initState();
+    // Initialize while mounted, even when no landing ever plays. Lazy creation
+    // from dispose would look up TickerMode on a deactivated feed post.
+    _progress = SingleMotionController(
+      motion: const CupertinoMotion.smooth(snapToEnd: true),
+      vsync: this,
+      initialValue: 1,
+    );
     if (widget.playOnMount) {
       // After the first frame, once MediaQuery has been read.
       WidgetsBinding.instance.addPostFrameCallback((_) {
