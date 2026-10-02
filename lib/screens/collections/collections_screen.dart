@@ -23,7 +23,9 @@ import 'package:chessever2/screens/collections/collection_bindings.dart';
 import 'package:chessever2/screens/collections/collection_plate_row.dart';
 export 'package:chessever2/screens/collections/collection_plate_row.dart';
 import 'package:chessever2/screens/collections/collections_data.dart';
+import 'package:chessever2/screens/collections/collections_tab_provider.dart';
 import 'package:chessever2/screens/collections/event_view_shell.dart';
+import 'package:chessever2/screens/home/start_screen.dart';
 import 'package:chessever2/screens/home/widget/bottom_nav_bar.dart';
 import 'package:chessever2/screens/for_you/discovery/widgets/discovery_common.dart'
     show
@@ -109,6 +111,26 @@ class _CollectionsScreenState extends ConsumerState<CollectionsScreen> {
     });
   }
 
+  void _rememberTab(int index) {
+    ref.read(selectedCollectionsTabProvider.notifier).state =
+        CollectionsTab.values[index];
+  }
+
+  StartPage _startPage(int index) =>
+      collectionsStartPage(CollectionsTab.values[index]);
+
+  VoidCallback _holdTab(int index) => () => unawaited(
+    makeStartScreenDefault(
+      context,
+      ref,
+      section: BottomNavBarItem.collections,
+      page: _startPage(index),
+    ),
+  );
+
+  String _holdTabHint(int index) =>
+      startScreenHint(BottomNavBarItem.collections, _startPage(index));
+
   Future<void> _filters() async {
     _focus.unfocus();
     _debounce?.cancel();
@@ -175,8 +197,15 @@ class _CollectionsScreenState extends ConsumerState<CollectionsScreen> {
       ),
       // Opening discovery is paused; retain its catalog and wiring below.
       // tabs: const ['Openings', 'Collections', 'Authors'],
-      tabs: const ['About', 'Collections', 'Authors'],
-      initialTab: 1,
+      tabs: [for (final tab in CollectionsTab.values) tab.label],
+      // Only the Collections destination remembers its page; a pushed copy
+      // always opens on the catalog.
+      initialTab: embedded
+          ? ref.read(selectedCollectionsTabProvider).index
+          : CollectionsTab.collections.index,
+      onTabChanged: embedded ? _rememberTab : null,
+      tabLongPressFor: embedded ? _holdTab : null,
+      tabLongPressHint: embedded ? _holdTabHint : null,
       showBackButton: !embedded,
       homeTab: embedded,
       onOpenSidebar: embedded && (Scaffold.maybeOf(context)?.hasDrawer ?? false)

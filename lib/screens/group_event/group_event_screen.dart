@@ -3,6 +3,7 @@ import 'dart:math';
 import 'package:chessever2/e2e/e2e_ids.dart';
 import 'package:chessever2/providers/event_favorite_players_provider.dart';
 import 'package:chessever2/providers/favorite_events_provider.dart';
+import 'package:chessever2/repository/local_storage/local_storage_repository.dart';
 import 'package:chessever2/screens/group_event/widget/search_results_widget.dart';
 import 'package:chessever2/screens/group_event/widget/all_events_tab_widget.dart';
 import 'package:chessever2/screens/group_event/widget/events_load_error_state.dart';
@@ -11,6 +12,7 @@ import 'package:chessever2/screens/group_event/widget/filter_popup/filter_popup_
 import 'package:chessever2/screens/group_event/smart_event/smart_aggregate_event_provider.dart';
 import 'package:chessever2/screens/group_event/smart_event/smart_event_screen.dart';
 import 'package:chessever2/screens/home/home_screen_provider.dart';
+import 'package:chessever2/screens/home/start_screen.dart';
 import 'package:chessever2/screens/home/widget/bottom_nav_bar.dart';
 import 'package:chessever2/screens/group_event/providers/group_event_screen_provider.dart';
 import 'package:chessever2/screens/group_event/model/tour_event_card_model.dart';
@@ -64,8 +66,38 @@ final _mappedName = {
   GroupEventCategory.search: 'Search',
 };
 
+/// The list Events opens on unless a Premium viewer picked another (hold a
+/// segment, or hold the Events tab while on it). Search is a transient
+/// segment, never a start page.
+const GroupEventCategory kDefaultEventsCategory = GroupEventCategory.current;
+
+const String defaultEventsCategoryPrefsKey = 'default_events_tab_v1';
+
+GroupEventCategory readDefaultEventsCategory() {
+  final name = SharedPreferencesService.instance.prefsOrNull?.getString(
+    defaultEventsCategoryPrefsKey,
+  );
+  if (name == null) return kDefaultEventsCategory;
+  for (final category in eventsHomeCategories) {
+    if (category.name == name) return category;
+  }
+  return kDefaultEventsCategory;
+}
+
+Future<void> writeDefaultEventsCategory(GroupEventCategory category) async {
+  assert(eventsHomeCategories.contains(category));
+  final prefs =
+      SharedPreferencesService.instance.prefsOrNull ??
+      await SharedPreferencesService.instance.ensureInitialized();
+  await prefs?.setString(defaultEventsCategoryPrefsKey, category.name);
+}
+
+/// The Events segment label, shared with the start-screen confirmation.
+String groupEventCategoryLabel(GroupEventCategory category) =>
+    _mappedName[category]!;
+
 final selectedGroupCategoryProvider = StateProvider<GroupEventCategory>(
-  (ref) => GroupEventCategory.current,
+  (ref) => readDefaultEventsCategory(),
 );
 
 final groupEventSearchTabControllerProvider =
@@ -75,7 +107,11 @@ class GroupEventSearchTabController {
   GroupEventSearchTabController(this._ref);
 
   final Ref _ref;
-  GroupEventCategory _categoryBeforeSearch = GroupEventCategory.current;
+  GroupEventCategory _categoryBeforeSearch = readDefaultEventsCategory();
+
+  /// The list Events returns to when the search ends: the one the viewer was
+  /// on before it began.
+  GroupEventCategory get categoryBeforeSearch => _categoryBeforeSearch;
 
   void showSearch() {
     final currentCategory = _ref.read(selectedGroupCategoryProvider);
@@ -793,6 +829,23 @@ class _SegmentedSwitcher extends ConsumerWidget {
           .clamp(0, visibleCategories.length - 1),
       onSelectionChanged: onSelectedChanged,
       notifyOnReselect: true,
+      // Search is a transient segment and never a start page.
+      longPressFor: (index) {
+        final category = visibleCategories[index];
+        if (category == GroupEventCategory.search) return null;
+        return () => unawaited(
+          makeStartScreenDefault(
+            context,
+            ref,
+            section: BottomNavBarItem.tournaments,
+            page: eventsStartPage(category),
+          ),
+        );
+      },
+      longPressHint: (index) => startScreenHint(
+        BottomNavBarItem.tournaments,
+        eventsStartPage(visibleCategories[index]),
+      ),
     );
   }
 }

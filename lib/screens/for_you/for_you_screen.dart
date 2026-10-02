@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:chessever2/e2e/e2e_ids.dart';
@@ -14,6 +15,7 @@ import 'package:chessever2/screens/group_event/widget/filter_popup/filter_popup_
 import 'package:chessever2/screens/group_event/widget/filter_popup/filter_popup_state.dart';
 import 'package:chessever2/screens/group_event/widget/for_you_games_widget.dart';
 import 'package:chessever2/screens/group_event/widget/search_results_widget.dart';
+import 'package:chessever2/screens/home/start_screen.dart';
 import 'package:chessever2/screens/home/widget/bottom_nav_bar.dart';
 import 'package:chessever2/screens/my_space/my_space_view.dart';
 import 'package:chessever2/screens/player_profile/player_profile_screen.dart';
@@ -418,6 +420,14 @@ class ForYouScreen extends HookConsumerWidget {
                 child: _ForYouSegments(
                   selectedIndex: selectedIndex,
                   searchQuery: searchQuery,
+                  onHold: (index) => unawaited(
+                    makeStartScreenDefault(
+                      context,
+                      ref,
+                      section: BottomNavBarItem.forYou,
+                      page: forYouStartPage(ForYouTab.values[index]),
+                    ),
+                  ),
                   onSelected: (index) {
                     if (index == selectedIndex) {
                       scrollToTop(controllerForIndex(index));
@@ -504,11 +514,15 @@ class _ForYouSegments extends StatelessWidget {
     required this.selectedIndex,
     required this.searchQuery,
     required this.onSelected,
+    required this.onHold,
   });
 
   final int selectedIndex;
   final String searchQuery;
   final ValueChanged<int> onSelected;
+
+  /// A held tab title (never the transient Search segment).
+  final ValueChanged<int> onHold;
 
   @override
   Widget build(BuildContext context) {
@@ -553,6 +567,12 @@ class _ForYouSegments extends StatelessWidget {
       currentSelection: current,
       onSelectionChanged: onSelected,
       notifyOnReselect: true,
+      longPressFor: (index) =>
+          index < ForYouTab.values.length ? () => onHold(index) : null,
+      longPressHint: (index) => startScreenHint(
+        BottomNavBarItem.forYou,
+        forYouStartPage(ForYouTab.values[index]),
+      ),
     );
   }
 }
