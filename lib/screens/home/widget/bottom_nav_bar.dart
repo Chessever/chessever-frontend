@@ -10,7 +10,7 @@ import 'package:chessever2/utils/responsive_helper.dart';
 import 'package:chessever2/utils/svg_asset.dart';
 import 'package:chessever2/widgets/app_snack.dart';
 import 'package:chessever2/widgets/alert_dialog/alert_modal.dart';
-import 'package:chessever2/widgets/paywall/premium_paywall_sheet.dart';
+import 'package:chessever2/widgets/paywall/home_customization_access.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
@@ -122,7 +122,7 @@ Future<void> makeBottomTabDefault(
   BottomNavBarItem item,
 ) async {
   HapticFeedbackService.buttonPress();
-  await requirePremiumGuard(
+  await ensureHomeCustomizationAccess(
     context,
     ref,
     featureId: 'default_start_tab',

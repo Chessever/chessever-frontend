@@ -182,3 +182,14 @@ The expiry dialog keeps Watch ad again / Upgrade / Go back and cannot be dismiss
 with close or platform Back. All dismissal and secondary actions are disabled
 while an ad, confirmation, or upgrade is in progress. Text wraps and the dialog
 scrolls on narrow screens or large accessibility text. The app typeface is retained.
+
+## Subscription-only home customization
+
+Rewarded access does not unlock Settings → Customization → Start section /
+Home page, or holding a phone bottom tab / tablet rail item to set the start
+screen. Those actions require a paid subscription and show Upgrade without a
+Watch ad option. Previously saved defaults are preserved.
+
+Device check: during rewarded access, try both customization rows and hold a
+navigation tab. None may open its picker/confirmation without a subscription.
+Paid users should still be able to change and persist their defaults.
