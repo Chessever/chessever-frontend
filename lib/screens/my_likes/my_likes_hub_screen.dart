@@ -137,7 +137,8 @@ class MyLikesAboutPage extends StatelessWidget {
         SizedBox(height: 12.h),
         Text(
           'Double-tap the chessboard to like a game, or tap the heart on the '
-          'board. Your liked games are saved here so you can come back to them.',
+          'board. Double-tap a liked game again to unlike it. Your liked games '
+          'are saved here so you can come back to them.',
           style: AppTypography.textSmRegular.copyWith(
             color: colors.textSecondary,
           ),
