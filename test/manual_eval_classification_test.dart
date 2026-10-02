@@ -14,13 +14,16 @@ import 'package:flutter_test/flutter_test.dart';
 /// it, sync it to desktop, render a GIF, and the annotation was simply gone.
 void main() {
   group('quality NAG → classification badge', () {
-    test('the five badged glyphs resolve to the report badge and asset', () {
+    test('the eight badged glyphs resolve to the report badge and asset', () {
       const expected = <int, GameMoveClassification>{
         1: GameMoveClassification.goodMove, // !
         2: GameMoveClassification.mistake, // ?
         3: GameMoveClassification.brilliant, // !!
         4: GameMoveClassification.blunder, // ??
         6: GameMoveClassification.inaccuracy, // ?!
+        242: GameMoveClassification.bestMove,
+        243: GameMoveClassification.missedWin,
+        247: GameMoveClassification.bookMove,
       };
       expect(kQualityNagClassifications, expected);
 
@@ -43,7 +46,7 @@ void main() {
         expect(annotationTypeForQualityNag(nag), isNull);
       }
       // Nor does anything outside the quality tier.
-      for (final nag in const [10, 14, 16, 22, 32, 140, 146, 240, 247]) {
+      for (final nag in const [10, 14, 16, 22, 32, 140, 146, 240]) {
         expect(annotationTypeForQualityNag(nag), isNull);
       }
     });

@@ -111,6 +111,116 @@ class MostLikedPreview extends ConsumerWidget {
 
 // ---------------------------------------------------------------- the page
 
+/// Picks a freely browsable ranking period; its game-opening action is gated.
+Future<void> _selectPeriod(
+  BuildContext context,
+  WidgetRef ref,
+  MostLikedPeriod period,
+) async {
+  ref.read(mostLikedPeriodProvider.notifier).state = period;
+}
+
+/// Moves the ranking to [target]. Walking back is Premium ([locked] sends
+/// it through the paywall first); arriving on the current period clears
+/// the pick, so the ranking follows the clock again.
+Future<void> _walkTo(
+  BuildContext context,
+  WidgetRef ref,
+  MostLikedQuery target,
+  bool locked,
+) async {
+  void apply() {
+    ref.read(mostLikedDayProvider.notifier).state =
+        target.isCurrent(DateTime.now()) ? null : target.start;
+  }
+
+  if (!locked) {
+    apply();
+    return;
+  }
+  await unlockThen(
+    context,
+    ref,
+    apply,
+    featureId: 'most_liked_archive',
+    returnTo: discoveryReturnTo('most_liked'),
+  );
+}
+
+/// The Most liked page's period controls: the calendar pattern of a
+/// segmented Today | Week | Month | Year over the period it picked, stepped
+/// one day, week, month or year at a time by the arrows either side.
+///
+/// The page pins it above its scrolling list, so Games and Players carry the
+/// same controls in the same place however far either list is scrolled.
+/// Both read [mostLikedActiveQuery], so they always rank the same period.
+/// Nothing while ranking is not live: no periods, no date to walk, no
+/// paywall.
+class MostLikedPeriodBar extends ConsumerWidget {
+  const MostLikedPeriodBar({super.key, this.now});
+
+  /// Pins "now" in tests.
+  final DateTime? now;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final subscribed = ref.watch(
+      featureAccessStateProvider.select((s) => s.isSubscribed),
+    );
+    final locked = !subscribed;
+    final now = this.now ?? DateTime.now();
+    final query = mostLikedActiveQuery(ref, now: now);
+    final notLive = ref.watch(
+      mostLikedProvider(
+        query,
+      ).select((r) => r.valueOrNull?.status == MostLikedStatus.notLive),
+    );
+    if (notLive) return const SizedBox.shrink();
+    final previous = query.previous;
+    final next = query.next(now);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        // Edge to edge with the page's Games | Players switcher above it
+        // (EventViewShell sets it 20 in on phones, 32 on tablets), so the
+        // two controls stack on one pair of edges.
+        Padding(
+          padding: EdgeInsets.symmetric(
+            horizontal: math.max(
+              0,
+              ResponsiveHelper.adaptive(phone: 20.sp, tablet: 32.sp) -
+                  discoveryGutter,
+            ),
+          ),
+          child: DiscoverySegments<MostLikedPeriod>(
+            values: MostLikedPeriod.values,
+            selected: query.period,
+            label: (p) => p.label,
+            semanticsPrefix: 'Most liked',
+            onSelect: (p) => _selectPeriod(context, ref, p),
+          ),
+        ),
+        SizedBox(height: 4.w),
+        Center(
+          child: MostLikedDateControl(
+            query: query,
+            now: now,
+            locked: locked,
+            onPrevious: previous == null
+                ? null
+                : () => _walkTo(context, ref, previous, locked),
+            onNext: next == null
+                ? null
+                : () => _walkTo(context, ref, next, false),
+          ),
+        ),
+        SizedBox(height: 8.w),
+      ],
+    );
+  }
+}
+
 /// The Most liked page's ranking: the community ranking of games by how many
 /// people liked them. Every period can be browsed; opening games beyond Today
 /// requires Premium access, as do the date control's earlier periods and the
@@ -118,13 +228,12 @@ class MostLikedPreview extends ConsumerWidget {
 /// calendar one the date control walks: a day, a Monday-to-Sunday week, a
 /// month, a year.
 ///
-/// The segments pick the period and the date control under them walks it,
-/// the way a calendar picks Day | Week | Month | Year over the date it
-/// shows (the page's title already says Most liked). Under them, [view]
-/// decides what is listed: the games, in rank order and
-/// in the viewer's games view setting, each board holding its like count; or
-/// the players in the ranking. Both tabs of the page share one query
-/// ([mostLikedActiveQuery]), so they always rank the same period.
+/// [MostLikedPeriodBar] picks the period and walks it, pinned above this
+/// list by the page. Under it, [view] decides what is listed: the games, in
+/// rank order and in the viewer's games view setting, each board holding
+/// its like count; or the players in the ranking. Both tabs of the page
+/// share one query ([mostLikedActiveQuery]), so they always rank the same
+/// period.
 class MostLikedSection extends ConsumerWidget {
   const MostLikedSection({
     super.key,
@@ -150,41 +259,6 @@ class MostLikedSection extends ConsumerWidget {
   /// Clears [playerFilter]; shown as the narrowed banner's dismiss.
   final VoidCallback? onClearPlayerFilter;
 
-  Future<void> _select(
-    BuildContext context,
-    WidgetRef ref,
-    MostLikedPeriod period,
-  ) async {
-    ref.read(mostLikedPeriodProvider.notifier).state = period;
-  }
-
-  /// Moves the ranking to [target]. Walking back is Premium ([locked] sends
-  /// it through the paywall first); arriving on the current period clears
-  /// the pick, so the ranking follows the clock again.
-  Future<void> _walk(
-    BuildContext context,
-    WidgetRef ref,
-    MostLikedQuery target,
-    bool locked,
-  ) async {
-    void apply() {
-      ref.read(mostLikedDayProvider.notifier).state =
-          target.isCurrent(DateTime.now()) ? null : target.start;
-    }
-
-    if (!locked) {
-      apply();
-      return;
-    }
-    await unlockThen(
-      context,
-      ref,
-      apply,
-      featureId: 'most_liked_archive',
-      returnTo: discoveryReturnTo('most_liked'),
-    );
-  }
-
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final subscribed = ref.watch(
@@ -195,8 +269,6 @@ class MostLikedSection extends ConsumerWidget {
     final now = this.now ?? DateTime.now();
     final query = mostLikedActiveQuery(ref, now: now);
     final result = ref.watch(mostLikedProvider(query));
-    final previous = query.previous;
-    final next = query.next(now);
     // The Players list is Premium. It opens for a subscriber, and (in debug
     // builds, where the guard lets everyone through) once the guard passed.
     final playersOpen =
@@ -204,53 +276,13 @@ class MostLikedSection extends ConsumerWidget {
         (premium && ref.watch(mostLikedViewProvider) == MostLikedView.players);
 
     // With the ranking function missing there is nothing to rank in any
-    // period, so nothing is offered: no periods, no date to walk, no paywall.
+    // period, so nothing is sold (the period bar is hidden too).
     final notLive = result.valueOrNull?.status == MostLikedStatus.notLive;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       mainAxisSize: MainAxisSize.min,
       children: [
-        // The period picker, then the one it picked: the calendar pattern
-        // of a segmented Day | Week | Month | Year over the date it shows,
-        // stepped by the arrows either side. Nothing while ranking is not
-        // live: no periods, no date to walk, no paywall.
-        if (!notLive) ...[
-          // Edge to edge with the page's Games | Players switcher above it
-          // (EventViewShell sets it 20 in on phones, 32 on tablets), so the
-          // two controls stack on one pair of edges.
-          Padding(
-            padding: EdgeInsets.symmetric(
-              horizontal: math.max(
-                0,
-                ResponsiveHelper.adaptive(phone: 20.sp, tablet: 32.sp) -
-                    discoveryGutter,
-              ),
-            ),
-            child: DiscoverySegments<MostLikedPeriod>(
-              values: MostLikedPeriod.values,
-              selected: query.period,
-              label: (p) => p.label,
-              semanticsPrefix: 'Most liked',
-              onSelect: (p) => _select(context, ref, p),
-            ),
-          ),
-          SizedBox(height: 4.w),
-          Center(
-            child: MostLikedDateControl(
-              query: query,
-              now: now,
-              locked: locked,
-              onPrevious: previous == null
-                  ? null
-                  : () => _walk(context, ref, previous, locked),
-              onNext: next == null
-                  ? null
-                  : () => _walk(context, ref, next, false),
-            ),
-          ),
-          SizedBox(height: 8.w),
-        ],
         if (view == MostLikedView.players && !playersOpen && !notLive)
           DiscoveryNotice(
             text: 'See everyone in this ranking',

@@ -64,7 +64,8 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:terminate_restart/terminate_restart.dart';
 import 'package:clarity_flutter/clarity_flutter.dart';
 import 'package:heroine/heroine.dart';
-import 'package:upgrader/upgrader.dart';
+import 'package:chessever2/services/phone_store_upgrader.dart';
+import 'package:chessever2/widgets/phone_update_route_observer.dart';
 import 'package:purchases_flutter/purchases_flutter.dart';
 import 'revenue_cat_service/revenue_cat_service.dart';
 import 'services/analytics/analytics_service.dart';
@@ -1230,12 +1231,11 @@ class MyApp extends HookConsumerWidget {
     }, [themeMode]);
 
     final upgrader = useMemoized(
-      () => Upgrader(
-        messages: CustomUpgraderMessages(),
-        durationUntilAlertAgain: const Duration(days: 3),
-        debugDisplayAlways: false,
-        debugLogging: false,
-      ),
+      () => PhoneStoreUpgrader(messages: CustomUpgraderMessages()),
+      const [],
+    );
+    final updateRouteObserver = useMemoized(
+      PhoneUpdateRouteObserver.new,
       const [],
     );
 
@@ -1358,6 +1358,7 @@ class MyApp extends HookConsumerWidget {
             // prompt never interrupts splash/onboarding/auth or stacks on top
             // of an open sheet.
             GuestGateRouteObserver.instance,
+            updateRouteObserver,
           ],
           initialRoute: '/',
           builder: (context, child) => DismissKeyboard(
@@ -1366,6 +1367,7 @@ class MyApp extends HookConsumerWidget {
               child: CustomUpgradeAlert(
                 upgrader: upgrader,
                 navigatorKey: navigatorKey,
+                routeObserver: updateRouteObserver,
                 child: RewardedAccessHost(
                   navigatorKey: navigatorKey,
                   upgrade: (context) => showPremiumPaywallSheet(

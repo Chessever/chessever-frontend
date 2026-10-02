@@ -14,16 +14,28 @@ Future<CollectionSearchQuery?> showCollectionSearchFilters(
   BuildContext context,
   CollectionSearchQuery query, {
   Future<List<String>> Function()? loadAuthors,
+  // Game-result filtering only means something once you're inside a
+  // collection's games; the top-level catalog lists collections, not games.
+  bool showResult = true,
 }) => showAlertModal<CollectionSearchQuery>(
   context: context,
   horizontalPadding: 0,
-  child: _Filters(query: query, loadAuthors: loadAuthors),
+  child: _Filters(
+    query: query,
+    loadAuthors: loadAuthors,
+    showResult: showResult,
+  ),
 );
 
 class _Filters extends StatefulWidget {
-  const _Filters({required this.query, required this.loadAuthors});
+  const _Filters({
+    required this.query,
+    required this.loadAuthors,
+    required this.showResult,
+  });
   final Future<List<String>> Function()? loadAuthors;
   final CollectionSearchQuery query;
+  final bool showResult;
   @override
   State<_Filters> createState() => _FiltersState();
 }
@@ -58,7 +70,7 @@ class _FiltersState extends State<_Filters> {
       maxYear: _limitYears ? _years.end.round() : null,
       author: _author,
       authorId: widget.query.authorId,
-      result: _result.statusValue ?? '',
+      result: widget.showResult ? (_result.statusValue ?? '') : '',
     ),
   );
 
@@ -136,20 +148,22 @@ class _FiltersState extends State<_Filters> {
             SizedBox(height: 20.h),
           ],
 
-          const FilterSectionLabel('Result'),
-          SizedBox(height: 8.h),
-          GameFilterChoiceChips<GameResultFilter>(
-            key: const ValueKey('collection_result_filter'),
-            values: GameResultFilter.values,
-            selected: _result,
-            label: (value) =>
-                value == GameResultFilter.all ? 'All' : value.displayText,
-            onTap: (value) {
-              HapticFeedbackService.selection();
-              setState(() => _result = value);
-            },
-          ),
-          SizedBox(height: 16.h),
+          if (widget.showResult) ...[
+            const FilterSectionLabel('Result'),
+            SizedBox(height: 8.h),
+            GameFilterChoiceChips<GameResultFilter>(
+              key: const ValueKey('collection_result_filter'),
+              values: GameResultFilter.values,
+              selected: _result,
+              label: (value) =>
+                  value == GameResultFilter.all ? 'All' : value.displayText,
+              onTap: (value) {
+                HapticFeedbackService.selection();
+                setState(() => _result = value);
+              },
+            ),
+            SizedBox(height: 16.h),
+          ],
         ],
       ),
     ),

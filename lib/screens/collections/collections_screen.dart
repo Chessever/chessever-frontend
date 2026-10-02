@@ -117,6 +117,7 @@ class _CollectionsScreenState extends ConsumerState<CollectionsScreen> {
       context,
       _query,
       loadAuthors: ref.read(collectionsRepositoryProvider).fetchAuthors,
+      showResult: false,
     );
     if (mounted && result != null) setState(() => _query = result);
   }
@@ -574,6 +575,17 @@ class _Cover extends StatelessWidget {
       errorWidget: (_, __, ___) => plate,
     );
   }
+}
+
+/// The stacked-boards plate a book shows in place of a missing cover, for
+/// surfaces outside this file that draw a book before it exists (the
+/// publishing preview).
+class CollectionBookPlate extends StatelessWidget {
+  const CollectionBookPlate({super.key});
+
+  @override
+  Widget build(BuildContext context) =>
+      const _PixelPlate(section: SpaceSection.library);
 }
 
 /// The pixel object on the hub's plate: the stacked boards for a book, the

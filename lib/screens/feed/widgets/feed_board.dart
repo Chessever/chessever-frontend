@@ -183,54 +183,104 @@ class _FeedFallenKingState extends State<FeedFallenKing> {
   }
 }
 
-/// Dim + bare play glyph shown while the viewer has paused the clip. No
-/// disc behind it: the triangle stands on the board by itself, lifted by a
-/// tight shadow cast straight down (the same one [FeedCaption] uses).
-class FeedPausedOverlay extends StatelessWidget {
-  const FeedPausedOverlay({super.key});
+/// Dim + bare play glyph shown when the viewer pauses the clip. No disc
+/// behind it: the triangle stands on the board by itself, lifted by a tight
+/// shadow cast straight down (the same one [FeedCaption] uses).
+///
+/// It is a confirmation, not a state: it shows for [hold], then fades away
+/// and leaves the board clean, so a paused board reads as "yours now" and
+/// the pieces can be played without a dim over them. The scrub row's play
+/// toggle keeps saying the clip is paused. Each pause mounts a fresh
+/// overlay, so every pause confirms itself once; [visible] hides it at once
+/// for as long as the paused board is otherwise busy (a piece in hand, a
+/// scrub) without starting the confirmation over when that ends.
+class FeedPausedOverlay extends StatefulWidget {
+  const FeedPausedOverlay({this.visible = true, super.key});
+
+  final bool visible;
+
+  /// How long the glyph stays before it fades.
+  static const Duration hold = Duration(milliseconds: 1500);
+
+  /// The fade itself.
+  static const Duration fade = Duration(milliseconds: 280);
 
   // 26x30 viewBox, drawn larger now that no disc frames it.
   static const double _glyphWidth = 30;
   static const double _glyphHeight = _glyphWidth * 30 / 26;
 
   @override
+  State<FeedPausedOverlay> createState() => _FeedPausedOverlayState();
+}
+
+class _FeedPausedOverlayState extends State<FeedPausedOverlay> {
+  bool _shown = true;
+  Timer? _timer;
+
+  @override
+  void initState() {
+    super.initState();
+    _timer = Timer(FeedPausedOverlay.hold, () {
+      if (mounted) setState(() => _shown = false);
+    });
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
+    const glyphWidth = FeedPausedOverlay._glyphWidth;
+    const glyphHeight = FeedPausedOverlay._glyphHeight;
     return IgnorePointer(
-      child: Stack(
+      child: AnimatedOpacity(
         key: const ValueKey('feed_paused'),
-        children: [
-          const Positioned.fill(child: ColoredBox(color: kFeedOnBoardScrim)),
-          Center(
-            child: Semantics(
-              label: 'Paused',
-              // The glyph's viewBox already carries the triangle's optical
-              // offset, so it is centred as-is.
-              child: Stack(
-                clipBehavior: Clip.none,
-                children: [
-                  Transform.translate(
-                    offset: const Offset(0, 1),
-                    child: ImageFiltered(
-                      imageFilter: ImageFilter.blur(sigmaX: 1.5, sigmaY: 1.5),
-                      child: const FeedGlyph(
-                        FeedGlyphs.play,
-                        width: _glyphWidth,
-                        height: _glyphHeight,
-                        color: Color(0x73000000),
+        opacity: _shown && widget.visible ? 1 : 0,
+        // Reduced motion: it simply goes, no fade.
+        duration: MediaQuery.disableAnimationsOf(context)
+            ? Duration.zero
+            : FeedPausedOverlay.fade,
+        curve: Curves.easeOut,
+        // Screen readers keep hearing "Paused" after the glyph has gone.
+        alwaysIncludeSemantics: true,
+        child: Stack(
+          children: [
+            const Positioned.fill(child: ColoredBox(color: kFeedOnBoardScrim)),
+            Center(
+              child: Semantics(
+                label: 'Paused',
+                // The glyph's viewBox already carries the triangle's optical
+                // offset, so it is centred as-is.
+                child: Stack(
+                  clipBehavior: Clip.none,
+                  children: [
+                    Transform.translate(
+                      offset: const Offset(0, 1),
+                      child: ImageFiltered(
+                        imageFilter: ImageFilter.blur(sigmaX: 1.5, sigmaY: 1.5),
+                        child: const FeedGlyph(
+                          FeedGlyphs.play,
+                          width: glyphWidth,
+                          height: glyphHeight,
+                          color: Color(0x73000000),
+                        ),
                       ),
                     ),
-                  ),
-                  const FeedGlyph(
-                    FeedGlyphs.play,
-                    width: _glyphWidth,
-                    height: _glyphHeight,
-                    color: kFeedOnBoardInk,
-                  ),
-                ],
+                    const FeedGlyph(
+                      FeedGlyphs.play,
+                      width: glyphWidth,
+                      height: glyphHeight,
+                      color: kFeedOnBoardInk,
+                    ),
+                  ],
+                ),
               ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }

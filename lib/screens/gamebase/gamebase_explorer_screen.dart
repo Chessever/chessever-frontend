@@ -301,9 +301,8 @@ class _GamebaseExplorerScreenState extends ConsumerState<GamebaseExplorerScreen>
       viewsTracker: boardWorkspaceViewsCoachmarkTracker,
       editorTracker: boardWorkspaceEditorCoachmarkTracker,
       isEligible: () => mounted && _routeActive,
-      showViews:
-          () =>
-              _viewsCoachmarkKey.currentState?.ensureTooltipVisible() ?? false,
+      showViews: () =>
+          _viewsCoachmarkKey.currentState?.ensureTooltipVisible() ?? false,
       showEditor: () {
         Tooltip.dismissAllToolTips();
         return _editorCoachmarkKey.currentState?.ensureTooltipVisible() ??
@@ -395,8 +394,9 @@ class _GamebaseExplorerScreenState extends ConsumerState<GamebaseExplorerScreen>
   bool _forwardStepWouldCrossFreeLimit() {
     if (kDebugMode) return false;
     if (ref.read(featureAccessStateProvider).isSubscribed) return false;
-    final currentMoveNumber =
-        ref.read(gamebaseExplorerProvider.notifier).effectiveMoveNumber;
+    final currentMoveNumber = ref
+        .read(gamebaseExplorerProvider.notifier)
+        .effectiveMoveNumber;
     return currentMoveNumber >= kFreeExplorerMoveNumberLimit;
   }
 
@@ -483,45 +483,45 @@ class _GamebaseExplorerScreenState extends ConsumerState<GamebaseExplorerScreen>
                 );
               });
             },
-            onRightMove:
-                explorerFocus != null
-                    ? (explorerFocus.canGoForward
-                        ? explorerFocusNotifier.forward
-                        : null)
-                    : canMoveForward
-                    ? () async {
-                      if (preview != null) {
-                        ref
-                            .read(explorerEvalProvider.notifier)
-                            .navigateLockedPvForward();
-                        return;
-                      }
-                      final allowed = await _ensureExplorerForwardAllowed();
-                      if (!allowed) return;
-                      ref.read(gamebaseExplorerProvider.notifier).goForward();
+            onRightMove: explorerFocus != null
+                ? (explorerFocus.canGoForward
+                      ? explorerFocusNotifier.forward
+                      : null)
+                : canMoveForward
+                ? () async {
+                    if (preview != null) {
+                      ref
+                          .read(explorerEvalProvider.notifier)
+                          .navigateLockedPvForward();
+                      return;
                     }
-                    : null,
-            onLeftMove:
-                explorerFocus != null
-                    ? (explorerFocus.canGoBackward
-                        ? explorerFocusNotifier.backward
-                        : null)
-                    : canMoveBackward
-                    ? () {
-                      if (preview != null) {
-                        ref
-                            .read(explorerEvalProvider.notifier)
-                            .navigateLockedPvBackward();
-                        return;
-                      }
-                      ref.read(gamebaseExplorerProvider.notifier).goBack();
+                    final allowed = await _ensureExplorerForwardAllowed();
+                    if (!allowed) return;
+                    ref.read(gamebaseExplorerProvider.notifier).goForward();
+                  }
+                : null,
+            onLeftMove: explorerFocus != null
+                ? (explorerFocus.canGoBackward
+                      ? explorerFocusNotifier.backward
+                      : null)
+                : canMoveBackward
+                ? () {
+                    if (preview != null) {
+                      ref
+                          .read(explorerEvalProvider.notifier)
+                          .navigateLockedPvBackward();
+                      return;
                     }
-                    : null,
-            onLongPressBackwardStart:
-                canMoveBackward ? _startLongPressBackward : null,
+                    ref.read(gamebaseExplorerProvider.notifier).goBack();
+                  }
+                : null,
+            onLongPressBackwardStart: canMoveBackward
+                ? _startLongPressBackward
+                : null,
             onLongPressBackwardEnd: _stopLongPressBackward,
-            onLongPressForwardStart:
-                canMoveForward ? _startLongPressForward : null,
+            onLongPressForwardStart: canMoveForward
+                ? _startLongPressForward
+                : null,
             onLongPressForwardEnd: _stopLongPressForward,
             canMoveForward: canMoveForward,
             canMoveBackward: canMoveBackward,
@@ -860,17 +860,15 @@ class _GamebaseExplorerScreenState extends ConsumerState<GamebaseExplorerScreen>
               for (final item in [
                 ...explorerBoardMenuItems,
                 if (inSpace)
-                ExplorerBoardMenuItem(
-                  action: ExplorerBoardMenuAction.addToSpace,
-                  label:
-                      inSpace
-                          ? 'Remove position from My Space'
-                          : 'Add position to My Space',
-                  icon:
-                      inSpace
-                          ? Icons.dashboard_customize
-                          : Icons.dashboard_customize_outlined,
-                ),
+                  ExplorerBoardMenuItem(
+                    action: ExplorerBoardMenuAction.addToSpace,
+                    label: inSpace
+                        ? 'Remove position from My Space'
+                        : 'Add position to My Space',
+                    icon: inSpace
+                        ? Icons.dashboard_customize
+                        : Icons.dashboard_customize_outlined,
+                  ),
               ])
                 PopupMenuItem<ExplorerBoardMenuAction>(
                   value: item.action,
@@ -921,10 +919,9 @@ class _GamebaseExplorerScreenState extends ConsumerState<GamebaseExplorerScreen>
   /// shared [spacePositionDraft] so the board's notation menu dedupes with it.
   SpaceShortcut? _spacePositionDraft() {
     final state = ref.read(gamebaseExplorerProvider);
-    final player =
-        state.filters.selectedPlayers.length == 1
-            ? state.filters.selectedPlayers.first
-            : null;
+    final player = state.filters.selectedPlayers.length == 1
+        ? state.filters.selectedPlayers.first
+        : null;
     return spacePositionDraft(
       fen: state.currentFen,
       ucis: state.exploredMoves,
@@ -991,11 +988,8 @@ class _GamebaseExplorerScreenState extends ConsumerState<GamebaseExplorerScreen>
     final minimumMoveNumber = notifier.effectiveMoveNumber;
     final editedFen = await Navigator.of(context).push<String>(
       MaterialPageRoute(
-        builder:
-            (_) => BoardEditorScreen(
-              initialFen: currentFen,
-              returnFenOnDone: true,
-            ),
+        builder: (_) =>
+            BoardEditorScreen(initialFen: currentFen, returnFenOnDone: true),
       ),
     );
     if (!mounted || editedFen == null || editedFen.trim().isEmpty) return;
@@ -1206,17 +1200,15 @@ class _GamebaseChessBoardState extends ConsumerState<_GamebaseChessBoard> {
     }
     return GameData(
       fen: fen,
-      playerSide:
-          isPreviewing
-              ? PlayerSide.none
-              : (position.turn == Side.white
-                  ? PlayerSide.white
-                  : PlayerSide.black),
+      playerSide: isPreviewing
+          ? PlayerSide.none
+          : (position.turn == Side.white ? PlayerSide.white : PlayerSide.black),
       sideToMove: position.turn,
       validMoves: makeLegalMoves(position),
       lastMove: lastMove,
-      kingSquareInCheck:
-          position.isCheck ? position.board.kingOf(position.turn) : null,
+      kingSquareInCheck: position.isCheck
+          ? position.board.kingOf(position.turn)
+          : null,
     );
   }
 
@@ -1256,75 +1248,70 @@ class _GamebaseChessBoardState extends ConsumerState<_GamebaseChessBoard> {
         boxShadow: [
           context.isLightTheme
               ? BoxShadow(
-                color: context.colors.shadow,
-                blurRadius: 3,
-                offset: const Offset(0, 1),
-              )
+                  color: context.colors.shadow,
+                  blurRadius: 3,
+                  offset: const Offset(0, 1),
+                )
               : BoxShadow(
-                color: Colors.black.withValues(alpha: 0.3),
-                blurRadius: 8,
-                offset: const Offset(0, 4),
-              ),
+                  color: Colors.black.withValues(alpha: 0.3),
+                  blurRadius: 8,
+                  offset: const Offset(0, 4),
+                ),
         ],
       ),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(4.br),
-        child:
-            position == null
-                ? StaticChessboard(
-                  size: widget.boardSize,
-                  settings: StaticChessboardSettings(
-                    enableCoordinates: boardSettings.showCoordinates,
-                    colorScheme: boardSettings.colorScheme,
-                    pieceAssets: boardSettings.pieceAssets,
-                  ),
-                  orientation: widget.isFlipped ? Side.black : Side.white,
-                  fen: widget.fen,
-                  shapes: engineShapes,
-                )
-                : Chessboard(
-                  size: widget.boardSize,
-                  controller: _boardController,
-                  settings: ChessboardSettings(
-                    enableCoordinates: boardSettings.showCoordinates,
-                    animationDuration: const Duration(milliseconds: 200),
-                    colorScheme: boardSettings.colorScheme,
-                    pieceAssets: boardSettings.pieceAssets,
-                    pieceShiftMethod: PieceShiftMethod.tapTwoSquares,
-                    autoQueenPromotionOnPremove: false,
-                    enablePremoves: false,
-                  ),
-                  orientation: widget.isFlipped ? Side.black : Side.white,
-                  shapes: engineShapes,
-                  // chessground v10: promotion is resolved inside the board,
-                  // so onMove receives the fully-resolved move (promotion role
-                  // already set) and lives on the widget, not GameData.
-                  onMove: (Move move, {bool? viaDragAndDrop}) async {
-                    if (ref.read(explorerEvalProvider).pvPreview != null) {
-                      return;
-                    }
-                    // Playing this move would land past the free-tier
-                    // boundary — surface the paywall instead of advancing
-                    // and then blurring the panel. Chessground snaps the
-                    // piece back when state doesn't change.
-                    if (!kDebugMode &&
-                        !ref.read(featureAccessStateProvider).isSubscribed) {
-                      final currentMoveNumber =
-                          ref
-                              .read(gamebaseExplorerProvider.notifier)
-                              .effectiveMoveNumber;
-                      if (currentMoveNumber >= kFreeExplorerMoveNumberLimit) {
-                        if (!context.mounted) return;
-                        final unlocked = await requirePremiumGuard(
-                          context,
-                          ref,
-                        );
-                        if (!unlocked) return;
-                      }
-                    }
-                    notifier.makeMove(move.uci);
-                  },
+        child: position == null
+            ? StaticChessboard(
+                size: widget.boardSize,
+                settings: StaticChessboardSettings(
+                  enableCoordinates: boardSettings.showCoordinates,
+                  colorScheme: boardSettings.colorScheme,
+                  pieceAssets: boardSettings.pieceAssets,
                 ),
+                orientation: widget.isFlipped ? Side.black : Side.white,
+                fen: widget.fen,
+                shapes: engineShapes,
+              )
+            : Chessboard(
+                size: widget.boardSize,
+                controller: _boardController,
+                settings: ChessboardSettings(
+                  enableCoordinates: boardSettings.showCoordinates,
+                  animationDuration: const Duration(milliseconds: 200),
+                  colorScheme: boardSettings.colorScheme,
+                  pieceAssets: boardSettings.pieceAssets,
+                  pieceShiftMethod: PieceShiftMethod.tapTwoSquares,
+                  autoQueenPromotionOnPremove: false,
+                  enablePremoves: false,
+                ),
+                orientation: widget.isFlipped ? Side.black : Side.white,
+                shapes: engineShapes,
+                // chessground v10: promotion is resolved inside the board,
+                // so onMove receives the fully-resolved move (promotion role
+                // already set) and lives on the widget, not GameData.
+                onMove: (Move move, {bool? viaDragAndDrop}) async {
+                  if (ref.read(explorerEvalProvider).pvPreview != null) {
+                    return;
+                  }
+                  // Playing this move would land past the free-tier
+                  // boundary — surface the paywall instead of advancing
+                  // and then blurring the panel. Chessground snaps the
+                  // piece back when state doesn't change.
+                  if (!kDebugMode &&
+                      !ref.read(featureAccessStateProvider).isSubscribed) {
+                    final currentMoveNumber = ref
+                        .read(gamebaseExplorerProvider.notifier)
+                        .effectiveMoveNumber;
+                    if (currentMoveNumber >= kFreeExplorerMoveNumberLimit) {
+                      if (!context.mounted) return;
+                      final unlocked = await requirePremiumGuard(context, ref);
+                      if (!unlocked) return;
+                    }
+                  }
+                  notifier.makeMove(move.uci);
+                },
+              ),
       ),
     );
   }
@@ -1438,11 +1425,10 @@ void showExplorerFilterSheet(
       borderRadius: BorderRadius.vertical(top: Radius.circular(16.br)),
     ),
     constraints: ResponsiveHelper.bottomSheetConstraints,
-    builder:
-        (_) => UncontrolledProviderScope(
-          container: container,
-          child: ExplorerFilterSheet(scopedPlayer: scopedPlayer),
-        ),
+    builder: (_) => UncontrolledProviderScope(
+      container: container,
+      child: ExplorerFilterSheet(scopedPlayer: scopedPlayer),
+    ),
   );
 }
 
@@ -1556,10 +1542,9 @@ class _ExplorerFilterSheetState extends ConsumerState<ExplorerFilterSheet> {
       decoration: InputDecoration(
         hintText: 'Search player',
         hintStyle: TextStyle(
-          color:
-              context.isLightTheme
-                  ? context.colors.textTertiary
-                  : context.colors.textSecondary.withValues(alpha: 0.65),
+          color: context.isLightTheme
+              ? context.colors.textTertiary
+              : context.colors.textSecondary.withValues(alpha: 0.65),
           fontSize: 13.f,
         ),
         prefixIcon: Icon(
@@ -1586,14 +1571,13 @@ class _ExplorerFilterSheetState extends ConsumerState<ExplorerFilterSheet> {
           vertical: 10.sp,
         ),
       ),
-      onChanged:
-          canUsePlayerFilter
-              ? (value) {
-                setState(() {
-                  _playerSearchQuery = value.trim();
-                });
-              }
-              : null,
+      onChanged: canUsePlayerFilter
+          ? (value) {
+              setState(() {
+                _playerSearchQuery = value.trim();
+              });
+            }
+          : null,
     );
 
     if (canUsePlayerFilter) {
@@ -1804,31 +1788,28 @@ class _ExplorerFilterSheetState extends ConsumerState<ExplorerFilterSheet> {
                 SizedBox(height: 8.sp),
                 Wrap(
                   spacing: 8.sp,
-                  children:
-                      TimeControl.values.map((tc) {
-                        final isSelected = filters.timeControls.contains(tc);
-                        return FilterChip(
-                          label: Text(tc.displayName),
-                          selected: isSelected,
-                          onSelected: (_) => _toggleTimeControl(tc),
-                          selectedColor: kPrimaryColor.withValues(alpha: 0.2),
-                          showCheckmark: false,
-                          labelStyle: TextStyle(
-                            color:
-                                isSelected
-                                    ? context.colors.accentText
-                                    : context.colors.textPrimary,
-                            fontSize: 12.f,
-                          ),
-                          backgroundColor: context.colors.surface,
-                          side: BorderSide(
-                            color:
-                                isSelected
-                                    ? context.colors.accentText
-                                    : context.colors.divider,
-                          ),
-                        );
-                      }).toList(),
+                  children: TimeControl.values.map((tc) {
+                    final isSelected = filters.timeControls.contains(tc);
+                    return FilterChip(
+                      label: Text(tc.displayName),
+                      selected: isSelected,
+                      onSelected: (_) => _toggleTimeControl(tc),
+                      selectedColor: kPrimaryColor.withValues(alpha: 0.2),
+                      showCheckmark: false,
+                      labelStyle: TextStyle(
+                        color: isSelected
+                            ? context.colors.accentText
+                            : context.colors.textPrimary,
+                        fontSize: 12.f,
+                      ),
+                      backgroundColor: context.colors.surface,
+                      side: BorderSide(
+                        color: isSelected
+                            ? context.colors.accentText
+                            : context.colors.divider,
+                      ),
+                    );
+                  }).toList(),
                 ),
                 SizedBox(height: 16.sp),
 
@@ -1845,31 +1826,28 @@ class _ExplorerFilterSheetState extends ConsumerState<ExplorerFilterSheet> {
                   SizedBox(height: 8.sp),
                   Wrap(
                     spacing: 8.sp,
-                    children:
-                        GamebaseGameResult.values.map((r) {
-                          final isSelected = filters.gameResult == r;
-                          return FilterChip(
-                            label: Text(r.displayText),
-                            selected: isSelected,
-                            onSelected: (_) => _toggleResult(r),
-                            selectedColor: kPrimaryColor.withValues(alpha: 0.2),
-                            showCheckmark: false,
-                            labelStyle: TextStyle(
-                              color:
-                                  isSelected
-                                      ? context.colors.accentText
-                                      : context.colors.textPrimary,
-                              fontSize: 12.f,
-                            ),
-                            backgroundColor: context.colors.surface,
-                            side: BorderSide(
-                              color:
-                                  isSelected
-                                      ? context.colors.accentText
-                                      : context.colors.divider,
-                            ),
-                          );
-                        }).toList(),
+                    children: GamebaseGameResult.values.map((r) {
+                      final isSelected = filters.gameResult == r;
+                      return FilterChip(
+                        label: Text(r.displayText),
+                        selected: isSelected,
+                        onSelected: (_) => _toggleResult(r),
+                        selectedColor: kPrimaryColor.withValues(alpha: 0.2),
+                        showCheckmark: false,
+                        labelStyle: TextStyle(
+                          color: isSelected
+                              ? context.colors.accentText
+                              : context.colors.textPrimary,
+                          fontSize: 12.f,
+                        ),
+                        backgroundColor: context.colors.surface,
+                        side: BorderSide(
+                          color: isSelected
+                              ? context.colors.accentText
+                              : context.colors.divider,
+                        ),
+                      );
+                    }).toList(),
                   ),
                   SizedBox(height: 16.sp),
                 ],
@@ -1898,23 +1876,23 @@ class _ExplorerFilterSheetState extends ConsumerState<ExplorerFilterSheet> {
                         ),
                         selected:
                             filters.playerColor == GamebasePlayerColor.white,
-                        onSelected:
-                            (_) => _toggleColor(GamebasePlayerColor.white),
+                        onSelected: (_) =>
+                            _toggleColor(GamebasePlayerColor.white),
                         selectedColor: kPrimaryColor.withValues(alpha: 0.2),
                         showCheckmark: false,
                         labelStyle: TextStyle(
                           color:
                               filters.playerColor == GamebasePlayerColor.white
-                                  ? context.colors.accentText
-                                  : context.colors.textPrimary,
+                              ? context.colors.accentText
+                              : context.colors.textPrimary,
                           fontSize: 12.f,
                         ),
                         backgroundColor: context.colors.surface,
                         side: BorderSide(
                           color:
                               filters.playerColor == GamebasePlayerColor.white
-                                  ? context.colors.accentText
-                                  : context.colors.divider,
+                              ? context.colors.accentText
+                              : context.colors.divider,
                         ),
                       ),
                       FilterChip(
@@ -1926,23 +1904,23 @@ class _ExplorerFilterSheetState extends ConsumerState<ExplorerFilterSheet> {
                         ),
                         selected:
                             filters.playerColor == GamebasePlayerColor.black,
-                        onSelected:
-                            (_) => _toggleColor(GamebasePlayerColor.black),
+                        onSelected: (_) =>
+                            _toggleColor(GamebasePlayerColor.black),
                         selectedColor: kPrimaryColor.withValues(alpha: 0.2),
                         showCheckmark: false,
                         labelStyle: TextStyle(
                           color:
                               filters.playerColor == GamebasePlayerColor.black
-                                  ? context.colors.accentText
-                                  : context.colors.textPrimary,
+                              ? context.colors.accentText
+                              : context.colors.textPrimary,
                           fontSize: 12.f,
                         ),
                         backgroundColor: context.colors.surface,
                         side: BorderSide(
                           color:
                               filters.playerColor == GamebasePlayerColor.black
-                                  ? context.colors.accentText
-                                  : context.colors.divider,
+                              ? context.colors.accentText
+                              : context.colors.divider,
                         ),
                       ),
                     ],
@@ -2045,11 +2023,12 @@ class _ExplorerFilterSheetState extends ConsumerState<ExplorerFilterSheet> {
                     child: RatingTierFilter(
                       // The sheet is the recessed tone in dark: the chips
                       // take the surface a step darker so they show.
-                      unselectedColor:
-                          context.isLightTheme ? null : context.colors.surface,
+                      unselectedColor: context.isLightTheme
+                          ? null
+                          : context.colors.surface,
                       selectedMinRating: _selectedMinRating,
-                      onChanged:
-                          (value) => setState(() => _selectedMinRating = value),
+                      onChanged: (value) =>
+                          setState(() => _selectedMinRating = value),
                     ),
                   ),
                   SizedBox(height: 24.sp),
@@ -2222,8 +2201,8 @@ class _PlayerSearchResults extends ConsumerWidget {
             return ListView.separated(
               shrinkWrap: true,
               itemCount: players.length,
-              separatorBuilder:
-                  (_, __) => Divider(height: 1, color: context.colors.divider),
+              separatorBuilder: (_, __) =>
+                  Divider(height: 1, color: context.colors.divider),
               itemBuilder: (context, index) {
                 final player = players[index];
                 return ListTile(
@@ -2254,38 +2233,36 @@ class _PlayerSearchResults extends ConsumerWidget {
               },
             );
           },
-          loading:
-              () => Padding(
-                padding: EdgeInsets.all(12.sp),
-                child: Row(
-                  children: [
-                    SizedBox(
-                      width: 16.sp,
-                      height: 16.sp,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: context.colors.accentText,
-                      ),
-                    ),
-                    SizedBox(width: 10.sp),
-                    Text(
-                      'Searching...',
-                      style: TextStyle(
-                        color: context.colors.textSecondary,
-                        fontSize: 12.f,
-                      ),
-                    ),
-                  ],
+          loading: () => Padding(
+            padding: EdgeInsets.all(12.sp),
+            child: Row(
+              children: [
+                SizedBox(
+                  width: 16.sp,
+                  height: 16.sp,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: context.colors.accentText,
+                  ),
                 ),
-              ),
-          error:
-              (_, __) => Padding(
-                padding: EdgeInsets.all(12.sp),
-                child: Text(
-                  'Search failed',
-                  style: TextStyle(color: context.colors.danger, fontSize: 12.f),
+                SizedBox(width: 10.sp),
+                Text(
+                  'Searching...',
+                  style: TextStyle(
+                    color: context.colors.textSecondary,
+                    fontSize: 12.f,
+                  ),
                 ),
-              ),
+              ],
+            ),
+          ),
+          error: (_, __) => Padding(
+            padding: EdgeInsets.all(12.sp),
+            child: Text(
+              'Search failed',
+              style: TextStyle(color: context.colors.danger, fontSize: 12.f),
+            ),
+          ),
         ),
       ),
     );
@@ -2367,30 +2344,28 @@ class _ExplorerEngineLinesState extends ConsumerState<_ExplorerEngineLines> {
       }
 
       final selected = moveIndex == selectedMoveIndex;
-      final moveText =
-          useFigurine
-              ? Text.rich(
-                TextSpan(
-                  children: buildFigurineSpans(
-                    text: token.text,
-                    pieceAssets: pieceAssets,
-                    style: style,
-                    pieceSize: 12.sp,
-                  ),
+      final moveText = useFigurine
+          ? Text.rich(
+              TextSpan(
+                children: buildFigurineSpans(
+                  text: token.text,
+                  pieceAssets: pieceAssets,
+                  style: style,
+                  pieceSize: 12.sp,
                 ),
-              )
-              : Text(token.text, style: style);
-      final decoratedMove =
-          selected
-              ? Container(
-                padding: EdgeInsets.symmetric(horizontal: 3.sp, vertical: 1.sp),
-                decoration: BoxDecoration(
-                  color: accentColor.withValues(alpha: 0.4),
-                  borderRadius: BorderRadius.circular(3.sp),
-                ),
-                child: moveText,
-              )
-              : moveText;
+              ),
+            )
+          : Text(token.text, style: style);
+      final decoratedMove = selected
+          ? Container(
+              padding: EdgeInsets.symmetric(horizontal: 3.sp, vertical: 1.sp),
+              decoration: BoxDecoration(
+                color: accentColor.withValues(alpha: 0.4),
+                borderRadius: BorderRadius.circular(3.sp),
+              ),
+              child: moveText,
+            )
+          : moveText;
 
       Widget target = GestureDetector(
         key: ValueKey<String>(
@@ -2424,7 +2399,10 @@ class _ExplorerEngineLinesState extends ConsumerState<_ExplorerEngineLines> {
       spans.add(
         WidgetSpan(
           alignment: PlaceholderAlignment.middle,
-          child: Padding(padding: EdgeInsets.only(right: 4.sp), child: target),
+          child: Padding(
+            padding: EdgeInsets.only(right: 4.sp),
+            child: target,
+          ),
         ),
       );
     }
@@ -2455,8 +2433,9 @@ class _ExplorerEngineLinesState extends ConsumerState<_ExplorerEngineLines> {
     );
     final fenParts = baseFen.split(' ');
     final isWhiteToMove = fenParts.length > 1 ? fenParts[1] == 'w' : true;
-    final startMoveNumber =
-        fenParts.length > 5 ? (int.tryParse(fenParts[5]) ?? 1) : 1;
+    final startMoveNumber = fenParts.length > 5
+        ? (int.tryParse(fenParts[5]) ?? 1)
+        : 1;
 
     final engineSettings = ref.watch(engineSettingsProviderNew).valueOrNull;
     final linesView = engineSettings?.engineLinesView ?? EngineLinesView.list;
@@ -2466,8 +2445,9 @@ class _ExplorerEngineLinesState extends ConsumerState<_ExplorerEngineLines> {
       final firstUci = line.uciMoves.first.trim().toLowerCase();
       if (!_uciRegex.hasMatch(firstUci)) return;
       if (!kDebugMode && !ref.read(featureAccessStateProvider).isSubscribed) {
-        final currentMoveNumber =
-            ref.read(gamebaseExplorerProvider.notifier).effectiveMoveNumber;
+        final currentMoveNumber = ref
+            .read(gamebaseExplorerProvider.notifier)
+            .effectiveMoveNumber;
         if (currentMoveNumber >= kFreeExplorerMoveNumberLimit) {
           if (!context.mounted) return;
           final unlocked = await requirePremiumGuard(context, ref);
@@ -2483,8 +2463,9 @@ class _ExplorerEngineLinesState extends ConsumerState<_ExplorerEngineLines> {
     EnginePvItem buildItem(ExplorerPvLine line, int variantIndex) {
       final accentColor = enginePvVariantColor(variantIndex, isSelected: true);
       final isSelected = preview?.variantIndex == variantIndex;
-      final evalValue =
-          line.mate != null ? line.mate!.toDouble() : (line.evaluation ?? 0.0);
+      final evalValue = line.mate != null
+          ? line.mate!.toDouble()
+          : (line.evaluation ?? 0.0);
       return EnginePvItem(
         evalText: line.displayEval,
         accentColor: accentColor,
@@ -2515,17 +2496,16 @@ class _ExplorerEngineLinesState extends ConsumerState<_ExplorerEngineLines> {
         1,
         5,
       );
-      final items =
-          preview != null
-              ? <EnginePvItem>[buildItem(preview.line, preview.variantIndex)]
-              : <EnginePvItem>[
-                for (
-                  var index = 0;
-                  index < pvLines.length && index < pvCount;
-                  index++
-                )
-                  buildItem(pvLines[index], index),
-              ];
+      final items = preview != null
+          ? <EnginePvItem>[buildItem(preview.line, preview.variantIndex)]
+          : <EnginePvItem>[
+              for (
+                var index = 0;
+                index < pvLines.length && index < pvCount;
+                index++
+              )
+                buildItem(pvLines[index], index),
+            ];
       return Padding(
         key: e2eKey(E2eIds.openingExplorerEngineLines),
         padding: EdgeInsets.symmetric(horizontal: 12.sp, vertical: 6.sp),
@@ -2640,8 +2620,8 @@ class _ExplorerSegmentedTitle extends ConsumerWidget {
     return ExplorerViewToggle(
       currentPage: currentPage,
       compact: !isLarge,
-      onSelected:
-          (value) => ref.read(explorerPageIndexProvider.notifier).state = value,
+      onSelected: (value) =>
+          ref.read(explorerPageIndexProvider.notifier).state = value,
     );
   }
 }
@@ -2821,20 +2801,19 @@ class _ExplorerBottomPanelsState extends ConsumerState<_ExplorerBottomPanels>
 
   void _insertTutorialOverlay() {
     _tutorialEntry = OverlayEntry(
-      builder:
-          (_) => SwitchViewsTutorialOverlay(
-            animationController: _swipeController,
-            moveAnimation: _swipeMoveAnimation,
-            fadeAnimation: _swipeFadeAnimation,
-            scaleAnimation: _swipeScaleAnimation,
-            currentPageIndex: _currentPageIndex,
-            totalItems: _totalPages,
-            onDismiss: _onWalkthroughFinished,
-            onDontShowAgain: () async {
-              await _suppressWalkthrough();
-              _onWalkthroughFinished();
-            },
-          ),
+      builder: (_) => SwitchViewsTutorialOverlay(
+        animationController: _swipeController,
+        moveAnimation: _swipeMoveAnimation,
+        fadeAnimation: _swipeFadeAnimation,
+        scaleAnimation: _swipeScaleAnimation,
+        currentPageIndex: _currentPageIndex,
+        totalItems: _totalPages,
+        onDismiss: _onWalkthroughFinished,
+        onDontShowAgain: () async {
+          await _suppressWalkthrough();
+          _onWalkthroughFinished();
+        },
+      ),
     );
     Overlay.of(context, rootOverlay: true).insert(_tutorialEntry!);
   }
@@ -2891,10 +2870,10 @@ class _ExplorerBottomPanelsState extends ConsumerState<_ExplorerBottomPanels>
             !(ResponsiveHelper.isTablet && ResponsiveHelper.isLandscape);
         final gamesPageHeight =
             pagesGames &&
-                    constraints.maxHeight.isFinite &&
-                    constraints.maxHeight > 0
-                ? constraints.maxHeight
-                : null;
+                constraints.maxHeight.isFinite &&
+                constraints.maxHeight > 0
+            ? constraints.maxHeight
+            : null;
 
         return PageView(
           controller: _pageController,
@@ -2939,9 +2918,8 @@ class _ExplorerBottomPanelsState extends ConsumerState<_ExplorerBottomPanels>
               key: const ValueKey<String>(
                 'opening_explorer_pv_preview_dismiss',
               ),
-              onTap:
-                  () =>
-                      ref.read(explorerEvalProvider.notifier).clearPvPreview(),
+              onTap: () =>
+                  ref.read(explorerEvalProvider.notifier).clearPvPreview(),
               child: Center(
                 child: Padding(
                   padding: EdgeInsets.all(20.sp),
@@ -3047,10 +3025,9 @@ class _ExplorerNotationViewState extends ConsumerState<_ExplorerNotationView> {
     }
 
     final tree = NotationTreeBuilder.build(game);
-    final pointerId =
-        state.movePointer.isEmpty
-            ? null
-            : NotationPointer.encode(state.movePointer);
+    final pointerId = state.movePointer.isEmpty
+        ? null
+        : NotationPointer.encode(state.movePointer);
     final forcedOpenIds = <String>{};
     _collectVariationAncestors(pointerId, tree.mainline, forcedOpenIds);
     final pointerMap = <String, NotationMoveNode>{};
@@ -3119,37 +3096,33 @@ class _ExplorerNotationViewState extends ConsumerState<_ExplorerNotationView> {
         child: Wrap(
           spacing: 2.sp,
           runSpacing: 2.sp,
-          children:
-              tokens.map((token) {
-                if (token.type == NotationTokenType.move) {
-                  return _buildMoveChip(
-                    token,
-                    pointerId,
-                    currentPly,
-                    useFigurine,
-                    pieceAssets,
-                    rawPgnMode: rawPgnMode,
-                  );
-                }
-                if (token.type == NotationTokenType.comment ||
-                    token.type == NotationTokenType.lichessComment) {
-                  return Padding(
-                    padding: EdgeInsets.symmetric(
-                      horizontal: 4.sp,
-                      vertical: 2.sp,
-                    ),
-                    child: Text(
-                      token.text,
-                      style: AppTypography.textXsRegular.copyWith(
-                        color: context.textInk(0.65),
-                        fontStyle: FontStyle.italic,
-                        height: 1.35,
-                      ),
-                    ),
-                  );
-                }
-                return _buildAuxToken(token, currentPly);
-              }).toList(),
+          children: tokens.map((token) {
+            if (token.type == NotationTokenType.move) {
+              return _buildMoveChip(
+                token,
+                pointerId,
+                currentPly,
+                useFigurine,
+                pieceAssets,
+                rawPgnMode: rawPgnMode,
+              );
+            }
+            if (token.type == NotationTokenType.comment ||
+                token.type == NotationTokenType.lichessComment) {
+              return Padding(
+                padding: EdgeInsets.symmetric(horizontal: 4.sp, vertical: 2.sp),
+                child: Text(
+                  token.text,
+                  style: AppTypography.textXsRegular.copyWith(
+                    color: context.textInk(0.65),
+                    fontStyle: FontStyle.italic,
+                    height: 1.35,
+                  ),
+                ),
+              );
+            }
+            return _buildAuxToken(token, currentPly);
+          }).toList(),
         ),
       ),
     );
@@ -3183,14 +3156,14 @@ class _ExplorerNotationViewState extends ConsumerState<_ExplorerNotationView> {
     bool rawPgnMode = false,
   }) {
     final pointerId = token.pointerId;
-    final key =
-        pointerId == null
-            ? null
-            : _moveKeys.putIfAbsent(pointerId, () => GlobalKey());
+    final key = pointerId == null
+        ? null
+        : _moveKeys.putIfAbsent(pointerId, () => GlobalKey());
     final isCurrent = pointerId != null && pointerId == currentPointerId;
 
-    final nags =
-        rawPgnMode ? const <int>[] : token.node?.move.nags ?? const <int>[];
+    final nags = rawPgnMode
+        ? const <int>[]
+        : token.node?.move.nags ?? const <int>[];
     // Resolve NAGs into displays. Quality NAGs tint the move text and render
     // hugged to the SAN; evaluation/observation NAGs render in muted slate
     // with a leading hair-space and never recolor the SAN.
@@ -3199,6 +3172,8 @@ class _ExplorerNotationViewState extends ConsumerState<_ExplorerNotationView> {
     final seen = <int>{};
     for (final nag in nags) {
       if (!seen.add(nag)) continue;
+      // This notation has no badges; ChessEver verdict codes stay silent.
+      if (!nagShownAsText(nag)) continue;
       final d = getNagDisplay(nag);
       if (d != null) {
         displayNags.add(d);
@@ -3210,11 +3185,13 @@ class _ExplorerNotationViewState extends ConsumerState<_ExplorerNotationView> {
     // The current move sits on its own plate; on paper coloured SAN is
     // re-inked against it so it stays AA.
     final isLight = context.isLightTheme;
-    final currentPlate =
-        isLight
-            ? context.colors.textPrimary.withValues(alpha: 0.08)
-            : context.colors.textPrimaryMuted.withValues(alpha: 0.25);
-    final plateSolid = Color.alphaBlend(currentPlate, context.colors.background);
+    final currentPlate = isLight
+        ? context.colors.textPrimary.withValues(alpha: 0.08)
+        : context.colors.textPrimaryMuted.withValues(alpha: 0.25);
+    final plateSolid = Color.alphaBlend(
+      currentPlate,
+      context.colors.background,
+    );
     Color onPlate(Color ink) =>
         isCurrent && isLight ? legibleHueInkOn(ink, plateSolid) : ink;
     final color = onPlate(
@@ -3257,14 +3234,15 @@ class _ExplorerNotationViewState extends ConsumerState<_ExplorerNotationView> {
     if (displayNags.isNotEmpty) {
       // Order: quality first (hugged, bold, color-coded), then evaluation,
       // then observation (both with leading hair-space, muted slate, w500).
-      final ordered = [...displayNags]..sort((a, b) {
-        int rank(NagDisplay d) => switch (d.category) {
-          NagCategory.quality => 0,
-          NagCategory.evaluation => 1,
-          NagCategory.observation => 2,
-        };
-        return rank(a).compareTo(rank(b));
-      });
+      final ordered = [...displayNags]
+        ..sort((a, b) {
+          int rank(NagDisplay d) => switch (d.category) {
+            NagCategory.quality => 0,
+            NagCategory.evaluation => 1,
+            NagCategory.observation => 2,
+          };
+          return rank(a).compareTo(rank(b));
+        });
       for (final d in ordered) {
         if (d.isQuality) {
           moveSpans.add(
@@ -3351,11 +3329,7 @@ class _ExplorerNotationViewState extends ConsumerState<_ExplorerNotationView> {
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(
-                Icons.unfold_more_rounded,
-                size: 12.sp,
-                color: auxInk(0.7),
-              ),
+              Icon(Icons.unfold_more_rounded, size: 12.sp, color: auxInk(0.7)),
               SizedBox(width: 4.sp),
               Text(
                 token.text,
@@ -3387,10 +3361,9 @@ class _ExplorerNotationViewState extends ConsumerState<_ExplorerNotationView> {
                 height: 16.sp,
                 margin: EdgeInsets.only(right: 3.sp),
                 decoration: BoxDecoration(
-                  color:
-                      isCollapsed
-                          ? depthColor.withValues(alpha: 0.2)
-                          : depthColor.withValues(alpha: 0.1),
+                  color: isCollapsed
+                      ? depthColor.withValues(alpha: 0.2)
+                      : depthColor.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(4.sp),
                   border: Border.all(
                     color: depthColor.withValues(
@@ -3444,14 +3417,12 @@ class _ExplorerNotationViewState extends ConsumerState<_ExplorerNotationView> {
     return Text(
       token.text,
       style: AppTypography.textXsMedium.copyWith(
-        color:
-            token.type == NotationTokenType.ellipsis
-                ? context.colors.textPrimaryMuted
-                : auxInk(0.85),
-        fontStyle:
-            token.type == NotationTokenType.ellipsis
-                ? FontStyle.normal
-                : FontStyle.italic,
+        color: token.type == NotationTokenType.ellipsis
+            ? context.colors.textPrimaryMuted
+            : auxInk(0.85),
+        fontStyle: token.type == NotationTokenType.ellipsis
+            ? FontStyle.normal
+            : FontStyle.italic,
       ),
     );
   }

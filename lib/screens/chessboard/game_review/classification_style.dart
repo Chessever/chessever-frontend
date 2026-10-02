@@ -94,10 +94,11 @@ Color classificationColor(GameMoveClassification classification) =>
 Color classificationInk(
   BuildContext context,
   GameMoveClassification classification,
-) => moveAnnotationInk(context, annotationTypeForClassification(classification));
+) =>
+    moveAnnotationInk(context, annotationTypeForClassification(classification));
 
-/// Standard PGN quality NAG (`$1`–`$6`) → the classification whose badge stands
-/// for that glyph.
+/// Standard PGN quality NAG (`$1`–`$6`) or a manual ChessEver verdict code
+/// (`$242`, `$243`, `$247`) → the classification whose badge stands for it.
 ///
 /// This is the bridge between the two ways a move gets a verdict. A report
 /// produces a [GameMoveClassification]; a reader tapping Annotate produces a
@@ -121,6 +122,9 @@ const Map<int, GameMoveClassification> kQualityNagClassifications =
       3: GameMoveClassification.brilliant, // !!
       4: GameMoveClassification.blunder, // ??
       6: GameMoveClassification.inaccuracy, // ?!
+      242: GameMoveClassification.bestMove, // star
+      243: GameMoveClassification.missedWin, // broken heart
+      247: GameMoveClassification.bookMove, // book (never ! or !!)
     };
 
 /// The classification a quality NAG stands for, or null when the glyph has no

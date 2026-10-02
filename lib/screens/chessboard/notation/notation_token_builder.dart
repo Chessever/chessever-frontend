@@ -2,6 +2,7 @@ import 'package:chessever2/screens/chessboard/analysis/chess_game.dart';
 import 'package:chessever2/screens/chessboard/analysis/chess_game_navigator.dart';
 import 'package:chessever2/screens/chessboard/notation/notation_pointer.dart';
 import 'package:chessever2/screens/chessboard/notation/notation_tree.dart';
+import 'package:chessever2/screens/chessboard/widgets/nag_display.dart';
 import 'package:chessever2/services/lichess_move_annotations_service.dart';
 
 // ---------------------------------------------------------------------------
@@ -144,8 +145,7 @@ LichessMoveAnnotation? resolveLichessAnnotationForMainlineMove({
 /// markers — only quality glyphs (`!`, `?`, `!!`, …) take precedence.
 bool qualityNagsSuppressLichess(Iterable<int> nags) {
   for (final nag in nags) {
-    // $1–$6 and $7 are quality / only-move glyphs (see NagCategory.quality).
-    if (nag >= 1 && nag <= 7) return true;
+    if (getNagDisplay(nag)?.isQuality == true) return true;
   }
   return false;
 }
