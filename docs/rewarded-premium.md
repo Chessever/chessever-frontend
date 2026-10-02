@@ -145,3 +145,14 @@ Device check: with a fresh free account, tap Generate Report and Reports;
 dismiss the chooser and verify nothing opens or generates. Repeat for a cached
 report. Complete an ad and verify both generation and viewing work until expiry;
 subscribers should open directly. Saved reports remain after access expires.
+
+## Followed-player limit
+
+Rewarded access keeps the free limit of three followed players, including players
+added from Countrymen. Only a paid subscription raises this limit. At the cap,
+adding another player opens the subscription paywall without a rewarded option.
+Existing follows remain intact, and removing a player is always allowed.
+
+Device check: with three follows and active rewarded access, try to add a fourth
+from Countrymen and a player profile. Both must show the subscription paywall
+and keep the count at three. Remove one and confirm a replacement can be added.

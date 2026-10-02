@@ -197,7 +197,7 @@ class _PlayerRow extends ConsumerWidget {
           );
         }
       } on FavoriteLimitExceededException {
-        if (context.mounted) await showPremiumPaywallSheet(context: context);
+        if (context.mounted) await showPremiumPaywallSheet(context: context, allowRewarded: false);
       } catch (error) {
         if (context.mounted) {
           showAppSnack(
