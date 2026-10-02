@@ -25,11 +25,6 @@ class _Reward extends RewardedAccessNotifier {
 }
 
 void main() {
-  test('countdown rounds up and never displays negative time', () {
-    expect(formatRewardedRemaining(const Duration(minutes: 10)), '10:00');
-    expect(formatRewardedRemaining(const Duration(milliseconds: 1)), '00:01');
-    expect(formatRewardedRemaining(const Duration(seconds: -1)), '00:00');
-  });
   Future<void> host(
     WidgetTester tester,
     _Reward reward, {

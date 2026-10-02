@@ -274,49 +274,11 @@ class _RewardedAccessHostState extends ConsumerState<RewardedAccessHost>
   @override
   Widget build(BuildContext context) {
     if (!RewardedAdsConfig.available) return widget.child;
-    final reward = ref.watch(rewardedAccessProvider);
-    final paid = ref.watch(subscriptionProvider.select((s) => s.isSubscribed));
+    // Keep expiry handling active without adding a countdown or changing the
+    // screen's safe-area padding.
+    ref.listen(rewardedAccessProvider, (_, _) => _scheduleExpiry());
+    ref.listen(subscriptionProvider, (_, _) => _scheduleExpiry());
     _scheduleExpiry();
-    return Column(
-      children: [
-        if (reward.active && !paid)
-          Material(
-            color: Theme.of(context).colorScheme.primaryContainer,
-            child: SafeArea(
-              bottom: false,
-              child: Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 6,
-                ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    const Icon(Icons.timer_outlined, size: 18),
-                    const SizedBox(width: 8),
-                    Text(
-                      'Premium access · ${formatRewardedRemaining(reward.remaining)}',
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-        Expanded(
-          child: reward.active && !paid
-              ? MediaQuery.removePadding(
-                  context: context,
-                  removeTop: true,
-                  child: widget.child,
-                )
-              : widget.child,
-        ),
-      ],
-    );
+    return widget.child;
   }
-}
-
-String formatRewardedRemaining(Duration duration) {
-  final seconds = (duration.inMilliseconds / 1000).ceil().clamp(0, 600);
-  return '${(seconds ~/ 60).toString().padLeft(2, '0')}:${(seconds % 60).toString().padLeft(2, '0')}';
 }

@@ -115,13 +115,14 @@ On Android and iOS, the user checks:
 1. Free account or guest: tap a locked feature, see Watch ad and Upgrade.
    Cancel the chooser; nothing unlocks. Close an ad early; nothing unlocks.
 2. Complete a test impression with the configured verification path: after
-   confirmation the original action runs once and the top timer starts.
+   confirmation the original action runs once. Access lasts ten minutes without
+   an on-screen countdown.
    Check another premium feature, rankings, reports, collections, save/import
    limits, and signed-in chat. Required account ownership prompts still apply.
 3. Background the app; return before expiry and verify elapsed time is deducted.
    Return after expiry and verify one popup with three choices.
 4. Renew twice and verify each later expiry prompts again. Upgrade and verify
-   the timer disappears. Go back and verify a free screen with saved data intact.
+   rewarded expiry prompts stop. Go back and verify a free screen with saved data intact.
 5. Kill and relaunch the app before expiry; verify another ad is required.
    Switch accounts and verify the prior reward is unavailable.
 6. Test no inventory, network loss during confirmation, and delayed SSV.
