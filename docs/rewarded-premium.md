@@ -132,8 +132,8 @@ On Android and iOS, the user checks:
 ## Premium-only reports
 
 As of 35.35.7+3534, generating any report (including the first) and opening a
-cached/completed report or the Reports archive require paid or active rewarded
-access. The existing Watch ad / Upgrade chooser runs before those actions,
+cached/completed report require paid or active rewarded access. Browsing the
+Reports archive is free; opening one of its boards requires access. The existing Watch ad / Upgrade chooser runs before those actions,
 including in debug. Interrupted work does not resume without access.
 
 Migration `20261002170755_premium_only_game_reports.sql` removes the server's
@@ -141,8 +141,8 @@ free first-report and same-game daily allowances in production. Both paid and
 verified rewarded claims remain supported. Existing reports and claim history
 are retained. The shared server claim policy also applies to older clients.
 
-Device check: with a fresh free account, tap Generate Report and Reports;
-dismiss the chooser and verify nothing opens or generates. Repeat for a cached
+Device check: with a fresh free account, tap Generate Report or a board inside
+Reports; dismiss the chooser and verify no board opens or report generates. Repeat for a cached
 report. Complete an ad and verify both generation and viewing work until expiry;
 subscribers should open directly. Saved reports remain after access expires.
 
@@ -156,3 +156,7 @@ Existing follows remain intact, and removing a player is always allowed.
 Device check: with three follows and active rewarded access, try to add a fourth
 from Countrymen and a player profile. Both must show the subscription paywall
 and keep the count at three. Remove one and confirm a replacement can be added.
+
+Discovery → Reports remains browsable without Premium. Each locked report card
+uses the My Likes greyscale and padlock style; tapping a card shows Watch ad or
+Upgrade before opening the board. Paid or active rewarded access removes locks.
