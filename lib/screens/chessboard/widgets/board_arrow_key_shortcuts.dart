@@ -4,41 +4,35 @@ import 'package:flutter/cupertino.dart' show CupertinoSlider;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-/// How long an arrow key stays down before it starts scrubbing. The scrub's
-/// first step lands one repeater interval later, about half a second after the
-/// press: the classic keyboard "delay until repeat".
-const Duration kBoardArrowKeyHoldDelay = Duration(milliseconds: 350);
+/// A held arrow waits this long, then steps every
+/// [kBoardArrowKeyRepeatInterval]: an ordinary keyboard repeat.
+const Duration kBoardArrowKeyRepeatDelay = Duration(milliseconds: 400);
 
-/// Hardware-keyboard parity with the board's previous/next buttons: a press is
-/// a tap, and a held key is the same accelerating scrub as a long-press.
+/// Shorter than the board's evaluation debounce, so the engine only wakes once
+/// the key is let go.
+const Duration kBoardArrowKeyRepeatInterval = Duration(milliseconds: 100);
+
+/// Hardware-keyboard parity with the board's enabled previous/next buttons.
 ///
 /// Does not request focus: touch, text editing and accessibility keep their own
 /// focus. The visible board handles plain arrows before focus traversal can
 /// reinterpret them as moving focus between controls.
 ///
-/// The hold is timed here instead of following the OS key repeat. iPadOS never
-/// sends repeat events to Flutter, and Android's repeat rate is not the board's
-/// cadence, so native repeats are swallowed and never step.
+/// A held arrow repeats the step on this widget's own timer instead of the OS
+/// key repeat. iPadOS never sends repeat events to Flutter, and counting
+/// Android's on top would step twice, so native repeats are swallowed.
 class BoardArrowKeyShortcuts extends StatefulWidget {
   const BoardArrowKeyShortcuts({
     super.key,
     required this.isActivePage,
     required this.onPrevious,
     required this.onNext,
-    this.onHoldPreviousStart,
-    this.onHoldPreviousEnd,
-    this.onHoldNextStart,
-    this.onHoldNextEnd,
     required this.child,
   });
 
   final bool isActivePage;
   final VoidCallback? onPrevious;
   final VoidCallback? onNext;
-  final VoidCallback? onHoldPreviousStart;
-  final VoidCallback? onHoldPreviousEnd;
-  final VoidCallback? onHoldNextStart;
-  final VoidCallback? onHoldNextEnd;
   final Widget child;
 
   @override
@@ -49,11 +43,7 @@ class _BoardArrowKeyShortcutsState extends State<BoardArrowKeyShortcuts>
     with WidgetsBindingObserver {
   /// The arrow whose key-down this board took and that is still down.
   LogicalKeyboardKey? _heldKey;
-  Timer? _holdTimer;
-
-  /// Stops the scrub the held key started. Captured at the start so a rebuild
-  /// that swaps the callbacks cannot strand a running scrub.
-  VoidCallback? _endHold;
+  Timer? _repeatTimer;
 
   @override
   void initState() {
@@ -66,19 +56,19 @@ class _BoardArrowKeyShortcutsState extends State<BoardArrowKeyShortcuts>
     super.didChangeDependencies();
     // Reading the route and ticker mode here subscribes to both, so a held key
     // lets go the moment this board is covered or hidden.
-    if (!_isOnScreen) _releaseKey(duringBuild: true);
+    if (!_isOnScreen) _releaseKey();
   }
 
   @override
   void didUpdateWidget(covariant BoardArrowKeyShortcuts oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (!widget.isActivePage) _releaseKey(duringBuild: true);
+    if (!widget.isActivePage) _releaseKey();
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     // iOS cancels a press when the app is left mid-hold and never reports the
-    // key-up, so backgrounding has to end the scrub itself.
+    // key-up, so backgrounding has to stop the repeat itself.
     if (state != AppLifecycleState.resumed) _releaseKey();
   }
 
@@ -106,7 +96,7 @@ class _BoardArrowKeyShortcutsState extends State<BoardArrowKeyShortcuts>
   }
 
   void _detach() {
-    _releaseKey(duringBuild: true);
+    _releaseKey();
     FocusManager.instance.removeEarlyKeyEventHandler(_handleKey);
     WidgetsBinding.instance.removeObserver(this);
   }
@@ -130,7 +120,7 @@ class _BoardArrowKeyShortcutsState extends State<BoardArrowKeyShortcuts>
 
   bool get _editableControlHasFocus {
     final focusContext = FocusManager.instance.primaryFocus?.context;
-    if (focusContext == null) return false;
+    if (focusContext == null || !focusContext.mounted) return false;
     bool isEditable(Widget widget) =>
         widget is EditableText ||
         widget is TextField ||
@@ -147,7 +137,7 @@ class _BoardArrowKeyShortcutsState extends State<BoardArrowKeyShortcuts>
     return editable;
   }
 
-  /// Whether a fresh arrow press belongs to this board right now.
+  /// Whether an arrow press belongs to this board right now.
   bool get _ownsArrows {
     if (!mounted || !widget.isActivePage) return false;
     final keyboard = HardwareKeyboard.instance;
@@ -177,9 +167,9 @@ class _BoardArrowKeyShortcutsState extends State<BoardArrowKeyShortcuts>
       return KeyEventResult.handled;
     }
     if (event is KeyRepeatEvent) {
-      // The hold timer paces a held arrow, so a repeat never steps. While the
-      // board owns the arrows it never reaches focus traversal either, even
-      // for a press this state did not take (the bar remounted mid-hold).
+      // The timer paces a held arrow, so a native repeat never steps. While
+      // the board owns the arrows it never reaches focus traversal either,
+      // even for a press this state did not take (the bar remounted mid-hold).
       return _heldKey == key || _ownsArrows
           ? KeyEventResult.handled
           : KeyEventResult.ignored;
@@ -188,45 +178,41 @@ class _BoardArrowKeyShortcutsState extends State<BoardArrowKeyShortcuts>
     if (event.synthesized || !_ownsArrows) return KeyEventResult.ignored;
 
     _releaseKey();
+    _heldKey = key;
+    _step(key);
+    _repeatTimer = Timer(kBoardArrowKeyRepeatDelay, _repeat);
+    // A disabled arrow is a no-op, not a request to move focus.
+    return KeyEventResult.handled;
+  }
+
+  /// Runs the arrow's tap callback; false when that arrow is disabled.
+  bool _step(LogicalKeyboardKey key) {
     final step = key == LogicalKeyboardKey.arrowLeft
         ? widget.onPrevious
         : widget.onNext;
     step?.call();
-    _heldKey = key;
-    _holdTimer = Timer(kBoardArrowKeyHoldDelay, _beginHold);
-    // Disabled arrows are a no-op, not a request to move focus.
-    return KeyEventResult.handled;
+    return step != null;
   }
 
-  void _beginHold() {
-    _holdTimer = null;
+  void _repeat() {
+    _repeatTimer = null;
     final key = _heldKey;
-    if (key == null ||
-        !_ownsArrows ||
+    if (key == null) return;
+    if (!_ownsArrows ||
         !HardwareKeyboard.instance.logicalKeysPressed.contains(key)) {
+      _releaseKey();
       return;
     }
-    final isLeft = key == LogicalKeyboardKey.arrowLeft;
-    final start = isLeft ? widget.onHoldPreviousStart : widget.onHoldNextStart;
-    if (start == null) return;
-    _endHold = isLeft ? widget.onHoldPreviousEnd : widget.onHoldNextEnd;
-    start();
+    // At the end of the line there is nothing left to repeat. The key stays
+    // taken until it is released.
+    if (!_step(key)) return;
+    _repeatTimer = Timer(kBoardArrowKeyRepeatInterval, _repeat);
   }
 
-  void _releaseKey({bool duringBuild = false}) {
-    _holdTimer?.cancel();
-    _holdTimer = null;
+  void _releaseKey() {
+    _repeatTimer?.cancel();
+    _repeatTimer = null;
     _heldKey = null;
-    final end = _endHold;
-    _endHold = null;
-    if (end == null) return;
-    // Ending a scrub restarts the engine, which writes provider state, and
-    // providers cannot be written while the tree is building.
-    if (duringBuild) {
-      scheduleMicrotask(end);
-    } else {
-      end();
-    }
   }
 
   @override
