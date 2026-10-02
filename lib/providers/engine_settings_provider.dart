@@ -458,6 +458,34 @@ EngineSettings applyCachedEngineGaugeSurfaceSettings(
   );
 }
 
+/// Picks the thinking time this device uses when the cloud row and the local
+/// cache disagree.
+///
+/// The cloud value cannot be trusted for this field: the
+/// `force_engine_thinking_time_5s` trigger rewrites `search_time_index` to 0
+/// on every write, so the row always reads "5s" no matter what was chosen.
+/// [cached] is null on a fresh install or a cache written before the field
+/// existed.
+int resolveSearchTimeIndex({required int cloud, required int? cached}) {
+  if (cached == null) return cloud;
+  return cached.clamp(0, EngineSettings.searchTimeLabels.length - 1);
+}
+
+/// Overlays every device-local choice (evaluation bar surfaces and thinking
+/// time) on settings loaded from the cloud.
+EngineSettings applyDeviceLocalEngineSettings(
+  EngineSettings settings,
+  Map<String, dynamic> cache,
+) {
+  final cachedSearchTime = cache['searchTimeIndex'];
+  return applyCachedEngineGaugeSurfaceSettings(settings, cache).copyWith(
+    searchTimeIndex: resolveSearchTimeIndex(
+      cloud: settings.searchTimeIndex,
+      cached: cachedSearchTime is int ? cachedSearchTime : null,
+    ),
+  );
+}
+
 /// Resolved Stockfish parameters for on-board analysis (eval bar + engine lines).
 ///
 /// Built only from [EngineSettings] so tests and the board provider share one
@@ -502,16 +530,14 @@ class EngineSettingsNotifierNew extends AsyncNotifier<EngineSettings> {
 
   Future<EngineSettings> _loadSettings() async {
     try {
-      final cachedSettings = await _getCachedSettingsMap();
       final userId = _supabase.auth.currentUser?.id;
       if (userId == null) {
         debugPrint(
           '[EngineSettings] No user logged in, returning local settings',
         );
-        return applyCachedEngineGaugeSurfaceSettings(
-          const EngineSettings(),
-          cachedSettings,
-        );
+        // No account to ask, so the device cache is the only record of what
+        // was chosen.
+        return await _getCachedSettings();
       }
 
       // Fetch from Supabase (source of truth)
@@ -522,11 +548,15 @@ class EngineSettingsNotifierNew extends AsyncNotifier<EngineSettings> {
               .eq('user_id', userId)
               .maybeSingle();
 
+      // Read the cache after the round trip, so a choice made while the request
+      // was in flight is not overlaid with its older value.
+      final cachedSettings = await _getCachedSettingsMap();
+
       if (response == null) {
         debugPrint(
           '[EngineSettings] No settings found in Supabase, creating defaults',
         );
-        final settings = applyCachedEngineGaugeSurfaceSettings(
+        final settings = applyDeviceLocalEngineSettings(
           const EngineSettings(),
           cachedSettings,
         );
@@ -547,7 +577,7 @@ class EngineSettingsNotifierNew extends AsyncNotifier<EngineSettings> {
       final model = EngineSettingsModel.fromSupabase(response);
       // engine_lines_view_index is not part of the dart_mappable model; read it
       // directly to avoid regenerating the mapper for a single field.
-      final settings = applyCachedEngineGaugeSurfaceSettings(
+      final settings = applyDeviceLocalEngineSettings(
         EngineSettings(
           showEngineGauge: model.showEngineGauge,
           showDepthOverlay: model.showDepthOverlay,
